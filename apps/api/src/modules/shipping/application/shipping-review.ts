@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { ActorId } from './ports/fleet-selection.repository';
 import type { ChangeValues, RecordedRequest, Risk } from '../../system-requests';
@@ -11,7 +12,11 @@ import type { ShippingDependencies } from './shipping-dependencies';
 // are reviewed after (owner decision of 15 Nov 2026). Only changes that can be put back are
 // reviewed: the Market's delivery settings, the methods a seller supports, the active fleet
 // models and reliability scores, and the edit of a model. A rejected or withdrawn change is
-// restored by the reverters in shipping-reverters.ts. Creating a model is not reviewed.
+// restored by the reverters in shipping-reverters.ts.
+//
+// Owner decision of 18 Nov 2026 ("mixed"): a model has no delete, so its create cannot be undone
+// by a reviewer; it waits for a second admin's approval instead (approval mode, the applier in
+// shipping-appliers.ts).
 
 /** The review area of shipping's changes. */
 export const DELIVERY_REVIEW_AREA = 'delivery';
@@ -25,6 +30,39 @@ export const FLEET_SELECTION_SUBJECT_KIND = 'shipping.fleet-selection';
 export const FLEET_SELECTION_SUBJECT_REF = 'fleet-selection';
 /** The name and rule of one fleet-selection model; subject = the model id. */
 export const FLEET_MODEL_SUBJECT_KIND = 'shipping.fleet-selection-model';
+/**
+ * A new fleet-selection model (approval mode: a model has no delete, so a create cannot be
+ * undone); subject = the name asked for, normalised (see {@link fleetModelNameRef}).
+ */
+export const FLEET_MODEL_CREATE_SUBJECT_KIND = 'shipping.fleet-selection-model-create';
+
+/** What a subject ref may hold (system-requests' `SUBJECT_REF`, 128 characters at most). */
+const REF_MAX = 128;
+
+/**
+ * The subject of a proposed model: its name as the Market compares names (NFC, trimmed, any case),
+ * so two proposals of one name share a subject and the second is `already-pending`. A subject ref
+ * holds only `[A-Za-z0-9._:-]`: the name folded to lower case keeps `a-z`, `0-9` and `-`, and
+ * every other character becomes `_<hex code point>.` (an exact, reversible spelling, readable
+ * for a Latin name). A spelling over 128 characters (a long name in another script) is the
+ * SHA-256 of the folded name instead. The two forms never meet (`name:` and `name-sha256:`).
+ *
+ * Case is folded here with JavaScript's `toLowerCase`, while `nameTaken` and `insertModel` use
+ * the database's case-insensitive comparison. For a few code points the two can differ: two names
+ * the database treats as one may then get two subjects, so a second proposal is filed instead of
+ * `already-pending`. That is harmless: the approval of the later one finds the name taken and
+ * answers `changed-since`, and nothing wrong is written.
+ */
+export function fleetModelNameRef(name: string): string {
+  const folded = name.normalize('NFC').trim().toLowerCase();
+  let spelled = '';
+  for (const char of folded) {
+    spelled += /^[a-z0-9-]$/.test(char) ? char : `_${(char.codePointAt(0) ?? 0).toString(16)}.`;
+  }
+  const readable = `name:${spelled}`;
+  if (readable.length <= REF_MAX) return readable;
+  return `name-sha256:${createHash('sha256').update(folded, 'utf8').digest('hex')}`;
+}
 
 /** Whether a change of delivery is reviewed in the Market (the page then asks for a note). */
 export interface ShippingReview {
@@ -37,6 +75,14 @@ export type ShippingRequestRef = Pick<RecordedRequest, 'id' | 'number'> | null;
 
 export const requestRef = (request: RecordedRequest | null): ShippingRequestRef =>
   request === null ? null : { id: request.id, number: request.number };
+
+/**
+ * What an action that waits for approval answers instead of its usual answer: the proposal it
+ * filed (HTTP 202); nothing was written in shipping.
+ */
+export interface ShippingProposal {
+  readonly request: NonNullable<ShippingRequestRef>;
+}
 
 /**
  * The review policy of area delivery, for the page (the area's default on a failure). It opens a
@@ -93,12 +139,18 @@ export const unsupportedValues = (methods: readonly DeliveryMethod[]): ChangeVal
   unsupported: DELIVERY_METHODS.filter((method) => methods.includes(method)),
 });
 
+/** Whether the session acts as someone else (Login as Seller): no write of this area runs in one. */
+export function isActingAs(context: CallContext): boolean {
+  const actor = context.actor;
+  return (
+    Object.hasOwn(actor, 'actingAs') && (actor as { readonly actingAs?: unknown }).actingAs != null
+  );
+}
+
 /** A signed-in admin session, not acting as someone else (a revert is the decider's own act). */
 export function reverterOf(context: CallContext): ActorId {
   const actor = context.actor;
-  const acting =
-    Object.hasOwn(actor, 'actingAs') && (actor as { readonly actingAs?: unknown }).actingAs != null;
-  if (actor.kind !== 'authenticated' || actor.population !== 'admin' || acting) {
+  if (actor.kind !== 'authenticated' || actor.population !== 'admin' || isActingAs(context)) {
     throw new Error('shipping: a revert needs a signed-in admin acting as themselves');
   }
   return actor.accountId;

@@ -139,6 +139,25 @@ describe('admin brands', () => {
     expect(first.get('direction')).toBe('asc');
   });
 
+  it('filters by origin country, shows the chip and takes it off again', async () => {
+    serve(lists([brand(1, { name: 'Saffron & Co' })], []));
+    mount();
+    await screen.findByText('Saffron & Co');
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    fireEvent.change(await screen.findByLabelText('Field'), {
+      target: { value: 'originCountry' },
+    });
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'NZ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    const asked = () =>
+      calls('GET', 'catalog/admin/brands?').map(
+        ([, path]) => new URLSearchParams(path.split('?')[1]),
+      );
+    await waitFor(() => expect(asked().some((p) => p.get('originCountry') === 'NZ')).toBe(true));
+    fireEvent.click(await screen.findByRole('button', { name: /Remove filter Origin country is/ }));
+    await waitFor(() => expect(asked().at(-1)?.get('originCountry')).toBeNull());
+  });
+
   it('shows a dash that screen readers read as "Not set" for an empty origin', async () => {
     serve(lists([brand(1, { originCountry: null })]));
     mount();
@@ -215,7 +234,7 @@ describe('admin brands', () => {
       serve(lists([brand(1)], [brand(2, { status: 'draft' })]));
       mount(false);
       expect(await screen.findByText('Brand 1')).toBeTruthy();
-      expect(screen.queryByRole('button', { name: 'New brand' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'New brand…' })).toBeNull();
       expect(screen.queryByRole('button', { name: /Actions for/ })).toBeNull();
       fireEvent.click(screen.getByRole('button', { name: 'Proposed (1)' }));
       expect(await screen.findByText('Brand 2')).toBeTruthy();
@@ -247,7 +266,7 @@ describe('admin brands', () => {
       });
       mount();
       await screen.findByText('No brands here yet');
-      fireEvent.click(screen.getByRole('button', { name: 'New brand' }));
+      fireEvent.click(screen.getByRole('button', { name: 'New brand…' }));
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: ' Cedar Kitchen ' } });
       fireEvent.change(screen.getByLabelText(/Country of origin/), { target: { value: 'jp' } });
       fireEvent.click(screen.getByRole('button', { name: 'Create brand' }));
@@ -271,7 +290,7 @@ describe('admin brands', () => {
       serve(lists());
       mount();
       await screen.findByText('No brands here yet');
-      fireEvent.click(screen.getByRole('button', { name: 'New brand' }));
+      fireEvent.click(screen.getByRole('button', { name: 'New brand…' }));
       fireEvent.click(screen.getByRole('button', { name: 'Create brand' }));
       expect(await screen.findByText('Enter the brand name.')).toBeTruthy();
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'X' } });
@@ -290,7 +309,7 @@ describe('admin brands', () => {
       });
       mount();
       await screen.findByText('No brands here yet');
-      fireEvent.click(screen.getByRole('button', { name: 'New brand' }));
+      fireEvent.click(screen.getByRole('button', { name: 'New brand…' }));
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'ACME foods' } });
       fireEvent.click(screen.getByRole('button', { name: 'Create brand' }));
       expect(await screen.findByText(/very similar name/)).toBeTruthy();
@@ -368,6 +387,33 @@ describe('admin brands', () => {
     });
   });
 
+  it('exports the current view from the Bulk action menu', async () => {
+    serve(lists([brand(1, { name: 'Saffron & Co' })], []));
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        new Response('x', {
+          status: 200,
+          headers: { 'content-disposition': 'attachment; filename="brands-2026-11-19.csv"' },
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    Object.assign(URL, { createObjectURL: () => 'blob:x', revokeObjectURL: () => undefined });
+    mount();
+    const row = (await screen.findByText('Saffron & Co')).closest('tr') as HTMLElement;
+    fireEvent.click(within(row).getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Export…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Export brands' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const url = String((fetchMock.mock.calls as unknown as string[][])[0]?.[0]);
+    expect(url.startsWith('/api/catalog/admin/brands/export?')).toBe(true);
+    expect(url).toContain('status=active');
+    expect(url).toContain('format=csv');
+    vi.unstubAllGlobals();
+  });
+
   describe('seller proposals', () => {
     const proposal = brand(2, { status: 'draft', proposedBySellerId: id(77), version: 5 });
 
@@ -386,6 +432,8 @@ describe('admin brands', () => {
       const dialog = screen.getByRole('dialog');
       expect(within(dialog).getByText('Approve Brand 2?')).toBeTruthy();
       expect(calls('POST', 'catalog/admin/brands/')).toHaveLength(0);
+      // The safe choice has focus when the dialog opens.
+      expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
       fireEvent.click(within(dialog).getByRole('button', { name: 'Approve brand' }));
       await expectToast('Brand 2 is approved and live.');
       expect(call).toHaveBeenCalledWith(
@@ -408,6 +456,25 @@ describe('admin brands', () => {
         'POST',
         `catalog/admin/brands/${id(2)}/archive`,
         { version: 5 },
+        'csrf-1',
+      );
+    });
+
+    it('sends the optional reason when a proposal is turned down', async () => {
+      serve({ ...lists([], [proposal]), 'POST catalog/admin/brands/': ok({ brand: proposal }) });
+      mount();
+      fireEvent.click(await screen.findByRole('button', { name: 'Proposed (1)' }));
+      await screen.findByText('Brand 2');
+      await act('Brand 2', 'Turn down…');
+      fireEvent.change(screen.getByLabelText(/Reason/), {
+        target: { value: '  Same as Brand 1 \n' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Turn down proposal' }));
+      await expectToast('The proposal Brand 2 was turned down.');
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        `catalog/admin/brands/${id(2)}/archive`,
+        { version: 5, reason: 'Same as Brand 1' },
         'csrf-1',
       );
     });
@@ -436,6 +503,22 @@ describe('admin brands', () => {
         'POST',
         `catalog/admin/brands/${id(1)}/archive`,
         { version: 3 },
+        'csrf-1',
+      );
+    });
+
+    it('sends the optional reason when a live brand is archived', async () => {
+      serve({ ...lists([brand(1)]), 'POST catalog/admin/brands/': ok({ brand: brand(1) }) });
+      mount();
+      await screen.findByText('Brand 1');
+      await act('Brand 1', 'Archive…');
+      fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: 'Closed down' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Archive brand' }));
+      await expectToast('Brand 1 was archived.');
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        `catalog/admin/brands/${id(1)}/archive`,
+        { version: 3, reason: 'Closed down' },
         'csrf-1',
       );
     });

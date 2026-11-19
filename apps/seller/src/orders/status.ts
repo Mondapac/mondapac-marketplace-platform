@@ -4,7 +4,8 @@ import type { Fulfilment, SellerOrderView } from './types.ts';
 export const TONE: Record<Fulfilment | 'ready', BadgeTone> = {
   'to-ship': 'attention',
   ready: 'info',
-  shipped: 'info',
+  // Handed over and out of the seller's hands: neutral, so it reads apart from Ready (info).
+  shipped: 'neutral',
   delivered: 'success',
 };
 

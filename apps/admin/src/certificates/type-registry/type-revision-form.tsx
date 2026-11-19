@@ -379,7 +379,9 @@ export function TypeRevisionForm({
         <Dialog
           open
           title={t('confirm.title')}
-          onClose={() => setConfirming(false)}
+          onClose={() => {
+            if (!call.pending) setConfirming(false);
+          }}
           initialFocus={cancel}
           actions={
             <>

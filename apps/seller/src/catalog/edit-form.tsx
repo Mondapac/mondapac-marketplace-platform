@@ -237,7 +237,7 @@ export function EditForm({
   if (adding && typeCode === '') missing.push('type');
   if (adding && sellerSku.trim() === '') missing.push('sku');
   if (form.categories.length > 0 && categoryIds.length === 0) missing.push('category');
-  if (form.taxCategoryCodes.length > 0 && taxCategoryCode === '') missing.push('tax');
+  if (form.taxCategories.length > 0 && taxCategoryCode === '') missing.push('tax');
   if (attributeFields.some((field) => field.required && !filled(inputs[field.code]))) {
     missing.push('details');
   }
@@ -632,7 +632,6 @@ export function EditForm({
             </Card>
             <ClassificationSection
               categories={form.categories}
-              taxCategoryCodes={form.taxCategoryCodes}
               taxCategories={form.taxCategories}
               categoryIds={categoryIds}
               taxCategoryCode={taxCategoryCode}

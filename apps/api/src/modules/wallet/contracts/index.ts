@@ -11,6 +11,8 @@ export { WALLET_PERMISSIONS, WALLET_SETTINGS_MANAGE, WALLET_SETTINGS_VIEW } from
 export { WALLET_SETTINGS_CHANGE_STEP_UP, WALLET_STEP_UP_ACTIONS } from './step-up';
 export {
   WALLET_FACADE,
+  type ClawBackCreditRequest,
+  type ClawBackCreditResult,
   type GrantCreditRequest,
   type GrantCreditResult,
   type HoldResult,

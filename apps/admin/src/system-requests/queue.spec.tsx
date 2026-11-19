@@ -39,6 +39,7 @@ const row = (n: number, over: Partial<SystemRequest> = {}): SystemRequest => ({
   subjectRef: '0190a000-0000-7000-8000-0000000009ff',
   risk: 'low',
   status: 'open',
+  mode: 'review',
   before: null,
   after: null,
   note: `Note for request ${n}`,
@@ -367,6 +368,28 @@ describe('QueueList', () => {
     ]);
   });
 
+  it('lists Withdraw my request in the menu of an approval row to its author', async () => {
+    call.mockResolvedValueOnce(
+      ok(
+        page([
+          row(1, {
+            mode: 'approval',
+            requestedBy: ME,
+            actions: ['open', 'copy-link', 'withdraw'],
+          }),
+        ]),
+      ),
+    );
+    mount();
+    await screen.findByRole('link', { name: 'SR-1041' });
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for SR-1041' }));
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Open',
+      'Copy link',
+      'Withdraw my request',
+    ]);
+  });
+
   it('approves one request from its row menu and loads the list again', async () => {
     call.mockResolvedValueOnce(ok(page([row(1)])));
     mount();
@@ -509,6 +532,44 @@ describe('QueueList bulk approve', () => {
       ).toBe(false),
     );
     expect(screen.getByText('1 selected')).toBeTruthy();
+  });
+
+  it('shows the badge on an approval row and never offers it to bulk approve', async () => {
+    call.mockResolvedValueOnce(ok(page([row(1), row(2, { mode: 'approval' })])));
+    mount();
+    await screen.findByRole('link', { name: 'SR-1041' });
+    expect(screen.getAllByText('Waits for approval')).toHaveLength(1);
+    tick('SR-1042');
+    const approve = screen.getByRole<HTMLButtonElement>('button', { name: 'Approve selected' });
+    expect(approve.disabled).toBe(true);
+    expect(
+      screen.getByText(/Actions that wait for approval are applied on their own approval\./),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Deselect 1 that cannot be approved' }));
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Bulk actions' })).toBeNull());
+    // The row's own menu words reject for an action that was never applied.
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for SR-1042' }));
+    expect(screen.getByRole('menuitem', { name: 'Reject' })).toBeTruthy();
+  });
+
+  it('words the one-by-one outcome of a bulk approve', async () => {
+    call.mockResolvedValueOnce(ok(page([row(1), row(2)])));
+    mount();
+    await screen.findByRole('link', { name: 'SR-1041' });
+    tick('SR-1041');
+    tick('SR-1042');
+    fireEvent.click(screen.getByRole('button', { name: 'Approve selected' }));
+    call.mockResolvedValueOnce(
+      ok({
+        results: [
+          { requestId: id(1), outcome: 'approved' },
+          { requestId: id(2), outcome: 'system-requests.one-by-one' },
+        ],
+      }),
+    );
+    call.mockResolvedValueOnce(ok(page([row(2)])));
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve 2 requests' }));
+    expect(await screen.findByText('Waits for approval: approve it on its own page.')).toBeTruthy();
   });
 
   it('selects all matching and approves them 100 at a time until none remain', async () => {

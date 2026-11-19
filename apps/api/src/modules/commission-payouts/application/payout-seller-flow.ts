@@ -8,7 +8,7 @@ import {
 } from '../domain/payout';
 import { sellerVisibleHoldReason, type SellerVisibleHoldReason } from '../domain/payout-hold';
 import { isKnownZone, latestSlot, nextSlotAfter } from '../domain/payout-schedule';
-import { encodePayoutCursor, pageFields, pageOf, type MoneyView } from './payout-admin-flow';
+import type { MoneyView } from './payout-admin-flow';
 import type { PayoutDependencies } from './payout-dependencies';
 import { planSeller } from './payout-planning';
 import { sellerIdOf } from './rate-flow';
@@ -148,12 +148,7 @@ export interface OwnPayoutView {
   readonly reason: BlockReason | null;
 }
 
-export interface OwnPayoutsView {
-  readonly payouts: readonly OwnPayoutView[];
-  readonly nextCursor: string | null;
-}
-
-const SELLER_STATUS: Readonly<Record<PayoutState, SellerPayoutState | null>> = {
+export const SELLER_STATUS: Readonly<Record<PayoutState, SellerPayoutState | null>> = {
   pending: 'scheduled',
   'awaiting-approval': 'awaiting-approval',
   approved: 'scheduled',
@@ -167,7 +162,7 @@ const SELLER_STATUS: Readonly<Record<PayoutState, SellerPayoutState | null>> = {
   'settled-by-netting': 'settled',
 };
 
-const ownView = (payout: Payout): OwnPayoutView => ({
+export const ownView = (payout: Payout): OwnPayoutView => ({
   payoutId: payout.id,
   status: SELLER_STATUS[payout.state] ?? 'scheduled',
   gross: moneyOf(payout.gross, payout.currency),
@@ -181,39 +176,6 @@ const ownView = (payout: Payout): OwnPayoutView => ({
       ? blockReasonOfRefusal(payout.outcomeCode)
       : null,
 });
-
-/** The signed-in seller's payouts, newest first; voided ones are hidden. */
-export async function listOwnPayouts(
-  deps: PayoutDependencies,
-  context: CallContext,
-  input: { readonly cursor?: unknown; readonly limit?: unknown },
-): Promise<Result<OwnPayoutsView, SellerPayoutFailure>> {
-  const sellerId = sellerOf(context);
-  if (sellerId === null) return err({ code: 'access.denied' });
-  const page = pageOf(input);
-  if (!page.ok) {
-    return err({ code: 'validation.failed', fields: pageFields(page.error) });
-  }
-  return deps.unitOfWork.run<OwnPayoutsView, SellerPayoutFailure>(
-    context.market,
-    async () => {
-      const rows = await deps.payouts.listForSeller(context.market, sellerId, ['voided'], {
-        ...page.value,
-        limit: page.value.limit + 1,
-      });
-      const shown = rows.slice(0, page.value.limit);
-      const last = shown[shown.length - 1];
-      return ok({
-        payouts: shown.map(ownView),
-        nextCursor:
-          rows.length > page.value.limit && last !== undefined
-            ? encodePayoutCursor(last.createdAt, last.id)
-            : null,
-      });
-    },
-    { readOnly: true },
-  );
-}
 
 // ---------------------------------------------------------------------------------------------
 // Money on hold

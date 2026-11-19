@@ -353,6 +353,42 @@ describe('admin seller health card over HTTP (integration, seller health 5a)', (
       expect(anonymous.status).toBe(401);
     });
 
+    it('serves the queue as a super list and a file for an administrator, and refuses the others', async () => {
+      await boot();
+      await seeded(code);
+      const root = sessionHeaders(code, ROOT, 6);
+      const route = (path: string, headers: { cookie: string } | null) => {
+        const call = http()
+          .get(`/sellers/admin/health-queue/${path}`)
+          .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') });
+        return headers === null ? call : call.set('cookie', headers.cookie);
+      };
+
+      const listed = await route('list?pageSize=10', root);
+      expect(listed.status).toBe(200);
+      expect(listed.headers['cache-control']).toBe('no-store');
+      expect(listed.body).toMatchObject({
+        total: 1,
+        truncated: false,
+        counts: { all: 1, 'late-ready': 1 },
+        items: [{ sellerId: SELLER, score: 12, lowestMetric: 'late-ready', actions: ['open'] }],
+      });
+      expect((await route('list?sort=bogus', root)).status).toBe(400);
+      expect((await route('list', sessionHeaders(code, NO_KEY, 7))).status).toBe(403);
+      expect((await route('list', null)).status).toBe(401);
+
+      const file = await route(`export?format=csv&ids=${SELLER}`, root);
+      expect(file.status).toBe(200);
+      expect(file.headers['content-disposition']).toMatch(
+        /^attachment; filename="sellers-needing-attention-.*\.csv"$/,
+      );
+      expect(file.text).toContain(`Shop of ${code}`);
+      expect((await route('export?ids=01990000-0000-7000-8000-0000000000ff', root)).status).toBe(
+        404,
+      );
+      expect((await route('export', sessionHeaders(code, NO_KEY, 7))).status).toBe(403);
+    });
+
     it('queues a recalculation for an administrator, once, and measures nothing in the request', async () => {
       await boot();
       await seeded(code);

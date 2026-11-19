@@ -64,7 +64,7 @@ const simple = (over: Partial<ProductView> = {}): ProductView => ({
   createdAt: '2026-10-01T00:00:00Z',
   pendingSubmittedAt: null,
   form: {
-    taxCategoryCodes: ['gst'],
+    taxCategories: [{ code: 'gst', labelKey: 'catalog.tax.gst' }],
     units: [],
     fields: FIELDS,
     categories: [{ categoryId: 'c1', parentId: null, names: { 'en-AU': 'Tops' } }],
@@ -266,7 +266,7 @@ describe('Add sizes dialog', () => {
 
   it('lets the seller pick two types and no third', () => {
     const three = [...FIELDS, field({ code: 'fit', names: { 'en-AU': 'Fit' } })];
-    mount(simple({ form: { taxCategoryCodes: [], units: [], fields: three, categories: [] } }));
+    mount(simple({ form: { taxCategories: [], units: [], fields: three, categories: [] } }));
     const dialog = openDialog();
     fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Size' }));
     fireEvent.click(within(dialog).getByRole('checkbox', { name: 'Colour' }));

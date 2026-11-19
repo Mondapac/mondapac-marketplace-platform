@@ -65,7 +65,6 @@ const view = (over: Partial<ProductView> = {}): ProductView => ({
   lastChangedAt: '2026-11-05T01:00:00.000Z',
   createdAt: '2026-11-05T01:00:00.000Z',
   form: {
-    taxCategoryCodes: ['gst-free', 'gst'],
     taxCategories: [
       { code: 'gst-free', labelKey: 'catalog.tax.gst-free' },
       { code: 'gst', labelKey: 'catalog.tax.taxable' },
@@ -228,7 +227,6 @@ describe('the add page', () => {
   const OPTIONS = {
     productTypes: ['simple', 'configurable'],
     locales: { default: 'en', supported: ['en'] },
-    taxCategoryCodes: ['gst-free', 'gst'],
     taxCategories: [
       { code: 'gst-free', labelKey: 'catalog.tax.gst-free' },
       { code: 'gst', labelKey: 'catalog.tax.taxable' },
@@ -261,8 +259,10 @@ describe('the add page', () => {
   it('opens as the one-page form, empty, and creates nothing', async () => {
     call.mockResolvedValueOnce(ok(OPTIONS));
     mount();
-    expect(await screen.findByRole('heading', { name: 'Add product' })).toBeTruthy();
-    expect(screen.getByText('Platform product · Australia')).toBeTruthy();
+    // The loading state already shows the "Add product" heading, so wait for the loaded form
+    // (its subtitle) before asserting anything that only the form renders.
+    expect(await screen.findByText('Platform product · Australia')).toBeTruthy();
+    expect(screen.getByRole('heading', { level: 1, name: 'Add product' })).toBeTruthy();
     expect(call).toHaveBeenCalledTimes(1);
     expect(call.mock.calls[0]?.slice(0, 2)).toEqual([
       'GET',

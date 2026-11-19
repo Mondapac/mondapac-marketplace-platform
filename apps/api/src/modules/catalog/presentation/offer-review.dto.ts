@@ -70,6 +70,12 @@ export class ReviewQueueRowDto {
 
   @ApiProperty({ nullable: true, type: String, description: 'ISO instant; oldest first.' })
   submittedAt!: string | null;
+
+  @ApiProperty({
+    type: [String],
+    description: 'The row actions the caller may run: `approve`, `request-changes`.',
+  })
+  actions!: string[];
 }
 
 export class ProductRevisionRowDto {
@@ -123,6 +129,12 @@ export class ProductRevisionRowDto {
 
   @ApiProperty({ description: 'ISO instant; oldest first.' })
   submittedAt!: string;
+
+  @ApiProperty({
+    type: [String],
+    description: 'The row actions the caller may run: `approve`, `request-changes`.',
+  })
+  actions!: string[];
 }
 
 /**
@@ -160,12 +172,19 @@ export class ReviewQueueList {
   })
   nextAfterId!: string | null;
 
+  @ApiProperty({ description: '1-based page number (1 on a cursor read).' }) page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty() hasNext!: boolean;
+
   @ApiProperty({
+    nullable: true,
+    type: Number,
     description:
       'The rows the filters keep, whatever the page; with no filter, every Offer and pending ' +
-      'product revision in the queue.',
+      'product revision in the queue. Null in `prev-next` mode.',
   })
-  total!: number;
+  total!: number | null;
 
   @ApiProperty({
     type: () => ReviewQueueTotals,

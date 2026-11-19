@@ -25,6 +25,19 @@ describe('ActionMenu', () => {
     expect(html).not.toContain('role="menu"');
   });
 
+  it('explains a disabled button to keyboard and screen-reader users, not only on hover', () => {
+    const html = render({ disabled: true, hint: 'Tick orders to export them.' });
+    // The wrapper takes focus and hover; it names the reason as its title and its description.
+    expect(html).toMatch(/<span[^>]*tabindex="0"[^>]*title="Tick orders to export them\."/);
+    expect(html).toMatch(/aria-describedby="([^"]+)-hint"/);
+    expect(html).toMatch(
+      /<span id="[^"]+-hint" class="sr-only">Tick orders to export them\.<\/span>/,
+    );
+    // An enabled menu, or one with no hint, adds neither.
+    expect(render({ hint: 'x' })).not.toContain('tabindex');
+    expect(render({ disabled: true })).not.toContain('tabindex');
+  });
+
   it('is a disabled button when there is nothing to act on', () => {
     expect(render({ disabled: true })).toContain('disabled=""');
     expect(render()).not.toContain('disabled=""');

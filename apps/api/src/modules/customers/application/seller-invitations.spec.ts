@@ -20,6 +20,7 @@ import {
   type InvitationRules,
   type SellerAttribution,
 } from '../domain/seller-invitations';
+import { ActorOrMarketDayZone } from '../infrastructure/actor-or-market-day-zone';
 import { ConfigInvitationRules } from '../infrastructure/config-invitation-rules';
 import { RandomInviteTokens } from '../infrastructure/random-invite-tokens';
 import type { InvitationPeers } from './ports/invitation-peers';
@@ -253,6 +254,8 @@ describe.each(['AU', 'ZZ'] as const)('invite links in market %s', (code) => {
   let peers: FakeInvitationPeers;
   let deps: InvitationDependencies;
   let uc: ReturnType<typeof useCases>;
+  // The admin's own panel zone, when a test sets one; otherwise the Market's (ADR-0005).
+  const ownZone = { value: null as string | null };
   let next = 0x100;
 
   const useCases = (d: InvitationDependencies) => ({
@@ -305,6 +308,7 @@ describe.each(['AU', 'ZZ'] as const)('invite links in market %s', (code) => {
     outbox = new RecordingOutbox();
     stepUp = new RecordingStepUp();
     peers = new FakeInvitationPeers();
+    ownZone.value = null;
     deps = {
       unitOfWork: new FakeUnitOfWork(),
       inviteLinks: links,
@@ -323,6 +327,9 @@ describe.each(['AU', 'ZZ'] as const)('invite links in market %s', (code) => {
           for await (const row of rows) yield new TextEncoder().encode(row.join('\t') + '\n');
         },
       },
+      dayZone: new ActorOrMarketDayZone(markets, {
+        describeActor: () => Promise.resolve(ok({ timezone: ownZone.value })),
+      }),
     };
     uc = useCases(deps);
   });
@@ -669,6 +676,29 @@ describe.each(['AU', 'ZZ'] as const)('invite links in market %s', (code) => {
       ).toBe('validation.failed');
       expect(await ids({ q: 'a' })).toBe('validation.failed');
       expect(await ids({ sort: 'email' })).toBe('validation.failed');
+    });
+
+    it('reads the days in the admin’s own zone, else the Market’s, never in UTC', async () => {
+      const ids = (input: object) =>
+        uc.list
+          .execute(admin, { view: 'all', ...input })
+          .then((r) => (r.ok ? r.value.items.map((row) => row.accountId) : r.error.code));
+      // 15:00 UTC on the 16th is already the 17th in both fixtures' Market zones.
+      clock.set(T0.add({ hours: 6 }));
+      const late = signUp(1, 'late@example.test');
+      await join(late, await drawLink(RIVAL));
+      expect(await ids({ filters: { attributedFrom: '2026-11-17' } })).toEqual([late]);
+      expect(await ids({ filters: { attributedTo: '2026-11-16' } })).toEqual([staff, bob, alice]);
+      // The admin's own zone (UTC+14) moves 10:00 and 11:00 UTC into the 17th as well.
+      ownZone.value = 'Pacific/Kiritimati';
+      expect(await ids({ filters: { attributedFrom: '2026-11-17' } })).toEqual([late, staff, bob]);
+      expect(await ids({ filters: { attributedTo: '2026-11-16' } })).toEqual([alice]);
+      const selected = await uc.ids.execute(admin, {
+        view: 'all',
+        filters: { attributedTo: '2026-11-16' },
+      });
+      expect(selected).toMatchObject({ ok: true, value: { ids: [alice], total: 1 } });
+      expect(await ids({ filters: { attributedFrom: '2026-02-31' } })).toBe('validation.failed');
     });
 
     it('is the admin’s only and reads this Market only', async () => {

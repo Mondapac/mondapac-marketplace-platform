@@ -1,6 +1,8 @@
 import { err, money, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Money, Result, Temporal } from '@mondapac/shared-kernel';
 import type {
+  ClawBackCreditRequest,
+  ClawBackCreditResult,
   GrantCreditRequest,
   GrantCreditResult,
   HoldResult,
@@ -688,4 +690,124 @@ export async function balanceOf(
     },
     { readOnly: true },
   );
+}
+
+/** The first answer of a clawback, rebuilt from its journal's stored result. */
+const clawbackDecoder =
+  (currency: string) =>
+  (r: Readonly<Record<string, string>>): ClawBackCreditResult => ({
+    journalId: r.journalId as Id<'WalletJournal'>,
+    clawedBack: money(BigInt(r.clawedBackMinor!), currency),
+    balance: {
+      available: money(BigInt(r.availableMinor!), currency),
+      held: money(BigInt(r.heldMinor!), currency),
+    },
+  });
+
+/**
+ * Takes back what is left of one promo grant, up to the amount asked (customers phase 4c: a refund
+ * after a cashback was credited). Under the wallet's balance lock: the replay of a known key, the
+ * switch (active, paused and frozen allow it: it only lowers what the platform owes), the grant's
+ * lot (a promo lot of this customer's wallet), then one `clawback` journal from the wallet to
+ * promo expense, the lot's remainder and the balance. Credit already spent or held stays with the
+ * customer. Nothing left: no journal, a zero answer (a later call with the same key looks again).
+ */
+export async function clawBackCredit(
+  deps: WalletDependencies,
+  context: CallContext,
+  request: ClawBackCreditRequest,
+): Promise<Result<ClawBackCreditResult, WalletFailure>> {
+  const policy = deps.policy.settings(context.market);
+  if (policy === null) return err({ code: 'wallet.unavailable' });
+  const problems: Problem[] = [];
+  const customer = idOf<'Account'>(request?.customerAccountId);
+  if (customer === null) problems.push({ path: 'customerAccountId', code: 'format' });
+  const grantJournal = idOf<'WalletJournal'>(request?.grantJournalId);
+  if (grantJournal === null) problems.push({ path: 'grantJournalId', code: 'format' });
+  if (amountProblem(request?.amount, policy.currency))
+    problems.push({ path: 'amount', code: 'range' });
+  if (typeof request?.reasonCode !== 'string' || !REASON.test(request.reasonCode)) {
+    problems.push({ path: 'reasonCode', code: 'format' });
+  }
+  const orderId = request?.orderId === undefined ? null : idOf<'Order'>(request.orderId);
+  if (request?.orderId !== undefined && orderId === null)
+    problems.push({ path: 'orderId', code: 'format' });
+  if (!keyOk(request?.idempotencyKey)) problems.push({ path: 'idempotencyKey', code: 'format' });
+  if (problems.length > 0 || customer === null || grantJournal === null) {
+    return err(invalid(problems));
+  }
+
+  const asked = request.amount.amount;
+  const fingerprint = [
+    'clawback',
+    customer,
+    grantJournal,
+    asked,
+    request.amount.currency,
+    request.reasonCode,
+    orderId ?? '',
+  ].join('|');
+  const decode = clawbackDecoder(policy.currency);
+  const now = deps.clock.now();
+  const attempt = () =>
+    deps.unitOfWork.run<ClawBackCreditResult, WalletFailure>(context.market, async () => {
+      const wallet = await deps.wallet.findWallet(context.market, customer);
+      const found = await deps.wallet.findLotOfJournal(context.market, grantJournal);
+      // The grant must have made a lot of this very customer's wallet.
+      if (wallet === null || found === null || found.walletAccountId !== wallet.id) {
+        return err({ code: 'wallet.not-found' } as const);
+      }
+      const balance = await deps.wallet.lockBalance(context.market, wallet.id);
+      const replay = await replayOf(deps, context, request.idempotencyKey, fingerprint, decode);
+      if (replay !== null) return replay;
+      const closed = await gate(deps, context, 'clawback');
+      if (closed !== null) return err(closed);
+      if (wallet.currency !== policy.currency) return err({ code: 'wallet.unavailable' } as const);
+      // Read under the lock: a hold or an expiry may have taken from it meanwhile.
+      const lot = await deps.wallet.findLot(context.market, found.lotId);
+      if (lot === null || lot.source !== 'promo') return err({ code: 'wallet.not-found' } as const);
+      const taken = lot.remaining < asked ? lot.remaining : asked;
+      if (taken <= 0n) {
+        return ok({
+          journalId: null,
+          clawedBack: money(0n, policy.currency),
+          balance: balanceOfRecord(balance, policy.currency),
+        });
+      }
+      const accounts = await internalIds(deps, context, ['promo_expense'], policy.currency, now);
+      const journalId = deps.ids.next<'WalletJournal'>();
+      const next = { ...balance, availableMinor: balance.availableMinor - taken };
+      await deps.wallet.appendJournal(context.market, {
+        id: journalId,
+        kind: 'clawback',
+        holdId: null,
+        lotId: found.lotId,
+        idempotencyKey: request.idempotencyKey,
+        fingerprint,
+        actor: actorOf(context),
+        reasonCode: request.reasonCode,
+        orderId,
+        walletAccountId: wallet.id,
+        currency: policy.currency,
+        createdAt: now,
+        result: {
+          journalId,
+          clawedBackMinor: taken.toString(),
+          availableMinor: next.availableMinor.toString(),
+          heldMinor: next.heldMinor.toString(),
+        },
+        postings: [
+          { accountId: wallet.id, amountMinor: -taken },
+          { accountId: accounts.get('promo_expense')!, amountMinor: taken },
+        ],
+      });
+      await deps.wallet.setLotRemaining(context.market, found.lotId, lot.remaining - taken);
+      await deps.wallet.saveBalance(context.market, next, now);
+      return ok({
+        journalId,
+        clawedBack: money(taken, policy.currency),
+        balance: balanceOfRecord(next, policy.currency),
+      });
+    });
+  return guarded(deps, context, request.idempotencyKey, fingerprint, decode, attempt);
 }
