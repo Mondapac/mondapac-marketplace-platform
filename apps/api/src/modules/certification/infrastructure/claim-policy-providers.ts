@@ -8,7 +8,7 @@ import {
 } from '../../../platform/authz';
 import { ID_GENERATOR } from '../../../platform/ids/ids.module';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
-import { registerSystemChangeReverter } from '../../system-requests';
+import { CERTIFICATION_SYSTEM_CHANGES } from './system-changes';
 import {
   CATALOG_REFERENCES,
   type CatalogReferences,
@@ -71,8 +71,7 @@ export const claimPolicyProviders: readonly Provider[] = [
     useFactory: (deps: ClaimPolicyDependencies, authorisation: AuthorisationCheck) =>
       new ClaimPolicyReverter(deps, authorisation),
   },
-  registerSystemChangeReverter(
-    'certification',
+  CERTIFICATION_SYSTEM_CHANGES.reverter(
     CLAIM_POLICY_SUBJECT_KIND,
     CERTIFICATION_REVIEW_AREA,
     CLAIM_POLICY_REVERTER,

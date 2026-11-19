@@ -133,7 +133,7 @@ import {
 } from './presentation/payout-terms.controller';
 import { sellerAccessSubscriptions } from './presentation/subscribers/seller-access.subscriptions';
 import { CommissionPayoutsFacadeImplementation } from './presentation/commission-payouts.facade';
-import { registerSystemChangeReverter, SYSTEM_REQUEST_RECORDER } from '../system-requests';
+import { createSystemChangeRegistrar, SYSTEM_REQUEST_RECORDER } from '../system-requests';
 import {
   COMMISSION_RATE_SUBJECT_KIND,
   MONEY_REVIEW_AREA,
@@ -166,6 +166,8 @@ const PORTS: readonly [keyof CommissionPayoutsDependencies, InjectionToken][] = 
 /** The reverters of area money (Admin Inbox › System requests), registered below. */
 const COMMISSION_RATE_REVERTER = Symbol('COMMISSION_RATE_REVERTER');
 const PAYOUT_TERMS_REVERTER = Symbol('PAYOUT_TERMS_REVERTER');
+/** This module's own registrar for System requests (never exported from the barrel). */
+const COMMISSION_PAYOUTS_SYSTEM_CHANGES = createSystemChangeRegistrar('commission-payouts');
 
 const dependenciesOf = (values: readonly unknown[]): CommissionPayoutsDependencies =>
   Object.fromEntries(
@@ -447,14 +449,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       useFactory: (names: SellerNames, ...values: unknown[]) =>
         new PayoutTermsReverter(dependenciesOf(values), names),
     },
-    registerSystemChangeReverter(
-      'commission-payouts',
+    COMMISSION_PAYOUTS_SYSTEM_CHANGES.reverter(
       COMMISSION_RATE_SUBJECT_KIND,
       MONEY_REVIEW_AREA,
       COMMISSION_RATE_REVERTER,
     ),
-    registerSystemChangeReverter(
-      'commission-payouts',
+    COMMISSION_PAYOUTS_SYSTEM_CHANGES.reverter(
       PAYOUT_TERMS_SUBJECT_KIND,
       MONEY_REVIEW_AREA,
       PAYOUT_TERMS_REVERTER,

@@ -18,11 +18,7 @@ import {
   type SubjectKeyService,
 } from '../../../platform/subject-keys/subject-key-service';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
-import {
-  registerSystemChangeReverter,
-  SYSTEM_REQUEST_RECORDER,
-  type SystemRequestRecorder,
-} from '../../system-requests';
+import { SYSTEM_REQUEST_RECORDER, type SystemRequestRecorder } from '../../system-requests';
 import {
   SELLER_OWNER_CONTACT,
   type SellerOwnerContact,
@@ -68,6 +64,7 @@ import { TypeSaveRevision } from '../application/use-cases/type-save-revision.us
 import { TypesList } from '../application/use-cases/types-list.use-case';
 import { PrismaCertificationRegistryRepository } from './prisma-certification-registry.repository';
 import { SubjectKeyRegistryCipher } from './subject-key-registry-cipher';
+import { CERTIFICATION_SYSTEM_CHANGES } from './system-changes';
 
 export const REGISTRY_DEPENDENCIES = Symbol('CERTIFICATION_REGISTRY_DEPENDENCIES');
 const TYPE_REVISION_REVERTER = Symbol('CERTIFICATION_TYPE_REVISION_REVERTER');
@@ -174,8 +171,7 @@ export const registryProviders: readonly Provider[] = [
     useFactory: (deps: RegistryDependencies, authorisation: AuthorisationCheck) =>
       new TypeRevisionReverter(deps, authorisation),
   },
-  registerSystemChangeReverter(
-    'certification',
+  CERTIFICATION_SYSTEM_CHANGES.reverter(
     TYPE_REVISION_SUBJECT_KIND,
     CERTIFICATION_REVIEW_AREA,
     TYPE_REVISION_REVERTER,

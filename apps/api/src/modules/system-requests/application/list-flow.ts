@@ -23,6 +23,7 @@ import {
   approveInUnit,
   decidable,
   MAX_BULK,
+  refuseDecision,
   requestView,
   reviewableAreas,
   signedInAdmin,
@@ -543,7 +544,14 @@ export async function approveMatching(
         if (!found.ok) return found;
         if (found.value.risk !== 'low') return err({ code: 'system-requests.not-low-risk' });
         if (found.value.mode !== 'review') return err({ code: 'system-requests.one-by-one' });
-        if (!areas.has(found.value.area)) return err({ code: 'system-requests.not-reviewer' });
+        if (!areas.has(found.value.area)) {
+          return refuseDecision(
+            context,
+            'system-requests.not-reviewer',
+            'approve-matching',
+            candidate.id,
+          );
+        }
         return ok(await approveInUnit(deps, context, admin, found.value, null));
       },
     );

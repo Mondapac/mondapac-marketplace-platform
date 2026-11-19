@@ -34,7 +34,12 @@ import type { OverdueReminderDependencies } from './application/overdue-reminder
 import { SYSTEM_REQUESTS_LISTS } from './application/saved-filter-list';
 import { POLICY_REPOSITORY } from './application/ports/policy.repository';
 import { REQUEST_REPOSITORY } from './application/ports/request.repository';
-import { DUE_DAYS_KIND, POLICY_AREA_KIND, PolicyReverter } from './application/policy-flow';
+import {
+  DUE_DAYS_KIND,
+  POLICY_AREA_KIND,
+  PolicyReverter,
+  SYSTEM_REQUESTS_SYSTEM_CHANGES,
+} from './application/policy-flow';
 import { ReverterRegistry } from './application/reverter-registry';
 import { SystemRequestRecorderImplementation } from './application/system-request-recorder';
 import type { SystemRequestsDependencies } from './application/system-requests-dependencies';
@@ -227,8 +232,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       provide: Symbol('system-requests:reverter:own'),
       inject: [REVERTER_REGISTRY, POLICY_AREA_REVERTER, DUE_DAYS_REVERTER],
       useFactory: (registry: ReverterRegistry, area: PolicyReverter, dueDays: PolicyReverter) => {
-        registry.register('system-requests', POLICY_AREA_KIND, 'review-policy', area);
-        registry.register('system-requests', DUE_DAYS_KIND, 'review-policy', dueDays);
+        const own = SYSTEM_REQUESTS_SYSTEM_CHANGES;
+        registry.register(own, POLICY_AREA_KIND, 'review-policy', area);
+        registry.register(own, DUE_DAYS_KIND, 'review-policy', dueDays);
         return true;
       },
     },

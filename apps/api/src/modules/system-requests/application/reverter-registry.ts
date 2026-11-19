@@ -1,11 +1,14 @@
-import type {
-  SystemChangeApplier,
-  SystemChangeReverter,
-  SystemChangeReverters,
+import {
+  isSystemChangeRegistrar,
+  type SystemChangeApplier,
+  type SystemChangeRegistrar,
+  type SystemChangeReverter,
+  type SystemChangeReverters,
 } from '../../../platform/change-review/change-review';
 import { isDeclarablePermissionKey, type PermissionKey } from '../../../platform/authz';
 import { isPolicyArea, type ReviewArea } from '../domain/areas';
 import { isSubjectKind } from '../domain/request';
+import { AREA_OWNERS, type AreaOwners } from './area-owners';
 
 /** How a kind's requests work: reviewed after the change is live, or applied once approved. */
 export type RequestMode = 'review' | 'approval';
@@ -40,27 +43,37 @@ export interface ReverterLookup {
   find(subjectKind: string): RegisteredKind | null;
 }
 
-/** The review policy's own kinds: the only ones in the area `review-policy`. */
-const OWN_MODULE = 'system-requests';
-
-/** A registration refused at boot: a malformed kind, another module's kind, a duplicate, or late. */
+/**
+ * A registration refused at boot: no registrar, a second registrar of one module, a malformed
+ * kind, another module's kind, an area the module does not own, a duplicate, or late.
+ */
 export class ReverterRegistryError extends Error {
   override readonly name = 'ReverterRegistryError';
 }
 
 /**
  * The reverters of every reviewed subject kind. Modules register theirs while the application
- * starts (`registerSystemChangeReverter`); the module seals the registry once it has
- * bootstrapped, so nothing registers later. A kind's first segment is the registering module.
+ * starts, through their own registrar (`createSystemChangeRegistrar`); the module seals the
+ * registry once it has bootstrapped, so nothing registers later. The registering module is the
+ * registrar's, never a name the caller passes: one registrar per module name, a kind's first
+ * segment is that module, and the module must own the area ({@link AREA_OWNERS}).
  */
 export class ReverterRegistry implements ReverterLookup {
   readonly #reverters = new Map<string, RegisteredKind>();
+  /** The registrar that holds each module name: the first one seen; another is refused. */
+  readonly #registrars = new Map<string, SystemChangeRegistrar>();
+  readonly #owners: AreaOwners;
   #sealed = false;
+
+  /** `owners` is {@link AREA_OWNERS} in the application; a spec may pass its own. */
+  constructor(owners: AreaOwners = AREA_OWNERS) {
+    this.#owners = owners;
+  }
 
   /** What other modules get: `register` only, bound to this registry. */
   readonly facade: SystemChangeReverters = Object.freeze({
     register: (
-      module: string,
+      registrar: SystemChangeRegistrar,
       subjectKind: string,
       area: Parameters<SystemChangeReverters['register']>[2],
       reverter: SystemChangeReverter,
@@ -68,10 +81,10 @@ export class ReverterRegistry implements ReverterLookup {
       if (!isPolicyArea(area)) {
         throw new ReverterRegistryError(`${JSON.stringify(area)} is not a reviewed area`);
       }
-      this.register(module, subjectKind, area, reverter);
+      this.register(registrar, subjectKind, area, reverter);
     },
     registerApplier: (
-      module: string,
+      registrar: SystemChangeRegistrar,
       subjectKind: string,
       area: Parameters<SystemChangeReverters['registerApplier']>[2],
       permission: string | readonly string[],
@@ -80,18 +93,18 @@ export class ReverterRegistry implements ReverterLookup {
       if (!isPolicyArea(area)) {
         throw new ReverterRegistryError(`${JSON.stringify(area)} is not a reviewed area`);
       }
-      this.registerApplier(module, subjectKind, area, permission, applier);
+      this.registerApplier(registrar, subjectKind, area, permission, applier);
     },
   });
 
   /** Registers a kind; `review-policy` only for system-requests' own kinds. */
   register(
-    module: string,
+    registrar: SystemChangeRegistrar,
     subjectKind: string,
     area: ReviewArea,
     reverter: SystemChangeReverter,
   ): void {
-    this.#checkKind(module, subjectKind, area);
+    this.#checkKind(registrar, subjectKind, area);
     if (typeof reverter?.revert !== 'function') {
       throw new ReverterRegistryError(`The reverter of "${subjectKind}" has no revert method`);
     }
@@ -110,13 +123,13 @@ export class ReverterRegistry implements ReverterLookup {
    * `apply` and `check`.
    */
   registerApplier(
-    module: string,
+    registrar: SystemChangeRegistrar,
     subjectKind: string,
     area: ReviewArea,
     permission: string | readonly string[],
     applier: SystemChangeApplier,
   ): void {
-    this.#checkKind(module, subjectKind, area);
+    this.#checkKind(registrar, subjectKind, area);
     if (area === 'review-policy') {
       throw new ReverterRegistryError('The review policy has no actions that wait for approval');
     }
@@ -147,8 +160,20 @@ export class ReverterRegistry implements ReverterLookup {
     );
   }
 
-  #checkKind(module: string, subjectKind: string, area: ReviewArea): void {
+  #checkKind(registrar: SystemChangeRegistrar, subjectKind: string, area: ReviewArea): void {
     if (this.#sealed) throw new ReverterRegistryError('The reverter registry is sealed');
+    if (!isSystemChangeRegistrar(registrar)) {
+      throw new ReverterRegistryError(
+        `"${String(subjectKind)}" is not registered through a module's registrar`,
+      );
+    }
+    const { module } = registrar;
+    const holder = this.#registrars.get(module);
+    if (holder !== undefined && holder !== registrar) {
+      throw new ReverterRegistryError(
+        `Module "${module}" has a second registrar: a module creates its registrar once`,
+      );
+    }
     if (!isSubjectKind(subjectKind)) {
       throw new ReverterRegistryError(`${JSON.stringify(subjectKind)} is not a subject kind`);
     }
@@ -160,9 +185,12 @@ export class ReverterRegistry implements ReverterLookup {
     if (this.#reverters.has(subjectKind)) {
       throw new ReverterRegistryError(`The subject kind "${subjectKind}" is registered twice`);
     }
-    if (area === 'review-policy' && module !== OWN_MODULE) {
-      throw new ReverterRegistryError(`Only ${OWN_MODULE} registers in the review-policy area`);
+    if (!(this.#owners[area] ?? []).includes(module)) {
+      throw new ReverterRegistryError(
+        `Module "${module}" cannot register "${subjectKind}" in area "${area}": it does not own it`,
+      );
     }
+    this.#registrars.set(module, registrar);
   }
 
   find(subjectKind: string): RegisteredKind | null {

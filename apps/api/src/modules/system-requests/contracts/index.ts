@@ -26,13 +26,13 @@ export {
 } from './recorder';
 export {
   MAX_DESCRIBE_REFS,
-  registerSystemChangeApplier,
-  registerSystemChangeReverter,
+  createSystemChangeRegistrar,
   SYSTEM_CHANGE_REVERTERS,
   type ApplyOutcome,
   type RevertOutcome,
   type RevertRequest,
   type SystemChangeApplier,
+  type SystemChangeRegistrar,
   type SystemChangeReverter,
   type SystemChangeReverters,
 } from './reverters';
