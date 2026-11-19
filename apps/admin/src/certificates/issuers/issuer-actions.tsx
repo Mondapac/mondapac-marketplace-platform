@@ -44,7 +44,8 @@ export function IssuerActions({
   if (issuer.state === 'active' || issuer.state === 'closed-to-new') {
     const count = issuer.affectedCertificates;
     // The count is what Derecognise confirms: without it the lifecycle actions are not offered.
-    if (typeof count !== 'number') return null;
+    if (typeof count !== 'number')
+      return <p className="text-sm text-fg-muted">{tc('lifecycle-unavailable')}</p>;
     const life: LifecycleIssuer = { ...issuer, affectedCertificates: count };
     const waiting = issuer.pendingReactivation != null;
     return (
@@ -136,7 +137,9 @@ function ActivateDialog({
     <Dialog
       open
       title={t('title')}
-      onClose={onClose}
+      onClose={() => {
+        if (!call.pending) onClose();
+      }}
       actions={
         <>
           <Button variant="secondary" disabled={call.pending} onClick={onClose}>

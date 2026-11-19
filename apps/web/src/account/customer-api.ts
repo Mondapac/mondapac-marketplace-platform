@@ -165,7 +165,11 @@ async function callOnce<T>(
     // other route keeps answering `failed` for it, as before.
     // The reviews routes also answer 409 for a closed window or a review that exists already.
     const refusals =
-      path.startsWith('customers/me/deletion-requests') || path.startsWith('reviews/')
+      path.startsWith('customers/me/deletion-requests') ||
+      path.startsWith('reviews/') ||
+      // Follow limit and "this link cannot be used" are 409s the screens word.
+      path.startsWith('customers/me/followed-stores') ||
+      path === 'customers/me/store-invitation'
         ? [400, 403, 404, 409, 422]
         : [400, 403, 404, 422];
     if (refusals.includes(response.status)) {

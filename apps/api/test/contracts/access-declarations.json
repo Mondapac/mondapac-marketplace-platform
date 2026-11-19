@@ -273,6 +273,11 @@
     "whenSellerNotApproved": "deny"
   },
   {
+    "name": "commission-payouts.export-own-payouts",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
     "name": "commission-payouts.list-own-disputes",
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
@@ -307,6 +312,11 @@
   {
     "name": "commission-payouts.view-next-payout",
     "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "commission-payouts.view-own-exclusive-commission",
+    "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
   {
@@ -641,6 +651,21 @@
     "name": "lists.saved-filters-reorder",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "lists.seller-column-preference-get",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "lists.seller-column-preference-reset",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "lists.seller-column-preference-save",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
   },
   {
     "name": "lists.seller-saved-filter-create",

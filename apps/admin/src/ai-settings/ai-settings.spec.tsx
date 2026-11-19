@@ -138,7 +138,7 @@ describe('Settings › AI', () => {
         target: { value: 'Pilot with sellers' },
       });
       fireEvent.click(screen.getByRole('switch'));
-      await expectToast('Sent for review as SR-5', 'info');
+      await expectToast('Sent for review (SR-5)', 'info');
       expect(call).toHaveBeenCalledWith(
         'PUT',
         'settings/admin/ai',

@@ -514,6 +514,21 @@ describe('tag suggestions over HTTP (integration)', () => {
         ['Weekend grill'],
       );
       expect(mine.body).toMatchObject({ openCount: 1, maxOpen: 10 });
+      const numbered = await http().get(`${OWN}?page=1&pageSize=1`).set(owner).expect(200);
+      expect(numbered.body).toMatchObject({
+        page: 1,
+        pageSize: 1,
+        paging: 'pages',
+        total: 1,
+        hasNext: false,
+      });
+      const none = await http().get(`${OWN}?q=nothing`).set(owner).expect(200);
+      expect(none.body).toMatchObject({ items: [], total: 0 });
+      const prev = await http().get(`${OWN}?paging=prev-next`).set(owner).expect(200);
+      expect(prev.body).toMatchObject({ total: null, paging: 'prev-next' });
+      await http().get(`${OWN}?limit=1&q=weekend`).set(owner).expect(400);
+      await http().get(`${OWN}?limit=1&page=1`).set(owner).expect(400);
+      await http().get(`${OWN}?sort=price`).set(owner).expect(400);
       await http()
         .get(OWN)
         .set({ 'x-market-id': code, ...panelHeaders(code, 'seller') })

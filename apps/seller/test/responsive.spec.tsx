@@ -389,7 +389,7 @@ describe('team pages', () => {
 });
 
 describe('topbar', () => {
-  it('names the page on phones and shows the path to it from tablets up, without a second h1', () => {
+  it('names the page on phones and shows the path to it from desktop width up, without a second h1', () => {
     render(
       <Topbar
         pageTitle="Stock locations"
@@ -403,7 +403,7 @@ describe('topbar', () => {
     expect(screen.queryByRole('heading')).toBeNull();
     const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(nav.className).toContain('hidden');
-    expect(nav.className).toContain('md:block');
+    expect(nav.className).toContain('lg:block');
     expect(screen.getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe(
       '/account/security',
     );

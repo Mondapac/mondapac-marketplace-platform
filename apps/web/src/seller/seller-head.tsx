@@ -1,4 +1,5 @@
 import { useLocale, useTranslations } from 'next-intl';
+import { FollowControl } from '../account/follow-button.tsx';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { SellerLogo } from '../product/seller-logo.tsx';
@@ -42,6 +43,12 @@ export function SellerHead({
                 {t('selling-since', { year: String(shop.sellingSince) })}
               </span>
             </p>
+            <FollowControl
+              sellerId={shop.sellerId}
+              storeName={shop.name}
+              slug={shop.id}
+              variant="page"
+            />
           </div>
           {ratingsShown && rated ? (
             <div className="shop-rings" role="group" aria-label={t('performance')}>

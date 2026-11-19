@@ -1116,6 +1116,7 @@ export class FakeCommission implements CommissionPayoutsFacade {
               sellerId,
               {
                 rateBps: lowered ?? own ?? this.marketRateBps,
+                standardRateBps: own ?? this.marketRateBps,
                 source: own === undefined ? ('market' as const) : ('seller' as const),
                 reason: lowered === undefined ? ('standard' as const) : ('exclusive' as const),
               },

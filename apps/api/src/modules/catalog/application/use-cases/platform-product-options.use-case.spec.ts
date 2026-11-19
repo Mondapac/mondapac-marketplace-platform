@@ -79,12 +79,10 @@ describe.each(['AU', 'ZZ'] as const)('platform-product.options in market %s', (c
       } as unknown as OwnCatalogReader,
       policy: {
         productTypes: () => POLICY[code]!.types,
-        taxCategoryCodes: () => {
+        taxCategories: () => {
           if (failure === 'policy') throw new Error('no config');
-          return POLICY[code]!.tax;
+          return POLICY[code]!.tax.map((c) => ({ code: c, labelKey: `catalog.tax.${c}` }));
         },
-        taxCategories: () =>
-          POLICY[code]!.tax.map((c) => ({ code: c, labelKey: `catalog.tax.${c}` })),
         locales: () => POLICY[code]!.locales,
       } as unknown as CatalogMarketPolicy,
     });
@@ -97,7 +95,6 @@ describe.each(['AU', 'ZZ'] as const)('platform-product.options in market %s', (c
     expect(result.ok && result.value).toEqual({
       productTypes: POLICY[code]!.types,
       locales: POLICY[code]!.locales,
-      taxCategoryCodes: POLICY[code]!.tax,
       taxCategories: POLICY[code]!.tax.map((c) => ({ code: c, labelKey: `catalog.tax.${c}` })),
       categories,
     });
@@ -115,7 +112,6 @@ describe.each(['AU', 'ZZ'] as const)('platform-product.options in market %s', (c
     expect(result.ok && result.value).toEqual({
       productTypes: POLICY[code]!.types,
       locales: POLICY[code]!.locales,
-      taxCategoryCodes: POLICY[code]!.tax,
       taxCategories: POLICY[code]!.tax.map((c) => ({ code: c, labelKey: `catalog.tax.${c}` })),
       categories: [],
     });
