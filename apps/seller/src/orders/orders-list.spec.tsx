@@ -304,7 +304,7 @@ describe('seller orders selection, row actions and bulk', () => {
     open.mockRestore();
   });
 
-  it('stops ticking at 50 orders, the most one set of packing slips takes', async () => {
+  it('stops ticking at 50 orders, the most one set of packing slips takes', () => {
     const many = Array.from({ length: 60 }, (_, index) =>
       row({ sellerOrderId: `0190a000-0000-7000-8000-${String(index).padStart(12, '0')}` }),
     );
