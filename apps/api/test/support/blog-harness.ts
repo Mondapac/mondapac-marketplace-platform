@@ -40,6 +40,18 @@ import { DeleteBlogTag } from '../../src/modules/blog/application/use-cases/dele
 import { FeatureBlogPost } from '../../src/modules/blog/application/use-cases/feature-post.use-case';
 import { ListBlogMedia } from '../../src/modules/blog/application/use-cases/list-media.use-case';
 import { ListBlogPosts } from '../../src/modules/blog/application/use-cases/list-posts.use-case';
+import { ExportBlogPosts } from '../../src/modules/blog/application/use-cases/export-posts.use-case';
+import { BlogPostEditProbe } from '../../src/modules/blog/application/use-cases/post-edit-probe.use-case';
+import { BlogPostPauseProbe } from '../../src/modules/blog/application/use-cases/post-pause-probe.use-case';
+import { BlogPostPublishProbe } from '../../src/modules/blog/application/use-cases/post-publish-probe.use-case';
+import { BlogPostReviewProbe } from '../../src/modules/blog/application/use-cases/post-review-probe.use-case';
+import {
+  POST_ROW_KEYS,
+  type AdminPostListDependencies,
+} from '../../src/modules/blog/application/admin-post-list-flow';
+import type { AdminPostListReader } from '../../src/modules/blog/application/ports/admin-post-list.reader';
+import { ExceljsSheetWriter as ListExceljsSheetWriter } from '../../src/platform/list-export';
+import { MemoryAdminPostList } from './memory-admin-post-list';
 import { ListBlogTaxonomy } from '../../src/modules/blog/application/use-cases/list-taxonomy.use-case';
 import { PauseBlogPost } from '../../src/modules/blog/application/use-cases/pause-post.use-case';
 import { PauseSellerBlogPosts } from '../../src/modules/blog/application/use-cases/pause-seller-posts.use-case';
@@ -137,6 +149,8 @@ export class FakeLinks implements BlogLinks {
 /** A store, unit of work and writers to run the harness against instead of the in-memory ones. */
 export interface BlogBacking {
   readonly posts: BlogRepository;
+  /** The admin Blog posts list reader; the in-memory one over `posts` when absent. */
+  readonly list?: AdminPostListReader;
   readonly unitOfWork: UnitOfWork;
   readonly outbox?: OutboxWriter;
   readonly ids: IdGenerator;
@@ -254,6 +268,19 @@ export function blogHarness(code: 'AU' | 'ZZ', backing?: BlogBacking) {
     objectStore: objects,
   };
 
+  const postList: AdminPostListDependencies = {
+    unitOfWork: deps.unitOfWork,
+    list: backing?.list ?? new MemoryAdminPostList(deps.posts),
+    probes: {
+      [POST_ROW_KEYS[0]]: new BlogPostEditProbe(gate),
+      [POST_ROW_KEYS[1]]: new BlogPostReviewProbe(gate),
+      [POST_ROW_KEYS[2]]: new BlogPostPublishProbe(gate),
+      [POST_ROW_KEYS[3]]: new BlogPostPauseProbe(gate),
+    },
+    sheetWriter: new ListExceljsSheetWriter(),
+    clock,
+  };
+
   const accountOf = new Map<string, Id<'Account'>>();
   const account = (name: string): Id<'Account'> => {
     let id = accountOf.get(name);
@@ -305,7 +332,8 @@ export function blogHarness(code: 'AU' | 'ZZ', backing?: BlogBacking) {
     deleteTag: new DeleteBlogTag(gate, deps),
     featurePost: new FeatureBlogPost(gate, deps),
     listMedia: new ListBlogMedia(gate, deps),
-    listPosts: new ListBlogPosts(gate, deps),
+    listPosts: new ListBlogPosts(gate, postList),
+    exportPosts: new ExportBlogPosts(gate, postList),
     listTaxonomy: new ListBlogTaxonomy(gate, deps),
     pausePost: new PauseBlogPost(gate, deps),
     pauseSellerPosts: new PauseSellerBlogPosts(gate, deps),

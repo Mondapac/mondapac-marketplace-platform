@@ -107,9 +107,12 @@ import { SetCommissionRate } from './application/use-cases/set-commission-rate.u
 import { SetSellerPayoutTerms } from './application/use-cases/set-seller-payout-terms.use-case';
 import { ViewCommissionRate } from './application/use-cases/view-commission-rate.use-case';
 import { ViewSellerPayoutTerms } from './application/use-cases/view-seller-payout-terms.use-case';
+import { ViewOwnExclusiveCommission } from './application/use-cases/view-own-exclusive-commission.use-case';
 import { ViewOwnLedger } from './application/use-cases/view-own-ledger.use-case';
 import { ViewSellerLedger } from './application/use-cases/view-seller-ledger.use-case';
 import { ExportSellerLedger } from './application/use-cases/export-seller-ledger.use-case';
+import { ExportOwnPayouts } from './application/use-cases/export-own-payouts.use-case';
+import type { OwnPayoutListDependencies } from './application/own-payout-list-flow';
 import { ExportSellerPayoutHolds } from './application/use-cases/export-seller-payout-holds.use-case';
 import { SELLER_PAGE_LIST_READER } from './application/ports/seller-page-list.reader';
 import {
@@ -123,6 +126,7 @@ import {
   AdminCommissionController,
   SellerLedgerController,
 } from './presentation/commission-payouts.controller';
+import { SellerExclusiveCommissionController } from './presentation/exclusive-commission.controller';
 import {
   AdminPayoutHoldsController,
   AdminPayoutTermsController,
@@ -271,6 +275,23 @@ function payoutListUseCaseProvider<U>(type: PayoutListUseCaseClass<U>): FactoryP
   };
 }
 
+type OwnPayoutListUseCaseClass<U> = new (gate: UseCaseGate, deps: OwnPayoutListDependencies) => U;
+
+/** The seller's Earnings payouts list and its export (super list 33). */
+function ownPayoutListUseCaseProvider<U>(type: OwnPayoutListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_PAYOUT_LIST_READER, SHEET_WRITER, CLOCK],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: OwnPayoutListDependencies['unitOfWork'],
+      payouts: OwnPayoutListDependencies['payouts'],
+      sheetWriter: OwnPayoutListDependencies['sheetWriter'],
+      clock: OwnPayoutListDependencies['clock'],
+    ) => new type(gate, { unitOfWork, payouts, sheetWriter, clock }),
+  };
+}
+
 type DisputeListUseCaseClass<U> = new (gate: UseCaseGate, deps: AdminDisputeListDependencies) => U;
 
 /** The admin Disputes list and its export (super list 23) share one dependency object. */
@@ -402,6 +423,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   controllers: [
     AdminCommissionController,
     SellerLedgerController,
+    SellerExclusiveCommissionController,
     AdminPayoutTermsController,
     AdminPayoutHoldsController,
     AdminDisputesController,
@@ -473,6 +495,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       PlacePayoutHold,
       ReleasePayoutHold,
       ViewOwnLedger,
+      ViewOwnExclusiveCommission,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     ...[SyncDispute, ViewDispute, DecideDispute, ListOwnDisputes, SellerLostDisputes].map((type) =>
       disputeUseCaseProvider(type as DisputeUseCaseClass<unknown>),
@@ -484,11 +507,13 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewPayout,
       ApprovePayout,
       ViewNextPayout,
-      ListOwnPayouts,
       ListOwnPayoutHolds,
     ].map((type) => payoutUseCaseProvider(type as PayoutUseCaseClass<unknown>)),
     ...[ViewSellerLedger, ExportSellerLedger, ListSellerPayoutHolds, ExportSellerPayoutHolds].map(
       (type) => sellerPageListUseCaseProvider(type as SellerPageListUseCaseClass<unknown>),
+    ),
+    ...[ListOwnPayouts, ExportOwnPayouts].map((type) =>
+      ownPayoutListUseCaseProvider(type as OwnPayoutListUseCaseClass<unknown>),
     ),
     ...[ListPayouts, ExportPayouts].map((type) =>
       payoutListUseCaseProvider(type as PayoutListUseCaseClass<unknown>),

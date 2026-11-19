@@ -997,6 +997,46 @@ describe('relay of the seller payout routes', () => {
     expect(bad.mock.calls[0]?.[0]).toBe('http://api.test/commission-payouts/seller/payouts');
   });
 
+  it('forwards the earnings list filters, sort and page, and the export keys, in their shapes only', async () => {
+    const send = async (path: string[], query: string) => {
+      const upstream = upstreamOk();
+      await relay(
+        config,
+        new Request(`http://seller.localhost:3001/api/${path.join('/')}?${query}`, {
+          method: 'GET',
+          headers: { host: 'seller.localhost:3001' },
+        }),
+        path,
+        upstream,
+      );
+      return upstream.mock.calls[0]?.[0];
+    };
+    const list = ['commission-payouts', 'seller', 'payouts'];
+    const from = '2026-11-01T00:00:00Z';
+    expect(
+      await send(
+        list,
+        `status=paid&q=${ID}&from=${from}&minAmount=100&maxAmount=900&sort=amount&direction=asc&page=2&pageSize=25&sellerId=x`,
+      ),
+    ).toBe(
+      `http://api.test/commission-payouts/seller/payouts?page=2&pageSize=25&status=paid&q=${ID}&from=${encodeURIComponent(from)}&minAmount=100&maxAmount=900&sort=amount&direction=asc`,
+    );
+    // A value out of shape is dropped (the API answers for the rest).
+    expect(await send(list, 'status=voided&sort=fee&q=x&minAmount=-1')).toBe(
+      'http://api.test/commission-payouts/seller/payouts',
+    );
+    const file = ['commission-payouts', 'seller', 'payouts', 'export'];
+    expect(
+      await send(file, `format=xlsx&columns=gross,slot&ids=${ID},${ID}&status=failed&page=3`),
+    ).toBe(
+      `http://api.test/commission-payouts/seller/payouts/export?format=xlsx&columns=${encodeURIComponent('gross,slot')}&ids=${encodeURIComponent(`${ID},${ID}`)}&status=failed`,
+    );
+    const many = Array.from({ length: 201 }, () => ID).join(',');
+    expect(await send(file, `ids=${many}&columns=fee`)).toBe(
+      'http://api.test/commission-payouts/seller/payouts/export',
+    );
+  });
+
   it('does not relay the admin routes, a write or any other path under it', async () => {
     for (const path of [
       ['commission-payouts', 'admin', 'payouts'],
