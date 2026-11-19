@@ -68,6 +68,12 @@ export interface BrandReader {
   /** The brands matching the filter, over all pages. */
   count(market: MarketContext, filter: BrandPageFilter): Promise<number>;
 
+  /**
+   * The brands with these ids, any status, in no particular order; an unknown id is left out.
+   * It returns every status, draft seller proposals included, so it must not back a seller-facing read.
+   */
+  byIds(market: MarketContext, ids: readonly Id<'Brand'>[]): Promise<readonly BrandState[]>;
+
   detail(market: MarketContext, id: Id<'Brand'>): Promise<BrandDetailRecord | null>;
 
   /** Open merge-queue groups, oldest first, at most `limit`. */
