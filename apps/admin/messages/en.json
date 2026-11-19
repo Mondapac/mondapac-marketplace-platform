@@ -11714,9 +11714,10 @@
       "names": "Names",
       "actions": "Actions"
     },
+    "empty": "This Market has no service areas yet.",
     "edited": "Edited",
-    "edit": "Edit names",
-    "edit-label": "Edit the names of {code}",
+    "edit": "Edit names…",
+    "actions-for": "Actions for {name}",
     "dialog": {
       "title": "Names of {code}",
       "language": "Language",

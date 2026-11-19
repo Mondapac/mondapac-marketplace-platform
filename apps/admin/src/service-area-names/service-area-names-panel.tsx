@@ -1,20 +1,19 @@
 'use client';
 
-import { Badge, Button, SettingsPage, SettingsSection } from '@mondapac/ui';
+import { Badge, Menu, SettingsPage, SettingsSection } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { EditNamesDialog } from './edit-names-dialog.tsx';
 import { languageLabel } from './errors.ts';
-import type { AreaNames, AreaRow } from './types.ts';
+import { callApi } from '../api/client.ts';
+import { AREAS_PATH, ROW_ACTIONS, type AreaNames, type AreaRow } from './types.ts';
 
 /** Settings › Service areas: every area with its names; an admin who may edit changes them. */
 export function ServiceAreaNamesPanel({
   initial,
-  canEdit,
   csrfToken,
 }: {
   readonly initial: AreaNames;
-  readonly canEdit: boolean;
   readonly csrfToken: string;
 }) {
   const t = useTranslations('serviceAreas');
@@ -23,6 +22,13 @@ export function ServiceAreaNamesPanel({
   const editingArea = areas.find((area) => area.code === editing) ?? null;
   const replace = (next: AreaRow) =>
     setAreas((all) => all.map((area) => (area.code === next.code ? next : area)));
+  // After a refused save the row (or the caller's rights) may have changed: read the list again.
+  // A failed read keeps what is shown.
+  const reload = async () => {
+    const result = await callApi<AreaNames>('GET', AREAS_PATH);
+    if (result.ok) setAreas(result.body.areas);
+  };
+  const canEdit = areas.some((area) => area.actions.includes('edit-names'));
 
   return (
     <SettingsPage title={t('title')}>
@@ -45,6 +51,13 @@ export function ServiceAreaNamesPanel({
                 </tr>
               </thead>
               <tbody className="divide-y divide-line-row">
+                {areas.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="px-3 py-6 text-center text-fg-muted">
+                      {t('empty')}
+                    </td>
+                  </tr>
+                ) : null}
                 {areas.map((area) => {
                   const label = area.names[initial.defaultLanguage]?.name ?? area.code;
                   return (
@@ -74,15 +87,17 @@ export function ServiceAreaNamesPanel({
                         </ul>
                       </td>
                       <td className="px-3 py-3 align-top">
-                        {canEdit ? (
-                          <Button
-                            variant="secondary"
-                            className="min-h-12 whitespace-nowrap"
-                            aria-label={t('edit-label', { code: area.code })}
-                            onClick={() => setEditing(area.code)}
-                          >
-                            {t('edit')}
-                          </Button>
+                        {ROW_ACTIONS.some((id) => area.actions.includes(id)) ? (
+                          <Menu
+                            label={t('actions-for', { name: label })}
+                            items={[
+                              {
+                                id: 'edit-names',
+                                label: t('edit'),
+                                onSelect: () => setEditing(area.code),
+                              },
+                            ]}
+                          />
                         ) : null}
                       </td>
                     </tr>
@@ -101,6 +116,7 @@ export function ServiceAreaNamesPanel({
           csrfToken={csrfToken}
           onClose={() => setEditing(null)}
           onSaved={replace}
+          onRefused={() => void reload()}
         />
       )}
     </SettingsPage>
