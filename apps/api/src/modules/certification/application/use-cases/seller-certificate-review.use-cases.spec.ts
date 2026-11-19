@@ -958,6 +958,21 @@ describe.each(['AU', 'ZZ'] as const)('admin review of a seller certificate, Mark
         ok: false,
         error: { code: 'review.not-current-submission' },
       });
+
+      const expired = rig();
+      const expiredCtx = expired.actor();
+      await expired.recordAll(expiredCtx);
+      await expired.recordScope(expiredCtx);
+      await expired.approve.execute(expiredCtx, {
+        certificateId: expired.certificateId,
+        submissionId: expired.submissionId,
+        version: 3,
+      });
+      expired.reviews.certificate.status = 'expired';
+      expect(await expired.confirm.execute(expiredCtx, confirmation(expired))).toEqual({
+        ok: false,
+        error: { code: 'review.not-current-submission' },
+      });
     });
 
     it('refuses a submission with no issuer', async () => {
