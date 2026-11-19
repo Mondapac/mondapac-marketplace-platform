@@ -12,6 +12,7 @@ import {
   Res,
 } from '@nestjs/common';
 import {
+  ApiAcceptedResponse,
   ApiBadRequestResponse,
   ApiBody,
   ApiConflictResponse,
@@ -45,6 +46,7 @@ import { AttributeValuesMerge } from '../application/use-cases/attribute-values-
 import {
   AttributeImpactBody,
   AttributeVersionRequest,
+  AttributeVersionNoteRequest,
   AttributeWriteWrapBody,
   OpenRelaxationListBody,
   RelaxationConfirmBody,
@@ -56,6 +58,8 @@ import {
 } from './attribute-admin.dto';
 import { RELAXATION_STATUS } from './attribute-relaxation.controller';
 import { closedBody, refusalWith, type Refusal } from './http-answers';
+import { answered } from './http-answers';
+import { CatalogueProposalBody } from './category-admin.dto';
 import { ApiErrorBody } from './platform-product.dto';
 
 /**
@@ -94,6 +98,12 @@ const refusal = (error: Refusal, response: Response, context?: CallContext): Htt
 const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthenticated';
 const RESTRUCTURES =
   'Needs catalog.attribute.restructure (protected); refused in an acting-as session.';
+const WAITS_FOR_APPROVAL =
+  'Where the Market reviews area catalogue (Admin Inbox › System requests) it waits for a second ' +
+  "admin's approval: `note` (1 to 500 characters) is required, the checks run as for the action, " +
+  'and the answer is 202 `{request: {id, number}}` with nothing changed; 409 ' +
+  'system-requests.already-pending (details.pendingNumber) while another proposal of the ' +
+  'attribute waits.';
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const ATTRIBUTE_PARAM = { name: 'attributeId', description: 'The attribute. A UUID v7.' };
 const REQUEST_PARAM = { name: 'requestId', description: 'The archive request. A UUID v7.' };
@@ -156,11 +166,12 @@ export class AttributeRestructureController {
     summary: 'Merge one value of a select attribute into another',
     description:
       `${RESTRUCTURES} The source value stays, inactive and "merged into" the target. Products ` +
-      'are not changed; the storefront reads the target for the source.',
+      `are not changed; the storefront reads the target for the source. ${WAITS_FOR_APPROVAL}`,
   })
   @ApiParam(ATTRIBUTE_PARAM)
   @ApiHeader(CSRF)
   @ApiBody({ type: ValuesMergeRequest })
+  @ApiAcceptedResponse({ type: CatalogueProposalBody })
   @ApiOkResponse({ type: AttributeWriteWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -179,13 +190,13 @@ export class AttributeRestructureController {
     @Param('attributeId') attributeId: string,
     @Body() body: unknown,
   ): Promise<AttributeWriteWrapBody> {
-    const input = closedBody(request, body, ['version', 'source', 'target']);
+    const input = closedBody(request, body, ['version', 'source', 'target'], ['note']);
     let outcome: AttributeWriteWrapBody | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
       const result = await this.mergeValues.execute(context, { ...input, attributeId });
       outcome = result.ok
-        ? (JSON.parse(JSON.stringify(result.value)) as AttributeWriteWrapBody)
+        ? answered<AttributeWriteWrapBody>(response, result.value)
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.attribute-values-merge', context, outcome);
@@ -200,11 +211,12 @@ export class AttributeRestructureController {
       `${RESTRUCTURES} The source is archived and points at the target; its values are mapped to ` +
       'target values. Products are not changed; the storefront reads the target for the source. ' +
       'Refused for a material source, for a source still in an active feature set and for ' +
-      'live variants.',
+      `live variants. ${WAITS_FOR_APPROVAL}`,
   })
   @ApiParam(ATTRIBUTE_PARAM)
   @ApiHeader(CSRF)
   @ApiBody({ type: AttributeMergeRequest })
+  @ApiAcceptedResponse({ type: CatalogueProposalBody })
   @ApiOkResponse({ type: AttributeWriteWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -225,13 +237,18 @@ export class AttributeRestructureController {
     @Param('attributeId') attributeId: string,
     @Body() body: unknown,
   ): Promise<AttributeWriteWrapBody> {
-    const input = closedBody(request, body, ['version', 'target', 'targetVersion', 'options']);
+    const input = closedBody(
+      request,
+      body,
+      ['version', 'target', 'targetVersion', 'options'],
+      ['note'],
+    );
     let outcome: AttributeWriteWrapBody | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
       const result = await this.mergeAttribute.execute(context, { ...input, attributeId });
       outcome = result.ok
-        ? (JSON.parse(JSON.stringify(result.value)) as AttributeWriteWrapBody)
+        ? answered<AttributeWriteWrapBody>(response, result.value)
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.attribute-merge', context, outcome);
@@ -288,11 +305,13 @@ export class AttributeRestructureController {
     summary: 'Archive a published attribute that is not material',
     description:
       `${RESTRUCTURES} Refused while an active feature set lists it or live variants use it. ` +
-      'A material attribute is archived by a request and a second administrator instead.',
+      'A material attribute is archived by a request and a second administrator instead. ' +
+      WAITS_FOR_APPROVAL,
   })
   @ApiParam(ATTRIBUTE_PARAM)
   @ApiHeader(CSRF)
-  @ApiBody({ type: AttributeVersionRequest })
+  @ApiBody({ type: AttributeVersionNoteRequest })
+  @ApiAcceptedResponse({ type: CatalogueProposalBody })
   @ApiOkResponse({ type: AttributeWriteWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -313,13 +332,13 @@ export class AttributeRestructureController {
     @Param('attributeId') attributeId: string,
     @Body() body: unknown,
   ): Promise<AttributeWriteWrapBody> {
-    const input = closedBody(request, body, ['version']);
+    const input = closedBody(request, body, ['version'], ['note']);
     let outcome: AttributeWriteWrapBody | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
       const result = await this.archive.execute(context, { ...input, attributeId });
       outcome = result.ok
-        ? (JSON.parse(JSON.stringify(result.value)) as AttributeWriteWrapBody)
+        ? answered<AttributeWriteWrapBody>(response, result.value)
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.attribute-archive', context, outcome);

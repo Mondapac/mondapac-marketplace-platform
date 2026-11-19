@@ -23,6 +23,15 @@ describe('ConfigCatalogMarketPolicy', () => {
     await expect(policy.approvalRequired(zz)).resolves.toBe(false);
     expect(policy.taxCategoryCodes(au)).toEqual(['taxable', 'gst_free']);
     expect(policy.taxCategoryCodes(zz)).toEqual(['zz_standard', 'zz_reduced', 'zz_zero']);
+    expect(policy.taxCategories(au)).toEqual([
+      { code: 'taxable', labelKey: 'catalog.tax.taxable' },
+      { code: 'gst_free', labelKey: 'catalog.tax.gst-free' },
+    ]);
+    expect(policy.taxCategories(zz)).toEqual([
+      { code: 'zz_standard', labelKey: 'catalog.tax.zz-standard' },
+      { code: 'zz_reduced', labelKey: 'catalog.tax.zz-reduced' },
+      { code: 'zz_zero', labelKey: 'catalog.tax.zz-zero' },
+    ]);
   });
 
   it('gives the product types and the default family of each Market', () => {

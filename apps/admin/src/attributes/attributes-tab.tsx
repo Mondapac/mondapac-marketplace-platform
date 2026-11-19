@@ -297,6 +297,7 @@ export function AttributesTab({
       />
       {adding && locales !== null ? (
         <AddAttributeDialog
+          reviewed={page?.review?.reviewed === true}
           locales={locales}
           units={page?.units ?? []}
           csrfToken={csrfToken}

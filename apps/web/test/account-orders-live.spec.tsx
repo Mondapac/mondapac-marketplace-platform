@@ -140,6 +140,27 @@ describe('order page', () => {
     expect(within(page).queryByRole('button', { name: 'Cancel order' })).toBeNull();
   });
 
+  it('shows the cashback that waits for the seller’s payout, with its day, as a note only', async () => {
+    renderLive(
+      [],
+      <OrderDetails
+        reference={ORDER}
+        order={real()}
+        upcomingCashback={[
+          { amount: { amount: 400, currency: 'AUD' }, creditOn: '2026-12-01' },
+          { amount: { amount: 150, currency: 'AUD' }, creditOn: null },
+        ]}
+      />,
+    );
+    const page = await screen.findByRole('main');
+    expect(
+      await within(page).findByText(
+        'Cashback of A$4.00 will be added to your wallet on Dec 1, 2026.',
+      ),
+    ).toBeTruthy();
+    expect(within(page).getByText('Cashback of A$1.50 is on its way to your wallet.')).toBeTruthy();
+  });
+
   it('says nothing about charges on a cancelled order, and no GST without a tax record', async () => {
     renderLive(
       [],
