@@ -252,6 +252,15 @@ export class MemoryBrands implements BrandRepository, BrandReader {
     return Promise.resolve(this.#matching(filter).length);
   }
 
+  byIds(_market: MarketContext, ids: readonly Id<'Brand'>[]): Promise<readonly BrandState[]> {
+    return Promise.resolve(
+      ids.flatMap((id) => {
+        const state = this.brands.get(id);
+        return state === undefined ? [] : [state];
+      }),
+    );
+  }
+
   detail(market: MarketContext, id: Id<'Brand'>): Promise<BrandDetailRecord | null> {
     const brand = this.brands.get(id);
     if (brand === undefined) return Promise.resolve(null);

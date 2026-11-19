@@ -24,6 +24,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiPayloadTooLargeResponse,
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
@@ -43,6 +44,13 @@ import { BrandApprove } from '../application/use-cases/brand-approve.use-case';
 import { BrandArchive } from '../application/use-cases/brand-archive.use-case';
 import { BrandCreate } from '../application/use-cases/brand-create.use-case';
 import { BrandEdit } from '../application/use-cases/brand-edit.use-case';
+import {
+  BRAND_EXPORT_COLUMNS,
+  BRAND_EXPORT_MAX_IDS,
+  BRAND_EXPORT_MAX_ROWS,
+  BrandExport,
+  EXPORT_FORMATS,
+} from '../application/use-cases/brand-export.use-case';
 import { BrandGet } from '../application/use-cases/brand-get.use-case';
 import { BrandList } from '../application/use-cases/brand-list.use-case';
 import { BrandMerge } from '../application/use-cases/brand-merge.use-case';
@@ -63,6 +71,7 @@ import {
 } from './brand.dto';
 import { closedBody, numericQuery, pageQuery, refusalWith, type Refusal } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
+import { writeChunks } from './write-chunks';
 
 /**
  * The HTTP status of each refusal of the admin brand routes (catalog brand package). A malformed
@@ -87,6 +96,7 @@ export const BRAND_ADMIN_STATUS: Readonly<Record<string, number>> = Object.freez
   'brand.merge-source-archived': 409,
   'conflict.stale': 409,
   'brand.merge-into-itself': 422,
+  'batch.too-large': 413,
   'access.unavailable': 503,
 });
 
@@ -107,9 +117,9 @@ const CONTENT_KEYS = [
 
 /**
  * Brand administration over HTTP (catalog brand package): list, read, create, edit, archive and
- * approve brands, merge brands, and settle the merge queue. Every route reads the admin session of
- * the request's Market (`@ReadsSession`), so a write needs the CSRF token and the admin panel's
- * origin; JSON only, closed bodies. Thin adapters: each route calls one use case through its gate,
+ * approve brands, merge brands, settle the merge queue, and export the list as a file. Every route
+ * reads the admin session of the request's Market (`@ReadsSession`), so a write needs the CSRF
+ * token and the admin panel's origin; JSON only, closed bodies. Thin adapters: each route calls one use case through its gate,
  * which checks `catalog.brand.read` (reads) or `catalog.brand.edit` (writes), and maps the answer
  * to the error format `{ statusCode, code, details? }`. Every route logs its outcome code with the
  * correlation id; never a body or a text.
@@ -122,6 +132,7 @@ export class BrandAdminController {
 
   constructor(
     private readonly listBrands: BrandList,
+    private readonly exportBrands: BrandExport,
     private readonly getBrand: BrandGet,
     private readonly createBrand: BrandCreate,
     private readonly editBrand: BrandEdit,
@@ -231,6 +242,74 @@ export class BrandAdminController {
       outcome = result.ok ? { ...result.value } : refusal(result.error, response, context);
     }
     return this.settle('catalog.brand-merge-queue-dismiss', context, outcome);
+  }
+
+  @Get('export')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Export the brands of the list as a file',
+    description:
+      'Needs catalog.brand.read. `format` is csv (the default) or xlsx, with the same columns and ' +
+      'header row: Brand, Slug, Status, Origin country, Last changed, then the optional ' +
+      '`columns` (comma-separated, in the order given). The brands are `ids` (comma-separated, at ' +
+      `most ${BRAND_EXPORT_MAX_IDS}, in the order given; an unknown id is brand.not-found) or ` +
+      'every brand the list filter matches (`status`, `q` or its older name `search`, `sort`, ' +
+      `\`direction\`), at most ${BRAND_EXPORT_MAX_ROWS}; more is batch.too-large with ` +
+      '`details.total`. The file streams as an attachment. CSV: a text cell that starts with = + - @ ' +
+      'is written with a leading quote. XLSX: every cell is a string value, never a formula.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({
+    name: 'columns',
+    required: false,
+    description: `Any of: ${BRAND_EXPORT_COLUMNS.join(', ')}.`,
+  })
+  @ApiQuery({ name: 'ids', required: false, description: 'Comma-separated brand ids.' })
+  @ApiQuery({ name: 'status', required: false, enum: ['draft', 'active', 'archived'] })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'search', required: false, deprecated: true, description: 'Older name of q.' })
+  @ApiQuery({ name: 'sort', required: false, enum: ['name', 'status', 'created', 'updated'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiOkResponse({
+    description:
+      'text/csv; charset=utf-8 (brands-<date>.csv) or ' +
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet (brands-<date>.xlsx), as an attachment',
+  })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'brand.not-found' })
+  @ApiPayloadTooLargeResponse({ type: ApiErrorBody, description: 'batch.too-large' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async download(
+    @Call() context: CallContext,
+    @Res() response: Response,
+    @Query() query: Record<string, unknown>,
+  ): Promise<void> {
+    const result = await this.exportBrands.execute(context, { ...query });
+    if (!result.ok) {
+      const error = refusal(result.error, response, context);
+      this.#logExport(context, (error.getResponse() as { code: string }).code, error.getStatus());
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      const finished = await writeChunks(response, chunks);
+      this.#logExport(context, finished ? 'ok' : 'client-gone', 200);
+    } catch {
+      // The status line is gone: end the connection, so the client sees a failed download.
+      this.#logExport(context, 'stream-failed', 500);
+      response.destroy();
+    }
   }
 
   @Get(':brandId')
@@ -470,6 +549,15 @@ export class BrandAdminController {
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.brand-merge', context, outcome);
+  }
+
+  #logExport(context: CallContext, outcome: string, status: number): void {
+    this.#logger[status >= 500 ? 'warn' : 'log']({
+      msg: 'catalog.brand-export',
+      outcome,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
   }
 
   private settle<T extends object>(

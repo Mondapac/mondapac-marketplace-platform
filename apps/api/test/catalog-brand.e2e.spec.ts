@@ -251,6 +251,10 @@ describe('brand routes over HTTP (integration)', () => {
     expect(document.paths[`${ADMIN}/{brandId}/approve`]).toHaveProperty('post');
     expect(document.paths[`${ADMIN}/{brandId}/merge`]).toHaveProperty('post');
     expect(document.paths[`${ADMIN}/merge-queue`]).toHaveProperty('get');
+    expect(document.paths[`${ADMIN}/export`]).toHaveProperty('get');
+    for (const status of ['200', '400', '403', '404', '413']) {
+      expect(document.paths[`${ADMIN}/export`]?.get?.responses).toHaveProperty(status);
+    }
     expect(document.paths[`${ADMIN}/merge-queue/dismiss`]).toHaveProperty('post');
     expect(document.paths['/catalog/seller/brands']).toHaveProperty('post');
     expect(document.paths['/catalog/brands']).toHaveProperty('get');
@@ -317,6 +321,62 @@ describe('brand routes over HTTP (integration)', () => {
         delete withoutCsrf['x-csrf-token'];
         await http().post(ADMIN).set(withoutCsrf).send({ name: 'No Csrf' }).expect(403);
         expect(brands.brands.size).toBe(4);
+      });
+    });
+
+    describe('admin routes: the export', () => {
+      it('exports the filtered list or the selected ids under the read key', async () => {
+        await boot();
+        await seeded(code);
+        const moderator = adminSession(code, MODERATOR, 11);
+        const denied = await http().get(`${ADMIN}/export`).set(moderator).expect(403);
+        expect(denied.body).toMatchObject({ code: 'access.denied' });
+
+        const viewer = adminSession(code, VIEWER, 12);
+        const csv = await http()
+          .get(`${ADMIN}/export?status=active&sort=name&direction=asc&columns=id`)
+          .set(viewer)
+          .expect(200);
+        expect(csv.headers['content-type']).toContain('text/csv');
+        expect(csv.headers['content-disposition']).toBe(
+          'attachment; filename="brands-2026-10-28.csv"',
+        );
+        expect(csv.headers['cache-control']).toContain('no-store');
+        const lines = csv.text
+          .replace(/^\uFEFF/, '')
+          .trimEnd()
+          .split('\r\n');
+        expect(lines[0]).toBe('Brand,Slug,Status,Origin country,Last changed,Brand id');
+        expect(lines.slice(1).map((line) => line.split(',')[0])).toEqual([
+          'Acme Tea',
+          'Fuji Foods',
+        ]);
+
+        const picked = await http()
+          .get(`${ADMIN}/export?ids=${ARCHIVED},${DRAFT}`)
+          .set(viewer)
+          .expect(200);
+        expect(
+          picked.text
+            .replace(/^\uFEFF/, '')
+            .trimEnd()
+            .split('\r\n')
+            .slice(1)
+            .map((line) => line.split(',')[0]),
+        ).toEqual(['Old Brand', 'Draft Brand']);
+
+        const xlsx = await http().get(`${ADMIN}/export?format=xlsx&q=acme`).set(viewer).expect(200);
+        expect(xlsx.headers['content-type']).toContain('spreadsheetml');
+
+        const missing = await http()
+          .get(`${ADMIN}/export?ids=${BRAND_A},${MISSING}`)
+          .set(viewer)
+          .expect(404);
+        expect(missing.body).toMatchObject({ code: 'brand.not-found' });
+        const control = await http().get(`${ADMIN}/export?q=a%07b`).set(viewer).expect(400);
+        expect(control.body).toMatchObject({ code: 'validation.failed' });
+        await http().get(`${ADMIN}/export?page=2`).set(viewer).expect(400);
+        await http().get(`${ADMIN}/export?format=pdf`).set(viewer).expect(400);
       });
     });
 
