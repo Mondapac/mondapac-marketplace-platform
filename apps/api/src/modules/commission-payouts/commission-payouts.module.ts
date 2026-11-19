@@ -111,6 +111,8 @@ import { ViewOwnExclusiveCommission } from './application/use-cases/view-own-exc
 import { ViewOwnLedger } from './application/use-cases/view-own-ledger.use-case';
 import { ViewSellerLedger } from './application/use-cases/view-seller-ledger.use-case';
 import { ExportSellerLedger } from './application/use-cases/export-seller-ledger.use-case';
+import { ExportOwnPayouts } from './application/use-cases/export-own-payouts.use-case';
+import type { OwnPayoutListDependencies } from './application/own-payout-list-flow';
 import { ExportSellerPayoutHolds } from './application/use-cases/export-seller-payout-holds.use-case';
 import { SELLER_PAGE_LIST_READER } from './application/ports/seller-page-list.reader';
 import {
@@ -270,6 +272,23 @@ function payoutListUseCaseProvider<U>(type: PayoutListUseCaseClass<U>): FactoryP
         clock,
       });
     },
+  };
+}
+
+type OwnPayoutListUseCaseClass<U> = new (gate: UseCaseGate, deps: OwnPayoutListDependencies) => U;
+
+/** The seller's Earnings payouts list and its export (super list 33). */
+function ownPayoutListUseCaseProvider<U>(type: OwnPayoutListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_PAYOUT_LIST_READER, SHEET_WRITER, CLOCK],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: OwnPayoutListDependencies['unitOfWork'],
+      payouts: OwnPayoutListDependencies['payouts'],
+      sheetWriter: OwnPayoutListDependencies['sheetWriter'],
+      clock: OwnPayoutListDependencies['clock'],
+    ) => new type(gate, { unitOfWork, payouts, sheetWriter, clock }),
   };
 }
 
@@ -488,11 +507,13 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewPayout,
       ApprovePayout,
       ViewNextPayout,
-      ListOwnPayouts,
       ListOwnPayoutHolds,
     ].map((type) => payoutUseCaseProvider(type as PayoutUseCaseClass<unknown>)),
     ...[ViewSellerLedger, ExportSellerLedger, ListSellerPayoutHolds, ExportSellerPayoutHolds].map(
       (type) => sellerPageListUseCaseProvider(type as SellerPageListUseCaseClass<unknown>),
+    ),
+    ...[ListOwnPayouts, ExportOwnPayouts].map((type) =>
+      ownPayoutListUseCaseProvider(type as OwnPayoutListUseCaseClass<unknown>),
     ),
     ...[ListPayouts, ExportPayouts].map((type) =>
       payoutListUseCaseProvider(type as PayoutListUseCaseClass<unknown>),
