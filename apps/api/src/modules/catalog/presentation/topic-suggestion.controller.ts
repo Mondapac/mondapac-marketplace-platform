@@ -21,6 +21,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiQuery,
   ApiParam,
   ApiServiceUnavailableResponse,
   ApiTags,
@@ -48,7 +49,7 @@ import {
   SuggestionMapRequest,
   SuggestionRejectRequest,
 } from './topic-suggestion.dto';
-import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
+import { closedBody, numericQuery, pageQuery, refusalWith, type Refusal } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
 
 /**
@@ -106,9 +107,18 @@ export class TopicSuggestionController {
   @ApiOperation({
     summary: 'Tag suggestions waiting for a decision',
     description:
-      `${NEEDS} Open suggestions, oldest first. The seller’s text is plain text: show it as ` +
-      'text, never as markup.',
+      `${NEEDS} Open suggestions by time (oldest first by default), read by page number or ` +
+      'Previous and Next (`paging=prev-next`, no total); `q` searches the seller’s text; `limit` ' +
+      'is the older name of `pageSize`. Each row names the `actions` the caller may run. The ' +
+      'seller’s text is plain text: show it as text, never as markup.',
   })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'sort', required: false, enum: ['created'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'pageSize', required: false })
+  @ApiQuery({ name: 'paging', required: false, enum: ['pages', 'prev-next'] })
+  @ApiQuery({ name: 'limit', required: false, deprecated: true, description: 'Alias of pageSize.' })
   @ApiOkResponse({ type: SuggestionListBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -119,7 +129,7 @@ export class TopicSuggestionController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<SuggestionListBody> {
-    const result = await this.listOpen.execute(context, pageQuery(query));
+    const result = await this.listOpen.execute(context, numericQuery(pageQuery(query)));
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as SuggestionListBody)
       : refusal(result.error, response, context);

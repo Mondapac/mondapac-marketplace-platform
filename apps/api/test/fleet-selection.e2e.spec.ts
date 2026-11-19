@@ -267,6 +267,36 @@ describe.each(TEST_MARKETS)('fleet selection over HTTP in market %s', (code) => 
     ]);
   });
 
+  it('answers 202 with only the proposal when a create waits for approval, and 409 while one waits', async () => {
+    await boot();
+    const session = admin();
+    const proposal = { request: { id: id<'SystemRequest'>(0xe2), number: 12 } };
+    next = ok(proposal);
+    const body = { name: 'Fast', rule: { kind: 'cheapest' }, note: 'New rule' };
+    const proposed = await call('post', 'admin', `${BASE}/models`, session, body);
+    expect(proposed.status).toBe(202);
+    expect(proposed.body).toEqual({ request: { id: proposal.request.id, number: 12 } });
+    expect(proposed.headers['cache-control']).toBe('no-store');
+    expect(calls).toEqual([{ name: 'create', input: body }]);
+
+    next = err({ code: 'system-requests.already-pending', pendingNumber: 12 });
+    const pending = await call('post', 'admin', `${BASE}/models`, session, body);
+    expect(pending.status).toBe(409);
+    expect(pending.body).toEqual({
+      statusCode: 409,
+      code: 'system-requests.already-pending',
+      details: { pendingNumber: 12 },
+    });
+    next = err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] });
+    const noNote = await call('post', 'admin', `${BASE}/models`, session, body);
+    expect(noNote.status).toBe(400);
+    expect(noNote.body).toMatchObject({ details: { fields: [{ path: 'note' }] } });
+    // The body stays closed: a stray key never reaches the use case.
+    const stray = await call('post', 'admin', `${BASE}/models`, session, { ...body, x: 1 });
+    expect(stray.status).toBe(400);
+    expect(calls).toHaveLength(3);
+  });
+
   it('lists the history for an admin and passes the paging', async () => {
     await boot();
     const row = { id: 'row-1', ...LAST_CHANGED, fields: ['reliability'] };

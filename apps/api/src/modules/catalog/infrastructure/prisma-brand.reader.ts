@@ -5,12 +5,31 @@ import type {
   BrandDetailRecord,
   BrandListPage,
   BrandListQuery,
+  BrandPageFilter,
+  BrandPageQuery,
   BrandReader,
   MergeQueueRecord,
   PublicBrandRecord,
 } from '../application/ports/brand.reader';
 import type { BrandState } from '../domain/brand';
+import { likeLiteral } from './like-literal';
 import { brandStateOf } from './prisma-brand.repository';
+
+function brandFilters(filter: BrandPageFilter): Prisma.CatalogBrandWhereInput[] {
+  const filters: Prisma.CatalogBrandWhereInput[] = [];
+  if (filter.status !== null) filters.push({ status: filter.status });
+  if (filter.search !== null) {
+    const typed = likeLiteral(filter.search);
+    filters.push({
+      OR: [
+        { name: { contains: typed, mode: 'insensitive' } },
+        { slug: { contains: typed.toLowerCase() } },
+        { aliases: { some: { alias: { contains: typed, mode: 'insensitive' } } } },
+      ],
+    });
+  }
+  return filters;
+}
 
 /**
  * {@link BrandReader} on `catalog.brands`, `brand_aliases`, `brand_merge_candidates` and the
@@ -23,17 +42,7 @@ export class PrismaBrandReader implements BrandReader {
 
   async list(market: MarketContext, query: BrandListQuery): Promise<BrandListPage> {
     const tx = this.prisma.tx(market);
-    const filters: Prisma.CatalogBrandWhereInput[] = [];
-    if (query.status !== null) filters.push({ status: query.status });
-    if (query.search !== null) {
-      filters.push({
-        OR: [
-          { name: { contains: query.search, mode: 'insensitive' } },
-          { slug: { contains: query.search.toLowerCase() } },
-          { aliases: { some: { alias: { contains: query.search, mode: 'insensitive' } } } },
-        ],
-      });
-    }
+    const filters = brandFilters(query);
     if (query.afterId !== null) {
       // Keyset by (name, id): the page starts after the row the cursor names.
       const cursor = await tx.catalogBrand.findFirst({
@@ -55,6 +64,35 @@ export class PrismaBrandReader implements BrandReader {
       items: page.map(brandStateOf),
       nextAfterId: rows.length > query.limit ? (page[page.length - 1]!.id as Id<'Brand'>) : null,
     };
+  }
+
+  async page(market: MarketContext, query: BrandPageQuery): Promise<readonly BrandState[]> {
+    const field = { name: 'name', status: 'status', created: 'createdAt', updated: 'updatedAt' }[
+      query.sort
+    ] as 'name' | 'status' | 'createdAt' | 'updatedAt';
+    const filters = brandFilters(query);
+    const rows = await this.prisma.tx(market).catalogBrand.findMany({
+      where: filters.length === 0 ? {} : { AND: filters },
+      orderBy: [{ [field]: query.direction }, { id: query.direction }],
+      skip: query.offset,
+      take: query.limit,
+    });
+    return rows.map(brandStateOf);
+  }
+
+  async count(market: MarketContext, filter: BrandPageFilter): Promise<number> {
+    const filters = brandFilters(filter);
+    return this.prisma
+      .tx(market)
+      .catalogBrand.count({ where: filters.length === 0 ? {} : { AND: filters } });
+  }
+
+  async byIds(market: MarketContext, ids: readonly Id<'Brand'>[]): Promise<readonly BrandState[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma
+      .tx(market)
+      .catalogBrand.findMany({ where: { id: { in: [...ids] } } });
+    return rows.map(brandStateOf);
   }
 
   async detail(market: MarketContext, id: Id<'Brand'>): Promise<BrandDetailRecord | null> {

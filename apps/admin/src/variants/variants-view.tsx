@@ -3,9 +3,10 @@
 import { Banner, Tabs } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
-import { RequestsTab } from './requests-tab.tsx';
+import { RequestsList } from './requests-list.tsx';
 import { VariantTypesTab } from './variant-types-tab.tsx';
-import { VariantsTab } from './variants-tab.tsx';
+import { VariantsList } from './variants-list.tsx';
+import type { ListPagingMode } from '../shared/paged-list/types.ts';
 import { VARIANTS_PATH, type Tab } from './types.ts';
 
 /**
@@ -22,6 +23,9 @@ export function VariantsView({
   csrfToken,
   initialTab,
   initialId,
+  paging,
+  accountId,
+  marketId,
 }: {
   readonly canEdit: boolean;
   readonly canOpenAttributes: boolean;
@@ -30,6 +34,10 @@ export function VariantsView({
   readonly csrfToken: string;
   readonly initialTab: Tab;
   readonly initialId: string | null;
+  /** The Market's "List paging" setting (Previous and next when it could not be read). */
+  readonly paging: ListPagingMode;
+  readonly accountId: string;
+  readonly marketId: string;
 }) {
   const t = useTranslations('variants');
   // A link to the Waiting for you tab opens the first tab for an admin who may not answer.
@@ -76,8 +84,17 @@ export function VariantsView({
           csrfToken={csrfToken}
         />
       ) : null}
-      {tab === 'variants' ? <VariantsTab /> : null}
-      {tab === 'waiting' ? <RequestsTab csrfToken={csrfToken} /> : null}
+      {tab === 'variants' ? (
+        <VariantsList paging={paging} accountId={accountId} marketId={marketId} />
+      ) : null}
+      {tab === 'waiting' ? (
+        <RequestsList
+          paging={paging}
+          accountId={accountId}
+          marketId={marketId}
+          csrfToken={csrfToken}
+        />
+      ) : null}
     </div>
   );
 }

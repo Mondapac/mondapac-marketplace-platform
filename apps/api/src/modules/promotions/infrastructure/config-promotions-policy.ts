@@ -54,6 +54,7 @@ export class ConfigPromotionsPolicy implements PromotionsPolicy {
             : {
                 maxBps: promotions.cashback.maxBps,
                 maxCapMinor: BigInt(promotions.cashback.maxCapMinor),
+                sellerMinBps: promotions.cashback.sellerMinBps ?? null,
               },
       },
       lineDiscountCapBps: promotions.lineDiscountCapBps,
@@ -62,6 +63,7 @@ export class ConfigPromotionsPolicy implements PromotionsPolicy {
       wasPrice: promotions.wasPrice,
       batchCodes: promotions.batchCodes ?? null,
       firstOrderDefaults: defaults,
+      timeZone: config.timezone,
     };
   }
 }

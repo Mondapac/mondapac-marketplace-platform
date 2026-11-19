@@ -16,6 +16,7 @@ import type { CarrierPickupRead } from '../application/use-cases/carrier-pickup.
 import type { OperatingZones } from '../application/use-cases/operating-zones.use-case';
 import type { PickupPostcodes } from '../application/use-cases/pickup-postcodes.use-case';
 import type { PublishedStoreSellerId } from '../application/use-cases/published-store-seller-id.use-case';
+import type { PublishedStoreCards } from '../application/use-cases/published-store-cards.use-case';
 import type { PublishedStoreSlugs } from '../application/use-cases/published-store-slugs.use-case';
 import type { ReviewerBusinessDetailsRead } from '../application/use-cases/reviewer-business-details.use-case';
 import type { SellingEligibilitySystem } from '../application/use-cases/selling-eligibility-system.use-case';
@@ -41,6 +42,8 @@ import type {
   SellersValidationFailed,
 } from '../contracts/sellers.facade';
 import type { SellerSummary } from '../domain/seller-summary';
+import type { PublishedStore, PublishedStoreCard } from '../domain/published-store';
+import type { PublishedStoreRead } from '../application/use-cases/published-store-read.use-case';
 
 /** The use cases behind the facade, a pair per method. */
 export interface SellersFacadeUseCases {
@@ -64,6 +67,8 @@ export interface SellersFacadeUseCases {
   readonly reviewerBusinessDetails: ReviewerBusinessDetailsRead;
   readonly publishedStoreSellerId: PublishedStoreSellerId;
   readonly publishedStoreSlugs: PublishedStoreSlugs;
+  readonly publishedStoreCards: PublishedStoreCards;
+  readonly publishedStoreRead: PublishedStoreRead;
   readonly carrierPickup: CarrierPickupRead;
   readonly pickupPostcodes: PickupPostcodes;
   readonly operatingZones: OperatingZones;
@@ -198,6 +203,27 @@ export class SellersFacadeImplementation implements SellersFacade {
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<Result<ReadonlyMap<Id<'Seller'>, string>, AccessDenied | SellersUnavailable>> {
     return this.useCases.publishedStoreSlugs.execute(context, { sellerIds });
+  }
+
+  publishedStoreCards(
+    context: CallContext,
+    sellerIds: readonly Id<'Seller'>[],
+  ): Promise<
+    Result<ReadonlyMap<Id<'Seller'>, PublishedStoreCard>, AccessDenied | SellersUnavailable>
+  > {
+    return this.useCases.publishedStoreCards.execute(context, { sellerIds });
+  }
+
+  publishedStore(
+    context: CallContext,
+    slug: string,
+  ): Promise<
+    Result<
+      PublishedStore,
+      AccessDenied | SellersUnavailable | { readonly code: 'sellers.store-not-found' }
+    >
+  > {
+    return this.useCases.publishedStoreRead.execute(context, { slug });
   }
 
   reviewerBusinessDetails(

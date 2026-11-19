@@ -1,7 +1,7 @@
 import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { AdminDashboard } from '../../src/dashboard/dashboard.tsx';
-import { loadAdminDashboard } from '../../src/dashboard/load.ts';
+import { startAdminDashboard } from '../../src/dashboard/load.ts';
 import { AdminShell } from '../../src/server/admin-shell.tsx';
 import { requireSession } from '../../src/server/session.ts';
 
@@ -16,7 +16,8 @@ export default async function HomePage() {
   if (gate.kind === 'unavailable') {
     return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
-  const data = await loadAdminDashboard(gate.session);
+  // Not awaited: each card streams in with its own read (panel loading L4).
+  const data = startAdminDashboard(gate.session);
   return (
     <AdminShell session={gate.session} activeId="home" title={t('home.title')}>
       <div className="flex flex-col gap-6">

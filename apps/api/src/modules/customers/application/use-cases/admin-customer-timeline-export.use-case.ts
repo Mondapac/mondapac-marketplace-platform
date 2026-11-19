@@ -11,7 +11,8 @@ import {
 /**
  * `customers.admin-customer-timeline-export`: a customer's timeline as a CSV or XLSX file (at most
  * 10,000 entries). Rule: `customers.customers.view` and the protected `customers.customers.export`,
- * and a fresh two-step proof of `customers.customers.export` spent in the unit. Audited.
+ * and a fresh two-step proof of `customers.customers.export` spent in the unit. Audited. The
+ * review kinds only for a caller who also holds `reviews.customer-review.view`.
  */
 export class AdminCustomerTimelineExport extends UseCase<
   unknown,

@@ -64,8 +64,10 @@ model PromotionsPromotion {
   /// both set if and only if the type is FLASH_SALE (CHECK), which also has an end.
   flashUnitLimit     Int?                       @map("flash_unit_limit")
   flashTimeZone      String?                    @map("flash_time_zone")
-  /// CUSTOMER_GROUP: RETURNING_CUSTOMER, DELIVERY_ZONE (the zones are its ZONE targets) or
-  /// MANUAL_GROUP; set if and only if the type is CUSTOMER_GROUP (CHECK).
+  /// CUSTOMER_GROUP: RETURNING_CUSTOMER, DELIVERY_ZONE (the zones are its ZONE targets),
+  /// MANUAL_GROUP or SELLER_EXCLUSIVE (a seller's own, seller-funded); always set on a
+  /// CUSTOMER_GROUP. CASHBACK: null (the platform's) or SELLER_EXCLUSIVE (a seller's own, for its
+  /// exclusive customers; customers phase 4c). Null on every other type (CHECK).
   segmentKind        String?                    @map("segment_kind")
   /// RETURNING_CUSTOMER: whole days since the customer's last order (1 to 3650).
   segmentMinDays     Int?                       @map("segment_min_days") @db.SmallInt
@@ -87,6 +89,7 @@ model PromotionsPromotion {
   batchCodes         PromotionsBatchCode[]
   referrals          PromotionsReferral[]
   creditIssuances    PromotionsCreditIssuance[]
+  redemptions        PromotionsRedemption[]
 
   /// The foreign-key target of the children.
   @@unique([marketId, id])
@@ -156,15 +159,18 @@ model PromotionsBundleItem {
 /// A code is unique in a Market. `usedAt` is set when an order redeems it (package T2); the quote
 /// treats a used code as not applicable. Never deleted.
 model PromotionsBatchCode {
-  marketId    String              @map("market_id") @db.VarChar(8)
-  tenantId    String              @map("tenant_id")
-  codeHash    String              @map("code_hash")
-  promotionId String              @map("promotion_id") @db.Uuid
+  marketId        String              @map("market_id") @db.VarChar(8)
+  tenantId        String              @map("tenant_id")
+  codeHash        String              @map("code_hash")
+  promotionId     String              @map("promotion_id") @db.Uuid
   /// The generating call that made the code (to tell batches of one promotion apart).
-  batchId     String              @map("batch_id") @db.Uuid
-  createdAt   DateTime            @map("created_at") @db.Timestamptz(6)
-  usedAt      DateTime?           @map("used_at") @db.Timestamptz(6)
-  promotion   PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  batchId         String              @map("batch_id") @db.Uuid
+  createdAt       DateTime            @map("created_at") @db.Timestamptz(6)
+  /// Set with `redeemedOrderId` when an order redeems the code (package T2); cleared when that
+  /// order's redemption is released (CHECK: both or neither; trigger: only set or clear).
+  usedAt          DateTime?           @map("used_at") @db.Timestamptz(6)
+  redeemedOrderId String?             @map("redeemed_order_id") @db.Uuid
+  promotion       PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@id([marketId, codeHash])
   /// Counting and listing the codes of one promotion.
@@ -174,7 +180,7 @@ model PromotionsBatchCode {
 }
 
 /// How much a promotion has been used. One row per promotion, made with it, all zero. Package T2
-/// (budget reservation) keeps the counters; this package only reads them. The money columns are
+/// keeps the counters: a redemption adds to them and its release takes the same back. The money columns are
 /// financial data: a Viewer's answer carries `usesCount` only.
 model PromotionsUsage {
   marketId           String              @map("market_id") @db.VarChar(8)
@@ -348,30 +354,40 @@ model PromotionsReferral {
 /// refused for good (its code is kept) and the budget is freed. One credit per source, so an
 /// event delivered twice owes the customer once. Never deleted.
 model PromotionsCreditIssuance {
-  id                 String              @id @db.Uuid
-  marketId           String              @map("market_id") @db.VarChar(8)
-  tenantId           String              @map("tenant_id")
-  promotionId        String              @map("promotion_id") @db.Uuid
+  id                 String                     @id @db.Uuid
+  marketId           String                     @map("market_id") @db.VarChar(8)
+  tenantId           String                     @map("tenant_id")
+  promotionId        String                     @map("promotion_id") @db.Uuid
   /// CASHBACK, REFERRER_REWARD or REFEREE_REWARD (CHECK).
   kind               String
-  recipientAccountId String              @map("recipient_account_id") @db.Uuid
+  recipientAccountId String                     @map("recipient_account_id") @db.Uuid
   /// The order that earned the credit (cashback: the delivered order; referral: the qualifying one).
-  orderId            String?             @map("order_id") @db.Uuid
+  orderId            String?                    @map("order_id") @db.Uuid
   /// SELLER_ORDER (cashback) or REFERRAL (the two referral credits) (CHECK), and its id.
-  sourceKind         String              @map("source_kind")
-  sourceId           String              @map("source_id") @db.Uuid
-  amountMinor        BigInt              @map("amount_minor")
-  currency           String              @db.VarChar(3)
+  sourceKind         String                     @map("source_kind")
+  sourceId           String                     @map("source_id") @db.Uuid
+  amountMinor        BigInt                     @map("amount_minor")
+  currency           String                     @db.VarChar(3)
   /// PENDING, GRANTED, RECORDED or FAILED (CHECK).
   status             String
   /// The wallet's refusal code when FAILED.
-  failureCode        String?             @map("failure_code")
+  failureCode        String?                    @map("failure_code")
   /// The wallet journal that holds the credit, once GRANTED.
-  walletJournalId    String?             @map("wallet_journal_id") @db.Uuid
-  idempotencyKey     String              @map("idempotency_key")
-  createdAt          DateTime            @map("created_at") @db.Timestamptz(6)
-  settledAt          DateTime?           @map("settled_at") @db.Timestamptz(6)
-  promotion          PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  walletJournalId    String?                    @map("wallet_journal_id") @db.Uuid
+  idempotencyKey     String                     @map("idempotency_key")
+  createdAt          DateTime                   @map("created_at") @db.Timestamptz(6)
+  settledAt          DateTime?                  @map("settled_at") @db.Timestamptz(6)
+  /// A PENDING cashback waits until then for the seller order's payout release before the wallet
+  /// is called (customers phase 4c); null once its amount is final and for every other credit.
+  /// Only a CASHBACK has one (CHECK). The grant job reads the partial index
+  /// credit_issuances_pending_cashback_idx (PENDING cashback), declared in the migration.
+  grantAfter         DateTime?                  @map("grant_after") @db.Timestamptz(6)
+  /// What a cashback was earned on (Hassan H-2): the amount reserved at delivery and the goods it
+  /// was earned on. Set on insert for a cashback, never changed; null for every other credit.
+  reservedMinor      BigInt?                    @map("reserved_minor")
+  goodsMinor         BigInt?                    @map("goods_minor")
+  promotion          PromotionsPromotion        @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  clawbacks          PromotionsCreditClawback[]
 
   @@unique([marketId, id])
   /// Not expressible here, declared in the migration: partial unique indexes on (market_id, kind,
@@ -407,5 +423,82 @@ model PromotionsInbox {
 
   @@id([eventId, handler])
   @@map("inbox")
+  @@schema("promotions")
+}
+
+/// What one order took from one promotion (package T2): reserved when the order is placed,
+/// CONFIRMED when it is paid, RELEASED when it is cancelled (or refunded, per the owner's rule).
+/// The settings-based offers have no promotion row: `promotionKey` is the promotion's id,
+/// `first-order` or `free-shipping:<zone>` (`kind` PROMOTION, FIRST_ORDER, FREE_SHIPPING; CHECK).
+/// Each redeemed order also has a head row (`kind` ORDER, key `order`, zero amounts); an order
+/// cancelled before its redemption gets that row RELEASED, so a later redemption is refused.
+/// Never deleted; only the status moves (trigger). Partial indexes in the migration.
+model PromotionsRedemption {
+  id                 String               @id @db.Uuid
+  marketId           String               @map("market_id") @db.VarChar(8)
+  tenantId           String               @map("tenant_id")
+  orderId            String               @map("order_id") @db.Uuid
+  promotionKey       String               @map("promotion_key")
+  promotionId        String?              @map("promotion_id") @db.Uuid
+  kind               String
+  /// Null only on the head row of an order cancelled before it was redeemed (CHECK).
+  customerAccountId  String?              @map("customer_account_id") @db.Uuid
+  /// The hash of the single-use code the order redeemed (BATCH_CODE only).
+  codeHash           String?              @map("code_hash")
+  currency           String?              @db.VarChar(3)
+  amountMinor        BigInt               @map("amount_minor")
+  sellerShareMinor   BigInt               @map("seller_share_minor")
+  platformShareMinor BigInt               @map("platform_share_minor")
+  /// Units of a flash sale the order discounted (the sale's limit counts them).
+  units              Int?
+  /// `YYYY-MM` in the Market's zone: the month whose first-order budget the row spends.
+  budgetMonth        String?              @map("budget_month")
+  /// RESERVED, CONFIRMED or RELEASED (CHECK).
+  status             String
+  /// ORDER_CANCELLED or ORDER_REFUNDED, when RELEASED.
+  releaseReason      String?              @map("release_reason")
+  reservedAt         DateTime             @map("reserved_at") @db.Timestamptz(6)
+  confirmedAt        DateTime?            @map("confirmed_at") @db.Timestamptz(6)
+  releasedAt         DateTime?            @map("released_at") @db.Timestamptz(6)
+  promotion          PromotionsPromotion? @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  /// One row per order and promotion: the redemption's idempotency.
+  @@unique([marketId, orderId, promotionKey])
+  /// A customer's redemptions, newest first (the admin customer page). The partial indexes of the
+  /// counts and the sweep are in the migration only.
+  @@index([marketId, customerAccountId, reservedAt(sort: Desc), id(sort: Desc)], map: "redemptions_customer_newest_idx")
+  @@map("redemptions")
+  @@schema("promotions")
+}
+
+/// What one succeeded refund takes back of a GRANTED cashback (customers phase 4c-2). The cashback
+/// keeps what the goods still kept earn; the rest is taken back from what is left of its wallet lot
+/// (credit already spent stays with the customer). `amount_minor` is this refund's share of what
+/// is to be taken back in all (the sum of a credit's rows); `clawed_minor` what the wallet actually
+/// took, set once when the row is DONE (with the wallet journal, null when nothing was left). One
+/// row per refund; `seq` numbers a credit's rows from 1, so two refunds of one credit cannot both
+/// count from the same total (the second insert clashes and is retried). Never deleted; only the
+/// settle columns change, once (trigger).
+model PromotionsCreditClawback {
+  id              String                   @id @db.Uuid
+  marketId        String                   @map("market_id") @db.VarChar(8)
+  tenantId        String                   @map("tenant_id")
+  creditId        String                   @map("credit_id") @db.Uuid
+  /// ordering's refund (a plain id, no foreign key across schemas).
+  refundId        String                   @map("refund_id") @db.Uuid
+  seq             Int
+  amountMinor     BigInt                   @map("amount_minor")
+  currency        String                   @db.VarChar(3)
+  /// PENDING or DONE (CHECK).
+  status          String
+  clawedMinor     BigInt?                  @map("clawed_minor")
+  walletJournalId String?                  @map("wallet_journal_id") @db.Uuid
+  createdAt       DateTime                 @map("created_at") @db.Timestamptz(6)
+  settledAt       DateTime?                @map("settled_at") @db.Timestamptz(6)
+  credit          PromotionsCreditIssuance @relation(fields: [marketId, creditId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([marketId, creditId, refundId])
+  @@unique([marketId, creditId, seq])
+  @@map("credit_clawbacks")
   @@schema("promotions")
 }

@@ -174,6 +174,8 @@ describe('seller read routes over HTTP (integration)', () => {
               Promise.resolve({ draft: 0, pendingFirstPublish: 0, changesNeeded: 0, published: 0 }),
             pendingReviewCount: () => Promise.resolve(0),
             productForm: () => Promise.resolve({ fields: [], categories: [] }),
+            productCategories: () =>
+              Promise.resolve([{ categoryId: 'c1', parentId: null, names: { en: 'Pantry' } }]),
           }),
     }));
   }
@@ -669,6 +671,12 @@ describe('seller read routes over HTTP (integration)', () => {
         productTypes: string[];
         conditions: string[];
         locales: { default: string; supported: string[] };
+        taxCategories: { code: string; labelKey: string }[];
+        categories: {
+          categoryId: string;
+          parentId: string | null;
+          names: Record<string, string>;
+        }[];
         sellerCanCreateProduct: boolean;
         productStatuses: string[];
         offerStatuses: string[];
@@ -676,6 +684,18 @@ describe('seller read routes over HTTP (integration)', () => {
       expect(body.productTypes.length).toBeGreaterThan(0);
       expect(body.conditions.length).toBeGreaterThan(0);
       expect(body.locales.supported).toContain(body.locales.default);
+      expect(body.taxCategories.length).toBeGreaterThan(0);
+      expect(body).not.toHaveProperty('taxCategoryCodes');
+      expect(body.taxCategories.every((c) => /^catalog\.tax\./.test(c.labelKey))).toBe(true);
+      // Each Market answers its own labels, never another Market's.
+      expect(body.taxCategories.map((c) => c.labelKey)).toEqual(
+        code === 'ZZ'
+          ? ['catalog.tax.zz-standard', 'catalog.tax.zz-reduced', 'catalog.tax.zz-zero']
+          : ['catalog.tax.taxable', 'catalog.tax.gst-free'],
+      );
+      expect(body.categories).toEqual([
+        { categoryId: 'c1', parentId: null, names: { en: 'Pantry' } },
+      ]);
       expect(typeof body.sellerCanCreateProduct).toBe('boolean');
       expect(body.productStatuses).toEqual(
         expect.arrayContaining(['draft', 'unpublished', 'published']),
@@ -736,7 +756,11 @@ describe('seller read routes over HTTP (integration)', () => {
         // The Market's own cap (config/markets): AU 2, the test Market ZZ 3.
         maxAxes: code === 'ZZ' ? 3 : 2,
         version: 3,
-        form: { fields: [], categories: [], taxCategoryCodes: expect.any(Array) as string[] },
+        form: {
+          fields: [],
+          categories: [],
+          taxCategories: expect.any(Array) as unknown[],
+        },
         workingCopy: null,
         published: null,
         pending: null,

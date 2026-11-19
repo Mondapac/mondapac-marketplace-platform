@@ -182,6 +182,7 @@ describe.each(['AU', 'ZZ'] as const)('admin document list in market %s', (code) 
     });
     expect(reader.asked[0]).toEqual({
       filter: {
+        ids: null,
         kind: 'credit-note',
         reference,
         sellerId,

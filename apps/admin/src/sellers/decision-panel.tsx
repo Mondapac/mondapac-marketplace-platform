@@ -12,6 +12,9 @@ import type { ReviewRegister } from './review-types.ts';
 const OUTCOMES = ['active', 'not-found', 'cancelled'] as const;
 const REASON_MAX = 2000;
 
+/** A call of this panel: the manual register check, approve or reject. */
+type Action = 'check' | 'approve' | 'reject';
+
 type Step = 'idle' | 'confirm-approve' | 'reject';
 type Notice = 'approved' | 'rejected' | 'settling' | 'checked';
 
@@ -43,15 +46,20 @@ export function DecisionPanel({
   const [step, setStep] = useState<Step>('idle');
   const [reason, setReason] = useState('');
   const [outcome, setOutcome] = useState('');
-  const [pending, setPending] = useState(false);
+  // The call that is running, so only its own button shows the spinner; the others wait, locked.
+  const [running, setRunning] = useState<Action | null>(null);
+  const pending = running !== null;
   const [settling, setSettling] = useState(false);
   const [problem, setProblem] = useState<DecisionProblem | null>(null);
   const busy = useRef(false);
 
   const locked = pending || decisionInProgress;
+  // The running button keeps focus (loading, not disabled); only the others are locked.
+  const lockedFor = (action: Action) => decisionInProgress || (pending && running !== action);
   const base = `sellers/admin/${sellerId}/review`;
 
   async function send(
+    action: Action,
     method: 'POST' | 'PUT',
     path: string,
     body: unknown,
@@ -59,12 +67,12 @@ export function DecisionPanel({
   ): Promise<void> {
     if (busy.current) return;
     busy.current = true;
-    setPending(true);
+    setRunning(action);
     setProblem(null);
     setSettling(false);
     const result = await callApi<unknown>(method, path, body, csrfToken);
     busy.current = false;
-    setPending(false);
+    setRunning(null);
     if (result.ok) {
       const notice = done(result.status);
       const text = t(`sellers.decision.notice.${notice}`);
@@ -87,6 +95,7 @@ export function DecisionPanel({
     event.preventDefault();
     if (outcome === '') return;
     void send(
+      'check',
       'PUT',
       `${base}/manual-register-check`,
       { revisionId, observedOutcome: outcome },
@@ -96,8 +105,12 @@ export function DecisionPanel({
 
   function reject(event: FormEvent) {
     event.preventDefault();
-    void send('POST', `${base}/reject`, { revisionId, reason: reason.trim() }, (status) =>
-      status === 202 ? 'settling' : 'rejected',
+    void send(
+      'reject',
+      'POST',
+      `${base}/reject`,
+      { revisionId, reason: reason.trim() },
+      (status) => (status === 202 ? 'settling' : 'rejected'),
     );
   }
 
@@ -151,8 +164,8 @@ export function DecisionPanel({
             <Button
               type="submit"
               variant="secondary"
-              loading={pending}
-              disabled={outcome === '' || locked}
+              loading={running === 'check'}
+              disabled={outcome === '' || lockedFor('check')}
             >
               {t('sellers.decision.check.save')}
             </Button>
@@ -170,10 +183,10 @@ export function DecisionPanel({
               <p>{t('sellers.decision.approve-confirm')}</p>
               <ActionRow>
                 <Button
-                  loading={pending}
-                  disabled={locked}
+                  loading={running === 'approve'}
+                  disabled={lockedFor('approve')}
                   onClick={() =>
-                    void send('POST', `${base}/approve`, { revisionId }, (status) =>
+                    void send('approve', 'POST', `${base}/approve`, { revisionId }, (status) =>
                       status === 202 ? 'settling' : 'approved',
                     )
                   }
@@ -207,8 +220,8 @@ export function DecisionPanel({
                 <Button
                   type="submit"
                   variant="destructive"
-                  loading={pending}
-                  disabled={locked || reason.trim() === ''}
+                  loading={running === 'reject'}
+                  disabled={lockedFor('reject') || reason.trim() === ''}
                 >
                   {t('sellers.decision.reject-yes')}
                 </Button>

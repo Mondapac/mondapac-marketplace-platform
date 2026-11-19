@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
+import { expectToast } from '../../test/toast-spy.ts';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
@@ -102,6 +103,74 @@ describe.each([
     const put = call.mock.calls.find(([method]) => method === 'PUT');
     expect(put?.[1]).toBe(`catalog/admin/categories/${CAT}/attribute-links`);
     expect(put?.[2]).toEqual({ version: 3, featureSetId: 'fs2', filters: ['size'] });
+  });
+
+  describe('review note', () => {
+    const serveReview = (review: LinksBody['review'], put: unknown = {}) => {
+      call.mockImplementation((method, path) => {
+        if (method === 'GET' && path.includes('attribute-links'))
+          return Promise.resolve({ ok: true, status: 200, body: links({ review }) });
+        if (method === 'GET' && path.includes('feature-sets'))
+          return Promise.resolve({ ok: true, status: 200, body: lists.sets });
+        if (method === 'GET') return Promise.resolve({ ok: true, status: 200, body: lists.attrs });
+        return Promise.resolve(put as never);
+      });
+    };
+    const edit = async () => {
+      fireEvent.click(await screen.findByRole('button', { name: 'Edit attribute links' }));
+      fireEvent.click(screen.getByLabelText('Use its own feature set'));
+      fireEvent.change(await screen.findByLabelText('Feature set', { selector: 'select' }), {
+        target: { value: 'fs2' },
+      });
+    };
+    const puts = () => call.mock.calls.filter(([method]) => method === 'PUT');
+
+    it('shows no note field and sends none when the save is not reviewed', async () => {
+      serveReview({ reviewed: false, risk: 'low' }, { ok: true, status: 200, body: {} });
+      show();
+      await edit();
+      expect(screen.queryByLabelText('Note for reviewers')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+      await waitFor(() => expect(puts()).toHaveLength(1));
+      expect('note' in (puts()[0]![2] as object)).toBe(false);
+    });
+
+    it('requires a trimmed note when reviewed, and says the change was sent for review', async () => {
+      serveReview(
+        { reviewed: true, risk: 'medium' },
+        { ok: true, status: 200, body: { request: { id: 'r1', number: 52 } } },
+      );
+      show();
+      await edit();
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+      expect(puts()).toHaveLength(0);
+      fireEvent.change(screen.getByLabelText('Note for reviewers'), {
+        target: { value: '  Colour first  ' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+      await waitFor(() => expect(puts()).toHaveLength(1));
+      expect(puts()[0]![2]).toMatchObject({ note: 'Colour first' });
+      await expectToast('Sent for review (SR-52)', 'info');
+    });
+
+    it('shows a 400 on note on the note field', async () => {
+      serveReview(
+        { reviewed: true, risk: 'medium' },
+        {
+          ok: false,
+          failure: {
+            status: 400,
+            code: 'validation.failed',
+            details: { fields: [{ path: 'note', code: 'required' }] },
+          },
+        },
+      );
+      show();
+      await edit();
+      fireEvent.change(screen.getByLabelText('Note for reviewers'), { target: { value: 'Why' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+      expect(await screen.findByText(/The note was refused/)).toBeTruthy();
+    });
   });
 
   it('reads the attribute list in pages the API accepts', async () => {

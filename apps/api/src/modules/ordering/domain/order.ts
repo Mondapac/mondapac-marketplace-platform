@@ -19,7 +19,13 @@ export type OrderStatus = 'pending-payment' | 'confirmed' | 'cancelled';
 /** `none`: no money moved; `authorised`: held on the card; `captured`: taken; `voided`: released. */
 export type PaymentState = 'none' | 'authorised' | 'captured' | 'voided';
 export type CancelReason =
-  'expired' | 'payment-failed' | 'stock-unavailable' | 'superseded' | 'provider-failed';
+  | 'expired'
+  | 'payment-failed'
+  | 'stock-unavailable'
+  | 'superseded'
+  | 'provider-failed'
+  /** The order's discounts no longer held when promotions redeemed them (package T2). */
+  | 'discount-changed';
 
 export interface OrderLine {
   readonly id: Id<'OrderLine'>;
@@ -28,7 +34,18 @@ export interface OrderLine {
   readonly variantId: Id<'Variant'>;
   readonly quantity: number;
   readonly unitPrice: Money;
+  /** The unit price times the quantity, before any discount. */
   readonly lineAmount: bigint;
+  /**
+   * The discount on the line from promotions (package T2), frozen at placement, and who funds it:
+   * the seller's share lowers what the seller is paid for the line, the platform's share comes out
+   * of the platform's commission. `discountAmount` = seller share + platform share, at most
+   * `lineAmount`; all 0 on a line with no discount and on lines placed before discounts existed.
+   * The line's tax is the tax of `lineAmount - discountAmount`.
+   */
+  readonly discountAmount: bigint;
+  readonly discountSellerShare: bigint;
+  readonly discountPlatformShare: bigint;
   readonly taxInclusive: boolean;
   readonly reservationLineId: string;
   /**
@@ -37,6 +54,22 @@ export interface OrderLine {
    * rate was frozen.
    */
   readonly commissionRateBps: number | null;
+  /**
+   * Why the line carries its rate, frozen with it (customers phase 4b): `standard`, or `exclusive`
+   * (the Market's lower rate for the seller's exclusive customer).
+   */
+  readonly commissionRateReason: 'standard' | 'exclusive';
+  /**
+   * On a line whose rate was lowered (`exclusive`): the rate it would have carried without it, the
+   * seller's rate in force at placement, frozen with it so the ledger can show the seller's saving.
+   * Absent or null on every other line (and on lines lowered before it was frozen).
+   */
+  readonly commissionStandardRateBps?: number | null;
+  /**
+   * Whether the buyer was the exclusive customer of the line's seller at placement (joined through
+   * its invite link), whether or not a lower rate applied. Lines before phase 4b: false.
+   */
+  readonly exclusiveSeller: boolean;
   /**
    * The tax rate and the tax of the line, frozen at placement from `tax` (ADR-0039 decision 4).
    * Both null only on lines placed before tax was recorded. The tax is part of `lineAmount` when
@@ -85,8 +118,16 @@ export interface ChargedDeliveryQuote {
 export interface SellerOrder {
   readonly id: Id<'SellerOrder'>;
   readonly sellerId: Id<'Seller'>;
+  /** The goods before discounts: the sum of the lines' `lineAmount`. */
   readonly subtotal: bigint;
   readonly shipping: bigint;
+  /**
+   * The discounts of the seller order (package T2), frozen at placement: `discount` is the sum of
+   * its lines' discounts, `shippingDiscount` what promotions took off the delivery price (always
+   * platform-funded). `total` is the goods and the delivery net of both, plus any tax added on top.
+   */
+  readonly discount: bigint;
+  readonly shippingDiscount: bigint;
   /**
    * The tax on the shipping fee, frozen at placement with its rate and price basis. All three
    * are null on seller orders placed before it was recorded (unknown, never zero).

@@ -9,15 +9,22 @@ import {
   EmptyState,
   LoadError,
   SearchSelect,
-  SkeletonRows,
   Tabs,
   toast,
+  DetailSkeleton,
   type DataListRow,
   type SearchSelectOption,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { callApi } from '../api/client.ts';
+import {
+  ApprovalNotice,
+  ReviewNoteField,
+  trimmedNote,
+  useApprovalAction,
+  useSentForApproval,
+} from '../shared/review-note.tsx';
 import { shortId } from '../shared/short-id.ts';
 import { When } from '../shared/when.tsx';
 import { AttributeEditForm } from './attribute-edit-form.tsx';
@@ -143,7 +150,9 @@ export function AttributeDetailPanel({
       aria-busy={load.state === 'loading'}
       className="flex min-w-0 flex-col gap-4 rounded-lg border border-line bg-surface p-4 sm:p-5"
     >
-      {load.state === 'loading' ? <SkeletonRows label={t('loading')} rows={6} /> : null}
+      {load.state === 'loading' ? (
+        <DetailSkeleton label={t('loading')} slowLabel={tl('slow')} rows={6} framed={false} />
+      ) : null}
       {load.state === 'failed' ? (
         <LoadError
           className="flex flex-col items-start gap-3"
@@ -427,14 +436,32 @@ function StatusDialog({
   const call = useAttributeCall(csrfToken);
   const name = textIn(detail.names, detail.locales.default, detail.locales.default, detail.code);
   const missing = detail.missingLocales.map((tag) => languageName(tag, detail.locales.supported));
+  // A discard waits for another admin's approval where the Market reviews area catalogue.
+  const approval = kind === 'discard' && detail.review?.reviewed === true;
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForApproval = useSentForApproval();
+  const actionLabel = useApprovalAction();
 
   async function confirm() {
+    const sentNote = approval ? trimmedNote(note) : null;
+    if (approval && sentNote === null) {
+      setNoteError('required');
+      return;
+    }
+    setNoteError(null);
     const answer = await call.run<AttributeWrite>(
       'POST',
       `${API_ATTRIBUTES}/${encodeURIComponent(detail.id)}/${kind}`,
-      { version: detail.version },
+      { version: detail.version, ...(sentNote === null ? {} : { note: sentNote }) },
     );
-    if (answer.ok) onDone();
+    if (!answer.ok) {
+      if (answer.problem?.fields['note'] !== undefined) setNoteError('rejected');
+      return;
+    }
+    // Sent for approval: nothing changed yet, so the attribute stays as it is.
+    if (sentForApproval(answer.body)) onClose();
+    else onDone();
   }
 
   const problem = call.problem;
@@ -454,12 +481,12 @@ function StatusDialog({
             <Button onClick={() => onEdit(problem.fields)}>{t('edit-attribute')}</Button>
           ) : (
             <Button
-              variant={kind === 'discard' ? 'destructive-solid' : 'primary'}
+              variant={kind === 'discard' && !approval ? 'destructive-solid' : 'primary'}
               loading={call.pending}
               disabled={call.pending}
               onClick={() => void confirm()}
             >
-              {t(kind)}
+              {actionLabel(t(kind), approval)}
             </Button>
           )}
         </>
@@ -471,11 +498,24 @@ function StatusDialog({
             {TEXT_FIX.has(problem.key) ? t(`publish-${problem.key}`) : te(`error.${problem.key}`)}
           </Banner>
         )}
-        <p>{t(`${kind}-body`)}</p>
+        <p>{approval ? t('discard-approval-body') : t(`${kind}-body`)}</p>
+        {approval ? <ApprovalNotice /> : null}
         {kind === 'publish' && missing.length > 0 ? (
           <p className="text-sm text-fg-muted">
             {t('publish-missing', { languages: missing.join(', ') })}
           </p>
+        ) : null}
+        {approval ? (
+          <ReviewNoteField
+            approval
+            value={note}
+            onChange={(next) => {
+              setNote(next);
+              setNoteError(null);
+            }}
+            error={noteError ?? undefined}
+            disabled={call.pending}
+          />
         ) : null}
       </div>
     </Dialog>

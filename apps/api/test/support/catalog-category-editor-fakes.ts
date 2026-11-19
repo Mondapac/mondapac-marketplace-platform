@@ -121,7 +121,7 @@ export class MemoryCategoryEditStore implements CategoryEditStore {
     const { patch } = change;
     const next: EditableCategory = {
       ...current,
-      version: current.version + 1,
+      version: current.version + (change.events ?? 1),
       revisionNo: current.revisionNo + 1,
       texts: change.texts,
       ...(patch.status === undefined ? {} : { status: patch.status }),

@@ -34,12 +34,16 @@ export const FLEET_ASSIGNMENT_TARGET = 'shipping.fleet-selection-assignment';
 /** The audit target type of a fleet's reliability score in a Market (the id is the fleet). */
 export const FLEET_RELIABILITY_TARGET = 'shipping.fleet-reliability';
 
-/** An admin created a fleet-selection model. */
+/**
+ * An admin created a fleet-selection model. `requestId` names the System request whose approval
+ * created it (the create waits for approval where the Market reviews area delivery); null for a
+ * create done at once.
+ */
 export const FleetModelCreated = defineAuditAction({
   action: 'shipping.fleet-model.created',
   targetType: FLEET_MODEL_TARGET,
   actors: ['authenticated'],
-  after: MODEL_SHAPE,
+  after: { ...MODEL_SHAPE, requestId: auditField.optional(auditField.id()) },
 });
 
 /** An admin edited a model (its name, kind, weights or order). */

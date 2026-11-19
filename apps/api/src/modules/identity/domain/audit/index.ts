@@ -143,6 +143,39 @@ export const RoleRevertedAudit = defineAuditAction({
 });
 
 /**
+ * A reviewer rejected, or its author withdrew, the creation of a custom platform role in Admin
+ * Inbox › System requests, and the role was deleted again: only while nobody held it and its keys
+ * were those it was created with. Target: the role. The keys it held; `requestId` names the
+ * System request. No step-up of its own: the decision spent the reviewer's (high risk).
+ */
+export const RoleCreationRevertedAudit = defineAuditAction({
+  action: 'identity.role.creation-reverted',
+  targetType: 'identity.role',
+  actors: ['authenticated'],
+  before: {
+    scope: auditField.enumOf(ROLE_SCOPES),
+    removedKeys: auditField.listOf(auditField.permissionKey(), MAX_CUSTOM_ROLE_KEYS),
+  },
+  after: { requestId: auditField.id() },
+});
+
+/**
+ * Another admin approved the delete of a custom platform role that waited in Admin Inbox › System
+ * requests, and the role, unchanged and still held by nobody, was deleted. The actor is the
+ * approving admin. Target: the role. The keys it held; `requestId` names the System request.
+ */
+export const RoleDeletionApprovedAudit = defineAuditAction({
+  action: 'identity.role.deletion-approved',
+  targetType: 'identity.role',
+  actors: ['authenticated'],
+  before: {
+    scope: auditField.enumOf(ROLE_SCOPES),
+    removedKeys: auditField.listOf(auditField.permissionKey(), MAX_CUSTOM_ROLE_KEYS),
+  },
+  after: { requestId: auditField.id() },
+});
+
+/**
  * The founding rows of a self-registered seller (identity design 5.5; PA 5 row 2, Q1 decided
  * by Ali 2026-10-08): written when the Seller Owner verifies the email, the moment the
  * membership and the assignment take effect, in the unit that records `seller-registered`.
@@ -421,6 +454,23 @@ export const InvitationRevokedAudit = defineAuditAction({
 });
 
 /**
+ * A reviewer rejected, or its author withdrew, an admin invitation in Admin Inbox › System
+ * requests while it was still pending, and it was revoked (its link stops working, the address is
+ * cleared). Target: the invitation. `requestId` names the System request. An invitation already
+ * accepted is undone by disabling its account instead (`identity.account-status.reverted`).
+ */
+export const InvitationRevertedAudit = defineAuditAction({
+  action: 'identity.invitation.reverted',
+  targetType: 'identity.invitation',
+  actors: ['authenticated'],
+  after: {
+    kind: auditField.enumOf(INVITATION_KINDS),
+    roleId: auditField.id(),
+    requestId: auditField.id(),
+  },
+});
+
+/**
  * An invitation was accepted (identity design 3.4; PA 5 row 7). Target: the invitation. The
  * actor is `ANONYMOUS`: the invitation's token binds the request, so `boundSubjectId` names the
  * invitation (W4a); `accountId` is the account created by it.
@@ -648,6 +698,41 @@ export const SellerAccessReappliedAudit = defineAuditAction({
   },
 });
 
+/**
+ * An admin asked to change a customer's sign-in email (customers admin email change). Target: the
+ * customer's account. The admin is the row's actor; `stepUpSessionId` is the admin session whose
+ * fresh two-step proof was spent in the same unit (Hassan R4, R10). Never an address.
+ */
+export const AccountEmailChangeRequestedAudit = defineAuditAction({
+  action: 'identity.account.email-change-requested',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { stepUpSessionId: auditField.id() },
+});
+
+/** An admin cancelled a pending email change (as {@link AccountEmailChangeRequestedAudit}). */
+export const AccountEmailChangeCancelledAudit = defineAuditAction({
+  action: 'identity.account.email-change-cancelled',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { stepUpSessionId: auditField.id() },
+});
+
+/**
+ * The customer confirmed the change with the link mailed to the new address and the account's
+ * password: the address was swapped, every session ended (`revokedSessions`) and the account's
+ * other links stopped working, in the same unit. Target: the account. `ANONYMOUS`: the link and
+ * the password bound the account, named in `boundSubjectId`; the attempt is also a sign-in record
+ * (outcome `email-changed`), and a refused one is a sign-in record with its code (Hassan R10).
+ * Never an address.
+ */
+export const AccountEmailChangedAudit = defineAuditAction({
+  action: 'identity.account.email-changed',
+  targetType: 'identity.account',
+  actors: ['anonymous'],
+  after: { boundSubjectId: auditField.id(), revokedSessions: auditField.integer() },
+});
+
 /** Every audited action of identity, for its module's registration. */
 /**
  * An admin changed a customer account's display name from the customer page (customers management
@@ -661,12 +746,50 @@ export const CustomerRenamedByAdminAudit = defineAuditAction({
   after: { population: auditField.enumOf(['customer'] as const) },
 });
 
+/**
+ * An admin revealed the full client address of one of a customer's sign-in records (customers
+ * management phase 2b; key `identity.customer-sign-in.reveal`). Target: the account. `after`
+ * names the record only: never the address (R5). Written in the unit that read the address,
+ * before it is answered.
+ */
+export const CustomerSignInAddressRevealedAudit = defineAuditAction({
+  action: 'identity.account.sign-in-address-revealed',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { signInId: auditField.id() },
+});
+
+/**
+ * An admin signed a customer out of every device from the customer page (customers management
+ * phase 2b; key `identity.customer-session.end`). Target: the account; `after` is the count.
+ */
+export const CustomerSessionsEndedByAdminAudit = defineAuditAction({
+  action: 'identity.account.sessions-ended-by-admin',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { revokedSessions: auditField.integer() },
+});
+
+/**
+ * An admin sent a customer the password reset mail (customers management phase 2b; key
+ * `identity.customer-password-reset.send`). Target: the account; `after` names the link row
+ * requested again, never a token or the address.
+ */
+export const CustomerPasswordResetSentByAdminAudit = defineAuditAction({
+  action: 'identity.account.password-reset-sent-by-admin',
+  targetType: 'identity.account',
+  actors: ['authenticated'],
+  after: { linkId: auditField.id() },
+});
+
 export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   RoleSeeded,
   RoleSeedApplied,
   RoleCreatedAudit,
   RoleUpdatedAudit,
   RoleDeletedAudit,
+  RoleCreationRevertedAudit,
+  RoleDeletionApprovedAudit,
   RoleRevertedAudit,
   SellerAccessFounded,
   SellerMemberAdded,
@@ -683,6 +806,7 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   InvitationIssuedAudit,
   InvitationReissuedAudit,
   InvitationRevokedAudit,
+  InvitationRevertedAudit,
   InvitationAcceptedAudit,
   SecondFactorActivatedAudit,
   SecondFactorReplacedAudit,
@@ -694,7 +818,13 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   OtherSessionsSignedOutAudit,
   AccountErasedAudit,
   AccountSessionsEndedForErasureAudit,
+  AccountEmailChangeRequestedAudit,
+  AccountEmailChangeCancelledAudit,
+  AccountEmailChangedAudit,
   CustomerRenamedByAdminAudit,
+  CustomerSignInAddressRevealedAudit,
+  CustomerSessionsEndedByAdminAudit,
+  CustomerPasswordResetSentByAdminAudit,
   SellerAccessApprovedAudit,
   SellerAccessRejectedAudit,
   SellerAccessSuspendedAudit,

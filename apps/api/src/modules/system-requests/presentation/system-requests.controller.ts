@@ -22,6 +22,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiPayloadTooLargeResponse,
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
@@ -30,18 +31,27 @@ import {
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
 import { RequiresStepUp } from '../../../platform/authz';
+import { EXPORT_FORMATS, writeChunks } from '../../../platform/list-export';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import {
+  ApproveMatchingSystemRequests,
+  MATCHING_FIELDS,
+} from '../application/use-cases/approve-matching-system-requests.use-case';
 import { ApproveSystemRequest } from '../application/use-cases/approve-system-request.use-case';
 import { ApproveSystemRequests } from '../application/use-cases/approve-system-requests.use-case';
 import { ChangeAreaReviewPolicy } from '../application/use-cases/change-area-review-policy.use-case';
 import { ChangeReviewDueDays } from '../application/use-cases/change-review-due-days.use-case';
 import { CommentOnSystemRequest } from '../application/use-cases/comment-on-system-request.use-case';
 import { CountSystemRequests } from '../application/use-cases/count-system-requests.use-case';
+import {
+  EXPORT_COLUMNS,
+  ExportSystemRequests,
+} from '../application/use-cases/export-system-requests.use-case';
 import { ListSystemRequests } from '../application/use-cases/list-system-requests.use-case';
 import { RejectSystemRequest } from '../application/use-cases/reject-system-request.use-case';
 import { ViewReviewPolicy } from '../application/use-cases/view-review-policy.use-case';
@@ -59,6 +69,9 @@ import {
   badgeBody,
   BulkApproveBody,
   bulkApproveBody,
+  BulkApproveMatchingBody,
+  bulkApproveMatchingBody,
+  BulkApproveMatchingRequest,
   BulkApproveRequest,
   ChangeAreaPolicyRequest,
   ChangeDueDaysRequest,
@@ -108,11 +121,13 @@ export class SystemRequestsController {
 
   constructor(
     private readonly list: ListSystemRequests,
+    private readonly exportRequests: ExportSystemRequests,
     private readonly counts: CountSystemRequests,
     private readonly view: ViewSystemRequest,
     private readonly comment: CommentOnSystemRequest,
     private readonly approve: ApproveSystemRequest,
     private readonly approveMany: ApproveSystemRequests,
+    private readonly approveMatching: ApproveMatchingSystemRequests,
     private readonly reject: RejectSystemRequest,
     private readonly withdraw: WithdrawSystemRequest,
     private readonly viewPolicy: ViewReviewPolicy,
@@ -180,6 +195,97 @@ export class SystemRequestsController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return requestListBody(result.value);
+  }
+
+  // Before `requests/:requestId`, so `export` is never read as a request id.
+  @Get('requests/export')
+  @ApiOperation({
+    summary: 'Export the System requests list as a file (admin)',
+    description:
+      'Needs system-requests.request.view. `format` is csv (default) or xlsx. `columns` is the ' +
+      `comma-separated optional columns in the order shown (${EXPORT_COLUMNS.join(', ')}); ` +
+      'request, note, area, risk and status are always there. The values before and after a ' +
+      'change are never written. The rows are `ids` (comma-separated, at most 100, in that ' +
+      'order; an id that is not a request of the Market refuses the whole file as not found) or ' +
+      'what the list keys match (view, q, area, risk, status, requestedBy, decidedBy, ' +
+      'appliedFrom, appliedTo, overdue, subjectKind, subjectRef, read as the list reads them), ' +
+      'in the list sort (`sort`, `direction`), at most 10,000 (more: batch.too-large with the ' +
+      'total). Times are written in `zone` (an IANA zone; the Market zone when absent) with ' +
+      'their offset. CSV: a text cell that starts with = + - @ gets a leading quote. XLSX: ' +
+      'every cell is a string value.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({ name: 'columns', required: false })
+  @ApiQuery({ name: 'ids', required: false, description: 'Up to 100 request ids.' })
+  @ApiQuery({ name: 'zone', required: false, description: 'An IANA time zone.' })
+  @ApiQuery({ name: 'view', required: false, enum: REQUEST_VIEWS })
+  @ApiQuery({ name: 'q', required: false, description: 'Up to 100 characters.' })
+  @ApiQuery({
+    name: 'area',
+    required: false,
+    description: `Comma list of ${REVIEW_AREAS.join(', ')}.`,
+  })
+  @ApiQuery({ name: 'risk', required: false, description: `Comma list of ${RISKS.join(', ')}.` })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    description: `Comma list of ${REQUEST_STATUSES.join(', ')}.`,
+  })
+  @ApiQuery({ name: 'requestedBy', required: false, description: 'An admin account id.' })
+  @ApiQuery({ name: 'decidedBy', required: false, description: 'An admin account id.' })
+  @ApiQuery({ name: 'appliedFrom', required: false, description: 'ISO 8601 instant.' })
+  @ApiQuery({ name: 'appliedTo', required: false, description: 'ISO 8601 instant (exclusive).' })
+  @ApiQuery({ name: 'overdue', required: false, enum: ['true', 'false'] })
+  @ApiQuery({ name: 'subjectKind', required: false })
+  @ApiQuery({ name: 'subjectRef', required: false })
+  @ApiQuery({ name: 'sort', required: false, enum: ['applied', 'due', 'number'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiOkResponse({
+    description: 'system-requests-<date>.csv or system-requests-<date>.xlsx, as an attachment',
+  })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'system-requests.not-found' })
+  @ApiPayloadTooLargeResponse({ ...ERROR, description: 'batch.too-large (details.max, total)' })
+  async download(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res() response: Response,
+  ): Promise<void> {
+    const result = await this.exportRequests.execute(context, { ...query });
+    logRoute(
+      this.#logger,
+      'system-requests.export-route',
+      context,
+      result.ok ? 'export' : result.error.code,
+    );
+    if (!result.ok) {
+      const error = refusal(result.error, context, this.#logger);
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      await writeChunks(response, chunks);
+    } catch {
+      // The status line is gone: end the connection, so the client sees a failed download.
+      this.#logger.warn({
+        msg: 'system-requests.export-route',
+        code: 'stream-failed',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response.destroy();
+    }
   }
 
   @Get('requests-count')
@@ -320,6 +426,7 @@ export class SystemRequestsController {
       'Needs system-requests.request.view and, per request, its area review key. 1 to 100 ' +
       'distinct ids; each is decided on its own and answered with approved or its refusal ' +
       '(system-requests.not-low-risk for medium and high, which are reviewed one by one; ' +
+      'system-requests.one-by-one for a proposal, which is applied when approved; ' +
       'system-requests.own-request and system-requests.own-subject for a change by or about ' +
       'the reviewer). ' +
       'Refused in an acting-as session. Audited per request.',
@@ -349,6 +456,49 @@ export class SystemRequestsController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return bulkApproveBody(result.value);
+  }
+
+  @Post('requests/bulk-approve-matching')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Approve every low-risk request that matches the list (admin, select all matching)',
+    description:
+      'Needs system-requests.request.view and, per request, its area review key. The body ' +
+      'holds the same view, search and filters as GET requests (strings, as in the query; no ' +
+      'page, cursor or sort). Approves only open low-risk requests in an area whose review key ' +
+      "the caller holds, never the caller's own: at most 100 per call, oldest SR number first, " +
+      'each decided in its own unit (failed lists the refusal code of each one decided in ' +
+      'between). remaining is how many such requests still match: the panel calls again while ' +
+      'it is above 0 and the last call approved at least one. Refused in an acting-as session. ' +
+      'Audited per request.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: BulkApproveMatchingRequest })
+  @ApiOkResponse({ type: BulkApproveMatchingBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  async bulkApproveMatching(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody_: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody_, [...MATCHING_FIELDS]);
+    if (invalid !== null) throw invalid;
+    const result = await this.approveMatching.execute(
+      context,
+      requestBody_ as Record<string, unknown>,
+    );
+    logRoute(
+      this.#logger,
+      'system-requests.bulk-approve-matching-route',
+      context,
+      result.ok ? 'decided' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return bulkApproveMatchingBody(result.value);
   }
 
   @Post('requests/:requestId/reject')

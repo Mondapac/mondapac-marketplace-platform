@@ -41,15 +41,6 @@ export interface AdminCreditDecision {
   readonly journalId: Id<'WalletJournal'> | null;
 }
 
-export interface AdminCreditPage {
-  readonly statuses: readonly AdminCreditStatus[];
-  readonly limit: number;
-  readonly after: {
-    readonly requestedAt: Temporal.Instant;
-    readonly id: Id<'WalletCreditRequest'>;
-  } | null;
-}
-
 /**
  * The admin credit requests of one Market. Every method runs inside the caller's unit and filters
  * on the Market. A row is never deleted; only a pending one is decided, once.
@@ -86,8 +77,6 @@ export interface AdminCreditRepository {
     id: Id<'WalletCreditRequest'>,
     decision: AdminCreditDecision,
   ): Promise<boolean>;
-  /** Newest first. */
-  list(market: MarketContext, page: AdminCreditPage): Promise<readonly AdminCreditRecord[]>;
   /** Pending requests whose expiry is at or before `now`, oldest expiry first. */
   duePending(
     market: MarketContext,

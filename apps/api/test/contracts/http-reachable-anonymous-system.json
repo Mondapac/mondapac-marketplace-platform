@@ -80,6 +80,11 @@
     "reason": "The buyer site shows product photos to a visitor with no session: one rendition (thumb, medium or large) of a photo that is in the current published revision of a published product and is not taken down; every other case answers the same not-found. JPEG written by the server, sandboxed, nosniff, never a cookie."
   },
   {
+    "name": "customers.resolve-store-invitation",
+    "rule": "anonymous",
+    "reason": "The storefront opens a seller's invite link (shared as a link or a QR code) for a visitor who has no account yet: the answer is the store's public address only, or one not-found answer for an unknown, revoked or malformed token and for a store the public cannot see now. The token is a 130-bit random value, so the route cannot be used to list stores or links."
+  },
+  {
     "name": "engagement.record-block-events",
     "rule": "anonymous",
     "reason": "The storefront reports that blocks of a published page were shown or clicked, for a visitor with no session: 1 to 20 events of page id, placement id and impression or click, counted into one row per block and UTC day, only for a placement the page's published version serves now (others are skipped without a sign). No session, cookie, address or user agent is read or kept; Sec-GPC: 1 counts nothing; always 204 and no-store; rate limited per origin."
@@ -113,6 +118,11 @@
     "name": "identity.confirm-customer-email",
     "rule": "anonymous",
     "reason": "Customer email-confirmation link: the visitor is not signed in yet."
+  },
+  {
+    "name": "identity.confirm-customer-email-change",
+    "rule": "anonymous",
+    "reason": "The customer confirms, with the single-use link mailed to the new address and the account's password, a sign-in email change an admin asked for: the link and the password bind the account; no session is read or opened."
   },
   {
     "name": "identity.confirm-second-factor-enrolment",
@@ -223,6 +233,11 @@
     "name": "payments.receive-stripe-event",
     "rule": "anonymous",
     "reason": "Stripe calls the webhook without a session: the Stripe-Signature over the raw body, checked first in the use case, authenticates the event; it only stores the event for the worker."
+  },
+  {
+    "name": "promotions.view-store-follow-gift",
+    "rule": "anonymous",
+    "reason": "A store page asks for the store's live follower offers (the Follow gift) for any visitor; the answer is the offer's name, reward, minimum spend and end only, of ACTIVE store-follower promotions without a code and not in test mode. No customer data is read and nothing changes."
   },
   {
     "name": "reviews.list-product-reviews",

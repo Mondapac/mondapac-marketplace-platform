@@ -1,5 +1,6 @@
+import { Logger } from '@nestjs/common';
 import { parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Id } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { SealedPermissionCatalogue } from '../../../../platform/authz';
 import type {
@@ -25,6 +26,15 @@ import type { SignInChallengeRepository } from '../ports/sign-in-challenge.repos
 import { grantedRoleOf } from '../roles/granting';
 import { parseRoleKeys } from '../roles/role-editing';
 import { isActingAsSession } from '../sellers/access-decision-reads';
+import {
+  MAX_CHANGE_ACTOR_IDS,
+  type ChangeActorLabelsInput,
+  type ChangeActorLabelView,
+} from '../use-cases/change-actor-labels.use-case';
+import type {
+  ListPlatformRolesInput,
+  PlatformRoleCatalogue,
+} from '../use-cases/list-platform-roles.use-case';
 
 // The reverters identity registers with System requests (area people). Each runs inside the
 // decision's open serializable unit with the deciding admin's context (the author withdrawing, or
@@ -58,8 +68,102 @@ export interface PeopleReverterDependencies {
   readonly clock: Clock;
 }
 
+/**
+ * The reads behind the queue's subject labels (`describe`): identity's own use cases, run with the
+ * viewing admin's context unchanged, so each keeps its own rule and Market scope. `adminNames` is
+ * `ChangeActorLabels` (an admin's display name, for any signed-in admin; never the sign-in
+ * address); `platformRoles` is `ListPlatformRoles` (a custom role's name, only for an admin who
+ * holds `identity.platform-role.view` and so already sees it on the roles page).
+ */
+export interface PeopleLabelReads {
+  readonly adminNames: {
+    execute(
+      context: CallContext,
+      input: ChangeActorLabelsInput,
+    ): Promise<Result<readonly ChangeActorLabelView[], { readonly code: string }>>;
+  };
+  readonly platformRoles: {
+    execute(
+      context: CallContext,
+      input: ListPlatformRolesInput,
+    ): Promise<Result<PlatformRoleCatalogue, { readonly code: string }>>;
+  };
+}
+
+const labelLogger = new Logger('IdentityPeopleLabels');
+
+/**
+ * Runs one label read; a refusal or a throw answers no label (the queue shows none, it never
+ * fails). The log line carries the kind of failure only, never an id or a name.
+ */
+export async function labelsOrNone(
+  context: CallContext,
+  kind: string,
+  read: () => Promise<ReadonlyMap<string, string>>,
+): Promise<ReadonlyMap<string, string>> {
+  try {
+    return await read();
+  } catch (error) {
+    labelLogger.warn({
+      msg: 'identity.people-labels-unavailable',
+      subjectKind: kind,
+      error: error instanceof Error ? error.name : 'unknown',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    return new Map();
+  }
+}
+
+/** The display name of each admin account among `subjectRefs`, in the context's Market. */
+export function describeAdmins(
+  labels: PeopleLabelReads,
+  context: CallContext,
+  kind: string,
+  subjectRefs: readonly string[],
+): Promise<ReadonlyMap<string, string>> {
+  return labelsOrNone(context, kind, async () => {
+    const wanted = [...new Set(subjectRefs)];
+    const names = new Map<string, string>();
+    for (let start = 0; start < wanted.length; start += MAX_CHANGE_ACTOR_IDS) {
+      const answer = await labels.adminNames.execute(context, {
+        accountIds: wanted.slice(start, start + MAX_CHANGE_ACTOR_IDS),
+      });
+      if (!answer.ok) return new Map();
+      for (const label of answer.value) {
+        // Only an admin is named (the read answers only admins to an admin; checked again here).
+        if (label.kind === 'member' && label.displayName !== null && label.displayName !== '') {
+          names.set(label.accountId, label.displayName);
+        }
+      }
+    }
+    return names;
+  });
+}
+
+/** The name of each custom platform role among `subjectRefs`, for a viewer who may list roles. */
+export function describeRoles(
+  labels: PeopleLabelReads,
+  context: CallContext,
+  kind: string,
+  subjectRefs: readonly string[],
+): Promise<ReadonlyMap<string, string>> {
+  return labelsOrNone(context, kind, async () => {
+    const wanted = new Set(subjectRefs);
+    const answer = await labels.platformRoles.execute(context, {});
+    if (!answer.ok) return new Map();
+    const names = new Map<string, string>();
+    for (const role of answer.value.items) {
+      if (wanted.has(role.roleId) && role.name !== null && role.name !== '') {
+        names.set(role.roleId, role.name);
+      }
+    }
+    return names;
+  });
+}
+
 /** The deciding admin; a revert needs one acting as themselves (System requests checks it too). */
-function decider(context: CallContext): Id<'Account'> {
+export function decider(context: CallContext): Id<'Account'> {
   const admin = adminOf(context);
   if (admin === null) {
     throw new Error('identity: a revert needs a signed-in admin acting as themselves');
@@ -67,7 +171,7 @@ function decider(context: CallContext): Id<'Account'> {
   return admin;
 }
 
-const idOf = <K extends string>(value: unknown): Id<K> | null => {
+export const idOf = <K extends string>(value: unknown): Id<K> | null => {
   if (typeof value !== 'string') return null;
   const parsed = parseId<K>(value);
   return parsed.ok ? parsed.value : null;
@@ -80,14 +184,14 @@ const singleRoleId = (values: Readonly<Record<string, unknown>>): Id<'Role'> | n
 };
 
 /** The signed-in admin acting as themselves, or null (System requests refuses any other). */
-function adminOf(context: CallContext): Id<'Account'> | null {
+export function adminOf(context: CallContext): Id<'Account'> | null {
   const actor = context.actor;
   return actor.kind === 'authenticated' && actor.population === 'admin' && !isActingAsSession(actor)
     ? actor.accountId
     : null;
 }
 
-const sameList = (a: readonly string[], b: unknown): boolean =>
+export const sameList = (a: readonly string[], b: unknown): boolean =>
   Array.isArray(b) && a.length === b.length && a.every((item, index) => item === b[index]);
 
 /**
@@ -264,7 +368,7 @@ function isSubject(context: CallContext, subjectRef: string): boolean {
 }
 
 /** The deciding admin holds the role `subjectRef` now. */
-async function holdsRole(
+export async function holdsRole(
   deps: PeopleReverterDependencies,
   context: CallContext,
   subjectRef: string,
@@ -277,7 +381,10 @@ async function holdsRole(
 
 /** `identity.platform-role`: a custom platform role's name and keys. */
 export class PlatformRoleReverter implements SystemChangeReverter {
-  constructor(private readonly deps: PeopleReverterDependencies) {}
+  constructor(
+    private readonly deps: PeopleReverterDependencies,
+    private readonly labels: PeopleLabelReads,
+  ) {}
 
   revert(context: CallContext, request: RevertRequest): Promise<RevertOutcome> {
     return revertPlatformRole(this.deps, context, request);
@@ -287,11 +394,19 @@ export class PlatformRoleReverter implements SystemChangeReverter {
   async isInterested(context: CallContext, request: RevertRequest): Promise<boolean> {
     return holdsRole(this.deps, context, request.subjectRef);
   }
+
+  /** The role's name, for a viewer who may list the platform roles (else none). */
+  describe(context: CallContext, subjectRefs: readonly string[]) {
+    return describeRoles(this.labels, context, 'identity.platform-role', subjectRefs);
+  }
 }
 
 /** `identity.admin-roles`: an admin's role. */
 export class AdminRolesReverter implements SystemChangeReverter {
-  constructor(private readonly deps: PeopleReverterDependencies) {}
+  constructor(
+    private readonly deps: PeopleReverterDependencies,
+    private readonly labels: PeopleLabelReads,
+  ) {}
 
   revert(context: CallContext, request: RevertRequest): Promise<RevertOutcome> {
     return revertAdminRoles(this.deps, context, request);
@@ -301,11 +416,19 @@ export class AdminRolesReverter implements SystemChangeReverter {
   isInterested(context: CallContext, request: RevertRequest): Promise<boolean> {
     return Promise.resolve(isSubject(context, request.subjectRef));
   }
+
+  /** The admin's display name (identity's own read, this Market's admins only). */
+  describe(context: CallContext, subjectRefs: readonly string[]) {
+    return describeAdmins(this.labels, context, 'identity.admin-roles', subjectRefs);
+  }
 }
 
 /** `identity.admin-status`: an admin's enabling. */
 export class AdminStatusReverter implements SystemChangeReverter {
-  constructor(private readonly deps: PeopleReverterDependencies) {}
+  constructor(
+    private readonly deps: PeopleReverterDependencies,
+    private readonly labels: PeopleLabelReads,
+  ) {}
 
   revert(context: CallContext, request: RevertRequest): Promise<RevertOutcome> {
     return revertAdminStatus(this.deps, context, request);
@@ -314,5 +437,10 @@ export class AdminStatusReverter implements SystemChangeReverter {
   /** The change is the decider's own enabling. */
   isInterested(context: CallContext, request: RevertRequest): Promise<boolean> {
     return Promise.resolve(isSubject(context, request.subjectRef));
+  }
+
+  /** The admin's display name (identity's own read, this Market's admins only). */
+  describe(context: CallContext, subjectRefs: readonly string[]) {
+    return describeAdmins(this.labels, context, 'identity.admin-status', subjectRefs);
   }
 }

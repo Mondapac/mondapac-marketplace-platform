@@ -12,10 +12,17 @@ import type {
   StepUpProofConsumer,
   StepUpRefusal,
 } from '../../../../platform/authz';
-import type { RevertOutcome, RevertRequest, SystemChangeReverter } from '../../contracts/reverters';
+import type {
+  RevertOutcome,
+  RevertRequest,
+  SystemChangeReverter,
+  ApplyOutcome,
+  SystemChangeApplier,
+} from '../../../../platform/change-review/change-review';
 import type { PolicyArea, ReviewArea, Risk } from '../../domain/areas';
 import { dueForReminder } from '../../domain/overdue';
 import type { SystemRequest } from '../../domain/request';
+import type { AdminNames } from '../ports/admin-names';
 import type {
   AreaPolicyRecord,
   DueDaysRecord,
@@ -70,6 +77,7 @@ function matches(request: SystemRequest, filter: RequestFilter): boolean {
   }
   if (filter.subjectKind !== undefined && request.subjectKind !== filter.subjectKind) return false;
   if (filter.subjectRef !== undefined && request.subjectRef !== filter.subjectRef) return false;
+  if (filter.modes !== undefined && !filter.modes.includes(request.mode)) return false;
   if (filter.number !== undefined && request.number !== filter.number) return false;
   if (filter.text !== undefined) {
     const needle = filter.text.toLowerCase();
@@ -101,8 +109,20 @@ export class InMemoryRequests implements RequestRepository {
     const number = (this.counters.get(market.marketId) ?? 0) + 1;
     this.counters.set(market.marketId, number);
     const superseded: Id<'SystemRequest'>[] = [];
+    const pending = this.rows.some(
+      (row) =>
+        request.mode === 'approval' &&
+        row.market === market.marketId &&
+        row.subjectKind === request.subjectKind &&
+        row.subjectRef === request.subjectRef &&
+        row.mode === 'approval' &&
+        row.status === 'open',
+    );
+    if (pending) throw new Error('InMemoryRequests: one open proposal per subject (unique index)');
     this.rows.forEach((row, at) => {
       if (
+        request.mode === 'review' &&
+        row.mode === 'review' &&
         row.market === market.marketId &&
         row.subjectKind === request.subjectKind &&
         row.subjectRef === request.subjectRef &&
@@ -128,7 +148,7 @@ export class InMemoryRequests implements RequestRepository {
       market: market.marketId,
       requestId: request.id,
       id: activityId,
-      kind: 'applied',
+      kind: request.mode === 'approval' ? 'proposed' : 'applied',
       actor: request.requestedBy,
       at: request.appliedAt,
       body: null,
@@ -139,6 +159,18 @@ export class InMemoryRequests implements RequestRepository {
   find(market: MarketContext, id: Id<'SystemRequest'>) {
     const at = this.index(market, id);
     return Promise.resolve(at < 0 ? null : this.plain(this.rows[at]!));
+  }
+
+  findPendingProposal(market: MarketContext, subjectKind: string, subjectRef: string) {
+    const row = this.rows.find(
+      (r) =>
+        r.market === market.marketId &&
+        r.subjectKind === subjectKind &&
+        r.subjectRef === subjectRef &&
+        r.mode === 'approval' &&
+        r.status === 'open',
+    );
+    return Promise.resolve(row === undefined ? null : this.plain(row));
   }
 
   findForUpdate(market: MarketContext, id: Id<'SystemRequest'>) {
@@ -381,6 +413,24 @@ export class FakeSubjects implements SystemChangeReverter {
   readonly refused = new Set<string>();
   /** `account:ref` pairs where the account has a stake in the subject (separation of duties). */
   readonly interested = new Set<string>();
+  /** Refs whose pre-unit `check` refuses the decider; every check asked is kept in `checks`. */
+  readonly checkRefused = new Set<string>();
+  readonly checks: RevertRequest[] = [];
+  /** Refs whose pre-unit `check` throws (a broken dependency of the owning module). */
+  readonly checkThrows = new Set<string>();
+
+  check(_context: CallContext, request: RevertRequest): Promise<'ok' | 'not-permitted'> {
+    this.checks.push(request);
+    if (this.checkThrows.has(request.subjectRef)) {
+      return Promise.reject(new Error('check dependency down'));
+    }
+    return Promise.resolve(this.checkRefused.has(request.subjectRef) ? 'not-permitted' : 'ok');
+  }
+
+  /** The labels the owning module would give, per Market and ref. */
+  readonly labels = new Map<string, string>();
+  readonly described: (readonly string[])[] = [];
+  describeFails = false;
 
   set(market: string, ref: string, value: Readonly<Record<string, unknown>>): void {
     this.values.set(`${market}:${ref}`, value);
@@ -401,6 +451,82 @@ export class FakeSubjects implements SystemChangeReverter {
     }
     this.values.set(key, request.before);
     return Promise.resolve('reverted');
+  }
+
+  isInterested(context: CallContext, request: RevertRequest): Promise<boolean> {
+    const actor = context.actor;
+    const account = actor.kind === 'authenticated' ? actor.accountId : '';
+    return Promise.resolve(this.interested.has(`${account}:${request.subjectRef}`));
+  }
+
+  describe(context: CallContext, subjectRefs: readonly string[]) {
+    this.described.push([...subjectRefs]);
+    if (this.describeFails) return Promise.reject(new Error('down'));
+    const found = new Map<string, string>();
+    for (const ref of subjectRefs) {
+      const label = this.labels.get(`${context.market.marketId}:${ref}`);
+      if (label !== undefined) found.set(ref, label);
+    }
+    return Promise.resolve(found);
+  }
+}
+
+/** Admin names in memory: the names it was given; `refusing` answers none (a refused read). */
+export class FakeAdminNames implements AdminNames {
+  refusing = false;
+  readonly asked: (readonly string[])[] = [];
+  constructor(private readonly names: Readonly<Record<string, string>> = {}) {}
+
+  namesOf(_context: CallContext, accountIds: readonly string[]) {
+    this.asked.push([...accountIds]);
+    if (this.refusing) return Promise.resolve(new Map<string, string>());
+    return Promise.resolve(
+      new Map(accountIds.flatMap((id) => (this.names[id] ? [[id, this.names[id]] as const] : []))),
+    );
+  }
+}
+
+/**
+ * Another module's subjects that are deleted only once a proposal is approved, with the applier
+ * that owning module would register: it deletes the subject only while it still holds `before`.
+ */
+export class FakeApplier implements SystemChangeApplier {
+  readonly values = new Map<string, Readonly<Record<string, unknown>>>();
+  readonly applied: RevertRequest[] = [];
+  readonly checks: RevertRequest[] = [];
+  /** Refs whose `check` refuses the approving admin. */
+  readonly checkRefused = new Set<string>();
+  /** Refs whose `apply` the owning module refuses now. */
+  readonly refused = new Set<string>();
+  readonly interested = new Set<string>();
+  /** Runs while `check` runs (for example to take a key away meanwhile). */
+  onCheck: (() => void) | undefined;
+
+  set(market: string, ref: string, value: Readonly<Record<string, unknown>>): void {
+    this.values.set(`${market}:${ref}`, value);
+  }
+
+  get(market: string, ref: string): Readonly<Record<string, unknown>> | undefined {
+    return this.values.get(`${market}:${ref}`);
+  }
+
+  check(_context: CallContext, request: RevertRequest): Promise<'ok' | 'not-permitted'> {
+    this.checks.push(request);
+    this.onCheck?.();
+    return Promise.resolve(this.checkRefused.has(request.subjectRef) ? 'not-permitted' : 'ok');
+  }
+
+  apply(context: CallContext, request: RevertRequest): Promise<ApplyOutcome> {
+    const key = `${context.market.marketId}:${request.subjectRef}`;
+    const current = this.values.get(key);
+    if (current === undefined) return Promise.resolve('gone');
+    if (this.refused.has(request.subjectRef)) return Promise.resolve('not-permitted');
+    if (JSON.stringify(current) !== JSON.stringify(request.before)) {
+      return Promise.resolve('changed-since');
+    }
+    this.applied.push(request);
+    this.values.delete(key);
+    return Promise.resolve('applied');
   }
 
   isInterested(context: CallContext, request: RevertRequest): Promise<boolean> {

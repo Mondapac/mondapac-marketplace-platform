@@ -31,6 +31,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The buyer's own reviews: what waits for one, and what was written (reviews package 3).
     'reviews/me/to-review',
     'reviews/me',
+    // Whether the buyer assistant shows to this visitor (`?visitor=&lang=` only; see ASSISTANT).
+    'assistant/storefront',
+    // The customer's followed stores (My stores; `?cursor=&limit=` only) and the store they joined
+    // through (customers management phases 3 and 4a).
+    'customers/me/followed-stores',
+    'customers/me/store-invitation',
   ]),
   POST: new Set([
     'cart/items',
@@ -42,6 +48,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The customer's own password: the current one and the new one.
     'identity/customer/change-password',
     'customers/me/addresses',
+    // The customer joins a store through its invite link (body `{ token }`).
+    'customers/me/store-invitation',
     // The customer asks to delete the account (the request waits, then the job erases it).
     'customers/me/deletion-requests',
     // The delivery methods and prices of the basket for a saved address (delivery models, pkg 5).
@@ -63,16 +71,24 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
 
 /** Paths with one resource id (`:id`, a UUID), by method. */
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
+  GET: [
+    // Whether the customer follows one store, and the store's Follow gift (public).
+    'customers/me/followed-stores/:id',
+    'promotions/stores/:id/follow-gift',
+  ],
   POST: [
     'customers/me/addresses/:id/default',
     'cart/saved/:id/move-to-cart',
     // The buyer rates one delivered seller order.
     'reviews/seller-orders/:id/rating',
+    // One message to the buyer assistant; the answer is a `text/event-stream`.
+    'assistant/conversations/:id/messages',
   ],
   // The buyer edits their own review.
   PATCH: ['reviews/products/:id'],
-  PUT: ['cart/items/:id', 'customers/me/addresses/:id'],
+  PUT: ['cart/items/:id', 'customers/me/addresses/:id', 'customers/me/followed-stores/:id'],
   DELETE: [
+    'customers/me/followed-stores/:id',
     'cart/items/:id',
     'customers/me/addresses/:id',
     'cart/saved/:id',
@@ -98,9 +114,80 @@ function matches(template: string, path: readonly string[]): boolean {
   );
 }
 
+/** A store address, as the public store read takes it (`GET sellers/stores/:slug`). */
+const STORE_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
 export function isSessionPathAllowed(method: string, path: readonly string[]): boolean {
   if (ALLOWED[method]?.has(path.join('/')) === true) return true;
+  // My stores names each row by its public store read (name and logo).
+  if (
+    method === 'GET' &&
+    path.length === 3 &&
+    path[0] === 'sellers' &&
+    path[1] === 'stores' &&
+    path[2] !== undefined &&
+    path[2].length <= 50 &&
+    STORE_SLUG.test(path[2])
+  )
+    return true;
   return (ALLOWED_WITH_ID[method] ?? []).some((template) => matches(template, path));
+}
+
+/**
+ * The buyer assistant's two routes (F1). They get a few things no other relayed path gets: the
+ * assistant's own guest cookie both ways, the `x-assistant-preview` request header, the two query
+ * parameters of the storefront read and the longer wait of a model answer. Nothing else changes.
+ */
+export const isAssistantPath = (path: readonly string[]): boolean => path[0] === 'assistant';
+
+/** The server gives up on a model answer at 25 s; the relay waits a little longer than that. */
+export const ASSISTANT_TIMEOUT_MS = 30_000;
+
+/** The preview token's header, and the shape a token must have to cross (never logged). */
+const PREVIEW_HEADER = 'x-assistant-preview';
+const PREVIEW_SHAPE = /^[A-Za-z0-9._-]{20,300}$/;
+
+const VISITOR_SHAPE = /^[A-Za-z0-9_-]{16,64}$/;
+const LANG_SHAPE = /^[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8}){0,3}$/;
+
+/**
+ * The query the storefront read passes on: `visitor` and `lang`, each only when well shaped, and
+ * nothing else. Any other path takes no query (the relay never forwarded one).
+ */
+export function assistantQuery(url: string): string {
+  let params: URLSearchParams;
+  try {
+    params = new URL(url).searchParams;
+  } catch {
+    return '';
+  }
+  const kept = new URLSearchParams();
+  const visitor = params.get('visitor');
+  if (visitor !== null && VISITOR_SHAPE.test(visitor)) kept.set('visitor', visitor);
+  const lang = params.get('lang');
+  if (lang !== null && LANG_SHAPE.test(lang)) kept.set('lang', lang);
+  const text = kept.toString();
+  return text === '' ? '' : `?${text}`;
+}
+
+const CURSOR_SHAPE = /^[A-Za-z0-9._~=-]{1,300}$/;
+const LIMIT_SHAPE = /^[0-9]{1,3}$/;
+
+/** My stores' query: `cursor` and `limit`, each only when well shaped, and nothing else. */
+export function myStoresQuery(url: string): string {
+  let params: URLSearchParams;
+  try {
+    params = new URL(url).searchParams;
+  } catch {
+    return '';
+  }
+  const kept = new URLSearchParams();
+  const cursor = params.get('cursor');
+  if (cursor !== null && CURSOR_SHAPE.test(cursor)) kept.set('cursor', cursor);
+  const limit = params.get('limit');
+  if (limit !== null && LIMIT_SHAPE.test(limit)) kept.set('limit', limit);
+  const text = kept.toString();
+  return text === '' ? '' : `?${text}`;
 }
 
 /** The largest request body the relay passes on. */
@@ -142,12 +229,18 @@ const stdoutLog: RelayLog = (line) => console.log(JSON.stringify(line));
 export function sessionCookieNames(marketId: string): {
   readonly session: string;
   readonly guestCart: string;
+  /** The assistant's own guest cookie; crosses on the assistant routes only. */
+  readonly assistantGuest: string;
 } {
   return {
     session: `__Host-session-customer-${marketId}`,
     guestCart: `__Host-cart-guest-${marketId}`,
+    assistantGuest: `__Host-assistant-guest-${marketId}`,
   };
 }
+
+/** Which cookies a path may carry: the cart and session ones, or the session and assistant ones. */
+export type CookieScope = 'session' | 'assistant';
 
 /** The `name=value` pairs of a Cookie header. */
 function cookiePairs(header: string | null): { name: string; pair: string }[] {
@@ -163,10 +256,18 @@ function cookiePairs(header: string | null): { name: string; pair: string }[] {
  * The Cookie header for the API: only the Market's session and guest-cart cookies, in the order
  * the browser sent them. A repeated name is kept repeated, so the API refuses it as it would.
  */
-export function upstreamCookie(header: string | null, marketId: string): string | null {
+export function upstreamCookie(
+  header: string | null,
+  marketId: string,
+  scope: CookieScope = 'session',
+): string | null {
   const names = sessionCookieNames(marketId);
+  const allowed =
+    scope === 'assistant'
+      ? [names.session, names.assistantGuest]
+      : [names.session, names.guestCart];
   const kept = cookiePairs(header)
-    .filter(({ name }) => name === names.session || name === names.guestCart)
+    .filter(({ name }) => allowed.includes(name))
     .map(({ pair }) => pair);
   return kept.length === 0 ? null : kept.join('; ');
 }
@@ -184,12 +285,17 @@ const setCookieName = (value: string): string =>
   value.slice(0, Math.max(value.indexOf('='), 0)).trim();
 
 /** The Set-Cookie values of an answer that the browser may receive: the two names only. */
-export function passedSetCookies(upstream: Response, marketId: string): string[] {
+export function passedSetCookies(
+  upstream: Response,
+  marketId: string,
+  scope: CookieScope = 'session',
+): string[] {
   const names = sessionCookieNames(marketId);
-  return upstream.headers.getSetCookie().filter((value) => {
-    const name = setCookieName(value);
-    return name === names.session || name === names.guestCart;
-  });
+  const allowed =
+    scope === 'assistant'
+      ? [names.session, names.assistantGuest]
+      : [names.session, names.guestCart];
+  return upstream.headers.getSetCookie().filter((value) => allowed.includes(setCookieName(value)));
 }
 
 /** The value a Set-Cookie stores for `name`, or null when it sets none or clears it. */
@@ -225,14 +331,20 @@ export function sessionUpstreamHeaders(
   host: StorefrontHost,
   config: StorefrontApiConfig,
   nowMilliseconds: () => number = Date.now,
+  scope: CookieScope = 'session',
 ): Headers {
   const headers = new Headers();
   for (const name of FORWARDED_REQUEST_HEADERS) {
     const value = request.headers.get(name);
     if (value !== null) headers.set(name, value);
   }
-  const cookie = upstreamCookie(request.headers.get('cookie'), host.marketId);
+  const cookie = upstreamCookie(request.headers.get('cookie'), host.marketId, scope);
   if (cookie !== null) headers.set('cookie', cookie);
+  if (scope === 'assistant') {
+    // The internal preview token: only on the assistant routes, only when well shaped.
+    const preview = request.headers.get(PREVIEW_HEADER);
+    if (preview !== null && PREVIEW_SHAPE.test(preview)) headers.set(PREVIEW_HEADER, preview);
+  }
   headers.set('x-market-id', host.marketId);
   if (config.clientAddressKey !== null) {
     headers.set(
@@ -267,6 +379,39 @@ async function readCapped(request: Request, limit: number): Promise<string | nul
   const decoder = new TextDecoder();
   return chunks.map((chunk) => decoder.decode(chunk, { stream: true })).join('') + decoder.decode();
 }
+
+/** The most of an upstream answer the relay holds in memory: the assistant's, and every other. */
+const MAX_ASSISTANT_ANSWER_BYTES = 256 * 1024;
+const MAX_ANSWER_BYTES = 1024 * 1024;
+
+/** Reads an upstream body with a hard cap; `null` when it is over. Throws on abort or timeout. */
+async function readAnswerCapped(response: Response, limit: number): Promise<ArrayBuffer | null> {
+  if (response.body === null) return new ArrayBuffer(0);
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > limit) {
+      await reader.cancel().catch(() => undefined);
+      return null;
+    }
+    chunks.push(value);
+  }
+  const out = new Uint8Array(total);
+  let at = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, at);
+    at += chunk.byteLength;
+  }
+  return out.buffer;
+}
+
+/** A path segment that could smuggle a separator, an encoding or a dot-segment past the allow-list. */
+const unsafeSegment = (segment: string): boolean =>
+  segment === '' || segment === '.' || segment === '..' || /[/\\%]/.test(segment);
 
 /**
  * Right after a sign-in, moves this browser's guest cart into the new session's cart
@@ -339,7 +484,13 @@ export async function relaySession(
   if (config === null) return jsonError(503, 'access.unavailable');
   const host = storefrontHostFor(config, request.headers.get('host'));
   if (host === undefined) return notFound();
+  if (path.some(unsafeSegment)) return notFound();
   const target = path.join('/');
+  const assistant = target === 'assistant' || target.startsWith('assistant/');
+  const scope: CookieScope = assistant ? 'assistant' : 'session';
+  // What is logged: the route, never the conversation id.
+  const logged =
+    assistant && path[1] === 'conversations' ? 'assistant/conversations/:id/messages' : target;
   if (!isSessionPathAllowed(request.method, path)) return notFound();
   if (request.headers.has('authorization')) return jsonError(401, 'session.invalid');
   if (request.method === 'GET') {
@@ -364,27 +515,37 @@ export async function relaySession(
   }
   let outgoing: Headers;
   try {
-    outgoing = sessionUpstreamHeaders(request, host, config);
+    outgoing = sessionUpstreamHeaders(request, host, config, Date.now, scope);
   } catch (error) {
     if (!(error instanceof MissingClientAddressError)) throw error;
-    log({ msg: 'storefront.session.client-address-missing', method: request.method, path: target });
+    log({
+      msg: 'storefront.session.client-address-missing',
+      method: request.method,
+      path: logged,
+    });
     return jsonError(503, 'access.unavailable');
   }
   let upstream: Response;
   try {
-    upstream = await fetchImpl(`${config.apiBaseUrl}/${target}`, {
+    const query =
+      target === 'assistant/storefront'
+        ? assistantQuery(request.url)
+        : target === 'customers/me/followed-stores'
+          ? myStoresQuery(request.url)
+          : '';
+    upstream = await fetchImpl(`${config.apiBaseUrl}/${target}${query}`, {
       method: request.method,
       headers: outgoing,
       ...(body === undefined ? {} : { body }),
       redirect: 'manual',
       cache: 'no-store',
-      signal: AbortSignal.timeout(RELAY_TIMEOUT_MS),
+      signal: AbortSignal.timeout(assistant ? ASSISTANT_TIMEOUT_MS : RELAY_TIMEOUT_MS),
     });
   } catch {
     log({
       msg: 'storefront.session.upstream-unreachable',
       method: request.method,
-      path: target,
+      path: logged,
       marketId: host.marketId,
     });
     return jsonError(503, 'access.unavailable');
@@ -393,7 +554,7 @@ export async function relaySession(
     log({
       msg: 'storefront.session.error-answer',
       method: request.method,
-      path: target,
+      path: logged,
       status: upstream.status,
       marketId: host.marketId,
       correlationId: upstream.headers.get(CORRELATION_HEADER) ?? '',
@@ -406,8 +567,33 @@ export async function relaySession(
   }
   // An answer that carries a buyer's cookies is never cached, whatever the API says.
   headers.set('cache-control', 'private, no-store');
-  const setCookies = passedSetCookies(upstream, host.marketId);
-  const answer = upstream.status === 204 ? null : await upstream.arrayBuffer();
+  const setCookies = passedSetCookies(upstream, host.marketId, scope);
+  let answer: ArrayBuffer | null = null;
+  if (upstream.status !== 204) {
+    try {
+      answer = await readAnswerCapped(
+        upstream,
+        assistant ? MAX_ASSISTANT_ANSWER_BYTES : MAX_ANSWER_BYTES,
+      );
+    } catch {
+      log({
+        msg: 'storefront.session.upstream-unreachable',
+        method: request.method,
+        path: logged,
+        marketId: host.marketId,
+      });
+      return jsonError(503, 'access.unavailable');
+    }
+    if (answer === null) {
+      log({
+        msg: 'storefront.session.answer-too-large',
+        method: request.method,
+        path: logged,
+        marketId: host.marketId,
+      });
+      return jsonError(502, 'access.unavailable');
+    }
+  }
   if (upstream.status === 200 && SIGNS_IN.has(target) && answer !== null) {
     setCookies.push(
       ...(await mergeGuestCart(

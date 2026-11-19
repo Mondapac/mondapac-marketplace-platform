@@ -863,6 +863,65 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(writes('PUT')[1]?.body).toMatchObject({ version: 3 });
   });
 
+  describe('review note', () => {
+    const open = async (over: Partial<AttributeDetail>) => {
+      serve({
+        'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
+        [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1, over)),
+        [`PUT catalog/admin/attributes/${id(1)}`]: () =>
+          ok({
+            attribute: { id: id(1), code: 'attr-1', status: 'active', version: 2, revisionNo: 3 },
+            request: { id: 'r1', number: 31 },
+          }),
+      });
+      mount({ canEdit: true, initialId: id(1) });
+      const panel = await screen.findByRole('region', { name: 'Attribute details' });
+      await within(panel).findByRole('heading', { name: 'Attribute 1' });
+      fireEvent.click(within(panel).getByRole('button', { name: 'Edit' }));
+      return within(panel).getByRole('form', { name: 'Edit attribute' });
+    };
+
+    it('shows no note field and sends none when the save is not reviewed', async () => {
+      const form = await open({ review: { reviewed: false, risk: 'low' } });
+      expect(within(form).queryByLabelText('Note for reviewers')).toBeNull();
+      fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+      await expectToast('Attribute saved.');
+      expect('note' in (writes('PUT')[0]?.body as object)).toBe(false);
+    });
+
+    it('requires a trimmed note when reviewed, and says the change was sent for review', async () => {
+      const form = await open({ review: { reviewed: true, risk: 'medium' } });
+      fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+      expect(writes('PUT')).toHaveLength(0);
+      fireEvent.change(within(form).getByLabelText('Note for reviewers'), {
+        target: { value: '  Made it clearer  ' },
+      });
+      fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+      await expectToast('Sent for review (SR-31)', 'info');
+      expect(writes('PUT')[0]?.body).toMatchObject({ note: 'Made it clearer' });
+    });
+
+    it('shows a 400 on note on the note field', async () => {
+      const form = await open({ review: { reviewed: true, risk: 'medium' } });
+      serve({
+        [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1)),
+        [`PUT catalog/admin/attributes/${id(1)}`]: {
+          ok: false,
+          failure: {
+            status: 400,
+            code: 'validation.failed',
+            details: { fields: [{ path: 'note', code: 'required' }] },
+          },
+        },
+      });
+      fireEvent.change(within(form).getByLabelText('Note for reviewers'), {
+        target: { value: 'Why' },
+      });
+      fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+      expect(await within(form).findByText(/The note was refused/)).toBeTruthy();
+    });
+  });
+
   it('points a refused value label at its row, and keeps a saved value from being removed', async () => {
     serve({
       'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
@@ -1078,9 +1137,52 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     const panel = await screen.findByRole('region', { name: 'Attribute details' });
     fireEvent.click(await within(panel).findByRole('button', { name: 'Discard draft' }));
     const dialog = await screen.findByRole('dialog', { name: 'Discard Attribute 1?' });
+    // Unreviewed: the discard's own, final wording.
+    expect(within(dialog).getByText(/can never be published/)).toBeTruthy();
+    expect(within(dialog).queryByText(/Nothing changes until/)).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'Send for approval' })).toBeNull();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Discard draft' }));
     await expectToast('Draft discarded.');
     expect(writes('POST')[0]?.path).toBe(`catalog/admin/attributes/${id(1)}/discard`);
+  });
+
+  it('asks for a note before a discard waits for approval, and keeps the draft (system requests)', async () => {
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1, { status: 'draft' })])),
+      [`GET catalog/admin/attributes/${id(1)}`]: ok(
+        detail(locales, 1, { status: 'draft', review: { reviewed: true, risk: 'low' } }),
+      ),
+      [`POST catalog/admin/attributes/${id(1)}/discard`]: {
+        ok: true,
+        status: 202,
+        body: { request: { id: 'r3', number: 52 } },
+      },
+    });
+    mount({ canEdit: true, initialId: id(1) });
+    const panel = await screen.findByRole('region', { name: 'Attribute details' });
+    fireEvent.click(await within(panel).findByRole('button', { name: 'Discard draft' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Discard Attribute 1?' });
+    // It only files a request: the wording says so, and promises nothing final.
+    expect(
+      within(dialog).getByText(
+        'Nothing changes until another admin approves it in Admin Inbox > System requests.',
+      ),
+    ).toBeTruthy();
+    expect(
+      within(dialog).getByText(/If another admin approves, the draft is archived/),
+    ).toBeTruthy();
+    expect(within(dialog).queryByText(/can never be published/)).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'Discard draft' })).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
+    expect(await within(dialog).findByText(/Write a note for the reviewers/)).toBeTruthy();
+    expect(writes('POST')).toHaveLength(0);
+    fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
+      target: { value: 'Made by mistake' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send for approval' }));
+    await expectToast('Sent for approval (SR-52)', 'info');
+    expect(writes('POST')[0]?.body).toEqual({ version: 1, note: 'Made by mistake' });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
   const relaxation = (n: number, mine: boolean): OpenRelaxation => ({

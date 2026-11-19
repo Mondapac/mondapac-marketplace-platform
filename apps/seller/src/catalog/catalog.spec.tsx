@@ -1,12 +1,11 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen, within } from '@testing-library/react';
+import { cleanup, render, screen } from '@testing-library/react';
 import { createTranslator } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 import { sellerNav } from '../nav.ts';
 import { formatInstant, known, PRODUCT_STATUSES } from './format.ts';
 import { OfferDetail } from './offer-detail.tsx';
-import { OffersTable } from './offers-table.tsx';
 import { Pager } from './pager.tsx';
 import { ProductDetail } from './product-detail.tsx';
 import type { OfferView, ProductView } from './types.ts';
@@ -54,7 +53,7 @@ const detail = (over: Partial<ProductView> = {}): ProductView => ({
   lastChangedAt: '2026-10-09T03:30:00.000Z',
   createdAt: '2026-10-01T00:00:00.000Z',
   pendingSubmittedAt: null,
-  form: { taxCategoryCodes: [], units: [], fields: [], categories: [] },
+  form: { taxCategories: [], units: [], fields: [], categories: [] },
   workingCopy: { content: {}, lastSavedAt: '2026-10-09T03:00:00.000Z', baseRevisionId: null },
   published: {
     revisionId: 'r1',
@@ -71,26 +70,6 @@ const detail = (over: Partial<ProductView> = {}): ProductView => ({
 
 describe('seller catalog pages', () => {
   afterEach(cleanup);
-
-  it('lists offers with sku, status and on-sale state', async () => {
-    render(
-      await OffersTable({
-        items: [
-          offer(),
-          offer({ offerId: 'y', status: 'changes-needed', listed: false, submittedAt: null }),
-        ],
-      }),
-    );
-    const rows = screen.getAllByRole('row');
-    expect(within(rows[1]!).getByText('Yes')).toBeTruthy();
-    expect(within(rows[2]!).getByText('Changes needed')).toBeTruthy();
-    expect(within(rows[2]!).getByText('No')).toBeTruthy();
-  });
-
-  it('shows an empty state with no offers', async () => {
-    render(await OffersTable({ items: [] }));
-    expect(screen.getByText('No offers yet')).toBeTruthy();
-  });
 
   it('links to the next page only when the API returned a cursor', async () => {
     const { container, rerender } = render(await Pager({ basePath: '/products', nextAfterId: ID }));

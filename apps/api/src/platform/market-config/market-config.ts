@@ -233,6 +233,12 @@ const linkTargetsSchema = z
       'verify-email': pageUrl,
       'sign-in': pageUrl,
       'reset-password': pageUrl,
+      /**
+       * The storefront page that confirms a sign-in email an admin changed (customers admin
+       * email change): it posts the token from the fragment with the password. Without it, or
+       * without the lifetime below, no such change can be asked for (`access.unavailable`).
+       */
+      'confirm-email-change': pageUrl.optional(),
     }),
     /**
      * The seller panel's pages (slice 5); absent for a Market without seller sign-up.
@@ -283,6 +289,20 @@ const linkTargetsSchema = z
     // Every seller page is on the origin of the seller sign-in page (Hassan L1, PR #212), as the
     // admin pages are on the review queue's: a seller token is only ever mailed to our own seller
     // panel, never to another host a config change might name.
+    // The same for the email change's confirmation page: on the storefront's own origin.
+    const customerSignIn = hostOf(targets.customer['sign-in']);
+    const confirmChange = targets.customer['confirm-email-change'];
+    if (
+      confirmChange !== undefined &&
+      customerSignIn !== null &&
+      hostOf(confirmChange)?.origin !== customerSignIn.origin
+    ) {
+      context.addIssue({
+        code: 'custom',
+        message: 'a customer page must have the origin of the customer sign-in page',
+        path: ['customer', 'confirm-email-change'],
+      });
+    }
     if (targets.seller !== undefined) {
       const signIn = hostOf(targets.seller['sign-in']);
       for (const [page, url] of Object.entries(targets.seller)) {
@@ -420,6 +440,9 @@ const identitySchema = z
         // Slice 12: the Seller Owner's confirmation of a reset an admin started, at most 24
         // hours (identity design 3.7, HF15).
         'confirm-second-factor-reset': z.number().int().min(1).max(1440).optional(),
+        // Customers admin email change: the confirmation link to the new address, at most 24
+        // hours (Hassan's answer 3); the pending address lapses with it.
+        'confirm-email-change': z.number().int().min(1).max(1440).optional(),
       }),
       targets: linkTargetsSchema,
     }),
@@ -1733,12 +1756,24 @@ const marketSchema = z
      * this section the Market has no commission rate and checkout fails closed.
      * `payoutTerms` (package 6b): the Market's payout terms; every field is required, there is no
      * core default, and a Market without them has no payout terms (fail closed).
+     * `exclusiveCustomer` (customers phase 4b): the lower commission on a seller's lines bought by
+     * its exclusive customer (one who joined through its invite link): the rate in force is cut by
+     * `reductionBps` of itself (AU 5000 = half), never below `floorBps` (AU 300 = 3 %) and never
+     * above the rate in force, for `months` after the customer joined (AU 12). Without it there is
+     * no lower commission.
      */
     commissionPayouts: z
       .strictObject({
         defaultRateBps: z.number().int().min(0).max(3000),
         provisionalTaxRateBps: z.number().int().min(0).max(5000),
         payoutTerms: payoutTermsSchema.optional(),
+        exclusiveCustomer: z
+          .strictObject({
+            reductionBps: z.number().int().min(1).max(10000),
+            floorBps: z.number().int().min(0).max(3000),
+            months: z.number().int().min(1).max(60),
+          })
+          .optional(),
       })
       .optional(),
     /**
@@ -1881,7 +1916,8 @@ const marketSchema = z
      * `codeLength` and `alphabet` (upper-case letters and digits, each once; at least 60 bits) of
      * a referral code. `cashback` (absent means the Market has no cashback): `maxBps` the most of
      * the goods paid that a promotion may credit and `maxCapMinor` the most one order may be
-     * credited. The credits themselves (amounts, caps, budgets) are promotion data.
+     * credited; `sellerMinBps` (absent means none) the least a seller's own cashback for its
+     * exclusive customers may credit (customers phase 4c). The credits themselves (amounts, caps, budgets) are promotion data.
      * Whether promotions are on is not config: an admin sets it at runtime
      * (`promotions.market_settings`), off by default.
      */
@@ -1943,7 +1979,12 @@ const marketSchema = z
           .strictObject({
             maxBps: z.number().int().min(1).max(10000),
             maxCapMinor: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+            sellerMinBps: z.number().int().min(1).max(10000).optional(),
           })
+          .refine(
+            (value) => value.sellerMinBps === undefined || value.sellerMinBps <= value.maxBps,
+            'sellerMinBps must not exceed maxBps',
+          )
           .optional(),
         firstOrder: z
           .strictObject({
@@ -2066,10 +2107,25 @@ const marketSchema = z
      * the most addresses one customer keeps (AU 20). `address`: the ISO 3166 country every
      * address is in, the postcode pattern and the closed region list (empty for a Market whose
      * addresses carry no region). Without this section the address book is unavailable.
+     * `adminActionLimits` (security review of #969, L2/L3): per admin account and fixed hour, the
+     * most "send password reset" actions and the most reveals of a customer's personal data (a
+     * sign-in's address and a delivery address share one count), and the reveal count at which a
+     * security alert is raised once (at most the reveal limit). Without this section those admin
+     * actions are refused (fail closed).
      */
     customers: z
       .strictObject({
         addressBookLimit: z.number().int().min(1).max(50),
+        adminActionLimits: z
+          .strictObject({
+            passwordResetsPerHour: z.number().int().min(1).max(1000),
+            piiRevealsPerHour: z.number().int().min(1).max(1000),
+            piiRevealAlertAt: z.number().int().min(1).max(1000),
+          })
+          .refine((limits) => limits.piiRevealAlertAt <= limits.piiRevealsPerHour, {
+            message: 'piiRevealAlertAt must not exceed piiRevealsPerHour',
+            path: ['piiRevealAlertAt'],
+          }),
         address: z
           .strictObject({
             countryCode: z.string().regex(/^[A-Z]{2}$/),
@@ -2080,6 +2136,18 @@ const marketSchema = z
             message: 'regions must be unique',
             path: ['regions'],
           }),
+        /**
+         * Sellers' invite links (customers management phase 4a). `signUpWindowDays`: how long after
+         * sign-up an account may still join a store through its link (AU 7). `burstPerDay`: the
+         * attributions to one seller (any of its links) in 24 hours from which a new one is flagged for the admin
+         * (AU 50). Without it the invite links are unavailable.
+         */
+        invitations: z
+          .strictObject({
+            signUpWindowDays: z.number().int().min(1).max(30),
+            burstPerDay: z.number().int().min(1).max(100_000),
+          })
+          .optional(),
       })
       .optional(),
     allowedOrigins: allowedOriginsSchema,

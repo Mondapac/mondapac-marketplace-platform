@@ -23,8 +23,16 @@ export type CreditType = (typeof CREDIT_TYPES)[number];
 export const isCreditType = (type: string): type is CreditType =>
   (CREDIT_TYPES as readonly string[]).includes(type);
 
-/** The segments of a customer-group discount. */
-export const SEGMENT_KINDS = ['RETURNING_CUSTOMER', 'DELIVERY_ZONE', 'MANUAL_GROUP'] as const;
+/**
+ * The segments of a customer-group discount. SELLER_EXCLUSIVE (customers phase 4a) is a seller's
+ * own discount for the customers who joined through its invite link: seller-funded, on its items.
+ */
+export const SEGMENT_KINDS = [
+  'RETURNING_CUSTOMER',
+  'DELIVERY_ZONE',
+  'MANUAL_GROUP',
+  'SELLER_EXCLUSIVE',
+] as const;
 export type SegmentKind = (typeof SEGMENT_KINDS)[number];
 
 /** The types a person creates; the first-order discount comes from the Market's settings. */
@@ -96,6 +104,8 @@ export interface CashbackRules {
   readonly maxBps: number;
   /** The most one order may be credited, minor units; a promotion's own cap is at most this. */
   readonly maxCapMinor: bigint;
+  /** The least a seller's own cashback may credit (bps); null when the Market sets none. */
+  readonly sellerMinBps: number | null;
 }
 
 /** One tier of a tiered cart discount: the goods amount it starts at and its reward. */
@@ -166,7 +176,8 @@ export interface PromotionDraft {
   readonly segmentGroupId: string | null;
   /**
    * REFERRAL: the credit the new customer gets, minor units; `reward` (FIXED) is the referrer's.
-   * CASHBACK: `reward` is PERCENT of the goods paid and `capMinor` the most one order is credited.
+   * CASHBACK: `reward` is PERCENT of the goods paid and `capMinor` the most one order is credited
+   * (a seller's own cashback, customers phase 4c: the most one of its seller orders is credited).
    */
   readonly refereeRewardMinor: bigint | null;
 }
@@ -248,8 +259,10 @@ export function layerOf(
     case 'FIRST_ORDER':
     case 'TIERED_CART':
     case 'BATCH_CODE':
-    case 'CUSTOMER_GROUP':
       return 'PLATFORM_CART';
+    // A seller's customer-group discount (its exclusive customers) is on its own items only.
+    case 'CUSTOMER_GROUP':
+      return kind === 'seller' ? 'SELLER_CART' : 'PLATFORM_CART';
     case 'STORE_FOLLOWER':
       return 'SELLER_CART';
     case 'FREE_SHIPPING':
@@ -756,9 +769,11 @@ function checkTypeFields(
     const types = typeof type === 'string' ? [type] : type;
     if (present && !types.includes(draft.type)) bad(path, 'not-allowed');
   };
+  // A segment belongs to a customer-group discount, and (exclusive customers only) to a seller's
+  // own cashback (customers phase 4c).
   only(
     draft.segmentKind !== null || draft.segmentMinDays !== null || draft.segmentGroupId !== null,
-    'CUSTOMER_GROUP',
+    ['CUSTOMER_GROUP', 'CASHBACK'],
     'segment',
   );
   only(draft.refereeRewardMinor !== null, 'REFERRAL', 'refereeRewardMinor');
@@ -837,6 +852,10 @@ function checkTypeFields(
         if (draft.segmentMinDays !== null) bad('segment.minDaysSinceLastOrder', 'not-allowed');
         if (draft.zones.length > 0) bad('zones', 'not-allowed');
       }
+      if (draft.segmentKind === 'SELLER_EXCLUSIVE') {
+        if (draft.segmentMinDays !== null) bad('segment.minDaysSinceLastOrder', 'not-allowed');
+        if (draft.zones.length > 0) bad('zones', 'not-allowed');
+      }
       break;
     case 'STORE_FOLLOWER':
       // A seller's own store: it needs no target; any of its products qualify.
@@ -878,8 +897,20 @@ function checkTypeFields(
       }
       if (draft.reward.kind !== 'PERCENT') bad('reward.kind', 'value');
       else if (draft.reward.bps > cashback.maxBps) bad('reward.bps', 'exceeds-market-limit');
+      else if (
+        draft.funding === 'SELLER' &&
+        cashback.sellerMinBps !== null &&
+        draft.reward.bps < cashback.sellerMinBps
+      ) {
+        bad('reward.bps', 'below-market-minimum');
+      }
       if (draft.capMinor === null) bad('capMinor', 'required');
       else if (draft.capMinor > cashback.maxCapMinor) bad('capMinor', 'exceeds-market-limit');
+      if (draft.segmentKind !== null && draft.segmentKind !== 'SELLER_EXCLUSIVE') {
+        bad('segment.kind', 'not-allowed');
+      }
+      if (draft.segmentMinDays !== null) bad('segment.minDaysSinceLastOrder', 'not-allowed');
+      if (draft.segmentGroupId !== null) bad('segment.groupId', 'not-allowed');
       for (const [present, path] of [
         [draft.maxPerOrderMinor !== null, 'maxPerOrderMinor'],
         [draft.productIds.length > 0, 'productIds'],
@@ -921,14 +952,26 @@ export function checkDraft(
   }
 
   // Who may make which type, and with whose money.
+  // A seller's customer-group discount and its cashback are for its own exclusive customers
+  // (customers phases 4a and 4c), and only a seller has exclusive customers.
+  const exclusiveSegment =
+    (draft.type === 'CUSTOMER_GROUP' || draft.type === 'CASHBACK') &&
+    draft.segmentKind === 'SELLER_EXCLUSIVE';
   if (seller) {
-    if (ADMIN_ONLY_TYPES.includes(draft.type)) bad('type', 'not-allowed');
+    if (draft.type === 'CUSTOMER_GROUP') {
+      if (draft.segmentKind !== null && !exclusiveSegment) bad('segment.kind', 'not-allowed');
+    } else if (draft.type === 'CASHBACK') {
+      if (!exclusiveSegment) bad('segment.kind', 'required');
+    } else if (ADMIN_ONLY_TYPES.includes(draft.type)) {
+      bad('type', 'not-allowed');
+    }
     if (draft.funding !== 'SELLER') bad('funding', 'seller-money-only');
     if (draft.specialCampaign) bad('specialCampaign', 'not-allowed');
     if (draft.testMode) bad('testMode', 'not-allowed');
     if (draft.sellerIds.length > 0) bad('sellerIds', 'not-allowed');
   } else {
     if (SELLER_ONLY_TYPES.includes(draft.type)) bad('type', 'not-allowed');
+    if (exclusiveSegment) bad('segment.kind', 'not-allowed');
     if (draft.type === 'CO_FUNDED_CAMPAIGN') {
       if (draft.funding !== 'CO_FUNDED') bad('funding', 'value');
     } else if (draft.funding !== 'PLATFORM') {

@@ -24,21 +24,28 @@ import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import { SHEET_WRITER, type SheetWriter } from '../../platform/list-export';
 import { IdentityModule } from '../identity';
+import { ListsModule, registerLists } from '../lists';
+import { ADMIN_NAMES } from './application/ports/admin-names';
 import { MARKET_ZONE, type MarketZone } from './application/ports/market-zone';
+import type { SystemRequestsExportDependencies } from './application/export-flow';
 import type { OverdueReminderDependencies } from './application/overdue-reminder-flow';
+import { SYSTEM_REQUESTS_LISTS } from './application/saved-filter-list';
 import { POLICY_REPOSITORY } from './application/ports/policy.repository';
 import { REQUEST_REPOSITORY } from './application/ports/request.repository';
 import { DUE_DAYS_KIND, POLICY_AREA_KIND, PolicyReverter } from './application/policy-flow';
 import { ReverterRegistry } from './application/reverter-registry';
 import { SystemRequestRecorderImplementation } from './application/system-request-recorder';
 import type { SystemRequestsDependencies } from './application/system-requests-dependencies';
+import { ApproveMatchingSystemRequests } from './application/use-cases/approve-matching-system-requests.use-case';
 import { ApproveSystemRequest } from './application/use-cases/approve-system-request.use-case';
 import { ApproveSystemRequests } from './application/use-cases/approve-system-requests.use-case';
 import { ChangeAreaReviewPolicy } from './application/use-cases/change-area-review-policy.use-case';
 import { ChangeReviewDueDays } from './application/use-cases/change-review-due-days.use-case';
 import { CommentOnSystemRequest } from './application/use-cases/comment-on-system-request.use-case';
 import { CountSystemRequests } from './application/use-cases/count-system-requests.use-case';
+import { ExportSystemRequests } from './application/use-cases/export-system-requests.use-case';
 import { ListSystemRequests } from './application/use-cases/list-system-requests.use-case';
 import { RemindOverdueSystemRequests } from './application/use-cases/remind-overdue-system-requests.use-case';
 import { RejectSystemRequest } from './application/use-cases/reject-system-request.use-case';
@@ -46,6 +53,7 @@ import { ViewReviewPolicy } from './application/use-cases/view-review-policy.use
 import { ViewSystemRequest } from './application/use-cases/view-system-request.use-case';
 import { WithdrawSystemRequest } from './application/use-cases/withdraw-system-request.use-case';
 import {
+  SYSTEM_ACTION_PROPOSER,
   SYSTEM_CHANGE_REVERTERS,
   SYSTEM_REQUEST_RECORDER,
   SYSTEM_REQUESTS_AUDIT_ACTIONS,
@@ -77,6 +85,7 @@ const PORTS: readonly [keyof SystemRequestsDependencies, InjectionToken][] = [
   ['authorisation', AUTHORISATION_CHECK],
   ['stepUp', STEP_UP_CONSUMER],
   ['audit', AUDIT_WRITER],
+  ['adminNames', ADMIN_NAMES],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
 ];
@@ -103,7 +112,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  */
 @Global()
 @Module({
-  imports: [IdentityModule],
+  imports: [IdentityModule, ListsModule],
   controllers: [SystemRequestsController],
   providers: [
     PersistenceModule.auditWriterFor('system-requests'),
@@ -112,6 +121,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerEvents('system-requests', SYSTEM_REQUESTS_EVENTS),
     registerPermissions('system-requests', SYSTEM_REQUESTS_PERMISSIONS),
     registerStepUpActions('system-requests', SYSTEM_REQUESTS_STEP_UP_ACTIONS),
+    // The queue's saved filters, through the generic routes of `lists` (rule 14).
+    registerLists('system-requests', SYSTEM_REQUESTS_LISTS),
     ...systemRequestsProviders,
     { provide: REVERTER_REGISTRY, useFactory: () => new ReverterRegistry() },
     {
@@ -126,6 +137,20 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         Object.freeze(
           Object.fromEntries(PORTS.map(([name], index) => [name, values[index]])),
         ) as unknown as SystemRequestsDependencies,
+    },
+    {
+      provide: ExportSystemRequests,
+      inject: [USE_CASE_GATE, DEPENDENCIES, SHEET_WRITER, MARKET_ZONE],
+      useFactory: (
+        gate: UseCaseGate,
+        deps: SystemRequestsDependencies,
+        sheetWriter: SheetWriter,
+        zone: MarketZone,
+      ) =>
+        new ExportSystemRequests(
+          gate,
+          Object.freeze<SystemRequestsExportDependencies>({ ...deps, sheetWriter, zone }),
+        ),
     },
     {
       provide: MARKET_ZONE,
@@ -172,6 +197,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CommentOnSystemRequest,
       ApproveSystemRequest,
       ApproveSystemRequests,
+      ApproveMatchingSystemRequests,
       RejectSystemRequest,
       WithdrawSystemRequest,
       ViewReviewPolicy,
@@ -184,6 +210,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       useFactory: (deps: SystemRequestsDependencies) =>
         new SystemRequestRecorderImplementation(deps),
     },
+    // The same implementation, for an action that waits for approval (owner decision of 18 Nov).
+    { provide: SYSTEM_ACTION_PROPOSER, useExisting: SYSTEM_REQUEST_RECORDER },
     {
       provide: POLICY_AREA_REVERTER,
       inject: [DEPENDENCIES],
@@ -205,7 +233,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       },
     },
   ],
-  exports: [SYSTEM_REQUEST_RECORDER, SYSTEM_CHANGE_REVERTERS],
+  exports: [SYSTEM_REQUEST_RECORDER, SYSTEM_ACTION_PROPOSER, SYSTEM_CHANGE_REVERTERS],
 })
 export class SystemRequestsModule implements OnApplicationBootstrap {
   constructor(@Inject(REVERTER_REGISTRY) private readonly reverters: ReverterRegistry) {}

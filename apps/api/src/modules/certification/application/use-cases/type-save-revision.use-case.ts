@@ -24,6 +24,13 @@ import {
   type RegistryDependencies,
   type ValidationFailure,
 } from '../registry/registry.shared';
+import {
+  CERTIFICATION_REVIEW_AREA,
+  requestRef,
+  revisionValues,
+  TYPE_REVISION_SUBJECT_KIND,
+  type CertificationRequestRef,
+} from '../registry/certification-review';
 import { typeRevisionContentIn } from '../registry/type-content';
 
 export interface TypeSaveRevisionInput {
@@ -33,6 +40,11 @@ export interface TypeSaveRevisionInput {
   readonly content: unknown;
   /** Optional, at most 500 characters; stored only encrypted on the revision (design 3.7). */
   readonly reason?: unknown;
+  /**
+   * The admin's note for the reviewer (Admin Inbox › System requests, area certification): 1 to
+   * 500 characters, needed only when the save is published while the Market reviews the area.
+   */
+  readonly note?: unknown;
 }
 
 export type TypeSaveRevisionOutput =
@@ -43,6 +55,8 @@ export type TypeSaveRevisionOutput =
       readonly revisionNo: number;
       readonly version: number;
       readonly claimTermsChanged: boolean;
+      /** The review this publication opened; null when the Market does not review the area. */
+      readonly request: CertificationRequestRef;
     }
   | {
       readonly outcome: 'pending-second-admin';
@@ -53,6 +67,8 @@ export type TypeSaveRevisionOutput =
       /** The type is unchanged until the approval. */
       readonly version: number;
       readonly relaxations: readonly TypeRelaxation[];
+      /** Always null: nothing is live yet; the second admin's approval is the check. */
+      readonly request: null;
     };
 
 export type TypeSaveRevisionFailure =
@@ -80,8 +96,10 @@ const logger = new Logger('CertificationTypeRevision');
  * it is published only when a second admin approves it. While one is pending, every save is
  * refused (`review.proposal-pending`, design 7.6). The optional reason is sealed under its own
  * key, the revision id, inside the unit (CE8). Approved certificates keep their own revision, so
- * no certificate's status or badge text changes (AC 19). Rule: key `certification.type.edit`
- * (protected), the admin population, not acting-as.
+ * no certificate's status or badge text changes (AC 19). A published revision opens its review
+ * in Admin Inbox › System requests in the same unit (area certification; the `note` is checked
+ * there and a refusal rolls the save back); a pending one opens none. Rule: key
+ * `certification.type.edit` (protected), the admin population, not acting-as.
  */
 export class TypeSaveRevision extends UseCase<
   TypeSaveRevisionInput,
@@ -147,9 +165,8 @@ export class TypeSaveRevision extends UseCase<
     );
     if (!checked.ok) return err({ code: 'type.revision-invalid', issues: checked.error });
     const content = checked.value;
-    if (typeRevisionDiff(published.content, content).length === 0) {
-      return err({ code: 'type.revision-unchanged' });
-    }
+    const diff = typeRevisionDiff(published.content, content);
+    if (diff.length === 0) return err({ code: 'type.revision-unchanged' });
     const classification = classifyTypeRevision(published.content, content);
     const publication = publicationOf(classification);
 
@@ -163,6 +180,13 @@ export class TypeSaveRevision extends UseCase<
         if (current === null) return err({ code: 'type.not-found' } as const);
         if (current.version !== version.value || current.publishedRevisionId !== published.id) {
           return err({ code: 'conflict.stale' } as const);
+        }
+        // A relaxing save does not move the type's pointer, so it locks the row itself before
+        // the pending-proposal check: it then serialises with a revert of the same type (which
+        // locks the row first, too), and neither sees the other half done. A publish-now save
+        // takes the same lock when it moves the pointer under the version guard.
+        if (publication !== 'publish-now') {
+          await deps.registry.lockType(market, typeId, version.value);
         }
         if ((await deps.registry.pendingProposal(market, 'type-revision', typeId)) !== null) {
           return err({ code: 'review.proposal-pending' } as const);
@@ -204,6 +228,20 @@ export class TypeSaveRevision extends UseCase<
               },
             }),
           ]);
+          // The publication is live; its review opens in the same unit, under the type's row
+          // lock the publication took (a refusal, such as a missing note, rolls it all back).
+          const review = await deps.review.openReview(context, {
+            area: CERTIFICATION_REVIEW_AREA,
+            subjectKind: TYPE_REVISION_SUBJECT_KIND,
+            subjectRef: typeId,
+            before: revisionValues({ id: published.id, revisionNo: published.revisionNo }),
+            after: revisionValues(
+              { id: revisionId, revisionNo },
+              diff.map((entry) => entry.path),
+            ),
+            note: input.note,
+          });
+          if (!review.ok) return err(review.error);
           return ok({
             outcome: 'published' as const,
             typeId,
@@ -211,6 +249,7 @@ export class TypeSaveRevision extends UseCase<
             revisionNo,
             version: version.value + 1,
             claimTermsChanged: classification.claimTermsChanged,
+            request: requestRef(review.value),
           });
         }
 
@@ -249,6 +288,7 @@ export class TypeSaveRevision extends UseCase<
           proposalId,
           version: version.value,
           relaxations: classification.relaxations,
+          request: null,
         });
       })
       .catch((error: unknown) =>

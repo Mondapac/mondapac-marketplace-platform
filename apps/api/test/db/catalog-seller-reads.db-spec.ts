@@ -9,6 +9,7 @@ import {
 import type { MarketContext } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import { OwnOfferRead } from '../../src/modules/catalog/application/use-cases/own-offer-read.use-case';
+import { OwnOffersExport } from '../../src/modules/catalog/application/use-cases/own-offers-export.use-case';
 import { OwnOffersList } from '../../src/modules/catalog/application/use-cases/own-offers-list.use-case';
 import { OwnProductRead } from '../../src/modules/catalog/application/use-cases/own-product-read.use-case';
 import { PlatformProductRead } from '../../src/modules/catalog/application/use-cases/platform-product-read.use-case';
@@ -89,6 +90,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
 
   const policy: CatalogMarketPolicy = {
     taxCategoryCodes: () => ['t1'],
+    taxCategories: () => ['t1'].map((code) => ({ code, labelKey: `catalog.tax.${code}` })),
     locales: () => ({ default: 'en', supported: ['en'] }),
     sensitiveChanges: () => ({
       platformCategories: true,
@@ -318,6 +320,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
   let read: OwnProductRead;
   let readPlatform: PlatformProductRead;
   let listOffers: OwnOffersList;
+  let exportOffers: OwnOffersExport;
   let readOffer: OwnOfferRead;
   beforeAll(() => {
     reader = new PrismaOwnCatalogReader(persistence.service);
@@ -357,6 +360,14 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       unitOfWork: persistence.unitOfWork,
       ownReader: reader,
       policy,
+      ownEditProbe: new OwnProductEditProbe(gate),
+    });
+    exportOffers = new OwnOffersExport(gate, {
+      unitOfWork: persistence.unitOfWork,
+      ownReader: reader,
+      policy,
+      sheetWriter: new ExceljsSheetWriter(),
+      clock,
     });
     readOffer = new OwnOfferRead(gate, {
       unitOfWork: persistence.unitOfWork,
@@ -922,7 +933,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       texts: { en: { name: 'Readable' } },
     });
     expect(own.value.variants).toHaveLength(1);
-    expect(own.value.form.taxCategoryCodes).toEqual(['t1']);
+    expect(own.value.form.taxCategories.map((c) => c.code)).toEqual(['t1']);
     expect(own.value.form.fields).toEqual(expect.any(Array));
     expect(own.value.form.categories).toEqual(expect.any(Array));
 
@@ -1055,6 +1066,279 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
     expect(listed.value.counts.published).toBe(0);
     const pending = await inUnit(() => reader.pendingReviewCount(market));
     expect(typeof pending).toBe('number');
+  });
+
+  it('lists the seller’s Offers as a super list: search, filters, sort, paging, counts and row actions', async () => {
+    const platform = await draftedProduct('PLATFORM', SELLER, 'Saffron Threads');
+    const published = await submit.execute(adminContext(), {
+      productId: platform.state.id,
+      replacePending: false,
+    });
+    if (!published.ok) throw new Error(published.error.code);
+    const tag = randomUUID().slice(0, 6);
+    // A seller holds one open Offer per product: the second Offer stands on another product.
+    const other = await draftedProduct('PLATFORM', SELLER, 'Saffron Powder');
+    const publishedOther = await submit.execute(adminContext(), {
+      productId: other.state.id,
+      replacePending: false,
+    });
+    if (!publishedOther.ok) throw new Error(publishedOther.error.code);
+    const first = await offerOn(platform.state.id, SELLER, `B-${tag}`);
+    const second = await offerOn(other.state.id, SELLER, `A-${tag}`);
+    const theirs = await offerOn(platform.state.id, OTHER, `T-${tag}`);
+    const ids = async (input: Record<string, unknown>) => {
+      const answer = await listOffers.execute(sellerContext(), input);
+      if (!answer.ok) throw new Error(JSON.stringify(answer.error));
+      return answer.value;
+    };
+    const idsOf = async (input: Record<string, unknown>) =>
+      (await ids(input)).items.map((item) => item.offerId);
+
+    // Text matches the SKU or the product name, case-insensitively, and never another seller's row.
+    expect(await idsOf({ q: tag.toUpperCase(), sort: 'sku', direction: 'asc' })).toEqual([
+      second.state.id,
+      first.state.id,
+    ]);
+    expect(await idsOf({ q: 'saffron', sort: 'sku' })).toEqual(
+      expect.arrayContaining([first.state.id, second.state.id]),
+    );
+    expect(await idsOf({ q: 'saffron' })).not.toContain(theirs.state.id);
+    expect(await idsOf({ q: `T-${tag}` })).toEqual([]);
+    // A SQL wildcard is matched as typed.
+    expect(await idsOf({ q: '%' })).toEqual([]);
+
+    // Tabs, the on-sale filter and the counts of the same search.
+    expect(await idsOf({ view: 'drafts', q: tag })).toHaveLength(2);
+    expect(await idsOf({ view: 'live', q: tag })).toEqual([]);
+    expect(await idsOf({ listed: true, q: tag })).toEqual([]);
+    expect(await idsOf({ listed: false, q: tag })).toHaveLength(2);
+    const counted = await ids({ q: tag });
+    expect(counted.counts).toMatchObject({ draft: 2, published: 0, all: 2 });
+
+    // Pages with a total, then Previous and Next without one; ties and edges are exact.
+    const page1 = await ids({ q: tag, sort: 'sku', direction: 'asc', page: 1, pageSize: 25 });
+    expect(page1).toMatchObject({ total: 2, page: 1, paging: 'pages', hasNext: false });
+    const prev1 = await ids({
+      q: tag,
+      sort: 'sku',
+      direction: 'asc',
+      page: 1,
+      paging: 'prev-next',
+    });
+    expect(prev1).toMatchObject({ total: null, paging: 'prev-next', hasNext: false });
+    const items = (answer: { items: readonly { offerId: string }[] }) =>
+      answer.items.map((item) => item.offerId);
+    expect(items(page1)).toEqual([second.state.id, first.state.id]);
+    expect(await idsOf({ q: tag, page: 2 })).toEqual([]);
+
+    // The row Actions menu of a draft.
+    const row = counted.items.find((item) => item.offerId === first.state.id)!;
+    expect('actions' in row && row.actions).toEqual(['open', 'edit', 'submit', 'delete']);
+
+    // The closed query: unknown keys and bad values are refused; keyset keys do not mix in.
+    const refused = (fields: { path: string; code: string }[]) => ({
+      ok: false,
+      error: { code: 'validation.failed', fields },
+    });
+    expect(await listOffers.execute(sellerContext(), { q: 'x', bogus: 1 } as never)).toEqual(
+      refused([{ path: 'bogus', code: 'unknown' }]),
+    );
+    expect(await listOffers.execute(sellerContext(), { q: 'x', limit: 5 })).toEqual(
+      refused([{ path: 'limit', code: 'unknown' }]),
+    );
+    expect(await listOffers.execute(sellerContext(), { sort: 'name' })).toEqual(
+      refused([{ path: 'sort', code: 'value' }]),
+    );
+    expect(await listOffers.execute(sellerContext(), { listed: 'yes' })).toEqual(
+      refused([{ path: 'listed', code: 'value' }]),
+    );
+  });
+
+  it('pages the Offer list exactly across ties, searches by product code and hides delete on own products', async () => {
+    const tag = randomUUID().slice(0, 6);
+    const made: Offer[] = [];
+    // 27 Offers of one status tie on every sort key but the id: page 2 holds the last two.
+    for (let n = 0; n < 27; n += 1) {
+      const product = await draftedProduct('PLATFORM', SELLER, `Tie ${n}`);
+      made.push(await offerOn(product.state.id, SELLER, `TIE-${tag}-${n}`));
+    }
+    // Another seller's Offer on another product, with a matching SKU, is never counted or listed.
+    const foreignProduct = await draftedProduct('PLATFORM', OTHER, 'Foreign');
+    const foreign = await offerOn(foreignProduct.state.id, OTHER, `TIE-${tag}-x`);
+    const run = async (input: Record<string, unknown>) => {
+      const answer = await listOffers.execute(sellerContext(), { q: `tie-${tag}`, ...input });
+      if (!answer.ok) throw new Error(JSON.stringify(answer.error));
+      return answer.value;
+    };
+    for (const sort of ['status', 'created', 'sku'] as const) {
+      const one = await run({ sort, direction: 'asc', page: 1, pageSize: 25 });
+      const two = await run({ sort, direction: 'asc', page: 2, pageSize: 25 });
+      expect(one).toMatchObject({ total: 27, hasNext: true });
+      expect(two).toMatchObject({ total: 27, hasNext: false });
+      const seen = [...one.items, ...two.items].map((item) => item.offerId);
+      expect(seen).toHaveLength(27);
+      expect(new Set(seen).size).toBe(27);
+      expect(seen).not.toContain(foreign.state.id);
+      const next = await run({
+        sort,
+        direction: 'asc',
+        page: 2,
+        pageSize: 25,
+        paging: 'prev-next',
+      });
+      expect(next).toMatchObject({ total: null, hasNext: false });
+      expect(next.items.map((item) => item.offerId)).toEqual(two.items.map((item) => item.offerId));
+      expect(
+        await run({ sort, direction: 'asc', page: 1, pageSize: 25, paging: 'prev-next' }),
+      ).toMatchObject({ total: null, hasNext: true });
+    }
+    expect((await run({ page: 1 })).counts).toMatchObject({ draft: 27, all: 27 });
+
+    // A blank search is no search; a product code finds its own Offer only.
+    const blank = await listOffers.execute(sellerContext(), { q: '   ', page: 1 });
+    expect(blank.ok && 'total' in blank.value && blank.value.total).toBeGreaterThanOrEqual(27);
+    const code = made[3]!;
+    const product = await inUnit(() => products.findById(market, code.state.productId));
+    const byCode = await listOffers.execute(sellerContext(), {
+      q: product!.state.productCode.toLowerCase(),
+    });
+    expect(byCode.ok && byCode.value.items.map((item) => item.offerId)).toEqual([code.state.id]);
+
+    // An Offer on the seller's own product cannot be deleted on its own: no delete action.
+    const own = await draftedProduct('SELLER', SELLER, 'Own product');
+    const ownOffer = await offerOn(own.state.id, SELLER, `OWN-${tag}`);
+    const ownList = await listOffers.execute(sellerContext(), { q: `own-${tag}` });
+    const ownRow = ownList.ok
+      ? ownList.value.items.find((i) => i.offerId === ownOffer.state.id)
+      : null;
+    expect(ownRow && 'actions' in ownRow && ownRow.actions).toEqual(['open', 'edit', 'submit']);
+  });
+
+  it('exports the seller’s Offers: selector, selected ids, columns, XLSX, and refuses what does not fit', async () => {
+    const tag = randomUUID().slice(0, 6);
+    const names = ['Export Alpha', 'Export Beta', 'Export Gamma'];
+    const made: Offer[] = [];
+    for (const [n, name] of names.entries()) {
+      const product = await draftedProduct('PLATFORM', SELLER, name);
+      const published = await submit.execute(adminContext(), {
+        productId: product.state.id,
+        replacePending: false,
+      });
+      if (!published.ok) throw new Error(published.error.code);
+      made.push(await offerOn(product.state.id, SELLER, `EXP-${tag}-${n}`));
+    }
+    const foreignProduct = await draftedProduct('PLATFORM', OTHER, 'Export Foreign');
+    const foreign = await offerOn(foreignProduct.state.id, OTHER, `EXP-${tag}-f`);
+    const run = async (input: Record<string, unknown>) => {
+      const answer = await exportOffers.execute(sellerContext(), input);
+      if (!answer.ok) return answer;
+      let text = '';
+      for await (const chunk of answer.value.chunks) {
+        text += typeof chunk === 'string' ? chunk : '';
+      }
+      return { ok: true as const, file: answer.value, text };
+    };
+    const lines = (text: string) =>
+      text
+        .replace(/^\uFEFF/, '')
+        .trim()
+        .split('\r\n');
+
+    const all = await run({ q: `exp-${tag}`, sort: 'sku', direction: 'asc' });
+    if (!all.ok) throw new Error(JSON.stringify(all.error));
+    expect(all.file.filename).toBe(
+      'offers-2026-01-01.csv'.replace('2026-01-01', T0.toString().slice(0, 10)),
+    );
+    expect(all.file.contentType).toBe('text/csv; charset=utf-8');
+    const rows = lines(all.text);
+    expect(rows[0]).toBe('SKU,Product,Status,Product code,On sale');
+    expect(rows).toHaveLength(4);
+    expect(rows[1]).toMatch(new RegExp(`^EXP-${tag}-0,Export Alpha,Draft,X[0-9A-Z]+,No$`));
+    expect(all.text).not.toContain(foreign.state.sellerSku);
+
+    // Selected ids: exactly those, in the order of the sort; columns after the fixed three.
+    const picked = await run({
+      offerIds: `${made[2]!.state.id},${made[0]!.state.id}`,
+      columns: 'created,type',
+      sort: 'sku',
+      direction: 'desc',
+    });
+    if (!picked.ok) throw new Error(JSON.stringify(picked.error));
+    const pickedRows = lines(picked.text);
+    expect(pickedRows[0]).toBe('SKU,Product,Status,Created,Product type');
+    expect(pickedRows.map((row) => row.split(',')[0])).toEqual([
+      'SKU',
+      `EXP-${tag}-2`,
+      `EXP-${tag}-0`,
+    ]);
+
+    // XLSX leaves as bytes of a zip.
+    const xlsx = await exportOffers.execute(sellerContext(), { q: `exp-${tag}`, format: 'xlsx' });
+    if (!xlsx.ok) throw new Error(JSON.stringify(xlsx.error));
+    expect(xlsx.value.filename).toMatch(/\.xlsx$/);
+    const bytes: Uint8Array[] = [];
+    for await (const chunk of xlsx.value.chunks) bytes.push(chunk as Uint8Array);
+    expect(Buffer.concat(bytes).subarray(0, 2).toString()).toBe('PK');
+
+    // Refusals: another seller's id is one answer with an unknown id; keys of the list are refused.
+    const notFound = { ok: false, error: { code: 'offer.not-found' } };
+    expect(await run({ offerIds: foreign.state.id })).toEqual(notFound);
+    expect(await run({ offerIds: uuid7() })).toEqual(notFound);
+    expect(await run({ offerIds: `${made[0]!.state.id},${foreign.state.id}` })).toEqual(notFound);
+    const refused = (path: string, code: string) => ({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path, code }] },
+    });
+    expect(await run({ page: 1 })).toEqual(refused('page', 'unknown'));
+    expect(await run({ paging: 'prev-next' })).toEqual(refused('paging', 'unknown'));
+    expect(await run({ columns: 'price' })).toEqual(refused('columns', 'value'));
+    expect(await run({ format: 'pdf' })).toEqual(refused('format', 'value'));
+    expect(await run({ offerIds: 'nope' })).toEqual(refused('offerIds', 'format'));
+    expect(await run({ offerIds: `${made[0]!.state.id},${made[0]!.state.id}` })).toEqual(
+      refused('offerIds', 'duplicate'),
+    );
+    const tooMany = Array.from({ length: 101 }, () => uuid7()).join(',');
+    expect(await run({ offerIds: tooMany })).toEqual({
+      ok: false,
+      error: { code: 'batch.too-large', max: 100 },
+    });
+  });
+
+  it('writes user text into an Offers export as text, and streams more than one chunk in order', async () => {
+    const tag = randomUUID().slice(0, 6);
+    const sku = (n: number) => `=${tag}-${String(n).padStart(3, '0')}`;
+    const made: Offer[] = [];
+    // 105 Offers: the second chunk (after 100) is read after the answer; a SKU may start with "=".
+    for (let n = 0; n < 105; n += 1) {
+      const product = await draftedProduct('PLATFORM', SELLER, `Chunk ${n}`);
+      made.push(await offerOn(product.state.id, SELLER, sku(n)));
+    }
+    const answer = await exportOffers.execute(sellerContext(), {
+      q: tag,
+      sort: 'sku',
+      direction: 'asc',
+    });
+    if (!answer.ok) throw new Error(JSON.stringify(answer.error));
+    let text = '';
+    for await (const chunk of answer.value.chunks) text += chunk as string;
+    const rows = text
+      .replace(/^\uFEFF/, '')
+      .trim()
+      .split('\r\n');
+    expect(rows).toHaveLength(106);
+    // Formula guard: a cell that starts with "=" is written with a leading quote.
+    expect(rows[1]!.startsWith(`'=${tag}-000,`) || rows[1]!.startsWith(`"'=${tag}-000"`)).toBe(
+      true,
+    );
+    expect(rows.slice(1).map((row) => row.replace(/^"?'?=/, '').slice(0, tag.length + 4))).toEqual(
+      made.map((_, n) => `${tag}-${String(n).padStart(3, '0')}`),
+    );
+    // A customer or visitor is refused before any read.
+    const refused = await exportOffers.execute(
+      { ...sellerContext(), actor: { kind: 'anonymous' } } as never,
+      {},
+    );
+    expect(refused.ok).toBe(false);
   });
 
   describe('offerTotalsOfProduct', () => {

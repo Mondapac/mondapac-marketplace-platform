@@ -35,15 +35,35 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/store-settings',
     // The seller's reviews (query: `cursor`), read again for "Show more".
     'reviews/seller',
+    // The seller's reviews as a super list (reviews; query: `view`, `reply`, `minRating`,
+    // `maxRating`, `q`, `from`, `to`, `sort`, `direction`, `paging`, `page`, `pageSize`) and its
+    // export as a file (the chosen ids or the list's own query).
+    'reviews/seller/list',
+    'reviews/seller/export',
     'payments/seller/payout-account',
     'ordering/seller/orders',
+    // The shop's invite link and its sign-up count (customers phase 4a).
+    'customers/seller/invite-link',
+    // The seller's own promotions (query: `type`, `limit`): the exclusive discount and cashback are two of them.
+    'promotions/seller/promotions',
+    // The Offer list (list mode: tabs, search, filters, sort and page; the API validates every value).
+    'catalog/seller/offers',
+    // The Offers export (file): the list's selector, the format, the columns and the selected ids.
+    'catalog/seller/offers/export',
+    // The export of the order list as a CSV file (ordering): the list's own filter.
+    'ordering/seller/orders/export',
     // The saved views of the order list (ordering; query: `listKey`).
     'ordering/seller/saved-filters',
     'commission-payouts/seller/ledger',
+    // The lower commission on the shop's exclusive customers and what it saved (no query).
+    'commission-payouts/seller/exclusive-commission',
     // The estimated next payout, the payout history (query: `limit`, `cursor`) and the money on
     // hold (commission-payouts, package 6d). The seller id is the session's, never a parameter.
     'commission-payouts/seller/payouts/next',
+    // The earnings list (super list 33; query: the keys in QUERY_KEYS) and the same rows as a
+    // file (CSV or XLSX, an attachment).
     'commission-payouts/seller/payouts',
+    'commission-payouts/seller/payouts/export',
     'commission-payouts/seller/payout-holds',
     // The topbar bell (in-app notifications package 2): the list (query: `show`, `before`) and
     // the unread count it polls.
@@ -58,6 +78,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // direction, page, pageSize). The keyset parameters (`afterId`, `limit`) are read by the
     // panel's server pages only and do not cross.
     'catalog/seller/products',
+    // The category choices of the product form (catalog, categories C5a): levels 3 and 4, no hidden node.
+    'catalog/seller/products/category-picker',
     // The Products list as a file (CSV or XLSX): the list's selector plus format, columns and the
     // selected product ids; the answer is an attachment.
     'catalog/seller/products/export',
@@ -88,6 +110,16 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
   ]),
   DELETE: new Set(['sellers/store-profile/logo', 'sellers/store-profile/banner']),
   POST: new Set([
+    // The Customers list (a JSON body: view, search, filters, sort, page) and its export as a file
+    // (the body names at most 1,000 codes, or the list's selector). Reads, but the filters are a document.
+    'customers/seller/customers/list',
+    'customers/seller/customers/export',
+    // Draws a new invite link; the old one stops working. No body.
+    'customers/seller/invite-link/refresh',
+    // A seller promotion (the exclusive discount is of type CUSTOMER_GROUP, the cashback of type CASHBACK).
+    'promotions/seller/promotions',
+    // The packing slips of a selection of orders (up to 50 ids in the body; a read).
+    'ordering/seller/orders/documents',
     // A description draft from the "Write with AI" modal (catalog, AIS-03): the form's title,
     // category label, details, keywords and note in; plain text out. Nothing is stored.
     'catalog/own/description-writer/drafts',
@@ -177,7 +209,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/seller/imports/:id/resume',
     'catalog/seller/imports/:id/discard',
     'catalog/seller/imports/:id/photos',
+    // The seller's steps on an order: mark ready, hand over a pickup, mark delivered.
     'ordering/seller/orders/:id/ship',
+    'ordering/seller/orders/:id/ready',
+    'ordering/seller/orders/:id/confirm-pickup',
     'ordering/seller/orders/:id/deliver',
     // Mark units unavailable and refund them (protected: step-up), and add a note to the order.
     'ordering/seller/orders/:id/unavailable',
@@ -189,8 +224,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'reviews/seller/:id/report',
     // "Refresh now" of the seller's health (queues a recount; 15-minute cooldown).
     'sellers/own-health/refresh',
+    // Pause and resume one of the seller's own promotions.
+    'promotions/seller/promotions/:id/pause',
+    'promotions/seller/promotions/:id/resume',
   ],
-  PATCH: ['reviews/seller/:id/reply'],
+  PATCH: ['reviews/seller/:id/reply', 'promotions/seller/promotions/:id'],
   DELETE: [
     'catalog/seller/offers/:id',
     'catalog/seller/products/:id/images/:id',
@@ -205,11 +243,26 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // An import (polled) and its CSV report (query: `kind`).
     'catalog/seller/imports/:id',
     'catalog/seller/imports/:id/report',
+    // One of the shop's customers by code (query: `page`, `pageSize` of their orders).
+    'customers/seller/customers/:code',
   ],
 };
 
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/;
+/** The earnings list's filters and sort (commission-payouts validates every value again). */
+const OWN_PAYOUT_SELECTOR: Readonly<Record<string, RegExp>> = {
+  status: /^(scheduled|awaiting-approval|on-its-way|paid|not-sent|failed|settled)$/,
+  // A payout id, exact.
+  q: UUID,
+  from: ISO_INSTANT,
+  to: ISO_INSTANT,
+  minAmount: /^[0-9]{1,15}$/,
+  maxAmount: /^[0-9]{1,15}$/,
+  sort: /^(created|amount|slot)$/,
+  direction: /^(asc|desc)$/,
+};
 /** Per GET target, the query keys passed on and, where set, the shape each value must have. */
 const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>>>> = {
   // The page mode and the filters of the orders list (the API validates every value).
@@ -220,19 +273,75 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     pageSize: null,
     sort: null,
     direction: null,
+    paging: /^(pages|prev-next)$/,
+    q: null,
     status: null,
     from: null,
     to: null,
   },
+  'ordering/seller/orders/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(delivery|items|currency|subtotal|shipping|tax|total|carrier|tracking|ready|shipped|delivered)(,(delivery|items|currency|subtotal|shipping|tax|total|carrier|tracking|ready|shipped|delivered)){0,11}$/,
+    // At most 100 selected seller order ids, one list page.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i,
+    status: /^(to-ship|shipped|delivered)$/,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{8,16}Z$/,
+  },
+  // The seller's own promotions list: the type filter and the page size.
+  'promotions/seller/promotions': {
+    // Only what the Exclusive perks page asks for: the discount and the cashback.
+    type: /^(CUSTOMER_GROUP|CASHBACK)$/,
+    limit: /^[0-9]{1,3}$/,
+  },
   'ordering/seller/saved-filters': { listKey: /^seller\.ordering\.orders$/ },
   'commission-payouts/seller/ledger': { limit: null, cursor: null },
-  // The API's own cursor: epoch milliseconds of the creation, a dot and the payout id.
+  // The earnings list: page numbers with a total, or Previous/Next with the API's own cursor
+  // (epoch milliseconds of the creation, a dot and the payout id).
   'commission-payouts/seller/payouts': {
     limit: /^[0-9]{1,3}$/,
     cursor: /^[0-9]{1,15}\.[0-9a-f-]{36}$/,
+    page: /^[0-9]{1,5}$/,
+    pageSize: /^[0-9]{1,3}$/,
+    ...OWN_PAYOUT_SELECTOR,
+  },
+  // The export: the list's selector (no page), the format, the extra columns and the chosen ids
+  // (at most 200, see QUERY_VALUE_MAX_FOR).
+  'commission-payouts/seller/payouts/export': {
+    format: /^(csv|xlsx)$/,
+    columns: /^(gross|netted|slot|updated)(,(gross|netted|slot|updated)){0,3}$/,
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    ...OWN_PAYOUT_SELECTOR,
   },
   'identity/seller/team': { after: UUID },
   'catalog/seller/topics': { search: null, afterId: UUID, limit: /^[0-9]{1,3}$/ },
+  'catalog/seller/offers': {
+    view: /^(all|drafts|in-review|changes-needed|live)$/,
+    q: null,
+    status: /^(draft|pending-first-publish|changes-needed|published)$/,
+    listed: /^(true|false)$/,
+    sort: /^(created|sku|status)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[0-9]{1,5}$/,
+    pageSize: /^(25|50|100)$/,
+    paging: /^(pages|prev-next)$/,
+    afterId: UUID,
+    limit: /^[0-9]{1,2}$/,
+  },
+  'catalog/seller/offers/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(sku|product|status|code|listed|created|type)(,(sku|product|status|code|listed|created|type)){0,6}$/,
+    offerIds:
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i,
+    view: /^(all|drafts|in-review|changes-needed|live)$/,
+    q: null,
+    status: /^(draft|pending-first-publish|changes-needed|published)$/,
+    listed: /^(true|false)$/,
+    sort: /^(created|sku|status)$/,
+    direction: /^(asc|desc)$/,
+  },
   'catalog/seller/products': {
     view: /^(all|drafts|live|inactive|in-review)$/,
     // Free text up to the API's 100 characters (it refuses control characters itself).
@@ -265,17 +374,55 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   },
   'catalog/seller/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
   'notifications/seller/notices': { show: /^(unread|read|all)$/, before: UUID },
+  'reviews/seller/list': {
+    view: /^(all|unanswered|answered|low)$/,
+    reply: /^(none|published)$/,
+    minRating: /^[1-5]$/,
+    maxRating: /^[1-5]$/,
+    // Free text up to the API's 100 characters, or a review, order, Offer or product id.
+    q: null,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    sort: /^(published|rating)$/,
+    direction: /^(asc|desc)$/,
+    paging: /^(pages|prev-next)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'reviews/seller/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(review-id|order-ref|product-id|offer-id|locale|reply|replied)(,(review-id|order-ref|product-id|offer-id|locale|reply|replied)){0,6}$/,
+    // At most 200 review ids, the cap of a selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(all|unanswered|answered|low)$/,
+    reply: /^(none|published)$/,
+    minRating: /^[1-5]$/,
+    maxRating: /^[1-5]$/,
+    // Free text up to the API's 100 characters, or a review, order, Offer or product id.
+    q: null,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    sort: /^(published|rating)$/,
+    direction: /^(asc|desc)$/,
+  },
   // The API's own opaque cursor (epoch milliseconds of the publication, an underscore, the review id).
   'reviews/seller': { cursor: /^[0-9]{1,15}_[0-9a-f-]{36}$/ },
 };
 /** Per GET template with ids, the query keys passed on (same rules as {@link QUERY_KEYS}). */
 const QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp | null>>>> = {
+  'customers/seller/customers/:code': { page: /^[0-9]{1,4}$/, pageSize: /^[0-9]{1,3}$/ },
   'catalog/seller/imports/:id/report': { kind: /^(errors|full)$/ },
 };
 const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 100 ids of 36 characters and 99 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/seller/products/export:productIds': 3700,
+  // 200 ids of 36 characters and 199 commas.
+  'commission-payouts/seller/payouts/export:ids': 7400,
+  'reviews/seller/export:ids': 7400,
+  'ordering/seller/orders/export:ids': 3700,
+  'catalog/seller/offers/export:offerIds': 3700,
 };
 
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */
@@ -299,6 +446,9 @@ function upstreamQuery(method: string, path: readonly string[], requestUrl: stri
 }
 
 /** The picture sizes the panel may ask for: a product photo's three, and a store image's small. */
+/** A customer code as the shop knows it (`XXXX-XXXX`); a typed start is shorter, so this is only the shape. */
+const CUSTOMER_CODE = /^[0-9A-Za-z-]{1,12}$/;
+
 const PHOTO_SIZES: ReadonlySet<string> = new Set(['thumb', 'medium', 'large', 'small']);
 
 function matches(template: string, path: readonly string[]): boolean {
@@ -310,7 +460,9 @@ function matches(template: string, path: readonly string[]): boolean {
         ? UUID.test(path[index] ?? '')
         : part === ':size'
           ? PHOTO_SIZES.has(path[index] ?? '')
-          : part === path[index],
+          : part === ':code'
+            ? CUSTOMER_CODE.test(path[index] ?? '')
+            : part === path[index],
     )
   );
 }

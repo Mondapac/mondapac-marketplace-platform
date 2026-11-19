@@ -99,6 +99,20 @@ export interface ConversationRepository {
     },
   ): Promise<void>;
   /**
+   * The start and last-message instants of one account's conversations of the Market, by start
+   * then id in the direction given (customers management phase 2b). Never a message.
+   */
+  datesOfAccount(
+    market: MarketContext,
+    accountId: Id<'Account'>,
+    direction: 'asc' | 'desc',
+    window: { readonly offset: number; readonly limit: number },
+  ): Promise<
+    readonly { readonly startedAt: Temporal.Instant; readonly lastMessageAt: Temporal.Instant }[]
+  >;
+  /** How many conversations one account of the Market has. */
+  countOfAccount(market: MarketContext, accountId: Id<'Account'>): Promise<number>;
+  /**
    * One page of an account's conversations that keep text, newest activity first, after `after`:
    * a conversation that stored `retentionDays` is listed only when its last message is at or
    * after `visibleSince[retentionDays]` (a stored retention missing from the map is not listed).

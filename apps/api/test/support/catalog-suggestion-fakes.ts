@@ -91,13 +91,32 @@ export class MemoryAttributeValueSuggestionStore implements AttributeValueSugges
     );
   }
 
-  listOpen(market: MarketContext, limit: number) {
-    return Promise.resolve(
-      [...this.rows.values()]
-        .filter((row) => row.state.marketId === market.marketId && row.state.status === 'open')
-        .sort((a, b) => a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds)
-        .slice(0, limit),
+  #open(market: MarketContext, text: string | null) {
+    return [...this.rows.values()].filter(
+      (row) =>
+        row.state.marketId === market.marketId &&
+        row.state.status === 'open' &&
+        (text === null || row.state.label.toLowerCase().includes(text.toLowerCase())),
     );
+  }
+
+  pageOpen(
+    market: MarketContext,
+    page: { text: string | null; direction: 'asc' | 'desc'; offset: number; limit: number },
+  ) {
+    const sign = page.direction === 'asc' ? 1 : -1;
+    return Promise.resolve(
+      this.#open(market, page.text)
+        .sort(
+          (a, b) =>
+            sign * (a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds),
+        )
+        .slice(page.offset, page.offset + page.limit),
+    );
+  }
+
+  countOpen(market: MarketContext, filter: { text: string | null }) {
+    return Promise.resolve(this.#open(market, filter.text).length);
   }
 
   listOfProduct(market: MarketContext, productId: Id<'Product'>, limit: number) {
@@ -109,6 +128,66 @@ export class MemoryAttributeValueSuggestionStore implements AttributeValueSugges
         .sort((a, b) => b.state.createdAt.epochMilliseconds - a.state.createdAt.epochMilliseconds)
         .slice(0, limit),
     );
+  }
+
+  #own(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: { status: SuggestionStatus | null; text: string | null },
+  ) {
+    return [...this.rows.values()].filter(
+      ({ state }) =>
+        state.marketId === market.marketId &&
+        state.sellerId === sellerId &&
+        (filter.status === null || state.status === filter.status) &&
+        (filter.text === null || state.label.toLowerCase().includes(filter.text.toLowerCase())),
+    );
+  }
+
+  pageOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    page: {
+      status: SuggestionStatus | null;
+      text: string | null;
+      sort: 'created' | 'status' | 'label';
+      direction: 'asc' | 'desc';
+      offset: number;
+      limit: number;
+    },
+  ) {
+    const sign = page.direction === 'asc' ? 1 : -1;
+    const created = (
+      a: { state: { createdAt: { epochMilliseconds: number }; id: string } },
+      b: typeof a,
+    ) =>
+      a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds ||
+      (a.state.id < b.state.id ? -1 : 1);
+    return Promise.resolve(
+      this.#own(market, sellerId, page)
+        .sort((a, b) => {
+          if (page.sort === 'status') {
+            return a.state.status === b.state.status
+              ? -created(a, b)
+              : sign * (a.state.status < b.state.status ? -1 : 1);
+          }
+          if (page.sort === 'label') {
+            return a.state.label === b.state.label
+              ? sign * (a.state.id < b.state.id ? -1 : 1)
+              : sign * (a.state.label < b.state.label ? -1 : 1);
+          }
+          return sign * created(a, b);
+        })
+        .slice(page.offset, page.offset + page.limit),
+    );
+  }
+
+  countOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: { status: SuggestionStatus | null; text: string | null },
+  ) {
+    return Promise.resolve(this.#own(market, sellerId, filter).length);
   }
 
   listOfSeller(
@@ -224,13 +303,32 @@ export class MemoryTopicSuggestionStore implements TopicSuggestionStore {
     );
   }
 
-  listOpen(market: MarketContext, limit: number) {
-    return Promise.resolve(
-      [...this.rows.values()]
-        .filter(({ state }) => state.marketId === market.marketId && state.status === 'open')
-        .sort((a, b) => a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds)
-        .slice(0, limit),
+  #open(market: MarketContext, text: string | null) {
+    return [...this.rows.values()].filter(
+      ({ state }) =>
+        state.marketId === market.marketId &&
+        state.status === 'open' &&
+        (text === null || state.label.toLowerCase().includes(text.toLowerCase())),
     );
+  }
+
+  pageOpen(
+    market: MarketContext,
+    page: { text: string | null; direction: 'asc' | 'desc'; offset: number; limit: number },
+  ) {
+    const sign = page.direction === 'asc' ? 1 : -1;
+    return Promise.resolve(
+      this.#open(market, page.text)
+        .sort(
+          (a, b) =>
+            sign * (a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds),
+        )
+        .slice(page.offset, page.offset + page.limit),
+    );
+  }
+
+  countOpen(market: MarketContext, filter: { text: string | null }) {
+    return Promise.resolve(this.#open(market, filter.text).length);
   }
 
   listOfProduct(market: MarketContext, productId: Id<'Product'>, limit: number) {
@@ -239,6 +337,66 @@ export class MemoryTopicSuggestionStore implements TopicSuggestionStore {
         .filter(({ state }) => state.marketId === market.marketId && state.productId === productId)
         .slice(0, limit),
     );
+  }
+
+  #own(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: { status: TopicSuggestionStatus | null; text: string | null },
+  ) {
+    return [...this.rows.values()].filter(
+      ({ state }) =>
+        state.marketId === market.marketId &&
+        state.sellerId === sellerId &&
+        (filter.status === null || state.status === filter.status) &&
+        (filter.text === null || state.label.toLowerCase().includes(filter.text.toLowerCase())),
+    );
+  }
+
+  pageOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    page: {
+      status: TopicSuggestionStatus | null;
+      text: string | null;
+      sort: 'created' | 'status' | 'label';
+      direction: 'asc' | 'desc';
+      offset: number;
+      limit: number;
+    },
+  ) {
+    const sign = page.direction === 'asc' ? 1 : -1;
+    const created = (
+      a: { state: { createdAt: { epochMilliseconds: number }; id: string } },
+      b: typeof a,
+    ) =>
+      a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds ||
+      (a.state.id < b.state.id ? -1 : 1);
+    return Promise.resolve(
+      this.#own(market, sellerId, page)
+        .sort((a, b) => {
+          if (page.sort === 'status') {
+            return a.state.status === b.state.status
+              ? -created(a, b)
+              : sign * (a.state.status < b.state.status ? -1 : 1);
+          }
+          if (page.sort === 'label') {
+            return a.state.label === b.state.label
+              ? sign * (a.state.id < b.state.id ? -1 : 1)
+              : sign * (a.state.label < b.state.label ? -1 : 1);
+          }
+          return sign * created(a, b);
+        })
+        .slice(page.offset, page.offset + page.limit),
+    );
+  }
+
+  countOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: { status: TopicSuggestionStatus | null; text: string | null },
+  ) {
+    return Promise.resolve(this.#own(market, sellerId, filter).length);
   }
 
   listOfSeller(

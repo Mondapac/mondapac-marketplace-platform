@@ -1,59 +1,95 @@
 'use client';
 
 import {
-  Banner,
   Button,
-  ColumnPickerPanel,
   EmptyState,
-  Icon,
-  LoadError,
-  Pagination,
-  PrevNext,
-  Popover,
-  Select,
-  SkeletonRows,
-  Tabs,
-  TextField,
+  SuperList,
   browserStorage,
+  listSkeletonRowCount,
   prefsKey,
   readIds,
+  useListLoading,
+  useRowSelection,
+  useSuperListQuery,
   writeIds,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { SelectionBar } from '../sales/selection-bar.tsx';
+import { SEARCH_MAX, routeSearch } from '../sales/search-route.ts';
+import { numberFormat } from '../shared/intl.ts';
+import { OrdersBulk } from './orders-bulk.tsx';
+import { DEFAULT_COLUMNS, cleanColumns, type OrderColumn } from './orders-columns.ts';
+import { OrdersColumnsPanel } from './orders-columns-panel.tsx';
+import { OrdersFilterPanel } from './orders-filter-panel.tsx';
 import {
-  DEFAULT_COLUMNS,
-  OPTIONAL_COLUMNS,
-  cleanColumns,
-  type OrderColumn,
-} from './orders-columns.ts';
-import { OrdersSavedViews } from './orders-saved-views.tsx';
-import { LIST_KEY, stateOf, type SavedFilter, type SavedFiltersAnswer } from './orders-saved.ts';
-import { OrdersTable } from './orders-table.tsx';
-import {
-  FULFILMENT_FILTERS,
+  DEFAULT_QUERY,
   MAX_PAGED_ROWS,
-  NO_FILTERS,
   PAGE_SIZE,
-  PAYMENT_FILTERS,
-  SORTS,
-  pageCountOf,
-  queryOf,
+  daysLabel,
+  filterCount,
+  queryString,
   rangeIsBackwards,
+  type Direction,
   type ListPaging,
-  type OrderFilters,
-  type SortId,
+  type Query,
+  type SortField,
 } from './orders-query.ts';
-import { FILTERS, type AdminOrder, type AdminOrderPage } from './types.ts';
+import { useOrderRowActions } from './orders-row-actions.tsx';
+import { OrdersSavedViews } from './orders-saved-views.tsx';
+import { LIST_KEY, queryOf, type SavedFilter, type SavedFiltersAnswer } from './orders-saved.ts';
+import { OrdersSortPanel } from './orders-sort-panel.tsx';
+import { OrdersTable } from './orders-table.tsx';
+import { FILTERS, type AdminOrderPage, type OrderCounts, type StatusFilter } from './types.ts';
+
+/** Rows that can be ticked one by one; "Select all matching" has no such limit. */
+const SELECTION_MAX = 100;
+const OPEN_ENDED = Number.MAX_SAFE_INTEGER;
+
+type Failure = 'refused' | 'search-unavailable' | 'unavailable';
+
+function failureOf(status: number, code: string): Failure {
+  // The API refused the query itself: asking again can never work.
+  if (code === 'validation.failed' || code === 'ordering.too-deep') return 'refused';
+  if (status === 503 && code === 'ordering.search-unavailable') return 'search-unavailable';
+  return 'unavailable';
+}
+
+const noActions = () => [];
+
+// The query rules of the kit hook, kept at module level so they stay the same between renders.
+const forView = (view: string): Query => ({ ...DEFAULT_QUERY, tab: view as StatusFilter });
+const withView = (current: Query, view: string): Query => ({
+  ...current,
+  tab: view as StatusFilter,
+});
+const searchOf = (current: Query): string => current.q;
+// One character asks for nothing: the query keeps the search it had.
+const withSearch = (current: Query, text: string): Query =>
+  routeSearch(text).kind === 'too-short' ? current : { ...current, q: text };
+
+function countOf(counts: OrderCounts, tab: StatusFilter): number {
+  switch (tab) {
+    case 'all':
+      return counts.pendingPayment + counts.confirmed + counts.cancelled;
+    case 'pending-payment':
+      return counts.pendingPayment;
+    case 'confirmed':
+      return counts.confirmed;
+    case 'cancelled':
+      return counts.cancelled;
+  }
+}
 
 /**
- * The Market's orders (read-only): a tab for each status and for each saved filter, filters, a
- * sort, the column picker, and either page numbers with the total or Previous and next, as the
- * Market's List paging setting says. Previous and next keeps to newest first and walks the API's
- * cursors, so it works for any number of orders. The column choice is the admin's own and lives in
- * this browser's storage (the list works the same when storage is missing); a saved filter keeps
- * the tab, filters and sort on the server, for the admin or, with the share key, for everyone.
+ * The Market's orders (Orders; a super list): a tab for each status and for each saved filter,
+ * one search box (an order id, or a customer or store name), the filter, sort and column panels with
+ * their chips, then one page of orders. It follows the Market's List paging setting: page numbers
+ * with a total, or Previous and next (the API answers whether a next page exists). The column
+ * choice is the admin's own and lives in this browser's storage; a saved filter keeps the tab,
+ * filters and sort on the server, for the admin or, with the share key, for everyone. Rows can be
+ * selected; the Bulk action button has no action yet (Export follows with its endpoint).
  */
 export function OrdersList({
   paging = 'prev-next',
@@ -61,6 +97,7 @@ export function OrdersList({
   marketId,
   csrfToken = '',
   zone,
+  customerAccountId,
 }: {
   readonly paging?: ListPaging;
   readonly accountId: string;
@@ -68,369 +105,567 @@ export function OrdersList({
   readonly csrfToken?: string;
   /** The IANA zone of the table's times and of the day filters (ADR-0005). */
   readonly zone: string;
+  /**
+   * The Orders tab of a customer's page: only this customer's orders (`accountId`, fixed, not a
+   * chip), no Customer column, no saved filters (they belong to the Orders page) and no "select
+   * all matching" (the export route takes no customer, so a bulk export goes by ticked ids).
+   */
+  readonly customerAccountId?: string;
 }) {
   const t = useTranslations('orders');
+  const ts = useTranslations('sales-lists');
   const tl = useTranslations('load');
   const locale = useLocale();
-  const [filters, setFilters] = useState<OrderFilters>(NO_FILTERS);
-  const [sort, setSort] = useState<SortId>('newest');
-  const [page, setPage] = useState(1);
-  // Previous and next: the cursor that opened each page seen so far (the first page has none).
-  const [cursors, setCursors] = useState<readonly (string | null)[]>([null]);
-  const [rows, setRows] = useState<readonly AdminOrder[]>([]);
-  const [next, setNext] = useState<string | null>(null);
-  const [total, setTotal] = useState<number | null>(null);
+  const {
+    query,
+    draft,
+    setDraft,
+    savedId,
+    change,
+    goToPage,
+    openView,
+    openSaved: openSavedTab,
+    forgetSaved,
+    reset,
+  } = useSuperListQuery<Query>({
+    defaultQuery: DEFAULT_QUERY,
+    forView,
+    withView,
+    searchOf,
+    withSearch,
+  });
+
+  const [answer, setAnswer] = useState<AdminOrderPage | null>(null);
+  // The tab counts of the last answer: they stay while a search fails or a page loads.
+  const [counts, setCounts] = useState<OrderCounts | null>(null);
   const [loading, setLoading] = useState(true);
-  const [failed, setFailed] = useState(false);
-  const latest = useRef(0);
+  const [failure, setFailure] = useState<Failure | null>(null);
+  const [hinted, setHinted] = useState(false);
   const [columns, setColumns] = useState<readonly OrderColumn[]>(DEFAULT_COLUMNS);
   // The saved filters: null until they load, and when they cannot (the page then has the status
-  // tabs only). `savedId` is the saved tab the page is showing.
+  // tabs only).
   const [saved, setSaved] = useState<SavedFiltersAnswer | null>(null);
-  const [savedId, setSavedId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
-  const storageKey = prefsKey('admin', marketId, accountId, 'orders-columns');
+  const latest = useRef(0);
+  // A customer's Orders tab keeps its own column choice: it never shows the Customer column, so
+  // sharing the Orders page's choice would drop that column there.
+  const storageKey = prefsKey(
+    'admin',
+    marketId,
+    accountId,
+    customerAccountId === undefined ? 'orders-columns' : 'customer-orders-columns',
+  );
   // After a page change the focus moves to the top of the list, so a keyboard or screen reader
   // user starts on the new rows and not on the pager they used.
   const listTop = useRef<HTMLDivElement>(null);
   const focusList = useRef(false);
-  const backwards = rangeIsBackwards(filters);
-  const cursor = cursors[cursors.length - 1] ?? null;
-
-  const load = useCallback(async () => {
-    if (backwards) {
-      // An answer still on its way for the days as they were must not fill the list.
-      latest.current += 1;
-      setRows([]);
-      setNext(null);
-      setTotal(null);
-      setLoading(false);
-      setFailed(false);
-      return;
-    }
-    const ticket = ++latest.current;
-    setLoading(true);
-    setFailed(false);
-    const text = queryOf(
-      filters,
-      zone,
-      paging === 'pages' ? { paging, page, sort } : { paging, cursor },
-    );
-    const result = await callApi<AdminOrderPage>(
-      'GET',
-      `ordering/admin/orders${text === '' ? '' : `?${text}`}`,
-    );
-    if (ticket !== latest.current) return;
-    setLoading(false);
-    if (!result.ok) {
-      if (result.failure.status === 401) {
-        window.location.assign('/session-ended');
-        return;
-      }
-      setFailed(true);
-      setRows([]);
-      setNext(null);
-      setTotal(null);
-      return;
-    }
-    setRows(result.body.orders);
-    setNext(result.body.nextCursor);
-    setTotal(result.body.total ?? null);
-  }, [filters, zone, paging, page, sort, cursor, backwards]);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
+  const backwards = rangeIsBackwards(query.days) && query.filters.placed === undefined;
 
   useEffect(() => {
     setColumns(cleanColumns(readIds(browserStorage(), storageKey)));
   }, [storageKey]);
 
   const loadSaved = useCallback(async (): Promise<readonly SavedFilter[] | null> => {
+    if (customerAccountId !== undefined) return null;
     const result = await callApi<SavedFiltersAnswer>(
       'GET',
       `ordering/admin/saved-filters?listKey=${LIST_KEY}`,
     );
     if (!result.ok || !Array.isArray(result.body?.items)) return null;
     setSaved(result.body);
-    // A saved filter that was deleted (here or by its owner) is no longer the one on show.
-    setSavedId((current) =>
-      current !== null && result.body.items.some((item) => item.id === current) ? current : null,
-    );
     const items: readonly SavedFilter[] = result.body.items;
     return items;
-  }, []);
+  }, [customerAccountId]);
 
   useEffect(() => {
     void loadSaved();
   }, [loadSaved]);
 
-  const saveColumns = (next: readonly string[]) => {
-    const chosen = cleanColumns(next);
-    setColumns(chosen);
-    writeIds(browserStorage(), storageKey, chosen);
-  };
+  // A saved tab that was deleted (here or by its owner) is no longer the one on show.
+  useEffect(() => {
+    if (savedId !== null && saved !== null && !saved.items.some((item) => item.id === savedId)) {
+      forgetSaved();
+    }
+  }, [saved, savedId, forgetSaved]);
+
+  // The date presets are read at each load (and each Try again), on the clock of the list's zone,
+  // so a tab left open past midnight does not keep asking for yesterday's "Today".
+  const load = useCallback(
+    async (asked: Query) => {
+      if (rangeIsBackwards(asked.days) && asked.filters.placed === undefined) {
+        // An answer still on its way for the days as they were must not fill the list.
+        latest.current += 1;
+        setAnswer(null);
+        setLoading(false);
+        setFailure(null);
+        return;
+      }
+      const asText = queryString(asked, { paging, zone, now: new Date() });
+      const request =
+        customerAccountId === undefined
+          ? asText
+          : [`accountId=${encodeURIComponent(customerAccountId)}`, asText]
+              .filter(Boolean)
+              .join('&');
+      const ticket = ++latest.current;
+      setLoading(true);
+      setFailure(null);
+      const result = await callApi<AdminOrderPage>('GET', `ordering/admin/orders?${request}`);
+      if (ticket !== latest.current) return;
+      setLoading(false);
+      if (!result.ok) {
+        const { status, code } = result.failure;
+        if (status === 401) {
+          window.location.assign('/session-ended');
+          return;
+        }
+        setFailure(failureOf(status, code));
+        return;
+      }
+      setAnswer(result.body);
+      setCounts(result.body.counts);
+    },
+    [paging, zone, customerAccountId],
+  );
+
+  // A query that is equal in content is not a new list: load again only when it changed.
+  const queryNow = useRef(query);
+  queryNow.current = query;
+  const queryKey = JSON.stringify(query);
+  useEffect(() => {
+    void load(queryNow.current);
+  }, [load, queryKey]);
+
+  // A new tab, search, filter or sort is another list: the selection does not follow it. Paging
+  // keeps it, so rows can be ticked on several pages.
+  const listKey = JSON.stringify([
+    query.tab,
+    query.q,
+    query.filters,
+    query.days,
+    query.sort,
+    query.direction,
+  ]);
+  const rows = answer?.orders;
+  const pageIds = useMemo(() => rows?.map((row) => row.orderId) ?? [], [rows]);
+  const selection = useRowSelection(pageIds, SELECTION_MAX, listKey);
+  // On a customer's page every row is that customer's: the Customer column says nothing.
+  const shownColumns =
+    customerAccountId === undefined ? columns : columns.filter((column) => column !== 'customer');
+  // Panel loading L2: skeleton rows on the first load, dimmed rows on a later one.
+  const status = useListLoading(loading, answer !== null);
+  // A first load that runs past 30 s gives up: its answer is dropped and Try again starts anew.
+  useEffect(() => {
+    if (!status.stalled) return;
+    latest.current += 1;
+    setLoading(false);
+    setFailure('unavailable');
+  }, [status.stalled]);
 
   useEffect(() => {
     if (!loading && focusList.current) {
       focusList.current = false;
       listTop.current?.focus();
     }
-  }, [loading, rows]);
+  }, [loading, answer]);
 
-  // Any change of what is asked for starts again at the first page, and leaves the saved filter
-  // on show (the page is no longer it).
-  const change = (patch: Partial<OrderFilters>) => {
-    setSavedId(null);
-    setFilters((current) => ({ ...current, ...patch }));
-    setPage(1);
-    setCursors([null]);
+  // The API answers with a total only for page numbers: its answer, not the setting, says which
+  // footer fits the rows on show.
+  const mode: ListPaging = answer === null || answer.total === null ? 'prev-next' : paging;
+  const page = answer?.page ?? query.page;
+
+  // A page past the end (rows were removed meanwhile) goes back to the last one that has rows.
+  useEffect(() => {
+    if (answer === null || loading || failure !== null || answer.orders.length > 0) return;
+    if (answer.page !== null && answer.page > 1) {
+      const last =
+        mode === 'pages'
+          ? Math.max(1, Math.ceil((answer.total ?? 0) / (answer.pageSize ?? PAGE_SIZE)))
+          : answer.page - 1;
+      goToPage(Math.min(last, answer.page - 1));
+    }
+  }, [answer, loading, failure, mode, goToPage]);
+
+  const number = (value: number) => numberFormat(locale, {}).format(value);
+  const route = routeSearch(query.q);
+  const draftRoute = routeSearch(draft);
+  // The hint about the typed text waits for the box to lose focus or Enter, so it is not read out
+  // at the first keystroke of every search.
+  const showHint = hinted && draftRoute.kind === 'too-short';
+
+  const saveColumns = (next: readonly OrderColumn[]) => {
+    setColumns(next);
+    writeIds(browserStorage(), storageKey, next);
   };
-  const openSaved = (id: string) => {
-    const filter = saved?.items.find((item) => item.id === id);
-    if (filter === undefined) return;
-    const opened = stateOf(filter.payload);
-    setFilters(opened.filters);
-    // Previous and next keeps to newest first: a saved sort needs page numbers.
-    setSort(paging === 'pages' ? opened.sort : 'newest');
-    setPage(1);
-    setCursors([null]);
-    setSavedId(id);
-  };
-  const number = (n: number) => n.toLocaleString(locale);
-  const pageCount = total === null ? 1 : pageCountOf(total);
-  const first = total === null ? 0 : (page - 1) * PAGE_SIZE + 1;
-  const cut = total !== null && total > MAX_PAGED_ROWS;
-  const filtered =
-    filters.paymentState !== '' ||
-    filters.fulfilment !== '' ||
-    filters.from !== '' ||
-    filters.to !== '';
-  const status = filters.status;
-  const somethingToSave = filtered || status !== 'all' || (paging === 'pages' && sort !== 'newest');
-  const summary = [
-    t(status === 'all' ? 'tab.all' : `status.${status}`),
-    ...(filters.paymentState === ''
-      ? []
-      : [`${t('filters.payment')}: ${t(`payment.${filters.paymentState}`)}`]),
-    ...(filters.fulfilment === ''
-      ? []
-      : [`${t('filters.fulfilment')}: ${t(`fulfilment.${filters.fulfilment}`)}`]),
-    ...(filters.from === '' ? [] : [`${t('filters.from')}: ${filters.from}`]),
-    ...(filters.to === '' ? [] : [`${t('filters.to')}: ${filters.to}`]),
-    ...(paging === 'pages' && sort !== 'newest'
-      ? [`${t('sort.label')}: ${t(`sort.${sort}`)}`]
+  const clearAll = () => reset({ q: '', filters: {}, days: null });
+  const withoutFilter = (field: keyof Query['filters']): Query['filters'] =>
+    Object.fromEntries(Object.entries(query.filters).filter(([name]) => name !== field));
+
+  const chips = [
+    ...(route.kind === 'q' || route.kind === 'search'
+      ? [
+          {
+            key: 'search',
+            label: t('chip-search', { text: route.value }),
+            onRemove: () => reset({ q: '' }),
+          },
+        ]
       : []),
+    ...(query.filters.paymentState === undefined
+      ? []
+      : [
+          {
+            key: 'paymentState',
+            label: ts('chip', {
+              field: t('filter.name.paymentState'),
+              value: t(`payment.${query.filters.paymentState}`),
+            }),
+            onRemove: () => change({ filters: withoutFilter('paymentState') }),
+          },
+        ]),
+    ...(query.filters.fulfilment === undefined
+      ? []
+      : [
+          {
+            key: 'fulfilment',
+            label: ts('chip', {
+              field: t('filter.name.fulfilment'),
+              value: t(`fulfilment.${query.filters.fulfilment}`),
+            }),
+            onRemove: () => change({ filters: withoutFilter('fulfilment') }),
+          },
+        ]),
+    ...(query.filters.placed === undefined
+      ? query.days === null
+        ? []
+        : [
+            {
+              key: 'days',
+              label: ts('chip', {
+                field: t('filter.name.placed'),
+                value: daysLabel(query.days),
+              }),
+              onRemove: () => change({ days: null }),
+            },
+          ]
+      : [
+          {
+            key: 'placed',
+            label: ts('chip', {
+              field: t('filter.name.placed'),
+              value: ts(`date-preset.${query.filters.placed}`),
+            }),
+            onRemove: () => change({ filters: withoutFilter('placed') }),
+          },
+        ]),
+  ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
+  const filtered = chips.length > 0;
+  // Saved filters keep a tab, filters and a sort; a list nobody changed has nothing to save.
+  const somethingToSave =
+    filtered || query.tab !== 'all' || query.sort !== 'created' || query.direction !== 'desc';
+
+  const total = failure === null && mode === 'pages' ? (answer?.total ?? null) : null;
+  const rowActions = useOrderRowActions(
+    customerAccountId === undefined ? undefined : { accountId: customerAccountId, tab: 'orders' },
+  );
+  const summary = [
+    t(query.tab === 'all' ? 'tab.all' : `status.${query.tab}`),
+    ...chips.filter((chip) => chip.key !== 'search').map((chip) => chip.label),
   ].join(' · ');
 
-  return (
+  const empty = (
+    <EmptyState
+      size="compact"
+      icon={filtered || backwards ? 'search' : 'receipt'}
+      title={filtered || backwards ? t('empty.filtered.title') : t(`empty.${query.tab}.title`)}
+      body={filtered || backwards ? t('empty.filtered.body') : t(`empty.${query.tab}.body`)}
+      action={
+        filtered ? (
+          <Button variant="secondary" onClick={clearAll}>
+            {ts('clear-all')}
+          </Button>
+        ) : undefined
+      }
+    />
+  );
+
+  const skeleton = status.skeleton && failure === null;
+  const firstLoadError = answer === null && failure === 'unavailable';
+  const searchDown = failure === 'search-unavailable';
+  const shown = answer?.orders ?? [];
+  const wholePageTicked =
+    shown.length > 0 &&
+    !selection.allMatching &&
+    shown.every((row) => selection.selected.has(row.orderId));
+  const moreThanPage =
+    mode === 'pages' ? (answer?.total ?? 0) > shown.length : answer?.hasNext === true || page > 1;
+  const start = (page - 1) * PAGE_SIZE;
+  const sortOrder = t(
+    `sort.${query.sort === 'total' ? 'amount' : 'date'}.${query.direction === 'desc' ? 'first' : 'second'}`,
+  );
+
+  const table = (
     <div className="flex flex-col gap-4">
-      <p className="text-fg-muted">{t('intro')}</p>
-      <p className="text-sm text-fg-muted">{t('zone-note', { zone })}</p>
-      <div className="flex items-stretch">
-        <div className="min-w-0 flex-1">
-          <Tabs
-            label={t('tabs')}
-            activeId={savedId ?? status}
-            onSelect={(id) => {
-              if (saved?.items.some((item) => item.id === id)) openSaved(id);
-              else change({ status: id });
-            }}
-            items={[
-              ...FILTERS.map((id) => ({
-                id,
-                label: t(id === 'all' ? 'tab.all' : `status.${id}`),
-              })),
-              ...(saved?.items ?? []).map((item) => ({ id: item.id, label: item.name })),
-            ]}
-          />
-        </div>
-        {saved === null ? null : (
-          <div className="flex shrink-0 items-center border-b border-line ps-3">
-            <Button
-              variant="link"
-              className="min-h-(--mp-size-control-sm)"
-              onClick={() => setDialog('manage')}
-            >
-              <Icon name="sliders" />
-              <span className="sr-only sm:not-sr-only">{t('saved.manage-link')}</span>
-            </Button>
-          </div>
-        )}
-      </div>
-      <div
-        role="group"
-        aria-label={t('filters.group')}
-        className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5"
-      >
-        <Select
-          label={t('filters.payment')}
-          placeholder={t('filters.any')}
-          value={filters.paymentState}
-          options={PAYMENT_FILTERS.map((id) => ({ value: id, label: t(`payment.${id}`) }))}
-          onChange={(event) => change({ paymentState: event.target.value })}
-        />
-        <Select
-          label={t('filters.fulfilment')}
-          placeholder={t('filters.any')}
-          value={filters.fulfilment}
-          options={FULFILMENT_FILTERS.map((id) => ({ value: id, label: t(`fulfilment.${id}`) }))}
-          onChange={(event) => change({ fulfilment: event.target.value })}
-        />
-        <TextField
-          type="date"
-          label={t('filters.from')}
-          value={filters.from}
-          onChange={(event) => change({ from: event.target.value })}
-        />
-        <TextField
-          type="date"
-          label={t('filters.to')}
-          value={filters.to}
-          error={backwards ? t('filters.backwards') : undefined}
-          onChange={(event) => change({ to: event.target.value })}
-        />
-        {paging === 'pages' ? (
-          <Select
-            label={t('sort.label')}
-            value={sort}
-            options={SORTS.map((id) => ({ value: id, label: t(`sort.${id}`) }))}
-            onChange={(event) => {
-              setSavedId(null);
-              setSort(event.target.value as SortId);
-              setPage(1);
-            }}
-          />
-        ) : null}
-      </div>
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-        <Popover label={t('columns.button')} icon="columns" width="md">
-          {(close) => (
-            <ColumnPickerPanel
-              all={OPTIONAL_COLUMNS}
-              fixed={[{ id: 'order', label: t('col.order') }]}
-              shown={columns}
-              defaults={DEFAULT_COLUMNS}
-              labelOf={(column) => t(`col.${column}`)}
-              labels={{
-                title: t('columns.title'),
-                help: t('columns.help'),
-                always: t('columns.always'),
-                up: (column) => t('columns.up', { column }),
-                down: (column) => t('columns.down', { column }),
-                reset: t('columns.reset'),
-                save: t('columns.save'),
-              }}
-              onSave={saveColumns}
-              close={close}
-            />
-          )}
-        </Popover>
-        {filtered ? (
-          <Button
-            variant="secondary"
-            onClick={() => change({ paymentState: '', fulfilment: '', from: '', to: '' })}
-          >
-            {t('filters.clear')}
-          </Button>
-        ) : null}
-        {saved === null || savedId !== null || !somethingToSave ? null : (
-          <Button
-            variant="link"
-            className="min-h-(--mp-size-control-sm)"
-            onClick={() => setDialog('save')}
-          >
-            <Icon name="star" />
-            {t('saved.save-link')}
-          </Button>
-        )}
-      </div>
-      {failed ? (
-        <LoadError
-          className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"
-          message={t('error.unavailable')}
-          retryLabel={tl('retry')}
-          onRetry={() => void load()}
-        />
-      ) : null}
-      {total !== null && rows.length > 0 ? (
-        <p className="text-sm text-fg-muted" aria-live="polite">
-          {t('range', {
-            from: number(first),
-            to: number(first + rows.length - 1),
-            total: number(total),
-          })}
+      {mode === 'pages' && (answer?.total ?? 0) > MAX_PAGED_ROWS ? (
+        <p role="status" className="rounded-lg border border-line bg-muted px-4 py-2 text-sm">
+          {t('too-many', { limit: number(MAX_PAGED_ROWS) })}
         </p>
       ) : null}
-      {rows.length > 0 ? (
-        <div ref={listTop} tabIndex={-1} className="outline-none">
-          <OrdersTable rows={rows} columns={columns} zone={zone} />
-        </div>
+      {answer?.searchScope === 'stores' && failure === null ? (
+        <p role="status" className="rounded-lg border border-line bg-muted px-4 py-2 text-sm">
+          {t('search-stores')}
+        </p>
       ) : null}
-      {!loading && !failed && rows.length === 0 ? (
-        <EmptyState
-          icon="receipt"
-          title={t(filtered || backwards ? 'empty.filtered.title' : `empty.${status}.title`)}
-          body={t(filtered || backwards ? 'empty.filtered.body' : `empty.${status}.body`)}
-        />
+      {answer?.searchCapped === true && failure === null ? (
+        <p role="status" className="rounded-lg border border-line bg-muted px-4 py-2 text-sm">
+          {t('search-capped')}
+        </p>
       ) : null}
-      {loading ? <SkeletonRows label={t('loading')} rows={rows.length > 0 ? 1 : 3} /> : null}
-      {cut ? <Banner tone="info">{t('too-many', { limit: number(MAX_PAGED_ROWS) })}</Banner> : null}
-      {paging === 'pages' ? (
-        <Pagination
-          page={page}
-          pageCount={pageCount}
-          onPage={(n) => {
-            focusList.current = true;
-            setPage(n);
-          }}
-          disabled={loading}
-          labels={{
-            nav: t('paging.nav'),
-            previous: t('paging.previous'),
-            next: t('paging.next'),
-            page: (n) => t('paging.page', { n }),
-          }}
+      <SelectionBar
+        active={selection.selected.size > 0 || selection.allMatching}
+        allMatching={selection.allMatching}
+        canSelectAll={
+          customerAccountId === undefined && wholePageTicked && moreThanPage && failure === null
+        }
+        labels={{
+          selected: t('selection.selected', { count: selection.selected.size }),
+          all: total === null ? t('selection.all-open') : t('selection.all', { count: total }),
+          selectAll:
+            total === null
+              ? t('selection.select-all-open')
+              : t('selection.select-all', { count: total }),
+          clear: t('selection.clear'),
+        }}
+        onSelectAll={selection.selectAllMatching}
+        onClear={selection.clear}
+      />
+      <div ref={listTop} tabIndex={-1} className="outline-none">
+        <OrdersTable
+          rows={shown}
+          columns={shownColumns}
+          zone={zone}
+          {...(customerAccountId === undefined
+            ? {}
+            : { fromCustomer: { accountId: customerAccountId, tab: 'orders' as const } })}
+          empty={empty}
+          skeletonRows={skeleton ? listSkeletonRowCount(PAGE_SIZE) : undefined}
+          // Rows kept after a failed refresh belong to another list than the query: no actions.
+          actions={failure === null ? rowActions : noActions}
+          selection={selection}
         />
-      ) : (
-        <PrevNext
-          hasPrevious={cursors.length > 1}
-          hasNext={next !== null}
-          disabled={loading}
-          onPrevious={() => {
-            focusList.current = true;
-            setCursors((current) => current.slice(0, -1));
-          }}
-          onNext={() => {
-            if (next === null) return;
-            focusList.current = true;
-            setCursors((current) => [...current, next]);
-          }}
-          labels={{
-            nav: t('paging.nav'),
-            previous: t('paging.previous'),
-            next: t('paging.next'),
-          }}
-        />
-      )}
-      {saved === null ? null : (
-        <OrdersSavedViews
-          dialog={dialog}
-          onClose={() => setDialog(null)}
-          filters={filters}
-          sort={sort}
-          summary={summary}
-          saved={saved}
-          csrfToken={csrfToken}
-          onSaved={(filter) => {
-            void loadSaved().then((items) => {
-              // Only a filter that is in the reloaded list can be the tab on show.
-              if (items?.some((item) => item.id === filter.id) === true) setSavedId(filter.id);
-            });
-          }}
-          onChanged={() => void loadSaved()}
-        />
-      )}
+      </div>
     </div>
+  );
+
+  return (
+    <SuperList
+      heading={{
+        subtitle: t(customerAccountId === undefined ? 'intro' : 'customer-intro'),
+        note: t('zone-note', { zone }),
+        actions: (
+          <OrdersBulk
+            selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}
+            exportQuery={() => {
+              // The route takes the filters only; the relay drops the rest, but say it here too.
+              const params = new URLSearchParams(
+                queryString(query, { paging: 'prev-next', zone, now: new Date() }),
+              );
+              for (const key of ['page', 'pageSize', 'paging', 'sort', 'direction', 'search']) {
+                params.delete(key);
+              }
+              return params.toString();
+            }}
+            columns={shownColumns}
+            nameSearch={routeSearch(query.q).kind === 'search'}
+            empty={answer !== null && shown.length === 0}
+          />
+        ),
+      }}
+      views={{
+        label: t('tabs'),
+        activeId: savedId ?? query.tab,
+        onSelect: (id) => {
+          const filter = saved?.items.find((item) => item.id === id);
+          if (filter !== undefined) openSavedTab(id, queryOf(filter.payload));
+          else openView(id);
+        },
+        items: [
+          ...FILTERS.map((id) => ({
+            id,
+            label: `${t(id === 'all' ? 'tab.all' : `status.${id}`)}${
+              counts === null ? '' : ` (${number(countOf(counts, id))})`
+            }`,
+          })),
+          ...(saved?.items ?? []).map((item) => ({ id: item.id, label: item.name })),
+        ],
+        manage:
+          saved === null
+            ? null
+            : { label: t('saved.manage-link'), onClick: () => setDialog('manage') },
+      }}
+      search={{
+        label: t('search.label'),
+        placeholder: t('search.placeholder'),
+        value: draft,
+        maxLength: SEARCH_MAX,
+        onChange: (value) => {
+          setHinted(false);
+          setDraft(value);
+        },
+        onBlur: () => setHinted(true),
+        onSubmit: (value) => {
+          setHinted(true);
+          if (routeSearch(value).kind === 'too-short') return;
+          change({ q: value });
+        },
+        extra: showHint ? (
+          <p role="status" className="w-full text-sm text-fg-muted">
+            {t('search.too-short')}
+          </p>
+        ) : undefined,
+      }}
+      filter={{
+        label: ts('filter.button'),
+        count: filterCount(query),
+        panel: (close) => (
+          <OrdersFilterPanel
+            filters={query.filters}
+            onApply={(filters) =>
+              change({ filters, days: filters.placed === undefined ? query.days : null })
+            }
+            close={close}
+          />
+        ),
+      }}
+      sort={{
+        label: ts('sort.button'),
+        panel: () => (
+          <OrdersSortPanel
+            sort={query.sort}
+            direction={query.direction}
+            onChange={(sort: SortField, direction: Direction) => change({ sort, direction })}
+          />
+        ),
+      }}
+      columns={{
+        label: ts('columns.button'),
+        panel: (close) => (
+          <OrdersColumnsPanel
+            columns={shownColumns}
+            onSave={saveColumns}
+            close={close}
+            {...(customerAccountId === undefined ? {} : { without: 'customer' as const })}
+          />
+        ),
+      }}
+      sortedLine={t('sorted', { field: t(`sort.field.${query.sort}`), order: sortOrder })}
+      chips={
+        filtered || (saved !== null && savedId === null && somethingToSave)
+          ? {
+              chips,
+              clearAll: { label: ts('clear-all'), onClick: clearAll },
+              ...(saved === null || savedId !== null || !somethingToSave
+                ? {}
+                : { save: { label: t('saved.save-link'), onClick: () => setDialog('save') } }),
+              status: total === null || failure !== null ? '' : t('match', { count: total }),
+            }
+          : null
+      }
+      failure={
+        failure === null || searchDown
+          ? null
+          : failure === 'refused'
+            ? // Asking again cannot work: no Try again, the words say what to change.
+              { message: t('error.refused') }
+            : {
+                message: t('error.unavailable'),
+                retry: { label: tl('retry'), onClick: () => void load(query) },
+              }
+      }
+      firstLoadError={firstLoadError}
+      loading={loading}
+      status={status}
+      loadingLabel={t('loading')}
+      slowLabel={tl('slow')}
+      ready={answer !== null || searchDown || backwards}
+      table={
+        searchDown ? (
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line p-4">
+            <span>{t('error.search-unavailable')}</span>
+            <Button variant="secondary" onClick={() => void load(query)}>
+              {tl('retry')}
+            </Button>
+          </div>
+        ) : (
+          table
+        )
+      }
+      pagination={
+        answer !== null && answer.orders.length > 0 && failure === null
+          ? {
+              mode,
+              page,
+              pageSize: PAGE_SIZE,
+              // No page size picker in this round: one size.
+              pageSizes: [PAGE_SIZE],
+              // The footer is never offered a page past row 10,000: a total above it is cut here
+              // (the note above the rows says why).
+              total:
+                mode === 'pages'
+                  ? Math.min(answer.total ?? 0, MAX_PAGED_ROWS)
+                  : answer.hasNext
+                    ? page * PAGE_SIZE + 1
+                    : (page - 1) * PAGE_SIZE + answer.orders.length,
+              maxRows: mode === 'pages' ? MAX_PAGED_ROWS : OPEN_ENDED,
+              // Previous and next has no total, so no range line.
+              range:
+                mode === 'pages' && answer.total !== null
+                  ? t('range', {
+                      from: number(start + 1),
+                      to: number(start + answer.orders.length),
+                      total: number(answer.total),
+                    })
+                  : '',
+              labels: {
+                rowsPerPage: ts('paging.rows-per-page'),
+                previous: ts('paging.previous'),
+                next: ts('paging.next'),
+                pages: ts('paging.pages'),
+                page: (n) => ts('paging.page', { page: n }),
+                narrowTitle: ts('paging.narrow'),
+                narrowBody: ts('paging.narrow-help'),
+              },
+              disabled: loading,
+              onPage: (target) => {
+                focusList.current = true;
+                goToPage(target);
+              },
+              onPageSize: () => {},
+            }
+          : null
+      }
+      dialogs={
+        saved === null ? null : (
+          <OrdersSavedViews
+            dialog={dialog}
+            onClose={() => setDialog(null)}
+            query={query}
+            zone={zone}
+            summary={summary}
+            saved={saved}
+            csrfToken={csrfToken}
+            onSaved={(filter) => {
+              void loadSaved().then((items) => {
+                // Only a filter that is in the reloaded list can be the tab on show.
+                if (items?.some((item) => item.id === filter.id) === true) {
+                  openSavedTab(filter.id, queryOf(filter.payload));
+                }
+              });
+            }}
+            onChanged={() => void loadSaved()}
+          />
+        )
+      }
+    />
   );
 }

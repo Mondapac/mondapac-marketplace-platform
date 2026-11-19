@@ -24,6 +24,7 @@ import { loadMarketConfigs } from '../../src/platform/market-config/market-confi
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
 import type { HandledOnce, UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import type { BlogDependencies } from '../../src/modules/blog/application/blog-dependencies';
+import type { BlogMediaStore } from '../../src/modules/blog/application/ports/blog-media.store';
 import type { BlogRepository } from '../../src/modules/blog/application/ports/blog.repository';
 import type { BlogLinks } from '../../src/modules/blog/application/ports/blog-links';
 import type { ProductFact } from '../../src/modules/blog/domain/checks';
@@ -37,7 +38,20 @@ import { CreateBlogTag } from '../../src/modules/blog/application/use-cases/crea
 import { DeleteBlogCategory } from '../../src/modules/blog/application/use-cases/delete-category.use-case';
 import { DeleteBlogTag } from '../../src/modules/blog/application/use-cases/delete-tag.use-case';
 import { FeatureBlogPost } from '../../src/modules/blog/application/use-cases/feature-post.use-case';
+import { ListBlogMedia } from '../../src/modules/blog/application/use-cases/list-media.use-case';
 import { ListBlogPosts } from '../../src/modules/blog/application/use-cases/list-posts.use-case';
+import { ExportBlogPosts } from '../../src/modules/blog/application/use-cases/export-posts.use-case';
+import { BlogPostEditProbe } from '../../src/modules/blog/application/use-cases/post-edit-probe.use-case';
+import { BlogPostPauseProbe } from '../../src/modules/blog/application/use-cases/post-pause-probe.use-case';
+import { BlogPostPublishProbe } from '../../src/modules/blog/application/use-cases/post-publish-probe.use-case';
+import { BlogPostReviewProbe } from '../../src/modules/blog/application/use-cases/post-review-probe.use-case';
+import {
+  POST_ROW_KEYS,
+  type AdminPostListDependencies,
+} from '../../src/modules/blog/application/admin-post-list-flow';
+import type { AdminPostListReader } from '../../src/modules/blog/application/ports/admin-post-list.reader';
+import { ExceljsSheetWriter as ListExceljsSheetWriter } from '../../src/platform/list-export';
+import { MemoryAdminPostList } from './memory-admin-post-list';
 import { ListBlogTaxonomy } from '../../src/modules/blog/application/use-cases/list-taxonomy.use-case';
 import { PauseBlogPost } from '../../src/modules/blog/application/use-cases/pause-post.use-case';
 import { PauseSellerBlogPosts } from '../../src/modules/blog/application/use-cases/pause-seller-posts.use-case';
@@ -62,11 +76,15 @@ import { SubmitBlogPost } from '../../src/modules/blog/application/use-cases/sub
 import { UnscheduleBlogPost } from '../../src/modules/blog/application/use-cases/unschedule-post.use-case';
 import { UpdateBlogCategory } from '../../src/modules/blog/application/use-cases/update-category.use-case';
 import { UpdateBlogPostDraft } from '../../src/modules/blog/application/use-cases/update-draft.use-case';
+import { UploadBlogMedia } from '../../src/modules/blog/application/use-cases/upload-media.use-case';
+import { ViewBlogMediaFile } from '../../src/modules/blog/application/use-cases/view-media-file.use-case';
 import { ViewBlogPost } from '../../src/modules/blog/application/use-cases/view-post.use-case';
 import { ViewPublicBlogTaxonomy } from '../../src/modules/blog/application/use-cases/view-public-taxonomy.use-case';
 import { ViewPublishedBlogPost } from '../../src/modules/blog/application/use-cases/view-published-post.use-case';
 import { ListPublishedBlogPosts } from '../../src/modules/blog/application/use-cases/view-published-posts.use-case';
 import { ViewUpcomingBlogEvents } from '../../src/modules/blog/application/use-cases/view-upcoming-events.use-case';
+import { MemoryObjectStore } from '../../src/platform/storage/disk-object-store';
+import { FakeBlogImageProcessor, MemoryBlogMediaStore } from './memory-blog-media';
 import { MemoryBlogRepository } from './memory-blog-repository';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from './test-config';
 
@@ -131,9 +149,13 @@ export class FakeLinks implements BlogLinks {
 /** A store, unit of work and writers to run the harness against instead of the in-memory ones. */
 export interface BlogBacking {
   readonly posts: BlogRepository;
+  /** The admin Blog posts list reader; the in-memory one over `posts` when absent. */
+  readonly list?: AdminPostListReader;
   readonly unitOfWork: UnitOfWork;
   readonly outbox?: OutboxWriter;
   readonly ids: IdGenerator;
+  /** The media library; the in-memory one (with the fixture pictures) when absent. */
+  readonly media?: BlogMediaStore;
 }
 
 export function blogHarness(code: 'AU' | 'ZZ', backing?: BlogBacking) {
@@ -142,6 +164,12 @@ export function blogHarness(code: 'AU' | 'ZZ', backing?: BlogBacking) {
   const ids = backing?.ids ?? new SequenceIdGenerator(clock);
   const repo = new MemoryBlogRepository();
   const links = new FakeLinks();
+  // The fixture pictures a post's content names (`COVER`, `OTHER_IMAGE`) are in the Market's library.
+  const mediaStore = new MemoryBlogMediaStore();
+  mediaStore.seed(market, COVER);
+  mediaStore.seed(market, OTHER_IMAGE);
+  const imageProcessor = new FakeBlogImageProcessor();
+  const objects = new MemoryObjectStore();
   const audits: AuditEntry[] = [];
   const events: PendingEvent[] = [];
   const grants = new Map<string, Set<string>>();
@@ -235,6 +263,22 @@ export function blogHarness(code: 'AU' | 'ZZ', backing?: BlogBacking) {
     stepUp,
     ids,
     clock,
+    media: backing?.media ?? mediaStore,
+    imageProcessor,
+    objectStore: objects,
+  };
+
+  const postList: AdminPostListDependencies = {
+    unitOfWork: deps.unitOfWork,
+    list: backing?.list ?? new MemoryAdminPostList(deps.posts),
+    probes: {
+      [POST_ROW_KEYS[0]]: new BlogPostEditProbe(gate),
+      [POST_ROW_KEYS[1]]: new BlogPostReviewProbe(gate),
+      [POST_ROW_KEYS[2]]: new BlogPostPublishProbe(gate),
+      [POST_ROW_KEYS[3]]: new BlogPostPauseProbe(gate),
+    },
+    sheetWriter: new ListExceljsSheetWriter(),
+    clock,
   };
 
   const accountOf = new Map<string, Id<'Account'>>();
@@ -287,7 +331,9 @@ export function blogHarness(code: 'AU' | 'ZZ', backing?: BlogBacking) {
     deleteCategory: new DeleteBlogCategory(gate, deps),
     deleteTag: new DeleteBlogTag(gate, deps),
     featurePost: new FeatureBlogPost(gate, deps),
-    listPosts: new ListBlogPosts(gate, deps),
+    listMedia: new ListBlogMedia(gate, deps),
+    listPosts: new ListBlogPosts(gate, postList),
+    exportPosts: new ExportBlogPosts(gate, postList),
     listTaxonomy: new ListBlogTaxonomy(gate, deps),
     pausePost: new PauseBlogPost(gate, deps),
     pauseSellerPosts: new PauseSellerBlogPosts(gate, deps),
@@ -312,6 +358,8 @@ export function blogHarness(code: 'AU' | 'ZZ', backing?: BlogBacking) {
     unschedulePost: new UnscheduleBlogPost(gate, deps),
     updateCategory: new UpdateBlogCategory(gate, deps),
     updateDraft: new UpdateBlogPostDraft(gate, deps),
+    uploadMedia: new UploadBlogMedia(gate, deps),
+    viewMediaFile: new ViewBlogMediaFile(gate, deps),
     viewPost: new ViewBlogPost(gate, deps),
     viewPublicTaxonomy: new ViewPublicBlogTaxonomy(gate, deps),
     viewPublishedPost: new ViewPublishedBlogPost(gate, deps),
@@ -325,6 +373,9 @@ export function blogHarness(code: 'AU' | 'ZZ', backing?: BlogBacking) {
     ids,
     repo,
     links,
+    mediaStore,
+    imageProcessor,
+    objects,
     audits,
     events,
     deps,

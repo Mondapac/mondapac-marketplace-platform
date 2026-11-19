@@ -1,4 +1,6 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { SYSTEM_ACTION_PROPOSER, SYSTEM_REQUEST_RECORDER } from '../src/modules/system-requests';
+import { RecordingProposer, RecordingReview } from './support/system-request-fakes';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
@@ -17,6 +19,10 @@ import {
   CATEGORY_RESTRUCTURE_STORE,
 } from '../src/modules/catalog/application/ports/category-edit.store';
 import { CATEGORY_RETIREMENT_CHECK } from '../src/modules/catalog/application/ports/category-retirement-check';
+import {
+  CATEGORY_PRODUCT_MOVE_STORE,
+  type CategoryProductMoveStore,
+} from '../src/modules/catalog/application/ports/category-product-move.store';
 import type { CategoryRetirementCheck } from '../src/modules/catalog/application/ports/category-retirement-check';
 import { CATEGORY_IMAGE_STORE } from '../src/modules/catalog/application/ports/category-image.store';
 import { IMAGE_PROCESSOR } from '../src/modules/catalog/application/ports/image-processor';
@@ -110,6 +116,11 @@ const retirement: CategoryRetirementCheck = {
   retired: () => Promise.resolve({ ok: true, value: undefined }),
 };
 const treeVersion = new MemoryTreeVersion();
+/** A move of products only counts them before it is proposed; nothing else is reached here. */
+const productMoves = {
+  countProducts: () => Promise.resolve(3),
+  insertJob: () => Promise.reject(new Error('a proposed move starts no job')),
+} as unknown as CategoryProductMoveStore;
 const halalOnlyMatcher = {
   match: (_context: unknown, texts: readonly { text: string }[]) =>
     Promise.resolve({
@@ -188,11 +199,15 @@ describe.each(TEST_MARKETS)(
   'admin category routes over HTTP in market %s (integration)',
   (code) => {
     let app: NestExpressApplication;
+    let reviews = new RecordingReview();
+    let proposer = new RecordingProposer(reviews);
     const clock = new FixedClock(START);
     const http = () => request(app.getHttpServer());
     const market = testMarketContext(code, PLATFORM_TENANT_ID);
 
     beforeEach(async () => {
+      reviews = new RecordingReview();
+      proposer = new RecordingProposer(reviews);
       fakes.reset();
       editStore.reset();
       categoryImages.reset();
@@ -218,6 +233,10 @@ describe.each(TEST_MARKETS)(
             .override(builder)
             .overrideProvider(CLOCK)
             .useValue(clock)
+            .overrideProvider(SYSTEM_REQUEST_RECORDER)
+            .useValue(reviews)
+            .overrideProvider(SYSTEM_ACTION_PROPOSER)
+            .useValue(proposer)
             .overrideProvider(ADMIN_CATEGORY_READER)
             .useValue(reader)
             .overrideProvider(CATEGORY_ATTRIBUTE_LINK_STORE)
@@ -230,6 +249,8 @@ describe.each(TEST_MARKETS)(
             .useValue(restructureStore)
             .overrideProvider(CATEGORY_RETIREMENT_CHECK)
             .useValue(retirement)
+            .overrideProvider(CATEGORY_PRODUCT_MOVE_STORE)
+            .useValue(productMoves)
             .overrideProvider(PLATFORM_CATEGORY_REPOSITORY)
             .useValue(treeVersion)
             .overrideProvider(CATEGORY_IMAGE_STORE)
@@ -278,6 +299,8 @@ describe.each(TEST_MARKETS)(
           'catalog.category-tree.view',
           'catalog.category-tree.edit',
           'catalog.category-tree.restructure',
+          // A move of products also needs it (its route's `allOf`).
+          'catalog.product.approve',
         ],
         version: 1,
         createdAt: START,
@@ -616,6 +639,96 @@ describe.each(TEST_MARKETS)(
           });
       });
 
+      it('answers 202 with the proposal of a discard that waits for approval, and 409 for a second', async () => {
+        const session = adminSession(MODERATOR, 27);
+        const created = await http().post(BASE).set(session).send(body()).expect(201);
+        const { id: newId, treeVersion } = (
+          created.body as { category: { id: string; treeVersion: number } }
+        ).category;
+        reviews.review('catalogue', 'medium');
+        const tree = await http().get(BASE).set(session).expect(200);
+        expect(tree.body).toMatchObject({ review: { reviewed: true, risk: 'medium' } });
+        const proposed = await http()
+          .post(`${BASE}/${newId}/discard`)
+          .set(session)
+          .send({ treeVersion, note: 'Made by mistake' })
+          .expect(202);
+        expect(proposed.body).toEqual({
+          request: { id: <unknown>expect.any(String), number: 901 },
+        });
+        // Nothing changed: the category is still there, hidden, at its version.
+        expect(editStore.rows.get(newId)).toMatchObject({ status: 'hidden', version: 1 });
+        expect(proposer.proposed[0]).toMatchObject({
+          area: 'catalogue',
+          subjectKind: 'catalog.category-discard',
+          subjectRef: newId,
+          after: { action: 'discard' },
+          note: 'Made by mistake',
+        });
+        const again = await http()
+          .post(`${BASE}/${newId}/discard`)
+          .set(session)
+          .send({ treeVersion, note: 'Again' })
+          .expect(409);
+        expect(again.body).toMatchObject({
+          code: 'system-requests.already-pending',
+          details: { pendingNumber: 901 },
+        });
+        await http()
+          .post(`${BASE}/${newId}/discard`)
+          .set(session)
+          .send({ treeVersion })
+          .expect(400)
+          .expect((response) => {
+            expect(response.body).toMatchObject({
+              code: 'validation.failed',
+              details: { fields: [{ path: 'note', code: 'required' }] },
+            });
+          });
+      });
+
+      it('says on the read whether a details save is reviewed, asks for a note then, and answers the request', async () => {
+        const session = adminSession(MODERATOR, 26);
+        const unreviewed = await http().get(`${BASE}/${LEAF}`).set(session).expect(200);
+        expect(unreviewed.body).toMatchObject({ review: { reviewed: false, risk: 'low' } });
+        const created = await http().post(BASE).set(session).send(body()).expect(201);
+        const newId = (created.body as { category: { id: string } }).category.id;
+        const edit = (extra: Record<string, unknown> = {}) =>
+          http()
+            .patch(`${BASE}/${newId}`)
+            .set(session)
+            .send({ version: 1, texts: { [english]: { name: 'Basmati' } }, ...extra });
+
+        reviews.review('catalogue', 'medium');
+        const reviewed = await http().get(`${BASE}/${LEAF}`).set(session).expect(200);
+        expect(reviewed.body).toMatchObject({ review: { reviewed: true, risk: 'medium' } });
+
+        const saved = await edit({ note: 'Renamed for the new aisle' }).expect(200);
+        expect(saved.body).toMatchObject({
+          category: { version: 2, revisionNo: 2 },
+          request: { number: 1 },
+        });
+        expect(reviews.opened).toHaveLength(1);
+        expect(reviews.opened[0]).toMatchObject({
+          area: 'catalogue',
+          subjectKind: 'catalog.category-details',
+          subjectRef: newId,
+          note: 'Renamed for the new aisle',
+        });
+        // A save without a note is refused where the area is reviewed (400 on note); the rollback
+        // of what it wrote is proved on the real unit of work in the database spec.
+        const missing = await http()
+          .patch(`${BASE}/${newId}`)
+          .set(session)
+          .send({ version: 2, texts: { [english]: { name: 'Jasmine' } } })
+          .expect(400);
+        expect(missing.body).toMatchObject({
+          code: 'validation.failed',
+          details: { fields: [{ path: 'note', code: 'required' }] },
+        });
+        expect(reviews.opened).toHaveLength(1);
+      });
+
       it('answers 409 for a stale tree and a taken slug, 422 for a claim word, 400 for an unknown field', async () => {
         const session = adminSession(MODERATOR, 23);
         await http().post(BASE).set(session).send(body()).expect(201);
@@ -850,8 +963,9 @@ describe.each(TEST_MARKETS)(
           .set(session)
           .send({ treeVersion: 1, parentId: id<'Category'>(0xd5), reason: REASON })
           .expect(200);
+        // `changed` and `moved` for the category: two version steps (catalog data design Q-K3).
         expect(moved.body).toMatchObject({
-          category: { id: id<'Category'>(0xd3), version: 2, treeVersion: 2 },
+          category: { id: id<'Category'>(0xd3), version: 3, treeVersion: 2 },
         });
         expect(retirementChecked).toEqual([
           [id<'Category'>(0xd3), id<'Category'>(0xd2), id<'Category'>(0xd1)],
@@ -882,6 +996,56 @@ describe.each(TEST_MARKETS)(
           .send({ treeVersion: 1, reason: REASON })
           .expect(503);
         expect(editStore.revisions).toEqual([]);
+      });
+
+      it('answers 202 with the proposal of a products move that waits for approval, and 409 for a second', async () => {
+        // Pantry > Rice > Basmati (source) and Pantry > Rice > Jasmine (target), both on level 3.
+        const SOURCE = id<'Category'>(0xcc03);
+        const TARGET = id<'Category'>(0xcc04);
+        const node = (nodeId: Id<'Category'>, parentId: Id<'Category'> | null, slug: string) => ({
+          id: nodeId,
+          parentId,
+          slug,
+          status: 'active' as const,
+          mergedIntoId: null,
+          names: [{ locale: 'en', name: slug }],
+          revisionNo: 1,
+          version: 1,
+          position: 0,
+          showInMenu: true,
+        });
+        categoriesOverride = [
+          node(ROOT, null, 'pantry'),
+          node(LEAF, ROOT, 'rice'),
+          node(SOURCE, LEAF, 'basmati'),
+          node(TARGET, LEAF, 'jasmine'),
+        ];
+        reviews.review('catalogue', 'medium');
+        const session = adminSession(RESTRUCTURER, 34);
+        const proposed = await http()
+          .post(`${BASE}/${SOURCE}/move-products`)
+          .set(session)
+          .send({ targetId: TARGET, reason: REASON, note: 'Basmati is jasmine now' })
+          .expect(202);
+        expect(proposed.body).toEqual({
+          request: { id: <unknown>expect.any(String), number: 901 },
+        });
+        expect(proposer.proposed[0]).toMatchObject({
+          area: 'catalogue',
+          subjectKind: 'catalog.category-products-move',
+          subjectRef: SOURCE,
+          after: { action: 'move-products', targetId: TARGET, reason: REASON, products: 3 },
+          note: 'Basmati is jasmine now',
+        });
+        const again = await http()
+          .post(`${BASE}/${SOURCE}/move-products`)
+          .set(session)
+          .send({ targetId: TARGET, reason: REASON, note: 'Again' })
+          .expect(409);
+        expect(again.body).toMatchObject({
+          code: 'system-requests.already-pending',
+          details: { pendingNumber: 901 },
+        });
       });
 
       it('answers 400 for a short reason, 404 for an unknown target, 409 for subcategories, 422 for a cycle', async () => {

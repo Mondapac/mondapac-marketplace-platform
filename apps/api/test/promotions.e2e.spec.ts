@@ -21,7 +21,9 @@ import { ListPromotions } from '../src/modules/promotions/application/use-cases/
 import { PauseOwnPromotion } from '../src/modules/promotions/application/use-cases/pause-own-promotion.use-case';
 import { ApplyReferralCode } from '../src/modules/promotions/application/use-cases/apply-referral-code.use-case';
 import { ListPromotionCredits } from '../src/modules/promotions/application/use-cases/list-promotion-credits.use-case';
+import { ListCustomerPromotionUsages } from '../src/modules/promotions/application/use-cases/list-customer-promotion-usages.use-case';
 import { ViewMyReferral } from '../src/modules/promotions/application/use-cases/view-my-referral.use-case';
+import { ViewMyUpcomingCashback } from '../src/modules/promotions/application/use-cases/view-my-upcoming-cashback.use-case';
 import { GenerateBatchCodes } from '../src/modules/promotions/application/use-cases/generate-batch-codes.use-case';
 import { ViewBatchCodeSummary } from '../src/modules/promotions/application/use-cases/view-batch-code-summary.use-case';
 import { PausePromotion } from '../src/modules/promotions/application/use-cases/pause-promotion.use-case';
@@ -134,7 +136,9 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
     ['list-campaigns', ListSellerCampaigns],
     ['preview-payout', PreviewSellerPayout],
     ['credits', ListPromotionCredits],
+    ['customer-usages', ListCustomerPromotionUsages],
     ['my-referral', ViewMyReferral],
+    ['upcoming-cashback', ViewMyUpcomingCashback],
     ['apply-referral', ApplyReferralCode],
   ] as const;
 
@@ -878,6 +882,51 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
   describe('phase 3: referral and credits', () => {
     const CREDIT = id<'PromotionCredit'>(0xc001);
 
+    it('reads the customer’s own upcoming cashback, never cached, display only', async () => {
+      await boot();
+      const ORDER = id<'Order'>(0x0a01);
+      next = ok({
+        cashback: [
+          {
+            orderId: ORDER,
+            amountMinor: 400n,
+            currency: 'AUD',
+            creditOn: START.add({ hours: 24 }),
+          },
+          { orderId: ORDER, amountMinor: 5n, currency: 'AUD', creditOn: null },
+        ],
+      });
+      const response = await http()
+        .get(`/promotions/cashback/upcoming?orderId=${ORDER}`)
+        .set({ 'x-market-id': code, ...customer() });
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(response.body).toEqual({
+        cashback: [
+          {
+            orderId: ORDER,
+            amountMinor: '400',
+            currency: 'AUD',
+            creditOn: START.add({ hours: 24 }).toString(),
+          },
+          { orderId: ORDER, amountMinor: '5', currency: 'AUD', creditOn: null },
+        ],
+      });
+      expect(calls.at(-1)).toEqual({ name: 'upcoming-cashback', input: { orderId: ORDER } });
+      await http()
+        .get('/promotions/cashback/upcoming')
+        .set({ 'x-market-id': code, ...customer() });
+      expect(calls.at(-1)).toEqual({ name: 'upcoming-cashback', input: {} });
+      next = err({ code: 'validation.failed', fields: [{ path: 'orderId', code: 'value' }] });
+      expect(
+        (
+          await http()
+            .get('/promotions/cashback/upcoming?orderId=x')
+            .set({ 'x-market-id': code, ...customer() })
+        ).status,
+      ).toBe(400);
+    });
+
     it('reads the customer’s own referral code, never cached, with amounts as digit strings', async () => {
       await boot();
       next = ok({
@@ -984,6 +1033,67 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
       });
       const stray = await call('admin', 'get', `${URL}?offset=1`, admin());
       expect(stray.status).toBe(400);
+    });
+
+    it('lists the promotions a customer used for an admin, closed query, no code hash', async () => {
+      await boot();
+      const URL = `/promotions/admin/customers/${CUSTOMER}/usages`;
+      next = ok({
+        nextCursor: 'abc_DEF-2',
+        items: [
+          {
+            promotionName: 'Spring sale',
+            record: {
+              id: 'r1',
+              orderId: 'o1',
+              promotionKey: PROMOTION,
+              promotionId: PROMOTION,
+              kind: 'PROMOTION',
+              customerAccountId: CUSTOMER,
+              codeHash: 'secret-hash',
+              currency: 'AUD',
+              amount: 450n,
+              sellerShare: 0n,
+              platformShare: 450n,
+              units: null,
+              budgetMonth: null,
+              status: 'CONFIRMED',
+              releaseReason: null,
+              reservedAt: START,
+              confirmedAt: START,
+              releasedAt: null,
+            },
+          },
+        ],
+      });
+      const response = await call('admin', 'get', `${URL}?limit=5&cursor=abc_DEF-2`, admin());
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      expect(itemsOf(response)[0]).toEqual({
+        id: 'r1',
+        orderId: 'o1',
+        kind: 'PROMOTION',
+        promotionId: PROMOTION,
+        promotionName: 'Spring sale',
+        amountMinor: '450',
+        currency: 'AUD',
+        usedCode: true,
+        status: 'CONFIRMED',
+        releaseReason: null,
+        usedAt: START.toString(),
+        confirmedAt: START.toString(),
+        releasedAt: null,
+      });
+      expect(JSON.stringify(response.body)).not.toContain('secret-hash');
+      expect(response.body).toMatchObject({ nextCursor: 'abc_DEF-2' });
+      expect(calls.at(-1)).toEqual({
+        name: 'customer-usages',
+        input: { customerAccountId: CUSTOMER, limit: 5, cursor: 'abc_DEF-2' },
+      });
+      const stray = await call('admin', 'get', `${URL}?offset=1`, admin());
+      expect(stray.status).toBe(400);
+      next = err({ code: 'access.denied' });
+      expect((await call('admin', 'get', URL, admin())).status).toBe(403);
     });
   });
 

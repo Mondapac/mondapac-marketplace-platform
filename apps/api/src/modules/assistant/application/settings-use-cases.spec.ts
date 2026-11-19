@@ -119,8 +119,21 @@ describe('parseAssistantSettings', () => {
       dailySpendCapUsdCents: 1_000,
       monthlySpendCapUsdCents: 20_000,
       supportHandoff: 'email-link',
+      basketProposals: false,
       welcomeText: null,
     });
+  });
+
+  it('keeps "Basket proposals from a list" off by default and checks it is a boolean', () => {
+    expect(DEFAULT_ASSISTANT_SETTINGS.basketProposals).toBe(false);
+    expect(
+      parseAssistantSettings({ ...DEFAULT_ASSISTANT_SETTINGS, basketProposals: true }),
+    ).toEqual(ok({ ...DEFAULT_ASSISTANT_SETTINGS, basketProposals: true }));
+    for (const bad of ['true', 1, null, undefined]) {
+      expect(
+        parseAssistantSettings({ ...DEFAULT_ASSISTANT_SETTINGS, basketProposals: bad }),
+      ).toEqual({ ok: false, error: [{ path: 'basketProposals', code: 'type' }] });
+    }
   });
 
   it.each([
@@ -140,7 +153,6 @@ describe('parseAssistantSettings', () => {
     ['users', 'guests', 'type'],
     ['retention', '7-days', 'type'],
     ['replyLanguage', 'fa', 'type'],
-    ['scope', 'cart-suggestions', 'unavailable'],
     ['supportHandoff', 'in-panel-form', 'unavailable'],
     ['welcomeText', 42, 'type'],
     ['welcomeText', undefined, 'type'],
@@ -148,6 +160,15 @@ describe('parseAssistantSettings', () => {
     const result = parseAssistantSettings({ ...DEFAULT_ASSISTANT_SETTINGS, [path]: value });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error).toContainEqual({ path, code });
+  });
+
+  it('accepts the cart-suggestions scope (S1-B1) and keeps read-only as the default', () => {
+    expect(DEFAULT_ASSISTANT_SETTINGS.scope).toBe('read-only');
+    const result = parseAssistantSettings({
+      ...DEFAULT_ASSISTANT_SETTINGS,
+      scope: 'cart-suggestions',
+    });
+    expect(result.ok && result.value.scope).toBe('cart-suggestions');
   });
 
   it('needs a percentage of 1 to 100 for a percentage rollout, and only then', () => {
@@ -316,7 +337,7 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
           { tier: 'fast', modelId: 'model-fast' },
           { tier: 'balanced', modelId: null },
         ],
-        unavailableOptions: { scope: ['cart-suggestions'], supportHandoff: ['in-panel-form'] },
+        unavailableOptions: { scope: [], supportHandoff: ['in-panel-form'] },
         spend: { todayMicroUsd: 0, monthMicroUsd: 0, conversationsToday: 0, lastAutoOff: null },
         lastChanged: null,
       }),

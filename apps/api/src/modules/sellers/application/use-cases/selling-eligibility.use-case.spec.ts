@@ -180,6 +180,8 @@ describe.each([
       sellerSummaries: undefined as never,
       searchStoreNames: undefined as never,
       publishedStoreSlugs: undefined as never,
+      publishedStoreCards: undefined as never,
+      publishedStoreRead: undefined as never,
       sellerSummariesSystem: undefined as never,
       sellingEligibility: request,
       sellingEligibilitySystem: jobs,

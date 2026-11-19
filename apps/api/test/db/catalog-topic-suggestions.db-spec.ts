@@ -180,10 +180,29 @@ describe.each(TEST_MARKETS)('catalog topic suggestions in market %s (database)',
 
   it('lists open suggestions and counts a seller’s, in the Market only', async () => {
     const { product, suggestion } = await opened();
-    const listed = await read(market, () => store.listOpen(market, 500));
+    const all = { text: null, direction: 'asc', offset: 0, limit: 500 } as const;
+    const listed = await read(market, () => store.pageOpen(market, all));
     expect(listed.map((row) => row.state.id)).toContain(suggestion.state.id);
-    const inOther = await read(other, () => store.listOpen(other, 500));
+    const inOther = await read(other, () => store.pageOpen(other, all));
     expect(inOther.map((row) => row.state.id)).not.toContain(suggestion.state.id);
+    // Counted and searched by the seller's text; a wildcard is matched as typed.
+    expect(await read(market, () => store.countOpen(market, { text: null }))).toBe(listed.length);
+    const byText = await read(market, () =>
+      store.pageOpen(market, { ...all, text: suggestion.state.label.slice(0, 4).toUpperCase() }),
+    );
+    expect(byText.map((row) => row.state.id)).toContain(suggestion.state.id);
+    expect(await read(market, () => store.countOpen(market, { text: '%' }))).toBe(0);
+    expect(await read(market, () => store.countOpen(market, { text: '_' }))).toBe(
+      suggestion.state.label.includes('_') ? 1 : 0,
+    );
+    const newest = await read(market, () =>
+      store.pageOpen(market, { ...all, direction: 'desc', limit: 1 }),
+    );
+    expect(newest).toHaveLength(1);
+    const skipped = await read(market, () =>
+      store.pageOpen(market, { ...all, offset: listed.length }),
+    );
+    expect(skipped).toEqual([]);
     expect(
       await read(market, () => store.openCountOfSeller(market, seller)),
     ).toBeGreaterThanOrEqual(1);
@@ -223,6 +242,53 @@ describe.each(TEST_MARKETS)('catalog topic suggestions in market %s (database)',
         store.listOfSeller(other, lister, { status: null, afterId: null, limit: 10 }),
       ),
     ).toEqual([]);
+
+    // The numbered read: sort, search (a wildcard as typed), counts, and the other Market.
+    const numbered = (
+      sort: 'created' | 'status' | 'label',
+      direction: 'asc' | 'desc',
+      text: string | null = null,
+      status: 'open' | 'rejected' | null = null,
+      offset = 0,
+      limit = 10,
+    ) =>
+      read(market, () =>
+        store.pageOfSeller(market, lister, { status, text, sort, direction, offset, limit }),
+      );
+    expect((await numbered('created', 'desc')).map((row) => row.state.id)).toEqual([
+      third,
+      second,
+      first,
+    ]);
+    expect((await numbered('created', 'asc', null, null, 1, 1)).map((row) => row.state.id)).toEqual(
+      [second],
+    );
+    expect((await numbered('label', 'asc')).map((row) => row.state.id)).toEqual([
+      first,
+      second,
+      third,
+    ]);
+    expect((await numbered('label', 'desc')).map((row) => row.state.id)).toEqual([
+      third,
+      second,
+      first,
+    ]);
+    expect((await numbered('status', 'asc')).map((row) => row.state.id)).toEqual([
+      third,
+      first,
+      second,
+    ]);
+    expect((await numbered('created', 'desc', 'SEC')).map((row) => row.state.id)).toEqual([second]);
+    expect(await numbered('created', 'desc', '%')).toEqual([]);
+    expect(await numbered('created', 'desc', '_')).toEqual([]);
+    const count = (text: string | null, status: 'open' | 'rejected' | null = null) =>
+      read(market, () => store.countOfSeller(market, lister, { status, text }));
+    expect(await count(null)).toBe(3);
+    expect(await count(null, 'open')).toBe(2);
+    expect(await count('s')).toBe(2);
+    expect(
+      await read(other, () => store.countOfSeller(other, lister, { status: null, text: null })),
+    ).toBe(0);
   });
 
   it('serves due notices and moves a notice only out of pending', async () => {

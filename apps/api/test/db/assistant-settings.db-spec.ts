@@ -162,6 +162,7 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
       replyLanguage: 'english' as const,
       dailySpendCapUsdCents: 2_500,
       monthlySpendCapUsdCents: 50_000,
+      basketProposals: true,
       welcomeText: 'سلام! می‌توانم کمک کنم؟',
     };
     const auditedBefore = await auditRows(market);

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import { AssistantWidget } from '../assistant/assistant-widget.tsx';
-import type { AssistantSetup } from '../assistant/assistant.ts';
+import { PreviewFragmentStrip } from '../assistant/preview-strip.tsx';
+import { AssistantGate } from '../assistant/assistant-gate.tsx';
+import type { AssistantBase } from '../assistant/assistant.ts';
 import { AccountDrawer } from '../account/account-drawer.tsx';
 import { LoginModal } from '../account/login-modal.tsx';
 import { CartDrawer } from '../cart/cart-drawer.tsx';
@@ -8,6 +9,7 @@ import { ConsentBar } from '../consent/consent-bar.tsx';
 import type { Consent } from '../consent/consent.ts';
 import { DeliverModal } from '../delivery/deliver-modal.tsx';
 import type { DeliverTo } from '../delivery/deliver-to.ts';
+import { InviteJoiner } from '../invite/invite-ui.tsx';
 import { OfflineBanner } from '../errors/offline-banner.tsx';
 import type {
   CartSource,
@@ -60,8 +62,8 @@ export function StoreShell({
   readonly signIn: CheckoutCustomer;
   /** The storefront talks to the API: sign-in, sign-out and the session are real. */
   readonly live?: boolean;
-  /** The buyer assistant's setup; null (off) renders nothing. */
-  readonly assistant?: AssistantSetup | null;
+  /** What the server knows of the buyer assistant; null (off) renders nothing. The browser asks the rest. */
+  readonly assistant?: AssistantBase | null;
   readonly children: ReactNode;
 }) {
   return (
@@ -88,6 +90,7 @@ export function StoreShell({
             <Rail />
             <main className="main" id="main">
               <OfflineBanner />
+              <InviteJoiner />
               {children}
             </main>
           </div>
@@ -97,7 +100,8 @@ export function StoreShell({
             <TabBar />
           </Dock>
         </PageFrame>
-        {assistant ? <AssistantWidget setup={assistant} /> : null}
+        <PreviewFragmentStrip />
+        {assistant ? <AssistantGate base={assistant} /> : null}
       </div>
     </StoreProvider>
   );

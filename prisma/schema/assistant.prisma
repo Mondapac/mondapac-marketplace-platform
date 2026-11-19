@@ -31,6 +31,8 @@ model AssistantSettings {
   monthlySpendCapUsdCents Int      @map("monthly_spend_cap_usd_cents")
   /// email-link | in-panel-form
   supportHandoff          String   @map("support_handoff") @db.VarChar(16)
+  /// Basket proposals from a list (stage 1): may the assistant plan a typed list. Default false.
+  basketProposals         Boolean  @default(false) @map("basket_proposals")
   /// null: the storefront's default welcome text.
   welcomeText             String?  @map("welcome_text") @db.VarChar(200)
   changedAt               DateTime @map("changed_at") @db.Timestamptz(6)

@@ -11,6 +11,8 @@ import type {
 import type {
   DisputeRecord,
   DisputeStore,
+  OrdersDisputeQuery,
+  OrdersDisputeSort,
 } from '../../src/modules/payments/application/ports/dispute-store';
 import type {
   DisputeSnapshot,
@@ -221,6 +223,9 @@ export class FakeOrderingFacade implements OrderingFacade {
   orderPaymentRef(): ReturnType<OrderingFacade['orderPaymentRef']> {
     return Promise.resolve(err({ code: 'ordering.order-not-found' }));
   }
+  deliveredSellerOrderFacts(): ReturnType<OrderingFacade['deliveredSellerOrderFacts']> {
+    return Promise.resolve(err({ code: 'ordering.order-not-found' }));
+  }
 
   sellerOrderCustomerNames(): ReturnType<OrderingFacade['sellerOrderCustomerNames']> {
     return Promise.resolve(ok([]));
@@ -238,6 +243,18 @@ export class FakeOrderingFacade implements OrderingFacade {
     return Promise.resolve(ok({ openOrders: 0, pendingRefunds: 0 }));
   }
 
+  adminCustomerPayments(): ReturnType<OrderingFacade['adminCustomerPayments']> {
+    return Promise.resolve(ok({ rows: [], total: 0, paid: [] }));
+  }
+
+  adminCustomerOrderIds(): ReturnType<OrderingFacade['adminCustomerOrderIds']> {
+    return Promise.resolve(ok([]));
+  }
+
+  adminOrderAccountOf(): ReturnType<OrderingFacade['adminOrderAccountOf']> {
+    return Promise.resolve(err({ code: 'ordering.order-not-found' as const }));
+  }
+
   myDeliveredSellerOrders(): ReturnType<OrderingFacade['myDeliveredSellerOrders']> {
     return Promise.resolve(ok([]));
   }
@@ -252,6 +269,14 @@ export class FakeOrderingFacade implements OrderingFacade {
 
   sellerHealthCounts(): ReturnType<OrderingFacade['sellerHealthCounts']> {
     return Promise.resolve(ok([]));
+  }
+
+  customerSellerStats(): ReturnType<OrderingFacade['customerSellerStats']> {
+    return Promise.resolve(ok([]));
+  }
+
+  sellerCustomerOrders(): ReturnType<OrderingFacade['sellerCustomerOrders']> {
+    return Promise.resolve(ok({ items: [], total: 0 }));
   }
 }
 
@@ -699,6 +724,39 @@ export class MemoryDisputeStore implements DisputeStore {
         .sort((a, b) => a.openedAt.epochMilliseconds - b.openedAt.epochMilliseconds)
         .map(strip),
     );
+  }
+  #ofOrders(market: MarketContext, query: OrdersDisputeQuery) {
+    return [...this.rows.values()].filter(
+      (r) =>
+        r.market === market.marketId &&
+        query.orderIds.includes(r.orderId) &&
+        (query.statuses === null || query.statuses.includes(r.status)) &&
+        (query.from === null || r.openedAt.epochMilliseconds >= query.from.epochMilliseconds) &&
+        (query.to === null || r.openedAt.epochMilliseconds < query.to.epochMilliseconds),
+    );
+  }
+  pageOfOrders(
+    market: MarketContext,
+    query: OrdersDisputeQuery,
+    order: { readonly sort: OrdersDisputeSort; readonly direction: 'asc' | 'desc' },
+    window: { readonly offset: number; readonly limit: number },
+  ) {
+    const sign = order.direction === 'asc' ? 1 : -1;
+    const key = (r: DisputeRecord): number =>
+      order.sort === 'amount'
+        ? Number(r.amountMinor)
+        : order.sort === 'due'
+          ? (r.evidenceDueBy?.epochMilliseconds ?? Number.MAX_SAFE_INTEGER)
+          : r.openedAt.epochMilliseconds;
+    return Promise.resolve(
+      this.#ofOrders(market, query)
+        .map(strip)
+        .sort((a, b) => sign * (key(a) - key(b) || (a.id < b.id ? -1 : 1)))
+        .slice(window.offset, window.offset + window.limit),
+    );
+  }
+  countOfOrders(market: MarketContext, query: OrdersDisputeQuery) {
+    return Promise.resolve(this.#ofOrders(market, query).length);
   }
   findByRef(market: MarketContext, providerDisputeId: string) {
     const row = [...this.rows.values()].find(

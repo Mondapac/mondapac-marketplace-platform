@@ -11,7 +11,7 @@ const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMillis
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
 
-interface Row {
+export interface Row {
   readonly id: string;
   readonly sellerId: string;
   readonly sellerOrderId: string | null;
@@ -25,7 +25,8 @@ interface Row {
   readonly releaseReason: string | null;
 }
 
-const toRecord = (row: Row): PayoutHoldRecord => ({
+/** A stored hold row as the application reads it (also used by the list reader). */
+export const toRecord = (row: Row): PayoutHoldRecord => ({
   id: row.id as Id<'PayoutHold'>,
   sellerId: row.sellerId as Id<'Seller'>,
   sellerOrderId: row.sellerOrderId as Id<'SellerOrder'> | null,
@@ -138,6 +139,23 @@ export class PrismaPayoutHoldRepository implements PayoutHoldRepository {
         releaseReason: release.reason,
       }),
     );
+  }
+
+  async hasActiveCovering(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    sellerOrderId: Id<'SellerOrder'>,
+  ) {
+    const row = await this.prisma.tx(market).commissionPayoutsPayoutHold.findFirst({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        releasedAt: null,
+        OR: [{ sellerOrderId }, { sellerOrderId: null }],
+      },
+      select: { id: true },
+    });
+    return row !== null;
   }
 
   countForSellerOrder(market: MarketContext, sellerOrderId: Id<'SellerOrder'>, reason: HoldReason) {

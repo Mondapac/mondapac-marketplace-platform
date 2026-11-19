@@ -38,7 +38,10 @@ const TONE: Readonly<Record<string, BadgeTone>> = {
 };
 const COLUMNS = ['covers', 'reason', 'placed', 'status', 'actions'] as const;
 
-/** Active holds first, then released ones, newest placed first inside each group (as the API sends). */
+/**
+ * Active holds first (newest placed first), then released ones (most recently released first), as
+ * the API sends.
+ */
 const ordered = (holds: readonly PayoutHold[]): PayoutHold[] => [
   ...holds.filter((hold) => hold.active),
   ...holds.filter((hold) => !hold.active),

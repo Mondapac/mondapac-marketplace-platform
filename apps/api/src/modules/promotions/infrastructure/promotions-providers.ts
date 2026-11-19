@@ -5,8 +5,11 @@ import { MarketRegistry } from '../../../platform/market-config/market-registry'
 import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
 import { COMMISSION_PAYOUTS_FACADE, type CommissionPayoutsFacade } from '../../commission-payouts';
 import { CUSTOMERS_READ_FACADE, type CustomersReadFacade } from '../../customers';
+import { ENGAGEMENT_FACADE, type EngagementFacade } from '../../engagement';
+import { FacadeStoreFollows } from './facade-store-follows';
 import {
   FacadeCustomerGroupMembership,
+  FacadeExclusiveCustomers,
   FacadeCustomerOrderHistory,
 } from './facade-customer-order-history';
 import { PRICING_FACADE, type PricingFacade } from '../../pricing';
@@ -26,13 +29,15 @@ import {
 } from '../application/ports/credit.repository';
 import {
   CUSTOMER_GROUP_MEMBERSHIP,
+  EXCLUSIVE_CUSTOMERS,
   CUSTOMER_ORDER_HISTORY,
   STORE_FOLLOWS,
   type CustomerGroupMembership,
+  type ExclusiveCustomers,
   type CustomerOrderHistory,
   type StoreFollows,
 } from '../application/ports/customer-facts';
-import { DELIVERED_ORDER_FACTS, type DeliveredOrderFacts } from '../application/ports/order-facts';
+import { DELIVERED_ORDER_FACTS } from '../application/ports/order-facts';
 import { REFERRAL_SIGNALS, type ReferralSignals } from '../application/ports/referral-signals';
 import { WALLET_CREDIT, type WalletCredit } from '../application/ports/wallet-credit';
 import { FLASH_SALES, type FlashSales } from '../application/ports/flash-sales';
@@ -64,11 +69,15 @@ import { ConfigPromotionsPolicy } from './config-promotions-policy';
 import { FacadeWalletCredit } from './facade-wallet-credit';
 import { PrismaCreditRepository } from './prisma-credit.repository';
 import { PrismaReferralRepository } from './prisma-referral.repository';
+import { UnknownReferralSignals } from './unknown-customer-facts';
+import { BoundDeliveredOrderFacts } from './bound-delivered-order-facts';
+import { FacadeSellerCashbackLedger } from './facade-seller-cashback-ledger';
+import { FacadePayoutAnchors } from './facade-payout-anchors';
+import { PAYOUT_ANCHORS, type PayoutAnchors } from '../application/ports/payout-anchors';
 import {
-  UnknownDeliveredOrderFacts,
-  UnknownReferralSignals,
-  UnknownStoreFollows,
-} from './unknown-customer-facts';
+  SELLER_CASHBACK_LEDGER,
+  type SellerCashbackLedger,
+} from '../application/ports/seller-cashback-ledger';
 import { FacadeSellerCatalogue, FacadeSellerCommission } from './facade-seller-campaign-reads';
 import { FacadePriceHistory, FacadeSellerActivity } from './facade-seller-price-reads';
 import { PrismaMarketSettingRepository } from './prisma-market-setting.repository';
@@ -81,7 +90,13 @@ import {
 } from './prisma-settings.repository';
 import { CryptoBatchCodeCrypto } from './crypto-batch-code-crypto';
 import { PrismaBatchCodeRepository } from './prisma-batch-code.repository';
-import { UnknownFlashSales } from './unknown-flash-sales';
+import { RedemptionFlashSales } from './redemption-flash-sales';
+import { PrismaRedemptionRepository } from './prisma-redemption.repository';
+import {
+  REDEMPTION_REPOSITORY,
+  type RedemptionRepository,
+} from '../application/ports/redemption.repository';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 
 /** Binds the ports of promotions. Only this layer may reach `PrismaService`. */
 export const promotionsProviders: readonly FactoryProvider[] = [
@@ -138,8 +153,16 @@ export const promotionsProviders: readonly FactoryProvider[] = [
       new CryptoBatchCodeCrypto(config.promotionsCodePepper),
   },
   {
+    provide: REDEMPTION_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): RedemptionRepository =>
+      new PrismaRedemptionRepository(prisma),
+  },
+  {
     provide: FLASH_SALES,
-    useFactory: (): FlashSales => new UnknownFlashSales(),
+    inject: [UNIT_OF_WORK, REDEMPTION_REPOSITORY],
+    useFactory: (units: UnitOfWork, redemptions: RedemptionRepository): FlashSales =>
+      new RedemptionFlashSales(units, redemptions),
   },
   {
     provide: SELLER_ACTIVITY,
@@ -163,7 +186,7 @@ export const promotionsProviders: readonly FactoryProvider[] = [
     useFactory: (catalog: CatalogFacade): SellerCatalogue => new FacadeSellerCatalogue(catalog),
   },
   // Phase 3. The last-order read is `customers`' facade (customers phase 1); the reads no module
-  // publishes yet are fail-closed adapters (see their file).
+  // publishes yet are fail-closed adapters; store follows are `engagement`'s facade (phase 3) (see their file).
   {
     provide: CUSTOMER_ORDER_HISTORY,
     inject: [CUSTOMERS_READ_FACADE],
@@ -176,12 +199,32 @@ export const promotionsProviders: readonly FactoryProvider[] = [
     useFactory: (customers: CustomersReadFacade): CustomerGroupMembership =>
       new FacadeCustomerGroupMembership(customers),
   },
-  { provide: STORE_FOLLOWS, useFactory: (): StoreFollows => new UnknownStoreFollows() },
   {
-    provide: DELIVERED_ORDER_FACTS,
-    useFactory: (): DeliveredOrderFacts => new UnknownDeliveredOrderFacts(),
+    provide: EXCLUSIVE_CUSTOMERS,
+    inject: [CUSTOMERS_READ_FACADE],
+    useFactory: (customers: CustomersReadFacade): ExclusiveCustomers =>
+      new FacadeExclusiveCustomers(customers),
   },
+  {
+    provide: STORE_FOLLOWS,
+    inject: [ENGAGEMENT_FACADE],
+    useFactory: (engagement: EngagementFacade): StoreFollows => new FacadeStoreFollows(engagement),
+  },
+  // Bound to ordering's facade by `PromotionsOrderEventsModule` (ordering imports promotions).
+  { provide: DELIVERED_ORDER_FACTS, useFactory: () => new BoundDeliveredOrderFacts() },
   { provide: REFERRAL_SIGNALS, useFactory: (): ReferralSignals => new UnknownReferralSignals() },
+  {
+    provide: SELLER_CASHBACK_LEDGER,
+    inject: [COMMISSION_PAYOUTS_FACADE],
+    useFactory: (commission: CommissionPayoutsFacade): SellerCashbackLedger =>
+      new FacadeSellerCashbackLedger(commission),
+  },
+  {
+    provide: PAYOUT_ANCHORS,
+    inject: [COMMISSION_PAYOUTS_FACADE],
+    useFactory: (commission: CommissionPayoutsFacade): PayoutAnchors =>
+      new FacadePayoutAnchors(commission),
+  },
   {
     provide: WALLET_CREDIT,
     inject: [WALLET_FACADE],
