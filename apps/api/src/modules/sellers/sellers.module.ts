@@ -113,7 +113,6 @@ import type { SellerSuperListDependencies } from './application/seller-super-lis
 import { SellerListExport } from './application/use-cases/seller-list-export.use-case';
 import { SellerListQuery } from './application/use-cases/seller-list-query.use-case';
 import { SellerStatusViewProbe } from './application/use-cases/seller-status-view-probe.use-case';
-import { ExceljsSheetWriter } from '../../platform/list-export';
 import { ServiceAreaNamesEdit } from './application/use-cases/service-area-names-edit.use-case';
 import {
   ServiceAreaNamesList,
