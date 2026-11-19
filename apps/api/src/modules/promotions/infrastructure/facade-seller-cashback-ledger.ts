@@ -16,4 +16,16 @@ export class FacadeSellerCashbackLedger implements SellerCashbackLedger {
       return false;
     }
   }
+
+  async recordReturn(
+    ...[context, returned]: Parameters<SellerCashbackLedger['recordReturn']>
+  ): Promise<boolean> {
+    if (context.actor.kind !== 'system') return false;
+    try {
+      const recorded = await this.commission.recordSellerCashbackReturn(context, returned);
+      return recorded.ok;
+    } catch {
+      return false;
+    }
+  }
 }

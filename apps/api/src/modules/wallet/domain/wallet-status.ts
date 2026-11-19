@@ -28,15 +28,17 @@ export const needsReason = (status: WalletStatus): boolean =>
   status === 'paused' || status === 'frozen';
 
 /** What an operation does to the customer's money. */
-export type WalletOperation = 'grant' | 'hold' | 'capture' | 'release' | 'expire' | 'read';
+export type WalletOperation =
+  'grant' | 'hold' | 'capture' | 'release' | 'expire' | 'clawback' | 'read';
 
 export type StatusRefusal = 'wallet.disabled' | 'wallet.paused' | 'wallet.frozen';
 
 const ALLOWED: Readonly<Record<WalletStatus, readonly WalletOperation[]>> = {
   off: [],
-  active: ['grant', 'hold', 'capture', 'release', 'expire', 'read'],
-  paused: ['capture', 'release', 'expire', 'read'],
-  frozen: ['release', 'expire', 'read'],
+  active: ['grant', 'hold', 'capture', 'release', 'expire', 'clawback', 'read'],
+  // A clawback only lowers what the platform owes, like an expiry.
+  paused: ['capture', 'release', 'expire', 'clawback', 'read'],
+  frozen: ['release', 'expire', 'clawback', 'read'],
 };
 
 /** Null when the operation may go ahead in this state, else the refusal code. */
