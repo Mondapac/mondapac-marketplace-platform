@@ -224,7 +224,7 @@ describe('Seller accounts list: page numbers', () => {
     fireEvent.click(within(panel).getByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(lastParams()['requirements']).toBe('past-due'));
     expect(screen.getByText('7 accounts match')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: /^Remove filter Details due/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove filter Details due is Past due' }));
     await waitFor(() => expect(lastParams()['requirements']).toBeUndefined());
   });
 
@@ -296,7 +296,7 @@ describe('Seller accounts list: page numbers', () => {
   it('says there is no access on a 403 and sends a signed-out admin away on a 401', async () => {
     serve(() => 'denied');
     mount();
-    expect(await screen.findByText("You don't have access to connected accounts.")).toBeTruthy();
+    expect(await screen.findByText("You don't have access to seller accounts.")).toBeTruthy();
     cleanup();
     const assign = vi.fn();
     vi.stubGlobal('location', { assign, href: 'http://admin.localhost/payout-accounts' });
@@ -308,7 +308,7 @@ describe('Seller accounts list: page numbers', () => {
   it('shows the empty state of a view, and a no-match state with Clear all', async () => {
     serve((url) => (url.includes('q=') ? pageOf([]) : pageOf([], { total: 0 })));
     mount();
-    expect(await screen.findByText(/No connected accounts yet/)).toBeTruthy();
+    expect(await screen.findByText('No seller accounts yet')).toBeTruthy();
     const box = screen.getByRole('searchbox', { name: 'Search' });
     fireEvent.change(box, { target: { value: 'nobody' } });
     fireEvent.keyDown(box, { key: 'Enter' });
@@ -471,5 +471,80 @@ describe('Seller accounts list: queries and export', () => {
       format: 'csv',
       columns: 'cooling-off,paused,last-read',
     });
+  });
+});
+
+describe('Seller accounts list: review follow-ups', () => {
+  const tick = async () => {
+    fireEvent.click(await screen.findByRole('checkbox', { name: `Select ${STORE}` }));
+    expect(screen.getByText('1 account selected')).toBeTruthy();
+  };
+  const cleared = () => waitFor(() => expect(screen.queryByText('1 account selected')).toBeNull());
+
+  it('drops the ticked rows when the search, sort or filter changes', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await storeLink();
+    await tick();
+    const box = screen.getByRole('searchbox', { name: 'Search' });
+    fireEvent.change(box, { target: { value: 'cedar' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await cleared();
+    await tick();
+    fireEvent.click(screen.getByRole('button', { name: /^Sort/ }));
+    fireEvent.click(await screen.findByRole('radio', { name: 'Last checked' }));
+    await cleared();
+    await tick();
+    fireEvent.click(screen.getByRole('button', { name: /^Filter/ }));
+    const panel = await screen.findByRole('dialog', { name: 'Filter' });
+    fireEvent.change(within(panel).getByLabelText('Field'), { target: { value: 'ready' } });
+    fireEvent.change(within(panel).getByLabelText('Value'), { target: { value: 'no' } });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(lastParams()['ready']).toBe('no'));
+    await cleared();
+    expect(screen.getByText('Ready for payouts is No')).toBeTruthy();
+  });
+
+  it('drops "all matching" for another view', async () => {
+    serve(() => pageOf([row()], { total: 30 }));
+    mount();
+    await storeLink();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all accounts on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select all 30 matching' }));
+    expect(screen.getByText('All 30 matching accounts are selected')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Pending (5)' }));
+    await waitFor(() =>
+      expect(screen.queryByText('All 30 matching accounts are selected')).toBeNull(),
+    );
+  });
+
+  it('keeps the ticked rows when the same seller id is typed again in other letter case', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await storeLink();
+    const box = screen.getByRole('searchbox', { name: 'Search' });
+    fireEvent.change(box, { target: { value: SELLER.toUpperCase() } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(lastParams()['q']).toBe(SELLER));
+    await tick();
+    fireEvent.change(box, { target: { value: SELLER } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(screen.getByText('1 account selected')).toBeTruthy());
+  });
+
+  it('sends a pasted tab as a space, and offers Try again when the store search is unavailable', async () => {
+    call.mockImplementation((_method, path) =>
+      path.includes('q=')
+        ? failure(503, 'payments.search-unavailable')
+        : Promise.resolve({ ok: true, status: 200, body: pageOf([row()]) } as never),
+    );
+    mount();
+    await storeLink();
+    const box = screen.getByRole('searchbox', { name: 'Search' });
+    fireEvent.change(box, { target: { value: 'cedar\tlane' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(lastParams()['q']).toBe('cedar lane'));
+    expect(await screen.findByText('The seller accounts could not be loaded.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 });

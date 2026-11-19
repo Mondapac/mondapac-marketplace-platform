@@ -276,9 +276,7 @@ export function AccountsList({
     <EmptyState
       size="compact"
       icon={filtered ? 'search' : 'wallet'}
-      title={
-        filtered ? t('empty.no-match') : query.view === 'all' ? ta('empty.all') : ta('empty.status')
-      }
+      title={filtered ? t('empty.no-match') : t(`empty.${query.view}`)}
       body={filtered ? t('empty.no-match-help') : undefined}
       action={
         filtered ? (

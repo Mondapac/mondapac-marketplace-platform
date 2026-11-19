@@ -5666,13 +5666,13 @@
   "payments": {
     "accounts": {
       "title": "Seller accounts",
-      "intro": "The Stripe payout accounts of the sellers. Read-only.",
-      "no-access": "You don't have access to connected accounts.",
+      "intro": "The Stripe payout accounts of the sellers. Read only.",
+      "no-access": "You don't have access to seller accounts.",
       "no-access-title": "You don't have access to this page",
       "not-found": "We couldn't find a connected account for this seller.",
       "not-found-title": "Account not found",
       "back-home": "Back to dashboard",
-      "tabs": "Connected account statuses",
+      "tabs": "Seller accounts by status",
       "tab": {
         "all": "All"
       },
@@ -5697,11 +5697,7 @@
       "yes": "Yes",
       "no": "No",
       "past-due": "Past due",
-      "loading": "Loading connected accounts...",
-      "empty": {
-        "all": "No connected accounts yet. They appear here when a seller starts connecting a payout account.",
-        "status": "No connected accounts with this status."
-      },
+      "loading": "Loading seller accounts…",
       "error": {
         "unavailable": "We couldn't load the connected accounts. Try again."
       },
@@ -5732,7 +5728,7 @@
           "status": "Status",
           "ready": "Ready",
           "requirements": "Details due",
-          "cooling-off": "Waiting period until",
+          "cooling-off": "Waiting until",
           "paused": "Payouts paused",
           "last-read": "Last checked",
           "seller-id": "Seller ID",
@@ -5752,14 +5748,14 @@
         "filter": {
           "title": "Filter seller accounts",
           "name": {
-            "ready": "Ready",
+            "ready": "Ready for payouts",
             "requirements": "Details due",
-            "waiting": "Waiting",
+            "waiting": "Payout hold",
             "created": "Created"
           },
           "ready": {
-            "yes": "Ready",
-            "no": "Not ready"
+            "yes": "Yes",
+            "no": "No"
           },
           "requirements": {
             "past-due": "Past due",
@@ -5767,7 +5763,7 @@
             "none": "None"
           },
           "waiting": {
-            "cooling-off": "In the waiting period",
+            "cooling-off": "Bank change waiting period",
             "paused": "Payouts paused"
           }
         },
@@ -5788,8 +5784,8 @@
             "second": "Least recent first"
           },
           "requirements": {
-            "first": "Most first",
-            "second": "Fewest first"
+            "first": "Most details due first",
+            "second": "Fewest details due first"
           }
         },
         "sorted": "Sorted by {field}: {order}",
@@ -5801,7 +5797,13 @@
         },
         "empty": {
           "no-match": "No seller accounts match",
-          "no-match-help": "Try other filters or clear them."
+          "no-match-help": "Try other filters or clear them.",
+          "all": "No seller accounts yet",
+          "not-started": "No accounts waiting to start",
+          "pending": "No pending accounts",
+          "enabled": "No enabled accounts",
+          "restricted": "No restricted accounts",
+          "rejected": "No rejected accounts"
         },
         "select": {
           "page": "Select all accounts on this page",

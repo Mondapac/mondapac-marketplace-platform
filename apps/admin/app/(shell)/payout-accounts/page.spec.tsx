@@ -78,7 +78,7 @@ describe('seller accounts page', () => {
     mocks.session.mockResolvedValue({ kind: 'ok', session: session([]) });
     render(await PayoutAccountsPage());
     expect(list()).toBeNull();
-    expect(screen.getByText("You don't have access to connected accounts.")).toBeTruthy();
+    expect(screen.getByText("You don't have access to seller accounts.")).toBeTruthy();
     expect(mocks.get).not.toHaveBeenCalled();
   });
 

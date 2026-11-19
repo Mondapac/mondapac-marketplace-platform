@@ -15,7 +15,11 @@ export type AccountSearch =
   | { readonly kind: 'store'; readonly value: string };
 
 export function accountSearchRoute(text: string): AccountSearch {
-  const value = Array.from(text.trim()).slice(0, SEARCH_MAX).join('');
+  // A pasted tab or line break is a space: the API (and the BFF's value check) take printable text.
+  // eslint-disable-next-line no-control-regex
+  const value = Array.from(text.replace(/[\u0000-\u001f\u007f]+/g, ' ').trim())
+    .slice(0, SEARCH_MAX)
+    .join('');
   if (value === '') return { kind: 'none' };
   if (isUuid(value)) return { kind: 'id', value: value.toLowerCase() };
   if (Array.from(value).length < SEARCH_MIN) return { kind: 'too-short' };
