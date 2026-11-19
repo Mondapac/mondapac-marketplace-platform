@@ -38,6 +38,7 @@ const ledger = (
     refundedCommission: '0',
     disputeDebits: '0',
     disputeReinstated: '0',
+    sellerCashback: '0',
     balance: '3050',
   },
   entries,
@@ -114,6 +115,31 @@ describe('Earnings', () => {
     expect(term?.nextElementSibling?.textContent).toBe('$5.00');
     expect(screen.getByText('Dispute: amount recovered')).toBeTruthy();
     expect(screen.getByText('Dispute: amount returned')).toBeTruthy();
+  });
+
+  it('shows the cashback tile and kind in the AU and JPY Markets, and no tile without cashback', () => {
+    mount(ledger([entry(1)]));
+    expect(screen.queryByText('Cashback to exclusive customers')).toBeNull();
+    cleanup();
+    for (const [currency, value] of [
+      ['AUD', '$5.00'],
+      ['JPY', /JPY\s500/],
+    ] as const) {
+      const initial = ledger(
+        [entry(1, { kind: 'cashback-seller', direction: 'debit', amount: '500' })],
+        null,
+        currency,
+      );
+      mount({ ...initial, totals: { ...initial.totals, sellerCashback: '500' } });
+      const term = screen
+        .getAllByText('Cashback to exclusive customers')
+        .find((node) => node.tagName === 'DT');
+      expect(term?.nextElementSibling?.textContent).toMatch(value);
+      const row = within(screen.getByRole('table', { name: 'Ledger' })).getAllByRole('row')[1];
+      expect(within(row as HTMLElement).getByText('Cashback to exclusive customers')).toBeTruthy();
+      expect(within(row as HTMLElement).getByText(/^−/)).toBeTruthy();
+      cleanup();
+    }
   });
 
   it('formats in the ledger currency, never assuming AUD', () => {

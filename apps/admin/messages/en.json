@@ -3694,7 +3694,8 @@
         "balance": "Balance",
         "refunds": "Refunds",
         "refunded-commission": "Commission returned",
-        "disputes": "Disputes"
+        "disputes": "Disputes",
+        "seller-cashback": "Cashback to exclusive customers"
       },
       "col": {
         "when": "Date",
@@ -3710,7 +3711,8 @@
         "refund-shipping": "Refund of shipping",
         "refund-commission": "Commission returned",
         "dispute-debit": "Dispute debit",
-        "dispute-reinstate": "Dispute reinstated"
+        "dispute-reinstate": "Dispute reinstated",
+        "cashback-seller": "Cashback to exclusive customers"
       },
       "empty": "No ledger rows yet. They appear when this seller's orders are paid.",
       "more": "Load more",

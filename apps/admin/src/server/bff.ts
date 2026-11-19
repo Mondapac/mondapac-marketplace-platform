@@ -1451,7 +1451,7 @@ const UUID_LIST_200 =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i;
 /** The filters of the seller page's ledger list: the API validates them again. */
 const LEDGER_FILTER_SHAPES: Readonly<Record<string, RegExp>> = {
-  kind: /^(sale|shipping|commission|refund-sale|refund-shipping|refund-commission|dispute-debit|dispute-reinstate)$/,
+  kind: /^(sale|shipping|commission|refund-sale|refund-shipping|refund-commission|dispute-debit|dispute-reinstate|cashback-seller)$/,
   side: /^(credit|debit)$/,
   // An order or seller order id.
   q: UUID,

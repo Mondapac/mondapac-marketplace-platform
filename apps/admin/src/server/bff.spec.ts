@@ -836,6 +836,9 @@ describe('relay allowlist for seller decisions', () => {
     expect(
       (await send(`${ledger}?cursor=c1&kind=tip&side=debit&q=${ID}&sort=amount&page=2`)).url,
     ).toBe(`http://api.test/${ledger}?side=debit&q=${ID}&sort=amount&page=2`);
+    expect((await send(`${ledger}?kind=cashback-seller&side=debit`)).url).toBe(
+      `http://api.test/${ledger}?kind=cashback-seller&side=debit`,
+    );
     const ids = Array.from({ length: 200 }, () => ID).join(',');
     const file = await send(`${ledger}/export?format=xlsx&columns=rate,entry-id&ids=${ids}`);
     expect(file.status).toBe(200);
