@@ -15,7 +15,12 @@ export class FacadePayoutAnchors implements PayoutAnchors {
     if (!read.ok) return { known: false };
     return {
       known: true,
-      value: { sellerId: read.value.sellerId, eligibleAt: read.value.eligibleAt },
+      value: {
+        sellerId: read.value.sellerId,
+        eligibleAt: read.value.eligibleAt,
+        onHold: read.value.onHold,
+        disputeLost: read.value.disputeLost,
+      },
     };
   }
 }

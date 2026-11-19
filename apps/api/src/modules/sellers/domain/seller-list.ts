@@ -89,7 +89,8 @@ export interface ListRequestRefused {
 }
 
 const KEYS = ['tab', 'kind', 'outsideArea', 'areaCode', 'search', 'after', 'limit'] as const;
-const AREA_CODE = /^[a-z0-9][a-z0-9-]{0,63}$/u;
+/** A service area code as a filter takes it (the shape of the configured codes). */
+export const AREA_CODE = /^[a-z0-9][a-z0-9-]{0,63}$/u;
 const MAX_ECHOED_UNKNOWN = 10;
 const UNSAFE_NAME = /[\p{Cc}\p{Cf}\p{Cs}]/gu;
 const SEARCH_FORBIDDEN = /[\p{Cc}\p{Cf}\p{Cs}]/u;
@@ -161,6 +162,19 @@ function parseSearch(value: unknown, problems: ListFieldProblem[]): ListSearch |
     return null;
   }
   return { nameKey: key, slug: SLUG_CHARS.test(key) ? key : null };
+}
+
+/**
+ * The search of a request on its own (the super list's `q`, list 15): the same rules as `search`
+ * of {@link parseListRequest}; `problem` names the reason without echoing the value.
+ */
+export function parseListSearch(value: unknown): {
+  readonly search: ListSearch | null;
+  readonly problem: string | null;
+} {
+  const problems: ListFieldProblem[] = [];
+  const search = parseSearch(value, problems);
+  return { search, problem: problems[0]?.code ?? null };
 }
 
 /**
