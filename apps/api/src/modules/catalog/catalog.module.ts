@@ -123,6 +123,7 @@ import { ProductPauseProbe } from './application/use-cases/product-pause-probe.u
 import { ProductDeleteProbe } from './application/use-cases/product-delete-probe.use-case';
 import { PlatformProductRetireProbe } from './application/use-cases/platform-product-retire-probe.use-case';
 import { BrandEditProbe } from './application/use-cases/brand-edit-probe.use-case';
+import { ProductApproveProbe } from './application/use-cases/product-approve-probe.use-case';
 import { BusinessActivityEditProbe } from './application/use-cases/business-activity-edit-probe.use-case';
 import { TopicManageProbe } from './application/use-cases/topic-manage-probe.use-case';
 import { AttributeSuggestionBulkDecide } from './application/use-cases/attribute-suggestion-bulk-decide.use-case';
@@ -690,6 +691,7 @@ const PORT = {
   attributeEditProbe: AttributeEditProbe,
   attributeRestructureProbe: AttributeRestructureProbe,
   brandEditProbe: BrandEditProbe,
+  productApproveProbe: ProductApproveProbe,
   variantApprove: VariantRequestApprove,
   variantDecline: VariantRequestDecline,
   attributeApprove: AttributeSuggestionApprove,
@@ -2318,6 +2320,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       policy: true,
       sellerNames: true,
       gtinRegistry: true,
+      productApproveProbe: true,
     }),
     useCaseProvider(AdminCustomVariantLabels, {
       unitOfWork: true,
@@ -2400,6 +2403,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     useCaseProvider(AttributeEditProbe, {}),
     useCaseProvider(AttributeRestructureProbe, {}),
     useCaseProvider(BrandEditProbe, {}),
+    useCaseProvider(ProductApproveProbe, {}),
     useCaseProvider(VariantRequestBulkDecide, { variantApprove: true, variantDecline: true }),
     useCaseProvider(AttributeSuggestionBulkDecide, {
       attributeApprove: true,

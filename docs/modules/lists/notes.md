@@ -12,7 +12,12 @@ Speed mode (CLAUDE.md): no G1/G2 or design document. The owner approved the supe
 - `catalog` (admin and seller Products) and `ordering` (admin and seller Orders) use the store
   through their old repository ports; their routes, use cases and rules are unchanged.
 - The migration `20261115160000_lists_saved_filters` copies the rows of `catalog.saved_filters` and
-  `ordering.saved_filters`; the old tables are dropped one release later.
+  `ordering.saved_filters`. `20261118150000_lists_drop_old_saved_filters` drops the old tables: it
+  first copies what old pods saved after the first copy (rows created since that migration began,
+  `ON CONFLICT (id) DO NOTHING`, a name clash fails the migration) and takes a newer rename or
+  visibility change, then drops. Rows an old pod deleted after the copy stay (a filter is a
+  preference). Deploy it only when no pod of the release before the shared store runs. Before
+  deploying, compare the per-list row counts of old and new tables on a copy of production.
 
 ## B0-1b (admin)
 

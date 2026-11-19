@@ -6,6 +6,8 @@ export interface TaxSettings {
   readonly defaultRateBps: number;
   /** The tax category codes of the Market: what a by-category strategy may name. */
   readonly categoryCodes: readonly string[];
+  /** The same categories with the message key each is shown by (from the Market file). */
+  readonly categories: readonly { readonly code: string; readonly labelKey: string }[];
 }
 
 export interface TaxPolicy {

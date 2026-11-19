@@ -32,6 +32,7 @@ const detail = (over: Partial<SystemRequestDetail> = {}): SystemRequestDetail =>
   subjectRef: '0190a000-0000-7000-8000-0000000009ff',
   risk: 'medium',
   status: 'open',
+  mode: 'review',
   before: { rateBps: 1500, label: 'standard' },
   after: { rateBps: 1200, label: 'standard' },
   note: 'Lower the rate\nfor the pilot <b>sellers</b>',
@@ -660,5 +661,212 @@ describe('RequestDetail high-risk step-up', () => {
       'csrf',
     ]);
     expect(posts[2]).toEqual(posts[0]);
+  });
+
+  describe('an action that waits for approval', () => {
+    const proposal = (over: Partial<SystemRequestDetail> = {}) =>
+      detail({
+        mode: 'approval',
+        subjectKind: 'catalog.brand',
+        before: { name: 'Acme Foods', products: 12 },
+        after: { action: 'merge', intoId: 'b-2', intoName: 'Acme Foods Pty' },
+        activity: [
+          {
+            id: 'p1',
+            kind: 'proposed',
+            actor: OTHER,
+            actorName: 'Sara K.',
+            at: '2026-11-10T01:00:00.000Z',
+            body: null,
+          },
+        ],
+        ...over,
+      });
+
+    it('shows the badge, the requested action and the current values, with no diff', async () => {
+      call.mockResolvedValue(ok(proposal()));
+      mount();
+      await screen.findByRole('heading', { level: 1 });
+      expect(screen.getByText('Waits for approval')).toBeTruthy();
+      expect(screen.getByRole('heading', { name: 'Requested action' })).toBeTruthy();
+      expect(screen.getByText('Merge into Acme Foods Pty')).toBeTruthy();
+      expect(screen.getByRole('heading', { name: 'What the subject holds now' })).toBeTruthy();
+      expect(screen.getByText('Acme Foods')).toBeTruthy();
+      expect(screen.queryByRole('heading', { name: 'What changed' })).toBeNull();
+      expect(screen.queryByText(/This change is already live/)).toBeNull();
+      expect(screen.getByText(/Nothing has changed yet\./)).toBeTruthy();
+      expect(screen.getByText('asked for the action')).toBeTruthy();
+    });
+
+    it('names a plain action and says what to expect from each decision', async () => {
+      call.mockResolvedValue(ok(proposal({ after: { action: 'delete' } })));
+      mount();
+      await screen.findByRole('heading', { level: 1 });
+      expect(screen.getByText('Delete')).toBeTruthy();
+      open('Approve');
+      expect(
+        await screen.findByRole('heading', { name: 'Approve SR-1042 and apply the action?' }),
+      ).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Reject' }));
+      const dialog = (await screen.findByRole('heading', { name: 'Reject SR-1042?' })).closest(
+        'dialog',
+      ) as HTMLElement;
+      expect(within(dialog).getByText(/Nothing will change\./)).toBeTruthy();
+      fireEvent.change(within(dialog).getByLabelText('Reason (shown to the author)'), {
+        target: { value: 'Not needed' },
+      });
+      call.mockResolvedValueOnce(ok(proposal({ status: 'reverted', decision: 'rejected' })));
+      call.mockResolvedValueOnce(
+        ok(
+          proposal({
+            status: 'reverted',
+            decision: 'rejected',
+            decidedBy: ME,
+            decidedAt: '2026-11-12T01:00:00.000Z',
+            decisionReason: 'Not needed',
+            actions: [],
+          }),
+        ),
+      );
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Reject' }));
+      await expectToast('SR-1042 rejected. Nothing was changed.');
+      expect(await screen.findByText('Declined. Nothing was changed.')).toBeTruthy();
+      expect(screen.getAllByText('Declined').length).toBeGreaterThan(0);
+      expect(screen.queryByText(/Reverted/)).toBeNull();
+    });
+
+    it('words a withdrawn proposal as not applied, and an approved one as applied', async () => {
+      call.mockResolvedValue(
+        ok(
+          proposal({
+            status: 'reverted',
+            decision: 'withdrawn',
+            requestedBy: ME,
+            decidedBy: ME,
+            decidedAt: '2026-11-12T01:00:00.000Z',
+            decisionReason: 'Mistake',
+            actions: [],
+          }),
+        ),
+      );
+      mount();
+      expect(await screen.findByText('Withdrawn. Nothing was changed.')).toBeTruthy();
+      expect(screen.getByText('Withdrawn, not applied')).toBeTruthy();
+      cleanup();
+      call.mockResolvedValue(
+        ok(
+          proposal({
+            status: 'approved',
+            decision: 'approved',
+            decidedBy: OTHER,
+            decidedByName: 'Sara K.',
+            decidedAt: '2026-11-12T01:00:00.000Z',
+            actions: [],
+          }),
+        ),
+      );
+      mount();
+      expect(await screen.findByText('Approved. The action was applied.')).toBeTruthy();
+    });
+
+    it('gives the author the withdraw action in its own words', async () => {
+      call.mockResolvedValue(ok(proposal({ requestedBy: ME, actions: ['open', 'withdraw'] })));
+      mount();
+      expect(await screen.findByText(/You asked for this action\./)).toBeTruthy();
+      expect(screen.getByRole('button', { name: 'Withdraw my request' })).toBeTruthy();
+    });
+  });
+});
+
+describe('RequestDetail, an action that waits for approval: high risk and refusals', () => {
+  const required = refused(403, 'second-factor.required', {
+    actionKey: 'system-requests.request.decide-high',
+  });
+  const verified = ok({ code: 'step-up-verified' });
+  const proposal = (over: Partial<SystemRequestDetail> = {}) =>
+    detail({
+      mode: 'approval',
+      risk: 'high',
+      before: { name: 'Acme Foods' },
+      after: { action: 'delete' },
+      ...over,
+    });
+  const openApprove = async () => {
+    await screen.findByRole('heading', { level: 1 });
+    open('Approve');
+    return (
+      await screen.findByRole('heading', { name: 'Approve SR-1042 and apply the action?' })
+    ).closest('dialog') as HTMLElement;
+  };
+
+  it('warns of the two-step code, then approves and applies after it is entered', async () => {
+    call.mockResolvedValueOnce(ok(proposal()));
+    mount(true);
+    const dialog = await openApprove();
+    expect(
+      within(dialog).getByText('High risk: you will be asked for your two-step code.'),
+    ).toBeTruthy();
+    call.mockResolvedValueOnce(required);
+    call.mockResolvedValueOnce(verified);
+    call.mockResolvedValueOnce(ok(proposal({ status: 'approved' })));
+    call.mockResolvedValueOnce(ok(proposal({ status: 'approved', actions: [] })));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve and apply' }));
+    await screen.findByRole('dialog', { name: 'Confirm it is you' });
+    const boxes = screen.getAllByRole('textbox', { name: /Digit \d of 6/ });
+    fireEvent.paste(boxes[0] as HTMLElement, { clipboardData: { getData: () => '123456' } });
+    await expectToast('SR-1042 approved. The action was applied.');
+    const posts = call.mock.calls.filter(([method]) => method === 'POST');
+    expect(posts.map(([, path]) => path)).toEqual([
+      `system-requests/admin/requests/${ID}/approve`,
+      'identity/admin/step-up/verify',
+      `system-requests/admin/requests/${ID}/approve`,
+    ]);
+  });
+
+  it('does not warn of a code for a lower risk request', async () => {
+    call.mockResolvedValueOnce(ok(proposal({ risk: 'medium' })));
+    mount();
+    const dialog = await openApprove();
+    expect(within(dialog).queryByText(/two-step code/)).toBeNull();
+  });
+
+  const refuseApprove = async (code: string, details?: object) => {
+    call.mockResolvedValueOnce(ok(proposal({ risk: 'medium' })));
+    mount();
+    const dialog = await openApprove();
+    call.mockResolvedValueOnce(refused(409, code, details));
+    call.mockResolvedValueOnce(ok(proposal({ risk: 'medium' })));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve and apply' }));
+  };
+
+  it('says nothing was applied and the request stays open when the subject changed', async () => {
+    await refuseApprove('system-requests.changed-since', { newerRequestId: null });
+    expect(
+      await screen.findByText(
+        /The subject changed after this was requested, so the action was not applied and nothing was changed\. The request stays open\./,
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByText(/not reverted/)).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Open the newer request' })).toBeNull();
+    // Still open, so it can be rejected.
+    expect(screen.getByRole('button', { name: 'Reject' })).toBeTruthy();
+  });
+
+  it('says nothing was applied when the subject is gone', async () => {
+    await refuseApprove('system-requests.subject-gone');
+    expect(
+      await screen.findByText(/The subject no longer exists, so the action was not applied/),
+    ).toBeTruthy();
+    expect(screen.queryByText(/nothing to put back/)).toBeNull();
+  });
+
+  it('says nothing was applied when the admin may not make the change', async () => {
+    await refuseApprove('system-requests.revert-not-permitted');
+    expect(
+      await screen.findByText(
+        /You are not allowed to make this change, so the action was not applied/,
+      ),
+    ).toBeTruthy();
   });
 });
