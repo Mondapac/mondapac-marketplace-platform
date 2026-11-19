@@ -182,6 +182,7 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
   };
 
   readonly #logger = new Logger('SellerList');
+  private readonly log = new ListLog(this.#logger, 'sellers.list');
 
   constructor(
     gate: UseCaseGate,
@@ -348,92 +349,17 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
     }
   }
 
-  /** The rows of a page, with state and owner from one `identity` call when the actor may see them. */
-  private async decorate(
+  private decorate(
     context: CallContext,
     page: readonly ListedSeller[],
     showStatus: boolean,
     edited: EditedNamesByArea,
-  ): Promise<
-    Result<
-      { readonly rows: readonly SellerListRow[]; readonly healthUnavailable: boolean },
-      SellerListFailure
-    >
-  > {
-    let accounts: ReadonlyMap<Id<'Seller'>, SellerAccountEntry> = new Map();
-    if (showStatus && page.length > 0) {
-      try {
-        accounts = await this.deps.directory.accountsOf(
-          context,
-          page.map((row) => row.sellerId),
-        );
-      } catch (error) {
-        return this.identityFailed(context, error);
-      }
-    }
-    const openCodes = new Set(this.deps.onboardingAreas.openCodes(context.market));
-    const health = await this.healthOf(
-      context,
-      page.map((row) => row.sellerId),
-    );
-    return ok({
-      healthUnavailable: health.unavailable,
-      rows: page.map((row) =>
-        rowOf(
-          row,
-          showStatus ? (accounts.get(row.sellerId) ?? null) : 'hidden',
-          openCodes,
-          row.serviceAreaCode === null
-            ? null
-            : (edited.get(row.serviceAreaCode)?.['en'] ??
-                this.deps.onboardingAreas.nameOf(context.market, row.serviceAreaCode)),
-          health.byId.get(row.sellerId) ?? null,
-        ),
-      ),
-    });
+  ) {
+    return decorateListRows(this.deps, this.log, context, page, showStatus, edited);
   }
 
-  /**
-   * The health of a page in one read-only unit and one query. A failure is logged and answers an
-   * empty map with `unavailable`: the column shows nothing and the page says why, the list still
-   * answers (the column is not a gate).
-   */
-  private async healthOf(
-    context: CallContext,
-    ids: readonly Id<'Seller'>[],
-  ): Promise<{
-    readonly byId: ReadonlyMap<Id<'Seller'>, SellerHealthSummary>;
-    readonly unavailable: boolean;
-  }> {
-    if (ids.length === 0) return { byId: new Map(), unavailable: false };
-    const { market } = context;
-    const today = this.deps.clock.now().toZonedDateTimeISO('UTC').toPlainDate();
-    // The newest local date on Earth is at most one day ahead of UTC.
-    const last = today.add({ days: 1 });
-    const first = today.subtract({ days: SELLER_LIST_HEALTH_DAYS - 1 });
-    try {
-      const read = await this.deps.unitOfWork.run<
-        ReadonlyMap<Id<'Seller'>, SellerHealthSummary>,
-        never
-      >(market, async () => ok(await this.deps.healthStore.latest(market, ids, first, last)), {
-        readOnly: true,
-      });
-      if (!read.ok) throw new Error('the health read unit failed');
-      return { byId: read.value, unavailable: false };
-    } catch (error) {
-      this.fail(context, 'health-failed', error);
-      return { byId: new Map(), unavailable: true };
-    }
-  }
-
-  /** Every area of the Market for the filter, with the edited English name when there is one. */
-  private areasOf(
-    context: CallContext,
-    edited: EditedNamesByArea,
-  ): readonly { readonly code: string; readonly name: string }[] {
-    return this.deps.onboardingAreas
-      .all(context.market)
-      .map((area) => ({ code: area.code, name: edited.get(area.code)?.['en'] ?? area.name }));
+  private areasOf(context: CallContext, edited: EditedNamesByArea) {
+    return listAreasOf(this.deps, context, edited);
   }
 
   private async mayShowStatus(context: CallContext): Promise<boolean> {
@@ -445,31 +371,161 @@ export class SellerList extends UseCase<SellerListInput, SellerListPage, SellerL
     }
   }
 
-  /** `identity` refused the actor (403, a warning), or could not answer (503, an error). */
   private identityFailed(context: CallContext, error: unknown): Result<never, SellerListFailure> {
-    if (error instanceof SellerAccountAccessRefused) {
-      this.#logger.warn({
-        msg: 'sellers.list.access-refused',
-        marketId: context.market.marketId,
-        correlationId: context.correlationId,
-      });
-      return err({ code: 'access.denied' });
-    }
-    this.fail(context, 'access-failed', error);
-    return err({ code: 'sellers.unavailable' });
+    return listIdentityFailed(this.log, context, error);
   }
 
   private fail(context: CallContext, reason: string, error: unknown): void {
-    this.#logger.error({
-      msg: `sellers.list.${reason}`,
+    this.log.fail(context, reason, error);
+  }
+}
+
+/**
+ * Where a list's reads report a failure: `<prefix>.<reason>` with the error's name, the Market and
+ * the correlation id only (never a term, a name or an address).
+ */
+export class ListLog {
+  constructor(
+    private readonly logger: Logger,
+    private readonly prefix: string,
+  ) {}
+
+  fail(context: CallContext, reason: string, error: unknown): void {
+    this.logger.error({
+      msg: `${this.prefix}.${reason}`,
       error: error instanceof Error ? error.name : 'unknown',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+  }
+
+  refused(context: CallContext): void {
+    this.logger.warn({
+      msg: `${this.prefix}.access-refused`,
       marketId: context.market.marketId,
       correlationId: context.correlationId,
     });
   }
 }
 
-function stateTabCounts(answer: {
+/** What the rows of a page read besides `sellers`' own list (the older list and list 15 alike). */
+export type ListRowDependencies = Pick<
+  SellerListDependencies,
+  'unitOfWork' | 'directory' | 'onboardingAreas' | 'healthStore' | 'clock'
+>;
+
+/**
+ * The rows of a page, with state and owner from one `identity` call when the actor may see them
+ * (at most 100 sellers, the contract's batch), and the health of the page in one read.
+ */
+export async function decorateListRows(
+  deps: ListRowDependencies,
+  log: ListLog,
+  context: CallContext,
+  page: readonly ListedSeller[],
+  showStatus: boolean,
+  edited: EditedNamesByArea,
+): Promise<
+  Result<
+    { readonly rows: readonly SellerListRow[]; readonly healthUnavailable: boolean },
+    { readonly code: 'access.denied' } | { readonly code: 'sellers.unavailable' }
+  >
+> {
+  let accounts: ReadonlyMap<Id<'Seller'>, SellerAccountEntry> = new Map();
+  if (showStatus && page.length > 0) {
+    try {
+      accounts = await deps.directory.accountsOf(
+        context,
+        page.map((row) => row.sellerId),
+      );
+    } catch (error) {
+      return listIdentityFailed(log, context, error);
+    }
+  }
+  const openCodes = new Set(deps.onboardingAreas.openCodes(context.market));
+  const health = await listHealthOf(
+    deps,
+    log,
+    context,
+    page.map((row) => row.sellerId),
+  );
+  return ok({
+    healthUnavailable: health.unavailable,
+    rows: page.map((row) =>
+      rowOf(
+        row,
+        showStatus ? (accounts.get(row.sellerId) ?? null) : 'hidden',
+        openCodes,
+        row.serviceAreaCode === null
+          ? null
+          : (edited.get(row.serviceAreaCode)?.['en'] ??
+              deps.onboardingAreas.nameOf(context.market, row.serviceAreaCode)),
+        health.byId.get(row.sellerId) ?? null,
+      ),
+    ),
+  });
+}
+
+/**
+ * The health of a page in one read-only unit and one query. A failure is logged and answers an
+ * empty map with `unavailable`: the column shows nothing and the page says why, the list still
+ * answers (the column is not a gate).
+ */
+async function listHealthOf(
+  deps: ListRowDependencies,
+  log: ListLog,
+  context: CallContext,
+  ids: readonly Id<'Seller'>[],
+): Promise<{
+  readonly byId: ReadonlyMap<Id<'Seller'>, SellerHealthSummary>;
+  readonly unavailable: boolean;
+}> {
+  if (ids.length === 0) return { byId: new Map(), unavailable: false };
+  const { market } = context;
+  const today = deps.clock.now().toZonedDateTimeISO('UTC').toPlainDate();
+  // The newest local date on Earth is at most one day ahead of UTC.
+  const last = today.add({ days: 1 });
+  const first = today.subtract({ days: SELLER_LIST_HEALTH_DAYS - 1 });
+  try {
+    const read = await deps.unitOfWork.run<ReadonlyMap<Id<'Seller'>, SellerHealthSummary>, never>(
+      market,
+      async () => ok(await deps.healthStore.latest(market, ids, first, last)),
+      { readOnly: true },
+    );
+    if (!read.ok) throw new Error('the health read unit failed');
+    return { byId: read.value, unavailable: false };
+  } catch (error) {
+    log.fail(context, 'health-failed', error);
+    return { byId: new Map(), unavailable: true };
+  }
+}
+
+/** Every area of the Market for the filter, with the edited English name when there is one. */
+export function listAreasOf(
+  deps: Pick<SellerListDependencies, 'onboardingAreas'>,
+  context: CallContext,
+  edited: EditedNamesByArea,
+): readonly { readonly code: string; readonly name: string }[] {
+  return deps.onboardingAreas
+    .all(context.market)
+    .map((area) => ({ code: area.code, name: edited.get(area.code)?.['en'] ?? area.name }));
+}
+
+/** `identity` refused the actor (403, a warning), or could not answer (503, an error). */
+export function listIdentityFailed(
+  log: ListLog,
+  context: CallContext,
+  error: unknown,
+): Result<never, { readonly code: 'access.denied' } | { readonly code: 'sellers.unavailable' }> {
+  if (error instanceof SellerAccountAccessRefused) {
+    log.refused(context);
+    return err({ code: 'access.denied' });
+  }
+  log.fail(context, 'access-failed', error);
+  return err({ code: 'sellers.unavailable' });
+}
+
+export function stateTabCounts(answer: {
   readonly counts: SellerStateCounts;
   readonly rejectedLimitReached: number;
 }): StateTabCounts {
@@ -482,7 +538,7 @@ function stateTabCounts(answer: {
   };
 }
 
-function rowOf(
+export function rowOf(
   row: ListedSeller,
   account: SellerAccountEntry | null | 'hidden',
   openCodes: ReadonlySet<string>,

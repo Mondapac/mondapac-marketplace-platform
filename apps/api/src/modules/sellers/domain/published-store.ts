@@ -48,6 +48,17 @@ export interface PublishedStore {
   readonly banner?: StoreImageRef | null;
 }
 
+/**
+ * The little a list of stores needs about each: the address, the public name and the current logo
+ * (`null`: none). The same public fields as {@link PublishedStore}, for a store the public can see
+ * now only; nothing personal.
+ */
+export interface PublishedStoreCard {
+  readonly slug: string;
+  readonly name: string;
+  readonly logo: StoreImageRef | null;
+}
+
 /** The orders of the public store list. */
 export const PUBLISHED_STORE_SORTS = ['name', 'newest'] as const;
 export type PublishedStoreSort = (typeof PUBLISHED_STORE_SORTS)[number];
