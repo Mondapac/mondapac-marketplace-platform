@@ -449,12 +449,16 @@ describe('ExclusivePerks', () => {
   });
 
   it('is view only without the manage key, and offers Resume only for a seller pause', async () => {
-    call.mockResolvedValue(ok({ items: [promo({ status: 'PAUSED', pausedBy: 'SELLER' })] }));
+    servePerks(call, {
+      discount: [ok({ items: [promo({ status: 'PAUSED', pausedBy: 'SELLER' })] })],
+    });
     mount(false);
     await screen.findByText('Friends 10');
     expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull();
     cleanup();
-    call.mockResolvedValue(ok({ items: [promo({ status: 'PAUSED', pausedBy: 'ADMIN' })] }));
+    servePerks(call, {
+      discount: [ok({ items: [promo({ status: 'PAUSED', pausedBy: 'ADMIN' })] })],
+    });
     mount();
     await screen.findByText(/MondaPac paused this discount/);
     expect(screen.queryByRole('button', { name: 'Resume…' })).toBeNull();

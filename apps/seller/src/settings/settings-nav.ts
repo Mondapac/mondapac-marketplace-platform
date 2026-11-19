@@ -90,7 +90,11 @@ export const settingsGroups: readonly SettingsGroup[] = [
         labelKey: 'settings.hub.link.exclusive-perks',
         href: '/settings/exclusive-perks',
         // Held by any seller role that sees or manages promotions; each card hides on its own key.
-        view: ['promotions.promotion.view', 'promotions.promotion.manage'],
+        view: [
+          'promotions.promotion.view',
+          'promotions.promotion.manage',
+          'commission-payouts.earnings.view',
+        ],
         manage: ['promotions.promotion.manage'],
       },
     ],

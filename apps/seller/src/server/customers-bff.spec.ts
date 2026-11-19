@@ -77,11 +77,21 @@ describe('relay allowlist for customers and exclusive perks', () => {
     expect((await relay(config, send('PATCH', bad), bad.split('/'), upstream)).status).toBe(404);
   });
 
-  it('does not allow the commission route that is not on main yet', async () => {
+  it('relays the exclusive commission as GET only, with no query key', async () => {
     const upstream = upstreamOk();
     const path = 'commission-payouts/seller/exclusive-commission';
-    expect((await relay(config, send('GET', path), path.split('/'), upstream)).status).toBe(404);
-    expect(upstream).not.toHaveBeenCalled();
+    expect(
+      (await relay(config, send('GET', `${path}?months=3&x=1`), path.split('/'), upstream)).status,
+    ).toBe(200);
+    expect(String(upstream.mock.calls[0]?.[0] as string)).toBe(`http://api.test/${path}`);
+    for (const method of ['POST', 'PATCH', 'PUT', 'DELETE']) {
+      expect((await relay(config, send(method, path), path.split('/'), upstream)).status).toBe(404);
+    }
+    const deeper = `${path}/extra`;
+    expect((await relay(config, send('GET', deeper), deeper.split('/'), upstream)).status).toBe(
+      404,
+    );
+    expect(upstream).toHaveBeenCalledTimes(1);
   });
 
   it('relays one customer by code with only page and pageSize, and refuses a bad code', async () => {

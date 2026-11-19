@@ -55,6 +55,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The saved views of the order list (ordering; query: `listKey`).
     'ordering/seller/saved-filters',
     'commission-payouts/seller/ledger',
+    // The lower commission on the shop's exclusive customers and what it saved (no query).
+    'commission-payouts/seller/exclusive-commission',
     // The estimated next payout, the payout history (query: `limit`, `cursor`) and the money on
     // hold (commission-payouts, package 6d). The seller id is the session's, never a parameter.
     'commission-payouts/seller/payouts/next',

@@ -4582,6 +4582,22 @@
         "invalid": "Check the values. The discount may be above the limit for sellers, or the name or date is not valid.",
         "unavailable": "Perks could not be loaded. Try again in a moment.",
         "unknown": "Something went wrong. Try again."
+      },
+      "commission": {
+        "title": "Special commission rate",
+        "loading": "Loading commission…",
+        "rule": "Your commission on exclusive customers is {rate}% instead of {standard}% for {n, plural, one {# month} other {# months}} from each customer's sign-up.",
+        "this-month": "Savings this month",
+        "last-12": "Savings in the last 12 months",
+        "zone": "Months are counted in {zone}. A negative month means commission was given back after refunds.",
+        "nothing-this-month": "Nothing saved this month.",
+        "refunds": "refunds",
+        "empty": "No orders from exclusive customers yet.",
+        "error": {
+          "throttled": "Try again in {n, plural, one {# minute} other {# minutes}}.",
+          "unavailable": "Commission could not be loaded. Try again in a moment.",
+          "unknown": "Something went wrong. Try again."
+        }
       }
     },
     "not-approved": {

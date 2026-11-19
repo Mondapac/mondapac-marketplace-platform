@@ -9,17 +9,25 @@ type Answer = unknown;
  */
 export function servePerks(
   call: Mock,
-  answers: { discount?: Answer[]; cashback?: Answer[]; writes?: Answer[] },
+  answers: { discount?: Answer[]; cashback?: Answer[]; commission?: Answer[]; writes?: Answer[] },
 ): void {
   const empty = { ok: true, status: 200, body: { items: [] } };
   const lists = {
     discount: [...(answers.discount ?? [empty])],
     cashback: [...(answers.cashback ?? [empty])],
+    // A test that does not ask for the commission card gets it hidden (403).
+    commission: [
+      ...(answers.commission ?? [{ ok: false, failure: { status: 403, code: 'access.denied' } }]),
+    ],
   };
   const writes = [...(answers.writes ?? [])];
   call.mockImplementation((method: string, path: string) => {
     if (method !== 'GET') return Promise.resolve(writes.shift() ?? empty);
-    const queue = path.includes('type=CASHBACK') ? lists.cashback : lists.discount;
+    const queue = path.includes('exclusive-commission')
+      ? lists.commission
+      : path.includes('type=CASHBACK')
+        ? lists.cashback
+        : lists.discount;
     return Promise.resolve(queue.length > 1 ? queue.shift() : queue[0]);
   });
 }

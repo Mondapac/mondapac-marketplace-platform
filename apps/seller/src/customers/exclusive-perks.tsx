@@ -19,6 +19,7 @@ import { callApi } from '../api/client.ts';
 import { formatInstant } from '../catalog/format.ts';
 import { formatMinor, inputOf, minorOf } from '../price/money.ts';
 import { instantOfZoned, resolveZone } from '../price/zone-time.ts';
+import { CommissionCard } from './exclusive-commission.tsx';
 import { CashbackCard } from './exclusive-cashback.tsx';
 import {
   PROMOTIONS_BASE_PATH,
@@ -229,27 +230,37 @@ type Load =
  * segment is fixed and cannot be changed here). Create exclusive discount…, Edit…, Pause… and
  * Resume… follow the manage key. The API's own limits (the seller cap, review after publishing) are
  * shown as given. The cashback card is in exclusive-cashback.tsx (same patterns, type CASHBACK); each
- * card hides alone on a 403. The commission card waits for a seller route and is not drawn.
+ * card hides alone on a 403. The commission card (read only) is in exclusive-commission.tsx.
  */
 export function ExclusivePerks({
   canManage,
   csrfToken,
   timeZone,
+  showPromotions = true,
+  showCommission = true,
 }: {
   readonly canManage: boolean;
   readonly csrfToken: string;
   readonly timeZone: string | null;
+  /** The seller may see promotions (view or manage); false draws no discount or cashback card. */
+  readonly showPromotions?: boolean;
+  /** The seller holds `commission-payouts.earnings.view`; false draws no commission card. */
+  readonly showCommission?: boolean;
 }) {
   const t = useTranslations('customers.perks');
   const tl = useTranslations('load');
   const locale = useLocale();
   const zone = resolveZone(timeZone);
-  const [state, setState] = useState<Load>({ kind: 'loading' });
+  const [state, setState] = useState<Load>(
+    showPromotions ? { kind: 'loading' } : { kind: 'hidden' },
+  );
   const [dialog, setDialog] = useState<'form' | 'pause' | 'resume' | null>(null);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
-  const [cashbackHidden, setCashbackHidden] = useState(false);
+  const [cashbackHidden, setCashbackHidden] = useState(!showPromotions);
   const hideCashback = useCallback(() => setCashbackHidden(true), []);
+  const [commissionHidden, setCommissionHidden] = useState(!showCommission);
+  const hideCommission = useCallback(() => setCommissionHidden(true), []);
 
   const load = useCallback(async () => {
     const result = await callApi<{ readonly items: readonly OwnPromotion[] }>('GET', LIST_PATH);
@@ -269,8 +280,8 @@ export function ExclusivePerks({
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (showPromotions) void load();
+  }, [load, showPromotions]);
 
   const promotion = state.kind === 'ok' ? state.promotion : null;
 
@@ -298,7 +309,7 @@ export function ExclusivePerks({
     setProblem(problemOf(result.failure));
   }
 
-  if (state.kind === 'hidden' && cashbackHidden) return null;
+  if (state.kind === 'hidden' && cashbackHidden && commissionHidden) return null;
   const now = new Date();
   const status = promotion === null ? null : displayStatus(promotion, now);
   const adminPaused = promotion?.status === 'PAUSED' && promotion.pausedBy === 'ADMIN';
@@ -411,13 +422,16 @@ export function ExclusivePerks({
           )}
         </Card>
       )}
-      <CashbackCard
-        canManage={canManage}
-        csrfToken={csrfToken}
-        timeZone={zone}
-        currencyHint={promotion?.currency ?? null}
-        onHidden={hideCashback}
-      />
+      {showPromotions ? (
+        <CashbackCard
+          canManage={canManage}
+          csrfToken={csrfToken}
+          timeZone={zone}
+          currencyHint={promotion?.currency ?? null}
+          onHidden={hideCashback}
+        />
+      ) : null}
+      {showCommission ? <CommissionCard onHidden={hideCommission} /> : null}
       {dialog === 'form' ? (
         <ExclusiveDialog
           promotion={promotion}

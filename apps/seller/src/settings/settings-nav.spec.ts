@@ -56,8 +56,9 @@ describe('seller settings map', () => {
     expect(view('exclusive-perks')).toEqual([
       'promotions.promotion.view',
       'promotions.promotion.manage',
+      'commission-payouts.earnings.view',
     ]);
-    expect(settingsViewKeys).toHaveLength(6);
+    expect(settingsViewKeys).toHaveLength(7);
   });
 
   it('finds a link with its group, and nothing for an unknown id', () => {
