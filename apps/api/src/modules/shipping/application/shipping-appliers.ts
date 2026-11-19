@@ -3,6 +3,7 @@ import type { AccessDeclaration } from '../../../platform/authz';
 import type { ApplyOutcome, RevertRequest, SystemChangeApplier } from '../../system-requests';
 import { applyFleetModelCreate, modelProposalOf } from './fleet-selection-flow';
 import type { ShippingApplierDependencies } from './shipping-dependencies';
+import { isActingAs } from './shipping-review';
 import { CreateFleetSelectionModel } from './use-cases/create-fleet-selection-model.use-case';
 
 // The appliers of area delivery (Admin Inbox › System requests, owner decision of 18 Nov 2026,
@@ -17,9 +18,7 @@ import { CreateFleetSelectionModel } from './use-cases/create-fleet-selection-mo
 /** A signed-in admin acting as themselves (a decision is never made in an acting-as session). */
 function isAdminAsSelf(context: CallContext): boolean {
   const actor = context.actor;
-  const acting =
-    Object.hasOwn(actor, 'actingAs') && (actor as { readonly actingAs?: unknown }).actingAs != null;
-  return actor.kind === 'authenticated' && actor.population === 'admin' && !acting;
+  return actor.kind === 'authenticated' && actor.population === 'admin' && !isActingAs(context);
 }
 
 /** Whether the deciding admin holds what the action's own route needs (fail closed). */

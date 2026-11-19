@@ -3505,9 +3505,8 @@
     "sent": "Sent for review as {number}",
     "sent-for-approval": "Sent for approval ({number})",
     "send-for-approval": "Send for approval",
+    "already-pending": "This is already waiting for approval ({number}).",
     "approval-body": "Nothing changes until another admin approves it in Admin Inbox > System requests.",
-    "already-pending": "This is already waiting for approval ({number}). Wait for another admin to decide it.",
-    "already-pending-unnumbered": "This is already waiting for approval. Wait for another admin to decide it.",
     "error": {
       "required": "Write a note for the reviewers (1 to 500 characters).",
       "rejected": "The note was refused. Write 1 to 500 characters."

@@ -43,6 +43,7 @@ import {
   FLEET_SELECTION_SUBJECT_REF,
   deliveryReview,
   fleetModelNameRef,
+  isActingAs,
   requestRef,
   reverterOf,
   type ShippingProposal,
@@ -240,7 +241,8 @@ export async function createFleetSelectionModel(
   input: { readonly name: unknown; readonly rule: unknown; readonly note?: unknown },
 ): Promise<Result<FleetModelCreateAnswer, FleetModelCreateFailure>> {
   const admin = adminOf(context);
-  if (admin === null) return err({ code: 'access.denied' });
+  // Never in an acting-as session, reviewed or not (the proposer refuses one too).
+  if (admin === null || isActingAs(context)) return err({ code: 'access.denied' });
   const parsed = parseModelInput(input);
   if (!parsed.ok) return err({ code: 'validation.failed', fields: parsed.fields });
   const asked = { name: parsed.name, rule: parsed.rule };

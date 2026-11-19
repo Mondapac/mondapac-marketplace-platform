@@ -46,6 +46,12 @@ const REF_MAX = 128;
  * every other character becomes `_<hex code point>.` (an exact, reversible spelling, readable
  * for a Latin name). A spelling over 128 characters (a long name in another script) is the
  * SHA-256 of the folded name instead. The two forms never meet (`name:` and `name-sha256:`).
+ *
+ * Case is folded here with JavaScript's `toLowerCase`, while `nameTaken` and `insertModel` use
+ * the database's case-insensitive comparison. For a few code points the two can differ: two names
+ * the database treats as one may then get two subjects, so a second proposal is filed instead of
+ * `already-pending`. That is harmless: the approval of the later one finds the name taken and
+ * answers `changed-since`, and nothing wrong is written.
  */
 export function fleetModelNameRef(name: string): string {
   const folded = name.normalize('NFC').trim().toLowerCase();
@@ -133,12 +139,18 @@ export const unsupportedValues = (methods: readonly DeliveryMethod[]): ChangeVal
   unsupported: DELIVERY_METHODS.filter((method) => methods.includes(method)),
 });
 
+/** Whether the session acts as someone else (Login as Seller): no write of this area runs in one. */
+export function isActingAs(context: CallContext): boolean {
+  const actor = context.actor;
+  return (
+    Object.hasOwn(actor, 'actingAs') && (actor as { readonly actingAs?: unknown }).actingAs != null
+  );
+}
+
 /** A signed-in admin session, not acting as someone else (a revert is the decider's own act). */
 export function reverterOf(context: CallContext): ActorId {
   const actor = context.actor;
-  const acting =
-    Object.hasOwn(actor, 'actingAs') && (actor as { readonly actingAs?: unknown }).actingAs != null;
-  if (actor.kind !== 'authenticated' || actor.population !== 'admin' || acting) {
+  if (actor.kind !== 'authenticated' || actor.population !== 'admin' || isActingAs(context)) {
     throw new Error('shipping: a revert needs a signed-in admin acting as themselves');
   }
   return actor.accountId;

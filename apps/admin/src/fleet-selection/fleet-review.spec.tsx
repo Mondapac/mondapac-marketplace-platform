@@ -196,14 +196,24 @@ describe('the model editor where a change is reviewed', () => {
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Fresh' } });
     type('Again', 1);
     fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
-    expect(
-      await screen.findByText(
-        'This is already waiting for approval (SR-7). Wait for another admin to decide it.',
-      ),
-    ).toBeTruthy();
+    expect(await screen.findByText('This is already waiting for approval (SR-7).')).toBeTruthy();
     // The form stays open with the admin's draft.
     expect(screen.getByRole('button', { name: 'Send for approval' })).toBeTruthy();
     expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the generic error when the 409 names no pending request', async () => {
+    call.mockResolvedValueOnce({
+      ok: false as const,
+      failure: { status: 409, code: 'system-requests.already-pending' },
+    });
+    mount(selection({ review }));
+    fireEvent.click(screen.getByRole('button', { name: 'New model' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Fresh' } });
+    type('Again', 1);
+    fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
+    expect(await screen.findByText('Something went wrong. Try again.')).toBeTruthy();
+    expect(screen.queryByText(/already waiting for approval/)).toBeNull();
   });
 
   it('shows a 400 on note on the model form', async () => {

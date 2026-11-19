@@ -165,6 +165,22 @@ describe.each(TEST_MARKETS)(
         fields: [{ path: 'note', code: 'required' }],
       });
 
+      const tooLong = await createFleetSelectionModel(deps, author, {
+        name,
+        rule: RULE,
+        note: 'x'.repeat(501),
+      });
+      expect(!tooLong.ok && tooLong.error).toMatchObject({
+        code: 'validation.failed',
+        fields: [{ path: 'note' }],
+      });
+      const filed = await sql.query(
+        'SELECT 1 FROM system_requests.requests WHERE market_id = $1 AND subject_ref = $2',
+        [market.marketId, fleetModelNameRef(name)],
+      );
+      expect(filed.rows).toEqual([]);
+      expect(await modelsNamed(name)).toEqual([]);
+
       const proposed = await createFleetSelectionModel(deps, author, {
         name,
         rule: RULE,

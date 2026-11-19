@@ -79,9 +79,8 @@ export function useSentForReview(): (body: unknown) => boolean {
 }
 
 /**
- * The words for a refusal because another proposal of the same subject already waits for
- * approval (409 `system-requests.already-pending`), naming it ("SR-n"); null for any other
- * failure.
+ * The text of a 409 `system-requests.already-pending`: the request that already waits (SR-n), or
+ * null for any other failure.
  */
 export function useAlreadyPending(): (failure: ApiFailure) => string | null {
   const t = useTranslations('review-note');
@@ -90,7 +89,7 @@ export function useAlreadyPending(): (failure: ApiFailure) => string | null {
     const pending = failure.details?.pendingNumber;
     return typeof pending === 'number'
       ? t('already-pending', { number: requestLabel({ id: '', number: pending }) })
-      : t('already-pending-unnumbered');
+      : null;
   };
 }
 

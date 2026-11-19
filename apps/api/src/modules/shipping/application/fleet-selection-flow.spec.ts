@@ -793,6 +793,33 @@ describe.each([['AU'], ['ZZ']] as const)('fleet selection in market %s', (code) 
       expect(review.opened).toHaveLength(0);
     });
 
+    it('refuses a reviewed create with an over-long or blank note, filing nothing', async () => {
+      review.review('delivery');
+      for (const note of ['x'.repeat(501), '   \n\t ']) {
+        const refused = await new CreateFleetSelectionModel(gate, deps).execute(admin, {
+          name: 'Brand new',
+          rule: { kind: 'cheapest' },
+          note,
+        });
+        expect(refused).toEqual(
+          err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] }),
+        );
+      }
+      expect((deps.proposer as RecordingProposer).proposed).toHaveLength(0);
+      expect(selection.models.size).toBe(0);
+      expect(audit.entries).toHaveLength(0);
+    });
+
+    it('ignores the note of a create where delivery is not reviewed: an over-long one still creates', async () => {
+      const result = await new CreateFleetSelectionModel(gate, deps).execute(admin, {
+        name: 'Brand new',
+        rule: { kind: 'cheapest' },
+        note: 'x'.repeat(501),
+      });
+      expect(result).toMatchObject({ ok: true, value: { name: 'Brand new', version: 1 } });
+      expect(selection.models.size).toBe(1);
+    });
+
     it('does not review the creation of a model after: it waits for approval instead', async () => {
       review.review('delivery');
       const proposed = await new CreateFleetSelectionModel(gate, deps).execute(admin, {

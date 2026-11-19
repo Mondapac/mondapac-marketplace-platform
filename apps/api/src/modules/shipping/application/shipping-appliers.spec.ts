@@ -21,6 +21,7 @@ import type { ChangeValues } from '../../system-requests';
 import { SHIPPING_FLEET_SELECTION_MANAGE } from '../contracts/permissions';
 import { SHIPPING_AUDIT_ACTIONS } from '../domain/audit';
 import { SHIPPING_APPLIER_PERMISSIONS } from '../shipping.module';
+import { createFleetSelectionModel } from './fleet-selection-flow';
 import { FleetModelCreateApplier } from './shipping-appliers';
 import type { ShippingApplierDependencies } from './shipping-dependencies';
 import { FLEET_MODEL_CREATE_SUBJECT_KIND, fleetModelNameRef } from './shipping-review';
@@ -249,6 +250,36 @@ describe.each([['AU'], ['ZZ']] as const)(
         expect(await applier().check(approver, proposal(SPEED))).toBe('not-permitted');
         allowed = 'throws';
         expect(await applier().check(approver, proposal(SPEED))).toBe('not-permitted');
+      });
+
+      it('refuses an admin acting as someone else: check, apply and the create (Hassan L1)', async () => {
+        const acting = {
+          ...approver,
+          actor: { ...approver.actor, actingAs: { adminAccountId: id<'Account'>(0xae) } },
+        } as unknown as CallContext;
+        expect(await applier().check(acting, proposal(SPEED))).toBe('not-permitted');
+        await expect(applier().apply(acting, proposal(SPEED))).rejects.toThrow();
+        expect(selection.models.size).toBe(0);
+        expect(audit.entries).toHaveLength(0);
+        const actingAuthor = {
+          ...author,
+          actor: { ...author.actor, actingAs: { adminAccountId: id<'Account'>(0xad) } },
+        } as unknown as CallContext;
+        // Reviewed or not, through the use case and through the flow it runs.
+        for (const reviewed of [false, true]) {
+          if (reviewed) review.review('delivery');
+          const input = { name: 'Speed first', rule: WEIGHTED, note: 'As someone else' };
+          expect(await create(input, actingAuthor)).toMatchObject({
+            ok: false,
+            error: { code: 'access.denied' },
+          });
+          expect(await createFleetSelectionModel(deps, actingAuthor, input)).toEqual(
+            err({ code: 'access.denied' }),
+          );
+        }
+        expect(proposer.proposed).toHaveLength(0);
+        expect(selection.models.size).toBe(0);
+        expect(audit.entries).toHaveLength(0);
       });
 
       it('fails closed on values that no longer validate and on a caller who is not an admin', async () => {
