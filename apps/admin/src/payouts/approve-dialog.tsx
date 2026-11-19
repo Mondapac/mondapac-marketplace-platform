@@ -90,7 +90,7 @@ export function ApproveDialog({
   const stopped = problem !== null && STALE_PROBLEMS.includes(problem);
   const canApprove = detail !== null && waiting && !notReady && !aboveLimit && !stopped;
   const reference = detail === null ? '' : shortId(detail.payoutId);
-  const confirmed = reference !== '' && typed.trim().toUpperCase() === reference;
+  const confirmed = reference !== '' && typed.trim() === reference;
 
   async function approve() {
     if (detail === null || busy.current || !canApprove || !confirmed) return;
@@ -160,7 +160,11 @@ export function ApproveDialog({
   return (
     <Dialog
       open={payoutId !== null}
-      title={t('title')}
+      title={
+        detail === null
+          ? t('title')
+          : t('title-named', { id: reference, store: detail.storeName ?? t('unnamed') })
+      }
       initialFocus={cancel}
       onClose={() => {
         if (!busy.current) onClose();
@@ -214,7 +218,7 @@ export function ApproveDialog({
             <>
               <p className="text-sm text-fg-muted">{t('step-up-note')}</p>
               <TextField
-                label={t('type-to-confirm')}
+                label={t('type-to-confirm', { id: reference })}
                 help={<span className="font-medium text-fg">{reference}</span>}
                 value={typed}
                 autoComplete="off"

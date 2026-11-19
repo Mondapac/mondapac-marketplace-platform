@@ -65,7 +65,7 @@ const refuse = (status: number, code: string, details?: object) => ({
 });
 /** Types the payout's reference, the level 3 confirmation of the approve dialog. */
 const confirmRef = (dialog: HTMLElement, text = '000000A1') =>
-  fireEvent.change(within(dialog).getByLabelText('Type the payout reference to confirm'), {
+  fireEvent.change(within(dialog).getByLabelText('Type 000000A1 to confirm'), {
     target: { value: text },
   });
 const handlers = () => ({ onClose: vi.fn(), onApproved: vi.fn(), onStale: vi.fn() });
@@ -92,7 +92,7 @@ describe('approve dialog', () => {
     spies = handlers();
     call.mockResolvedValueOnce(ok(initial));
     render(wrap(<ApproveDialog payoutId={PAYOUT} csrfToken="csrf-1" zone={ZONE} {...spies} />));
-    const dialog = await screen.findByRole('dialog', { name: 'Approve payout' });
+    const dialog = await screen.findByRole('dialog', { name: /^Approve payout/ });
     await within(dialog).findByText('Transfer');
     return dialog;
   };
@@ -115,7 +115,10 @@ describe('approve dialog', () => {
     expect(within(dialog).getByText(/two-step code/)).toBeTruthy();
     confirmRef(dialog, '000000A2');
     expect(approve.hasAttribute('disabled')).toBe(true);
+    // Exact, as in every level 3 confirmation (ConfirmAction): other letter case does not count.
     confirmRef(dialog, '000000a1');
+    expect(approve.hasAttribute('disabled')).toBe(true);
+    confirmRef(dialog, '000000A1');
     expect(approve.hasAttribute('disabled')).toBe(false);
   });
 
@@ -340,7 +343,7 @@ describe('payout detail', () => {
     mount(detail());
     call.mockResolvedValueOnce(ok(detail()));
     fireEvent.click(screen.getByRole('button', { name: 'Approve $310.00' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Approve payout' });
+    const dialog = await screen.findByRole('dialog', { name: /^Approve payout/ });
     await within(dialog).findByText('Transfer');
     call.mockResolvedValueOnce(
       ok({

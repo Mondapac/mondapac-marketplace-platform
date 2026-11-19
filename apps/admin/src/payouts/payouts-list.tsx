@@ -97,7 +97,7 @@ function forgetSellerInUrl() {
  * payout id, or a part of the store name), the filter, sort and column panels with their chips,
  * then one page of payouts with the row Actions menu. It follows the Market's List paging setting:
  * page numbers with a total and any sort, or Previous and Next, newest first. Rows can be selected
- * for the one bulk action, Export: money never moves in bulk. Approve…, Hold payout… and Release
+ * for the one bulk action, Export: money never moves in bulk. Approve…, Hold payouts… and Release
  * hold… are level 3 (the payout's reference typed, then the step-up code), one payout at a time.
  * Saved filters wait for their API (#1061): the views bar has no Manage link yet.
  */
@@ -153,6 +153,9 @@ export function PayoutsList({
   // After a page change the focus moves to the top of the list, so a keyboard or screen reader
   // user starts on the new rows and not on the pager they used.
   const listTop = useRef<HTMLDivElement>(null);
+  // When the rows on show were read: an export of "all matching" reads its date preset on this
+  // clock, so the file covers the same window as the screen even across midnight.
+  const [readAt, setReadAt] = useState<Date | null>(null);
   const focusList = useRef(false);
 
   useEffect(() => {
@@ -163,7 +166,8 @@ export function PayoutsList({
   // `quiet`: read again after an action without dimming the rows or dropping them on a failure.
   const load = useCallback(
     async (asked: Query, quiet = false) => {
-      const request = queryString(asked, { paging, zone, now: new Date() });
+      const now = new Date();
+      const request = queryString(asked, { paging, zone, now });
       const ticket = ++latest.current;
       if (!quiet) {
         setLoading(true);
@@ -192,6 +196,7 @@ export function PayoutsList({
       setFailure(null);
       setAnswer(result.body);
       setCounts(result.body.counts);
+      setReadAt(now);
     },
     [paging, zone],
   );
@@ -206,9 +211,11 @@ export function PayoutsList({
 
   // A new view, search, filter or sort is another list: the selection does not follow it. Paging
   // keeps it, so rows can be ticked on several pages.
+  // The search goes in as it is sent (an id lower-cased), so the same id typed in other case
+  // keeps the ticks.
   const listKey = JSON.stringify([
     query.view,
-    query.q,
+    payoutSearchRoute(query.q),
     query.filters,
     query.sellerId,
     query.sort,
@@ -241,9 +248,13 @@ export function PayoutsList({
   const page = mode === 'pages' ? (answer?.page ?? query.page) : query.cursors.length + 1;
   const start = (page - 1) * pageSize;
 
-  // A page past the end (payouts left the view meanwhile) goes back one page.
+  // A page past the end (payouts left the view meanwhile) goes back one page. Once per answer:
+  // the step back changes the query before the next read starts, and must not step again.
+  const steppedBack = useRef<PayoutListPage | null>(null);
   useEffect(() => {
     if (answer === null || loading || failure !== null || answer.payouts.length > 0) return;
+    if (steppedBack.current === answer) return;
+    steppedBack.current = answer;
     if (mode === 'pages' && (answer.page ?? 1) > 1) {
       const last =
         answer.total === null ? 1 : Math.max(1, Math.ceil(answer.total / answer.pageSize));
@@ -466,6 +477,7 @@ export function PayoutsList({
             paging={paging}
             zone={zone}
             columns={columns}
+            now={readAt ?? undefined}
           />
         ),
       }}
@@ -585,6 +597,7 @@ export function PayoutsList({
               toast.success(t(`hold.${kind}.done`));
               void load(query, true);
             }}
+            onStale={() => void load(query, true)}
           />
         </>
       }

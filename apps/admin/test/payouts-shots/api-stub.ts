@@ -10,8 +10,11 @@ const stores = [
   'Inala Spice House',
 ];
 const states = ['awaiting-approval', 'awaiting-approval', 'approved', 'paid', 'failed', 'not-sent'];
-const payouts = stores.map((storeName, i) => ({
-  payoutId: id(100 + i),
+const payouts = Array.from({ length: 25 }, (_, n) => n).map((n) => {
+  const i = n % 6;
+  const storeName = stores[i]!;
+  return {
+  payoutId: id(100 + n),
   sellerId: id(300 + i),
   storeName,
   state: states[i]!,
@@ -22,12 +25,33 @@ const payouts = stores.map((storeName, i) => ({
   approvalReason: i === 0 ? 'first-payout' : i === 1 ? 'terms' : null,
   slotAt: `2026-11-${String(18 + (i % 3)).padStart(2, '0')}T00:00:00Z`,
   outcomeCode: i === 5 ? 'payout-unwound' : null,
-  createdAt: `2026-11-${String(10 + i).padStart(2, '0')}T02:30:00Z`,
+  createdAt: `2026-11-${String(10 + i).padStart(2, '0')}T0${n % 10}:30:00Z`,
   stateChangedAt: `2026-11-${String(12 + i).padStart(2, '0')}T05:00:00Z`,
   activeHoldId: i === 2 ? id(900) : null,
   actions:
     i < 2 ? ['open', 'approve', 'place-hold'] : i === 2 ? ['open', 'release-hold'] : ['open'],
-}));
+  };
+});
+
+/** One payout for the Approve dialog: 00000100 can be approved, 00000101 has an account not ready. */
+function detail(payoutId: string) {
+  const payout = payouts.find((p) => p.payoutId === payoutId);
+  if (payout === undefined) return null;
+  return {
+    ...payout,
+    approval: null,
+    items: [],
+    accountReadiness: payoutId === id(101) ? 'not-ready' : 'ready',
+    lastBankChangeAt: '2026-11-02T03:00:00Z',
+    limits: {
+      perTransfer: aud('500000'),
+      todayTotal: aud('1500000'),
+      dailyAlertLevel: aud('2000000'),
+      transferAboveLimit: false,
+      overDailyAlertLevel: false,
+    },
+  };
+}
 
 export function callApi(_method: string, path: string) {
   if (path.startsWith('commission-payouts/admin/payouts?')) {
@@ -52,5 +76,8 @@ export function callApi(_method: string, path: string) {
       },
     });
   }
+  const one = /^commission-payouts\/admin\/payouts\/([0-9a-f-]+)$/.exec(path);
+  const found = one === null ? null : detail(one[1]!);
+  if (found !== null) return Promise.resolve({ ok: true, status: 200, body: found });
   return Promise.resolve({ ok: false, failure: { status: 404, code: 'not-found' } });
 }

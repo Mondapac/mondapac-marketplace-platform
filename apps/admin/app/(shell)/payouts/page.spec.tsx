@@ -135,6 +135,10 @@ describe('payouts list page', () => {
     cleanup();
     render(await PayoutsPageRoute(search('all', 'drop table')));
     expect(document.querySelector('[data-seller]')?.getAttribute('data-seller')).toBe('');
+    cleanup();
+    // A UUID that is not v7 is not a seller id the API takes: dropped, not sent and refused.
+    render(await PayoutsPageRoute(search('all', '3f2c9a8e-1b4d-4c6e-9f00-112233445566')));
+    expect(document.querySelector('[data-seller]')?.getAttribute('data-seller')).toBe('');
   });
 
   it('uses Previous and next when the List paging setting cannot be read', async () => {

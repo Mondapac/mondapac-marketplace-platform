@@ -180,7 +180,7 @@ describe('Payouts list: page numbers', () => {
     expect(screen.getByRole('link', { name: STORE }).getAttribute('href')).toBe(
       `/sellers/${SELLER}`,
     );
-    expect(screen.getByText('1-1 of 143')).toBeTruthy();
+    expect(screen.getByText('1–1 of 143 payouts')).toBeTruthy();
     // The All view sends no view key.
     fireEvent.click(screen.getByRole('button', { name: 'All (40)' }));
     await waitFor(() => expect(lastParams()['view']).toBeUndefined());
@@ -382,11 +382,18 @@ describe('Payouts list: money actions', () => {
     mount();
     await screen.findByRole('link', { name: 'Payout 000000A1' });
     fireEvent.click(within(await rowMenu()).getByRole('menuitem', { name: 'Approve…' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Approve payout' });
+    const dialog = await screen.findByRole('dialog', { name: /^Approve payout/ });
     await within(dialog).findByText('Transfer');
+    // The title names the payout and the store once the payout is read.
+    expect(screen.getByRole('dialog', { name: `Approve payout 000000A1 for ${STORE}?` })).toBe(
+      dialog,
+    );
     const button = within(dialog).getByRole('button', { name: 'Approve $310.00' });
     expect(button.hasAttribute('disabled')).toBe(true);
-    typeRef(dialog, 'Type the payout reference to confirm');
+    // The reference must match exactly, as in every level 3 confirmation.
+    typeRef(dialog, 'Type 000000A1 to confirm', '000000a1');
+    expect(button.hasAttribute('disabled')).toBe(true);
+    typeRef(dialog, 'Type 000000A1 to confirm');
     fireEvent.click(button);
     expect(await screen.findByText(/Approved \$310\.00 for Cedar Lane Halal Meats/)).toBeTruthy();
     expect(call).toHaveBeenCalledWith(
@@ -410,11 +417,12 @@ describe('Payouts list: money actions', () => {
     mount();
     await screen.findByRole('link', { name: 'Payout 000000A1' });
     fireEvent.click(within(await rowMenu()).getByRole('menuitem', { name: 'Hold payouts…' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Hold payouts for payout 000000A1?' });
+    const dialog = await screen.findByRole('dialog', { name: `Hold all payouts of ${STORE}?` });
     expect(within(dialog).getByText(/All payouts of Cedar Lane Halal Meats stop/)).toBeTruthy();
     expect(document.activeElement?.textContent).toBe('Cancel');
     const place = within(dialog).getByRole('button', { name: 'Place hold' });
-    typeRef(dialog, 'Type the payout reference to confirm');
+    expect(within(dialog).getByText(/A hold changes when the seller is paid/)).toBeTruthy();
+    typeRef(dialog, 'Type 000000A1 to confirm');
     // No reason yet: Confirm stays off.
     expect(place.hasAttribute('disabled')).toBe(true);
     fireEvent.change(within(dialog).getByLabelText('Reason'), {
@@ -428,7 +436,7 @@ describe('Payouts list: money actions', () => {
     ]);
   });
 
-  it('releases the seller hold named by the row, and shows a refusal in the dialog', async () => {
+  it('releases the seller hold named by the row; a refusal as out of date reads the list again', async () => {
     serve(
       () => pageOf([row({ activeHoldId: HOLD, actions: ['open', 'release-hold'] })]),
       () => failure(409, 'commission-payouts.hold-already-released'),
@@ -437,17 +445,20 @@ describe('Payouts list: money actions', () => {
     await screen.findByRole('link', { name: 'Payout 000000A1' });
     fireEvent.click(within(await rowMenu()).getByRole('menuitem', { name: 'Release hold…' }));
     const dialog = await screen.findByRole('dialog', {
-      name: 'Release the hold on payout 000000A1?',
+      name: `Release the hold on ${STORE}?`,
     });
     fireEvent.change(within(dialog).getByLabelText('Reason for releasing'), {
       target: { value: 'review-complete' },
     });
-    typeRef(dialog, 'Type the payout reference to confirm', '000000A9');
+    typeRef(dialog, 'Type 000000A1 to confirm', '000000A9');
     const release = within(dialog).getByRole('button', { name: 'Release hold' });
     expect(release.hasAttribute('disabled')).toBe(true);
-    typeRef(dialog, 'Type the payout reference to confirm');
+    typeRef(dialog, 'Type 000000A1 to confirm');
+    const reads = listUrls().length;
     fireEvent.click(release);
     expect(await within(dialog).findByText(/already released/)).toBeTruthy();
+    // The row no longer tells the truth: the list behind the dialog is read again.
+    await waitFor(() => expect(listUrls().length).toBe(reads + 1));
     expect(call).toHaveBeenCalledWith(
       'POST',
       `commission-payouts/admin/payout-holds/${HOLD}/release`,
@@ -570,5 +581,279 @@ describe('Payouts list: queries and export', () => {
       format: 'csv',
       columns: 'approval-reason,slot',
     });
+  });
+});
+
+describe('Payouts list: paging edges', () => {
+  it('goes back to the last page with rows when a page is past the end, and to page 1 when none is left', async () => {
+    serve((url) => {
+      if (url.includes('page=4')) return pageOf([], { total: 30, page: 4 });
+      if (url.includes('page=2'))
+        return pageOf([row({ payoutId: payoutId(2) })], { total: 30, page: 2 });
+      return pageOf([row()], { total: 90 });
+    });
+    mount();
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    fireEvent.click(screen.getByRole('button', { name: 'Page 4' }));
+    // 30 rows are two pages of 25: page 4 is past the end, so the list asks for page 2.
+    expect(await screen.findByRole('link', { name: 'Payout 000000A2' })).toBeTruthy();
+    expect(listUrls().map((url) => new URL(`http://x/${url}`).searchParams.get('page'))).toEqual([
+      '1',
+      '4',
+      '2',
+    ]);
+    cleanup();
+    call.mockReset();
+    serve((url) =>
+      url.includes('page=2') ? pageOf([], { total: 0, page: 2 }) : pageOf([row()], { total: 30 }),
+    );
+    mount();
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
+    await waitFor(() => expect(listUrls()).toHaveLength(3));
+    expect(lastParams()['page']).toBe('1');
+  });
+
+  it('steps Next, Next, Previous through the cursor stack', async () => {
+    serve((url) => {
+      if (url.includes('cursor=c2')) return openPage([row({ payoutId: payoutId(3) })]);
+      if (url.includes('cursor=c1')) return openPage([row({ payoutId: payoutId(2) })], 'c2');
+      return openPage([row()], 'c1');
+    });
+    mount({ paging: 'prev-next' });
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByRole('link', { name: 'Payout 000000A2' });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByRole('link', { name: 'Payout 000000A3' });
+    expect(lastParams()).toEqual({ limit: '25', cursor: 'c2' });
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    expect(await screen.findByRole('link', { name: 'Payout 000000A2' })).toBeTruthy();
+    expect(lastParams()).toEqual({ limit: '25', cursor: 'c1' });
+  });
+
+  it('steps back one cursor when a Previous and next page comes back empty', async () => {
+    serve((url) => {
+      if (url.includes('cursor=c2')) return openPage([]);
+      if (url.includes('cursor=c1')) return openPage([row({ payoutId: payoutId(2) })], 'c2');
+      return openPage([row()], 'c1');
+    });
+    mount({ paging: 'prev-next' });
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await screen.findByRole('link', { name: 'Payout 000000A2' });
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(listUrls()).toHaveLength(4));
+    expect(lastParams()).toEqual({ limit: '25', cursor: 'c1' });
+  });
+});
+
+describe('Payouts list: selection follows the list', () => {
+  const tick = async () => {
+    fireEvent.click(
+      await screen.findByRole('checkbox', { name: `Select payout 000000A1 of ${STORE}` }),
+    );
+    expect(screen.getByText('1 payout selected')).toBeTruthy();
+  };
+  const cleared = () => waitFor(() => expect(screen.queryByText('1 payout selected')).toBeNull());
+
+  it('drops the ticked rows when the view, search, filter, seller or sort changes', async () => {
+    serve(() => pageOf([row()]));
+    mount({ sellerId: SELLER });
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+
+    await tick();
+    fireEvent.click(screen.getByRole('button', { name: 'Awaiting approval (3)' }));
+    await cleared();
+
+    await tick();
+    const box = screen.getByRole('searchbox', { name: 'Search' });
+    fireEvent.change(box, { target: { value: 'cedar' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await cleared();
+
+    await tick();
+    fireEvent.click(screen.getByRole('button', { name: /^Sort/ }));
+    fireEvent.click(await screen.findByRole('radio', { name: 'Transfer' }));
+    await cleared();
+
+    await tick();
+    fireEvent.click(screen.getByRole('button', { name: /^Filter/ }));
+    const panel = await screen.findByRole('dialog', { name: 'Filter' });
+    fireEvent.change(within(panel).getByLabelText('Field'), {
+      target: { value: 'approvalMode' },
+    });
+    fireEvent.change(within(panel).getByLabelText('Value'), { target: { value: 'MANUAL' } });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(lastParams()['approvalMode']).toBe('MANUAL'));
+    await cleared();
+
+    await tick();
+    fireEvent.click(screen.getByRole('button', { name: `Remove filter Seller is ${STORE}` }));
+    await cleared();
+  });
+
+  it('keeps the ticked rows when the same payout id is typed again in other letter case', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    const box = screen.getByRole('searchbox', { name: 'Search' });
+    fireEvent.change(box, { target: { value: PAYOUT.toUpperCase() } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => expect(lastParams()['q']).toBe(PAYOUT));
+    await tick();
+    fireEvent.change(box, { target: { value: PAYOUT } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(screen.getByText('1 payout selected')).toBeTruthy();
+  });
+});
+
+describe('Payouts list: failures', () => {
+  it('offers Try again when the store search is unavailable', async () => {
+    call.mockImplementation((method, path) => {
+      if (path.includes('search=')) return failure(503, 'commission-payouts.search-unavailable');
+      return Promise.resolve({ ok: true, body: pageOf([row()]) } as never);
+    });
+    mount();
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    const box = screen.getByRole('searchbox', { name: 'Search' });
+    fireEvent.change(box, { target: { value: 'cedar' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    expect(await screen.findByText('The payouts could not be loaded.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
+  });
+
+  it('sends a signed-out admin away when the quiet read after a hold answers 401', async () => {
+    const assign = vi.fn();
+    vi.stubGlobal('location', { assign, href: 'http://admin.localhost/payouts' });
+    let held = false;
+    serve(
+      () => (held ? 'unauthenticated' : pageOf([row()])),
+      () => {
+        held = true;
+        return Promise.resolve({ ok: true, body: {} } as never);
+      },
+    );
+    mount();
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    fireEvent.click(within(await rowMenu()).getByRole('menuitem', { name: 'Hold payouts…' }));
+    const dialog = await screen.findByRole('dialog', { name: `Hold all payouts of ${STORE}?` });
+    fireEvent.change(within(dialog).getByLabelText('Reason'), {
+      target: { value: 'admin-review' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Type 000000A1 to confirm'), {
+      target: { value: '000000A1' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Place hold' }));
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+  });
+
+  it('keeps the hold dialog as it was when the step-up code is cancelled', async () => {
+    serve(
+      () => pageOf([row()]),
+      () =>
+        Promise.resolve({
+          ok: false,
+          failure: {
+            status: 403,
+            code: 'second-factor.required',
+            details: { actionKey: 'commission-payouts.payout-hold.place' },
+          },
+        } as never),
+    );
+    mount();
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    fireEvent.click(within(await rowMenu()).getByRole('menuitem', { name: 'Hold payouts…' }));
+    const dialog = await screen.findByRole('dialog', { name: `Hold all payouts of ${STORE}?` });
+    fireEvent.change(within(dialog).getByLabelText('Reason'), {
+      target: { value: 'admin-review' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Type 000000A1 to confirm'), {
+      target: { value: '000000A1' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Place hold' }));
+    expect(await screen.findByText(/place a payout hold/)).toBeTruthy();
+    const stepUp = screen.getAllByRole('dialog').find((d) => d !== dialog)!;
+    fireEvent.click(within(stepUp).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByText(/place a payout hold/)).toBeNull());
+    expect(dialog.hasAttribute('open')).toBe(true);
+    expect(within(dialog).queryByRole('alert')).toBeNull();
+    expect(within(dialog).getByLabelText<HTMLSelectElement>('Reason').value).toBe('admin-review');
+  });
+});
+
+describe('Payouts list: export edges', () => {
+  it('exports all matching in page numbers by the selector, the sort and the date window read with the rows', () => {
+    const query = {
+      ...DEFAULT_QUERY,
+      view: 'paid' as const,
+      filters: { created: 'today' as const },
+      sort: 'amount' as const,
+      direction: 'asc' as const,
+      page: 3,
+    };
+    expect(
+      Object.fromEntries(
+        new URLSearchParams(
+          exportParams({
+            query,
+            paging: 'pages',
+            zone: BRISBANE,
+            format: 'csv',
+            columns: ['outcome'],
+            selection: { ids: [PAYOUT], allMatching: true, total: 30 },
+            now: NOW,
+          }),
+        ),
+      ),
+    ).toEqual({
+      view: 'paid',
+      from: '2026-11-16T14:00:00.000Z',
+      to: '2026-11-17T14:00:00.000Z',
+      sort: 'amount',
+      direction: 'asc',
+      format: 'csv',
+      columns: 'outcome',
+    });
+  });
+
+  async function exportWith(response: Response) {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(response)),
+    );
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    fireEvent.click(screen.getByRole('checkbox', { name: `Select payout 000000A1 of ${STORE}` }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(
+      within(await screen.findByRole('menu', { name: 'Bulk action' })).getByRole('menuitem', {
+        name: /^Export/,
+      }),
+    );
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Export' }),
+    );
+  }
+  const json = (status: number, body: object) =>
+    new Response(JSON.stringify(body), {
+      status,
+      headers: { 'content-type': 'application/json' },
+    });
+
+  it('says when the file would be too large', async () => {
+    await exportWith(json(413, { code: 'batch.too-large', details: { max: 5000, total: 9000 } }));
+    expect(await screen.findByText(/Too many rows to export/)).toBeTruthy();
+  });
+
+  it('says when the store search is too broad to export', async () => {
+    await exportWith(
+      json(400, {
+        code: 'validation.failed',
+        details: { fields: [{ path: 'search', code: 'too-broad' }] },
+      }),
+    );
+    expect(await screen.findByText(/too broad to export/)).toBeTruthy();
   });
 });

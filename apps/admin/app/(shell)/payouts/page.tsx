@@ -4,6 +4,7 @@ import { headers } from 'next/headers';
 import { isView, type View } from '../../../src/payouts/list/payouts-list-types.ts';
 import { PayoutsList } from '../../../src/payouts/payouts-list.tsx';
 import { VIEW_PERMISSION, type PayoutDetail, type PayoutPage } from '../../../src/payouts/types.ts';
+import { toId } from '../../../src/sales/search-route.ts';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { panelHostFor } from '../../../src/server/bff.ts';
 import { panelConfig } from '../../../src/server/config.ts';
@@ -12,7 +13,6 @@ import { requireSession } from '../../../src/server/session.ts';
 import { displayZone } from '../../../src/shared/format.ts';
 import { formatMinor } from '../../../src/wallet/money.ts';
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The page opens on the payouts that wait for an admin, the work of this page. */
 const START_VIEW: View = 'awaiting-approval';
 
@@ -77,7 +77,8 @@ export default async function PayoutsPage({
   const status = one(query.status);
   const view: View = isView(status) ? status : START_VIEW;
   const seller = one(query.sellerId);
-  const sellerId = seller !== undefined && UUID.test(seller) ? seller.toLowerCase() : null;
+  // The API takes UUID v7 ids only; any other text is dropped rather than sent and refused.
+  const sellerId = seller === undefined ? null : toId(seller);
   // List paging (settings): page numbers only when the Market says so; a value that cannot be
   // read means Previous and next.
   const [mode, limits, host] = await Promise.all([

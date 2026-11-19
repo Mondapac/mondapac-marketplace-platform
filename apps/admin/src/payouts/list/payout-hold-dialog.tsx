@@ -9,12 +9,15 @@ import { sellerProblemOf } from '../seller-errors.ts';
 import { ADMIN_HOLD_REASONS, RELEASE_REASONS, type PayoutHold } from '../seller-types.ts';
 import type { PayoutListRow } from './payouts-list-types.ts';
 
+/** Refusals that mean the row no longer shows the truth (as the seller page's holds card does). */
+const STALE: readonly string[] = ['hold-released', 'hold-not-found', 'version-conflict'];
+
 export type HoldAsk =
   | { readonly kind: 'place'; readonly row: PayoutListRow }
   | { readonly kind: 'release'; readonly row: PayoutListRow; readonly holdId: string };
 
 /**
- * Hold payout… and Release hold… of a payout row: money actions of level 3. The dialog names the
+ * Hold payouts… and Release hold… of a payout row: money actions of level 3. The dialog names the
  * payout and the seller, asks for a reason from the closed list, and the admin types the payout's
  * reference to confirm; the call goes through the guarded call, so the shared step-up dialog asks
  * for the code. A hold from the list covers the whole seller (a hold on one seller order is placed
@@ -26,6 +29,7 @@ export function PayoutHoldDialog({
   csrfToken,
   onClose,
   onDone,
+  onStale,
 }: {
   readonly ask: HoldAsk | null;
   readonly storeName: string;
@@ -33,6 +37,8 @@ export function PayoutHoldDialog({
   readonly onClose: () => void;
   /** Placed or released: the list reads its rows again and says so. */
   readonly onDone: (kind: 'place' | 'release') => void;
+  /** Refused because the row is out of date: the list reads its rows again behind the dialog. */
+  readonly onStale: () => void;
 }) {
   const t = useTranslations('payouts.list.hold');
   const th = useTranslations('payouts.seller.holds');
@@ -82,7 +88,9 @@ export function PayoutHoldDialog({
       window.location.assign('/session-ended');
       return;
     }
-    setError(th(`error.${sellerProblemOf(result.failure)}` as 'error.unknown'));
+    const key = sellerProblemOf(result.failure);
+    setError(th(`error.${key}` as 'error.unknown'));
+    if (STALE.includes(key)) onStale();
   }
 
   const reasons = kind === 'place' ? ADMIN_HOLD_REASONS : RELEASE_REASONS;
@@ -90,7 +98,7 @@ export function PayoutHoldDialog({
     <ConfirmAction
       open={ask !== null}
       level={3}
-      title={t(`${kind}.title`, { id: reference })}
+      title={t(`${kind}.title`, { store: storeName })}
       body={
         <div className="flex flex-col gap-4">
           <p>{t(`${kind}.body`, { id: reference, store: storeName })}</p>
@@ -115,8 +123,8 @@ export function PayoutHoldDialog({
         </div>
       }
       rowName={reference}
-      typeLabel={t('type-to-confirm')}
-      stepUpNote={t('step-up-note')}
+      typeLabel={t('type-to-confirm', { id: reference })}
+      stepUpNote={kind === 'place' ? t('step-up-note') : t('release-step-up-note')}
       confirmLabel={t(`${kind}.confirm`)}
       cancelLabel={th('cancel')}
       pending={pending}

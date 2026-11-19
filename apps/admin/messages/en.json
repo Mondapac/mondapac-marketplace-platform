@@ -8713,8 +8713,9 @@
         "unavailable": "The approval could not be sent. Try again.",
         "unknown": "The payout could not be approved. Try again."
       },
-      "type-to-confirm": "Type the payout reference to confirm",
-      "step-up-note": "Approving moves money: you will be asked for your two-step code next."
+      "type-to-confirm": "Type {id} to confirm",
+      "step-up-note": "Approving moves money: you will be asked for your two-step code next.",
+      "title-named": "Approve payout {id} for {store}?"
     },
     "seller": {
       "terms": {
@@ -8957,7 +8958,7 @@
       },
       "sorted": "Sorted by {field}: {order}",
       "match": "{count, plural, one {# payout matches} other {# payouts match}}",
-      "range": "{from}-{to} of {total}",
+      "range": "{from}–{to} of {total} payouts",
       "error": {
         "unavailable": "The payouts could not be loaded.",
         "refused": "This search can't be run. Change the text or the filters, or clear them."
@@ -8998,21 +8999,22 @@
         "release-hold": "Release hold…"
       },
       "hold": {
-        "type-to-confirm": "Type the payout reference to confirm",
-        "step-up-note": "This changes when money is paid: you will be asked for your two-step code next.",
+        "type-to-confirm": "Type {id} to confirm",
+        "step-up-note": "A hold changes when the seller is paid. Next, you will be asked for your two-step code.",
         "place": {
-          "title": "Hold payouts for payout {id}?",
+          "title": "Hold all payouts of {store}?",
           "body": "All payouts of {store} stop until the hold is released, including payout {id}. The seller sees only that it is on hold.",
           "scope": "From this list a hold covers the whole seller. To hold one seller order, open the seller's page.",
           "confirm": "Place hold",
           "done": "Hold placed. The seller's payouts stop until it is released."
         },
         "release": {
-          "title": "Release the hold on payout {id}?",
+          "title": "Release the hold on {store}?",
           "body": "The admin hold on {store} ends. Payout {id} and the seller's other payouts can be sent at their next planned time.",
           "confirm": "Release hold",
           "done": "Hold released."
-        }
+        },
+        "release-step-up-note": "Releasing a hold changes when the seller is paid. Next, you will be asked for your two-step code."
       }
     }
   },

@@ -9,8 +9,8 @@ import { selectorParams } from './payouts-query.ts';
 import { SELECTION_MAX, type Query } from './payouts-list-types.ts';
 
 /**
- * The query of the export. Ticked rows go by id alone (the API refuses a filter or a sort beside
- * `ids`); "Select all matching" sends the list's selector keys and its sort. `columns` are the
+ * The query of the export. Ticked rows go by id alone (the API ignores a filter or a sort beside
+ * `ids`, so none is sent); "Select all matching" sends the list's selector keys and its sort. `columns` are the
  * optional columns shown, in the shown order (the API adds the fixed ones).
  */
 export function exportParams(input: {
@@ -55,12 +55,15 @@ export function PayoutsBulk({
   paging,
   zone,
   columns,
+  now,
 }: {
   readonly selection: ExportSelection;
   readonly query: Query;
   readonly paging: ListPagingMode;
   readonly zone: string;
   readonly columns: readonly OptionalColumn[];
+  /** When the rows on show were read; the date presets of "all matching" use this clock. */
+  readonly now?: Date;
 }) {
   const t = useTranslations('payouts.list.bulk');
   const count = selection.allMatching ? (selection.total ?? 0) : selection.ids.length;
@@ -72,7 +75,7 @@ export function PayoutsBulk({
     columns,
     zone,
     selection,
-    buildQuery: (format) => exportParams({ query, paging, zone, format, columns, selection }),
+    buildQuery: (format) => exportParams({ query, paging, zone, format, columns, selection, now }),
   });
   return (
     <>

@@ -32,7 +32,7 @@ const { chromium } = createRequire(import.meta.url)('playwright');
 const browser = await chromium.launch();
 for (const scheme of ['light', 'dark']) {
   for (const width of [1280, 768, 375]) {
-    for (const name of ['list', 'hold']) {
+    for (const name of ['list', 'hold', 'approve', 'approve-typed', 'approve-blocked']) {
       const ctx = await browser.newContext({
         viewport: { width, height: 900 },
         colorScheme: scheme,
@@ -49,6 +49,15 @@ for (const scheme of ['light', 'dark']) {
         await page.getByRole('button', { name: /^Actions for payout 00000100/ }).click();
         await page.getByRole('menuitem', { name: 'Hold payouts…' }).click();
         await page.getByRole('dialog').waitFor();
+      }
+      if (name.startsWith('approve')) {
+        const ref = name === 'approve-blocked' ? '00000101' : '00000100';
+        await page.getByRole('button', { name: new RegExp(`^Actions for payout ${ref}`) }).click();
+        await page.getByRole('menuitem', { name: 'Approve…' }).click();
+        await page.getByRole('dialog').getByText('Transfer', { exact: true }).waitFor();
+        if (name === 'approve-typed') {
+          await page.getByLabel(`Type ${ref} to confirm`).fill(ref);
+        }
       }
       await page.waitForTimeout(300);
       const over = await page.evaluate(
