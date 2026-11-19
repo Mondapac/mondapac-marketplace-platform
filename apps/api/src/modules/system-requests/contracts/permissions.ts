@@ -76,6 +76,17 @@ export const SYSTEM_REQUESTS_CONTENT_REVIEW = definePermission('system-requests'
   protected: true,
 });
 
+/**
+ * Save a filter of the queue for every admin of the Market, and rename, unshare or delete a filter
+ * another admin shared (the generic saved-filter routes of `lists`). Without it an admin keeps
+ * filters for themselves only; the queue itself still needs `system-requests.request.view`.
+ */
+export const SYSTEM_REQUESTS_SAVED_FILTER_SHARE = definePermission('system-requests', {
+  key: 'system-requests.saved-filter.share',
+  scope: 'platform',
+  protected: true,
+});
+
 export const SYSTEM_REQUESTS_PERMISSIONS = declarePermissions('system-requests', [
   SYSTEM_REQUESTS_CATALOGUE_REVIEW,
   SYSTEM_REQUESTS_CERTIFICATION_REVIEW,
@@ -87,4 +98,5 @@ export const SYSTEM_REQUESTS_PERMISSIONS = declarePermissions('system-requests',
   SYSTEM_REQUESTS_POLICY_MANAGE,
   SYSTEM_REQUESTS_POLICY_VIEW,
   SYSTEM_REQUESTS_REQUEST_VIEW,
+  SYSTEM_REQUESTS_SAVED_FILTER_SHARE,
 ]);

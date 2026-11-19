@@ -18,6 +18,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'system-requests/admin/requests',
     'system-requests/admin/requests-count',
     'system-requests/admin/review-policy',
+    // The queue as a file (CSV or XLSX): the chosen ids or the list's own filter.
+    'system-requests/admin/requests/export',
     'identity/admin/session',
     'identity/admin/sellers',
     // The Seller accounts list (super list 22) and the same rows as a file (CSV or XLSX).
@@ -300,6 +302,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/customers/lookup',
     // A read with the search term in the body, so a POST (sellers design 7.8).
     'sellers/admin/list',
+    // The Sellers super list (list 15) and its export as a file (CSV or XLSX): a POST each, so the
+    // search term stays in the body (body: `view`, `kind`, `outsideArea`, `areaCode`, `q`, `sort`,
+    // `direction`, `paging`, `page`, `pageSize`; the export: `format`, `columns`, `ids` or the
+    // list's selector). The API checks the closed body; up to 200 ids fit the 16 KB cap.
+    'sellers/admin/sellers/list',
+    'sellers/admin/sellers/export',
     // The names of one service area, set or restored (sellers, ADR-0041).
     'sellers/admin/service-areas/names',
     'notifications/admin/notices/read-all',
@@ -622,6 +630,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // change a customer's display name (identity owns the write).
     'customers/admin/groups/:id',
     'customers/admin/customers/:id/display-name',
+    // Ask to change a customer's sign-in email (customers, phase 2b): a closed `{ email }` body,
+    // behind a fresh two-step code.
+    'customers/admin/customers/:id/email',
     'sellers/admin/:id/review/manual-register-check',
     // Whether the seller may propose categories (sellers, SEL-26; categories C9-0).
     'sellers/admin/:id/category-proposals',
@@ -685,6 +696,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'commission-payouts/admin/sellers/:id/payout-terms',
     // Cancel a pending buyer deletion request (customers), behind a two-step code.
     'customers/admin/deletion-requests/:id',
+    // Cancel a customer's pending sign-in email change (customers, phase 2b), behind a two-step code.
+    'customers/admin/customers/:id/email-change',
     // A saved view of the product list (catalog).
     'catalog/admin/saved-filters/:id',
     // Delete an unused photo of a platform product (catalog, P1).
@@ -804,8 +817,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** An opaque API cursor (base64url or dotted ids): URL-safe characters only. */
 const CURSOR = /^[A-Za-z0-9._~:=-]{1,256}$/;
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
-/** The lists whose saved views cross the generic route: the three Sales lists (and Orders). */
-const SALES_LIST_KEY = /^admin\.ordering\.(orders|shipments|refunds|documents)$/;
+/**
+ * The lists whose saved views cross the generic route: the three Sales lists (and Orders), and
+ * the System requests queue.
+ */
+const GENERIC_LIST_KEY =
+  /^admin\.(ordering\.(orders|shipments|refunds|documents)|system-requests\.requests)$/;
+/** The System requests export: every key is checked, and a malformed one is refused (400). */
+const SYSTEM_REQUESTS_EXPORT = 'system-requests/admin/requests/export';
 
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   // The System requests queue: the view, search, filters, sort and either page numbers or a
@@ -828,6 +847,28 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'page',
     'pageSize',
     'cursor',
+  ],
+  // The System requests export: the list's filter keys (no paging), its sort, the file's format
+  // and columns, the chosen ids and the zone of its times.
+  [SYSTEM_REQUESTS_EXPORT]: [
+    'format',
+    'columns',
+    'ids',
+    'zone',
+    'view',
+    'q',
+    'area',
+    'risk',
+    'status',
+    'requestedBy',
+    'decidedBy',
+    'appliedFrom',
+    'appliedTo',
+    'overdue',
+    'subjectKind',
+    'subjectRef',
+    'sort',
+    'direction',
   ],
   'identity/admin/sellers': ['state', 'limit', 'after'],
   'payments/admin/connected-accounts': [
@@ -1272,7 +1313,18 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/topics': ['status', 'group', 'search', 'afterId', 'limit'],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
   'catalog/admin/variant-requests': ['limit'],
-  'catalog/admin/variants': ['q', 'typeCode', 'issue', 'after', 'limit'],
+  'catalog/admin/variants': [
+    'q',
+    'typeCode',
+    'issue',
+    'after',
+    'limit',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/variants/issue-counts': ['typeCode'],
   'catalog/admin/variants/export': ['format', 'q', 'typeCode', 'issue'],
   'catalog/admin/reports/products-missing-details': ['sellerId', 'familyCode', 'afterId', 'limit'],
@@ -1323,9 +1375,14 @@ const SALES_EXPORT_STRICT_KEYS = ['ids', 'columns', 'kind', 'format', 'zone'] as
  * oversized. Dropping it would widen the export to the whole filter, so the relay answers 400.
  */
 function malformedSalesExport(target: string, requestUrl: string): boolean {
-  if (!SALES_EXPORT_PATH.test(target)) return false;
+  const strict = SALES_EXPORT_PATH.test(target)
+    ? SALES_EXPORT_STRICT_KEYS
+    : target === SYSTEM_REQUESTS_EXPORT
+      ? (QUERY_KEYS[SYSTEM_REQUESTS_EXPORT] ?? [])
+      : null;
+  if (strict === null) return false;
   const source = new URL(requestUrl).searchParams;
-  return SALES_EXPORT_STRICT_KEYS.some((key) => {
+  return strict.some((key) => {
     const values = source.getAll(key);
     if (values.length === 0) return false;
     const value = values[0] ?? '';
@@ -1371,6 +1428,35 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     pageSize: /^([1-9][0-9]?|100)$/,
     // The API's own cursor: base64url, 200 characters at most.
     cursor: /^[A-Za-z0-9_-]{1,200}$/,
+  },
+  [SYSTEM_REQUESTS_EXPORT]: {
+    format: /^(csv|xlsx)$/,
+    columns: exportColumns([
+      'subject',
+      'requestedBy',
+      'applied',
+      'due',
+      'decidedBy',
+      'decided',
+      'comments',
+    ]),
+    // At most 100 request ids, the cap of the queue's selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i,
+    zone: EXPORT_ZONE,
+    view: /^(needs-my-review|all-open|mine|approved|reverted|overdue|all)$/,
+    q: /^.{1,100}$/,
+    area: /^[a-z-]{1,24}(,[a-z-]{1,24}){0,7}$/,
+    risk: /^(low|medium|high)(,(low|medium|high)){0,2}$/,
+    status: /^(open|approved|reverted)(,(open|approved|reverted)){0,2}$/,
+    requestedBy: UUID,
+    decidedBy: UUID,
+    appliedFrom: /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]{5,12}Z$/,
+    appliedTo: /^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9:.]{5,12}Z$/,
+    overdue: /^true$/,
+    subjectKind: /^[a-z][a-z0-9-]*\.[a-z][a-z0-9-]*$/,
+    subjectRef: /^[A-Za-z0-9._:-]{1,64}$/,
+    sort: /^(applied|due|number)$/,
+    direction: /^(asc|desc)$/,
   },
   'ordering/admin/shipments': {
     stage: /^(to-prepare|ready|shipped|delivered|refunded)$/,
@@ -1791,6 +1877,11 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     issue: /^(no-seller-selling|missing-gtin|duplicate-gtin|no-image|missing-language)$/,
     after: UUID,
     limit: /^([1-9][0-9]?|100)$/,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^(newest|code|gtin)$/,
+    direction: /^(asc|desc)$/,
   },
   'catalog/admin/variants/issue-counts': { typeCode: /^[a-z][a-z0-9_-]{0,63}$/ },
   'catalog/admin/variants/export': {
@@ -1806,7 +1897,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'promotions/admin/customers/:id/credits': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   // Customers phase 2b, part A.
   'promotions/admin/customers/:id/usages': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
-  'lists/admin/saved-filters': { listKey: SALES_LIST_KEY },
+  'lists/admin/saved-filters': { listKey: GENERIC_LIST_KEY },
   'customers/admin/customers/:id/notes': { limit: /^[0-9]{1,3}$/, cursor: CURSOR },
   'commission-payouts/admin/payouts': {
     view: /^(all|awaiting-approval|sending|paid|failed|not-sent)$/,
@@ -2055,7 +2146,7 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, readonly string[]>> = {
 const NOTE_SHAPE = /^[\s\S]{1,500}$/;
 /** DELETE templates whose query crosses: the version seen and the closed reason code. */
 const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
-  'lists/admin/saved-filters/:id': { listKey: SALES_LIST_KEY },
+  'lists/admin/saved-filters/:id': { listKey: GENERIC_LIST_KEY },
   'ordering/admin/refund-limits/sellers/:id': { expectedVersion: /^[0-9]{1,9}$/ },
   // The note for the reviewers (System requests), 1 to 500 characters; the API checks it too.
   'commission-payouts/admin/sellers/:id/commission-rate': { note: NOTE_SHAPE },
@@ -2077,6 +2168,7 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'customers/admin/deletion-requests/export:ids': 7400,
   'wallet/admin/credit-requests/export:ids': 7400,
   'commission-payouts/admin/disputes/export:ids': 7400,
+  'system-requests/admin/requests/export:ids': 3700,
   'pricing/admin/price-holds/export:ids': 7400,
   'certification/admin/seller-certificates/export:ids': 7400,
   'commission-payouts/admin/sellers/:id/ledger/export:ids': 7400,
@@ -2308,6 +2400,9 @@ const PRODUCT_IMAGE_PATH = /^catalog\/admin\/platform-products\/[0-9a-f-]{36}\/i
  */
 const CUSTOMERS_EXPORT_PATH = 'customers/admin/export';
 const MAX_EXPORT_BODY_BYTES = 48 * 1024;
+/** The email change of a customer carries one address (at most 254 characters): 1 KB is plenty. */
+const EMAIL_CHANGE_PATH = /^customers\/admin\/customers\/[0-9a-f-]{36}\/email$/i;
+const MAX_EMAIL_CHANGE_BODY_BYTES = 1024;
 /** Adding or removing up to 1000 ticked customers of a group (customers, phase 2a): the same cap. */
 const GROUP_MEMBERS_PATH = /^customers\/admin\/groups\/[0-9a-f-]{36}\/members\/(add|remove)$/i;
 
@@ -2316,6 +2411,7 @@ function bodyCapOf(method: string, target: string): number {
   if (method === 'POST' && target === UPLOAD_PATH) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'POST' && target === CUSTOMERS_EXPORT_PATH) return MAX_EXPORT_BODY_BYTES;
   if (method === 'POST' && GROUP_MEMBERS_PATH.test(target)) return MAX_EXPORT_BODY_BYTES;
+  if (method === 'PUT' && EMAIL_CHANGE_PATH.test(target)) return MAX_EMAIL_CHANGE_BODY_BYTES;
   if (method === 'PUT' && BLOG_DRAFT_PATH.test(target)) return MAX_BLOG_DRAFT_BYTES;
   if (method === 'POST' && CATEGORY_IMPORT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
