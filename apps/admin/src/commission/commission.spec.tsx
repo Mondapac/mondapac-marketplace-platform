@@ -287,7 +287,9 @@ describe('LedgerCard', () => {
       const term = screen
         .getAllByText('Cashback to exclusive customers')
         .find((n) => n.tagName === 'DT');
-      expect(term?.nextElementSibling?.textContent).toMatch(currency === 'AUD' ? /\$5\.00/ : /500/);
+      expect(term?.nextElementSibling?.textContent).toMatch(
+        currency === 'AUD' ? /\$5\.00/ : /(?<![\d,.])500(?![\d,.])/,
+      );
       expect(screen.getAllByText('Cashback to exclusive customers').length).toBeGreaterThan(1);
       expect(screen.getByText(/^−/)).toBeTruthy();
       cleanup();
