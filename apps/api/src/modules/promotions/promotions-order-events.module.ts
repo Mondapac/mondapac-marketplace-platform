@@ -1,6 +1,7 @@
 import { Inject, Module, type OnModuleInit } from '@nestjs/common';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { CashbackOnDelivery } from './application/use-cases/cashback-on-delivery.use-case';
+import { ClawBackOnRefund } from './application/use-cases/claw-back-on-refund.use-case';
 import { ConfirmRedemptions } from './application/use-cases/confirm-redemptions.use-case';
 import { QualifyReferralOnDelivery } from './application/use-cases/qualify-referral-on-delivery.use-case';
 import { ReleaseCancelledRedemptions } from './application/use-cases/release-cancelled-redemptions.use-case';
@@ -9,7 +10,10 @@ import { DELIVERED_ORDER_FACTS } from './application/ports/order-facts';
 import { BoundDeliveredOrderFacts } from './infrastructure/bound-delivered-order-facts';
 import { FacadeDeliveredOrderFacts } from './infrastructure/facade-delivered-order-facts';
 import { PromotionsModule } from './promotions.module';
-import { deliveryCreditSubscriptions } from './presentation/subscribers/delivery-credit.subscriptions';
+import {
+  deliveryCreditSubscriptions,
+  refundClawbackSubscriptions,
+} from './presentation/subscribers/delivery-credit.subscriptions';
 import { redemptionSubscriptions } from './presentation/subscribers/redemption.subscriptions';
 
 /**
@@ -28,6 +32,10 @@ import { redemptionSubscriptions } from './presentation/subscribers/redemption.s
       [CashbackOnDelivery, QualifyReferralOnDelivery],
       (cashback: CashbackOnDelivery, referral: QualifyReferralOnDelivery) =>
         deliveryCreditSubscriptions(cashback, referral),
+    ),
+    // Customers phase 4c-2: a refund after a cashback was credited takes part of it back.
+    registerSubscriptionsFrom('promotions', [ClawBackOnRefund], (clawBack: ClawBackOnRefund) =>
+      refundClawbackSubscriptions(clawBack),
     ),
     // Package T2: an order's redemptions are confirmed when it is paid and released when it is
     // cancelled.

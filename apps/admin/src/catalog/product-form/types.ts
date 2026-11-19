@@ -38,11 +38,8 @@ export interface FormCategory {
   readonly names: Readonly<Record<string, string>>;
 }
 
-/** A tax category of the Market with the message key it is shown by (from its Market file). */
-export interface TaxCategory {
-  readonly code: string;
-  readonly labelKey: string;
-}
+export type { TaxCategory } from '../../shared/tax-category-options.ts';
+import type { TaxCategory } from '../../shared/tax-category-options.ts';
 
 export interface ProductForm {
   /** The Market's tax categories with their label keys. */
@@ -165,19 +162,7 @@ export interface Submitted {
   readonly published: boolean;
 }
 
-/** Abbreviations that stay in capitals when a code is shown as words (`gst-free` is `GST free`). */
-const ACRONYMS: ReadonlySet<string> = new Set(['gst', 'vat', 'abn', 'sku', 'gtin', 'url', 'id']);
-
-/** A code from the API as readable text (`dry-goods` to `Dry goods`, `gst_free_food` to `GST free food`). */
-export function readable(code: string): string {
-  const words = code
-    .replace(/[-_]+/g, ' ')
-    .trim()
-    .split(' ')
-    .map((word) => (ACRONYMS.has(word.toLowerCase()) ? word.toUpperCase() : word));
-  const text = words.join(' ');
-  return text === '' ? code : text.charAt(0).toUpperCase() + text.slice(1);
-}
+export { readable } from '../../shared/tax-category-options.ts';
 
 /** One photo of a platform product's library: `GET catalog/admin/platform-products/:id/images`. */
 export interface ProductImage {
