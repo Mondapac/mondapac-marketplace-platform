@@ -7,6 +7,7 @@ import {
   Dialog,
   EmptyState,
   LoadError,
+  Menu,
   toast,
   DetailSkeleton,
 } from '@mondapac/ui';
@@ -167,33 +168,36 @@ export function WaitingTab({
                     <p className="text-sm text-fg-muted">{t('same-admin-note')}</p>
                   ) : null}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="secondary"
-                    aria-label={t('open-named', { name })}
-                    onClick={() => onOpenAttribute(request.attribute.id)}
-                  >
-                    {t('open-attribute')}
-                  </Button>
-                  {request.allowedActions.confirm.allowed &&
-                  (request.kind === 'archive' ? canRestructure : canEdit) ? (
-                    <Button
-                      aria-label={t('confirm-named', { name })}
-                      onClick={() => setPending({ kind: 'confirm', request })}
-                    >
-                      {t('confirm')}
-                    </Button>
-                  ) : null}
-                  {request.allowedActions.cancel.allowed && canEdit ? (
-                    <Button
-                      variant="destructive"
-                      aria-label={t('withdraw-named', { name })}
-                      onClick={() => setPending({ kind: 'withdraw', request })}
-                    >
-                      {t('withdraw')}
-                    </Button>
-                  ) : null}
-                </div>
+                <Menu
+                  label={t('actions-for', { name })}
+                  items={[
+                    {
+                      id: 'open',
+                      label: t('open-attribute'),
+                      onSelect: () => onOpenAttribute(request.attribute.id),
+                    },
+                    ...(request.allowedActions.confirm.allowed &&
+                    (request.kind === 'archive' ? canRestructure : canEdit)
+                      ? [
+                          {
+                            id: 'confirm',
+                            label: t('confirm-item'),
+                            onSelect: () => setPending({ kind: 'confirm', request }),
+                          },
+                        ]
+                      : []),
+                    ...(request.allowedActions.cancel.allowed && canEdit
+                      ? [
+                          {
+                            id: 'withdraw',
+                            label: t('withdraw-item'),
+                            tone: 'critical' as const,
+                            onSelect: () => setPending({ kind: 'withdraw', request }),
+                          },
+                        ]
+                      : []),
+                  ]}
+                />
               </li>
             );
           })}

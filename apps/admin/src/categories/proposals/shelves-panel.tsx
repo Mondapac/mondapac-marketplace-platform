@@ -7,6 +7,7 @@ import {
   Dialog,
   EmptyState,
   LoadError,
+  Menu,
   Select,
   TextField,
   toast,
@@ -156,20 +157,23 @@ export function ShelvesPanel({
                   ))}
                 </ul>
                 {shelf.status === 'active' && canPromote ? (
-                  <div className="mt-3 flex flex-wrap gap-3">
-                    <Button
-                      aria-label={t('promote-for', { name })}
-                      onClick={() => setDialog({ kind: 'promote', shelf })}
-                    >
-                      {t('promote')}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      aria-label={t('merge-for', { name })}
-                      onClick={() => setDialog({ kind: 'merge', shelf })}
-                    >
-                      {t('merge')}
-                    </Button>
+                  <div className="mt-3">
+                    <Menu
+                      label={t('actions-for', { name })}
+                      items={[
+                        {
+                          id: 'promote',
+                          label: t('promote'),
+                          onSelect: () => setDialog({ kind: 'promote', shelf }),
+                        },
+                        {
+                          id: 'merge',
+                          label: t('merge'),
+                          tone: 'critical',
+                          onSelect: () => setDialog({ kind: 'merge', shelf }),
+                        },
+                      ]}
+                    />
                   </div>
                 ) : null}
               </li>
@@ -336,6 +340,9 @@ function MergeDialog({
   const write = useWrite(csrfToken);
   const name = headline(shelf.texts, tree.defaultLocale);
   const [target, setTarget] = useState('');
+  // Merging cannot be undone, so the person types the shelf's name first (confirmation level 3).
+  const [typed, setTyped] = useState('');
+  const typedOk = name.trim() !== '' && typed.trim() === name.trim();
   const options = useMemo(
     () => mergeTargets(tree.categories, tree.defaultLocale),
     [tree.categories, tree.defaultLocale],
@@ -363,7 +370,12 @@ function MergeDialog({
           {write.problem?.reload === true ? (
             <Button onClick={onReload}>{t('reload')}</Button>
           ) : (
-            <Button loading={write.pending} disabled={target === ''} onClick={() => void submit()}>
+            <Button
+              variant="destructive-solid"
+              loading={write.pending}
+              disabled={target === '' || !typedOk}
+              onClick={() => void submit()}
+            >
               {t('confirm')}
             </Button>
           )}
@@ -391,6 +403,15 @@ function MergeDialog({
             write.clear();
             setTarget(event.target.value);
           }}
+        />
+        <TextField
+          name="confirm-name"
+          label={t('type-label')}
+          help={<span className="font-medium text-fg">{name}</span>}
+          value={typed}
+          autoComplete="off"
+          spellCheck={false}
+          onChange={(event) => setTyped(event.target.value)}
         />
       </div>
     </Dialog>

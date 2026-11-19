@@ -273,10 +273,14 @@ describe('Seller shelves: promote and merge', () => {
     const items = within(list)
       .getAllByRole('listitem')
       .filter((li) => li.closest('ul') === list);
-    expect(
-      within(items[0]!).getByRole('button', { name: 'Promote the shelf Fresh dates 1' }),
-    ).toBeTruthy();
-    expect(within(items[1]!).queryByRole('button', { name: /^Promote/ })).toBeNull();
+    fireEvent.click(
+      within(items[0]!).getByRole('button', { name: 'Actions for the shelf Fresh dates 1' }),
+    );
+    expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual([
+      'Promote…',
+      'Merge…',
+    ]);
+    expect(within(items[1]!).queryByRole('button', { name: /^Actions for/ })).toBeNull();
     expect(within(items[1]!).getByText('Merged')).toBeTruthy();
   });
 
@@ -284,13 +288,13 @@ describe('Seller shelves: promote and merge', () => {
     tab(false);
     fireEvent.click(await screen.findByRole('button', { name: 'Show the shelves of Store 1' }));
     await screen.findByRole('list', { name: 'Shelves of Store 1' });
-    expect(screen.queryByRole('button', { name: /^Promote the shelf/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /^Merge the shelf/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Actions for the shelf/ })).toBeNull();
   });
 
   it('promotes with the tree version, says the new category is hidden, and reports the Offers', async () => {
     await openShelves();
-    fireEvent.click(screen.getByRole('button', { name: 'Promote the shelf Fresh dates 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for the shelf Fresh dates 1' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Promote…' }));
     const dialog = screen.getByRole('dialog');
     expect(within(dialog).getByText(/^Shelves are not platform categories\./)).toBeTruthy();
     expect(within(dialog).getByText(/created hidden/)).toBeTruthy();
@@ -328,7 +332,8 @@ describe('Seller shelves: promote and merge', () => {
 
   it('keeps a refused promote open with its reason and a Reload button for a stale tree', async () => {
     await openShelves();
-    fireEvent.click(screen.getByRole('button', { name: 'Promote the shelf Fresh dates 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for the shelf Fresh dates 1' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Promote…' }));
     writeAnswer = () => fail(409, 'conflict.stale');
     const dialog = screen.getByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Promote shelf' }));
@@ -340,7 +345,8 @@ describe('Seller shelves: promote and merge', () => {
 
   it('merges into a live platform category with the copy of FP8', async () => {
     await openShelves();
-    fireEvent.click(screen.getByRole('button', { name: 'Merge the shelf Fresh dates 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for the shelf Fresh dates 1' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Merge…' }));
     const dialog = screen.getByRole('dialog');
     expect(
       within(dialog).getByText(
@@ -357,6 +363,13 @@ describe('Seller shelves: promote and merge', () => {
       within(dialog).getByRole<HTMLButtonElement>('button', { name: 'Merge shelf' }).disabled,
     ).toBe(true);
     fireEvent.change(target, { target: { value: id(2) } });
+    // Merging cannot be undone: the button stays off until the shelf's name is typed.
+    expect(
+      within(dialog).getByRole<HTMLButtonElement>('button', { name: 'Merge shelf' }).disabled,
+    ).toBe(true);
+    fireEvent.change(within(dialog).getByLabelText('Type the shelf name to confirm'), {
+      target: { value: 'Fresh dates 1' },
+    });
     writeAnswer = () => ok({ status: 'merged', mergedIntoId: id(2), offersCleared: 1 });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Merge shelf' }));
     expect(await screen.findByText('Merged. 1 Offer lost the shelf.')).toBeTruthy();
