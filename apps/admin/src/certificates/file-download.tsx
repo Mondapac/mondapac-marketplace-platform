@@ -24,7 +24,7 @@ function nameOf(disposition: string | null, fallback: string): string {
 /**
  * The download control of one file of a submission or an issuer request (certification). It reads
  * the file through the panel's relay and hands it to the browser; the API decides who may read
- * (the review permission) and whether the Market's switch is on, so a refusal is worded here, not
+ * (the review permission) and whether the switch is on, so a refusal is worded here, not
  * guessed beforehand. `path` is the API path of the file; `n` is its place in the list.
  */
 export function FileDownload({ path, n }: { readonly path: string; readonly n: number }) {
@@ -71,7 +71,7 @@ export function FileDownload({ path, n }: { readonly path: string; readonly n: n
 
   return (
     <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
-      <Button variant="secondary" loading={busy} disabled={busy} onClick={() => void download()}>
+      <Button variant="secondary" loading={busy} onClick={() => void download()}>
         {t('button', { n })}
       </Button>
       <span role="status" className="text-sm text-fg-muted">

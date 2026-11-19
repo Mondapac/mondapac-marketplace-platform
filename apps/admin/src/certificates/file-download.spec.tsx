@@ -47,12 +47,12 @@ describe('FileDownload', () => {
     expect(mocks.save.mock.calls[0]?.[1]).toBe('..certificate-d1.pdf');
   });
 
-  it('says so when the Market has file downloads switched off', async () => {
+  it('says so when file downloads are switched off', async () => {
     answer(403, JSON.stringify({ code: 'document.download-disabled' }), {
       'content-type': 'application/json',
     });
     show();
-    await screen.findByText('Downloading files is switched off for this Market.');
+    await screen.findByText('Downloading files is switched off.');
     expect(mocks.save).not.toHaveBeenCalled();
   });
 
