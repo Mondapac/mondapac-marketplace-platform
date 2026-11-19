@@ -302,6 +302,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'identity/admin/customers/lookup',
     // A read with the search term in the body, so a POST (sellers design 7.8).
     'sellers/admin/list',
+    // The Sellers super list (list 15) and its export as a file (CSV or XLSX): a POST each, so the
+    // search term stays in the body (body: `view`, `kind`, `outsideArea`, `areaCode`, `q`, `sort`,
+    // `direction`, `paging`, `page`, `pageSize`; the export: `format`, `columns`, `ids` or the
+    // list's selector). The API checks the closed body; up to 200 ids fit the 16 KB cap.
+    'sellers/admin/sellers/list',
+    'sellers/admin/sellers/export',
     // The names of one service area, set or restored (sellers, ADR-0041).
     'sellers/admin/service-areas/names',
     'notifications/admin/notices/read-all',
