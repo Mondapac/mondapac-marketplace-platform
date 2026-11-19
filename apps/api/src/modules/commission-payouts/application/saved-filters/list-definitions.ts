@@ -20,8 +20,9 @@ import { parseOwnPayoutSelector } from '../own-payout-list-flow';
 
 // The lists commission-payouts registers with `lists` (super list phase 4, PR10) so they have
 // saved filters through the generic routes: the admin Payouts list (21) and the admin Disputes
-// list (23); and, on the seller routes, the seller Earnings › Payouts list (33). The selector keys of a saved filter go through the list's own reading, so a saved
-// value is exactly one the list accepts; the keys are the ones that guard each list.
+// list (23); and, on the seller routes, the seller Earnings › Payouts list (33). The selector
+// keys of a saved filter go through the list's own reading, so a saved value is exactly one the
+// list accepts; the keys are the ones that guard each list.
 
 const PAYOUTS: ListDefinition = {
   listKey: 'admin.commission-payouts.payouts',
