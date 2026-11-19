@@ -1343,6 +1343,43 @@ describe('relay allowlist for the seller reviews', () => {
     expect(bad.mock.calls[0]?.[0]).toBe('http://api.test/reviews/seller');
   });
 
+  it('relays the super list and its export with their own query keys only', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      send(
+        'GET',
+        'reviews/seller/list?view=unanswered&minRating=2&sort=rating&direction=asc&paging=prev-next&page=2&pageSize=50&x=1&sellerId=7',
+      ),
+      ['reviews', 'seller', 'list'],
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/reviews/seller/list?view=unanswered&minRating=2&sort=rating&direction=asc&paging=prev-next&page=2&pageSize=50',
+    );
+    const bad = upstreamOk();
+    await relay(
+      config,
+      send('GET', 'reviews/seller/list?view=other&minRating=9&pageSize=500&page=0'),
+      ['reviews', 'seller', 'list'],
+      bad,
+    );
+    expect(bad.mock.calls[0]?.[0]).toBe('http://api.test/reviews/seller/list');
+    const exported = upstreamOk();
+    await relay(
+      config,
+      send(
+        'GET',
+        `reviews/seller/export?format=xlsx&columns=order-ref,reply&ids=${ID}&reply=none&x=1`,
+      ),
+      ['reviews', 'seller', 'export'],
+      exported,
+    );
+    expect(exported.mock.calls[0]?.[0]).toBe(
+      `http://api.test/reviews/seller/export?format=xlsx&columns=order-ref%2Creply&ids=${ID}&reply=none`,
+    );
+  });
+
   it('relays reply (POST and PATCH) and report (POST) by UUID, and refuses other shapes', async () => {
     const upstream = upstreamOk();
     const ok = [

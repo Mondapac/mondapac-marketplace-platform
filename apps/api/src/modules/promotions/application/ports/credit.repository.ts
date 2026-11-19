@@ -36,6 +36,36 @@ export interface CreditRepository {
       | { readonly status: 'FAILED'; readonly failureCode: string },
     at: Temporal.Instant,
   ): Promise<boolean>;
+  /**
+   * PENDING cashback credits for the grant job (customers phase 4c): those whose wait has ended
+   * (`grantAfter` at or before `now`), and those with no wait created at or before
+   * `stalledBefore` (a stopped run). Oldest first.
+   */
+  listDue(
+    market: MarketContext,
+    now: Temporal.Instant,
+    stalledBefore: Temporal.Instant,
+    limit: number,
+  ): Promise<readonly CreditRecord[]>;
+  /**
+   * Makes a waiting PENDING credit's amount final: sets it (never higher) and clears `grantAfter`,
+   * so the wallet may be called. False when the credit is no longer PENDING or no longer waiting.
+   */
+  fixAmount(
+    market: MarketContext,
+    id: Id<'PromotionCredit'>,
+    amountMinor: bigint,
+  ): Promise<boolean>;
+  /**
+   * Moves a waiting PENDING credit's wait later (never earlier), so the grant job comes back to it
+   * then (a payout hold, facts that cannot be read). False when it is not waiting, or already waits
+   * as long.
+   */
+  postpone(
+    market: MarketContext,
+    id: Id<'PromotionCredit'>,
+    until: Temporal.Instant,
+  ): Promise<boolean>;
   /** The money a promotion has reserved or paid: its PENDING and GRANTED credits. */
   reservedTotal(market: MarketContext, promotionId: Id<'Promotion'>): Promise<bigint>;
   /** PENDING and GRANTED credits of one promotion, optionally of one recipient. */
@@ -55,6 +85,16 @@ export interface CreditRepository {
     promotionId: Id<'Promotion'>,
     limit: number,
     after?: CreditCursor,
+  ): Promise<readonly CreditRecord[]>;
+  /**
+   * One customer's PENDING cashback credits, newest first, at most `limit`, optionally of one order:
+   * the display line "cashback X will be credited on date Y" (customers phase 4c).
+   */
+  listWaitingCashback(
+    market: MarketContext,
+    recipient: Id<'Account'>,
+    limit: number,
+    orderId?: Id<'Order'>,
   ): Promise<readonly CreditRecord[]>;
   /** One customer's credits across promotions, newest first (keyset), for the admin customer page. */
   listForRecipient(

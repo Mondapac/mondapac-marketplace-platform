@@ -35,6 +35,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'sellers/store-settings',
     // The seller's reviews (query: `cursor`), read again for "Show more".
     'reviews/seller',
+    // The seller's reviews as a super list (reviews; query: `view`, `reply`, `minRating`,
+    // `maxRating`, `q`, `from`, `to`, `sort`, `direction`, `paging`, `page`, `pageSize`) and its
+    // export as a file (the chosen ids or the list's own query).
+    'reviews/seller/list',
+    'reviews/seller/export',
     'payments/seller/payout-account',
     'ordering/seller/orders',
     // The Offer list (list mode: tabs, search, filters, sort and page; the API validates every value).
@@ -344,6 +349,38 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   },
   'catalog/seller/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
   'notifications/seller/notices': { show: /^(unread|read|all)$/, before: UUID },
+  'reviews/seller/list': {
+    view: /^(all|unanswered|answered|low)$/,
+    reply: /^(none|published)$/,
+    minRating: /^[1-5]$/,
+    maxRating: /^[1-5]$/,
+    // Free text up to the API's 100 characters, or a review, order, Offer or product id.
+    q: null,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    sort: /^(published|rating)$/,
+    direction: /^(asc|desc)$/,
+    paging: /^(pages|prev-next)$/,
+    page: /^[1-9][0-9]{0,4}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+  },
+  'reviews/seller/export': {
+    format: /^(csv|xlsx)$/,
+    columns:
+      /^(review-id|order-ref|product-id|offer-id|locale|reply|replied)(,(review-id|order-ref|product-id|offer-id|locale|reply|replied)){0,6}$/,
+    // At most 200 review ids, the cap of a selection.
+    ids: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,199}$/i,
+    view: /^(all|unanswered|answered|low)$/,
+    reply: /^(none|published)$/,
+    minRating: /^[1-5]$/,
+    maxRating: /^[1-5]$/,
+    // Free text up to the API's 100 characters, or a review, order, Offer or product id.
+    q: null,
+    from: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    to: /^\d{4}-\d{2}-\d{2}T[0-9:.]{2,15}(Z|[+-]\d{2}:\d{2})$/,
+    sort: /^(published|rating)$/,
+    direction: /^(asc|desc)$/,
+  },
   // The API's own opaque cursor (epoch milliseconds of the publication, an underscore, the review id).
   'reviews/seller': { cursor: /^[0-9]{1,15}_[0-9a-f-]{36}$/ },
 };
@@ -357,6 +394,7 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/seller/products/export:productIds': 3700,
   // 200 ids of 36 characters and 199 commas.
   'commission-payouts/seller/payouts/export:ids': 7400,
+  'reviews/seller/export:ids': 7400,
   'ordering/seller/orders/export:ids': 3700,
   'catalog/seller/offers/export:offerIds': 3700,
 };

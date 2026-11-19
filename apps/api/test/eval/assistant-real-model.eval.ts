@@ -301,6 +301,7 @@ function syntheticTools(currency: string, recorded: string[]) {
     publishedStore: (_context: CallContext, slug: string) => {
       const seller = slug === 'best-dates' ? BEST_DATES : FRESH_FARM;
       const store: PublishedStore = {
+        sellerId: seller,
         slug,
         name: storeName(seller),
         serviceAreaCode: 'BNE',

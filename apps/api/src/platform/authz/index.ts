@@ -37,6 +37,7 @@ export type {
 export {
   declarePermissions,
   definePermission,
+  isDeclarablePermissionKey,
   MAX_PERMISSION_KEY_LENGTH,
   type PermissionCatalogue,
   type PermissionDeclaration,

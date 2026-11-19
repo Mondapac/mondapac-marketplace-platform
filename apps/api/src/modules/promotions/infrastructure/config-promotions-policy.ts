@@ -54,6 +54,7 @@ export class ConfigPromotionsPolicy implements PromotionsPolicy {
             : {
                 maxBps: promotions.cashback.maxBps,
                 maxCapMinor: BigInt(promotions.cashback.maxCapMinor),
+                sellerMinBps: promotions.cashback.sellerMinBps ?? null,
               },
       },
       lineDiscountCapBps: promotions.lineDiscountCapBps,
