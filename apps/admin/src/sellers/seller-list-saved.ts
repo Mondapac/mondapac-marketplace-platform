@@ -1,7 +1,7 @@
 // Saved filters of the Sellers list (list key `admin.sellers.list`, registered by the lists
 // module): the closed document a saved filter keeps and the two conversions between it and the
-// page's query. NOT wired into the page yet: the follow-up adds `useSavedFilters(LIST_KEY)` and the
-// views bar `manage`, as the queue lists do. The search text is never saved.
+// page's query. The page wires them to `useSavedFilters(LIST_KEY)` and the views bar `manage`, as
+// the queue lists do. The search text is never saved.
 
 import { stringsOf } from '../sales/sales-saved.ts';
 import {
