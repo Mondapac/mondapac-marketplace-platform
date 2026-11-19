@@ -15,7 +15,7 @@ import {
   type BadgeTone,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../../api/client.ts';
 import { languageName } from '../../attributes/types.ts';
 import { directionOf } from '../tree-model.ts';
@@ -270,20 +270,27 @@ function PromoteDialog({
     if (answer.ok) onDone(answer.body);
   }
 
+  const cancelButton = useRef<HTMLButtonElement>(null);
   return (
     <Dialog
       open
+      initialFocus={cancelButton}
       title={t('title', { name })}
       onClose={onClose}
       actions={
         <>
-          <Button variant="secondary" disabled={write.pending} onClick={onClose}>
+          <Button ref={cancelButton} variant="secondary" disabled={write.pending} onClick={onClose}>
             {t('cancel')}
           </Button>
           {write.problem?.reload === true ? (
             <Button onClick={onReload}>{t('reload')}</Button>
           ) : (
-            <Button loading={write.pending} disabled={slugBad} onClick={() => void submit()}>
+            <Button
+              variant="destructive-solid"
+              loading={write.pending}
+              disabled={slugBad}
+              onClick={() => void submit()}
+            >
               {t('confirm')}
             </Button>
           )}
@@ -349,7 +356,7 @@ function MergeDialog({
   );
 
   async function submit() {
-    if (target === '') return;
+    if (target === '' || !typedOk) return;
     const answer = await write.run<ShelfMerged>(`${API_SHELVES}/${shelf.id}/merge`, {
       version: shelf.version,
       categoryId: target,
@@ -357,14 +364,16 @@ function MergeDialog({
     if (answer.ok) onDone(answer.body);
   }
 
+  const cancelButton = useRef<HTMLButtonElement>(null);
   return (
     <Dialog
       open
+      initialFocus={cancelButton}
       title={t('title', { name })}
       onClose={onClose}
       actions={
         <>
-          <Button variant="secondary" disabled={write.pending} onClick={onClose}>
+          <Button ref={cancelButton} variant="secondary" disabled={write.pending} onClick={onClose}>
             {t('cancel')}
           </Button>
           {write.problem?.reload === true ? (
@@ -411,6 +420,7 @@ function MergeDialog({
           value={typed}
           autoComplete="off"
           spellCheck={false}
+          disabled={write.pending}
           onChange={(event) => setTyped(event.target.value)}
         />
       </div>

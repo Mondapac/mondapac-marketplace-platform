@@ -367,9 +367,12 @@ describe('Seller shelves: promote and merge', () => {
     expect(
       within(dialog).getByRole<HTMLButtonElement>('button', { name: 'Merge shelf' }).disabled,
     ).toBe(true);
-    fireEvent.change(within(dialog).getByLabelText('Type the shelf name to confirm'), {
-      target: { value: 'Fresh dates 1' },
-    });
+    const typed = within(dialog).getByLabelText('Type the shelf name to confirm');
+    fireEvent.change(typed, { target: { value: 'Fresh dates' } });
+    expect(
+      within(dialog).getByRole<HTMLButtonElement>('button', { name: 'Merge shelf' }).disabled,
+    ).toBe(true);
+    fireEvent.change(typed, { target: { value: 'Fresh dates 1' } });
     writeAnswer = () => ok({ status: 'merged', mergedIntoId: id(2), offersCleared: 1 });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Merge shelf' }));
     expect(await screen.findByText('Merged. 1 Offer lost the shelf.')).toBeTruthy();

@@ -254,6 +254,7 @@ function DecisionDialog({
   const t = useTranslations('attributes.waiting');
   const te = useTranslations('attributes.editor');
   const call = useAttributeCall(csrfToken);
+  const cancelButton = useRef<HTMLButtonElement>(null);
   const action = kind === 'confirm' ? 'confirm' : 'cancel';
   // The words of an archive request differ from those of turning Material off.
   const words = request.kind === 'archive' ? `${kind}-archive` : kind;
@@ -272,18 +273,19 @@ function DecisionDialog({
   return (
     <Dialog
       open
+      initialFocus={cancelButton}
       title={t(`${words}-title`, { name })}
       onClose={onClose}
       actions={
         <>
-          <Button variant="secondary" disabled={call.pending} onClick={onClose}>
+          <Button ref={cancelButton} variant="secondary" disabled={call.pending} onClick={onClose}>
             {t('cancel')}
           </Button>
           {problem?.reload === true ? (
             <Button onClick={onReload}>{t('reload')}</Button>
           ) : (
             <Button
-              variant={kind === 'withdraw' ? 'destructive-solid' : 'primary'}
+              variant="destructive-solid"
               loading={call.pending}
               disabled={call.pending}
               onClick={() => void decide()}
