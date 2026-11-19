@@ -1997,15 +1997,15 @@ describe('relay of the blog posts list', () => {
       `http://api.test/blog/admin/posts/export?format=csv&q=${encodeURIComponent('می\u200Cخواهم')}`,
     );
     const controlExport = upstreamOk();
-    await relay(
+    const refused = await relay(
       config,
       request('blog/admin/posts/export?format=csv&q=eid%07'),
       [...list, 'export'],
       controlExport,
     );
-    expect(controlExport.mock.calls[0]?.[0]).toBe(
-      'http://api.test/blog/admin/posts/export?format=csv',
-    );
+    // The export is strict: a malformed search refuses the file instead of widening it.
+    expect(refused.status).toBe(400);
+    expect(controlExport).not.toHaveBeenCalled();
     const file = upstreamOk();
     await relay(
       config,
@@ -4609,6 +4609,7 @@ describe('relay of the phase 4 money and account exports (strict queries)', () =
     'commission-payouts/admin/disputes/export',
     'wallet/admin/credit-requests/export',
     'customers/admin/deletion-requests/export',
+    'blog/admin/posts/export',
   ])(
     '%s relays 200 ids whole and refuses a malformed value instead of widening the file',
     async (target) => {

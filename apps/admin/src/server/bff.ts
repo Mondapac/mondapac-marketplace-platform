@@ -2359,6 +2359,7 @@ const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
   'commission-payouts/admin/disputes/export',
   'wallet/admin/credit-requests/export',
   'customers/admin/deletion-requests/export',
+  'blog/admin/posts/export',
   'commission-payouts/admin/sellers/:id/ledger/export',
   'commission-payouts/admin/sellers/:id/payout-holds/export',
 ]);
