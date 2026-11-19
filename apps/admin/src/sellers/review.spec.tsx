@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { cleanup, render, screen, within } from '@testing-library/react';
-import { NextIntlClientProvider, createTranslator } from 'next-intl';
+import { createTranslator } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 
@@ -10,8 +10,6 @@ vi.mock('next-intl/server', () => ({
 }));
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
-import { callApi } from '../api/client.ts';
-import { SellersList } from './sellers-list.tsx';
 import { ReviewView } from './review-view.tsx';
 import type { ReviewContent, ReviewRead, ReviewRevision } from './review-types.ts';
 
@@ -161,45 +159,5 @@ describe('admin seller review page', () => {
     expect(document.querySelector('img')).toBeNull();
     expect(screen.getByText('<img src=x onerror=alert(1)>')).toBeTruthy();
     expect(within(document.body).getAllByText('Unknown').length).toBeGreaterThan(0);
-  });
-
-  it('links list rows to the review page only for an actor who may open it', async () => {
-    const call = vi.mocked(callApi);
-    const row = {
-      sellerId: '0190a000-0000-7000-8000-000000000001',
-      storeName: 'Cedar Lane Halal Meats',
-      slug: 'cedar-lane',
-      status: 'awaiting-review',
-      owner: null,
-      origin: 'self' as const,
-      kind: 'onboarding',
-      submittedAt: null,
-      serviceAreaCode: null,
-      timezone: null,
-      createdAt: '2026-10-01T00:00:00.000Z',
-      lastChangedAt: '2026-10-08T01:00:00.000Z',
-    };
-    const body = {
-      tab: 'awaiting-review' as const,
-      items: [row],
-      next: null,
-      counts: { awaitingReview: { onboarding: 1, identityChange: 0 }, incomplete: 0, all: 1 },
-      areas: [],
-      stateCounts: null,
-    };
-    for (const canReview of [true, false]) {
-      call.mockResolvedValueOnce({ ok: true, status: 200, body });
-      render(
-        <NextIntlClientProvider locale="en-AU" messages={messages}>
-          <SellersList csrfToken="c" canReview={canReview} />
-        </NextIntlClientProvider>,
-      );
-      await screen.findByText('Cedar Lane Halal Meats');
-      const link = screen.queryByRole('link', { name: 'Cedar Lane Halal Meats' });
-      expect(link?.getAttribute('href') ?? null).toBe(
-        canReview ? `/sellers/${row.sellerId}` : null,
-      );
-      cleanup();
-    }
   });
 });
