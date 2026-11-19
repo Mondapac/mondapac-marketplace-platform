@@ -204,7 +204,7 @@ describe('suggestable fields', () => {
   });
   const product = {
     form: {
-      taxCategoryCodes: [],
+      taxCategories: [],
       categories: [],
       fields: [
         field('pack-size', 'select'),

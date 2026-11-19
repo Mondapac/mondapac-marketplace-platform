@@ -471,6 +471,8 @@ export function SellerOrders({
                 }
                 return params.toString();
               }}
+              columns={columns}
+              zone={zone}
               searching={routeSearch(query.q).kind === 'q'}
               empty={answer !== null && shown.length === 0}
               selection={{

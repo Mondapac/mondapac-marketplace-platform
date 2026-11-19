@@ -108,7 +108,8 @@
     "performance": "Performance",
     "categories": "Category proposals",
     "payoutAccount": "Payout account",
-    "payoutAccountWords": "bank, BSB, payments, get paid"
+    "payoutAccountWords": "bank, BSB, payments, get paid",
+    "customers": "Customers"
   },
   "home": {
     "title": "Dashboard",
@@ -219,6 +220,7 @@
         "refund-commission": "Commission returned",
         "dispute-debit": "Dispute debit",
         "dispute-reinstate": "Dispute reinstated",
+        "cashback-seller": "Cashback to exclusive customers",
         "unknown": "Other"
       }
     },
@@ -1220,7 +1222,7 @@
         },
         "search": {
           "label": "Search offers",
-          "placeholder": "Search by SKU, product code or name"
+          "placeholder": "Search SKU, code or name"
         },
         "filter": {
           "button": "Filter",
@@ -2880,13 +2882,28 @@
     },
     "range": "{from} to {to} of {total}",
     "export": {
-      "button": "Export CSV",
-      "busy": "Preparing the file…",
-      "done": "The file of the orders on this list was downloaded.",
-      "too-large": "{matching} orders match, and one file holds at most {max}. Narrow the filters and export again.",
-      "too-large-plain": "Too many orders match for one file. Narrow the filters and export again.",
-      "invalid": "These filters cannot be exported. Change them and try again.",
-      "unavailable": "The file could not be created. Try again."
+      "title": "Export {count, plural, one {# order} other {# orders}}",
+      "title-all": "Export all matching orders",
+      "body": "One row for each order, with its amounts, delivery method and tracking. The file has the columns shown in the list, and names no buyer.",
+      "legend": "File format",
+      "csv": "CSV",
+      "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+      "xlsx": "XLSX",
+      "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+      "confirm": "Export",
+      "cancel": "Cancel",
+      "pending": "Preparing your file…",
+      "done": "{count, plural, one {Exported # order.} other {Exported # orders.}}",
+      "done-unknown": "Your file is ready.",
+      "error": {
+        "unavailable": "The export didn’t work. Try again.",
+        "denied": "You don’t have access to export orders.",
+        "too-large": "Too many orders to export: {total} match, and one file holds up to {max}. Narrow the filters and try again.",
+        "too-large-plain": "Too many orders to export. Narrow the filters and try again.",
+        "too-many-selected": "You can export up to {max} selected orders at a time.",
+        "not-found": "Some of the selected orders are no longer in your list. Reload and try again.",
+        "invalid": "That export can’t be done. Change the filters or reload the page and try again."
+      }
     },
     "too-many": "Page numbers stop at the first {limit} orders. Narrow the dates to reach the rest, or ask your platform admin to switch List paging to Previous and next.",
     "slip": {
@@ -3108,9 +3125,9 @@
       "selected": "{count, plural, one {# order selected} other {# orders selected}}",
       "all-open": "All matching orders selected",
       "none-selected": "Tick orders to print slips, or export the whole list.",
-      "export": "Export all matching as CSV",
-      "export-help": "Every order the tab and paid dates match, not only the ticked ones.",
-      "export-searching": "A search cannot be exported. Clear it to export.",
+      "export": "Export…",
+      "export-help": "CSV or XLSX: the ticked orders, or the whole list (the tab and paid dates).",
+      "export-searching": "Export can’t cover a search. Clear it, or tick the orders you want.",
       "print-slips": "Print packing slips",
       "print-slips-help": "Opens one page with a slip for each selected order (up to {max}).",
       "print-slips-all": "Tick the orders you want slips for. Slips can't be printed for every matching order at once."
@@ -3127,7 +3144,8 @@
       "balance": "Balance",
       "refunds": "Refunds",
       "refunded-commission": "Commission returned",
-      "disputes": "Disputes"
+      "disputes": "Disputes",
+      "seller-cashback": "Cashback to exclusive customers"
     },
     "col": {
       "when": "Date",
@@ -3143,7 +3161,8 @@
       "refund-shipping": "Refund of shipping",
       "refund-commission": "Commission returned",
       "dispute-debit": "Dispute: amount recovered",
-      "dispute-reinstate": "Dispute: amount returned"
+      "dispute-reinstate": "Dispute: amount returned",
+      "cashback-seller": "Cashback to exclusive customers"
     },
     "more": "Load more",
     "more-failed": "More rows could not be loaded. Try again.",
@@ -4113,12 +4132,15 @@
       "no-access-body": "Your role doesn't include any settings page. Ask the account owner to add one.",
       "group": {
         "store": "Store",
-        "team": "Team"
+        "team": "Team",
+        "customers": "Customers"
       },
       "link": {
         "store-profile": "Store profile",
         "stock-locations": "Stock locations",
-        "team": "Members"
+        "team": "Members",
+        "invite-customers": "Invite customers",
+        "exclusive-perks": "Exclusive perks"
       }
     },
     "load-error": {
@@ -4367,6 +4389,421 @@
         "unreachable": "Could not reach the server. Try again.",
         "unknown": "Something went wrong. Try again."
       }
+    }
+  },
+  "customers": {
+    "title": "Customers",
+    "intro": "People who bought from your store, follow it or joined through your invite link. You see a code and a first name only.",
+    "zone-note": "Times and days are in {zone}.",
+    "none": "None",
+    "loading": "Loading customers…",
+    "clear-all": "Clear all",
+    "match": "{count, plural, one {# customer matches} other {# customers match}}",
+    "sorted": "Sorted by {field}, {order}",
+    "chip-search": "Code: {text}",
+    "chip-remove": "Remove filter {filter}",
+    "too-many": "Page numbers stop at {limit} customers. Narrow the list to see more.",
+    "range": "{from} to {to} of {total}",
+    "columns-button": "Columns",
+    "col": {
+      "code": "Code",
+      "firstName": "First name",
+      "orders": "Orders",
+      "spent": "Spent",
+      "lastOrder": "Last order",
+      "badges": "Badges",
+      "firstOrder": "First order",
+      "followed": "Followed since"
+    },
+    "badge": {
+      "buyer": "Buyer",
+      "follower": "Follower",
+      "exclusive": "Exclusive"
+    },
+    "views": {
+      "label": "Customer views",
+      "all": "All",
+      "buyers": "Buyers",
+      "followers": "Followers",
+      "referred": "Referred"
+    },
+    "search": {
+      "label": "Search by code",
+      "placeholder": "Customer code",
+      "help": "Type the start of a code",
+      "invalid": "Type 2 to 8 letters or digits from the start of a code."
+    },
+    "filter": {
+      "button": "Filter",
+      "title": "Filter customers",
+      "name": {
+        "follower": "Follower",
+        "exclusive": "Exclusive",
+        "lastOrder": "Last order",
+        "orders": "Orders",
+        "spent": "Spent ({currency})",
+        "spent-plain": "Spent"
+      },
+      "any": "Any",
+      "yes": "Yes",
+      "no": "No",
+      "from": "From",
+      "to": "To",
+      "cancel": "Cancel",
+      "apply": "Apply",
+      "error": {
+        "day": "Use a date like 2026-11-18.",
+        "count": "Use a whole number.",
+        "amount": "Use an amount like 12.50.",
+        "amount-large": "That amount is too large.",
+        "range": "The end is before the start."
+      },
+      "chip": "{field}: {value}",
+      "chip-follower": "Follower: {value}",
+      "chip-exclusive": "Exclusive: {value}",
+      "chip-range": "{from} to {to}",
+      "chip-from": "from {value}",
+      "chip-to": "up to {value}",
+      "spent-wait": "The amount can be filtered once the list shows a customer who has bought."
+    },
+    "sort": {
+      "button": "Sort",
+      "by": "Sort by",
+      "order": "Order",
+      "field": {
+        "last-order": "Last order",
+        "first-order": "First order",
+        "orders": "Orders",
+        "spent": "Spent",
+        "followed": "Followed since",
+        "code": "Code"
+      },
+      "text": {
+        "first": "A to Z",
+        "second": "Z to A"
+      },
+      "amount": {
+        "first": "Highest first",
+        "second": "Lowest first"
+      },
+      "date": {
+        "first": "Newest first",
+        "second": "Oldest first"
+      }
+    },
+    "columns": {
+      "title": "Columns",
+      "help": "Choose the columns to show and their order.",
+      "always": "Always shown",
+      "up": "Move {column} up",
+      "down": "Move {column} down",
+      "reset": "Reset",
+      "save": "Save"
+    },
+    "select": {
+      "page": "Select all customers on this page",
+      "page-short": "Select page",
+      "row": "Select {name}"
+    },
+    "selection": {
+      "selected": "{count, plural, one {# customer selected} other {# customers selected}}",
+      "all": "All {count} matching customers are selected",
+      "select-all": "Select all {count} matching",
+      "clear": "Clear selection"
+    },
+    "row-actions": {
+      "header": "Actions",
+      "for": "Actions for {name}",
+      "open": "Open",
+      "copy": "Copy code",
+      "copied": "Code copied",
+      "copy-failed": "The code could not be copied."
+    },
+    "empty": {
+      "title": "No customers yet",
+      "body": "No customers yet. People appear here when they buy from you, follow your store or join through your invite link.",
+      "invite": "Invite customers"
+    },
+    "empty-filtered": {
+      "title": "No customers match",
+      "body": "No customers match. Change or clear the filters."
+    },
+    "denied": {
+      "title": "Customers are not available",
+      "body": "Your role or this session cannot open customers."
+    },
+    "error": {
+      "refused": "These filters cannot be used. Change them and try again.",
+      "throttled": "Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+      "unavailable": "Couldn't load customers."
+    },
+    "paging": {
+      "rows-per-page": "Rows per page",
+      "previous": "Previous",
+      "next": "Next",
+      "pages": "Pages",
+      "page": "Page {page}",
+      "narrow": "Narrow the list to see more",
+      "narrow-help": "Page numbers stop at 10,000 customers."
+    },
+    "export": {
+      "button": "Export…",
+      "pending": "Preparing your export…",
+      "done": "{count, plural, one {# customer exported} other {# customers exported}}",
+      "title-selected": "Export {count, plural, one {# selected customer} other {# selected customers}}",
+      "title-matching": "Export {count} matching customers",
+      "body": "Columns: code, first name, orders, spent, currency, first and last order, follower, followed since. No contact details are included.",
+      "legend": "File format",
+      "csv": "CSV",
+      "csv-help": "Opens in any spreadsheet.",
+      "xlsx": "XLSX",
+      "xlsx-help": "An Excel workbook.",
+      "confirm": "Export",
+      "cancel": "Cancel",
+      "error": {
+        "too-many-selected": "Select at most {max} customers, or use all matching.",
+        "too-large": "Too many customers to select ({total}). Narrow the filters.",
+        "invalid": "The export could not use these filters.",
+        "denied": "You do not have permission to export customers.",
+        "unavailable": "The export could not be made. Try again."
+      },
+      "too-many-hint": "You can export at most {max} selected customers. Use \"Select all matching\" or clear some."
+    },
+    "detail": {
+      "title": "Customer",
+      "back": "Back to Customers",
+      "loading": "Loading customer…",
+      "copy": "Copy code",
+      "no-name": "No first name",
+      "since": "Customer since {date}",
+      "privacy": "You see a shop-specific code and first name. Email and account details are never shown to sellers.",
+      "not-found": {
+        "title": "Customer not found",
+        "body": "This customer does not exist, or belongs to another store."
+      },
+      "error": "Couldn't load this customer.",
+      "orders": {
+        "title": "Orders with your shop",
+        "subtitle": "Orders placed with your shop only",
+        "empty": "No orders with your shop yet.",
+        "paging": "Orders pages",
+        "page": "Page {page} of {last}"
+      }
+    },
+    "invite": {
+      "title": "Invite customers",
+      "no-access": {
+        "title": "You can't manage the invite link",
+        "body": "Ask the account owner to give your role access."
+      },
+      "loading": "Loading invite link…",
+      "intro": "Share your link or QR code. People who sign up through it become your exclusive customers.",
+      "denied": {
+        "title": "Invite customers is not available",
+        "body": "Your role or this session cannot open it."
+      },
+      "error": {
+        "load": "Couldn't load your invite link.",
+        "throttled": "Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+        "refresh": "The new link could not be created. Try again."
+      },
+      "refreshed": "New link created",
+      "copied": "Link copied",
+      "copy-failed": "The link could not be copied.",
+      "qr-failed": "The QR code could not be saved.",
+      "link": {
+        "title": "Your invite link",
+        "label": "Invite link",
+        "copy": "Copy link",
+        "refresh": "Refresh link…"
+      },
+      "none": {
+        "title": "You have no invite link yet.",
+        "body": "Create one to share with customers.",
+        "create": "Create link"
+      },
+      "no-origin": "The storefront address is not set for this panel, so the link cannot be shown. Ask MondaPac support.",
+      "qr": {
+        "alt": "QR code for your invite link",
+        "download": "Download QR…"
+      },
+      "signups": {
+        "title": "Sign-ups",
+        "label": "{count, plural, one {customer joined through your links} other {customers joined through your links}}",
+        "hint": "Includes sign-ups that were not counted as exclusive (your own team, or removed by MondaPac)."
+      },
+      "how": {
+        "title": "How it works",
+        "one": "New customers who sign up with your link become your exclusive customers.",
+        "two": "They can follow and unfollow your store.",
+        "three": "You see their code and first name only."
+      },
+      "confirm": {
+        "title": "Create a new link?",
+        "body": "The old link and its QR stop working at once. Customers who already joined stay yours.",
+        "confirm": "Create new link",
+        "cancel": "Cancel"
+      }
+    },
+    "perks": {
+      "title": "Exclusive perks",
+      "no-access": {
+        "title": "You can't open exclusive perks",
+        "body": "Ask the account owner to give your role access to promotions."
+      },
+      "intro": "Perks for customers who joined through your invite link. You choose the discount and the cashback; the lower commission is applied automatically.",
+      "loading": "Loading perks…",
+      "off": "Promotions are not available in your Market",
+      "discount": {
+        "title": "Discount for exclusive customers",
+        "none-title": "No exclusive discount yet",
+        "none-body": "Give customers who joined through your link a discount on your products.",
+        "create": "Create exclusive discount…",
+        "reward": "Discount",
+        "who": "Who",
+        "dates": "Dates",
+        "no-end": "no end date",
+        "pending": "This discount is waiting for review by MondaPac before it applies.",
+        "admin-paused": "MondaPac paused this discount. Only MondaPac can resume it.",
+        "edit": "Edit…",
+        "pause": "Pause…",
+        "resume": "Resume…"
+      },
+      "cashback": {
+        "title": "Cashback for exclusive customers",
+        "none-title": "No exclusive cashback yet",
+        "none-body": "Give customers who joined through your link credit back after each delivered order.",
+        "pause": {
+          "title": "Pause this cashback?",
+          "body": "Exclusive customers are not credited for new orders until you resume it.",
+          "confirm": "Pause cashback",
+          "done": "Cashback paused"
+        },
+        "resume": {
+          "title": "Resume this cashback?",
+          "body": "Exclusive customers are credited for new orders again.",
+          "confirm": "Resume cashback",
+          "done": "Cashback resumed"
+        },
+        "current": "Current cashback",
+        "percent": "Cashback",
+        "cap": "Most per order",
+        "since": "Since",
+        "terms": "Credit is added after delivery from that store's order amount and can be spent at any MondaPac store. It is paid from your payout.",
+        "wallet-off": "Cashback needs the customer wallet, which is off in your Market.",
+        "pending": "This cashback is waiting for review by MondaPac before it applies.",
+        "admin-paused": "MondaPac paused this cashback. Only MondaPac can resume it.",
+        "form": {
+          "title-create": "Create exclusive cashback",
+          "title-edit": "Edit exclusive cashback",
+          "who": "Who:",
+          "who-value": "Your exclusive customers",
+          "percent": "Cashback (%)",
+          "percent-help": "Percent of the goods the customer paid in your store. Your Market sets the lowest and the highest.",
+          "cap": "Most credited per order ({currency})",
+          "cap-help": "The most one order of that customer is credited.",
+          "cap-minor": "Most credited per order (minor units)",
+          "cap-minor-help": "Digits only, in the smallest unit of your Market's currency, for example cents.",
+          "cancel": "Cancel",
+          "create": "Create cashback",
+          "save": "Save changes",
+          "created": "Cashback created",
+          "saved": "Cashback saved",
+          "error": {
+            "percent": "Enter a percentage like 5 or 2.5.",
+            "percent-high": "That is above the highest cashback your Market allows.",
+            "percent-low": "That is below the lowest cashback your Market allows for sellers.",
+            "cap": "Enter an amount like 20.00.",
+            "cap-minor": "Enter whole minor units, like 2000.",
+            "cap-high": "That is above the highest per-order cap your Market allows."
+          }
+        },
+        "error": {
+          "throttled": "Try again in {n, plural, one {# minute} other {# minutes}}."
+        },
+        "button": {
+          "create": "Create exclusive cashback…",
+          "edit": "Edit…",
+          "pause": "Pause…",
+          "resume": "Resume…"
+        }
+      },
+      "status": {
+        "ACTIVE": "Active",
+        "PAUSED": "Paused",
+        "PENDING_APPROVAL": "In review",
+        "REJECTED": "Rejected",
+        "ENDED": "Ended"
+      },
+      "form": {
+        "title-create": "Create exclusive discount",
+        "title-edit": "Edit exclusive discount",
+        "who": "Who:",
+        "who-value": "Your exclusive customers",
+        "name": "Name",
+        "percent": "Discount (%)",
+        "amount": "Discount ({currency})",
+        "ends": "Ends on",
+        "ends-help": "Optional. The end of that day in {zone}.",
+        "fail-closed": "Applies only to customers who joined through your link.",
+        "cancel": "Cancel",
+        "create": "Create discount",
+        "save": "Save changes",
+        "created": "Discount created",
+        "saved": "Discount saved",
+        "error": {
+          "name": "Enter a name.",
+          "amount": "Enter an amount like 12.50.",
+          "percent": "Enter a percentage from 1 to 100, like 10 or 7.5.",
+          "date": "Use a valid date."
+        }
+      },
+      "pause": {
+        "title": "Pause this discount?",
+        "body": "Exclusive customers stop getting it at checkout until you resume it.",
+        "confirm": "Pause discount",
+        "done": "Discount paused"
+      },
+      "resume": {
+        "title": "Resume this discount?",
+        "body": "Exclusive customers get it at checkout again.",
+        "confirm": "Resume discount",
+        "done": "Discount resumed"
+      },
+      "error": {
+        "taken": "That code is already in use.",
+        "too-many": "You have too many active promotions. Pause one first.",
+        "not-editable": "This discount can no longer be edited.",
+        "invalid-state": "This discount is not in a state that allows that. Reload the page.",
+        "not-found": "This discount no longer exists.",
+        "denied": "You do not have permission to do this.",
+        "csrf": "Your session changed. Reload the page and try again.",
+        "throttled": "Too many requests. Wait a moment and try again.",
+        "invalid": "Check the values. The discount may be above the limit for sellers, or the name or date is not valid.",
+        "unavailable": "Perks could not be loaded. Try again in a moment.",
+        "unknown": "Something went wrong. Try again."
+      },
+      "commission": {
+        "title": "Special commission rate",
+        "loading": "Loading commission…",
+        "rule": "Your commission on exclusive customers is {rate}% instead of {standard}% for {n, plural, one {# month} other {# months}} from each customer's sign-up.",
+        "this-month": "Savings this month",
+        "last-12": "Savings in the last 12 months",
+        "zone": "Months are counted in {zone}. A negative month means commission was given back after refunds.",
+        "nothing-this-month": "Nothing saved this month.",
+        "refunds": "refunds",
+        "empty": "No orders from exclusive customers yet.",
+        "error": {
+          "throttled": "Try again in {n, plural, one {# minute} other {# minutes}}.",
+          "unavailable": "Commission could not be loaded. Try again in a moment.",
+          "unknown": "Something went wrong. Try again."
+        }
+      },
+      "nothing": "Nothing to show here in your Market."
+    },
+    "not-approved": {
+      "title": "Your shop is not approved yet",
+      "body": "Customers open once your shop is approved. Finish your seller account setup first."
     }
   }
 }

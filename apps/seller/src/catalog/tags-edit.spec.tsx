@@ -47,7 +47,12 @@ describe.each([
     lastChangedAt: '2026-10-01T00:00:00Z',
     createdAt: '2026-10-01T00:00:00Z',
     pendingSubmittedAt: null,
-    form: { taxCategoryCodes: ['standard'], units: [], fields: [], categories: [] },
+    form: {
+      taxCategories: [{ code: 'standard', labelKey: 'catalog.tax.standard' }],
+      units: [],
+      fields: [],
+      categories: [],
+    },
     workingCopy: {
       content: {
         texts: { [locale]: { name: 'Dates' } },

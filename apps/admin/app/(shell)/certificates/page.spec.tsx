@@ -29,14 +29,23 @@ vi.mock('../../../src/server/admin-shell.tsx', () => ({
   AdminShell: ({ children }: { readonly children: ReactNode }) => <main>{children}</main>,
 }));
 vi.mock('../../../src/certificates/tabs.tsx', () => ({ CertificatesTabs: () => null }));
-vi.mock('../../../src/certificates/queue.tsx', () => ({
-  CertificateQueue: ({
-    rows,
-    typeNames,
+vi.mock('next/headers', () => ({ headers: () => Promise.resolve(new Headers()) }));
+vi.mock('../../../src/server/bff.ts', () => ({ panelHostFor: () => ({ marketId: 'AU' }) }));
+vi.mock('../../../src/server/config.ts', () => ({ panelConfig: () => ({}) }));
+vi.mock('../../../src/certificates/queue-list/queue-list.tsx', () => ({
+  QueueList: ({
+    types,
+    paging,
+    sellerId,
+    zone,
   }: {
-    readonly rows: readonly unknown[];
-    readonly typeNames: ReadonlyMap<string, string>;
-  }) => <p>{`${rows.length} rows, ${typeNames.get('halal') ?? 'no names'}`}</p>,
+    readonly types: readonly { readonly code: string; readonly name: string }[];
+    readonly paging: string;
+    readonly sellerId: string | null;
+    readonly zone: string;
+  }) => (
+    <p>{`list ${paging} ${zone} ${sellerId ?? 'no seller'}, ${types.map((type) => type.name).join('+') || 'no names'}`}</p>
+  ),
 }));
 
 const VIEW = 'certification.seller-certificate.view';
@@ -55,57 +64,55 @@ const session = (permissionKeys: string[]): AdminSession => ({
   csrfToken: 'c',
 });
 const search = (values: Record<string, string> = {}) => ({ searchParams: Promise.resolve(values) });
-const queue = (items: unknown[], nextAfterId: string | null = null) => ({
-  kind: 'ok',
-  body: { items, nextAfterId, total: items.length },
-});
+const paging = (listPaging: string) => ({ kind: 'ok', body: { listPaging } });
 const types = { kind: 'ok', body: { items: [{ code: 'halal', names: { en: 'Halal' } }] } };
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.session.mockResolvedValue({ kind: 'ok', session: session([VIEW]) });
-  mocks.get.mockResolvedValue(queue([{}]));
+  mocks.get.mockImplementation((path: string) =>
+    Promise.resolve(path.startsWith('settings/admin/list-paging') ? paging('pages') : types),
+  );
 });
 afterEach(cleanup);
 
 describe('certificates page', () => {
-  it('reads the queue only, and shows codes, for a reader without type.view', async () => {
+  it('reads the paging setting only, and gives the list no type names, for a reader without type.view', async () => {
     render(await CertificatesPage(search()));
     expect(mocks.get).toHaveBeenCalledTimes(1);
-    expect(mocks.get).toHaveBeenCalledWith('certification/admin/seller-certificates?limit=25');
+    expect(mocks.get).toHaveBeenCalledWith('settings/admin/list-paging');
     expect(screen.getByRole('heading', { level: 1, name: 'Certification' })).toBeTruthy();
-    expect(screen.getByText('1 rows, no names')).toBeTruthy();
+    expect(screen.getByText('list pages UTC no seller, no names')).toBeTruthy();
+  });
+
+  it('falls back to Previous and next when the paging setting cannot be read', async () => {
+    mocks.get.mockResolvedValue({ kind: 'unavailable' });
+    render(await CertificatesPage(search()));
+    expect(screen.getByText('list prev-next UTC no seller, no names')).toBeTruthy();
   });
 
   it('names the types for a reader who may view them, and survives a failed types read', async () => {
     mocks.session.mockResolvedValue({ kind: 'ok', session: session([VIEW, TYPES]) });
-    mocks.get.mockImplementation((path: string) =>
-      Promise.resolve(path.startsWith('certification/admin/types') ? types : queue([{}])),
-    );
     render(await CertificatesPage(search()));
-    expect(screen.getByText('1 rows, Halal')).toBeTruthy();
+    expect(mocks.get).toHaveBeenCalledWith('certification/admin/types');
+    expect(screen.getByText('list pages UTC no seller, Halal')).toBeTruthy();
     cleanup();
     mocks.get.mockImplementation((path: string) =>
       Promise.resolve(
-        path.startsWith('certification/admin/types') ? { kind: 'unavailable' } : queue([{}]),
+        path.startsWith('certification/admin/types') ? { kind: 'unavailable' } : paging('pages'),
       ),
     );
     render(await CertificatesPage(search()));
-    expect(screen.getByText('1 rows, no names')).toBeTruthy();
+    expect(screen.getByText('list pages UTC no seller, no names')).toBeTruthy();
   });
 
-  it('links the next page, and a first page link once past the first', async () => {
-    mocks.get.mockResolvedValue(queue([{}], 'cursor-2'));
-    render(await CertificatesPage(search({ after: 'cursor-1' })));
-    expect(mocks.get).toHaveBeenCalledWith(
-      'certification/admin/seller-certificates?limit=25&afterId=cursor-1',
-    );
-    expect(screen.getByRole('link', { name: 'Next page' }).getAttribute('href')).toBe(
-      '/certificates?after=cursor-2',
-    );
-    expect(screen.getByRole('link', { name: 'First page' }).getAttribute('href')).toBe(
-      '/certificates',
-    );
+  it('passes a seller from a link to the list, and ignores one that is not an id', async () => {
+    const id = '0190a000-0000-7000-8000-000000000300';
+    render(await CertificatesPage(search({ sellerId: id.toUpperCase() })));
+    expect(screen.getByText(`list pages UTC ${id}, no names`)).toBeTruthy();
+    cleanup();
+    render(await CertificatesPage(search({ sellerId: 'x' })));
+    expect(screen.getByText('list pages UTC no seller, no names')).toBeTruthy();
   });
 
   it('says a decision was recorded, for the three outcomes only', async () => {
@@ -136,16 +143,9 @@ describe('certificates page', () => {
     expect(screen.getByRole('link', { name: 'Back to dashboard' })).toBeTruthy();
   });
 
-  it('treats a refused read as no access, an unavailable one as an error with a retry, and signed-out as ended', async () => {
-    mocks.get.mockResolvedValueOnce({ kind: 'forbidden' });
-    render(await CertificatesPage(search()));
-    expect(screen.getByText(messages.certificates.queue['no-access'])).toBeTruthy();
-    cleanup();
-    mocks.get.mockResolvedValueOnce({ kind: 'unavailable' });
-    render(await CertificatesPage(search()));
-    expect(screen.getByText(messages.certificates.queue.unavailable)).toBeTruthy();
-    expect(screen.getByRole('button', { name: messages.load.retry })).toBeTruthy();
-    mocks.get.mockResolvedValueOnce({ kind: 'signed-out' });
+  it('sends a signed-out reader to the session-ended page', async () => {
+    mocks.get.mockResolvedValue({ kind: 'signed-out' });
+    mocks.session.mockResolvedValue({ kind: 'ok', session: session([VIEW, TYPES]) });
     await expect(CertificatesPage(search())).rejects.toThrow('redirect:/session-ended');
   });
 });

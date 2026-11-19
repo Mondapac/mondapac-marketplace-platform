@@ -5,7 +5,14 @@ import {
   AdminRoleAssigned,
   AdminTeamPageView,
 } from './admin-team.dto';
-import { RoleCatalogueView, RoleEditRequest, RoleWrittenView } from './role-editor.dto';
+import { AdminInvitationIssued, AdminInviteRequest } from './admin-team.dto';
+import {
+  RoleCatalogueView,
+  RoleEditorRequest,
+  RoleEditRequest,
+  RoleVersionRequest,
+  RoleWrittenView,
+} from './role-editor.dto';
 
 // The bodies of Admin Inbox › System requests on the admin team and platform role routes (area
 // people): the admin's note, the request a change opened, and whether a page asks for a note.
@@ -39,10 +46,56 @@ export class PlatformRoleEditedView extends RoleWrittenView {
   request!: PeopleReviewRequestRef | null;
 }
 
+export class PlatformRoleCreateRequest extends RoleEditorRequest {
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
+}
+
+export class PlatformRoleCreatedView extends RoleWrittenView {
+  @ApiProperty({ type: PeopleReviewRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: PeopleReviewRequestRef | null;
+}
+
+export class PlatformRoleDeleteRequest extends RoleVersionRequest {
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
+}
+
+export class PlatformRoleDeletedView {
+  @ApiProperty({
+    enum: ['role.deleted', 'role.delete-requested'],
+    description:
+      'role.deleted (200): the role is gone. role.delete-requested (202): the delete waits for ' +
+      "another admin's approval in Admin Inbox › System requests; nothing changed yet.",
+  })
+  code!: 'role.deleted' | 'role.delete-requested';
+
+  @ApiProperty({ format: 'uuid' })
+  roleId!: string;
+
+  @ApiProperty({
+    type: PeopleReviewRequestRef,
+    nullable: true,
+    description:
+      'The request the delete waits on (202); null when the Market does not review area people ' +
+      'and the role was deleted at once (200).',
+  })
+  request!: PeopleReviewRequestRef | null;
+}
+
+export class AdminInviteReviewedRequest extends AdminInviteRequest {
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
+}
+
+export class AdminInvitationIssuedReviewed extends AdminInvitationIssued {
+  @ApiProperty({ type: PeopleReviewRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: PeopleReviewRequestRef | null;
+}
+
 export class PlatformRoleCatalogueView extends RoleCatalogueView {
   @ApiProperty({
     type: PeopleReviewView,
-    description: 'Whether an edit of a custom role is reviewed (the editor then asks for a note).',
+    description:
+      'Whether creating, editing or deleting a custom role is reviewed (the editor then asks for ' +
+      'a note; a delete then waits for approval).',
   })
   review!: PeopleReviewView;
 }
@@ -78,8 +131,8 @@ export class AdminTeamReviewedPageView extends AdminTeamPageView {
   @ApiProperty({
     type: PeopleReviewView,
     description:
-      'Whether a role change or an enabling is reviewed (the page then asks for a note); a ' +
-      'disable never is.',
+      'Whether a role change, an enabling or an invitation is reviewed (the page then asks for ' +
+      'a note); a disable or a revoke never is.',
   })
   review!: PeopleReviewView;
 }

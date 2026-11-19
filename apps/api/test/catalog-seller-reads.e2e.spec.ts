@@ -671,7 +671,6 @@ describe('seller read routes over HTTP (integration)', () => {
         productTypes: string[];
         conditions: string[];
         locales: { default: string; supported: string[] };
-        taxCategoryCodes: string[];
         taxCategories: { code: string; labelKey: string }[];
         categories: {
           categoryId: string;
@@ -685,8 +684,8 @@ describe('seller read routes over HTTP (integration)', () => {
       expect(body.productTypes.length).toBeGreaterThan(0);
       expect(body.conditions.length).toBeGreaterThan(0);
       expect(body.locales.supported).toContain(body.locales.default);
-      expect(body.taxCategoryCodes.length).toBeGreaterThan(0);
-      expect(body.taxCategories.map((c) => c.code)).toEqual(body.taxCategoryCodes);
+      expect(body.taxCategories.length).toBeGreaterThan(0);
+      expect(body).not.toHaveProperty('taxCategoryCodes');
       expect(body.taxCategories.every((c) => /^catalog\.tax\./.test(c.labelKey))).toBe(true);
       // Each Market answers its own labels, never another Market's.
       expect(body.taxCategories.map((c) => c.labelKey)).toEqual(
@@ -760,7 +759,6 @@ describe('seller read routes over HTTP (integration)', () => {
         form: {
           fields: [],
           categories: [],
-          taxCategoryCodes: expect.any(Array) as string[],
           taxCategories: expect.any(Array) as unknown[],
         },
         workingCopy: null,

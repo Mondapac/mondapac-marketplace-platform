@@ -5,14 +5,15 @@ import {
   type InviteLink,
   type SellerAttribution,
 } from '../../domain/seller-invitations';
+import { localDayEnd, localDayStart } from '../../domain/local-day';
 import {
   ATTRIBUTION_VIEWS,
   type AttributionListRecord,
-  type AttributionSelector,
   type AttributionView,
   type InviteLinkRepository,
   type InviteTokens,
   type SellerAttributionRepository,
+  type ZonedAttributionSelector,
 } from '../ports/seller-invitations.repository';
 
 type Stored<T> = T & { readonly marketId: string };
@@ -64,8 +65,10 @@ export class InMemoryInviteLinks implements InviteLinkRepository {
   }
 }
 
-const DAY_MS = 86_400_000;
-const dayStart = (day: string): number => Date.parse(`${day}T00:00:00Z`);
+const dayStart = (day: string, zone: string): number =>
+  (localDayStart(day, zone) as Temporal.Instant).epochMilliseconds;
+const dayEnd = (day: string, zone: string): number =>
+  (localDayEnd(day, zone) as Temporal.Instant).epochMilliseconds;
 
 /**
  * {@link SellerAttributionRepository} in memory. The directory gives the listed fields; a row
@@ -145,7 +148,7 @@ export class InMemorySellerAttributions implements SellerAttributionRepository {
     }
   }
 
-  private matching(market: MarketContext, s: AttributionSelector, direction: 'asc' | 'desc') {
+  private matching(market: MarketContext, s: ZonedAttributionSelector, direction: 'asc' | 'desc') {
     const rows = this.rows
       .filter((row) => row.marketId === market.marketId && this.inView(row, s.view))
       .map((row) => this.listed(row))
@@ -159,8 +162,8 @@ export class InMemorySellerAttributions implements SellerAttributionRepository {
         if (s.rejectReason !== null && row.rejectReason !== s.rejectReason) return false;
         if (s.flag !== null && !row.flags.includes(s.flag)) return false;
         const at = row.attributedAt.epochMilliseconds;
-        if (s.attributedFrom !== null && at < dayStart(s.attributedFrom)) return false;
-        if (s.attributedTo !== null && at >= dayStart(s.attributedTo) + DAY_MS) return false;
+        if (s.attributedFrom !== null && at < dayStart(s.attributedFrom, s.dayZone)) return false;
+        if (s.attributedTo !== null && at >= dayEnd(s.attributedTo, s.dayZone)) return false;
         return true;
       });
     const sign = direction === 'asc' ? 1 : -1;
@@ -173,7 +176,7 @@ export class InMemorySellerAttributions implements SellerAttributionRepository {
 
   page(
     market: MarketContext,
-    selector: AttributionSelector,
+    selector: ZonedAttributionSelector,
     direction: 'asc' | 'desc',
     window: { readonly offset: number; readonly limit: number },
   ) {
@@ -182,7 +185,7 @@ export class InMemorySellerAttributions implements SellerAttributionRepository {
     );
   }
 
-  count(market: MarketContext, selector: AttributionSelector) {
+  count(market: MarketContext, selector: ZonedAttributionSelector) {
     return Promise.resolve(this.matching(market, selector, 'desc').length);
   }
 
@@ -198,7 +201,7 @@ export class InMemorySellerAttributions implements SellerAttributionRepository {
     );
   }
 
-  accountIds(market: MarketContext, selector: AttributionSelector, limit: number) {
+  accountIds(market: MarketContext, selector: ZonedAttributionSelector, limit: number) {
     return Promise.resolve(
       this.matching(market, selector, 'desc')
         .slice(0, limit)

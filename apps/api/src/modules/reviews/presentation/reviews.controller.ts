@@ -56,7 +56,15 @@ import { SubmitProductReview } from '../application/use-cases/submit-product-rev
 import { ViewProductSummary } from '../application/use-cases/view-product-summary.use-case';
 import { ViewReviewsSettings } from '../application/use-cases/view-reviews-settings.use-case';
 import { ViewSellerSummary } from '../application/use-cases/view-seller-summary.use-case';
-import { closedBody, closedQuery, refusal } from './http-answers';
+import { EXPORT_FORMATS, writeChunks } from '../../../platform/list-export';
+import { ExportModerationReviews } from '../application/use-cases/export-moderation-reviews.use-case';
+import { QueryModerationReviews } from '../application/use-cases/query-moderation-reviews.use-case';
+import {
+  MODERATION_EXPORT_COLUMNS,
+  MODERATION_LIST_VIEWS,
+  MODERATION_SORT_KEYS,
+} from '../domain/moderation-list';
+import { closedBody, closedQuery, fail, refusal } from './http-answers';
 import {
   DeletedReviewBody,
   HelpfulVoteBody,
@@ -88,6 +96,8 @@ import {
   submittedReviewBody,
   ToReviewBody,
   toReviewBody,
+  ModerationListBody,
+  moderationListBody,
 } from './reviews.dto';
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -647,6 +657,8 @@ export class AdminModerationController {
     private readonly view: ViewModerationReview,
     private readonly moderate: ModerateReview,
     private readonly remove: RemoveReview,
+    private readonly query: QueryModerationReviews,
+    private readonly exportReviews: ExportModerationReviews,
   ) {}
 
   @Get()
@@ -687,6 +699,123 @@ export class AdminModerationController {
     );
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return moderationQueueBody(result.value);
+  }
+
+  // Before `:reviewId`, so `list` and `export` are never read as a review id.
+  @Get('list')
+  @ApiOperation({
+    summary: 'The moderation queue as a super list (admin)',
+    description:
+      'Needs reviews.moderation.queue. Views (all, held, reported, actioned) with counts, filters ' +
+      '(minRating/maxRating 1 to 5, sellerId, reportReason of an open report, q = a review, Offer ' +
+      'or product id or text in the title or review, from/to submitted), sort (submitted or rating, ' +
+      'with direction; newest first by default), page numbers with a total (`paging=pages`, ' +
+      'default) or Previous/Next without one (`paging=prev-next`), and each row’s actions (open, ' +
+      'publish, hide, restore, dismiss-reports, remove, by the caller’s keys and the status). No ' +
+      'bulk action: each moderation needs the admin’s two-step proof. Never the author. The older ' +
+      'cursor route keeps its answer.',
+  })
+  @ApiQuery({ name: 'view', required: false, enum: MODERATION_LIST_VIEWS })
+  @ApiQuery({ name: 'minRating', required: false })
+  @ApiQuery({ name: 'maxRating', required: false })
+  @ApiQuery({ name: 'sellerId', required: false })
+  @ApiQuery({ name: 'reportReason', required: false })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'from', required: false, description: 'Submitted at or after (ISO instant).' })
+  @ApiQuery({ name: 'to', required: false, description: 'Submitted before (ISO instant).' })
+  @ApiQuery({ name: 'sort', required: false, enum: MODERATION_SORT_KEYS })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'paging', required: false, enum: ['pages', 'prev-next'] })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'pageSize', required: false, description: '1 to 100; default 25.' })
+  @ApiOkResponse({ type: ModerationListBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async listRows(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.query.execute(context, numbersOf(query));
+    logRoute(
+      this.#logger,
+      'reviews.query-moderation-reviews-route',
+      context,
+      result.ok ? 'listed' : result.error.code,
+    );
+    if (!result.ok) throw refusal({ ...result.error }, context, this.#logger);
+    return moderationListBody(result.value);
+  }
+
+  @Get('export')
+  @ApiOperation({
+    summary: 'Export the moderation list as a file (admin)',
+    description:
+      'Needs reviews.moderation.queue. `format` is csv (default) or xlsx. `columns` is the ' +
+      `comma-separated optional columns in the order shown (${MODERATION_EXPORT_COLUMNS.join(', ')}); ` +
+      'rating, title, review, status, open reports and submitted are always there. The reviews ' +
+      'are `ids` (comma-separated, at most 200; an id that is not in a queue view refuses the ' +
+      'whole file as not found) or the selector keys of the list, at most 10,000 (more: ' +
+      'batch.too-large with the total). With `ids` the selector keys are ignored and the file ' +
+      'keeps the order of the ids. Never the author. CSV: a text cell that starts with = + - @ ' +
+      'gets a leading quote. XLSX: every cell is a string value.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({ name: 'columns', required: false })
+  @ApiQuery({ name: 'ids', required: false })
+  @ApiOkResponse({
+    description: 'review-moderation-<date>.csv or review-moderation-<date>.xlsx, as an attachment',
+  })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'reviews.not-found' })
+  async download(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res() response: Response,
+  ): Promise<void> {
+    const result = await this.exportReviews.execute(context, { ...query });
+    logRoute(
+      this.#logger,
+      'reviews.export-moderation-reviews-route',
+      context,
+      result.ok ? 'export' : result.error.code,
+    );
+    if (!result.ok) {
+      const error =
+        result.error.code === 'batch.too-large'
+          ? fail(413, 'batch.too-large', {
+              max: result.error.max,
+              ...(result.error.total === undefined ? {} : { total: result.error.total }),
+            })
+          : refusal({ ...result.error }, context, this.#logger);
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      await writeChunks(response, chunks);
+    } catch {
+      // The status line is gone: end the connection, so the client sees a failed download.
+      this.#logger.warn({
+        msg: 'reviews.export-moderation-reviews',
+        code: 'stream-failed',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response.destroy();
+    }
   }
 
   @Get(':reviewId')
@@ -881,4 +1010,16 @@ export class AdminModerationController {
   ) {
     return this.act('dismiss-reports', context, request, response, reviewId, requestBody);
   }
+}
+
+/** `page` and `pageSize` become numbers (or -1, which the use case refuses). */
+function numbersOf(query: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...query };
+  for (const key of ['page', 'pageSize']) {
+    const value = out[key];
+    if (value !== undefined) {
+      out[key] = typeof value === 'string' && /^[0-9]{1,6}$/.test(value) ? Number(value) : -1;
+    }
+  }
+  return out;
 }

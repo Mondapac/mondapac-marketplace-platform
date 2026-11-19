@@ -106,6 +106,7 @@ describe.each(TEST_MARKETS)('money reviews in market %s (database)', (code) => {
       terms: new PayoutTermsResolver(new ConfigPayoutTermsPolicy(markets), termsOverrides),
       anchors: new PrismaEligibilityAnchorRepository(prisma),
       holds: new PrismaPayoutHoldRepository(prisma),
+      disputes: { decisionsForSeller: () => Promise.resolve([]) },
       sellers: { exists: () => Promise.resolve(true) },
       cursors: new PrismaPayoutCursorRepository(prisma),
       // The terms-change event is checked by the unit specs; here only the stores are real.

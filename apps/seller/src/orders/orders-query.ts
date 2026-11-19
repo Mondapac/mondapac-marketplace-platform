@@ -41,8 +41,10 @@ export const defaultDirection = (): Direction => 'desc';
 
 /** Calendar days (yyyy-mm-dd, both included) on the seller's own clock. */
 export interface DayRange {
-  readonly from: string;
-  readonly to: string;
+  /** The first day; absent for a range that runs up to `to` with no lower bound. */
+  readonly from?: string;
+  /** The last day; absent for a range that runs from `from` with no upper bound. */
+  readonly to?: string;
 }
 
 /** The conditions of the filter panel; each is one value. */
@@ -104,7 +106,12 @@ export function routeSearch(text: string): SearchRoute {
 
 /** True when both days are set and `to` is before `from`: the filter would match nothing. */
 export const rangeIsBackwards = (days: DayRange | null): boolean =>
-  days !== null && DAY.test(days.from) && DAY.test(days.to) && days.to < days.from;
+  days !== null &&
+  days.from !== undefined &&
+  days.to !== undefined &&
+  DAY.test(days.from) &&
+  DAY.test(days.to) &&
+  days.to < days.from;
 
 export interface QueryContext {
   readonly paging: ListPaging;
@@ -125,9 +132,10 @@ export function queryString(query: Query, context: QueryContext): string {
       params.set('to', range.to);
     }
   } else if (query.days !== null) {
-    const from = startOfDay(query.days.from, context.zone);
+    // A range may have one bound only: the request then sends just that one.
+    const from = query.days.from === undefined ? null : startOfDay(query.days.from, context.zone);
     // The last day is included: the API's `to` is the first instant after it.
-    const to = startOfDay(query.days.to, context.zone, 1);
+    const to = query.days.to === undefined ? null : startOfDay(query.days.to, context.zone, 1);
     if (from !== null) params.set('from', from);
     if (to !== null) params.set('to', to);
   }
@@ -153,8 +161,23 @@ export function boardQuery(status: FulfilmentFilter, cursor: string | null): str
 }
 
 /** The days a query holds, named in words for a chip or a saved filter ("2026-10-01 to 2026-10-31"). */
-export const daysLabel = (days: DayRange): string =>
-  days.from === days.to ? days.from : `${days.from} to ${days.to}`;
+export const daysLabel = (days: DayRange): string => {
+  const { from, to } = days;
+  if (from !== undefined && to !== undefined) return from === to ? from : `${from} to ${to}`;
+  if (from !== undefined) return `from ${from}`;
+  return `until ${to ?? ''}`;
+};
+
+/** The range a saved document holds: only the bounds that are set; null when none is. */
+export function savedDays(from: string | undefined, to: string | undefined): DayRange | null {
+  const first = from === undefined || from === '' ? undefined : from;
+  const last = to === undefined || to === '' ? undefined : to;
+  if (first === undefined && last === undefined) return null;
+  return {
+    ...(first === undefined ? {} : { from: first }),
+    ...(last === undefined ? {} : { to: last }),
+  };
+}
 
 /**
  * The calendar days (both included) a preset means on the clock of `zone` at `now`, for a saved

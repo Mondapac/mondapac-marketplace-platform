@@ -33,6 +33,7 @@ import { CreditApproveProbe } from './application/use-cases/credit-approve-probe
 import { ExportAdminCreditRequests } from './application/use-cases/export-admin-credit-requests.use-case';
 import { ExpireAdminCreditRequests } from './application/use-cases/expire-admin-credit-requests.use-case';
 import { ExpireWalletCredit } from './application/use-cases/expire-wallet-credit.use-case';
+import { ClawBackCredit } from './application/use-cases/claw-back-credit.use-case';
 import { GrantCredit } from './application/use-cases/grant-credit.use-case';
 import { OwnBalanceOf } from './application/use-cases/own-balance-of.use-case';
 import { IssueAdminCredit } from './application/use-cases/issue-admin-credit.use-case';
@@ -166,6 +167,7 @@ function creditListUseCaseProvider<U>(type: CreditListUseCaseClass<U>): FactoryP
     ...walletProviders,
     ...[
       GrantCredit,
+      ClawBackCredit,
       PlaceHold,
       CaptureHold,
       ReleaseHold,
@@ -203,6 +205,7 @@ function creditListUseCaseProvider<U>(type: CreditListUseCaseClass<U>): FactoryP
         BalanceOf,
         OwnBalanceOf,
         AdminBalanceOf,
+        ClawBackCredit,
       ],
       useFactory: (
         grant: GrantCredit,
@@ -212,6 +215,7 @@ function creditListUseCaseProvider<U>(type: CreditListUseCaseClass<U>): FactoryP
         balance: BalanceOf,
         ownBalance: OwnBalanceOf,
         adminBalance: AdminBalanceOf,
+        clawBack: ClawBackCredit,
       ) =>
         new WalletFacadeImplementation(
           grant,
@@ -221,6 +225,7 @@ function creditListUseCaseProvider<U>(type: CreditListUseCaseClass<U>): FactoryP
           balance,
           ownBalance,
           adminBalance,
+          clawBack,
         ),
     },
     registerJobsFrom(

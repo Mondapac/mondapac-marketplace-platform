@@ -3,7 +3,13 @@ import { registerAuditActions } from '../../platform/audit/audit-action-catalogu
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { CHANGE_TRAIL } from '../../platform/audit/change-trail';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
-import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import {
+  AUTHORISATION_CHECK,
+  registerPermissions,
+  USE_CASE_GATE,
+  type AccessDeclaration,
+  type UseCaseGate,
+} from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -12,10 +18,17 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { SECURITY_EVENTS } from '../../platform/security-events/security-events';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { SellersModule } from '../sellers';
-import { registerSystemChangeReverter, SYSTEM_REQUEST_RECORDER } from '../system-requests';
+import {
+  registerSystemChangeApplier,
+  registerSystemChangeReverter,
+  SYSTEM_ACTION_PROPOSER,
+  SYSTEM_REQUEST_RECORDER,
+} from '../system-requests';
+import { FleetModelCreateApplier } from './application/shipping-appliers';
 import {
   DELIVERY_REVIEW_AREA,
   DELIVERY_SETTINGS_SUBJECT_KIND,
+  FLEET_MODEL_CREATE_SUBJECT_KIND,
   FLEET_MODEL_SUBJECT_KIND,
   FLEET_SELECTION_SUBJECT_KIND,
   SELLER_METHODS_SUBJECT_KIND,
@@ -38,7 +51,11 @@ import { UBER_WEBHOOK_SIGNATURE } from './application/ports/fleet-webhook-signat
 import { PICKUP_DIRECTORY } from './application/ports/pickup-directory';
 import { SELLER_DIRECTORY } from './application/ports/seller-directory';
 import { SHIPPING_POLICY } from './application/ports/shipping-policy';
-import type { ShippingDependencies } from './application/shipping-dependencies';
+import type {
+  FleetModelCreateDependencies,
+  ShippingApplierDependencies,
+  ShippingDependencies,
+} from './application/shipping-dependencies';
 import { DeliveryAvailability } from './application/use-cases/delivery-availability.use-case';
 import { DeliveryChoice } from './application/use-cases/delivery-choice.use-case';
 import { ChargeDelivery } from './application/use-cases/charge-delivery.use-case';
@@ -116,6 +133,25 @@ const REVERTERS = [
   [FLEET_MODEL_SUBJECT_KIND, FleetSelectionModelReverter],
 ] as const;
 
+/**
+ * Every key the action's own route declares (its use case's `allOf`), so the approver needs what
+ * the author needed: derived from the declaration, it cannot drift from it.
+ */
+function routeKeys(access: AccessDeclaration): readonly string[] {
+  if (access.rule.kind !== 'permissions' || access.rule.allOf.length === 0) {
+    throw new Error(`shipping: ${access.name} declares no permission keys`);
+  }
+  return access.rule.allOf;
+}
+
+/** The token of the applier of a new fleet-selection model (approval mode). */
+const FLEET_MODEL_CREATE_APPLIER = Symbol(`SHIPPING_APPLIER:${FLEET_MODEL_CREATE_SUBJECT_KIND}`);
+
+/** The keys each approval kind of area delivery is registered with (read by the wiring spec). */
+export const SHIPPING_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[]> = new Map([
+  [FLEET_MODEL_CREATE_SUBJECT_KIND, routeKeys(CreateFleetSelectionModel.access)],
+]);
+
 /** Every shipping use case shares one dependency object, built from the same ports. */
 function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   return {
@@ -176,6 +212,32 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         registerSystemChangeReverter('shipping', kind, DELIVERY_REVIEW_AREA, token),
       ];
     }),
+    // The create of a model waits for approval where the Market reviews area delivery.
+    {
+      provide: FLEET_MODEL_CREATE_APPLIER,
+      inject: [...PORTS.map(([, port]) => port), AUTHORISATION_CHECK],
+      useFactory: (...values: unknown[]) =>
+        new FleetModelCreateApplier({
+          ...dependenciesOf(values),
+          authorisation: values[PORTS.length],
+        } as ShippingApplierDependencies),
+    },
+    registerSystemChangeApplier(
+      'shipping',
+      FLEET_MODEL_CREATE_SUBJECT_KIND,
+      DELIVERY_REVIEW_AREA,
+      SHIPPING_APPLIER_PERMISSIONS.get(FLEET_MODEL_CREATE_SUBJECT_KIND) ?? [],
+      FLEET_MODEL_CREATE_APPLIER,
+    ),
+    {
+      provide: CreateFleetSelectionModel,
+      inject: [USE_CASE_GATE, ...PORTS.map(([, token]) => token), SYSTEM_ACTION_PROPOSER],
+      useFactory: (gate: UseCaseGate, ...values: unknown[]) =>
+        new CreateFleetSelectionModel(gate, {
+          ...dependenciesOf(values),
+          proposer: values[PORTS.length],
+        } as FleetModelCreateDependencies),
+    },
     registerJobsFrom('shipping', [PollFleetStatus], (poll: PollFleetStatus) => [
       pollFleetStatusJob(poll),
     ]),
@@ -193,7 +255,6 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewFleetSelection,
       ViewFleetSelectionHistory,
       ViewDeliverySettingsHistory,
-      CreateFleetSelectionModel,
       UpdateFleetSelectionModel,
       SetFleetSelection,
       ViewDeliverySettings,
