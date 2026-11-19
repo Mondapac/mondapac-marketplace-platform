@@ -110,6 +110,7 @@ import { OwnOfferSetHandling } from './application/use-cases/own-offer-set-handl
 import { OwnOfferRecordAttestation } from './application/use-cases/own-offer-record-attestation.use-case';
 import { OwnOfferSubmit } from './application/use-cases/own-offer-submit.use-case';
 import { ReviewQueueList } from './application/use-cases/review-queue-list.use-case';
+import { ReviewQueueExport } from './application/use-cases/review-queue-export.use-case';
 import { AdminCustomVariantLabels } from './application/use-cases/admin-custom-variant-labels.use-case';
 import { CUSTOM_VARIANT_LABELS_READER } from './application/ports/custom-variant-labels.reader';
 import { AdminCustomVariantLabelsController } from './presentation/admin-custom-variant-labels.controller';
@@ -720,6 +721,7 @@ const PORT = {
   importFiles: IMPORT_FILE_STORE,
   importParsers: IMPORT_FILE_PARSERS,
   sheetWriter: SHEET_WRITER,
+  reviewQueue: ReviewQueueList,
   authorisation: AUTHORISATION_CHECK,
   jobContexts: JOB_CALL_CONTEXTS,
   platformCreate: PlatformProductCreate,
@@ -2331,6 +2333,11 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       sellerNames: true,
       gtinRegistry: true,
       productApproveProbe: true,
+    }),
+    useCaseProvider(ReviewQueueExport, {
+      reviewQueue: true,
+      sheetWriter: true,
+      clock: true,
     }),
     useCaseProvider(AdminCustomVariantLabels, {
       unitOfWork: true,

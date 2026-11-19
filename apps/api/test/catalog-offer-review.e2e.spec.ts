@@ -63,6 +63,7 @@ it('maps every refusal code of the review use cases to its exact status', () => 
     'conflict.stale': 409,
     'conflict.retry': 409,
     'claim-text.refused': 422,
+    'batch.too-large': 413,
     'access.unavailable': 503,
     'claim.check-unavailable': 503,
   });
@@ -392,6 +393,41 @@ describe('admin Offer review over HTTP (integration)', () => {
       expect((second.body as { nextAfterId: unknown }).nextAfterId).toBeNull();
       expect((await get(code, '/review-queue?afterId=nope', session)).status).toBe(400);
       expect((await get(code, '/review-queue?limit=0', session)).status).toBe(400);
+    });
+
+    it('exports the queue as CSV and XLSX with the list filters, and refuses a bad request', async () => {
+      await boot();
+      await seeded(code);
+      waiting(code, 9);
+      waiting(code, 1);
+      const session = sessionOf(code, VIEWER, 1);
+
+      const csv = await get(code, '/review-queue/export?direction=desc', session).buffer(true);
+      expect(csv.status).toBe(200);
+      expect(csv.headers['content-type']).toContain('text/csv');
+      expect(csv.headers['content-disposition']).toMatch(
+        /^attachment; filename="review-queue-.*\.csv"$/,
+      );
+      expect(csv.headers['cache-control']).toBe('no-store');
+      const lines = csv.text.replace('\uFEFF', '').trim().split(/\r?\n/);
+      expect(lines[0]).toBe(
+        'kind,product_code,product_name,seller_id,store_name,seller_sku,first_publication,reasons,required_checks,has_images,warnings,submitted_at',
+      );
+      expect(lines).toHaveLength(3);
+      expect(lines[1]).toContain('offer-first-publication,P00000001,Dates');
+      const kinds = await get(code, '/review-queue/export?kind=product-revision', session).buffer(
+        true,
+      );
+      expect(kinds.text.replace('\uFEFF', '').trim().split(/\r?\n/)).toHaveLength(1);
+      const xlsx = await get(code, '/review-queue/export?format=xlsx', session).buffer(true);
+      expect(xlsx.status).toBe(200);
+      expect(xlsx.headers['content-type']).toContain('spreadsheetml');
+      expect((await get(code, '/review-queue/export?format=pdf', session)).status).toBe(400);
+      expect((await get(code, '/review-queue/export?page=2', session)).status).toBe(400);
+      expect((await get(code, '/review-queue/export', null)).status).toBe(401);
+      expect((await get(code, '/review-queue/export', sessionOf(code, NO_KEY, 3))).status).toBe(
+        403,
+      );
     });
 
     it('answers 401 without a session and 403 without the view key', async () => {
