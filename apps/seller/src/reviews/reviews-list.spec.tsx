@@ -269,8 +269,9 @@ describe('selection and export', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select Not great' }));
     expect(screen.getByText('1 review selected')).toBeTruthy();
     call.mockClear();
-    call.mockImplementation(((method: string) =>
-      Promise.resolve(method === 'GET' ? ok(pageOf([row()])) : ok(row()))));
+    call.mockImplementation((method: string) =>
+      Promise.resolve(method === 'GET' ? ok(pageOf([row()])) : ok(row())),
+    );
     openMenu(/Actions for Not great/);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Reply…' }));
     const dialog = screen.getByRole('dialog');
