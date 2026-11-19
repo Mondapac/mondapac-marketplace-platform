@@ -83,6 +83,8 @@ describe.each(['AU', 'ZZ'] as const)('platform-product.options in market %s', (c
           if (failure === 'policy') throw new Error('no config');
           return POLICY[code]!.tax;
         },
+        taxCategories: () =>
+          POLICY[code]!.tax.map((c) => ({ code: c, labelKey: `catalog.tax.${c}` })),
         locales: () => POLICY[code]!.locales,
       } as unknown as CatalogMarketPolicy,
     });
@@ -96,6 +98,7 @@ describe.each(['AU', 'ZZ'] as const)('platform-product.options in market %s', (c
       productTypes: POLICY[code]!.types,
       locales: POLICY[code]!.locales,
       taxCategoryCodes: POLICY[code]!.tax,
+      taxCategories: POLICY[code]!.tax.map((c) => ({ code: c, labelKey: `catalog.tax.${c}` })),
       categories,
     });
     expect(asked).toEqual([code]);
@@ -113,6 +116,7 @@ describe.each(['AU', 'ZZ'] as const)('platform-product.options in market %s', (c
       productTypes: POLICY[code]!.types,
       locales: POLICY[code]!.locales,
       taxCategoryCodes: POLICY[code]!.tax,
+      taxCategories: POLICY[code]!.tax.map((c) => ({ code: c, labelKey: `catalog.tax.${c}` })),
       categories: [],
     });
   });

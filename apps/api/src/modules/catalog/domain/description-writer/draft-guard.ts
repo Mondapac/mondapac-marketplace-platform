@@ -8,6 +8,8 @@
  * saves passes the same server refusal of claim text as typed text (CAT-41).
  */
 
+import { foldForClaims, hasClaimWord, hasLookAlikeScripts } from '@mondapac/shared-kernel';
+
 export type LeftOutReason = 'certification' | 'other';
 
 export interface DraftSentence {
@@ -23,40 +25,6 @@ export interface GuardedDraft {
 
 /** The longest draft the modal takes, in characters (the description field holds more). */
 export const MAX_DRAFT_CHARS = 1500;
-
-// Certification and religious-standard words of any type. The CERT-01 types are data and the
-// Market's vocabulary is matched later; these are the words a model reaches for.
-const CERTIFICATION = new RegExp(
-  [
-    String.raw`\bh+a+[\s.\-_*]*l+a+[\s.\-_*]*l+\b`,
-    String.raw`\bhara+m\b`,
-    String.raw`\bk[ao]sh(?:er|rut)\b`,
-    String.raw`\bmuslim\w*`,
-    String.raw`\bpermitted\b`,
-    String.raw`\b(?:pork|alcohol|lard|gelatin)[\s-]*free\b`,
-    String.raw`\bvegan\b`,
-    String.raw`\bvegetarian\b`,
-    String.raw`\borganic\b`,
-    String.raw`\bbio\b`,
-    String.raw`\bcertif\w*`,
-    String.raw`\baccredit\w*`,
-    String.raw`\bapproved\b`,
-    String.raw`\bzabih\w*`,
-    String.raw`\bdhabih\w*`,
-    String.raw`\bs[hy]ari'?ah?\b`,
-    String.raw`\bislamic\b`,
-    String.raw`\bpermissible\b`,
-    String.raw`\bforbidden\b`,
-    String.raw`\bfair\s*trade\b`,
-    'حلال',
-    'حرام',
-    'ذبح',
-    'گواهی',
-    'ارگانیک',
-    'כשר',
-  ].join('|'),
-  'iu',
-);
 
 // Health, nutrition, allergy and medical wording (R13), and religious rulings.
 const HEALTH = new RegExp(
@@ -97,55 +65,6 @@ const COMMERCE = new RegExp(
   ].join('|'),
   'iu',
 );
-
-// Letters that look like Latin ones, folded before the certification words are tested.
-const LOOK_ALIKES: Readonly<Record<string, string>> = {
-  а: 'a',
-  е: 'e',
-  о: 'o',
-  р: 'p',
-  с: 'c',
-  х: 'x',
-  у: 'y',
-  і: 'i',
-  ӏ: 'l',
-  ⅼ: 'l',
-  ı: 'i',
-  α: 'a',
-  ο: 'o',
-  ε: 'e',
-  κ: 'k',
-  ν: 'v',
-  ѕ: 's',
-  һ: 'h',
-  ԁ: 'd',
-  ɡ: 'g',
-  ᴢ: 'z',
-  ʜ: 'h',
-};
-const LOOK_ALIKE = new RegExp(`[${Object.keys(LOOK_ALIKES).join('')}]`, 'giu');
-
-/**
- * NFKC, accents and vowel marks removed ("ḥalāl" -> "halal", Arabic harakat dropped), look-alikes
- * folded, and single letters split by separators joined ("h.a.l.a.l", "ح ل ا ل" -> one word). The
- * letter test uses look-arounds, since `\b` only knows ASCII letters.
- */
-function folded(sentence: string): string {
-  const normal = sentence
-    .normalize('NFKC')
-    .normalize('NFD')
-    .replace(/\p{Mn}/gu, '')
-    .normalize('NFC')
-    .replace(LOOK_ALIKE, (letter) => LOOK_ALIKES[letter.toLowerCase()] ?? letter);
-  return normal.replace(/(?<!\p{L})(?:\p{L}[\s.\-*_·]){2,}\p{L}(?!\p{L})/gu, (run) =>
-    run.replace(/[\s.\-*_·]/gu, ''),
-  );
-}
-
-/** For the certification words only: a capital I, a one or a bar read as l ("haIaI", "ha1al"). */
-function certificationFolded(sentence: string): string {
-  return folded(sentence).replace(/[I1|]/gu, 'l');
-}
 
 // Inert rendering (R9): no markup, links, images, addresses or invisible characters survive.
 const MARKDOWN_IMAGE = /!\[[^\]]*\]\([^)]*\)/g;
@@ -208,10 +127,10 @@ function numbersAreGiven(sentence: string, facts: string): boolean {
 
 /** Why a sentence must go, or null when it may stay. */
 export function sentenceVerdict(sentence: string, facts: string): LeftOutReason | null {
-  const plain = folded(sentence);
-  if (CERTIFICATION.test(plain) || CERTIFICATION.test(certificationFolded(sentence))) {
-    return 'certification';
-  }
+  // The claim words, their spellings and the scripts they cannot be read in are the shared guard's
+  // (also the assistant's reply guard); text it cannot read is dropped, as a claim is.
+  if (hasClaimWord(sentence) || hasLookAlikeScripts(sentence)) return 'certification';
+  const plain = foldForClaims(sentence);
   if (HEALTH.test(plain)) return 'other';
   if (COMMERCE.test(plain) || COMMERCE.test(sentence)) return 'other';
   if (!numbersAreGiven(plain, facts)) return 'other';

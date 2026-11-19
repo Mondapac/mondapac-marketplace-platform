@@ -3,7 +3,11 @@ import { notFound } from 'next/navigation';
 import { OrderDetails } from '../../../../../src/account/order-details.tsx';
 import { orderReference } from '../../../../../src/account/live-orders.ts';
 import { pageMetadata, seoDescription } from '../../../../../src/seo/metadata.ts';
-import { loadAccount, loadAccountOrder } from '../../../../../src/storefront/source.ts';
+import {
+  loadAccount,
+  loadAccountOrder,
+  loadUpcomingCashback,
+} from '../../../../../src/storefront/source.ts';
 
 interface Props {
   readonly params: Promise<{ id: string }>;
@@ -23,12 +27,12 @@ export async function generateMetadata({ params }: Props) {
 
 export default async function OrderDetailsPage({ params }: Props) {
   const { id } = await params;
-  const order = await loadAccountOrder(id);
+  const [order, cashback] = await Promise.all([loadAccountOrder(id), loadUpcomingCashback(id)]);
   if (order === 'sample') {
     const account = await loadAccount();
     if (!account.orders.some((o) => o.reference === id)) notFound();
     return <OrderDetails reference={id} />;
   }
   if (order === null) notFound();
-  return <OrderDetails reference={id} order={order} />;
+  return <OrderDetails reference={id} order={order} upcomingCashback={cashback} />;
 }
