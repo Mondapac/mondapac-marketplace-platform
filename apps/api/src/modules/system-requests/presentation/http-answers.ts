@@ -8,6 +8,7 @@ import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 
 export const SYSTEM_REQUESTS_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
+  'batch.too-large': 413,
   'second-factor.required': 403,
   'second-factor.enrolment-required': 403,
   'system-requests.not-found': 404,
@@ -21,6 +22,7 @@ export const SYSTEM_REQUESTS_STATUS: Readonly<Record<string, number>> = Object.f
   'system-requests.revert-unavailable': 503,
   'system-requests.revert-not-permitted': 403,
   'system-requests.not-low-risk': 409,
+  'system-requests.one-by-one': 409,
   'system-requests.policy-conflict': 409,
 });
 
@@ -70,6 +72,13 @@ export function refusal(
     return fail(500, 'internal');
   }
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  // An export over the cap says the cap and, when it was counted, how many rows matched.
+  if (typeof error.max === 'number') {
+    return fail(status, error.code, {
+      max: error.max,
+      ...(typeof error.total === 'number' ? { total: error.total } : {}),
+    });
+  }
   if (typeof error.actionKey === 'string') {
     return fail(status, error.code, { actionKey: error.actionKey });
   }

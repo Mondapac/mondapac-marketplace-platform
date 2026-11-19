@@ -4,7 +4,7 @@ import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { BlockCountIncrement, BlockCountRow } from '../../domain/block-count';
 import type { BlockCountRepository } from '../ports/block-count.repository';
 import { ENGAGEMENT_EVENTS, type StoreFollow } from '../../domain/store-follow';
-import type { PublishedStores } from '../ports/published-stores';
+import type { PublishedStoreCard, PublishedStores } from '../ports/published-stores';
 import type { StoreFollowCursor, StoreFollowRepository } from '../ports/store-follow.repository';
 import type { ServedPlacements } from '../ports/served-placements';
 import type {
@@ -414,7 +414,25 @@ export class InMemoryStoreFollows implements StoreFollowRepository {
 /** Published stores the test names; `down` makes every read fail. */
 export class FakePublishedStores implements PublishedStores {
   readonly slugs = new Map<string, string>();
+  /** The public name of a store; a store with none is named after its address. */
+  readonly names = new Map<string, string>();
+  readonly logos = new Map<string, { id: string; width: number; height: number }>();
   down = false;
+
+  cardsOf(_context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
+    if (this.down) return Promise.resolve(err({ code: 'engagement.unavailable' as const }));
+    const found = new Map<Id<'Seller'>, PublishedStoreCard>();
+    for (const id of sellerIds) {
+      const slug = this.slugs.get(id);
+      if (slug === undefined) continue;
+      found.set(id, {
+        slug,
+        name: this.names.get(id) ?? `Store ${slug}`,
+        logo: this.logos.get(id) ?? null,
+      });
+    }
+    return Promise.resolve(ok(found as ReadonlyMap<Id<'Seller'>, PublishedStoreCard>));
+  }
 
   slugsOf(_context: CallContext, sellerIds: readonly Id<'Seller'>[]) {
     if (this.down) return Promise.resolve(err({ code: 'engagement.unavailable' as const }));

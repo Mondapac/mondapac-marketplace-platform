@@ -10,11 +10,24 @@ import type {
   SellerListRepository,
 } from '../application/ports/seller-list.repository';
 import { SELLER_FILE_ORIGINS } from '../domain/seller-file';
-import { LIST_KINDS, type ListKind, type ListSearch } from '../domain/seller-list';
+import { LIST_KINDS, type FileTab, type ListKind, type ListSearch } from '../domain/seller-list';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
+
+/**
+ * The store-name order of the super list (list 15) on the `(market_id, store_name_key)` index: a
+ * file with no name yet sorts after every name A to Z (PostgreSQL's default, NULLS LAST on ASC),
+ * and before them Z to A. The seller id breaks a tie.
+ */
+const byName = (direction: 'asc' | 'desc'): Prisma.SellersSellerFileOrderByWithRelationInput[] => [
+  { storeNameKey: direction },
+  { sellerId: direction },
+];
+
+const asArray = <T>(value: T | T[] | undefined): T[] =>
+  value === undefined ? [] : Array.isArray(value) ? value : [value];
 
 /** The upper bound of a prefix range on a `COLLATE "C"` key (data design A6, A7). */
 const PREFIX_END = '\u{10FFFF}';
@@ -76,14 +89,11 @@ export class PrismaSellerListRepository implements SellerListRepository {
     query: ListPageQuery,
   ): Promise<readonly ListedSeller[]> {
     const tx = this.prisma.tx(market);
-    const cursor = query.after?.tab === 'awaiting-review' ? query.after : null;
+    const cursor =
+      query.order === undefined && query.after?.tab === 'awaiting-review' ? query.after : null;
     const after = cursor === null ? null : toDate(cursor.createdAt);
     const where: Prisma.SellersBusinessFileRevisionWhereInput = {
-      marketId: market.marketId,
-      status: 'pending',
-      ...(query.kind === null ? {} : { kind: query.kind }),
-      ...(query.areaCode === null ? {} : { sellerFile: { serviceAreaCode: query.areaCode } }),
-      ...(query.onlyIds === null ? {} : { sellerId: { in: [...query.onlyIds] } }),
+      ...this.awaitingWhere(market, query),
       ...(cursor === null
         ? {}
         : {
@@ -93,9 +103,18 @@ export class PrismaSellerListRepository implements SellerListRepository {
             ],
           }),
     };
+    const order = query.order;
+    const orderBy: Prisma.SellersBusinessFileRevisionOrderByWithRelationInput[] =
+      order === undefined
+        ? [{ createdAt: 'asc' }, { id: 'asc' }]
+        : order.key === 'name'
+          ? [{ sellerFile: { storeNameKey: order.direction } }, { sellerId: order.direction }]
+          : // One pending submission per seller (a partial unique index): the seller id breaks a tie.
+            [{ createdAt: order.direction }, { sellerId: order.direction }];
     const revisions = await tx.sellersBusinessFileRevision.findMany({
       where,
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
+      orderBy,
+      ...(order === undefined ? {} : { skip: query.offset ?? 0 }),
       take: query.take,
       select: {
         id: true,
@@ -124,8 +143,89 @@ export class PrismaSellerListRepository implements SellerListRepository {
   }
 
   async incomplete(market: MarketContext, query: ListPageQuery): Promise<readonly ListedSeller[]> {
-    const cursor = query.after?.tab === 'incomplete' ? query.after : null;
+    const cursor =
+      query.order === undefined && query.after?.tab === 'incomplete' ? query.after : null;
     const changed = cursor === null ? null : toDate(cursor.changedAt);
+    const where = this.incompleteWhere(market, query);
+    const order = query.order;
+    return this.files(
+      market,
+      cursor === null
+        ? where
+        : {
+            ...where,
+            AND: [
+              ...asArray(where.AND),
+              {
+                OR: [
+                  { lastChangedAt: { lt: changed! } },
+                  { lastChangedAt: changed!, sellerId: { lt: cursor.sellerId } },
+                ],
+              },
+            ],
+          },
+      order === undefined
+        ? // Descending on both keys so the partial index (market_id, last_changed_at, seller_id)
+          // WHERE approved_revision_id IS NULL is scanned backwards (data design A4).
+          [{ lastChangedAt: 'desc' }, { sellerId: 'desc' }]
+        : order.key === 'name'
+          ? byName(order.direction)
+          : [{ lastChangedAt: order.direction }, { sellerId: order.direction }],
+      query.take,
+      order === undefined ? 0 : (query.offset ?? 0),
+    );
+  }
+
+  async all(market: MarketContext, query: ListPageQuery): Promise<readonly ListedSeller[]> {
+    const cursor = query.order === undefined && query.after?.tab === 'all' ? query.after : null;
+    const where = this.allWhere(market, query);
+    const order = query.order;
+    return this.files(
+      market,
+      cursor === null
+        ? where
+        : { ...where, AND: [...asArray(where.AND), { sellerId: { lt: cursor.sellerId } }] },
+      order === undefined
+        ? // The seller id is a UUID v7: newest first, on the primary key.
+          [{ sellerId: 'desc' }]
+        : order.key === 'name'
+          ? byName(order.direction)
+          : [{ sellerId: order.direction }],
+      query.take,
+      order === undefined ? 0 : (query.offset ?? 0),
+    );
+  }
+
+  async countMatching(market: MarketContext, tab: FileTab, query: ListPageQuery): Promise<number> {
+    const tx = this.prisma.tx(market);
+    if (tab === 'awaiting-review') {
+      return tx.sellersBusinessFileRevision.count({ where: this.awaitingWhere(market, query) });
+    }
+    return tx.sellersSellerFile.count({
+      where:
+        tab === 'incomplete' ? this.incompleteWhere(market, query) : this.allWhere(market, query),
+    });
+  }
+
+  /** "Awaiting review" under the query's filters, without the cursor (A3). */
+  private awaitingWhere(
+    market: MarketContext,
+    query: ListPageQuery,
+  ): Prisma.SellersBusinessFileRevisionWhereInput {
+    return {
+      marketId: market.marketId,
+      status: 'pending',
+      ...(query.kind === null ? {} : { kind: query.kind }),
+      ...(query.areaCode === null ? {} : { sellerFile: { serviceAreaCode: query.areaCode } }),
+      ...(query.onlyIds === null ? {} : { sellerId: { in: [...query.onlyIds] } }),
+    };
+  }
+
+  /** "Incomplete" under the query's filters, without the cursor (A4). */
+  private incompleteWhere(
+    market: MarketContext,
+    query: ListPageQuery,
+  ): Prisma.SellersSellerFileWhereInput {
     const and: Prisma.SellersSellerFileWhereInput[] = [];
     if (query.outsideArea) {
       and.push({
@@ -133,49 +233,27 @@ export class PrismaSellerListRepository implements SellerListRepository {
         OR: [{ serviceAreaCode: null }, { serviceAreaCode: { notIn: [...query.openAreaCodes] } }],
       });
     }
-    if (cursor !== null) {
-      and.push({
-        OR: [
-          { lastChangedAt: { lt: changed! } },
-          { lastChangedAt: changed!, sellerId: { lt: cursor.sellerId } },
-        ],
-      });
-    }
-    return this.files(
-      market,
-      {
-        marketId: market.marketId,
-        approvedRevisionId: null,
-        draftComplete: false,
-        revisions: { none: { marketId: market.marketId, status: 'pending' } },
-        ...(query.onlyIds === null ? {} : { sellerId: { in: [...query.onlyIds] } }),
-        ...(query.areaCode === null ? {} : { serviceAreaCode: query.areaCode }),
-        ...(and.length === 0 ? {} : { AND: and }),
-      },
-      // Descending on both keys so the partial index (market_id, last_changed_at, seller_id)
-      // WHERE approved_revision_id IS NULL is scanned backwards (data design A4).
-      [{ lastChangedAt: 'desc' }, { sellerId: 'desc' }],
-      query.take,
-    );
+    return {
+      marketId: market.marketId,
+      approvedRevisionId: null,
+      draftComplete: false,
+      revisions: { none: { marketId: market.marketId, status: 'pending' } },
+      ...(query.onlyIds === null ? {} : { sellerId: { in: [...query.onlyIds] } }),
+      ...(query.areaCode === null ? {} : { serviceAreaCode: query.areaCode }),
+      ...(and.length === 0 ? {} : { AND: and }),
+    };
   }
 
-  async all(market: MarketContext, query: ListPageQuery): Promise<readonly ListedSeller[]> {
-    const cursor = query.after?.tab === 'all' ? query.after : null;
-    const bounds: Prisma.UuidFilter = {
-      ...(query.onlyIds === null ? {} : { in: [...query.onlyIds] }),
-      ...(cursor === null ? {} : { lt: cursor.sellerId }),
+  /** "All" under the query's filters, without the cursor (A5). */
+  private allWhere(
+    market: MarketContext,
+    query: ListPageQuery,
+  ): Prisma.SellersSellerFileWhereInput {
+    return {
+      marketId: market.marketId,
+      ...(query.areaCode === null ? {} : { serviceAreaCode: query.areaCode }),
+      ...(query.onlyIds === null ? {} : { sellerId: { in: [...query.onlyIds] } }),
     };
-    return this.files(
-      market,
-      {
-        marketId: market.marketId,
-        ...(query.areaCode === null ? {} : { serviceAreaCode: query.areaCode }),
-        ...(Object.keys(bounds).length === 0 ? {} : { sellerId: bounds }),
-      },
-      // The seller id is a UUID v7: newest first, on the primary key.
-      [{ sellerId: 'desc' }],
-      query.take,
-    );
   }
 
   async counts(market: MarketContext): Promise<ListCounts> {
@@ -248,11 +326,13 @@ export class PrismaSellerListRepository implements SellerListRepository {
     where: Prisma.SellersSellerFileWhereInput,
     orderBy: Prisma.SellersSellerFileOrderByWithRelationInput[],
     take: number,
+    skip: number,
   ): Promise<readonly ListedSeller[]> {
     const tx = this.prisma.tx(market);
     const rows = await tx.sellersSellerFile.findMany({
       where,
       orderBy,
+      ...(skip === 0 ? {} : { skip }),
       take,
       select: FILE_SELECT,
     });
