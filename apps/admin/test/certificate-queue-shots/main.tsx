@@ -2,11 +2,11 @@ import { NextIntlClientProvider } from 'next-intl';
 import { createRoot } from 'react-dom/client';
 import messages from '../../messages/en.json';
 import '../../app/globals.css';
-import { CertificateQueue } from '../../src/certificates/queue.tsx';
-import type { QueueRow } from '../../src/certificates/types.ts';
+import type { QueueListRow } from '../../src/certificates/queue-list/queue-types.ts';
+import { QueueDemo } from './demo.tsx';
 
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
-const rows: QueueRow[] = [
+const rows: QueueListRow[] = [
   [
     'Logan Road Grocer',
     'halal',
@@ -37,12 +37,13 @@ const rows: QueueRow[] = [
   version: 2,
   submissionId: id(200 + i),
   submissionNo: no as number,
-  kind: kind as QueueRow['kind'],
+  kind: kind as QueueListRow['kind'],
   typeCode: typeCode as string,
   sellerId: id(300 + i),
   storeName: storeName as string | null,
   issuerName: issuerName as string | null,
   submittedAt: submittedAt as string,
+  actions: ['open', 'decide'],
 }));
 
 createRoot(document.getElementById('root')!).render(
@@ -52,7 +53,7 @@ createRoot(document.getElementById('root')!).render(
       <p className="mb-4 text-sm text-fg-muted">
         4 submissions are waiting for a decision, oldest first.
       </p>
-      <CertificateQueue
+      <QueueDemo
         rows={rows}
         typeNames={
           new Map([
@@ -60,7 +61,6 @@ createRoot(document.getElementById('root')!).render(
             ['kosher', 'Kosher'],
           ])
         }
-        morePages={false}
       />
     </main>
   </NextIntlClientProvider>,

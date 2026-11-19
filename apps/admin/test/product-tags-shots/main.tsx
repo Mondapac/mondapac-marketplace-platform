@@ -50,7 +50,10 @@ const product: ProductView = {
   lastChangedAt: '2026-11-05T01:00:00.000Z',
   createdAt: '2026-11-05T01:00:00.000Z',
   form: {
-    taxCategoryCodes: ['gst-free-food', 'gst'],
+    taxCategories: [
+      { code: 'gst-free-food', labelKey: 'catalog.tax.gst-free-food' },
+      { code: 'gst', labelKey: 'catalog.tax.gst' },
+    ],
     fields: [],
     categories: [
       { categoryId: id(10), parentId: null, names: names('Pantry') },

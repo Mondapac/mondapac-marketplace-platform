@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, IdGenerator, Result } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
+import type { SystemRequestRecorder } from '../../../../platform/change-review/change-review';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import {
@@ -25,6 +26,12 @@ import type { RoleGrantReader } from '../ports/role-grant-reader';
 import type { RoleRepository } from '../ports/seller-team.repository';
 import type { ThrottleKeys } from '../ports/session-secrets';
 import type { ThrottleRepository } from '../ports/throttle.repository';
+import {
+  ADMIN_INVITATION_SUBJECT_KIND,
+  NOTHING_BEFORE,
+  openPeopleReview,
+  type ReviewRef,
+} from '../people/people-review';
 import { reserveInvitationMail } from '../sellers/invitation-mail-budget';
 import {
   readActingGrants,
@@ -42,6 +49,11 @@ export interface InviteAdminInput {
   readonly roleId: Id<'Role'>;
   /** The admin's client: the `mail.origin` key of the invitation mail (6.8). */
   readonly origin: string;
+  /**
+   * The admin's note for the reviewer (Admin Inbox › System requests, area people); needed only
+   * where the Market reviews the area.
+   */
+  readonly note?: unknown;
 }
 
 export interface InviteAdminOutput {
@@ -49,6 +61,8 @@ export interface InviteAdminOutput {
   readonly invitationId: Id<'Invitation'>;
   /** Whether a stale pending invitation for the same address was revoked first (M7). */
   readonly replaced: boolean;
+  /** The review the invitation opened (Admin Inbox › System requests); null when the area is off. */
+  readonly request: ReviewRef | null;
 }
 
 export type InviteAdminFailure =
@@ -66,6 +80,8 @@ export type InviteAdminFailure =
   | { readonly code: 'access.denied' };
 
 export interface InviteAdminDependencies {
+  /** System requests' recorder: the invitation is reviewed after it is issued (area people). */
+  readonly review: SystemRequestRecorder;
   readonly unitOfWork: UnitOfWork;
   readonly accounts: AccountRepository;
   readonly roles: RoleRepository;
@@ -101,6 +117,13 @@ export interface InviteAdminDependencies {
  * Then the invitation, without a token:
  * `identity.invitation-issued.v1` (the mail handler mints the token and sends it, 6.6) and
  * `identity.invitation.issued` as the actor. The address is never logged or audited.
+ *
+ * Reviewed after (Admin Inbox › System requests, area people, high risk; owner decision of 18 Nov
+ * 2026): in the same unit the invitation opens its request with the admin's `note` (required
+ * where the Market reviews the area; a refusal rolls everything back, the mail counters too),
+ * values `{exists: false}` before and `{exists: true, roleId}` after, never the address. A
+ * reviewer's reject revokes the invitation while it is pending, or disables the account that
+ * accepted it (people-reverters.ts).
  *
  * Not serializable: it writes none of the tables HF8 counts; the acceptance, which does, is.
  */
@@ -212,7 +235,20 @@ export class InviteAdmin extends UseCase<InviteAdminInput, InviteAdminOutput, In
               after: { kind: 'admin', roleId: role.state.id },
             }),
           );
-          return ok({ code: 'invitation.issued', invitationId: invitation.state.id, replaced });
+          const opened = await openPeopleReview(this.deps.review, context, {
+            subjectKind: ADMIN_INVITATION_SUBJECT_KIND,
+            subjectRef: invitation.state.id,
+            before: NOTHING_BEFORE,
+            after: { exists: true, roleId: role.state.id },
+            note: input.note,
+          });
+          if (!opened.ok) return err(opened.error);
+          return ok({
+            code: 'invitation.issued',
+            invitationId: invitation.state.id,
+            replaced,
+            request: opened.value,
+          });
         },
       );
     } catch (error) {

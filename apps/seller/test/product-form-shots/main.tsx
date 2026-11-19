@@ -39,7 +39,10 @@ const product: ProductView = {
   createdAt: '2026-11-05T01:00:00.000Z',
   pendingSubmittedAt: null,
   form: {
-    taxCategoryCodes: ['gst-free-food', 'gst'],
+    taxCategories: [
+      { code: 'gst-free-food', labelKey: 'catalog.tax.gst-free-food' },
+      { code: 'gst', labelKey: 'catalog.tax.gst' },
+    ],
     units: [],
     fields: [
       field('origin', 'Country of origin', 'select', false, [
@@ -117,7 +120,10 @@ const shown: ProductView =
 const addOptions: ProductOptions = {
   productTypes: ['grocery', 'dry-goods', 'frozen'],
   conditions: ['new', 'used'],
-  taxCategoryCodes: ['gst-free-food', 'gst'],
+  taxCategories: [
+    { code: 'gst-free-food', labelKey: 'catalog.tax.gst-free-food' },
+    { code: 'gst', labelKey: 'catalog.tax.gst' },
+  ],
   categories: product.form.categories,
   locales: { default: 'en-AU', supported: ['en-AU', 'ar'] },
   sellerCanCreateProduct: true,

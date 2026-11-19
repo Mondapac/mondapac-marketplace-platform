@@ -1,18 +1,20 @@
 import { Banner, LoadError } from '@mondapac/ui';
+import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { serverGet } from '../../../src/server/server-fetch.ts';
+import { panelHostFor } from '../../../src/server/bff.ts';
+import { panelConfig } from '../../../src/server/config.ts';
 import { requireSession } from '../../../src/server/session.ts';
+import { localZone } from '../../../src/shared/format.ts';
+import { toId } from '../../../src/sales/search-route.ts';
 import { CertificatesTabs } from '../../../src/certificates/tabs.tsx';
-import { REVIEW_PERMISSION } from '../../../src/certificates/review/types.ts';
-import { CertificateQueue } from '../../../src/certificates/queue.tsx';
+import { QueueList } from '../../../src/certificates/queue-list/queue-list.tsx';
 import { typeNames } from '../../../src/certificates/format.ts';
 import {
-  PAGE_SIZE,
   TYPE_VIEW_PERMISSION,
   VIEW_PERMISSION,
-  type QueuePage,
   type TypesList,
 } from '../../../src/certificates/types.ts';
 
@@ -22,19 +24,20 @@ export async function generateMetadata() {
 }
 
 /**
- * Certificates (certificate screens design, A1): the seller certificates waiting for a decision,
- * oldest first, in keyset pages. Type names come from the types list when the reader may view
- * types; otherwise the table shows the type code.
+ * Certificates (certificate screens design, A1): the seller certificates waiting for a decision as
+ * a super list (views, search, filters, sort, columns, saved filters, export, paging). Type names
+ * come from the types list when the reader may view types; otherwise the table shows the type
+ * code.
  */
 export default async function CertificatesPage({
   searchParams,
 }: {
   readonly searchParams: Promise<{
-    readonly after?: string | readonly string[];
     readonly decided?: string | readonly string[];
+    readonly sellerId?: string | readonly string[];
   }>;
 }) {
-  const { after, decided } = await searchParams;
+  const { decided, sellerId } = await searchParams;
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
@@ -72,53 +75,36 @@ export default async function CertificatesPage({
   }
   if (!keys.includes(VIEW_PERMISSION)) return shell(message('no-access'));
 
-  const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
-  if (typeof after === 'string' && after !== '') query.set('afterId', after);
-  const [result, types] = await Promise.all([
-    serverGet<QueuePage>(`certification/admin/seller-certificates?${query.toString()}`),
-    keys.includes(TYPE_VIEW_PERMISSION)
-      ? serverGet<TypesList>('certification/admin/types')
-      : Promise.resolve(null),
-  ]);
-  if (result.kind === 'signed-out') redirect('/session-ended');
-  if (result.kind === 'forbidden') return shell(message('no-access'));
-  if (result.kind !== 'ok') return shell(message('unavailable'));
+  // List paging (settings): page numbers only when the Market says so. A value that cannot be
+  // read means Previous and next, which works for any number of submissions.
+  const mode = await serverGet<{ readonly listPaging: string }>('settings/admin/list-paging');
+  const paging = mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
+  // The queue itself is read by the list in the browser, so a refused or failed read is the
+  // list's own state. Type names only cost the names when the types list cannot be read.
+  const types = keys.includes(TYPE_VIEW_PERMISSION)
+    ? await serverGet<TypesList>('certification/admin/types')
+    : null;
+  if (types?.kind === 'signed-out') redirect('/session-ended');
   const locale = await getLocale();
-  // A types list that could not be read only costs the names; the queue still shows the codes.
   const names = typeNames(types?.kind === 'ok' ? types.body.items : [], locale);
-  const next = result.body.nextAfterId;
+  const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
+  // A link from a seller page may name one seller; anything that is not a UUID is ignored.
+  const seller = typeof sellerId === 'string' ? toId(sellerId) : null;
   return shell(
     <div className="flex flex-col gap-4">
       <CertificatesTabs active="queue" permissionKeys={keys} />
-      <p className="text-sm text-fg-muted">
-        {t('certificates.queue.total', { count: result.body.total })}
-      </p>
       {decided === 'approve' || decided === 'request-changes' || decided === 'decline' ? (
         <Banner tone="success">{t(`certificates.review.decided.${decided}`)}</Banner>
       ) : null}
-      <CertificateQueue
-        rows={result.body.items}
-        typeNames={names}
-        morePages={next !== null}
-        canReview={keys.includes(REVIEW_PERMISSION)}
+      <QueueList
+        paging={paging}
+        accountId={gate.session.accountId}
+        marketId={marketId}
+        csrfToken={gate.session.csrfToken}
+        zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
+        types={[...names].map(([code, name]) => ({ code, name }))}
+        sellerId={seller}
       />
-      {typeof after === 'string' && after !== '' ? (
-        <p>
-          <a className="font-medium text-link underline" href="/certificates">
-            {t('certificates.queue.first-page')}
-          </a>
-        </p>
-      ) : null}
-      {next === null ? null : (
-        <p>
-          <a
-            className="font-medium text-link underline"
-            href={`/certificates?after=${encodeURIComponent(next)}`}
-          >
-            {t('certificates.queue.more')}
-          </a>
-        </p>
-      )}
     </div>,
   );
 }

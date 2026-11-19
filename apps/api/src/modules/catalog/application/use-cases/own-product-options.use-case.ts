@@ -19,9 +19,7 @@ export interface OwnProductOptionsOutput {
   readonly productTypes: readonly string[];
   readonly conditions: readonly string[];
   readonly locales: { readonly default: string; readonly supported: readonly string[] };
-  /** The Market's tax category codes, as the product read's `form` lists them. */
-  readonly taxCategoryCodes: readonly string[];
-  /** The same categories with the label key each is shown by. */
+  /** The Market's tax categories with the label key each is shown by, as the product read's `form` lists them. */
   readonly taxCategories: readonly TaxCategoryOption[];
   /** The platform categories a product may be filed under, as the product read's `form` lists them; empty when the read failed. */
   readonly categories: readonly ProductFormCategory[];
@@ -117,7 +115,6 @@ export class OwnProductOptions extends UseCase<
           .filter((type) => allowed === 'all' || (allowed !== null && allowed.has(type))),
         conditions: [...policy.conditions(market)],
         locales: { default: locales.default, supported: [...locales.supported] },
-        taxCategoryCodes: [...policy.taxCategoryCodes(market)],
         taxCategories: policy.taxCategories(market).map((category) => ({ ...category })),
         categories,
         sellerCanCreateProduct: canCreate,

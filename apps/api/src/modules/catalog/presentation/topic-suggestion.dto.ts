@@ -150,6 +150,16 @@ export class OwnSuggestionListBody {
   @ApiProperty({ type: [OwnSuggestionItemBody] }) items!: OwnSuggestionItemBody[];
   @ApiProperty({ nullable: true, type: String, description: 'The afterId of the next page.' })
   nextAfterId!: string | null;
+  @ApiProperty({ description: '1-based page number (1 on a cursor read).' }) page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty() hasNext!: boolean;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description: 'The suggestions the filters keep; null in `prev-next` mode and on a cursor read.',
+  })
+  total!: number | null;
   @ApiProperty({ description: "How many of the seller's suggestions wait for a decision." })
   openCount!: number;
   @ApiProperty({ description: 'How many may wait at once.' }) maxOpen!: number;

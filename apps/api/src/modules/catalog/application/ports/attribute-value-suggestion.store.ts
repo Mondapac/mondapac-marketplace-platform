@@ -1,3 +1,4 @@
+import type { OwnSuggestionsFilter, OwnSuggestionsPage } from './own-suggestion-page';
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type {
   AttributeValueSuggestion,
@@ -70,6 +71,20 @@ export interface AttributeValueSuggestionStore {
     productId: Id<'Product'>,
     limit: number,
   ): Promise<readonly AttributeValueSuggestion[]>;
+
+  /** One numbered page of one seller's suggestions (status and label search, sorted). */
+  pageOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    page: OwnSuggestionsPage<SuggestionStatus>,
+  ): Promise<readonly AttributeValueSuggestion[]>;
+
+  /** How many of one seller's suggestions match the same filter (the total of the list). */
+  countOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnSuggestionsFilter<SuggestionStatus>,
+  ): Promise<number>;
 
   /**
    * One seller's suggestions, newest first (by id, a UUID v7), keyset-paged: rows after

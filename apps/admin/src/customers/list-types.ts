@@ -52,6 +52,8 @@ export interface Filters {
   readonly spentMax?: string;
   /** A manual group's id (phase 2a): only its members. */
   readonly group?: string;
+  /** A seller's id (phase 3): only the customers who follow that store. */
+  readonly follows?: string;
 }
 export const FILTER_KEYS = [
   'status',
@@ -65,6 +67,7 @@ export const FILTER_KEYS = [
   'spentMin',
   'spentMax',
   'group',
+  'follows',
 ] as const satisfies readonly (keyof Filters)[];
 export type FilterKey = (typeof FILTER_KEYS)[number];
 
@@ -126,6 +129,7 @@ export function apiFilters(f: Filters): Record<string, string | number | boolean
     if (f[key] !== undefined) filters[key] = f[key];
   }
   if (f.group !== undefined) filters['group'] = f.group;
+  if (f.follows !== undefined) filters['followsSellerId'] = f.follows;
   return filters;
 }
 
@@ -147,6 +151,8 @@ export function filtersOfApi(raw: Readonly<Record<string, unknown>> | undefined)
   }
   const group = raw['group'];
   if (typeof group === 'string' && UUID.test(group)) out['group'] = group.toLowerCase();
+  const follows = raw['followsSellerId'];
+  if (typeof follows === 'string' && UUID.test(follows)) out['follows'] = follows.toLowerCase();
   return out;
 }
 

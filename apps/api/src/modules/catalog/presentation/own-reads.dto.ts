@@ -178,7 +178,6 @@ export class OwnTaxCategory {
 }
 
 export class OwnProductForm {
-  @ApiProperty({ type: [String] }) taxCategoryCodes!: string[];
   @ApiProperty({ type: [OwnTaxCategory] }) taxCategories!: OwnTaxCategory[];
   @ApiProperty({
     type: [OwnFormUnit],
@@ -444,14 +443,8 @@ export class OwnProductOptions {
   @ApiProperty({ type: OwnProductOptionsLocales })
   locales!: OwnProductOptionsLocales;
   @ApiProperty({
-    type: [String],
-    description:
-      "The Market's tax category codes, as `form.taxCategoryCodes` of the product read lists them.",
-  })
-  taxCategoryCodes!: string[];
-  @ApiProperty({
     type: [OwnTaxCategory],
-    description: 'The same categories with the label key each is shown by.',
+    description: "The Market's tax categories with the label key each is shown by.",
   })
   taxCategories!: OwnTaxCategory[];
   @ApiProperty({

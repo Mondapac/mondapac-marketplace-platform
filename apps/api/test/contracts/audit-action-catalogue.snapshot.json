@@ -2149,6 +2149,18 @@
     }
   },
   {
+    "action": "identity.invitation.reverted",
+    "targetType": "identity.invitation",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(seller-owner|staff|admin)",
+      "requestId": "id",
+      "roleId": "id"
+    }
+  },
+  {
     "action": "identity.invitation.revoked",
     "targetType": "identity.invitation",
     "targetId": "id",
@@ -2172,6 +2184,19 @@
     }
   },
   {
+    "action": "identity.role.creation-reverted",
+    "targetType": "identity.role",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "removedKeys": "listOf(permissionKey, max 40)",
+      "scope": "enumOf(platform|seller)"
+    },
+    "after": {
+      "requestId": "id"
+    }
+  },
+  {
     "action": "identity.role.deleted",
     "targetType": "identity.role",
     "targetId": "id",
@@ -2182,6 +2207,19 @@
       "sellerId": "optional(id)"
     },
     "after": null
+  },
+  {
+    "action": "identity.role.deletion-approved",
+    "targetType": "identity.role",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "removedKeys": "listOf(permissionKey, max 40)",
+      "scope": "enumOf(platform|seller)"
+    },
+    "after": {
+      "requestId": "id"
+    }
   },
   {
     "action": "identity.role.reverted",
@@ -2432,7 +2470,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts|seller.commission-payouts.payouts)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts|seller.commission-payouts.payouts)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -2444,7 +2482,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts|seller.commission-payouts.payouts)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts|seller.commission-payouts.payouts)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -2458,7 +2496,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts|seller.commission-payouts.payouts)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts|seller.commission-payouts.payouts)",
       "visibility": "enumOf(me|everyone)"
     }
   },
@@ -3406,6 +3444,7 @@
     "after": {
       "kind": "enumOf(cheapest|weighted|fixed-priority)",
       "order": "listOf(enumOf(mondapac-drive|uber-direct|zoom2u|doordash-drive|auspost|fake-test), max 8)",
+      "requestId": "optional(id)",
       "version": "integer",
       "weightEta": "optional(integer)",
       "weightPrice": "optional(integer)",
