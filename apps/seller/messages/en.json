@@ -2603,7 +2603,7 @@
     "zone-own": "Your own time zone",
     "add": "Add a location",
     "full": "You have reached the limit of {max} locations.",
-    "edit": "Edit",
+    "edit": "Edit…",
     "up": "Move up",
     "down": "Move down",
     "actions-for": "Actions for {name}",

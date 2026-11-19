@@ -191,6 +191,15 @@ describe('Suggest a category', () => {
     );
   });
 
+  it('sends nothing when the seller keeps the suggestion', () => {
+    view({ proposals: [proposal({})] });
+    fireEvent.click(screen.getByRole('button', { name: /^Actions for/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Withdraw…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keep suggestion' }));
+    expect(call).not.toHaveBeenCalled();
+    expect(document.querySelectorAll('dialog[open]')).toHaveLength(0);
+  });
+
   it('says so when a withdraw is stale', async () => {
     call.mockResolvedValue({ ok: false, failure: { status: 409, code: 'conflict.stale' } });
     view({ proposals: [proposal({})] });

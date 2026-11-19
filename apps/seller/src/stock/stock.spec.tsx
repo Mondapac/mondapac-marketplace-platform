@@ -140,7 +140,7 @@ describe('StockLocations', () => {
   it('edits a location through its own path', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: view({ version: 5 }) });
     mount();
-    pick('Garage', 'Edit');
+    pick('Garage', 'Edit…');
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Garage 2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save location' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
@@ -214,8 +214,8 @@ describe('StockLocations', () => {
       fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
       return labels;
     };
-    expect(itemsOf('Default')).toEqual(['Edit', 'Move down']);
-    expect(itemsOf('Garage')).toEqual(['Edit', 'Move up']);
+    expect(itemsOf('Default')).toEqual(['Edit…', 'Move down']);
+    expect(itemsOf('Garage')).toEqual(['Edit…', 'Move up']);
   });
 
   it('turns off Add at the limit', () => {
@@ -292,7 +292,7 @@ describe('StockLocations', () => {
       })
       .mockResolvedValueOnce({ ok: true, status: 200, body: view({ version: 8 }) });
     mount();
-    pick('Garage', 'Edit');
+    pick('Garage', 'Edit…');
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Warehouse' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save location' }));
 

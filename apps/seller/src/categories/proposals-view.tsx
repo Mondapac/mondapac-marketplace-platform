@@ -301,7 +301,9 @@ function ProposalList({
       <h2 id="proposals-heading" className="text-lg font-semibold">
         {t('list.title')}
       </h2>
-      {error === null ? null : <Banner tone="critical">{t(`error.${error}`, { max: 0 })}</Banner>}
+      {error === null || asking !== null ? null : (
+        <Banner tone="critical">{t(`error.${error}`, { max: 0 })}</Banner>
+      )}
       {proposals.length === 0 ? (
         <EmptyState
           size="compact"
@@ -370,13 +372,15 @@ function ProposalList({
         rowName=""
         confirmLabel={t('list.withdraw-confirm')}
         cancelLabel={t('list.withdraw-keep')}
-        pending={false}
+        pending={cancelling !== null}
+        error={asking !== null && error !== null ? t(`error.${error}`, { max: 0 }) : null}
         onConfirm={() => {
-          const proposal = asking;
-          setAsking(null);
-          if (proposal !== null) void cancel(proposal);
+          if (asking !== null) void cancel(asking);
         }}
-        onCancel={() => setAsking(null)}
+        onCancel={() => {
+          setAsking(null);
+          setError(null);
+        }}
       />
     </section>
   );
