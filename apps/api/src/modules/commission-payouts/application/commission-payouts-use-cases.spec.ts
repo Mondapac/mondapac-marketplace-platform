@@ -24,7 +24,7 @@ import {
   parseRateBps,
 } from '../domain/commission';
 import { reversedAmount } from '../domain/reversal';
-import { netBySellerOrder, type LedgerEntry, type LedgerKind } from '../domain/ledger';
+import { netBySellerOrder, savingsOf, type LedgerEntry, type LedgerKind } from '../domain/ledger';
 import { payoutStores } from '../../../../test/support/commission-payouts-fakes';
 import type { MemoryDisputeDecisions } from '../../../../test/support/commission-payouts-fakes';
 import { FakeSellerNames } from '../../../../test/support/commission-payouts-dispute-fakes';
@@ -48,6 +48,7 @@ import { SellerOrderPayoutAnchorQuery } from './use-cases/seller-order-payout-an
 import { RecordSellerOrderPaid } from './use-cases/record-seller-order-paid.use-case';
 import { SetCommissionRate } from './use-cases/set-commission-rate.use-case';
 import { ViewCommissionRate } from './use-cases/view-commission-rate.use-case';
+import { ViewOwnExclusiveCommission } from './use-cases/view-own-exclusive-commission.use-case';
 import { ViewOwnLedger } from './use-cases/view-own-ledger.use-case';
 import { ViewSellerLedger } from './use-cases/view-seller-ledger.use-case';
 
@@ -169,6 +170,31 @@ class MemoryLedger implements LedgerRepository {
       sums.set(key, { ...sum, amount: sum.amount + row.amount.amount });
     }
     return Promise.resolve([...sums.values()]);
+  }
+  savingsBetween(
+    _m: MarketContext,
+    sellerId: Id<'Seller'>,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ) {
+    return Promise.resolve(
+      windows.map(({ from, to }) =>
+        savingsOf(
+          this.rows
+            .filter(
+              (row) =>
+                row.sellerId === sellerId &&
+                row.savedAmount != null &&
+                Temporal.Instant.compare(row.occurredAt, from) >= 0 &&
+                Temporal.Instant.compare(row.occurredAt, to) < 0,
+            )
+            .map((row) => ({
+              currency: row.amount.currency,
+              kind: row.kind,
+              saved: row.savedAmount ?? 0n,
+            })),
+        ),
+      ),
+    );
   }
 }
 
@@ -303,7 +329,19 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
   describe('rates', () => {
     it('answers the Market rate for a seller with no rate of its own', async () => {
       expect(await readRates([SELLER_A, SELLER_A])).toEqual(
-        ok(new Map([[SELLER_A, { rateBps: marketRate, source: 'market', reason: 'standard' }]])),
+        ok(
+          new Map([
+            [
+              SELLER_A,
+              {
+                rateBps: marketRate,
+                standardRateBps: marketRate,
+                source: 'market',
+                reason: 'standard',
+              },
+            ],
+          ]),
+        ),
       );
       expect(
         await new ViewCommissionRate(gate, deps).execute(admin, { sellerId: SELLER_A }),
@@ -338,8 +376,19 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       expect(await readRates([SELLER_A, SELLER_B])).toEqual(
         ok(
           new Map([
-            [SELLER_A, { rateBps: 2000, source: 'seller', reason: 'standard' }],
-            [SELLER_B, { rateBps: marketRate, source: 'market', reason: 'standard' }],
+            [
+              SELLER_A,
+              { rateBps: 2000, standardRateBps: 2000, source: 'seller', reason: 'standard' },
+            ],
+            [
+              SELLER_B,
+              {
+                rateBps: marketRate,
+                standardRateBps: marketRate,
+                source: 'market',
+                reason: 'standard',
+              },
+            ],
           ]),
         ),
       );
@@ -454,16 +503,43 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       expect(await readFor([SELLER_A, SELLER_B], { sellerId: SELLER_A, since: joined })).toEqual(
         ok(
           new Map([
-            [SELLER_A, { rateBps: lower(marketRate), source: 'market', reason: 'exclusive' }],
-            [SELLER_B, { rateBps: 2000, source: 'seller', reason: 'standard' }],
+            [
+              SELLER_A,
+              {
+                rateBps: lower(marketRate),
+                standardRateBps: marketRate,
+                source: 'market',
+                reason: 'exclusive',
+              },
+            ],
+            [
+              SELLER_B,
+              { rateBps: 2000, standardRateBps: 2000, source: 'seller', reason: 'standard' },
+            ],
           ]),
         ),
       );
       expect(await readFor([SELLER_A, SELLER_B], { sellerId: SELLER_B, since: joined })).toEqual(
         ok(
           new Map([
-            [SELLER_A, { rateBps: marketRate, source: 'market', reason: 'standard' }],
-            [SELLER_B, { rateBps: lower(2000), source: 'seller', reason: 'exclusive' }],
+            [
+              SELLER_A,
+              {
+                rateBps: marketRate,
+                standardRateBps: marketRate,
+                source: 'market',
+                reason: 'standard',
+              },
+            ],
+            [
+              SELLER_B,
+              {
+                rateBps: lower(2000),
+                standardRateBps: 2000,
+                source: 'seller',
+                reason: 'exclusive',
+              },
+            ],
           ]),
         ),
       );
@@ -472,20 +548,68 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
     it('keeps the rate in force once the window has closed, or for a seller not asked about', async () => {
       const longAgo = T0.toZonedDateTimeISO('UTC').subtract({ months: rule.months }).toInstant();
       expect(await readFor([SELLER_A], { sellerId: SELLER_A, since: longAgo })).toEqual(
-        ok(new Map([[SELLER_A, { rateBps: marketRate, source: 'market', reason: 'standard' }]])),
+        ok(
+          new Map([
+            [
+              SELLER_A,
+              {
+                rateBps: marketRate,
+                standardRateBps: marketRate,
+                source: 'market',
+                reason: 'standard',
+              },
+            ],
+          ]),
+        ),
       );
       expect(await readFor([SELLER_A], { sellerId: SELLER_B, since: joined })).toEqual(
-        ok(new Map([[SELLER_A, { rateBps: marketRate, source: 'market', reason: 'standard' }]])),
+        ok(
+          new Map([
+            [
+              SELLER_A,
+              {
+                rateBps: marketRate,
+                standardRateBps: marketRate,
+                source: 'market',
+                reason: 'standard',
+              },
+            ],
+          ]),
+        ),
       );
       expect(await readFor([SELLER_A], null)).toEqual(
-        ok(new Map([[SELLER_A, { rateBps: marketRate, source: 'market', reason: 'standard' }]])),
+        ok(
+          new Map([
+            [
+              SELLER_A,
+              {
+                rateBps: marketRate,
+                standardRateBps: marketRate,
+                source: 'market',
+                reason: 'standard',
+              },
+            ],
+          ]),
+        ),
       );
     });
 
     it('answers standard when the lower rate is no lower (a rate at or under the floor)', async () => {
       await setRate(SELLER_A, rule.floorBps);
       expect(await readFor([SELLER_A], { sellerId: SELLER_A, since: joined })).toEqual(
-        ok(new Map([[SELLER_A, { rateBps: rule.floorBps, source: 'seller', reason: 'standard' }]])),
+        ok(
+          new Map([
+            [
+              SELLER_A,
+              {
+                rateBps: rule.floorBps,
+                standardRateBps: rule.floorBps,
+                source: 'seller',
+                reason: 'standard',
+              },
+            ],
+          ]),
+        ),
       );
     });
 
@@ -505,7 +629,19 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
           exclusive: { sellerId: SELLER_A, since: joined },
         }),
       ).toEqual(
-        ok(new Map([[SELLER_A, { rateBps: marketRate, source: 'market', reason: 'standard' }]])),
+        ok(
+          new Map([
+            [
+              SELLER_A,
+              {
+                rateBps: marketRate,
+                standardRateBps: marketRate,
+                source: 'market',
+                reason: 'standard',
+              },
+            ],
+          ]),
+        ),
       );
     });
 
@@ -790,6 +926,22 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
           ],
         }),
       );
+      // A standard rate below the line's own, or not a rate, is malformed.
+      for (const commissionStandardRateBps of [1499, 3001, -1, 1.5]) {
+        await refused(
+          paid({
+            lines: [
+              {
+                orderLineId: LINE_1,
+                lineAmount: 100n,
+                taxInclusive: true,
+                commissionRateBps: 1500,
+                commissionStandardRateBps,
+              },
+            ],
+          }),
+        );
+      }
       expect(await record(paid(), admin)).toMatchObject({ ok: false });
       expect(await record(paid(), sellerA)).toMatchObject({ ok: false });
       expect(ledger.rows).toEqual([]);
@@ -860,6 +1012,152 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       );
     });
   });
+  describe("the seller's savings on its exclusive customers (customers phase 4b)", () => {
+    const rule = config.commissionPayouts!.exclusiveCustomer!;
+    const provisional = config.commissionPayouts!.provisionalTaxRateBps;
+    const lowered = exclusiveRateBps(marketRate, rule);
+    const base1 = commissionBase(1100n, inclusive, provisional);
+    const base2 = commissionBase(335n, inclusive, provisional);
+    const saved1 = commissionOn(base1, marketRate) - commissionOn(base1, lowered);
+    /** Line 1 lowered for the buyer's exclusive seller (3 units), line 2 at the standard rate. */
+    const exclusivePaid = (): PaidSellerOrder =>
+      paid({
+        lines: [
+          {
+            orderLineId: LINE_1,
+            lineAmount: 1100n,
+            taxInclusive: inclusive,
+            commissionRateBps: lowered,
+            commissionStandardRateBps: marketRate,
+          },
+          {
+            orderLineId: LINE_2,
+            lineAmount: 335n,
+            taxInclusive: inclusive,
+            commissionRateBps: marketRate,
+            commissionStandardRateBps: null,
+          },
+        ],
+      });
+    const refundOf = (refundId: Id<'Refund'>, unitsBefore: number, units: number) =>
+      new RecordRefund(gate, deps).execute(system, {
+        refundId,
+        orderId: ORDER,
+        sellerOrderId: SELLER_ORDER,
+        sellerId: SELLER_A,
+        currency,
+        lossBearer: 'seller',
+        settledAt: T0.add({ hours: 1 }),
+        lines: [{ orderLineId: LINE_1, lineQuantity: 3, unitsBefore, units }],
+        shipping: null,
+      });
+    const view = (context: CallContext = sellerA) =>
+      new ViewOwnExclusiveCommission(gate, deps).execute(context, {});
+
+    it('keeps the saving on the lowered line only: the standard commission less what was taken', async () => {
+      expect(saved1).toBeGreaterThan(0n);
+      expect(await record(exclusivePaid())).toEqual(ok('recorded'));
+      const commissions = ledger.rows.filter((r) => r.kind === 'commission');
+      expect(
+        commissions.map((r) => [r.orderLineId, r.standardRateBps ?? null, r.savedAmount ?? null]),
+      ).toEqual([
+        [LINE_1, marketRate, saved1],
+        [LINE_2, null, null],
+      ]);
+      expect(commissions[0]!.amount).toEqual(money(commissionOn(base1, lowered), currency));
+      expect(base2).toBeGreaterThan(0n);
+    });
+
+    it('gives the saving back with the refunds, exactly over several partial refunds', async () => {
+      await record(exclusivePaid());
+      expect(await refundOf(id<'Refund'>(0x411), 0, 1)).toEqual(ok('recorded'));
+      expect(await refundOf(id<'Refund'>(0x412), 1, 2)).toEqual(ok('recorded'));
+      const given = ledger.rows.filter((r) => r.kind === 'refund-commission');
+      expect(given.every((r) => r.standardRateBps === marketRate)).toBe(true);
+      expect(given.map((r) => r.savedAmount)).toEqual([
+        reversedAmount(saved1, 1n, 3n),
+        saved1 - reversedAmount(saved1, 1n, 3n),
+      ]);
+      expect(given.reduce((n, r) => n + (r.savedAmount ?? 0n), 0n)).toBe(saved1);
+    });
+
+    it("shows the seller its rule and its savings by month, net of refunds, in the Market's zone", async () => {
+      await record(exclusivePaid());
+      await refundOf(id<'Refund'>(0x411), 0, 1);
+      const answer = await view();
+      if (!answer.ok) throw new Error('refused');
+      expect(answer.value.rule).toEqual({
+        standardRateBps: marketRate,
+        exclusiveRateBps: lowered,
+        months: rule.months,
+      });
+      expect(answer.value.zone).toBe(config.timezone);
+      expect(answer.value.months).toHaveLength(12);
+      const thisMonth = T0.toZonedDateTimeISO(config.timezone).toPlainDate().toPlainYearMonth();
+      expect(answer.value.months.at(-1)).toEqual({
+        month: thisMonth.toString(),
+        saved: [money(saved1 - reversedAmount(saved1, 1n, 3n), currency)],
+      });
+      expect(answer.value.months.slice(0, -1).every((m) => m.saved.length === 0)).toBe(true);
+      expect(answer.value.months[0]!.month).toBe(thisMonth.subtract({ months: 11 }).toString());
+    });
+
+    it('applies the rule to the seller’s own rate, and is null in a Market without it', async () => {
+      await setRate(SELLER_A, 2000);
+      expect(await view()).toMatchObject({
+        ok: true,
+        value: { rule: { standardRateBps: 2000, exclusiveRateBps: exclusiveRateBps(2000, rule) } },
+      });
+      const withoutRule = {
+        ...deps,
+        policy: {
+          settings: (m: MarketContext) => {
+            const own = new ConfigCommissionPolicy(markets).settings(m);
+            return own === null ? null : { ...own, exclusiveCustomer: null };
+          },
+        },
+      };
+      expect(
+        await new ViewOwnExclusiveCommission(gate, withoutRule).execute(sellerA, {}),
+      ).toMatchObject({
+        ok: true,
+        value: { rule: null },
+      });
+    });
+
+    it('shows a month net of its refunds, negative when an earlier order is refunded in it', async () => {
+      await record(exclusivePaid());
+      // The whole lowered line refunded 40 days later: that month gives the saving back.
+      const later = T0.add({ hours: 24 * 40 });
+      await new RecordRefund(gate, deps).execute(system, {
+        refundId: id<'Refund'>(0x421),
+        orderId: ORDER,
+        sellerOrderId: SELLER_ORDER,
+        sellerId: SELLER_A,
+        currency,
+        lossBearer: 'seller',
+        settledAt: later,
+        lines: [{ orderLineId: LINE_1, lineQuantity: 3, unitsBefore: 0, units: 3 }],
+        shipping: null,
+      });
+      clock.set(later);
+      const answer = await view();
+      if (!answer.ok) throw new Error('refused');
+      expect(answer.value.months.at(-1)!.saved).toEqual([money(-saved1, currency)]);
+      expect(answer.value.months.at(-2)!.saved).toEqual([money(saved1, currency)]);
+      clock.set(T0);
+    });
+
+    it('shows a seller only its own savings, and refuses anyone but a seller', async () => {
+      await record(exclusivePaid());
+      const other = await view(sellerB);
+      expect(other.ok && other.value.months.every((m) => m.saved.length === 0)).toBe(true);
+      expect(await view(admin)).toEqual(err({ code: 'access.denied' }));
+      expect(await view(customer)).toEqual(err({ code: 'access.denied' }));
+      expect(await view(system)).toMatchObject({ ok: false });
+    });
+  });
+
   describe("a seller's cashback for its exclusive customer (customers phase 4c)", () => {
     const CREDIT = id<'PromotionCredit'>(0xc4);
     const cashback = (over: Record<string, unknown> = {}) => ({

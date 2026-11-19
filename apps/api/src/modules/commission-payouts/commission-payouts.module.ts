@@ -107,6 +107,7 @@ import { SetCommissionRate } from './application/use-cases/set-commission-rate.u
 import { SetSellerPayoutTerms } from './application/use-cases/set-seller-payout-terms.use-case';
 import { ViewCommissionRate } from './application/use-cases/view-commission-rate.use-case';
 import { ViewSellerPayoutTerms } from './application/use-cases/view-seller-payout-terms.use-case';
+import { ViewOwnExclusiveCommission } from './application/use-cases/view-own-exclusive-commission.use-case';
 import { ViewOwnLedger } from './application/use-cases/view-own-ledger.use-case';
 import { ViewSellerLedger } from './application/use-cases/view-seller-ledger.use-case';
 import { ExportSellerLedger } from './application/use-cases/export-seller-ledger.use-case';
@@ -123,6 +124,7 @@ import {
   AdminCommissionController,
   SellerLedgerController,
 } from './presentation/commission-payouts.controller';
+import { SellerExclusiveCommissionController } from './presentation/exclusive-commission.controller';
 import {
   AdminPayoutHoldsController,
   AdminPayoutTermsController,
@@ -402,6 +404,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   controllers: [
     AdminCommissionController,
     SellerLedgerController,
+    SellerExclusiveCommissionController,
     AdminPayoutTermsController,
     AdminPayoutHoldsController,
     AdminDisputesController,
@@ -473,6 +476,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       PlacePayoutHold,
       ReleasePayoutHold,
       ViewOwnLedger,
+      ViewOwnExclusiveCommission,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     ...[SyncDispute, ViewDispute, DecideDispute, ListOwnDisputes, SellerLostDisputes].map((type) =>
       disputeUseCaseProvider(type as DisputeUseCaseClass<unknown>),

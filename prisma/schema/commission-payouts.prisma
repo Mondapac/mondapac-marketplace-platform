@@ -49,6 +49,13 @@ model CommissionPayoutsLedgerEntry {
   /// (line amount without GST; for a reversal, the part of the base it reverses).
   rateBps       Int?     @map("rate_bps")
   baseAmount    BigInt?  @map("base_amount")
+  /// `commission` and `refund-commission` of a line whose rate was lowered for the buyer's exclusive
+  /// seller only (CHECK: both or neither): the rate the line would have carried, and the commission
+  /// not taken (for a reversal, the part of the saving it gives back). Never negative.
+  standardRateBps Int?   @map("standard_rate_bps")
+  /// The hand-written partial index (market_id, seller_id, occurred_at) WHERE saved_amount IS NOT
+  /// NULL (migration 20261118130200, CONCURRENTLY) serves the seller's savings by month.
+  savedAmount   BigInt?  @map("saved_amount")
   /// The refund (or dispute) a reversal row comes from, or the promotions credit of a
   /// `cashback-seller` row, or the promotions clawback of a `refund-cashback-seller` row, a plain id; null for the three original kinds and not null for every
   /// other kind (CHECK).
