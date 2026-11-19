@@ -3,9 +3,12 @@
 export const TYPE_VIEW_PERMISSION = 'certification.type.view';
 export const TYPE_EDIT_PERMISSION = 'certification.type.edit';
 export const API_TYPES = 'certification/admin/types';
+export const API_POLICIES = 'certification/admin/claim-policies';
+export const POLICY_VIEW_PERMISSION = 'certification.claim-policy.view';
+export const POLICY_EDIT_PERMISSION = 'certification.claim-policy.edit';
 export const REASON_MAX = 500;
 
-export const PROPOSAL_KINDS = ['revision', 'reactivation'] as const;
+export const PROPOSAL_KINDS = ['revision', 'reactivation', 'policy'] as const;
 export type ProposalKind = (typeof PROPOSAL_KINDS)[number];
 
 export interface TypeRow {
@@ -87,4 +90,62 @@ export interface TypeRevisionSaved {
   readonly outcome: 'published' | 'pending-second-admin';
   readonly typeId: string;
   readonly revisionNo: number;
+}
+
+export const POLICY_BASES = [
+  'SELLER_REQUIRED',
+  'SELLER_OR_MANUFACTURER',
+  'NOT_APPLICABLE',
+] as const;
+export const POLICY_HANDLINGS = ['SEALED_ORIGINAL', 'REPACKED', 'PREPARED', 'FRESH'] as const;
+
+/** One row of a claim basis policy: for a platform category or for a handling type. */
+export interface PolicyRow {
+  readonly selector: 'platform-category' | 'handling';
+  readonly categoryId?: string;
+  readonly handling?: string;
+  readonly basis: string;
+}
+
+export interface PolicyHistoryEntry {
+  readonly revisionId: string;
+  readonly revisionNo: number;
+  readonly createdAt: string;
+  readonly reasonGiven: boolean;
+  readonly published: boolean;
+}
+
+/** Answer of GET certification/admin/claim-policies/:typeId. */
+export interface PolicyDetail {
+  readonly typeId: string;
+  readonly typeCode: string;
+  readonly defaultBasis: string;
+  readonly version: number;
+  readonly published: {
+    readonly revisionNo: number;
+    readonly createdAt: string;
+    readonly rows: readonly PolicyRow[];
+    readonly reason?: { readonly state: string; readonly text?: string } | null;
+  } | null;
+  readonly pendingRevision: {
+    readonly proposal: TypeProposal;
+    readonly rows: readonly PolicyRow[];
+  } | null;
+  readonly history: readonly PolicyHistoryEntry[];
+  readonly review: { readonly reviewed: boolean; readonly risk: string };
+}
+
+export interface PolicySaved {
+  readonly outcome: 'published' | 'pending-second-admin';
+  readonly typeId: string;
+  readonly request: { readonly id: string; readonly number: number } | null;
+}
+
+/** The public category tree (GET catalog/categories), depth first. */
+export interface PolicyCategories {
+  readonly categories: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly depth: number;
+  }[];
 }

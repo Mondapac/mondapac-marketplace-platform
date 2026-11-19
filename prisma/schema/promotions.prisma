@@ -65,8 +65,9 @@ model PromotionsPromotion {
   flashUnitLimit     Int?                       @map("flash_unit_limit")
   flashTimeZone      String?                    @map("flash_time_zone")
   /// CUSTOMER_GROUP: RETURNING_CUSTOMER, DELIVERY_ZONE (the zones are its ZONE targets),
-  /// MANUAL_GROUP or SELLER_EXCLUSIVE (a seller's own, seller-funded); set if and only if the type
-  /// is CUSTOMER_GROUP (CHECK).
+  /// MANUAL_GROUP or SELLER_EXCLUSIVE (a seller's own, seller-funded); always set on a
+  /// CUSTOMER_GROUP. CASHBACK: null (the platform's) or SELLER_EXCLUSIVE (a seller's own, for its
+  /// exclusive customers; customers phase 4c). Null on every other type (CHECK).
   segmentKind        String?                    @map("segment_kind")
   /// RETURNING_CUSTOMER: whole days since the customer's last order (1 to 3650).
   segmentMinDays     Int?                       @map("segment_min_days") @db.SmallInt
@@ -376,6 +377,11 @@ model PromotionsCreditIssuance {
   idempotencyKey     String              @map("idempotency_key")
   createdAt          DateTime            @map("created_at") @db.Timestamptz(6)
   settledAt          DateTime?           @map("settled_at") @db.Timestamptz(6)
+  /// A PENDING cashback waits until then for the seller order's payout release before the wallet
+  /// is called (customers phase 4c); null once its amount is final and for every other credit.
+  /// Only a CASHBACK has one (CHECK). The grant job reads the partial index
+  /// credit_issuances_pending_cashback_idx (PENDING cashback), declared in the migration.
+  grantAfter         DateTime?           @map("grant_after") @db.Timestamptz(6)
   promotion          PromotionsPromotion @relation(fields: [marketId, promotionId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
 
   @@unique([marketId, id])

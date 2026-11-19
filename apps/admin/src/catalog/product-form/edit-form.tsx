@@ -56,12 +56,12 @@ import {
 } from './side-cards.tsx';
 import { hasProblems, problemsOfRows } from './variant-fields.ts';
 import { axesOf } from './variant-grid.ts';
+import { useTaxCategoryOptions } from './tax-category-options.ts';
 import { VariantsSection } from './variants-section.tsx';
 import {
   BASE,
   BULK,
   MAX_TAGS,
-  readable,
   type BulkAnswer,
   type DraftSaved,
   type ProductCreated,
@@ -302,6 +302,7 @@ export function EditForm({
   const typeRef = useRef<HTMLSelectElement>(null);
   const defaultLocale = product.locales.default;
   const { form } = product;
+  const taxOptions = useTaxCategoryOptions(form.taxCategoryCodes, form.taxCategories);
   const configurable = product.variantModel === 'configurable';
   const attributeFields = form.fields.filter((field) => !field.isVariantOption);
   const [content, setContent] = useState(product.workingCopy?.content);
@@ -943,10 +944,7 @@ export function EditForm({
               label={t('field.tax')}
               help={t('field.tax-help')}
               placeholder={t('field.tax-placeholder')}
-              options={form.taxCategoryCodes.map((code) => ({
-                value: code,
-                label: readable(code),
-              }))}
+              options={taxOptions}
               value={taxCategoryCode}
               onChange={(event) => {
                 setTaxCategoryCode(event.target.value);
