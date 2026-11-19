@@ -35,7 +35,7 @@ const toInstantOrNull = (date: Date | null): Temporal.Instant | null =>
 const dateOrNull = (instant: Temporal.Instant | null): Date | null =>
   instant === null ? null : toDate(instant);
 
-interface PostRow {
+export interface PostRow {
   readonly id: string;
   readonly kind: string;
   readonly slug: string;
@@ -62,7 +62,7 @@ interface PostRow {
 const isUniqueViolation = (error: unknown): boolean =>
   (error as { code?: unknown } | null)?.code === 'P2002';
 
-const toPost = (row: PostRow): PostRecord => ({
+export const toPost = (row: PostRow): PostRecord => ({
   id: row.id as PostId,
   kind: row.kind as PostKind,
   slug: row.slug,

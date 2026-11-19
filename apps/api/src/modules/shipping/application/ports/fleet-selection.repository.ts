@@ -18,6 +18,9 @@ export interface FleetSelectionRepository {
     id: Id<'FleetSelectionModel'>,
   ): Promise<FleetSelectionModel | null>;
 
+  /** Whether a model of the Market has the name (any case), as `insertModel` checks it. */
+  nameTaken(market: MarketContext, name: string): Promise<boolean>;
+
   /** `name-taken` when another model of the Market has the name (any case). */
   insertModel(
     market: MarketContext,

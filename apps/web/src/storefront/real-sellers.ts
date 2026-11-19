@@ -16,6 +16,12 @@ export interface PublicStoreImage {
 /** A store as the API answers it. */
 export interface PublicStore {
   readonly slug: string;
+  /**
+   * The seller's id, for the Follow button. The API's public store read does not send it yet
+   * (reported as a gap); it is kept when present and well shaped, and the page shows no Follow
+   * button without it.
+   */
+  readonly sellerId?: string;
   readonly name: string;
   readonly serviceAreaCode: string;
   readonly sellingSince: number;
@@ -103,12 +109,17 @@ export function publicStoreOf(value: unknown): PublicStore {
   ) {
     throw new StoreAnswerRefused('sellingSince');
   }
+  const rawId = value['sellerId'];
+  if (rawId !== undefined && (typeof rawId !== 'string' || !IMAGE_ID.test(rawId))) {
+    throw new StoreAnswerRefused('sellerId');
+  }
   const minimumOrder = moneyOf(value['minimumOrder']);
   const about = aboutOf(value['about']);
   const logo = imageOf(value['logo'], 'logo');
   const banner = imageOf(value['banner'], 'banner');
   const store = {
     slug,
+    ...(rawId === undefined ? {} : { sellerId: rawId }),
     name,
     serviceAreaCode,
     sellingSince,
@@ -160,6 +171,7 @@ export function shopOf(store: PublicStore, area: string): SellerShop {
     name: store.name,
     location: area,
     sellingSince: store.sellingSince,
+    ...(store.sellerId === undefined ? {} : { sellerId: store.sellerId }),
   };
   const logoImage = pictureOf(store.slug, store.logo, 'large', undefined);
   const banner = pictureOf(store.slug, store.banner, 'large', undefined);

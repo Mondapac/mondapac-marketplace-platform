@@ -561,8 +561,8 @@ describe('seller orders saved filters', () => {
 });
 
 describe('seller orders export', () => {
-  const csv = (status: number, body: BodyInit | null, headers: Record<string, string> = {}) =>
-    new Response(body, { status, headers });
+  const CSV = { 'content-type': 'text/csv; charset=utf-8' };
+  const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const click = vi.fn();
   const mountWithToasts = (page: SellerOrderPage) =>
     render(
@@ -573,9 +573,26 @@ describe('seller orders export', () => {
         </>,
       ),
     );
-  const runExport = async () => {
+  /** Opens the export dialog: of the ticked row, of every matching order, or (neither) of the list. */
+  const openExport = async (mode: 'ticked' | 'all' | 'list' = 'list') => {
+    if (mode !== 'list') {
+      fireEvent.click(screen.getByRole('checkbox', { name: 'Select all orders on this page' }));
+    }
+    if (mode === 'all')
+      fireEvent.click(screen.getByRole('button', { name: 'Select all matching' }));
     fireEvent.click(OPEN('Bulk action'));
-    fireEvent.click(await screen.findByRole('menuitem', { name: /Export all matching as CSV/ }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^Export/ }));
+    return screen.findByRole('dialog');
+  };
+  const confirm = (dialog: HTMLElement, format: 'CSV' | 'XLSX' = 'CSV') => {
+    fireEvent.click(within(dialog).getByRole('radio', { name: new RegExp(`^${format}`) }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+  };
+  const answer = (make: () => Response) =>
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(make()));
+  const sent = (fetched: { mock: { calls: unknown[][] } }) => {
+    const url = new URL(String(fetched.mock.calls[0]?.[0]), 'http://x');
+    return { path: url.pathname, params: Object.fromEntries(url.searchParams) };
   };
 
   beforeEach(() => {
@@ -589,63 +606,88 @@ describe('seller orders export', () => {
     toast.dismiss();
   });
 
-  it('downloads the file of the tab, not only the page on screen', async () => {
+  it('sends the tab, the shown columns and no ids for the whole list', async () => {
     call.mockImplementation((_m: string, path: string) =>
       Promise.resolve(
         path.startsWith(SAVED_PATH) ? savedFailure : ok(pageOf([row()], { total: 60 })),
       ),
     );
-    const fetched = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      csv(200, 'Order\r\n', {
-        'content-disposition': 'attachment; filename="orders-2026-11-06.csv"',
-      }),
-    );
     mountWithToasts(pageOf([row()], { total: 60 }));
     fireEvent.click(screen.getByRole('button', { name: /^Shipped/ }));
     await waitFor(() => expect(lastUrl()).toContain('status=shipped'));
-    await runExport();
-    expect(
-      await screen.findByText('The file of the orders on this list was downloaded.'),
-    ).toBeTruthy();
-    const url = fetched.mock.calls[0]?.[0] as string;
-    expect(url.startsWith('/api/ordering/seller/orders/export?')).toBe(true);
-    const params = Object.fromEntries(new URL(`http://x${url}`).searchParams);
+    const dialog = await openExport();
+    const fetched = answer(() => new Response('Order\r\nrow\r\n', { status: 200, headers: CSV }));
+    confirm(dialog);
+    expect(await screen.findByText('Exported 1 order.')).toBeTruthy();
+    const { path, params } = sent(fetched);
+    expect(path).toBe('/api/ordering/seller/orders/export');
     expect(params['status']).toBe('shipped');
-    expect(params).not.toHaveProperty('page');
+    expect(params['format']).toBe('csv');
+    // Paid, Items and Total are shown by default; the file adds what Total stands for and the steps.
+    expect(params['columns']).toBe(
+      'items,currency,subtotal,shipping,tax,total,carrier,tracking,ready,shipped,delivered',
+    );
+    for (const key of ['ids', 'page', 'pageSize', 'sort', 'direction', 'q']) {
+      expect(params).not.toHaveProperty(key);
+    }
     expect(click).toHaveBeenCalledTimes(1);
   });
 
-  it('tells the seller to narrow the filter when the file would be too large', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      csv(
-        413,
-        JSON.stringify({ code: 'batch.too-large', details: { max: 10000, matching: 12345 } }),
-      ),
-    );
+  it('names the ticked orders and sends no filter', async () => {
     mountWithToasts(pageOf([row()], { total: 60 }));
-    await runExport();
-    expect(
-      await screen.findByText(
-        '12,345 orders match, and one file holds at most 10,000. Narrow the filters and export again.',
-      ),
-    ).toBeTruthy();
+    const dialog = await openExport('ticked');
+    const fetched = answer(
+      () =>
+        new Response(new Uint8Array([0x50, 0x4b, 0x03, 0x04]), {
+          status: 200,
+          headers: { 'content-type': XLSX },
+        }),
+    );
+    confirm(dialog, 'XLSX');
+    expect(await screen.findByText('Exported 1 order.')).toBeTruthy();
+    const { params } = sent(fetched);
+    expect(params['format']).toBe('xlsx');
+    expect(params['ids']).toBe(ID1);
+    expect(params).not.toHaveProperty('status');
+  });
+
+  it('exports the filter after "Select all matching", with no ids', async () => {
+    mountWithToasts(pageOf([row()], { total: 60, hasNext: true }));
+    const dialog = await openExport('all');
+    const fetched = answer(() => new Response('Order\r\nrow\r\n', { status: 200, headers: CSV }));
+    confirm(dialog);
+    await screen.findByText('Exported 1 order.');
+    expect(sent(fetched).params).not.toHaveProperty('ids');
+  });
+
+  it('tells the seller to narrow the filter when the file would be too large', async () => {
+    mountWithToasts(pageOf([row()], { total: 60 }));
+    const dialog = await openExport();
+    answer(
+      () =>
+        new Response(
+          JSON.stringify({ code: 'batch.too-large', details: { max: 10000, matching: 12345 } }),
+          { status: 413 },
+        ),
+    );
+    confirm(dialog);
+    expect(await screen.findByText(/12,345 match, and one file holds up to 10,000/)).toBeTruthy();
     expect(click).not.toHaveBeenCalled();
   });
 
-  it('says the file could not be created after any other failure', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(csv(503, '{}'));
+  it('says the export did not work after any other failure', async () => {
     mountWithToasts(pageOf([row()], { total: 60 }));
-    await runExport();
-    expect(await screen.findByText('The file could not be created. Try again.')).toBeTruthy();
+    const dialog = await openExport();
+    answer(() => new Response('{}', { status: 503 }));
+    confirm(dialog);
+    expect(await screen.findByText('The export didn’t work. Try again.')).toBeTruthy();
   });
 
   it('offers no export with no rows', async () => {
     mountWithToasts(pageOf([], { total: 0 }));
     fireEvent.click(OPEN('Bulk action'));
     expect(
-      (await screen.findByRole('menuitem', { name: /Export all matching as CSV/ })).getAttribute(
-        'aria-disabled',
-      ),
+      (await screen.findByRole('menuitem', { name: /^Export/ })).getAttribute('aria-disabled'),
     ).toBe('true');
   });
 });

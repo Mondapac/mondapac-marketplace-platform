@@ -65,6 +65,7 @@ import {
 import type { PromotionsDependencies } from './application/promotions-dependencies';
 import { ApplyReferralCode } from './application/use-cases/apply-referral-code.use-case';
 import { CashbackOnDelivery } from './application/use-cases/cashback-on-delivery.use-case';
+import { ClawBackOnRefund } from './application/use-cases/claw-back-on-refund.use-case';
 import { GrantDueCredits } from './application/use-cases/grant-due-credits.use-case';
 import { grantDueCreditsJob } from './presentation/jobs/grant-due-credits.job';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
@@ -270,6 +271,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CashbackOnDelivery,
       QualifyReferralOnDelivery,
       GrantDueCredits,
+      ClawBackOnRefund,
       CountGroupSegmentUses,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     // Customers phase 4c: the cashback that waited for its seller order's payout release.
@@ -314,6 +316,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     DELIVERED_ORDER_FACTS,
     CashbackOnDelivery,
     QualifyReferralOnDelivery,
+    ClawBackOnRefund,
     ConfirmRedemptions,
     ReleaseCancelledRedemptions,
   ],

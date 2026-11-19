@@ -623,6 +623,8 @@ One row per payment or refund event that `ordering` must not act on by itself an
 
 ### 3.15 `ordering.saved_filters` (saved views of the order lists)
 
+> **Dropped (migration `20261118150000_lists_drop_old_saved_filters`).** The order saved filters live in `lists.saved_filters` (ADR-0049); the rest of this section is the history of the table.
+
 A named saved view of an order list: its tab, filters and sort, for its owner (`me`) or, on the admin list only, for every admin of the Market who can see the list (`everyone`). A preference, not a record: the application deletes it. The design follows catalog 3.28 (the same caps and rules); the table is ordering's own because modules never share a table.
 
 | Column | Type | Null | Notes |
