@@ -1,4 +1,4 @@
-import { err, ok } from '@mondapac/shared-kernel';
+import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { WalletFacade } from '../../wallet';
 import type { WalletCredit } from '../application/ports/wallet-credit';
 
@@ -36,5 +36,34 @@ export class FacadeWalletCredit implements WalletCredit {
     if (granted.ok) return ok({ journalId: granted.value.journalId });
     const code = granted.error.code;
     return err({ retry: !FINAL.has(code), code });
+  }
+
+  async clawBack(
+    ...[context, request]: Parameters<WalletCredit['clawBack']>
+  ): ReturnType<WalletCredit['clawBack']> {
+    const journal = parseId<'WalletJournal'>(request.grantJournalId);
+    if (!journal.ok) return err({ retry: false, code: 'validation.failed' });
+    const taken = await this.wallet.clawBackCredit(context, {
+      customerAccountId: request.accountId,
+      grantJournalId: journal.value,
+      amount: request.amount,
+      reasonCode: 'cashback-refund',
+      ...(request.orderId === null ? {} : { orderId: request.orderId }),
+      idempotencyKey: request.idempotencyKey,
+    });
+    if (taken.ok) {
+      return ok({ journalId: taken.value.journalId, clawedBack: taken.value.clawedBack.amount });
+    }
+    // A clawback is refused for good only when the grant is not this customer's (or not there);
+    // a closed or frozen wallet still gives back what is left.
+    const code = taken.error.code;
+    return err({
+      retry: !(
+        code === 'wallet.not-found' ||
+        code === 'validation.failed' ||
+        code === 'idempotency.key-reused'
+      ),
+      code,
+    });
   }
 }

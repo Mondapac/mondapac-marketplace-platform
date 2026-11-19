@@ -47,7 +47,10 @@ const product: ProductView = {
   createdAt: '2026-11-05T01:00:00.000Z',
   pendingSubmittedAt: null,
   form: {
-    taxCategoryCodes: ['gst-free-food', 'gst'],
+    taxCategories: [
+      { code: 'gst-free-food', labelKey: 'catalog.tax.gst-free-food' },
+      { code: 'gst', labelKey: 'catalog.tax.gst' },
+    ],
     units: [],
     fields: [],
     categories: [

@@ -1,3 +1,7 @@
+import type {
+  OwnSuggestionsFilter,
+  OwnSuggestionsPage,
+} from '../application/ports/own-suggestion-page';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
@@ -57,6 +61,19 @@ const openWhere = (
   ...(filter.text === null
     ? {}
     : { label: { contains: likeLiteral(filter.text), mode: 'insensitive' } }),
+});
+
+const ownWhere = (
+  market: MarketContext,
+  sellerId: Id<'Seller'>,
+  filter: OwnSuggestionsFilter<SuggestionStatus>,
+) => ({
+  marketId: market.marketId,
+  sellerId,
+  ...(filter.status === null ? {} : { status: filter.status }),
+  ...(filter.text === null
+    ? {}
+    : { label: { contains: likeLiteral(filter.text), mode: 'insensitive' as const } }),
 });
 
 export class PrismaTopicSuggestionStore implements TopicSuggestionStore {
@@ -200,6 +217,37 @@ export class PrismaTopicSuggestionStore implements TopicSuggestionStore {
       take: limit,
     });
     return rows.map(suggestionOf);
+  }
+
+  async pageOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    page: OwnSuggestionsPage<SuggestionStatus>,
+  ): Promise<readonly TopicSuggestion[]> {
+    const direction = page.direction;
+    const orderBy =
+      page.sort === 'status'
+        ? [{ status: direction }, { createdAt: 'desc' as const }, { id: 'desc' as const }]
+        : page.sort === 'label'
+          ? [{ label: direction }, { id: direction }]
+          : [{ createdAt: direction }, { id: direction }];
+    const rows = await this.prisma.tx(market).catalogTopicSuggestion.findMany({
+      where: ownWhere(market, sellerId, page),
+      orderBy,
+      skip: page.offset,
+      take: page.limit,
+    });
+    return rows.map(suggestionOf);
+  }
+
+  async countOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnSuggestionsFilter<SuggestionStatus>,
+  ): Promise<number> {
+    return this.prisma
+      .tx(market)
+      .catalogTopicSuggestion.count({ where: ownWhere(market, sellerId, filter) });
   }
 
   async listOfSeller(

@@ -232,6 +232,51 @@ describe('admin team routes over HTTP (integration, slices 8a-2 and 8b)', () => 
   });
 
   describe.each(TEST_MARKETS)('in market %s', (code) => {
+    it('a reviewed invitation needs a note and answers its review; never the address in its values', async () => {
+      await boot();
+      await seeded(code);
+      fakes.review.review('people', 'high');
+      const root = sessionOf(code, ROOT, 1);
+      const body = { email: INVITEE, roleId: roleOf('viewer') };
+
+      // The fakes keep no rollback: the refused try uses another address (test/db/people-review
+      // shows its unit keeps nothing).
+      const unnoted = await post(code, 'invitations', { ...body, email: `x.${INVITEE}` }, root);
+      expect([unnoted.status, (unnoted.body as { code: string }).code]).toEqual([
+        400,
+        'validation.failed',
+      ]);
+      const badNote = await post(code, 'invitations', { ...body, note: ['x'] }, root);
+      expect([badNote.status, (badNote.body as { code: string }).code]).toEqual([
+        400,
+        'validation.failed',
+      ]);
+      const issued = await post(code, 'invitations', { ...body, note: 'Joins support' }, root);
+      expect([issued.status, issued.body]).toEqual([
+        201,
+        {
+          code: 'invitation.issued',
+          invitationId: expect.any(String) as string,
+          request: { id: expect.any(String) as string, number: 1 },
+        },
+      ]);
+      const invitationId = (issued.body as { invitationId: string }).invitationId;
+      expect(fakes.review.opened).toEqual([
+        {
+          area: 'people',
+          subjectKind: 'identity.admin-invitation',
+          subjectRef: invitationId,
+          before: { exists: false },
+          after: { exists: true, roleId: roleOf('viewer') },
+          note: 'Joins support',
+          risk: 'high',
+        },
+      ]);
+      expect(JSON.stringify(fakes.review.opened).toLowerCase()).not.toContain(
+        INVITEE.toLowerCase(),
+      );
+    });
+
     it('invites an admin with a role; the acceptance gives that role, assigned by the inviter', async () => {
       await boot();
       await seeded(code);
@@ -247,6 +292,7 @@ describe('admin team routes over HTTP (integration, slices 8a-2 and 8b)', () => 
       expect(issued.body).toEqual({
         code: 'invitation.issued',
         invitationId: expect.any(String) as string,
+        request: null,
       });
       const token = await mailed(code);
 

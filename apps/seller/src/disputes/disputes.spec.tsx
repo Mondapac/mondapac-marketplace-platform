@@ -61,6 +61,7 @@ const ledger: Ledger = {
     refundedCommission: '0',
     disputeDebits: '4000',
     disputeReinstated: '0',
+    sellerCashback: '0',
     balance: '-950',
   },
   entries: [

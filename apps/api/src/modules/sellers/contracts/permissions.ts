@@ -163,12 +163,25 @@ export const SELLERS_SELLER_SETTINGS_EDIT = definePermission('sellers', {
   protected: false,
 });
 
+/**
+ * Share a saved filter of an admin sellers list (Sellers, Needs a look) with every admin of the
+ * Market, and manage one somebody else shared (the same idea as `ordering.saved-filter.share`).
+ * Unprotected. No default role lists it yet: the Platform Administrator grants it to the roles
+ * that should (which also need `sellers.seller.view`).
+ */
+export const SELLERS_SAVED_FILTER_SHARE = definePermission('sellers', {
+  key: 'sellers.saved-filter.share',
+  scope: 'platform',
+  protected: false,
+});
+
 export const SELLERS_PERMISSIONS = declarePermissions('sellers', [
   SELLERS_BLOG_ACCESS_EDIT,
   SELLERS_BUSINESS_ACTIVITY_MANAGE,
   SELLERS_BUSINESS_ACTIVITY_VIEW,
   SELLERS_BUSINESS_DETAILS_VIEW,
   SELLERS_BUSINESS_IDENTITY_EDIT,
+  SELLERS_SAVED_FILTER_SHARE,
   SELLERS_SELLER_FILE_REVIEW,
   SELLERS_SELLER_HEALTH_RECALCULATE,
   SELLERS_SELLER_SETTINGS_EDIT,

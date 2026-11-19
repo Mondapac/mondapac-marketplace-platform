@@ -71,7 +71,14 @@ const base: ProductView = {
   maxVariants: 100,
   lastChangedAt: '2026-11-05T01:00:00.000Z',
   createdAt: '2026-11-05T01:00:00.000Z',
-  form: { taxCategoryCodes: ['gst-free-food', 'gst'], fields, categories },
+  form: {
+    taxCategories: [
+      { code: 'gst-free-food', labelKey: 'catalog.tax.gst-free-food' },
+      { code: 'gst', labelKey: 'catalog.tax.gst' },
+    ],
+    fields,
+    categories,
+  },
   locales: { default: 'en', supported: ['en'] },
   workingCopy: null,
   published: null,
@@ -155,7 +162,10 @@ window.fetch = ((input: string, init?: RequestInit) => {
     body = {
       productTypes: ['grocery', 'configurable-grocery'],
       locales: { default: 'en', supported: ['en'] },
-      taxCategoryCodes: ['gst-free-food', 'gst'],
+      taxCategories: [
+        { code: 'gst-free-food', labelKey: 'catalog.tax.gst-free-food' },
+        { code: 'gst', labelKey: 'catalog.tax.gst' },
+      ],
       categories,
     };
   } else if (path === 'catalog/admin/platform-products/category-picker') {

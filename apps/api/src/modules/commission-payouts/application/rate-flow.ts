@@ -44,7 +44,7 @@ export type RatesFailure = Extract<
   { code: 'access.denied' | 'validation.failed' | 'commission-payouts.rate-unavailable' }
 >;
 
-export interface RateView extends Omit<CommissionRate, 'reason'> {
+export interface RateView extends Omit<CommissionRate, 'reason' | 'standardRateBps'> {
   readonly sellerId: Id<'Seller'>;
   /** The Market rate, so a screen can show what the seller would be on without its own rate. */
   readonly marketRateBps: number;
@@ -277,7 +277,15 @@ export async function readCommissionRates(
               lowered !== null && lowered.sellerId === id
                 ? exclusiveRateBps(inForce, lowered.rule)
                 : inForce;
-            return [id, { rateBps, source, reason: rateBps < inForce ? 'exclusive' : 'standard' }];
+            return [
+              id,
+              {
+                rateBps,
+                standardRateBps: inForce,
+                source,
+                reason: rateBps < inForce ? 'exclusive' : 'standard',
+              },
+            ];
           }),
         ),
       );

@@ -309,6 +309,37 @@ const wrap = (
 
 const action = (extra: object = {}): CartAction => cartActionOf(actionBody(extra))!;
 
+const liveBody = (quantity: number) => ({
+  groups: [
+    {
+      sellerId: SELLER,
+      sellerName: 'Halal Corner',
+      subtotal: aud(String(1250 * quantity)),
+      minimumOrder: { state: 'none', minimum: null },
+      lines: [
+        {
+          lineId: LINE,
+          offerId: OFFER,
+          variantId: VARIANT,
+          quantity,
+          state: 'buyable',
+          reason: null,
+          unitPrice: aud('1250'),
+          previousPrice: null,
+          availability: { status: 'in-stock', onlyLeft: null },
+          display: {
+            productId: null,
+            productName: 'Lamb mince',
+            variantLabel: null,
+            imageId: null,
+          },
+        },
+      ],
+    },
+  ],
+  lineCount: 1,
+});
+
 describe('the cart-action card', () => {
   it('changes nothing until the buyer clicks, then adds the chosen quantity with the cart route', async () => {
     wrap(<CartActionCardView card={action()} />);
@@ -453,6 +484,83 @@ describe('the cart-action card', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.getByRole('button', { name: 'Add to cart' })).toBeTruthy();
     expect(called('POST', 'cart/items')).toHaveLength(0);
+  });
+
+  it('marks an older card as out of date once the cart changes, and turns its button off', async () => {
+    // The cart held 1 when the cards were shown; adding from the newer card makes it 2.
+    answers['GET cart'] = { status: 200, body: liveBody(2) };
+    wrap(
+      <>
+        <CartActionCardView card={action({ name: 'Older card' })} />
+        <CartActionCardView card={action({ name: 'Newer card' })} />
+      </>,
+      liveCartOf(liveBody(1), null),
+    );
+    expect(screen.queryByText(/may be wrong/)).toBeNull();
+    const [older, newer] = screen.getAllByRole('region');
+    fireEvent.click(within(newer!).getByRole('button', { name: 'Add to cart' }));
+    expect(await within(older!).findByText(/may be wrong/)).toBeTruthy();
+    expect(
+      within(older!).getByRole('button', { name: 'Add to cart' }).hasAttribute('disabled'),
+    ).toBe(true);
+    // The card that did the add says it is done, not out of date.
+    expect(within(newer!).queryByText(/may be wrong/)).toBeNull();
+    expect(await within(newer!).findByText(/Added to your cart/)).toBeTruthy();
+  });
+
+  it('does not call a card out of date when the cart is only read after the card is shown', async () => {
+    // The server could not read the cart: the card shows first, the browser's read arrives later.
+    answers['GET cart'] = { status: 200, body: liveBody(2) };
+    wrap(<CartActionCardView card={action()} />);
+    await waitFor(() => expect(called('GET', 'cart').length).toBeGreaterThan(0));
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(screen.queryByText(/may be wrong/)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Add to cart' }).hasAttribute('disabled')).toBe(
+      false,
+    );
+  });
+
+  const summaryBody = {
+    kind: 'cart',
+    lineCount: 1,
+    total: aud('1250'),
+    groups: [
+      {
+        sellerId: SELLER,
+        sellerName: 'Halal Corner',
+        subtotal: aud('1250'),
+        minimumOrder: { state: 'none', minimum: null },
+        lines: [
+          {
+            lineId: LINE,
+            offerId: OFFER,
+            variantId: VARIANT,
+            productId: PRODUCT,
+            name: 'Lamb mince',
+            variantLabel: null,
+            quantity: 1,
+            state: 'buyable',
+            unitPrice: aud('1250'),
+            maxQuantity: 6,
+          },
+        ],
+      },
+    ],
+  };
+
+  it('marks the cart summary card too, with the note only', async () => {
+    answers['GET cart'] = { status: 200, body: liveBody(2) };
+    wrap(
+      <>
+        <CartSummaryCardView card={cartSummaryOf(summaryBody)!} />
+        <CartActionCardView card={action()} />
+      </>,
+      liveCartOf(liveBody(1), null),
+    );
+    const [summary, adder] = screen.getAllByRole('region');
+    expect(within(summary!).queryByText(/may be wrong/)).toBeNull();
+    fireEvent.click(within(adder!).getByRole('button', { name: 'Add to cart' }));
+    expect(await within(summary!).findByText(/may be wrong/)).toBeTruthy();
   });
 
   it('offers no change on sample data', () => {
@@ -691,6 +799,35 @@ describe('the basket proposal card', () => {
       'disabled',
       true,
     );
+  });
+
+  it('marks the basket card once another card changes the cart, but not after its own add', async () => {
+    answers['GET cart'] = { status: 200, body: liveBody(2) };
+    wrap(
+      <>
+        <BasketProposalCardView card={proposal()} />
+        <CartActionCardView card={action()} />
+      </>,
+      liveCartOf(liveBody(1), null),
+    );
+    const [basket, adder] = screen.getAllByRole('region');
+    expect(within(basket!).queryByText(/may be wrong/)).toBeNull();
+    fireEvent.click(within(adder!).getByRole('button', { name: 'Add to cart' }));
+    expect(await within(basket!).findByText(/may be wrong/)).toBeTruthy();
+    expect(
+      within(basket!)
+        .getByRole('button', { name: /^Add 1 of 3 items to cart/ })
+        .hasAttribute('disabled'),
+    ).toBe(true);
+  });
+
+  it('never marks a basket card for the cart changes of its own add', async () => {
+    answers['GET cart'] = { status: 200, body: liveBody(2) };
+    wrap(<BasketProposalCardView card={proposal()} />, liveCartOf(liveBody(1), null));
+    fireEvent.click(screen.getByRole('button', { name: 'Add 1 of 3 items to cart' }));
+    await waitFor(() => expect(called('POST', 'cart/items')).toHaveLength(1));
+    await screen.findByText(/1 item added/);
+    expect(screen.queryByText(/may be wrong/)).toBeNull();
   });
 
   it('removing a line takes it out of the add', () => {

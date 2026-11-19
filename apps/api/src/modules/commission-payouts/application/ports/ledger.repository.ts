@@ -50,6 +50,18 @@ export interface LedgerRepository {
   sums(market: MarketContext, sellerId: Id<'Seller'>): Promise<readonly LedgerSum[]>;
 
   /**
+   * What the seller saved on its exclusive customers in each window `[from, to)` of the rows'
+   * `occurred_at` (customers phase 4b): per currency, the savings of `commission` rows less the
+   * parts `refund-commission` rows gave back, by code; negative when the window's refunds gave
+   * back more than it saved, and a currency that nets to zero is left out.
+   */
+  savingsBetween(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ): Promise<readonly (readonly { readonly currency: string; readonly saved: bigint }[])[]>;
+
+  /**
    * What each of the seller's seller orders is worth now in `currency`: its credits less its
    * debits (a refund or a dispute can take it below zero). The payout run's source of items and
    * of the receivable.

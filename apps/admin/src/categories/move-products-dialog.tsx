@@ -2,7 +2,7 @@
 
 import { Banner, Button, Dialog, SkeletonRows, TextAreaField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { useApprovalAction, useSentForApproval } from '../shared/review-note.tsx';
 import { CategoryProblemBanner } from './category-problem.tsx';
@@ -260,7 +260,9 @@ export function MoveProductsDialog({
   const sentForApproval = useSentForApproval();
 
   // The form is gone once the job is queued: focus goes to the progress heading, not to the page.
-  useEffect(() => {
+  // A layout effect, so focus moves in the same commit that shows the heading (a passive effect
+  // runs in a later task and can lose the race with a test or user that reads focus right away).
+  useLayoutEffect(() => {
     if (started !== null) heading.current?.focus();
   }, [started]);
 

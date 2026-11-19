@@ -56,7 +56,7 @@ import {
 } from './side-cards.tsx';
 import { hasProblems, problemsOfRows } from './variant-fields.ts';
 import { axesOf } from './variant-grid.ts';
-import { useTaxCategoryOptions } from './tax-category-options.ts';
+import { useTaxCategoryOptions } from '../../shared/tax-category-options.ts';
 import { VariantsSection } from './variants-section.tsx';
 import {
   BASE,
@@ -302,7 +302,7 @@ export function EditForm({
   const typeRef = useRef<HTMLSelectElement>(null);
   const defaultLocale = product.locales.default;
   const { form } = product;
-  const taxOptions = useTaxCategoryOptions(form.taxCategoryCodes, form.taxCategories);
+  const taxOptions = useTaxCategoryOptions(form.taxCategories);
   const configurable = product.variantModel === 'configurable';
   const attributeFields = form.fields.filter((field) => !field.isVariantOption);
   const [content, setContent] = useState(product.workingCopy?.content);

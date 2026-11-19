@@ -74,7 +74,10 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
   createdAt: '2026-10-01T00:00:00Z',
   pendingSubmittedAt: null,
   form: {
-    taxCategoryCodes: ['gst', 'gst-free'],
+    taxCategories: [
+      { code: 'gst', labelKey: 'catalog.tax.gst' },
+      { code: 'gst-free', labelKey: 'catalog.tax.gst-free' },
+    ],
     units: [],
     fields: FIELDS,
     categories: [

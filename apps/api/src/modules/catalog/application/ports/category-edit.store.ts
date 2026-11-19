@@ -54,6 +54,12 @@ export interface CategoryChange {
   readonly now: Temporal.Instant;
   /** The admin's reason note of a move, merge or archive (10 to 500 characters), else absent. */
   readonly reason?: string;
+  /**
+   * How many outbox events the unit writes for this category (default 1). The version rises by
+   * that many, one version per event (catalog data design Q-K3), so the outbox's unique
+   * `(market_id, aggregate_id, aggregate_version)` holds; the revision number still rises by one.
+   */
+  readonly events?: number;
 }
 
 /**
@@ -100,7 +106,8 @@ export interface CategoryEditStore {
 
   /**
    * Writes the revision and the root change. Throws `StaleAggregateError` when the category's
-   * version is no longer the one in `change.category`. Returns the new version.
+   * version is no longer the one in `change.category`. Returns the new version: the old one plus
+   * `change.events` (default 1).
    */
   apply(market: MarketContext, change: CategoryChange): Promise<number>;
 

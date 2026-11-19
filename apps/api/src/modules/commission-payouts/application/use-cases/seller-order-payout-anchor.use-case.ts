@@ -55,13 +55,18 @@ export class SellerOrderPayoutAnchorQuery extends UseCase<
           seller,
           sellerOrderId.value,
         );
+        // A lost chargeback the platform chose to bear writes no ledger row, but has a decision on
+        // the seller order all the same (Hassan L-6).
+        const decided = (await this.deps.disputes.decisionsForSeller(context.market, seller)).some(
+          (decision) => decision.sellerOrderId === sellerOrderId.value,
+        );
         return ok({
           orderId: anchor.orderId,
           sellerOrderId: anchor.sellerOrderId,
           sellerId: anchor.sellerId,
           eligibleAt: anchor.eligibleAt,
           onHold,
-          disputeLost: sum('dispute-debit') > sum('dispute-reinstate'),
+          disputeLost: sum('dispute-debit') > sum('dispute-reinstate') || decided,
         });
       },
       { readOnly: true },

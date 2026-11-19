@@ -18,7 +18,6 @@ import type { FormCategory, TaxCategory } from './types.ts';
 /** Where the product is filed (platform categories), its tax category and, below them, its tags. */
 export function ClassificationSection({
   categories,
-  taxCategoryCodes,
   taxCategories,
   categoryIds,
   taxCategoryCode,
@@ -30,9 +29,8 @@ export function ClassificationSection({
 }: {
   /** Every category of the Market (names only): a chosen one the picker no longer offers is named from it. */
   readonly categories: readonly FormCategory[];
-  readonly taxCategoryCodes: readonly string[];
-  /** The label key of each tax category, from the Market configuration. */
-  readonly taxCategories?: readonly TaxCategory[] | undefined;
+  /** The Market's tax categories with their label keys. */
+  readonly taxCategories: readonly TaxCategory[];
   /** The first id is the primary category. */
   readonly categoryIds: readonly string[];
   readonly taxCategoryCode: string;
@@ -45,7 +43,7 @@ export function ClassificationSection({
   readonly children?: ReactNode;
 }) {
   const t = useTranslations('catalog.edit');
-  const taxOptions = useTaxCategoryOptions(taxCategoryCodes, taxCategories);
+  const taxOptions = useTaxCategoryOptions(taxCategories);
   const { choices, load } = useCategoryChoices();
   const [announcement, setAnnouncement] = useState('');
   const byId = new Map(categories.map((category) => [category.categoryId, category]));
