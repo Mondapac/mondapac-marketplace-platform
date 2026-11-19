@@ -125,8 +125,39 @@ export interface ActivityLine {
   readonly body: string | null;
 }
 
+/** What an impact count is about (the API's closed list). */
+export const IMPACT_LABELS = [
+  'products',
+  'drafts',
+  'offers',
+  'listed-offers',
+  'offers-with-active-tag',
+  'subcategories',
+  'categories',
+  'filters',
+  'feature-sets',
+  'variant-products',
+  'admins',
+  'sellers',
+] as const;
+export type ImpactLabel = (typeof IMPACT_LABELS)[number];
+
+export interface ImpactItem {
+  /** One of {@link IMPACT_LABELS}; a label this build does not know is not shown. */
+  readonly label: string;
+  readonly count: number;
+  /** The real number is `count` or more. */
+  readonly atLeast: boolean;
+}
+
+/** How many records the change touches, by the owning module; null when it gives none. */
+export interface RequestImpact {
+  readonly items: readonly ImpactItem[];
+}
+
 export interface SystemRequestDetail extends SystemRequest {
   readonly activity: readonly ActivityLine[];
+  readonly impact?: RequestImpact | null;
 }
 
 export type Counts = Readonly<Record<View, number>>;

@@ -129,6 +129,7 @@ without one). The answer adds `request: {id, number}` (null when nothing was ope
 withdrawn request is restored by `CommissionRateReverter` / `PayoutTermsReverter`
 (application/money-reverters.ts), only while the seller still has the value after. The admin
 panel's note field comes with the panel package: until then a save in such a Market answers 400.
+Both reverters answer the request's impact count (detail page) as one seller, the subject.
 
 ## Seller cashback (customers phase 4c-1, 2026-11-17)
 

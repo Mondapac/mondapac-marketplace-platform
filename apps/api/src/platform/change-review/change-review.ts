@@ -220,6 +220,92 @@ export interface SystemChangeReverter {
     context: CallContext,
     subjectRefs: readonly string[],
   ): Promise<ReadonlyMap<string, string>>;
+
+  /**
+   * Optional: how many records the change touches (see {@link ChangeImpact}), shown on the
+   * request's detail page so a reviewer can judge its weight before deciding.
+   */
+  impact?(context: CallContext, request: RevertRequest): Promise<ChangeImpact | null>;
+}
+
+/**
+ * What one impact count is about. A closed list: the panel words each one ("1,240 products").
+ * Counts only, never a name or an id.
+ */
+export const CHANGE_IMPACT_LABELS = [
+  /** Published products. */
+  'products',
+  /** Products whose draft (working copy) is affected. */
+  'drafts',
+  /** Offers (not deleted). */
+  'offers',
+  /** Listed Offers. */
+  'listed-offers',
+  /** Offers with an active certification tag (a category change re-checks them). */
+  'offers-with-active-tag',
+  /** Categories under the subject category. */
+  'subcategories',
+  /** Categories otherwise reached (a feature-set link, ...). */
+  'categories',
+  /** Categories whose filters name the subject. */
+  'filters',
+  /** Active feature sets. */
+  'feature-sets',
+  /** Published products whose variants carry the subject. */
+  'variant-products',
+  /** Admins (accounts that can sign in). */
+  'admins',
+  /** Sellers. */
+  'sellers',
+] as const;
+
+export type ChangeImpactLabel = (typeof CHANGE_IMPACT_LABELS)[number];
+
+/** One count of a change's impact. */
+export interface ChangeImpactItem {
+  readonly label: ChangeImpactLabel;
+  /** A whole number from 0; System requests caps it at {@link MAX_IMPACT_COUNT}. */
+  readonly count: number;
+  /** The real number is `count` or more (the read stopped at a cap or a time bound). */
+  readonly atLeast: boolean;
+}
+
+/**
+ * What a change touches, by the owning module (owner request of 19 Nov 2026): computed when an
+ * admin opens a request's detail (never for the list), for an open request whose values the
+ * viewer may see (its author or a reviewer of its area), with the viewing admin's `CallContext`
+ * unchanged, so the Market is the request's own. Called outside any unit (the hook opens its own
+ * read-only unit or calls a use case or facade) and must open no write unit. It must count only
+ * what the viewer may see in the owning module (check the viewer's read permission and fail
+ * closed with null). System requests waits at most {@link IMPACT_TIMEOUT_MS}; a throw, a timeout,
+ * a null or a malformed answer shows no impact and never fails the page. Advisory only: no
+ * decision reads it.
+ */
+export interface ChangeImpact {
+  readonly items: readonly ChangeImpactItem[];
+}
+
+/** A count at or above this is shown as "at least" this many. */
+export const MAX_IMPACT_COUNT = 10_000;
+
+/** How long System requests waits for a module's `impact` before it shows none. */
+export const IMPACT_TIMEOUT_MS = 3_000;
+
+/** The most items an impact shows; the rest are left out. */
+export const MAX_IMPACT_ITEMS = 8;
+
+/**
+ * Builds one impact item from a raw count, capped at {@link MAX_IMPACT_COUNT} (then `atLeast`).
+ */
+export function impactItem(
+  label: ChangeImpactLabel,
+  count: number,
+  atLeast = false,
+): ChangeImpactItem {
+  const whole = Number.isSafeInteger(count) && count > 0 ? count : 0;
+  return whole >= MAX_IMPACT_COUNT
+    ? { label, count: MAX_IMPACT_COUNT, atLeast: true }
+    : { label, count: whole, atLeast };
 }
 
 /**
@@ -259,6 +345,8 @@ export interface SystemChangeApplier {
     context: CallContext,
     subjectRefs: readonly string[],
   ): Promise<ReadonlyMap<string, string>>;
+  /** As {@link SystemChangeReverter.impact}: what the action would touch if approved. */
+  impact?(context: CallContext, request: RevertRequest): Promise<ChangeImpact | null>;
 }
 
 /** The most subject refs one {@link SystemChangeReverter.describe} call is asked for. */

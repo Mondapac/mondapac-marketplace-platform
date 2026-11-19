@@ -1,14 +1,17 @@
 import { Logger } from '@nestjs/common';
-import { parseId } from '@mondapac/shared-kernel';
+import { ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import type { SealedPermissionCatalogue } from '../../../../platform/authz';
-import type {
-  RevertOutcome,
-  RevertRequest,
-  SystemChangeReverter,
+import {
+  impactItem,
+  type ChangeImpact,
+  type RevertOutcome,
+  type RevertRequest,
+  type SystemChangeReverter,
 } from '../../../../platform/change-review/change-review';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
+import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import {
   AccountRoleRevertedAudit,
   AccountStatusRevertedAudit,
@@ -56,6 +59,8 @@ import type {
 
 /** The ports the three reverters read and write. */
 export interface PeopleReverterDependencies {
+  /** Only for the impact read (a read-only unit of its own, outside the decision). */
+  readonly unitOfWork: UnitOfWork;
   readonly accounts: AccountRepository;
   readonly roles: RoleRepository;
   readonly assignments: RoleAssignmentRepository;
@@ -160,6 +165,43 @@ export function describeRoles(
     }
     return names;
   });
+}
+
+/**
+ * The impact of a change to a custom platform role (its edit, its delete): how many admins hold
+ * it and can sign in, the accounts the change gives or takes keys from. Counted only for a viewer
+ * who may list the platform roles and sees the role there (identity's own read, with the viewing
+ * admin's context, so its rule and Market scope hold); else, or on a failure, none. A count only,
+ * never who.
+ */
+export async function roleHolderImpact(
+  deps: Pick<PeopleReverterDependencies, 'unitOfWork' | 'assignments'>,
+  labels: PeopleLabelReads,
+  context: CallContext,
+  subjectRef: string,
+): Promise<ChangeImpact | null> {
+  try {
+    if (adminOf(context) === null) return null;
+    const roleId = idOf<'Role'>(subjectRef);
+    if (roleId === null) return null;
+    const roles = await labels.platformRoles.execute(context, {});
+    if (!roles.ok || !roles.value.items.some((role) => role.roleId === roleId)) return null;
+    const { market } = context;
+    const read = await deps.unitOfWork.run(
+      market,
+      async () => ok((await deps.assignments.activeHoldersOf(market, roleId)).length),
+      { readOnly: true },
+    );
+    return read.ok ? { items: [impactItem('admins', read.value)] } : null;
+  } catch (error) {
+    labelLogger.warn({
+      msg: 'identity.people-impact-unavailable',
+      error: error instanceof Error ? error.name : 'unknown',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    return null;
+  }
 }
 
 /** The deciding admin; a revert needs one acting as themselves (System requests checks it too). */
@@ -398,6 +440,11 @@ export class PlatformRoleReverter implements SystemChangeReverter {
   /** The role's name, for a viewer who may list the platform roles (else none). */
   describe(context: CallContext, subjectRefs: readonly string[]) {
     return describeRoles(this.labels, context, 'identity.platform-role', subjectRefs);
+  }
+
+  /** The admins who hold the role (their keys change with it). */
+  impact(context: CallContext, request: RevertRequest): Promise<ChangeImpact | null> {
+    return roleHolderImpact(this.deps, this.labels, context, request.subjectRef);
   }
 }
 

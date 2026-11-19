@@ -424,6 +424,7 @@ function roleEditorProvider<U>(
 
 /** The ports of the people reverters (Admin Inbox › System requests, area people). */
 const PEOPLE_REVERTER_PORTS = {
+  unitOfWork: true,
   accounts: true,
   roles: true,
   assignments: true,
@@ -470,7 +471,6 @@ function peopleReverter(
 /** The ports of the people creation reverters and the delete applier (owner decision 18 Nov). */
 const PEOPLE_CREATION_PORTS = {
   ...PEOPLE_REVERTER_PORTS,
-  unitOfWork: true,
   invitations: true,
   grants: true,
   policy: true,

@@ -2,7 +2,12 @@ import type { CallContext, Id } from '@mondapac/shared-kernel';
 import { ok } from '@mondapac/shared-kernel';
 import type { AccessDeclaration, AuthorisationCheck } from '../../../platform/authz';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
-import type { ApplyOutcome, RevertRequest, SystemChangeApplier } from '../../system-requests';
+import type {
+  ApplyOutcome,
+  ChangeImpact,
+  RevertRequest,
+  SystemChangeApplier,
+} from '../../system-requests';
 import type { EditableCategory } from '../domain/category-edit';
 import { MAX_TREE_NODES } from '../domain/category-tree';
 import { attributeIdOf, editorAccountOf as attributeEditorOf } from './attributes/attribute-editor';
@@ -26,6 +31,11 @@ import {
   type AttributeAction,
   type CategoryAction,
 } from './catalogue-actions';
+import {
+  attributeRequestImpact,
+  categoryRequestImpact,
+  productsMoveRequestImpact,
+} from './catalogue-impact';
 import type { AdminCategoryReader } from './ports/admin-category.reader';
 import type { AttributeAdminReader } from './ports/attribute-admin.reader';
 import type { AttributeDefinitionStore } from './ports/attribute-definition.store';
@@ -270,6 +280,11 @@ export class CategoryActionApplier implements SystemChangeApplier {
     }
   }
 
+  /** The products, Offers and categories under the category (the request's detail page). */
+  impact(context: CallContext, request: RevertRequest): Promise<ChangeImpact | null> {
+    return categoryRequestImpact(this.deps, context, request.subjectRef);
+  }
+
   async apply(context: CallContext, request: RevertRequest): Promise<ApplyOutcome> {
     const accountId = deciderOf(context);
     const action = this.#actionOf(request.after);
@@ -323,6 +338,11 @@ export class ProductsMoveApplier implements SystemChangeApplier {
   async check(context: CallContext): Promise<'ok' | 'not-permitted'> {
     if (categoryEditorOf(context) === null) return 'not-permitted';
     return (await mayRun(this.deps, context, CategoryMoveProducts.access)) ? 'ok' : 'not-permitted';
+  }
+
+  /** The published products the move would take (the request's detail page). */
+  impact(context: CallContext, request: RevertRequest): Promise<ChangeImpact | null> {
+    return productsMoveRequestImpact(this.deps, context, request.subjectRef);
   }
 
   async apply(context: CallContext, request: RevertRequest): Promise<ApplyOutcome> {
@@ -385,6 +405,11 @@ export class AttributeActionApplier implements SystemChangeApplier {
     const action = this.#actionOf(request.after);
     if (action === null) return 'ok'; // the apply answers `gone`
     return (await mayRun(this.deps, context, attributeAccess(action))) ? 'ok' : 'not-permitted';
+  }
+
+  /** What the attribute reaches, as its impact dialog shows (the request's detail page). */
+  impact(context: CallContext, request: RevertRequest): Promise<ChangeImpact | null> {
+    return attributeRequestImpact(this.deps, context, request.subjectRef);
   }
 
   async apply(context: CallContext, request: RevertRequest): Promise<ApplyOutcome> {
