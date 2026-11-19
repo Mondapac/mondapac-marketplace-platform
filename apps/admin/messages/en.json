@@ -9331,7 +9331,23 @@
       "bulk": {
         "button": "Bulk action",
         "selected": "{count, plural, one {# brand selected} other {# brands selected}}",
-        "all-open": "All matching brands selected"
+        "all-open": "All matching brands selected",
+        "export": "Export…"
+      },
+      "export": {
+        "title": "Export brands",
+        "body": "The file holds every brand the current view, search and filters match.",
+        "legend": "File format",
+        "csv": "CSV",
+        "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+        "xlsx": "XLSX",
+        "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+        "confirm": "Export",
+        "cancel": "Cancel",
+        "pending": "Preparing the file",
+        "done": "File downloaded",
+        "too-large": "More than {max} brands match. Narrow the filter and export again.",
+        "unavailable": "The file could not be made. Try again in a moment."
       }
     }
   },

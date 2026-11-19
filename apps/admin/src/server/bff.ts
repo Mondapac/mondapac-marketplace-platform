@@ -209,6 +209,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/variants',
     'catalog/admin/variants/issue-counts',
     'catalog/admin/variants/export',
+    // The Brands list as a file (CSV or XLSX): the list's own filter (`status`, `q`).
+    'catalog/admin/brands/export',
     // The report of published products missing a required detail (catalog, attributes A4;
     // query: `sellerId`, `familyCode`, `afterId`, `limit`).
     'catalog/admin/reports/products-missing-details',
@@ -1378,6 +1380,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   ],
   'catalog/admin/variants/issue-counts': ['typeCode'],
   'catalog/admin/variants/export': ['format', 'q', 'typeCode', 'issue'],
+  'catalog/admin/brands/export': ['format', 'status', 'q'],
   'catalog/admin/reports/products-missing-details': ['sellerId', 'familyCode', 'afterId', 'limit'],
   'ordering/admin/refund-limits': ['sellerId'],
 };
@@ -1967,6 +1970,12 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     paging: /^(pages|prev-next)$/,
     sort: /^(newest|code|gtin)$/,
     direction: /^(asc|desc)$/,
+  },
+  'catalog/admin/brands/export': {
+    format: /^(csv|xlsx)$/,
+    status: /^(draft|active|archived)$/,
+    // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+    q: /^[^\u0000-\u001f\u007f]{1,100}$/u,
   },
   'catalog/admin/variants/issue-counts': { typeCode: /^[a-z][a-z0-9_-]{0,63}$/ },
   'catalog/admin/variants/export': {

@@ -2336,6 +2336,7 @@ describe('relay of the wallet and step-up routes', () => {
     ['DELETE', `blog/admin/taxonomy/tags/${id}`],
     ['GET', 'catalog/admin/brands'],
     ['GET', 'catalog/admin/brands/merge-queue'],
+    ['GET', 'catalog/admin/brands/export'],
     ['POST', 'catalog/admin/brands'],
     ['PUT', `catalog/admin/brands/${id}`],
     ['POST', `catalog/admin/brands/${id}/approve`],

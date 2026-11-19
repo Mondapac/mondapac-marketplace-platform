@@ -368,6 +368,33 @@ describe('admin brands', () => {
     });
   });
 
+  it('exports the current view from the Bulk action menu', async () => {
+    serve(lists([brand(1, { name: 'Saffron & Co' })], []));
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        new Response('x', {
+          status: 200,
+          headers: { 'content-disposition': 'attachment; filename="brands-2026-11-19.csv"' },
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    Object.assign(URL, { createObjectURL: () => 'blob:x', revokeObjectURL: () => undefined });
+    mount();
+    const row = (await screen.findByText('Saffron & Co')).closest('tr') as HTMLElement;
+    fireEvent.click(within(row).getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Export…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Export brands' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const url = String((fetchMock.mock.calls as unknown as string[][])[0]?.[0]);
+    expect(url.startsWith('/api/catalog/admin/brands/export?')).toBe(true);
+    expect(url).toContain('status=active');
+    expect(url).toContain('format=csv');
+    vi.unstubAllGlobals();
+  });
+
   describe('seller proposals', () => {
     const proposal = brand(2, { status: 'draft', proposedBySellerId: id(77), version: 5 });
 

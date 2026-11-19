@@ -182,6 +182,8 @@ export function BrandsList({
     () => ({
       ns: 'brands.list',
       endpoint: API_BRANDS,
+      exportEndpoint: `${API_BRANDS}/export`,
+      exportName: 'brands',
       rowId: (row) => row.id,
       rowName: (row) => row.name,
       tabs: LIST_TABS,
