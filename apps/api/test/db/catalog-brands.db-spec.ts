@@ -547,6 +547,7 @@ describe.each(TEST_MARKETS)('catalog brands in market %s (database integration)'
       ]);
       // A sub-millisecond bound stays exact against millisecond rows.
       expect(await names({ ...base, createdFrom: T0.add({ nanoseconds: 1 }) })).toEqual([b, c]);
+      expect(await names({ ...base, createdTo: T0.add({ nanoseconds: 1 }) })).toEqual([a]);
       const cursor = await inUnit(() =>
         reader.list(market, { ...base, originCountry: 'AU', afterId: null, limit: 5 }),
       );

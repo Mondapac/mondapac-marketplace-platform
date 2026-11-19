@@ -16,8 +16,10 @@ import { likeLiteral } from './like-literal';
 import { brandStateOf } from './prisma-brand.repository';
 
 /**
- * The instant as a `Date`, rounded up to the millisecond: rows are stored at millisecond
- * precision, so `>= ceil(from)` and `< ceil(to)` keep a sub-millisecond bound exact.
+ * The instant as a `Date`, rounded up to the millisecond: rows written by the application have
+ * millisecond precision, so `>= ceil(from)` and `< ceil(to)` keep a sub-millisecond bound exact.
+ * The column is `timestamptz(6)` and the first migration's backfill wrote `now()` (microseconds),
+ * so a backfilled row inside the same millisecond as a sub-millisecond bound may fall either way.
  */
 function ceilDate(instant: Temporal.Instant): Date {
   const ms = instant.epochMilliseconds;
