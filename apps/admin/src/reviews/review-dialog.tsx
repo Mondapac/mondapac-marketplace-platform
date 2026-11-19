@@ -5,7 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { labelOr } from './label.ts';
-import { formatInstant } from '../shared/format.ts';
+import { formatInstant, formatInstantInZone } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { Stars } from './stars.tsx';
@@ -39,6 +39,7 @@ const allowedOf = (
 export function ReviewDialog({
   reviewId,
   initialAction = null,
+  zone,
   canModerate,
   canRemove,
   csrfToken,
@@ -51,6 +52,8 @@ export function ReviewDialog({
   readonly canModerate: boolean;
   readonly canRemove: boolean;
   readonly csrfToken: string;
+  /** The IANA zone the list shows times in; without one the dialog keeps the instant's own form. */
+  readonly zone?: string;
   readonly onClose: () => void;
   /** The review changed (or was found changed): the queue reads again. */
   readonly onChanged: () => void;
@@ -66,6 +69,8 @@ export function ReviewDialog({
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
+  // A change that affects others starts with the focus on Close (confirmation rule).
+  const closeButton = useRef<HTMLButtonElement>(null);
   // The row menu's action waits for the first read of the review, and is chosen only if the review
   // still allows it then (another moderator may have moved it).
   const firstAction = useRef<Action | null>(null);
@@ -159,17 +164,20 @@ export function ReviewDialog({
   }
 
   const reasons = action === '' ? [] : REASONS[action];
+  const when = (iso: string) =>
+    zone === undefined ? formatInstant(iso, locale) : formatInstantInZone(iso, locale, zone);
 
   return (
     <Dialog
       open={reviewId !== null}
-      title={t('dialog.title')}
+      title={initialAction === null ? t('dialog.title') : t(`dialog.title-for.${initialAction}`)}
+      initialFocus={closeButton}
       onClose={() => {
         if (!busy.current) onClose();
       }}
       actions={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={pending}>
+          <Button ref={closeButton} variant="secondary" onClick={onClose} disabled={pending}>
             {t('dialog.close')}
           </Button>
           {allowed.length === 0 ? null : (
@@ -201,7 +209,7 @@ export function ReviewDialog({
             <Stars rating={detail.rating} />
             <StatusBadge status={detail.status} />
             <span className="text-sm text-fg-muted">
-              {t('submitted', { date: formatInstant(detail.createdAt, locale) })}
+              {t('submitted', { date: when(detail.createdAt) })}
             </span>
           </div>
           <div className="rounded-lg border border-line bg-muted p-4">
@@ -252,7 +260,7 @@ export function ReviewDialog({
               {detail.history.map((h, index) => (
                 <li key={`${h.at}-${index}`}>
                   {t('history-line', {
-                    date: formatInstant(h.at, locale),
+                    date: when(h.at),
                     who: t(h.byModerator ? 'who.moderator' : 'who.system-or-author'),
                     action: labelOr(t, `history-action.${h.action}`, h.action),
                     reason: labelOr(t, `reason.${h.reasonCode}`, h.reasonCode),
@@ -298,7 +306,6 @@ export function ReviewDialog({
               {action === 'remove' ? (
                 <TextField
                   label={t('dialog.type-to-remove', { id: confirmId })}
-                  help={<span className="font-medium text-fg">{confirmId}</span>}
                   name="confirmId"
                   value={typed}
                   autoComplete="off"

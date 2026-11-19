@@ -222,6 +222,24 @@ describe('Review moderation list: page numbers and views', () => {
     expect(screen.queryByText(/ of /)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     await waitFor(() => expect(paramsOf(lastUrl())['page']).toBe('2'));
+    await findRow();
+    fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
+    await waitFor(() => expect(paramsOf(lastUrl())['page']).toBe('1'));
+  });
+
+  it('with Previous and next, goes to the page before when the page asked for is now empty', async () => {
+    serve((url) => {
+      const page = Number(paramsOf(url)['page']);
+      return page === 4 ? noTotal([], false, 4) : noTotal([row()], true, page);
+    });
+    mount({ paging: 'prev-next' });
+    await findRow();
+    for (const n of [2, 3, 4]) {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+      await waitFor(() => expect(paramsOf(lastUrl())['page']).toBe(String(n)));
+      if (n < 4) await findRow();
+    }
+    await waitFor(() => expect(paramsOf(lastUrl())['page']).toBe('3'));
   });
 });
 
@@ -341,7 +359,7 @@ describe('Review moderation list: row Actions menu', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['Open', 'Publish…', 'Dismiss reports…', 'Hide…', 'Remove…']);
+    ).toEqual(['Open…', 'Publish…', 'Dismiss reports…', 'Hide…', 'Remove…']);
   });
 
   it('ignores an unknown action and shows only what the server allows', async () => {
@@ -353,7 +371,7 @@ describe('Review moderation list: row Actions menu', () => {
       within(menu)
         .getAllByRole('menuitem')
         .map((item) => item.textContent),
-    ).toEqual(['Open', 'Restore…']);
+    ).toEqual(['Open…', 'Restore…']);
   });
 
   it('opens the review dialog with the chosen action, and reads the list again after a change', async () => {
@@ -371,9 +389,46 @@ describe('Review moderation list: row Actions menu', () => {
     await findRow();
     const menu = await openMenu();
     fireEvent.click(within(menu).getByRole('menuitem', { name: 'Hide…' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Review' });
+    const dialog = await screen.findByRole('dialog', { name: 'Hide review' });
     await within(dialog).findByText('Not what I ordered');
     expect(within(dialog).getByLabelText<HTMLSelectElement>('Action').value).toBe('hide');
+    // The focus starts on Close, not on the red button.
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Close' }));
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'spam' } });
+    const before = urls().length;
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Hide' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        `reviews/admin/moderation/${REVIEW}/hide`,
+        { reasonCode: 'spam' },
+        'csrf-1',
+      ),
+    );
+    // The change reads the list again (same query, new answer).
+    await waitFor(() => expect(urls().length).toBeGreaterThan(before));
+  });
+
+  it('opens Remove without the action chosen for a moderator who lacks the remove key', async () => {
+    serve(
+      () => pageOf([row()]),
+      noSavedRoute,
+      () => ({
+        ...row(),
+        reportReasons: [],
+        history: [],
+        allowedActions: ['publish', 'hide', 'remove'],
+      }),
+    );
+    mount({ canRemove: false });
+    await findRow();
+    const menu = await openMenu();
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Remove…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Remove review' });
+    await within(dialog).findByText('Not what I ordered');
+    const action = within(dialog).getByLabelText<HTMLSelectElement>('Action');
+    expect(action.value).toBe('');
+    expect(within(action).queryByRole('option', { name: 'Remove' })).toBeNull();
   });
 
   it('has no button inside a row besides the review link, the select box and the menu', async () => {

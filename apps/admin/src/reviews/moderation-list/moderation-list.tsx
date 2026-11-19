@@ -242,9 +242,12 @@ export function ModerationList({
   useEffect(() => {
     if (answer === null || loading || failure !== null || answer.items.length > 0) return;
     if (answer.page > 1) {
+      // Without a total the page before is the nearest one that can still have rows.
       const last =
-        answer.total === null ? 1 : Math.max(1, Math.ceil(answer.total / answer.pageSize));
-      goToPage(Math.min(last, answer.page - 1));
+        answer.total === null
+          ? answer.page - 1
+          : Math.max(1, Math.ceil(answer.total / answer.pageSize));
+      goToPage(Math.max(1, Math.min(last, answer.page - 1)));
     }
   }, [answer, loading, failure, goToPage]);
 
@@ -511,6 +514,7 @@ export function ModerationList({
           <ReviewDialog
             reviewId={opened?.id ?? null}
             initialAction={opened?.action ?? null}
+            zone={zone}
             canModerate={canModerate}
             canRemove={canRemove}
             csrfToken={csrfToken}

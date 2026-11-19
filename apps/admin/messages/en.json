@@ -9440,7 +9440,14 @@
       "reason": "Reason",
       "reason-placeholder": "Choose a reason",
       "remove-note": "Removing is for illegal, defamatory or private content. It cannot be undone.",
-      "type-to-remove": "Type {id} to remove this review"
+      "type-to-remove": "Type {id} to remove this review",
+      "title-for": {
+        "publish": "Publish review",
+        "hide": "Hide review",
+        "restore": "Restore review",
+        "remove": "Remove review",
+        "dismiss-reports": "Dismiss reports"
+      }
     },
     "submitted": "Submitted {date}",
     "product": "Product",
@@ -9526,7 +9533,7 @@
       },
       "search": {
         "label": "Search",
-        "placeholder": "Words of the review, or a review, Offer or product ID"
+        "placeholder": "Search review text, or a review, offer or product ID"
       },
       "chip-search": "Search is {text}",
       "chip-seller": "Seller is {id}",
@@ -9559,7 +9566,7 @@
       "sorted": "Sorted by {field}: {order}",
       "match": "{count, plural, one {# review matches} other {# reviews match}}",
       "range": "{from}-{to} of {total}",
-      "loading": "Loading reviews...",
+      "loading": "Loading reviews…",
       "error": {
         "unavailable": "The reviews couldn't be loaded.",
         "refused": "This search can't be run. Change the text or the filters, or clear them."
@@ -9592,7 +9599,7 @@
       },
       "actions": {
         "for": "Actions for {name}",
-        "open": "Open",
+        "open": "Open…",
         "publish": "Publish…",
         "restore": "Restore…",
         "dismiss-reports": "Dismiss reports…",

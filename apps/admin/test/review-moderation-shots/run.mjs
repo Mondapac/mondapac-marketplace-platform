@@ -61,7 +61,7 @@ for (const scheme of ['light', 'dark']) {
         if (name === 'remove') {
           await page.getByRole('menuitem', { name: 'Remove…' }).click();
           await page
-            .getByRole('dialog', { name: 'Review' })
+            .getByRole('dialog', { name: 'Remove review' })
             .getByText('Not what I ordered', { exact: false })
             .waitFor();
           await page.getByLabel('Reason').selectOption('illegal');
