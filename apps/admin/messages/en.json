@@ -7586,7 +7586,6 @@
   },
   "account-deletion": {
     "cancel": "Cancel",
-    "retry": "Try again",
     "reason": {
       "label": "Reason",
       "help-history": "Plain text, one line, up to 500 characters. Kept in the change history.",
@@ -7642,38 +7641,10 @@
       }
     },
     "requests": {
-      "title": "Pending deletion requests",
+      "title": "Account deletion requests",
       "back": "Account deletion",
       "permission-view": "View account deletion requests",
-      "caption": "Accounts waiting to be deleted, earliest first",
-      "loading": "Loading the requests",
-      "load-failed": "Couldn't load the list.",
-      "load-more": "Load more",
-      "loaded-more": "{count} more requests loaded",
-      "more-failed": "Couldn't load more requests. Try again.",
-      "col": {
-        "account": "Account",
-        "requested-by": "Requested by",
-        "requested": "Requested",
-        "deletes-on": "Deletes on",
-        "status": "Status",
-        "actions": "Actions"
-      },
-      "by": {
-        "customer": "Buyer",
-        "admin": "Admin"
-      },
-      "status": {
-        "waiting": "Waiting",
-        "in-progress": "In progress"
-      },
-      "empty": {
-        "title": "No pending requests",
-        "body": "Accounts waiting to be deleted appear here."
-      },
-      "cancel": "Cancel request",
-      "cancel-aria": "Cancel the deletion request of account {account}",
-      "cancelled": "Deletion request cancelled. The account is kept."
+      "cancel": "Cancel request"
     },
     "cancel-request": {
       "title": "Cancel this deletion request?",
@@ -7725,6 +7696,146 @@
       "check-failed": "Couldn't check this account. Try again.",
       "unavailable": "The service is not available right now. Try again in a few minutes.",
       "unknown": "Something went wrong. Try again."
+    },
+    "list": {
+      "intro": "Requests to delete a buyer account. A waiting request can be cancelled until the deletion starts.",
+      "views-label": "Deletion request views",
+      "zone-note": "Dates are shown in {zone}.",
+      "loading": "Loading the requests",
+      "no-access": "You do not have access to this list.",
+      "view": {
+        "pending": "Waiting",
+        "executing": "In progress",
+        "cancelled": "Cancelled",
+        "completed": "Deleted",
+        "all": "All"
+      },
+      "col": {
+        "account": "Account",
+        "status": "Status",
+        "requested": "Requested",
+        "deletes-on": "Deletes on",
+        "requested-by": "Requested by",
+        "cancelled": "Cancelled",
+        "cancel-reason": "Cancelled because",
+        "completed": "Deleted",
+        "actions": "Actions"
+      },
+      "caption": "Account deletion requests",
+      "row-name": "request for account {account}",
+      "none": "None",
+      "status": {
+        "pending": "Waiting",
+        "executing": "In progress",
+        "cancelled": "Cancelled",
+        "completed": "Deleted"
+      },
+      "by": {
+        "customer": "Buyer",
+        "admin": "Admin"
+      },
+      "cancel-reason": {
+        "customer": "Buyer cancelled",
+        "sign-in": "Buyer signed in",
+        "admin": "Admin cancelled"
+      },
+      "search": {
+        "label": "Search",
+        "placeholder": "Request ID or account ID",
+        "help": "A full request ID or buyer account ID.",
+        "not-id": "That is not an ID. Type a full request ID or buyer account ID."
+      },
+      "chip-id": "Request or account ID is {text}",
+      "filter": {
+        "title": "Filter deletion requests",
+        "name": {
+          "requestedBy": "Requested by",
+          "cancelReason": "Cancelled because",
+          "requested": "Requested",
+          "deletes": "Deletes"
+        },
+        "by": {
+          "customer": "Buyer",
+          "admin": "Admin"
+        },
+        "cancel-reason": {
+          "customer": "Buyer cancelled",
+          "sign-in": "Buyer signed in",
+          "admin": "Admin cancelled"
+        },
+        "deletes": {
+          "24h": "Within 24 hours",
+          "7d": "Within 7 days",
+          "30d": "Within 30 days"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "scheduled": "Deletes on",
+          "requested": "Requested",
+          "cancelled": "Cancelled",
+          "completed": "Deleted"
+        },
+        "scheduled": {
+          "first": "Earliest first",
+          "second": "Latest first"
+        },
+        "requested": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "cancelled": {
+          "first": "Most recent first",
+          "second": "Least recent first"
+        },
+        "completed": {
+          "first": "Most recent first",
+          "second": "Least recent first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# request matches} other {# requests match}}",
+      "range": "{from}–{to} of {total} requests",
+      "error": {
+        "unavailable": "The deletion requests could not be loaded.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      },
+      "empty": {
+        "pending": "No accounts are waiting to be deleted.",
+        "executing": "No accounts are being deleted right now.",
+        "cancelled": "No requests have been cancelled.",
+        "completed": "No accounts have been deleted yet.",
+        "all": "No deletion requests yet.",
+        "no-match": "No deletion requests match",
+        "no-match-help": "Try other filters or clear them."
+      },
+      "select": {
+        "page": "Select all requests on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# request selected} other {# requests selected}}",
+        "all": "{count, plural, one {The # matching request is selected} other {All # matching requests are selected}}",
+        "all-open": "All matching requests are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# request selected} other {# requests selected}}",
+        "all-open": "All matching requests selected"
+      },
+      "actions": {
+        "for": "Actions for {name}",
+        "cancel": "Cancel request…"
+      },
+      "notice": {
+        "cancelled": "Deletion request cancelled. The account is kept."
+      }
     }
   },
   "route": {

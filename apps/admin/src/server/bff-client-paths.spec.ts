@@ -35,6 +35,9 @@ const files = [
   ...readdirSync(path.join(src, 'account-deletion'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'account-deletion', name)),
+  ...readdirSync(path.join(src, 'account-deletion', 'list'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'account-deletion', 'list', name)),
   ...readdirSync(path.join(src, 'orders'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'orders', name)),

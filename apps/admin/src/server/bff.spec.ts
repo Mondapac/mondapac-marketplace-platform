@@ -2743,6 +2743,30 @@ describe('relay of the wallet and step-up routes', () => {
     expect(chosen.upstream.mock.calls[0]?.[0]).toBe(
       `http://api.test/customers/admin/deletion-requests/export?ids=${many.replaceAll(',', '%2C')}`,
     );
+    // A malformed key refuses the file instead of widening it to the whole Market.
+    const badFile = await run(
+      'GET',
+      'customers/admin/deletion-requests/export?format=pdf&columns=ticket&ids=x',
+      readHeaders,
+    );
+    expect(badFile.response.status).toBe(400);
+    expect(badFile.upstream).not.toHaveBeenCalled();
+    const tooMany = await run(
+      'GET',
+      `customers/admin/deletion-requests/export?format=csv&ids=${Array.from({ length: 201 }, () => id).join(',')}`,
+      readHeaders,
+    );
+    expect(tooMany.response.status).toBe(400);
+    expect(tooMany.upstream).not.toHaveBeenCalled();
+    for (const bad of ['q=ada', 'from=yesterday', 'view=open', 'requestedBy=seller']) {
+      const refused = await run(
+        'GET',
+        `customers/admin/deletion-requests/export?format=csv&${bad}`,
+        readHeaders,
+      );
+      expect(refused.response.status).toBe(400);
+      expect(refused.upstream).not.toHaveBeenCalled();
+    }
   });
 
   it('passes only status, search, afterId and limit of the brand list, each in its shape', async () => {
