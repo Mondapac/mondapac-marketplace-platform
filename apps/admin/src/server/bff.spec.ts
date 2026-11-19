@@ -4490,4 +4490,24 @@ describe('relay of the security alert super list', () => {
     expect(bad.response.status).toBe(400);
     expect(bad.url).toBeUndefined();
   });
+
+  it('refuses a malformed certificate-queue export filter or 201 ids instead of widening the file', async () => {
+    const many = Array.from({ length: 201 }, () => ID).join(',');
+    for (const query of [
+      `ids=${many}`,
+      'sellerId=nope',
+      'q=nope',
+      'type=Not%20A%20Code',
+      'view=other',
+    ]) {
+      const bad = await get(`certification/admin/seller-certificates/export?format=csv&${query}`);
+      expect([query.slice(0, 20), bad.response.status]).toEqual([query.slice(0, 20), 400]);
+      expect(bad.url).toBeUndefined();
+    }
+    const ids = Array.from({ length: 200 }, () => ID).join(',');
+    const { url } = await get(
+      `certification/admin/seller-certificates/export?format=csv&ids=${ids}`,
+    );
+    expect(url).toContain(`ids=${encodeURIComponent(ids)}`);
+  });
 });
