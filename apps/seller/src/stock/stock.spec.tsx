@@ -83,6 +83,12 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+/** Opens a location's Actions menu and picks an item. */
+function pick(location: string, item: string) {
+  fireEvent.click(screen.getByRole('button', { name: `Actions for ${location}` }));
+  fireEvent.click(screen.getByRole('menuitem', { name: item }));
+}
+
 describe('StockLocations', () => {
   it('lists the locations in order with the Default badge, address and zone', () => {
     mount();
@@ -134,7 +140,7 @@ describe('StockLocations', () => {
   it('edits a location through its own path', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: view({ version: 5 }) });
     mount();
-    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1] as HTMLElement);
+    pick('Garage', 'Edit');
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Garage 2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save location' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
@@ -190,7 +196,7 @@ describe('StockLocations', () => {
   it('moves a location up by sending the whole new order', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: view({ version: 5 }) });
     mount();
-    fireEvent.click(screen.getByRole('button', { name: 'Move Garage up' }));
+    pick('Garage', 'Move up');
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call).toHaveBeenCalledWith(
       'PUT',
@@ -202,10 +208,14 @@ describe('StockLocations', () => {
 
   it('shows only the moves that do something: no up on the first, no down on the last', () => {
     mount();
-    expect(screen.queryByRole('button', { name: 'Move Default up' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Move Default down' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Move Garage up' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Move Garage down' })).toBeNull();
+    const itemsOf = (location: string) => {
+      fireEvent.click(screen.getByRole('button', { name: `Actions for ${location}` }));
+      const labels = screen.getAllByRole('menuitem').map((item) => item.textContent);
+      fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+      return labels;
+    };
+    expect(itemsOf('Default')).toEqual(['Edit', 'Move down']);
+    expect(itemsOf('Garage')).toEqual(['Edit', 'Move up']);
   });
 
   it('turns off Add at the limit', () => {
@@ -255,7 +265,7 @@ describe('StockLocations', () => {
         }),
       });
     mount();
-    fireEvent.click(screen.getByRole('button', { name: 'Move Garage up' }));
+    pick('Garage', 'Move up');
     expect(await screen.findByText(/The list is up to date now/)).toBeTruthy();
     expect(call).toHaveBeenNthCalledWith(2, 'GET', 'inventory/seller/sources');
     expect(screen.getByText('Shed')).toBeTruthy();
@@ -282,7 +292,7 @@ describe('StockLocations', () => {
       })
       .mockResolvedValueOnce({ ok: true, status: 200, body: view({ version: 8 }) });
     mount();
-    fireEvent.click(screen.getAllByRole('button', { name: 'Edit' })[1]!);
+    pick('Garage', 'Edit');
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Warehouse' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save location' }));
 

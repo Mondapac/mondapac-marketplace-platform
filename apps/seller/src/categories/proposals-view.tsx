@@ -5,7 +5,9 @@ import {
   Banner,
   Button,
   Card,
+  ConfirmAction,
   EmptyState,
+  Menu,
   Select,
   TextAreaField,
   TextField,
@@ -269,6 +271,8 @@ function ProposalList({
   const t = useTranslations('categories.proposals');
   const [error, setError] = useState<string | null>(null);
   const [cancelling, setCancelling] = useState<string | null>(null);
+  // The proposal the seller is asked to confirm withdrawing.
+  const [asking, setAsking] = useState<OwnProposal | null>(null);
 
   async function cancel(proposal: OwnProposal) {
     if (cancelling !== null) return;
@@ -335,14 +339,20 @@ function ProposalList({
                 {reason === null ? null : <p className="mt-2 text-sm">{reason}</p>}
                 {proposal.status === 'pending' ? (
                   <div className="mt-3">
-                    <Button
-                      variant="secondary"
-                      loading={cancelling === proposal.id}
-                      disabled={cancelling !== null}
-                      onClick={() => void cancel(proposal)}
-                    >
-                      {t('list.cancel')}
-                    </Button>
+                    <Menu
+                      label={t('list.actions-for', {
+                        name: nameOf(proposal.texts, locales.default) ?? t('list.unnamed'),
+                      })}
+                      items={[
+                        {
+                          id: 'withdraw',
+                          label: t('list.cancel'),
+                          tone: 'critical',
+                          disabled: cancelling !== null,
+                          onSelect: () => setAsking(proposal),
+                        },
+                      ]}
+                    />
                   </div>
                 ) : null}
               </li>
@@ -350,6 +360,24 @@ function ProposalList({
           })}
         </ul>
       )}
+      <ConfirmAction
+        open={asking !== null}
+        level={2}
+        title={t('list.withdraw-title', {
+          name: asking === null ? '' : (nameOf(asking.texts, locales.default) ?? t('list.unnamed')),
+        })}
+        body={<p>{t('list.withdraw-body')}</p>}
+        rowName=""
+        confirmLabel={t('list.withdraw-confirm')}
+        cancelLabel={t('list.withdraw-keep')}
+        pending={false}
+        onConfirm={() => {
+          const proposal = asking;
+          setAsking(null);
+          if (proposal !== null) void cancel(proposal);
+        }}
+        onCancel={() => setAsking(null)}
+      />
     </section>
   );
 }

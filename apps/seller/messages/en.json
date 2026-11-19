@@ -2606,8 +2606,7 @@
     "edit": "Edit",
     "up": "Move up",
     "down": "Move down",
-    "move-up": "Move {name} up",
-    "move-down": "Move {name} down",
+    "actions-for": "Actions for {name}",
     "saved": "Saved.",
     "form": {
       "add-title": "Add a location",
@@ -4127,7 +4126,12 @@
         "unnamed": "Unnamed",
         "under": "Under {parent}",
         "parent-unknown": "a platform category",
-        "cancel": "Withdraw",
+        "cancel": "Withdraw…",
+        "actions-for": "Actions for {name}",
+        "withdraw-title": "Withdraw “{name}”?",
+        "withdraw-body": "The suggestion closes and the platform team stops reviewing it. You can send a new one later.",
+        "withdraw-confirm": "Withdraw suggestion",
+        "withdraw-keep": "Keep suggestion",
         "status": {
           "pending": "Waiting",
           "approved": "Approved",
