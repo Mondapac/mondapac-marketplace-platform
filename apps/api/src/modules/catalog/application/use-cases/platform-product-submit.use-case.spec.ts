@@ -176,6 +176,7 @@ describe.each(FIXTURES)('platform-product.submit in market $code', ({ code, loca
     };
     const policy: CatalogMarketPolicy = {
       taxCategoryCodes: () => [tax],
+      taxCategories: () => [tax].map((code) => ({ code, labelKey: `catalog.tax.${code}` })),
       locales: () => ({ default: locales.default, supported: [...locales.supported] }),
       sensitiveChanges: () => ({
         platformCategories: true,

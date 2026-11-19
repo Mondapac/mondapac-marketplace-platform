@@ -2584,6 +2584,10 @@
           "option-attribute-missing": "Choose a value for every type."
         }
       }
+    },
+    "tax": {
+      "taxable": "Taxable",
+      "gst-free": "GST-free"
     }
   },
   "stock": {

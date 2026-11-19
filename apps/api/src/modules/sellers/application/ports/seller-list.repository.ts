@@ -1,5 +1,6 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { ListCursor, ListKind, ListSearch } from '../../domain/seller-list';
+import type { FileTab, ListCursor, ListKind, ListSearch } from '../../domain/seller-list';
+import type { SellerListOrder } from '../../domain/seller-super-list';
 
 /**
  * One seller of the admin list: clear columns of `sellers`' own rows only (sellers design 7.8;
@@ -43,6 +44,13 @@ export interface ListPageQuery {
   readonly onlyIds: readonly Id<'Seller'>[] | null;
   readonly after: ListCursor | null;
   readonly take: number;
+  /**
+   * The super list (list 15): with `order`, the page is read in that order from `offset` rows on
+   * (SQL `OFFSET`), and `after` is not used. Without it, the tab's own keyset order of the older
+   * list, from `after`.
+   */
+  readonly order?: SellerListOrder;
+  readonly offset?: number;
 }
 
 export interface ListCounts {
@@ -77,6 +85,13 @@ export interface SellerListRepository {
 
   /** The counts the tabs show. */
   counts(market: MarketContext): Promise<ListCounts>;
+
+  /**
+   * How many files a tab holds under the query's filters (kind, outside area, area, `onlyIds`),
+   * whatever the page: the total of the super list (list 15). `after`, `order`, `offset` and
+   * `take` are not used.
+   */
+  countMatching(market: MarketContext, tab: FileTab, query: ListPageQuery): Promise<number>;
 
   /**
    * The sellers a search names: the store-name key prefix (A6) and the held-slug prefix (A7). At
