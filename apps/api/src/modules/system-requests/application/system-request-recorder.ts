@@ -1,12 +1,15 @@
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type {
   AppliedChange,
+  ProposedChange,
+  ProposeFailure,
   RecordedRequest,
   RecordFailure,
+  SystemActionProposer,
   SystemRequestRecorder,
 } from '../contracts/recorder';
 import type { PolicyArea, Risk } from '../domain/areas';
-import { areaPolicyOf, recordAppliedChange } from './request-flow';
+import { areaPolicyOf, recordAppliedChange, recordProposedChange } from './request-flow';
 import type { SystemRequestsDependencies } from './system-requests-dependencies';
 
 /**
@@ -16,7 +19,9 @@ import type { SystemRequestsDependencies } from './system-requests-dependencies'
  * authorisation check opens a unit of its own) cannot run. The caller's own use case already
  * passed its gate; this only adds the review of what that use case changed.
  */
-export class SystemRequestRecorderImplementation implements SystemRequestRecorder {
+export class SystemRequestRecorderImplementation
+  implements SystemRequestRecorder, SystemActionProposer
+{
   constructor(private readonly deps: SystemRequestsDependencies) {}
 
   openReview(
@@ -24,6 +29,13 @@ export class SystemRequestRecorderImplementation implements SystemRequestRecorde
     change: AppliedChange,
   ): Promise<Result<RecordedRequest | null, RecordFailure>> {
     return recordAppliedChange(this.deps, context, change);
+  }
+
+  proposeChange(
+    context: CallContext,
+    change: ProposedChange,
+  ): Promise<Result<RecordedRequest | null, ProposeFailure>> {
+    return recordProposedChange(this.deps, context, change);
   }
 
   areaPolicy(

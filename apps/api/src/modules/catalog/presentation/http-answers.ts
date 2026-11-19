@@ -32,7 +32,40 @@ const DETAIL_KEYS = [
   'errors',
   'leftOut',
   'resetZone',
+  'pendingNumber',
 ] as const;
+
+/**
+ * Refusals every catalog route shares: an action that waits for approval (Admin Inbox › System
+ * requests) while another proposal of the same subject waits (`details.pendingNumber`).
+ */
+const SHARED_STATUS: Readonly<Record<string, number>> = Object.freeze({
+  'system-requests.already-pending': 409,
+});
+
+/**
+ * The body of a use case's answer, and HTTP 202 when it is a proposal: an action that waits for a
+ * second admin's approval answers `{request: {id, number}}` and wrote nothing.
+ */
+export function answered<T>(response: Response, value: unknown): T {
+  if (onlyRequest(value)) response.status(202);
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
+/**
+ * Whether a use case answered a proposal: an object holding only a non-null `request` (an action
+ * that waits for another admin's approval; nothing changed). The presentation layer reads it from
+ * the answer's shape, as it imports only use cases.
+ */
+function onlyRequest(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false;
+  const keys = Object.keys(value);
+  const request = (value as { request?: unknown }).request;
+  return (
+    keys.length === 1 && keys[0] === 'request' && typeof request === 'object' && request !== null
+  );
+}
+
 const logger = new Logger('CatalogHttp');
 
 /**
@@ -48,7 +81,9 @@ export function refusalWith(
   unmappedMsg = 'catalog.unmapped-refusal',
 ): HttpException {
   const status =
-    table[error.code] ?? ACCESS_DENIED_STATUS[error.code as keyof typeof ACCESS_DENIED_STATUS];
+    table[error.code] ??
+    SHARED_STATUS[error.code] ??
+    ACCESS_DENIED_STATUS[error.code as keyof typeof ACCESS_DENIED_STATUS];
   if (status === undefined) {
     logger.error({
       msg: unmappedMsg,

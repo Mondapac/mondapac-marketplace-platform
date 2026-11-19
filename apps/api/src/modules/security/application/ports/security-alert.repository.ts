@@ -1,6 +1,7 @@
 import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { AlertState, SecurityAlert } from '../../domain/alert';
 import type { DeliveryChannel, DeliveryOutcome } from '../../domain/delivery';
+import type { AlertListFilter, AlertSort, AlertViewCounts } from '../../domain/alert-list';
 import type { AlertKeyType } from '../../domain/rules';
 import type { SecuritySeverity } from '../../domain/severity';
 
@@ -107,6 +108,24 @@ export interface SecurityAlertRepository {
   get(market: MarketContext, id: string): Promise<SecurityAlert | null>;
 
   list(market: MarketContext, query: AlertListQuery): Promise<readonly SecurityAlert[]>;
+
+  /** The alert super list: filtered and sorted alerts of the Market, `limit` rows from `offset`. */
+  queryList(
+    market: MarketContext,
+    filter: AlertListFilter,
+    sort: AlertSort,
+    offset: number,
+    limit: number,
+  ): Promise<readonly SecurityAlert[]>;
+
+  /** How many alerts meet the filter (its view included). */
+  countListWhere(market: MarketContext, filter: AlertListFilter): Promise<number>;
+
+  /** The count of each view for the Market. */
+  viewCounts(market: MarketContext): Promise<AlertViewCounts>;
+
+  /** The alerts of the Market among `ids` (others are left out). */
+  findByIds(market: MarketContext, ids: readonly string[]): Promise<readonly SecurityAlert[]>;
 
   /** How many open or acknowledged alerts of each severity. */
   liveCounts(market: MarketContext): Promise<Readonly<Record<SecuritySeverity, number>>>;
