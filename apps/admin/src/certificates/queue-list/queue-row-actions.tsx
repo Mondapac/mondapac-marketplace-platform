@@ -15,16 +15,14 @@ export function useQueueRowActions(): (row: QueueListRow) => readonly MenuItem[]
   const t = useTranslations('certificates.queue.actions');
   const router = useRouter();
   return (row) =>
-    ROW_ACTIONS.filter((action) => row.actions.includes(action)).map(
-      (action): MenuItem => ({
-        id: action,
-        label: t(action),
-        onSelect: () =>
-          router.push(
-            `/certificates/${encodeURIComponent(row.certificateId)}${
-              action === 'decide' ? '#rv-decision' : ''
-            }`,
-          ),
-      }),
-    );
+    ROW_ACTIONS.filter((action) => row.actions.includes(action)).map((action): MenuItem => ({
+      id: action,
+      label: t(action),
+      onSelect: () =>
+        router.push(
+          `/certificates/${encodeURIComponent(row.certificateId)}${
+            action === 'decide' ? '#rv-decision' : ''
+          }`,
+        ),
+    }));
 }
