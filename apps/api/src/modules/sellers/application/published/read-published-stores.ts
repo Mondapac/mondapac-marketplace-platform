@@ -112,6 +112,7 @@ export async function publishedStoresOf(
   const rule = deps.minimumOrderPolicy.rule(market);
   return stores.map((store): PublishedStore => {
     const base: PublishedStore = {
+      sellerId: store.sellerId,
       slug: store.slug,
       name: store.name,
       serviceAreaCode: store.serviceAreaCode,
