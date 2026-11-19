@@ -9,6 +9,8 @@ import {
   CONFIRMED_BY_MAX,
   REASON_MAX,
   REFERENCE_MAX,
+  type ExpertReference,
+  type ExpertReferenceView,
   type IssuerDetail,
   type Proposal,
 } from './types.ts';
@@ -276,6 +278,64 @@ export function ReactivateDialog({
   );
 }
 
+/**
+ * The new expert approval a reactivation names, so the second admin sees what they approve. The
+ * read needs the edit permission and the API records each one; nothing is read until View.
+ */
+function NewExpertApproval({
+  issuerId,
+  proposalId,
+  csrfToken,
+}: {
+  readonly issuerId: string;
+  readonly proposalId: string;
+  readonly csrfToken: string;
+}) {
+  const t = useTranslations('certificates.issuers.proposal.expert');
+  const tr = useTranslations();
+  const call = useIssuerCall(csrfToken);
+  const [shown, setShown] = useState<ExpertReference | 'none' | null>(null);
+
+  async function view() {
+    const answer = await call.run<ExpertReferenceView>(
+      'GET',
+      `${API_ISSUERS}/${issuerId}/expert-reference`,
+    );
+    if (!answer.ok) return;
+    const pending = answer.body.pendingReactivation;
+    setShown(
+      pending != null && pending.proposalId === proposalId ? pending.expertApproval : 'none',
+    );
+  }
+
+  if (shown === 'none') return <p className="text-fg-muted">{t('not-found')}</p>;
+  if (shown !== null) {
+    return (
+      <dl className="text-sm">
+        <dt className="text-fg-muted">{t('confirmed-by')}</dt>
+        <dd className="wrap-anywhere">{shown.confirmedBy}</dd>
+        <dt className="mt-1 text-fg-muted">{t('reference')}</dt>
+        <dd className="wrap-anywhere">{shown.reference}</dd>
+        <dd className="mt-1 text-fg-muted">{t('audited')}</dd>
+      </dl>
+    );
+  }
+  return (
+    <div className="flex flex-col items-start gap-2">
+      {call.problem === null ? null : <Banner tone="critical">{tr(call.problem.key)}</Banner>}
+      <Button
+        variant="secondary"
+        className="max-sm:w-full"
+        loading={call.pending}
+        disabled={call.pending}
+        onClick={() => void view()}
+      >
+        {t('view')}
+      </Button>
+    </div>
+  );
+}
+
 type Answer = 'approve' | 'reject' | 'withdraw';
 
 /**
@@ -347,6 +407,10 @@ export function ProposalCard({
           {proposal.reason.text}
         </p>
       ) : null}
+      <div className="flex flex-col gap-1">
+        <span className="text-fg-muted">{t('expert.title')}</span>
+        <NewExpertApproval issuerId={issuerId} proposalId={proposal.id} csrfToken={csrfToken} />
+      </div>
       {note === null ? null : <p className="text-fg-muted">{note}</p>}
       <div className="flex flex-wrap gap-2">
         {open.map(([kind, , variant]) => (

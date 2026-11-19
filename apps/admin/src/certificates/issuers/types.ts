@@ -66,6 +66,11 @@ export interface ExpertReference {
 export interface ExpertReferenceView {
   readonly issuerId: string;
   readonly current: ExpertReference | null;
+  /** The new reference of a pending reactivation, which the second admin approves. */
+  readonly pendingReactivation?: {
+    readonly proposalId: string;
+    readonly expertApproval: ExpertReference;
+  } | null;
 }
 
 /** A certificate type the Market has, from certification/admin/types. */
