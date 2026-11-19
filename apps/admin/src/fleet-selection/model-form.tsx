@@ -12,7 +12,12 @@ import {
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
-import { ReviewNoteField, trimmedNote } from '../shared/review-note.tsx';
+import {
+  ApprovalNotice,
+  ReviewNoteField,
+  trimmedNote,
+  useApprovalAction,
+} from '../shared/review-note.tsx';
 import {
   checkForm,
   moved,
@@ -45,6 +50,7 @@ export function ModelFormCard({
   problem,
   activeNote,
   reviewed,
+  approval,
   noteRejected,
   onSubmit,
   onCancel,
@@ -53,18 +59,24 @@ export function ModelFormCard({
   readonly initial: ModelForm;
   readonly fleets: readonly FleetRow[];
   readonly pending: boolean;
-  /** The message key under `fleets.error` of the last refused save, or null. */
+  /** The words of the last refused save, or null. */
   readonly problem: string | null;
   /** Names the methods this model is active for (an edit goes live at once), or null. */
   readonly activeNote: string | null;
-  /** The edit is reviewed in this Market: the form asks for a note (never on create). */
+  /** The change is reviewed in this Market: the form asks for a note. */
   readonly reviewed: boolean;
+  /**
+   * The save waits for another admin's approval (a create where delivery is reviewed: a model
+   * has no delete): the form says so and its button reads "Send for approval".
+   */
+  readonly approval: boolean;
   /** The API refused the note of the last save. */
   readonly noteRejected: boolean;
   readonly onSubmit: (body: { name: string; rule: Rule }, note: string | null) => void;
   readonly onCancel: () => void;
 }) {
   const t = useTranslations();
+  const actionLabel = useApprovalAction();
   const [form, setForm] = useState(initial);
   const [invalid, setInvalid] = useState<readonly FormField[]>([]);
   const [announce, setAnnounce] = useState('');
@@ -303,9 +315,15 @@ export function ModelFormCard({
               ) : null}
             </fieldset>
           ) : null}
+          {approval ? (
+            <div className="px-5 pt-4">
+              <ApprovalNotice />
+            </div>
+          ) : null}
           {reviewed ? (
             <div className="px-5 pt-4">
               <ReviewNoteField
+                approval={approval}
                 value={note}
                 onChange={(next) => {
                   setNote(next);
@@ -317,13 +335,13 @@ export function ModelFormCard({
           ) : null}
           {problem === null ? null : (
             <p role="alert" className="px-5 pt-4 text-sm text-critical-fg">
-              {t(`${P}.error.${problem}`)}
+              {problem}
             </p>
           )}
           {/* An editor of one list entry: it keeps its own Save and Cancel, not the page's bar. */}
           <div className="flex flex-wrap gap-3 px-5 py-4">
             <Button type="submit" loading={pending}>
-              {t(`${P}.model.save`)}
+              {actionLabel(t(`${P}.model.save`), approval)}
             </Button>
             <Button variant="secondary" onClick={onCancel}>
               {t(`${P}.model.cancel`)}

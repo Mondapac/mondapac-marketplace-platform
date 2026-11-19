@@ -202,6 +202,8 @@ export function useSalesExport(input: {
   readonly zone: string | null;
   readonly selection: ExportSelection;
   readonly omitZone?: boolean;
+  /** A list whose export has its own rules for the query (ids alone, no zone): it builds the string. */
+  readonly buildQuery?: (format: ExportFormat) => string;
   /** The file keeps the list's sort (`sort` and `direction` of `listQuery`). */
   readonly keepOrder?: boolean;
 }): { readonly item: ActionMenuItem; readonly dialog: ReactNode; readonly busy: boolean } {
@@ -232,15 +234,17 @@ export function useSalesExport(input: {
     setBusy(true);
     const work = downloadSalesExport({
       path: input.path,
-      query: exportQuery({
-        listQuery: input.listQuery,
-        format,
-        columns: input.columns,
-        zone: input.zone,
-        selection,
-        ...(input.omitZone === true ? { omitZone: true } : {}),
-        ...(input.keepOrder === true ? { keepOrder: true } : {}),
-      }),
+      query:
+        input.buildQuery?.(format) ??
+        exportQuery({
+          listQuery: input.listQuery,
+          format,
+          columns: input.columns,
+          zone: input.zone,
+          selection,
+          ...(input.omitZone === true ? { omitZone: true } : {}),
+          ...(input.keepOrder === true ? { keepOrder: true } : {}),
+        }),
       format,
       fallbackName: input.fallbackName,
       zone: input.zone,

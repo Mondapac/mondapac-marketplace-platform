@@ -343,6 +343,7 @@ const INVITATION_PORTS: readonly [keyof InvitationDependencies, InjectionToken][
   ['invitationRules', INVITATION_RULES],
   ['stepUp', STEP_UP_CONSUMER],
   ['sheetWriter', SHEET_WRITER],
+  ['dayZone', ADMIN_DAY_ZONE],
 ];
 
 /** The invite link and attribution use cases (phase 4a): their ports, with the peers bound at start. */

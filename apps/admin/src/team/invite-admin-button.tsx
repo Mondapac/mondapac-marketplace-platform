@@ -10,9 +10,12 @@ import type { PlatformRole } from './types.ts';
 export function InviteAdminButton({
   roles,
   csrfToken,
+  reviewed = false,
 }: {
   readonly roles: readonly PlatformRole[];
   readonly csrfToken: string;
+  /** The Market reviews invitations (`review` of the team list): the dialog asks for a note. */
+  readonly reviewed?: boolean;
 }) {
   const t = useTranslations('identity.members');
   const [open, setOpen] = useState(false);
@@ -24,6 +27,7 @@ export function InviteAdminButton({
         onClose={() => setOpen(false)}
         roles={roles}
         csrfToken={csrfToken}
+        reviewed={reviewed}
       />
     </>
   );

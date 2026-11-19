@@ -168,6 +168,9 @@ export class MemorySelection implements FleetSelectionRepository {
         x.marketId === m.marketId && x.id !== except && x.name.toLowerCase() === name.toLowerCase(),
     );
   }
+  nameTaken(m: MarketContext, name: string) {
+    return Promise.resolve(this.taken(m, name, null));
+  }
   insertModel(m: MarketContext, model: FleetSelectionModel) {
     if (this.taken(m, model.name, null)) return Promise.resolve('name-taken' as const);
     this.models.set(model.id, { ...model, marketId: m.marketId });

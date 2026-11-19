@@ -624,6 +624,64 @@ describe('value suggestions over HTTP (integration)', () => {
       expect((rejected.body as typeof body).openCount).toBe(2);
     });
 
+    it('reads the seller list as a super list: search, sort, page numbers, prev-next and conflicts', async () => {
+      await boot();
+      await sellerSeeded(code);
+      suggestionMarket = code as AccountState['marketId'];
+      const first = stored(1, SELLER);
+      const second = stored(2, SELLER, 'reject');
+      const third = stored(3, SELLER);
+      stored(4, OTHER_SELLER);
+      const owner = sellerSession(code, OWNER, 1);
+      type Body = {
+        items: { id: string; label: string }[];
+        total: number | null;
+        page: number;
+        pageSize: number;
+        paging: string;
+        hasNext: boolean;
+        nextAfterId: string | null;
+        openCount: number;
+      };
+      const read = async (query: string, status = 200) =>
+        (await http().get(`${OWN}${query}`).set(owner).expect(status)).body as Body;
+
+      const one = await read('?page=1&pageSize=2');
+      expect(one).toMatchObject({ page: 1, pageSize: 2, paging: 'pages', total: 3, hasNext: true });
+      expect(one.items.map((i) => i.id)).toEqual([third, second]);
+      expect(one.nextAfterId).toBe(second);
+      const two = await read('?page=2&pageSize=2');
+      expect(two.items.map((i) => i.id)).toEqual([first]);
+      expect(two).toMatchObject({ hasNext: false, nextAfterId: null });
+      expect((await read('?page=9&pageSize=2')).items).toEqual([]);
+
+      const asc = await read('?sort=label&direction=asc');
+      expect(asc.items.map((i) => i.label)).toEqual(['Value 1', 'Value 2', 'Value 3']);
+      const byStatus = await read('?sort=status&direction=asc');
+      expect(byStatus.items.map((i) => i.id)).toEqual([third, first, second]);
+      const found = await read('?q=value%202');
+      expect(found.items.map((i) => i.id)).toEqual([second]);
+      expect(found.nextAfterId).toBeNull();
+      expect((await read('?q=%25')).total).toBe(0);
+      expect((await read('?status=open&q=value')).total).toBe(2);
+
+      const noTotal = await read('?paging=prev-next&pageSize=2');
+      expect(noTotal).toMatchObject({ total: null, paging: 'prev-next', hasNext: true });
+      expect(noTotal.items).toHaveLength(2);
+      expect((await read('')).openCount).toBe(2);
+
+      const cursor = await read('?limit=2');
+      expect(cursor).toMatchObject({ page: 1, paging: 'prev-next', total: null, hasNext: true });
+      await read('?limit=2&q=value', 400);
+      await read('?limit=2&page=2', 400);
+      await read(`?afterId=${third}&sort=label`, 400);
+      await read('?sort=price', 400);
+      await read('?page=101', 400);
+      await read('?pageSize=51', 400);
+      await read('?q=a%00b', 400);
+      await read('?q=x&search=y', 400);
+    });
+
     it('refuses a bad query with 400 and a member without the view key with 403', async () => {
       await boot();
       await sellerSeeded(code);
