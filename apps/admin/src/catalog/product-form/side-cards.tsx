@@ -61,9 +61,10 @@ export function StatusCard({
       <p className="text-sm text-fg-muted">
         {published ? t('status.published-help', { n: publishedNo ?? 1 }) : t('status.draft-help')}
       </p>
-      {/* The button is natively disabled (the library Button styles that state), so the reason is tied to it and announced when it changes. */}
+      {/* While fields are missing the button is aria-disabled, not natively disabled, so keyboard and screen reader users can focus it and hear the reason tied to it (announced when it changes). It is natively disabled only while a request runs. */}
       <Button
-        disabled={pending || !canPublish}
+        disabled={pending}
+        softDisabled={!canPublish}
         {...(blockers === null ? {} : { 'aria-describedby': blockersId })}
         onClick={onPublish}
       >

@@ -4,11 +4,21 @@ import type { INestApplicationContext } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { Client } from 'pg';
 import pino from 'pino';
-import { ok, Temporal } from '@mondapac/shared-kernel';
+import { ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
-import { testMarketContext } from '@mondapac/shared-kernel/testing';
+import {
+  FixedClock,
+  SequenceIdGenerator,
+  testAuthenticatedActor,
+  testCallContext,
+  testMarketContext,
+} from '@mondapac/shared-kernel/testing';
 import { AppModule } from '../../src/app.module';
 import { SystemRequestsModule } from '../../src/modules/system-requests';
+import {
+  exportRequests,
+  type SystemRequestsExportDependencies,
+} from '../../src/modules/system-requests/application/export-flow';
 import {
   POLICY_REPOSITORY,
   type PolicyRepository,
@@ -18,6 +28,7 @@ import {
   type NewRequest,
   type RequestRepository,
 } from '../../src/modules/system-requests/application/ports/request.repository';
+import { ExceljsSheetWriter, type ExportFile } from '../../src/platform/list-export';
 import { PLATFORM_TENANT_ID } from '../../src/platform/market-context/tenant';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
 import { testAppConfig, TEST_MARKETS } from '../support/test-config';
@@ -36,6 +47,12 @@ const INSUFFICIENT_PRIVILEGE = '42501';
 const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
 const nowMs = () => Temporal.Instant.fromEpochMilliseconds(Date.now());
 const account = () => randomUUID() as Id<'Account'>;
+/** A parsed (version 7) id, as a minted actor needs; random in its last part. */
+const parsedId = <T extends string>(): Id<T> => {
+  const parsed = parseId(`01990000-0000-7000-8000-${randomUUID().slice(-12)}`);
+  if (!parsed.ok) throw new Error('bad id');
+  return parsed.value as Id<T>;
+};
 
 describe('system requests (database integration)', () => {
   let app: INestApplicationContext;
@@ -380,6 +397,111 @@ describe('system requests (database integration)', () => {
         await inUnit(market, () => requests.count(market, { ...filter, text: '5_%' }, 100)),
       );
       expect(wildcard).toBe(0);
+    });
+
+    it('exports the list filter page by page, in the list order, past one read of 100 rows', async () => {
+      const author = parsedId<'Account'>();
+      const viewerId = parsedId<'Account'>();
+      const base = nowMs();
+      const made: NewRequest[] = [];
+      for (let n = 0; n < 103; n += 1) {
+        // Two requests per instant: the keyset must break the tie by number.
+        const request = newRequest({
+          requestedBy: author,
+          note: `export ${n}`,
+          appliedAt: base.add({ seconds: Math.floor(n / 2) }),
+        });
+        made.push(request);
+        await open(market, request);
+      }
+      const clock = new FixedClock(base.add({ hours: 1 }));
+      const deps: SystemRequestsExportDependencies = {
+        unitOfWork,
+        requests,
+        policy,
+        reverters: { find: () => null },
+        authorisation: { check: () => Promise.resolve({ allowed: true } as const) },
+        stepUp: { consume: () => Promise.reject(new Error('not used')) },
+        audit: { record: () => Promise.reject(new Error('not used')) },
+        adminNames: { namesOf: () => Promise.resolve(new Map()) },
+        ids: new SequenceIdGenerator(clock),
+        clock,
+        sheetWriter: new ExceljsSheetWriter(),
+        zone: { zoneOf: () => 'UTC' },
+      };
+      const context = testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'admin',
+          accountId: viewerId,
+          sessionId: parsedId<'Session'>(),
+          sellerId: null,
+        }),
+      );
+      const text = async (file: ExportFile) => {
+        let out = '';
+        for await (const chunk of file.chunks) out += typeof chunk === 'string' ? chunk : '';
+        return out
+          .replace(/^\uFEFF/, '')
+          .split('\r\n')
+          .filter((line) => line !== '');
+      };
+      const numberOf = (line: string) => line.split(',')[0];
+
+      const newestFirst = await exportRequests(deps, context, {
+        view: 'all',
+        requestedBy: author,
+        sort: 'applied',
+        direction: 'desc',
+      });
+      if (!newestFirst.ok) throw new Error(`export failed: ${newestFirst.error.code}`);
+      const rows = (await text(newestFirst.value)).slice(1);
+      const stored = value(
+        await inUnit(market, () =>
+          requests.page(market, { requestedBy: author }, 'applied', 'desc', {
+            kind: 'offset',
+            offset: 0,
+            limit: 200,
+          }),
+        ),
+      );
+      expect(rows).toHaveLength(103);
+      expect(rows.map(numberOf)).toEqual(stored.map((row) => `SR-${row.number}`));
+
+      // Needs my review never holds the viewer's own requests, as in the list.
+      const mine = await exportRequests(
+        deps,
+        testCallContext(
+          market,
+          testAuthenticatedActor(market, {
+            population: 'admin',
+            accountId: author,
+            sessionId: parsedId<'Session'>(),
+            sellerId: null,
+          }),
+        ),
+        { view: 'needs-my-review', requestedBy: author },
+      );
+      if (!mine.ok) throw new Error('export failed');
+      expect(await text(mine.value)).toHaveLength(1);
+      // Another Market's file holds none of these.
+      const otherMarket = marketOf(TEST_MARKETS.find((other) => other !== code)!);
+      const elsewhere = await exportRequests(
+        deps,
+        testCallContext(
+          otherMarket,
+          testAuthenticatedActor(otherMarket, {
+            population: 'admin',
+            accountId: viewerId,
+            sessionId: parsedId<'Session'>(),
+            sellerId: null,
+          }),
+        ),
+        { view: 'all', requestedBy: author },
+      );
+      if (!elsewhere.ok) throw new Error('export failed');
+      expect(await text(elsewhere.value)).toHaveLength(1);
+      expect(made).toHaveLength(103);
     });
 
     it('stores the policy with a version check', async () => {

@@ -46,8 +46,10 @@ mode from the design; no separate brief.
 | marketplace   | off, low   | `system-requests.marketplace.review`   |
 | content       | off, low   | `system-requests.content.review`       |
 
-The queue needs `system-requests.request.view`; the policy page needs `policy.view` and
-`policy.manage`. All keys are protected.
+The queue needs `system-requests.request.view` (its export too); the policy page needs
+`policy.view` and `policy.manage`. Sharing a saved filter of the queue with every admin, or
+managing one another admin shared, needs `system-requests.saved-filter.share`. All keys are
+protected.
 
 ## For a module that adds a reviewed area
 
@@ -378,6 +380,31 @@ count failed after the approvals had committed (the route never fails after a co
 treats null as "stop" and reloads the list. Refused in an acting-as session;
 needs `system-requests.request.view`.
 
+### Saved filters and export (rule 14)
+
+- **Saved filters** go through the generic routes of `lists` (`lists/admin/saved-filters`, list key
+  `admin.system-requests.requests`, registered with `registerLists`; view key
+  `system-requests.request.view`, share key `system-requests.saved-filter.share`). No migration
+  (the `list_key` CHECK is a pattern). The document is closed (`application/saved-filter-list.ts`):
+  `v: 1`, `view`, optional `filters` (`area`, `risk`, `status` as lists of words in the
+  vocabulary's order; `from` and `to` as calendar days on the admin's clock, `to` not before
+  `from`; `overdue: true`), `sort`, `direction`. The search text, the deep-link subject and the
+  Requested by / Decided by ids are never saved.
+- **Export**: `GET requests/export` (`ExportSystemRequests`, key `system-requests.request.view`)
+  writes CSV or XLSX through the shared list export. The rows are the chosen `ids` (at most 100,
+  the selection's cap, in that order; an id that is not a request of the Market refuses the whole
+  file with 404 `system-requests.not-found`) or what the list's own keys match, parsed by the
+  list's parser and narrowed by the same view filter (so Needs my review is the caller's review
+  areas and never their own requests), in the list's sort, at most 10,000 (more: 413
+  `batch.too-large` with `details.max` and `details.total`). Any other key is refused (paging
+  included). Fixed columns: Request, Note, Area, Risk, Status; optional, as the column picker
+  names them: `subject` (type, label, id), `requestedBy` (name, id), `applied`, `due` (with an
+  Overdue flag), `decidedBy` (name, id), `decided` (time, decision), `comments`. Times are ISO
+  8601 with the offset of `zone` (the Market's zone when absent). The values before and after a
+  change are never written: the list keeps them for the author and the area's reviewers only.
+  The rows stream 100 at a time by keyset; names and subject labels are read per page after the
+  read, as on the list.
+
 ### Confirmed behaviour
 
 - **Approve works on a gone subject.** Approving keeps the change and asks no reverter, so it
@@ -413,8 +440,7 @@ or the values.
 
 ## Not in this package
 
-- Saved filters, column picker and CSV/XLSX export come with the shared super-list kit (phase 0,
-  handoffs in `super-list/`).
+- The column choice stays in the browser (the queue does not use `lists` column preferences yet).
 - The area hooks in the other owning modules (roles, payouts, delivery, catalogue, ...) are
   follow-ups, one per module. Creating and moving are reviewed after; deleting, merging and
   importing wait for approval (owner decision of 18 Nov 2026, "Actions that wait for approval").
@@ -427,8 +453,10 @@ or the values.
 
 The admin panel pages (queue, detail, review policy, menu badge) are built. Left out for now:
 
-- Saved filters and CSV/XLSX export: the queue shows Export disabled with the hint "Export comes
-  with saved filters" until the shared kit has System requests routes for them.
+- Saved filters and CSV/XLSX export are built: saved filters are tabs after the views (Save
+  filter… in the chips row, Manage filters in the views bar); Export in the toolbar writes the
+  ticked rows, or with none ticked (or after "Select all matching") every row the view, search
+  and filters match, in the list's order, with the columns shown.
 - Requested by and Decided by pickers: the team list is not relayed to the browser and needs a
   different permission, so those two filters work from ids in the address only.
 - Phone layout: checked on a 390x844 phone emulation, at 768 and 1280, in light and dark (queue,

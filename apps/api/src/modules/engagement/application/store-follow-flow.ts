@@ -9,6 +9,7 @@ import {
   type StoreFollow,
 } from '../domain/store-follow';
 import type { EngagementDependencies } from './engagement-dependencies';
+import type { StoreLogoRef } from './ports/published-stores';
 import type { StoreFollowCursor } from './ports/store-follow.repository';
 
 // Store follows (customers management phase 3). The customer follows and unfollows a store from
@@ -39,6 +40,10 @@ export interface MyStore {
   readonly sellerId: Id<'Seller'>;
   /** The store's address now; null when the store is no longer public (it can still be unfollowed). */
   readonly slug: string | null;
+  /** The public store name now; null when the store is no longer public: never kept or guessed. */
+  readonly name: string | null;
+  /** The current logo; null when there is none or the store is no longer public. */
+  readonly logo: StoreLogoRef | null;
   readonly followedAt: Temporal.Instant;
 }
 
@@ -208,15 +213,17 @@ export async function myStores(
   if (!read.ok) return read;
   const { rows, total } = read.value;
   const page = rows.slice(0, limit);
-  const slugs = await deps.stores.slugsOf(
+  const cards = await deps.stores.cardsOf(
     context,
     page.map((follow) => follow.sellerId),
   );
-  if (!slugs.ok) return err({ code: 'engagement.unavailable' });
+  if (!cards.ok) return err({ code: 'engagement.unavailable' });
   return ok({
     items: page.map((follow) => ({
       sellerId: follow.sellerId,
-      slug: slugs.value.get(follow.sellerId) ?? null,
+      slug: cards.value.get(follow.sellerId)?.slug ?? null,
+      name: cards.value.get(follow.sellerId)?.name ?? null,
+      logo: cards.value.get(follow.sellerId)?.logo ?? null,
       followedAt: follow.followedAt,
     })),
     total,
