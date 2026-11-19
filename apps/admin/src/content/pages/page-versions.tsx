@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button, Dialog, toast, type BadgeTone } from '@mondapac/ui';
+import { Badge, Banner, Button, Dialog, Menu, toast, type BadgeTone } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -121,17 +121,20 @@ export function PageVersions({
                 </p>
               </div>
               {readOnly || version.state === 'draft' ? null : (
-                <Button
-                  variant="secondary"
-                  aria-label={t('restore-label', { n: version.versionNo })}
-                  disabled={command.pending}
-                  onClick={() => {
-                    command.reset();
-                    setRestoring(version);
-                  }}
-                >
-                  {t('restore')}
-                </Button>
+                <Menu
+                  label={t('actions-for', { n: version.versionNo })}
+                  items={[
+                    {
+                      id: 'restore',
+                      label: t('restore'),
+                      disabled: command.pending,
+                      onSelect: () => {
+                        command.reset();
+                        setRestoring(version);
+                      },
+                    },
+                  ]}
+                />
               )}
             </li>
           ))}

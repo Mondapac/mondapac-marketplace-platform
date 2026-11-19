@@ -4,8 +4,10 @@ import {
   BackLink,
   Banner,
   Button,
+  ConfirmAction,
   EmptyState,
   LoadError,
+  Menu,
   TextField,
   toast,
   DetailSkeleton,
@@ -30,9 +32,24 @@ type Load = 'loading' | 'ready' | 'failed';
 type Category = Taxonomy['categories'][number];
 /** A write of this page: saving a category, adding a tag, or a delete. */
 type Write = 'category' | 'tag' | 'delete';
+/** The category or tag whose delete the person is asked to confirm. */
+interface DeleteTarget {
+  readonly label: string;
+  readonly path: string;
+  readonly done: string;
+  readonly heading: 'categories' | 'tags';
+}
 
 const API_CATEGORIES = `${API_BLOG_TAXONOMY}/categories`;
 const API_TAGS = `${API_BLOG_TAXONOMY}/tags`;
+/** The row's Actions button, so focus can go back to it when the form closes. */
+function triggerOf(label: string): HTMLElement | null {
+  return (
+    [...document.querySelectorAll<HTMLElement>('button')].find(
+      (button) => button.getAttribute('aria-label') === label,
+    ) ?? null
+  );
+}
 const TAG_SLUG_OK = (slug: string): boolean =>
   slug.length >= 2 && slug.length <= 40 && SLUG_PATTERN.test(slug);
 
@@ -86,7 +103,7 @@ export function TaxonomyView({
   const [formError, setFormError] = useState<string | null>(null);
   const [tagName, setTagName] = useState('');
   const [tagSlug, setTagSlug] = useState('');
-  const [confirming, setConfirming] = useState<string | null>(null);
+  const [confirming, setConfirming] = useState<DeleteTarget | null>(null);
   const [tagSlugBad, setTagSlugBad] = useState(false);
   const formHeading = useRef<HTMLHeadingElement>(null);
   // The button that opened the form, so focus goes back to it when the form closes.
@@ -216,12 +233,13 @@ export function TaxonomyView({
     }
   }
 
-  async function remove(path: string, done: string, heading: 'categories' | 'tags') {
-    const ok = await write('delete', 'DELETE', path, undefined);
-    setConfirming(null);
+  async function remove(target: DeleteTarget) {
+    const ok = await write('delete', 'DELETE', target.path, undefined);
+    // A refusal (a post uses it) stays in the dialog, with its reason.
     if (ok) {
-      toast.success(t(done));
-      (heading === 'tags' ? tagsHeading : categoriesHeading).current?.focus();
+      setConfirming(null);
+      toast.success(t(target.done));
+      (target.heading === 'tags' ? tagsHeading : categoriesHeading).current?.focus();
     }
   }
 
@@ -239,56 +257,13 @@ export function TaxonomyView({
     }
   }
 
-  const confirmRow = (
-    key: string,
-    label: string,
-    path: string,
-    done: string,
-    heading: 'categories' | 'tags',
-  ) =>
-    confirming === key ? (
-      <span className="flex flex-wrap items-center gap-2" role="group" aria-label={label}>
-        <span className="text-sm">{t('delete-sure', { name: label })}</span>
-        <Button
-          variant="destructive-solid"
-          loading={running === 'delete'}
-          disabled={busy && running !== 'delete'}
-          aria-label={t('delete-confirm-named', { name: label })}
-          onClick={() => void remove(path, done, heading)}
-        >
-          {t('delete-confirm')}
-        </Button>
-        <Button
-          variant="secondary"
-          autoFocus
-          onClick={() => {
-            setConfirming(null);
-            requestAnimationFrame(() => document.getElementById(`delete-${key}`)?.focus());
-          }}
-        >
-          {t('cancel')}
-        </Button>
-      </span>
-    ) : (
-      <Button
-        id={`delete-${key}`}
-        variant="secondary"
-        disabled={busy || !canEdit}
-        aria-label={t('delete-named', { name: label })}
-        onClick={() => {
-          setError(null);
-          setConfirming(key);
-        }}
-      >
-        {t('delete')}
-      </Button>
-    );
-
   return (
     <div className="flex flex-col gap-6">
       <BackLink href={BLOG_PATH} label={t('back')} />
       {!canEdit ? <Banner tone="info">{t('read-only')}</Banner> : null}
-      {error !== null ? <Banner tone="critical">{t(`error.${error}`)}</Banner> : null}
+      {error !== null && confirming === null ? (
+        <Banner tone="critical">{t(`error.${error}`)}</Banner>
+      ) : null}
 
       <section
         aria-labelledby="categories-title"
@@ -332,23 +307,36 @@ export function TaxonomyView({
                   </span>
                 </div>
                 {canEdit ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      variant="secondary"
-                      disabled={busy || locales === null || editing !== null}
-                      aria-label={t('edit-named', { name: nameOf(category) })}
-                      onClick={(event) => startEdit(category, event.currentTarget)}
-                    >
-                      {t('edit')}
-                    </Button>
-                    {confirmRow(
-                      category.id,
-                      nameOf(category),
-                      `${API_CATEGORIES}/${category.id}`,
-                      'category-deleted',
-                      'categories',
-                    )}
-                  </div>
+                  <Menu
+                    label={t('actions-for', { name: nameOf(category) })}
+                    items={[
+                      {
+                        id: 'edit',
+                        label: t('edit'),
+                        disabled: busy || locales === null || editing !== null,
+                        onSelect: () =>
+                          startEdit(
+                            category,
+                            triggerOf(t('actions-for', { name: nameOf(category) })),
+                          ),
+                      },
+                      {
+                        id: 'delete',
+                        label: t('delete'),
+                        tone: 'critical',
+                        disabled: busy,
+                        onSelect: () => {
+                          setError(null);
+                          setConfirming({
+                            label: nameOf(category),
+                            path: `${API_CATEGORIES}/${category.id}`,
+                            done: 'category-deleted',
+                            heading: 'categories',
+                          });
+                        },
+                      },
+                    ]}
+                  />
                 ) : null}
               </li>
             ))}
@@ -434,9 +422,28 @@ export function TaxonomyView({
                   <span className="font-medium">{tag.name}</span>
                   <span className="text-sm text-fg-muted">{tag.slug}</span>
                 </div>
-                {canEdit
-                  ? confirmRow(tag.id, tag.name, `${API_TAGS}/${tag.id}`, 'tag-deleted', 'tags')
-                  : null}
+                {canEdit ? (
+                  <Menu
+                    label={t('actions-for', { name: tag.name })}
+                    items={[
+                      {
+                        id: 'delete',
+                        label: t('delete'),
+                        tone: 'critical',
+                        disabled: busy,
+                        onSelect: () => {
+                          setError(null);
+                          setConfirming({
+                            label: tag.name,
+                            path: `${API_TAGS}/${tag.id}`,
+                            done: 'tag-deleted',
+                            heading: 'tags',
+                          });
+                        },
+                      },
+                    ]}
+                  />
+                ) : null}
               </li>
             ))}
           </ul>
@@ -482,6 +489,22 @@ export function TaxonomyView({
           </form>
         ) : null}
       </section>
+      <ConfirmAction
+        open={confirming !== null}
+        level={3}
+        title={t('delete-sure', { name: confirming?.label ?? '' })}
+        body={<p>{t('delete-body')}</p>}
+        rowName={confirming?.label ?? ''}
+        typeLabel={t('delete-type')}
+        confirmLabel={t('delete-confirm')}
+        cancelLabel={t('cancel')}
+        pending={running === 'delete'}
+        error={confirming !== null && error !== null ? t(`error.${error}`) : null}
+        onConfirm={() => {
+          if (confirming !== null) void remove(confirming);
+        }}
+        onCancel={() => setConfirming(null)}
+      />
     </div>
   );
 }

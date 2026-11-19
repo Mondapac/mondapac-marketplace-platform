@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button, CARD_TABLE, type BadgeTone, toast } from '@mondapac/ui';
+import { Badge, Banner, CARD_TABLE, Menu, type BadgeTone, toast } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -127,18 +127,17 @@ export function SlideVersions({
                       </td>
                       <td className={`${CARD_TABLE.cell} max-lg:col-span-2 max-lg:pt-1`}>
                         {editable && state !== 'draft' ? (
-                          <Button
-                            variant="secondary"
-                            onClick={() =>
-                              setRestoring({ id: version.id, versionNo: version.versionNo })
-                            }
-                          >
-                            {t('restore')}
-                            <span className="sr-only">
-                              {' '}
-                              {t('restore-for', { version: version.versionNo })}
-                            </span>
-                          </Button>
+                          <Menu
+                            label={t('actions-for', { version: version.versionNo })}
+                            items={[
+                              {
+                                id: 'restore',
+                                label: t('restore'),
+                                onSelect: () =>
+                                  setRestoring({ id: version.id, versionNo: version.versionNo }),
+                              },
+                            ]}
+                          />
                         ) : null}
                       </td>
                     </tr>
