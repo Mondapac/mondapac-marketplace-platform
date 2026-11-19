@@ -2314,7 +2314,6 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'commission-payouts/admin/payouts/export:ids': 7400,
   'blog/admin/posts/export:ids': 7400,
   'customers/admin/deletion-requests/export:ids': 7400,
-  'blog/admin/posts/export:ids': 7400,
   'wallet/admin/credit-requests/export:ids': 7400,
   'commission-payouts/admin/disputes/export:ids': 7400,
   'system-requests/admin/requests/export:ids': 3700,
