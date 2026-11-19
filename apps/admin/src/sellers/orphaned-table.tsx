@@ -1,4 +1,4 @@
-import { Badge, Button, type BadgeTone } from '@mondapac/ui';
+import { Badge, Menu, type BadgeTone } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { shortInstant } from '../shared/format.ts';
 import { known } from './format.ts';
@@ -44,8 +44,8 @@ export function OrphanedTable({
             <th scope="col" className="whitespace-nowrap px-3 py-3 font-medium">
               {t('col.created')}
             </th>
-            <th scope="col" className="px-3 py-3 font-medium">
-              <span className="sr-only">{t('col.actions')}</span>
+            <th scope="col" className="px-3 py-3 text-end font-medium">
+              {t('col.actions')}
             </th>
           </tr>
         </thead>
@@ -53,7 +53,6 @@ export function OrphanedTable({
           {rows.map((row) => {
             const state = known(row.state, ORPHAN_STATES);
             const invite = row.actions.invite;
-            const helpId = `orphan-help-${row.sellerId}`;
             return (
               <tr key={row.sellerId}>
                 <td
@@ -68,28 +67,21 @@ export function OrphanedTable({
                 <td className="px-3 py-3">
                   <time dateTime={row.createdAt}>{shortInstant(row.createdAt, locale)}</time>
                 </td>
-                <td className="px-3 py-3">
-                  <div className="flex flex-col items-start gap-1">
-                    <Button
-                      variant="secondary"
-                      className="min-h-12 whitespace-nowrap"
-                      disabled={!invite.allowed}
-                      aria-describedby={invite.allowed ? undefined : helpId}
-                      aria-label={
-                        invite.allowed
-                          ? t('invite.row-label', { id: shortSellerId(row.sellerId) })
-                          : undefined
-                      }
-                      onClick={() => onInvite(row)}
-                    >
-                      {t('invite.action')}
-                    </Button>
-                    {invite.allowed ? null : (
-                      <p id={helpId} className="max-w-56 text-fg-muted">
-                        {t(`invite.unavailable.${helpKey(invite.code)}`)}
-                      </p>
-                    )}
-                  </div>
+                <td className="px-3 py-3 text-end">
+                  <Menu
+                    label={t('actions-for', { id: shortSellerId(row.sellerId) })}
+                    items={[
+                      {
+                        id: 'invite',
+                        label: t('invite.action'),
+                        disabled: !invite.allowed,
+                        ...(invite.allowed
+                          ? {}
+                          : { reason: t(`invite.unavailable.${helpKey(invite.code)}`) }),
+                        onSelect: () => onInvite(row),
+                      },
+                    ]}
+                  />
                 </td>
               </tr>
             );

@@ -7,6 +7,7 @@ import {
   Button,
   Dialog,
   EmptyState,
+  Menu,
   SaveBar,
   SettingRow,
   SettingSelect,
@@ -497,16 +498,19 @@ export function FleetSelectionPanel({
                           })}
                     </p>
                     {canManage ? (
-                      <Button
-                        variant="secondary"
-                        aria-label={t(`${P}.models.edit-named`, { name: model.name })}
-                        onClick={() => {
-                          setFormProblem(null);
-                          setEditing({ kind: 'edit', model });
-                        }}
-                      >
-                        {t(`${P}.models.edit`)}
-                      </Button>
+                      <Menu
+                        label={t(`${P}.models.actions-for`, { name: model.name })}
+                        items={[
+                          {
+                            id: 'edit',
+                            label: t(`${P}.models.edit`),
+                            onSelect: () => {
+                              setFormProblem(null);
+                              setEditing({ kind: 'edit', model });
+                            },
+                          },
+                        ]}
+                      />
                     ) : null}
                   </div>
                 </li>

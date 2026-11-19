@@ -85,6 +85,19 @@ describe('percent helpers', () => {
   });
 });
 
+/** Opens a strategy's Actions menu and picks an item. */
+function pick(name: string, item: string) {
+  fireEvent.click(screen.getByRole('button', { name: `Actions for ${name}` }));
+  fireEvent.click(screen.getByRole('menuitem', { name: item }));
+}
+
+/** Types the strategy's name into a delete dialog. */
+function typeName(name: string) {
+  fireEvent.change(screen.getByLabelText('Type the strategy name to confirm'), {
+    target: { value: name },
+  });
+}
+
 describe('TaxPanel', () => {
   it('shows the built-in rate when no strategy is in force, and the strategies', () => {
     mount(data());
@@ -102,17 +115,16 @@ describe('TaxPanel', () => {
   it('hides every action without the manage key', () => {
     mount(data(), false);
     expect(screen.queryByRole('button', { name: 'Add strategy' })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Edit/ })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Delete/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Actions for/ })).toBeNull();
     expect(screen.getByText(/You can see the tax strategies/)).toBeTruthy();
   });
 
   it('hides Activate and Delete on the strategy in force', () => {
     const active = strategy({ active: true });
     mount(data({ activeStrategyId: active.id, strategies: [active] }));
-    expect(screen.getByRole('button', { name: 'Edit GST 10' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Activate GST 10' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Delete GST 10' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for GST 10' }));
+    expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual(['Edit…']);
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
     expect(screen.getByRole('button', { name: 'Back to built-in rate' })).toBeTruthy();
   });
 
@@ -201,7 +213,7 @@ describe('TaxPanel', () => {
   it('edits through PUT', async () => {
     call.mockResolvedValue(ok(data()));
     mount(data());
-    fireEvent.click(screen.getByRole('button', { name: 'Edit GST 10' }));
+    pick('GST 10', 'Edit…');
     fireEvent.change(screen.getByLabelText('Rate (%)'), { target: { value: '12' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save strategy' }));
     await waitFor(() =>
@@ -217,7 +229,7 @@ describe('TaxPanel', () => {
   it('confirms before activating, and sends the id', async () => {
     call.mockResolvedValue(ok(data()));
     mount(data());
-    fireEvent.click(screen.getByRole('button', { name: 'Activate GST 10' }));
+    pick('GST 10', 'Activate…');
     expect(screen.getByText(/It applies to new orders only/)).toBeTruthy();
     expect(call).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('button', { name: 'Activate' }));
@@ -250,7 +262,12 @@ describe('TaxPanel', () => {
   it('says why a delete was refused and keeps the dialog open', async () => {
     call.mockResolvedValueOnce(fail(409, 'tax.strategy-active'));
     mount(data());
-    fireEvent.click(screen.getByRole('button', { name: 'Delete GST 10' }));
+    pick('GST 10', 'Delete…');
+    // Irreversible: Delete stays off until the name is typed.
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Delete strategy' }).disabled,
+    ).toBe(true);
+    typeName('GST 10');
     fireEvent.click(screen.getByRole('button', { name: 'Delete strategy' }));
     expect(await screen.findByText(/This strategy is in force/)).toBeTruthy();
   });
@@ -260,7 +277,12 @@ describe('TaxPanel', () => {
       .mockResolvedValueOnce(fail(404, 'tax.strategy-not-found'))
       .mockResolvedValueOnce(ok(data({ strategies: [] })));
     mount(data());
-    fireEvent.click(screen.getByRole('button', { name: 'Delete GST 10' }));
+    pick('GST 10', 'Delete…');
+    // Irreversible: Delete stays off until the name is typed.
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Delete strategy' }).disabled,
+    ).toBe(true);
+    typeName('GST 10');
     fireEvent.click(screen.getByRole('button', { name: 'Delete strategy' }));
     expect(await screen.findByText('No tax strategies yet')).toBeTruthy();
   });

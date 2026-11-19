@@ -60,9 +60,15 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+/** Opens a row's Actions menu and picks Invite owner…, which opens the dialog. */
+async function openInvite(index = 0) {
+  fireEvent.click((await screen.findAllByRole('button', { name: /Actions for seller/ }))[index]!);
+  fireEvent.click(await screen.findByRole('menuitem', { name: 'Invite owner…' }));
+}
+
 /** Opens the dialog of the first row and fills it in. */
 async function openAndFill(email = 'owner@example.com', name = 'Ola Owner') {
-  fireEvent.click((await screen.findAllByRole('button', { name: /Invite owner for seller/ }))[0]!);
+  await openInvite();
   fireEvent.change(await screen.findByLabelText(/^Email/), { target: { value: email } });
   fireEvent.change(screen.getByLabelText(/^Owner name/), { target: { value: name } });
 }
@@ -142,10 +148,12 @@ describe('sellers without an owner', () => {
   ])('disables the invite with help text when the hint is %s', async (code, help) => {
     call.mockResolvedValueOnce(page([row(A, { actions: { invite: { allowed: false, code } } })]));
     mount();
-    const button = await screen.findByRole('button', { name: 'Invite owner' });
-    expect((button as HTMLButtonElement).disabled).toBe(true);
-    const note = screen.getByText(help);
-    expect(button.getAttribute('aria-describedby')).toBe(note.id);
+    fireEvent.click(await screen.findByRole('button', { name: /Actions for seller/ }));
+    const item = await screen.findByRole('menuitem', { name: /Invite owner…/ });
+    expect(item.getAttribute('aria-disabled') ?? String((item as HTMLButtonElement).disabled)).toBe(
+      'true',
+    );
+    expect(screen.getByText(help)).toBeTruthy();
   });
 
   it('sends the invitation, removes the row and says so', async () => {
@@ -250,7 +258,7 @@ describe('sellers without an owner', () => {
     expect(sendButton().disabled).toBe(true);
     // Closing and opening again keeps the wait.
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    fireEvent.click(screen.getByRole('button', { name: /Invite owner for seller/ }));
+    await openInvite();
     expect(await screen.findByText(message)).toBeTruthy();
     expect(sendButton().disabled).toBe(true);
     await act(async () => {
@@ -317,7 +325,7 @@ describe('sellers without an owner', () => {
     submit();
     expect(await screen.findByText('Enter a valid email address.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
-    fireEvent.click(screen.getByRole('button', { name: /Invite owner for seller/ }));
+    await openInvite();
     expect((await screen.findByLabelText<HTMLInputElement>(/^Email/)).value).toBe('');
     expect(screen.getByLabelText<HTMLInputElement>(/^Owner name/).value).toBe('');
     expect(screen.queryByText('Enter a valid email address.')).toBeNull();

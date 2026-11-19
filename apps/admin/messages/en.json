@@ -989,9 +989,9 @@
         "created": "Created (UTC)",
         "actions": "Actions"
       },
+      "actions-for": "Actions for seller {id}",
       "invite": {
-        "action": "Invite owner",
-        "row-label": "Invite owner for seller {id}",
+        "action": "Invite owner…",
         "unavailable": {
           "denied": "You don't have permission to invite owners.",
           "unavailable": "Invitations aren't available in this market.",
@@ -3545,8 +3545,8 @@
       "empty": "No models yet. The built-in order is in use.",
       "new": "New model",
       "editing": "Edit model",
-      "edit": "Edit",
-      "edit-named": "Edit {name}",
+      "edit": "Edit…",
+      "actions-for": "Actions for {name}",
       "used": "Active for: {methods}",
       "unused": "Not active for any method",
       "active-note": "This model is active for {methods}. Saving applies it to every new order of that method."
@@ -11536,12 +11536,10 @@
     "empty-title": "No tax strategies yet",
     "empty-body": "The built-in rate applies. Add a strategy to charge another rate.",
     "add": "Add strategy",
-    "edit": "Edit",
-    "edit-label": "Edit {name}",
-    "activate": "Activate",
-    "activate-label": "Activate {name}",
-    "delete": "Delete",
-    "delete-label": "Delete {name}",
+    "edit": "Edit…",
+    "activate": "Activate…",
+    "delete": "Delete…",
+    "actions-for": "Actions for {name}",
     "back-to-built-in": "Back to built-in rate",
     "dialog": {
       "add-title": "Add tax strategy",
@@ -11575,6 +11573,7 @@
     "delete-dialog": {
       "title": "Delete {name}?",
       "body": "This cannot be undone. Orders that already used it keep their tax.",
+      "type-label": "Type the strategy name to confirm",
       "confirm": "Delete strategy",
       "done": "Strategy deleted."
     },
