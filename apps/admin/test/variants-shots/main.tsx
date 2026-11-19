@@ -99,6 +99,7 @@ const row = (
   sellers,
   issues,
   missingLocales: [],
+  actions: ['open-product', 'copy-code'],
 });
 const page = {
   items: [
@@ -112,7 +113,11 @@ const page = {
     row(5, 'MP-001954', 'Chickpeas, dried', '2 kg', '09300633099995', 4, [], 'paused'),
     row(6, 'MP-001020', 'Saffron threads', '1 g', null, 0, ['no-seller-selling', 'missing-gtin']),
   ],
-  nextAfter: id(206),
+  total: 61,
+  page: 1,
+  pageSize: 25,
+  paging: 'pages',
+  hasNext: true,
 };
 const counts = {
   counts: {
@@ -146,6 +151,7 @@ const asked = (n: number, product: string, seller: string, label: string, exists
     options: [sizeOption(size)],
   })),
   alreadyExists: exists,
+  actions: ['approve', 'map', 'decline'],
 });
 const requests = {
   items: [
@@ -153,7 +159,11 @@ const requests = {
     asked(4, 'MP-003310', 'Brisbane Halal Meats', 'M', true),
     asked(6, 'MP-002208', 'Sunrise Dates', 'XXL'),
   ],
-  locales: { default: 'en-AU', supported: ['en-AU'] },
+  total: 3,
+  page: 1,
+  pageSize: 25,
+  paging: 'pages',
+  hasNext: false,
 };
 window.fetch = ((input: string) => {
   const path = input.replace(/^\/api\//, '').split('?')[0]!;
@@ -164,7 +174,7 @@ window.fetch = ((input: string) => {
   else if (path === 'catalog/admin/variants') body = page;
   else if (path === 'catalog/admin/variants/issue-counts') body = counts;
   else if (path === 'catalog/admin/variant-requests')
-    body = q.get('empty') === '1' ? { ...requests, items: [] } : requests;
+    body = q.get('empty') === '1' ? { ...requests, items: [], total: 0 } : requests;
   return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
 }) as typeof fetch;
 
@@ -181,6 +191,9 @@ createRoot(document.getElementById('root')!).render(
         csrfToken="tok"
         initialTab={tab}
         initialId={tab === 'types' ? id(Number(q.get('id') ?? '1')) : null}
+        paging="pages"
+        accountId={id(99)}
+        marketId="AU"
       />
     </main>
   </NextIntlClientProvider>,

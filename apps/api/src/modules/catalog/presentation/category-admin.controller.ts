@@ -16,6 +16,7 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import {
+  ApiAcceptedResponse,
   ApiBadRequestResponse,
   ApiBody,
   ApiConflictResponse,
@@ -49,6 +50,8 @@ import { CategoryEditDetails } from '../application/use-cases/category-edit-deta
 import { CategoryHide } from '../application/use-cases/category-hide.use-case';
 import { CategoryMove } from '../application/use-cases/category-move.use-case';
 import { CategoryMerge } from '../application/use-cases/category-merge.use-case';
+import { CategoryMoveProducts } from '../application/use-cases/category-move-products.use-case';
+import { CategoryMoveProductsProgress } from '../application/use-cases/category-move-products-progress.use-case';
 import { CategoryArchive } from '../application/use-cases/category-archive.use-case';
 import { CategoryReorder } from '../application/use-cases/category-reorder.use-case';
 import { CategoryShow } from '../application/use-cases/category-show.use-case';
@@ -63,19 +66,25 @@ import {
   CategoryCreateRequest,
   CategoryDetailBody,
   CategoryEditDetailsRequest,
+  CategoryEditDetailsWrapBody,
   CategoryImageSetRequest,
   CategoryImageWriteBody,
   CategoryImpactBody,
   CategoryReorderRequest,
   CategoryTreeBody,
   CategoryArchiveRequest,
+  CategoryDiscardRequest,
+  CatalogueProposalBody,
   CategoryMergeRequest,
   CategoryMoveRequest,
+  CategoryMoveProductsProgressBody,
+  CategoryMoveProductsRequest,
+  CategoryMoveProductsStartedBody,
   CategoryTreeVersionRequest,
   CategoryVersionRequest,
   CategoryWriteWrapBody,
 } from './category-admin.dto';
-import { closedBody, refusalWith, type Refusal } from './http-answers';
+import { answered, closedBody, refusalWith, type Refusal } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
 
 /**
@@ -110,6 +119,9 @@ export const CATEGORY_ADMIN_STATUS: Readonly<Record<string, number>> = Object.fr
   'category.only-platform-category': 422,
   'category.products-on-upper-level': 422,
   'category.impact-too-large': 422,
+  'category.level-not-allowed': 422,
+  'category.no-products': 409,
+  'category.move-in-progress': 409,
   'category.referenced-by-policy': 409,
   'category.check-unavailable': 503,
   'category.depth-exceeded': 422,
@@ -153,6 +165,17 @@ const EDITS =
 const RESTRUCTURES =
   'Needs the protected key catalog.category-tree.restructure; refused in an acting-as session. ' +
   'Names the tree version the page read and a reason note. Certificate rules are checked first.';
+const REVIEWED_AFTER =
+  'It goes live at once and is reviewed after in Admin Inbox › System requests (area catalogue, ' +
+  'on by default): where the Market reviews it, `note` (1 to 500 characters; a restructure uses ' +
+  'its reason note when none is given) is required and `request` names the review it opened. A ' +
+  'rejected change is undone while the category still holds it.';
+const WAITS_FOR_APPROVAL =
+  'Where the Market reviews area catalogue (Admin Inbox › System requests) it waits for a second ' +
+  "admin's approval: `note` (1 to 500 characters; a restructure uses its reason note when none " +
+  'is given) is required, the checks run as for the action, and the answer is 202 ' +
+  '`{request: {id, number}}` with nothing changed; 409 system-requests.already-pending ' +
+  '(details.pendingNumber) while another proposal of the category waits.';
 const RESTRUCTURE_409 =
   'conflict.stale, category.not-editable, category.move-unchanged, category.has-subcategories, ' +
   'category.sibling-name-taken (details.fields) or category.referenced-by-policy (details.typeCodes)';
@@ -195,6 +218,8 @@ export class CategoryAdminController {
     private readonly moveCategory: CategoryMove,
     private readonly mergeCategory: CategoryMerge,
     private readonly archiveCategory: CategoryArchive,
+    private readonly moveProducts: CategoryMoveProducts,
+    private readonly moveProductsProgress: CategoryMoveProductsProgress,
   ) {}
 
   @Get()
@@ -323,7 +348,7 @@ export class CategoryAdminController {
     description:
       `${EDITS} Created hidden, last among its siblings; Show makes it live. The default-locale ` +
       'name is required; every text passes the claim-word check and a language the check cannot ' +
-      'read is refused.',
+      `read is refused. ${REVIEWED_AFTER}`,
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: CategoryCreateRequest })
@@ -350,7 +375,7 @@ export class CategoryAdminController {
   ): Promise<CategoryWriteWrapBody> {
     return this.write('catalog.category-create', context, response, request, body, {
       keys: ['slug', 'texts', 'treeVersion'],
-      optional: ['parentId', 'seo', 'showInMenu'],
+      optional: ['parentId', 'seo', 'showInMenu', 'note'],
       run: (input) => this.createCategory.execute(context, input),
     });
   }
@@ -362,12 +387,15 @@ export class CategoryAdminController {
     summary: 'Save the details of a category',
     description:
       `${EDITS} Not structural: it names the category version the admin saw. The whole content ` +
-      'is sent; a locale or field left out is cleared. Saved as the next revision.',
+      'is sent; a locale or field left out is cleared. Saved as the next revision. It goes live ' +
+      'at once and is reviewed after in Admin Inbox › System requests (area catalogue, on by ' +
+      'default): where the Market reviews it, `note` (1 to 500 characters) is required (400 on ' +
+      'note otherwise) and `request` names the review the save opened. A rejected edit is restored.',
   })
   @ApiParam(CATEGORY_PARAM)
   @ApiHeader(CSRF)
   @ApiBody({ type: CategoryEditDetailsRequest })
-  @ApiOkResponse({ type: CategoryWriteWrapBody })
+  @ApiOkResponse({ type: CategoryEditDetailsWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
@@ -388,12 +416,19 @@ export class CategoryAdminController {
     @Res({ passthrough: true }) response: Response,
     @Param('categoryId') categoryId: string,
     @Body() body: unknown,
-  ): Promise<CategoryWriteWrapBody> {
-    return this.write('catalog.category-edit-details', context, response, request, body, {
-      keys: ['version', 'texts'],
-      optional: ['seo', 'showInMenu', 'imageId'],
-      run: (input) => this.editDetails.execute(context, { ...input, categoryId }),
-    });
+  ): Promise<CategoryEditDetailsWrapBody> {
+    return this.write<CategoryEditDetailsWrapBody>(
+      'catalog.category-edit-details',
+      context,
+      response,
+      request,
+      body,
+      {
+        keys: ['version', 'texts'],
+        optional: ['seo', 'showInMenu', 'imageId', 'note'],
+        run: (input) => this.editDetails.execute(context, { ...input, categoryId }),
+      },
+    );
   }
 
   @Post(':categoryId/reorder')
@@ -401,7 +436,7 @@ export class CategoryAdminController {
   @ReadsSession()
   @ApiOperation({
     summary: 'Move a category up or down among its siblings',
-    description: `${EDITS} Swaps places with the neighbour; category.reorder-edge at the end of the list.`,
+    description: `${EDITS} Swaps places with the neighbour; category.reorder-edge at the end of the list. ${REVIEWED_AFTER}`,
   })
   @ApiParam(CATEGORY_PARAM)
   @ApiHeader(CSRF)
@@ -426,7 +461,7 @@ export class CategoryAdminController {
   ): Promise<CategoryWriteWrapBody> {
     return this.write('catalog.category-reorder', context, response, request, body, {
       keys: ['direction', 'treeVersion'],
-      optional: [],
+      optional: ['note'],
       run: (input) => this.reorderCategory.execute(context, { ...input, categoryId }),
     });
   }
@@ -557,11 +592,12 @@ export class CategoryAdminController {
     summary: 'Discard a category that never went live',
     description:
       `${EDITS} Only a hidden category an admin created, never showed, with no child and no ` +
-      'product revision that named it. It is archived, never deleted.',
+      `product revision that named it. It is archived, never deleted. ${WAITS_FOR_APPROVAL}`,
   })
   @ApiParam(CATEGORY_PARAM)
   @ApiHeader(CSRF)
-  @ApiBody({ type: CategoryTreeVersionRequest })
+  @ApiBody({ type: CategoryDiscardRequest })
+  @ApiAcceptedResponse({ type: CatalogueProposalBody })
   @ApiOkResponse({ type: CategoryWriteWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -582,7 +618,7 @@ export class CategoryAdminController {
   ): Promise<CategoryWriteWrapBody> {
     return this.write('catalog.category-discard', context, response, request, body, {
       keys: ['treeVersion'],
-      optional: [],
+      optional: ['note'],
       run: (input) => this.discardCategory.execute(context, { ...input, categoryId }),
     });
   }
@@ -708,7 +744,7 @@ export class CategoryAdminController {
     summary: 'Move a category under a new parent',
     description:
       `${RESTRUCTURES} The category and its subcategories go under the new parent (null: a ` +
-      'department), last among its children. Badges under it are checked again.',
+      `department), last among its children. Badges under it are checked again. ${REVIEWED_AFTER}`,
   })
   @ApiParam(CATEGORY_PARAM)
   @ApiHeader(CSRF)
@@ -734,7 +770,7 @@ export class CategoryAdminController {
   ): Promise<CategoryWriteWrapBody> {
     return this.write('catalog.category-move', context, response, request, body, {
       keys: ['treeVersion', 'parentId', 'reason'],
-      optional: [],
+      optional: ['note'],
       run: (input) => this.moveCategory.execute(context, { ...input, categoryId }),
     });
   }
@@ -746,11 +782,12 @@ export class CategoryAdminController {
     summary: 'Merge a category into another',
     description:
       `${RESTRUCTURES} Its subcategories move to the target; its products and old address now ` +
-      'resolve to the target. Badges under it are checked again.',
+      `resolve to the target. Badges under it are checked again. ${WAITS_FOR_APPROVAL}`,
   })
   @ApiParam(CATEGORY_PARAM)
   @ApiHeader(CSRF)
   @ApiBody({ type: CategoryMergeRequest })
+  @ApiAcceptedResponse({ type: CatalogueProposalBody })
   @ApiOkResponse({ type: CategoryWriteWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -772,7 +809,7 @@ export class CategoryAdminController {
   ): Promise<CategoryWriteWrapBody> {
     return this.write('catalog.category-merge', context, response, request, body, {
       keys: ['treeVersion', 'targetId', 'reason'],
-      optional: [],
+      optional: ['note'],
       run: (input) => this.mergeCategory.execute(context, { ...input, categoryId }),
     });
   }
@@ -784,11 +821,13 @@ export class CategoryAdminController {
     summary: 'Archive a category',
     description:
       `${RESTRUCTURES} Terminal: there is no restore (Hide pauses a category). Only a category ` +
-      'with no live subcategory, and never one that is the only category of a live product.',
+      'with no live subcategory, and never one that is the only category of a live product. ' +
+      WAITS_FOR_APPROVAL,
   })
   @ApiParam(CATEGORY_PARAM)
   @ApiHeader(CSRF)
   @ApiBody({ type: CategoryArchiveRequest })
+  @ApiAcceptedResponse({ type: CatalogueProposalBody })
   @ApiOkResponse({ type: CategoryWriteWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -807,9 +846,96 @@ export class CategoryAdminController {
   ): Promise<CategoryWriteWrapBody> {
     return this.write('catalog.category-archive', context, response, request, body, {
       keys: ['treeVersion', 'reason'],
-      optional: [],
+      optional: ['note'],
       run: (input) => this.archiveCategory.execute(context, { ...input, categoryId }),
     });
+  }
+
+  @Post(':categoryId/move-products')
+  @HttpCode(202)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Move the products of a category to another category',
+    description:
+      'Needs the protected key catalog.category-tree.restructure and catalog.product.approve; ' +
+      'refused in an acting-as session. Starts a job that gives every published product of the ' +
+      'category an admin revision naming the target, published at once (the target becomes ' +
+      'primary when the category was), audits it and emails the seller. The target is on level 3 ' +
+      'up to the Market depth. The job makes one pass over the category: a product published ' +
+      'into it after the pass is not moved. A seller email that cannot be sent is retried for ' +
+      'about 75 minutes and then given up, so the job always ends. Read the progress with GET on ' +
+      `the same path. ${WAITS_FOR_APPROVAL}`,
+  })
+  @ApiParam(CATEGORY_PARAM)
+  @ApiHeader(CSRF)
+  @ApiBody({ type: CategoryMoveProductsRequest })
+  @ApiAcceptedResponse({
+    type: CategoryMoveProductsStartedBody,
+    description:
+      'The job started; or, where the move waits for approval, `{request}` (CatalogueProposalBody).',
+  })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({
+    type: ApiErrorBody,
+    description: 'category.not-found or category.target-not-found',
+  })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description:
+      'category.move-unchanged, category.not-editable, category.no-products or category.move-in-progress',
+  })
+  @ApiUnprocessableEntityResponse({ type: ApiErrorBody, description: 'category.level-not-allowed' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({
+    type: ApiErrorBody,
+    description: 'catalog.categories-unavailable or access.unavailable',
+  })
+  async startMoveProducts(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('categoryId') categoryId: string,
+    @Body() body: unknown,
+  ): Promise<CategoryMoveProductsStartedBody> {
+    return this.write<CategoryMoveProductsStartedBody>(
+      'catalog.category-move-products',
+      context,
+      response,
+      request,
+      body,
+      {
+        keys: ['targetId', 'reason'],
+        optional: ['note'],
+        run: (input) => this.moveProducts.execute(context, { ...input, categoryId }),
+      },
+    );
+  }
+
+  @Get(':categoryId/move-products')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Progress of the jobs that move the products of a category',
+    description:
+      'Needs catalog.category-tree.view. The newest jobs with state and counts; ids and numbers only.',
+  })
+  @ApiParam(CATEGORY_PARAM)
+  @ApiOkResponse({ type: CategoryMoveProductsProgressBody })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'category.not-found' })
+  async readMoveProductsProgress(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('categoryId') categoryId: string,
+  ): Promise<CategoryMoveProductsProgressBody> {
+    const result = await this.moveProductsProgress.execute(context, { categoryId });
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as CategoryMoveProductsProgressBody)
+      : refusal(result.error, response, context);
+    return this.settle('catalog.category-move-products-progress', context, outcome);
   }
 
   private async write<T extends object = CategoryWriteWrapBody>(
@@ -832,7 +958,7 @@ export class CategoryAdminController {
     else {
       const result = await spec.run(input);
       outcome = result.ok
-        ? (JSON.parse(JSON.stringify(result.value)) as T)
+        ? answered<T>(response, result.value)
         : refusal(result.error, response, context);
     }
     return this.settle(msg, context, outcome);

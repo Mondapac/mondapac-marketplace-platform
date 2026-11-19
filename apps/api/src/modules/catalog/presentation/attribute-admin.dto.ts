@@ -1,4 +1,10 @@
 import { ApiProperty } from '@nestjs/swagger';
+import {
+  CatalogueRequestRef,
+  CatalogueReviewBody,
+  NOTE_DESCRIPTION,
+  REQUEST_DESCRIPTION,
+} from './catalogue-review.dto';
 import { ATTRIBUTE_DATA_TYPES, MEASURE_DIMENSIONS } from '@mondapac/shared-kernel';
 
 // Answers of the admin attribute and feature-set reads (attributes plan, package A1). Codes, the
@@ -41,6 +47,12 @@ export class AttributeSummaryBody {
 }
 
 export class AttributeListItemBody extends AttributeSummaryBody {
+  @ApiProperty({
+    type: [String],
+    description:
+      'The row actions of the Actions menu the caller may run: edit, view-links, deactivate.',
+  })
+  actions!: string[];
   @ApiProperty({ description: 'Published products whose current revision has a value for it.' })
   productCount!: number;
   @ApiProperty({ description: 'Feature sets that use it.' }) featureSetCount!: number;
@@ -53,10 +65,21 @@ export class FeatureSetRefBody {
 
 export class AttributeListBody {
   @ApiProperty({ type: [AttributeListItemBody] }) items!: AttributeListItemBody[];
+  @ApiProperty({
+    type: CatalogueReviewBody,
+    description:
+      'Whether a create, move or reorder is reviewed after and a discard, merge or archive waits ' +
+      'for approval in this Market (Admin Inbox › System requests): the dialogs then ask for a note.',
+  })
+  review!: CatalogueReviewBody;
   @ApiProperty({ nullable: true, type: String, description: 'The `afterId` of the next page.' })
   nextAfterId!: string | null;
   @ApiProperty({ description: 'Attributes that match the filters, across every page.' })
   total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty({ description: 'Whether a page after this one exists.' }) hasNext!: boolean;
   @ApiProperty({ description: 'Every attribute of the Market, whatever the filters.' })
   totalAll!: number;
   @ApiProperty({ type: MarketLocalesBody }) locales!: MarketLocalesBody;
@@ -195,6 +218,11 @@ export class AttributeDetailBody extends AttributeSummaryBody {
   @ApiProperty({ type: MarketLocalesBody }) locales!: MarketLocalesBody;
   @ApiProperty({ type: [MarketUnitBody], description: 'Units a measure attribute may offer.' })
   units!: MarketUnitBody[];
+  @ApiProperty({
+    type: CatalogueReviewBody,
+    description: 'Whether a save is reviewed in this Market: the form then asks for a note.',
+  })
+  review!: CatalogueReviewBody;
 }
 
 export class FeatureSetListItemBody {
@@ -212,6 +240,13 @@ export class FeatureSetListItemBody {
 
 export class FeatureSetListBody {
   @ApiProperty({ type: [FeatureSetListItemBody] }) items!: FeatureSetListItemBody[];
+  @ApiProperty({
+    type: CatalogueReviewBody,
+    description:
+      'Whether a create, move or reorder is reviewed after and a discard, merge or archive waits ' +
+      'for approval in this Market (Admin Inbox › System requests): the dialogs then ask for a note.',
+  })
+  review!: CatalogueReviewBody;
   @ApiProperty({ description: 'True when the Market has more than 500 feature sets.' })
   truncated!: boolean;
 }
@@ -288,14 +323,21 @@ export class AttributeCreateRequest extends AttributeContentRequest {
   @ApiProperty({ required: false, description: 'Left out, it comes from the default name.' })
   code?: string;
   @ApiProperty({ required: false }) localizable?: boolean;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class AttributeEditRequest extends AttributeContentRequest {
   @ApiProperty({ description: 'The version the admin saw.' }) version!: number;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class AttributeVersionRequest {
   @ApiProperty({ description: 'The version the admin saw.' }) version!: number;
+}
+
+/** Discard or archive: the version, and the note where the action waits for approval. */
+export class AttributeVersionNoteRequest extends AttributeVersionRequest {
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class AttributeWriteBody {
@@ -308,6 +350,18 @@ export class AttributeWriteBody {
 
 export class AttributeWriteWrapBody {
   @ApiProperty({ type: AttributeWriteBody }) attribute!: AttributeWriteBody;
+  @ApiProperty({
+    type: CatalogueRequestRef,
+    nullable: true,
+    required: false,
+    description: REQUEST_DESCRIPTION,
+  })
+  request?: CatalogueRequestRef | null;
+}
+
+export class AttributeEditWrapBody extends AttributeWriteWrapBody {
+  @ApiProperty({ type: CatalogueRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  override request: CatalogueRequestRef | null = null;
 }
 
 // The two-person request to clear `material` (catalog design 8.2; attributes A2 part 3).
@@ -416,6 +470,7 @@ export class FeatureSetContentRequest {
 export class FeatureSetCreateRequest extends FeatureSetContentRequest {
   @ApiProperty({ required: false, description: 'Left out, it comes from the default-locale name.' })
   code?: string;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class FeatureSetEditRequest extends FeatureSetContentRequest {
@@ -451,6 +506,7 @@ export class CategoryLinksSetRequest {
     description: 'The version the admin saw; omitted when the category has no link yet.',
   })
   version?: number;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class CategoryLinksOwnBody {
@@ -488,6 +544,11 @@ export class CategoryLinksBody {
   @ApiProperty({ format: 'uuid' }) categoryId!: string;
   @ApiProperty({ type: CategoryLinksOwnBody, nullable: true }) own!: CategoryLinksOwnBody | null;
   @ApiProperty({ type: CategoryLinksEffectiveBody }) effective!: CategoryLinksEffectiveBody;
+  @ApiProperty({
+    type: CatalogueReviewBody,
+    description: 'Whether a save is reviewed in this Market: the editor then asks for a note.',
+  })
+  review!: CatalogueReviewBody;
 }
 
 export class CategoryLinksSetBody {
@@ -500,9 +561,17 @@ export class CategoryLinksSetBody {
 
 export class CategoryLinksSetWrapBody {
   @ApiProperty({ type: CategoryLinksSetBody }) links!: CategoryLinksSetBody;
+  @ApiProperty({ type: CatalogueRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
+  request!: CatalogueRequestRef | null;
 }
 
 export class MissingDetailsItemBody {
+  @ApiProperty({
+    type: [String],
+    description:
+      'The row actions of the Actions menu the caller may run: open-product, email-seller.',
+  })
+  actions!: string[];
   @ApiProperty({ format: 'uuid' }) productId!: string;
   @ApiProperty() productCode!: string;
   @ApiProperty({ nullable: true, type: String, description: 'The name in the default locale.' })
@@ -638,6 +707,7 @@ export class AttributeMergeRequest {
     description: 'For a choice attribute: every value code of the source to a target value code.',
   })
   options?: Record<string, string>;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }
 
 export class AttributeConvertRequest {
@@ -655,4 +725,5 @@ export class ValuesMergeRequest {
   version!: number;
   @ApiProperty({ description: 'The code of the value that is merged away.' }) source!: string;
   @ApiProperty({ description: 'The code of the active value it is merged into.' }) target!: string;
+  @ApiProperty({ required: false, description: NOTE_DESCRIPTION }) note?: string;
 }

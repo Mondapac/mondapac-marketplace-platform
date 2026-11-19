@@ -2,6 +2,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { createRoot } from 'react-dom/client';
 import messages from '../../messages/en.json';
 import '../../app/globals.css';
+import { ProductAdd } from '../../src/catalog/product-form/add-form.tsx';
 import { ProductEdit } from '../../src/catalog/product-form/edit-form.tsx';
 import type { ProductView } from '../../src/catalog/product-form/types.ts';
 
@@ -70,7 +71,14 @@ const base: ProductView = {
   maxVariants: 100,
   lastChangedAt: '2026-11-05T01:00:00.000Z',
   createdAt: '2026-11-05T01:00:00.000Z',
-  form: { taxCategoryCodes: ['gst-free-food', 'gst'], fields, categories },
+  form: {
+    taxCategories: [
+      { code: 'gst-free-food', labelKey: 'catalog.tax.gst-free-food' },
+      { code: 'gst', labelKey: 'catalog.tax.gst' },
+    ],
+    fields,
+    categories,
+  },
   locales: { default: 'en', supported: ['en'] },
   workingCopy: null,
   published: null,
@@ -150,7 +158,31 @@ const scenarios: Record<string, ProductView> = {
 window.fetch = ((input: string, init?: RequestInit) => {
   const path = input.replace(/^\/api\//, '').split('?')[0]!;
   let body: unknown;
-  if (path === `catalog/admin/platform-products/${PRODUCT}` && init?.method === 'GET') {
+  if (path === 'catalog/admin/platform-products/options') {
+    body = {
+      productTypes: ['grocery', 'configurable-grocery'],
+      locales: { default: 'en', supported: ['en'] },
+      taxCategories: [
+        { code: 'gst-free-food', labelKey: 'catalog.tax.gst-free-food' },
+        { code: 'gst', labelKey: 'catalog.tax.gst' },
+      ],
+      categories,
+    };
+  } else if (path === 'catalog/admin/platform-products/category-picker') {
+    body = {
+      locale: 'en',
+      choices: [
+        {
+          id: id(13),
+          level: 4,
+          name: 'Basmati rice',
+          path: ['Pantry', 'Rice and grains', 'Rice', 'Basmati rice'],
+          general: false,
+          status: 'active',
+        },
+      ],
+    };
+  } else if (path === `catalog/admin/platform-products/${PRODUCT}` && init?.method === 'GET') {
     body = scenarios[scenario];
   } else if (path.endsWith(`/${PRODUCT}/images`)) {
     body = { images: scenario === 'variants' ? gallery : [] };
@@ -172,14 +204,24 @@ const scenario = new URLSearchParams(location.search).get('s') ?? 'add';
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
     <main className="mx-auto max-w-7xl p-4 md:p-6">
-      <ProductEdit
-        productId={PRODUCT}
-        csrfToken="tok"
-        marketName="Australia"
-        timeZone="Australia/Brisbane"
-        canPause
-        canReadTags
-      />
+      {scenario === 'new' ? (
+        <ProductAdd
+          csrfToken="tok"
+          marketName="Australia"
+          timeZone="Australia/Brisbane"
+          canReadTags
+          permissionKeys={['certification.product-certificate.view']}
+        />
+      ) : (
+        <ProductEdit
+          productId={PRODUCT}
+          csrfToken="tok"
+          marketName="Australia"
+          timeZone="Australia/Brisbane"
+          canPause
+          canReadTags
+        />
+      )}
     </main>
   </NextIntlClientProvider>,
 );

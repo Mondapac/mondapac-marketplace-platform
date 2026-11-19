@@ -28,7 +28,8 @@ export class AssistantSettingsFields {
   audiencePercent!: number | null;
   @ApiProperty({
     enum: SCOPES,
-    description: 'Default read-only; cart-suggestions is not available yet.',
+    description:
+      'Default read-only. cart-suggestions adds the cart card and cart-action cards (the buyer confirms each change).',
   })
   scope!: string;
   @ApiProperty({
@@ -66,6 +67,13 @@ export class AssistantSettingsFields {
     description: 'Default email-link; in-panel-form is not available yet.',
   })
   supportHandoff!: string;
+  @ApiProperty({
+    type: Boolean,
+    description:
+      'Basket proposals from a list: the assistant may plan a typed or pasted shopping list ' +
+      'into a basket card the buyer reviews. Default false. Adds nothing to a cart by itself.',
+  })
+  basketProposals!: boolean;
   @ApiProperty({
     nullable: true,
     type: String,

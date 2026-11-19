@@ -15,6 +15,8 @@ export const PAGE_SIZE = 50;
 
 /** What a write answers (attributes A2): enough to read the attribute again. */
 export interface AttributeWrite {
+  /** The review a save opened (Admin Inbox > System requests); absent or null when none. */
+  readonly request?: { readonly id: string; readonly number: number } | null;
   readonly attribute: {
     readonly id: string;
     readonly code: string;
@@ -93,6 +95,8 @@ export interface AttributePage {
   readonly units: readonly MarketUnit[];
   readonly featureSets: readonly { readonly id: string; readonly code: string }[];
   readonly truncated: boolean;
+  /** Whether a new attribute is reviewed (and a discard, merge or archive waits for approval). */
+  readonly review?: { readonly reviewed: boolean; readonly risk: string };
 }
 
 export interface AttributeOption {
@@ -139,6 +143,8 @@ export interface AttributeDisplay {
 }
 
 export interface AttributeDetail extends AttributeSummary {
+  /** Whether a save is reviewed here (Admin Inbox > System requests): the form then asks for a note. */
+  readonly review?: { readonly reviewed: boolean; readonly risk: string };
   readonly createdByKind: 'seed' | 'admin';
   readonly createdAt: string;
   readonly version: number;
@@ -174,6 +180,8 @@ export interface FeatureSetRow {
 export interface FeatureSetList {
   readonly items: readonly FeatureSetRow[];
   readonly truncated: boolean;
+  /** Whether a new feature set waits for another admin's approval (Admin Inbox > System requests). */
+  readonly review?: { readonly reviewed: boolean; readonly risk: string };
 }
 
 export type RequirementLevel = 'required' | 'recommended' | 'optional';

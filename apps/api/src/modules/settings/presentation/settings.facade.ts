@@ -1,10 +1,15 @@
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { ReadAiDescriptionWriter } from '../application/use-cases/read-ai-description-writer.use-case';
+import type { ReadCartMode } from '../application/use-cases/read-cart-mode.use-case';
 import type { SettingsFacade } from '../contracts/settings.facade';
 
-/** {@link SettingsFacade} on the settings use cases; a refusal or a throw is off. */
+/** {@link SettingsFacade} on the settings use cases; a refusal or a throw is off (or
+ * `multi-store` for the Cart mode). */
 export class SettingsFacadeImplementation implements SettingsFacade {
-  constructor(private readonly readAiDescriptionWriter: ReadAiDescriptionWriter) {}
+  constructor(
+    private readonly readAiDescriptionWriter: ReadAiDescriptionWriter,
+    private readonly readCartMode: ReadCartMode,
+  ) {}
 
   async aiDescriptionWriter(context: CallContext) {
     try {
@@ -14,5 +19,15 @@ export class SettingsFacadeImplementation implements SettingsFacade {
       // Fail closed below.
     }
     return { enabled: false, tier: 'fast' as const };
+  }
+
+  async cartMode(context: CallContext) {
+    try {
+      const answer = await this.readCartMode.execute(context, {});
+      if (answer.ok) return answer.value;
+    } catch {
+      // The safe value below.
+    }
+    return 'multi-store' as const;
   }
 }

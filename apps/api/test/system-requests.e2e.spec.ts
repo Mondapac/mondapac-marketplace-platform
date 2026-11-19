@@ -6,16 +6,16 @@ import request from 'supertest';
 import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
-import type {
-  RequestView,
-  SystemRequestsFailure,
-} from '../src/modules/system-requests/application/request-flow';
+import type { ExportFailure } from '../src/modules/system-requests/application/export-flow';
+import type { RequestView } from '../src/modules/system-requests/application/request-flow';
+import { ApproveMatchingSystemRequests } from '../src/modules/system-requests/application/use-cases/approve-matching-system-requests.use-case';
 import { ApproveSystemRequest } from '../src/modules/system-requests/application/use-cases/approve-system-request.use-case';
 import { ApproveSystemRequests } from '../src/modules/system-requests/application/use-cases/approve-system-requests.use-case';
 import { ChangeAreaReviewPolicy } from '../src/modules/system-requests/application/use-cases/change-area-review-policy.use-case';
 import { ChangeReviewDueDays } from '../src/modules/system-requests/application/use-cases/change-review-due-days.use-case';
 import { CommentOnSystemRequest } from '../src/modules/system-requests/application/use-cases/comment-on-system-request.use-case';
 import { CountSystemRequests } from '../src/modules/system-requests/application/use-cases/count-system-requests.use-case';
+import { ExportSystemRequests } from '../src/modules/system-requests/application/use-cases/export-system-requests.use-case';
 import { ListSystemRequests } from '../src/modules/system-requests/application/use-cases/list-system-requests.use-case';
 import { RejectSystemRequest } from '../src/modules/system-requests/application/use-cases/reject-system-request.use-case';
 import { ViewReviewPolicy } from '../src/modules/system-requests/application/use-cases/view-review-policy.use-case';
@@ -51,10 +51,11 @@ const fakes = new IdentityFakes();
 const tokens = new RandomSessionTokens();
 
 /** Every code a system-requests use case answers, with its status. */
-const EXPECTED: Readonly<Record<SystemRequestsFailure['code'], number>> = {
+const EXPECTED: Readonly<Record<ExportFailure['code'], number>> = {
   'access.denied': 403,
   'access.unavailable': 503,
   'validation.failed': 400,
+  'batch.too-large': 413,
   'second-factor.required': 403,
   'second-factor.enrolment-required': 403,
   'system-requests.not-found': 404,
@@ -68,6 +69,7 @@ const EXPECTED: Readonly<Record<SystemRequestsFailure['code'], number>> = {
   'system-requests.revert-unavailable': 503,
   'system-requests.revert-not-permitted': 403,
   'system-requests.not-low-risk': 409,
+  'system-requests.one-by-one': 409,
   'system-requests.policy-conflict': 409,
 };
 
@@ -110,6 +112,8 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
           .useValue(stub('list'))
           .overrideProvider(CountSystemRequests)
           .useValue(stub('count'))
+          .overrideProvider(ExportSystemRequests)
+          .useValue(stub('export'))
           .overrideProvider(ViewSystemRequest)
           .useValue(stub('view'))
           .overrideProvider(CommentOnSystemRequest)
@@ -118,6 +122,8 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
           .useValue(stub('approve'))
           .overrideProvider(ApproveSystemRequests)
           .useValue(stub('bulk'))
+          .overrideProvider(ApproveMatchingSystemRequests)
+          .useValue(stub('matching'))
           .overrideProvider(RejectSystemRequest)
           .useValue(stub('reject'))
           .overrideProvider(WithdrawSystemRequest)
@@ -217,6 +223,7 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
     area: 'catalogue',
     subjectKind: 'settings.market-setting',
     subjectRef: 'list-paging',
+    mode: 'review',
     risk: 'medium',
     status: 'open',
     before: { size: 25 },
@@ -232,6 +239,10 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
     supersededBy: null,
     commentCount: 0,
     overdue: false,
+    requestedByName: 'Maryam K.',
+    decidedByName: null,
+    subjectLabel: 'List paging',
+    supersededByNumber: null,
     reviewPermission: 'system-requests.catalogue.review',
     actions: ['open', 'copy-link', 'approve', 'reject'],
   };
@@ -269,7 +280,17 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
     expect(listed.status).toBe(200);
     expect(listed.headers['cache-control']).toBe('no-store');
     expect(listed.body).toMatchObject({
-      rows: [{ id: REQUEST, displayNumber: 'SR-12', appliedAt: START.toString() }],
+      rows: [
+        {
+          id: REQUEST,
+          displayNumber: 'SR-12',
+          appliedAt: START.toString(),
+          requestedByName: 'Maryam K.',
+          decidedByName: null,
+          subjectLabel: 'List paging',
+          supersededByNumber: null,
+        },
+      ],
       total: 1,
     });
     expect(calls).toEqual([{ name: 'list', input: { view: 'all', page: '1' } }]);
@@ -286,6 +307,57 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
     expect(calls).toHaveLength(1);
   });
 
+  it('exports through its own route (not read as a request id): the file, no-store, or the refusal with its cap', async () => {
+    await boot();
+    const session = sessionOf('admin');
+    next = ok({
+      filename: 'system-requests-2026-11-15.csv',
+      contentType: 'text/csv; charset=utf-8',
+      chunks: (async function* () {
+        await Promise.resolve();
+        yield '\uFEFFRequest,Note\r\n';
+        yield 'SR-12,Raise the limit\r\n';
+      })(),
+    });
+    const file = await send(
+      'get',
+      '/system-requests/admin/requests/export?view=all&risk=high&format=csv&columns=subject',
+      session,
+    );
+    expect(file.status).toBe(200);
+    expect(file.headers['content-type']).toMatch(/^text\/csv/);
+    expect(file.headers['content-disposition']).toBe(
+      'attachment; filename="system-requests-2026-11-15.csv"',
+    );
+    expect(file.headers['cache-control']).toBe('no-store');
+    expect(file.headers['x-content-type-options']).toBe('nosniff');
+    expect(file.text).toContain('SR-12,Raise the limit');
+    expect(calls).toEqual([
+      {
+        name: 'export',
+        input: { view: 'all', risk: 'high', format: 'csv', columns: 'subject' },
+      },
+    ]);
+
+    next = err({ code: 'batch.too-large', max: 10_000, total: 12_345 });
+    const tooMany = await send('get', '/system-requests/admin/requests/export?view=all', session);
+    expect(tooMany.status).toBe(413);
+    expect(tooMany.headers['cache-control']).toBe('no-store');
+    expect(tooMany.body).toEqual({
+      statusCode: 413,
+      code: 'batch.too-large',
+      details: { max: 10_000, total: 12_345 },
+    });
+    next = err({ code: 'system-requests.not-found' });
+    const gone = await send(
+      'get',
+      `/system-requests/admin/requests/export?ids=${REQUEST}`,
+      session,
+    );
+    expect(gone.status).toBe(404);
+    expect(calls.map((call) => call.name)).toEqual(['export', 'export', 'export']);
+  });
+
   it('routes the badge count and the detail apart', async () => {
     await boot();
     const session = sessionOf('admin');
@@ -293,9 +365,29 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
     const badge = await send('get', '/system-requests/admin/requests-count', session);
     expect(badge.status).toBe(200);
     expect(badge.body).toEqual({ needsMyReview: 3, overdue: 1 });
-    next = ok({ ...view, activity: [] });
+    next = ok({
+      ...view,
+      supersededBy: NEWER,
+      supersededByNumber: 13,
+      activity: [
+        {
+          id: id<'SystemRequestActivity'>(0x7e01),
+          kind: 'applied',
+          actor: AUTHOR,
+          actorName: 'Maryam K.',
+          at: START,
+          body: null,
+        },
+      ],
+    });
     const detail = await send('get', `/system-requests/admin/requests/${REQUEST}`, session);
     expect(detail.status).toBe(200);
+    expect(detail.body).toMatchObject({
+      supersededBy: NEWER,
+      supersededByNumber: 13,
+      subjectLabel: 'List paging',
+      activity: [{ actor: AUTHOR, actorName: 'Maryam K.', at: START.toString() }],
+    });
     expect(calls.map((call) => call.name)).toEqual(['count', 'view']);
   });
 
@@ -326,6 +418,43 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
       { name: 'approve', input: { requestId: REQUEST } },
       { name: 'bulk', input: { requestIds: [REQUEST] } },
     ]);
+  });
+
+  it('approves all matching through its own route, with the list filter as the body', async () => {
+    await boot();
+    const session = sessionOf('admin');
+    next = ok({
+      approved: [{ id: REQUEST, number: 12 }],
+      failed: [{ id: NEWER, code: 'system-requests.decided' }],
+      remaining: 4,
+    });
+    const filter = { view: 'needs-my-review', q: 'paging', risk: 'low', area: 'marketplace' };
+    const path = '/system-requests/admin/requests/bulk-approve-matching';
+    const matched = await send('post', path, session, filter);
+    expect(matched.status).toBe(200);
+    expect(matched.headers['cache-control']).toBe('no-store');
+    expect(matched.body).toEqual({
+      approved: [{ id: REQUEST, number: 12, displayNumber: 'SR-12' }],
+      failed: [{ id: NEWER, code: 'system-requests.decided' }],
+      remaining: 4,
+    });
+    expect(calls).toEqual([{ name: 'matching', input: filter }]);
+    // A count that failed after the approvals committed is null: the panel stops.
+    next = ok({ approved: [{ id: REQUEST, number: 12 }], failed: [], remaining: null });
+    const uncounted = await send('post', path, session, filter);
+    expect(uncounted.status).toBe(200);
+    expect(uncounted.body).toMatchObject({ remaining: null });
+    calls.length = 0;
+    // Paging and sort are not part of what matches; no CSRF is no write.
+    const paged = await send('post', path, session, { view: 'all', page: '2' });
+    expect(paged.status).toBe(400);
+    expect(paged.body).toMatchObject({
+      details: { fields: [{ path: 'page', code: 'unknown-field' }] },
+    });
+    expect((await send('post', path, { cookie: session.cookie }, {})).status).toBe(403);
+    next = err({ code: 'access.denied' });
+    expect((await send('post', path, session, {})).status).toBe(403);
+    expect(calls.map((call) => call.name)).toEqual(['matching']);
   });
 
   it('refuses a write without CSRF, with a stray field, or not as JSON', async () => {
@@ -421,16 +550,24 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
         version: 1,
         updatedAt: START,
         updatedBy: ADMIN,
+        updatedByName: 'Ali R.',
       },
       request: { id: REQUEST, number: 12, risk: 'high', reviewDueAt: START.add({ hours: 168 }) },
     });
     const changed = await send('put', areaPath, session, body);
     expect(changed.status).toBe(200);
+    expect(changed.body).toMatchObject({ value: { updatedBy: ADMIN, updatedByName: 'Ali R.' } });
     expect(calls).toEqual([{ name: 'area', input: { area: 'content', ...body } }]);
     // The guard asks for a fresh proof; spending it is the use case's (unit spec), so the
     // still unspent proof lets the due-days write through to its use case here.
     next = ok({
-      value: { reviewDueDays: 3, version: 1, updatedAt: START, updatedBy: ADMIN },
+      value: {
+        reviewDueDays: 3,
+        version: 1,
+        updatedAt: START,
+        updatedBy: ADMIN,
+        updatedByName: null,
+      },
       request: null,
     });
     const days = await send(
@@ -444,6 +581,7 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
       },
     );
     expect(days.status).toBe(200);
+    expect(days.body).toMatchObject({ value: { updatedByName: null } });
     expect(calls.map((call) => call.name)).toEqual(['area', 'days']);
   });
 });

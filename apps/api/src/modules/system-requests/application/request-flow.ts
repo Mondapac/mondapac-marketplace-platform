@@ -1,8 +1,18 @@
 import { Logger } from '@nestjs/common';
 import { err, ok, parseId } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
-import type { ConsumedStepUp, StepUpRefusal } from '../../../platform/authz';
-import type { AppliedChange, RecordedRequest, RecordFailure } from '../contracts/recorder';
+import type { ConsumedStepUp, PermissionKey, StepUpRefusal } from '../../../platform/authz';
+import type {
+  AppliedChange,
+  ProposedChange,
+  ProposeFailure,
+  RecordedRequest,
+  RecordFailure,
+} from '../contracts/recorder';
+import {
+  MAX_DESCRIBE_REFS,
+  type RevertRequest,
+} from '../../../platform/change-review/change-review';
 import { SYSTEM_REQUESTS_DECIDE_HIGH_STEP_UP } from '../contracts/step-up';
 import {
   AREA_DEFAULTS,
@@ -45,6 +55,9 @@ import type { SystemRequestsDependencies } from './system-requests-dependencies'
 // The author never approves or rejects their own change, and may withdraw it (the same revert).
 // High-risk decisions spend a fresh admin step-up proof. There is no expiry: an open request past
 // its review date is overdue. Every write is refused in an acting-as session and audited.
+// A delete, a merge or an import (owner decision of 18 Nov 2026) is a proposal instead (mode
+// `approval`): nothing is applied when it is asked for; an approval runs the owning module's
+// applier in the decision's unit, and a reject or withdraw changes nothing.
 
 const logger = new Logger('SystemRequestsFlow');
 
@@ -89,6 +102,8 @@ export type SystemRequestsFailure =
   | { readonly code: 'system-requests.revert-not-permitted' }
   /** Bulk approve takes low-risk requests only. */
   | { readonly code: 'system-requests.not-low-risk' }
+  /** Bulk approve takes no proposal: a proposal is applied when approved, one by one. */
+  | { readonly code: 'system-requests.one-by-one' }
   /** Another admin changed the policy first; the page reloads. */
   | { readonly code: 'system-requests.policy-conflict' };
 
@@ -172,10 +187,20 @@ async function reviews(
   context: CallContext,
   area: ReviewArea,
 ): Promise<boolean> {
+  return holds(deps, context, 'system-requests.review-area', [REVIEW_KEYS[area]]);
+}
+
+/** Whether the caller holds every key, asked of the authorisation check (fails closed). */
+async function holds(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  name: string,
+  keys: readonly [PermissionKey, ...PermissionKey[]],
+): Promise<boolean> {
   try {
     const decision = await deps.authorisation.check(context, {
-      name: 'system-requests.review-area',
-      rule: { kind: 'permissions', allOf: [REVIEW_KEYS[area]] },
+      name,
+      rule: { kind: 'permissions', allOf: keys },
     });
     return decision.allowed;
   } catch {
@@ -218,6 +243,8 @@ export interface ChangeToOpen {
   /** Checked already. */
   readonly note: string;
   readonly risk?: Risk;
+  /** `review` unless given. */
+  readonly mode?: SystemRequest['mode'];
 }
 
 /**
@@ -243,6 +270,7 @@ export async function openInUnit(
       area: change.area,
       subjectKind: change.subjectKind,
       subjectRef: change.subjectRef,
+      mode: change.mode ?? 'review',
       risk,
       before: change.before,
       after: change.after,
@@ -301,6 +329,9 @@ export async function recordAppliedChange(
       `system-requests: ${change.subjectKind} is reviewed in ${registered.area}, not ${change.area}`,
     );
   }
+  if (registered.mode !== 'review') {
+    throw new TypeError(`system-requests: ${change.subjectKind} waits for approval: proposeChange`);
+  }
   const admin = signedInAdmin(context);
   if (admin === null) return err({ code: 'access.denied' });
   if (sameValues(change.before, change.after)) return ok(null);
@@ -317,6 +348,65 @@ export async function recordAppliedChange(
       before: change.before,
       after: change.after,
       note: note.text,
+      ...(change.risk === undefined ? {} : { risk: change.risk }),
+    }),
+  );
+}
+
+/**
+ * `SystemRequestRecorder.proposeChange`: checks what the owning module hands over and opens a
+ * proposal (approval mode) in the caller's open unit; the owning module writes nothing now. The
+ * same programming errors throw as for a change; the kind must be registered with an applier.
+ * `ok(null)` when the area is not reviewed in the Market: the caller applies the action at once.
+ * One open proposal per subject: a second is `system-requests.already-pending` (a unique index
+ * holds it too).
+ */
+export async function recordProposedChange(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  change: ProposedChange,
+): Promise<Result<RecordedRequest | null, ProposeFailure>> {
+  if (!isPolicyArea(change?.area)) throw new TypeError('system-requests: unknown area');
+  if (!isSubjectKind(change.subjectKind)) throw new TypeError('system-requests: bad subject kind');
+  if (!isSubjectRef(change.subjectRef)) throw new TypeError('system-requests: bad subject key');
+  if (!isChangeValues(change.before) || !isChangeValues(change.after)) {
+    throw new TypeError('system-requests: values must be a plain JSON object (see isChangeValues)');
+  }
+  if (change.risk !== undefined && !isRisk(change.risk)) {
+    throw new TypeError('system-requests: unknown risk');
+  }
+  const registered = deps.reverters.find(change.subjectKind);
+  if (registered === null || registered.mode !== 'approval') {
+    throw new TypeError(`system-requests: no applier registered for ${change.subjectKind}`);
+  }
+  if (registered.area !== change.area) {
+    throw new TypeError(
+      `system-requests: ${change.subjectKind} is reviewed in ${registered.area}, not ${change.area}`,
+    );
+  }
+  const admin = signedInAdmin(context);
+  if (admin === null) return err({ code: 'access.denied' });
+  if (!(await policyInUnit(deps, context, change.area)).enabled) return ok(null);
+  const note = checkText(change.note, MAX_NOTE);
+  if (!note.ok)
+    return err({ code: 'validation.failed', fields: [{ path: 'note', code: note.code }] });
+  const pending = await deps.requests.findPendingProposal(
+    context.market,
+    change.subjectKind,
+    change.subjectRef,
+  );
+  if (pending !== null) {
+    return err({ code: 'system-requests.already-pending', pendingNumber: pending.number });
+  }
+  return ok(
+    await openInUnit(deps, context, admin, {
+      area: change.area,
+      subjectKind: change.subjectKind,
+      subjectRef: change.subjectRef,
+      before: change.before,
+      after: change.after,
+      note: note.text,
+      mode: 'approval',
       ...(change.risk === undefined ? {} : { risk: change.risk }),
     }),
   );
@@ -353,6 +443,8 @@ export interface ActivityView {
   readonly id: Id<'SystemRequestActivity'>;
   readonly kind: ActivityRecord['kind'];
   readonly actor: Id<'Account'>;
+  /** The actor's display name (identity), or null when it cannot be read. */
+  readonly actorName: string | null;
   readonly at: Temporal.Instant;
   readonly body: string | null;
 }
@@ -368,16 +460,29 @@ export interface RequestView extends Omit<SystemRequest, 'before' | 'after'> {
   /** The key a reviewer of this request holds. */
   readonly reviewPermission: string;
   readonly actions: readonly RequestAction[];
+  /** The author's and the decider's display names (identity's facade); null when unknown. */
+  readonly requestedByName: string | null;
+  readonly decidedByName: string | null;
+  /** The owning module's label of the subject (its reverter's `describe`); null when none. */
+  readonly subjectLabel: string | null;
+  /** The SR number of `supersededBy`; null when not superseded. */
+  readonly supersededByNumber: number | null;
 }
 
 export interface RequestDetailView extends RequestView {
   readonly activity: readonly ActivityView[];
 }
 
+/**
+ * A request as `viewer` sees it, without the labels read outside the unit ({@link withLabels}
+ * adds them). `numbers` holds the SR numbers of the requests that superseded others, read in the
+ * same unit ({@link supersedingNumbers}).
+ */
 export const requestView = (
   request: SystemRequest,
   viewer: Viewer,
   now: Temporal.Instant,
+  numbers: ReadonlyMap<string, number> = new Map(),
 ): RequestView => {
   const shown = request.requestedBy === viewer.accountId || viewer.reviews.has(request.area);
   return {
@@ -387,8 +492,143 @@ export const requestView = (
     overdue: isOverdue(request, now),
     reviewPermission: REVIEW_KEYS[request.area],
     actions: actionsFor(request, viewer),
+    requestedByName: null,
+    decidedByName: null,
+    subjectLabel: null,
+    supersededByNumber:
+      request.supersededBy === null ? null : (numbers.get(request.supersededBy) ?? null),
   };
 };
+
+/** The SR numbers of the requests that superseded any of `requests`, in the open unit. */
+export async function supersedingNumbers(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  requests: readonly Pick<SystemRequest, 'supersededBy'>[],
+): Promise<ReadonlyMap<string, number>> {
+  const ids = [
+    ...new Set(requests.flatMap((row) => (row.supersededBy === null ? [] : [row.supersededBy]))),
+  ];
+  if (ids.length === 0) return new Map();
+  const found = await deps.requests.findMany(context.market, ids);
+  return new Map(found.map((row) => [row.id, row.number]));
+}
+
+/** A label longer than this, empty, or with a control character is not shown. */
+export const MAX_SUBJECT_LABEL = 200;
+
+function cleanLabel(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const text = value.trim();
+  if (text.length === 0 || Array.from(text).length > MAX_SUBJECT_LABEL) return null;
+  // Any "other" character, as closedBody refuses: controls (C0 and C1), format characters (bidi
+  // overrides and isolates, zero-width ones), private use and unassigned code points; and the
+  // line and paragraph separators U+2028 and U+2029, which are not in \p{C}.
+  if (/[\p{C}\u2028\u2029]/u.test(text)) return null;
+  return text;
+}
+
+const subjectKey = (kind: string, ref: string): string => `${kind} ${ref}`;
+
+/**
+ * The owning modules' labels of the subjects, one `describe` per kind (at most 100 refs a call),
+ * outside any unit. A kind without `describe`, a throw and a malformed label give no label.
+ */
+async function subjectLabels(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  requests: readonly Pick<SystemRequest, 'subjectKind' | 'subjectRef'>[],
+): Promise<ReadonlyMap<string, string>> {
+  const byKind = new Map<string, string[]>();
+  for (const request of requests) {
+    const refs = byKind.get(request.subjectKind) ?? [];
+    if (!refs.includes(request.subjectRef)) refs.push(request.subjectRef);
+    byKind.set(request.subjectKind, refs);
+  }
+  const labels = new Map<string, string>();
+  for (const [kind, refs] of byKind) {
+    const reverter = deps.reverters.find(kind)?.hooks;
+    if (reverter?.describe === undefined) continue;
+    for (let start = 0; start < refs.length; start += MAX_DESCRIBE_REFS) {
+      const chunk = refs.slice(start, start + MAX_DESCRIBE_REFS);
+      try {
+        const answer = await reverter.describe(context, chunk);
+        for (const ref of chunk) {
+          const label = cleanLabel(typeof answer?.get === 'function' ? answer.get(ref) : null);
+          if (label !== null) labels.set(subjectKey(kind, ref), label);
+        }
+      } catch (error) {
+        // The kind and the kind of failure only: never a ref or a label.
+        logger.warn({
+          msg: 'system-requests.subject-labels-unavailable',
+          subjectKind: kind,
+          error: error instanceof Error ? error.name : 'unknown',
+          marketId: context.market.marketId,
+          correlationId: context.correlationId,
+        });
+      }
+    }
+  }
+  return labels;
+}
+
+/** The admin names of `accountIds`, outside any unit; none on a failure. */
+export async function adminNamesOf(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  accountIds: readonly (string | null)[],
+): Promise<ReadonlyMap<string, string>> {
+  const ids = [...new Set(accountIds.filter((value): value is string => value !== null))];
+  if (ids.length === 0) return new Map();
+  try {
+    return await deps.adminNames.namesOf(context, ids);
+  } catch {
+    return new Map();
+  }
+}
+
+/**
+ * Adds the human labels to views built in a unit, after it: the author's, the decider's and each
+ * history line's admin name (one read for the page) and the subject's label (one `describe` per
+ * kind). Never fails: what cannot be read stays null.
+ */
+export async function withLabels<V extends RequestView>(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  views: readonly V[],
+  activity: readonly ActivityRecord[] = [],
+): Promise<{
+  readonly views: readonly V[];
+  readonly activity: readonly ActivityView[];
+}> {
+  const names = await adminNamesOf(deps, context, [
+    ...views.flatMap((view) => [view.requestedBy, view.decidedBy]),
+    ...activity.map((line) => line.actor),
+  ]);
+  const labels = await subjectLabels(deps, context, views);
+  const nameOf = (accountId: string | null) =>
+    accountId === null ? null : (names.get(accountId) ?? null);
+  return {
+    views: views.map((view) => ({
+      ...view,
+      requestedByName: nameOf(view.requestedBy),
+      decidedByName: nameOf(view.decidedBy),
+      subjectLabel: labels.get(subjectKey(view.subjectKind, view.subjectRef)) ?? null,
+    })),
+    activity: activity.map((line) => ({ ...line, actorName: nameOf(line.actor) })),
+  };
+}
+
+/** One view with its labels (a decision's answer). */
+async function labelled(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  result: Result<RequestView, SystemRequestsFailure>,
+): Promise<Result<RequestView, SystemRequestsFailure>> {
+  if (!result.ok) return result;
+  const { views } = await withLabels(deps, context, [result.value]);
+  return ok(views[0]!);
+}
 
 /** `ViewSystemRequest`: one request with its history and the caller's actions. */
 export async function viewRequest(
@@ -402,19 +642,26 @@ export async function viewRequest(
   if (id === null) return err(invalid([{ path: 'requestId', code: 'format' }]));
   const areas = await reviewableAreas(deps, context);
   const now = deps.clock.now();
-  return deps.unitOfWork.run<RequestDetailView, SystemRequestsFailure>(
+  const read = await deps.unitOfWork.run<
+    { readonly view: RequestView; readonly activity: readonly ActivityRecord[] },
+    SystemRequestsFailure
+  >(
     context.market,
     async () => {
       const request = await deps.requests.find(context.market, id);
       if (request === null) return err({ code: 'system-requests.not-found' });
       const activity = await deps.requests.activity(context.market, id);
+      const numbers = await supersedingNumbers(deps, context, [request]);
       return ok({
-        ...requestView(request, { accountId: admin, reviews: areas }, now),
-        activity: activity.map((line) => ({ ...line })),
+        view: requestView(request, { accountId: admin, reviews: areas }, now, numbers),
+        activity,
       });
     },
     { readOnly: true },
   );
+  if (!read.ok) return read;
+  const named = await withLabels(deps, context, [read.value.view], read.value.activity);
+  return ok({ ...named.views[0]!, activity: named.activity });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -435,20 +682,26 @@ export async function commentOnRequest(
   if (!body.ok) fields.push({ path: 'body', code: body.code });
   if (fields.length > 0 || id === null || !body.ok) return err(invalid(fields));
   const now = deps.clock.now();
-  return deps.unitOfWork.run<ActivityView, SystemRequestsFailure>(context.market, async () => {
-    const request = await deps.requests.find(context.market, id);
-    if (request === null) return err({ code: 'system-requests.not-found' });
-    const line: ActivityRecord = {
-      id: deps.ids.next<'SystemRequestActivity'>(),
-      kind: 'commented',
-      actor: admin,
-      at: now,
-      body: body.text,
-    };
-    const commentCount = await deps.requests.addComment(context.market, id, line);
-    await deps.audit.record(context, RequestCommented.entry(id, { after: { commentCount } }));
-    return ok(line);
-  });
+  const added = await deps.unitOfWork.run<ActivityRecord, SystemRequestsFailure>(
+    context.market,
+    async () => {
+      const request = await deps.requests.find(context.market, id);
+      if (request === null) return err({ code: 'system-requests.not-found' });
+      const line: ActivityRecord = {
+        id: deps.ids.next<'SystemRequestActivity'>(),
+        kind: 'commented',
+        actor: admin,
+        at: now,
+        body: body.text,
+      };
+      const commentCount = await deps.requests.addComment(context.market, id, line);
+      await deps.audit.record(context, RequestCommented.entry(id, { after: { commentCount } }));
+      return ok(line);
+    },
+  );
+  if (!added.ok) return added;
+  const names = await adminNamesOf(deps, context, [admin]);
+  return ok({ ...added.value, actorName: names.get(admin) ?? null });
 }
 
 type DecisionKind = 'approve' | 'reject' | 'withdraw';
@@ -510,7 +763,7 @@ async function prepareDecision(
  * also asks the owning module whether the change is about the decider (`isInterested`, read in
  * this unit); a module without that check lets any reviewer but the author decide.
  */
-async function decidable(
+export async function decidable(
   deps: SystemRequestsDependencies,
   context: CallContext,
   kind: DecisionKind,
@@ -524,7 +777,7 @@ async function decidable(
   if (kind === 'withdraw' && !own) return err({ code: 'system-requests.not-author' });
   if (kind !== 'withdraw' && own) return err({ code: 'system-requests.own-request' });
   if (kind !== 'withdraw') {
-    const reverter = deps.reverters.find(request.subjectKind)?.reverter;
+    const reverter = deps.reverters.find(request.subjectKind)?.hooks;
     if (
       reverter?.isInterested !== undefined &&
       (await reverter.isInterested(context, {
@@ -557,7 +810,7 @@ const proofFields = (proof: ConsumedStepUp | null) => ({
 });
 
 /** Approves a locked open request in the open unit (the change stays live). */
-async function approveInUnit(
+export async function approveInUnit(
   deps: SystemRequestsDependencies,
   context: CallContext,
   admin: Id<'Account'>,
@@ -611,15 +864,169 @@ export async function approveRequest(
   const prepared = await prepareDecision(deps, context, 'approve', input);
   if (!prepared.ok) return prepared;
   const { admin, id } = prepared.value;
+  const proposal = await seenProposal(deps, context, admin, id);
+  if (!proposal.ok) return proposal;
+  if (proposal.value !== null) return applyProposal(deps, context, admin, id, proposal.value);
   const areas = await reviewableAreas(deps, context);
-  return deps.unitOfWork.run<RequestView, SystemRequestsFailure>(context.market, async () => {
-    const found = await decidable(deps, context, 'approve', admin, id);
-    if (!found.ok) return found;
-    const proof = await spendIfHigh(deps, context, found.value);
-    if (!proof.ok) return proof;
-    const decided = await approveInUnit(deps, context, admin, found.value, proof.value);
-    return ok(requestView(decided, { accountId: admin, reviews: areas }, deps.clock.now()));
-  });
+  const decided = await deps.unitOfWork.run<RequestView, SystemRequestsFailure>(
+    context.market,
+    async () => {
+      const found = await decidable(deps, context, 'approve', admin, id);
+      if (!found.ok) return found;
+      // The mode never changes (no column grant), so the first look's answer holds.
+      if (found.value.mode !== 'review') throw new Error('system-requests: a request changed mode');
+      const proof = await spendIfHigh(deps, context, found.value);
+      if (!proof.ok) return proof;
+      // Approving keeps the change: no reverter is asked, so a subject gone since is no refusal.
+      const approved = await approveInUnit(deps, context, admin, found.value, proof.value);
+      const numbers = await supersedingNumbers(deps, context, [approved]);
+      return ok(
+        requestView(approved, { accountId: admin, reviews: areas }, deps.clock.now(), numbers),
+      );
+    },
+  );
+  return labelled(deps, context, decided);
+}
+
+/**
+ * Asks an owning module's pre-unit `check` (of a revert or of an applied proposal). Fails closed:
+ * a check that throws or answers anything but `ok` is `revert-not-permitted`. Ids only in logs.
+ */
+async function askCheck(
+  context: CallContext,
+  request: SystemRequest,
+  check: (context: CallContext, request: RevertRequest) => Promise<'ok' | 'not-permitted'>,
+): Promise<Result<null, SystemRequestsFailure>> {
+  let answer: 'ok' | 'not-permitted';
+  try {
+    answer = await check(context, revertRequestOf(request));
+  } catch (error) {
+    logger.error({
+      msg: 'system-requests.revert-check-failed',
+      error: error instanceof Error ? error.name : 'unknown',
+      requestId: request.id,
+      subjectKind: request.subjectKind,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    answer = 'not-permitted';
+  }
+  return answer === 'ok' ? ok(null) : err({ code: 'system-requests.revert-not-permitted' });
+}
+
+const revertRequestOf = (request: SystemRequest): RevertRequest => ({
+  requestId: request.id,
+  subjectRef: request.subjectRef,
+  before: request.before,
+  after: request.after,
+});
+
+/**
+ * A first look at the request before an approval: the open proposal (approval mode) with its
+ * registered applier, or null for anything else (a change to review, a decided or missing
+ * request: the approval's own unit answers those). A proposal whose kind has no applier any more
+ * cannot be applied.
+ */
+async function seenProposal(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  admin: Id<'Account'>,
+  id: Id<'SystemRequest'>,
+): Promise<Result<SystemRequest | null, SystemRequestsFailure>> {
+  const seen = await deps.unitOfWork.run<SystemRequest | null, SystemRequestsFailure>(
+    context.market,
+    async () => ok(await deps.requests.find(context.market, id)),
+    { readOnly: true },
+  );
+  if (!seen.ok) return seen;
+  const request = seen.value;
+  if (request === null || request.mode !== 'approval' || request.status !== 'open') return ok(null);
+  // The author is refused by the unit (own-request) before any module is asked.
+  if (request.requestedBy === admin) return ok(null);
+  return ok(request);
+}
+
+/**
+ * Approves a proposal. Before the unit: the action's permission, registered with the applier,
+ * checked here (Hassan M1: an owning module's `check` that answers `ok` for anyone cannot let a
+ * reviewer run an action they may not run), then the module's own `check`, then the area's review
+ * key and the action's permission once more, last thing before the unit opens (Hassan L2: the
+ * authorisation check reads committed state in a unit of its own and is never called inside the
+ * caller's, so this is as close to the decision as it can run). Then, in one serializable unit
+ * with the decision, the module's `apply`, which writes the action only if the subject still
+ * holds `before`. Anything but `applied` writes nothing and leaves the request open.
+ */
+async function applyProposal(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  admin: Id<'Account'>,
+  id: Id<'SystemRequest'>,
+  seen: SystemRequest,
+): Promise<Result<RequestView, SystemRequestsFailure>> {
+  const registered = deps.reverters.find(seen.subjectKind);
+  if (registered?.mode !== 'approval') return err({ code: 'system-requests.revert-unavailable' });
+  const { applier, permissions } = registered;
+  const permitted = () => holds(deps, context, 'system-requests.apply-proposal', permissions);
+  if (!(await permitted())) return err({ code: 'system-requests.revert-not-permitted' });
+  const checked = await askCheck(context, seen, (c, r) => applier.check(c, r));
+  if (!checked.ok) return checked;
+  const areas = await reviewableAreas(deps, context);
+  if (!areas.has(seen.area)) return err({ code: 'system-requests.not-reviewer' });
+  if (!(await permitted())) return err({ code: 'system-requests.revert-not-permitted' });
+  const decided = await deps.unitOfWork.run<RequestView, SystemRequestsFailure>(
+    context.market,
+    async () => {
+      const found = await decidable(deps, context, 'approve', admin, id);
+      if (!found.ok) return found;
+      const request = found.value;
+      const proof = await spendIfHigh(deps, context, request);
+      if (!proof.ok) return proof;
+      const outcome = await applier.apply(context, revertRequestOf(request));
+      if (outcome === 'changed-since') {
+        return err({ code: 'system-requests.changed-since', newerRequestId: null });
+      }
+      if (outcome === 'gone') return err({ code: 'system-requests.subject-gone' });
+      if (outcome === 'not-permitted') return err({ code: 'system-requests.revert-not-permitted' });
+      if (outcome !== 'applied') throw new Error('system-requests: unknown apply outcome');
+      const approved = await approveInUnit(deps, context, admin, request, proof.value);
+      return ok(requestView(approved, { accountId: admin, reviews: areas }, deps.clock.now()));
+    },
+    { isolation: 'serializable' },
+  );
+  return labelled(deps, context, decided);
+}
+
+/**
+ * Runs the owning module's optional pre-unit `check` of a revert (see `SystemChangeReverter`),
+ * before the decision unit opens. The values before and after of a request never change, so the
+ * look taken here is the one the unit decides on; a request that is gone or no longer open is left
+ * to the unit, which answers it, and so is a withdraw by anyone but the author (`not-author`), for
+ * whom the check is not run. A check that throws fails closed: `revert-not-permitted`, nothing
+ * written, the request stays open.
+ */
+async function checkBeforeRevert(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  kind: 'reject' | 'withdraw',
+  admin: Id<'Account'>,
+  id: Id<'SystemRequest'>,
+): Promise<Result<null, SystemRequestsFailure>> {
+  const seen = await deps.unitOfWork.run<SystemRequest | null, SystemRequestsFailure>(
+    context.market,
+    async () => ok(await deps.requests.find(context.market, id)),
+    { readOnly: true },
+  );
+  if (!seen.ok) return seen;
+  const request = seen.value;
+  if (request === null || request.status !== 'open') return ok(null);
+  // Only the author may withdraw: for anyone else the unit answers not-author, so the check (which
+  // reads other modules) is not run for them.
+  if (kind === 'withdraw' && request.requestedBy !== admin) return ok(null);
+  // A proposal's reject or withdraw undoes nothing, so there is nothing to check.
+  if (request.mode !== 'review') return ok(null);
+  const reverter = deps.reverters.find(request.subjectKind)?.reverter;
+  if (reverter?.check === undefined || reverter === null) return ok(null);
+  return askCheck(context, request, (c, r) => reverter.check!(c, r));
 }
 
 /**
@@ -639,33 +1046,40 @@ async function revertRequest(
   const prepared = await prepareDecision(deps, context, kind, input);
   if (!prepared.ok) return prepared;
   const { admin, id, reason } = prepared.value;
+  const checked = await checkBeforeRevert(deps, context, kind, admin, id);
+  if (!checked.ok) return checked;
   const areas = await reviewableAreas(deps, context);
-  return deps.unitOfWork.run<RequestView, SystemRequestsFailure>(
+  const reverted = await deps.unitOfWork.run<RequestView, SystemRequestsFailure>(
     context.market,
     async () => {
       const found = await decidable(deps, context, kind, admin, id);
       if (!found.ok) return found;
       const request = found.value;
+      const proposal = request.mode === 'approval';
       if (request.supersededBy !== null) {
         return err({ code: 'system-requests.changed-since', newerRequestId: request.supersededBy });
       }
-      const registered = deps.reverters.find(request.subjectKind);
-      if (registered === null) return err({ code: 'system-requests.revert-unavailable' });
-      const reverter = registered.reverter;
+      // A proposal was never applied: declining it or taking it back changes nothing, so it
+      // needs no registered kind (Hassan L3: else a kind no longer registered would leave its
+      // proposal, and through the one-open-proposal index its subject, stuck).
+      const registered = proposal ? null : deps.reverters.find(request.subjectKind);
+      if (!proposal && registered === null) {
+        return err({ code: 'system-requests.revert-unavailable' });
+      }
       const proof = await spendIfHigh(deps, context, request);
       if (!proof.ok) return proof;
-      const outcome = await reverter.revert(context, {
-        requestId: request.id,
-        subjectRef: request.subjectRef,
-        before: request.before,
-        after: request.after,
-      });
-      if (outcome === 'changed-since') {
-        return err({ code: 'system-requests.changed-since', newerRequestId: null });
+      if (!proposal) {
+        if (registered?.mode !== 'review') throw new Error('system-requests: a kind changed mode');
+        const outcome = await registered.reverter.revert(context, revertRequestOf(request));
+        if (outcome === 'changed-since') {
+          return err({ code: 'system-requests.changed-since', newerRequestId: null });
+        }
+        if (outcome === 'gone') return err({ code: 'system-requests.subject-gone' });
+        if (outcome === 'not-permitted') {
+          return err({ code: 'system-requests.revert-not-permitted' });
+        }
+        if (outcome !== 'reverted') throw new Error('system-requests: unknown revert outcome');
       }
-      if (outcome === 'gone') return err({ code: 'system-requests.subject-gone' });
-      if (outcome === 'not-permitted') return err({ code: 'system-requests.revert-not-permitted' });
-      if (outcome !== 'reverted') throw new Error('system-requests: unknown revert outcome');
       const decision = kind === 'reject' ? 'rejected' : 'withdrawn';
       const now = deps.clock.now();
       const written = await deps.requests.decide(context.market, request.id, {
@@ -679,7 +1093,8 @@ async function revertRequest(
       // The subject holds the value before this change again, which is the value after the
       // requests this one superseded: they are the latest again, and can be decided in full
       // (Hassan H1: else an author could bury a change by superseding and withdrawing it).
-      await deps.requests.release(context.market, request.id);
+      // A proposal superseded nothing.
+      if (!proposal) await deps.requests.release(context.market, request.id);
       await deps.requests.addActivity(context.market, request.id, {
         id: deps.ids.next<'SystemRequestActivity'>(),
         kind: decision,
@@ -717,6 +1132,7 @@ async function revertRequest(
     },
     { isolation: 'serializable' },
   );
+  return labelled(deps, context, reverted);
 }
 
 /** `RejectSystemRequest`: another admin who reviews the area rejects; the value before returns. */
@@ -771,6 +1187,8 @@ export async function approveRequests(
         const found = await decidable(deps, context, 'approve', admin, id);
         if (!found.ok) return found;
         if (found.value.risk !== 'low') return err({ code: 'system-requests.not-low-risk' });
+        // A proposal is applied when approved, so it is approved one by one.
+        if (found.value.mode !== 'review') return err({ code: 'system-requests.one-by-one' });
         if (!areas.has(found.value.area)) return err({ code: 'system-requests.not-reviewer' });
         return ok(await approveInUnit(deps, context, admin, found.value, null));
       },

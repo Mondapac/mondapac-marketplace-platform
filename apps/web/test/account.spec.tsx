@@ -105,6 +105,7 @@ describe('global account menu', () => {
       ['Orders', '/account/orders'],
       ['Addresses', '/account/addresses'],
       ['Saved lists', '/account/lists'],
+      ['My stores', '/account/stores'],
       ['Settings', '/account/settings'],
     ]);
     expect(within(r).getByRole('link', { name: 'Orders' }).getAttribute('aria-current')).toBe(
@@ -137,7 +138,7 @@ describe('global account menu', () => {
       within(panel)
         .getAllByRole('link')
         .map((a) => a.textContent),
-    ).toEqual(['Overview', 'Orders', 'Addresses', 'Saved lists', 'Settings']);
+    ).toEqual(['Overview', 'Orders', 'Addresses', 'Saved lists', 'My stores', 'Settings']);
     expect(within(panel).getByRole('link', { name: 'Overview' })).toBe(document.activeElement);
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(document.querySelector('.adw.open')).toBeNull();
@@ -258,7 +259,7 @@ describe('overview', () => {
     expect(within(tiles!).queryByRole('button', { name: 'Log out' })).toBeNull();
   });
 
-  it('phone and tablet: a menu list of the four sections and Log out beside the tiles (CSS switches them)', () => {
+  it('phone and tablet: a menu list of the five sections and Log out beside the tiles (CSS switches them)', () => {
     renderStore(<AccountOverview />);
     const page = main();
     const menu = within(page).getByRole('navigation', { name: 'Account' });
@@ -272,6 +273,7 @@ describe('overview', () => {
       ['Orders', '/account/orders'],
       ['Addresses2 saved', '/account/addresses'],
       ['Saved lists1 saved', '/account/lists'],
+      ['My stores', '/account/stores'],
       ['SettingsProfile, look, emails', '/account/settings'],
     ]);
     expect(within(menu).getByRole('button', { name: 'Log out' })).toBeTruthy();

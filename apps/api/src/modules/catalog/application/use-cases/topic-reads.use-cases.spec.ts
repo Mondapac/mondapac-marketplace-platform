@@ -93,6 +93,8 @@ describe.each(['AU', 'ZZ'] as const)('topic reads in market %s', (code) => {
   };
   let lastQuery: Parameters<TopicReader['list']>[1] | null = null;
   const topicReader: TopicReader = {
+    page: () => Promise.resolve([]),
+    count: () => Promise.resolve(0),
     list: (m, query) => {
       lastQuery = query;
       const items = (topicsByMarket[m.marketId] ?? []).filter(

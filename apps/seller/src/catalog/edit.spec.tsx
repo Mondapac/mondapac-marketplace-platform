@@ -39,7 +39,7 @@ const product = (over: Partial<ProductView> = {}): ProductView => ({
   lastChangedAt: '2026-10-01T00:00:00Z',
   createdAt: '2026-10-01T00:00:00Z',
   pendingSubmittedAt: null,
-  form: { taxCategoryCodes: [], units: [], fields: [], categories: [] },
+  form: { taxCategories: [], units: [], fields: [], categories: [] },
   workingCopy: {
     content: {
       texts: { 'en-AU': { name: 'Olive oil' }, ar: { name: 'زيت' } },
@@ -87,6 +87,18 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('EditForm', () => {
+  it('keeps the card order: Status, Product, then Organisation', () => {
+    mount();
+    const status = screen.getByRole('button', { name: 'Submit for review' });
+    const title = screen.getByLabelText('Title');
+    const organisation = screen.getByRole('heading', { name: 'Organisation' });
+    const follows = (a: HTMLElement, b: HTMLElement) =>
+      Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(follows(status, title)).toBe(true);
+    expect(follows(title, organisation)).toBe(true);
+    expect(screen.queryByText('Your offer')).toBeNull();
+  });
+
   it('saves only the texts and sends every other draft key back unchanged', async () => {
     call.mockResolvedValue(saved);
     mount();
@@ -210,16 +222,21 @@ describe('EditForm', () => {
     mount(
       product({
         form: {
-          taxCategoryCodes: ['gst'],
+          taxCategories: [{ code: 'gst', labelKey: 'catalog.tax.gst' }],
           units: [],
           fields: [],
           categories: [{ categoryId: 'c1', parentId: null, names: { 'en-AU': 'Pantry' } }],
         },
       }),
     );
-    expect(
-      screen.getByRole<HTMLButtonElement>('button', { name: 'Submit for review' }).disabled,
-    ).toBe(true);
+    const submitButton = screen.getByRole<HTMLButtonElement>('button', {
+      name: 'Submit for review',
+    });
+    expect(submitButton.disabled).toBe(false);
+    expect(submitButton.getAttribute('aria-disabled')).toBe('true');
+    const callsBefore = call.mock.calls.length;
+    fireEvent.click(submitButton);
+    expect(call.mock.calls.length).toBe(callsBefore);
     expect(
       screen.getByText('To submit: choose a category and choose the tax category.'),
     ).toBeTruthy();

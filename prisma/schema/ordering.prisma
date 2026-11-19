@@ -13,7 +13,8 @@ model OrderingOrder {
   accountId             String                @map("account_id") @db.Uuid
   /// pending-payment, confirmed or cancelled (CHECK).
   status                String
-  /// Set when cancelled: expired, payment-failed, stock-unavailable, superseded, provider-failed (CHECK).
+  /// Set when cancelled: expired, payment-failed, stock-unavailable, superseded, provider-failed,
+  /// discount-changed (CHECK).
   cancelReason          String?               @map("cancel_reason")
   /// none, authorised, captured or voided (CHECK). Moves only forward.
   paymentState          String                @map("payment_state")
@@ -65,6 +66,10 @@ model OrderingSellerOrder {
   sellerId               String              @map("seller_id") @db.Uuid
   subtotalAmount         BigInt              @map("subtotal_amount")
   shippingAmount         BigInt              @map("shipping_amount")
+  /// The discounts of the seller order (promotions package T2), frozen at placement: the sum of
+  /// its lines' discounts, and the discount on the delivery price (CHECK: within the amounts).
+  discountAmount         BigInt              @default(0) @map("discount_amount")
+  shippingDiscountAmount BigInt              @default(0) @map("shipping_discount_amount")
   /// The tax on the flat shipping fee, frozen at placement beside the rate and the price basis
   /// (ADR-0039 decision 4). All three are null on orders placed before it was recorded (CHECK).
   shippingTaxRateBps     Int?                @map("shipping_tax_rate_bps")
@@ -154,6 +159,11 @@ model OrderingOrderLine {
   quantity          Int
   unitAmount        BigInt               @map("unit_amount")
   lineAmount        BigInt               @map("line_amount")
+  /// The line's discount from promotions (package T2) and its funding, frozen at placement: the
+  /// seller's share plus the platform's share, at most `lineAmount` (CHECK). 0 without discount.
+  discountAmount        BigInt               @default(0) @map("discount_amount")
+  discountSellerShare   BigInt               @default(0) @map("discount_seller_share")
+  discountPlatformShare BigInt               @default(0) @map("discount_platform_share")
   /// True when the unit price already includes GST (AU).
   taxInclusive      Boolean              @map("tax_inclusive")
   /// The reservation line this order line commits.
@@ -161,6 +171,16 @@ model OrderingOrderLine {
   /// The commission rate in basis points, frozen when the order was placed (COM-04); null only
   /// on lines placed before the rate was frozen.
   commissionRateBps Int?                 @map("commission_rate_bps")
+  /// Why the line carries its rate (customers phase 4b): `standard`, or `exclusive` (the Market's
+  /// lower rate for the seller's exclusive customer). CHECK: `exclusive` needs `exclusiveSeller`.
+  commissionRateReason String           @default("standard") @map("commission_rate_reason")
+  /// True when the buyer was the exclusive customer of this line's seller at placement (joined
+  /// through its invite link), whether or not a lower rate applied.
+  exclusiveSeller   Boolean              @default(false) @map("exclusive_seller")
+  /// On a line whose rate was lowered (`exclusive`): the rate it would have carried without it,
+  /// the seller's rate in force at placement (CHECK: only then, and never below the line's rate).
+  /// Null on every other line and on lines lowered before it was frozen.
+  commissionStandardRateBps Int?        @map("commission_standard_rate_bps")
   /// The tax rate in basis points and the tax of the line in minor units, frozen when the order
   /// was placed (ADR-0039); both null only on lines placed before tax was recorded (CHECK).
   taxRateBps        Int?                 @map("tax_rate_bps")
@@ -508,30 +528,3 @@ model OrderingSellerOrderNote {
   @@schema("ordering")
 }
 
-/// A saved view of an order list: the tab, filters and sort of the admin or the seller order list
-/// under a name, for its owner (`me`) or, on the admin list only, for every admin of the Market who
-/// can see it (`everyone`). `list_key` names the list (`admin.ordering.orders`,
-/// `seller.ordering.orders`). The payload is a closed document validated on write by the application
-/// (the CHECKs only bound its type and size). `owner_account_id` is an identity account id with no
-/// foreign key. The CHECKs, the two case-insensitive name uniques and the grants are hand-written in
-/// the migration.
-model OrderingSavedFilter {
-  id             String   @id @db.Uuid
-  marketId       String   @map("market_id") @db.VarChar(8)
-  tenantId       String   @map("tenant_id")
-  ownerAccountId String   @map("owner_account_id") @db.Uuid
-  /// me | everyone.
-  visibility     String
-  listKey        String   @map("list_key")
-  /// 1 to 60 characters, trimmed, no control character (CHECK).
-  name           String
-  payload        Json
-  /// The order of the owner's filters in the list (1 and up); set at creation.
-  position       Int
-  createdAt      DateTime @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime @map("updated_at") @db.Timestamptz(6)
-
-  @@unique([marketId, id])
-  @@map("saved_filters")
-  @@schema("ordering")
-}

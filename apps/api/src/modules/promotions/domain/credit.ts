@@ -27,6 +27,25 @@ export const REFERRAL_REJECT_REASONS = [
 export type ReferralRejectReason = (typeof REFERRAL_REJECT_REASONS)[number];
 
 /** One credit the platform owes or has paid. */
+/**
+ * What one succeeded refund takes back of a GRANTED cashback (customers phase 4c-2): its share of
+ * what is to be taken back in all, then, once DONE, what the wallet actually took.
+ */
+export interface ClawbackRecord {
+  readonly id: Id<'CreditClawback'>;
+  readonly creditId: Id<'PromotionCredit'>;
+  readonly refundId: Id<'Refund'>;
+  /** 1, 2, … per credit: a running count that makes two refunds of one credit clash. */
+  readonly seq: number;
+  readonly amountMinor: bigint;
+  readonly currency: string;
+  readonly status: 'PENDING' | 'DONE';
+  readonly clawedMinor: bigint | null;
+  readonly walletJournalId: string | null;
+  readonly createdAt: Temporal.Instant;
+  readonly settledAt: Temporal.Instant | null;
+}
+
 export interface CreditRecord {
   readonly id: Id<'PromotionCredit'>;
   readonly promotionId: Id<'Promotion'>;
@@ -44,6 +63,33 @@ export interface CreditRecord {
   readonly idempotencyKey: string;
   readonly createdAt: Temporal.Instant;
   readonly settledAt: Temporal.Instant | null;
+  /**
+   * A PENDING cashback waits until this instant: the seller order's payout release (customers
+   * phase 4c), so a refund or a dispute inside the hold still lowers or cancels it. Null once its
+   * amount is final (the wallet may then be called) and for every other credit.
+   */
+  readonly grantAfter: Temporal.Instant | null;
+  /**
+   * What a cashback was earned on (Hassan H-2): the amount reserved at delivery and the goods
+   * (minor units) it was earned on. A refund lowers the credit pro rata from these, never from
+   * the promotion's rate as it is now. Null for every other credit (and a cashback made before).
+   */
+  readonly earnedOn: { readonly reservedMinor: bigint; readonly goodsMinor: bigint } | null;
+}
+
+/**
+ * What a cashback earned on `basis` keeps when only `goodsKept` of those goods remain: pro rata,
+ * rounded up (a part of a cent stays with the customer), never more than the reserved amount.
+ */
+export function keptPart(
+  basis: { readonly reservedMinor: bigint; readonly goodsMinor: bigint },
+  goodsKept: bigint,
+): bigint {
+  if (goodsKept <= 0n) return 0n;
+  if (goodsKept >= basis.goodsMinor) return basis.reservedMinor;
+  const product = basis.reservedMinor * goodsKept;
+  const kept = product / basis.goodsMinor + (product % basis.goodsMinor === 0n ? 0n : 1n);
+  return kept < basis.reservedMinor ? kept : basis.reservedMinor;
 }
 
 export interface ReferralRecord {

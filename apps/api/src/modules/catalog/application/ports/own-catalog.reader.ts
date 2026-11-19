@@ -1,6 +1,6 @@
 import type { Id, MarketContext, MeasureSettings, Temporal } from '@mondapac/shared-kernel';
-import type { Offer } from '../../domain/offer';
-import type { Product, ProductStatus } from '../../domain/product';
+import type { Offer, OfferStatus } from '../../domain/offer';
+import type { Product, ProductScope, ProductStatus } from '../../domain/product';
 import type { WorkingCopy } from '../../domain/working-copy';
 
 /** The stored sell-unit row of an Offer as the seller sees it (V5): a variant with none sells. */
@@ -20,6 +20,8 @@ export interface ProductLabel {
   readonly productId: Id<'Product'>;
   readonly productCode: string;
   readonly typeCode: string;
+  /** PLATFORM or SELLER: only an Offer on a PLATFORM product can be deleted on its own. */
+  readonly scope: ProductScope;
   readonly name: string | null;
 }
 
@@ -89,6 +91,24 @@ export interface OfferStatusCounts {
   readonly pendingFirstPublish: number;
   readonly changesNeeded: number;
   readonly published: number;
+}
+
+/** The sorts of the seller's Offer list; ties break on the id in the same direction. */
+export const OWN_OFFER_SORTS = ['created', 'sku', 'status'] as const;
+export type OwnOfferSort = (typeof OWN_OFFER_SORTS)[number];
+
+/** The filters of the seller's Offer list; `statuses` is already narrowed by view and status. */
+export interface OwnOffersFilter {
+  /** The Offer statuses kept (never `deleted`); empty keeps nothing. */
+  readonly statuses: readonly OfferStatus[];
+  /** On sale (`listed`) or not; null keeps both. */
+  readonly listed: boolean | null;
+  /** Contained, case-insensitive text of the seller SKU, the product code or the product name. */
+  readonly text: string | null;
+  /** The locale the product name is searched in. */
+  readonly locale: string;
+  /** Only these Offers (the rows an export names); absent or null keeps all that match. */
+  readonly offerIds?: readonly Id<'Offer'>[] | null;
 }
 
 /** The filters of the seller's product list; `statuses` is already narrowed by view and status. */
@@ -229,6 +249,44 @@ export interface OwnCatalogReader {
     page: ListPage<'Offer'>,
   ): Promise<readonly Offer[]>;
 
+  /** One page of the seller's Offers that `filter` keeps, `limit` rows after `offset`. */
+  listOfferPage(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnOffersFilter,
+    order: { readonly sort: OwnOfferSort; readonly direction: OwnSortDirection },
+    page: { readonly offset: number; readonly limit: number },
+  ): Promise<readonly Offer[]>;
+
+  /**
+   * The ids of the Offers `filter` keeps, in `order` (ties on the id), at most `limit`: the
+   * snapshot an export reads its rows by.
+   */
+  listOfferIds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnOffersFilter,
+    order: { readonly sort: OwnOfferSort; readonly direction: OwnSortDirection },
+    limit: number,
+  ): Promise<readonly Id<'Offer'>[]>;
+
+  /** The seller's own Offers of these ids that are not deleted, in the order of `ids`. */
+  listOffersByIds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    ids: readonly Id<'Offer'>[],
+  ): Promise<readonly Offer[]>;
+
+  /**
+   * The Offers `filter` keeps, per status (one grouped count); `filter.statuses` is ignored and
+   * every status but `deleted` is counted, so each tab shows its own number.
+   */
+  countOffersByStatus(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnOffersFilter,
+  ): Promise<OfferStatusCounts>;
+
   /** How many of the seller's Offers are in each status, deleted ones left out (one count). */
   offerStatusCounts(market: MarketContext, sellerId: Id<'Seller'>): Promise<OfferStatusCounts>;
 
@@ -294,6 +352,13 @@ export interface OwnCatalogReader {
    * missing or archived: an empty list.
    */
   productForm(market: MarketContext, familyCode: string): Promise<ProductForm>;
+
+  /**
+   * The active platform categories a product may be filed under: the `categories` of
+   * {@link productForm}, which does not depend on the family. The product form options read it
+   * before any product exists.
+   */
+  productCategories(market: MarketContext): Promise<readonly ProductFormCategory[]>;
 
   /** The working copies of the given products (at most 100 ids), in no order. */
   findWorkingCopies(

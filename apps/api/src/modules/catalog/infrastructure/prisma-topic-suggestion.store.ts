@@ -1,8 +1,18 @@
+import type {
+  OwnSuggestionsFilter,
+  OwnSuggestionsPage,
+} from '../application/ports/own-suggestion-page';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
-import type { TopicSuggestionStore } from '../application/ports/topic-suggestion.store';
+import type {
+  OpenTopicSuggestionsFilter,
+  OpenTopicSuggestionsPage,
+  TopicSuggestionStore,
+} from '../application/ports/topic-suggestion.store';
+import type { Prisma } from '../../../generated/prisma/client';
+import { likeLiteral } from './like-literal';
 import {
   TopicSuggestion,
   type SuggestionNoticeState,
@@ -42,6 +52,30 @@ interface Row {
  * of `where`. A decision and a notice move are each one conditional update at the version read,
  * in the granted columns only; the guard trigger refuses any other change.
  */
+const openWhere = (
+  market: MarketContext,
+  filter: OpenTopicSuggestionsFilter,
+): Prisma.CatalogTopicSuggestionWhereInput => ({
+  marketId: market.marketId,
+  status: 'open',
+  ...(filter.text === null
+    ? {}
+    : { label: { contains: likeLiteral(filter.text), mode: 'insensitive' } }),
+});
+
+const ownWhere = (
+  market: MarketContext,
+  sellerId: Id<'Seller'>,
+  filter: OwnSuggestionsFilter<SuggestionStatus>,
+) => ({
+  marketId: market.marketId,
+  sellerId,
+  ...(filter.status === null ? {} : { status: filter.status }),
+  ...(filter.text === null
+    ? {}
+    : { label: { contains: likeLiteral(filter.text), mode: 'insensitive' as const } }),
+});
+
 export class PrismaTopicSuggestionStore implements TopicSuggestionStore {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -153,13 +187,23 @@ export class PrismaTopicSuggestionStore implements TopicSuggestionStore {
     });
   }
 
-  async listOpen(market: MarketContext, limit: number): Promise<readonly TopicSuggestion[]> {
+  async pageOpen(
+    market: MarketContext,
+    page: OpenTopicSuggestionsPage,
+  ): Promise<readonly TopicSuggestion[]> {
     const rows = await this.prisma.tx(market).catalogTopicSuggestion.findMany({
-      where: { marketId: market.marketId, status: 'open' },
-      orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
-      take: limit,
+      where: openWhere(market, page),
+      orderBy: [{ createdAt: page.direction }, { id: page.direction }],
+      skip: page.offset,
+      take: page.limit,
     });
     return rows.map(suggestionOf);
+  }
+
+  async countOpen(market: MarketContext, filter: OpenTopicSuggestionsFilter): Promise<number> {
+    return this.prisma
+      .tx(market)
+      .catalogTopicSuggestion.count({ where: openWhere(market, filter) });
   }
 
   async listOfProduct(
@@ -173,6 +217,37 @@ export class PrismaTopicSuggestionStore implements TopicSuggestionStore {
       take: limit,
     });
     return rows.map(suggestionOf);
+  }
+
+  async pageOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    page: OwnSuggestionsPage<SuggestionStatus>,
+  ): Promise<readonly TopicSuggestion[]> {
+    const direction = page.direction;
+    const orderBy =
+      page.sort === 'status'
+        ? [{ status: direction }, { createdAt: 'desc' as const }, { id: 'desc' as const }]
+        : page.sort === 'label'
+          ? [{ label: direction }, { id: direction }]
+          : [{ createdAt: direction }, { id: direction }];
+    const rows = await this.prisma.tx(market).catalogTopicSuggestion.findMany({
+      where: ownWhere(market, sellerId, page),
+      orderBy,
+      skip: page.offset,
+      take: page.limit,
+    });
+    return rows.map(suggestionOf);
+  }
+
+  async countOfSeller(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnSuggestionsFilter<SuggestionStatus>,
+  ): Promise<number> {
+    return this.prisma
+      .tx(market)
+      .catalogTopicSuggestion.count({ where: ownWhere(market, sellerId, filter) });
   }
 
   async listOfSeller(

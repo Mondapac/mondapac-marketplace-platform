@@ -38,8 +38,12 @@ export interface FormCategory {
   readonly names: Readonly<Record<string, string>>;
 }
 
+export type { TaxCategory } from '../../shared/tax-category-options.ts';
+import type { TaxCategory } from '../../shared/tax-category-options.ts';
+
 export interface ProductForm {
-  readonly taxCategoryCodes: readonly string[];
+  /** The Market's tax categories with their label keys. */
+  readonly taxCategories: readonly TaxCategory[];
   readonly fields: readonly FormField[];
   readonly categories: readonly FormCategory[];
 }
@@ -80,6 +84,10 @@ export interface Locales {
 export interface ProductOptions {
   readonly productTypes: readonly string[];
   readonly locales: Locales;
+  /** The Market's tax categories and the active platform categories, as the product read lists them. */
+  /** The Market's tax categories with their label keys. */
+  readonly taxCategories: readonly TaxCategory[];
+  readonly categories: readonly FormCategory[];
 }
 
 /** `POST catalog/admin/platform-products`. */
@@ -154,11 +162,7 @@ export interface Submitted {
   readonly published: boolean;
 }
 
-/** A code from the API as readable text (`dry-goods` to `Dry goods`). */
-export function readable(code: string): string {
-  const text = code.replace(/[-_]+/g, ' ').trim();
-  return text === '' ? code : text.charAt(0).toUpperCase() + text.slice(1);
-}
+export { readable } from '../../shared/tax-category-options.ts';
 
 /** One photo of a platform product's library: `GET catalog/admin/platform-products/:id/images`. */
 export interface ProductImage {

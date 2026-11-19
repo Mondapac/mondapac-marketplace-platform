@@ -4,6 +4,7 @@ import { Banner, Button, Dialog, SkeletonRows, TextAreaField, TextField } from '
 import { useTranslations } from 'next-intl';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { useApprovalAction, useSentForApproval, useSentForReview } from '../shared/review-note.tsx';
 import { CategoryProblemBanner } from './category-problem.tsx';
 import {
   TOP,
@@ -77,7 +78,7 @@ function WhatWillChange({ state }: { readonly state: ImpactState }) {
 }
 
 /** The target as a list of radio choices in tree order, indented by level. No drag. */
-function TargetPicker({
+export function TargetPicker({
   legend,
   rows,
   locale,
@@ -222,6 +223,12 @@ export function RestructureDialog({
     : undefined;
   const noteId = useId();
   const cancel = useRef<HTMLButtonElement>(null);
+  // Where the Market reviews area catalogue, a merge or archive waits for another admin's approval
+  // (the reason is the reviewer's note) and a move is reviewed after.
+  const approval = kind !== 'move' && body.review?.reviewed === true;
+  const sentForApproval = useSentForApproval();
+  const sentForReview = useSentForReview();
+  const actionLabel = useApprovalAction();
 
   async function submit() {
     if (!ready) return;
@@ -241,7 +248,14 @@ export function RestructureDialog({
       `${API_CATEGORIES}/${body.category.id}/${kind}`,
       payload,
     );
-    if (answer.ok) onDone();
+    if (!answer.ok) return;
+    // Sent for approval: nothing changed yet, so the category stays as it is.
+    if (sentForApproval(answer.body)) {
+      onClose();
+      return;
+    }
+    sentForReview(answer.body);
+    onDone();
   }
 
   const problem = call.problem;
@@ -267,13 +281,13 @@ export function RestructureDialog({
             <Button onClick={onReload}>{t('reload')}</Button>
           ) : (
             <Button
-              variant={kind === 'archive' ? 'destructive-solid' : 'primary'}
+              variant={kind === 'archive' && !approval ? 'destructive-solid' : 'primary'}
               loading={call.pending}
               disabled={!ready}
               aria-describedby={note === undefined ? undefined : noteId}
               onClick={() => void submit()}
             >
-              {t(`action.${kind}`)}
+              {actionLabel(t(`action.${kind}`), approval)}
             </Button>
           )}
         </>
@@ -281,8 +295,12 @@ export function RestructureDialog({
     >
       <div className="flex flex-col gap-4">
         <CategoryProblemBanner problem={problem} />
-        <p className="m-0">{t(`intro.${kind}`, { name })}</p>
-        {kind === 'archive' ? <Banner tone="attention">{t('terminal')}</Banner> : null}
+        <p className="m-0">
+          {approval ? t(`approval-intro.${kind}`, { name }) : t(`intro.${kind}`, { name })}
+        </p>
+        {/* Nothing is archived yet while it waits for approval, so no terminal warning then. */}
+        {kind === 'archive' && !approval ? <Banner tone="attention">{t('terminal')}</Banner> : null}
+        {approval ? <Banner tone="info">{t('approval-note')}</Banner> : null}
         {picks ? (
           <TargetPicker
             legend={t(kind === 'move' ? 'target-move' : 'target-merge')}

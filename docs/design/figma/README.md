@@ -273,3 +273,8 @@ Figma Desktop ← Plugins ← Development ← Import plugin from manifest ← `d
 - عنصر یک‌باره در خود قالب ساخته می‌شود، از کامپوننت‌های موجود.
 
 روال کامل: [`update-procedure.md`](update-procedure.md). skill اکانت `mondapac-design-system-update` همین فایل را بارگذاری می‌کند. این قاعده در CLAUDE.md (قاعدهٔ ۱۲ و Definition of Done) و در ADR-0017 (بند ۶) هم ثبت شده است.
+
+## Code-first components awaiting Figma back-port (speed mode)
+
+- `CategoryChooser` (`packages/ui/src/select/category-chooser.tsx`, categories C5b): the product category field. Chosen categories as a list (first = Primary badge, Make primary and Remove on the others, up to 3), a searchable Add select, path labels ("Pantry > Rice > Basmati"), "General" for a level-3 category that has children, "Hidden" tag (admin only), inline errors per row and for the list, a polite live region. All copy comes from the panel (`labels`); it never hardcodes a vertical or a country. Used by the seller and admin product forms.
+- "Move products..." dialog (`apps/admin/src/categories/move-products-dialog.tsx`): target radio list (levels 3 and 4), product count preview, reason 10 to 500, then a progress state (queued, running, done, failed with moved, skipped and failed counts) read every 2 s.

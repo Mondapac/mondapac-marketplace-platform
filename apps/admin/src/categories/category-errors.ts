@@ -43,6 +43,7 @@ const KNOWN = new Set([
   'file.too-many-pixels',
   'file.too-small',
   'file.unreadable',
+  'system-requests.already-pending',
 ]);
 
 const RELOAD = new Set([
@@ -74,6 +75,10 @@ export function categoryProblemOf(
     fields,
     reload: RELOAD.has(code),
     ...(failure.details?.max === undefined ? {} : { max: failure.details.max }),
+    // Another proposal of the category waits for approval (Admin Inbox > System requests).
+    ...(code === 'system-requests.already-pending'
+      ? { values: { number: `SR-${failure.details?.pendingNumber ?? '?'}` } }
+      : {}),
   };
 }
 
@@ -125,4 +130,42 @@ export function restructureProblemOf(failure: ApiFailure): CategoryProblem {
     reload: RESTRUCTURE_RELOAD.has(failure.code),
     values,
   };
+}
+
+/** Codes of Move products (categories C5a) that have their own words under `categories.move-products.error`. */
+const MOVE_PRODUCTS_CODES = new Set([
+  'category.not-found',
+  'category.target-not-found',
+  'category.move-unchanged',
+  'category.level-not-allowed',
+  'category.not-editable',
+  'category.no-products',
+  'category.move-in-progress',
+]);
+/** The codes after which the page read old data. */
+const MOVE_PRODUCTS_RELOAD = new Set([
+  'category.not-found',
+  'category.target-not-found',
+  'category.not-editable',
+]);
+
+/**
+ * What a refused Move products shows: a code of the table has its own words, a reason problem is
+ * worded for the reason field, any other code is worded as in C3.
+ */
+export function moveProductsProblemOf(failure: ApiFailure): CategoryProblem {
+  if (MOVE_PRODUCTS_CODES.has(failure.code)) {
+    return {
+      key: `categories.move-products.error.${failure.code.replace(/\./g, '_')}`,
+      fields: {},
+      reload: MOVE_PRODUCTS_RELOAD.has(failure.code),
+    };
+  }
+  const reasonProblem =
+    failure.code === 'validation.failed' &&
+    (failure.details?.fields ?? []).some((field) => field.path === 'reason');
+  if (reasonProblem) {
+    return { key: 'categories.restructure.error.reason', fields: {}, reload: false };
+  }
+  return categoryProblemOf(failure);
 }

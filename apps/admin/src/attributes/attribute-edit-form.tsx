@@ -44,6 +44,7 @@ import {
   type AttributeWrite,
 } from './types.ts';
 import { useAttributeCall } from './use-attribute-call.ts';
+import { ReviewNoteField, trimmedNote, useSentForReview } from '../shared/review-note.tsx';
 
 /**
  * Edit an attribute (attributes A2): every save is a new revision. The texts are edited one
@@ -87,6 +88,11 @@ export function AttributeEditForm({
   const [attempt, setAttempt] = useState<FieldErrors>(initialErrors ?? {});
   useFocusFirstInvalid(formRef, attempt);
   const call = useAttributeCall(csrfToken);
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForReview = useSentForReview();
+  // The note is asked only where the view says a save is reviewed (area catalogue).
+  const reviewed = detail.review?.reviewed === true;
   const published = detail.status !== 'draft';
   const choice = CHOICE_TYPES.has(dataType);
   const nameOf = (tag: string) => languageName(tag, locales.supported);
@@ -207,20 +213,34 @@ export function AttributeEditForm({
       reveal(found);
       return;
     }
+    const sentNote = reviewed ? trimmedNote(note) : null;
+    if (reviewed && sentNote === null) {
+      setNoteError('required');
+      return;
+    }
+    setNoteError(null);
     const answer = await call.run<AttributeWrite>(
       'PUT',
       `${API_ATTRIBUTES}/${encodeURIComponent(detail.id)}`,
-      { version: detail.version, ...contentOf(form, dataType, locales.default) },
+      {
+        version: detail.version,
+        ...contentOf(form, dataType, locales.default),
+        ...(sentNote === null ? {} : { note: sentNote }),
+      },
       sentCodes(form.values, locales.default),
     );
     if (!answer.ok) {
       if (answer.problem !== null) {
-        setErrors(answer.problem.fields);
-        setAttempt(answer.problem.fields);
-        reveal(answer.problem.fields);
+        // The note has its own field: its refusal is shown there, not among the content fields.
+        const { note: refusedNote, ...contentFields } = answer.problem.fields;
+        if (refusedNote !== undefined) setNoteError('rejected');
+        setErrors(contentFields);
+        setAttempt(contentFields);
+        reveal(contentFields);
       }
       return;
     }
+    sentForReview(answer.body);
     onSaved(answer.body);
   }
 
@@ -569,6 +589,18 @@ export function AttributeEditForm({
           onChange={(event) => patch({ internalNote: event.target.value })}
         />
       </section>
+
+      {reviewed ? (
+        <ReviewNoteField
+          value={note}
+          onChange={(next) => {
+            setNote(next);
+            setNoteError(null);
+          }}
+          error={noteError ?? undefined}
+          disabled={call.pending}
+        />
+      ) : null}
 
       <div className="flex flex-wrap gap-2">
         <Button type="submit" loading={call.pending} disabled={call.pending}>

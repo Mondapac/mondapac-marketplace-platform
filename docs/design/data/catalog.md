@@ -402,8 +402,8 @@ through the PK.
 | `id` | `uuid` | no | PK |
 | `product_id` | `uuid` | no | FK `(market_id, product_id)` → `products`, RESTRICT |
 | `revision_no` | `integer` | no | CHECK `>= 1`. Unique `(market_id, product_id, revision_no)` |
-| `revision_kind` | `text` | no | CHECK `submission`, `revert`, `tax-override` (D 4.2 rows 1 and 6, D 4.3) |
-| `base_revision_id` | `uuid` | yes | The published revision it was built on; same-product FK. CHECK `revision_kind <> 'tax-override' OR base_revision_id IS NOT NULL`: a tax override is always the published revision with one field changed (D 4.3, Hassan 1a) |
+| `revision_kind` | `text` | no | CHECK `submission`, `revert`, `tax-override`, `category-override` (D 4.2 rows 1 and 6, D 4.3; `category-override` from C5a, 3.33) |
+| `base_revision_id` | `uuid` | yes | The published revision it was built on; same-product FK. CHECK `revision_kind <> 'tax-override' OR base_revision_id IS NOT NULL`: a tax override is always the published revision with one field changed (D 4.3, Hassan 1a). CHECK `product_revisions_category_override_base_check` `revision_kind <> 'category-override' OR base_revision_id IS NOT NULL`: a category override is the published revision with its platform categories changed (C5a, 3.33) |
 | `reverted_from_revision_id` | `uuid` | yes | Same-product FK. CHECK `(revision_kind = 'revert') = (reverted_from_revision_id IS NOT NULL)` |
 | `type_code` | `text` | no | V9. The type the revision was frozen with (D M-9); backfilled from `products.type_code` (every product is still of its creation type), then NOT NULL; CHECK the CA4 pattern `^[a-z][a-z0-9_-]{0,63}$`. Insert-only like every column here (`product_revisions_no_update_delete`). Readers of a revision's content take the handler from here |
 | `family_revision_id` | `uuid` | no | Schema ref (3.5) |
@@ -421,6 +421,7 @@ through the PK.
 | `submitted_at` | `timestamptz(6)` | no | |
 
 - CHECK `revision_kind <> 'tax-override' OR author_kind = 'admin'`.
+- CHECK `product_revisions_category_override_author_check`: `revision_kind <> 'category-override' OR author_kind = 'admin'` (C5a, 3.33).
 - Unique `(market_id, id)`, `(market_id, product_id, id)` (pointer and child target).
 - Insert-only (CA3). Status is derived, as CE-data 3.5: **pending** = `products.pending_revision_id`;
   **published** = `products.published_revision_id`; **changes-needed**, **superseded while pending**
@@ -945,6 +946,8 @@ own unit. No address is stored; it is read from `identity` at send time.
 
 ### 3.28 `saved_filters` (Catalogue > Products saved views; domain 9.2d)
 
+> **Dropped (migration `20261118150000_lists_drop_old_saved_filters`).** The filters live in `lists.saved_filters` (ADR-0049, `docs/modules/lists/notes.md`); the rest of this section is the history of the table and the rules it carried, which the shared table keeps.
+
 A named saved view of an admin list: the tab, search, filters and sort, for one admin (`me`) or for
 every admin of the Market who can see the list (`everyone`). Catalog owns the table because the
 first list is the product list; `list_key` (`admin.catalog.products` today) lets another admin list
@@ -1208,6 +1211,47 @@ delete, 10.1, and a photo delete must never conflict with a row that remembers w
 ### 3.32 `missing_details_emails` ("Email sellers" of the Missing details report; attributes package A4-4)
 
 One row per seller and product an admin asked to fill in required details: the primary key `(market_id, seller_id, product_id)` is the 7-day limit (a guarded update claims the pair again only when the earlier request was sent more than 7 days ago or did not reach the seller; a request still pending is never replaced), and the rows with `state = 'pending'` are the queue the job `catalog.send-missing-details-emails` reads, one English mail per seller. The row keeps what the mail says (`seller_name`, `product_name`, `missing_labels` as English names), so the job reads no catalog table; no address is stored. `state` is `pending`, `sent`, `skipped` or `failed`; at most 10 attempts, 3 used. The request is audited as `catalog.missing-details-email.requested` (seller id, counts). `outcome` is tied to the state by a CHECK (`skipped` with `no-address`, `failed` with `send-failed`). Index: one partial index on the pending rows `(market_id, requested_at, seller_id, product_id) WHERE state = 'pending'` (hand-written, so the queue scan needs no sort); no index on the sent rows. Retention: rows are never deleted and there is one per seller and product, so size follows the catalog, not time; a pair asked again after 7 days (or after a skip or failure) replaces its row and resets `attempts`. PII: `seller_name` may be a sole trader's name and `requested_by` is an admin account id; no address is stored. The mail is at-least-once: a run that outlives its lock can send twice (follow-up: a send lease). Migration `20261113010000_catalog_missing_details_emails`, with `down.sql`.
+
+### 3.33 `category_product_move_jobs`, `category_product_move_items` (Move products; categories C5a)
+
+Migration `20261116230000_catalog_move_products_job`. One job moves every published product of a
+platform category to another; one item per product of the job. Notes from the C5a review:
+
+- Item write order. An item is inserted `pending` with `revision_id` NULL (the once-per-product
+  guard, `ON CONFLICT DO NOTHING` so a duplicate never aborts the unit), and turned `moved` with
+  the revision id after the `category-override` revision row is written, in the same unit. The
+  composite FK to `product_revisions` is not deferrable, so the revision must exist first.
+- Counters. `moved/skipped/failed_count` are counted from the items by state whenever the cursor
+  moves, when the pass ends and at the end; each is `>= 0`. A `pending` item that was committed
+  (a product unit that ended without its revision; the run never does this) counts as failed, and
+  `finish` turns it `failed` (re-review N2), so no handled product drops out of the counters. There
+  is no bound by `total_count`: the total is the count at the start (a display snapshot), and a
+  product published into the source while the pass runs is handled too. The progress read shows
+  `max(total, moved + skipped + failed)` as the total.
+- Keyset cursor (N3). The scan reads products with `id > cursor_product_id`. A product published
+  into the source during a run with an id below the cursor is not seen by that job; the admin
+  starts another job for it (the impact read still counts it).
+- One product pass (re-review N1). `scan_outcome` (`done` | `failed`, NULL until then, never on a
+  queued job; CHECK) is written once, under the lease, when the scan first finds no product left
+  (`done`) or the tree cannot be read (`failed`). A later turn only drains seller notices and ends
+  the job in that state; it never scans products again, so a product published into the source
+  while the job waits for an email is not moved in the starting admin's name.
+- No indexes on the item FKs to `products` and `product_revisions` (N4): items are never deleted
+  and neither are those parents (RESTRICT, insert-only revisions), so no delete has to find items
+  by them. The partial index `..._market_id_job_id_unnotified_idx` serves the seller-notice scan.
+- Seller email is at-least-once: the send comes before the mark. A job stays `running` until every
+  moved item's email is sent (`seller_notified_at`) or given up (`notice_failed_at`; never both,
+  CHECK). A failed send (or address read) records `notice_attempts` and `notice_next_attempt_at`
+  (5, 10, 20, 40 minutes after the failures); the fifth failed attempt gives the email up with an
+  error log, so a send that always fails keeps the job open, and its source blocked, for about 75
+  minutes at most (re-review N1). The partial index `..._unnotified_idx` holds only open notices
+  (`state = 'moved'`, neither sent nor given up); a waiting retry is filtered by its time.
+- Retention (N7). Jobs and items are kept as the audit trail of a bulk publish (no DELETE grant).
+  They grow by one row per moved product. If that becomes material, a later change archives old
+  finished jobs.
+- Lock note (N1). The `product_revisions` kind-CHECK swap runs its VALIDATEs in the migration's one
+  implicit transaction, under the ACCESS EXCLUSIVE lock of the DROP/ADD CONSTRAINT. This is fine at
+  today's size. A large environment would move the VALIDATEs to a second migration file (8.2).
 
 ## 4. What is never stored
 

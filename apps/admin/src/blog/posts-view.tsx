@@ -8,8 +8,8 @@ import {
   EmptyState,
   LoadError,
   Select,
-  SkeletonRows,
   Tabs,
+  TableSkeleton,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -62,11 +62,12 @@ function openNote(row: PostRow): 'in_review' | 'returned' | 'draft' | 'approved'
 }
 
 /**
- * The posts of the Market (admin): status tabs, type and author filters, 50 a page. Read only: it
- * has no buttons of its own; the editor and the review pages arrive with their own packages.
+ * The posts of the Market (admin): status tabs, type and author filters, a page at a time. Read
+ * only: it has no buttons of its own; the editor and the review pages arrive with their own packages.
  */
 export function PostsView({ zone, canEdit }: { readonly zone: string; readonly canEdit: boolean }) {
   const t = useTranslations('blog');
+  const tr = useTranslations('route');
   const locale = useLocale();
   const [status, setStatus] = useState<StatusFilter>('all');
   const [kind, setKind] = useState<KindFilter>('all');
@@ -186,7 +187,20 @@ export function PostsView({ zone, canEdit }: { readonly zone: string; readonly c
       <p role="status" className="sr-only">
         {load === 'ready' ? t('result-count', { count: rows.length }) : ''}
       </p>
-      {load === 'loading' ? <SkeletonRows label={t('loading')} rows={4} /> : null}
+      {load === 'loading' ? (
+        <TableSkeleton
+          label={t('loading')}
+          slowLabel={tr('slow')}
+          rows={6}
+          columns={[
+            { header: t('col.post'), kind: 'title' },
+            { header: t('col.kind'), kind: 'text' },
+            { header: t('col.author'), kind: 'text' },
+            { header: t('col.status'), kind: 'status' },
+            { header: t('col.updated'), kind: 'date' },
+          ]}
+        />
+      ) : null}
       {load === 'failed' ? (
         <LoadError
           className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"

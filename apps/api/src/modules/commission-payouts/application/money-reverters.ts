@@ -3,6 +3,7 @@ import type { RevertOutcome, RevertRequest, SystemChangeReverter } from '../../s
 import { CommissionRateReverted, PayoutTermsReverted } from '../domain/audit';
 import { isRateBps } from '../domain/commission';
 import { parsePayoutTermsOverride, type PayoutTermsOverride } from '../domain/payout-terms';
+import type { SellerNames } from './ports/seller-names';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
 import { termsValues } from './money-review';
 import type { PayoutTermsOverrideRecord } from './ports/payout-terms.repository';
@@ -21,6 +22,30 @@ const adminOf = (context: CallContext): Id<'Account'> => {
   return actor.accountId;
 };
 
+/**
+ * The queue's labels of sellers (the subject of both money kinds): each seller's public store
+ * name, read through sellers' facade (`SellerNames`). An unknown seller, a nameless one and a
+ * failed read give no label.
+ */
+async function storeLabels(
+  names: SellerNames | null,
+  context: CallContext,
+  subjectRefs: readonly string[],
+): Promise<ReadonlyMap<string, string>> {
+  const labels = new Map<string, string>();
+  if (names === null) return labels;
+  const ids = [...new Set(subjectRefs.map(sellerIdOf).filter((id) => id !== null))];
+  if (ids.length === 0) return labels;
+  const found = await names.storeNames(context, ids);
+  if (found === 'unavailable') return labels;
+  for (const ref of subjectRefs) {
+    const sellerId = sellerIdOf(ref);
+    const name = sellerId === null ? null : found.get(sellerId);
+    if (typeof name === 'string' && name.trim() !== '') labels.set(ref, name);
+  }
+  return labels;
+}
+
 /** A stored rate value: null (the Market rate) or a rate an admin could set today. */
 const rateOf = (value: unknown): number | null | undefined =>
   value === null || isRateBps(value) ? value : undefined;
@@ -31,7 +56,15 @@ const rateOf = (value: unknown): number | null | undefined =>
  * seller had no row, nothing is locked: the same race two admins' first sets already have.)
  */
 export class CommissionRateReverter implements SystemChangeReverter {
-  constructor(private readonly deps: CommissionPayoutsDependencies) {}
+  constructor(
+    private readonly deps: CommissionPayoutsDependencies,
+    private readonly names: SellerNames | null = null,
+  ) {}
+
+  /** The seller's store name. */
+  describe(context: CallContext, subjectRefs: readonly string[]) {
+    return storeLabels(this.names, context, subjectRefs);
+  }
 
   async revert(context: CallContext, request: RevertRequest): Promise<RevertOutcome> {
     const admin = adminOf(context);
@@ -77,7 +110,15 @@ export class CommissionRateReverter implements SystemChangeReverter {
  * longer allow is gone.
  */
 export class PayoutTermsReverter implements SystemChangeReverter {
-  constructor(private readonly deps: CommissionPayoutsDependencies) {}
+  constructor(
+    private readonly deps: CommissionPayoutsDependencies,
+    private readonly names: SellerNames | null = null,
+  ) {}
+
+  /** The seller's store name. */
+  describe(context: CallContext, subjectRefs: readonly string[]) {
+    return storeLabels(this.names, context, subjectRefs);
+  }
 
   async revert(context: CallContext, request: RevertRequest): Promise<RevertOutcome> {
     const admin = adminOf(context);

@@ -124,6 +124,15 @@ export interface CertificationRegistryRepository {
    * save that took the same number throws `StaleAggregateError`.
    */
   addRevision(market: MarketContext, revision: NewTypeRevision): Promise<number>;
+  /**
+   * Takes the type's row lock under `expectedVersion` without changing it (lock first: every read
+   * after it in the unit sees what committed before). A moved version throws `StaleAggregateError`.
+   */
+  lockType(
+    market: MarketContext,
+    typeId: Id<'CertificationType'>,
+    expectedVersion: number,
+  ): Promise<void>;
   /** Points the type at `revisionId` and moves its version; a moved version throws stale. */
   publishRevision(
     market: MarketContext,

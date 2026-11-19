@@ -10,6 +10,15 @@ import type {
   SecurityEventSelection,
 } from '../../../../platform/security-events/security-event-feed';
 import type { SecurityAlert } from '../../domain/alert';
+import {
+  alertMatches,
+  compareAlerts,
+  EMPTY_ALERT_LIST_FILTER,
+  type AlertListFilter,
+  type AlertListView,
+  type AlertSort,
+  type AlertViewCounts,
+} from '../../domain/alert-list';
 import type { DeliveryChannel, DeliveryOutcome } from '../../domain/delivery';
 import type { AlertKeyType } from '../../domain/rules';
 import type { OnCallRoster, RosterMember } from '../../domain/roster';
@@ -127,6 +136,42 @@ export class InMemorySecurityAlerts implements SecurityAlertRepository {
   #replace(next: StoredAlert): void {
     const index = this.alerts.findIndex((alert) => alert.id === next.id);
     this.alerts[index] = next;
+  }
+
+  queryList(
+    market: MarketContext,
+    filter: AlertListFilter,
+    sort: AlertSort,
+    offset: number,
+    limit: number,
+  ): Promise<readonly SecurityAlert[]> {
+    return Promise.resolve(
+      this.#of(market)
+        .filter((alert) => alertMatches(alert, filter))
+        .sort((a, b) => compareAlerts(a, b, sort))
+        .slice(offset, offset + limit),
+    );
+  }
+
+  countListWhere(market: MarketContext, filter: AlertListFilter): Promise<number> {
+    return Promise.resolve(this.#of(market).filter((alert) => alertMatches(alert, filter)).length);
+  }
+
+  viewCounts(market: MarketContext): Promise<AlertViewCounts> {
+    const count = (view: AlertListView) =>
+      this.#of(market).filter((alert) => alertMatches(alert, { ...EMPTY_ALERT_LIST_FILTER, view }))
+        .length;
+    return Promise.resolve({
+      all: count('all'),
+      open: count('open'),
+      acknowledged: count('acknowledged'),
+      critical: count('critical'),
+      resolved: count('resolved'),
+    });
+  }
+
+  findByIds(market: MarketContext, ids: readonly string[]): Promise<readonly SecurityAlert[]> {
+    return Promise.resolve(this.#of(market).filter((alert) => ids.includes(alert.id)));
   }
 
   findLive(market: MarketContext, rule: string, keyType: AlertKeyType, keyValue: string) {

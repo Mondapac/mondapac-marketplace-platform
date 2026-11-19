@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { visibleNavItems, toast, Toaster } from '@mondapac/ui';
+import { Badge, visibleNavItems, toast, Toaster, type BadgeTone } from '@mondapac/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/en.json';
 import { adminNav } from '../../nav.ts';
@@ -14,7 +14,12 @@ vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../../api/client.ts';
 import { ShipmentsList } from './shipments-list.tsx';
-import { cleanColumns } from './shipments-columns.ts';
+import {
+  DEFAULT_COLUMNS,
+  OPTIONAL_COLUMNS,
+  cleanColumns,
+  exportColumnIds,
+} from './shipments-columns.ts';
 import type { ShipmentRow, ShipmentsPage } from './shipments-types.ts';
 
 const call = vi.mocked(callApi);
@@ -48,6 +53,7 @@ const row = (over: Partial<ShipmentRow> = {}): ShipmentRow => ({
   trackingRef: 'SC 4471 99',
   fleet: 'swift',
   deliveryAttention: null,
+  carrierProgress: null,
   shipping: money('990'),
   total: money('12550'),
   refunded: money('0'),
@@ -58,6 +64,7 @@ const COUNTS = { toPrepare: 5, ready: 4, shipped: 3, delivered: 2, refunded: 1, 
 const pageOf = (shipments: ShipmentRow[], over: Partial<ShipmentsPage> = {}): ShipmentsPage => ({
   shipments,
   counts: COUNTS,
+  carrierProgressAvailable: true,
   total: shipments.length,
   page: 1,
   pageSize: 25,
@@ -70,11 +77,17 @@ const pageOf = (shipments: ShipmentRow[], over: Partial<ShipmentsPage> = {}): Sh
 const cursorPage = (shipments: ShipmentRow[], nextCursor: string | null = null) =>
   pageOf(shipments, { total: null, page: null, nextCursor });
 
+type SavedRoute = (method: string, path: string, body: unknown, csrf?: string) => Promise<never>;
+/** Until a test says otherwise the saved-filter route is not there: the controls stay hidden. */
+const noSavedRoute: SavedRoute = () =>
+  Promise.resolve({ ok: false, failure: { status: 404, code: 'not-found' } } as never);
+
 type Answer = ShipmentsPage | 'fail' | 'denied' | 'unauthenticated' | 'search-down';
 
 /** The list answers by URL, so the order of the calls does not matter. */
-function serve(answer: (url: string) => Answer) {
-  call.mockImplementation((_method, path) => {
+function serve(answer: (url: string) => Answer, saved: SavedRoute = noSavedRoute) {
+  call.mockImplementation((method, path, body, csrf) => {
+    if (path.startsWith('lists/admin/saved-filters')) return saved(method, path, body, csrf);
     const result = answer(path);
     if (result === 'fail') {
       return Promise.resolve({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
@@ -94,7 +107,11 @@ function serve(answer: (url: string) => Answer) {
     return Promise.resolve({ ok: true, status: 200, body: result } as never);
   });
 }
-const urls = () => call.mock.calls.map((entry) => entry[1]);
+/** The list's own requests (the saved-filter routes have their own helper). */
+const urls = () =>
+  call.mock.calls
+    .map((entry) => entry[1])
+    .filter((url) => !url.startsWith('lists/admin/saved-filters'));
 const lastUrl = () => urls()[urls().length - 1]!;
 const paramsOf = (url: string) => Object.fromEntries(new URL(`http://x/${url}`).searchParams);
 
@@ -1068,27 +1085,6 @@ describe('Shipments row actions', () => {
 });
 
 describe('Shipments selection and Bulk action', () => {
-  it('disables Bulk action with nothing selected, and keeps it without a menu while rows are ticked', async () => {
-    serve(() => pageOf([row(), row({ sellerOrderId: '0190a000-0000-7000-8000-0000000000d2' })]));
-    mount();
-    await screen.findAllByText('Cedar Lane Halal Meats');
-    const bulk = screen.getByRole('button', { name: 'Bulk action' });
-    expect(bulk).toHaveProperty('disabled', true);
-    fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select order 00000001' })[0]!);
-    expect(screen.getByText('1 shipment selected')).toBeTruthy();
-    // There is no Export yet, so there is no action to open: the button stays disabled.
-    expect(screen.getByRole('button', { name: 'Bulk action' })).toHaveProperty('disabled', true);
-    expect(screen.getByRole('button', { name: 'Bulk action' }).getAttribute('title')).toBe(
-      'No bulk actions are available for shipments yet.',
-    );
-    // The reason is also plain text, readable without focusing the disabled button.
-    expect(
-      screen.getByText('No bulk actions are available for shipments yet.', { selector: 'p' }),
-    ).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Clear selection' }));
-    expect(screen.queryByText('1 shipment selected')).toBeNull();
-  });
-
   it('offers "Select all N matching" after the page is ticked, and clears with the next list', async () => {
     serve(() => pageOf([row()], { total: 143 }));
     mount();
@@ -1320,7 +1316,8 @@ describe('Shipments nav', () => {
     expect(ids([])).not.toContain('shipments');
     expect(ids(['ordering.order.view'])).toContain('shipments');
     const sales = adminNav.items.filter((item) => item.group === 'sales').map((item) => item.id);
-    expect(sales).toEqual(['orders', 'shipments']);
+    // Refunds follows; a Transactions item will go between the two later.
+    expect(sales.slice(0, 2)).toEqual(['orders', 'shipments']);
     expect(adminNav.items.find((item) => item.id === 'shipments')).toMatchObject({
       icon: 'package',
       href: '/shipments',
@@ -1328,5 +1325,528 @@ describe('Shipments nav', () => {
       anyOf: ['ordering.order.view'],
     });
     expect(messages.nav.shipments).toBe('Shipments');
+  });
+});
+
+describe('Shipments Export', () => {
+  const CSV = { 'content-type': 'text/csv; charset=utf-8' };
+  const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+  const bulk = () => screen.getByRole('button', { name: 'Bulk action' });
+  const openExport = async () => {
+    fireEvent.click(bulk());
+    fireEvent.click(
+      within(await screen.findByRole('menu', { name: 'Bulk action' })).getByRole('menuitem', {
+        name: /^Export/,
+      }),
+    );
+    return screen.findByRole('dialog');
+  };
+  const confirm = (dialog: HTMLElement, format: 'CSV' | 'XLSX' = 'CSV') => {
+    fireEvent.click(within(dialog).getByRole('radio', { name: new RegExp(`^${format}`) }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+  };
+  /** The export requests the page made, as path and query. */
+  const fetched: string[] = [];
+  const answerWith = (make: () => Response) => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        fetched.push(url);
+        return Promise.resolve(make());
+      }),
+    );
+  };
+  const sent = () => {
+    const url = new URL(fetched[fetched.length - 1]!, 'http://x');
+    return { path: url.pathname, params: Object.fromEntries(url.searchParams) };
+  };
+  const names: string[] = [];
+  let click: { mockRestore: () => void };
+
+  beforeEach(() => {
+    fetched.length = 0;
+    names.length = 0;
+    HTMLDialogElement.prototype.showModal = function showModal() {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close() {
+      this.removeAttribute('open');
+    };
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() });
+    click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      names.push(this.download);
+    });
+  });
+  afterEach(() => click.mockRestore());
+
+  it('has Export as the only item, and the button is off until a row is selected', async () => {
+    serve(() => pageOf([row(), row({ sellerOrderId: '0190a000-0000-7000-8000-0000000000d2' })]));
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    expect(bulk()).toHaveProperty('disabled', true);
+    fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select order 00000001' })[0]!);
+    expect(bulk()).toHaveProperty('disabled', false);
+    fireEvent.click(bulk());
+    const menu = await screen.findByRole('menu', { name: 'Bulk action' });
+    expect(
+      within(menu)
+        .getAllByRole('menuitem')
+        .map((item) => item.textContent),
+    ).toEqual(['ExportCSV or XLSX, with the columns shown']);
+    expect(fetched).toEqual([]);
+  });
+
+  it('sends the ticked ids, the shown columns in order, the zone and the list filter, and no paging', async () => {
+    window.localStorage.setItem(
+      'mp:admin:AU:acc-1:shipments-columns',
+      JSON.stringify(['total', 'fee', 'store']),
+    );
+    serve(() => pageOf([row(), row({ sellerOrderId: '0190a000-0000-7000-8000-0000000000d2' })]));
+    mount({ zone: LOS_ANGELES });
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('button', { name: /^Shipped/ }));
+    await waitFor(() => expect(lastUrl()).toContain('stage=shipped'));
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shipments on this page' }));
+    answerWith(
+      () => new Response('﻿Order ID\r\nrow 1\r\nrow 2\r\n', { status: 200, headers: CSV }),
+    );
+    confirm(await openExport());
+    expect(await screen.findByText('Exported 2 rows.')).toBeTruthy();
+    expect(fetched).toHaveLength(1);
+    expect(sent()).toEqual({
+      path: '/api/ordering/admin/shipments/export',
+      params: {
+        format: 'csv',
+        stage: 'shipped',
+        columns: 'total,shipping,store',
+        zone: LOS_ANGELES,
+        ids: '0190a000-0000-7000-8000-0000000000d1,0190a000-0000-7000-8000-0000000000d2',
+      },
+    });
+    expect(names).toEqual([expect.stringMatching(/^shipments-\d{4}-\d{2}-\d{2}\.csv$/)]);
+  });
+
+  it('sends no ids after "Select all matching", takes the file name from the server and counts the total', async () => {
+    serve(() => pageOf([row()], { total: 143 }));
+    mount({ paging: 'pages' });
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shipments on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select all 143 matching' }));
+    answerWith(
+      () =>
+        new Response(new Uint8Array([0x50, 0x4b, 0x03, 0x04]), {
+          status: 200,
+          headers: {
+            'content-type': XLSX,
+            'content-disposition': 'attachment; filename="shipments-2026-11-17.xlsx"',
+          },
+        }),
+    );
+    confirm(await openExport(), 'XLSX');
+    expect(await screen.findByText('Exported 143 rows.')).toBeTruthy();
+    const { params } = sent();
+    expect(params['format']).toBe('xlsx');
+    expect(params).not.toHaveProperty('ids');
+    expect(params).not.toHaveProperty('page');
+    expect(params).not.toHaveProperty('pageSize');
+    expect(params).not.toHaveProperty('sort');
+    expect(params).not.toHaveProperty('direction');
+    expect(names).toEqual(['shipments-2026-11-17.xlsx']);
+  });
+
+  it('leaves out page, cursor and limit with Previous and next, and counts the rows of a CSV with a line break inside a cell', async () => {
+    serve(() => cursorPage([row()], cursor(1)));
+    mount({ paging: 'prev-next' });
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shipments on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select all matching' }));
+    answerWith(
+      () =>
+        new Response('Order ID,Note\r\nr1,"two\r\nlines"\r\nr2,x\r\n', {
+          status: 200,
+          headers: CSV,
+        }),
+    );
+    confirm(await openExport());
+    expect(await screen.findByText('Exported 2 rows.')).toBeTruthy();
+    const { params } = sent();
+    for (const key of ['ids', 'page', 'pageSize', 'sort', 'direction', 'cursor', 'limit']) {
+      expect(params).not.toHaveProperty(key);
+    }
+  });
+
+  it('says so when there are too many rows', async () => {
+    serve(() => pageOf([row(), row({ sellerOrderId: '0190a000-0000-7000-8000-0000000000d2' })]));
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shipments on this page' }));
+    answerWith(
+      () =>
+        new Response(
+          '{"statusCode":413,"code":"batch.too-large","details":{"max":10000,"total":12345}}',
+          { status: 413 },
+        ),
+    );
+    confirm(await openExport());
+    expect(
+      await screen.findByText(
+        'Too many rows to export: 12,345 match, and one file holds up to 10,000. Narrow the filter or select fewer rows.',
+      ),
+    ).toBeTruthy();
+    expect(names).toEqual([]);
+  });
+
+  it('asks to narrow a search that is too broad', async () => {
+    serve(() => pageOf([row(), row({ sellerOrderId: '0190a000-0000-7000-8000-0000000000d2' })]));
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shipments on this page' }));
+    answerWith(
+      () =>
+        new Response(
+          '{"statusCode":400,"code":"validation.failed","details":{"fields":[{"path":"search","code":"too-broad"}]}}',
+          { status: 400 },
+        ),
+    );
+    confirm(await openExport());
+    expect(
+      await screen.findByText(
+        'This search is too broad to export. Narrow the search and try again.',
+      ),
+    ).toBeTruthy();
+    expect(names).toEqual([]);
+  });
+
+  it('says so when the export fails or the connection breaks', async () => {
+    serve(() => pageOf([row(), row({ sellerOrderId: '0190a000-0000-7000-8000-0000000000d2' })]));
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shipments on this page' }));
+    answerWith(() => new Response('{"code":"access.unavailable"}', { status: 503 }));
+    confirm(await openExport());
+    expect(await screen.findByText('Export failed. Try again.')).toBeTruthy();
+    toast.dismiss();
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.reject(new TypeError('network'))),
+    );
+    confirm(await openExport());
+    expect(await screen.findByText('Export failed. Try again.')).toBeTruthy();
+    expect(names).toEqual([]);
+  });
+
+  it('says so when the download is cut off mid-stream', async () => {
+    serve(() => pageOf([row(), row({ sellerOrderId: '0190a000-0000-7000-8000-0000000000d2' })]));
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all shipments on this page' }));
+    answerWith(
+      () =>
+        new Response(
+          new ReadableStream({
+            start(controller) {
+              controller.error(new TypeError('network'));
+            },
+          }),
+          { status: 200, headers: CSV },
+        ),
+    );
+    confirm(await openExport());
+    expect(await screen.findByText('Export failed. Try again.')).toBeTruthy();
+    expect(names).toEqual([]);
+  });
+
+  it('closes the dialog without a request when it is cancelled', async () => {
+    serve(() => pageOf([row(), row({ sellerOrderId: '0190a000-0000-7000-8000-0000000000d2' })]));
+    mount();
+    await screen.findAllByText('Cedar Lane Halal Meats');
+    fireEvent.click(screen.getAllByRole('checkbox', { name: 'Select order 00000001' })[0]!);
+    const dialog = await openExport();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(fetched).toEqual([]);
+  });
+});
+
+describe('Shipments export column ids', () => {
+  it('maps every column of the picker to the id the export endpoint reads', () => {
+    expect(OPTIONAL_COLUMNS).toHaveLength(14);
+    expect(exportColumnIds(OPTIONAL_COLUMNS)).toEqual([
+      'store',
+      'customer',
+      'paid',
+      'delivery',
+      'carrier',
+      'carrierProgress',
+      'total',
+      'ready',
+      'shipped',
+      'delivered',
+      'fleet',
+      'shipping',
+      'refunded',
+      'sellerOrderId',
+    ]);
+  });
+});
+
+describe('Shipments carrier progress column', () => {
+  const KEY = 'mp:admin:AU:acc-1:shipments-columns';
+  const progress = (over: Partial<NonNullable<ShipmentRow['carrierProgress']>> = {}) => ({
+    progress: 'booked',
+    carrierStatus: null,
+    updatedAt: '2026-11-16T14:30:00.000Z',
+    proofOfDelivery: false,
+    fleet: 'swift',
+    ...over,
+  });
+  const turnOn = () =>
+    window.localStorage.setItem(KEY, JSON.stringify(['store', 'carrier-progress']));
+  const cellOf = (rowIndex = 0) =>
+    within(screen.getAllByRole('row').slice(1)[rowIndex]!).getByRole('cell', {
+      name: (_name, el) => el.getAttribute('data-label') === 'Carrier progress',
+    });
+  const pageWith = (
+    carrierProgress: ShipmentRow['carrierProgress'],
+    over: Partial<ShipmentRow> = {},
+  ) => pageOf([row({ carrierProgress, ...over })]);
+
+  it('sits right after carrier in the picker, is off by default, and survives cleaning', () => {
+    const at = OPTIONAL_COLUMNS.indexOf('carrier-progress');
+    expect(at).toBe(OPTIONAL_COLUMNS.indexOf('carrier') + 1);
+    expect(OPTIONAL_COLUMNS[at + 1]).toBe('total');
+    expect(DEFAULT_COLUMNS).not.toContain('carrier-progress');
+    expect(cleanColumns(['carrier-progress', 'x'])).toEqual(['carrier-progress']);
+    expect(exportColumnIds(['carrier', 'carrier-progress'])).toEqual([
+      'carrier',
+      'carrierProgress',
+    ]);
+  });
+
+  it('is in the picker after Carrier and tracking, and not in the default table', async () => {
+    serve(() => pageWith(null));
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    expect(screen.queryByRole('columnheader', { name: 'Carrier progress' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = await screen.findByRole('dialog', { name: 'Columns' });
+    // The panel lists the shown columns first, then the hidden ones in the order of
+    // OPTIONAL_COLUMNS: Carrier progress is the first of the hidden ones, before Ready.
+    const boxes = within(panel).getAllByRole('checkbox');
+    const named = (name: string) => within(panel).getByRole('checkbox', { name });
+    const progress = boxes.indexOf(named('Carrier progress'));
+    expect(progress).toBeGreaterThan(-1);
+    expect(boxes.indexOf(named('Ready'))).toBe(progress + 1);
+    expect(named('Carrier progress')).toHaveProperty('checked', false);
+  });
+
+  it('sends carrierProgress in an export only when the column is on', async () => {
+    const fetched: string[] = [];
+    HTMLDialogElement.prototype.showModal = function showModal() {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close() {
+      this.removeAttribute('open');
+    };
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() });
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        fetched.push(url);
+        return Promise.resolve(
+          new Response('x', {
+            status: 200,
+            headers: { 'content-type': 'text/csv; charset=utf-8' },
+          }),
+        );
+      }),
+    );
+    try {
+      for (const on of [false, true]) {
+        fetched.length = 0;
+        window.localStorage.setItem(
+          KEY,
+          JSON.stringify(on ? ['store', 'carrier-progress'] : ['store']),
+        );
+        serve(() => pageWith(null));
+        const view = mount();
+        await screen.findAllByText('Cedar Lane Halal Meats');
+        fireEvent.click(
+          screen.getByRole('checkbox', { name: 'Select all shipments on this page' }),
+        );
+        fireEvent.click(screen.getByRole('button', { name: /Bulk action|Actions for selected/ }));
+        const item = await screen.findByRole('menuitem', { name: /Export/ });
+        fireEvent.click(item);
+        const dialog = await screen.findByRole('dialog');
+        fireEvent.click(within(dialog).getByRole('button', { name: /^Export/ }));
+        await waitFor(() => expect(fetched).toHaveLength(1));
+        const columns = new URL(fetched[0]!, 'http://x').searchParams.get('columns');
+        expect(columns).toBe(on ? 'store,carrierProgress' : 'store');
+        view.unmount();
+      }
+    } finally {
+      click.mockRestore();
+    }
+  });
+
+  it.each([
+    ['booked', 'Booked', 'neutral'],
+    ['picked-up', 'Picked up', 'info'],
+    ['delivered', 'Delivered', 'success'],
+    ['exception', 'Exception', 'critical'],
+    ['cancelled', 'Cancelled', 'neutral'],
+    ['teleported', 'Unknown', 'neutral'],
+  ])('shows %s as the label %s in the %s tone', async (value, label, tone) => {
+    // The library Badge of that tone, rendered alone, gives the class list the cell must use.
+    const reference = render(<Badge tone={tone as BadgeTone}>x</Badge>);
+    const toneClass = reference.getByText('x').className;
+    reference.unmount();
+    turnOn();
+    serve(() => pageWith(progress({ progress: value }), { stage: 'to-prepare' }));
+    mount();
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    const cell = cellOf();
+    expect(within(cell).getByText(label).className).toBe(toneClass);
+    expect(cell.querySelector('svg') !== null).toBe(value === 'exception');
+    expect(cell.querySelector('[title^="Reported by the carrier booking"]')).not.toBeNull();
+  });
+
+  it('tones the badge by progress', async () => {
+    turnOn();
+    const tones: string[] = [];
+    for (const value of ['booked', 'picked-up', 'delivered', 'exception']) {
+      serve(() => pageWith(progress({ progress: value })));
+      const view = mount();
+      await screen.findByRole('columnheader', { name: 'Carrier progress' });
+      const badge = within(cellOf()).getByText(
+        {
+          booked: 'Booked',
+          'picked-up': 'Picked up',
+          delivered: 'Delivered',
+          exception: 'Exception',
+        }[value]!,
+      );
+      tones.push(badge.className);
+      view.unmount();
+    }
+    expect(new Set(tones).size).toBe(4);
+  });
+
+  it.each([
+    ['a row object', progress()],
+    ['a null row', null],
+  ])('says Not available for every row when the flag is false (%s)', async (_name, value) => {
+    turnOn();
+    serve(() => pageOf([row({ carrierProgress: value })], { carrierProgressAvailable: false }));
+    mount();
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    const cell = cellOf();
+    expect(within(cell).getByText('Not available').getAttribute('title')).toBe(
+      'Carrier progress could not be loaded. Try again later.',
+    );
+    expect(within(cell).queryByText('Booked')).toBeNull();
+    expect(within(cell).queryByText(/Updated/)).toBeNull();
+  });
+
+  it('says there is no carrier booking for a null row when the flag is true', async () => {
+    turnOn();
+    serve(() => pageWith(null));
+    mount();
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    const cell = cellOf();
+    expect(within(cell).getByText('\u2014').getAttribute('aria-hidden')).toBe('true');
+    expect(within(cell).getByText('No carrier booking').className).toContain('sr-only');
+    expect(within(cell).queryByText('Not available')).toBeNull();
+  });
+
+  it('shows the proof marker only when true, the status only when present, and status as text', async () => {
+    turnOn();
+    const hostile = '<img src=x onerror=alert(1)>';
+    serve(() =>
+      pageOf([
+        row({ carrierProgress: progress({ proofOfDelivery: true, carrierStatus: hostile }) }),
+        row({
+          sellerOrderId: '0190a000-0000-7000-8000-0000000000d2',
+          carrierProgress: progress({ proofOfDelivery: false, carrierStatus: null }),
+        }),
+      ]),
+    );
+    mount();
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    const first = cellOf(0);
+    expect(within(first).getByText('Proof of delivery')).toBeTruthy();
+    expect(within(first).getByText(hostile).getAttribute('title')).toBe(hostile);
+    expect(first.querySelector('img')).toBeNull();
+    const second = cellOf(1);
+    expect(within(second).queryByText('Proof of delivery')).toBeNull();
+    expect(second.querySelectorAll('span[title]')).toHaveLength(1);
+  });
+
+  it('names the fleet only when it differs from the row, or the row has none', async () => {
+    turnOn();
+    serve(() =>
+      pageOf([
+        row({ fleet: 'swift', carrierProgress: progress({ fleet: ' swift ' }) }),
+        row({
+          sellerOrderId: '0190a000-0000-7000-8000-0000000000d2',
+          fleet: 'swift',
+          carrierProgress: progress({ fleet: 'rapid' }),
+        }),
+        row({
+          sellerOrderId: '0190a000-0000-7000-8000-0000000000d3',
+          fleet: null,
+          carrierProgress: progress({ fleet: 'rapid' }),
+        }),
+      ]),
+    );
+    mount();
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    expect(within(cellOf(0)).queryByText(/Booked on/)).toBeNull();
+    expect(within(cellOf(1)).getByText('Booked on rapid')).toBeTruthy();
+    expect(within(cellOf(2)).getByText('Booked on rapid')).toBeTruthy();
+  });
+
+  it('writes Updated in the page zone, across midnight', async () => {
+    turnOn();
+    const at = '2026-11-16T14:30:00.000Z';
+    serve(() => pageWith(progress({ updatedAt: at })));
+    const brisbane = mount({ zone: BRISBANE });
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    const b = within(cellOf()).getByText(/^Updated /).textContent;
+    brisbane.unmount();
+    mount({ zone: LOS_ANGELES });
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    const l = within(cellOf()).getByText(/^Updated /).textContent;
+    expect(b).toContain('17 Nov');
+    expect(l).toContain('16 Nov');
+    expect(b).not.toBe(l);
+  });
+
+  it('shows Shipped and Delivered together when they disagree', async () => {
+    turnOn();
+    serve(() => pageWith(progress({ progress: 'delivered' }), { stage: 'shipped' }));
+    mount();
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    const rowEl = screen.getAllByRole('row')[1]!;
+    expect(within(rowEl).getAllByText('Shipped').length).toBeGreaterThan(0);
+    expect(within(cellOf()).getByText('Delivered')).toBeTruthy();
+  });
+
+  it('has the labelled card line only when the column is on', async () => {
+    serve(() => pageWith(progress()));
+    const off = mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    expect(document.querySelector('[data-label="Carrier progress"]')).toBeNull();
+    off.unmount();
+    turnOn();
+    mount();
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    expect(document.querySelector('[data-label="Carrier progress"]')).not.toBeNull();
   });
 });

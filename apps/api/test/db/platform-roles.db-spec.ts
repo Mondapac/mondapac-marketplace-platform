@@ -182,7 +182,7 @@ describe.each(TEST_MARKETS)('the role catalogue in market %s (database, slice 10
       grantable: false,
     });
     expect(entry(await seededRole('viewer'))).toMatchObject({
-      permissionCount: 34,
+      permissionCount: 35,
       grantable: false,
     });
     expect(entry(await seededRole('platform-administrator'))).toMatchObject({
@@ -270,6 +270,7 @@ describe.each(TEST_MARKETS)('the role catalogue in market %s (database, slice 10
             origin: '203.0.113.9',
             email: `Parity.${randomUUID()}@Roles.example`,
             roleId: entry.roleId,
+            note: 'Parity',
           }),
         );
         const refused = (result: { ok: boolean; error?: { code: string } }) =>
@@ -309,6 +310,6 @@ describe.each(TEST_MARKETS)('the role catalogue in market %s (database, slice 10
       ]);
     }
     const viewer = read.value.all.find((role) => role.state.seedCode === 'viewer')!;
-    expect(viewer.state.permissionKeys).toHaveLength(34);
+    expect(viewer.state.permissionKeys).toHaveLength(35);
   });
 });

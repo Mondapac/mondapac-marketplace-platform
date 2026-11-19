@@ -44,7 +44,7 @@ import { VariantRequestApprove } from '../application/use-cases/variant-request-
 import { VariantRequestDecline } from '../application/use-cases/variant-request-decline.use-case';
 import { VariantRequestList } from '../application/use-cases/variant-request-list.use-case';
 import { VariantRequestMap } from '../application/use-cases/variant-request-map.use-case';
-import { closedBody, pageQuery, refusalWith, type Refusal } from './http-answers';
+import { closedBody, numericQuery, pageQuery, refusalWith, type Refusal } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
 import {
   OwnVariantRequestListBody,
@@ -282,8 +282,19 @@ export class VariantRequestController {
   @ReadsSession()
   @ApiOperation({
     summary: 'Variant requests waiting for a decision',
-    description: `${NEEDS} Open requests, oldest first, each with the variants the product has.`,
+    description:
+      `${NEEDS} Open requests, oldest first by default, each with the variants the product has ` +
+      'and the row `actions` (approve, map, decline) the caller may run. `q` searches the product ' +
+      'code; `sort` is created with `direction` (asc, the default, is oldest first); paged by `page` and `pageSize` (1 to 100, default 25) in ' +
+      'the mode `paging` names (pages with a total, or prev-next).',
   })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'sort', required: false, enum: ['created'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'pageSize', required: false })
+  @ApiQuery({ name: 'paging', required: false, enum: ['pages', 'prev-next'] })
+  @ApiQuery({ name: 'limit', required: false, deprecated: true, description: 'Alias of pageSize.' })
   @ApiOkResponse({ type: VariantRequestListBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -294,7 +305,7 @@ export class VariantRequestController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<VariantRequestListBody> {
-    const result = await this.listOpen.execute(context, pageQuery(query));
+    const result = await this.listOpen.execute(context, numericQuery(query));
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as VariantRequestListBody)
       : this.#refusal(result.error, response, context);

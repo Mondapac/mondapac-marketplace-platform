@@ -21,8 +21,11 @@ import {
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import {
+  registerSystemChangeApplier,
   registerSystemChangeReverter,
+  SYSTEM_ACTION_PROPOSER,
   SYSTEM_REQUEST_RECORDER,
+  type SystemChangeApplier,
   type SystemChangeReverter,
 } from '../../platform/change-review/change-review';
 import { CLOCK } from '../../platform/clock/clock.module';
@@ -48,7 +51,11 @@ import {
 } from './application/access/session-authenticator';
 import { ACCESS_DECISION_REPOSITORY } from './application/ports/access-decision.repository';
 import { ACCESS_REVIEWERS } from './application/ports/access-reviewers';
-import { ACCOUNT_REPOSITORY, type AccountRepository } from './application/ports/account.repository';
+import {
+  ACCOUNT_REPOSITORY,
+  EMAIL_CHANGE_STORE,
+  type AccountRepository,
+} from './application/ports/account.repository';
 import { COMMON_PASSWORD_LIST } from './application/ports/common-password-list';
 import { IDENTITY_MAIL_COMPOSER } from './application/ports/identity-mails';
 import { IDENTITY_MARKET_POLICY } from './application/ports/identity-market-policy';
@@ -114,15 +121,25 @@ import { CreatePlatformRole } from './application/use-cases/create-platform-role
 import { DeletePlatformRole } from './application/use-cases/delete-platform-role.use-case';
 import { EditPlatformRole } from './application/use-cases/edit-platform-role.use-case';
 import {
+  ADMIN_INVITATION_SUBJECT_KIND,
   ADMIN_ROLES_SUBJECT_KIND,
   ADMIN_STATUS_SUBJECT_KIND,
   PEOPLE_REVIEW_AREA,
+  PLATFORM_ROLE_CREATION_SUBJECT_KIND,
+  PLATFORM_ROLE_DELETION_SUBJECT_KIND,
   PLATFORM_ROLE_SUBJECT_KIND,
 } from './application/people/people-review';
+import {
+  AdminInvitationReverter,
+  PlatformRoleCreationReverter,
+  PlatformRoleDeletionApplier,
+  type PeopleCreationDependencies,
+} from './application/people/people-creations';
 import {
   AdminRolesReverter,
   AdminStatusReverter,
   PlatformRoleReverter,
+  type PeopleLabelReads,
   type PeopleReverterDependencies,
 } from './application/people/people-reverters';
 import { CreateSellerRole } from './application/use-cases/create-seller-role.use-case';
@@ -178,6 +195,13 @@ import { ListRegisteredSellers } from './application/use-cases/list-registered-s
 import { ContactEmailOf } from './application/use-cases/contact-email-of.use-case';
 import { OwnOwnerEmail } from './application/use-cases/own-owner-email.use-case';
 import { CustomerAccountOf } from './application/use-cases/customer-account-of.use-case';
+import { AdminRequestCustomerEmailChange } from './application/use-cases/admin-request-customer-email-change.use-case';
+import { AdminCancelCustomerEmailChange } from './application/use-cases/admin-cancel-customer-email-change.use-case';
+import { ConfirmCustomerEmailChange } from './application/use-cases/confirm-customer-email-change.use-case';
+import { CustomerPendingEmailOf } from './application/use-cases/customer-pending-email-of.use-case';
+import { CancelCustomerEmailChangeForDeletion } from './application/use-cases/cancel-customer-email-change-for-deletion.use-case';
+import { SendEmailChangeRequestedMail } from './application/use-cases/send-email-change-requested-mail.use-case';
+import { SendEmailChangedMail } from './application/use-cases/send-email-changed-mail.use-case';
 import { SearchCustomerAccounts } from './application/use-cases/search-customer-accounts.use-case';
 import { CustomerAccountSummaries } from './application/use-cases/customer-account-summaries.use-case';
 import { CustomerShortNames } from './application/use-cases/customer-short-names.use-case';
@@ -190,6 +214,11 @@ import { CustomerDirectoryRecords } from './application/use-cases/customer-direc
 import { CustomerAccountExists } from './application/use-cases/customer-account-exists.use-case';
 import { AdminEndCustomerSessions } from './application/use-cases/admin-end-customer-sessions.use-case';
 import { AdminRenameCustomer } from './application/use-cases/admin-rename-customer.use-case';
+import { AdminCustomerSignIns } from './application/use-cases/admin-customer-sign-ins.use-case';
+import { AdminCustomerSessions } from './application/use-cases/admin-customer-sessions.use-case';
+import { AdminRevealCustomerSignIn } from './application/use-cases/admin-reveal-customer-sign-in.use-case';
+import { AdminSignOutCustomer } from './application/use-cases/admin-sign-out-customer.use-case';
+import { AdminSendCustomerPasswordReset } from './application/use-cases/admin-send-customer-password-reset.use-case';
 import { EndAllCustomerSessions } from './application/use-cases/end-all-customer-sessions.use-case';
 import { EndOtherCustomerSessions } from './application/use-cases/end-other-customer-sessions.use-case';
 import { EraseCustomerAccount } from './application/use-cases/erase-customer-account.use-case';
@@ -226,11 +255,14 @@ import { ChangeActorLabels } from './application/use-cases/change-actor-labels.u
 import { TeamMemberLabels } from './application/use-cases/team-member-labels.use-case';
 import { TeamMembershipOf } from './application/use-cases/team-membership-of.use-case';
 import { IDENTITY_FACADE } from './contracts/identity.facade';
-import { IDENTITY_PERMISSIONS } from './contracts/permissions';
+import { IDENTITY_PERMISSIONS, PLATFORM_ROLE_DELETE } from './contracts/permissions';
 import { SELLER_ACCESS_CONTRACT } from './contracts/seller-access.contract';
 import { IDENTITY_AUDIT_ACTIONS } from './domain/audit';
 import { IDENTITY_EVENTS } from './domain/events';
-import { accountRepositoryProvider } from './infrastructure/account-repository.provider';
+import {
+  accountRepositoryProvider,
+  emailChangeStoreProvider,
+} from './infrastructure/account-repository.provider';
 import { linkProviders } from './infrastructure/links/link-providers';
 import { MarketConfigIdentityPolicy } from './infrastructure/market-config-identity-policy';
 import { Argon2idPasswordHasher } from './infrastructure/passwords/argon2id-password-hasher';
@@ -260,6 +292,7 @@ import { AdminSessionController } from './presentation/admin-session.controller'
 import { AdminSellersController } from './presentation/admin-sellers.controller';
 import { AdminTeamController } from './presentation/admin-team.controller';
 import { CustomerEmailVerificationController } from './presentation/customer-email-verification.controller';
+import { CustomerEmailChangeController } from './presentation/customer-email-change.controller';
 import { CustomerPasswordController } from './presentation/customer-password.controller';
 import { CustomerProfileController } from './presentation/customer-profile.controller';
 import { CustomerSessionController } from './presentation/customer-session.controller';
@@ -328,10 +361,22 @@ const PORT = {
   signInProviders: SIGN_IN_PROVIDERS_PORT,
   flowSecrets: SIGN_IN_PROVIDER_FLOW_SECRETS,
   externalIdentities: EXTERNAL_IDENTITY_REPOSITORY,
+  emailChanges: EMAIL_CHANGE_STORE,
   review: SYSTEM_REQUEST_RECORDER,
+  proposer: SYSTEM_ACTION_PROPOSER,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
+
+/** The ports of the customer page's security reads and "sign out everywhere" (customers phase 2b). */
+const CUSTOMER_SECURITY_PORTS = {
+  unitOfWork: true,
+  accounts: true,
+  sessions: true,
+  records: true,
+  audit: true,
+  clock: true,
+} as const;
 
 /** The ports of the Staff invitation re-send and revoke (slice 11): one dependency set. */
 const STAFF_INVITATION_PORTS = {
@@ -388,26 +433,83 @@ const PEOPLE_REVERTER_PORTS = {
 
 /**
  * The reverter of one people subject kind, registered with System requests in the area people:
- * the reverter itself (under its own token) and its registration.
+ * the reverter itself (under its own token, with the label reads of its `describe`) and its
+ * registration.
  */
 function peopleReverter(
   subjectKind: string,
-  type: new (deps: PeopleReverterDependencies) => SystemChangeReverter,
+  type: new (deps: PeopleReverterDependencies, labels: PeopleLabelReads) => SystemChangeReverter,
 ): Provider[] {
   const token = Symbol(`IDENTITY_REVERTER:${subjectKind}`);
   const names = Object.keys(PEOPLE_REVERTER_PORTS) as PortName[];
   return [
     {
       provide: token,
-      inject: names.map((name) => PORT[name]),
-      useFactory: (...values: unknown[]) =>
+      inject: [ChangeActorLabels, ListPlatformRoles, ...names.map((name) => PORT[name])],
+      useFactory: (
+        adminNames: ChangeActorLabels,
+        platformRoles: ListPlatformRoles,
+        ...values: unknown[]
+      ) =>
         new type(
           Object.fromEntries(
             names.map((name, index) => [name, values[index]]),
           ) as unknown as PeopleReverterDependencies,
+          { adminNames, platformRoles },
         ),
     },
     registerSystemChangeReverter('identity', subjectKind, PEOPLE_REVIEW_AREA, token),
+  ];
+}
+
+/** The ports of the people creation reverters and the delete applier (owner decision 18 Nov). */
+const PEOPLE_CREATION_PORTS = {
+  ...PEOPLE_REVERTER_PORTS,
+  unitOfWork: true,
+  invitations: true,
+  grants: true,
+} as const satisfies { readonly [K in keyof PeopleCreationDependencies]-?: true };
+
+/**
+ * A creation reverter or the delete applier of area people, registered with System requests in
+ * the area people (an applier for an action that waits for approval).
+ */
+function peopleCreationHook(
+  subjectKind: string,
+  mode: 'review' | { readonly approvalKey: string },
+  type: new (
+    deps: PeopleCreationDependencies,
+    labels: PeopleLabelReads,
+  ) => SystemChangeReverter | SystemChangeApplier,
+): Provider[] {
+  const token = Symbol(`IDENTITY_${mode === 'review' ? 'REVERTER' : 'APPLIER'}:${subjectKind}`);
+  // An applier names the key its action needs: System requests checks the approving admin holds it.
+  const names = Object.keys(PEOPLE_CREATION_PORTS) as PortName[];
+  return [
+    {
+      provide: token,
+      inject: [ChangeActorLabels, ListPlatformRoles, ...names.map((name) => PORT[name])],
+      useFactory: (
+        adminNames: ChangeActorLabels,
+        platformRoles: ListPlatformRoles,
+        ...values: unknown[]
+      ) =>
+        new type(
+          Object.fromEntries(
+            names.map((name, index) => [name, values[index]]),
+          ) as unknown as PeopleCreationDependencies,
+          { adminNames, platformRoles },
+        ),
+    },
+    mode === 'review'
+      ? registerSystemChangeReverter('identity', subjectKind, PEOPLE_REVIEW_AREA, token)
+      : registerSystemChangeApplier(
+          'identity',
+          subjectKind,
+          PEOPLE_REVIEW_AREA,
+          mode.approvalKey,
+          token,
+        ),
   ];
 }
 
@@ -496,6 +598,7 @@ function useCaseProvider<D, U>(
     CustomerSessionController,
     CustomerSocialSignInController,
     CustomerEmailVerificationController,
+    CustomerEmailChangeController,
     SellerSignUpController,
     SellerSessionController,
     SellerSecondFactorController,
@@ -530,6 +633,7 @@ function useCaseProvider<D, U>(
       useFactory: (markets: MarketRegistry) => new MarketConfigIdentityPolicy(markets),
     },
     accountRepositoryProvider,
+    emailChangeStoreProvider,
     ...sessionProviders,
     ...linkProviders,
     ...sellerProviders,
@@ -670,6 +774,84 @@ function useCaseProvider<D, U>(
       links: true,
       policy: true,
       clock: true,
+      emailChanges: true,
+    }),
+    // Customers admin email change (design note of 16 Nov 2026, Mohammad's and Hassan's reviews).
+    useCaseProvider(AdminRequestCustomerEmailChange, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+      links: true,
+      throttles: true,
+      keys: true,
+      targets: true,
+      policy: true,
+      stepUp: true,
+      stepUpActions: true,
+      factors: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AdminCancelCustomerEmailChange, {
+      unitOfWork: true,
+      accounts: true,
+      grants: true,
+      effectiveKeys: true,
+      links: true,
+      stepUp: true,
+      stepUpActions: true,
+      factors: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(CancelCustomerEmailChangeForDeletion, {
+      unitOfWork: true,
+      accounts: true,
+      links: true,
+      clock: true,
+    }),
+    useCaseProvider(ConfirmCustomerEmailChange, {
+      unitOfWork: true,
+      accounts: true,
+      sessions: true,
+      throttles: true,
+      records: true,
+      securityEvents: true,
+      hasher: true,
+      tokens: true,
+      keys: true,
+      policy: true,
+      clock: true,
+      ids: true,
+      links: true,
+      outbox: true,
+      linkTokens: true,
+      audit: true,
+      emailChanges: true,
+    }),
+    useCaseProvider(CustomerPendingEmailOf, {
+      unitOfWork: true,
+      accounts: true,
+      policy: true,
+      clock: true,
+    }),
+    useCaseProvider(SendEmailChangeRequestedMail, {
+      unitOfWork: true,
+      accounts: true,
+      composer: true,
+      transport: true,
+      policy: true,
+    }),
+    useCaseProvider(SendEmailChangedMail, {
+      unitOfWork: true,
+      accounts: true,
+      composer: true,
+      transport: true,
+      policy: true,
+      emailChanges: true,
     }),
     useCaseProvider(ConfirmCustomerEmail, {
       unitOfWork: true,
@@ -1128,6 +1310,20 @@ function useCaseProvider<D, U>(
       audit: true,
       clock: true,
     }),
+    // Customers management phase 2b: the customer page's security section, behind the facade.
+    useCaseProvider(AdminCustomerSignIns, CUSTOMER_SECURITY_PORTS),
+    useCaseProvider(AdminCustomerSessions, CUSTOMER_SECURITY_PORTS),
+    useCaseProvider(AdminRevealCustomerSignIn, CUSTOMER_SECURITY_PORTS),
+    useCaseProvider(AdminSignOutCustomer, CUSTOMER_SECURITY_PORTS),
+    useCaseProvider(AdminSendCustomerPasswordReset, {
+      unitOfWork: true,
+      accounts: true,
+      links: true,
+      outbox: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
     useCaseProvider(CustomerDirectoryRecords, {
       unitOfWork: true,
       accounts: true,
@@ -1445,7 +1641,21 @@ function useCaseProvider<D, U>(
       audit: true,
       clock: true,
     }),
-    roleEditorProvider(CreatePlatformRole),
+    useCaseProvider(CreatePlatformRole, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      assignments: true,
+      grants: true,
+      effectiveKeys: true,
+      permissions: true,
+      policy: true,
+      outbox: true,
+      audit: true,
+      review: true,
+      clock: true,
+      ids: true,
+    }),
     useCaseProvider(EditPlatformRole, {
       unitOfWork: true,
       accounts: true,
@@ -1461,7 +1671,21 @@ function useCaseProvider<D, U>(
       clock: true,
       ids: true,
     }),
-    roleEditorProvider(DeletePlatformRole),
+    useCaseProvider(DeletePlatformRole, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      assignments: true,
+      grants: true,
+      effectiveKeys: true,
+      permissions: true,
+      policy: true,
+      outbox: true,
+      audit: true,
+      proposer: true,
+      clock: true,
+      ids: true,
+    }),
     roleEditorProvider(CreateSellerRole),
     roleEditorProvider(EditSellerRole),
     roleEditorProvider(DeleteSellerRole),
@@ -1479,6 +1703,7 @@ function useCaseProvider<D, U>(
       clock: true,
     }),
     useCaseProvider(InviteAdmin, {
+      review: true,
       unitOfWork: true,
       accounts: true,
       roles: true,
@@ -1549,6 +1774,17 @@ function useCaseProvider<D, U>(
     ...peopleReverter(PLATFORM_ROLE_SUBJECT_KIND, PlatformRoleReverter),
     ...peopleReverter(ADMIN_ROLES_SUBJECT_KIND, AdminRolesReverter),
     ...peopleReverter(ADMIN_STATUS_SUBJECT_KIND, AdminStatusReverter),
+    ...peopleCreationHook(
+      PLATFORM_ROLE_CREATION_SUBJECT_KIND,
+      'review',
+      PlatformRoleCreationReverter,
+    ),
+    ...peopleCreationHook(ADMIN_INVITATION_SUBJECT_KIND, 'review', AdminInvitationReverter),
+    ...peopleCreationHook(
+      PLATFORM_ROLE_DELETION_SUBJECT_KIND,
+      { approvalKey: PLATFORM_ROLE_DELETE.key },
+      PlatformRoleDeletionApplier,
+    ),
     useCaseProvider(DisableCustomerAccount, {
       unitOfWork: true,
       accounts: true,
@@ -1895,7 +2131,16 @@ function useCaseProvider<D, U>(
         CustomerDirectoryPage,
         OwnAccountTiedToSeller,
         EraseCustomerAccount,
+        AdminRequestCustomerEmailChange,
+        AdminCancelCustomerEmailChange,
+        CustomerPendingEmailOf,
+        CancelCustomerEmailChangeForDeletion,
         AdminRenameCustomer,
+        AdminCustomerSignIns,
+        AdminCustomerSessions,
+        AdminRevealCustomerSignIn,
+        AdminSignOutCustomer,
+        AdminSendCustomerPasswordReset,
       ],
       useFactory: (
         describeActor: DescribeActor,
@@ -1919,7 +2164,16 @@ function useCaseProvider<D, U>(
         customerDirectoryPage: CustomerDirectoryPage,
         ownAccountTiedToSeller: OwnAccountTiedToSeller,
         eraseCustomerAccount: EraseCustomerAccount,
+        adminRequestCustomerEmailChange: AdminRequestCustomerEmailChange,
+        adminCancelCustomerEmailChange: AdminCancelCustomerEmailChange,
+        customerPendingEmailOf: CustomerPendingEmailOf,
+        cancelCustomerEmailChangeForDeletion: CancelCustomerEmailChangeForDeletion,
         adminRenameCustomer: AdminRenameCustomer,
+        adminCustomerSignIns: AdminCustomerSignIns,
+        adminCustomerSessions: AdminCustomerSessions,
+        adminRevealCustomerSignIn: AdminRevealCustomerSignIn,
+        adminSignOutCustomer: AdminSignOutCustomer,
+        adminSendCustomerPasswordReset: AdminSendCustomerPasswordReset,
       ) =>
         new IdentityFacadeImplementation({
           describeActor,
@@ -1943,7 +2197,16 @@ function useCaseProvider<D, U>(
           customerDirectoryPage,
           ownAccountTiedToSeller,
           eraseCustomerAccount,
+          adminRequestCustomerEmailChange,
+          adminCancelCustomerEmailChange,
+          customerPendingEmailOf,
+          cancelCustomerEmailChangeForDeletion,
           adminRenameCustomer,
+          adminCustomerSignIns,
+          adminCustomerSessions,
+          adminRevealCustomerSignIn,
+          adminSignOutCustomer,
+          adminSendCustomerPasswordReset,
         }),
     },
     {
@@ -2014,6 +2277,8 @@ function useCaseProvider<D, U>(
         SendSecondFactorMail,
         SendSellerAccessMail,
         SendOtherSessionsSignedOutMail,
+        SendEmailChangeRequestedMail,
+        SendEmailChangedMail,
       ],
       (
         sendLinkMail: SendLinkMail,
@@ -2024,6 +2289,8 @@ function useCaseProvider<D, U>(
         sendSecondFactorMail: SendSecondFactorMail,
         sendSellerAccessMail: SendSellerAccessMail,
         sendOtherSessionsSignedOutMail: SendOtherSessionsSignedOutMail,
+        sendEmailChangeRequestedMail: SendEmailChangeRequestedMail,
+        sendEmailChangedMail: SendEmailChangedMail,
       ) =>
         identityMailSubscriptions(
           sendLinkMail,
@@ -2034,6 +2301,8 @@ function useCaseProvider<D, U>(
           sendSecondFactorMail,
           sendSellerAccessMail,
           sendOtherSessionsSignedOutMail,
+          sendEmailChangeRequestedMail,
+          sendEmailChangedMail,
         ),
     ),
   ],

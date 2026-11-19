@@ -6,9 +6,9 @@ import {
   EmptyState,
   LoadError,
   SearchSelect,
-  SkeletonRows,
   TextField,
   toast,
+  DetailSkeleton,
   type SearchSelectOption,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
@@ -215,7 +215,13 @@ export function AttributesTab({
         </div>
         {load === 'loading' ? (
           <div className="p-4">
-            <SkeletonRows label={t('loading')} rows={5} />
+            <DetailSkeleton
+              label={t('loading')}
+              slowLabel={tl('slow')}
+              rows={5}
+              title={false}
+              framed={false}
+            />
           </div>
         ) : null}
         {load === 'failed' ? (
@@ -291,6 +297,7 @@ export function AttributesTab({
       />
       {adding && locales !== null ? (
         <AddAttributeDialog
+          reviewed={page?.review?.reviewed === true}
           locales={locales}
           units={page?.units ?? []}
           csrfToken={csrfToken}
