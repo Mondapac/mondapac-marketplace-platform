@@ -9,7 +9,7 @@ import { isFieldFailure } from './errors.ts';
 import { usePersonName } from './request-parts.tsx';
 import { BASE, COMMENT_MAX, type ActivityLine } from './types.ts';
 
-const KNOWN = ['applied', 'commented', 'approved', 'rejected', 'withdrawn'] as const;
+const KNOWN = ['applied', 'proposed', 'commented', 'approved', 'rejected', 'withdrawn'] as const;
 
 /**
  * "Activity": the history oldest first (what happened, by whom, when, and the comment or reason

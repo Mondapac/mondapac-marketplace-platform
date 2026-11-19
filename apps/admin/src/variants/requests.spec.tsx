@@ -5,11 +5,17 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 import { expectToast } from '../../test/toast-spy.ts';
 
+const push = vi.fn();
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() }),
+}));
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi, type ApiResult } from '../api/client.ts';
-import { BY_CODE, RequestsTab } from './requests-tab.tsx';
-import type { RequestItem, RequestList } from './types.ts';
+import type { PagedAnswer } from '../shared/paged-list/types.ts';
+import { BY_CODE } from './request-errors.ts';
+import { RequestsList } from './requests-list.tsx';
+import type { RequestItem } from './types.ts';
 
 const call = vi.mocked(callApi);
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
@@ -42,12 +48,17 @@ const item = (m: (typeof MARKETS)[number], over: Partial<RequestItem> = {}): Req
     { variantId: id(22), variantNo: 2, options: [option(m, 'L', 'l')] },
   ],
   alreadyExists: false,
+  actions: ['approve', 'map', 'decline'],
   ...over,
 });
 
-const list = (m: (typeof MARKETS)[number], items: RequestItem[]): RequestList => ({
+const list = (_m: (typeof MARKETS)[number], items: RequestItem[]): PagedAnswer<RequestItem> => ({
   items,
-  locales: { default: m.locale, supported: [m.locale] },
+  total: items.length,
+  page: 1,
+  pageSize: 25,
+  paging: 'pages',
+  hasNext: false,
 });
 
 const ok = <T,>(body: T): ApiResult<T> => ({ ok: true, status: 200, body });
@@ -58,12 +69,18 @@ const fail = (status: number, code: string): ApiResult<never> => ({
 const decided = (status: 'approved' | 'mapped' | 'declined') =>
   ok({ request: { id: id(1), status, version: 3, resolvedVariantId: id(21) } });
 
-function mount() {
+function mount(paging: 'pages' | 'prev-next' = 'pages') {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <RequestsTab csrfToken="csrf-1" />
+      <RequestsList paging={paging} accountId={id(99)} marketId="AU" csrfToken="csrf-1" />
     </NextIntlClientProvider>,
   );
+}
+
+/** Opens the row's Actions menu and returns its item (the row action is never a button in the row). */
+async function menuItem(m: (typeof MARKETS)[number], name: string) {
+  fireEvent.click(await screen.findByRole('button', { name: `Actions for ${m.size}: ${m.xl}` }));
+  return screen.findByRole('menuitem', { name });
 }
 
 afterEach(() => cleanup());
@@ -79,16 +96,44 @@ describe('refusal messages', () => {
 
 describe.each(MARKETS)('size requests queue ($name)', (m) => {
   beforeEach(() => {
+    HTMLDialogElement.prototype.showModal = function showModal() {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close() {
+      this.removeAttribute('open');
+    };
     call.mockReset();
   });
 
   it('shows what was asked for, named by the catalogue, and the seller name as plain text', async () => {
     call.mockResolvedValueOnce(ok(list(m, [item(m)])));
     mount();
-    expect(await screen.findByRole('heading', { name: `${m.size}: ${m.xl}` })).toBeTruthy();
+    expect(await screen.findByText(`${m.size}: ${m.xl}`)).toBeTruthy();
     expect(screen.getByText(/<i>Bakery<\/i> Co/)).toBeTruthy();
     expect(document.querySelector('i')).toBeNull();
-    expect(call.mock.calls[0]).toEqual(['GET', 'catalog/admin/variant-requests']);
+    const first = new URLSearchParams(String(call.mock.calls[0]?.[1]).split('?')[1]);
+    expect(call.mock.calls[0]?.[1]).toMatch(/^catalog\/admin\/variant-requests\?/);
+    expect(first.get('page')).toBe('1');
+    expect(first.get('paging')).toBe('pages');
+    expect(first.get('sort')).toBe('created');
+    expect(first.get('direction')).toBe('asc');
+  });
+
+  it('has no button in the row: every action is in the Actions menu', async () => {
+    call.mockResolvedValueOnce(ok(list(m, [item(m)])));
+    mount();
+    await screen.findByText(`${m.size}: ${m.xl}`);
+    expect(screen.queryByRole('button', { name: /^(Approve|Decline|Map to existing)/ })).toBeNull();
+    expect(await menuItem(m, 'Approve…')).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Map to existing…' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Decline…' })).toBeTruthy();
+  });
+
+  it('offers only the actions the API names for the row', async () => {
+    call.mockResolvedValueOnce(ok(list(m, [item(m, { actions: ['decline'] })])));
+    mount();
+    expect(await menuItem(m, 'Decline…')).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Approve…' })).toBeNull();
   });
 
   it('says so when nothing waits', async () => {
@@ -97,10 +142,12 @@ describe.each(MARKETS)('size requests queue ($name)', (m) => {
     expect(await screen.findByText('Nothing is waiting for you.')).toBeTruthy();
   });
 
-  it('approves with the version seen', async () => {
+  it('approves with the version seen after a confirmation that names the request', async () => {
     call.mockResolvedValueOnce(ok(list(m, [item(m)])));
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: `Approve ${m.size}: ${m.xl}` }));
+    fireEvent.click(await menuItem(m, 'Approve…'));
+    const dialog = await screen.findByRole('dialog', { name: 'Approve size request' });
+    expect(dialog.textContent).toContain(`${m.size}: ${m.xl}`);
     call.mockResolvedValueOnce(decided('approved'));
     call.mockResolvedValueOnce(ok(list(m, [])));
     fireEvent.click(screen.getByRole('button', { name: 'Approve request' }));
@@ -116,20 +163,18 @@ describe.each(MARKETS)('size requests queue ($name)', (m) => {
   it('keeps Approve off when the product already has the variant', async () => {
     call.mockResolvedValueOnce(ok(list(m, [item(m, { alreadyExists: true })])));
     mount();
-    const approve = await screen.findByRole<HTMLButtonElement>('button', {
-      name: `Approve ${m.size}: ${m.xl}`,
-    });
-    expect(approve.disabled).toBe(true);
-    expect(screen.getByText(/already has this variant/)).toBeTruthy();
+    const approve = await menuItem(m, 'Approve…');
+    expect(
+      approve.getAttribute('aria-disabled') === 'true' || approve.hasAttribute('disabled'),
+    ).toBe(true);
+    expect(screen.getByText(/already has this size/)).toBeTruthy();
   });
 
   it('maps to a variant the product has', async () => {
     call.mockResolvedValueOnce(ok(list(m, [item(m)])));
     mount();
-    fireEvent.click(
-      await screen.findByRole('button', { name: `Map to existing: ${m.size}: ${m.xl}` }),
-    );
-    const confirm = screen.getByRole<HTMLButtonElement>('button', {
+    fireEvent.click(await menuItem(m, 'Map to existing…'));
+    const confirm = await screen.findByRole<HTMLButtonElement>('button', {
       name: 'Map to this variant',
     });
     expect(confirm.disabled).toBe(true);
@@ -142,23 +187,24 @@ describe.each(MARKETS)('size requests queue ($name)', (m) => {
     expect(call.mock.calls[1]?.[2]).toEqual({ version: 2, variantId: id(22) });
   });
 
-  it('disables Map when the product has no variants', async () => {
+  it('keeps Map off when the product has no variants', async () => {
     call.mockResolvedValueOnce(ok(list(m, [item(m, { existing: [] })])));
     mount();
-    const map = await screen.findByRole<HTMLButtonElement>('button', {
-      name: `Map to existing: ${m.size}: ${m.xl}`,
-    });
-    expect(map.disabled).toBe(true);
-    expect(screen.getByText('This product has no variants to map to.')).toBeTruthy();
+    const map = await menuItem(m, 'Map to existing…');
+    expect(map.getAttribute('aria-disabled') === 'true' || map.hasAttribute('disabled')).toBe(true);
   });
 
-  it('declines with a reason the seller will read', async () => {
+  it('declines with a reason the seller will read, focus on Cancel', async () => {
     call.mockResolvedValueOnce(ok(list(m, [item(m)])));
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: `Decline ${m.size}: ${m.xl}` }));
-    const confirm = screen.getByRole<HTMLButtonElement>('button', { name: 'Decline request' });
+    fireEvent.click(await menuItem(m, 'Decline…'));
+    const confirm = await screen.findByRole<HTMLButtonElement>('button', {
+      name: 'Decline request',
+    });
     expect(confirm.disabled).toBe(true);
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'Not made in XL' } });
+    fireEvent.change(screen.getByRole('textbox', { name: /Reason for the seller/ }), {
+      target: { value: 'Not made in XL' },
+    });
     call.mockResolvedValueOnce(decided('declined'));
     call.mockResolvedValueOnce(ok(list(m, [])));
     fireEvent.click(confirm);
@@ -167,57 +213,59 @@ describe.each(MARKETS)('size requests queue ($name)', (m) => {
     expect(call.mock.calls[1]?.[2]).toEqual({ version: 2, reason: 'Not made in XL' });
   });
 
-  it('tells the admin above the list when someone decided it first', async () => {
+  it('tells the admin when someone decided it first and reads the list again', async () => {
     call.mockResolvedValueOnce(ok(list(m, [item(m)])));
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: `Decline ${m.size}: ${m.xl}` }));
-    fireEvent.change(screen.getByRole('textbox'), { target: { value: 'No' } });
+    fireEvent.click(await menuItem(m, 'Decline…'));
+    fireEvent.change(await screen.findByRole('textbox', { name: /Reason for the seller/ }), {
+      target: { value: 'No' },
+    });
     call.mockResolvedValueOnce(fail(409, 'variant-request.stale'));
     call.mockResolvedValueOnce(ok(list(m, [])));
     fireEvent.click(screen.getByRole('button', { name: 'Decline request' }));
-    expect(await screen.findByText(/Someone else already decided/)).toBeTruthy();
+    await expectToast(/Someone else already decided/, 'error');
     await waitFor(() => expect(screen.getByText('Nothing is waiting for you.')).toBeTruthy());
     expect(call.mock.calls[2]?.[0]).toBe('GET');
   });
 
-  it('keeps the card and says why when the product cannot take the variant', async () => {
-    call.mockResolvedValueOnce(ok(list(m, [item(m)])));
-    mount();
-    fireEvent.click(await screen.findByRole('button', { name: `Approve ${m.size}: ${m.xl}` }));
-    call.mockResolvedValueOnce(fail(409, 'variant-request.product-unavailable'));
-    fireEvent.click(screen.getByRole('button', { name: 'Approve request' }));
-    expect(await screen.findByText(/not published/)).toBeTruthy();
-    expect(call).toHaveBeenCalledTimes(2);
-  });
-
   it.each([
-    ['conflict.stale', 409, /Someone else already decided/],
-    ['product.not-found', 404, /Someone else already decided/],
-    ['variant-request.not-configurable', 409, /not published/],
+    ['variant-request.product-unavailable', 409, /not published/],
     ['variant.limit-reached', 422, /most variants/],
     ['product.not-editable', 409, /draft could not take/],
-  ])('shows a specific message for %s', async (code, status, text) => {
+  ])('keeps the dialog and says why for %s', async (code, status, text) => {
     call.mockResolvedValueOnce(ok(list(m, [item(m)])));
-    call.mockResolvedValue(ok(list(m, [item(m)])));
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: `Approve ${m.size}: ${m.xl}` }));
+    fireEvent.click(await menuItem(m, 'Approve…'));
     call.mockResolvedValueOnce(fail(status, code));
-    fireEvent.click(screen.getByRole('button', { name: 'Approve request' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve request' }));
     expect(await screen.findByText(text)).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(2);
   });
 
   it('sends a decision once on a double click', async () => {
     call.mockResolvedValueOnce(ok(list(m, [item(m)])));
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: `Approve ${m.size}: ${m.xl}` }));
+    fireEvent.click(await menuItem(m, 'Approve…'));
     call.mockReturnValueOnce(new Promise(() => undefined));
-    const confirm = screen.getByRole('button', { name: 'Approve request' });
+    const confirm = await screen.findByRole('button', { name: 'Approve request' });
     fireEvent.click(confirm);
     fireEvent.click(confirm);
     expect(call).toHaveBeenCalledTimes(2);
   });
 
-  it('shows a retry when the list cannot be read, and a notice on a refusal', async () => {
+  it('searches by product code from page one', async () => {
+    call.mockResolvedValue(ok(list(m, [item(m)])));
+    mount();
+    await screen.findByText(`${m.size}: ${m.xl}`);
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search size requests' }), {
+      target: { value: 'SKU-1' },
+    });
+    await waitFor(() =>
+      expect(call.mock.calls.some(([, path]) => String(path).includes('q=SKU-1'))).toBe(true),
+    );
+  });
+
+  it('shows a retry when the list cannot be read, and says so without access', async () => {
     call.mockResolvedValueOnce(fail(500, 'x'));
     mount();
     expect(await screen.findByText('The size requests could not be loaded.')).toBeTruthy();

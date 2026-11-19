@@ -39,8 +39,8 @@ export interface AdminPayoutListReader {
   /** How many payouts match the filter. */
   count(market: MarketContext, filter: PayoutListFilter): Promise<number>;
 
-  /** The Market's payouts per state, whatever the filter. */
-  countByState(market: MarketContext): Promise<PayoutStateCounts>;
+  /** The Market's payouts per state, whatever the filter; with `sellerId`, that seller's only. */
+  countByState(market: MarketContext, sellerId?: Id<'Seller'> | null): Promise<PayoutStateCounts>;
 
   /** The payouts of these ids that are the Market's (an export of chosen rows). */
   byIds(market: MarketContext, ids: readonly Id<'Payout'>[]): Promise<readonly Payout[]>;

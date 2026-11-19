@@ -31,6 +31,11 @@ export type CommissionRateReason = 'standard' | 'exclusive';
  */
 export interface CommissionRate {
   readonly rateBps: number;
+  /**
+   * The rate in force before the exclusive-customer lowering: equal to `rateBps` when `reason` is
+   * `standard`. Checkout freezes it on a lowered line, so the ledger can show the seller's saving.
+   */
+  readonly standardRateBps: number;
   readonly source: 'seller' | 'market';
   readonly reason: CommissionRateReason;
 }
@@ -62,6 +67,11 @@ export interface PaidLine {
   readonly lineAmount: bigint;
   readonly taxInclusive: boolean;
   readonly commissionRateBps: number;
+  /**
+   * A line whose rate was lowered for the buyer's exclusive seller: the rate it would have carried
+   * (never below `commissionRateBps`). Absent or null on every other line.
+   */
+  readonly commissionStandardRateBps?: number | null;
 }
 
 /** The facts of one paid seller order, as ordering stored them. */

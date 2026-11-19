@@ -71,6 +71,13 @@ export interface LedgerEntry {
   readonly rateBps: number | null;
   readonly baseAmount: bigint | null;
   /**
+   * `commission` and `refund-commission` of a line lowered for the buyer's exclusive seller only:
+   * the rate it would have carried and the commission not taken (a reversal: the part given back).
+   * Absent means null.
+   */
+  readonly standardRateBps?: number | null;
+  readonly savedAmount?: bigint | null;
+  /**
    * The refund (or dispute) a reversal comes from, or the promotions credit of a seller's
    * cashback; null for the three original kinds.
    */
@@ -153,4 +160,23 @@ export function netBySellerOrder(
     nets.set(entry.sellerOrderId, (nets.get(entry.sellerOrderId) ?? 0n) + signed);
   }
   return [...nets].map(([sellerOrderId, net]) => ({ sellerOrderId, net }));
+}
+
+/**
+ * Per currency, the savings of `commission` rows less the parts `refund-commission` rows gave
+ * back, by code. Negative when refunds in the window gave back more than the window saved (an
+ * earlier month's order refunded now, Hassan L1); a currency that nets to zero is left out.
+ */
+export function savingsOf(
+  groups: readonly { readonly currency: string; readonly kind: string; readonly saved: bigint }[],
+): readonly { readonly currency: string; readonly saved: bigint }[] {
+  const byCurrency = new Map<string, bigint>();
+  for (const group of groups) {
+    const sign = group.kind === 'commission' ? 1n : group.kind === 'refund-commission' ? -1n : 0n;
+    byCurrency.set(group.currency, (byCurrency.get(group.currency) ?? 0n) + sign * group.saved);
+  }
+  return [...byCurrency]
+    .filter(([, saved]) => saved !== 0n)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+    .map(([currency, saved]) => ({ currency, saved }));
 }
