@@ -67,7 +67,7 @@ export function archiveBlockOf(
  * sources point at it, so archiving or merging it would hide their values (attributes A8).
  */
 export async function archiveBlockWithMergesOf(
-  deps: AttributeRestructureDependencies,
+  deps: Pick<AttributeRestructureDependencies, 'attributeStore'>,
   market: MarketContext,
   definition: AttributeDefinition,
   impact: AttributeImpact,

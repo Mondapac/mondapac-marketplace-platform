@@ -1,3 +1,4 @@
+import ExcelJS from 'exceljs';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -10,6 +11,7 @@ import {
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
+import { ExceljsSheetWriter, type ExportFile } from '../../../platform/list-export';
 import type { AccessDeclaration } from '../../../platform/authz';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
@@ -23,7 +25,7 @@ import {
   SYSTEM_REQUESTS_POLICY_VIEW,
   SYSTEM_REQUESTS_REQUEST_VIEW,
 } from '../contracts/permissions';
-import type { AppliedChange } from '../contracts/recorder';
+import type { AppliedChange, ProposedChange } from '../contracts/recorder';
 import type {
   ChangeReviewArea,
   ChangeReviewRisk,
@@ -33,6 +35,7 @@ import {
   SYSTEM_REQUESTS_DECIDE_HIGH_STEP_UP,
   SYSTEM_REQUESTS_POLICY_CHANGE_STEP_UP,
 } from '../contracts/step-up';
+import { EXPORT_TOTAL_CAP, type SystemRequestsExportDependencies } from './export-flow';
 import { listRequests } from './list-flow';
 import { changeAreaPolicy, DUE_DAYS_KIND, POLICY_AREA_KIND, PolicyReverter } from './policy-flow';
 import { approveRequest, commentOnRequest, withdrawRequest } from './request-flow';
@@ -42,6 +45,7 @@ import type { SystemRequestsDependencies } from './system-requests-dependencies'
 import {
   FakeAdminNames,
   FakeStepUp,
+  FakeApplier,
   FakeSubjects,
   InMemoryPolicy,
   InMemoryRequests,
@@ -53,6 +57,7 @@ import { ChangeAreaReviewPolicy } from './use-cases/change-area-review-policy.us
 import { ChangeReviewDueDays } from './use-cases/change-review-due-days.use-case';
 import { CommentOnSystemRequest } from './use-cases/comment-on-system-request.use-case';
 import { CountSystemRequests } from './use-cases/count-system-requests.use-case';
+import { ExportSystemRequests } from './use-cases/export-system-requests.use-case';
 import { ListSystemRequests } from './use-cases/list-system-requests.use-case';
 import { RejectSystemRequest } from './use-cases/reject-system-request.use-case';
 import { ViewReviewPolicy } from './use-cases/view-review-policy.use-case';
@@ -76,6 +81,10 @@ const MAKER = id<'Account'>(0xa1);
 const CHECKER = id<'Account'>(0xa2);
 const OUTSIDER = id<'Account'>(0xa3);
 const STRANGER = id<'Account'>(0xa4);
+/** Reviews the catalogue but may not run the actions that wait for approval there. */
+const REVIEWER_ONLY = id<'Account'>(0xa5);
+/** The permission the catalog module would register with its appliers in these tests. */
+const DELETE_KEY = 'catalog.category.delete';
 const START = Temporal.Instant.from('2026-11-15T01:00:00Z');
 const SETTING = 'settings.market-setting';
 /** The kind the settings module would register in each area these tests use. */
@@ -107,10 +116,14 @@ const KEYS: Readonly<Record<string, readonly string[]>> = {
     SYSTEM_REQUESTS_MONEY_REVIEW.key,
     SYSTEM_REQUESTS_POLICY_VIEW.key,
     SYSTEM_REQUESTS_POLICY_MANAGE.key,
+    DELETE_KEY,
   ],
   [OUTSIDER]: [VIEW, SYSTEM_REQUESTS_POLICY_MANAGE.key],
   [STRANGER]: [],
+  [REVIEWER_ONLY]: [VIEW, SYSTEM_REQUESTS_CATALOGUE_REVIEW.key],
 };
+/** Keys taken from an account during a test (`${account}:${key}`), as a role change would. */
+const revoked = new Set<string>();
 
 describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) => {
   const market = testMarketContext(code, 'default');
@@ -122,7 +135,10 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       let allowed = rule.kind === 'system' ? actor.kind === 'system' : true;
       if (rule.kind === 'permissions') {
         const held = actor.kind === 'authenticated' ? (KEYS[actor.accountId] ?? []) : [];
-        allowed = rule.allOf.every((key) => held.includes(key));
+        const account = actor.kind === 'authenticated' ? actor.accountId : '';
+        allowed = rule.allOf.every(
+          (key) => held.includes(key) && !revoked.has(`${account}:${key}`),
+        );
       }
       return Promise.resolve(
         allowed
@@ -152,6 +168,7 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
   let policy: InMemoryPolicy;
   let stepUp: FakeStepUp;
   let subjects: FakeSubjects;
+  let applier: FakeApplier;
   let registry: ReverterRegistry;
   let audit: Audit;
   let names: FakeAdminNames;
@@ -161,11 +178,13 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
     new type(gate, deps);
 
   beforeEach(() => {
+    revoked.clear();
     clock = new FixedClock(START);
     requests = new InMemoryRequests();
     policy = new InMemoryPolicy();
     stepUp = new FakeStepUp(clock);
     subjects = new FakeSubjects();
+    applier = new FakeApplier();
     registry = new ReverterRegistry();
     audit = new Audit();
     names = new FakeAdminNames({ [MAKER]: 'Maryam K.', [CHECKER]: 'Ali R.' });
@@ -196,9 +215,40 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       'review-policy',
       new PolicyReverter(deps, DUE_DAYS_KIND),
     );
+    registry.facade.registerApplier(
+      'catalog',
+      'catalog.category',
+      'catalogue',
+      DELETE_KEY,
+      applier,
+    );
+    registry.facade.registerApplier(
+      'catalog',
+      'catalog.listing',
+      'marketplace',
+      DELETE_KEY,
+      applier,
+    );
     registry.seal();
     recorder = new SystemRequestRecorderImplementation(deps);
   });
+
+  /** What the catalog module would do for a delete: file a proposal, write nothing. */
+  const propose = async (who: Id<'Account'>, ref: string, extra: Partial<ProposedChange> = {}) => {
+    const before = { name: `Category ${ref}`, version: 3 };
+    applier.set(market.marketId, ref, before);
+    const proposed = await recorder.proposeChange(admin(who), {
+      area: 'catalogue',
+      subjectKind: 'catalog.category',
+      subjectRef: ref,
+      before,
+      after: { action: 'delete' },
+      note: 'Duplicate of Spices',
+      ...extra,
+    });
+    if (!proposed.ok || proposed.value === null) throw new Error('expected a proposal');
+    return proposed.value;
+  };
 
   /** What the settings module would do: write the value, then open the review in the same unit. */
   const change = async (
@@ -772,6 +822,272 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
     });
   });
 
+  describe('actions that wait for approval (approval mode)', () => {
+    it('files a proposal and applies nothing; one waits per subject', async () => {
+      const filed = await propose(MAKER, 'spices-2');
+      expect(applier.get(market.marketId, 'spices-2')).toEqual({
+        name: 'Category spices-2',
+        version: 3,
+      });
+      expect(applier.applied).toEqual([]);
+      const stored = await requests.find(market, filed.id);
+      expect(stored).toMatchObject({
+        mode: 'approval',
+        status: 'open',
+        after: { action: 'delete' },
+      });
+      expect(
+        requests.lines.filter((line) => line.requestId === filed.id).map((l) => l.kind),
+      ).toEqual(['proposed']);
+      expect(
+        await recorder.proposeChange(admin(CHECKER), {
+          area: 'catalogue',
+          subjectKind: 'catalog.category',
+          subjectRef: 'spices-2',
+          before: { name: 'Category spices-2', version: 3 },
+          after: { action: 'merge', intoId: 'spices' },
+          note: 'Merge instead',
+        }),
+      ).toEqual({
+        ok: false,
+        error: { code: 'system-requests.already-pending', pendingNumber: filed.number },
+      });
+      const view = await useCase(ViewSystemRequest).execute(admin(CHECKER), {
+        requestId: filed.id,
+      });
+      expect(view.ok && view.value.mode).toBe('approval');
+      expect(view.ok && view.value.actions).toEqual(['open', 'copy-link', 'approve', 'reject']);
+    });
+
+    it('applies the action when another reviewer approves, after the module check', async () => {
+      const filed = await propose(MAKER, 'spices-2');
+      const approved = await useCase(ApproveSystemRequest).execute(admin(CHECKER), {
+        requestId: filed.id,
+      });
+      expect(approved).toMatchObject({
+        ok: true,
+        value: { status: 'approved', decision: 'approved' },
+      });
+      expect(applier.checks).toHaveLength(1);
+      expect(applier.applied).toEqual([
+        expect.objectContaining({
+          requestId: filed.id,
+          subjectRef: 'spices-2',
+          after: { action: 'delete' },
+        }),
+      ]);
+      expect(applier.get(market.marketId, 'spices-2')).toBeUndefined();
+      expect(audit.rows.map((row) => row.action)).toContain('system-requests.request.approved');
+    });
+
+    it('leaves the request open and applies nothing when the check or the module refuses', async () => {
+      const refused = { ok: false, error: { code: 'system-requests.revert-not-permitted' } };
+      const first = await propose(MAKER, 'a');
+      applier.checkRefused.add('a');
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: first.id }),
+      ).toEqual(refused);
+      expect(applier.applied).toEqual([]);
+
+      const second = await propose(MAKER, 'b');
+      applier.refused.add('b');
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: second.id }),
+      ).toEqual(refused);
+
+      const third = await propose(MAKER, 'c');
+      applier.set(market.marketId, 'c', { name: 'Renamed since', version: 4 });
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: third.id }),
+      ).toMatchObject({ ok: false, error: { code: 'system-requests.changed-since' } });
+
+      for (const filed of [first, second, third]) {
+        expect((await requests.find(market, filed.id))?.status).toBe('open');
+      }
+      expect(applier.applied).toEqual([]);
+    });
+
+    it('checks the registered permission itself, whatever the module check answers', async () => {
+      // The fake's check answers ok for anyone: a reviewer without the action's key is still
+      // refused, before the module is asked (Hassan M1).
+      const filed = await propose(MAKER, 'a');
+      const refused = { ok: false, error: { code: 'system-requests.revert-not-permitted' } };
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(REVIEWER_ONLY), { requestId: filed.id }),
+      ).toEqual(refused);
+      expect(applier.checks).toEqual([]);
+      expect(applier.applied).toEqual([]);
+
+      // A key taken away while the module check runs is caught by the last look before the unit
+      // (Hassan L2): the action's permission, and the area's review key.
+      applier.onCheck = () => revoked.add(`${CHECKER}:${DELETE_KEY}`);
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: filed.id }),
+      ).toEqual(refused);
+      revoked.clear();
+      applier.onCheck = () => revoked.add(`${CHECKER}:${SYSTEM_REQUESTS_CATALOGUE_REVIEW.key}`);
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: filed.id }),
+      ).toEqual({ ok: false, error: { code: 'system-requests.not-reviewer' } });
+      expect(applier.applied).toEqual([]);
+      expect((await requests.find(market, filed.id))?.status).toBe('open');
+
+      revoked.clear();
+      applier.onCheck = undefined;
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: filed.id }),
+      ).toMatchObject({ ok: true, value: { status: 'approved' } });
+    });
+
+    it('lets a proposal whose kind is no longer registered be rejected or withdrawn', async () => {
+      const rejected = await propose(MAKER, 'a');
+      const withdrawn = await propose(MAKER, 'b');
+      const empty = new ReverterRegistry();
+      empty.seal();
+      deps = { ...deps, reverters: empty };
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: rejected.id }),
+      ).toEqual({ ok: false, error: { code: 'system-requests.revert-unavailable' } });
+      expect(
+        await useCase(RejectSystemRequest).execute(admin(CHECKER), {
+          requestId: rejected.id,
+          reason: 'Kind retired',
+        }),
+      ).toMatchObject({ ok: true, value: { status: 'reverted', decision: 'rejected' } });
+      expect(
+        await useCase(WithdrawSystemRequest).execute(admin(MAKER), {
+          requestId: withdrawn.id,
+          reason: 'Kind retired',
+        }),
+      ).toMatchObject({ ok: true, value: { status: 'reverted', decision: 'withdrawn' } });
+      expect(applier.applied).toEqual([]);
+    });
+
+    it('changes nothing on a reject or a withdraw, and asks the module nothing', async () => {
+      const rejected = await propose(MAKER, 'a');
+      const withdrawn = await propose(MAKER, 'b');
+      expect(
+        await useCase(RejectSystemRequest).execute(admin(CHECKER), {
+          requestId: rejected.id,
+          reason: 'Still in use',
+        }),
+      ).toMatchObject({ ok: true, value: { status: 'reverted', decision: 'rejected' } });
+      expect(
+        await useCase(WithdrawSystemRequest).execute(admin(MAKER), {
+          requestId: withdrawn.id,
+          reason: 'Wrong one',
+        }),
+      ).toMatchObject({ ok: true, value: { status: 'reverted', decision: 'withdrawn' } });
+      expect(applier.checks).toEqual([]);
+      expect(applier.applied).toEqual([]);
+      expect(applier.get(market.marketId, 'a')).toBeDefined();
+      expect(applier.get(market.marketId, 'b')).toBeDefined();
+      // Decided, the subject may be proposed again.
+      await expect(propose(MAKER, 'a')).resolves.toMatchObject({
+        number: expect.any(Number) as number,
+      });
+    });
+
+    it('keeps maker-checker: never the author, never a change about the reviewer', async () => {
+      const filed = await propose(MAKER, 'a');
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(MAKER), { requestId: filed.id }),
+      ).toEqual({ ok: false, error: { code: 'system-requests.own-request' } });
+      applier.interested.add(`${CHECKER}:a`);
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: filed.id }),
+      ).toEqual({ ok: false, error: { code: 'system-requests.own-subject' } });
+      expect(applier.applied).toEqual([]);
+    });
+
+    it('spends a step-up proof to apply a high-risk proposal', async () => {
+      const filed = await propose(MAKER, 'a', { risk: 'high' });
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: filed.id }),
+      ).toMatchObject({ ok: false, error: { code: 'second-factor.required' } });
+      expect(applier.applied).toEqual([]);
+      stepUp.grant(CHECKER, SYSTEM_REQUESTS_DECIDE_HIGH_STEP_UP);
+      expect(
+        await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: filed.id }),
+      ).toMatchObject({ ok: true, value: { status: 'approved' } });
+      expect(applier.applied).toHaveLength(1);
+    });
+
+    it('is neither superseded nor superseding: a later change of the subject keeps it decidable', async () => {
+      const filed = await propose(MAKER, 'list-paging');
+      const later = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+      expect((await requests.find(market, filed.id))?.supersededBy).toBeNull();
+      expect((await requests.find(market, later.id))?.supersededBy).toBeNull();
+    });
+
+    it('is never approved in bulk', async () => {
+      policy.areaRows.set(`${market.marketId}:marketplace`, {
+        area: 'marketplace',
+        enabled: true,
+        risk: 'low',
+        version: 1,
+        updatedAt: START,
+        updatedBy: CHECKER,
+      });
+      const filed = await propose(MAKER, 'listing-1', {
+        area: 'marketplace',
+        subjectKind: 'catalog.listing',
+      });
+      const result = await useCase(ApproveSystemRequests).execute(admin(CHECKER), {
+        requestIds: [filed.id],
+      });
+      expect(result).toEqual({
+        ok: true,
+        value: [{ requestId: filed.id, outcome: 'system-requests.one-by-one' }],
+      });
+      expect(await useCase(ApproveMatchingSystemRequests).execute(admin(CHECKER), {})).toEqual({
+        ok: true,
+        value: { approved: [], failed: [], remaining: 0 },
+      });
+      expect(applier.applied).toEqual([]);
+    });
+
+    it('opens nothing where the area is not reviewed, and refuses the wrong recorder call', async () => {
+      policy.areaRows.set(`${market.marketId}:catalogue`, {
+        area: 'catalogue',
+        enabled: false,
+        risk: 'medium',
+        version: 1,
+        updatedAt: START,
+        updatedBy: CHECKER,
+      });
+      const off = await recorder.proposeChange(admin(MAKER), {
+        area: 'catalogue',
+        subjectKind: 'catalog.category',
+        subjectRef: 'a',
+        before: { v: 1 },
+        after: { action: 'delete' },
+        note: undefined,
+      });
+      expect(off).toEqual({ ok: true, value: null });
+      await expect(
+        recorder.openReview(admin(MAKER), {
+          area: 'catalogue',
+          subjectKind: 'catalog.category',
+          subjectRef: 'a',
+          before: { v: 1 },
+          after: { v: 2 },
+          note: 'x',
+        }),
+      ).rejects.toThrow(TypeError);
+      await expect(
+        recorder.proposeChange(admin(MAKER), {
+          area: 'catalogue',
+          subjectKind: SETTING,
+          subjectRef: 'a',
+          before: { v: 1 },
+          after: { action: 'delete' },
+          note: 'x',
+        }),
+      ).rejects.toThrow(TypeError);
+    });
+  });
+
   describe('bulk approve', () => {
     beforeEach(() => {
       policy.areaRows.set(`${market.marketId}:marketplace`, {
@@ -1042,6 +1358,216 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
         ok: false,
         error: { code: 'validation.failed' },
       });
+    });
+  });
+
+  describe('the export (super list, rule 14)', () => {
+    const exportDeps = (): SystemRequestsExportDependencies => ({
+      ...deps,
+      sheetWriter: new ExceljsSheetWriter(),
+      zone: { zoneOf: (ctx) => markets.get(ctx.marketId).timezone },
+    });
+    const exportAs = (who: Id<'Account'>, input: unknown, ctx: CallContext = admin(who)) =>
+      new ExportSystemRequests(gate, exportDeps()).execute(ctx, input);
+    const text = async (file: ExportFile): Promise<string> => {
+      let out = '';
+      for await (const chunk of file.chunks) out += typeof chunk === 'string' ? chunk : '';
+      return out;
+    };
+    const lines = async (who: Id<'Account'>, input: Record<string, unknown>) => {
+      const result = await exportAs(who, input);
+      if (!result.ok) throw new Error(`export failed: ${result.error.code}`);
+      return (await text(result.value))
+        .replace(/^\uFEFF/, '')
+        .split('\r\n')
+        .filter((line) => line !== '');
+    };
+
+    it('writes the rows of the view with the fixed and the chosen columns, never the values', async () => {
+      subjects.labels.set(`${market.marketId}:list-paging`, 'List paging');
+      const first = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+      clock.advance(Temporal.Duration.from({ minutes: 5 }));
+      await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: first.id });
+      await change(CHECKER, 'cart-mode', { mode: 'multi' }, { mode: 'single' });
+      // Another Market's request never reaches this Market's file.
+      await recorder.openReview(admin(MAKER, other), {
+        area: 'catalogue',
+        subjectKind: SETTING,
+        subjectRef: 'elsewhere',
+        before: { v: 1 },
+        after: { v: 2 },
+        note: 'Other Market',
+      });
+
+      const result = await exportAs(CHECKER, {
+        view: 'all',
+        sort: 'number',
+        direction: 'asc',
+        columns: 'subject,requestedBy,decidedBy,decided,comments',
+        zone: 'UTC',
+      });
+      if (!result.ok) throw new Error('export failed');
+      expect(result.value.filename).toBe('system-requests-2026-11-15.csv');
+      expect(result.value.contentType).toBe('text/csv; charset=utf-8');
+      const rows = (await text(result.value)).replace(/^\uFEFF/, '').split('\r\n');
+      expect(rows[0]).toBe(
+        'Request,Note,Area,Risk,Status,Subject type,Subject,Subject ID,Requested by,' +
+          'Requested by ID,Decided by,Decided by ID,Decided,Decision,Comments',
+      );
+      expect(rows[1]).toBe(
+        `SR-1,Raise the limit for the launch week,Catalogue,Medium,Approved,${SETTING},` +
+          `List paging,list-paging,Maryam K.,${MAKER},Ali R.,${CHECKER},` +
+          '2026-11-15T01:05:00+00:00,Approved,0',
+      );
+      expect(rows[2]).toMatch(/^SR-2,.*,Open,.*,cart-mode,Ali R\.,/);
+      expect(rows.filter((line) => line !== '')).toHaveLength(3);
+      const whole = rows.join('\n');
+      // The values before and after stay on the request page.
+      expect(whole).not.toMatch(/multi|single|"size"/);
+      expect(whole).not.toContain('elsewhere');
+    });
+
+    it('writes times in the zone asked for, or in the Market zone, with the overdue flag', async () => {
+      await change(MAKER, 'a', { v: 1 }, { v: 2 });
+      clock.advance(Temporal.Duration.from({ hours: 8 * 24 }));
+      const zoned = await lines(CHECKER, {
+        view: 'all',
+        columns: 'applied,due',
+        zone: 'Asia/Tokyo',
+      });
+      expect(zoned[0]).toBe('Request,Note,Area,Risk,Status,Applied,Review due,Overdue');
+      expect(zoned[1]).toMatch(/,2026-11-15T10:00:00\+09:00,2026-11-22T10:00:00\+09:00,Yes$/);
+      const marketZone = markets.get(market.marketId).timezone;
+      const expected = START.toZonedDateTimeISO(marketZone).toString({
+        timeZoneName: 'never',
+        smallestUnit: 'second',
+      });
+      const inMarket = await lines(CHECKER, { view: 'all', columns: 'applied' });
+      expect(inMarket[1]).toBe(
+        `SR-1,Raise the limit for the launch week,Catalogue,Medium,Open,${expected}`,
+      );
+    });
+
+    it('applies the view as the list does: Needs my review leaves out own requests and other areas', async () => {
+      await change(MAKER, 'a', { v: 1 }, { v: 2 });
+      await change(CHECKER, 'b', { v: 1 }, { v: 2 });
+      await change(MAKER, 'c', { v: 1 }, { v: 2 }, { area: 'people' });
+      const forMaker = await lines(MAKER, { view: 'needs-my-review' });
+      // The maker reviews catalogue only: the checker's catalogue request is the one row.
+      expect(forMaker.slice(1).map((line) => line.split(',')[0])).toEqual(['SR-2']);
+      const forOutsider = await lines(OUTSIDER, { view: 'needs-my-review' });
+      expect(forOutsider).toHaveLength(1);
+      const filtered = await lines(CHECKER, { view: 'all', risk: 'high', q: 'launch' });
+      expect(filtered.slice(1).map((line) => line.split(',')[0])).toEqual(['SR-3']);
+      const list = await useCase(ListSystemRequests).execute(admin(CHECKER), {
+        view: 'all',
+        risk: 'high',
+        q: 'launch',
+      });
+      expect(list.ok && list.value.rows.map((row) => row.number)).toEqual([3]);
+    });
+
+    it('writes the chosen rows in the order given, and refuses an id of another Market', async () => {
+      const a = await change(MAKER, 'a', { v: 1 }, { v: 2 });
+      const b = await change(MAKER, 'b', { v: 1 }, { v: 2 });
+      const chosen = await lines(CHECKER, { ids: `${b.id},${a.id}` });
+      expect(chosen.slice(1).map((line) => line.split(',')[0])).toEqual(['SR-2', 'SR-1']);
+      const elsewhere = await recorder.openReview(admin(MAKER, other), {
+        area: 'catalogue',
+        subjectKind: SETTING,
+        subjectRef: 'x',
+        before: { v: 1 },
+        after: { v: 2 },
+        note: 'Other Market',
+      });
+      if (!elsewhere.ok || elsewhere.value === null) throw new Error('expected a request');
+      expect(await exportAs(CHECKER, { ids: `${a.id},${elsewhere.value.id}` })).toEqual({
+        ok: false,
+        error: { code: 'system-requests.not-found' },
+      });
+      expect(await exportAs(CHECKER, { ids: `${a.id},${a.id}` })).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'ids', code: 'duplicate' }] },
+      });
+      const many = Array.from({ length: 101 }, (_, n) => id<'SystemRequest'>(0x9000 + n)).join(',');
+      expect(await exportAs(CHECKER, { ids: many })).toEqual({
+        ok: false,
+        error: { code: 'batch.too-large', max: 100 },
+      });
+    });
+
+    it('refuses more than 10,000 matching rows with the total', async () => {
+      await change(MAKER, 'a', { v: 1 }, { v: 2 });
+      const big = Object.create(requests) as InMemoryRequests;
+      big.count = (_market, _filter, cap) => Promise.resolve(Math.min(12_345, cap));
+      const result = await new ExportSystemRequests(gate, {
+        ...exportDeps(),
+        requests: big,
+      }).execute(admin(CHECKER), { view: 'all' });
+      expect(result).toEqual({
+        ok: false,
+        error: { code: 'batch.too-large', max: 10_000, total: 12_345 },
+      });
+    });
+
+    it('counts the total of a refused export only up to 100,000', async () => {
+      await change(MAKER, 'a', { v: 1 }, { v: 2 });
+      const caps: number[] = [];
+      const huge = Object.create(requests) as InMemoryRequests;
+      huge.count = (_market, _filter, cap) => {
+        caps.push(cap);
+        return Promise.resolve(Math.min(2_500_000, cap));
+      };
+      const result = await new ExportSystemRequests(gate, {
+        ...exportDeps(),
+        requests: huge,
+      }).execute(admin(CHECKER), { view: 'all' });
+      expect(result).toEqual({
+        ok: false,
+        error: { code: 'batch.too-large', max: 10_000, total: EXPORT_TOTAL_CAP },
+      });
+      expect(EXPORT_TOTAL_CAP).toBe(100_000);
+      expect(caps).toEqual([10_001, 100_000]);
+    });
+
+    it('refuses unknown keys, bad values, a caller without the view key and an acting-as session', async () => {
+      const refused = async (input: Record<string, unknown>) => {
+        const result = await exportAs(CHECKER, input);
+        return result.ok ? null : result.error;
+      };
+      expect(await refused({ page: '1' })).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'page', code: 'unknown' }],
+      });
+      expect(await refused({ format: 'pdf' })).toMatchObject({ code: 'validation.failed' });
+      expect(await refused({ columns: 'before' })).toMatchObject({ code: 'validation.failed' });
+      expect(await refused({ zone: 'Mars/Base' })).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'zone', code: 'value' }],
+      });
+      expect(await refused({ view: 'nope' })).toMatchObject({ code: 'validation.failed' });
+      expect((await exportAs(STRANGER, {})).ok).toBe(false);
+      expect(await exportAs(MAKER, {}, actingAs(MAKER))).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+    });
+
+    it('writes an XLSX workbook with every cell as text', async () => {
+      await change(MAKER, 'a', { v: 1 }, { v: 2 });
+      const result = await exportAs(CHECKER, { view: 'all', format: 'xlsx', columns: 'comments' });
+      if (!result.ok) throw new Error('export failed');
+      expect(result.value.filename).toBe('system-requests-2026-11-15.xlsx');
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of result.value.chunks) {
+        chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+      }
+      const book = new ExcelJS.Workbook();
+      await book.xlsx.load(Buffer.concat(chunks) as unknown as ArrayBuffer);
+      const sheet = book.getWorksheet('System requests');
+      expect(sheet?.getRow(1).getCell(1).value).toBe('Request');
+      expect(sheet?.getRow(2).getCell(1).value).toBe('SR-1');
+      expect(sheet?.getRow(2).getCell(6).value).toBe('0');
     });
   });
 
@@ -1431,12 +1957,84 @@ describe('the reverter registry', () => {
       registry.register('settings', 'settings.policy', 'review-policy', reverter),
     ).toThrow(ReverterRegistryError);
     // The facade hands out no lookup.
-    expect(Object.keys(registry.facade)).toEqual(['register']);
+    expect(Object.keys(registry.facade)).toEqual(['register', 'registerApplier']);
     registry.seal();
     expect(() => register('catalog', 'catalog.product', 'catalogue', reverter)).toThrow(
       ReverterRegistryError,
     );
-    expect(registry.find('settings.market-setting')).toEqual({ reverter, area: 'catalogue' });
+    expect(registry.find('settings.market-setting')).toEqual({
+      mode: 'review',
+      reverter,
+      applier: null,
+      hooks: reverter,
+      area: 'catalogue',
+    });
     expect(registry.find('catalog.product')).toBeNull();
+  });
+
+  it('takes an applier only with a permission key, apply and check, never in the review-policy area', () => {
+    const registry = new ReverterRegistry();
+    const applier = {
+      apply: () => Promise.resolve('applied' as const),
+      check: () => Promise.resolve('ok' as const),
+    };
+    expect(() =>
+      registry.facade.registerApplier('catalog', 'catalog.category', 'catalogue', DELETE_KEY, {
+        apply: applier.apply,
+      } as never),
+    ).toThrow(ReverterRegistryError);
+    for (const permission of ['', 'Delete', undefined]) {
+      expect(() =>
+        registry.facade.registerApplier(
+          'catalog',
+          'catalog.category',
+          'catalogue',
+          permission as never,
+          applier,
+        ),
+      ).toThrow(ReverterRegistryError);
+    }
+    expect(() =>
+      registry.registerApplier(
+        'system-requests',
+        'system-requests.x',
+        'review-policy',
+        DELETE_KEY,
+        applier,
+      ),
+    ).toThrow(ReverterRegistryError);
+    registry.facade.registerApplier(
+      'catalog',
+      'catalog.category',
+      'catalogue',
+      DELETE_KEY,
+      applier,
+    );
+    expect(registry.find('catalog.category')).toMatchObject({
+      mode: 'approval',
+      applier,
+      permissions: [DELETE_KEY],
+    });
+    // Several keys: all are required; an empty list or a bad key is refused.
+    registry.facade.registerApplier(
+      'catalog',
+      'catalog.products-move',
+      'catalogue',
+      [DELETE_KEY, 'catalog.product.approve'],
+      applier,
+    );
+    expect(registry.find('catalog.products-move')).toMatchObject({
+      permissions: [DELETE_KEY, 'catalog.product.approve'],
+    });
+    for (const keys of [[], [DELETE_KEY, 'Bad']]) {
+      expect(() =>
+        registry.facade.registerApplier('catalog', 'catalog.other', 'catalogue', keys, applier),
+      ).toThrow(ReverterRegistryError);
+    }
+    expect(() =>
+      registry.facade.register('catalog', 'catalog.category', 'catalogue', {
+        revert: () => Promise.resolve('reverted' as const),
+      }),
+    ).toThrow(ReverterRegistryError);
   });
 });

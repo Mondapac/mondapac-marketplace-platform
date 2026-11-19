@@ -168,8 +168,18 @@ export class OwnFormCategory {
   @ApiProperty(LOCALE_MAP) names!: Record<string, string>;
 }
 
+export class OwnTaxCategory {
+  @ApiProperty() code!: string;
+  @ApiProperty({
+    description:
+      "The message key the panels show the category by, from the Market's configuration.",
+  })
+  labelKey!: string;
+}
+
 export class OwnProductForm {
   @ApiProperty({ type: [String] }) taxCategoryCodes!: string[];
+  @ApiProperty({ type: [OwnTaxCategory] }) taxCategories!: OwnTaxCategory[];
   @ApiProperty({
     type: [OwnFormUnit],
     description:
@@ -439,6 +449,11 @@ export class OwnProductOptions {
       "The Market's tax category codes, as `form.taxCategoryCodes` of the product read lists them.",
   })
   taxCategoryCodes!: string[];
+  @ApiProperty({
+    type: [OwnTaxCategory],
+    description: 'The same categories with the label key each is shown by.',
+  })
+  taxCategories!: OwnTaxCategory[];
   @ApiProperty({
     type: [OwnFormCategory],
     description:
