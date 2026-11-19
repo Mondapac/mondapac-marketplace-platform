@@ -1361,6 +1361,7 @@
       "queue": "Review queue",
       "issuers": "Issuers",
       "requests": "Issuer requests",
+      "requests-open": "Issuer requests ({count})",
       "types": "Types"
     },
     "issuers": {
