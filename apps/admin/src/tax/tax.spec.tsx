@@ -34,6 +34,10 @@ const data = (patch: Partial<TaxStrategyList> = {}): TaxStrategyList => ({
   builtInRateBps: 1000,
   activeStrategyId: null,
   categoryCodes: ['taxable', 'gst_free'],
+  categories: [
+    { code: 'taxable', labelKey: 'catalog.tax.taxable' },
+    { code: 'gst_free', labelKey: 'catalog.tax.gst-free' },
+  ],
   strategies: [strategy()],
   ...patch,
 });
@@ -150,6 +154,25 @@ describe('TaxPanel', () => {
     expect(call).not.toHaveBeenCalled();
   });
 
+  it('names a category without a message, or from an API without labels, by its code as words', () => {
+    const open = (list: TaxStrategyList) => {
+      cleanup();
+      mount(list, true);
+      fireEvent.click(screen.getByRole('button', { name: 'Add strategy' }));
+      fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'by-category' } });
+    };
+    open(
+      data({
+        categoryCodes: ['zz_reduced', 'gst_free'],
+        categories: [{ code: 'zz_reduced', labelKey: 'catalog.tax.no-such-message' }],
+      }),
+    );
+    expect(screen.getByLabelText('Rate for Zz reduced (%)')).toBeTruthy();
+    expect(screen.getByLabelText('Rate for GST free (%)')).toBeTruthy();
+    open(data({ categories: undefined }));
+    expect(screen.getByLabelText('Rate for Taxable (%)')).toBeTruthy();
+  });
+
   it('sends one rate per category for a by-category strategy', async () => {
     call.mockResolvedValue(ok(data()));
     mount(data({ strategies: [] }));
@@ -157,8 +180,8 @@ describe('TaxPanel', () => {
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Mixed' } });
     fireEvent.change(screen.getByLabelText('Type'), { target: { value: 'by-category' } });
     fireEvent.change(screen.getByLabelText('Default rate (%)'), { target: { value: '10' } });
-    fireEvent.change(screen.getByLabelText('Rate for taxable (%)'), { target: { value: '10' } });
-    fireEvent.change(screen.getByLabelText('Rate for gst_free (%)'), { target: { value: '0' } });
+    fireEvent.change(screen.getByLabelText('Rate for Taxable (%)'), { target: { value: '10' } });
+    fireEvent.change(screen.getByLabelText('Rate for GST-free (%)'), { target: { value: '0' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save strategy' }));
     await waitFor(() =>
       expect(call).toHaveBeenCalledWith(

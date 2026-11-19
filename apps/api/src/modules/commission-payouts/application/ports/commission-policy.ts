@@ -11,6 +11,8 @@ export interface CommissionSettings {
    */
   readonly provisionalTaxRateBps: number;
   readonly currency: string;
+  /** The Market's IANA zone: the months of a seller's savings are cut in it (ADR-0005 fallback). */
+  readonly timeZone: string;
   /** The lower commission for a seller's exclusive customer; null: none in this Market. */
   readonly exclusiveCustomer: ExclusiveCommissionRule | null;
 }

@@ -14,6 +14,7 @@ export class ConfigCommissionPolicy implements CommissionPolicy {
       defaultRateBps: settings.defaultRateBps,
       provisionalTaxRateBps: settings.provisionalTaxRateBps,
       currency: config.defaultCurrency,
+      timeZone: config.timezone,
       exclusiveCustomer: settings.exclusiveCustomer ?? null,
     };
   }

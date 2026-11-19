@@ -941,6 +941,23 @@ card, the storefront's invite banner and the admin list's screens follow in the 
   recorded in that month of the Market's zone. A rejected attribution is counted nowhere. Read
   from `customers.seller_attributions` on its (market, seller, attributed_at) index; no migration.
 
+## Phase 4b follow-up: the seller's savings on exclusive customers (2026-11-18)
+
+- Checkout also freezes `ordering.order_lines.commission_standard_rate_bps` on a lowered line: the
+  seller's rate in force at placement (`CommissionRate.standardRateBps`). Null on every other line
+  and on lines lowered before this column (their saving is unknown, never guessed).
+- The ledger's `commission` row of such a line keeps `standard_rate_bps` and `saved_amount`
+  (the commission at the standard rate on the same base, less what was taken); each
+  `refund-commission` row gives back its part of the saving in the same cumulative proportion as the
+  commission, so a full refund gives back exactly the saving. CHECK: both or neither, commission
+  kinds only, never below the row's rate, never negative. Partial index on (market, seller,
+  occurred_at) where a saving exists.
+- `GET commission-payouts/seller/exclusive-commission` (`commission-payouts.earnings.view`, the
+  seller's own only): `rule` (the seller's rate in force now, the lower rate and the months; null
+  when the Market has none), `zone` (the Market's), `months` (the last 12, per currency, savings
+  less what refunds gave back, by the rows' `occurred_at`) and `thisMonth`.
+
+
 ## Phase 4c-1: the seller's cashback for its exclusive customers (2026-11-17)
 
 - A seller makes a `CASHBACK` promotion with the segment `SELLER_EXCLUSIVE` (the only way a
