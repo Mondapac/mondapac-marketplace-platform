@@ -582,7 +582,7 @@ describe.each(TEST_MARKETS)('seller saved filters in market %s (database)', (cod
     it('has the access-path index of the store’s list', async () => {
       const indexes = await owner.query<{ indexname: string }>(
         `SELECT indexname FROM pg_indexes
-          WHERE schemaname = 'catalog' AND tablename = 'saved_filters'`,
+          WHERE schemaname = 'lists' AND tablename = 'saved_filters'`,
       );
       expect(indexes.rows.map((row) => row.indexname)).toEqual(
         expect.arrayContaining([

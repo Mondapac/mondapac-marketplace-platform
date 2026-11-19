@@ -113,10 +113,13 @@ export class PrismaAdminPayoutListReader implements AdminPayoutListReader {
     return this.prisma.tx(market).commissionPayoutsPayout.count({ where: where(market, filter) });
   }
 
-  async countByState(market: MarketContext): Promise<PayoutStateCounts> {
+  async countByState(
+    market: MarketContext,
+    sellerId: Id<'Seller'> | null = null,
+  ): Promise<PayoutStateCounts> {
     const groups = await this.prisma.tx(market).commissionPayoutsPayout.groupBy({
       by: ['state'],
-      where: { marketId: market.marketId },
+      where: { marketId: market.marketId, ...(sellerId === null ? {} : { sellerId }) },
       _count: { _all: true },
     });
     const counts = Object.fromEntries(PAYOUT_STATES.map((state) => [state, 0])) as Record<

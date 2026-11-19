@@ -60,6 +60,12 @@ export interface OrderLine {
    */
   readonly commissionRateReason: 'standard' | 'exclusive';
   /**
+   * On a line whose rate was lowered (`exclusive`): the rate it would have carried without it, the
+   * seller's rate in force at placement, frozen with it so the ledger can show the seller's saving.
+   * Absent or null on every other line (and on lines lowered before it was frozen).
+   */
+  readonly commissionStandardRateBps?: number | null;
+  /**
    * Whether the buyer was the exclusive customer of the line's seller at placement (joined through
    * its invite link), whether or not a lower rate applied. Lines before phase 4b: false.
    */

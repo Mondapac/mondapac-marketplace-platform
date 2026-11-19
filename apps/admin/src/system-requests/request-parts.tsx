@@ -3,7 +3,7 @@
 import { Badge, type BadgeTone } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import type { Risk, SystemRequest } from './types.ts';
-import { daysOverdue, humanKind, kindKey } from './types.ts';
+import { daysOverdue, humanKind, isApproval, kindKey } from './types.ts';
 
 const RISK_TONE: Readonly<Record<Risk, BadgeTone>> = {
   low: 'neutral',
@@ -29,12 +29,26 @@ export function RiskBadge({ risk }: { readonly risk: Risk }) {
  */
 export function StatusBadges({ request }: { readonly request: SystemRequest }) {
   const t = useTranslations('system-requests');
+  const approval = isApproval(request);
   const tone: BadgeTone =
     request.status === 'open' ? 'info' : request.status === 'approved' ? 'success' : 'neutral';
+  // An action that waits for approval was never applied, so a declined one is not "Reverted".
+  const declined = approval && request.status === 'reverted';
+  const label = declined
+    ? t(
+        request.decision === 'withdrawn'
+          ? 'decision.approval-withdrawn'
+          : 'decision.approval-rejected',
+      )
+    : t(`status.${request.status}`);
   return (
     <span className="inline-flex flex-wrap items-center gap-1">
-      <Badge tone={tone}>{t(`status.${request.status}`)}</Badge>
-      {request.status === 'reverted' &&
+      <Badge tone={tone}>{label}</Badge>
+      {approval && request.status === 'open' ? (
+        <Badge tone="attention">{t('waits-for-approval')}</Badge>
+      ) : null}
+      {!approval &&
+      request.status === 'reverted' &&
       request.decision !== null &&
       request.decision !== 'approved' ? (
         <span className="text-xs text-fg-muted">{t(`decision.${request.decision}`)}</span>

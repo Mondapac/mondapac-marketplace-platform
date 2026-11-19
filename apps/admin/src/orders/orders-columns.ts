@@ -27,3 +27,25 @@ export const DEFAULT_COLUMNS: readonly OrderColumn[] = ['placed', 'customer', 't
  */
 export const cleanColumns = (saved: readonly unknown[] | undefined): readonly OrderColumn[] =>
   cleanColumnIds(saved, OPTIONAL_COLUMNS, DEFAULT_COLUMNS);
+
+/**
+ * The export columns the shown list columns stand for, in the shown order. Order, Placed, Status
+ * and Payment always leave; Customer has no column in the file (the export names no buyer); Total
+ * brings its currency and tax, and Sellers the store names. Fulfilment is always asked for: the list
+ * shows it in the status cell.
+ */
+export const exportColumnIds = (columns: readonly OrderColumn[]): readonly string[] => [
+  ...columns.flatMap((column): readonly string[] => {
+    switch (column) {
+      case 'paid':
+        return ['paid'];
+      case 'total':
+        return ['currency', 'total', 'tax'];
+      case 'sellers':
+        return ['sellers', 'stores'];
+      default:
+        return [];
+    }
+  }),
+  'fulfilment',
+];

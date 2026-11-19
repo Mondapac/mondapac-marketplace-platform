@@ -62,8 +62,8 @@ function openNote(row: PostRow): 'in_review' | 'returned' | 'draft' | 'approved'
 }
 
 /**
- * The posts of the Market (admin): status tabs, type and author filters, 50 a page. Read only: it
- * has no buttons of its own; the editor and the review pages arrive with their own packages.
+ * The posts of the Market (admin): status tabs, type and author filters, a page at a time. Read
+ * only: it has no buttons of its own; the editor and the review pages arrive with their own packages.
  */
 export function PostsView({ zone, canEdit }: { readonly zone: string; readonly canEdit: boolean }) {
   const t = useTranslations('blog');

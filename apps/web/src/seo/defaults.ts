@@ -43,6 +43,7 @@ export const DESCRIPTION_KEYS = {
   'account-order': 'account-order',
   'account-addresses': 'account-addresses',
   'account-lists': 'account-lists',
+  'account-stores': 'account-stores',
   'account-settings': 'account-settings',
   'account-reviews': 'account-reviews',
   'account-delete': 'account-delete',
