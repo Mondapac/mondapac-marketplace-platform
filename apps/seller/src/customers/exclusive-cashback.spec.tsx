@@ -292,6 +292,60 @@ describe('cashback card', () => {
     expect(writes()[0]?.[1]).toBe(`promotions/seller/promotions/${cashback().id}/resume`);
   });
 
+  it('prefers a live cashback, and offers Create (no Edit) when the only one is rejected or ended', async () => {
+    const rejected = cashback({ id: 'r', status: 'REJECTED' });
+    const ended = cashback({ id: 'e', endsAt: '2020-01-01T00:00:00.000Z' });
+    expect(cashbackOf([rejected, ended, cashback()])?.id).toBe(cashback().id);
+    expect(cashbackOf([rejected, ended])?.id).toBe('r');
+    for (const [item, word] of [
+      [rejected, 'Rejected'],
+      [ended, 'Ended'],
+    ] as const) {
+      cleanup();
+      servePerks(call, { cashback: [ok({ items: [item] })], writes: [ok({})] });
+      mount();
+      expect(await screen.findByText(word)).toBeTruthy();
+      expect(screen.queryByRole('button', { name: 'Edit…' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Pause…' })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Create exclusive cashback…' }));
+      expect(screen.getByRole('button', { name: 'Create cashback' })).toBeTruthy();
+      expect(screen.getByLabelText<HTMLInputElement>('Cashback (%)').value).toBe('');
+    }
+  });
+
+  it('shows the wallet-off text when a write answers promotions.disabled (404)', async () => {
+    servePerks(call, {
+      cashback: [ok({ items: [cashback()] })],
+      writes: [fail(404, 'promotions.disabled')],
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Pause cashback' }));
+    expect(
+      await screen.findByText('Cashback needs the customer wallet, which is off in your Market.'),
+    ).toBeTruthy();
+  });
+
+  it('shows a 429 on a resume with the wait in minutes', async () => {
+    servePerks(call, {
+      cashback: [ok({ items: [cashback({ status: 'PAUSED', pausedBy: 'SELLER' })] })],
+      writes: [fail(429, 'rate-limit', { retryAfterSeconds: 300 })],
+    });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Resume…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Resume cashback' }));
+    expect(await screen.findByText('Try again in 5 minutes.')).toBeTruthy();
+  });
+
+  it('keeps the start of an edited cashback as the API gave it (it accepts a past start)', async () => {
+    servePerks(call, { cashback: [ok({ items: [cashback()] })], writes: [ok({})] });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect((writes()[0]?.[2] as { startsAt: string }).startsAt).toBe('2026-11-01T00:00:00.000Z');
+  });
+
   it('shows a 429 on a write with the wait in minutes and keeps the dialog', async () => {
     servePerks(call, {
       cashback: [ok({ items: [cashback()] })],

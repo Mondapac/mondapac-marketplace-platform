@@ -30,12 +30,23 @@ const LIST_PATH = `${PROMOTIONS_BASE_PATH}?type=CASHBACK&limit=100`;
 /** The name of a cashback the seller makes: the card has no name field (one cashback per shop). */
 const DEFAULT_NAME = 'Exclusive cashback';
 
-/** The seller's exclusive cashback among its cashback promotions (the one with this segment). */
-export function cashbackOf(items: readonly OwnPromotion[]): OwnPromotion | null {
-  return (
-    items.find((item) => item.type === 'CASHBACK' && item.segment?.kind === 'SELLER_EXCLUSIVE') ??
-    null
+/** A cashback that can still apply or be edited: not rejected, not past its end. */
+export function isLive(promotion: OwnPromotion, now: Date): boolean {
+  return promotion.status !== 'REJECTED' && displayStatus(promotion, now) !== 'ENDED';
+}
+
+/**
+ * The seller's exclusive cashback among its cashback promotions: a live one (active, paused or in
+ * review) first, else the first other one (rejected or ended), which the card shows for context.
+ */
+export function cashbackOf(
+  items: readonly OwnPromotion[],
+  now: Date = new Date(),
+): OwnPromotion | null {
+  const own = items.filter(
+    (item) => item.type === 'CASHBACK' && item.segment?.kind === 'SELLER_EXCLUSIVE',
   );
+  return own.find((item) => isLive(item, now)) ?? own[0] ?? null;
 }
 
 /** The whole definition of a create or an edit; the segment and the funding are fixed. */
@@ -60,6 +71,7 @@ export function cashbackBody(input: {
 
 /** The API says cashback is not available in the Market (the customer wallet is off there). */
 export function walletOffOf(failure: ApiFailure): boolean {
+  if (failure.status === 404 && failure.code === 'promotions.disabled') return true;
   return (
     failure.code === 'validation.failed' &&
     (failure.details?.fields ?? []).some(
@@ -325,11 +337,17 @@ export function CashbackCard({
       window.location.assign('/session-ended');
       return;
     }
+    if (walletOffOf(result.failure)) {
+      setDialog(null);
+      setState({ kind: 'wallet-off' });
+      return;
+    }
     setProblem(failureKey(result.failure));
   }
 
   if (state.kind === 'hidden') return null;
   const status = promotion === null ? null : displayStatus(promotion, new Date());
+  const live = promotion !== null && isLive(promotion, new Date());
   const adminPaused = promotion?.status === 'PAUSED' && promotion.pausedBy === 'ADMIN';
   const tc = (key: string, values?: Record<string, string | number>) =>
     t(`cashback.${key}`, values);
@@ -405,11 +423,13 @@ export function CashbackCard({
             {adminPaused ? <Banner tone="attention">{tc('admin-paused')}</Banner> : null}
             {canManage ? (
               <div className="flex flex-wrap gap-2">
-                {status !== 'ENDED' ? (
+                {live ? (
                   <Button variant="secondary" onClick={() => setDialog('form')}>
                     {tc('button.edit')}
                   </Button>
-                ) : null}
+                ) : (
+                  <Button onClick={() => setDialog('form')}>{tc('button.create')}</Button>
+                )}
                 {promotion.status === 'ACTIVE' && status !== 'ENDED' ? (
                   <Button
                     variant="secondary"
@@ -439,7 +459,7 @@ export function CashbackCard({
       </Card>
       {dialog === 'form' ? (
         <CashbackDialog
-          promotion={promotion}
+          promotion={live ? promotion : null}
           currency={currency}
           csrfToken={csrfToken}
           onClose={() => setDialog(null)}
