@@ -311,13 +311,15 @@ function NewExpertApproval({
   if (shown === 'none') return <p className="text-fg-muted">{t('not-found')}</p>;
   if (shown !== null) {
     return (
-      <dl className="text-sm">
-        <dt className="text-fg-muted">{t('confirmed-by')}</dt>
-        <dd className="wrap-anywhere">{shown.confirmedBy}</dd>
-        <dt className="mt-1 text-fg-muted">{t('reference')}</dt>
-        <dd className="wrap-anywhere">{shown.reference}</dd>
-        <dd className="mt-1 text-fg-muted">{t('audited')}</dd>
-      </dl>
+      <div role="status" className="text-sm">
+        <dl>
+          <dt className="text-fg-muted">{t('confirmed-by')}</dt>
+          <dd className="wrap-anywhere">{shown.confirmedBy}</dd>
+          <dt className="mt-1 text-fg-muted">{t('reference')}</dt>
+          <dd className="wrap-anywhere">{shown.reference}</dd>
+        </dl>
+        <p className="mt-1 text-fg-muted">{t('audited')}</p>
+      </div>
     );
   }
   return (
