@@ -167,6 +167,8 @@ describe('every path the wallet, dispute, review moderation, account deletion, s
         'POST customers/admin/groups/:id/members/add',
         'POST customers/admin/groups/:id/members/remove',
         'PUT customers/admin/customers/:id/display-name',
+        'PUT customers/admin/customers/:id/email',
+        'DELETE customers/admin/customers/:id/email-change',
         'PUT customers/admin/groups/:id',
         // Customers phase 2b, part B: account and security.
         'GET customers/admin/customers/:id/sessions',

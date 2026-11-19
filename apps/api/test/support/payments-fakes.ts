@@ -223,6 +223,9 @@ export class FakeOrderingFacade implements OrderingFacade {
   orderPaymentRef(): ReturnType<OrderingFacade['orderPaymentRef']> {
     return Promise.resolve(err({ code: 'ordering.order-not-found' }));
   }
+  deliveredSellerOrderFacts(): ReturnType<OrderingFacade['deliveredSellerOrderFacts']> {
+    return Promise.resolve(err({ code: 'ordering.order-not-found' }));
+  }
 
   sellerOrderCustomerNames(): ReturnType<OrderingFacade['sellerOrderCustomerNames']> {
     return Promise.resolve(ok([]));

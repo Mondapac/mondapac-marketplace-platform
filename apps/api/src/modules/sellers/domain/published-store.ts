@@ -27,6 +27,11 @@ export interface ApprovedStoreFacts {
  * Market's): the buyer site then shows no minimum line rather than a wrong one.
  */
 export interface PublishedStore {
+  /**
+   * The seller's id, so the buyer site can follow the store and read its follow gift. An opaque
+   * uuid, not a personal field: a store the public cannot see now is never answered at all.
+   */
+  readonly sellerId: Id<'Seller'>;
   readonly slug: string;
   readonly name: string;
   readonly serviceAreaCode: string;
@@ -41,6 +46,17 @@ export interface PublishedStore {
   /** The current logo (a store page and the list) and banner (a store page only); `null`: none. */
   readonly logo?: StoreImageRef | null;
   readonly banner?: StoreImageRef | null;
+}
+
+/**
+ * The little a list of stores needs about each: the address, the public name and the current logo
+ * (`null`: none). The same public fields as {@link PublishedStore}, for a store the public can see
+ * now only; nothing personal.
+ */
+export interface PublishedStoreCard {
+  readonly slug: string;
+  readonly name: string;
+  readonly logo: StoreImageRef | null;
 }
 
 /** The orders of the public store list. */
