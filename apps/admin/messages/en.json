@@ -11054,7 +11054,7 @@
       "rate-invalid": "Enter a rate from 0 to 50 with up to 2 decimals.",
       "default-rate": "Default rate (%)",
       "default-rate-help": "Used for a line in none of the categories below.",
-      "category-rate": "Rate for {code} (%)",
+      "category-rate": "Rate for {category} (%)",
       "no-categories": "No tax categories are defined, so every line uses the default rate.",
       "cancel": "Cancel",
       "save": "Save strategy",

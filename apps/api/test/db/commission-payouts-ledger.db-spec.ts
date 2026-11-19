@@ -2,7 +2,7 @@ import { money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
-import type { LedgerEntry } from '../../src/modules/commission-payouts/domain/ledger';
+import { totalsOf, type LedgerEntry } from '../../src/modules/commission-payouts/domain/ledger';
 import { PrismaLedgerRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-ledger.repository';
 import { PrismaSellerRateRepository } from '../../src/modules/commission-payouts/infrastructure/prisma-seller-rate.repository';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
@@ -394,6 +394,12 @@ describe.each(TEST_MARKETS)('commission-payouts stores in market %s (database)',
     expect(await insert('cashback-seller', { line: true, amount: 5 })).toBe(CHECK);
     expect(await insert('cashback-seller', { amount: 0 })).toBe(CHECK);
     expect(await insert('cashback-seller', { amount: 5, rate: 1500, base: 40 })).toBe(CHECK);
+    // Its return after a refund's clawback (customers phase 4c-2): the same shape.
+    expect(await insert('refund-cashback-seller', { amount: 5 })).toBe('allowed');
+    expect(await insert('refund-cashback-seller', { source: false, amount: 5 })).toBe(CHECK);
+    expect(await insert('refund-cashback-seller', { line: true, amount: 5 })).toBe(CHECK);
+    expect(await insert('refund-cashback-seller', { amount: 0 })).toBe(CHECK);
+    expect(await insert('refund-cashback-seller', { amount: 5, rate: 1500, base: 40 })).toBe(CHECK);
   });
 
   it("appends a seller's cashback once per credit and sums it as a debit", async () => {
@@ -427,6 +433,42 @@ describe.each(TEST_MARKETS)('commission-payouts stores in market %s (database)',
       sourceId: creditId,
       amount: money(70n, currency),
     });
+  });
+
+  it("appends a seller's cashback return once per clawback and nets it against the cashback", async () => {
+    const sellerId = ids.next<'Seller'>();
+    const paid = factOf(sellerId);
+    const cashback: LedgerEntry = {
+      ...paid[0]!,
+      id: ids.next<'LedgerEntry'>(),
+      kind: 'cashback-seller',
+      orderLineId: null,
+      amount: money(70n, currency),
+      sourceId: ids.next<'PromotionCredit'>(),
+    };
+    const clawbackId = ids.next<'CreditClawback'>();
+    const returned: LedgerEntry = {
+      ...cashback,
+      id: ids.next<'LedgerEntry'>(),
+      kind: 'refund-cashback-seller',
+      amount: money(30n, currency),
+      sourceId: clawbackId,
+    };
+    await value(market, () => ledger.append(market, [...paid, cashback]));
+    expect(await value(market, () => ledger.append(market, [returned]))).toBe(1);
+    // The same clawback again, under a new row id, writes nothing.
+    expect(
+      await value(market, () =>
+        ledger.append(market, [{ ...returned, id: ids.next<'LedgerEntry'>() }]),
+      ),
+    ).toBe(0);
+    const sums = await value(market, () => ledger.sums(market, sellerId));
+    expect(Object.fromEntries(sums.map((s) => [s.kind, s.amount]))).toMatchObject({
+      'cashback-seller': 70n,
+      'refund-cashback-seller': 30n,
+    });
+    const totals = totalsOf(Object.fromEntries(sums.map((s) => [s.kind, s.amount])));
+    expect(totals.sellerCashback).toBe(40n);
   });
 
   it('keeps the new rows insert-only too', async () => {

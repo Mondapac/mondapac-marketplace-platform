@@ -42,6 +42,8 @@ export interface StrategyListView {
   readonly activeStrategyId: Id<'TaxStrategy'> | null;
   /** The tax category codes a by-category strategy may name. */
   readonly categoryCodes: readonly string[];
+  /** The same categories with the message key each is shown by. */
+  readonly categories: readonly { readonly code: string; readonly labelKey: string }[];
   readonly strategies: readonly StrategyView[];
 }
 
@@ -84,6 +86,7 @@ export async function listStrategies(
         builtInRateBps: settings.defaultRateBps,
         activeStrategyId: records.find((record) => record.active)?.id ?? null,
         categoryCodes: settings.categoryCodes,
+        categories: settings.categories,
         strategies: records.map(view),
       });
     },
@@ -239,6 +242,7 @@ export async function activateStrategy(
       builtInRateBps: settings.defaultRateBps,
       activeStrategyId: records.find((record) => record.active)?.id ?? null,
       categoryCodes: settings.categoryCodes,
+      categories: settings.categories,
       strategies: records.map(view),
     });
   });

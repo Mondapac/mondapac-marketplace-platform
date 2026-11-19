@@ -4,6 +4,7 @@ import type {
   PaidSellerOrder,
   RefundedSellerOrder,
   SellerCashback,
+  SellerCashbackReturn,
 } from '../contracts/commission-payouts.facade';
 import { commissionBase, commissionOn, isRateBps } from '../domain/commission';
 import {
@@ -561,6 +562,80 @@ export async function recordSellerCashback(
           (row) => row.sellerId !== cashback.sellerId || row.orderId !== cashback.orderId,
         ) ||
         cashback.amount > sales
+      ) {
+        return err({ code: 'commission-payouts.ledger-inconsistent' } as const);
+      }
+      const inserted = await deps.ledger.append(context.market, [entry]);
+      return ok(inserted === 0 ? ('already-recorded' as const) : ('recorded' as const));
+    },
+  );
+}
+
+/**
+ * `record-seller-cashback-return`: what a refund took back of a seller's cashback, credited back to
+ * the seller (`refund-cashback-seller`, no line, the clawback as its source), in one unit under the
+ * seller's cursor lock so two returns cannot both pass the bound. The cashback's own row must be
+ * there for the same seller order, seller and order, and all returns of it at most its amount.
+ */
+export async function recordSellerCashbackReturn(
+  deps: CommissionPayoutsDependencies,
+  context: CallContext,
+  returned: SellerCashbackReturn,
+): Promise<Result<'recorded' | 'already-recorded', LedgerFailure>> {
+  const settings = deps.policy.settings(context.market);
+  if (settings === null) return err({ code: 'commission-payouts.rate-unavailable' });
+  const fields: { path: string; code: string }[] = [];
+  const idOk = (value: unknown) => typeof value === 'string' && parseId(value).ok;
+  for (const path of ['clawbackId', 'creditId', 'orderId', 'sellerOrderId', 'sellerId'] as const) {
+    if (!idOk(returned?.[path])) fields.push({ path, code: 'format' });
+  }
+  if (typeof returned?.amount !== 'bigint' || returned.amount <= 0n) {
+    fields.push({ path: 'amount', code: 'range' });
+  }
+  if (returned?.currency !== settings.currency) fields.push({ path: 'currency', code: 'value' });
+  if (!(returned?.returnedAt instanceof Temporal.Instant)) {
+    fields.push({ path: 'returnedAt', code: 'type' });
+  }
+  if (fields.length > 0) return err({ code: 'validation.failed', fields });
+  const now = deps.clock.now();
+  const entry: LedgerEntry = {
+    id: deps.ids.next<'LedgerEntry'>(),
+    sellerId: returned.sellerId,
+    orderId: returned.orderId,
+    sellerOrderId: returned.sellerOrderId,
+    orderLineId: null,
+    kind: 'refund-cashback-seller',
+    amount: money(returned.amount, returned.currency),
+    rateBps: null,
+    baseAmount: null,
+    sourceId: returned.clawbackId,
+    occurredAt: returned.returnedAt,
+    recordedAt: now,
+  };
+  return deps.unitOfWork.run<'recorded' | 'already-recorded', LedgerFailure>(
+    context.market,
+    async () => {
+      await deps.cursors.lock(context.market, returned.sellerId);
+      const rows = await deps.ledger.listSellerOrder(context.market, returned.sellerOrderId);
+      if (
+        rows.some(
+          (row) => row.kind === 'refund-cashback-seller' && row.sourceId === returned.clawbackId,
+        )
+      ) {
+        return ok('already-recorded' as const);
+      }
+      const cashback = rows.find(
+        (row) => row.kind === 'cashback-seller' && row.sourceId === returned.creditId,
+      );
+      const before = rows
+        .filter((row) => row.kind === 'refund-cashback-seller')
+        .reduce((sum, row) => sum + row.amount.amount, 0n);
+      if (
+        cashback === undefined ||
+        rows.some(
+          (row) => row.sellerId !== returned.sellerId || row.orderId !== returned.orderId,
+        ) ||
+        before + returned.amount > cashback.amount.amount
       ) {
         return err({ code: 'commission-payouts.ledger-inconsistent' } as const);
       }

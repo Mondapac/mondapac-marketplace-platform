@@ -2,7 +2,13 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { CreditCursor, CreditRepository } from '../application/ports/credit.repository';
-import type { CreditKind, CreditRecord, CreditSourceKind, CreditStatus } from '../domain/credit';
+import type {
+  ClawbackRecord,
+  CreditKind,
+  CreditRecord,
+  CreditSourceKind,
+  CreditStatus,
+} from '../domain/credit';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const fromDate = (date: Date): Temporal.Instant =>
@@ -25,6 +31,8 @@ interface Row {
   readonly createdAt: Date;
   readonly settledAt: Date | null;
   readonly grantAfter: Date | null;
+  readonly reservedMinor: bigint | null;
+  readonly goodsMinor: bigint | null;
 }
 
 const toRecord = (row: Row): CreditRecord => ({
@@ -44,6 +52,10 @@ const toRecord = (row: Row): CreditRecord => ({
   createdAt: fromDate(row.createdAt),
   settledAt: row.settledAt === null ? null : fromDate(row.settledAt),
   grantAfter: row.grantAfter === null ? null : fromDate(row.grantAfter),
+  earnedOn:
+    row.reservedMinor === null || row.goodsMinor === null
+      ? null
+      : { reservedMinor: row.reservedMinor, goodsMinor: row.goodsMinor },
 });
 
 /** {@link CreditRepository} on `promotions.credit_issuances`, scoped by `marketId`. */
@@ -73,6 +85,8 @@ export class PrismaCreditRepository implements CreditRepository {
           createdAt: toDate(record.createdAt),
           settledAt: record.settledAt === null ? null : toDate(record.settledAt),
           grantAfter: record.grantAfter === null ? null : toDate(record.grantAfter),
+          reservedMinor: record.earnedOn?.reservedMinor ?? null,
+          goodsMinor: record.earnedOn?.goodsMinor ?? null,
         },
       ],
       skipDuplicates: true,
@@ -153,6 +167,75 @@ export class PrismaCreditRepository implements CreditRepository {
         amountMinor: { gte: amountMinor },
       },
       data: { amountMinor, grantAfter: null },
+    });
+    return updated.count === 1;
+  }
+
+  async listClawbacks(
+    market: MarketContext,
+    creditId: Id<'PromotionCredit'>,
+  ): Promise<readonly ClawbackRecord[]> {
+    const rows = await this.prisma.tx(market).promotionsCreditClawback.findMany({
+      where: { marketId: market.marketId, creditId },
+      orderBy: { seq: 'asc' },
+    });
+    return rows.map((row) => ({
+      id: row.id as Id<'CreditClawback'>,
+      creditId: row.creditId as Id<'PromotionCredit'>,
+      refundId: row.refundId as Id<'Refund'>,
+      seq: row.seq,
+      amountMinor: row.amountMinor,
+      currency: row.currency,
+      status: row.status as 'PENDING' | 'DONE',
+      clawedMinor: row.clawedMinor,
+      walletJournalId: row.walletJournalId,
+      createdAt: Temporal.Instant.fromEpochMilliseconds(row.createdAt.getTime()),
+      settledAt:
+        row.settledAt === null
+          ? null
+          : Temporal.Instant.fromEpochMilliseconds(row.settledAt.getTime()),
+    }));
+  }
+
+  async insertClawback(
+    market: MarketContext,
+    record: ClawbackRecord,
+  ): Promise<'inserted' | 'duplicate'> {
+    // ON CONFLICT DO NOTHING: a clash on (credit, refund) or (credit, seq) does not abort the unit.
+    const created = await this.prisma.tx(market).promotionsCreditClawback.createMany({
+      data: [
+        {
+          id: record.id,
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          creditId: record.creditId,
+          refundId: record.refundId,
+          seq: record.seq,
+          amountMinor: record.amountMinor,
+          currency: record.currency,
+          status: 'PENDING',
+          createdAt: toDate(record.createdAt),
+        },
+      ],
+      skipDuplicates: true,
+    });
+    return created.count === 1 ? 'inserted' : 'duplicate';
+  }
+
+  async settleClawback(
+    market: MarketContext,
+    id: Id<'CreditClawback'>,
+    result: { readonly clawedMinor: bigint; readonly walletJournalId: string | null },
+    at: Temporal.Instant,
+  ): Promise<boolean> {
+    const updated = await this.prisma.tx(market).promotionsCreditClawback.updateMany({
+      where: { marketId: market.marketId, id, status: 'PENDING' },
+      data: {
+        status: 'DONE',
+        clawedMinor: result.clawedMinor,
+        walletJournalId: result.walletJournalId,
+        settledAt: toDate(at),
+      },
     });
     return updated.count === 1;
   }

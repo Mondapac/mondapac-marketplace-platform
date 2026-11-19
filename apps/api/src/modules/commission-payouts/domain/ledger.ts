@@ -27,7 +27,8 @@ export type LedgerKind =
   | 'refund-commission'
   | 'dispute-debit'
   | 'dispute-reinstate'
-  | 'cashback-seller';
+  | 'cashback-seller'
+  | 'refund-cashback-seller';
 
 export const LEDGER_KINDS: readonly LedgerKind[] = [
   'sale',
@@ -39,6 +40,7 @@ export const LEDGER_KINDS: readonly LedgerKind[] = [
   'dispute-debit',
   'dispute-reinstate',
   'cashback-seller',
+  'refund-cashback-seller',
 ];
 
 /** The kinds written when a seller order is paid; they carry no source id. */
@@ -72,7 +74,8 @@ export interface LedgerEntry {
    * The refund (or dispute) a reversal comes from, or the promotions credit of a seller's
    * cashback; null for the three original kinds.
    */
-  readonly sourceId: Id<'Refund'> | Id<'Dispute'> | Id<'PromotionCredit'> | null;
+  readonly sourceId:
+    Id<'Refund'> | Id<'Dispute'> | Id<'PromotionCredit'> | Id<'CreditClawback'> | null;
   /** When the fact happened (the payment confirmed the order; for a reversal, the refund settled). */
   readonly occurredAt: Temporal.Instant;
   readonly recordedAt: Temporal.Instant;
@@ -109,7 +112,8 @@ export function totalsOf(sums: Readonly<Partial<Record<LedgerKind, bigint>>>): L
   const refundedCommission = sums['refund-commission'] ?? 0n;
   const disputeDebits = sums['dispute-debit'] ?? 0n;
   const disputeReinstated = sums['dispute-reinstate'] ?? 0n;
-  const sellerCashback = sums['cashback-seller'] ?? 0n;
+  // Net of what refunds took back from the customer and returned to the seller (phase 4c-2).
+  const sellerCashback = (sums['cashback-seller'] ?? 0n) - (sums['refund-cashback-seller'] ?? 0n);
   return {
     sales,
     shipping,
