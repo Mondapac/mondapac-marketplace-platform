@@ -5,10 +5,10 @@ import type { PrismaService } from '../../../platform/persistence/prisma.service
 import {
   ATTRIBUTION_VIEWS,
   type AttributionListRecord,
-  type AttributionSelector,
   type AttributionView,
   type InviteLinkRepository,
   type SellerAttributionRepository,
+  type ZonedAttributionSelector,
 } from '../application/ports/seller-invitations.repository';
 import type {
   AttributionFlag,
@@ -17,13 +17,16 @@ import type {
   InviteLink,
   SellerAttribution,
 } from '../domain/seller-invitations';
+import { localDayEnd, localDayStart } from '../domain/local-day';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
-const startOfDay = (day: string): Date => new Date(`${day}T00:00:00Z`);
-const startOfNextDay = (day: string): Date =>
-  new Date(Temporal.Instant.from(`${day}T00:00:00Z`).epochMilliseconds + 24 * 3_600_000);
+/** A day of a filter, already validated, as the instants it starts and ends in the query's zone. */
+const startOfDay = (day: string, zone: string): Date =>
+  new Date((localDayStart(day, zone) as Temporal.Instant).epochMilliseconds);
+const startOfNextDay = (day: string, zone: string): Date =>
+  new Date((localDayEnd(day, zone) as Temporal.Instant).epochMilliseconds);
 
 type LinkRow = Prisma.CustomersSellerInviteLinkGetPayload<object>;
 type AttributionRow = Prisma.CustomersSellerAttributionGetPayload<object>;
@@ -135,7 +138,7 @@ function viewWhere(view: AttributionView): Where {
   }
 }
 
-function whereOf(market: MarketContext, selector: AttributionSelector): Where {
+function whereOf(market: MarketContext, selector: ZonedAttributionSelector): Where {
   const and: Where[] = [viewWhere(selector.view)];
   if (selector.emailPrefix !== null) {
     and.push({ directory: { emailLower: { startsWith: selector.emailPrefix } } });
@@ -147,8 +150,12 @@ function whereOf(market: MarketContext, selector: AttributionSelector): Where {
   if (selector.attributedFrom !== null || selector.attributedTo !== null) {
     and.push({
       attributedAt: {
-        ...(selector.attributedFrom === null ? {} : { gte: startOfDay(selector.attributedFrom) }),
-        ...(selector.attributedTo === null ? {} : { lt: startOfNextDay(selector.attributedTo) }),
+        ...(selector.attributedFrom === null
+          ? {}
+          : { gte: startOfDay(selector.attributedFrom, selector.dayZone) }),
+        ...(selector.attributedTo === null
+          ? {}
+          : { lt: startOfNextDay(selector.attributedTo, selector.dayZone) }),
       },
     });
   }
@@ -252,7 +259,7 @@ export class PrismaSellerAttributionRepository implements SellerAttributionRepos
 
   async page(
     market: MarketContext,
-    selector: AttributionSelector,
+    selector: ZonedAttributionSelector,
     direction: 'asc' | 'desc',
     window: { readonly offset: number; readonly limit: number },
   ) {
@@ -266,7 +273,7 @@ export class PrismaSellerAttributionRepository implements SellerAttributionRepos
     return rows.map(listedOf);
   }
 
-  count(market: MarketContext, selector: AttributionSelector) {
+  count(market: MarketContext, selector: ZonedAttributionSelector) {
     return this.prisma
       .tx(market)
       .customersSellerAttribution.count({ where: whereOf(market, selector) });
@@ -285,7 +292,7 @@ export class PrismaSellerAttributionRepository implements SellerAttributionRepos
     ) as Record<AttributionView, number>;
   }
 
-  async accountIds(market: MarketContext, selector: AttributionSelector, limit: number) {
+  async accountIds(market: MarketContext, selector: ZonedAttributionSelector, limit: number) {
     const rows = await this.prisma.tx(market).customersSellerAttribution.findMany({
       where: whereOf(market, selector),
       select: { accountId: true },

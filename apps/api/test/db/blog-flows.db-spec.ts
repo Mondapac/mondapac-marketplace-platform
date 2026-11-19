@@ -3,6 +3,7 @@ import { Temporal } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import { BLOG_EVENTS } from '../../src/modules/blog/domain/events';
 import { PrismaBlogRepository } from '../../src/modules/blog/infrastructure/prisma-blog.repository';
+import { PrismaAdminPostListReader } from '../../src/modules/blog/infrastructure/prisma-admin-post-list.reader';
 import { EventCatalogue } from '../../src/platform/events/event-catalogue';
 import { NO_PERMISSION_KEYS } from '../../src/platform/events/outbox-writer';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
@@ -14,6 +15,7 @@ import {
   content,
   createNews,
   eventDetails,
+  EVERYTHING,
   liveNews,
   PUBLISHER,
   refusal,
@@ -50,6 +52,7 @@ describe.each(TEST_MARKETS)('blog flows in market %s (database)', (code) => {
     const ids = new UuidV7IdGenerator(new SystemClock());
     return blogHarness(code, {
       posts: new PrismaBlogRepository(db.service),
+      list: new PrismaAdminPostListReader(db.service),
       unitOfWork: db.unitOfWork,
       ids,
       outbox: new PrismaOutboxWriterFactory(
@@ -440,5 +443,61 @@ describe.each(TEST_MARKETS)('blog flows in market %s (database)', (code) => {
         ),
       ).toEqual({ n: 1 });
     }
+  });
+
+  it('reads the Blog posts super list from the table: views, search, sorts, cursor and export ids', async () => {
+    const cat = await category();
+    const token = `t${randomBytes(5).toString('hex')}`;
+    const draft = await createNews(h, writer(), cat, `Draft ${token}`);
+    await approvedNews(h, cat, `Approved ${token}`);
+    const live = await liveNews(h, cat, `Live ${token}`);
+    const editor = h.admin('editor', EVERYTHING);
+    const list = async (query: Record<string, unknown>) =>
+      unwrap(await h.cases.listPosts.execute(editor, { query }));
+
+    const all = await list({ q: token.toUpperCase() });
+    expect(all.total).toBe(3);
+    expect(all.counts.all).toBeGreaterThanOrEqual(3);
+    expect(all.items.find((row) => row.id === draft.id)?.actions).toEqual([
+      'open',
+      'edit',
+      'submit',
+      'archive',
+    ]);
+    expect((await list({ q: token, view: 'published' })).items.map((r) => r.id)).toEqual([live.id]);
+    expect((await list({ q: live.slug })).items.map((r) => r.id)).toEqual([live.id]);
+    // `%` and `_` match themselves, never as wildcards.
+    expect((await list({ q: `${token}%` })).total).toBe(0);
+    expect((await list({ q: `D_aft ${token}` })).total).toBe(0);
+    expect((await list({ q: '%' })).items.every((r) => r.title.includes('%'))).toBe(true);
+    for (const sort of ['created', 'updated', 'published', 'scheduled']) {
+      for (const direction of ['asc', 'desc']) {
+        const page = await list({ q: token, sort, direction });
+        expect(page.items).toHaveLength(3);
+        if (sort === 'published') expect(page.items[0]!.id).toBe(live.id);
+      }
+    }
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let step = 0; step < 10; step += 1) {
+      const page = await list({ q: token, limit: '1', ...(cursor === null ? {} : { cursor }) });
+      seen.push(...page.items.map((r) => r.id));
+      cursor = page.nextCursor;
+      if (cursor === null) break;
+    }
+    expect(new Set(seen).size).toBe(3);
+    expect(seen).toHaveLength(3);
+
+    const file = unwrap(await h.cases.exportPosts.execute(editor, { query: { q: token } }));
+    let text = '';
+    for await (const chunk of file.chunks) text += typeof chunk === 'string' ? chunk : '';
+    const lines = text.split('\r\n').filter(Boolean);
+    expect(lines).toHaveLength(4);
+    expect(text).not.toContain('Start with dates');
+    const foreign = await rows(
+      `SELECT 1 FROM blog.posts WHERE market_id <> $1 AND id = ANY($2::uuid[])`,
+      [code, seen],
+    );
+    expect(foreign).toHaveLength(0);
   });
 });

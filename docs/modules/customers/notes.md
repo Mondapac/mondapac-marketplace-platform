@@ -941,6 +941,16 @@ card, the storefront's invite banner and the admin list's screens follow in the 
   recorded in that month of the Market's zone. A rejected attribution is counted nowhere. Read
   from `customers.seller_attributions` on its (market, seller, attributed_at) index; no migration.
 
+## Seller attributions: day filters in the admin's zone (18 Nov 2026)
+
+- `attributedFrom` and `attributedTo` on the attributions list, `ids` and export are now read in
+  the calling admin's own panel zone, else the Market's (`AdminDayZone`, ADR-0005), as the
+  customer list's day filters are; they were UTC days. The request body is unchanged: the zone is
+  resolved on the server, never taken from the body. Saved filters keep the plain days, so a shared
+  filter reads in each viewer's own zone.
+- The repository takes a `ZonedAttributionSelector` (the parsed selector plus `dayZone`) and cuts
+  the days with `localDayStart`/`localDayEnd`; a day such as 31 February is refused at parse.
+
 ## Phase 4b follow-up: the seller's savings on exclusive customers (2026-11-18)
 
 - Checkout also freezes `ordering.order_lines.commission_standard_rate_bps` on a lowered line: the

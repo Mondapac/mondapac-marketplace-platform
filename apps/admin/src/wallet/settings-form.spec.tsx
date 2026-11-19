@@ -216,7 +216,7 @@ describe('SettingsForm', () => {
       ok({ ...settings({ status: 'active' }), request: { id: 'r1', number: 12 } }),
     );
     review();
-    await expectToast('Sent for review as SR-12', 'info');
+    await expectToast('Sent for review (SR-12)', 'info');
     expect(call).toHaveBeenLastCalledWith(
       'PUT',
       'wallet/admin/settings',

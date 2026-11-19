@@ -72,7 +72,7 @@ const view = (over: Partial<ProductView> = {}): ProductView => ({
   lastChangedAt: '2026-11-05T01:00:00.000Z',
   createdAt: '2026-11-05T01:00:00.000Z',
   form: {
-    taxCategoryCodes: ['gst'],
+    taxCategories: [{ code: 'gst', labelKey: 'catalog.tax.gst' }],
     fields: FIELDS,
     categories: [
       { categoryId: '0190a000-0000-7000-8000-0000000000d1', parentId: null, names: { en: 'Tops' } },

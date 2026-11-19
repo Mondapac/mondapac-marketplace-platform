@@ -271,6 +271,17 @@ const open = (name: string) => fireEvent.click(screen.getByRole('button', { name
 const last = (name: string) => fireEvent.click(screen.getAllByRole('button', { name }).at(-1)!);
 
 describe('issuer lifecycle', () => {
+  it('says so when the number of affected certificates is missing, and offers no lifecycle action', () => {
+    wrap(
+      <IssuerActions
+        issuer={{ ...detail({ state: 'active' }), affectedCertificates: undefined }}
+        csrfToken="c"
+      />,
+    );
+    expect(screen.getByText(/could not be read/)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Derecognise' })).toBeNull();
+  });
+
   it('offers the actions that fit the state', () => {
     wrap(<IssuerActions issuer={detail({ state: 'active' })} csrfToken="c" />);
     expect(screen.getByRole('button', { name: 'Close to new certificates' })).toBeTruthy();
