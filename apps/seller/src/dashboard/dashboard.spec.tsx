@@ -106,6 +106,7 @@ const full: SellerDashboardData = {
       refundedCommission: '0',
       disputeDebits: '0',
       disputeReinstated: '0',
+      sellerCashback: '0',
       balance: '123450',
     },
     entries: [
@@ -229,6 +230,31 @@ describe('seller dashboard', () => {
     const card = screen.getByRole('link', { name: /Orders to ship/ });
     expect(card.textContent).toContain('50+');
     expect(card.textContent).toContain('Among your latest 50 paid orders');
+  });
+
+  it('labels a seller cashback ledger row instead of calling it Other', () => {
+    const base = full.ledger;
+    if (base?.kind !== 'ok') throw new Error('fixture');
+    const data: SellerDashboardData = {
+      ...full,
+      ledger: ok({
+        ...base.value,
+        currency: 'JPY',
+        entries: [
+          {
+            entryId: ID(72),
+            orderId: ID(1),
+            kind: 'cashback-seller',
+            direction: 'debit',
+            amount: '500',
+            occurredAt: '2026-10-14T01:00:00.000Z',
+          },
+        ],
+      }),
+    };
+    render(wrap(<SellerDashboard data={data} permissionKeys={KEYS} />));
+    expect(screen.getByText('Cashback to exclusive customers')).toBeTruthy();
+    expect(screen.queryByText('Other')).toBeNull();
   });
 
   it('formats money with the Market locale, not a fixed one', () => {

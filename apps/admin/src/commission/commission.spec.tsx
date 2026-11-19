@@ -224,6 +224,7 @@ const ledger = (entries: LedgerEntry[], nextCursor: string | null = null): Ledge
     refundedCommission: '0',
     disputeDebits: '0',
     disputeReinstated: '0',
+    sellerCashback: '0',
     balance: '3050',
   },
   entries,
@@ -268,6 +269,29 @@ describe('LedgerCard', () => {
     }
     expect(screen.getByText('Refund of sale')).toBeTruthy();
     expect(screen.getAllByText('Commission returned').length).toBeGreaterThan(1);
+  });
+
+  it('shows the seller cashback tile and kind as a debit, in AUD and JPY', () => {
+    mountLedger(ledger([entry(1)]));
+    expect(screen.queryByText('Cashback to exclusive customers')).toBeNull();
+    cleanup();
+    for (const currency of ['AUD', 'JPY']) {
+      const initial = ledger([
+        entry(1, { kind: 'cashback-seller', direction: 'debit', amount: '500' }),
+      ]);
+      mountLedger({
+        ...initial,
+        currency,
+        totals: { ...initial.totals, sellerCashback: '500' },
+      });
+      const term = screen
+        .getAllByText('Cashback to exclusive customers')
+        .find((n) => n.tagName === 'DT');
+      expect(term?.nextElementSibling?.textContent).toMatch(currency === 'AUD' ? /\$5\.00/ : /500/);
+      expect(screen.getAllByText('Cashback to exclusive customers').length).toBeGreaterThan(1);
+      expect(screen.getByText(/^−/)).toBeTruthy();
+      cleanup();
+    }
   });
 
   it('shows an empty state without rows', () => {
