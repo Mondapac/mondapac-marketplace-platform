@@ -2,7 +2,7 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { useMemo, type ReactNode } from 'react';
 import { formatDate } from '../format/date.ts';
 import { Icon, categoryIcon } from '../icons/icon.tsx';
@@ -23,6 +23,8 @@ export function AccountArea({
   readonly children: ReactNode;
 }) {
   const { customer, setCustomer, sessionReady, signIn } = useStore();
+  // An invite link's Create account button opens the form on Create account.
+  const startMode = useSearchParams().get('create') === '1' ? 'new' : 'login';
   // Live: the signed-in customer is the API's; the sample orders, lists and emails stay as they are.
   const effective = useMemo(
     () => (source.live && customer ? { ...source, customer, mobile: '' } : source),
@@ -36,6 +38,7 @@ export function AccountArea({
         <section className="ac-card ac-auth">
           <AuthForms
             heading={(title) => <h1 className="ac-ah">{title}</h1>}
+            startMode={startMode}
             {...(source.live ? { signIn } : {})}
             onSignedIn={() => {
               if (!source.live) setCustomer(source.customer);
@@ -51,7 +54,7 @@ export function AccountArea({
 export function backTarget(path: string): AccountBack | null {
   // An order's page has its own back link to Orders.
   if (/^\/account\/orders\/[^/]+/.test(path)) return null;
-  if (/^\/account\/(orders|addresses|lists|settings|reviews)(\/|$)/.test(path))
+  if (/^\/account\/(orders|addresses|lists|stores|settings|reviews)(\/|$)/.test(path))
     return { href: '/account', key: 'account' };
   return null;
 }

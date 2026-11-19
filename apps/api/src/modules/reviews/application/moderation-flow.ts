@@ -75,7 +75,7 @@ export interface ModerationDetailView extends ModerationReviewView {
   readonly allowedActions: readonly ModeratorAction[];
 }
 
-const reviewView = (
+export const reviewView = (
   review: ProductReviewRecord,
   openReports: number,
   signalCodes: readonly string[],

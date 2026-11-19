@@ -11015,3 +11015,151 @@ button.login {
   margin: 0;
   padding-inline-start: 18px;
 }
+
+/* Follow a store, My stores and the invite link (customers management phases 3 and 4a). Logical
+   properties only, so Persian flips on its own. */
+.fl {
+  display: grid;
+  gap: 6px;
+  justify-items: start;
+  margin-block-start: 10px;
+}
+.fl-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+}
+.fl-btn .ico {
+  width: 18px;
+  height: 18px;
+}
+.fl-sr {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.fl-spin {
+  width: 16px;
+  height: 16px;
+  border: 2px solid currentColor;
+  border-inline-end-color: transparent;
+  border-radius: 50%;
+  animation: lmspin 0.8s linear infinite;
+}
+.fl-live:empty {
+  display: none;
+}
+.fl-live,
+.fl-privacy,
+.fl-help,
+.fl-gift {
+  font-size: calc(13px * var(--fs));
+  line-height: calc(19px * var(--fs));
+  color: var(--sf-slate);
+}
+.fl-gift {
+  color: var(--sf-ink);
+  font-weight: 700;
+}
+.fl-err {
+  font-size: calc(13px * var(--fs));
+  color: var(--sf-ink);
+  font-weight: 700;
+}
+.fl-card {
+  margin-block-start: 12px;
+}
+.fl-gifts {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding-inline-start: 18px;
+}
+.ms-list {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ms-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding-block: 10px;
+  border-block-end: 1px solid var(--sf-line);
+}
+.ms-row .lg {
+  flex: none;
+  width: 48px;
+  height: 48px;
+}
+.ms-id {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+.ms-name {
+  overflow-wrap: anywhere;
+  font-weight: 800;
+  color: var(--sf-ink);
+}
+.ms-id small {
+  color: var(--sf-slate);
+}
+.ms-off .ms-name {
+  color: var(--sf-slate);
+}
+.ms-act {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}
+.ms-undo {
+  margin: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ms-skel {
+  min-height: 68px;
+  background: var(--sf-mist-soft);
+  border-radius: 10px;
+  margin-block: 4px;
+}
+@media (max-width: 699.98px) {
+  .ms-row {
+    flex-wrap: wrap;
+  }
+}
+.inv-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-block-end: 16px;
+  padding: 14px 16px;
+  border-radius: var(--sf-radius-tile);
+  background: var(--sf-mist-soft);
+}
+.inv-banner h2 {
+  font-size: calc(18px * var(--fs));
+  line-height: calc(24px * var(--fs));
+  font-weight: 800;
+}
+.inv-banner > div:first-of-type {
+  flex: 1;
+  min-width: 200px;
+}
+.inv-live:empty {
+  display: none;
+}
+.inv-invalid {
+  margin-block-end: 12px;
+}

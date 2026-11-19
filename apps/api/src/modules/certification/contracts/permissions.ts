@@ -202,6 +202,18 @@ export const CERTIFICATION_PRODUCT_CERTIFICATE_REVOKE = definePermission('certif
   protected: true,
 });
 
+/**
+ * Share a saved filter of an admin certification list (Issuer requests, the certificate review
+ * queue) with every admin of the Market, and manage one somebody else shared (the same idea as
+ * `ordering.saved-filter.share`). Unprotected. No default role lists it yet: the Platform
+ * Administrator grants it to the roles that should (which also need the list's view key).
+ */
+export const CERTIFICATION_SAVED_FILTER_SHARE = definePermission('certification', {
+  key: 'certification.saved-filter.share',
+  scope: 'platform',
+  protected: false,
+});
+
 export const CERTIFICATION_PERMISSIONS = declarePermissions('certification', [
   CERTIFICATION_OWN_CERTIFICATE_VIEW,
   CERTIFICATION_OWN_CERTIFICATE_MANAGE,
@@ -220,4 +232,5 @@ export const CERTIFICATION_PERMISSIONS = declarePermissions('certification', [
   CERTIFICATION_PRODUCT_CERTIFICATE_EDIT,
   CERTIFICATION_PRODUCT_CERTIFICATE_APPROVE,
   CERTIFICATION_PRODUCT_CERTIFICATE_REVOKE,
+  CERTIFICATION_SAVED_FILTER_SHARE,
 ]);

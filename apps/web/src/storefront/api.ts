@@ -54,7 +54,9 @@ const log = (line: Readonly<Record<string, unknown>>): void => {
 };
 
 /** The route without its query, for logs: a query can hold what a buyer typed. */
-const routeOf = (path: string): string => path.split('?')[0] ?? '';
+const routeOf = (path: string): string =>
+  // An invite token is a credential: the log names the route, not the link.
+  (path.split('?')[0] ?? '').replace(/^(customers\/store-invitations\/).+$/, '$1:token');
 
 /**
  * The URL of a path relative to the API root, or null when the path could leave the route meant:

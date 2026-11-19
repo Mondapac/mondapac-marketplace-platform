@@ -1,4 +1,9 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type {
+  ModerationFilter,
+  ModerationSort,
+  ModerationViewCounts,
+} from '../../domain/moderation-list';
 import type { QueueTab } from '../../domain/moderation';
 import type { ReviewStatus, SellerRatingReason, SellerRatingStatus } from '../../domain/rules';
 import type { SellerSummary, StarSummary } from '../../domain/summary';
@@ -347,6 +352,27 @@ export interface ReviewRepository {
 
   /** How many reviews wait in each tab (held, reported, actioned). */
   countModerationQueue(market: MarketContext): Promise<Readonly<Record<QueueTab, number>>>;
+
+  /** The moderation super list: filtered and sorted reviews of the Market, `limit` rows from `offset`. */
+  queryModerationList(
+    market: MarketContext,
+    filter: ModerationFilter,
+    sort: ModerationSort,
+    offset: number,
+    limit: number,
+  ): Promise<readonly QueueRow[]>;
+
+  /** How many reviews meet the filter (its view included). */
+  countModerationListWhere(market: MarketContext, filter: ModerationFilter): Promise<number>;
+
+  /** The count of each view for the Market, whatever the other filters. */
+  moderationViewCounts(market: MarketContext): Promise<ModerationViewCounts>;
+
+  /** The reviews among `reviewIds` that are in any queue view (others are left out). */
+  findModerationRowsByIds(
+    market: MarketContext,
+    reviewIds: readonly Id<'ProductReview'>[],
+  ): Promise<readonly QueueRow[]>;
 
   /** The review by its internal id with its open reports, signals and history, or null. */
   findForModeration(

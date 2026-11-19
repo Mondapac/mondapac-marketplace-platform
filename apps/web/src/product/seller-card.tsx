@@ -16,6 +16,7 @@ import {
   type SetStateAction,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { FollowControl } from '../account/follow-button.tsx';
 import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
 import type { ProductOffer } from '../storefront/types.ts';
@@ -179,7 +180,7 @@ export function SellerBlock({
         aria-label={t('seller-details', { seller: name })}
         hidden={!isOpen || modal}
       >
-        <CardBody offer={offer} />
+        <CardBody offer={offer} follow={isOpen && !modal} />
       </div>
       {modal ? <SellerModal offer={offer} onClose={close} /> : null}
     </div>
@@ -210,7 +211,7 @@ function SellerModal({
         >
           <Icon name="close" />
         </button>
-        <CardBody offer={offer} titleId={titleId} logo />
+        <CardBody offer={offer} titleId={titleId} logo follow />
       </div>
     </div>,
     document.body,
@@ -233,10 +234,13 @@ function CardBody({
   offer,
   titleId,
   logo = false,
+  follow = false,
 }: {
   readonly offer: ProductOffer;
   readonly titleId?: string;
   readonly logo?: boolean;
+  /** Shows the Follow button: only the card that is open, so one control holds the follow. */
+  readonly follow?: boolean;
 }) {
   const t = useTranslations('product');
   const { seller } = offer;
@@ -285,6 +289,9 @@ function CardBody({
         {t('seller-page')}
         <Icon name="chevr" />
       </Link>
+      {follow ? (
+        <FollowControl sellerId={seller.id} storeName={seller.name} variant="card" />
+      ) : null}
     </>
   );
 }

@@ -26,6 +26,15 @@ export const ADMIN_PRODUCT_COLUMNS: readonly string[] = [
   'tags',
 ];
 
+/** The columns a seller can choose in the Products list, after the always-shown ones. */
+export const SELLER_PRODUCT_COLUMNS: readonly string[] = [
+  'code',
+  'updated',
+  'created',
+  'offers',
+  'type',
+];
+
 const PRODUCTS = SAVED_FILTER_LISTS['admin.catalog.products'];
 const OWN_PRODUCTS = SELLER_SAVED_FILTER_LISTS['seller.catalog.products'];
 
@@ -52,6 +61,7 @@ export const CATALOG_LISTS: readonly ListDefinition[] =
           scope: 'store',
           viewKey: CATALOG_OWN_PRODUCT_VIEW.key,
           shareKey: CATALOG_OWN_SAVED_FILTER_SHARE.key,
+          columns: SELLER_PRODUCT_COLUMNS,
           parsePayload: (raw) => OWN_PRODUCTS.parsePayload(raw),
         },
       ];

@@ -127,6 +127,31 @@ export class FleetModelRequest {
   @ApiProperty({ type: SelectionRuleBody }) rule!: SelectionRuleBody;
 }
 
+export class CreateFleetModelRequest extends FleetModelRequest {
+  @ApiPropertyOptional({
+    description:
+      "The admin's note for the approver, 1 to 500 characters; required while the Market " +
+      'reviews area delivery in Admin Inbox › System requests (the create then waits for ' +
+      'approval; else 400 on note), ignored otherwise.',
+  })
+  note?: string;
+}
+
+/**
+ * The answer (202) of a create that waits for a second admin's approval (Admin Inbox › System
+ * requests): the proposal it filed; nothing was created.
+ */
+export class FleetModelProposalBody {
+  @ApiProperty({ type: DeliveryRequestRef, description: 'The proposal, shown as SR-<number>.' })
+  request!: DeliveryRequestRef;
+}
+
+export const proposalBody = (proposal: {
+  readonly request: { readonly id: string; readonly number: number };
+}): FleetModelProposalBody => ({
+  request: { id: proposal.request.id, number: proposal.request.number },
+});
+
 export class UpdateFleetModelRequest extends FleetModelRequest {
   @ApiProperty({ description: 'The version read; a stale value answers 409.' })
   expectedVersion!: number;

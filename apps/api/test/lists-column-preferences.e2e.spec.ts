@@ -50,6 +50,7 @@ it('maps the refusal codes of the column-preference routes to their statuses', (
   expect(COLUMN_PREFERENCE_STATUS).toEqual({
     'validation.failed': 400,
     'access.unavailable': 503,
+    'access.acting-as-refused': 403,
   });
 });
 

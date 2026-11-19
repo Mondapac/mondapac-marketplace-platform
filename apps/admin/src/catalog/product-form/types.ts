@@ -42,9 +42,8 @@ export type { TaxCategory } from '../../shared/tax-category-options.ts';
 import type { TaxCategory } from '../../shared/tax-category-options.ts';
 
 export interface ProductForm {
-  readonly taxCategoryCodes: readonly string[];
-  /** The categories with their label keys; when absent the code is shown as words. */
-  readonly taxCategories?: readonly TaxCategory[] | undefined;
+  /** The Market's tax categories with their label keys. */
+  readonly taxCategories: readonly TaxCategory[];
   readonly fields: readonly FormField[];
   readonly categories: readonly FormCategory[];
 }
@@ -86,9 +85,8 @@ export interface ProductOptions {
   readonly productTypes: readonly string[];
   readonly locales: Locales;
   /** The Market's tax categories and the active platform categories, as the product read lists them. */
-  readonly taxCategoryCodes: readonly string[];
-  /** The categories with their label keys; when absent the code is shown as words. */
-  readonly taxCategories?: readonly TaxCategory[] | undefined;
+  /** The Market's tax categories with their label keys. */
+  readonly taxCategories: readonly TaxCategory[];
   readonly categories: readonly FormCategory[];
 }
 
