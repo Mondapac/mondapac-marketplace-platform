@@ -100,12 +100,14 @@ import { SellerLostDisputes } from './application/use-cases/seller-lost-disputes
 import { RecordSellerOrderDelivered } from './application/use-cases/record-seller-order-delivered.use-case';
 import { RecordSellerOrderPaid } from './application/use-cases/record-seller-order-paid.use-case';
 import { RecordSellerCashback } from './application/use-cases/record-seller-cashback.use-case';
+import { RecordSellerCashbackReturn } from './application/use-cases/record-seller-cashback-return.use-case';
 import { SellerOrderPayoutAnchorQuery } from './application/use-cases/seller-order-payout-anchor.use-case';
 import { ReleasePayoutHold } from './application/use-cases/release-payout-hold.use-case';
 import { SetCommissionRate } from './application/use-cases/set-commission-rate.use-case';
 import { SetSellerPayoutTerms } from './application/use-cases/set-seller-payout-terms.use-case';
 import { ViewCommissionRate } from './application/use-cases/view-commission-rate.use-case';
 import { ViewSellerPayoutTerms } from './application/use-cases/view-seller-payout-terms.use-case';
+import { ViewOwnExclusiveCommission } from './application/use-cases/view-own-exclusive-commission.use-case';
 import { ViewOwnLedger } from './application/use-cases/view-own-ledger.use-case';
 import { ViewSellerLedger } from './application/use-cases/view-seller-ledger.use-case';
 import { ExportSellerLedger } from './application/use-cases/export-seller-ledger.use-case';
@@ -122,6 +124,7 @@ import {
   AdminCommissionController,
   SellerLedgerController,
 } from './presentation/commission-payouts.controller';
+import { SellerExclusiveCommissionController } from './presentation/exclusive-commission.controller';
 import {
   AdminPayoutHoldsController,
   AdminPayoutTermsController,
@@ -147,6 +150,7 @@ const PORTS: readonly [keyof CommissionPayoutsDependencies, InjectionToken][] = 
   ['terms', PAYOUT_TERMS_RESOLVER],
   ['anchors', ELIGIBILITY_ANCHOR_REPOSITORY],
   ['holds', PAYOUT_HOLD_REPOSITORY],
+  ['disputes', DISPUTE_REPOSITORY],
   ['sellers', SELLER_DIRECTORY],
   ['cursors', PAYOUT_CURSOR_REPOSITORY],
   ['outbox', OUTBOX_WRITER],
@@ -400,6 +404,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   controllers: [
     AdminCommissionController,
     SellerLedgerController,
+    SellerExclusiveCommissionController,
     AdminPayoutTermsController,
     AdminPayoutHoldsController,
     AdminDisputesController,
@@ -457,6 +462,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       RecordSellerOrderPaid,
       RecordSellerCashback,
       SellerOrderPayoutAnchorQuery,
+      RecordSellerCashbackReturn,
       RecordRefund,
       RecordSellerOrderDelivered,
       PlaceSellerSuspendedHold,
@@ -470,6 +476,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       PlacePayoutHold,
       ReleasePayoutHold,
       ViewOwnLedger,
+      ViewOwnExclusiveCommission,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     ...[SyncDispute, ViewDispute, DecideDispute, ListOwnDisputes, SellerLostDisputes].map((type) =>
       disputeUseCaseProvider(type as DisputeUseCaseClass<unknown>),
@@ -524,6 +531,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         OwnCommissionOn,
         RecordSellerCashback,
         SellerOrderPayoutAnchorQuery,
+        RecordSellerCashbackReturn,
       ],
       useFactory: (
         rates: CommissionRates,
@@ -534,6 +542,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         own: OwnCommissionOn,
         cashback: RecordSellerCashback,
         anchor: SellerOrderPayoutAnchorQuery,
+        cashbackReturn: RecordSellerCashbackReturn,
       ) =>
         new CommissionPayoutsFacadeImplementation(
           rates,
@@ -544,6 +553,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           own,
           cashback,
           anchor,
+          cashbackReturn,
         ),
     },
   ],

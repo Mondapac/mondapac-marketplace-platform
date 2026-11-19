@@ -21,6 +21,24 @@ export interface WalletCredit {
       readonly idempotencyKey: string;
     },
   ): Promise<Result<{ readonly journalId: string }, WalletCreditFailure>>;
+
+  /**
+   * Takes back up to `amount` of what is left of the grant made by `grantJournalId` (customers
+   * phase 4c-2: a refund after a cashback was credited; reason `cashback-refund`). Answers what was
+   * taken (zero when nothing was left) and its journal (null then). Same key, same answer.
+   */
+  clawBack(
+    context: CallContext,
+    request: {
+      readonly accountId: Id<'Account'>;
+      readonly grantJournalId: string;
+      readonly amount: Money;
+      readonly orderId: Id<'Order'> | null;
+      readonly idempotencyKey: string;
+    },
+  ): Promise<
+    Result<{ readonly journalId: string | null; readonly clawedBack: bigint }, WalletCreditFailure>
+  >;
 }
 
 export const WALLET_CREDIT = Symbol('PROMOTIONS_WALLET_CREDIT');

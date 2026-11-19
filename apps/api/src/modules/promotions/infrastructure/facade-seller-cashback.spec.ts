@@ -46,6 +46,8 @@ describe.each(TEST_MARKETS)('the seller cashback adapters in market %s', (code) 
     currency,
     goods: 1234n,
     refundedGoods: 234n,
+    // 200 of the 234 by refunds that succeeded (a pending one may still fail).
+    succeededRefundedGoods: 200n,
     exclusiveSeller: true,
     placedAt: T0,
     deliveredAt: T0.add({ hours: 30 }),
@@ -64,6 +66,7 @@ describe.each(TEST_MARKETS)('the seller cashback adapters in market %s', (code) 
         sellerId: facts.sellerId,
         customerAccountId: facts.customerAccountId,
         goodsPaid: { amount: 1000n, currency },
+        goodsKeptSettled: { amount: 1034n, currency },
         exclusiveSeller: true,
         placedAt: T0,
         deliveredAt: T0.add({ hours: 30 }),
@@ -139,10 +142,13 @@ describe.each(TEST_MARKETS)('the seller cashback adapters in market %s', (code) 
 
   it('never reads more refunded goods than were charged', async () => {
     const adapter = new FacadeDeliveredOrderFacts(
-      ordering(() => Promise.resolve(ok({ ...facts, refundedGoods: 5000n }))),
+      ordering(() =>
+        Promise.resolve(ok({ ...facts, refundedGoods: 5000n, succeededRefundedGoods: 5000n })),
+      ),
     );
     const read = await adapter.read(system, request);
     expect(read.known && read.value.goodsPaid.amount).toBe(0n);
+    expect(read.known && read.value.goodsKeptSettled.amount).toBe(0n);
   });
 
   it('reads the payout release, and answers unknown on a refusal, a throw or a non-system caller', async () => {

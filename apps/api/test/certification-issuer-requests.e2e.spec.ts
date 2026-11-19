@@ -335,6 +335,7 @@ describe('issuer request routes over HTTP (integration)', () => {
     expect(ADMIN_ISSUER_REQUEST_STATUS).toEqual({
       'validation.failed': 400,
       'issuer-request.not-found': 404,
+      'batch.too-large': 413,
       'document.not-found': 404,
       'document.download-disabled': 403,
       'issuer-request.already-answered': 409,
@@ -371,6 +372,30 @@ describe('issuer request routes over HTTP (integration)', () => {
         total: 1,
         items: [{ issuerRequestId: requestId, typeCode: 'halal', sellerId: SELLER, version: 1 }],
       });
+
+      // The super list: the same request with its row actions (the reviewer holds only the view
+      // key, so Answer is not offered), and the export of the chosen id.
+      const listed = await http().get(`${adminBase}/list?pageSize=10`).set(reviewer).expect(200);
+      expect(listed.headers['cache-control']).toContain('no-store');
+      expect(listed.body).toMatchObject({
+        total: 1,
+        counts: { all: 1 },
+        items: [{ issuerRequestId: requestId, typeCode: 'halal', actions: ['open'] }],
+      });
+      await http().get(`${adminBase}/list?sort=bogus`).set(reviewer).expect(400);
+      const exported = await http()
+        .get(`${adminBase}/export?format=csv&ids=${requestId}`)
+        .set(reviewer)
+        .expect(200);
+      expect(exported.headers['content-disposition']).toMatch(
+        /^attachment; filename="issuer-requests-.*\.csv"$/,
+      );
+      expect(exported.text).toContain('halal');
+      expect(exported.text).not.toContain(CANARY);
+      await http()
+        .get(`${adminBase}/export?ids=00000000-0000-4000-8000-000000000001`)
+        .set(reviewer)
+        .expect(404);
 
       const page = await http().get(`${adminBase}/${requestId}`).set(reviewer).expect(200);
       expect(page.headers['cache-control']).toBe('private, no-store');

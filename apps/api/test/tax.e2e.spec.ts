@@ -191,10 +191,23 @@ describe.each(TEST_MARKETS)('tax strategies over HTTP in market %s', (code) => {
     createdAt: START.toString(),
     updatedAt: START.toString(),
   };
+  // The categories the Market file names (AU config, ZZ fixture), as the use case would return them.
+  const CATEGORIES: Record<string, { code: string; labelKey: string }[]> = {
+    AU: [
+      { code: 'taxable', labelKey: 'catalog.tax.taxable' },
+      { code: 'gst_free', labelKey: 'catalog.tax.gst-free' },
+    ],
+    ZZ: [
+      { code: 'zz_standard', labelKey: 'catalog.tax.zz-standard' },
+      { code: 'zz_reduced', labelKey: 'catalog.tax.zz-reduced' },
+    ],
+  };
+  const categories = CATEGORIES[code] ?? [];
   const listing = {
     builtInRateBps: 1000,
     activeStrategyId: null,
-    categoryCodes: ['taxable'],
+    categoryCodes: categories.map((category) => category.code),
+    categories,
     strategies: [strategy],
   };
   const body = { name: 'GST', kind: 'flat-rate', rateBps: 1000 };
@@ -218,6 +231,8 @@ describe.each(TEST_MARKETS)('tax strategies over HTTP in market %s', (code) => {
     expect(read.status).toBe(200);
     expect(read.headers['cache-control']).toBe('no-store');
     expect(read.body).toEqual({ ...listing, strategies: [strategyJson] });
+    expect((read.body as { categories: unknown }).categories).toEqual(categories);
+    expect(categories).toHaveLength(2);
 
     next = ok(strategy);
     const made = await call('post', 'admin', BASE, session, body);
