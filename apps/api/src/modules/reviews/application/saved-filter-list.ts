@@ -12,6 +12,7 @@ import {
   type ModerationListView,
   type ModerationSortKey,
 } from '../domain/moderation-list';
+import { SELLER_REPORT_REASONS, type SellerReportReason } from '../domain/seller-reply';
 import {
   SELLER_REVIEW_SORT_KEYS,
   SELLER_REVIEW_VIEWS,
@@ -47,14 +48,14 @@ export type ReviewDatePreset = (typeof REVIEW_DATE_PRESETS)[number];
 
 const STARS = ['1', '2', '3', '4', '5'] as const;
 type Stars = (typeof STARS)[number];
-const REASON_CODE = /^[a-z][a-z-]{0,39}$/;
 const TOP_KEYS = ['v', 'view', 'filters', 'sort', 'direction'] as const;
 
 /** The closed filters of a document, in canonical key order. */
 interface ReviewFilters {
   readonly minRating?: Stars;
   readonly maxRating?: Stars;
-  readonly reportReason?: string;
+  /** A reason code a shop can report a review with (the only way a review is reported). */
+  readonly reportReason?: SellerReportReason;
   readonly published?: ReviewDatePreset;
   readonly submitted?: ReviewDatePreset;
 }
@@ -152,10 +153,9 @@ function parseReviewDocument<View extends string, Sort extends string>(
     }
     const reason = given['reportReason'];
     if (reason !== undefined && reason !== null && reason !== '') {
-      if (typeof reason !== 'string' || !REASON_CODE.test(reason)) {
-        return invalid('payload.filters.reportReason', 'value');
-      }
-      filters.reportReason = reason;
+      const known = SELLER_REPORT_REASONS.find((candidate) => candidate === reason);
+      if (known === undefined) return invalid('payload.filters.reportReason', 'value');
+      filters.reportReason = known;
     }
     for (const field of ['published', 'submitted'] as const) {
       const preset = given[field];

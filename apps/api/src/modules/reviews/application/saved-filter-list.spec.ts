@@ -112,7 +112,7 @@ describe('Review lists saved filters', () => {
           view: 'reported',
           filters: {
             submitted: 'this-month',
-            reportReason: 'spam',
+            reportReason: 'abusive',
             maxRating: '3',
             minRating: '1',
           },
@@ -127,7 +127,7 @@ describe('Review lists saved filters', () => {
           filters: {
             minRating: '1',
             maxRating: '3',
-            reportReason: 'spam',
+            reportReason: 'abusive',
             submitted: 'this-month',
           },
           sort: 'submitted',
@@ -154,8 +154,8 @@ describe('Review lists saved filters', () => {
       }
     });
 
-    it('refuses a report reason that is not a reason code', () => {
-      for (const reason of ['Spam', '1x', 'a'.repeat(41), 'spam;drop', 5]) {
+    it('refuses a report reason that is not one a shop can report with', () => {
+      for (const reason of ['Spam', 'spam', 'call-jane-doe', 'a'.repeat(41), 5]) {
         expect(
           parseModerationFilterPayload({ v: 1, view: 'all', filters: { reportReason: reason } }),
         ).toEqual(failure('payload.filters.reportReason', 'value'));
