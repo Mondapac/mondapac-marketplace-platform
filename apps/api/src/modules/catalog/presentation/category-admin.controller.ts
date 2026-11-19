@@ -73,6 +73,8 @@ import {
   CategoryReorderRequest,
   CategoryTreeBody,
   CategoryArchiveRequest,
+  CategoryDiscardRequest,
+  CatalogueProposalBody,
   CategoryMergeRequest,
   CategoryMoveRequest,
   CategoryMoveProductsProgressBody,
@@ -82,7 +84,7 @@ import {
   CategoryVersionRequest,
   CategoryWriteWrapBody,
 } from './category-admin.dto';
-import { closedBody, refusalWith, type Refusal } from './http-answers';
+import { answered, closedBody, refusalWith, type Refusal } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
 
 /**
@@ -163,6 +165,17 @@ const EDITS =
 const RESTRUCTURES =
   'Needs the protected key catalog.category-tree.restructure; refused in an acting-as session. ' +
   'Names the tree version the page read and a reason note. Certificate rules are checked first.';
+const REVIEWED_AFTER =
+  'It goes live at once and is reviewed after in Admin Inbox › System requests (area catalogue, ' +
+  'on by default): where the Market reviews it, `note` (1 to 500 characters; a restructure uses ' +
+  'its reason note when none is given) is required and `request` names the review it opened. A ' +
+  'rejected change is undone while the category still holds it.';
+const WAITS_FOR_APPROVAL =
+  'Where the Market reviews area catalogue (Admin Inbox › System requests) it waits for a second ' +
+  "admin's approval: `note` (1 to 500 characters; a restructure uses its reason note when none " +
+  'is given) is required, the checks run as for the action, and the answer is 202 ' +
+  '`{request: {id, number}}` with nothing changed; 409 system-requests.already-pending ' +
+  '(details.pendingNumber) while another proposal of the category waits.';
 const RESTRUCTURE_409 =
   'conflict.stale, category.not-editable, category.move-unchanged, category.has-subcategories, ' +
   'category.sibling-name-taken (details.fields) or category.referenced-by-policy (details.typeCodes)';
@@ -335,7 +348,7 @@ export class CategoryAdminController {
     description:
       `${EDITS} Created hidden, last among its siblings; Show makes it live. The default-locale ` +
       'name is required; every text passes the claim-word check and a language the check cannot ' +
-      'read is refused.',
+      `read is refused. ${REVIEWED_AFTER}`,
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: CategoryCreateRequest })
@@ -362,7 +375,7 @@ export class CategoryAdminController {
   ): Promise<CategoryWriteWrapBody> {
     return this.write('catalog.category-create', context, response, request, body, {
       keys: ['slug', 'texts', 'treeVersion'],
-      optional: ['parentId', 'seo', 'showInMenu'],
+      optional: ['parentId', 'seo', 'showInMenu', 'note'],
       run: (input) => this.createCategory.execute(context, input),
     });
   }
@@ -423,7 +436,7 @@ export class CategoryAdminController {
   @ReadsSession()
   @ApiOperation({
     summary: 'Move a category up or down among its siblings',
-    description: `${EDITS} Swaps places with the neighbour; category.reorder-edge at the end of the list.`,
+    description: `${EDITS} Swaps places with the neighbour; category.reorder-edge at the end of the list. ${REVIEWED_AFTER}`,
   })
   @ApiParam(CATEGORY_PARAM)
   @ApiHeader(CSRF)
@@ -448,7 +461,7 @@ export class CategoryAdminController {
   ): Promise<CategoryWriteWrapBody> {
     return this.write('catalog.category-reorder', context, response, request, body, {
       keys: ['direction', 'treeVersion'],
-      optional: [],
+      optional: ['note'],
       run: (input) => this.reorderCategory.execute(context, { ...input, categoryId }),
     });
   }
@@ -579,11 +592,12 @@ export class CategoryAdminController {
     summary: 'Discard a category that never went live',
     description:
       `${EDITS} Only a hidden category an admin created, never showed, with no child and no ` +
-      'product revision that named it. It is archived, never deleted.',
+      `product revision that named it. It is archived, never deleted. ${WAITS_FOR_APPROVAL}`,
   })
   @ApiParam(CATEGORY_PARAM)
   @ApiHeader(CSRF)
-  @ApiBody({ type: CategoryTreeVersionRequest })
+  @ApiBody({ type: CategoryDiscardRequest })
+  @ApiAcceptedResponse({ type: CatalogueProposalBody })
   @ApiOkResponse({ type: CategoryWriteWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -604,7 +618,7 @@ export class CategoryAdminController {
   ): Promise<CategoryWriteWrapBody> {
     return this.write('catalog.category-discard', context, response, request, body, {
       keys: ['treeVersion'],
-      optional: [],
+      optional: ['note'],
       run: (input) => this.discardCategory.execute(context, { ...input, categoryId }),
     });
   }
@@ -730,7 +744,7 @@ export class CategoryAdminController {
     summary: 'Move a category under a new parent',
     description:
       `${RESTRUCTURES} The category and its subcategories go under the new parent (null: a ` +
-      'department), last among its children. Badges under it are checked again.',
+      `department), last among its children. Badges under it are checked again. ${REVIEWED_AFTER}`,
   })
   @ApiParam(CATEGORY_PARAM)
   @ApiHeader(CSRF)
@@ -756,7 +770,7 @@ export class CategoryAdminController {
   ): Promise<CategoryWriteWrapBody> {
     return this.write('catalog.category-move', context, response, request, body, {
       keys: ['treeVersion', 'parentId', 'reason'],
-      optional: [],
+      optional: ['note'],
       run: (input) => this.moveCategory.execute(context, { ...input, categoryId }),
     });
   }
@@ -768,11 +782,12 @@ export class CategoryAdminController {
     summary: 'Merge a category into another',
     description:
       `${RESTRUCTURES} Its subcategories move to the target; its products and old address now ` +
-      'resolve to the target. Badges under it are checked again.',
+      `resolve to the target. Badges under it are checked again. ${WAITS_FOR_APPROVAL}`,
   })
   @ApiParam(CATEGORY_PARAM)
   @ApiHeader(CSRF)
   @ApiBody({ type: CategoryMergeRequest })
+  @ApiAcceptedResponse({ type: CatalogueProposalBody })
   @ApiOkResponse({ type: CategoryWriteWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -794,7 +809,7 @@ export class CategoryAdminController {
   ): Promise<CategoryWriteWrapBody> {
     return this.write('catalog.category-merge', context, response, request, body, {
       keys: ['treeVersion', 'targetId', 'reason'],
-      optional: [],
+      optional: ['note'],
       run: (input) => this.mergeCategory.execute(context, { ...input, categoryId }),
     });
   }
@@ -806,11 +821,13 @@ export class CategoryAdminController {
     summary: 'Archive a category',
     description:
       `${RESTRUCTURES} Terminal: there is no restore (Hide pauses a category). Only a category ` +
-      'with no live subcategory, and never one that is the only category of a live product.',
+      'with no live subcategory, and never one that is the only category of a live product. ' +
+      WAITS_FOR_APPROVAL,
   })
   @ApiParam(CATEGORY_PARAM)
   @ApiHeader(CSRF)
   @ApiBody({ type: CategoryArchiveRequest })
+  @ApiAcceptedResponse({ type: CatalogueProposalBody })
   @ApiOkResponse({ type: CategoryWriteWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -829,7 +846,7 @@ export class CategoryAdminController {
   ): Promise<CategoryWriteWrapBody> {
     return this.write('catalog.category-archive', context, response, request, body, {
       keys: ['treeVersion', 'reason'],
-      optional: [],
+      optional: ['note'],
       run: (input) => this.archiveCategory.execute(context, { ...input, categoryId }),
     });
   }
@@ -847,12 +864,16 @@ export class CategoryAdminController {
       'up to the Market depth. The job makes one pass over the category: a product published ' +
       'into it after the pass is not moved. A seller email that cannot be sent is retried for ' +
       'about 75 minutes and then given up, so the job always ends. Read the progress with GET on ' +
-      'the same path.',
+      `the same path. ${WAITS_FOR_APPROVAL}`,
   })
   @ApiParam(CATEGORY_PARAM)
   @ApiHeader(CSRF)
   @ApiBody({ type: CategoryMoveProductsRequest })
-  @ApiAcceptedResponse({ type: CategoryMoveProductsStartedBody })
+  @ApiAcceptedResponse({
+    type: CategoryMoveProductsStartedBody,
+    description:
+      'The job started; or, where the move waits for approval, `{request}` (CatalogueProposalBody).',
+  })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
@@ -886,7 +907,7 @@ export class CategoryAdminController {
       body,
       {
         keys: ['targetId', 'reason'],
-        optional: [],
+        optional: ['note'],
         run: (input) => this.moveProducts.execute(context, { ...input, categoryId }),
       },
     );
@@ -937,7 +958,7 @@ export class CategoryAdminController {
     else {
       const result = await spec.run(input);
       outcome = result.ok
-        ? (JSON.parse(JSON.stringify(result.value)) as T)
+        ? answered<T>(response, result.value)
         : refusal(result.error, response, context);
     }
     return this.settle(msg, context, outcome);

@@ -110,15 +110,26 @@ interface Serving {
   readonly write?: ApiResult<unknown>;
   readonly impact?: (query: URLSearchParams) => ImpactBody;
   readonly actions?: DetailBody['actions'];
+  /** Where the Market reviews area catalogue (system requests). */
+  readonly reviewed?: boolean;
 }
-function serve({ write = ok(written), impact = () => impactBody(), actions }: Serving = {}) {
+function serve({
+  write = ok(written),
+  impact = () => impactBody(),
+  actions,
+  reviewed = false,
+}: Serving = {}) {
   call.mockImplementation((method: string, path: string) => {
     if (method !== 'GET') return Promise.resolve(write);
     if (path === 'catalog/admin/categories') return Promise.resolve(ok(tree()));
     const [base = '', query = ''] = path.split('?');
     if (base.endsWith('/impact')) return Promise.resolve(ok(impact(new URLSearchParams(query))));
     const found = rows().find((c) => base === `catalog/admin/categories/${c.id}`);
-    return Promise.resolve(found === undefined ? ok(null) : ok(detail(found, actions ?? null)));
+    if (found === undefined) return Promise.resolve(ok(null));
+    const body = detail(found, actions ?? null);
+    return Promise.resolve(
+      ok(reviewed ? { ...body, review: { reviewed: true, risk: 'medium' } } : body),
+    );
   });
 }
 const writes = () => call.mock.calls.filter(([method]) => method !== 'GET');
@@ -522,6 +533,8 @@ describe('Archive dialog', () => {
     open();
     const dialog = await startDialog('Oils', 'Archive…');
     expect(within(dialog).getByText("Archived categories can't be restored.")).toBeTruthy();
+    expect(within(dialog).queryByText(/Nothing changes until/)).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'Send for approval' })).toBeNull();
     expect(within(dialog).queryAllByRole('radio')).toHaveLength(0);
     // Cancel has focus first, the safe choice of a one-way action.
     expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
@@ -537,6 +550,60 @@ describe('Archive dialog', () => {
       'tok',
     ]);
     expect(await screen.findByText('Category archived.')).toBeTruthy();
+  });
+});
+
+describe('where the Market reviews area catalogue (system requests)', () => {
+  const proposal: ApiResult<unknown> = {
+    ok: true,
+    status: 202,
+    body: { request: { id: 'r1', number: 44 } },
+  };
+
+  it('an archive only files a request: no terminal warning, Send for approval, nothing changes', async () => {
+    serve({ write: proposal, reviewed: true });
+    open();
+    const dialog = await startDialog('Oils', 'Archive…');
+    expect(within(dialog).queryByText("Archived categories can't be restored.")).toBeNull();
+    expect(
+      within(dialog).getByText('If another admin approves, Oils leaves the catalog.'),
+    ).toBeTruthy();
+    expect(
+      within(dialog).getByText(
+        'Nothing changes until another admin approves it in Admin Inbox > System requests. Your reason is the note for the reviewer.',
+      ),
+    ).toBeTruthy();
+    expect(within(dialog).queryByRole('button', { name: 'Archive' })).toBeNull();
+    const go = submitButton(dialog, 'Send for approval');
+    typeReason(dialog, REASON);
+    fireEvent.click(go);
+    await waitFor(() => expect(writes()).toHaveLength(1));
+    expect(writes()[0]![2]).toEqual({ treeVersion: 7, reason: REASON });
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.queryByText('Category archived.')).toBeNull();
+  });
+
+  it('a merge only files a request', async () => {
+    serve({ write: proposal, reviewed: true });
+    open();
+    const dialog = await startDialog('Oils', 'Merge…');
+    expect(within(dialog).getByText(/^If another admin approves, its subcategories/)).toBeTruthy();
+    expect(
+      within(dialog).getByText(
+        'Nothing changes until another admin approves it in Admin Inbox > System requests. Your reason is the note for the reviewer.',
+      ),
+    ).toBeTruthy();
+    expect(within(dialog).queryByRole('button', { name: 'Merge' })).toBeNull();
+    expect(submitButton(dialog, 'Send for approval')).toBeTruthy();
+  });
+
+  it('a move is reviewed after, so it keeps its own wording', async () => {
+    serve({ reviewed: true });
+    open();
+    const dialog = await startDialog('Oils', 'Move…');
+    expect(within(dialog).queryByText(/Nothing changes until/)).toBeNull();
+    expect(within(dialog).queryByRole('button', { name: 'Send for approval' })).toBeNull();
+    expect(submitButton(dialog, 'Move')).toBeTruthy();
   });
 });
 

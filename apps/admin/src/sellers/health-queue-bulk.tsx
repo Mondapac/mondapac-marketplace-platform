@@ -40,7 +40,7 @@ export function HealthQueueBulk({
     columns: exportColumnIds(columns),
     zone: 'UTC',
     omitZone: true,
-    keepSort: true,
+    keepOrder: true,
     selection,
   });
   return (

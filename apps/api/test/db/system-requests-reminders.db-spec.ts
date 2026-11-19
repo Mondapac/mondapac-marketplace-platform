@@ -109,6 +109,7 @@ describe('system request reminders (database integration)', () => {
       area: 'catalogue',
       subjectKind: 'settings.market-setting',
       subjectRef: `ref-${randomUUID()}`,
+      mode: 'review',
       risk: 'medium',
       before: { size: 25 },
       after: { size: 50 },

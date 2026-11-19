@@ -18,8 +18,10 @@ import { numberFormat } from '../shared/intl.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-/** The keys of the list query that name a page or an order: the file has all rows, in its own order. */
-const PAGING_KEYS = ['page', 'pageSize', 'cursor', 'limit', 'sort', 'direction'] as const;
+/** The keys of the list query that name a page: the file has all rows. */
+const PAGING_KEYS = ['page', 'pageSize', 'cursor', 'limit'] as const;
+/** The keys that name an order: dropped too, unless the export keeps the list's order. */
+const ORDER_KEYS = ['sort', 'direction'] as const;
 
 /** The rows the Bulk action menu acts on: the ticked ones, or, after "Select all", the filter. */
 export interface ExportSelection {
@@ -31,7 +33,8 @@ export interface ExportSelection {
 
 /**
  * The query of the export: the list's own filter keys exactly as the list sends them (`listQuery`,
- * the list's query string), without paging or sort; then `format`, `columns` (the visible columns,
+ * the list's query string), without paging or sort (the sort stays with `keepOrder`, for an export
+ * that writes the rows in the list's order); then `format`, `columns` (the visible columns,
  * in the shown order; the server adds the fixed ones), `zone`, and `ids` when rows are ticked and
  * "Select all matching" is not on (with it on, the filter alone says which rows).
  */
@@ -43,14 +46,11 @@ export function exportQuery(input: {
   readonly selection: ExportSelection;
   /** A list whose export has no `zone` key (its cells hold no times of day) leaves it out. */
   readonly omitZone?: boolean;
-  /** A list whose file follows the list's own sort keeps `sort` and `direction`. */
-  readonly keepSort?: boolean;
+  readonly keepOrder?: boolean;
 }): string {
   const params = new URLSearchParams(input.listQuery);
-  for (const key of PAGING_KEYS) {
-    if (input.keepSort === true && (key === 'sort' || key === 'direction')) continue;
-    params.delete(key);
-  }
+  for (const key of PAGING_KEYS) params.delete(key);
+  if (input.keepOrder !== true) for (const key of ORDER_KEYS) params.delete(key);
   params.set('format', input.format);
   // No optional column shown: the key is left out and the file has its fixed columns.
   if (input.columns.length > 0) params.set('columns', input.columns.join(','));
@@ -195,7 +195,8 @@ export function useSalesExport(input: {
   readonly zone: string;
   readonly selection: ExportSelection;
   readonly omitZone?: boolean;
-  readonly keepSort?: boolean;
+  /** The file keeps the list's sort (`sort` and `direction` of `listQuery`). */
+  readonly keepOrder?: boolean;
 }): { readonly item: ActionMenuItem; readonly dialog: ReactNode; readonly busy: boolean } {
   const t = useTranslations('sales-lists.export');
   const locale = useLocale();
@@ -231,7 +232,7 @@ export function useSalesExport(input: {
         zone: input.zone,
         selection,
         ...(input.omitZone === true ? { omitZone: true } : {}),
-        ...(input.keepSort === true ? { keepSort: true } : {}),
+        ...(input.keepOrder === true ? { keepOrder: true } : {}),
       }),
       format,
       fallbackName: input.fallbackName,
