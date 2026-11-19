@@ -131,6 +131,7 @@ describe.each(FIXTURES)('category admin reads in market $code', ({ code, locales
   const reads: { port: string; marketId: string }[] = [];
   const tree = new CategoryAdminTree(gate, {
     unitOfWork,
+    review: new RecordingReview(),
     adminCategoryReader: reader,
     policy,
     categoryProbes,

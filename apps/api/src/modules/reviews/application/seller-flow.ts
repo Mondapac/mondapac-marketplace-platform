@@ -27,7 +27,7 @@ import type { ReviewsDependencies } from './reviews-dependencies';
 const denied = err({ code: 'access.denied' } as const);
 
 /** The seller of an authenticated seller session; null for anyone else (fail closed). */
-function sellerOf(context: CallContext): Id<'Seller'> | null {
+export function sellerOf(context: CallContext): Id<'Seller'> | null {
   const actor = context.actor;
   if (actor.kind !== 'authenticated' || actor.population !== 'seller') return null;
   const parsed = typeof actor.sellerId === 'string' ? parseId<'Seller'>(actor.sellerId) : null;
@@ -73,7 +73,7 @@ const replyView = (reply: ReplyRecord, days: number): SellerReplyView => ({
   editableUntil: reply.createdAt.add({ hours: days * 24 }),
 });
 
-const reviewView = (
+export const reviewView = (
   row: {
     review: ProductReviewRecord;
     reply: ReplyRecord | null;

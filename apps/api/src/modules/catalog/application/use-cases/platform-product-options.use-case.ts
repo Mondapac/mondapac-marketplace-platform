@@ -4,7 +4,7 @@ import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CATALOG_PLATFORM_PRODUCT_EDIT } from '../../contracts/permissions';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
-import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { CatalogMarketPolicy, TaxCategoryOption } from '../ports/catalog-market-policy';
 import type { OwnCatalogReader, ProductFormCategory } from '../ports/own-catalog.reader';
 
 export interface PlatformProductOptionsOutput {
@@ -13,6 +13,8 @@ export interface PlatformProductOptionsOutput {
   readonly locales: { readonly default: string; readonly supported: readonly string[] };
   /** The Market's tax categories, as the product read lists them. */
   readonly taxCategoryCodes: readonly string[];
+  /** The same categories with the label key each is shown by. */
+  readonly taxCategories: readonly TaxCategoryOption[];
   /** The active platform categories, in the shape of `form.categories` of the product read. */
   readonly categories: readonly ProductFormCategory[];
 }
@@ -56,12 +58,14 @@ export class PlatformProductOptions extends UseCase<
     const { market } = context;
     let productTypes: readonly string[];
     let taxCategoryCodes: readonly string[];
+    let taxCategories: readonly TaxCategoryOption[];
     let locales: { default: string; supported: readonly string[] };
     try {
       const configured = this.deps.policy.locales(market);
       locales = { default: configured.default, supported: [...configured.supported] };
       productTypes = [...this.deps.policy.productTypes(market)];
       taxCategoryCodes = [...this.deps.policy.taxCategoryCodes(market)];
+      taxCategories = this.deps.policy.taxCategories(market).map((category) => ({ ...category }));
     } catch {
       return err({ code: 'access.unavailable' });
     }
@@ -80,6 +84,12 @@ export class PlatformProductOptions extends UseCase<
         correlationId: context.correlationId,
       });
     }
-    return ok({ productTypes, locales, taxCategoryCodes, categories: read.ok ? read.value : [] });
+    return ok({
+      productTypes,
+      locales,
+      taxCategoryCodes,
+      taxCategories,
+      categories: read.ok ? read.value : [],
+    });
   }
 }
