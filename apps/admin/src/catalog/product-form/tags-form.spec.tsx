@@ -61,7 +61,11 @@ describe.each([
     maxVariants: 100,
     lastChangedAt: '2026-11-05T01:00:00.000Z',
     createdAt: '2026-11-05T01:00:00.000Z',
-    form: { taxCategoryCodes: ['gst-free'], fields: [], categories: [] },
+    form: {
+      taxCategories: [{ code: 'gst-free', labelKey: 'catalog.tax.gst-free' }],
+      fields: [],
+      categories: [],
+    },
     locales: { default: locale, supported: [locale] },
     workingCopy: {
       content: {

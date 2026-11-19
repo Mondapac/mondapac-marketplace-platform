@@ -1,3 +1,4 @@
+import { CUSTOMERS_VIEW_PERMISSION } from './customers/types.ts';
 import { PAYOUT_ACCOUNT_PATH, PAYOUT_VIEW_PERMISSION } from './payout/types.ts';
 import { settingsViewKeys } from './settings/settings-nav.ts';
 import { visibleNavItems, type NavConfig, type NavItem } from '@mondapac/ui';
@@ -14,7 +15,7 @@ export const sellerNav: NavConfig = {
     { id: 'requests', labelKey: 'nav.group.requests', icon: 'inbox' },
     { id: 'sales', labelKey: 'nav.group.sales', icon: 'clipboard' },
     { id: 'catalogue', labelKey: 'nav.group.catalogue', icon: 'store' },
-    // Sellers do not see a customer list; the group holds Reviews and shows it flat.
+    // Customers and Reviews (two items, so the group shows as a group).
     { id: 'customers', labelKey: 'nav.group.customers', icon: 'users' },
     { id: 'accounting', labelKey: 'nav.group.accounting', icon: 'wallet' },
   ],
@@ -83,6 +84,14 @@ export const sellerNav: NavConfig = {
       group: 'catalogue',
       // The menu takes any one key; the import needs both (see `IMPORT_KEYS`), checked in sellerNavItems.
       anyOf: ['catalog.own-import.run'],
+    },
+    {
+      id: 's_customers',
+      icon: 'users',
+      labelKey: 'nav.customers',
+      href: '/customers',
+      group: 'customers',
+      anyOf: [CUSTOMERS_VIEW_PERMISSION],
     },
     {
       id: 's_reviews',

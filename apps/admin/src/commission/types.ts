@@ -29,7 +29,8 @@ export type LedgerKind =
   | 'refund-shipping'
   | 'refund-commission'
   | 'dispute-debit'
-  | 'dispute-reinstate';
+  | 'dispute-reinstate'
+  | 'cashback-seller';
 
 export interface LedgerEntry {
   readonly entryId: string;
@@ -53,6 +54,8 @@ export interface Ledger {
     readonly refundedCommission: string;
     readonly disputeDebits: string;
     readonly disputeReinstated: string;
+    /** Minor units; cashback the seller funded for its exclusive customers (a debit). */
+    readonly sellerCashback: string;
     /** Minor units; may be negative (a refund after the money was counted). */
     readonly balance: string;
   };

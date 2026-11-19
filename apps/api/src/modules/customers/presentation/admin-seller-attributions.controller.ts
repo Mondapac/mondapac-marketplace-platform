@@ -62,7 +62,8 @@ export class AdminSellerAttributionsController {
       'Needs customers.customers.view. Body: `view` (suspicious, the default: rejected or flagged; ' +
       'all; active; rejected), `q` (the start of the sign-in address, 2 to 254 characters), ' +
       '`filters` (sellerId, status, rejectReason: seller-team or admin, flag: link-burst, ' +
-      'attributedFrom and attributedTo as YYYY-MM-DD UTC days), `direction` (desc, the default, or ' +
+      'attributedFrom and attributedTo as YYYY-MM-DD days in the admin’s own panel zone, else the ' +
+      'Market’s), `direction` (desc, the default, or ' +
       'asc by attribution instant). With `page` (and `pageSize`, at most 100) the answer carries ' +
       '`paging.total`; without it `cursor` and `limit`. `counts` is the size of every view.',
   })

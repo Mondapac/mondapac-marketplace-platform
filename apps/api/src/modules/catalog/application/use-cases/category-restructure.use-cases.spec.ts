@@ -215,9 +215,22 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
       return Promise.resolve();
     },
   };
+  // Refuses a second event at one aggregate version, as the outbox's unique key on PostgreSQL does.
   const outbox = {
     append: (_c: CallContext, batch: readonly PendingEvent[]) => {
-      events.push(...batch);
+      for (const event of batch) {
+        const clash = events.some(
+          (seen) =>
+            seen.aggregateId === event.aggregateId &&
+            seen.aggregateVersion === event.aggregateVersion,
+        );
+        if (clash) {
+          return Promise.reject(
+            new Error(`outbox: ${event.aggregateId} v${event.aggregateVersion} written twice`),
+          );
+        }
+        events.push(event);
+      }
       return Promise.resolve();
     },
   };
@@ -400,7 +413,8 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
             id: cat(3),
             slug: 'c3',
             status: 'active',
-            version: 2,
+            // Two events for the category in the unit, so two version steps (Q-K3); one revision.
+            version: 3,
             revisionNo: 2,
             treeVersion: 2,
           },
@@ -439,6 +453,8 @@ describe.each(['AU', 'ZZ'] as const)('category restructure use cases in market %
         categoryId: cat(3),
         checkedIds: [cat(3), cat(2), cat(1)],
       });
+      expect(events.map((event) => event.aggregateVersion)).toEqual([2, 3]);
+      expect(store.rows.get(cat(3))!.version).toBe(3);
       expect(tree.version).toBe(2);
     });
 

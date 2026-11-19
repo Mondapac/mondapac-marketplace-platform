@@ -47,6 +47,7 @@ const LEDGER_KINDS = [
   'refund-commission',
   'dispute-debit',
   'dispute-reinstate',
+  'cashback-seller',
 ] as const;
 const FULFILMENT_TONE: Record<string, BadgeTone> = {
   'to-ship': 'attention',

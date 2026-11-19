@@ -33,6 +33,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'reviews/me',
     // Whether the buyer assistant shows to this visitor (`?visitor=&lang=` only; see ASSISTANT).
     'assistant/storefront',
+    // The customer's followed stores (My stores; `?cursor=&limit=` only) and the store they joined
+    // through (customers management phases 3 and 4a).
+    'customers/me/followed-stores',
+    'customers/me/store-invitation',
   ]),
   POST: new Set([
     'cart/items',
@@ -44,6 +48,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The customer's own password: the current one and the new one.
     'identity/customer/change-password',
     'customers/me/addresses',
+    // The customer joins a store through its invite link (body `{ token }`).
+    'customers/me/store-invitation',
     // The customer asks to delete the account (the request waits, then the job erases it).
     'customers/me/deletion-requests',
     // The delivery methods and prices of the basket for a saved address (delivery models, pkg 5).
@@ -65,6 +71,11 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
 
 /** Paths with one resource id (`:id`, a UUID), by method. */
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
+  GET: [
+    // Whether the customer follows one store, and the store's Follow gift (public).
+    'customers/me/followed-stores/:id',
+    'promotions/stores/:id/follow-gift',
+  ],
   POST: [
     'customers/me/addresses/:id/default',
     'cart/saved/:id/move-to-cart',
@@ -75,8 +86,9 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
   // The buyer edits their own review.
   PATCH: ['reviews/products/:id'],
-  PUT: ['cart/items/:id', 'customers/me/addresses/:id'],
+  PUT: ['cart/items/:id', 'customers/me/addresses/:id', 'customers/me/followed-stores/:id'],
   DELETE: [
+    'customers/me/followed-stores/:id',
     'cart/items/:id',
     'customers/me/addresses/:id',
     'cart/saved/:id',
@@ -102,8 +114,22 @@ function matches(template: string, path: readonly string[]): boolean {
   );
 }
 
+/** A store address, as the public store read takes it (`GET sellers/stores/:slug`). */
+const STORE_SLUG = /^[a-z0-9]+(-[a-z0-9]+)*$/;
+
 export function isSessionPathAllowed(method: string, path: readonly string[]): boolean {
   if (ALLOWED[method]?.has(path.join('/')) === true) return true;
+  // My stores names each row by its public store read (name and logo).
+  if (
+    method === 'GET' &&
+    path.length === 3 &&
+    path[0] === 'sellers' &&
+    path[1] === 'stores' &&
+    path[2] !== undefined &&
+    path[2].length <= 50 &&
+    STORE_SLUG.test(path[2])
+  )
+    return true;
   return (ALLOWED_WITH_ID[method] ?? []).some((template) => matches(template, path));
 }
 
@@ -140,6 +166,26 @@ export function assistantQuery(url: string): string {
   if (visitor !== null && VISITOR_SHAPE.test(visitor)) kept.set('visitor', visitor);
   const lang = params.get('lang');
   if (lang !== null && LANG_SHAPE.test(lang)) kept.set('lang', lang);
+  const text = kept.toString();
+  return text === '' ? '' : `?${text}`;
+}
+
+const CURSOR_SHAPE = /^[A-Za-z0-9._~=-]{1,300}$/;
+const LIMIT_SHAPE = /^[0-9]{1,3}$/;
+
+/** My stores' query: `cursor` and `limit`, each only when well shaped, and nothing else. */
+export function myStoresQuery(url: string): string {
+  let params: URLSearchParams;
+  try {
+    params = new URL(url).searchParams;
+  } catch {
+    return '';
+  }
+  const kept = new URLSearchParams();
+  const cursor = params.get('cursor');
+  if (cursor !== null && CURSOR_SHAPE.test(cursor)) kept.set('cursor', cursor);
+  const limit = params.get('limit');
+  if (limit !== null && LIMIT_SHAPE.test(limit)) kept.set('limit', limit);
   const text = kept.toString();
   return text === '' ? '' : `?${text}`;
 }
@@ -481,7 +527,12 @@ export async function relaySession(
   }
   let upstream: Response;
   try {
-    const query = target === 'assistant/storefront' ? assistantQuery(request.url) : '';
+    const query =
+      target === 'assistant/storefront'
+        ? assistantQuery(request.url)
+        : target === 'customers/me/followed-stores'
+          ? myStoresQuery(request.url)
+          : '';
     upstream = await fetchImpl(`${config.apiBaseUrl}/${target}${query}`, {
       method: request.method,
       headers: outgoing,

@@ -34,6 +34,7 @@ const ledger = (balance = '3050', currency = 'AUD'): Ledger => ({
     refundedCommission: '0',
     disputeDebits: '0',
     disputeReinstated: '0',
+    sellerCashback: '0',
     balance,
   },
   entries: [],

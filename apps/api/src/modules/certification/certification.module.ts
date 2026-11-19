@@ -11,6 +11,8 @@ import { USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { IdentityModule } from '../identity';
+import { ListsModule, registerLists } from '../lists';
+import { CERTIFICATION_LISTS } from './application/saved-filters/list-definitions';
 import { SellersModule } from '../sellers';
 import {
   APPROVED_SELLER_ZONES,
@@ -163,7 +165,7 @@ const validTypesUseCases = [SellerValidCertificateTypes, SellerValidCertificateT
  * and 14: approved manufacturer certificates through S3, only where the Market switch is on).
  */
 @Module({
-  imports: [PersistenceModule, SellersModule, IdentityModule],
+  imports: [PersistenceModule, SellersModule, IdentityModule, ListsModule],
   controllers: [
     OwnCertificateController,
     AdminCertificateReviewController,
@@ -178,6 +180,7 @@ const validTypesUseCases = [SellerValidCertificateTypes, SellerValidCertificateT
     PersistenceModule.outboxWriterFor('certification'),
     registerEvents('certification', CERTIFICATION_EVENTS),
     registerPermissions('certification', CERTIFICATION_PERMISSIONS),
+    registerLists('certification', CERTIFICATION_LISTS),
     PersistenceModule.auditWriterFor('certification'),
     registerAuditActions('certification', CERTIFICATION_AUDIT_ACTIONS),
     registerSubscriptionsFrom(

@@ -273,13 +273,12 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
       expect(options.headers['cache-control']).toBe('no-store');
       const optionsBody = options.body as {
         productTypes: string[];
-        taxCategoryCodes: string[];
         taxCategories: { code: string; labelKey: string }[];
         categories: { categoryId: string }[];
       };
       expect(optionsBody.productTypes).toContain('simple');
-      expect(optionsBody.taxCategoryCodes.length).toBeGreaterThan(0);
-      expect(optionsBody.taxCategories.map((c) => c.code)).toEqual(optionsBody.taxCategoryCodes);
+      expect(optionsBody.taxCategories.length).toBeGreaterThan(0);
+      expect(optionsBody).not.toHaveProperty('taxCategoryCodes');
       expect(optionsBody.taxCategories).toEqual(
         code === 'ZZ'
           ? [
@@ -333,9 +332,9 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
         pausedAt: pausedAt.toString(),
         offers: { sellerCount: 2, offerCount: 3 },
       });
-      expect((read.body as { form: { taxCategoryCodes: string[] } }).form.taxCategoryCodes).toEqual(
-        expect.any(Array),
-      );
+      const readForm = (read.body as { form: Record<string, unknown> }).form;
+      expect(readForm.taxCategories).toEqual(expect.any(Array));
+      expect(readForm).not.toHaveProperty('taxCategoryCodes');
 
       for (const path of ['/options', `/${productId}`]) {
         const denied = await get(path, viewer);

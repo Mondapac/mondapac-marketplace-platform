@@ -163,6 +163,11 @@ describe.each(TEST_MARKETS)('delivery reviews in market %s (database)', (code) =
   };
   const settingsNow = () => inUnit(() => deps.deliverySettings.settings(market));
   const unique = (label: string) => `${label} ${ids.next<'Account'>().slice(-8)}`;
+  /** The models these cases edit are made at once: a proposer that files nothing. */
+  const createsAtOnce = () => ({
+    ...deps,
+    proposer: { proposeChange: () => Promise.resolve(ok(null)) },
+  });
 
   it('keeps nothing of a settings save without a note, and reverts one with its request', async () => {
     const author = admin('delivery-db-settings');
@@ -292,12 +297,14 @@ describe.each(TEST_MARKETS)('delivery reviews in market %s (database)', (code) =
   it('reverts a fleet page save (the active model and a score) and a model edit', async () => {
     const author = admin('delivery-db-fleets');
     const reviewer = admin('delivery-db-fleets-reviewer');
-    // A model is created without a review.
-    const model = await createFleetSelectionModel(deps, author, {
+    // A model is created at once here (its create waits for approval where delivery is reviewed:
+    // shipping-fleet-model-create.db-spec.ts).
+    const model = await createFleetSelectionModel(createsAtOnce(), author, {
       name: unique('Review model'),
       rule: { kind: 'cheapest' },
     });
-    if (!model.ok) throw new Error('model not created');
+    if (!model.ok || !('id' in model.value)) throw new Error('model not created');
+    const modelId = model.value.id;
     const view = async () => {
       const read = await viewFleetSelection(deps, author);
       if (!read.ok) throw new Error('view failed');
@@ -380,7 +387,7 @@ describe.each(TEST_MARKETS)('delivery reviews in market %s (database)', (code) =
     expect(
       await inUnit(() => new FleetSelectionModelReverter(deps).revert(reviewer, editRequest)),
     ).toBe('reverted');
-    const back = await inUnit(() => deps.selection.findModel(market, model.value.id));
+    const back = await inUnit(() => deps.selection.findModel(market, modelId));
     expect(back).toMatchObject({ name: model.value.name, rule: { kind: 'cheapest' }, version: 3 });
     expect(await inUnit(() => revertFleetSelectionModel(deps, reviewer, editRequest))).toBe(
       'changed-since',
@@ -433,11 +440,12 @@ describe.each(TEST_MARKETS)('delivery reviews in market %s (database)', (code) =
 
   it('keeps nothing of a refused model edit and does not review a nothing-to-do page save', async () => {
     const author = admin('delivery-db-refusals');
-    const model = await createFleetSelectionModel(deps, author, {
+    const model = await createFleetSelectionModel(createsAtOnce(), author, {
       name: unique('Refusal model'),
       rule: { kind: 'cheapest' },
     });
-    if (!model.ok) throw new Error('model not created');
+    if (!model.ok || !('id' in model.value)) throw new Error('model not created');
+    const modelId = model.value.id;
     const refused = await updateFleetSelectionModel(deps, author, {
       modelId: model.value.id,
       name: unique('Never kept'),
@@ -445,7 +453,7 @@ describe.each(TEST_MARKETS)('delivery reviews in market %s (database)', (code) =
       expectedVersion: 1,
     });
     expect(!refused.ok && refused.error.code).toBe('validation.failed');
-    expect(await inUnit(() => deps.selection.findModel(market, model.value.id))).toMatchObject({
+    expect(await inUnit(() => deps.selection.findModel(market, modelId))).toMatchObject({
       name: model.value.name,
       version: 1,
     });

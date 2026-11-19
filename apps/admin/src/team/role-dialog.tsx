@@ -191,17 +191,23 @@ export function ChangeRoleDialog({
   );
 }
 
-/** D1: invite an admin. The same toast for any address (DD 6.7). */
+/**
+ * D1: invite an admin. The same toast for any address (DD 6.7). Where the Market reviews people,
+ * the invitation is sent at once and reviewed after: a note for the reviewers is required.
+ */
 export function InviteAdminDialog({
   open,
   onClose,
   roles,
   csrfToken,
+  reviewed = false,
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
   readonly roles: readonly PlatformRole[];
   readonly csrfToken: string;
+  /** The Market reviews invitations: a note for the reviewers is asked for and required. */
+  readonly reviewed?: boolean;
 }) {
   const t = useTranslations('identity.members');
   const root = useTranslations();
@@ -213,6 +219,9 @@ export function InviteAdminDialog({
   const [emailError, setEmailError] = useState<string | null>(null);
   const [roleError, setRoleError] = useState<string | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
+  const sentForReview = useSentForReview();
   const options = useMemo(() => roleOptions(root, roles), [root, roles]);
 
   useEffect(() => {
@@ -222,6 +231,8 @@ export function InviteAdminDialog({
       setEmailError(null);
       setRoleError(null);
       setProblem(null);
+      setNote('');
+      setNoteError(null);
     }
   }, [open]);
 
@@ -231,6 +242,7 @@ export function InviteAdminDialog({
     setEmailError(null);
     setRoleError(null);
     setProblem(null);
+    setNoteError(null);
     if (address === '') {
       setEmailError(root('identity.error.validation.email.required'));
       return;
@@ -239,22 +251,33 @@ export function InviteAdminDialog({
       setRoleError(t('dialog.invite.choose'));
       return;
     }
+    // The note is read and sent only where the Market reviews the invitation.
+    const sentNote = reviewed ? trimmedNote(note) : null;
+    if (reviewed && sentNote === null) {
+      setNoteError('required');
+      return;
+    }
     await flight.run(async () => {
       const result = await callApi(
         'POST',
         'identity/admin/invitations',
-        { email: address, roleId },
+        sentNote === null ? { email: address, roleId } : { email: address, roleId, note: sentNote },
         csrfToken,
       );
       if (result.ok) {
         onClose();
         toast.success(t('dialog.invite.toast-sent', { email: address }));
+        sentForReview(result.body);
         router.refresh();
         return;
       }
       const failure: ApiFailure = result.failure;
       if (failure.status === 401) {
         router.replace('/session-ended');
+        return;
+      }
+      if (reviewed && isNoteFailure(failure)) {
+        setNoteError(note.trim() === '' ? 'required' : 'rejected');
         return;
       }
       if (failure.code === 'validation.failed') {
@@ -315,6 +338,14 @@ export function InviteAdminDialog({
         <p className="text-sm text-fg-muted">
           {t('dialog.invite.help', { duration: t('dialog.invite.duration') })}
         </p>
+        {reviewed ? (
+          <ReviewNoteField
+            value={note}
+            onChange={setNote}
+            error={noteError ?? undefined}
+            disabled={flight.pending}
+          />
+        ) : null}
         {problem === null ? null : <Banner tone="critical">{problem}</Banner>}
       </form>
     </Dialog>

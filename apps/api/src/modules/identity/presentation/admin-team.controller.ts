@@ -14,6 +14,7 @@ import {
   Res,
 } from '@nestjs/common';
 import {
+  ApiAcceptedResponse,
   ApiBadRequestResponse,
   ApiBody,
   ApiConflictResponse,
@@ -69,8 +70,6 @@ import {
   AdminCustomerView,
   AdminEmptyRequest,
   AdminInvitationChanged,
-  AdminInvitationIssued,
-  AdminInviteRequest,
   AdminSecondFactorReset,
   AdminTeamAccountRowView,
   AdminTeamInvitationRowView,
@@ -80,15 +79,20 @@ import { fail } from './customer-sign-up.controller';
 import { ApiErrorBody } from './customer-sign-up.dto';
 import {
   AdminAssignRoleReviewedRequest,
+  AdminInvitationIssuedReviewed,
+  AdminInviteReviewedRequest,
   AdminRoleAssignedReviewed,
   AdminStatusChangedReviewed,
   AdminStatusRequest,
   AdminTeamReviewedPageView,
   PlatformRoleCatalogueView,
+  PlatformRoleCreatedView,
+  PlatformRoleCreateRequest,
+  PlatformRoleDeletedView,
+  PlatformRoleDeleteRequest,
   PlatformRoleEditedView,
   PlatformRoleEditRequest,
 } from './people-review.dto';
-import { RoleEditorRequest, RoleVersionRequest, RoleWrittenView } from './role-editor.dto';
 import {
   catalogueView,
   roleBody,
@@ -326,11 +330,14 @@ export class AdminTeamController {
       'Needs identity.platform-role.create. A name and the whole key set. Every key must be one ' +
       'you hold; a protected key needs the Platform Administrator role (R11). At most 40 ' +
       'permissions; the Market limits how many custom roles it holds (role.limit; ' +
-      'access.unavailable while the Market sets none).',
+      'access.unavailable while the Market sets none). Where the Market reviews area people ' +
+      '(`review` of the catalogue), the creation needs a `note`, goes live at once and opens a ' +
+      'high-risk review in Admin Inbox › System requests (`request`); a reviewer who rejects it ' +
+      'deletes the role only while nobody holds it and its permissions are unchanged.',
   })
   @ApiHeader(CSRF)
-  @ApiBody({ type: RoleEditorRequest })
-  @ApiCreatedResponse({ type: RoleWrittenView })
+  @ApiBody({ type: PlatformRoleCreateRequest })
+  @ApiCreatedResponse({ type: PlatformRoleCreatedView })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({
@@ -347,16 +354,25 @@ export class AdminTeamController {
     @Call() context: CallContext,
     @Req() request: Request,
     @Body() body: unknown,
-  ): Promise<RoleWrittenView> {
-    const input = roleBody(request, body);
-    let outcome: RoleWrittenView | HttpException;
+  ): Promise<PlatformRoleCreatedView> {
+    const split = splitNote(body);
+    const input = roleBody(request, split.rest);
+    let outcome: PlatformRoleCreatedView | HttpException;
     if (input instanceof HttpException) outcome = input;
+    else if (split.invalid) outcome = NOTE_TYPE();
     else {
       const result = await this.createPlatformRole.execute(context, {
         name: input.name,
         permissionKeys: input.permissionKeys as string[],
+        note: split.note,
       });
-      outcome = result.ok ? result.value : roleRefusal(result.error);
+      outcome = result.ok
+        ? {
+            code: result.value.code,
+            roleId: result.value.roleId,
+            request: requestView(result.value.request),
+          }
+        : roleRefusal(result.error);
     }
     return this.settle('identity.admin-create-role', context, outcome);
   }
@@ -429,12 +445,20 @@ export class AdminTeamController {
     description:
       'Needs identity.platform-role.delete. Only a custom role that no account holds ' +
       '(role.in-use: reassign its holders first). Open invitations for it can no longer be ' +
-      'accepted. Never a system or default role (role.read-only).',
+      'accepted. Never a system or default role (role.read-only). Where the Market reviews area ' +
+      'people (`review` of the catalogue), the delete needs a `note` and waits for another ' +
+      "admin's approval in Admin Inbox › System requests: 202 with `request`, and the role stays " +
+      'until the approval, which deletes it only if it is unchanged and still unheld. One delete ' +
+      'waits per role (system-requests.already-pending, details.pendingNumber).',
   })
   @ApiParam(ROLE_PARAM)
   @ApiHeader(CSRF)
-  @ApiBody({ type: RoleVersionRequest })
-  @ApiOkResponse({ type: RoleWrittenView })
+  @ApiBody({ type: PlatformRoleDeleteRequest })
+  @ApiOkResponse({ type: PlatformRoleDeletedView, description: 'Deleted (request null).' })
+  @ApiAcceptedResponse({
+    type: PlatformRoleDeletedView,
+    description: 'role.delete-requested: waits for approval (request).',
+  })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -445,22 +469,40 @@ export class AdminTeamController {
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'role.unknown' })
   @ApiConflictResponse({
     type: ApiErrorBody,
-    description: 'role.read-only, role.in-use, conflict.stale or conflict.retry',
+    description:
+      'role.read-only, role.in-use, system-requests.already-pending (details.pendingNumber), ' +
+      'conflict.stale or conflict.retry',
   })
   async deleteRole(
     @Call() context: CallContext,
     @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
     @Param('roleId') rawRoleId: string,
     @Body() body: unknown,
-  ): Promise<RoleWrittenView> {
+  ): Promise<PlatformRoleDeletedView> {
     const roleId = rolePathId(rawRoleId);
-    const expectedVersion = roleVersionBody(request, body);
-    let outcome: RoleWrittenView | HttpException;
+    const split = splitNote(body);
+    const expectedVersion = roleVersionBody(request, split.rest);
+    let outcome: PlatformRoleDeletedView | HttpException;
     if (roleId instanceof HttpException) outcome = roleId;
     else if (expectedVersion instanceof HttpException) outcome = expectedVersion;
+    else if (split.invalid) outcome = NOTE_TYPE();
     else {
-      const result = await this.deletePlatformRole.execute(context, { roleId, expectedVersion });
-      outcome = result.ok ? result.value : roleRefusal(result.error);
+      const result = await this.deletePlatformRole.execute(context, {
+        roleId,
+        expectedVersion,
+        note: split.note,
+      });
+      const waits = result.ok && result.value.code === 'role.delete-requested';
+      // A delete that waits for approval changed nothing yet: 202 Accepted.
+      if (waits) response.status(202);
+      outcome = result.ok
+        ? {
+            code: waits ? 'role.delete-requested' : 'role.deleted',
+            roleId: result.value.roleId,
+            request: requestView(result.value.request),
+          }
+        : roleRefusal(result.error);
     }
     return this.settle('identity.admin-delete-role', context, outcome);
   }
@@ -588,11 +630,15 @@ export class AdminTeamController {
     description:
       'Needs identity.admin-account.invite. The actor is the inviter: the role must be one it ' +
       'could assign, and the acceptance checks again that it still is active and could. One ' +
-      'pending invitation per address; a stale one is replaced. The mail follows shortly.',
+      'pending invitation per address; a stale one is replaced. The mail follows shortly. ' +
+      'Where the Market reviews area people (`review` of the team list), the invitation needs a ' +
+      '`note`, is sent at once and opens a high-risk review in Admin Inbox › System requests ' +
+      '(`request`); a reviewer who rejects it revokes it while pending, or disables the admin ' +
+      'who accepted it and ends their sessions.',
   })
   @ApiHeader(CSRF)
-  @ApiBody({ type: AdminInviteRequest })
-  @ApiCreatedResponse({ type: AdminInvitationIssued })
+  @ApiBody({ type: AdminInviteReviewedRequest })
+  @ApiCreatedResponse({ type: AdminInvitationIssuedReviewed })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({
@@ -617,12 +663,14 @@ export class AdminTeamController {
     @Req() request: Request,
     @Res({ passthrough: true }) response: Response,
     @Body() body: unknown,
-  ): Promise<AdminInvitationIssued> {
-    const input = adminBody(request, body, ['email', 'roleId'] as const);
+  ): Promise<AdminInvitationIssuedReviewed> {
+    const split = splitNote(body);
+    const input = adminBody(request, split.rest, ['email', 'roleId'] as const);
     const client = input instanceof HttpException ? input : adminClient(request);
-    let outcome: AdminInvitationIssued | HttpException;
+    let outcome: AdminInvitationIssuedReviewed | HttpException;
     if (input instanceof HttpException) outcome = input;
     else if (client instanceof HttpException) outcome = client;
+    else if (split.invalid) outcome = NOTE_TYPE();
     else {
       const roleId = parseId<'Role'>(input.roleId);
       const result = roleId.ok
@@ -630,10 +678,15 @@ export class AdminTeamController {
             email: input.email,
             roleId: roleId.value,
             origin: client.origin,
+            note: split.note,
           })
         : err({ code: 'validation.failed', fields: [{ path: 'roleId', code: 'format' }] });
       outcome = result.ok
-        ? { code: result.value.code, invitationId: result.value.invitationId }
+        ? {
+            code: result.value.code,
+            invitationId: result.value.invitationId,
+            request: requestView(result.value.request),
+          }
         : refusal(result.error, response);
     }
     return this.settle('identity.admin-invite', context, outcome);

@@ -8,6 +8,7 @@ import { Icon } from '../icons/icon.tsx';
 import { useStore } from '../shell/store-context.tsx';
 import type { CheckoutCustomer } from '../storefront/types.ts';
 import { AuthForms } from './auth-forms.tsx';
+import { clearFollowIntent, readFollowIntent } from './follow-button.tsx';
 import { useDialog } from './use-dialog.ts';
 
 /**
@@ -22,13 +23,18 @@ export function LoginModal({ customer }: { readonly customer: CheckoutCustomer }
   const [mounted, setMounted] = useState(false);
   const panel = useRef<HTMLDivElement>(null);
   const close = () => setLoginOpen(false);
+  // Leaving without signing in drops a follow that waited for the sign-in.
+  const dismiss = () => {
+    clearFollowIntent();
+    close();
+  };
   useEffect(() => setMounted(true), []);
-  useDialog(open, close, panel, (root) => root.querySelector('input'));
+  useDialog(open, dismiss, panel, (root) => root.querySelector('input'));
 
   if (!mounted) return null;
   return createPortal(
     <div className={open ? 'amw open' : 'amw'}>
-      <div className="amscrim" onClick={close} />
+      <div className="amscrim" onClick={dismiss} />
       <div className="ambox">
         <div
           className="amdlg"
@@ -43,7 +49,12 @@ export function LoginModal({ customer }: { readonly customer: CheckoutCustomer }
               heading={(title) => (
                 <div className="amh">
                   <h2 id="login-title">{title}</h2>
-                  <button className="iconbtn" type="button" aria-label={t('close')} onClick={close}>
+                  <button
+                    className="iconbtn"
+                    type="button"
+                    aria-label={t('close')}
+                    onClick={dismiss}
+                  >
                     <Icon name="close" />
                   </button>
                 </div>
@@ -52,8 +63,10 @@ export function LoginModal({ customer }: { readonly customer: CheckoutCustomer }
               onSignedIn={() => {
                 // Live: the store already holds the signed-in customer.
                 if (!live) setCustomer(customer);
+                // A Follow that waited for the sign-in sends the buyer back to its page.
+                const back = readFollowIntent()?.path;
                 close();
-                router.push('/account');
+                router.push(back ?? '/account');
               }}
             />
           ) : null}

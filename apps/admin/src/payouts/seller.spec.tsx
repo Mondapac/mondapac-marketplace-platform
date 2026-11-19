@@ -180,7 +180,7 @@ describe('payout terms card', () => {
     typeNote(dialog);
     call.mockResolvedValueOnce(ok({ ...own(), request: { id: 'r1', number: 7 } }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save terms' }));
-    await expectToast('Sent for review as SR-7', 'info');
+    await expectToast('Sent for review (SR-7)', 'info');
   });
 
   it('keeps an out-of-range value, a missing reason and an empty selection out of the request', () => {

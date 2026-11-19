@@ -159,11 +159,9 @@ export class PlatformProductOptionsView {
   @ApiProperty({ type: [String], description: 'The product types the Market offers.' })
   productTypes!: string[];
   @ApiProperty({ type: OwnProductOptionsLocales }) locales!: OwnProductOptionsLocales;
-  @ApiProperty({ type: [String], description: "The Market's tax category codes." })
-  taxCategoryCodes!: string[];
   @ApiProperty({
     type: [OwnTaxCategory],
-    description: 'The same categories with the label key each is shown by.',
+    description: "The Market's tax categories with the label key each is shown by.",
   })
   taxCategories!: OwnTaxCategory[];
   @ApiProperty({
