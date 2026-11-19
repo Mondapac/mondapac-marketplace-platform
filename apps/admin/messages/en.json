@@ -7463,7 +7463,7 @@
         "to": "To",
         "cancel": "Cancel",
         "apply": "Apply",
-        "utc-days": "Days are UTC days.",
+        "zone-days": "Days are in your panel time zone.",
         "name": {
           "sellerId": "Store",
           "status": "Status",
