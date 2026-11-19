@@ -1,10 +1,7 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type {
-  AccountDeletionRequestRepository,
-  PendingCursor,
-} from '../application/ports/account-deletion-request.repository';
+import type { AccountDeletionRequestRepository } from '../application/ports/account-deletion-request.repository';
 import type {
   AccountDeletionRequest,
   AccountDeletionRequestStatus,
@@ -156,30 +153,6 @@ export class PrismaAccountDeletionRequestRepository implements AccountDeletionRe
       },
       at,
     );
-  }
-
-  async listPending(
-    market: MarketContext,
-    page: { readonly after: PendingCursor | null; readonly limit: number },
-  ) {
-    const { after } = page;
-    const rows = await this.prisma.tx(market).customersAccountDeletionRequest.findMany({
-      where: {
-        marketId: market.marketId,
-        status: 'pending',
-        ...(after === null
-          ? {}
-          : {
-              OR: [
-                { scheduledFor: { gt: toDate(after.scheduledFor) } },
-                { scheduledFor: toDate(after.scheduledFor), id: { gt: after.id } },
-              ],
-            }),
-      },
-      orderBy: [{ scheduledFor: 'asc' }, { id: 'asc' }],
-      take: page.limit,
-    });
-    return rows.map(toRequest);
   }
 
   async claim(

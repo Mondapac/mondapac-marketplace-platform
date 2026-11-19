@@ -45,7 +45,13 @@ const RICE = {
 const options: ProductOptions = {
   productTypes: ['grocery', 'dry-goods'],
   conditions: ['new', 'used'],
-  taxCategoryCodes: ['gst', 'gst-free-food'],
+  taxCategoryCodes: ['gst', 'gst-free-food', 'no-label', 'unknown-key'],
+  taxCategories: [
+    { code: 'gst', labelKey: 'catalog.tax.taxable' },
+    { code: 'gst-free-food', labelKey: 'catalog.tax.gst-free' },
+    // A key the message catalogue lacks falls back to the code; a code without an entry too.
+    { code: 'unknown-key', labelKey: 'catalog.tax.nothing-here' },
+  ],
   categories: [
     { categoryId: 'c1', parentId: null, names: { 'en-AU': 'Pantry' } },
     { categoryId: 'c2', parentId: 'c1', names: { 'en-AU': 'Rice' } },
@@ -128,7 +134,8 @@ describe('Add product page', () => {
     expect(screen.getByLabelText('Tax category')).toBeTruthy();
     expect(screen.getByText(/Tags: save the draft first/)).toBeTruthy();
     const submit = screen.getByRole('button', { name: 'Submit for review' });
-    expect((submit as HTMLButtonElement).disabled).toBe(true);
+    expect((submit as HTMLButtonElement).disabled).toBe(false);
+    expect(submit.getAttribute('aria-disabled')).toBe('true');
     expect(
       screen.getByText(
         /To submit: add a title, choose a product type.*category.*tax category.*save the draft first/,
@@ -387,12 +394,15 @@ describe('Add product page', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
-  it('explains the category and the tax category, with readable tax names', () => {
+  it('explains the category and the tax category, with the tax names from the messages', () => {
     mount();
     expect(screen.getByText(/Choose a category or subcategory\./)).toBeTruthy();
     expect(screen.getByText(/Required\. Separate from the product category/)).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Choose a tax category' })).toBeTruthy();
-    expect(screen.getByRole('option', { name: 'GST free food' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Taxable' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'GST-free' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'No label' })).toBeTruthy();
+    expect(screen.getByRole('option', { name: 'Unknown key' })).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Choose a product type' })).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Choose a condition' })).toBeTruthy();
   });
@@ -414,9 +424,14 @@ describe('Add product page', () => {
     });
   });
 
-  it('ties the "To submit" line to the disabled Submit button', () => {
+  it('keeps the unavailable Submit focusable and tied to the "To submit" line', () => {
     mount();
     const submit = screen.getByRole('button', { name: 'Submit for review' });
+    submit.focus();
+    expect(document.activeElement).toBe(submit);
+    expect(submit.getAttribute('aria-disabled')).toBe('true');
+    fireEvent.click(submit);
+    expect(call).not.toHaveBeenCalled();
     const line = screen.getByText(/^To submit:/);
     expect(submit.getAttribute('aria-describedby')).toBe(line.id);
     expect(line.parentElement?.getAttribute('aria-live')).toBe('polite');

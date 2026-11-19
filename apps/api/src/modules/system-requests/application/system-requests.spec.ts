@@ -1,3 +1,4 @@
+import ExcelJS from 'exceljs';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -10,6 +11,7 @@ import {
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
+import { ExceljsSheetWriter, type ExportFile } from '../../../platform/list-export';
 import type { AccessDeclaration } from '../../../platform/authz';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
@@ -33,6 +35,7 @@ import {
   SYSTEM_REQUESTS_DECIDE_HIGH_STEP_UP,
   SYSTEM_REQUESTS_POLICY_CHANGE_STEP_UP,
 } from '../contracts/step-up';
+import { EXPORT_TOTAL_CAP, type SystemRequestsExportDependencies } from './export-flow';
 import { listRequests } from './list-flow';
 import { changeAreaPolicy, DUE_DAYS_KIND, POLICY_AREA_KIND, PolicyReverter } from './policy-flow';
 import { approveRequest, commentOnRequest, withdrawRequest } from './request-flow';
@@ -54,6 +57,7 @@ import { ChangeAreaReviewPolicy } from './use-cases/change-area-review-policy.us
 import { ChangeReviewDueDays } from './use-cases/change-review-due-days.use-case';
 import { CommentOnSystemRequest } from './use-cases/comment-on-system-request.use-case';
 import { CountSystemRequests } from './use-cases/count-system-requests.use-case';
+import { ExportSystemRequests } from './use-cases/export-system-requests.use-case';
 import { ListSystemRequests } from './use-cases/list-system-requests.use-case';
 import { RejectSystemRequest } from './use-cases/reject-system-request.use-case';
 import { ViewReviewPolicy } from './use-cases/view-review-policy.use-case';
@@ -1354,6 +1358,216 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
         ok: false,
         error: { code: 'validation.failed' },
       });
+    });
+  });
+
+  describe('the export (super list, rule 14)', () => {
+    const exportDeps = (): SystemRequestsExportDependencies => ({
+      ...deps,
+      sheetWriter: new ExceljsSheetWriter(),
+      zone: { zoneOf: (ctx) => markets.get(ctx.marketId).timezone },
+    });
+    const exportAs = (who: Id<'Account'>, input: unknown, ctx: CallContext = admin(who)) =>
+      new ExportSystemRequests(gate, exportDeps()).execute(ctx, input);
+    const text = async (file: ExportFile): Promise<string> => {
+      let out = '';
+      for await (const chunk of file.chunks) out += typeof chunk === 'string' ? chunk : '';
+      return out;
+    };
+    const lines = async (who: Id<'Account'>, input: Record<string, unknown>) => {
+      const result = await exportAs(who, input);
+      if (!result.ok) throw new Error(`export failed: ${result.error.code}`);
+      return (await text(result.value))
+        .replace(/^\uFEFF/, '')
+        .split('\r\n')
+        .filter((line) => line !== '');
+    };
+
+    it('writes the rows of the view with the fixed and the chosen columns, never the values', async () => {
+      subjects.labels.set(`${market.marketId}:list-paging`, 'List paging');
+      const first = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+      clock.advance(Temporal.Duration.from({ minutes: 5 }));
+      await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: first.id });
+      await change(CHECKER, 'cart-mode', { mode: 'multi' }, { mode: 'single' });
+      // Another Market's request never reaches this Market's file.
+      await recorder.openReview(admin(MAKER, other), {
+        area: 'catalogue',
+        subjectKind: SETTING,
+        subjectRef: 'elsewhere',
+        before: { v: 1 },
+        after: { v: 2 },
+        note: 'Other Market',
+      });
+
+      const result = await exportAs(CHECKER, {
+        view: 'all',
+        sort: 'number',
+        direction: 'asc',
+        columns: 'subject,requestedBy,decidedBy,decided,comments',
+        zone: 'UTC',
+      });
+      if (!result.ok) throw new Error('export failed');
+      expect(result.value.filename).toBe('system-requests-2026-11-15.csv');
+      expect(result.value.contentType).toBe('text/csv; charset=utf-8');
+      const rows = (await text(result.value)).replace(/^\uFEFF/, '').split('\r\n');
+      expect(rows[0]).toBe(
+        'Request,Note,Area,Risk,Status,Subject type,Subject,Subject ID,Requested by,' +
+          'Requested by ID,Decided by,Decided by ID,Decided,Decision,Comments',
+      );
+      expect(rows[1]).toBe(
+        `SR-1,Raise the limit for the launch week,Catalogue,Medium,Approved,${SETTING},` +
+          `List paging,list-paging,Maryam K.,${MAKER},Ali R.,${CHECKER},` +
+          '2026-11-15T01:05:00+00:00,Approved,0',
+      );
+      expect(rows[2]).toMatch(/^SR-2,.*,Open,.*,cart-mode,Ali R\.,/);
+      expect(rows.filter((line) => line !== '')).toHaveLength(3);
+      const whole = rows.join('\n');
+      // The values before and after stay on the request page.
+      expect(whole).not.toMatch(/multi|single|"size"/);
+      expect(whole).not.toContain('elsewhere');
+    });
+
+    it('writes times in the zone asked for, or in the Market zone, with the overdue flag', async () => {
+      await change(MAKER, 'a', { v: 1 }, { v: 2 });
+      clock.advance(Temporal.Duration.from({ hours: 8 * 24 }));
+      const zoned = await lines(CHECKER, {
+        view: 'all',
+        columns: 'applied,due',
+        zone: 'Asia/Tokyo',
+      });
+      expect(zoned[0]).toBe('Request,Note,Area,Risk,Status,Applied,Review due,Overdue');
+      expect(zoned[1]).toMatch(/,2026-11-15T10:00:00\+09:00,2026-11-22T10:00:00\+09:00,Yes$/);
+      const marketZone = markets.get(market.marketId).timezone;
+      const expected = START.toZonedDateTimeISO(marketZone).toString({
+        timeZoneName: 'never',
+        smallestUnit: 'second',
+      });
+      const inMarket = await lines(CHECKER, { view: 'all', columns: 'applied' });
+      expect(inMarket[1]).toBe(
+        `SR-1,Raise the limit for the launch week,Catalogue,Medium,Open,${expected}`,
+      );
+    });
+
+    it('applies the view as the list does: Needs my review leaves out own requests and other areas', async () => {
+      await change(MAKER, 'a', { v: 1 }, { v: 2 });
+      await change(CHECKER, 'b', { v: 1 }, { v: 2 });
+      await change(MAKER, 'c', { v: 1 }, { v: 2 }, { area: 'people' });
+      const forMaker = await lines(MAKER, { view: 'needs-my-review' });
+      // The maker reviews catalogue only: the checker's catalogue request is the one row.
+      expect(forMaker.slice(1).map((line) => line.split(',')[0])).toEqual(['SR-2']);
+      const forOutsider = await lines(OUTSIDER, { view: 'needs-my-review' });
+      expect(forOutsider).toHaveLength(1);
+      const filtered = await lines(CHECKER, { view: 'all', risk: 'high', q: 'launch' });
+      expect(filtered.slice(1).map((line) => line.split(',')[0])).toEqual(['SR-3']);
+      const list = await useCase(ListSystemRequests).execute(admin(CHECKER), {
+        view: 'all',
+        risk: 'high',
+        q: 'launch',
+      });
+      expect(list.ok && list.value.rows.map((row) => row.number)).toEqual([3]);
+    });
+
+    it('writes the chosen rows in the order given, and refuses an id of another Market', async () => {
+      const a = await change(MAKER, 'a', { v: 1 }, { v: 2 });
+      const b = await change(MAKER, 'b', { v: 1 }, { v: 2 });
+      const chosen = await lines(CHECKER, { ids: `${b.id},${a.id}` });
+      expect(chosen.slice(1).map((line) => line.split(',')[0])).toEqual(['SR-2', 'SR-1']);
+      const elsewhere = await recorder.openReview(admin(MAKER, other), {
+        area: 'catalogue',
+        subjectKind: SETTING,
+        subjectRef: 'x',
+        before: { v: 1 },
+        after: { v: 2 },
+        note: 'Other Market',
+      });
+      if (!elsewhere.ok || elsewhere.value === null) throw new Error('expected a request');
+      expect(await exportAs(CHECKER, { ids: `${a.id},${elsewhere.value.id}` })).toEqual({
+        ok: false,
+        error: { code: 'system-requests.not-found' },
+      });
+      expect(await exportAs(CHECKER, { ids: `${a.id},${a.id}` })).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'ids', code: 'duplicate' }] },
+      });
+      const many = Array.from({ length: 101 }, (_, n) => id<'SystemRequest'>(0x9000 + n)).join(',');
+      expect(await exportAs(CHECKER, { ids: many })).toEqual({
+        ok: false,
+        error: { code: 'batch.too-large', max: 100 },
+      });
+    });
+
+    it('refuses more than 10,000 matching rows with the total', async () => {
+      await change(MAKER, 'a', { v: 1 }, { v: 2 });
+      const big = Object.create(requests) as InMemoryRequests;
+      big.count = (_market, _filter, cap) => Promise.resolve(Math.min(12_345, cap));
+      const result = await new ExportSystemRequests(gate, {
+        ...exportDeps(),
+        requests: big,
+      }).execute(admin(CHECKER), { view: 'all' });
+      expect(result).toEqual({
+        ok: false,
+        error: { code: 'batch.too-large', max: 10_000, total: 12_345 },
+      });
+    });
+
+    it('counts the total of a refused export only up to 100,000', async () => {
+      await change(MAKER, 'a', { v: 1 }, { v: 2 });
+      const caps: number[] = [];
+      const huge = Object.create(requests) as InMemoryRequests;
+      huge.count = (_market, _filter, cap) => {
+        caps.push(cap);
+        return Promise.resolve(Math.min(2_500_000, cap));
+      };
+      const result = await new ExportSystemRequests(gate, {
+        ...exportDeps(),
+        requests: huge,
+      }).execute(admin(CHECKER), { view: 'all' });
+      expect(result).toEqual({
+        ok: false,
+        error: { code: 'batch.too-large', max: 10_000, total: EXPORT_TOTAL_CAP },
+      });
+      expect(EXPORT_TOTAL_CAP).toBe(100_000);
+      expect(caps).toEqual([10_001, 100_000]);
+    });
+
+    it('refuses unknown keys, bad values, a caller without the view key and an acting-as session', async () => {
+      const refused = async (input: Record<string, unknown>) => {
+        const result = await exportAs(CHECKER, input);
+        return result.ok ? null : result.error;
+      };
+      expect(await refused({ page: '1' })).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'page', code: 'unknown' }],
+      });
+      expect(await refused({ format: 'pdf' })).toMatchObject({ code: 'validation.failed' });
+      expect(await refused({ columns: 'before' })).toMatchObject({ code: 'validation.failed' });
+      expect(await refused({ zone: 'Mars/Base' })).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'zone', code: 'value' }],
+      });
+      expect(await refused({ view: 'nope' })).toMatchObject({ code: 'validation.failed' });
+      expect((await exportAs(STRANGER, {})).ok).toBe(false);
+      expect(await exportAs(MAKER, {}, actingAs(MAKER))).toMatchObject({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+    });
+
+    it('writes an XLSX workbook with every cell as text', async () => {
+      await change(MAKER, 'a', { v: 1 }, { v: 2 });
+      const result = await exportAs(CHECKER, { view: 'all', format: 'xlsx', columns: 'comments' });
+      if (!result.ok) throw new Error('export failed');
+      expect(result.value.filename).toBe('system-requests-2026-11-15.xlsx');
+      const chunks: Uint8Array[] = [];
+      for await (const chunk of result.value.chunks) {
+        chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+      }
+      const book = new ExcelJS.Workbook();
+      await book.xlsx.load(Buffer.concat(chunks) as unknown as ArrayBuffer);
+      const sheet = book.getWorksheet('System requests');
+      expect(sheet?.getRow(1).getCell(1).value).toBe('Request');
+      expect(sheet?.getRow(2).getCell(1).value).toBe('SR-1');
+      expect(sheet?.getRow(2).getCell(6).value).toBe('0');
     });
   });
 

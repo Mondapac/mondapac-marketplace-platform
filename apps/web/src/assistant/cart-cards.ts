@@ -90,6 +90,8 @@ export interface BasketOptionView {
   /** Packs for the wish; null when the pack size is unknown (the buyer chooses). */
   readonly quantity: number | null;
   readonly sizeNote: 'exact' | 'larger' | null;
+  /** The most packs the buyer may add of this unit; null when the server sends none. */
+  readonly maxQuantity: number | null;
 }
 
 export interface BasketLineView extends BasketOptionView {
@@ -268,6 +270,7 @@ function optionOf(raw: unknown): BasketOptionView | null {
     taxInclusive: flag(raw.taxInclusive),
     quantity: whole(raw.quantity, 1, 99),
     sizeNote,
+    maxQuantity: whole(raw.maxQuantity, 0, QUANTITY_MAX),
   };
 }
 
