@@ -2,9 +2,13 @@
 // platform (so identity, which imports no module, can reach it too: ADR-0018 decision 4);
 // system-requests implements it, and other modules keep importing it from here.
 export {
+  SYSTEM_ACTION_PROPOSER,
   SYSTEM_REQUEST_RECORDER,
   type AppliedChange,
+  type ProposedChange,
+  type ProposeFailure,
   type RecordedRequest,
   type RecordFailure,
+  type SystemActionProposer,
   type SystemRequestRecorder,
 } from '../../../platform/change-review/change-review';

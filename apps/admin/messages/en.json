@@ -1760,7 +1760,9 @@
       "basis": {
         "SELLER_CERT_REQUIRED": "Seller certificate required",
         "SELLER_OR_MANUFACTURER": "Seller or manufacturer certificate",
-        "NO_BADGE_ALLOWED": "No badge allowed"
+        "NO_BADGE_ALLOWED": "No badge allowed",
+        "SELLER_REQUIRED": "Seller certificate required",
+        "NOT_APPLICABLE": "No certificate needed"
       },
       "detail": {
         "title": "Certificate type",
@@ -1805,7 +1807,8 @@
           "withdrawn": "Proposal withdrawn.",
           "revision-published": "Change published.",
           "revision-pending": "Change saved. A second admin has to approve it before it is published."
-        }
+        },
+        "policy": "Claim basis policy"
       },
       "revise": {
         "title": "Change a certificate type",
@@ -1879,7 +1882,8 @@
       "proposal": {
         "title": {
           "revision": "A change waiting for a second admin",
-          "reactivation": "Reactivation waiting for a second admin"
+          "reactivation": "Reactivation waiting for a second admin",
+          "policy": "A policy change waiting for a second admin"
         },
         "sent": "Asked on",
         "reason": "Reason",
@@ -1902,7 +1906,8 @@
             "button": "Approve change",
             "body": {
               "revision": "The change is published at once. Certificates already approved keep the rules they were approved under.",
-              "reactivation": "The type becomes active again and sellers can add new certificates of it."
+              "reactivation": "The type becomes active again and sellers can add new certificates of it.",
+              "policy": "The new rows are published at once and apply to claims made from now on."
             }
           },
           "reject": {
@@ -1910,7 +1915,8 @@
             "button": "Reject change",
             "body": {
               "revision": "The proposal is closed for good. The published revision stays.",
-              "reactivation": "The proposal is closed for good. The type stays inactive."
+              "reactivation": "The proposal is closed for good. The type stays inactive.",
+              "policy": "The proposal is closed for good. The published rows stay."
             }
           },
           "withdraw": {
@@ -1918,7 +1924,8 @@
             "button": "Withdraw proposal",
             "body": {
               "revision": "The proposal is closed. You can propose it again later.",
-              "reactivation": "The proposal is closed. You can ask again later."
+              "reactivation": "The proposal is closed. You can ask again later.",
+              "policy": "The proposal is closed. You can propose it again later."
             }
           }
         },
@@ -1944,7 +1951,86 @@
         "csrf": "Your session needs a refresh. Reload the page.",
         "unavailable": "The service is not available right now. Try again in a few minutes.",
         "unknown": "Something went wrong. Try again.",
-        "not-proposer": "Only the admin who proposed this can withdraw it."
+        "not-proposer": "Only the admin who proposed this can withdraw it.",
+        "policy-invalid": "The API refused the rows. Check them and try again."
+      },
+      "policy": {
+        "title": "Claim basis policy",
+        "back": "Back to the type",
+        "heading": "Claim basis policy of {code}",
+        "never-saved": "No policy saved yet. The default basis applies everywhere.",
+        "revision": "Revision {n}",
+        "default": "Default basis",
+        "default-help": "Used when no row matches.",
+        "waiting": "A change to this policy is waiting for a second admin.",
+        "published-rows": "Published rows",
+        "no-rows": "There are no rows. The default basis applies to every claim.",
+        "kind": {
+          "category": "Platform category",
+          "handling": "Handling type"
+        },
+        "handling": {
+          "SEALED_ORIGINAL": "Sealed original",
+          "REPACKED": "Repacked",
+          "PREPARED": "Prepared",
+          "FRESH": "Fresh"
+        },
+        "reason": "Reason",
+        "change": "Change the rows",
+        "view-only": "You can view this policy but not change it.",
+        "categories-unavailable": "The categories could not be loaded, so the rows can't be changed right now. Reload the page to try again.",
+        "history": "History",
+        "not-published": "Not published",
+        "has-reason": "Has a reason",
+        "done": {
+          "published": "Policy changed and published.",
+          "pending": "Saved. A second admin has to approve it before it is published.",
+          "approved": "Change approved and published.",
+          "rejected": "Change rejected.",
+          "withdrawn": "Proposal withdrawn.",
+          "sent": "Sent for review as SR-{number}."
+        },
+        "form": {
+          "intro": "One row says which basis a claim needs for a platform category or a handling type. Each category and each handling type can have one row.",
+          "no-rows": "There are no rows yet.",
+          "row": "Row {n}",
+          "category": "Platform category",
+          "pick-category": "Choose a category",
+          "handling": "Handling type",
+          "basis": "Basis",
+          "remove": "Remove this row",
+          "add-category": "Add a category row",
+          "add-handling": "Add a handling row",
+          "reason": "Reason for the change",
+          "optional": "optional",
+          "reason-help": "Up to {max} characters. Shown to the admin who approves it.",
+          "review": "Review changes",
+          "no-changes": "Nothing has changed yet."
+        },
+        "problem": {
+          "category": "Choose a category.",
+          "duplicate": "This category or handling type already has a row.",
+          "manufacturer": "A handling type can't use the manufacturer basis.",
+          "reason": "Keep the reason to {max} characters."
+        },
+        "no-row": "No row",
+        "confirm": {
+          "title": "Save these changes?",
+          "body": "These rows change:",
+          "from": "Before:",
+          "to": "After:",
+          "back": "Back to the form",
+          "save": "Save the change",
+          "reload": "Reload the page",
+          "second-admin": "A change that relaxes a rule waits until a second admin approves it. Other changes are published at once."
+        },
+        "issue": {
+          "duplicate": "A category or handling type has two rows.",
+          "manufacturer-handling": "A handling row can't use the manufacturer basis.",
+          "category-unknown": "A row names a category that isn't an active platform category.",
+          "too-many": "There are too many rows.",
+          "row-invalid": "A row is not valid."
+        }
       }
     }
   },
@@ -3155,7 +3241,7 @@
       },
       "scope": {
         "label": "What it can do",
-        "help": "Cart suggestions wait for the real cart connection and a security review.",
+        "help": "Cart suggestions add cart cards to answers. The buyer confirms every change; the assistant never edits a cart by itself. Keep \"Answer questions only\" until the assistant has been tested with a real AI model for this feature.",
         "read-only": "Answer questions only",
         "cart-suggestions": "Answer and suggest cart actions"
       },
@@ -3233,7 +3319,8 @@
       "not-configured-option": "{option} (not configured on the server)",
       "version-defaults": "Built-in defaults, never saved",
       "basket": {
-        "label": "Basket proposals from a list"
+        "label": "Basket proposals from a list",
+        "help": "Off by default. Lets the assistant turn a typed or pasted shopping list into a basket card that the buyer reviews; it adds nothing to a cart by itself. It works with either choice of \"What it can do\", and only while \"Assistant switched on\" is on. Keep it off until the assistant has been tested with a real AI model for this feature."
       }
     },
     "view-only": {
@@ -3418,7 +3505,11 @@
     "error": {
       "required": "Write a note for the reviewers (1 to 500 characters).",
       "rejected": "The note was refused. Write 1 to 500 characters."
-    }
+    },
+    "help-approval": "Say why. The admin who decides reads it in Admin Inbox > System requests.",
+    "sent-for-approval": "Sent for approval ({number})",
+    "send-for-approval": "Send for approval",
+    "approval-body": "Nothing changes until another admin approves it in Admin Inbox > System requests."
   },
   "commission": {
     "title": "Commission",
@@ -5119,6 +5210,10 @@
         "reason": "reason: {reason}"
       },
       "topic-archived": "{name} (archived)"
+    },
+    "tax": {
+      "taxable": "Taxable",
+      "gst-free": "GST-free"
     }
   },
   "orders": {
@@ -5983,7 +6078,10 @@
         "delete": "Delete account…",
         "edit": "Edit…",
         "password-reset": "Send password reset…",
-        "sign-out": "Sign out everywhere…"
+        "sign-out": "Sign out everywhere…",
+        "edit-email": "Edit email…",
+        "change-pending-email": "Change pending email…",
+        "email-pending": "Pending new email"
       },
       "overview": {
         "figures": "Customer figures",
@@ -6450,7 +6548,7 @@
         "unavailable": "The name could not be saved. Try again."
       },
       "email": "Email",
-      "email-help": "The email is changed through its own verified flow, not here.",
+      "email-help": "Use Edit email… in the More menu to change the email.",
       "counter": "{count, number} of {max, number}"
     },
     "notes": {
@@ -7024,6 +7122,45 @@
           "status": "Status",
           "created": "Reported"
         }
+      }
+    },
+    "email": {
+      "title": "Edit email",
+      "current": "Current email",
+      "pending": "Pending new email",
+      "new": "New email",
+      "note": "We email a confirmation link to the new address and a notice to the current one. The current address keeps working until the customer confirms.",
+      "replaces": "Sending again replaces the pending request.",
+      "send": "Send confirmation",
+      "cancel": "Cancel",
+      "step-up": "You will be asked for a two-step code next.",
+      "sent": "Confirmation sent to {email}.",
+      "error": {
+        "required": "Enter the new email.",
+        "invalid": "Enter a valid email address.",
+        "same": "This is already the current email.",
+        "taken": "This email is already used by another account.",
+        "not-eligible": "A disabled or unverified account cannot change its email. Enable or verify it first.",
+        "deletion-pending": "This customer has a deletion request pending. Cancel it first.",
+        "not-found": "This customer no longer exists.",
+        "throttled": "Try again in {minutes, plural, one {# minute} other {# minutes}}.",
+        "denied": "You don’t have access to change emails.",
+        "unavailable": "The confirmation could not be sent. Try again."
+      },
+      "banner": {
+        "text": "Waiting for {email} to confirm. The current address stays until then. Requested {date}.",
+        "cancel": "Cancel email change…"
+      },
+      "cancel-change": {
+        "title": "Cancel the email change?",
+        "body": "{email} will not be used and its confirmation link stops working. The current address stays.",
+        "confirm": "Cancel email change",
+        "keep": "Keep it",
+        "done": "Email change cancelled.",
+        "gone": "There is no pending email change any more.",
+        "failed": "The email change could not be cancelled. Try again.",
+        "denied": "You don’t have access to cancel email changes.",
+        "throttled": "Too many attempts. Try again in {minutes, plural, one {# minute} other {# minutes}}."
       }
     }
   },
@@ -8627,7 +8764,8 @@
       "discard": {
         "title": "Discard {name}?",
         "action": "Discard",
-        "body": "{name} never went live. It will be archived and its URL name stays reserved. This can not be undone here."
+        "body": "{name} never went live. It will be archived and its URL name stays reserved. This can not be undone here.",
+        "approval-body": "{name} never went live. If another admin approves, it is archived and its URL name stays reserved."
       }
     },
     "error": {
@@ -8660,7 +8798,8 @@
       "file_unsupported-type": "This file type is not supported. Choose a JPEG, PNG or WebP picture.",
       "file_too-many-pixels": "The picture has too many pixels. Choose a smaller one.",
       "file_too-small": "The picture is too small. Choose one at least 200 pixels on its longest side.",
-      "file_unreadable": "The picture could not be read. Choose another file."
+      "file_unreadable": "The picture could not be read. Choose another file.",
+      "system-requests_already-pending": "This category already has a change waiting for approval ({number}). Wait for it to be decided."
     },
     "restructure": {
       "title": {
@@ -8716,6 +8855,11 @@
         "category_target-not-found": "The category you chose is no longer available. Reload to choose another.",
         "category_parent-not-found": "The category you chose is no longer available. Reload to choose another.",
         "reason": "Add a reason of 10 to 500 characters."
+      },
+      "approval-note": "Nothing changes until another admin approves it in Admin Inbox > System requests. Your reason is the note for the reviewer.",
+      "approval-intro": {
+        "merge": "If another admin approves, its subcategories and products move to the category you choose, and {name} is marked merged.",
+        "archive": "If another admin approves, {name} leaves the catalog."
       }
     },
     "links": {
@@ -9174,7 +9318,9 @@
         "category_not-editable": "This category can't be changed any more. Reload.",
         "category_no-products": "This category has no published products to move.",
         "category_move-in-progress": "A move from this category is already running."
-      }
+      },
+      "approval-note": "Nothing changes until another admin approves it in Admin Inbox > System requests. Your reason is the note for the reviewer.",
+      "approval-intro": "If another admin approves, every published product in {name} moves to the category you choose and each seller is emailed. Products in its subcategories stay where they are."
     }
   },
   "brands": {
@@ -10782,7 +10928,8 @@
       "merged": "Values merged.",
       "archived": "Attribute archived.",
       "archive-requested": "Request sent. A different administrator can confirm it under Waiting for you.",
-      "more": "More"
+      "more": "More",
+      "discard-approval-body": "If another admin approves, the draft is archived. Its history is kept."
     },
     "values": {
       "not-choice": "This attribute has no list of values: sellers type or pick its value.",
@@ -11099,7 +11246,8 @@
         "archive-needs-second-admin": "This attribute is Material, so a second administrator has to confirm. Reload and ask for the archive.",
         "archive-not-material": "This attribute is not Material, so it can be archived at once. Reload and try again.",
         "archive-blocked-in-feature-set": "It is still in an active feature set. Remove it from those feature sets first.",
-        "archive-blocked-live-variants": "Live products use it as a variant option, so it cannot be archived."
+        "archive-blocked-live-variants": "Live products use it as a variant option, so it cannot be archived.",
+        "already-pending": "This attribute already has a change waiting for approval in Admin Inbox > System requests."
       },
       "has-error": "Needs a change",
       "check-languages": "Check the text in: {languages}.",
@@ -11180,7 +11328,10 @@
         "in-feature-set": "It is still in an active feature set. Remove it from those feature sets first.",
         "live-variants": "Live products use it as a variant option, so it cannot be archived."
       },
-      "type-code": "Type {code} to confirm"
+      "type-code": "Type {code} to confirm",
+      "merge-approval-body": "If another admin approves, the value you merge away stays in the list, switched off and marked as merged. Products keep what they have. The storefront, filters and search show the value you merge into, and a product’s next save stores that value.",
+      "merge-attributes-approval-body": "If another admin approves, {name} is archived and points at the attribute you choose. Products keep what they have, and product pages show the other attribute.",
+      "archive-approval-body": "If another admin approves, it is no longer offered to sellers. Products that already have its values keep them, and its history is kept."
     },
     "suggestions": {
       "list-label": "Value suggestions",
@@ -12753,9 +12904,9 @@
       "own": "You made this change. Another admin has to approve it. You can withdraw it."
     },
     "outcome": {
-      "approved": "Approved by {name} on {date}. The change stayed live.",
-      "rejected": "Rejected by {name} on {date}. Reason: {reason}.",
-      "withdrawn": "Withdrawn by {name} on {date}. Reason: {reason}."
+      "approved": "Approved. The change stayed live.",
+      "rejected": "Rejected. The previous value was put back.",
+      "withdrawn": "Withdrawn. The previous value was put back."
     },
     "more-actions": "More actions",
     "diff": {
@@ -12887,8 +13038,7 @@
       }
     },
     "export": {
-      "button": "Export",
-      "hint": "Export comes with saved filters"
+      "button": "Export"
     }
   },
   "security-centre": {

@@ -41,6 +41,7 @@ import { ListCustomerPromotionCredits } from '../application/use-cases/list-cust
 import { ListCustomerPromotionUsages } from '../application/use-cases/list-customer-promotion-usages.use-case';
 import { ListPromotionCredits } from '../application/use-cases/list-promotion-credits.use-case';
 import { ViewMyReferral } from '../application/use-cases/view-my-referral.use-case';
+import { ViewMyUpcomingCashback } from '../application/use-cases/view-my-upcoming-cashback.use-case';
 import { ViewStoreFollowGift } from '../application/use-cases/view-store-follow-gift.use-case';
 import { GenerateBatchCodes } from '../application/use-cases/generate-batch-codes.use-case';
 import { ViewBatchCodeSummary } from '../application/use-cases/view-batch-code-summary.use-case';
@@ -124,6 +125,8 @@ import {
   ThresholdResultBody,
   ThresholdsBody,
   thresholdsBody,
+  UpcomingCashbackBody,
+  upcomingCashbackBody,
 } from './promotions.dto';
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -1376,6 +1379,49 @@ export class CustomerReferralController {
     const result = await this.apply.execute(context, { code });
     return appliedReferralBody(
       settle(this.#logger, 'promotions.apply-referral-route', context, result, 'applied'),
+    );
+  }
+}
+
+/**
+ * The signed-in customer's cashback that waits for the seller's payout release (customers phase
+ * 4c, owner option A): display only, for "cashback X will be credited on date Y" on the order page
+ * and the account. The account comes from the session. Every answer is `Cache-Control: no-store`.
+ */
+@ApiTags('promotions')
+@RoutePopulation('customer')
+@ReadsSession()
+@Controller('promotions/cashback')
+export class CustomerCashbackController {
+  readonly #logger = new Logger('CustomerCashbackController');
+
+  constructor(private readonly upcoming: ViewMyUpcomingCashback) {}
+
+  @Get('upcoming')
+  @ApiOperation({
+    summary: "The customer's own cashback not yet in the wallet",
+    description:
+      'PENDING cashback credits, newest first (at most 20), optionally of one order (`orderId`). ' +
+      'Display only: it is not part of the wallet balance. An empty list while promotions are off.',
+  })
+  @ApiQuery({ name: 'orderId', required: false, schema: { type: 'string', format: 'uuid' } })
+  @ApiOkResponse({ type: UpcomingCashbackBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: UNAUTHENTICATED })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'promotions.unavailable' })
+  async mine(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    noStore(response);
+    const orderId = query.orderId;
+    const result = await this.upcoming.execute(context, {
+      ...(orderId === undefined ? {} : { orderId: typeof orderId === 'string' ? orderId : '' }),
+    });
+    return upcomingCashbackBody(
+      settle(this.#logger, 'promotions.view-my-upcoming-cashback-route', context, result, 'read'),
     );
   }
 }
