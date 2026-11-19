@@ -784,6 +784,22 @@ describe('Sellers list: saved filter tabs', () => {
     await screen.findByRole('dialog');
   });
 
+  it('keeps a name sort in the direction that is not its default, on every view', () => {
+    const base = { ...DEFAULT_QUERY, sort: 'name' as const };
+    for (const [view, direction] of [
+      ['all', 'desc'],
+      ['awaiting-review', 'desc'],
+    ] as const) {
+      const query = { ...base, view, direction };
+      expect(somethingToSave(query)).toBe(true);
+      expect(queryOf(payloadOf(query))).toMatchObject({ view, sort: 'name', direction });
+    }
+    // The default direction of a name sort is ascending and needs no key.
+    const asc = { ...base, direction: 'asc' as const };
+    expect(payloadOf(asc)).toEqual({ v: 1, view: 'all', sort: 'name' });
+    expect(queryOf(payloadOf(asc))).toMatchObject({ sort: 'name', direction: 'asc' });
+  });
+
   it('works in a synthetic market too', async () => {
     serve(() => pageOf([row(1)]), savedWith([item('awaiting-review')]));
     render(
