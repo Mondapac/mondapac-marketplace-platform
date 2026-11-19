@@ -26,7 +26,7 @@ import { callApi } from '../api/client.ts';
 import { dayInZone, formatInstantInZone } from '../shared/format.ts';
 import { Activity } from './activity.tsx';
 import { DecisionDialog, type Decide } from './decision-dialogs.tsx';
-import { ChangeDiff } from './diff.tsx';
+import { ChangeDiff, RequestedAction } from './diff.tsx';
 import type { Refusal } from './errors.ts';
 import {
   AreaBadge,
@@ -41,6 +41,7 @@ import {
   BASE,
   QUEUE_PATH,
   has,
+  isApproval,
   requestPath,
   subjectHref,
   type ActivityLine,
@@ -185,6 +186,7 @@ export function RequestDetail({
   }
 
   const open = request.status === 'open';
+  const approval = isApproval(request);
   const superseded = open && request.supersededBy !== null;
   const mine = request.requestedBy === accountId;
   const href = subjectHref(request.subjectKind, request.subjectRef);
@@ -212,13 +214,17 @@ export function RequestDetail({
     ...(canReject ? [{ kind: 'reject' as const, danger: true }] : []),
     ...(canWithdraw ? [{ kind: 'withdraw' as const, danger: true }] : []),
   ];
+  const actionKey = (kind: Decide) =>
+    approval && kind !== 'approve'
+      ? (`action.approval-${kind}` as const)
+      : (`action.${kind}` as const);
   const buttons = decisions.map((entry) => (
     <Button
       key={entry.kind}
       variant={entry.danger ? 'destructive' : 'primary'}
       onClick={() => decide(entry.kind)}
     >
-      {t(`action.${entry.kind}`)}
+      {t(actionKey(entry.kind))}
     </Button>
   ));
   const hasLink = has(request, 'copy-link');
@@ -226,7 +232,7 @@ export function RequestDetail({
   const overflow: MenuItem[] = [
     ...decisions.slice(1).map((entry): MenuItem => ({
       id: entry.kind,
-      label: t(`action.${entry.kind}`),
+      label: t(actionKey(entry.kind)),
       tone: entry.danger ? 'critical' : 'default',
       onSelect: () => decide(entry.kind),
     })),
@@ -337,8 +343,9 @@ export function RequestDetail({
           ]}
         />
       </Card>
-      {open && !superseded ? <Banner tone="info">{t('banner.live')}</Banner> : null}
-      {superseded ? (
+      {open && approval ? <Banner tone="attention">{t('banner.approval')}</Banner> : null}
+      {open && !superseded && !approval ? <Banner tone="info">{t('banner.live')}</Banner> : null}
+      {superseded && !approval ? (
         <Banner tone="attention">
           {t('banner.superseded')}{' '}
           <a className="font-medium underline" href={requestPath(request.supersededBy ?? '')}>
@@ -351,26 +358,39 @@ export function RequestDetail({
           </a>
         </Banner>
       ) : null}
-      {open && mine ? <Banner tone="info">{t('banner.own')}</Banner> : null}
+      {open && mine ? (
+        <Banner tone="info">{t(approval ? 'banner.own-approval' : 'banner.own')}</Banner>
+      ) : null}
       {request.status === 'approved' ? (
         <p role="status" className="break-words text-sm text-fg-secondary">
-          {t('outcome.approved')}
+          {t(approval ? 'outcome.approval-approved' : 'outcome.approved')}
         </p>
       ) : null}
       {request.status === 'reverted' ? (
         <p role="status" className="break-words text-sm text-fg-secondary">
-          {t(`outcome.${request.decision === 'withdrawn' ? 'withdrawn' : 'rejected'}`)}
+          {t(
+            `outcome.${approval ? 'approval-' : ''}${request.decision === 'withdrawn' ? 'withdrawn' : 'rejected'}`,
+          )}
         </p>
       ) : null}
-      <Card title={t('detail.note')}>
+      <Card title={t(approval ? 'detail.note-approval' : 'detail.note')}>
         <p className="whitespace-pre-wrap break-words text-fg-secondary">{request.note}</p>
       </Card>
-      <ChangeDiff
-        kind={request.subjectKind}
-        before={request.before}
-        after={request.after}
-        history={!open || superseded}
-      />
+      {approval ? (
+        <RequestedAction
+          kind={request.subjectKind}
+          before={request.before}
+          after={request.after}
+          history={!open}
+        />
+      ) : (
+        <ChangeDiff
+          kind={request.subjectKind}
+          before={request.before}
+          after={request.after}
+          history={!open || superseded}
+        />
+      )}
       <Activity
         requestId={request.id}
         lines={request.activity}
