@@ -1040,6 +1040,31 @@ describe('relay allowlist for seller decisions', () => {
   });
 });
 
+describe('relay of the brands list', () => {
+  const get = (query: string) =>
+    new Request(`http://admin.localhost:3002/api/catalog/admin/brands${query}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+  const path = ['catalog', 'admin', 'brands'];
+
+  it('forwards the search text in its shape and drops control characters and long text', async () => {
+    const upstream = upstreamOk();
+    await relay(
+      config,
+      get('?status=draft&q=Halal%20Co&sort=name&direction=asc&page=2&pageSize=50&paging=pages&x=1'),
+      path,
+      upstream,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/brands?status=draft&q=Halal+Co&page=2&pageSize=50&paging=pages&sort=name&direction=asc',
+    );
+    const refused = upstreamOk();
+    await relay(config, get(`?q=a%0Ab&search=${'x'.repeat(101)}&status=active`), path, refused);
+    expect(refused.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/brands?status=active');
+  });
+});
+
 describe('relay of the connected accounts list', () => {
   const get = (query: string, suffix = '') =>
     new Request(

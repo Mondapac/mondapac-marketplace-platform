@@ -9087,7 +9087,7 @@
   "brands": {
     "title": "Brands",
     "intro": "Brands are shared by all markets. Products link to a brand instead of typing its name.",
-    "new": "New brand",
+    "new": "New brand…",
     "tabs": "Brand lists",
     "tab": {
       "brands": "Brands",
@@ -9202,13 +9202,13 @@
         "title": "Turn down {name}?",
         "body": "The proposal is archived and its page stays off the site. Products keep the brand they have.",
         "yes": "Turn down proposal",
-        "cancel": "Keep it"
+        "cancel": "Cancel"
       },
       "archive": {
         "title": "Archive {name}?",
         "body": "The brand page stops answering. Products keep their brand. To fold it into another brand, merge instead.",
         "yes": "Archive brand",
-        "cancel": "Keep it"
+        "cancel": "Cancel"
       }
     },
     "merge": {

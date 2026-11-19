@@ -2105,6 +2105,11 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     status: /^(draft|active|archived)$/,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
+    // The search text: no control characters (a newline would pass a plain `.`), up to 100.
+    // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+    q: /^[^\u0000-\u001f\u007f]{1,100}$/u,
+    // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+    search: /^[^\u0000-\u001f\u007f]{1,100}$/u,
     page: /^[1-9][0-9]{0,3}$/,
     pageSize: /^([1-9][0-9]?|100)$/,
     paging: /^(pages|prev-next)$/,

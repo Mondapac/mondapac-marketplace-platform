@@ -171,7 +171,7 @@ export function BrandsList({
             id,
             header,
             skeleton: 'date',
-            cell: (row) => <When iso={row.updatedAt} missing="-" />,
+            cell: (row) => <When iso={row.updatedAt} missing="—" />,
           };
       }
     },

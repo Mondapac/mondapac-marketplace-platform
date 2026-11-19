@@ -215,7 +215,7 @@ describe('admin brands', () => {
       serve(lists([brand(1)], [brand(2, { status: 'draft' })]));
       mount(false);
       expect(await screen.findByText('Brand 1')).toBeTruthy();
-      expect(screen.queryByRole('button', { name: 'New brand' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'New brand…' })).toBeNull();
       expect(screen.queryByRole('button', { name: /Actions for/ })).toBeNull();
       fireEvent.click(screen.getByRole('button', { name: 'Proposed (1)' }));
       expect(await screen.findByText('Brand 2')).toBeTruthy();
@@ -247,7 +247,7 @@ describe('admin brands', () => {
       });
       mount();
       await screen.findByText('No brands here yet');
-      fireEvent.click(screen.getByRole('button', { name: 'New brand' }));
+      fireEvent.click(screen.getByRole('button', { name: 'New brand…' }));
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: ' Cedar Kitchen ' } });
       fireEvent.change(screen.getByLabelText(/Country of origin/), { target: { value: 'jp' } });
       fireEvent.click(screen.getByRole('button', { name: 'Create brand' }));
@@ -271,7 +271,7 @@ describe('admin brands', () => {
       serve(lists());
       mount();
       await screen.findByText('No brands here yet');
-      fireEvent.click(screen.getByRole('button', { name: 'New brand' }));
+      fireEvent.click(screen.getByRole('button', { name: 'New brand…' }));
       fireEvent.click(screen.getByRole('button', { name: 'Create brand' }));
       expect(await screen.findByText('Enter the brand name.')).toBeTruthy();
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'X' } });
@@ -290,7 +290,7 @@ describe('admin brands', () => {
       });
       mount();
       await screen.findByText('No brands here yet');
-      fireEvent.click(screen.getByRole('button', { name: 'New brand' }));
+      fireEvent.click(screen.getByRole('button', { name: 'New brand…' }));
       fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'ACME foods' } });
       fireEvent.click(screen.getByRole('button', { name: 'Create brand' }));
       expect(await screen.findByText(/very similar name/)).toBeTruthy();
@@ -386,6 +386,8 @@ describe('admin brands', () => {
       const dialog = screen.getByRole('dialog');
       expect(within(dialog).getByText('Approve Brand 2?')).toBeTruthy();
       expect(calls('POST', 'catalog/admin/brands/')).toHaveLength(0);
+      // The safe choice has focus when the dialog opens.
+      expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
       fireEvent.click(within(dialog).getByRole('button', { name: 'Approve brand' }));
       await expectToast('Brand 2 is approved and live.');
       expect(call).toHaveBeenCalledWith(

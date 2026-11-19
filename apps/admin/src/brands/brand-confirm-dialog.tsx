@@ -2,6 +2,7 @@
 
 import { Banner, Button, Dialog } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
+import { useRef } from 'react';
 import { API_BRANDS, type BrandRow, type BrandWrap } from './types.ts';
 import { useBrandCall } from './use-brand-call.ts';
 
@@ -30,6 +31,8 @@ export function BrandConfirmDialog({
   const t = useTranslations(`brands.confirm.${kind}`);
   const tr = useTranslations();
   const call = useBrandCall(csrfToken);
+  // Level 2: a dialog that archives or turns down opens with focus on the safe choice.
+  const cancelRef = useRef<HTMLButtonElement>(null);
   const path = `${API_BRANDS}/${brand.id}/${kind === 'approve' ? 'approve' : 'archive'}`;
 
   async function confirm() {
@@ -43,9 +46,10 @@ export function BrandConfirmDialog({
       open
       title={t('title', { name: brand.name })}
       onClose={onClose}
+      initialFocus={cancelRef}
       actions={
         <>
-          <Button variant="secondary" disabled={call.pending} onClick={onClose}>
+          <Button ref={cancelRef} variant="secondary" disabled={call.pending} onClick={onClose}>
             {t('cancel')}
           </Button>
           {problem?.reload === true ? (
