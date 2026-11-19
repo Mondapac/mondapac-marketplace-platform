@@ -8,7 +8,7 @@ import { PRODUCT_STATUSES } from '../../domain/product';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import type { OwnCatalogReader, ProductFormCategory } from '../ports/own-catalog.reader';
 import type { AllowedProductTypesReader } from '../ports/allowed-product-types.reader';
-import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { CatalogMarketPolicy, TaxCategoryOption } from '../ports/catalog-market-policy';
 import { sellerOf } from '../own-reads/own-reads.shared';
 
 export interface OwnProductOptionsOutput {
@@ -21,6 +21,8 @@ export interface OwnProductOptionsOutput {
   readonly locales: { readonly default: string; readonly supported: readonly string[] };
   /** The Market's tax category codes, as the product read's `form` lists them. */
   readonly taxCategoryCodes: readonly string[];
+  /** The same categories with the label key each is shown by. */
+  readonly taxCategories: readonly TaxCategoryOption[];
   /** The platform categories a product may be filed under, as the product read's `form` lists them; empty when the read failed. */
   readonly categories: readonly ProductFormCategory[];
   /** Whether the Market lets a seller create a product of their own; false on a read fault. */
@@ -116,6 +118,7 @@ export class OwnProductOptions extends UseCase<
         conditions: [...policy.conditions(market)],
         locales: { default: locales.default, supported: [...locales.supported] },
         taxCategoryCodes: [...policy.taxCategoryCodes(market)],
+        taxCategories: policy.taxCategories(market).map((category) => ({ ...category })),
         categories,
         sellerCanCreateProduct: canCreate,
         productStatuses: PRODUCT_STATUSES.filter((status) => !HIDDEN_PRODUCT_STATUSES.has(status)),

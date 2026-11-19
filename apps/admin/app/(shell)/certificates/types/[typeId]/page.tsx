@@ -7,6 +7,7 @@ import { requireSession } from '../../../../../src/server/session.ts';
 import { TypeDetailView } from '../../../../../src/certificates/type-registry/type-detail.tsx';
 import {
   API_TYPES,
+  POLICY_VIEW_PERMISSION,
   TYPE_EDIT_PERMISSION,
   TYPE_VIEW_PERMISSION,
   type TypeDetail,
@@ -82,6 +83,7 @@ export default async function TypePage({
         type={result.body}
         name={name}
         canEdit={keys.includes(TYPE_EDIT_PERMISSION)}
+        canViewPolicy={keys.includes(POLICY_VIEW_PERMISSION)}
         csrfToken={gate.session.csrfToken}
         done={typeof done === 'string' ? done : null}
       />

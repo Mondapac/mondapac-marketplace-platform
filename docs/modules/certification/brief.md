@@ -578,4 +578,26 @@ The admin panel writes a new type revision at `/certificates/types/:id/edit` (ne
   admin: whether the revision is published or waits is the API's answer, shown after the redirect.
 - API refusals (`type.revision-invalid` issues, `type.revision-unchanged`, stale version) are
   shown in words; a stale version offers a reload.
-- Not yet built: the list of past revisions and the claim policy screens (CA8).
+- Not yet built: the list of past revisions.
+
+### Change log: admin claim basis policy page (2026-11-17)
+
+The admin panel shows and changes the claim basis policy of a type at
+`/certificates/types/:id/policy` (view needs `certification.claim-policy.view`, change and the
+second admin's answers need the protected `certification.claim-policy.edit`). Scope and deviations
+from `ux.md`:
+
+- The page lists the published rows (a platform category or a handling type, each with its basis),
+  the default basis, the reason and the revision history. The row editor offers one row per
+  category and per handling type; the manufacturer basis is offered for categories only. The
+  category list is the public category tree; a row whose category the tree no longer lists keeps
+  its place, shown by its id.
+- A review step lists the row changes before saving. When the Market reviews saves in System
+  requests the form asks for a note; the number of the request the save opened is shown after the
+  redirect. Whether the save is published or waits for a second admin is the API's answer.
+- A waiting relaxation is shown with the rows it changes and the actions the API allows (approve,
+  reject, withdraw); the form is hidden while one waits.
+- The detail page shows the default basis in words (the labels for `SELLER_REQUIRED` and
+  `NOT_APPLICABLE` were missing).
+- Not yet built: reading older revisions' rows (the history lists number, date and whether a
+  reason exists, as the API returns them).

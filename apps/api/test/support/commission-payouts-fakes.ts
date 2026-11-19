@@ -233,6 +233,22 @@ export class MemoryHolds implements PayoutHoldRepository {
     }
     return Promise.resolve(released);
   }
+  hasActiveCovering(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    sellerOrderId: Id<'SellerOrder'>,
+  ) {
+    return Promise.resolve(
+      [...this.rows.entries()].some(
+        ([k, row]) =>
+          k.startsWith(`${market.marketId}:`) &&
+          row.sellerId === sellerId &&
+          row.releasedAt === null &&
+          (row.sellerOrderId === null || row.sellerOrderId === sellerOrderId),
+      ),
+    );
+  }
+
   countForSellerOrder(market: MarketContext, sellerOrderId: Id<'SellerOrder'>, reason: HoldReason) {
     return Promise.resolve(
       [...this.rows.entries()].filter(
