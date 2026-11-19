@@ -15,11 +15,12 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { CATALOG_BRAND_EDIT, CATALOG_BRAND_READ } from '../../contracts/permissions';
 import type { BrandState } from '../../domain/brand';
 import {
+  BRAND_FILTER_KEYS,
   BRAND_PAGE_DEFAULT,
   BRAND_PAGE_MAX,
   brandIdOf,
+  brandListFilterOf,
   closedInput,
-  statusFilterOf,
   viewOf,
   type BrandView,
   type ValidationFailure,
@@ -51,6 +52,12 @@ export const BRAND_ACTION_RULES: readonly RowActionRule<Pick<BrandState, 'status
 
 export interface BrandListInput {
   readonly status?: unknown;
+  /** ISO 3166-1 alpha-2 (uppercase), exact match. */
+  readonly originCountry?: unknown;
+  /** ISO 8601 instant with an offset; created at or after it. */
+  readonly createdFrom?: unknown;
+  /** ISO 8601 instant with an offset; created before it. */
+  readonly createdTo?: unknown;
   /** The search text; `search` is the older name of it. */
   readonly q?: unknown;
   readonly search?: unknown;
@@ -101,7 +108,8 @@ export interface BrandListDependencies {
 
 /**
  * `brand.list` (catalog brand package, super list 8): the brands for the admin panel, filtered by
- * status and by a search text that matches the name, the slug or an alias, read by page number (or
+ * status, origin country, creation time (`createdFrom` inclusive, `createdTo` exclusive; see
+ * {@link brandListFilterOf}) and by a search text that matches the name, the slug or an alias, read by page number (or
  * Previous and Next) with a sort, or by cursor as the older panel does. Rule: the key
  * `catalog.brand.read` and the admin population. One read-only unit.
  */
@@ -142,7 +150,7 @@ export class BrandList extends UseCase<BrandListInput, BrandListOutput, BrandLis
       return err({ code: 'access.denied' });
     }
     const body = closedInput(input, [
-      'status',
+      ...BRAND_FILTER_KEYS,
       'q',
       'search',
       'afterId',
@@ -154,8 +162,8 @@ export class BrandList extends UseCase<BrandListInput, BrandListOutput, BrandLis
       'paging',
     ]);
     if (!body.ok) return body;
-    const status = statusFilterOf(body.value['status']);
-    if (!status.ok) return status;
+    const filtered = brandListFilterOf(body.value);
+    if (!filtered.ok) return filtered;
     const read = readCatalogListInput(body.value, {
       sorts: BRAND_SORTS,
       defaultSort: 'name',
@@ -170,7 +178,7 @@ export class BrandList extends UseCase<BrandListInput, BrandListOutput, BrandLis
     });
     if (!read.ok) return read;
     const { market } = context;
-    const filter = { status: status.value, search: read.value.q };
+    const filter = { ...filtered.value, search: read.value.q };
     const unit = await this.deps.unitOfWork.run(
       market,
       async (): Promise<Result<BrandPageRead, never>> => {

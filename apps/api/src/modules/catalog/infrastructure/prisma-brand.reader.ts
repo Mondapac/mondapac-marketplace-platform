@@ -1,4 +1,4 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
@@ -15,9 +15,22 @@ import type { BrandState } from '../domain/brand';
 import { likeLiteral } from './like-literal';
 import { brandStateOf } from './prisma-brand.repository';
 
+/**
+ * The instant as a `Date`, rounded up to the millisecond: rows are stored at millisecond
+ * precision, so `>= ceil(from)` and `< ceil(to)` keep a sub-millisecond bound exact.
+ */
+function ceilDate(instant: Temporal.Instant): Date {
+  const ms = instant.epochMilliseconds;
+  return new Date(instant.epochNanoseconds % 1_000_000n === 0n ? ms : ms + 1);
+}
+
 function brandFilters(filter: BrandPageFilter): Prisma.CatalogBrandWhereInput[] {
   const filters: Prisma.CatalogBrandWhereInput[] = [];
   if (filter.status !== null) filters.push({ status: filter.status });
+  if (filter.originCountry !== null) filters.push({ originCountry: filter.originCountry });
+  if (filter.createdFrom !== null)
+    filters.push({ createdAt: { gte: ceilDate(filter.createdFrom) } });
+  if (filter.createdTo !== null) filters.push({ createdAt: { lt: ceilDate(filter.createdTo) } });
   if (filter.search !== null) {
     const typed = likeLiteral(filter.search);
     filters.push({

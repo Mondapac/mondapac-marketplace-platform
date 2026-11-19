@@ -255,6 +255,14 @@ describe('brand routes over HTTP (integration)', () => {
     for (const status of ['200', '400', '403', '404', '413']) {
       expect(document.paths[`${ADMIN}/export`]?.get?.responses).toHaveProperty(status);
     }
+    for (const route of [ADMIN, `${ADMIN}/export`]) {
+      const names = (
+        document.paths[route]?.get as unknown as { parameters: { name: string }[] }
+      ).parameters.map((parameter) => parameter.name);
+      expect(names).toEqual(
+        expect.arrayContaining(['status', 'originCountry', 'createdFrom', 'createdTo']),
+      );
+    }
     expect(document.paths[`${ADMIN}/merge-queue/dismiss`]).toHaveProperty('post');
     expect(document.paths['/catalog/seller/brands']).toHaveProperty('post');
     expect(document.paths['/catalog/brands']).toHaveProperty('get');
@@ -377,6 +385,64 @@ describe('brand routes over HTTP (integration)', () => {
         expect(control.body).toMatchObject({ code: 'validation.failed' });
         await http().get(`${ADMIN}/export?page=2`).set(viewer).expect(400);
         await http().get(`${ADMIN}/export?format=pdf`).set(viewer).expect(400);
+      });
+    });
+
+    describe('admin routes: the list filters', () => {
+      it('filters the list and the export by origin country and creation time', async () => {
+        await boot();
+        await seeded(code);
+        brands.seed(brandState(BRAND_A, 'Acme Tea', { originCountry: 'AU' }));
+        brands.seed(
+          brandState(BRAND_B, 'Fuji Foods', {
+            originCountry: 'JP',
+            createdAt: START.add({ hours: 24 }),
+          }),
+        );
+        const viewer = adminSession(code, VIEWER, 13);
+        type Body = { items: { id: string }[]; total: number | null };
+        const listed = async (query: string) =>
+          ((await http().get(`${ADMIN}?${query}`).set(viewer).expect(200)).body as Body).items.map(
+            (b) => b.id,
+          );
+        expect(await listed('originCountry=JP')).toEqual([BRAND_B]);
+        // createdFrom is inclusive, createdTo exclusive; offsets are read as instants.
+        const from = encodeURIComponent('2026-10-29T10:00:00+10:00');
+        expect(await listed(`createdFrom=${from}`)).toEqual([BRAND_B]);
+        expect(await listed(`createdTo=${from}`)).toEqual([BRAND_A, DRAFT, ARCHIVED]);
+        expect(await listed(`status=active&originCountry=AU&createdTo=${from}`)).toEqual([BRAND_A]);
+        const counted = (
+          await http().get(`${ADMIN}?originCountry=AU&page=1&pageSize=10`).set(viewer).expect(200)
+        ).body as Body;
+        expect(counted.total).toBe(1);
+
+        const csv = await http()
+          .get(`${ADMIN}/export?originCountry=JP&createdFrom=${from}`)
+          .set(viewer)
+          .expect(200);
+        expect(
+          csv.text
+            .replace(/^\uFEFF/, '')
+            .trimEnd()
+            .split('\r\n')
+            .slice(1)
+            .map((line) => line.split(',')[0]),
+        ).toEqual(['Fuji Foods']);
+
+        for (const query of [
+          'originCountry=jp',
+          'originCountry=J%07',
+          'originCountry=JP&originCountry=AU',
+          'createdFrom=2026-10-29',
+          'createdTo=2026-10-29T00:00:00Z%00',
+          `createdFrom=${from}&createdTo=${from}`,
+          'status=bogus',
+        ]) {
+          for (const path of [ADMIN, `${ADMIN}/export`]) {
+            const refused = await http().get(`${path}?${query}`).set(viewer).expect(400);
+            expect(refused.body).toMatchObject({ code: 'validation.failed' });
+          }
+        }
       });
     });
 
