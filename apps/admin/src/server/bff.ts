@@ -222,6 +222,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/variants',
     'catalog/admin/variants/issue-counts',
     'catalog/admin/variants/export',
+    // The Brands list as a file (CSV or XLSX): the list's own filter (`status`, `q`).
+    'catalog/admin/brands/export',
     // The report of published products missing a required detail (catalog, attributes A4;
     // query: `sellerId`, `familyCode`, `afterId`, `limit`).
     'catalog/admin/reports/products-missing-details',
@@ -1451,7 +1453,19 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sort',
     'direction',
   ],
-  'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
+  'catalog/admin/brands': [
+    'status',
+    'originCountry',
+    'search',
+    'afterId',
+    'limit',
+    'q',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
   // The category tree, narrowed to the categories of one feature set (categories, A4).
   'catalog/admin/categories': ['featureSetId'],
   'catalog/admin/category-proposals': ['afterId', 'limit'],
@@ -1481,6 +1495,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   ],
   'catalog/admin/variants/issue-counts': ['typeCode'],
   'catalog/admin/variants/export': ['format', 'q', 'typeCode', 'issue'],
+  'catalog/admin/brands/export': ['format', 'status', 'originCountry', 'q'],
   'catalog/admin/reports/products-missing-details': ['sellerId', 'familyCode', 'afterId', 'limit'],
   'ordering/admin/refund-limits': ['sellerId'],
 };
@@ -2132,6 +2147,13 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sort: /^(newest|code|gtin)$/,
     direction: /^(asc|desc)$/,
   },
+  'catalog/admin/brands/export': {
+    format: /^(csv|xlsx)$/,
+    status: /^(draft|active|archived)$/,
+    originCountry: /^[A-Z]{2}$/,
+    // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+    q: /^[^\u0000-\u001f\u007f]{1,100}$/u,
+  },
   'catalog/admin/variants/issue-counts': { typeCode: /^[a-z][a-z0-9_-]{0,63}$/ },
   'catalog/admin/variants/export': {
     format: /^(csv|xlsx)$/,
@@ -2267,8 +2289,19 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'catalog/admin/category-proposals': { afterId: UUID, limit: /^[0-9]{1,2}$/ },
   'catalog/admin/brands': {
     status: /^(draft|active|archived)$/,
+    originCountry: /^[A-Z]{2}$/,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
+    // The search text: no control characters (a newline would pass a plain `.`), up to 100.
+    // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+    q: /^[^\u0000-\u001f\u007f]{1,100}$/u,
+    // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+    search: /^[^\u0000-\u001f\u007f]{1,100}$/u,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^(name|status|created|updated)$/,
+    direction: /^(asc|desc)$/,
   },
   // `targetId` is the picked new parent or merge target, or `top` for a department (C4b).
   'catalog/admin/categories/:id/impact': {
