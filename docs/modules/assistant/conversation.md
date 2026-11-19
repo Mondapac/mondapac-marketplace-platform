@@ -236,7 +236,7 @@ Each assistant message now stores `notices` (the fixed notice codes of the reply
 
 ### Tables (Mojtaba's sign-off before merge)
 
-Migration `20261116120000_assistant_feedback`. `feedback`: PK (Market, conversation, position),
+Migration `20261119110000_assistant_feedback`. `feedback`: PK (Market, conversation, position),
 FK to `messages` on the same three columns with `ON DELETE CASCADE`; CHECKs: rating `up|down`,
 reason only with `down` and one of three values, the application role
 can SELECT and INSERT, and UPDATE only `rating`, `reason` and `updated_at`; no DELETE (the cascade

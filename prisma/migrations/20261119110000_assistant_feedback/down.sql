@@ -1,4 +1,4 @@
--- Reverses 20261116120000_assistant_feedback: the grants first, then the table and columns.
+-- Reverses 20261119110000_assistant_feedback: the grants first, then the table and columns.
 REVOKE UPDATE ("rating", "reason", "updated_at") ON TABLE "assistant"."feedback" FROM "mondapac_app";
 REVOKE SELECT, INSERT ON TABLE "assistant"."feedback" FROM "mondapac_app";
 
