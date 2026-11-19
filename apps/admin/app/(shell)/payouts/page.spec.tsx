@@ -9,8 +9,8 @@ import PayoutsPageRoute from './page.tsx';
 import PayoutPageRoute from './[payoutId]/page.tsx';
 
 // The two payout pages: the permission gate (no API read without
-// commission-payouts.payout.view), the server-rendered tabs with their counts, and a heading on
-// every branch.
+// commission-payouts.payout.view), what the list page hands the Payouts super list (the view of
+// the link, a seller, the Market's List paging), today's total, and a heading on every branch.
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -30,9 +30,22 @@ vi.mock('next-intl/server', () => ({
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect, notFound: mocks.notFound }));
 vi.mock('../../../src/server/server-fetch.ts', () => ({ serverGet: mocks.get }));
 vi.mock('../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
+vi.mock('next/headers', () => ({ headers: () => Promise.resolve(new Headers()) }));
+vi.mock('../../../src/server/config.ts', () => ({ panelConfig: () => ({}) }));
+vi.mock('../../../src/server/bff.ts', () => ({ panelHostFor: () => ({ marketId: 'AU' }) }));
 vi.mock('../../../src/payouts/payouts-list.tsx', () => ({
-  PayoutsList: ({ tab, canApprove }: { readonly tab: string; readonly canApprove: boolean }) => (
-    <p data-tab={tab} data-can-approve={String(canApprove)}>
+  PayoutsList: (props: {
+    readonly initialView: string;
+    readonly sellerId: string | null;
+    readonly paging: string;
+    readonly marketId: string;
+  }) => (
+    <p
+      data-view={props.initialView}
+      data-seller={props.sellerId ?? ''}
+      data-paging={props.paging}
+      data-market={props.marketId}
+    >
       the list
     </p>
   ),
@@ -49,6 +62,7 @@ vi.mock('../../../src/server/admin-shell.tsx', () => ({
 const VIEW = 'commission-payouts.payout.view';
 const APPROVE = 'commission-payouts.payout.approve';
 const ID = '0190a000-0000-7000-8000-0000000000a1';
+const SELLER = '0190a000-0000-7000-8000-0000000000c1';
 const aud = (amountMinor: string) => ({ amountMinor, currency: 'AUD' });
 const session = (permissionKeys: string[]): AdminSession => ({
   accountId: 'a',
@@ -63,7 +77,9 @@ const session = (permissionKeys: string[]): AdminSession => ({
   displayName: 'Ada',
   csrfToken: 'c',
 });
-const search = (status?: string) => ({ searchParams: Promise.resolve({ status }) });
+const search = (status?: string, sellerId?: string) => ({
+  searchParams: Promise.resolve({ status, sellerId }),
+});
 const params = (payoutId = ID) => ({ params: Promise.resolve({ payoutId }) });
 const limits = {
   perTransfer: aud('500000'),
@@ -77,16 +93,8 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.session.mockResolvedValue({ kind: 'ok', session: session([VIEW]) });
   mocks.get.mockImplementation((path: string) => {
-    if (path.includes('status=awaiting-approval'))
-      return Promise.resolve({
-        kind: 'ok',
-        body: { payouts: [{ payoutId: ID }, { payoutId: ID }], nextCursor: null },
-      });
-    if (path.includes('status=failed'))
-      return Promise.resolve({
-        kind: 'ok',
-        body: { payouts: [{ payoutId: ID }], nextCursor: 'c' },
-      });
+    if (path === 'settings/admin/list-paging')
+      return Promise.resolve({ kind: 'ok', body: { listPaging: 'pages' } });
     if (path.includes('limit=1'))
       return Promise.resolve({
         kind: 'ok',
@@ -98,29 +106,41 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('payouts list page', () => {
-  it('shows one heading, the tabs with the counts the API gives, and the list of the tab', async () => {
+  it('shows one heading and opens the list on the view of the link', async () => {
     render(await PayoutsPageRoute(search('failed')));
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
-    const nav = screen.getByRole('navigation', { name: 'Payouts by stage' });
-    expect(nav.textContent).toContain('Awaiting approval (2)');
-    // One page of the API: a next cursor reads as "100+" rather than a wrong total.
-    expect(nav.textContent).toContain('Failed (1+)');
-    expect(nav.textContent).toContain('Paid');
-    expect(screen.getByRole('link', { name: /^Failed/ }).getAttribute('aria-current')).toBe('page');
-    expect(screen.getByRole('link', { name: /^Awaiting approval/ }).getAttribute('href')).toBe(
-      '/payouts',
-    );
-    expect(screen.getByRole('link', { name: 'Paid' }).getAttribute('href')).toBe(
-      '/payouts?status=paid',
-    );
-    expect(document.querySelector('[data-tab]')?.getAttribute('data-tab')).toBe('failed');
+    const list = document.querySelector('[data-view]');
+    expect(list?.getAttribute('data-view')).toBe('failed');
+    expect(list?.getAttribute('data-paging')).toBe('pages');
+    expect(list?.getAttribute('data-market')).toBe('AU');
+    // The views and their counts are the list's own (the super list reads them with its rows).
+    expect(screen.queryByRole('navigation', { name: 'Payouts by stage' })).toBeNull();
   });
 
-  it('falls back to Awaiting approval for an unknown status', async () => {
-    render(await PayoutsPageRoute(search('everything')));
-    expect(document.querySelector('[data-tab]')?.getAttribute('data-tab')).toBe(
+  it('opens on Awaiting approval without a view, or for an unknown one', async () => {
+    render(await PayoutsPageRoute(search()));
+    expect(document.querySelector('[data-view]')?.getAttribute('data-view')).toBe(
       'awaiting-approval',
     );
+    cleanup();
+    render(await PayoutsPageRoute(search('everything')));
+    expect(document.querySelector('[data-view]')?.getAttribute('data-view')).toBe(
+      'awaiting-approval',
+    );
+  });
+
+  it('hands the list one seller of a link, and ignores a seller id that is not an id', async () => {
+    render(await PayoutsPageRoute(search('all', SELLER.toUpperCase())));
+    expect(document.querySelector('[data-seller]')?.getAttribute('data-seller')).toBe(SELLER);
+    cleanup();
+    render(await PayoutsPageRoute(search('all', 'drop table')));
+    expect(document.querySelector('[data-seller]')?.getAttribute('data-seller')).toBe('');
+  });
+
+  it('uses Previous and next when the List paging setting cannot be read', async () => {
+    mocks.get.mockImplementation((path: string) => Promise.resolve({ kind: 'unavailable', path }));
+    render(await PayoutsPageRoute(search()));
+    expect(document.querySelector('[data-paging]')?.getAttribute('data-paging')).toBe('prev-next');
   });
 
   it("shows today's total against the alert level, read from the newest payout", async () => {
@@ -136,30 +156,20 @@ describe('payouts list page', () => {
       Promise.resolve(
         path.includes('/payouts/')
           ? { kind: 'ok', body: { limits: { ...limits, overDailyAlertLevel: true } } }
-          : { kind: 'ok', body: { payouts: [{ payoutId: ID }], nextCursor: null } },
+          : path === 'settings/admin/list-paging'
+            ? { kind: 'ok', body: { listPaging: 'pages' } }
+            : { kind: 'ok', body: { payouts: [{ payoutId: ID }], nextCursor: null } },
       ),
     );
     render(await PayoutsPageRoute(search()));
     expect(screen.getByText('Above the alert level')).toBeTruthy();
   });
 
-  it('shows no totals line when there is no payout yet, and tabs without counts when unreadable', async () => {
+  it('shows no totals line when there is no payout yet or it cannot be read', async () => {
     mocks.get.mockResolvedValue({ kind: 'unavailable' });
     render(await PayoutsPageRoute(search()));
     expect(screen.queryByText(/Transfers sent today/)).toBeNull();
-    expect(screen.getByRole('link', { name: 'Awaiting approval' })).toBeTruthy();
-  });
-
-  it('tells the list whether this admin may approve', async () => {
-    const { rerender } = render(await PayoutsPageRoute(search()));
-    expect(document.querySelector('[data-can-approve]')?.getAttribute('data-can-approve')).toBe(
-      'false',
-    );
-    mocks.session.mockResolvedValue({ kind: 'ok', session: session([VIEW, APPROVE]) });
-    rerender(await PayoutsPageRoute(search()));
-    expect(document.querySelector('[data-can-approve]')?.getAttribute('data-can-approve')).toBe(
-      'true',
-    );
+    expect(screen.getByText('the list')).toBeTruthy();
   });
 
   it('makes no read without the view permission, but keeps a heading and a way back', async () => {

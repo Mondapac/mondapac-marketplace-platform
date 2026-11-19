@@ -8578,21 +8578,6 @@
     "not-found": "This payout does not exist, or it belongs to another market.",
     "back-home": "Back to the dashboard",
     "tabs": "Payouts by stage",
-    "tab": {
-      "awaiting-approval": "Awaiting approval",
-      "sending": "Sending",
-      "paid": "Paid",
-      "failed": "Failed",
-      "not-sent": "Not sent"
-    },
-    "tab-count": "{label} ({count})",
-    "empty": {
-      "awaiting-approval": "No payouts are waiting for approval",
-      "sending": "No payouts are being sent",
-      "paid": "No payouts have been paid yet",
-      "failed": "No payouts have failed",
-      "not-sent": "No payouts were stopped before sending"
-    },
     "today": {
       "line": "Transfers sent today: {total} of {level} alert level.",
       "over": "Above the alert level"
@@ -8600,21 +8585,8 @@
     "footnote": "Times are shown in {zone}. Amounts are what is transferred to the seller, after any amount kept against what the seller owes.",
     "zone-note": "Times are shown in {zone}.",
     "loading": "Loading payouts",
-    "retry": "Try again",
-    "more": "Show more",
-    "loaded-more": "{count, plural, one {# more payout loaded} other {# more payouts loaded}}",
     "error": {
-      "unavailable": "The payouts could not be loaded. Try again.",
-      "more": "More payouts could not be loaded. Try again."
-    },
-    "col": {
-      "payout": "Payout",
-      "seller": "Seller",
-      "amount": "Transfer",
-      "state": "State",
-      "why": "Approval",
-      "slot": "Planned for",
-      "actions": "Actions"
+      "unavailable": "The payouts could not be loaded. Try again."
     },
     "ref": "Payout {id}",
     "unnamed": "Seller {id}",
@@ -8636,8 +8608,6 @@
       "first-payout": "First payout",
       "terms": "Seller's terms"
     },
-    "review": "Review and approve",
-    "approve-for": "payout for {name}",
     "approve-action": "Approve {amount}",
     "approved-notice": "Approved {amount} for {seller}. The transfer is sent shortly.",
     "approved-notice-seller": "the seller",
@@ -8742,7 +8712,9 @@
         "throttled": "Too many attempts. Wait a moment and try again.",
         "unavailable": "The approval could not be sent. Try again.",
         "unknown": "The payout could not be approved. Try again."
-      }
+      },
+      "type-to-confirm": "Type the payout reference to confirm",
+      "step-up-note": "Approving moves money: you will be asked for your two-step code next."
     },
     "seller": {
       "terms": {
@@ -8907,6 +8879,141 @@
         }
       },
       "load-failed": "The payout terms and holds could not be loaded."
+    },
+    "list": {
+      "zone-note": "Times are shown in {zone}.",
+      "view": {
+        "all": "All",
+        "awaiting-approval": "Awaiting approval",
+        "sending": "Sending",
+        "paid": "Paid",
+        "failed": "Failed",
+        "not-sent": "Not sent"
+      },
+      "col": {
+        "payout": "Payout",
+        "state": "State",
+        "store": "Store",
+        "transfer": "Transfer",
+        "created": "Created",
+        "gross": "Seller orders taken",
+        "netted": "Kept against debt",
+        "approval-mode": "Approval mode",
+        "approval-reason": "Approval",
+        "slot": "Planned for",
+        "state-changed": "Last changed",
+        "outcome": "Outcome",
+        "seller-id": "Seller ID",
+        "actions": "Actions"
+      },
+      "no-outcome": "None",
+      "row-name": "payout {id} of {store}",
+      "search": {
+        "label": "Search",
+        "placeholder": "Store name or payout ID",
+        "help": "A store name (2 characters or more), or a full payout ID.",
+        "too-short": "Type at least {min} characters, or a full payout ID."
+      },
+      "chip-id": "Payout ID is {text}",
+      "chip-store": "Store contains \"{text}\"",
+      "chip-seller": "Seller is {name}",
+      "search-capped": "The search matched too many stores, so not every payout of them is listed. Type more of the store name.",
+      "filter": {
+        "title": "Filter payouts",
+        "name": {
+          "approvalMode": "Approval mode",
+          "created": "Created"
+        },
+        "mode": {
+          "AUTO": "Automatic",
+          "MANUAL": "By an admin"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "created": "Created",
+          "amount": "Transfer",
+          "state-changed": "Last changed",
+          "slot": "Planned for"
+        },
+        "created": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "amount": {
+          "first": "Largest first",
+          "second": "Smallest first"
+        },
+        "state-changed": {
+          "first": "Most recent first",
+          "second": "Least recent first"
+        },
+        "slot": {
+          "first": "Latest first",
+          "second": "Earliest first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# payout matches} other {# payouts match}}",
+      "range": "{from}-{to} of {total}",
+      "error": {
+        "unavailable": "The payouts could not be loaded.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      },
+      "empty": {
+        "all": "No payouts yet",
+        "awaiting-approval": "No payouts are waiting for approval",
+        "sending": "No payouts are being sent",
+        "paid": "No payouts have been paid yet",
+        "failed": "No payouts have failed",
+        "not-sent": "No payouts were stopped before sending",
+        "no-match": "No payouts match",
+        "no-match-help": "Try other filters or clear them."
+      },
+      "select": {
+        "page": "Select all payouts on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# payout selected} other {# payouts selected}}",
+        "all": "{count, plural, one {The # matching payout is selected} other {All # matching payouts are selected}}",
+        "all-open": "All matching payouts are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# payout selected} other {# payouts selected}}",
+        "all-open": "All matching payouts selected"
+      },
+      "actions": {
+        "for": "Actions for {name}",
+        "open": "Open",
+        "approve": "Approve…",
+        "place-hold": "Hold payouts…",
+        "release-hold": "Release hold…"
+      },
+      "hold": {
+        "type-to-confirm": "Type the payout reference to confirm",
+        "step-up-note": "This changes when money is paid: you will be asked for your two-step code next.",
+        "place": {
+          "title": "Hold payouts for payout {id}?",
+          "body": "All payouts of {store} stop until the hold is released, including payout {id}. The seller sees only that it is on hold.",
+          "scope": "From this list a hold covers the whole seller. To hold one seller order, open the seller's page.",
+          "confirm": "Place hold",
+          "done": "Hold placed. The seller's payouts stop until it is released."
+        },
+        "release": {
+          "title": "Release the hold on payout {id}?",
+          "body": "The admin hold on {store} ends. Payout {id} and the seller's other payouts can be sent at their next planned time.",
+          "confirm": "Release hold",
+          "done": "Hold released."
+        }
+      }
     }
   },
   "security": {

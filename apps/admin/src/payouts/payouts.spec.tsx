@@ -10,14 +10,12 @@ import { callApi } from '../api/client.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
 import { ApproveDialog } from './approve-dialog.tsx';
 import { PayoutDetailView } from './payout-detail.tsx';
-import { PayoutsList } from './payouts-list.tsx';
 import { type PayoutDetail, type PayoutRow } from './types.ts';
 
 const call = vi.mocked(callApi);
 const ZONE = 'Australia/Brisbane';
 const NOW = Date.parse('2026-10-29T00:00:00.000Z');
 const PAYOUT = '0190a000-0000-7000-8000-0000000000a1';
-const OTHER = '0190a000-0000-7000-8000-0000000000a2';
 const SELLER = '0190a000-0000-7000-8000-0000000000c1';
 const ME = '0190a000-0000-7000-8000-0000000000f1';
 const aud = (amountMinor: string) => ({ amountMinor, currency: 'AUD' });
@@ -65,12 +63,12 @@ const refuse = (status: number, code: string, details?: object) => ({
   ok: false as const,
   failure: { status, code, ...(details === undefined ? {} : { details }) },
 });
-const page = (payouts: PayoutRow[], nextCursor: string | null = null) =>
-  ok({ payouts, nextCursor });
-const list = (
-  tab: 'awaiting-approval' | 'sending' | 'paid' = 'awaiting-approval',
-  canApprove = true,
-) => render(wrap(<PayoutsList tab={tab} canApprove={canApprove} zone={ZONE} csrfToken="csrf-1" />));
+/** Types the payout's reference, the level 3 confirmation of the approve dialog. */
+const confirmRef = (dialog: HTMLElement, text = '000000A1') =>
+  fireEvent.change(within(dialog).getByLabelText('Type the payout reference to confirm'), {
+    target: { value: text },
+  });
+const handlers = () => ({ onClose: vi.fn(), onApproved: vi.fn(), onStale: vi.fn() });
 
 beforeEach(() => {
   call.mockReset();
@@ -88,121 +86,12 @@ afterEach(() => {
   cleanup();
 });
 
-describe('payouts list', () => {
-  it('reads the state of its tab and shows the row with the transfer amount', async () => {
-    call.mockResolvedValueOnce(page([row()]));
-    list();
-    expect(screen.getByRole('status')).toBeTruthy();
-    const link = await screen.findByRole('link', { name: /Payout 000000A1/i });
-    expect(link.getAttribute('href')).toBe(`/payouts/${PAYOUT}`);
-    expect(call).toHaveBeenCalledWith(
-      'GET',
-      'commission-payouts/admin/payouts?status=awaiting-approval&limit=25',
-    );
-    expect(screen.getByText('$310.00')).toBeTruthy();
-    expect(screen.getByText('First payout')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Cedar Lane Halal Meats' }).getAttribute('href')).toBe(
-      `/sellers/${SELLER}`,
-    );
-    // One page-level table, with its caption for a screen reader.
-    expect(screen.getByRole('table', { name: 'Payouts' })).toBeTruthy();
-  });
-
-  it('merges the three API states of the Sending tab, newest change first', async () => {
-    call.mockImplementation((_method, path) => {
-      if (path.includes('status=approved'))
-        return Promise.resolve(
-          page([row({ state: 'approved', stateChangedAt: '2026-10-28T01:00:00.000Z' })]),
-        );
-      if (path.includes('status=instructing'))
-        return Promise.resolve(
-          page([
-            row({
-              payoutId: OTHER,
-              state: 'instructing',
-              stateChangedAt: '2026-10-28T05:00:00.000Z',
-            }),
-          ]),
-        );
-      return Promise.resolve(page([]));
-    });
-    list('sending');
-    await screen.findByRole('table');
-    expect(call).toHaveBeenCalledTimes(3);
-    const refs = screen.getAllByRole('link', { name: /^Payout / }).map((a) => a.textContent);
-    expect(refs).toEqual(['Payout 000000A2', 'Payout 000000A1']);
-  });
-
-  it('shows the empty state of the tab', async () => {
-    call.mockResolvedValueOnce(page([]));
-    list();
-    expect(await screen.findByText('No payouts are waiting for approval')).toBeTruthy();
-    expect(screen.queryByRole('table')).toBeNull();
-  });
-
-  it('shows a retry when the first page fails, and reads again', async () => {
-    call.mockResolvedValueOnce(refuse(503, 'access.unavailable'));
-    list();
-    expect(await screen.findByText('The payouts could not be loaded. Try again.')).toBeTruthy();
-    call.mockResolvedValueOnce(page([row()]));
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByRole('table')).toBeTruthy();
-  });
-
-  it('sends a signed-out admin to the session-ended route', async () => {
-    const assign = vi.fn();
-    vi.stubGlobal('location', { assign });
-    call.mockResolvedValueOnce(refuse(401, 'session.invalid'));
-    list();
-    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
-    vi.unstubAllGlobals();
-  });
-
-  it('loads more with the cursor and drops a row it already has', async () => {
-    call.mockResolvedValueOnce(page([row()], 'cursor-1'));
-    list();
-    await screen.findByRole('table');
-    call.mockResolvedValueOnce(page([row(), row({ payoutId: OTHER, storeName: null })]));
-    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
-    await waitFor(() => expect(screen.getAllByRole('link', { name: /^Payout / })).toHaveLength(2));
-    expect(call).toHaveBeenLastCalledWith(
-      'GET',
-      'commission-payouts/admin/payouts?status=awaiting-approval&limit=25&cursor=cursor-1',
-    );
-    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
-  });
-
-  it('has no approve button without the permission, nor on a tab that is not Awaiting', async () => {
-    call.mockResolvedValueOnce(page([row()]));
-    list('awaiting-approval', false);
-    await screen.findByRole('table');
-    expect(screen.queryByRole('button', { name: /Review and approve/ })).toBeNull();
-    cleanup();
-    call.mockResolvedValueOnce(page([row({ state: 'paid' })]));
-    list('paid');
-    await screen.findByRole('table');
-    expect(screen.queryByRole('button', { name: /Review and approve/ })).toBeNull();
-    expect(screen.getByText('Paid')).toBeTruthy();
-  });
-
-  it('labels the table cells for the card layout below 1024 px', async () => {
-    call.mockResolvedValueOnce(page([row()]));
-    list();
-    await screen.findByRole('table');
-    const labels = [...document.querySelectorAll('td[data-label]')].map((td) =>
-      td.getAttribute('data-label'),
-    );
-    expect(labels).toEqual(['Seller', 'Transfer', 'Approval', 'Planned for', '']);
-  });
-});
-
 describe('approve dialog', () => {
+  let spies = handlers();
   const open = async (initial: PayoutDetail = detail()) => {
-    call.mockResolvedValueOnce(page([row()]));
-    list();
-    await screen.findByRole('table');
+    spies = handlers();
     call.mockResolvedValueOnce(ok(initial));
-    fireEvent.click(screen.getByRole('button', { name: /Review and approve/ }));
+    render(wrap(<ApproveDialog payoutId={PAYOUT} csrfToken="csrf-1" zone={ZONE} {...spies} />));
     const dialog = await screen.findByRole('dialog', { name: 'Approve payout' });
     await within(dialog).findByText('Transfer');
     return dialog;
@@ -216,16 +105,27 @@ describe('approve dialog', () => {
     expect(within(dialog).getByText('Bank account last changed')).toBeTruthy();
     expect(within(dialog).getByText('$5,000.00')).toBeTruthy();
     expect(within(dialog).getByText('$15,000.00 of $20,000.00 alert level')).toBeTruthy();
-    // The browser focuses the first focusable control of a modal dialog: that is Cancel (and the
-    // button carries autoFocus too). Checked in Chromium by the screenshot run.
-    const first = dialog.querySelector<HTMLElement>('a[href], button, input, select, textarea');
-    expect(first?.textContent).toBe('Cancel');
+    // Focus starts on Cancel, not on the confirmation field above it.
+    expect(document.activeElement?.textContent).toBe('Cancel');
     // No code field in the dialog: the step-up dialog asks for it.
     expect(within(dialog).queryByLabelText(/code/i)).toBeNull();
-    expect(within(dialog).getByRole('button', { name: 'Approve $310.00' })).toBeTruthy();
+    // Level 3: the red button waits for the payout's reference to be typed.
+    const approve = within(dialog).getByRole('button', { name: 'Approve $310.00' });
+    expect(approve.hasAttribute('disabled')).toBe(true);
+    expect(within(dialog).getByText(/two-step code/)).toBeTruthy();
+    confirmRef(dialog, '000000A2');
+    expect(approve.hasAttribute('disabled')).toBe(true);
+    confirmRef(dialog, '000000a1');
+    expect(approve.hasAttribute('disabled')).toBe(false);
   });
 
-  it('echoes the exact transfer amount and removes the row when approved', async () => {
+  it('sends nothing until the reference is typed', async () => {
+    const dialog = await open();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve $310.00' }));
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('echoes the exact transfer amount and hands the approval back', async () => {
     const dialog = await open();
     call.mockResolvedValueOnce(
       ok({
@@ -236,6 +136,7 @@ describe('approve dialog', () => {
         approvedAt: '2026-10-29T00:01:00.000Z',
       }),
     );
+    confirmRef(dialog);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve $310.00' }));
     await waitFor(() =>
       expect(call).toHaveBeenLastCalledWith(
@@ -245,35 +146,27 @@ describe('approve dialog', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText(/Approved \$310\.00 for Cedar Lane Halal Meats/)).toBeTruthy();
-    expect(screen.queryByRole('table')).toBeNull();
-    expect(dialog.hasAttribute('open')).toBe(false);
+    await waitFor(() =>
+      expect(spies.onApproved).toHaveBeenCalledWith(expect.objectContaining({ payoutId: PAYOUT })),
+    );
   });
 
   it('formats and echoes a payout of another currency with no minor units (JPY)', async () => {
     const jpy = (amountMinor: string) => ({ amountMinor, currency: 'JPY' });
-    call.mockResolvedValueOnce(page([row({ transfer: jpy('31000') })]));
-    list();
-    await screen.findByRole('table');
-    call.mockResolvedValueOnce(
-      ok(
-        detail({
-          transfer: jpy('31000'),
-          gross: jpy('33000'),
-          netted: jpy('2000'),
-          limits: {
-            perTransfer: jpy('500000'),
-            todayTotal: jpy('1500000'),
-            dailyAlertLevel: jpy('2000000'),
-            overDailyAlertLevel: false,
-            transferAboveLimit: false,
-          },
-        }),
-      ),
+    const dialog = await open(
+      detail({
+        transfer: jpy('31000'),
+        gross: jpy('33000'),
+        netted: jpy('2000'),
+        limits: {
+          perTransfer: jpy('500000'),
+          todayTotal: jpy('1500000'),
+          dailyAlertLevel: jpy('2000000'),
+          overDailyAlertLevel: false,
+          transferAboveLimit: false,
+        },
+      }),
     );
-    fireEvent.click(screen.getByRole('button', { name: /Review and approve/ }));
-    const dialog = await screen.findByRole('dialog', { name: 'Approve payout' });
-    await within(dialog).findByText('Transfer');
     // 31000 minor units of JPY are 31,000 yen, not 310.00.
     const button = within(dialog).getByRole('button', { name: /^Approve .*31,000$/ });
     expect(button.textContent).not.toContain('310.00');
@@ -286,6 +179,7 @@ describe('approve dialog', () => {
         approvedAt: '2026-10-29T00:01:00.000Z',
       }),
     );
+    confirmRef(dialog);
     fireEvent.click(button);
     await waitFor(() =>
       expect(call).toHaveBeenLastCalledWith(
@@ -302,6 +196,7 @@ describe('approve dialog', () => {
     call.mockResolvedValueOnce(
       refuse(403, 'second-factor.required', { actionKey: 'commission-payouts.payout.approve' }),
     );
+    confirmRef(dialog);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve $310.00' }));
     expect(await screen.findByText(/approve a payout/)).toBeTruthy();
     const stepUp = screen.getAllByRole('dialog').find((d) => d !== dialog)!;
@@ -312,23 +207,23 @@ describe('approve dialog', () => {
     expect(within(dialog).getByRole('button', { name: 'Approve $310.00' })).toBeTruthy();
   });
 
-  it('says the amount changed, removes the approve button and reads the list again', async () => {
+  it('says the amount changed, removes the approve button and asks for the list again', async () => {
     const dialog = await open();
     call.mockResolvedValueOnce(refuse(409, 'commission-payouts.payout.amount-changed'));
-    call.mockResolvedValue(page([row({ transfer: aud('29000') })]));
+    confirmRef(dialog);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve $310.00' }));
     expect(
       await within(dialog).findByText('The amount changed. Close and review again.'),
     ).toBeTruthy();
     expect(within(dialog).queryByRole('button', { name: /^Approve/ })).toBeNull();
     expect(within(dialog).getByRole('button', { name: 'Close' })).toBeTruthy();
-    await waitFor(() => expect(screen.getByText('$290.00')).toBeTruthy());
+    expect(spies.onStale).toHaveBeenCalledTimes(1);
   });
 
   it('explains a payout that is no longer waiting', async () => {
     const dialog = await open();
     call.mockResolvedValueOnce(refuse(409, 'commission-payouts.payout.not-awaiting-approval'));
-    call.mockResolvedValue(page([]));
+    confirmRef(dialog);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve $310.00' }));
     expect(await within(dialog).findByText(/no longer waiting for approval/)).toBeTruthy();
     expect(within(dialog).queryByRole('button', { name: /^Approve/ })).toBeNull();
@@ -337,6 +232,7 @@ describe('approve dialog', () => {
   it('names a refusal that comes from acting as a seller', async () => {
     const dialog = await open();
     call.mockResolvedValueOnce(refuse(403, 'access.denied'));
+    confirmRef(dialog);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve $310.00' }));
     expect(await within(dialog).findByText(/may be acting as a seller/)).toBeTruthy();
     expect(within(dialog).getByRole('button', { name: 'Approve $310.00' })).toBeTruthy();
@@ -467,6 +363,7 @@ describe('payout detail', () => {
         }),
       ),
     );
+    confirmRef(dialog);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Approve $310.00' }));
     expect(
       await screen.findByText(/Payout approved\. The transfer is sent shortly\./),
