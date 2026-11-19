@@ -1,34 +1,50 @@
 import { getTranslations } from 'next-intl/server';
+import { headers } from 'next/headers';
 import { catalogStateFor } from '../../../src/catalog/catalog-states.tsx';
-import { OffersTable } from '../../../src/catalog/offers-table.tsx';
-import { Pager } from '../../../src/catalog/pager.tsx';
-import type { OfferView, Page } from '../../../src/catalog/types.ts';
-import { afterIdParam, loadCatalogPage } from '../../../src/server/catalog-page.ts';
+import { OffersList } from '../../../src/catalog/offers-list.tsx';
+import { firstPagePath, type ListPaging } from '../../../src/catalog/offers-query.ts';
+import type { OfferListPage } from '../../../src/catalog/types.ts';
+import { panelHostFor } from '../../../src/server/bff.ts';
+import { catalogGate, loadCatalogPage } from '../../../src/server/catalog-page.ts';
+import { panelConfig } from '../../../src/server/config.ts';
 import { SellerShell } from '../../../src/server/seller-shell.tsx';
+import { serverGet } from '../../../src/server/server-fetch.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations();
   return { title: t('catalog.offers.title') };
 }
 
-export default async function OffersPage({
-  searchParams,
-}: {
-  readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  const after = afterIdParam((await searchParams).after);
+/**
+ * The Offers page: the first page is read here (every Offer, newest first), and the list follows
+ * the Market's "List paging" setting. A setting that cannot be read means Previous and next, which
+ * works for any number of Offers.
+ */
+export default async function OffersPage() {
   const t = await getTranslations();
   const title = t('catalog.offers.title');
-  const page = await loadCatalogPage<Page<OfferView>>(
-    `catalog/seller/offers${after === undefined ? '' : `?afterId=${after}`}`,
-  );
+  const gate = await catalogGate();
+  if (gate.kind !== 'ok') return catalogStateFor(gate, 's_offers', title);
+  const mode = await serverGet<{ readonly listPaging: string }>('settings/seller/list-paging');
+  const paging: ListPaging =
+    mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
+  const page = await loadCatalogPage<OfferListPage>(firstPagePath(paging));
   const state = await catalogStateFor(page, 's_offers', title);
   if (state !== null || page.kind !== 'ok') return state;
+  const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
+  const { session } = page;
   return (
-    <SellerShell session={page.session} activeId="s_offers" title={title}>
+    <SellerShell session={session} activeId="s_offers" title={title}>
       <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
-      <OffersTable items={page.body.items} />
-      <Pager basePath="/offers" nextAfterId={page.body.nextAfterId} />
+      <OffersList
+        initial={page.body}
+        paging={paging}
+        accountId={session.accountId}
+        marketId={marketId}
+        csrfToken={session.csrfToken}
+        permissionKeys={session.permissionKeys}
+        timeZone={session.timezone}
+      />
     </SellerShell>
   );
 }

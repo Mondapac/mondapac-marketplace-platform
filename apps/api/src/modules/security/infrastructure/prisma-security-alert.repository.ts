@@ -9,6 +9,7 @@ import type {
   SecurityAlertRepository,
 } from '../application/ports/security-alert.repository';
 import type { AlertResolution, AlertState, SecurityAlert } from '../domain/alert';
+import { type AlertListFilter, type AlertSort, type AlertViewCounts } from '../domain/alert-list';
 import type { DeliveryChannel, DeliveryOutcome } from '../domain/delivery';
 import type { AlertKeyType } from '../domain/rules';
 import { SEVERITIES, type SecuritySeverity } from '../domain/severity';
@@ -66,6 +67,45 @@ const toAlert = (row: AlertRow): SecurityAlert => ({
 const LIVE: readonly AlertState[] = ['open', 'acknowledged'];
 
 /** {@link SecurityAlertRepository} on the `security` schema, scoped by the unit's Market. */
+const LIVE_STATES = ['open', 'acknowledged'];
+
+/** The `where` of the alert list for a filter (the twin of `alertMatches`). */
+function listWhere(market: MarketContext, filter: AlertListFilter) {
+  const where: Record<string, unknown> = { marketId: market.marketId };
+  switch (filter.view) {
+    case 'all':
+      break;
+    case 'open':
+    case 'acknowledged':
+    case 'resolved':
+      where.state = filter.view;
+      break;
+    case 'critical':
+      where.state = { in: LIVE_STATES };
+      where.severity = 's1';
+      break;
+  }
+  if (filter.severities.length > 0) {
+    where.severity =
+      filter.view === 'critical'
+        ? filter.severities.includes('s1')
+          ? 's1'
+          : { in: [] }
+        : { in: [...filter.severities] };
+  }
+  if (filter.rule !== null) where.rule = filter.rule;
+  if (filter.keyType !== null) where.keyType = filter.keyType;
+  if (filter.keyValue !== null) where.keyValue = filter.keyValue;
+  if (filter.from !== null || filter.to !== null) {
+    where.openedAt = {
+      ...(filter.from === null ? {} : { gte: toDate(filter.from) }),
+      ...(filter.to === null ? {} : { lt: toDate(filter.to) }),
+    };
+  }
+  if (filter.minEvents !== null) where.eventCount = { gte: filter.minEvents };
+  return where;
+}
+
 export class PrismaSecurityAlertRepository implements SecurityAlertRepository {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -224,6 +264,66 @@ export class PrismaSecurityAlertRepository implements SecurityAlertRepository {
       where,
       orderBy: [{ severity: 'asc' }, { openedAt: 'desc' }, { id: 'desc' }],
       take: query.limit,
+    });
+    return rows.map(toAlert);
+  }
+
+  async queryList(
+    market: MarketContext,
+    filter: AlertListFilter,
+    sort: AlertSort,
+    offset: number,
+    limit: number,
+  ): Promise<readonly SecurityAlert[]> {
+    const d = sort.direction;
+    // `severity` sorts the text s1..s4; ties by the newest opened, like the older list.
+    const orderBy =
+      sort.key === 'severity'
+        ? [{ severity: d }, { openedAt: 'desc' as const }, { id: 'desc' as const }]
+        : sort.key === 'opened'
+          ? [{ openedAt: d }, { id: d }]
+          : sort.key === 'last-event'
+            ? [{ lastEventAt: d }, { id: d }]
+            : [{ eventCount: d }, { id: d }];
+    const rows = await this.prisma.tx(market).securityAlert.findMany({
+      where: listWhere(market, filter),
+      orderBy,
+      skip: offset,
+      take: limit,
+    });
+    return rows.map(toAlert);
+  }
+
+  countListWhere(market: MarketContext, filter: AlertListFilter): Promise<number> {
+    return this.prisma.tx(market).securityAlert.count({ where: listWhere(market, filter) });
+  }
+
+  async viewCounts(market: MarketContext): Promise<AlertViewCounts> {
+    // One grouped read; every view is a sum of its (state, severity) groups.
+    const rows = await this.prisma.tx(market).securityAlert.groupBy({
+      by: ['state', 'severity'],
+      where: { marketId: market.marketId },
+      _count: { _all: true },
+    });
+    const counts = { all: 0, open: 0, acknowledged: 0, critical: 0, resolved: 0 };
+    for (const row of rows) {
+      const n = row._count._all;
+      counts.all += n;
+      if (row.state === 'open') counts.open += n;
+      else if (row.state === 'acknowledged') counts.acknowledged += n;
+      else if (row.state === 'resolved') counts.resolved += n;
+      if (row.severity === 's1' && row.state !== 'resolved') counts.critical += n;
+    }
+    return counts;
+  }
+
+  async findByIds(
+    market: MarketContext,
+    ids: readonly string[],
+  ): Promise<readonly SecurityAlert[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.tx(market).securityAlert.findMany({
+      where: { marketId: market.marketId, id: { in: [...ids] } },
     });
     return rows.map(toAlert);
   }

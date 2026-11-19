@@ -38,8 +38,16 @@ export interface FormCategory {
   readonly names: Readonly<Record<string, string>>;
 }
 
+/** A tax category of the Market with the message key it is shown by (from its Market file). */
+export interface TaxCategory {
+  readonly code: string;
+  readonly labelKey: string;
+}
+
 export interface ProductForm {
   readonly taxCategoryCodes: readonly string[];
+  /** The categories with their label keys; when absent the code is shown as words. */
+  readonly taxCategories?: readonly TaxCategory[] | undefined;
   readonly fields: readonly FormField[];
   readonly categories: readonly FormCategory[];
 }
@@ -82,6 +90,8 @@ export interface ProductOptions {
   readonly locales: Locales;
   /** The Market's tax categories and the active platform categories, as the product read lists them. */
   readonly taxCategoryCodes: readonly string[];
+  /** The categories with their label keys; when absent the code is shown as words. */
+  readonly taxCategories?: readonly TaxCategory[] | undefined;
   readonly categories: readonly FormCategory[];
 }
 

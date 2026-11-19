@@ -1,3 +1,4 @@
+import type { UpcomingCashbackView } from '../application/use-cases/view-my-upcoming-cashback.use-case';
 import { ApiProperty } from '@nestjs/swagger';
 import type { CalculationOutput } from '../domain/calculation/types';
 import type { CreditPage } from '../application/use-cases/list-promotion-credits.use-case';
@@ -777,6 +778,37 @@ export function myReferralBody(view: MyReferralView): MyReferralBody {
     maxRewarded: view.maxRewarded,
     pending: view.pending,
     qualified: view.qualified,
+  };
+}
+
+export class UpcomingCashbackItem {
+  @ApiProperty({ format: 'uuid' }) orderId!: string;
+  @ApiProperty({ description: 'Minor units, digits only.' }) amountMinor!: string;
+  @ApiProperty({ description: 'ISO 4217.' }) currency!: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'The instant it is expected in the wallet (the payout release); null once that has passed ' +
+      'and it is on its way.',
+  })
+  creditOn!: string | null;
+}
+
+export class UpcomingCashbackBody {
+  @ApiProperty({ type: [UpcomingCashbackItem] }) cashback!: UpcomingCashbackItem[];
+}
+
+export function upcomingCashbackBody(view: {
+  readonly cashback: readonly UpcomingCashbackView[];
+}): UpcomingCashbackBody {
+  return {
+    cashback: view.cashback.map((c) => ({
+      orderId: c.orderId,
+      amountMinor: minor(c.amountMinor),
+      currency: c.currency,
+      creditOn: c.creditOn === null ? null : c.creditOn.toString(),
+    })),
   };
 }
 
