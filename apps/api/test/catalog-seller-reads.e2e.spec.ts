@@ -672,6 +672,7 @@ describe('seller read routes over HTTP (integration)', () => {
         conditions: string[];
         locales: { default: string; supported: string[] };
         taxCategoryCodes: string[];
+        taxCategories: { code: string; labelKey: string }[];
         categories: {
           categoryId: string;
           parentId: string | null;
@@ -685,6 +686,14 @@ describe('seller read routes over HTTP (integration)', () => {
       expect(body.conditions.length).toBeGreaterThan(0);
       expect(body.locales.supported).toContain(body.locales.default);
       expect(body.taxCategoryCodes.length).toBeGreaterThan(0);
+      expect(body.taxCategories.map((c) => c.code)).toEqual(body.taxCategoryCodes);
+      expect(body.taxCategories.every((c) => /^catalog\.tax\./.test(c.labelKey))).toBe(true);
+      // Each Market answers its own labels, never another Market's.
+      expect(body.taxCategories.map((c) => c.labelKey)).toEqual(
+        code === 'ZZ'
+          ? ['catalog.tax.zz-standard', 'catalog.tax.zz-reduced', 'catalog.tax.zz-zero']
+          : ['catalog.tax.taxable', 'catalog.tax.gst-free'],
+      );
       expect(body.categories).toEqual([
         { categoryId: 'c1', parentId: null, names: { en: 'Pantry' } },
       ]);
@@ -748,7 +757,12 @@ describe('seller read routes over HTTP (integration)', () => {
         // The Market's own cap (config/markets): AU 2, the test Market ZZ 3.
         maxAxes: code === 'ZZ' ? 3 : 2,
         version: 3,
-        form: { fields: [], categories: [], taxCategoryCodes: expect.any(Array) as string[] },
+        form: {
+          fields: [],
+          categories: [],
+          taxCategoryCodes: expect.any(Array) as string[],
+          taxCategories: expect.any(Array) as unknown[],
+        },
         workingCopy: null,
         published: null,
         pending: null,

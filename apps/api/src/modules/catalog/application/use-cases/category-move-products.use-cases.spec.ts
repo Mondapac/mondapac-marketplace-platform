@@ -1,4 +1,4 @@
-import { Temporal } from '@mondapac/shared-kernel';
+import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, MarketId, Result } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -25,6 +25,12 @@ import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import { CategoryMoveProducts } from './category-move-products.use-case';
 import { CategoryMoveProductsProgress } from './category-move-products-progress.use-case';
 import { CategoryMoveProductsRun, MOVE_BATCH_SIZE } from './category-move-products-run.use-case';
+import { NO_PROPOSAL, NO_REVIEW } from '../catalogue-review';
+import { ProductsMoveApplier, type CatalogueStructureDependencies } from '../catalogue-appliers';
+import {
+  RecordingProposer,
+  RecordingReview,
+} from '../../../../../test/support/system-request-fakes';
 
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 const T0 = Temporal.Instant.from('2026-11-11T00:00:00Z');
@@ -322,6 +328,8 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
     audit: audit,
     clock,
     ids,
+    review: NO_REVIEW,
+    proposer: NO_PROPOSAL,
   });
   const progress = new CategoryMoveProductsProgress(gate, { unitOfWork, moveStore: store });
   const runner = () =>
@@ -903,5 +911,121 @@ describe.each(FIXTURES)('Move products in market $code', ({ code, depth }) => {
       allOf: ['catalog.category-tree.restructure', 'catalog.product.approve'],
     });
     expect(CategoryMoveProductsRun.access.rule).toEqual({ kind: 'system' });
+  });
+  describe('system requests (area catalogue, owner decision of 18 Nov 2026)', () => {
+    const note = 'Merging two shelves of dates.';
+    const NO_REQUEST = '01990000-0000-7000-8000-000000005eff' as never;
+    let review: RecordingReview;
+    let proposer: RecordingProposer;
+    let allowed: boolean;
+    const deps = () => ({
+      unitOfWork,
+      adminCategoryReader: reader,
+      moveStore: store,
+      policy,
+      audit,
+      clock,
+      ids,
+      review,
+      proposer,
+    });
+    const reviewed = () => new CategoryMoveProducts(gate, deps());
+    const applier = () =>
+      new ProductsMoveApplier({
+        ...deps(),
+        authorisation: {
+          check: () =>
+            Promise.resolve(
+              allowed ? { allowed: true } : { allowed: false, denial: { code: 'access.denied' } },
+            ),
+        },
+      } as unknown as CatalogueStructureDependencies);
+    const requestOf = (change: { subjectRef: string; before: unknown; after: unknown }) => ({
+      requestId: NO_REQUEST,
+      subjectRef: change.subjectRef,
+      before: change.before as never,
+      after: change.after as never,
+    });
+
+    beforeEach(() => {
+      review = new RecordingReview().review('catalogue');
+      proposer = new RecordingProposer(review);
+      allowed = true;
+    });
+
+    it('files a proposal and starts no job; the approval starts it as the approving admin', async () => {
+      publish(1, [5, 6]);
+      const answer = await reviewed().execute(adminCtx(), {
+        categoryId: cat(5),
+        targetId: cat(3),
+        reason: 'Merging two shelves of dates',
+        note,
+      });
+      expect(answer).toEqual(ok({ request: <unknown>expect.objectContaining({ number: 901 }) }));
+      expect(jobs).toEqual([]);
+      expect(audits).toEqual([]);
+      const proposal = proposer.proposed[0]!;
+      expect(proposal).toMatchObject({
+        subjectKind: 'catalog.category-products-move',
+        subjectRef: cat(5),
+        before: { status: 'active' },
+        after: { action: 'move-products', targetId: cat(3), products: 1 },
+        note,
+      });
+      const request = requestOf(proposal);
+      expect(await applier().check(adminCtx())).toBe('ok');
+      expect(await applier().apply(adminCtx(), request)).toBe('applied');
+      expect(jobs).toHaveLength(1);
+      expect(audits.map((a) => a.action)).toEqual([
+        'catalog.platform-category.products-move-started',
+      ]);
+    });
+
+    it('answers changed-since when the source changed, and fails closed without the key', async () => {
+      publish(1, [5, 6]);
+      await reviewed().execute(adminCtx(), {
+        categoryId: cat(5),
+        targetId: cat(3),
+        reason: 'Merging two shelves of dates',
+        note,
+      });
+      const request = requestOf(proposer.proposed[0]!);
+      allowed = false;
+      expect(await applier().check(adminCtx())).toBe('not-permitted');
+      nodes = nodes.map((n) => (n.id === cat(5) ? { ...n, status: 'hidden' } : n));
+      expect(await applier().apply(adminCtx(), request)).toBe('changed-since');
+      expect(jobs).toEqual([]);
+      expect(audits).toEqual([]);
+    });
+
+    it('a reject changes nothing; a second proposal of the category waits for the first', async () => {
+      publish(1, [5, 6]);
+      const body = {
+        categoryId: cat(5),
+        targetId: cat(3),
+        reason: 'Merging two shelves of dates',
+        note,
+      };
+      await reviewed().execute(adminCtx(), body);
+      expect(await reviewed().execute(adminCtx(), body)).toMatchObject({
+        ok: false,
+        error: { code: 'system-requests.already-pending', pendingNumber: 901 },
+      });
+      proposer.settle('catalog.category-products-move', cat(5));
+      expect(jobs).toEqual([]);
+    });
+
+    it('applies at once where the area is off', async () => {
+      publish(1, [5, 6]);
+      review.reset();
+      const answer = await reviewed().execute(adminCtx(), {
+        categoryId: cat(5),
+        targetId: cat(3),
+        reason: 'Merging two shelves of dates',
+      });
+      expect(answer).toMatchObject({ ok: true, value: { products: 1 } });
+      expect(jobs).toHaveLength(1);
+      expect(proposer.proposed).toEqual([]);
+    });
   });
 });

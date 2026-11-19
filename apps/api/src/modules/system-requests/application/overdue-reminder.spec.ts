@@ -145,6 +145,7 @@ describe.each([['AU'], ['ZZ']] as const)('overdue reminders in market %s', (code
         area,
         subjectKind: 'settings.market-setting',
         subjectRef: `ref-${next}`,
+        mode: 'review',
         risk: 'medium',
         before: { secretBefore: 'old value' },
         after: { secretAfter: 'new value' },

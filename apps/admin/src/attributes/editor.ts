@@ -381,6 +381,7 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'attribute.stale': 'stale',
   'attribute.not-found': 'gone',
   'attribute.code-taken': 'code-taken',
+  'system-requests.already-pending': 'already-pending',
   'attribute.claim-word': 'claim-word',
   'attribute.locale-uncheckable': 'locale-uncheckable',
   'claim-text.check-unavailable': 'check-unavailable',

@@ -25,6 +25,7 @@ import {
 } from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
+import { EXPORT_FORMATS, writeChunks } from '../../../platform/list-export';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
@@ -32,17 +33,22 @@ import {
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
 import { AcknowledgeSecurityAlert } from '../application/use-cases/acknowledge-security-alert.use-case';
+import { ExportSecurityAlerts } from '../application/use-cases/export-security-alerts.use-case';
 import { ListSecurityAlerts } from '../application/use-cases/list-security-alerts.use-case';
+import { QuerySecurityAlerts } from '../application/use-cases/query-security-alerts.use-case';
 import { ResolveSecurityAlert } from '../application/use-cases/resolve-security-alert.use-case';
 import { ViewOnCall } from '../application/use-cases/view-on-call.use-case';
 import { ViewSecurityAlert } from '../application/use-cases/view-security-alert.use-case';
 import { ViewSecuritySummary } from '../application/use-cases/view-security-summary.use-case';
-import { closedBody, refusal } from './http-answers';
+import { ALERT_EXPORT_COLUMNS, ALERT_LIST_VIEWS, ALERT_SORT_KEYS } from '../domain/alert-list';
+import { closedBody, fail, refusal } from './http-answers';
 import {
   AcknowledgeAlertRequest,
   AlertDetailBody,
   alertDetailBody,
   AlertPageBody,
+  alertListBody,
+  AlertListPageBody,
   alertPageBody,
   OnCallBody,
   onCallBody,
@@ -69,6 +75,8 @@ export class AdminSecurityController {
   constructor(
     private readonly summary: ViewSecuritySummary,
     private readonly list: ListSecurityAlerts,
+    private readonly query: QuerySecurityAlerts,
+    private readonly exportAlerts: ExportSecurityAlerts,
     private readonly view: ViewSecurityAlert,
     private readonly onCall: ViewOnCall,
     private readonly acknowledgeAlert: AcknowledgeSecurityAlert,
@@ -127,6 +135,116 @@ export class AdminSecurityController {
     const result = await this.list.execute(context, { state, severity, after, limit });
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return alertPageBody(result.value);
+  }
+
+  @Get('alerts/list')
+  @ApiOperation({
+    summary: 'The alerts as a super list (admin)',
+    description:
+      'Needs security.centre.view. Views (all, open, acknowledged, critical = live s1, resolved) ' +
+      'with counts, filters (severity as a comma list, rule, keyType, keyValue exact, minEvents, ' +
+      'from/to opened), sort (severity, opened, events or last-event, with direction; s1 first by ' +
+      'default), page numbers with a total (`paging=pages`, default) or Previous/Next without one ' +
+      '(`paging=prev-next`), and each row’s actions (open, acknowledge, resolve, by the caller’s ' +
+      'key, the state and, for s1, the roster). No bulk action. An address key is masked. The ' +
+      'older cursor route keeps its answer.',
+  })
+  @ApiQuery({ name: 'view', required: false, enum: ALERT_LIST_VIEWS })
+  @ApiQuery({ name: 'severity', required: false, description: 's1,s2,s3,s4' })
+  @ApiQuery({ name: 'rule', required: false })
+  @ApiQuery({ name: 'keyType', required: false })
+  @ApiQuery({ name: 'keyValue', required: false })
+  @ApiQuery({ name: 'minEvents', required: false })
+  @ApiQuery({ name: 'from', required: false, description: 'Opened at or after (ISO instant).' })
+  @ApiQuery({ name: 'to', required: false, description: 'Opened before (ISO instant).' })
+  @ApiQuery({ name: 'sort', required: false, enum: ALERT_SORT_KEYS })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'paging', required: false, enum: ['pages', 'prev-next'] })
+  @ApiQuery({ name: 'page', required: false })
+  @ApiQuery({ name: 'pageSize', required: false, description: '1 to 100; default 25.' })
+  @ApiOkResponse({ type: AlertListPageBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async getAlertList(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.query.execute(context, numbersOf(query));
+    this.#log(
+      'security.query-security-alerts-route',
+      context,
+      result.ok ? 'listed' : result.error.code,
+    );
+    if (!result.ok) throw refusal({ ...result.error }, context, this.#logger);
+    return alertListBody(result.value);
+  }
+
+  @Get('alerts/export')
+  @ApiOperation({
+    summary: 'Export the alert list as a file (admin)',
+    description:
+      'Needs security.centre.view. `format` is csv (default) or xlsx. `columns` is the ' +
+      `comma-separated optional columns in the order shown (${ALERT_EXPORT_COLUMNS.join(', ')}); ` +
+      'the alert, severity, state, key type, key, events and opened are always there. The alerts ' +
+      'are `ids` (comma-separated, at most 200; an id outside the Market refuses the whole file as ' +
+      'not found) or the selector keys of the list, at most 10,000 (more: batch.too-large with ' +
+      'the total). With `ids` the selector keys are ignored. An address is masked and a resolution ' +
+      'note is never written. CSV: a text cell that starts with = + - @ gets a leading quote. ' +
+      'XLSX: every cell is a string value.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({ name: 'columns', required: false })
+  @ApiQuery({ name: 'ids', required: false })
+  @ApiOkResponse({ description: 'security-alerts-<date>.csv or .xlsx, as an attachment' })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'security.alert-not-found' })
+  async downloadAlerts(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res() response: Response,
+  ): Promise<void> {
+    const result = await this.exportAlerts.execute(context, { ...query });
+    this.#log(
+      'security.export-security-alerts-route',
+      context,
+      result.ok ? 'export' : result.error.code,
+    );
+    if (!result.ok) {
+      const error =
+        result.error.code === 'batch.too-large'
+          ? fail(413, 'batch.too-large', {
+              max: result.error.max,
+              ...(result.error.total === undefined ? {} : { total: result.error.total }),
+            })
+          : refusal({ ...result.error }, context, this.#logger);
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      await writeChunks(response, chunks);
+    } catch {
+      this.#logger.warn({
+        msg: 'security.export-security-alerts',
+        code: 'stream-failed',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response.destroy();
+    }
   }
 
   @Get('alerts/:alertId')
@@ -251,4 +369,15 @@ export class AdminSecurityController {
     if (!result.ok) throw refusal(result.error, context, this.#logger);
     return alertDetailBody(result.value);
   }
+}
+
+function numbersOf(query: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...query };
+  for (const key of ['page', 'pageSize']) {
+    const value = out[key];
+    if (value !== undefined) {
+      out[key] = typeof value === 'string' && /^[0-9]{1,6}$/.test(value) ? Number(value) : -1;
+    }
+  }
+  return out;
 }

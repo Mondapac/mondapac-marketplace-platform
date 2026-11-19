@@ -1,5 +1,5 @@
 import type { AuditEntry, CallContext, MarketContext, Result } from '@mondapac/shared-kernel';
-import { ok, Temporal } from '@mondapac/shared-kernel';
+import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   SequenceIdGenerator,
@@ -35,7 +35,12 @@ import { AttributeImpactGet } from './attribute-impact-get.use-case';
 import { AttributeConvert } from './attribute-convert.use-case';
 import { AttributeMerge } from './attribute-merge.use-case';
 import { AttributeValuesMerge } from './attribute-values-merge.use-case';
-import { RecordingReview } from '../../../../../test/support/system-request-fakes';
+import {
+  applied,
+  RecordingProposer,
+  RecordingReview,
+} from '../../../../../test/support/system-request-fakes';
+import { AttributeActionApplier, type CatalogueStructureDependencies } from '../catalogue-appliers';
 
 // Merging values, archiving and the archive of a material attribute by two administrators
 // (attributes A8), in memory on both Market fixtures. The SQL and its guard trigger are in
@@ -105,6 +110,8 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
   };
   const impactReader: AttributeImpactReader = { impactOf: () => Promise.resolve(impact) };
 
+  let review: RecordingReview;
+  let proposer: RecordingProposer;
   const build = () => {
     const gate = createUseCaseGate(markets, check);
     const deps = {
@@ -118,9 +125,12 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
       audit,
       clock,
       ids,
-      review: new RecordingReview(),
+      review,
+      proposer,
     };
     return {
+      // The appliers read only what these use cases do, plus the authorisation.
+      structure: { ...deps, authorisation: check } as unknown as CatalogueStructureDependencies,
       create: new AttributeDefinitionCreate(gate, deps),
       edit: new AttributeDefinitionEdit(gate, deps),
       publish: new AttributeDefinitionPublish(gate, deps),
@@ -142,6 +152,8 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
     audits = [];
     granted = [CATALOG_ATTRIBUTE_EDIT.key, CATALOG_ATTRIBUTE_RESTRUCTURE.key];
     impact = EMPTY;
+    review = new RecordingReview();
+    proposer = new RecordingProposer(review);
     clock.set(T0);
     ids = new SequenceIdGenerator(clock);
   });
@@ -232,7 +244,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
       if (!first.ok) throw new Error(first.error.code);
       const second = await uc.merge.execute(admin(FIRST), {
         attributeId: attribute.id,
-        version: first.value.attribute.version,
+        version: applied(first.value).attribute.version,
         source: 'can',
         target: 'tin',
       });
@@ -268,7 +280,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
         target: 'tin',
       });
       if (!merged.ok) throw new Error(merged.error.code);
-      const version = merged.value.attribute.version;
+      const version = applied(merged.value).attribute.version;
       expect(
         await uc.merge.execute(admin(FIRST), {
           attributeId: attribute.id,
@@ -371,7 +383,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
       const edit = (tinActive: boolean) =>
         uc.edit.execute(admin(FIRST), {
           attributeId: attribute.id,
-          version: merged.value.attribute.version,
+          version: applied(merged.value).attribute.version,
           names: { [english]: 'Pack type' },
           options: [
             { code: 'tin', labels: { [english]: 'Tin' }, active: tinActive },
@@ -479,7 +491,7 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
       expect(
         await uc.archive.execute(admin(FIRST), {
           attributeId: attribute.id,
-          version: done.value.attribute.version,
+          version: applied(done.value).attribute.version,
         }),
       ).toMatchObject({ ok: false, error: { code: 'attribute-definition.archived' } });
     });
@@ -996,6 +1008,189 @@ describe.each(['AU', 'ZZ'] as const)('attribute restructure in market %s', (code
         await build().convert.execute(admin(FIRST), convertInput(select, 'multi-select')),
       ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
       expect(store.rows.get(select.id)!.state.dataType).toBe('select');
+    });
+  });
+  describe('system requests (area catalogue, owner decision of 18 Nov 2026)', () => {
+    const note = 'Tin and can are the same container.';
+    const NO_REQUEST = '01990000-0000-7000-8000-000000005eff' as never;
+    const requestOf = (change: { subjectRef: string; before: unknown; after: unknown }) => ({
+      requestId: NO_REQUEST,
+      subjectRef: change.subjectRef,
+      before: change.before as never,
+      after: change.after as never,
+    });
+    const restructure = () =>
+      new AttributeActionApplier(build().structure, ['archive', 'merge', 'merge-values']);
+
+    it('a merge of values files a proposal and changes nothing; the approval merges them', async () => {
+      const attribute = await published();
+      review.review('catalogue');
+      const answer = await build().merge.execute(admin(FIRST), {
+        attributeId: attribute.id,
+        version: attribute.version,
+        source: 'can',
+        target: 'tin',
+        note,
+      });
+      expect(answer).toEqual(ok({ request: <unknown>expect.objectContaining({ number: 901 }) }));
+      expect(
+        store.rows.get(attribute.id)!.state.options.find((o) => o.code === 'can'),
+      ).toMatchObject({ active: true });
+      expect(audits).toEqual([]);
+      const proposal = proposer.proposed[0]!;
+      expect(proposal).toMatchObject({
+        subjectKind: 'catalog.attribute-restructure',
+        subjectRef: attribute.id,
+        before: { status: 'active', version: attribute.version, material: false },
+        after: { action: 'merge-values', version: attribute.version, source: 'can', target: 'tin' },
+        note,
+      });
+      const applier = restructure();
+      const request = requestOf(proposal);
+      expect(await applier.check(admin(SECOND), request)).toBe('ok');
+      expect(await applier.apply(admin(SECOND), request)).toBe('applied');
+      expect(
+        store.rows.get(attribute.id)!.state.options.find((o) => o.code === 'can'),
+      ).toMatchObject({ active: false, mergedInto: 'tin' });
+      expect(audits.map((a) => a.action)).toEqual(['catalog.attribute-definition.values-merged']);
+      expect(audits[0]).toMatchObject({ after: { requestId: NO_REQUEST } });
+    });
+
+    it('an archive files a proposal; the approval archives it, and changed-since after an edit', async () => {
+      const attribute = await published();
+      review.review('catalogue');
+      const uc = build();
+      const answer = await uc.archive.execute(admin(FIRST), {
+        attributeId: attribute.id,
+        version: attribute.version,
+        note,
+      });
+      expect(answer).toEqual(ok({ request: <unknown>expect.objectContaining({}) }));
+      expect(store.rows.get(attribute.id)!.state.status).toBe('active');
+      const request = requestOf(proposer.proposed[0]!);
+      // Someone merged two values meanwhile (area off for that edit): the archive is stale.
+      review.reset();
+      const merged = await uc.merge.execute(admin(FIRST), {
+        attributeId: attribute.id,
+        version: attribute.version,
+        source: 'can',
+        target: 'tin',
+      });
+      expect(merged.ok).toBe(true);
+      expect(await restructure().apply(admin(SECOND), request)).toBe('changed-since');
+      expect(store.rows.get(attribute.id)!.state.status).toBe('active');
+
+      const other = await published(false, 'Container');
+      review.review('catalogue');
+      await uc.archive.execute(admin(FIRST), {
+        attributeId: other.id,
+        version: other.version,
+        note,
+      });
+      expect(await restructure().apply(admin(SECOND), requestOf(proposer.proposed[1]!))).toBe(
+        'applied',
+      );
+      expect(store.rows.get(other.id)!.state.status).toBe('archived');
+    });
+
+    it('the approval re-runs the domain checks: an archive blocked since is not-permitted', async () => {
+      const attribute = await published();
+      review.review('catalogue');
+      await build().archive.execute(admin(FIRST), {
+        attributeId: attribute.id,
+        version: attribute.version,
+        note,
+      });
+      impact = { ...EMPTY, featureSetCount: 1 };
+      expect(await restructure().apply(admin(SECOND), requestOf(proposer.proposed[0]!))).toBe(
+        'not-permitted',
+      );
+      expect(store.rows.get(attribute.id)!.state.status).toBe('active');
+      expect(audits).toEqual([]);
+    });
+
+    it('a merge of attributes files a proposal; the approval merges them', async () => {
+      const source = await published(false, 'Pack type');
+      const target = await published(false, 'Container');
+      review.review('catalogue');
+      const answer = await build().mergeAttribute.execute(admin(FIRST), {
+        attributeId: source.id,
+        version: source.version,
+        target: target.id,
+        targetVersion: target.version,
+        options: { tin: 'tin', can: 'can', jar: 'jar' },
+        note,
+      });
+      expect(answer).toEqual(ok({ request: <unknown>expect.objectContaining({}) }));
+      expect(store.rows.get(source.id)!.state.status).toBe('active');
+      const proposal = proposer.proposed[0]!;
+      expect(proposal.after).toMatchObject({
+        action: 'merge',
+        targetId: target.id,
+        targetVersion: target.version,
+      });
+      expect(await restructure().apply(admin(SECOND), requestOf(proposal))).toBe('applied');
+      expect(store.rows.get(source.id)!.state.status).toBe('archived');
+      expect(audits.map((a) => a.action)).toEqual(['catalog.attribute-definition.merged']);
+    });
+
+    it('the approval fails closed without the restructure key, and a discard applier applies no merge', async () => {
+      const attribute = await published();
+      review.review('catalogue');
+      await build().archive.execute(admin(FIRST), {
+        attributeId: attribute.id,
+        version: attribute.version,
+        note,
+      });
+      const request = requestOf(proposer.proposed[0]!);
+      granted = [CATALOG_ATTRIBUTE_EDIT.key];
+      expect(await restructure().check(admin(SECOND), request)).toBe('not-permitted');
+      granted = [CATALOG_ATTRIBUTE_EDIT.key, CATALOG_ATTRIBUTE_RESTRUCTURE.key];
+      expect(
+        await new AttributeActionApplier(build().structure, ['discard']).apply(
+          admin(SECOND),
+          request,
+        ),
+      ).toBe('gone');
+      expect(store.rows.get(attribute.id)!.state.status).toBe('active');
+    });
+
+    it('a reject changes nothing; a second proposal of the attribute waits for the first', async () => {
+      const attribute = await published();
+      review.review('catalogue');
+      const uc = build();
+      await uc.archive.execute(admin(FIRST), {
+        attributeId: attribute.id,
+        version: attribute.version,
+        note,
+      });
+      expect(
+        await uc.merge.execute(admin(FIRST), {
+          attributeId: attribute.id,
+          version: attribute.version,
+          source: 'can',
+          target: 'tin',
+          note,
+        }),
+      ).toEqual(err({ code: 'system-requests.already-pending', pendingNumber: 901 }));
+      proposer.settle('catalog.attribute-restructure', attribute.id);
+      expect(store.rows.get(attribute.id)!.state).toMatchObject({
+        status: 'active',
+        version: attribute.version,
+      });
+    });
+
+    it('a material archive keeps its own two-person request and files no proposal', async () => {
+      const attribute = await published(true);
+      review.review('catalogue');
+      expect(
+        await build().archive.execute(admin(FIRST), {
+          attributeId: attribute.id,
+          version: attribute.version,
+          note,
+        }),
+      ).toMatchObject({ ok: false, error: { code: 'attribute.archive-needs-second-admin' } });
+      expect(proposer.proposed).toEqual([]);
     });
   });
 });
