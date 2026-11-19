@@ -51,6 +51,18 @@ export interface ShelfActor {
  * Every method runs in the open unit of the use case through the Market-scoped client, with
  * `marketId` in every `where`. Proposals and shelves are never deleted.
  */
+/** The filter of the admin queue of waiting category proposals. */
+export interface PendingProposalsFilter {
+  /** The proposal name as the comparison key holds it (see `normaliseShelfName`); null: all. */
+  readonly nameKey: string | null;
+}
+
+export interface PendingProposalsPage extends PendingProposalsFilter {
+  readonly direction: 'asc' | 'desc';
+  readonly offset: number;
+  readonly limit: number;
+}
+
 export interface SellerCategoryStore {
   /** Inserts a pending proposal; `proposal.duplicate` when the pending unique refuses it. */
   addProposal(
@@ -109,6 +121,15 @@ export interface SellerCategoryStore {
     market: MarketContext,
     page: { readonly after: Id<'CategoryProposal'> | null; readonly limit: number },
   ): Promise<readonly CategoryProposalView[]>;
+
+  /** One page of the waiting proposals by time (the caller asks for one extra row to see a next page). */
+  pagePending(
+    market: MarketContext,
+    page: PendingProposalsPage,
+  ): Promise<readonly CategoryProposalView[]>;
+
+  /** How many waiting proposals match the same filter (the total of the list). */
+  countPending(market: MarketContext, filter: PendingProposalsFilter): Promise<number>;
 
   /** One seller's proposals, newest first, at most `limit`. */
   listOfSeller(

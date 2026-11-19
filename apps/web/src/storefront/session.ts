@@ -16,7 +16,11 @@ import { RELAY_TIMEOUT_MS, upstreamCookie } from './session-relay.ts';
 
 /** The only paths a page reads with the buyer's cookies. */
 export type SessionReadPath =
-  'cart' | 'identity/customer/session' | 'orders?limit=100' | `orders/${string}`;
+  | 'cart'
+  | 'identity/customer/session'
+  | 'orders?limit=100'
+  | `orders/${string}`
+  | `promotions/cashback/upcoming?orderId=${string}`;
 
 interface RequestHeaders {
   get(name: string): string | null;
