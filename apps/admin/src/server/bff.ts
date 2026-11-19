@@ -1344,7 +1344,15 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
   'catalog/admin/topics': ['status', 'group', 'search', 'afterId', 'limit'],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
-  'catalog/admin/variant-requests': ['limit'],
+  'catalog/admin/variant-requests': [
+    'limit',
+    'q',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/variants': [
     'q',
     'typeCode',
@@ -1926,7 +1934,14 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
     sellerId: UUID,
   },
-  'catalog/admin/variant-requests': { limit: /^([1-9][0-9]?|100)$/ },
+  'catalog/admin/variant-requests': {
+    limit: /^([1-9][0-9]?|100)$/,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^created$/,
+    direction: /^(asc|desc)$/,
+  },
   'catalog/admin/category-tree/export': {
     format: /^(csv|xlsx)$/,
     status: /^(active|hidden|merged|archived)(,(active|hidden|merged|archived)){0,3}$/,

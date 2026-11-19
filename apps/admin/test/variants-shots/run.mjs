@@ -35,7 +35,7 @@ const views = [
   ['types-swatches', '?id=2', 'Variant type details'],
   ['view-only', '?id=1&edit=0', 'Variant type details'],
   ['variants', '?tab=variants', null],
-  ['waiting', '?tab=waiting', 'list:Size requests'],
+  ['waiting', '?tab=waiting', 'text:Al Noor Grocers'],
   ['waiting-empty', '?tab=waiting&empty=1', 'text:Nothing is waiting for you.'],
 ];
 for (const scheme of ['light', 'dark']) {
