@@ -826,11 +826,12 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const CURSOR = /^[A-Za-z0-9._~:=-]{1,256}$/;
 /** The only GET paths whose query string crosses to the API, and the keys that may cross. */
 /**
- * The lists whose saved views cross the generic route: the three Sales lists (and Orders), and
- * the System requests queue.
+ * The lists whose saved views cross the generic route: the three Sales lists (and Orders), the
+ * System requests queue, Issuer requests and the certificate review queue, and the Sellers list and
+ * its health queue.
  */
 const GENERIC_LIST_KEY =
-  /^admin\.(ordering\.(orders|shipments|refunds|documents)|system-requests\.requests)$/;
+  /^admin\.(ordering\.(orders|shipments|refunds|documents)|system-requests\.requests|certification\.(issuer-requests|review-queue)|sellers\.(list|health-queue))$/;
 /** The System requests export: every key is checked, and a malformed one is refused (400). */
 const SYSTEM_REQUESTS_EXPORT = 'system-requests/admin/requests/export';
 
