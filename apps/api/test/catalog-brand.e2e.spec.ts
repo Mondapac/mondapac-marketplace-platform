@@ -342,6 +342,7 @@ describe('brand routes over HTTP (integration)', () => {
           'attachment; filename="brands-2026-10-28.csv"',
         );
         expect(csv.headers['cache-control']).toContain('no-store');
+        expect(csv.headers['x-content-type-options']).toBe('nosniff');
         const lines = csv.text
           .replace(/^\uFEFF/, '')
           .trimEnd()
@@ -364,6 +365,16 @@ describe('brand routes over HTTP (integration)', () => {
             .slice(1)
             .map((line) => line.split(',')[0]),
         ).toEqual(['Old Brand', 'Draft Brand']);
+
+        const FORMULA = id<'Brand'>(0xc820);
+        brands.seed(brandState(FORMULA, '=1+1 Foods'));
+        const formula = await http().get(`${ADMIN}/export?ids=${FORMULA}`).set(viewer).expect(200);
+        expect(
+          formula.text
+            .replace(/^\uFEFF/, '')
+            .split('\r\n')[1]
+            ?.split(',')[0],
+        ).toBe("'=1+1 Foods");
 
         const xlsx = await http().get(`${ADMIN}/export?format=xlsx&q=acme`).set(viewer).expect(200);
         expect(xlsx.headers['content-type']).toContain('spreadsheetml');
