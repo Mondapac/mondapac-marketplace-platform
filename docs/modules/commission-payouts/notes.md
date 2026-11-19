@@ -129,3 +129,22 @@ without one). The answer adds `request: {id, number}` (null when nothing was ope
 withdrawn request is restored by `CommissionRateReverter` / `PayoutTermsReverter`
 (application/money-reverters.ts), only while the seller still has the value after. The admin
 panel's note field comes with the panel package: until then a save in such a Market answers 400.
+
+## Seller cashback (customers phase 4c-1, 2026-11-17)
+
+New ledger kind `cashback-seller` (a debit, per seller order, no line, source = the promotion
+credit id, amount > 0), written by `commission-payouts.record-seller-cashback` (system) when
+promotions credits a seller-funded cashback. The seller order must be in the ledger and belong to
+that seller (`ledger-inconsistent` otherwise). Totals gain `sellerCashback`, subtracted from the
+balance. The cashback must not exceed the seller order's sales and must name its order.
+`commission-payouts.seller-order-payout-anchor` (system) answers the eligibility anchor of a seller
+order the ledger holds, for promotions' waiting cashback, with whether an active payout hold covers
+it (`PayoutHoldRepository.hasActiveCovering`) and whether a chargeback took its money. Migration
+`20261117100000_ledger_seller_cashback` widens the kind, source and line
+CHECKs; `down.sql` refuses while such rows exist.
+`commission-payouts.record-seller-cashback-return` (system, customers phase 4c-2) records a
+`refund-cashback-seller` credit when a refund claws a seller-funded cashback back from the
+customer: it needs that credit's `cashback-seller` row for the same seller and order, and all
+returns together never exceed it. The anchor's `disputeLost` also counts any dispute decision on the
+seller order (Hassan L-6), so a chargeback the platform bore still cancels the cashback. Migration
+`20261117150001_ledger_seller_cashback_return`; `down.sql` refuses while such rows exist.

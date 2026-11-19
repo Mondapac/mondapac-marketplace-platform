@@ -662,6 +662,8 @@ export type StoreProducts =
 export interface SellerShop {
   /** The URL slug. */
   readonly id: string;
+  /** The seller's id (a UUID) when the store read gives it; the Follow button needs it. */
+  readonly sellerId?: string;
   readonly name: string;
   /** Key of a sample logo; absent for a seller without a profile logo (the default tile shows). */
   readonly logo?: string;
@@ -1017,4 +1019,14 @@ export interface BrandPage {
   readonly brand: Brand;
   readonly products: StoreProducts;
   readonly all: boolean;
+}
+
+/**
+ * Cashback an order earned that is not in the wallet yet (customers phase 4c): display only, never
+ * part of a balance. `creditOn` is the day (YYYY-MM-DD) it is expected (the seller's payout
+ * release), or null once that has passed and it is on its way.
+ */
+export interface UpcomingCashback {
+  readonly amount: { readonly amount: number; readonly currency: string };
+  readonly creditOn: string | null;
 }

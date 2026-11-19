@@ -33,6 +33,7 @@ const ALL: SellerCustomerSelector = {
   view: 'all',
   codePrefix: null,
   follower: null,
+  exclusive: null,
   lastOrderFrom: null,
   lastOrderTo: null,
   ordersMin: null,
@@ -146,6 +147,7 @@ describe.each(TEST_MARKETS)(
         currency: orderCount > 0 ? currency : null,
         follower,
         followedAt: follower ? (over.followedAt ?? T0.subtract({ hours: 1 })) : null,
+        exclusive: false,
       };
     };
 
@@ -204,6 +206,29 @@ describe.each(TEST_MARKETS)(
             customers.upsert(market, entry(shop, alice, { orderCount: 0 }), 'AAAA-0003', T0),
           ),
         ).toBe(CHECK);
+      });
+
+      it('keeps a referred customer with no order or follow, and refuses a row with no relation', async () => {
+        const shop = ids.next<'Seller'>();
+        const alice = await customer(market, 'Sam');
+        const referred = { ...entry(shop, alice, { orderCount: 0 }), exclusive: true };
+        await inUnit(market, () => customers.upsert(market, referred, 'EEEE-0001', T0));
+        expect(await inUnit(market, () => customers.tabCounts(market, shop))).toMatchObject({
+          all: 1,
+          referred: 1,
+        });
+        // Once the attribution is rejected the relation is gone: the sync removes the row, and the
+        // table refuses to keep it.
+        expect(
+          await failure(market, () =>
+            customers.upsert(market, { ...referred, exclusive: false }, 'EEEE-0001', T0),
+          ),
+        ).toBe(CHECK);
+        await inUnit(market, () => customers.removeSellers(market, alice, [shop]));
+        expect(await inUnit(market, () => customers.tabCounts(market, shop))).toMatchObject({
+          all: 0,
+          referred: 0,
+        });
       });
 
       it('refuses a currency without orders, and orders without a currency', async () => {
@@ -365,6 +390,7 @@ describe.each(TEST_MARKETS)(
           all: 3,
           buyers: 2,
           followers: 2,
+          referred: 0,
         });
         expect(
           (
@@ -383,6 +409,7 @@ describe.each(TEST_MARKETS)(
           all: 0,
           buyers: 0,
           followers: 0,
+          referred: 0,
         });
       });
     });

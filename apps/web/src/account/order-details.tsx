@@ -6,7 +6,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
 import { TAX_INVOICE_SHOWN } from '../storefront/features.ts';
-import type { AccountOrder, OrderPart, PickupCode } from '../storefront/types.ts';
+import type { AccountOrder, OrderPart, PickupCode, UpcomingCashback } from '../storefront/types.ts';
 import { AccountFrame, LineThumb, OrderBadge, PartBadge, useDay } from './account-area.tsx';
 import { cancellable, orderTotals, useAccount } from './account-state.tsx';
 import { BuyAgain } from './orders.tsx';
@@ -43,12 +43,15 @@ export function OrderDetails({
   reference,
   order: given,
   showTaxInvoice = TAX_INVOICE_SHOWN,
+  upcomingCashback = [],
 }: {
   /** The page's key: a sample order's reference, or a real order's id. */
   readonly reference: string;
   /** A real order the page read on the server; otherwise it is looked up in the account. */
   readonly order?: AccountOrder;
   readonly showTaxInvoice?: boolean;
+  /** Cashback this order earned that is not in the wallet yet: one display line each. */
+  readonly upcomingCashback?: readonly UpcomingCashback[];
 }) {
   const t = useTranslations('account');
   const tc = useTranslations('checkout');
@@ -203,6 +206,19 @@ export function OrderDetails({
         {order.taxKnown === false ? null : (
           <small className="ac-sub">{t('order.gst', { amount: money(order.includedTax) })}</small>
         )}
+        {upcomingCashback.map((cashback, i) => (
+          <p className="ac-note" key={i}>
+            <Icon name="info" />
+            <span>
+              {cashback.creditOn === null
+                ? t('order.cashback-soon', { amount: money(cashback.amount) })
+                : t('order.cashback-on', {
+                    amount: money(cashback.amount),
+                    date: day(cashback.creditOn),
+                  })}
+            </span>
+          </p>
+        ))}
         {/* A sample order is cancelled only before a seller confirms it; a real one may have been paid. */}
         {order.status === 'cancelled' && order.id === undefined ? (
           <p className="ac-note">

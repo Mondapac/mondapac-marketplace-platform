@@ -92,6 +92,7 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "catalog.own-offers-export", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "catalog.own-offers-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
   {
     "name": "catalog.own-product-image-list",
@@ -272,6 +273,11 @@
     "whenSellerNotApproved": "deny"
   },
   {
+    "name": "commission-payouts.export-own-payouts",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
     "name": "commission-payouts.list-own-disputes",
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
@@ -295,14 +301,22 @@
   { "name": "commission-payouts.place-seller-suspended-hold", "rule": "system" },
   { "name": "commission-payouts.reconcile-instructions", "rule": "system" },
   { "name": "commission-payouts.record-refund", "rule": "system" },
+  { "name": "commission-payouts.record-seller-cashback", "rule": "system" },
+  { "name": "commission-payouts.record-seller-cashback-return", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-delivered", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-paid", "rule": "system" },
   { "name": "commission-payouts.run-payouts", "rule": "system" },
   { "name": "commission-payouts.seller-lost-disputes", "rule": "system" },
+  { "name": "commission-payouts.seller-order-payout-anchor", "rule": "system" },
   { "name": "commission-payouts.sync-dispute", "rule": "system" },
   {
     "name": "commission-payouts.view-next-payout",
     "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "commission-payouts.view-own-exclusive-commission",
+    "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
   {
@@ -315,14 +329,26 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "customers.cancel-email-change-on-deletion", "rule": "system" },
   { "name": "customers.create-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "customers.delete-address", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "customers.execute-account-deletions", "rule": "system" },
+  {
+    "name": "customers.join-store-by-invitation",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "customers.list-addresses", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "customers.read-customer-group-membership", "rule": "system" },
   { "name": "customers.read-customer-last-order", "rule": "system" },
   {
     "name": "customers.read-delivery-address",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  { "name": "customers.read-exclusive-seller", "rule": "system" },
+  {
+    "name": "customers.read-own-exclusive-seller",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
@@ -339,6 +365,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "customers.resolve-store-invitation", "rule": "anonymous" },
   {
     "name": "customers.set-default-address",
     "rule": "own-resources",
@@ -354,6 +381,11 @@
   },
   {
     "name": "customers.view-account-deletion-request",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "customers.view-own-store-invitation",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
@@ -392,6 +424,7 @@
   },
   { "name": "identity.accept-admin-invitation", "rule": "anonymous" },
   { "name": "identity.accept-seller-invitation", "rule": "anonymous" },
+  { "name": "identity.cancel-customer-email-change-for-deletion", "rule": "system" },
   {
     "name": "identity.change-actor-labels",
     "rule": "own-resources",
@@ -426,6 +459,7 @@
   },
   { "name": "identity.complete-seller-sign-in", "rule": "anonymous" },
   { "name": "identity.confirm-customer-email", "rule": "anonymous" },
+  { "name": "identity.confirm-customer-email-change", "rule": "anonymous" },
   { "name": "identity.confirm-second-factor-enrolment", "rule": "anonymous" },
   { "name": "identity.confirm-seller-email", "rule": "anonymous" },
   {
@@ -517,6 +551,8 @@
   { "name": "identity.seed-roles", "rule": "system" },
   { "name": "identity.seller-access-of", "rule": "anonymous" },
   { "name": "identity.seller-access-of-system", "rule": "system" },
+  { "name": "identity.send-email-change-requested-mail", "rule": "system" },
+  { "name": "identity.send-email-changed-mail", "rule": "system" },
   { "name": "identity.send-existing-account-mail", "rule": "system" },
   { "name": "identity.send-invitation-mail", "rule": "system" },
   { "name": "identity.send-link-mail", "rule": "system" },
@@ -617,6 +653,46 @@
     "whenSellerNotApproved": "deny"
   },
   {
+    "name": "lists.seller-column-preference-get",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "lists.seller-column-preference-reset",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "lists.seller-column-preference-save",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "lists.seller-saved-filter-create",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "lists.seller-saved-filter-delete",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "lists.seller-saved-filter-update",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "lists.seller-saved-filters-list",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "lists.seller-saved-filters-reorder",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
     "name": "notifications.count-own-unread-notices",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
@@ -654,6 +730,7 @@
   { "name": "ordering.customer-order-accounts", "rule": "system" },
   { "name": "ordering.customer-order-stats", "rule": "system" },
   { "name": "ordering.customer-seller-stats", "rule": "system" },
+  { "name": "ordering.delivered-seller-order-facts", "rule": "system" },
   { "name": "ordering.delivery-quotes", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "ordering.list-orders", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   {
@@ -725,7 +802,9 @@
   },
   { "name": "promotions.cashback-on-delivery", "rule": "system" },
   { "name": "promotions.check-was-price", "rule": "anonymous" },
+  { "name": "promotions.claw-back-on-refund", "rule": "system" },
   { "name": "promotions.confirm-redemptions", "rule": "system" },
+  { "name": "promotions.grant-due-credits", "rule": "system" },
   { "name": "promotions.list-stale-redemptions", "rule": "system" },
   { "name": "promotions.qualify-referral-on-delivery", "rule": "system" },
   { "name": "promotions.quote-discounts", "rule": "system" },
@@ -744,6 +823,11 @@
   { "name": "promotions.settle-redemptions", "rule": "system" },
   {
     "name": "promotions.view-my-referral",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "promotions.view-my-upcoming-cashback",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
@@ -776,6 +860,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  { "name": "reviews.review-author-of", "rule": "system" },
   {
     "name": "reviews.submit-product-review",
     "rule": "own-resources",
@@ -860,6 +945,7 @@
   { "name": "sellers.operating-zones", "rule": "anonymous" },
   { "name": "sellers.own-zone-read", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "sellers.pickup-postcodes", "rule": "anonymous" },
+  { "name": "sellers.published-store-cards", "rule": "anonymous" },
   { "name": "sellers.published-store-image-read", "rule": "anonymous" },
   { "name": "sellers.published-store-list", "rule": "anonymous" },
   { "name": "sellers.published-store-read", "rule": "anonymous" },
@@ -957,6 +1043,7 @@
   { "name": "tax.reverse-refund-tax", "rule": "anonymous" },
   { "name": "wallet.balance-of", "rule": "system" },
   { "name": "wallet.capture-hold", "rule": "system" },
+  { "name": "wallet.claw-back-credit", "rule": "system" },
   { "name": "wallet.expire-admin-credit-requests", "rule": "system" },
   { "name": "wallet.expire-wallet-credit", "rule": "system" },
   { "name": "wallet.grant-credit", "rule": "system" },

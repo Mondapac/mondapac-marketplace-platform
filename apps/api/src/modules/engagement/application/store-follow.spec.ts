@@ -107,8 +107,9 @@ describe.each([['AU'], ['ZZ']] as const)('store follows in market %s', (code) =>
       clock,
     };
     const forget = new ForgetAccount(gate, deps);
+    const follow = new FollowStore(gate, deps);
     uc = {
-      follow: new FollowStore(gate, deps),
+      follow,
       unfollow: new UnfollowStore(gate, deps),
       view: new ViewStoreFollow(gate, deps),
       mine: new ListMyStores(gate, deps),
@@ -120,6 +121,7 @@ describe.each([['AU'], ['ZZ']] as const)('store follows in market %s', (code) =>
         followedAmong: new FollowedAmong(gate, deps),
         ownFollowedAmong: new OwnFollowedAmong(gate, deps),
         followsOfAccount: new FollowsOfAccount(gate, deps),
+        followStore: follow,
       }),
     };
   });
@@ -209,14 +211,20 @@ describe.each([['AU'], ['ZZ']] as const)('store follows in market %s', (code) =>
     if (!first.ok) throw new Error('first page refused');
     expect(first.value.total).toBe(2);
     expect(first.value.items).toEqual([
-      { sellerId: OTHER_SHOP, slug: 'olive-house', followedAt: T0.add({ hours: 1 }) },
+      {
+        sellerId: OTHER_SHOP,
+        slug: 'olive-house',
+        name: 'Store olive-house',
+        logo: null,
+        followedAt: T0.add({ hours: 1 }),
+      },
     ]);
     expect(first.value.nextCursor).not.toBeNull();
     const second = await uc.mine.execute(alice, { limit: 1, cursor: first.value.nextCursor });
     expect(second).toEqual({
       ok: true,
       value: {
-        items: [{ sellerId: SHOP, slug: null, followedAt: T0 }],
+        items: [{ sellerId: SHOP, slug: null, name: null, logo: null, followedAt: T0 }],
         total: 2,
         nextCursor: null,
       },
@@ -228,6 +236,48 @@ describe.each([['AU'], ['ZZ']] as const)('store follows in market %s', (code) =>
     expect(await uc.mine.execute(alice, { cursor: 'abc' })).toMatchObject({
       ok: false,
       error: { code: 'validation.failed' },
+    });
+  });
+
+  it('shows the name and logo of a public store, and never those of a store that is not public now', async () => {
+    const logo = { id: '0198a2c4-7d1e-7b3a-9c55-2f6e8a1b4d91', width: 512, height: 512 };
+    stores.names.set(SHOP, 'Green Valley Halal');
+    stores.logos.set(SHOP, logo);
+    stores.names.set(OTHER_SHOP, 'Olive House');
+    stores.logos.set(OTHER_SHOP, { ...logo, id: '0198a2c4-7d1e-7b3a-9c55-2f6e8a1b4d92' });
+    await uc.follow.execute(alice, { sellerId: SHOP });
+    clock.advance(Temporal.Duration.from({ hours: 1 }));
+    await uc.follow.execute(alice, { sellerId: OTHER_SHOP });
+
+    const both = await uc.mine.execute(alice, {});
+    expect(both).toMatchObject({
+      ok: true,
+      value: {
+        items: [
+          { sellerId: OTHER_SHOP, name: 'Olive House', slug: 'olive-house' },
+          { sellerId: SHOP, name: 'Green Valley Halal', slug: 'green-valley', logo },
+        ],
+      },
+    });
+
+    // The store stops being public (suspended): the name and logo disappear from the answer.
+    stores.slugs.delete(SHOP);
+    const after = await uc.mine.execute(alice, {});
+    if (!after.ok) throw new Error('refused');
+    const gone = after.value.items.find((item) => item.sellerId === SHOP);
+    expect(gone).toEqual({ sellerId: SHOP, slug: null, name: null, logo: null, followedAt: T0 });
+    expect(
+      JSON.stringify(after, (_k, v: unknown) => (typeof v === 'bigint' ? `${v}` : v)),
+    ).not.toContain('Green Valley Halal');
+  });
+
+  it('fails closed when the store names cannot be read: no partial page', async () => {
+    await uc.follow.execute(alice, { sellerId: SHOP });
+    stores.down = true;
+
+    expect(await uc.mine.execute(alice, {})).toEqual({
+      ok: false,
+      error: { code: 'engagement.unavailable' },
     });
   });
 
@@ -270,6 +320,22 @@ describe.each([['AU'], ['ZZ']] as const)('store follows in market %s', (code) =>
       value: [{ sellerId: SHOP, followedAt: T0 }],
     });
     expect(await uc.facade.followsOfAccount(alice, ALICE)).toMatchObject({ ok: false });
+  });
+
+  it('follows a store through the facade for the signed-in customer only', async () => {
+    // The automatic follow after joining a store through its invite link (customers phase 4a).
+    expect(await uc.facade.followStore(alice, SHOP)).toEqual({
+      ok: true,
+      value: { following: true },
+    });
+    expect(outbox.events).toHaveLength(1);
+    expect(await uc.facade.followStore(alice, SHOP)).toEqual({
+      ok: true,
+      value: { following: true },
+    });
+    expect(outbox.events).toHaveLength(1);
+    expect(await uc.facade.followStore(system, SHOP)).toMatchObject({ ok: false });
+    expect(await uc.facade.followStore(as('admin', BOB), SHOP)).toMatchObject({ ok: false });
   });
 
   it('keeps each Market apart', async () => {

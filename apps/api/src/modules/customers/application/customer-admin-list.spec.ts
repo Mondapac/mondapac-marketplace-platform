@@ -20,6 +20,7 @@ import type { CustomerListDependencies } from './customer-list-flow';
 import type { SheetWriter } from './ports/sheet-writer';
 import { ActorOrMarketDayZone } from '../infrastructure/actor-or-market-day-zone';
 import { InMemoryCustomerList } from './testing/in-memory-customer-list';
+import { MemoryAccountDeletionRequests } from './testing/in-memory-account-deletion';
 import { InMemoryCustomerTimeline } from './testing/in-memory-customer-management';
 import { MemorySavedFilters } from './testing/memory-saved-filters';
 import { AdminCustomerOverview } from './use-cases/admin-customer-overview.use-case';
@@ -158,7 +159,31 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
       completedAt: (inMarket: MarketContext, accountId: Id<'Account'>) =>
         Promise.resolve(erased.get(`${inMarket.marketId}:${accountId}`) ?? null),
     };
-    const pageDeps = { ...listDeps, audit, timeline, ids, deletions };
+    const deletionRequests = new MemoryAccountDeletionRequests();
+    // The pending sign-in email change identity answers (customers admin email change): every
+    // read is recorded, and the answer can be set per test.
+    const pendingEmail: {
+      reads: Id<'Account'>[];
+      answer: Result<
+        { readonly email: string; readonly requestedAt: Temporal.Instant } | null,
+        { readonly code: string }
+      >;
+    } = { reads: [], answer: ok(null) };
+    const pendingEmails = {
+      customerPendingEmailOf: (_context: CallContext, accountId: Id<'Account'>) => {
+        pendingEmail.reads.push(accountId);
+        return Promise.resolve(pendingEmail.answer);
+      },
+    };
+    const pageDeps = {
+      ...listDeps,
+      audit,
+      deletionRequests,
+      timeline,
+      ids,
+      deletions,
+      pendingEmails,
+    };
     const filterDeps = {
       unitOfWork,
       savedFilters,
@@ -169,6 +194,7 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
     };
     return {
       listReader,
+      deletionRequests,
       audits,
       spent,
       stepUp,
@@ -188,6 +214,7 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
       }),
       ownZone,
       erased,
+      pendingEmail,
       placed,
       orderKey,
       filters: {
@@ -294,6 +321,7 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
         spentMinor: '30000',
         refundedMinor: '0',
         firstOrderAt: null,
+        deletionRequest: null,
       });
       expect(t.audits).toHaveLength(1);
       expect(t.audits[0]).toMatchObject({
@@ -302,6 +330,50 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
         after: { tab: 'overview' },
       });
       expect(JSON.stringify(t.audits)).not.toContain('bilal');
+    });
+
+    it('carries the open deletion request of the customer, and none of another Market', async () => {
+      const t = seeded();
+      const accountId = pick(t, 'bilal@example.test');
+      const requestId = ids.next<'AccountDeletionRequest'>();
+      const scheduledFor = NOW.add({ hours: 24 * 14 });
+      await t.deletionRequests.insertPending(otherMarket, {
+        id: ids.next<'AccountDeletionRequest'>(),
+        accountId,
+        status: 'pending',
+        waitingPeriodDays: 14,
+        requestedAt: NOW,
+        scheduledFor,
+        claimedAt: null,
+        requestedBy: 'customer',
+        adminOrigin: null,
+      });
+      const admin = t.as(person([VIEW]));
+      const before = await t.overview.execute(admin, { accountId });
+      expect(
+        before.ok && 'deletionRequest' in before.value && before.value.deletionRequest,
+      ).toBeNull();
+      await t.deletionRequests.insertPending(market, {
+        id: requestId,
+        accountId,
+        status: 'pending',
+        waitingPeriodDays: 14,
+        requestedAt: NOW,
+        scheduledFor,
+        claimedAt: null,
+        requestedBy: 'customer',
+        adminOrigin: null,
+      });
+      const result = await t.overview.execute(admin, { accountId });
+      expect(
+        result.ok && 'deletionRequest' in result.value && result.value.deletionRequest,
+      ).toEqual({
+        requestId,
+        status: 'pending',
+        requestedAt: NOW.toString(),
+        scheduledFor: scheduledFor.toString(),
+      });
+      expect(JSON.stringify(t.audits)).not.toContain(requestId);
     });
 
     it('answers customer-not-found, writing no audit row, for an unknown id and another Market', async () => {
@@ -341,6 +413,59 @@ describe.each(['AU', 'ZZ'] as const)('admin customers super list in market %s', 
       expect(failure(await t.overview.execute(t.as(person([])), { accountId: gone }))).toBe(
         'access.denied',
       );
+    });
+
+    it('shows the pending sign-in email change identity reports, and none when there is none', async () => {
+      const t = seeded();
+      const admin = t.as(person([VIEW]));
+      const accountId = pick(t, 'bilal@example.test');
+      const none = await t.overview.execute(admin, { accountId });
+      expect(
+        none.ok && 'pendingEmailChange' in none.value && none.value.pendingEmailChange,
+      ).toBeNull();
+      t.pendingEmail.answer = ok({ email: 'bilal.new@example.test', requestedAt: day(1) });
+      const result = await t.overview.execute(admin, { accountId });
+      expect(
+        result.ok && 'pendingEmailChange' in result.value && result.value.pendingEmailChange,
+      ).toEqual({ email: 'bilal.new@example.test', requestedAt: day(1).toString() });
+      expect(t.pendingEmail.reads).toEqual([accountId, accountId]);
+      // The audit row holds the tab, never the pending address.
+      expect(JSON.stringify(t.audits)).not.toContain('bilal.new');
+    });
+
+    it('never reads the pending email for a tombstone or a customer that is not found', async () => {
+      const t = seeded();
+      const admin = t.as(person([VIEW]));
+      t.pendingEmail.answer = ok({ email: 'ghost@example.test', requestedAt: day(1) });
+      const gone = ids.next<'Account'>();
+      t.erased.set(`${market.marketId}:${gone}`, day(3));
+      const tombstone = await t.overview.execute(admin, { accountId: gone });
+      expect(tombstone.ok && tombstone.value).toEqual({
+        accountId: gone,
+        status: 'deleted',
+        deletedAt: day(3).toString(),
+      });
+      expect(failure(await t.overview.execute(admin, { accountId: ids.next<'Account'>() }))).toBe(
+        'customers.customer-not-found',
+      );
+      const foreign = t.listReader.rowsOf.get(otherMarket.marketId)![0]!.accountId;
+      expect(failure(await t.overview.execute(admin, { accountId: foreign }))).toBe(
+        'customers.customer-not-found',
+      );
+      expect(t.pendingEmail.reads).toEqual([]);
+    });
+
+    it('answers access.denied when identity denies the pending email read, and access.unavailable for any other failure', async () => {
+      const t = seeded();
+      const admin = t.as(person([VIEW]));
+      const accountId = pick(t, 'bilal@example.test');
+      t.pendingEmail.answer = err({ code: 'access.denied' });
+      expect(failure(await t.overview.execute(admin, { accountId }))).toBe('access.denied');
+      for (const code of ['access.unavailable', 'identity.account-not-found', 'internal']) {
+        t.pendingEmail.answer = err({ code });
+        expect(failure(await t.overview.execute(admin, { accountId }))).toBe('access.unavailable');
+      }
+      expect(t.pendingEmail.reads).toHaveLength(4);
     });
 
     it('refuses an unknown body key', async () => {

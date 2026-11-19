@@ -168,8 +168,17 @@ export class OwnFormCategory {
   @ApiProperty(LOCALE_MAP) names!: Record<string, string>;
 }
 
+export class OwnTaxCategory {
+  @ApiProperty() code!: string;
+  @ApiProperty({
+    description:
+      "The message key the panels show the category by, from the Market's configuration.",
+  })
+  labelKey!: string;
+}
+
 export class OwnProductForm {
-  @ApiProperty({ type: [String] }) taxCategoryCodes!: string[];
+  @ApiProperty({ type: [OwnTaxCategory] }) taxCategories!: OwnTaxCategory[];
   @ApiProperty({
     type: [OwnFormUnit],
     description:
@@ -433,6 +442,17 @@ export class OwnProductOptions {
   conditions!: string[];
   @ApiProperty({ type: OwnProductOptionsLocales })
   locales!: OwnProductOptionsLocales;
+  @ApiProperty({
+    type: [OwnTaxCategory],
+    description: "The Market's tax categories with the label key each is shown by.",
+  })
+  taxCategories!: OwnTaxCategory[];
+  @ApiProperty({
+    type: [OwnFormCategory],
+    description:
+      'The active platform categories a product may be filed under, as `form.categories` of the product read lists them (the list does not depend on the product).',
+  })
+  categories!: OwnFormCategory[];
   @ApiProperty({
     description:
       'False when the Market does not let sellers create products (the form should not open).',

@@ -233,6 +233,16 @@ describe.each(TEST_MARKETS)('catalog brands in market %s (database integration)'
       expect(await insert({ origin_country: 'au' })).toBe('23514');
       expect(await insert({ status: 'draft', approved_by: uuid7() })).toBe('23514');
       expect(await insert({ logo_image_id: uuid7() })).toBe('23514');
+      // An archive reason: only on an archived brand, trimmed, 1 to 500 characters, no control.
+      expect(await insert({ archive_reason: 'Duplicate' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: '' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: ' padded ' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'a\nb' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'a\u0085b' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'a\u2028b' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'a\u007fb' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'x'.repeat(501) })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'x'.repeat(500) })).toBeNull();
       expect(await insert({})).toBeNull();
     });
 
@@ -296,6 +306,35 @@ describe.each(TEST_MARKETS)('catalog brands in market %s (database integration)'
         StaleAggregateError,
       );
     });
+
+    it('stores the archive reason with the archive and reads it back', async () => {
+      const added = await addBrand(newBrand(letters(tag())));
+      const brand = (await inUnit(() => repository.findById(market, added.state.id)))!;
+      const archived = brand.archive({ now: T1, reason: ' Not a real brand. ' });
+      if (!archived.ok) throw new Error(archived.error.code);
+      expect(await inUnit(() => repository.save(market, archived.value))).toBeNull();
+      const stored = (await inUnit(() => repository.findById(market, brand.state.id)))!;
+      expect(stored.state).toMatchObject({
+        status: 'archived',
+        archiveReason: 'Not a real brand.',
+      });
+    });
+
+    it.each([
+      ['a zero-width non-joiner (U+200C)', 'می\u200Cخواهم'],
+      ['an interlinear annotation anchor (U+FFF9)', 'Note \uFFF9 here'],
+    ])(
+      'stores an archive reason with %s: the CHECK refuses only what the app refuses',
+      async (_label, reason) => {
+        const added = await addBrand(newBrand(letters(tag())));
+        const brand = (await inUnit(() => repository.findById(market, added.state.id)))!;
+        const archived = brand.archive({ now: T1, reason });
+        if (!archived.ok) throw new Error(archived.error.code);
+        expect(await inUnit(() => repository.save(market, archived.value))).toBeNull();
+        const stored = (await inUnit(() => repository.findById(market, brand.state.id)))!;
+        expect(stored.state.archiveReason).toBe(reason);
+      },
+    );
 
     it('counts the open proposals of a seller, and finds near-duplicates by key and alias', async () => {
       const unique = letters(tag());
@@ -482,6 +521,22 @@ describe.each(TEST_MARKETS)('catalog brands in market %s (database integration)'
         reader.list(market, { status: 'draft', search: unique, afterId: null, limit: 5 }),
       );
       expect(drafts.items).toEqual([]);
+      // The numbered read: sorted both ways, offset, count, and a wildcard matched as typed.
+      const filter = { status: 'active', search: unique } as const;
+      expect(await inUnit(() => reader.count(market, filter))).toBe(3);
+      const asc = await inUnit(() =>
+        reader.page(market, { ...filter, sort: 'name', direction: 'asc', offset: 1, limit: 5 }),
+      );
+      expect(asc.map((state) => state.name)).toEqual([`Zz${unique} b`, `Zz${unique} c`]);
+      const desc = await inUnit(() =>
+        reader.page(market, { ...filter, sort: 'name', direction: 'desc', offset: 0, limit: 1 }),
+      );
+      expect(desc.map((state) => state.name)).toEqual([`Zz${unique} c`]);
+      const byCreated = await inUnit(() =>
+        reader.page(market, { ...filter, sort: 'created', direction: 'asc', offset: 0, limit: 5 }),
+      );
+      expect(byCreated).toHaveLength(3);
+      expect(await inUnit(() => reader.count(market, { status: null, search: '%' }))).toBe(0);
     });
 
     it('knows whether a seller has an ownBrand product in this Market only', async () => {

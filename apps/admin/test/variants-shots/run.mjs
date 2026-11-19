@@ -35,7 +35,7 @@ const views = [
   ['types-swatches', '?id=2', 'Variant type details'],
   ['view-only', '?id=1&edit=0', 'Variant type details'],
   ['variants', '?tab=variants', null],
-  ['waiting', '?tab=waiting', 'list:Size requests'],
+  ['waiting', '?tab=waiting', 'text:Al Noor Grocers'],
   ['waiting-empty', '?tab=waiting&empty=1', 'text:Nothing is waiting for you.'],
 ];
 for (const scheme of ['light', 'dark']) {
@@ -56,7 +56,7 @@ for (const scheme of ['light', 'dark']) {
         await page.getByRole('list', { name: region.slice(5) }).waitFor();
       else if (region?.startsWith('text:')) await page.getByText(region.slice(5)).waitFor();
       else if (region) await page.getByRole('region', { name: region }).waitFor();
-      else await page.getByText('Show more').waitFor();
+      else await page.getByText('MP-004127-02').first().waitFor();
       await page.waitForTimeout(300);
       const over = await page.evaluate(
         () => globalThis.document.documentElement.scrollWidth > globalThis.innerWidth,

@@ -19,6 +19,7 @@ import {
   type SavedFilter,
   type SavedFiltersAnswer,
 } from './orders-saved.ts';
+import messages from '../../messages/en.json';
 import { order, part, wrap } from './orders-test-kit.tsx';
 import { FILTERS, type AdminOrder, type AdminOrderPage, type AdminOrderRow } from './types.ts';
 
@@ -470,6 +471,46 @@ describe('order list columns', () => {
     await waitFor(() => expect(headers()).toEqual(['Order', 'Status', 'Total']));
   });
 
+  it("scopes a customer's Orders tab to them, keeps its own columns and has no Customer column", async () => {
+    const CUSTOMER = '0190a000-0000-7000-8000-0000000000c1';
+    window.localStorage.setItem(COLUMNS_KEY, '["customer","total"]');
+    serve(() => pageOf([row()]));
+    mount({ customerAccountId: CUSTOMER });
+    const table = await screen.findByRole('table');
+    const asked = call.mock.calls.map((args) => args[1]);
+    expect(
+      asked.some((path) => path.startsWith(`ordering/admin/orders?accountId=${CUSTOMER}&`)),
+    ).toBe(true);
+    // No saved filters on a customer's tab: they belong to the Orders page.
+    expect(asked.some((path) => path.startsWith(SAVED_PATH))).toBe(false);
+    const shown = within(table)
+      .getAllByRole('columnheader')
+      .map((header) => header.textContent);
+    expect(shown).not.toContain('Customer');
+    expect(shown).toContain('Total');
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = await screen.findByRole('dialog', { name: 'Columns' });
+    expect(within(panel).queryByRole('checkbox', { name: 'Customer' })).toBeNull();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Save' }));
+    // The Orders page's choice is untouched; the tab keeps its own.
+    expect(window.localStorage.getItem(COLUMNS_KEY)).toBe('["customer","total"]');
+    expect(
+      window.localStorage.getItem(
+        'mp:admin:AU:0190a000-0000-7000-8000-0000000000f1:customer-orders-columns',
+      ),
+    ).not.toContain('"customer"');
+    // Each order links back to this customer's Orders tab.
+    expect(within(table).getAllByRole('link')[0]?.getAttribute('href')).toContain(
+      `customer=${CUSTOMER}&from=orders`,
+    );
+    // So does the row's Actions menu (Open order here; Cancel, notes and refunds alike).
+    fireEvent.click(within(table).getAllByRole('button', { name: /^Actions for / })[0]!);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Open order' }));
+    expect(push).toHaveBeenLastCalledWith(
+      `/orders/${row().orderId}?customer=${CUSTOMER}&from=orders`,
+    );
+  });
+
   it('ignores a stored column that no longer exists, and works when storage refuses', async () => {
     window.localStorage.setItem(COLUMNS_KEY, '["margin","paid","status","paid"]');
     serve(() => pageOf([row()]));
@@ -703,6 +744,97 @@ describe('order list saved filters', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'Delete filter' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Captured' })).toBeNull());
   });
+
+  it("moves an own filter and saves the order of the admin's own filters, as tabs", async () => {
+    const A = saved();
+    const B = saved({ id: '0190a000-0000-7000-8000-0000000000ac', name: 'Big orders' });
+    const THEIRS = saved({
+      id: '0190a000-0000-7000-8000-0000000000ab',
+      name: 'Shared by Sam',
+      visibility: 'everyone',
+      ownedByMe: false,
+      canManage: false,
+    });
+    let items = [A, B, THEIRS];
+    call.mockImplementation(((method: string, path: string) => {
+      if (path === 'lists/admin/saved-filters/order') {
+        items = [B, A, THEIRS];
+        return Promise.resolve({ ok: true, status: 200, body: { ids: [B.id, A.id] } });
+      }
+      if (path.startsWith(SAVED_PATH)) return Promise.resolve(savedAnswer(items));
+      return Promise.resolve(ok(pageOf([row()])));
+    }) as never);
+    render(
+      wrap(
+        <>
+          <OrdersList {...LIST} zone="UTC" csrfToken="csrf-2" />
+          <Toaster labels={{ region: 'Action notifications', close: 'Close notification' }} />
+        </>,
+      ),
+    );
+    await screen.findByRole('button', { name: 'Big orders' });
+    fireEvent.click(screen.getByRole('button', { name: 'Manage filters' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Manage filters' });
+    expect(within(dialog).getByRole('button', { name: 'Move Paid, captured up' })).toHaveProperty(
+      'disabled',
+      true,
+    );
+    expect(within(dialog).queryByRole('button', { name: 'Move Shared by Sam down' })).toBeNull();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Move Paid, captured down' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'PUT',
+        'lists/admin/saved-filters/order',
+        { listKey: 'admin.ordering.orders', ids: [B.id, A.id] },
+        'csrf-2',
+      ),
+    );
+    expect(await screen.findByText('Moved “Paid, captured”')).toBeTruthy();
+    // The tabs follow the new order.
+    await waitFor(() => {
+      const tabs = screen
+        .getAllByRole('button')
+        .map((button) => button.textContent ?? '')
+        .filter((text) => text === 'Big orders' || text === 'Paid, captured');
+      expect(tabs).toEqual(['Big orders', 'Paid, captured']);
+    });
+    toast.dismiss();
+  });
+
+  it('says a refused move in a banner, reads the filters again and keeps their order', async () => {
+    const A = saved();
+    const B = saved({ id: '0190a000-0000-7000-8000-0000000000ac', name: 'Big orders' });
+    let reads = 0;
+    call.mockImplementation(((method: string, path: string) => {
+      if (path === 'lists/admin/saved-filters/order') {
+        return Promise.resolve({
+          ok: false,
+          failure: {
+            status: 422,
+            code: 'validation.failed',
+            details: { fields: [{ path: 'ids' }] },
+          },
+        });
+      }
+      if (path.startsWith(SAVED_PATH)) {
+        reads += 1;
+        return Promise.resolve(savedAnswer([A, B]));
+      }
+      return Promise.resolve(ok(pageOf([row()])));
+    }) as never);
+    mount({ csrfToken: 'csrf-2' });
+    await screen.findByRole('button', { name: 'Big orders' });
+    fireEvent.click(screen.getByRole('button', { name: 'Manage filters' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Manage filters' });
+    const before = reads;
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Move Paid, captured down' }));
+    expect(await within(dialog).findByText(messages.orders.saved.error.unavailable)).toBeTruthy();
+    await waitFor(() => expect(reads).toBeGreaterThan(before));
+    const names = within(dialog)
+      .getAllByRole('listitem')
+      .map((item) => item.textContent ?? '');
+    expect(names[0]).toContain('Paid, captured');
+  });
 });
 
 describe('order list query and saved documents', () => {
@@ -793,8 +925,8 @@ describe('order list query and saved documents', () => {
 });
 
 describe('orders export', () => {
-  const csv = (status: number, body: BodyInit | null, headers: Record<string, string> = {}) =>
-    new Response(body, { status, headers });
+  const CSV = { 'content-type': 'text/csv; charset=utf-8' };
+  const XLSX = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
   const click = vi.fn();
   const mountWithToasts = () =>
     render(
@@ -805,9 +937,23 @@ describe('orders export', () => {
         </>,
       ),
     );
-  const runExport = async () => {
+  /** Opens the export dialog of the ticked rows or, with `all`, of every matching order. */
+  const openExport = async (all = false) => {
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all on this page' }));
+    if (all) fireEvent.click(await screen.findByRole('button', { name: /^Select all .*matching/ }));
     fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Export all matching as CSV' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^Export/ }));
+    return screen.findByRole('dialog');
+  };
+  const confirm = (dialog: HTMLElement, format: 'CSV' | 'XLSX' = 'CSV') => {
+    fireEvent.click(within(dialog).getByRole('radio', { name: new RegExp(`^${format}`) }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+  };
+  const answer = (make: () => Response) =>
+    vi.spyOn(globalThis, 'fetch').mockImplementation(() => Promise.resolve(make()));
+  const sent = (fetched: { mock: { calls: unknown[][] } }) => {
+    const url = new URL(String(fetched.mock.calls[0]?.[0]), 'http://x');
+    return { path: url.pathname, params: Object.fromEntries(url.searchParams) };
   };
 
   beforeEach(() => {
@@ -821,67 +967,103 @@ describe('orders export', () => {
     toast.dismiss();
   });
 
-  it('downloads the file of the filter, not only the page on screen', async () => {
-    serve(() => pageOf([row()], { total: 60 }));
-    const fetched = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      csv(200, 'Order\r\n', {
-        'content-disposition': 'attachment; filename="orders-2026-11-06.csv"',
-      }),
-    );
+  it('sends the filter, the shown columns and no paging after "Select all matching"', async () => {
+    serve(() => pageOf([row()], { total: 60, hasNext: true }));
     mountWithToasts();
     await screen.findByRole('table');
     fireEvent.click(screen.getByRole('button', { name: /^Paid/ }));
     await waitFor(() => expect(lastUrl()).toContain('status=confirmed'));
-    await runExport();
-    expect(
-      await screen.findByText('The file of the orders on this list was downloaded.'),
-    ).toBeTruthy();
-    const url = fetched.mock.calls[0]?.[0] as string;
-    expect(url.startsWith('/api/ordering/admin/orders/export?')).toBe(true);
-    const params = Object.fromEntries(new URL(`http://x${url}`).searchParams);
+    await screen.findByRole('table');
+    const dialog = await openExport(true);
+    const fetched = answer(
+      () =>
+        new Response('Order\r\nrow\r\n', {
+          status: 200,
+          headers: {
+            ...CSV,
+            'content-disposition': 'attachment; filename="orders-2026-11-06.csv"',
+          },
+        }),
+    );
+    confirm(dialog);
+    expect(await screen.findByText('Exported 1 row.')).toBeTruthy();
+    const { path, params } = sent(fetched);
+    expect(path).toBe('/api/ordering/admin/orders/export');
     expect(params['status']).toBe('confirmed');
-    expect(params).not.toHaveProperty('page');
-    expect(params).not.toHaveProperty('sort');
+    expect(params['format']).toBe('csv');
+    // The default columns: Placed, Customer, Total and Sellers; the file adds what each stands for.
+    expect(params['columns']).toBe('currency,total,tax,sellers,stores,fulfilment');
+    for (const key of ['ids', 'page', 'pageSize', 'sort', 'direction', 'zone']) {
+      expect(params).not.toHaveProperty(key);
+    }
     expect(click).toHaveBeenCalledTimes(1);
   });
 
-  it('tells the admin to narrow the filter when the file would be too large', async () => {
+  it('names the ticked orders and sends no filter', async () => {
     serve(() => pageOf([row()], { total: 60 }));
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      csv(
-        413,
-        JSON.stringify({ code: 'batch.too-large', details: { max: 10000, matching: 12345 } }),
-      ),
-    );
     mountWithToasts();
     await screen.findByRole('table');
-    await runExport();
-    expect(
-      await screen.findByText(
-        '12,345 orders match, and one file holds at most 10,000. Narrow the filters and export again.',
-      ),
-    ).toBeTruthy();
+    const dialog = await openExport();
+    const fetched = answer(
+      () =>
+        new Response(new Uint8Array([0x50, 0x4b, 0x03, 0x04]), {
+          status: 200,
+          headers: { 'content-type': XLSX },
+        }),
+    );
+    confirm(dialog, 'XLSX');
+    expect(await screen.findByText('Exported 1 row.')).toBeTruthy();
+    const { params } = sent(fetched);
+    expect(params['format']).toBe('xlsx');
+    expect(params['ids']).toBe(row().orderId);
+    expect(params).not.toHaveProperty('status');
+    expect(params).not.toHaveProperty('q');
+  });
+
+  it('tells the admin to narrow the filter when the file would be too large', async () => {
+    serve(() => pageOf([row()], { total: 60, hasNext: true }));
+    mountWithToasts();
+    await screen.findByRole('table');
+    const dialog = await openExport(true);
+    answer(
+      () =>
+        new Response(
+          JSON.stringify({ code: 'batch.too-large', details: { max: 10000, matching: 12345 } }),
+          { status: 413 },
+        ),
+    );
+    confirm(dialog);
+    expect(await screen.findByText(/12,345 match, and one file holds up to 10,000/)).toBeTruthy();
     expect(click).not.toHaveBeenCalled();
   });
 
-  it('says the file could not be created after any other failure', async () => {
-    serve(() => pageOf([row()], { total: 60 }));
-    vi.spyOn(globalThis, 'fetch').mockResolvedValue(csv(503, '{}'));
+  it('stops ticking at 100 orders, the most one export names', async () => {
+    const many = Array.from({ length: 120 }, (_, index) =>
+      row({ orderId: `0190a000-0000-7000-8000-${String(index).padStart(12, '0')}` }),
+    );
+    serve(() => pageOf(many, { pageSize: 100 }));
     mountWithToasts();
     await screen.findByRole('table');
-    await runExport();
-    expect(await screen.findByText('The file could not be created. Try again.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all on this page' }));
+    expect(screen.getByText('100 orders selected')).toBeTruthy();
   });
 
-  it('offers no export with no rows, and none while a customer or store name is searched', async () => {
+  it('says the export failed after any other failure', async () => {
+    serve(() => pageOf([row()], { total: 60 }));
+    mountWithToasts();
+    await screen.findByRole('table');
+    const dialog = await openExport();
+    answer(() => new Response('{}', { status: 503 }));
+    confirm(dialog);
+    expect(await screen.findByText('Export failed. Try again.')).toBeTruthy();
+  });
+
+  it('keeps the Bulk action button off until a row is selected', async () => {
     serve(() => pageOf([], { total: 0 }));
     mountWithToasts();
     await screen.findByText(/No orders/);
-    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
-    expect(
-      (await screen.findByRole('menuitem', { name: 'Export all matching as CSV' })).getAttribute(
-        'aria-disabled',
-      ),
-    ).toBe('true');
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Bulk action' }).disabled).toBe(
+      true,
+    );
   });
 });

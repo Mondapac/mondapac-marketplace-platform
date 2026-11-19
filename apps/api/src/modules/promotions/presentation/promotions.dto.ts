@@ -1,3 +1,4 @@
+import type { UpcomingCashbackView } from '../application/use-cases/view-my-upcoming-cashback.use-case';
 import { ApiProperty } from '@nestjs/swagger';
 import type { CalculationOutput } from '../domain/calculation/types';
 import type { CreditPage } from '../application/use-cases/list-promotion-credits.use-case';
@@ -67,7 +68,10 @@ export class FlashBody {
 }
 
 export class SegmentBody {
-  @ApiProperty({ enum: ['RETURNING_CUSTOMER', 'DELIVERY_ZONE', 'MANUAL_GROUP'] }) kind!: string;
+  @ApiProperty({
+    enum: ['RETURNING_CUSTOMER', 'DELIVERY_ZONE', 'MANUAL_GROUP', 'SELLER_EXCLUSIVE'],
+  })
+  kind!: string;
   @ApiProperty({
     nullable: true,
     type: Number,
@@ -304,7 +308,9 @@ export class PromotionRequest {
       'CUSTOMER_GROUP (admin): `{ kind: "RETURNING_CUSTOMER", minDaysSinceLastOrder? }` (the ' +
       'Market\'s default days when left out), `{ kind: "DELIVERY_ZONE" }` with `zones`, or ' +
       '`{ kind: "MANUAL_GROUP", groupId }` (a manual customer group; a customer gets it only ' +
-      'while the group is live and they are in it, fail closed).',
+      'while the group is live and they are in it, fail closed). CUSTOMER_GROUP (seller): ' +
+      '`{ kind: "SELLER_EXCLUSIVE" }` only: the seller\'s own discount, on its items and with its ' +
+      'money, for the customers who joined through its invite link (fail closed).',
   })
   segment?: object;
   @ApiProperty({
@@ -521,7 +527,8 @@ export class QuoteRequestBody {
     type: Object,
     description:
       'Customer facts to try a customer-group or store-follower promotion with: ' +
-      '`{ daysSinceLastOrder?, followedSellerIds?, memberOfGroupIds? }`. A field left out is ' +
+      '`{ daysSinceLastOrder?, followedSellerIds?, memberOfGroupIds?, exclusiveSellerId? }`. A ' +
+      'field left out is ' +
       'unknown, so the ' +
       'promotions that need it do not apply.',
   })
@@ -771,6 +778,37 @@ export function myReferralBody(view: MyReferralView): MyReferralBody {
     maxRewarded: view.maxRewarded,
     pending: view.pending,
     qualified: view.qualified,
+  };
+}
+
+export class UpcomingCashbackItem {
+  @ApiProperty({ format: 'uuid' }) orderId!: string;
+  @ApiProperty({ description: 'Minor units, digits only.' }) amountMinor!: string;
+  @ApiProperty({ description: 'ISO 4217.' }) currency!: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'The instant it is expected in the wallet (the payout release); null once that has passed ' +
+      'and it is on its way.',
+  })
+  creditOn!: string | null;
+}
+
+export class UpcomingCashbackBody {
+  @ApiProperty({ type: [UpcomingCashbackItem] }) cashback!: UpcomingCashbackItem[];
+}
+
+export function upcomingCashbackBody(view: {
+  readonly cashback: readonly UpcomingCashbackView[];
+}): UpcomingCashbackBody {
+  return {
+    cashback: view.cashback.map((c) => ({
+      orderId: c.orderId,
+      amountMinor: minor(c.amountMinor),
+      currency: c.currency,
+      creditOn: c.creditOn === null ? null : c.creditOn.toString(),
+    })),
   };
 }
 

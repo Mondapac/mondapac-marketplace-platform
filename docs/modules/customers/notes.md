@@ -372,6 +372,36 @@ admin deletes a buyer's account for them, from a support ticket.
   more is a scan of the Market until `pg_trgm` is approved. The two sort indexes on the stats
   table are not used by the left join and can be dropped later.
 
+## Customers management, phase 1 frontend: F1 list and F2 customer page (15 Nov 2026)
+
+- **Customers list** (`apps/admin/src/customers/customers-list.tsx`, `/customers`) replaces the exact-email lookup. It is a
+  super list on `SuperList`/`SuperTable`: the seven tabs with counts, saved filters (`customers/admin/saved-filters`),
+  search (email start or name, 2 to 80 characters; shorter is not sent), filters, sort, columns (this browser),
+  selection with "select all matching", the Bulk action menu (Export, with the `customers.customers.export` two-step code)
+  and the row Actions menu (open, copy email, copy account id, disable or enable). The nav item and the dashboard's
+  "Find a customer" now need `customers.customers.view` (was `identity.customer-account.view`).
+- **Customer page** (`/customers/:accountId`, `?tab=overview|orders|money`): header (status, verified, joined; Issue
+  wallet credit; More: disable or enable, delete through the 5c dialog), Overview figures and profile, Orders (the admin
+  Orders list scoped with `accountId`, no Customer column, no saved filters), Money (Spent, Refunded, wallet balance;
+  refunds, wallet journal and promotion credits, each under its own key). `tab-opened` is called once per tab per visit
+  before the tab's data is read.
+- **Known gaps (phase 2 backend):** order-number search; refunds read capped at 100 with no paging or sort (the page
+  pages the 100 in the browser); payments per order, chargebacks and code usage per customer; the
+  "deleted customer" view (erasure removes the directory row, so the page says not found). The spent filter is typed in
+  the currency the rows carry (the panel has no Market currency setting); with no ordering customer on the page it is
+  hidden.
+- **Review round 1 (PR #925):** the Overview read now carries `deletionRequest` (the open request: id, pending or
+  executing, requested and scheduled instants), so the page shows the banner with the date and Cancel and offers no
+  second request. The panel relay allows the new routes (list, export with a 48 KB body cap for 1000 ids, saved
+  filters, the overview, `tab-opened`, refunds, wallet journal, promotion credits) and lets `accountId` (a UUID) cross
+  on `ordering/admin/orders`. More than 1000 ticked rows are refused instead of exporting the whole filter. The
+  customer's Orders tab keeps its own column choice; an order opened from it (or from Money) has Back to the customer.
+  The page tabs use the ARIA tabs pattern (`Tabs` with `panelId`).
+- **Still open:** the day filters (joined, last order) are evaluated as UTC days on the API while the list shows days in
+  the admin's zone (ADR-0005; phase 2 backend). A shared saved filter may hold an email prefix as its search; every
+  admin who sees it already holds `customers.customers.view`. The `tab-opened` audit is written because the page calls
+  it first; a direct read of the owning module's route is audited by that module only.
+
 ## Customers management, phase 2, PR 2a: groups, notes, the activity timeline and the name edit (15 Nov 2026)
 
 - **Manual groups.** `customers.customer_groups` and `customer_group_members` (migration
@@ -431,6 +461,57 @@ admin deletes a buyer's account for them, from a support ticket.
   carries no actor). The notes read writes
   no audit row of its own (the page open does). No role is seeded with the new keys; the owner
   assigns them.
+
+## Customers management: admin changes a customer's sign-in email (16 Nov 2026, API only)
+
+Design note of 16 Nov 2026 with Mohammad's and Hassan's reviews (R1 to R12). The storefront
+confirm page and the admin screen are not part of this change.
+
+- **Routes.** `PUT customers/admin/customers/:accountId/email` (body `email` only) and
+  `DELETE customers/admin/customers/:accountId/email-change`: admin sessions, CSRF, `no-store`,
+  keys `customers.customers.view` and the new **protected** `customers.customer-email.change`
+  (held by the Platform Administrator only), and a fresh step-up proof of that key, spent by
+  identity inside its own unit. Anonymous `POST identity/customer/email-change/confirm`
+  (`token`, `password`; `no-store`, `Referrer-Policy: no-referrer`).
+- **Who owns what.** customers checks its own side first (no pending deletion request:
+  `customers.account-deletion-pending`) and maps identity's codes. identity owns the account,
+  the pending address (`identity.accounts.pending_email*`), the `confirm-email-change` link, the
+  step-up spend, the mail counters (`mail.account` for the customer and for the admin, plus
+  `mail.origin`), the audit rows and the events. customers reaches identity through a late-bound
+  `EMAIL_CHANGE_PEER` bound by `CustomersAccountDeletionModule`.
+- **Flow.** The request keeps the current address; the link goes to the new address (SendLinkMail
+  picks the recipient per purpose) and a warning with the new address masked goes to the current
+  one. A newer request replaces an older one and voids its link; the current address again answers
+  `changed: false` and spends nothing. The confirmation needs the link and the account's password
+  and runs through the sign-in sequence (throttles, failure counter): the link must belong to the
+  pending request (bound by its request instant); the address is swapped and verified, every
+  session is revoked (`email-changed`), no session is opened, the account's other live links are
+  cancelled, and a notice goes to the previous address. The notice is one row per confirmed
+  change in `identity.email_change_notices` (key: Market, account, the account version of the
+  swap; both addresses sealed under the account's key; cascade with the account); the mail
+  handler sends exactly its event's notice, masks that change's new address, and deletes only
+  that row. Every refusal of the link is `link.rejected`; a clash on the unique email key rolls
+  the unit back and also answers `link.rejected`.
+- **Lapse.** A pending address lapses at `requestedAt` plus the Market's `confirm-email-change`
+  link lifetime (AU 1440 minutes). Confirm and SendLinkMail use that one boundary: a link mail
+  that is delivered late is skipped once the address has lapsed (`account.pending-email-lapsed`),
+  and a link issued late may outlive the lapse but its confirmation answers `link.rejected`.
+  The customer page stops showing the address then; `identity.purge-expired` clears it (index
+  `accounts_market_id_pending_email_requested_at_idx`, partial, built concurrently).
+- **Deletion.** A deletion request (by the customer or an admin) cancels the pending change:
+  customers' subscribers `customers.email-change-on-deletion` and
+  `customers.email-change-on-admin-deletion` read the request's account and call identity's
+  `cancelCustomerEmailChangeForDeletion` (system actor from the dispatcher; repeat-safe; the
+  link is voided without a mail; logged by id; no audit row, the deletion request is audited).
+  The request itself still refuses a change while a deletion is pending.
+- **Customer page.** The overview carries `pendingEmailChange` (`email`, `requestedAt`) or null,
+  read from identity at read time (`identity.customer-pending-email-of`, key
+  `customers.customers.view`). The read model takes the new address from
+  `identity.account-email-changed.v1`.
+- **Known gaps.** (1) The deletion cancel is asynchronous: between the deletion request's commit
+  and the dispatch of its event, a confirmation can still swap the address. (2) No timeline
+  entries yet: the customer timeline (phase 2, PR 2a) merged while this change was open; the
+  subscriber and the three entry kinds follow in a PR of their own.
 
 ## Phase 2b: per-module admin reads (PR 2b, partial)
 
@@ -565,6 +646,170 @@ Not built in part 2 (remaining):
   to show; not built (in-app notices go to sellers and admins only).
 - **Promotion usages (e)** remain as above.
 
+
+## Phase 2b, part 3 (reviews) (16 Nov 2026)
+
+The last sections of the customer page and the review events on the timeline (handoff item k).
+
+- **reviews' facade read by account.** `CustomerReviewsFacade` (`CUSTOMER_REVIEWS_FACADE`), four
+  reads behind the new plain platform key `reviews.customer-review.view` (not a seller key, not
+  seeded to Viewer), checked again in reviews for a platform admin who is not seller-scoped and not
+  acting as anyone. Read only and text-free: never a review's title or body, never a reporter's
+  account, never the author of a review the customer voted for. They answer whether reviews are on
+  or off in the Market (they are the history). Their own small dependency set
+  (`CustomerReviewsReader`, `PrismaCustomerReviewsReader`), not the big review repository.
+- **Four super lists, each with `/export`.** Under `customers/admin/customers/:accountId/`:
+  `POST reviews` (filter `status`; each row: ids, rating, anonymous, status, created/edited/published,
+  helpful votes, open reports and the latest moderation line: action, reason code, whether a
+  moderator did it, when; no moderation action here), `POST seller-ratings` (filter `status`),
+  `POST helpful-votes` (no filters) and `POST review-reports` (filter `role`: `by` the customer
+  made it, `about` it reports one of their reviews; a NULL reporter counts as someone else). Each
+  needs `customers.customers.view` and `reviews.customer-review.view`; each export also the
+  protected `customers.customers.export` with its step-up, audited as
+  `customers.customer-section.exported` (the sections `reviews`, `seller-ratings`,
+  `helpful-votes`, `review-reports` are back in `CUSTOMER_SECTIONS` and the catalogue snapshot).
+  customers mirrors reviews' status lists (it cannot import reviews: reviews reaches ordering,
+  which imports customers); the admin-facade-permission contract pins them.
+- **Index.** `20261117050300_reviews_reports_reporter_idx`:
+  `review_reports(market_id, reporter_account_id, created_at DESC)`, plain `CREATE INDEX` with
+  `lock_timeout` (no deployed environment; not partial, so not in the partial-index list; no grant,
+  so no change to the expected privileges), reversible. The reports about a customer's reviews and
+  the other three lists use existing indexes (`product_reviews`, `seller_ratings` and
+  `helpful_votes` by (market, account, created); the reports' (market, review, reporter) key).
+  The reports `about` the customer take two queries in the same read-only unit: the account's
+  review ids in the Market, then `review_id IN (...)` (Mojtaba, B1: a relation filter inside the
+  `OR` planned a hashed SubPlan with no `market_id`, a scan of every Market's reviews). Page and
+  count use the same filter.
+- **Reviews on the timeline.** New kinds `review-published`, `review-held`, `review-hidden`,
+  `review-restored` in the new category `reviews`. Subscriptions `customers.timeline-review-*` on
+  reviews' four events, registered by `CustomersSectionsModule` (it imports reviews). reviews'
+  events still carry no account: `RecordCustomerTimeline` asks `reviewAuthorOf` (new use case
+  `reviews.review-author-of`, rule `system`, so no person and no seller reaches it), then writes
+  once per delivery (`runOnce`, the customers inbox) and once per event. A review that is gone or
+  whose author was deleted writes nothing; reviews unavailable is refused and retried. No reference
+  on the entry (the timeline CHECK allows order, refund, group and note only).
+- **Review kinds need the reviews key (Hassan, L1).** The timeline read, its export and so the
+  Overview's last five show `review-published`, `review-held`, `review-hidden` and
+  `review-restored` only to a caller who also holds `reviews.customer-review.view`, asked through
+  the probe use case `customers.customer-review-events-check` (the gate decides). Without the key
+  the kinds leave the query itself (not the page afterwards), so the page and its total agree; a
+  filter on the `reviews` category or on review kinds only answers an empty list, not an error. A
+  probe the gate cannot answer is `access.unavailable`.
+- **Author removals.** reviews publishes no event when an author deletes their own review (there
+  is no removal event; `ReviewHidden` follows only a moderator's hide or remove of a published
+  review), so an author's removal does not appear on the timeline: the earlier `review-published`
+  entry stays and nothing follows it.
+- **Tests.** Unit on both Market fixtures (reviews' reads and refusals; the four sections through
+  the shared section spec; the timeline from review events and subscriptions), HTTP
+  (`customers-reviews-admin.e2e.spec.ts`: also a seller session, answered 403, and an acting-as
+  session, answered 401 `session.invalid` as on every admin route, on all eight routes; both view
+  keys without the export key refused on every export), PostgreSQL
+  (`reviews-customer-reads.db-spec.ts`, including both roles on both Markets).
+
+Not built in part 3:
+
+- **Consent on the timeline.** legal publishes no event (it has no outbox, and its flow says no
+  consent value reaches an event). Needs a decision: a legal outbox and an event such as
+  `legal.marketing-consent-changed.v1` (account and channel, no value), which customers would copy
+  as `consent-changed`. The consent history section (part 2) shows every change meanwhile.
+- `review-published` also follows an edit that passed the checks and a release from a hold, as
+  reviews' event does; the timeline cannot tell a first submission from those.
+
+## Per-admin limits on customer PII actions and the bulk-reveal alert (16 Nov 2026)
+
+Follow-up of Hassan's review of #969 (findings L2, L3, I3).
+
+- **Limits.** Per admin account and fixed one-hour window, from the Market's
+  `customers.adminActionLimits` (AU / ZZ fixture): `passwordResetsPerHour` 20 / 5 for "send
+  password reset", and `piiRevealsPerHour` 60 / 10 for the reveals of a customer's personal data,
+  the sign-in address (`sign-ins/:signInId/reveal`) and the delivery address
+  (`addresses/:addressId/reveal`) sharing one count. Past it the route answers 429
+  `request.throttled` with `details.retryAfterSeconds` and `Retry-After` (the seconds left in the
+  window). "Sign out everywhere" and the reads are not limited. A Market without the section, or a
+  counter that cannot be read, refuses with `access.unavailable` (503).
+- **Counters.** The platform's shared per-subject counters (`SubjectRateLimits`), new classes
+  `admin-customer-password-reset` and `admin-customer-pii-reveal` (3600-second windows), subject
+  `<market>:<admin account id>` stored as its keyed hash. Migration
+  `20261117050400_platform_rate_limit_admin_customer_classes` widens
+  `platform.rate_limit_counters_key_check` (no grant or index change), reversible.
+- **What counts.** Counted in the application layer after the gate allowed the call and the body
+  is closed, before the customer is looked up: a refused key, an acting-as session or a stray body
+  does not count; an unknown customer, sign-in or address does (no free probing). A refused
+  (throttled) attempt counts too: the windows are fixed, so trying on does not move the window's
+  end, and the count stays one atomic statement.
+- **Bulk-reveal alert.** From `piiRevealAlertAt` on (AU 40 / ZZ 6, at most the reveal limit),
+  every admitted reveal records the security event `customers.pii-reveal.bulk` (s2, target the
+  admin's account, payload `{ reveals }` only): at most `piiRevealsPerHour - piiRevealAlertAt + 1`
+  events per admin and window (AU 21). A reveal whose event cannot be recorded is refused
+  (`access.unavailable`, logged at error level), so one failed write never loses the alert and
+  every reveal past the alert count fails closed while it is unrecorded (Hassan L1 on #974; an
+  earlier version recorded only at the exact count, and a failure there lost the alert). The
+  security events have no dedupe key, so the dedupe is the security centre's: the rule
+  `admin-bulk-pii-reveal` (threshold 1, one-hour window, grouped by the event's target account)
+  keeps one live alert per admin and raises its event count with each later event. No migration.
+- **Fixed-window bursts (Hassan I2).** The windows are fixed, not sliding: an admin can use the
+  whole limit at the end of one window and again at the start of the next, so up to about twice
+  the limit (AU 120 reveals or 40 password resets) can pass within a few minutes around a window
+  boundary. The alert counts per window too: such a burst reaches the alert count in each window,
+  and if the first alert has been resolved meanwhile a second one opens (one live alert per admin
+  otherwise). The windows start at the admin's first counted attempt, not on the clock hour.
+- **I3.** The platform-admin check of the admin reads (authenticated admin, no seller, no
+  acting-as marker) is one helper, `isPlatformAdminActor` in `platform/authz`, used by identity's
+  customer security, cart, engagement, legal, reviews, notifications (support contact) and
+  assistant (settings). In the last two it replaces a population-only check; today no admin actor
+  has a seller or an acting-as marker, so no answer changes.
+- **Tests.** `admin-action-limits.spec.ts` (both Markets: limit then 429, another admin
+  unaffected, the window resets, the shared count, the event from the alert count on, a failed
+  event at the alert count recorded by the next reveal, only allowed calls counted, fail closed),
+  the evaluator keeping one alert per admin (`security-use-cases.spec.ts`), HTTP 429 mapping of the
+  sign-in reveal and the password reset in `customers-sections-admin.e2e.spec.ts` and of the
+  address reveal in `customers-management-admin.e2e.spec.ts`, both Markets, the CHECK in
+  `rate-limit-counters.db-spec.ts`.
+
+## Phase 2b, part 4: consent on the timeline; promotion usages not built (16 Nov 2026)
+
+- **Consent on the timeline (rest of item k).** legal publishes `legal.marketing-consent-changed.v1`
+  from its new outbox (migration `20261117050700_legal_outbox`; docs/modules/legal/notes.md): the
+  account and the channel, never the value or the source. Subscription
+  `customers.timeline-consent-changed`, registered by `CustomersSectionsModule` (which already
+  imports legal), hands it to `RecordCustomerTimeline` (rule `system`; `runOnce` and the customers
+  inbox; once per event by the source event id). New kind `consent-changed` in the `account`
+  category, the channel as the entry's `detail` (a code; anything else is `validation.failed`), no
+  reference, no actor. An account without a directory row yet is refused and retried as for the
+  other account events; an erased account gets nothing. No customers migration: the kind and
+  detail CHECKs are code alphabets.
+- **Consent entries need legal's key (decision).** The task suggested `customers.customers.view`
+  might be enough, since an entry carries no value. It is not: only real changes are recorded and
+  the default is "not granted", so the number of `consent-changed` entries tells whether the
+  customer consents now, which is what `legal.customer-consent.view` guards on the consent
+  section. So the timeline read, its export and the Overview's last five show `consent-changed`
+  only to a caller who also holds `legal.customer-consent.view`, through the probe use case
+  `customers.customer-consent-events-check` (the gate decides), exactly as the review kinds need
+  `reviews.customer-review.view`: without the key the kind leaves the query (page and total agree),
+  a filter on it alone is an empty list, a probe the gate cannot answer is `access.unavailable`.
+  The two probes are independent (the review key does not open the consent kind). Pinned in
+  `test/contracts/admin-facade-permission.contract.spec.ts`.
+- **No new permission key, audit action or security event.** The registry, the Viewer exclusion
+  list, the role seed and the audit snapshot are unchanged; the event catalogue snapshot and the
+  subscriber list gain the new type and subscriber. The probe has a permission rule, so it is not
+  in `access-declarations.json`.
+- **Promotion usages per customer (item e): not built, blocked.** There is still no per-account
+  redemption data: checkout never calls promotions (ordering has no promotion or discount on an
+  order), `promotion_usage` holds per-promotion counters that nothing writes yet, and
+  `promotion_batch_codes.used_at` is never set (promotions package T2, "marking a code used on
+  redemption", is open). A read and route over an empty or invented table would show nothing true.
+  Needs, first: promotions package T2 (apply the quote at checkout, a redemption row per order and
+  promotion with the account, the discount as Money, the time and a status, released or reversed
+  on cancel or refund), designed with Mohammad and Mojtaba. Then this read is a promotions facade
+  read keyed by account behind its own key, as planned.
+- **Tests.** Unit on both Market fixtures: legal writes one event per real change, none for a
+  no-op or a failed write, never a value (`legal-use-cases.spec.ts`); the subscription records once
+  per event with the channel, skips an erased account, retries a missing directory row, refuses a
+  bad channel (`customer-timeline-events.spec.ts`); the gate on the read and the export
+  (`customer-management.spec.ts`). PostgreSQL: the event row in `legal.outbox` with the change and
+  rolled back with a serialization loser (`legal-marketing-consent.db-spec.ts`), the timeline row
+  (`customers-management.db-spec.ts`), privileges and the partial-index list.
+
 - **Identity section** (logins over 90 days as a super list, sessions, sign out everywhere,
   send a password reset): the largest piece, an auth path (security review). `sign_in_records`
   holds the full IP and no geo data, so a "rough city" needs a geo lookup first.
@@ -625,3 +870,125 @@ Not built in part 2 (remaining):
   orders and takes the latest order's currency, which holds while a Market has one currency.
 - **Database.** The sort indexes on `last_order_at` and `followed_at` are `DESC NULLS LAST`, as the
   list sorts them; a CHECK ties `currency` to `order_count > 0`.
+
+## Phase 4a, PR 4a-1: sellers' invite links and the exclusive customer (2026-11-17)
+
+Plan sections 6, 7 and 7b (customers-management-plan-fa.html). API only; the seller panel's link
+card, the storefront's invite banner and the admin list's screens follow in the frontend phase.
+
+- **Tables** (`customers` schema): `seller_invite_links` (one live link per seller by a partial
+  unique index; a token of 26 Crockford symbols unique in the Market; a refresh revokes the old
+  link, whose customers stay attributed) and `seller_attributions` (one per account, foreign key to
+  the directory with cascade, so erasure removes it; status `active` or `rejected` with a reason
+  `seller-team` or `admin`; `flags` holds `link-burst`; a decision is a conditional update on
+  `version`). No raw SQL: concurrency rests on the unique indexes and the versioned update.
+- **Where the link lives**: in `customers`, not `sellers`, so the link and the attribution share
+  one module and one unit. Permission `customers.seller-invite-link.manage` (seller scope) for the
+  link; `customers.seller-attributions.manage` (platform, protected) for an admin decision.
+- **The claim**: the storefront resolves a token anonymously to the store's address only
+  (`GET customers/store-invitations/:token`). After sign-up and email verification the signed-in
+  customer claims it (`POST customers/me/store-invitation`). New sign-ups only: signed up within
+  the Market's `customers.invitations.signUpWindowDays`, no order, no attribution yet. Then the
+  store is followed for the customer (best effort, after the commit) and
+  `customers.seller-attribution-changed.v1` marks the customer `exclusive` in the seller's
+  customers read model (new view `referred`, filter `exclusive`).
+- **Burst count, review fixes**: the count is per seller (any of its links), so a refresh does not
+  reset it; the claim locks the live link's row first (a no-op update, no raw SQL), so concurrent
+  claims through it run one after another and the count is exact. The suspicious view's partial
+  index is written as Prisma writes the filter (`flags <> '{}'`), and a db-spec checks the plan.
+- **Abuse checks**: a customer whose sign-in address is on the seller's team (identity's
+  `ownAccountTiedToSeller`) is recorded as rejected (`seller-team`) and refused; an admin cannot
+  restore it. More attributions through one link in 24 hours than `burstPerDay` flag the new one
+  `link-burst`. Household and payment-method matches are not built: the platform has no such
+  signal (promotions' referral signals answer "unknown" too). The admin's manual reject or
+  restore covers the rest.
+- **Admin list** (`customers/admin/seller-attributions`): a super list (views suspicious, all,
+  active, rejected; email prefix search; filters seller, status, reject reason, flag, day range;
+  both paging modes; select all matching up to 10,000; saved filters under
+  `admin.customers.seller-attributions`; CSV/XLSX export behind the Customers export step-up,
+  audited without personal data). Rows show the seller id, not the store name.
+- **Market settings**: `customers.invitations` (AU: 7 days, 50 a day; ZZ: 3 days, 2 a day). A
+  Market without it has the feature off.
+- **For 4b**: `exclusiveSellerOf` (the seller of an active attribution recorded at or before an
+  instant) is ready for checkout's order-line freeze; the facade method comes with 4b.
+- PR 4a-2: use case `customers.read-exclusive-seller` (rule `system`) and the read facade method
+  `exclusiveSellerOf(context, accountId, at)` for promotions' exclusive-customer discount (and
+  for 4b's checkout freeze). Ids and the instant only.
+
+## Phase 4b: the lower commission for an exclusive customer (2026-11-17)
+
+- Use case `customers.read-own-exclusive-seller` (rule `own-resources`, customer only, Login-as
+  refused) behind the checkout facade method `ownExclusiveSeller(context)`: the signed-in
+  customer's exclusive seller now (an active attribution), or null.
+- Checkout (ordering) asks it once per order; any failure or throw means none (standard rate).
+  It passes the answer to commission-payouts' `commissionRates`, which lowers the exclusive
+  seller's rate while the window is open, and freezes on every line `exclusive_seller` and
+  `commission_rate_reason` (`standard` | `exclusive`).
+- Market setting `commissionPayouts.exclusiveCustomer` `{ reductionBps, floorBps, months }`
+  (AU 5000/300/12: half, floor 3 %, 12 months; ZZ 2500/500/6). It lives with the commission
+  settings (commission-payouts owns the rate), not under `customers` as the handoff named it.
+  The window runs from the attribution (`since`), in UTC months. A Market without it has no lower
+  rate. The lower rate is `max(floor, floor(rate × (1 − reduction)))`, never above the rate in
+  force; `exclusive` only when it is lower.
+- Migration `20261117080000_ordering_exclusive_seller_commission`: two columns with constant
+  defaults (no rewrite) and a CHECK (`exclusive` needs `exclusive_seller` and a frozen rate).
+
+## Seller attributions: day filters in the admin's zone (18 Nov 2026)
+
+- `attributedFrom` and `attributedTo` on the attributions list, `ids` and export are now read in
+  the calling admin's own panel zone, else the Market's (`AdminDayZone`, ADR-0005), as the
+  customer list's day filters are; they were UTC days. The request body is unchanged: the zone is
+  resolved on the server, never taken from the body. Saved filters keep the plain days, so a shared
+  filter reads in each viewer's own zone.
+- The repository takes a `ZonedAttributionSelector` (the parsed selector plus `dayZone`) and cuts
+  the days with `localDayStart`/`localDayEnd`; a day such as 31 February is refused at parse.
+
+## Phase 4b follow-up: the seller's savings on exclusive customers (2026-11-18)
+
+- Checkout also freezes `ordering.order_lines.commission_standard_rate_bps` on a lowered line: the
+  seller's rate in force at placement (`CommissionRate.standardRateBps`). Null on every other line
+  and on lines lowered before this column (their saving is unknown, never guessed).
+- The ledger's `commission` row of such a line keeps `standard_rate_bps` and `saved_amount`
+  (the commission at the standard rate on the same base, less what was taken); each
+  `refund-commission` row gives back its part of the saving in the same cumulative proportion as the
+  commission, so a full refund gives back exactly the saving. CHECK: both or neither, commission
+  kinds only, never below the row's rate, never negative. Partial index on (market, seller,
+  occurred_at) where a saving exists.
+- `GET commission-payouts/seller/exclusive-commission` (`commission-payouts.earnings.view`, the
+  seller's own only): `rule` (the seller's rate in force now, the lower rate and the months; null
+  when the Market has none), `zone` (the Market's), `months` (the last 12, per currency, savings
+  less what refunds gave back, by the rows' `occurred_at`) and `thisMonth`.
+
+
+## Phase 4c-1: the seller's cashback for its exclusive customers (2026-11-17)
+
+- A seller makes a `CASHBACK` promotion with the segment `SELLER_EXCLUSIVE` (the only way a
+  seller makes a cashback): its own money, a percent between the Market's new
+  `promotions.cashback.sellerMinBps` (AU 100 = 1 %, ZZ 50) and `maxBps` (AU 10 %), and a per-order
+  cap up to `maxCapMinor`. An admin cashback never takes the segment.
+- On delivery (`promotions.cashback-on-delivery`) it reserves the credit only when the
+  customer was the seller's exclusive customer when the order was placed (the flag frozen on the
+  lines and the attribution in force then), and only on that seller's own seller order. Unknown
+  attribution retries.
+- Every real cashback (the platform's too) waits for the seller order's payout release
+  (commission-payouts' eligibility anchor: delivery plus the hold days), because a seller can mark
+  its own order delivered (Hassan H-1). The credit is PENDING with `grant_after`; the worker job
+  `promotions.grant-due-credits` (every 15 minutes) then re-reads the order, lowers the amount
+  for what refunds gave back meanwhile (nothing left: FAILED `order-refunded`), cancels a seller's
+  cashback whose customer is no longer its exclusive customer (`not-exclusive`), and credits the
+  wallet. A seller order already released is credited at once. The cap is per seller order; the larger
+  of the platform's and the seller's cashback wins (one cashback credit per seller order).
+- The seller pays: after the wallet credit, `commission-payouts.record-seller-cashback` writes a
+  `cashback-seller` debit on that seller order (idempotent per credit), shown on the seller's
+  ledger as "Cashback for your customer" and in the totals as `sellerCashback`. Commission stays on
+  the goods before cashback. A ledger failure keeps the credit pending and the delivery retries
+  (the wallet credit is idempotent by key).
+- Seller money needs no tax-ruling test mode. A wallet that is off (`wallet.disabled`) ends a
+  seller's credit as failed, with no debit.
+- Ordering now answers `ordering.delivered-seller-order-facts` (system): goods without tax and
+  shipping, what refunds (not failed) gave back of them, the frozen exclusive flag, the seller,
+  the customer and the instants. Commission-payouts answers
+  `commission-payouts.seller-order-payout-anchor` (system) only for a seller order its ledger holds,
+  so a seller-funded credit is never made for a seller order the ledger cannot debit. This also wires the platform's cashback,
+  which until now never found an order's facts.
+- Not yet (4c-2): a refund claws back the unused cashback pro rata (`refund-cashback-seller`).

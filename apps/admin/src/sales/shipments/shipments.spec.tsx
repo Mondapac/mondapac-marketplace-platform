@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { visibleNavItems, toast, Toaster } from '@mondapac/ui';
+import { Badge, visibleNavItems, toast, Toaster, type BadgeTone } from '@mondapac/ui';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/en.json';
 import { adminNav } from '../../nav.ts';
@@ -14,7 +14,12 @@ vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../../api/client.ts';
 import { ShipmentsList } from './shipments-list.tsx';
-import { OPTIONAL_COLUMNS, cleanColumns, exportColumnIds } from './shipments-columns.ts';
+import {
+  DEFAULT_COLUMNS,
+  OPTIONAL_COLUMNS,
+  cleanColumns,
+  exportColumnIds,
+} from './shipments-columns.ts';
 import type { ShipmentRow, ShipmentsPage } from './shipments-types.ts';
 
 const call = vi.mocked(callApi);
@@ -48,6 +53,7 @@ const row = (over: Partial<ShipmentRow> = {}): ShipmentRow => ({
   trackingRef: 'SC 4471 99',
   fleet: 'swift',
   deliveryAttention: null,
+  carrierProgress: null,
   shipping: money('990'),
   total: money('12550'),
   refunded: money('0'),
@@ -58,6 +64,7 @@ const COUNTS = { toPrepare: 5, ready: 4, shipped: 3, delivered: 2, refunded: 1, 
 const pageOf = (shipments: ShipmentRow[], over: Partial<ShipmentsPage> = {}): ShipmentsPage => ({
   shipments,
   counts: COUNTS,
+  carrierProgressAvailable: true,
   total: shipments.length,
   page: 1,
   pageSize: 25,
@@ -70,11 +77,17 @@ const pageOf = (shipments: ShipmentRow[], over: Partial<ShipmentsPage> = {}): Sh
 const cursorPage = (shipments: ShipmentRow[], nextCursor: string | null = null) =>
   pageOf(shipments, { total: null, page: null, nextCursor });
 
+type SavedRoute = (method: string, path: string, body: unknown, csrf?: string) => Promise<never>;
+/** Until a test says otherwise the saved-filter route is not there: the controls stay hidden. */
+const noSavedRoute: SavedRoute = () =>
+  Promise.resolve({ ok: false, failure: { status: 404, code: 'not-found' } } as never);
+
 type Answer = ShipmentsPage | 'fail' | 'denied' | 'unauthenticated' | 'search-down';
 
 /** The list answers by URL, so the order of the calls does not matter. */
-function serve(answer: (url: string) => Answer) {
-  call.mockImplementation((_method, path) => {
+function serve(answer: (url: string) => Answer, saved: SavedRoute = noSavedRoute) {
+  call.mockImplementation((method, path, body, csrf) => {
+    if (path.startsWith('lists/admin/saved-filters')) return saved(method, path, body, csrf);
     const result = answer(path);
     if (result === 'fail') {
       return Promise.resolve({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
@@ -94,7 +107,11 @@ function serve(answer: (url: string) => Answer) {
     return Promise.resolve({ ok: true, status: 200, body: result } as never);
   });
 }
-const urls = () => call.mock.calls.map((entry) => entry[1]);
+/** The list's own requests (the saved-filter routes have their own helper). */
+const urls = () =>
+  call.mock.calls
+    .map((entry) => entry[1])
+    .filter((url) => !url.startsWith('lists/admin/saved-filters'));
 const lastUrl = () => urls()[urls().length - 1]!;
 const paramsOf = (url: string) => Object.fromEntries(new URL(`http://x/${url}`).searchParams);
 
@@ -1556,13 +1573,14 @@ describe('Shipments Export', () => {
 
 describe('Shipments export column ids', () => {
   it('maps every column of the picker to the id the export endpoint reads', () => {
-    expect(OPTIONAL_COLUMNS).toHaveLength(13);
+    expect(OPTIONAL_COLUMNS).toHaveLength(14);
     expect(exportColumnIds(OPTIONAL_COLUMNS)).toEqual([
       'store',
       'customer',
       'paid',
       'delivery',
       'carrier',
+      'carrierProgress',
       'total',
       'ready',
       'shipped',
@@ -1572,5 +1590,263 @@ describe('Shipments export column ids', () => {
       'refunded',
       'sellerOrderId',
     ]);
+  });
+});
+
+describe('Shipments carrier progress column', () => {
+  const KEY = 'mp:admin:AU:acc-1:shipments-columns';
+  const progress = (over: Partial<NonNullable<ShipmentRow['carrierProgress']>> = {}) => ({
+    progress: 'booked',
+    carrierStatus: null,
+    updatedAt: '2026-11-16T14:30:00.000Z',
+    proofOfDelivery: false,
+    fleet: 'swift',
+    ...over,
+  });
+  const turnOn = () =>
+    window.localStorage.setItem(KEY, JSON.stringify(['store', 'carrier-progress']));
+  const cellOf = (rowIndex = 0) =>
+    within(screen.getAllByRole('row').slice(1)[rowIndex]!).getByRole('cell', {
+      name: (_name, el) => el.getAttribute('data-label') === 'Carrier progress',
+    });
+  const pageWith = (
+    carrierProgress: ShipmentRow['carrierProgress'],
+    over: Partial<ShipmentRow> = {},
+  ) => pageOf([row({ carrierProgress, ...over })]);
+
+  it('sits right after carrier in the picker, is off by default, and survives cleaning', () => {
+    const at = OPTIONAL_COLUMNS.indexOf('carrier-progress');
+    expect(at).toBe(OPTIONAL_COLUMNS.indexOf('carrier') + 1);
+    expect(OPTIONAL_COLUMNS[at + 1]).toBe('total');
+    expect(DEFAULT_COLUMNS).not.toContain('carrier-progress');
+    expect(cleanColumns(['carrier-progress', 'x'])).toEqual(['carrier-progress']);
+    expect(exportColumnIds(['carrier', 'carrier-progress'])).toEqual([
+      'carrier',
+      'carrierProgress',
+    ]);
+  });
+
+  it('is in the picker after Carrier and tracking, and not in the default table', async () => {
+    serve(() => pageWith(null));
+    mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    expect(screen.queryByRole('columnheader', { name: 'Carrier progress' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Columns' }));
+    const panel = await screen.findByRole('dialog', { name: 'Columns' });
+    // The panel lists the shown columns first, then the hidden ones in the order of
+    // OPTIONAL_COLUMNS: Carrier progress is the first of the hidden ones, before Ready.
+    const boxes = within(panel).getAllByRole('checkbox');
+    const named = (name: string) => within(panel).getByRole('checkbox', { name });
+    const progress = boxes.indexOf(named('Carrier progress'));
+    expect(progress).toBeGreaterThan(-1);
+    expect(boxes.indexOf(named('Ready'))).toBe(progress + 1);
+    expect(named('Carrier progress')).toHaveProperty('checked', false);
+  });
+
+  it('sends carrierProgress in an export only when the column is on', async () => {
+    const fetched: string[] = [];
+    HTMLDialogElement.prototype.showModal = function showModal() {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close() {
+      this.removeAttribute('open');
+    };
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() });
+    const click = vi
+      .spyOn(HTMLAnchorElement.prototype, 'click')
+      .mockImplementation(() => undefined);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        fetched.push(url);
+        return Promise.resolve(
+          new Response('x', {
+            status: 200,
+            headers: { 'content-type': 'text/csv; charset=utf-8' },
+          }),
+        );
+      }),
+    );
+    try {
+      for (const on of [false, true]) {
+        fetched.length = 0;
+        window.localStorage.setItem(
+          KEY,
+          JSON.stringify(on ? ['store', 'carrier-progress'] : ['store']),
+        );
+        serve(() => pageWith(null));
+        const view = mount();
+        await screen.findAllByText('Cedar Lane Halal Meats');
+        fireEvent.click(
+          screen.getByRole('checkbox', { name: 'Select all shipments on this page' }),
+        );
+        fireEvent.click(screen.getByRole('button', { name: /Bulk action|Actions for selected/ }));
+        const item = await screen.findByRole('menuitem', { name: /Export/ });
+        fireEvent.click(item);
+        const dialog = await screen.findByRole('dialog');
+        fireEvent.click(within(dialog).getByRole('button', { name: /^Export/ }));
+        await waitFor(() => expect(fetched).toHaveLength(1));
+        const columns = new URL(fetched[0]!, 'http://x').searchParams.get('columns');
+        expect(columns).toBe(on ? 'store,carrierProgress' : 'store');
+        view.unmount();
+      }
+    } finally {
+      click.mockRestore();
+    }
+  });
+
+  it.each([
+    ['booked', 'Booked', 'neutral'],
+    ['picked-up', 'Picked up', 'info'],
+    ['delivered', 'Delivered', 'success'],
+    ['exception', 'Exception', 'critical'],
+    ['cancelled', 'Cancelled', 'neutral'],
+    ['teleported', 'Unknown', 'neutral'],
+  ])('shows %s as the label %s in the %s tone', async (value, label, tone) => {
+    // The library Badge of that tone, rendered alone, gives the class list the cell must use.
+    const reference = render(<Badge tone={tone as BadgeTone}>x</Badge>);
+    const toneClass = reference.getByText('x').className;
+    reference.unmount();
+    turnOn();
+    serve(() => pageWith(progress({ progress: value }), { stage: 'to-prepare' }));
+    mount();
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    const cell = cellOf();
+    expect(within(cell).getByText(label).className).toBe(toneClass);
+    expect(cell.querySelector('svg') !== null).toBe(value === 'exception');
+    expect(cell.querySelector('[title^="Reported by the carrier booking"]')).not.toBeNull();
+  });
+
+  it('tones the badge by progress', async () => {
+    turnOn();
+    const tones: string[] = [];
+    for (const value of ['booked', 'picked-up', 'delivered', 'exception']) {
+      serve(() => pageWith(progress({ progress: value })));
+      const view = mount();
+      await screen.findByRole('columnheader', { name: 'Carrier progress' });
+      const badge = within(cellOf()).getByText(
+        {
+          booked: 'Booked',
+          'picked-up': 'Picked up',
+          delivered: 'Delivered',
+          exception: 'Exception',
+        }[value]!,
+      );
+      tones.push(badge.className);
+      view.unmount();
+    }
+    expect(new Set(tones).size).toBe(4);
+  });
+
+  it.each([
+    ['a row object', progress()],
+    ['a null row', null],
+  ])('says Not available for every row when the flag is false (%s)', async (_name, value) => {
+    turnOn();
+    serve(() => pageOf([row({ carrierProgress: value })], { carrierProgressAvailable: false }));
+    mount();
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    const cell = cellOf();
+    expect(within(cell).getByText('Not available').getAttribute('title')).toBe(
+      'Carrier progress could not be loaded. Try again later.',
+    );
+    expect(within(cell).queryByText('Booked')).toBeNull();
+    expect(within(cell).queryByText(/Updated/)).toBeNull();
+  });
+
+  it('says there is no carrier booking for a null row when the flag is true', async () => {
+    turnOn();
+    serve(() => pageWith(null));
+    mount();
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    const cell = cellOf();
+    expect(within(cell).getByText('\u2014').getAttribute('aria-hidden')).toBe('true');
+    expect(within(cell).getByText('No carrier booking').className).toContain('sr-only');
+    expect(within(cell).queryByText('Not available')).toBeNull();
+  });
+
+  it('shows the proof marker only when true, the status only when present, and status as text', async () => {
+    turnOn();
+    const hostile = '<img src=x onerror=alert(1)>';
+    serve(() =>
+      pageOf([
+        row({ carrierProgress: progress({ proofOfDelivery: true, carrierStatus: hostile }) }),
+        row({
+          sellerOrderId: '0190a000-0000-7000-8000-0000000000d2',
+          carrierProgress: progress({ proofOfDelivery: false, carrierStatus: null }),
+        }),
+      ]),
+    );
+    mount();
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    const first = cellOf(0);
+    expect(within(first).getByText('Proof of delivery')).toBeTruthy();
+    expect(within(first).getByText(hostile).getAttribute('title')).toBe(hostile);
+    expect(first.querySelector('img')).toBeNull();
+    const second = cellOf(1);
+    expect(within(second).queryByText('Proof of delivery')).toBeNull();
+    expect(second.querySelectorAll('span[title]')).toHaveLength(1);
+  });
+
+  it('names the fleet only when it differs from the row, or the row has none', async () => {
+    turnOn();
+    serve(() =>
+      pageOf([
+        row({ fleet: 'swift', carrierProgress: progress({ fleet: ' swift ' }) }),
+        row({
+          sellerOrderId: '0190a000-0000-7000-8000-0000000000d2',
+          fleet: 'swift',
+          carrierProgress: progress({ fleet: 'rapid' }),
+        }),
+        row({
+          sellerOrderId: '0190a000-0000-7000-8000-0000000000d3',
+          fleet: null,
+          carrierProgress: progress({ fleet: 'rapid' }),
+        }),
+      ]),
+    );
+    mount();
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    expect(within(cellOf(0)).queryByText(/Booked on/)).toBeNull();
+    expect(within(cellOf(1)).getByText('Booked on rapid')).toBeTruthy();
+    expect(within(cellOf(2)).getByText('Booked on rapid')).toBeTruthy();
+  });
+
+  it('writes Updated in the page zone, across midnight', async () => {
+    turnOn();
+    const at = '2026-11-16T14:30:00.000Z';
+    serve(() => pageWith(progress({ updatedAt: at })));
+    const brisbane = mount({ zone: BRISBANE });
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    const b = within(cellOf()).getByText(/^Updated /).textContent;
+    brisbane.unmount();
+    mount({ zone: LOS_ANGELES });
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    const l = within(cellOf()).getByText(/^Updated /).textContent;
+    expect(b).toContain('17 Nov');
+    expect(l).toContain('16 Nov');
+    expect(b).not.toBe(l);
+  });
+
+  it('shows Shipped and Delivered together when they disagree', async () => {
+    turnOn();
+    serve(() => pageWith(progress({ progress: 'delivered' }), { stage: 'shipped' }));
+    mount();
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    const rowEl = screen.getAllByRole('row')[1]!;
+    expect(within(rowEl).getAllByText('Shipped').length).toBeGreaterThan(0);
+    expect(within(cellOf()).getByText('Delivered')).toBeTruthy();
+  });
+
+  it('has the labelled card line only when the column is on', async () => {
+    serve(() => pageWith(progress()));
+    const off = mount();
+    await screen.findByText('Cedar Lane Halal Meats');
+    expect(document.querySelector('[data-label="Carrier progress"]')).toBeNull();
+    off.unmount();
+    turnOn();
+    mount();
+    await screen.findByRole('columnheader', { name: 'Carrier progress' });
+    expect(document.querySelector('[data-label="Carrier progress"]')).not.toBeNull();
   });
 });

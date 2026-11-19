@@ -25,7 +25,7 @@ import type { ReactNode } from 'react';
 import { known, OFFER_STATUSES, shortInstant } from '../catalog/format.ts';
 import type { OfferView, Page } from '../catalog/types.ts';
 import type { Ledger, LedgerEntry } from '../earnings/types.ts';
-import type { SellerOrderPage, SellerOrderView } from '../orders/types.ts';
+import type { SellerOrderCursorPage, SellerOrderView } from '../orders/types.ts';
 import { PAYOUT_ACCOUNT_PATH, type PayoutAccount } from '../payout/types.ts';
 import type { SourcesView } from '../stock/types.ts';
 import { formatMinor } from '../price/money.ts';
@@ -47,6 +47,7 @@ const LEDGER_KINDS = [
   'refund-commission',
   'dispute-debit',
   'dispute-reinstate',
+  'cashback-seller',
 ] as const;
 const FULFILMENT_TONE: Record<string, BadgeTone> = {
   'to-ship': 'attention',
@@ -188,7 +189,7 @@ function Figures<T>({
   );
 }
 
-function ToShipFigure({ widget }: { readonly widget: Widget<SellerOrderPage> }) {
+function ToShipFigure({ widget }: { readonly widget: Widget<SellerOrderCursorPage> }) {
   const t = useTranslations('dashboard');
   const locale = useLocale();
   const page = ok(widget);

@@ -13,6 +13,7 @@ import { SellerListOrders } from '../src/modules/ordering/application/use-cases/
 import { SellerMarkOrderReady } from '../src/modules/ordering/application/use-cases/seller-mark-order-ready.use-case';
 import { SellerMarkUnavailable } from '../src/modules/ordering/application/use-cases/seller-mark-unavailable.use-case';
 import { SellerViewOrderDocument } from '../src/modules/ordering/application/use-cases/seller-view-order-document.use-case';
+import { SellerViewOrderDocuments } from '../src/modules/ordering/application/use-cases/seller-view-order-documents.use-case';
 import { SellerViewOrder } from '../src/modules/ordering/application/use-cases/seller-view-order.use-case';
 import { sellerOrderDocument } from '../src/modules/ordering/domain/order-document';
 import type { SellerOrderDetailView } from '../src/modules/ordering/domain/order-views';
@@ -101,6 +102,7 @@ it('maps every refusal code of the shipping and seller order routes to its exact
     'shipping.fleet-model-not-found': 404,
     'shipping.fleet-model-name-taken': 409,
     'shipping.fleet-model-conflict': 409,
+    'system-requests.already-pending': 409,
     'shipping.fleet-selection-conflict': 409,
     'shipping.delivery-settings-conflict': 409,
     'shipping.unavailable': 503,
@@ -140,6 +142,8 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
           .useValue(stub('view'))
           .overrideProvider(SellerViewOrderDocument)
           .useValue(stub('document'))
+          .overrideProvider(SellerViewOrderDocuments)
+          .useValue(stub('documents'))
           .overrideProvider(SellerMarkOrderReady)
           .useValue(stub('ready'))
           .overrideProvider(SellerConfirmPickup)
@@ -359,6 +363,29 @@ describe.each(TEST_MARKETS)('seller orders over HTTP in market %s', (code) => {
       expect((await call('get', 'seller', `${ORDERS}/nope`, session)).status).toBe(400);
       next = err({ code: 'access.denied' });
       expect((await call('get', 'seller', ORDERS, session)).status).toBe(403);
+    });
+
+    it('answers the packing slips of a selection and refuses a body with other keys', async () => {
+      await boot();
+      const session = seller();
+      next = ok({ documents: [], unavailable: [SELLER_ORDER] });
+      const bulk = await call('post', 'seller', `${ORDERS}/documents`, session, {
+        sellerOrderIds: [SELLER_ORDER],
+      });
+      expect(bulk.status).toBe(200);
+      expect(bulk.headers['cache-control']).toBe('no-store');
+      expect(bulk.body).toEqual({ documents: [], unavailable: [SELLER_ORDER] });
+      expect(calls[0]).toEqual({ name: 'documents', input: { sellerOrderIds: [SELLER_ORDER] } });
+      const extra = await call('post', 'seller', `${ORDERS}/documents`, session, {
+        sellerOrderIds: [SELLER_ORDER],
+        more: 1,
+      });
+      expect(extra.status).toBe(400);
+      next = err({ code: 'validation.failed', fields: [{ path: 'sellerOrderIds', code: 'size' }] });
+      expect(
+        (await call('post', 'seller', `${ORDERS}/documents`, session, { sellerOrderIds: [] }))
+          .status,
+      ).toBe(400);
     });
 
     it('answers the document of one order without the address, and maps its refusals', async () => {

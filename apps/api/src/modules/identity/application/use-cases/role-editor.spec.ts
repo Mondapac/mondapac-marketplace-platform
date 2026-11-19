@@ -282,7 +282,11 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
         effectiveKeys,
       }),
     );
-    const deps: RoleEditorDependencies & { readonly review: RecordingReview } = {
+    const review = new RecordingReview();
+    const deps: RoleEditorDependencies & {
+      readonly review: RecordingReview;
+      readonly proposer: RecordingReview;
+    } = {
       unitOfWork,
       accounts: fakes.accountRepository,
       roles: fakes.roleRepository,
@@ -295,7 +299,8 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
       audit: fakes.audit,
       clock,
       ids: new SequenceIdGenerator(clock),
-      review: new RecordingReview(),
+      review,
+      proposer: review,
     };
     const readDeps = { ...deps };
     return {
@@ -696,7 +701,10 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
 
       expect(held).toEqual({ ok: false, error: { code: 'role.in-use' } });
       expect(stored(HELD_ROLE)).toBeDefined();
-      expect(free).toEqual({ ok: true, value: { code: 'role.deleted', roleId: HIGH_ROLE } });
+      expect(free).toEqual({
+        ok: true,
+        value: { code: 'role.deleted', roleId: HIGH_ROLE, request: null },
+      });
       expect(stored(HIGH_ROLE)).toBeUndefined();
       expect(fakes.events.at(-1)).toMatchObject({
         type: 'identity.role-deleted.v1',
@@ -762,7 +770,7 @@ describe.each(TEST_MARKETS)('role editor in market %s (slice 10)', (code) => {
 
       expect(
         await deletePlatform.execute(asAdmin(ROOT), { roleId: HIGH_ROLE, expectedVersion: 2 }),
-      ).toEqual({ ok: true, value: { code: 'role.deleted', roleId: HIGH_ROLE } });
+      ).toEqual({ ok: true, value: { code: 'role.deleted', roleId: HIGH_ROLE, request: null } });
     });
 
     it('a missing or invalid expectedVersion is validation.failed on that field and writes nothing', async () => {

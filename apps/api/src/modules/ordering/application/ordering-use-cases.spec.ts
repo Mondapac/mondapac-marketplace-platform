@@ -72,9 +72,14 @@ import type { OrderState } from '../domain/order';
 import { SellerMarkOrderReady } from './use-cases/seller-mark-order-ready.use-case';
 import { SellerHealthCountsQuery } from './use-cases/seller-health-counts.use-case';
 import { BookReadyCarrierDelivery } from './use-cases/book-ready-carrier-delivery.use-case';
+import { DeliveredSellerOrderFactsQuery } from './use-cases/delivered-seller-order-facts.use-case';
 import { MyDeliveredSellerOrders } from './use-cases/my-delivered-seller-orders.use-case';
 import { SellerOrderCustomerNames } from './use-cases/seller-order-customer-names.use-case';
 import { SellerViewOrderDocument } from './use-cases/seller-view-order-document.use-case';
+import {
+  MAX_BULK_DOCUMENTS,
+  SellerViewOrderDocuments,
+} from './use-cases/seller-view-order-documents.use-case';
 import { OrderPaymentRefQuery } from './use-cases/order-payment-ref.use-case';
 import { SellerViewOrder } from './use-cases/seller-view-order.use-case';
 import { ViewOrderDocument } from './use-cases/view-order-document.use-case';
@@ -103,9 +108,9 @@ const OFFER_3 = id<'Offer'>(0x03);
 const VARIANT = id<'Variant'>(0x10);
 const ADDRESS = id<'CustomerAddress'>(0xad);
 
-const textOf = async (chunks: AsyncIterable<string>): Promise<string> => {
+const textOf = async (chunks: AsyncIterable<string | Uint8Array>): Promise<string> => {
   let text = '';
-  for await (const chunk of chunks) text += chunk;
+  for await (const chunk of chunks) text += String(chunk);
   return text;
 };
 
@@ -1075,7 +1080,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         expect(await run({ page: 2 })).toEqual(
           err({ code: 'validation.failed', fields: [{ path: 'page', code: 'unknown' }] }),
         );
-        expect(await run({ format: 'xlsx' })).toEqual(
+        expect(await run({ format: 'pdf' })).toEqual(
           err({ code: 'validation.failed', fields: [{ path: 'format', code: 'value' }] }),
         );
         expect(await run('status')).toMatchObject({ ok: false });
@@ -1980,6 +1985,36 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         expect((await textOf(toShip.value.chunks)).split('\r\n').filter(Boolean)).toHaveLength(1);
         expect(await exportOf(sellerA, { sellerId: SELLER_B })).toEqual(
           err({ code: 'validation.failed', fields: [{ path: 'sellerId', code: 'unknown' }] }),
+        );
+      });
+
+      it('writes the chosen columns after the fixed ones, as CSV or XLSX', async () => {
+        await paid();
+        const csv = await exportOf(sellerA, { columns: 'total,carrier' });
+        if (!csv.ok) throw new Error('export failed');
+        const head = (await textOf(csv.value.chunks)).replace('\uFEFF', '').split('\r\n')[0];
+        expect(head).toBe('Seller order,Order,Paid at,Fulfilment,Total,Carrier');
+
+        const sheet = await exportOf(sellerA, { format: 'xlsx' });
+        if (!sheet.ok) throw new Error('export failed');
+        expect(sheet.value.filename).toMatch(/\.xlsx$/);
+        expect(sheet.value.contentType).toContain('spreadsheetml');
+        expect(await exportOf(sellerA, { columns: 'buyer' })).toEqual(
+          err({ code: 'validation.failed', fields: [{ path: 'columns', code: 'value' }] }),
+        );
+      });
+
+      it('exports exactly the selected seller orders and refuses one that is not the seller’s', async () => {
+        const first = await paid();
+        const mine = sellerOrderIdOf(first.id, SELLER_A);
+        const theirs = sellerOrderIdOf(first.id, SELLER_B);
+        const picked = await exportOf(sellerA, { ids: mine });
+        if (!picked.ok) throw new Error('export failed');
+        const text = await textOf(picked.value.chunks);
+        expect(text).toContain(mine);
+        expect(text.split('\r\n').filter(Boolean)).toHaveLength(2);
+        expect(await exportOf(sellerA, { ids: `${mine},${theirs}` })).toEqual(
+          err({ code: 'ordering.seller-order-not-found' }),
         );
       });
 
@@ -3439,6 +3474,57 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       ).toEqual([1000, 1000, 1500]);
     });
 
+    it("freezes the exclusive seller and its lower rate on that seller's lines only (customers phase 4b)", async () => {
+      const since = T0.subtract({ hours: 24 * 10 });
+      customers.exclusive.set(ACCOUNT, { sellerId: SELLER_A, since });
+      commission.exclusiveRates.set(SELLER_A, 750);
+      const order = await placed();
+      expect(customers.exclusiveReads).toBe(1);
+      expect(commission.exclusiveAsked.at(-1)).toEqual({ sellerId: SELLER_A, since });
+      const linesOf = (sellerId: Id<'Seller'>) => {
+        const sellerOrder = order.sellerOrders.find((s) => s.sellerId === sellerId)!;
+        return order.lines
+          .filter((l) => l.sellerOrderId === sellerOrder.id)
+          .map((l) => [
+            l.commissionRateBps,
+            l.commissionRateReason,
+            l.exclusiveSeller,
+            l.commissionStandardRateBps,
+          ]);
+      };
+      // The lowered lines also keep the rate they would have carried (for the seller's savings).
+      expect(linesOf(SELLER_A)).toEqual([
+        [750, 'exclusive', true, 1500],
+        [750, 'exclusive', true, 1500],
+      ]);
+      expect(linesOf(SELLER_B)).toEqual([[1500, 'standard', false, null]]);
+    });
+
+    it('marks the exclusive seller even when no lower rate applies', async () => {
+      customers.exclusive.set(ACCOUNT, { sellerId: SELLER_B, since: T0 });
+      const order = await placed();
+      expect(order.lines.map((l) => [l.commissionRateReason, l.exclusiveSeller]).sort()).toEqual([
+        ['standard', false],
+        ['standard', false],
+        ['standard', true],
+      ]);
+    });
+
+    it('places the order at the standard rate when the exclusive seller cannot be read', async () => {
+      commission.exclusiveRates.set(SELLER_A, 750);
+      customers.exclusive.set(ACCOUNT, { sellerId: SELLER_A, since: T0 });
+      customers.exclusiveFailure = { code: 'customers.unavailable' };
+      const failed = await placed();
+      expect(failed.lines.every((l) => l.commissionRateReason === 'standard')).toBe(true);
+      expect(failed.lines.some((l) => l.exclusiveSeller)).toBe(false);
+      expect(commission.exclusiveAsked.at(-1)).toBeNull();
+      customers.exclusiveFailure = null;
+      customers.exclusiveThrows = true;
+      const thrown = await placed();
+      expect(thrown.lines.every((l) => l.commissionRateReason === 'standard')).toBe(true);
+      expect(commission.exclusiveAsked.at(-1)).toBeNull();
+    });
+
     it('opens no order when the rates cannot be read (fail closed)', async () => {
       commission.down = true;
       expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
@@ -4206,6 +4292,147 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     });
   });
 
+  describe('delivered-seller-order-facts (cashback on delivery, customers phase 4c)', () => {
+    const facts = (input: object, context: CallContext = system) =>
+      new DeliveredSellerOrderFactsQuery(gate, deps).execute(context, input as never);
+    const sellerOrderOf = (orderId: string, sellerId: Id<'Seller'>) =>
+      orders.rows.get(orderId)!.sellerOrders.find((s) => s.sellerId === sellerId)!;
+    const deliverAt = (orderId: string, sellerId: Id<'Seller'>, at: Temporal.Instant) => {
+      const order = orders.rows.get(orderId)!;
+      orders.rows.set(orderId, {
+        ...order,
+        sellerOrders: order.sellerOrders.map((s) =>
+          s.sellerId === sellerId
+            ? { ...s, fulfilment: 'delivered' as const, shippedAt: at, deliveredAt: at }
+            : s,
+        ),
+      });
+    };
+
+    it("answers a delivered seller order's goods without tax or shipping, and who placed it", async () => {
+      const order = await placed();
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      deliverAt(order.id, SELLER_A, T0.add({ hours: 5 }));
+      const sellerOrder = sellerOrderOf(order.id, SELLER_A);
+      const stored = orders.rows.get(order.id)!;
+      const goods = stored.lines
+        .filter((line) => line.sellerOrderId === sellerOrder.id)
+        .reduce(
+          (sum, line) => sum + line.lineAmount - (line.taxInclusive ? line.taxAmount! : 0n),
+          0n,
+        );
+      expect(goods).toBeGreaterThan(0n);
+      expect(await facts({ orderId: order.id, sellerOrderId: sellerOrder.id })).toEqual(
+        ok({
+          orderId: order.id,
+          sellerOrderId: sellerOrder.id,
+          sellerId: SELLER_A,
+          customerAccountId: ACCOUNT,
+          currency,
+          goods,
+          refundedGoods: 0n,
+          succeededRefundedGoods: 0n,
+          exclusiveSeller: false,
+          placedAt: stored.createdAt,
+          deliveredAt: T0.add({ hours: 5 }),
+        }),
+      );
+    });
+
+    it('nets what refunds that did not fail gave back, and reads the exclusive flag frozen at checkout', async () => {
+      const order = await placed();
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      deliverAt(order.id, SELLER_A, T0.add({ hours: 5 }));
+      const sellerOrder = sellerOrderOf(order.id, SELLER_A);
+      const stored = orders.rows.get(order.id)!;
+      orders.rows.set(order.id, {
+        ...stored,
+        lines: stored.lines.map((line) =>
+          line.sellerOrderId === sellerOrder.id ? { ...line, exclusiveSeller: true } : line,
+        ),
+      });
+      const refund = (
+        state: string,
+        gross: bigint,
+        tax: bigint,
+        shipping: [bigint, bigint] | null,
+      ) =>
+        ({
+          state,
+          gross,
+          tax,
+          shipping: shipping === null ? null : { gross: shipping[0], tax: shipping[1] },
+        }) as never;
+      const asked: unknown[] = [];
+      deps = {
+        ...deps,
+        refunds: Object.assign(Object.create(NO_REFUNDS) as RefundRepository, {
+          listOfSellerOrder: (_m: unknown, id: unknown, seller: unknown) => {
+            asked.push([id, seller]);
+            return Promise.resolve([
+              refund('succeeded', 1100n, 100n, null),
+              refund('pending', 750n, 50n, [550n, 50n]),
+              refund('failed', 9999n, 0n, null),
+            ]);
+          },
+        }),
+      };
+      const answer = await facts({ orderId: order.id, sellerOrderId: sellerOrder.id });
+      // 1000 from the first, 700 - 500 = 200 from the second; the failed one counts nothing.
+      expect(answer.ok && answer.value.refundedGoods).toBe(1200n);
+      // Only the first succeeded: a clawback counts 1000 (Hassan L-9).
+      expect(answer.ok && answer.value.succeededRefundedGoods).toBe(1000n);
+      expect(answer.ok && answer.value.exclusiveSeller).toBe(true);
+      expect(asked).toEqual([[sellerOrder.id, SELLER_A]]);
+    });
+
+    it('is unavailable before delivery, for an unconfirmed order, or with a line missing its tax', async () => {
+      const order = await placed();
+      const a = sellerOrderOf(order.id, SELLER_A).id;
+      const unavailable = err({ code: 'ordering.facts-unavailable' });
+      deliverAt(order.id, SELLER_A, T0.add({ hours: 5 }));
+      expect(await facts({ orderId: order.id, sellerOrderId: a })).toEqual(unavailable);
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      const b = sellerOrderOf(order.id, SELLER_B).id;
+      expect(await facts({ orderId: order.id, sellerOrderId: b })).toEqual(unavailable);
+      const stored = orders.rows.get(order.id)!;
+      orders.rows.set(order.id, {
+        ...stored,
+        lines: stored.lines.map((line) =>
+          line.sellerOrderId === a ? { ...line, taxInclusive: true, taxAmount: null } : line,
+        ),
+      });
+      expect(await facts({ orderId: order.id, sellerOrderId: a })).toEqual(unavailable);
+    });
+
+    it('answers not found for an unknown order or a seller order of another order', async () => {
+      const order = await placed();
+      expect(await confirm(order.id)).toEqual(ok('confirmed'));
+      const notFound = err({ code: 'ordering.order-not-found' });
+      expect(
+        await facts({
+          orderId: id<'Order'>(0xdead),
+          sellerOrderId: sellerOrderOf(order.id, SELLER_A).id,
+        }),
+      ).toEqual(notFound);
+      expect(await facts({ orderId: order.id, sellerOrderId: id<'SellerOrder'>(0xdead) })).toEqual(
+        notFound,
+      );
+    });
+
+    it('refuses a malformed id and every caller but the system', async () => {
+      const order = await placed();
+      const a = sellerOrderOf(order.id, SELLER_A).id;
+      expect(await facts({ orderId: 'nope', sellerOrderId: a })).toEqual(
+        err({ code: 'validation.failed' }),
+      );
+      expect(await facts({ orderId: order.id })).toEqual(err({ code: 'validation.failed' }));
+      for (const context of [customer, anonymous]) {
+        expect((await facts({ orderId: order.id, sellerOrderId: a }, context)).ok).toBe(false);
+      }
+    });
+  });
+
   describe('seller-order-customer-names', () => {
     const sellerOf = (sellerId: Id<'Seller'>, n: number) =>
       testCallContext(
@@ -4552,6 +4779,54 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         err({ code: 'ordering.seller-order-not-found' }),
       );
       expect((await ofSeller(customer, sellerOrderA)).ok).toBe(false);
+    });
+
+    describe('bulk packing slips', () => {
+      const bulk = (context: CallContext, sellerOrderIds: unknown) =>
+        new SellerViewOrderDocuments(gate, deps).execute(context, { sellerOrderIds });
+
+      it('gives the own paid parts, hides foreign, unpaid and unknown ids alike, drops repeats', async () => {
+        const paid = await placed();
+        await confirm(paid.id);
+        const unpaid = await placed();
+        const mineA = sellerOrderOf(paid.id, SELLER_A);
+        const mineB = sellerOrderOf(paid.id, SELLER_B);
+        const unpaidA = sellerOrderOf(unpaid.id, SELLER_A);
+        const unknown = id<'SellerOrder'>(0xdead);
+        const result = await bulk(sellerA, [mineA, mineB, unpaidA, unknown, mineA]);
+        if (!result.ok) throw new Error(result.error.code);
+        expect(result.value.documents.map((d) => d.sellerOrderId)).toEqual([mineA]);
+        expect(result.value.documents[0]!.parts.map((p) => p.sellerId)).toEqual([SELLER_A]);
+        expect(result.value.unavailable).toEqual([mineB, unpaidA, unknown]);
+      });
+
+      it('refuses an empty list, more than the cap, a bad id and a non-array', async () => {
+        const failed = { ok: false, error: { code: 'validation.failed' } };
+        expect(await bulk(sellerA, [])).toMatchObject(failed);
+        expect(await bulk(sellerA, undefined)).toMatchObject(failed);
+        expect(await bulk(sellerA, 'x')).toMatchObject(failed);
+        expect(await bulk(sellerA, ['not-an-id'])).toMatchObject(failed);
+        const many = Array.from({ length: MAX_BULK_DOCUMENTS + 1 }, (_, i) =>
+          id<'SellerOrder'>(0x1000 + i),
+        );
+        expect(await bulk(sellerA, many)).toMatchObject(failed);
+      });
+
+      it('refuses a customer and fails closed while numbered invoices are on', async () => {
+        const order = await placed();
+        await confirm(order.id);
+        const mine = sellerOrderOf(order.id, SELLER_A);
+        expect((await bulk(customer, [mine])).ok).toBe(false);
+        class InvoicesOn extends ConfigOrderingPolicy {
+          override invoicesEnabled(): boolean {
+            return true;
+          }
+        }
+        deps = { ...deps, policy: new InvoicesOn(markets, testAreas) };
+        expect(await bulk(sellerA, [mine])).toEqual(
+          err({ code: 'ordering.invoice-numbering-unavailable' }),
+        );
+      });
     });
 
     it('fails closed while numbered tax invoices are switched on but not built', async () => {

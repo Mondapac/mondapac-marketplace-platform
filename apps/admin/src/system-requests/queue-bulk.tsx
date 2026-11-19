@@ -10,6 +10,7 @@ import {
   BASE,
   countText,
   has,
+  isApproval,
   matchingBody,
   shortRef,
   type BulkAnswer,
@@ -92,10 +93,15 @@ export function QueueBulk({
   const number = (value: number) => numberFormat(locale, {}).format(value);
   const blocked = ids.filter((id) => {
     const row = rowOf(id);
-    return row === undefined || row.risk !== 'low' || !has(row, 'approve');
+    return row === undefined || isApproval(row) || row.risk !== 'low' || !has(row, 'approve');
   });
   const count = allMatching ? matchingTotal : ids.length;
   const countLabel = countText(count, number);
+  // An action that waits for approval is applied on its own approval, never in bulk.
+  const hasApproval = ids.some((id) => {
+    const row = rowOf(id);
+    return row !== undefined && isApproval(row);
+  });
   const approvable = allMatching || (ids.length > 0 && blocked.length === 0);
   const labelOf = (entry: Failure) =>
     entry.number === undefined
@@ -251,7 +257,7 @@ export function QueueBulk({
           </div>
           {approvable ? null : (
             <p id="sr-bulk-reason" className="text-sm text-fg-muted">
-              {t('not-allowed')}{' '}
+              {t('not-allowed')} {hasApproval ? `${t('not-allowed-approval')} ` : ''}
               {blocked.length > 0 ? (
                 <Button
                   variant="link"

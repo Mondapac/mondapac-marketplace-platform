@@ -9,6 +9,7 @@ import { ClearSellerPayoutTerms } from '../src/modules/commission-payouts/applic
 import { ListSellerPayoutHolds } from '../src/modules/commission-payouts/application/use-cases/list-seller-payout-holds.use-case';
 import { ApprovePayout } from '../src/modules/commission-payouts/application/use-cases/approve-payout.use-case';
 import { ListOwnPayoutHolds } from '../src/modules/commission-payouts/application/use-cases/list-own-payout-holds.use-case';
+import { ExportOwnPayouts } from '../src/modules/commission-payouts/application/use-cases/export-own-payouts.use-case';
 import { ListOwnPayouts } from '../src/modules/commission-payouts/application/use-cases/list-own-payouts.use-case';
 import { ListPayouts } from '../src/modules/commission-payouts/application/use-cases/list-payouts.use-case';
 import { ExportPayouts } from '../src/modules/commission-payouts/application/use-cases/export-payouts.use-case';
@@ -31,6 +32,7 @@ import {
   COMMISSION_PAYOUTS_PAYOUT_VIEW,
 } from '../src/modules/commission-payouts/contracts/permissions';
 import { ViewCommissionRate } from '../src/modules/commission-payouts/application/use-cases/view-commission-rate.use-case';
+import { ViewOwnExclusiveCommission } from '../src/modules/commission-payouts/application/use-cases/view-own-exclusive-commission.use-case';
 import { ViewOwnLedger } from '../src/modules/commission-payouts/application/use-cases/view-own-ledger.use-case';
 import { ViewSellerLedger } from '../src/modules/commission-payouts/application/use-cases/view-seller-ledger.use-case';
 import { ExportSellerLedger } from '../src/modules/commission-payouts/application/use-cases/export-seller-ledger.use-case';
@@ -78,6 +80,7 @@ const ledger = (currency: string) => ({
     refundedCommission: 45n,
     disputeDebits: 0n,
     disputeReinstated: 0n,
+    sellerCashback: 0n,
     balance: 1434n,
   },
   entries: [
@@ -238,6 +241,8 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
           .useValue(stub('seller-ledger'))
           .overrideProvider(ViewOwnLedger)
           .useValue(stub('own-ledger'))
+          .overrideProvider(ViewOwnExclusiveCommission)
+          .useValue(stub('own-exclusive-commission'))
           .overrideProvider(ViewSellerPayoutTerms)
           .useValue(stub('view-terms'))
           .overrideProvider(SetSellerPayoutTerms)
@@ -266,6 +271,8 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
           .useValue(stub('next-payout'))
           .overrideProvider(ListOwnPayouts)
           .useValue(stub('own-payouts'))
+          .overrideProvider(ExportOwnPayouts)
+          .useValue(stub('export-own-payouts'))
           .overrideProvider(ListOwnPayoutHolds)
           .useValue(stub('own-payout-holds')),
     }));
@@ -544,6 +551,7 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
         refundedCommission: '45',
         disputeDebits: '0',
         disputeReinstated: '0',
+        sellerCashback: '0',
         balance: '1434',
       },
       entries: [
@@ -568,6 +576,70 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       { name: 'seller-ledger', input: { sellerId: SELLER, cursor: 'abc', limit: 10 } },
       { name: 'own-ledger', input: { cursor: undefined, limit: undefined } },
     ]);
+  });
+
+  it('serves the seller its exclusive-customer commission and savings, with money as strings', async () => {
+    await boot();
+    const months = Array.from({ length: 12 }, (_, index) => ({
+      month: `2026-${String(index + 1).padStart(2, '0')}`,
+      saved: index === 11 ? [{ amount: 75n, currency }] : [],
+    }));
+    next = ok({
+      rule: { standardRateBps: 1500, exclusiveRateBps: 750, months: 12 },
+      zone: 'Australia/Brisbane',
+      months,
+    });
+    const own = await call(
+      'get',
+      'seller',
+      '/commission-payouts/seller/exclusive-commission',
+      seller(),
+    );
+    expect(own.status).toBe(200);
+    expect(own.headers['cache-control']).toBe('no-store');
+    expect(own.body).toEqual({
+      rule: { standardRateBps: 1500, exclusiveRateBps: 750, months: 12 },
+      zone: 'Australia/Brisbane',
+      months: months.map((m) => ({
+        month: m.month,
+        saved: m.saved.map((s) => ({ amount: s.amount.toString(), currency })),
+      })),
+      thisMonth: [{ amount: '75', currency }],
+    });
+    expect(calls).toEqual([{ name: 'own-exclusive-commission', input: {} }]);
+
+    next = ok({ rule: null, zone: 'Australia/Brisbane', months: [] });
+    const none = await call(
+      'get',
+      'seller',
+      '/commission-payouts/seller/exclusive-commission',
+      seller(),
+    );
+    expect(none.body).toEqual({
+      rule: null,
+      zone: 'Australia/Brisbane',
+      months: [],
+      thisMonth: [],
+    });
+
+    next = err({ code: 'commission-payouts.rate-unavailable' });
+    const down = await call(
+      'get',
+      'seller',
+      '/commission-payouts/seller/exclusive-commission',
+      seller(),
+    );
+    expect(down.status).toBe(503);
+    // An admin session on the seller route is not signed in there.
+    next = err({ code: 'access.denied' });
+    const byAdmin = await call(
+      'get',
+      'seller',
+      '/commission-payouts/seller/exclusive-commission',
+      admin(),
+    );
+    expect(byAdmin.status).toBe(403);
+    expect(actors.at(-1)).toBe('anonymous');
   });
 
   it('passes the seller page list queries through and streams their exports', async () => {
@@ -1194,8 +1266,22 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
             createdAt: START,
             updatedAt: START,
             reason: 'cooling-off',
+            actions: ['open'],
           },
         ],
+        counts: {
+          all: 1,
+          scheduled: 0,
+          'awaiting-approval': 0,
+          'on-its-way': 0,
+          paid: 0,
+          'not-sent': 1,
+          failed: 0,
+          settled: 0,
+        },
+        total: null,
+        page: null,
+        pageSize: 5,
         nextCursor: null,
       });
       const history = await call(
@@ -1206,10 +1292,17 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       );
       expect(history.status).toBe(200);
       expect(history.body).toMatchObject({
-        payouts: [{ payoutId: PAYOUT, status: 'not-sent', reason: 'cooling-off' }],
+        payouts: [
+          { payoutId: PAYOUT, status: 'not-sent', reason: 'cooling-off', actions: ['open'] },
+        ],
+        counts: { all: 1, 'not-sent': 1 },
+        total: null,
+        page: null,
+        pageSize: 5,
         nextCursor: null,
       });
       expect(Object.keys((history.body as { payouts: object[] }).payouts[0]!).sort()).toEqual([
+        'actions',
         'createdAt',
         'gross',
         'netted',
@@ -1241,7 +1334,61 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
           },
         ],
       });
-      expect(calls.map((c) => c.name)).toEqual(['next-payout', 'own-payouts', 'own-payout-holds']);
+      // Page numbers arrive as numbers; the filters as text for the use case to check.
+      await call(
+        'get',
+        'seller',
+        '/commission-payouts/seller/payouts?page=2&pageSize=25&status=paid&sort=amount',
+        session,
+      );
+      expect(calls.map((c) => c.name)).toEqual([
+        'next-payout',
+        'own-payouts',
+        'own-payout-holds',
+        'own-payouts',
+      ]);
+      expect(calls[1]!.input).toEqual({ limit: 5 });
+      expect(calls[3]!.input).toEqual({ page: 2, pageSize: 25, status: 'paid', sort: 'amount' });
+    });
+
+    it('sends the seller its payouts file, and maps a refusal', async () => {
+      await boot();
+      const session = seller();
+      const chunks = ['\uFEFFCreated\r\n', 'row\r\n'];
+      next = ok({
+        filename: 'payouts-2026-11-02.csv',
+        contentType: 'text/csv; charset=utf-8',
+        chunks,
+      });
+      const file = await call(
+        'get',
+        'seller',
+        '/commission-payouts/seller/payouts/export?status=paid&format=csv',
+        session,
+      );
+      expect(file.status).toBe(200);
+      expect(file.headers['content-disposition']).toBe(
+        'attachment; filename="payouts-2026-11-02.csv"',
+      );
+      expect(file.headers['cache-control']).toBe('no-store');
+      expect(file.text).toContain('row');
+      next = err({ code: 'commission-payouts.payout-not-found' });
+      const missing = await call(
+        'get',
+        'seller',
+        '/commission-payouts/seller/payouts/export?ids=x',
+        session,
+      );
+      expect(missing.status).toBe(404);
+      next = err({ code: 'batch.too-large', max: 10000, total: 10001 });
+      expect(
+        (await call('get', 'seller', '/commission-payouts/seller/payouts/export', session)).status,
+      ).toBe(413);
+      expect(calls).toEqual([
+        { name: 'export-own-payouts', input: { status: 'paid', format: 'csv' } },
+        { name: 'export-own-payouts', input: { ids: 'x' } },
+        { name: 'export-own-payouts', input: {} },
+      ]);
     });
 
     it('treats an admin session on the seller payout routes as not signed in', async () => {

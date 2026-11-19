@@ -88,6 +88,8 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
           .useValue({
             offerTotalsOfProduct: (market: { marketId: string }) =>
               Promise.resolve(offerTotals[market.marketId] ?? { sellerCount: 0, offerCount: 0 }),
+            productCategories: () =>
+              Promise.resolve([{ categoryId: PRODUCT, parentId: null, names: { en: 'Pantry' } }]),
             productForm: () =>
               Promise.resolve({
                 fields: [],
@@ -269,7 +271,29 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
       const options = await get('/options', root);
       expect(options.status).toBe(200);
       expect(options.headers['cache-control']).toBe('no-store');
-      expect((options.body as { productTypes: string[] }).productTypes).toContain('simple');
+      const optionsBody = options.body as {
+        productTypes: string[];
+        taxCategories: { code: string; labelKey: string }[];
+        categories: { categoryId: string }[];
+      };
+      expect(optionsBody.productTypes).toContain('simple');
+      expect(optionsBody.taxCategories.length).toBeGreaterThan(0);
+      expect(optionsBody).not.toHaveProperty('taxCategoryCodes');
+      expect(optionsBody.taxCategories).toEqual(
+        code === 'ZZ'
+          ? [
+              { code: 'zz_standard', labelKey: 'catalog.tax.zz-standard' },
+              { code: 'zz_reduced', labelKey: 'catalog.tax.zz-reduced' },
+              { code: 'zz_zero', labelKey: 'catalog.tax.zz-zero' },
+            ]
+          : [
+              { code: 'taxable', labelKey: 'catalog.tax.taxable' },
+              { code: 'gst_free', labelKey: 'catalog.tax.gst-free' },
+            ],
+      );
+      expect(optionsBody.categories).toEqual([
+        { categoryId: PRODUCT, parentId: null, names: { en: 'Pantry' } },
+      ]);
 
       const created = await send('post', code, '', { typeCode: 'simple' }, root);
       const productId = (created.body as { productId: string }).productId;
@@ -283,7 +307,10 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
         published: null,
         pausedAt: null,
         offers: { sellerCount: 0, offerCount: 0 },
-        form: { categories: [{ names: { en: 'Pantry' } }] },
+        form: {
+          categories: [{ names: { en: 'Pantry' } }],
+          taxCategories: optionsBody.taxCategories,
+        },
       });
 
       // Offers of every seller are counted, and an admin pause shows as its instant.
@@ -305,9 +332,9 @@ describe('platform product routes over HTTP (integration, slice 6)', () => {
         pausedAt: pausedAt.toString(),
         offers: { sellerCount: 2, offerCount: 3 },
       });
-      expect((read.body as { form: { taxCategoryCodes: string[] } }).form.taxCategoryCodes).toEqual(
-        expect.any(Array),
-      );
+      const readForm = (read.body as { form: Record<string, unknown> }).form;
+      expect(readForm.taxCategories).toEqual(expect.any(Array));
+      expect(readForm).not.toHaveProperty('taxCategoryCodes');
 
       for (const path of ['/options', `/${productId}`]) {
         const denied = await get(path, viewer);

@@ -9,6 +9,7 @@ import { ENGAGEMENT_FACADE, type EngagementFacade } from '../../engagement';
 import { FacadeStoreFollows } from './facade-store-follows';
 import {
   FacadeCustomerGroupMembership,
+  FacadeExclusiveCustomers,
   FacadeCustomerOrderHistory,
 } from './facade-customer-order-history';
 import { PRICING_FACADE, type PricingFacade } from '../../pricing';
@@ -28,13 +29,15 @@ import {
 } from '../application/ports/credit.repository';
 import {
   CUSTOMER_GROUP_MEMBERSHIP,
+  EXCLUSIVE_CUSTOMERS,
   CUSTOMER_ORDER_HISTORY,
   STORE_FOLLOWS,
   type CustomerGroupMembership,
+  type ExclusiveCustomers,
   type CustomerOrderHistory,
   type StoreFollows,
 } from '../application/ports/customer-facts';
-import { DELIVERED_ORDER_FACTS, type DeliveredOrderFacts } from '../application/ports/order-facts';
+import { DELIVERED_ORDER_FACTS } from '../application/ports/order-facts';
 import { REFERRAL_SIGNALS, type ReferralSignals } from '../application/ports/referral-signals';
 import { WALLET_CREDIT, type WalletCredit } from '../application/ports/wallet-credit';
 import { FLASH_SALES, type FlashSales } from '../application/ports/flash-sales';
@@ -66,7 +69,15 @@ import { ConfigPromotionsPolicy } from './config-promotions-policy';
 import { FacadeWalletCredit } from './facade-wallet-credit';
 import { PrismaCreditRepository } from './prisma-credit.repository';
 import { PrismaReferralRepository } from './prisma-referral.repository';
-import { UnknownDeliveredOrderFacts, UnknownReferralSignals } from './unknown-customer-facts';
+import { UnknownReferralSignals } from './unknown-customer-facts';
+import { BoundDeliveredOrderFacts } from './bound-delivered-order-facts';
+import { FacadeSellerCashbackLedger } from './facade-seller-cashback-ledger';
+import { FacadePayoutAnchors } from './facade-payout-anchors';
+import { PAYOUT_ANCHORS, type PayoutAnchors } from '../application/ports/payout-anchors';
+import {
+  SELLER_CASHBACK_LEDGER,
+  type SellerCashbackLedger,
+} from '../application/ports/seller-cashback-ledger';
 import { FacadeSellerCatalogue, FacadeSellerCommission } from './facade-seller-campaign-reads';
 import { FacadePriceHistory, FacadeSellerActivity } from './facade-seller-price-reads';
 import { PrismaMarketSettingRepository } from './prisma-market-setting.repository';
@@ -189,15 +200,31 @@ export const promotionsProviders: readonly FactoryProvider[] = [
       new FacadeCustomerGroupMembership(customers),
   },
   {
+    provide: EXCLUSIVE_CUSTOMERS,
+    inject: [CUSTOMERS_READ_FACADE],
+    useFactory: (customers: CustomersReadFacade): ExclusiveCustomers =>
+      new FacadeExclusiveCustomers(customers),
+  },
+  {
     provide: STORE_FOLLOWS,
     inject: [ENGAGEMENT_FACADE],
     useFactory: (engagement: EngagementFacade): StoreFollows => new FacadeStoreFollows(engagement),
   },
-  {
-    provide: DELIVERED_ORDER_FACTS,
-    useFactory: (): DeliveredOrderFacts => new UnknownDeliveredOrderFacts(),
-  },
+  // Bound to ordering's facade by `PromotionsOrderEventsModule` (ordering imports promotions).
+  { provide: DELIVERED_ORDER_FACTS, useFactory: () => new BoundDeliveredOrderFacts() },
   { provide: REFERRAL_SIGNALS, useFactory: (): ReferralSignals => new UnknownReferralSignals() },
+  {
+    provide: SELLER_CASHBACK_LEDGER,
+    inject: [COMMISSION_PAYOUTS_FACADE],
+    useFactory: (commission: CommissionPayoutsFacade): SellerCashbackLedger =>
+      new FacadeSellerCashbackLedger(commission),
+  },
+  {
+    provide: PAYOUT_ANCHORS,
+    inject: [COMMISSION_PAYOUTS_FACADE],
+    useFactory: (commission: CommissionPayoutsFacade): PayoutAnchors =>
+      new FacadePayoutAnchors(commission),
+  },
   {
     provide: WALLET_CREDIT,
     inject: [WALLET_FACADE],

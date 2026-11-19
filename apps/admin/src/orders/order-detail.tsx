@@ -18,6 +18,7 @@ import { numberFormat } from '../shared/intl.ts';
 import { shortId } from '../shared/short-id.ts';
 import { CopyOrderId } from './copy-order-id.tsx';
 import { NotesCard } from './notes-card.tsx';
+import { backHrefOf, type CustomerOrigin } from './order-href.ts';
 import { OrderMoreMenu, RefundButton } from './order-actions.tsx';
 import { FallbackId, FullId } from './fallback-id.tsx';
 import { orderEvents, type OrderEvent } from './order-activity.ts';
@@ -52,6 +53,7 @@ export function OrderDetail({
   canNote,
   notes,
   csrfToken,
+  from,
   startCancel = false,
 }: {
   readonly order: AdminOrderDetail;
@@ -64,6 +66,8 @@ export function OrderDetail({
   /** The internal notes; null when they did not load. */
   readonly notes: readonly AdminNote[] | null;
   readonly csrfToken: string;
+  /** The customer page tab the order was opened from; Back returns there. */
+  readonly from?: CustomerOrigin;
   /** Opened from the list's "Cancel order…": the cancel dialog opens with the page. */
   readonly startCancel?: boolean;
 }) {
@@ -71,7 +75,10 @@ export function OrderDetail({
   const locale = useLocale();
   return (
     <div className="flex flex-col gap-4">
-      <BackLink href="/orders" label={t('detail.back')} />
+      <BackLink
+        href={backHrefOf(from)}
+        label={from === undefined ? t('detail.back') : t('detail.back-customer')}
+      />
       <header className="flex flex-col gap-2">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-2xl font-semibold break-words">

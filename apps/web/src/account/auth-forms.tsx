@@ -4,6 +4,7 @@ import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { Icon } from '../icons/icon.tsx';
+import { InviteSignUpLine } from '../invite/invite-ui.tsx';
 import type { SignInOutcome } from '../shell/store-context.tsx';
 import { SOCIAL_SIGN_IN_SHOWN } from '../storefront/features.ts';
 import { AcField, PasswordField } from './fields.tsx';
@@ -38,7 +39,10 @@ export function AuthForms({
   social = SOCIAL_SIGN_IN_SHOWN,
   startSocial = sampleSocialSignIn,
   signIn,
+  startMode = 'login',
 }: {
+  /** `new` opens on Create account (an invite link's button does). */
+  readonly startMode?: 'login' | 'new';
   readonly heading: (title: string) => ReactNode;
   readonly onSignedIn: () => void;
   readonly social?: boolean;
@@ -47,7 +51,7 @@ export function AuthForms({
   readonly signIn?: (email: string, password: string) => Promise<SignInOutcome>;
 }) {
   const t = useTranslations('account.auth');
-  const [mode, setMode] = useState<Mode>('login');
+  const [mode, setMode] = useState<Mode>(startMode);
   // Live: a refused sign-in or a sign-up that is not available yet, and a call in flight.
   const [problem, setProblem] = useState<SignInOutcome | 'sign-up' | null>(null);
   const [pending, setPending] = useState(false);
@@ -179,6 +183,7 @@ export function AuthForms({
             <Icon name="info" />
             <span>{t('cart-kept')}</span>
           </div>
+          {login ? null : <InviteSignUpLine />}
           {problem ? (
             <p className="ac-note ac-warn" role="alert">
               <Icon name="info" />

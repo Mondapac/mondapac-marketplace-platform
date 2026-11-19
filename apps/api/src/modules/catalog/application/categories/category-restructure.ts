@@ -33,10 +33,16 @@ import type { OfferRepository } from '../ports/offer.repository';
 import type { PlatformCategoryRepository } from '../ports/platform-category.repository';
 import type { TagReevaluationRequestRepository } from '../ports/tag-reevaluation-requests';
 import { markProductForCategoryChange } from '../tags/publish-fan-out';
+import type {
+  RecordedRequest,
+  SystemActionProposer,
+  SystemRequestRecorder,
+} from '../../../system-requests';
+import type { CatalogueRequestRef, ProposedOr } from '../catalogue-review';
 import {
   announceChanged,
   invalid,
-  runStructural,
+  runStructuralOrPropose,
   type CategoryWriteFailure,
   type CategoryWriteView,
 } from './category-editor';
@@ -54,7 +60,8 @@ import type { ValidationFailure } from './category-admin-views';
  *    again on the locked tree; a plan that now names an id the check did not clear is
  *    `conflict.stale`. Above the Market's `maxCategoryChangeTags` tags it is
  *    `category.impact-too-large`. Then every change gets a revision (the reason note on the acted-on
- *    category's), every changed category its `platform-category-changed` event, every published
+ *    category's), every changed category its `platform-category-changed` event (the acted-on one
+ *    at the first of its two new versions; the caller's own event takes the second, Q-K3), every published
  *    product under the affected categories has its Offers' `active` tags marked `rechecking` with
  *    the entry path `category-change`, and the request of its published revision is made pending
  *    again (`requestForCategoryChange`), so the fan-out job asks `evaluateClaims` again against the
@@ -83,6 +90,15 @@ export interface CategoryRestructureDependencies {
 }
 
 /**
+ * A move, merge or archive as the admin routes run them: a move is reviewed after (`review`), a
+ * merge or an archive waits for approval (`proposer`) where the Market reviews area catalogue.
+ */
+export interface CategoryRestructureRouteDependencies extends CategoryRestructureDependencies {
+  readonly review: SystemRequestRecorder;
+  readonly proposer: SystemActionProposer;
+}
+
+/**
  * The products one change may mark at most, read in one query; more is `impact-too-large`. Every
  * one is marked in the change's unit (one Offer save each), under its 30 s timeout (Hassan L1,
  * Mojtaba 1, #712): to be measured on a seeded tree before it is raised.
@@ -101,6 +117,12 @@ export function reasonOf(raw: unknown): Result<string, ValidationFailure> {
     return invalid('reason', 'length');
   }
   return ok(raw);
+}
+
+/** What a move, merge or archive answers: the category and the review the change opened. */
+export interface RestructureOutput {
+  readonly category: CategoryWriteView;
+  readonly request: CatalogueRequestRef;
 }
 
 /** What the use case adds in the unit after the shared writes: its audit row and its event. */
@@ -124,8 +146,26 @@ export interface RestructureSpec {
     target: EditableCategory,
     read: RestructureFacts,
   ) => Result<RestructurePlan, RestructureRefusal>;
-  /** Extra writes in the unit (business activities), then the audit row and the event. */
-  readonly finish: (finish: RestructureFinish) => Promise<void>;
+  /**
+   * Extra writes in the unit (business activities), then the audit row and the event; a move also
+   * opens its review (Admin Inbox › System requests) and answers the request, or its refusal.
+   */
+  readonly finish: (
+    finish: RestructureFinish,
+  ) => Promise<Result<CatalogueRequestRef, CategoryRestructureFailure>>;
+}
+
+/**
+ * An action that waits for approval where the Market reviews area catalogue (merge, archive):
+ * after the same plan and certification check, `propose` files it on the locked plan and nothing
+ * is written. `reviewed` is the area's policy, read before any unit.
+ */
+export interface RestructureProposal {
+  readonly reviewed: boolean;
+  readonly propose: (
+    target: EditableCategory,
+    plan: RestructurePlan,
+  ) => Promise<Result<RecordedRequest | null, CategoryRestructureFailure>>;
 }
 
 export interface RestructureFacts {
@@ -165,14 +205,16 @@ async function readFacts(
   return { directProducts, archiveProducts: [], tooMany: false };
 }
 
-export async function runRestructure(
+/**
+ * Steps 1 and 2 (no unit open): the plan on a snapshot of the tree and the certification check of
+ * the ids it retires. Answers the ids the check cleared; the unit may write only a plan within them.
+ */
+export async function clearRestructure(
   deps: CategoryRestructureDependencies,
   context: CallContext,
-  spec: RestructureSpec,
-): Promise<Result<{ readonly category: CategoryWriteView }, CategoryRestructureFailure>> {
+  spec: Pick<RestructureSpec, 'targetId' | 'kind' | 'plan'>,
+): Promise<Result<ReadonlySet<string>, CategoryRestructureFailure>> {
   const { market } = context;
-
-  // 1. Plan on a snapshot, before the certification check.
   type Snapshot = {
     readonly nodes: readonly EditableCategory[];
     readonly target: EditableCategory | null;
@@ -201,81 +243,139 @@ export async function runRestructure(
   const draft = spec.plan(nodes, target, facts);
   if (!draft.ok) return draft;
 
-  // 2. The certification check, with no unit open (C-4; fail closed).
+  // The certification check, with no unit open (C-4; fail closed).
   const checked = new Set<string>(draft.value.retirementCheckIds);
   const cleared = await deps.retirement.assertRetirable(context, [...checked] as Id<'Category'>[]);
   if (!cleared.ok) return cleared;
+  return ok(checked);
+}
 
-  // 3. The unit.
+/**
+ * Step 3 inside an open unit that holds the tree lock (`locked` is the tree read after the tree
+ * version was raised): the plan again, the products' badges, every revision and event, then the
+ * use case's `finish`. A plan that now retires an id `checked` does not hold is `conflict.stale`.
+ */
+export async function restructureInUnit(
+  deps: CategoryRestructureDependencies,
+  context: CallContext,
+  spec: RestructureSpec,
+  locked: readonly EditableCategory[],
+  nextTreeVersion: number,
+  checked: ReadonlySet<string>,
+): Promise<Result<RestructureOutput, CategoryRestructureFailure>> {
+  const { market } = context;
+  const maxTags = deps.policy.maxCategoryChangeTags(market);
   const at = deps.clock.now();
-  const result = await runStructural<
-    { readonly category: CategoryWriteView },
-    CategoryRestructureFailure
-  >(
+  const current = locked.find((node) => node.id === spec.targetId);
+  if (current === undefined) return err({ code: 'category.not-found' });
+  const lockedFacts = await readFacts(deps, market, spec.kind, locked, current);
+  if (lockedFacts.tooMany) return err({ code: 'category.impact-too-large', max: maxTags });
+  const plan = spec.plan(locked, current, lockedFacts);
+  if (!plan.ok) return plan;
+  if (plan.value.retirementCheckIds.some((id) => !checked.has(id))) {
+    return err({ code: 'conflict.stale' });
+  }
+  const under = await deps.restructure.productsUnder(
+    market,
+    plan.value.affectedIds,
+    RESTRUCTURE_MAX_PRODUCTS + 1,
+  );
+  if (under.activeTags > maxTags || under.products.length > RESTRUCTURE_MAX_PRODUCTS) {
+    return err({ code: 'category.impact-too-large', max: maxTags });
+  }
+
+  let targetVersion = current.version;
+  for (const change of plan.value.changes) {
+    const node = locked.find((entry) => entry.id === change.id)!;
+    const version = await deps.store.apply(market, {
+      category: node,
+      revisionId: deps.ids.next<'CategoryRevision'>(),
+      kind: change.kind,
+      texts: node.texts,
+      patch: patchOf(change),
+      authorAccountId: spec.accountId,
+      now: at,
+      // The acted-on category gets two events in this unit, `changed` here and the action's own
+      // in `finish`: two version steps, one per event (catalog data design Q-K3).
+      ...(node.id === current.id ? { reason: spec.reason, events: 2 } : {}),
+    });
+    if (node.id === current.id) {
+      targetVersion = version;
+      const changedAt = version - 1; // the first of its two new versions; `finish` takes the second
+      await announceChanged(deps, context, node.id, changedAt);
+    } else {
+      await announceChanged(deps, context, node.id, version);
+    }
+  }
+
+  let tagsMarked = 0;
+  for (const product of under.products) {
+    tagsMarked += await markProductForCategoryChange(deps, market, {
+      productId: product.productId,
+      revisionId: product.revisionId,
+      actor: { kind: 'admin', accountId: spec.accountId },
+      now: at,
+    });
+  }
+  const finished = await spec.finish({
+    target: current,
+    plan: plan.value,
+    tagsMarked,
+    targetVersion,
+  });
+  if (!finished.ok) return finished;
+  const head = plan.value.changes[0]!;
+  return ok({
+    category: {
+      id: current.id,
+      slug: current.slug,
+      status: head.status ?? current.status,
+      version: targetVersion,
+      revisionNo: current.revisionNo + 1,
+      treeVersion: nextTreeVersion,
+    },
+    request: finished.value,
+  });
+}
+
+export async function runRestructure(
+  deps: CategoryRestructureDependencies,
+  context: CallContext,
+  spec: RestructureSpec,
+  proposal?: RestructureProposal,
+): Promise<Result<ProposedOr<RestructureOutput>, CategoryRestructureFailure>> {
+  const { market } = context;
+
+  // 1 and 2. The plan on a snapshot, then the certification check with no unit open.
+  const cleared = await clearRestructure(deps, context, spec);
+  if (!cleared.ok) return cleared;
+  const checked = cleared.value;
+
+  // 3. The unit (or, for an action that waits for approval, the proposal on the same plan).
+  return runStructuralOrPropose<RestructureOutput, CategoryRestructureFailure>(
     deps,
     market,
     spec.treeVersion,
-    async (locked, nextTreeVersion) => {
-      const current = locked.find((node) => node.id === spec.targetId);
-      if (current === undefined) return err({ code: 'category.not-found' });
-      const lockedFacts = await readFacts(deps, market, spec.kind, locked, current);
-      if (lockedFacts.tooMany) return err({ code: 'category.impact-too-large', max: maxTags });
-      const plan = spec.plan(locked, current, lockedFacts);
+    proposal?.reviewed === true,
+    async (seen) => {
+      const current = seen.find((node) => node.id === spec.targetId);
+      if (current === undefined || proposal === undefined) {
+        return err({ code: 'category.not-found' });
+      }
+      const facts = await readFacts(deps, market, spec.kind, seen, current);
+      const maxTags = deps.policy.maxCategoryChangeTags(market);
+      if (facts.tooMany) return err({ code: 'category.impact-too-large', max: maxTags });
+      const plan = spec.plan(seen, current, facts);
       if (!plan.ok) return plan;
       if (plan.value.retirementCheckIds.some((id) => !checked.has(id))) {
         return err({ code: 'conflict.stale' });
       }
-      const under = await deps.restructure.productsUnder(
-        market,
-        plan.value.affectedIds,
-        RESTRUCTURE_MAX_PRODUCTS + 1,
-      );
-      if (under.activeTags > maxTags || under.products.length > RESTRUCTURE_MAX_PRODUCTS) {
-        return err({ code: 'category.impact-too-large', max: maxTags });
-      }
-
-      let targetVersion = current.version;
-      for (const change of plan.value.changes) {
-        const node = locked.find((entry) => entry.id === change.id)!;
-        const version = await deps.store.apply(market, {
-          category: node,
-          revisionId: deps.ids.next<'CategoryRevision'>(),
-          kind: change.kind,
-          texts: node.texts,
-          patch: patchOf(change),
-          authorAccountId: spec.accountId,
-          now: at,
-          ...(node.id === current.id ? { reason: spec.reason } : {}),
-        });
-        if (node.id === current.id) targetVersion = version;
-        await announceChanged(deps, context, node.id, version);
-      }
-
-      let tagsMarked = 0;
-      for (const product of under.products) {
-        tagsMarked += await markProductForCategoryChange(deps, market, {
-          productId: product.productId,
-          revisionId: product.revisionId,
-          actor: { kind: 'admin', accountId: spec.accountId },
-          now: at,
-        });
-      }
-      await spec.finish({ target: current, plan: plan.value, tagsMarked, targetVersion });
-      const head = plan.value.changes[0]!;
-      return ok({
-        category: {
-          id: current.id,
-          slug: current.slug,
-          status: head.status ?? current.status,
-          version: targetVersion,
-          revisionNo: current.revisionNo + 1,
-          treeVersion: nextTreeVersion,
-        },
-      });
+      return proposal.propose(current, plan.value);
     },
+    (locked, nextTreeVersion) =>
+      restructureInUnit(deps, context, spec, locked, nextTreeVersion, checked),
     { timeoutMs: MAX_UNIT_TIMEOUT_MS },
   );
-  return result;
 }
 
 function patchOf(change: RestructureChange) {

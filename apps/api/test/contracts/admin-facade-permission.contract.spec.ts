@@ -5,10 +5,19 @@ import { AdminRenameCustomer } from '../../src/modules/identity/application/use-
 import {
   BUYER_ACCOUNT_DELETE,
   CUSTOMERS_CUSTOMER_EDIT,
+  CUSTOMERS_CUSTOMER_EMAIL_CHANGE,
   CUSTOMERS_CUSTOMER_EXPORT,
   CUSTOMERS_CUSTOMER_VIEW,
   CUSTOMERS_GROUPS_MANAGE,
 } from '../../src/modules/customers/contracts/permissions';
+import {
+  CUSTOMER_EMAIL_CHANGE_STEP_UP,
+  CUSTOMERS_EXPORT_STEP_UP,
+  CUSTOMERS_STEP_UP_ACTIONS,
+} from '../../src/modules/customers/contracts/step-up';
+import { AdminCancelCustomerEmailChange } from '../../src/modules/identity/application/use-cases/admin-cancel-customer-email-change.use-case';
+import { AdminRequestCustomerEmailChange } from '../../src/modules/identity/application/use-cases/admin-request-customer-email-change.use-case';
+import { CustomerPendingEmailOf } from '../../src/modules/identity/application/use-cases/customer-pending-email-of.use-case';
 import * as SECTION_KEYS from '../../src/modules/customers/application/section-keys';
 import { AdminCustomerPasswordReset as CustomersPasswordReset } from '../../src/modules/customers/application/use-cases/admin-customer-password-reset.use-case';
 import { AdminCustomerSessions as CustomersSessions } from '../../src/modules/customers/application/use-cases/admin-customer-sessions.use-case';
@@ -42,13 +51,34 @@ import { AdminCustomerConsent as LegalConsent } from '../../src/modules/legal/ap
 import { AdminCustomerConsentHistory as LegalConsentHistory } from '../../src/modules/legal/application/use-cases/admin-customer-consent-history.use-case';
 import { ASSISTANT_CUSTOMER_CONVERSATION_VIEW as CONVERSATIONS_KEY } from '../../src/modules/assistant/contracts/permissions';
 import { AdminCustomerConversations as AssistantConversations } from '../../src/modules/assistant/application/use-cases/admin-customer-conversations.use-case';
+import { AdminCustomerReviewsSectionExport } from '../../src/modules/customers/application/use-cases/admin-customer-reviews-export.use-case';
+import { AdminCustomerReviewsSection } from '../../src/modules/customers/application/use-cases/admin-customer-reviews.use-case';
+import { CustomerReviewEventsCheck } from '../../src/modules/customers/application/use-cases/customer-review-events-check.use-case';
+import { CustomerConsentEventsCheck } from '../../src/modules/customers/application/use-cases/customer-consent-events-check.use-case';
+import { AdminCustomerSellerRatingsSectionExport } from '../../src/modules/customers/application/use-cases/admin-customer-seller-ratings-export.use-case';
+import { AdminCustomerSellerRatingsSection } from '../../src/modules/customers/application/use-cases/admin-customer-seller-ratings.use-case';
+import { AdminCustomerHelpfulVotesSectionExport } from '../../src/modules/customers/application/use-cases/admin-customer-helpful-votes-export.use-case';
+import { AdminCustomerHelpfulVotesSection } from '../../src/modules/customers/application/use-cases/admin-customer-helpful-votes.use-case';
+import { AdminCustomerReviewReportsSectionExport } from '../../src/modules/customers/application/use-cases/admin-customer-review-reports-export.use-case';
+import { AdminCustomerReviewReportsSection } from '../../src/modules/customers/application/use-cases/admin-customer-review-reports.use-case';
+import {
+  SECTION_REPORT_ROLES,
+  SECTION_REVIEW_STATUSES,
+  SECTION_SELLER_RATING_STATUSES,
+} from '../../src/modules/customers/application/ports/customer-section-peers';
+import { REVIEWS_CUSTOMER_REVIEW_VIEW as REVIEWS_KEY } from '../../src/modules/reviews/contracts/permissions';
+import { REVIEW_STATUSES, SELLER_RATING_STATUSES } from '../../src/modules/reviews/domain/rules';
+import { AdminCustomerHelpfulVotes as ReviewsHelpfulVotes } from '../../src/modules/reviews/application/use-cases/admin-customer-helpful-votes.use-case';
+import { AdminCustomerReviewReports as ReviewsReports } from '../../src/modules/reviews/application/use-cases/admin-customer-review-reports.use-case';
+import { AdminCustomerReviews as ReviewsReviews } from '../../src/modules/reviews/application/use-cases/admin-customer-reviews.use-case';
+import { AdminCustomerSellerRatings as ReviewsSellerRatings } from '../../src/modules/reviews/application/use-cases/admin-customer-seller-ratings.use-case';
+import { ReviewAuthorOf } from '../../src/modules/reviews/application/use-cases/review-author-of.use-case';
 import * as IDENTITY_KEYS from '../../src/modules/identity/contracts/permissions';
 import { AdminCustomerSessions as IdentityCustomerSessions } from '../../src/modules/identity/application/use-cases/admin-customer-sessions.use-case';
 import { AdminCustomerSignIns as IdentityCustomerSignIns } from '../../src/modules/identity/application/use-cases/admin-customer-sign-ins.use-case';
 import { AdminRevealCustomerSignIn as IdentityRevealCustomerSignIn } from '../../src/modules/identity/application/use-cases/admin-reveal-customer-sign-in.use-case';
 import { AdminSendCustomerPasswordReset as IdentitySendCustomerPasswordReset } from '../../src/modules/identity/application/use-cases/admin-send-customer-password-reset.use-case';
 import { AdminSignOutCustomer as IdentitySignOutCustomer } from '../../src/modules/identity/application/use-cases/admin-sign-out-customer.use-case';
-import { CUSTOMERS_EXPORT_STEP_UP } from '../../src/modules/customers/contracts/step-up';
 import {
   CUSTOMER_DATA_EXPORT_KEY as ORDERING_CUSTOMER_DATA_EXPORT_KEY,
   CUSTOMER_DATA_EXPORT_STEP_UP as ORDERING_CUSTOMER_DATA_EXPORT_STEP_UP,
@@ -100,6 +130,38 @@ describe('the admin edit facade use case of identity', () => {
       kind: 'permissions',
       allOf: [CUSTOMERS_CUSTOMER_EDIT.key],
     });
+  });
+});
+
+// Hassan R4 (customers admin email change): identity's request and cancel run under customers'
+// protected key, checked again in identity's own unit; the customer page's pending read runs under
+// customers' view key. The literals are cast in identity; this pins them to customers' declarations.
+describe('the admin email change use cases of identity', () => {
+  it.each([
+    ['identity.admin-request-customer-email-change', AdminRequestCustomerEmailChange],
+    ['identity.admin-cancel-customer-email-change', AdminCancelCustomerEmailChange],
+  ] as const)('%s requires exactly customers.customer-email.change', (name, useCase) => {
+    expect(useCase.access.name).toBe(name);
+    expect(useCase.access.rule).toEqual({
+      kind: 'permissions',
+      allOf: [CUSTOMERS_CUSTOMER_EMAIL_CHANGE.key],
+    });
+    expect(CUSTOMERS_CUSTOMER_EMAIL_CHANGE.protected).toBe(true);
+  });
+
+  it('identity.customer-pending-email-of requires exactly customers.customers.view', () => {
+    expect(CustomerPendingEmailOf.access.name).toBe('identity.customer-pending-email-of');
+    expect(CustomerPendingEmailOf.access.rule).toEqual({
+      kind: 'permissions',
+      allOf: [CUSTOMERS_CUSTOMER_VIEW.key],
+    });
+  });
+
+  it('the step-up action is the change key, required by default and locked', () => {
+    expect(CUSTOMER_EMAIL_CHANGE_STEP_UP).toBe(CUSTOMERS_CUSTOMER_EMAIL_CHANGE.key);
+    expect(
+      CUSTOMERS_STEP_UP_ACTIONS.find((action) => action.key === CUSTOMER_EMAIL_CHANGE_STEP_UP),
+    ).toMatchObject({ defaultRequired: true, locked: true, audience: 'admin' });
   });
 });
 
@@ -226,12 +288,14 @@ describe('the customer page sections and their owners’ facade reads', () => {
       SECTION_KEYS.ENGAGEMENT_CUSTOMER_BEHAVIOUR_VIEW,
       SECTION_KEYS.LEGAL_CUSTOMER_CONSENT_VIEW,
       SECTION_KEYS.ASSISTANT_CUSTOMER_CONVERSATION_VIEW,
+      SECTION_KEYS.REVIEWS_CUSTOMER_REVIEW_VIEW,
     ]).toEqual([
       CART_KEY.key,
       REMINDERS_KEY.key,
       BEHAVIOUR_KEY.key,
       CONSENT_KEY.key,
       CONVERSATIONS_KEY.key,
+      REVIEWS_KEY.key,
     ]);
   });
 
@@ -258,6 +322,14 @@ describe('the customer page sections and their owners’ facade reads', () => {
     [AdminCustomerConsentHistorySectionExport, [VIEW, CONSENT_KEY.key, EXPORT]],
     [AdminCustomerAssistantConversationsSection, [VIEW, CONVERSATIONS_KEY.key]],
     [AdminCustomerAssistantConversationsSectionExport, [VIEW, CONVERSATIONS_KEY.key, EXPORT]],
+    [AdminCustomerReviewsSection, [VIEW, REVIEWS_KEY.key]],
+    [AdminCustomerReviewsSectionExport, [VIEW, REVIEWS_KEY.key, EXPORT]],
+    [AdminCustomerSellerRatingsSection, [VIEW, REVIEWS_KEY.key]],
+    [AdminCustomerSellerRatingsSectionExport, [VIEW, REVIEWS_KEY.key, EXPORT]],
+    [AdminCustomerHelpfulVotesSection, [VIEW, REVIEWS_KEY.key]],
+    [AdminCustomerHelpfulVotesSectionExport, [VIEW, REVIEWS_KEY.key, EXPORT]],
+    [AdminCustomerReviewReportsSection, [VIEW, REVIEWS_KEY.key]],
+    [AdminCustomerReviewReportsSectionExport, [VIEW, REVIEWS_KEY.key, EXPORT]],
   ] as const)('%p requires customers view plus the owner’s key', (useCase, keys) => {
     expect(useCase.access.rule).toEqual({ kind: 'permissions', allOf: keys });
   });
@@ -279,13 +351,49 @@ describe('the customer page sections and their owners’ facade reads', () => {
     [LegalConsent, [CONSENT_KEY.key]],
     [LegalConsentHistory, [CONSENT_KEY.key]],
     [AssistantConversations, [CONVERSATIONS_KEY.key]],
+    [ReviewsReviews, [REVIEWS_KEY.key]],
+    [ReviewsSellerRatings, [REVIEWS_KEY.key]],
+    [ReviewsHelpfulVotes, [REVIEWS_KEY.key]],
+    [ReviewsReports, [REVIEWS_KEY.key]],
   ] as const)('the owner’s facade read %p declares its own key', (useCase, keys) => {
     expect(useCase.access.rule).toEqual({ kind: 'permissions', allOf: keys });
   });
 
   it('keeps the owners’ new view keys plain (not protected)', () => {
-    for (const key of [CART_KEY, REMINDERS_KEY, BEHAVIOUR_KEY, CONSENT_KEY, CONVERSATIONS_KEY]) {
+    for (const key of [
+      CART_KEY,
+      REMINDERS_KEY,
+      BEHAVIOUR_KEY,
+      CONSENT_KEY,
+      CONVERSATIONS_KEY,
+      REVIEWS_KEY,
+    ]) {
       expect(key.protected).toBe(false);
     }
+  });
+
+  // Part 3: reviews. The key is a platform key (never a seller's: a seller must not tie a review to
+  // a buyer); the author lookup the timeline uses is the system's only; customers mirrors reviews'
+  // closed status lists (it cannot import reviews) and this pins them.
+  it('keeps reviews’ customer key a platform key and the author lookup the system’s', () => {
+    expect(REVIEWS_KEY.scope).toBe('platform');
+    expect(ReviewAuthorOf.access.rule).toEqual({ kind: 'system' });
+    // The timeline shows the review kinds only to a caller who holds reviews' key (L1).
+    expect(CustomerReviewEventsCheck.access.rule).toEqual({
+      kind: 'permissions',
+      allOf: [REVIEWS_KEY.key],
+    });
+    expect([...SECTION_REVIEW_STATUSES]).toEqual([...REVIEW_STATUSES]);
+    expect([...SECTION_SELLER_RATING_STATUSES]).toEqual([...SELLER_RATING_STATUSES]);
+    expect([...SECTION_REPORT_ROLES]).toEqual(['by', 'about']);
+  });
+
+  // Part 4: consent on the timeline. The entry carries no value, but the count of entries tells
+  // whether the consent stands, so the timeline shows the consent kind only with legal's key.
+  it('shows the consent kind of the timeline only with legal’s consent key', () => {
+    expect(CustomerConsentEventsCheck.access.rule).toEqual({
+      kind: 'permissions',
+      allOf: [CONSENT_KEY.key],
+    });
   });
 });

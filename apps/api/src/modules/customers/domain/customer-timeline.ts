@@ -14,7 +14,35 @@ export const CUSTOMER_EVENT_KINDS = [
   'account-enabled',
   'order-paid',
   'refund-succeeded',
+  // Phase 2b, part 3: reviews' events, on the review's author (looked up through reviews' facade
+  // by the system: the events carry no account on purpose). Submitted and published at once, or
+  // released from a hold; held by the automatic checks; hidden or removed, and restored, by a
+  // moderator.
+  'review-published',
+  'review-held',
+  'review-hidden',
+  'review-restored',
+  // Phase 2b, part 4: legal's consent event. The entry names the channel (its `detail`), never
+  // the value: legal's event carries none.
+  'consent-changed',
 ] as const;
+
+/**
+ * The kinds copied from legal's consent events. Shown only with legal's own key as well: only
+ * real changes are recorded and the default is "not granted", so the number of entries alone
+ * tells whether the consent stands now.
+ */
+export const CONSENT_EVENT_KINDS = ['consent-changed'] as const;
+export type ConsentEventKind = (typeof CONSENT_EVENT_KINDS)[number];
+
+/** The kinds copied from reviews' events, found through the review's author. */
+export const REVIEW_EVENT_KINDS = [
+  'review-published',
+  'review-held',
+  'review-hidden',
+  'review-restored',
+] as const;
+export type ReviewEventKind = (typeof REVIEW_EVENT_KINDS)[number];
 
 /** What an admin did on the customer's page (the admin is the entry's actor). */
 export const ADMIN_ACTION_KINDS = [
@@ -34,7 +62,7 @@ export const TIMELINE_KINDS = [...CUSTOMER_EVENT_KINDS, ...ADMIN_ACTION_KINDS] a
 export type TimelineKind = (typeof TIMELINE_KINDS)[number];
 
 /** The filter groups of the timeline's super list ("event type"). */
-export const TIMELINE_CATEGORIES = ['account', 'orders', 'admin'] as const;
+export const TIMELINE_CATEGORIES = ['account', 'orders', 'reviews', 'admin'] as const;
 export type TimelineCategory = (typeof TIMELINE_CATEGORIES)[number];
 
 export const categoryOf = (kind: TimelineKind): TimelineCategory => {
@@ -42,6 +70,11 @@ export const categoryOf = (kind: TimelineKind): TimelineCategory => {
     case 'order-paid':
     case 'refund-succeeded':
       return 'orders';
+    case 'review-published':
+    case 'review-held':
+    case 'review-hidden':
+    case 'review-restored':
+      return 'reviews';
     case 'page-opened':
     case 'note-added':
     case 'group-added':
@@ -80,14 +113,19 @@ export interface TimelineEntry {
 /** The newest entries the Overview shows ("last five events"). */
 export const TIMELINE_OVERVIEW_SIZE = 5;
 
-/** What a consumed event names: the account, or the order (and refund) to find it from. */
+/**
+ * What a consumed event names: the account (with the consent channel), or the order (and refund)
+ * or review to find it from.
+ */
 export type CustomerEventKindInput =
   | {
       readonly kind: Exclude<
         (typeof CUSTOMER_EVENT_KINDS)[number],
-        'order-paid' | 'refund-succeeded'
+        'order-paid' | 'refund-succeeded' | ReviewEventKind | ConsentEventKind
       >;
       readonly accountId: string;
     }
+  | { readonly kind: ConsentEventKind; readonly accountId: string; readonly channel: string }
+  | { readonly kind: ReviewEventKind; readonly reviewId: string }
   | { readonly kind: 'order-paid'; readonly orderId: string }
   | { readonly kind: 'refund-succeeded'; readonly orderId: string; readonly refundId: string };

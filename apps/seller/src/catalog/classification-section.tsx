@@ -12,12 +12,13 @@ import { useState, type ReactNode } from 'react';
 import { useCategoryChoices } from './category-choices.ts';
 import type { CategoryIssues } from './category-issues.ts';
 import { pickLabel } from './draft-content.ts';
-import type { FormCategory } from './types.ts';
+import { useTaxCategoryOptions } from './tax-category-options.ts';
+import type { FormCategory, TaxCategory } from './types.ts';
 
 /** Where the product is filed (platform categories), its tax category and, below them, its tags. */
 export function ClassificationSection({
   categories,
-  taxCategoryCodes,
+  taxCategories,
   categoryIds,
   taxCategoryCode,
   defaultLocale,
@@ -28,7 +29,8 @@ export function ClassificationSection({
 }: {
   /** Every category of the Market (names only): a chosen one the picker no longer offers is named from it. */
   readonly categories: readonly FormCategory[];
-  readonly taxCategoryCodes: readonly string[];
+  /** The Market's tax categories with their label keys. */
+  readonly taxCategories: readonly TaxCategory[];
   /** The first id is the primary category. */
   readonly categoryIds: readonly string[];
   readonly taxCategoryCode: string;
@@ -41,6 +43,7 @@ export function ClassificationSection({
   readonly children?: ReactNode;
 }) {
   const t = useTranslations('catalog.edit');
+  const taxOptions = useTaxCategoryOptions(taxCategories);
   const { choices, load } = useCategoryChoices();
   const [announcement, setAnnouncement] = useState('');
   const byId = new Map(categories.map((category) => [category.categoryId, category]));
@@ -119,8 +122,9 @@ export function ClassificationSection({
       <Select
         name="taxCategoryCode"
         label={t('tax-category')}
-        placeholder={t('attribute.unset')}
-        options={taxCategoryCodes.map((code) => ({ value: code, label: code }))}
+        placeholder={t('tax-category-placeholder')}
+        help={t('tax-category-help')}
+        options={taxOptions}
         value={taxCategoryCode}
         onChange={(event) => onTax(event.target.value)}
       />

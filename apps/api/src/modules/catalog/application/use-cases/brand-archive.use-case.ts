@@ -7,11 +7,12 @@ import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_BRAND_EDIT } from '../../contracts/permissions';
 import { BrandArchivedAudit } from '../../domain/audit';
-import type { BrandRefusal } from '../../domain/brand';
+import { brandArchiveReasonOf, type BrandRefusal } from '../../domain/brand';
 import {
   adminAccountOf,
   brandIdOf,
   closedInput,
+  invalid,
   versionOf,
   viewOf,
   type BrandView,
@@ -23,6 +24,12 @@ export interface BrandArchiveInput {
   readonly brandId?: unknown;
   /** The version the admin saw. */
   readonly version?: unknown;
+  /**
+   * Optional: why the brand is archived (a proposal turned down or a live brand retired). Trimmed,
+   * at most 500 characters, no control character; empty is none. Stored on the brand for the
+   * proposing seller's notice; never audited as text and never read by a decision.
+   */
+  readonly reason?: unknown;
 }
 
 export type BrandArchiveFailure =
@@ -43,7 +50,8 @@ export interface BrandArchiveDependencies {
 /**
  * `brand.archive` (catalog brand package): an admin archives a draft or active brand. Its public
  * page stops answering at once; its slug and aliases stay, and the products that point at it keep
- * their `brand_id`. This is also how a seller's proposal is turned down. Rule: the key
+ * their `brand_id`. This is also how a seller's proposal is turned down; an optional reason is kept on
+ * the brand for the proposing seller's notice. Rule: the key
  * `catalog.brand.edit` and the admin population.
  */
 export class BrandArchive extends UseCase<
@@ -84,12 +92,14 @@ export class BrandArchive extends UseCase<
     input: BrandArchiveInput,
   ): Promise<Result<{ readonly brand: BrandView }, BrandArchiveFailure>> {
     if (adminAccountOf(context) === null) return err({ code: 'access.denied' });
-    const body = closedInput(input, ['brandId', 'version']);
+    const body = closedInput(input, ['brandId', 'version', 'reason']);
     if (!body.ok) return body;
     const id = brandIdOf(body.value['brandId'], 'brandId');
     if (!id.ok) return err({ code: 'brand.not-found' });
     const version = versionOf(body.value['version']);
     if (!version.ok) return version;
+    const reason = brandArchiveReasonOf(body.value['reason']);
+    if (!reason.ok) return invalid('reason', reason.error);
     const { market } = context;
     try {
       return await this.deps.unitOfWork.run<{ readonly brand: BrandView }, BrandArchiveFailure>(
@@ -99,14 +109,14 @@ export class BrandArchive extends UseCase<
           if (found === null) return err({ code: 'brand.not-found' } as const);
           if (found.state.version !== version.value)
             return err({ code: 'conflict.stale' } as const);
-          const next = found.archive({ now: this.deps.clock.now() });
+          const next = found.archive({ now: this.deps.clock.now(), reason: reason.value });
           if (!next.ok) return err(next.error);
           await this.deps.brands.save(market, next.value);
           await this.deps.audit.record(
             context,
             BrandArchivedAudit.entry(found.state.id, {
               before: { status: found.state.status },
-              after: { status: 'archived' },
+              after: { status: 'archived', reasonGiven: reason.value !== null },
             }),
           );
           return ok({ brand: viewOf(next.value.state) });

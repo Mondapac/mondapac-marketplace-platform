@@ -1,7 +1,6 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type {
   AdminCreditDecision,
-  AdminCreditPage,
   AdminCreditRecord,
   AdminCreditRepository,
   NewAdminCredit,
@@ -157,6 +156,12 @@ export class MemoryWallet implements WalletRepository {
   }
   findLot(_m: MarketContext, id: Id<'WalletLot'>) {
     return Promise.resolve(this.lots.get(id) ?? null);
+  }
+  findLotOfJournal(_m: MarketContext, journalId: Id<'WalletJournal'>) {
+    const found = [...this.lots.values()].find((lot) => lot.journalId === journalId);
+    return Promise.resolve(
+      found === undefined ? null : { lotId: found.id, walletAccountId: found.wallet },
+    );
   }
   findLotWallet(_m: MarketContext, id: Id<'WalletLot'>) {
     return Promise.resolve(this.lots.get(id)?.wallet ?? null);
@@ -365,26 +370,6 @@ export class MemoryAdminCredits implements AdminCreditRepository {
       journalId: decision.journalId,
     });
     return Promise.resolve(true);
-  }
-  list(_m: MarketContext, page: AdminCreditPage) {
-    const after = page.after;
-    return Promise.resolve(
-      [...this.rows.values()]
-        .filter((r) => page.statuses.includes(r.status))
-        .sort(
-          (a, b) =>
-            b.requestedAt.epochMilliseconds - a.requestedAt.epochMilliseconds ||
-            (a.id < b.id ? 1 : -1),
-        )
-        .filter(
-          (r) =>
-            after === null ||
-            r.requestedAt.epochMilliseconds < after.requestedAt.epochMilliseconds ||
-            (r.requestedAt.epochMilliseconds === after.requestedAt.epochMilliseconds &&
-              r.id < after.id),
-        )
-        .slice(0, page.limit),
-    );
   }
   duePending(_m: MarketContext, now: Temporal.Instant, limit: number) {
     return Promise.resolve(

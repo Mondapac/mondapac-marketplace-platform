@@ -390,6 +390,89 @@ Migration `20261116120000_promotions_redemptions`. Ordering's checkout calls it 
   of reservations whose order never settles (the order is stored before the redemption, so every row has an
   order that ordering cancels or confirms; the sweep covers a crash between them).
 
+## Customers phase 4a, PR 4a-2: the seller's exclusive-customer discount (2026-11-17)
+
+- New segment `SELLER_EXCLUSIVE` of the `CUSTOMER_GROUP` type: a seller's own discount for the
+  customers who joined through its invite link (customers 4a-1). Seller-funded, on the seller's
+  own lines (layer `SELLER_CART`), held to the Market's seller maximum like any seller promotion,
+  and reviewed after publish like the store-follower offer. No days, group or zones.
+- A seller may make `CUSTOMER_GROUP` only with this segment (any other: `segment.kind`
+  not-allowed); an admin may not use this segment.
+- The quote asks `customers.exclusiveSellerOf` (port `ExclusiveCustomers`, system actor only) once
+  per quote, only when such a discount is live; unknown or failing answers fail closed (no
+  discount). The admin preview takes `customer.exclusiveSellerId` and reads nothing.
+- Migration `20261117060000_promotions_seller_exclusive_segment`: `promotions_type_funding_check`
+  lets the seller pay a customer-group discount exactly for this segment; `promotions_phase3_check`
+  accepts the segment with no days and no group. `down.sql` refuses while such rows exist.
+
+## Customers phase 4c-1: the seller's cashback (2026-11-17)
+
+- `CASHBACK` takes the segment `SELLER_EXCLUSIVE`: seller-funded, seller-owned, for its exclusive
+  customers on its own seller orders. Market setting `promotions.cashback.sellerMinBps` (optional)
+  is the least such a cashback may credit (`reward.bps` `below-market-minimum`).
+- The order facts port now reads ordering's `deliveredSellerOrderFacts` (adapter
+  `FacadeDeliveredOrderFacts`, system actor only; failures are unknown), so cashback runs for real.
+  The facts carry the seller.
+- New port `SellerCashbackLedger` (adapter on commission-payouts' `recordSellerCashback`): after
+  the wallet grant of a seller-funded credit; `false` keeps the credit pending (retry).
+- A real cashback waits for the payout release: `credit_issuances.grant_after` (migration
+  `20261117120000_promotions_credit_grant_after`), port `PayoutAnchors` on commission-payouts,
+  job `promotions.grant-due-credits` (use case of the same name, system). The guard trigger gains
+  one move (PENDING to PENDING: end the wait, amount kept or lowered) and grants GRANTED only after
+  the wait; the app role may update `amount_minor` and `grant_after`. A cashback PENDING with no
+  wait for an hour is finished by the job as it is (its amount is final).
+- A payout hold and a lost chargeback stop the cashback (Hassan M-2): the anchor also answers
+  `onHold` (an active hold on the seller order or the whole seller) and `disputeLost` (dispute
+  debits above what was reinstated). A held credit is put back for 6 hours, one whose facts cannot
+  be read for an hour (`postpone`: the wait only grows, migration
+  `20261117140000_promotions_credit_postpone`), so a credit the job cannot finish never keeps newer
+  ones out of a run (Hassan L-4). A lost chargeback fails the credit `order-disputed`, and none is
+  reserved for a seller order already lost; a currency that no longer matches fails it
+  `currency-changed`.
+- A refund claws back unused cashback (customers phase 4c-2): `promotions.claw-back-on-refund`
+  (system) listens to `refund-succeeded.v1`. For a GRANTED cashback of that order it works out the
+  share the refund takes (the cashback the remaining goods would still earn is kept), records it in
+  `promotions_credit_clawbacks` (one row per credit and refund, and per credit and `seq`: two refunds
+  racing on one credit cannot both take the same share), asks the wallet to take it back from that
+  grant's unused lot (`wallet.claw-back-credit`, so spent credit is never taken), and for a
+  seller-funded cashback returns what was taken to the seller's ledger
+  (`refund-cashback-seller`). A row is settled DONE once, with what was actually taken. A credit
+  still waiting is lowered by the job instead; one whose wait ended but is not yet granted makes the
+  refund retry. A credit the grant job throws on is put back an hour (Hassan L-7).
+- What a cashback keeps is pro rata to what it was earned on (Hassan H-2): `reserved_minor` (the
+  amount reserved at delivery) and `goods_minor` (the goods it was earned on) are stored with the
+  cashback and never change (no UPDATE grant, and the guard refuses it for any role; migration
+  `20261117150003_promotions_credit_earned_basis`). The grant job and the clawback keep
+  `ceil(reserved × goods kept / goods)` and never read the promotion's rate or the Market's limit
+  again, so a seller who lowers its rate cannot cut or take back what was earned. A cashback with
+  no basis (made before) is granted as reserved and never clawed back. The clawback counts only
+  refunds that succeeded (`succeededRefundedGoods` from ordering, Hassan L-9); the grant job still
+  counts pending ones too (conservative: a pending refund that later fails leaves the customer
+  that part short, never the platform out of pocket).
+- Known limits, accepted for now: credit held by an open checkout when the clawback runs is not
+  taken later (Hassan L-10, small; the seller has paid it); a lasting seller-ledger failure after
+  the wallet took the credit leaves the row PENDING and the event dead-lettered with an alert, for
+  an operator to finish (L-11); a cashback PENDING with no wait that keeps failing stays at the
+  front of the grant batch (L-13; availability only). The anchor's `disputeLost` reads the
+  seller's dispute decisions and filters by seller order (L-12, fails closed). Migration
+  `20261117150002_promotions_credit_clawbacks`: insert-only identity, PENDING to DONE only, no
+  delete; `down.sql` refuses while rows exist.
+- Migration `20261117100001_promotions_seller_cashback`: `promotions_type_funding_check` makes a
+  cashback the seller's money exactly with the segment; `promotions_phase3_check` lets a cashback
+  carry no segment or this one. `down.sql` refuses while such rows exist.
+- The delivered seller order's facts come from ordering's facade, which promotions cannot import
+  (ordering imports promotions for checkout): `DELIVERED_ORDER_FACTS` is a
+  `BoundDeliveredOrderFacts` that `PromotionsOrderEventsModule` binds to ordering's facade at
+  start-up; unbound or failing, it answers unknown and the handlers retry.
+- The line "cashback X will be credited on date Y" (owner decision, 2026-11-17: credit after the
+  payout release, plus a display-only line). `promotions.view-my-upcoming-cashback` (rule
+  `own-resources`, `GET /promotions/cashback/upcoming?orderId=`, `no-store`) answers the signed-in
+  customer's PENDING cashback, newest first (at most 20), optionally of one order: amount, currency
+  and `creditOn` (the payout release; null once that has passed and it is on its way). It never
+  touches a balance; promotions off answers an empty list. The storefront's order page shows one
+  note per item under the summary. The storefront has no wallet page yet, so the wallet side of the
+  line waits for one.
+
 ## Package T2: discounts at checkout (part B, ordering side)
 
 Migration `20261117040000_ordering_discounts`: `order_lines` gains `discount_amount` with its seller and platform

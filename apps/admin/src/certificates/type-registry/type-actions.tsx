@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useId, useRef, useState, type FormEvent, type ReactNode } from 'react';
 import { When } from '../../shared/when.tsx';
 import {
+  API_POLICIES,
   API_TYPES,
   REASON_MAX,
   type DiffEntry,
@@ -50,7 +51,9 @@ function ConfirmDialog({
     <Dialog
       open
       title={title}
-      onClose={onClose}
+      onClose={() => {
+        if (!pending) onClose();
+      }}
       initialFocus={cancel}
       actions={
         <>
@@ -238,7 +241,12 @@ function Value({
   const mode = useTranslations('certificates.types.mode');
   if (value === null) return <span className="text-fg-muted">{t('empty')}</span>;
   if (typeof value === 'boolean') return <>{t(value ? 'on' : 'off')}</>;
-  const words = path === 'defaultBasis' ? basis : path === 'verificationMode' ? mode : null;
+  const words =
+    path === 'defaultBasis' || path.startsWith('row:')
+      ? basis
+      : path === 'verificationMode'
+        ? mode
+        : null;
   return (
     <span className="wrap-anywhere">
       {words?.has(value as never) === true ? words(value as never) : value}
@@ -246,13 +254,23 @@ function Value({
   );
 }
 
-function DiffList({ diff }: { readonly diff: readonly DiffEntry[] }) {
+function DiffList({
+  diff,
+  rowNames,
+}: {
+  readonly diff: readonly DiffEntry[];
+  /** Names for `row:` paths (a category or a handling), when the page knows them. */
+  readonly rowNames?: Readonly<Record<string, string>> | undefined;
+}) {
   const t = useTranslations('certificates.types.proposal');
   const detail = useTranslations('certificates.types.detail');
   const label = (path: string) => {
     const known = Object.hasOwn(SETTING_LABELS, path) ? SETTING_LABELS[path] : undefined;
     if (known !== undefined) return detail(known as never);
-    return path.startsWith('row:') ? t('policy-row') : path;
+    if (!path.startsWith('row:')) return path;
+    const name =
+      rowNames !== undefined && Object.hasOwn(rowNames, path) ? rowNames[path] : undefined;
+    return name ?? t('policy-row');
   };
   if (diff.length === 0) return null;
   return (
@@ -285,11 +303,14 @@ export function TypeProposalCard({
   kind,
   proposal,
   csrfToken,
+  rowNames,
 }: {
   readonly typeId: string;
   readonly kind: ProposalKind;
   readonly proposal: TypeProposal;
   readonly csrfToken: string;
+  /** For a policy: the names of its rows by `row:` path. */
+  readonly rowNames?: Readonly<Record<string, string>> | undefined;
 }) {
   const t = useTranslations('certificates.types.proposal');
   const tr = useTranslations();
@@ -301,24 +322,25 @@ export function TypeProposalCard({
   async function answer(which: Answer) {
     const path =
       which === 'approve'
-        ? `${kind === 'revision' ? 'relaxations' : 'reactivations'}/${proposal.id}/approve`
+        ? `${kind === 'reactivation' ? 'reactivations' : 'relaxations'}/${proposal.id}/approve`
         : `proposals/${proposal.id}/${which}`;
-    const result = await call.run<unknown>(`${API_TYPES}/${typeId}/${path}`, {
+    const base = kind === 'policy' ? API_POLICIES : API_TYPES;
+    const result = await call.run<unknown>(`${base}/${typeId}/${path}`, {
       version: proposal.version,
     });
     if (result.ok) {
-      done(
-        typeId,
-        which === 'approve' ? 'approved' : which === 'reject' ? 'rejected' : 'withdrawn',
-      );
+      const what = which === 'approve' ? 'approved' : which === 'reject' ? 'rejected' : 'withdrawn';
+      if (kind === 'policy')
+        window.location.assign(`/certificates/types/${typeId}/policy?done=${what}`);
+      else done(typeId, what);
     }
   }
 
   const { approve, reject, withdraw } = proposal.actions;
-  const buttons: readonly [Answer, boolean, 'primary' | 'secondary'][] = [
+  const buttons: readonly [Answer, boolean, 'primary' | 'secondary' | 'destructive'][] = [
     ['approve', approve.allowed, 'primary'],
-    ['reject', reject.allowed, 'secondary'],
-    ['withdraw', withdraw.allowed, 'secondary'],
+    ['reject', reject.allowed, 'destructive'],
+    ['withdraw', withdraw.allowed, 'destructive'],
   ];
   const open = buttons.filter(([, allowed]) => allowed);
   const note = approve.allowed
@@ -348,7 +370,7 @@ export function TypeProposalCard({
       ) : proposal.reason?.state === 'erased' ? (
         <p className="text-fg-muted">{t('reason-erased')}</p>
       ) : null}
-      <DiffList diff={proposal.diff} />
+      <DiffList diff={proposal.diff} rowNames={rowNames} />
       {note === null ? null : <p className="text-fg-muted">{note}</p>}
       <div className="flex flex-wrap gap-2">
         {open.map(([which, , variant]) => (
@@ -366,7 +388,9 @@ export function TypeProposalCard({
         <Dialog
           open
           title={t(`confirm.${asking}.title`)}
-          onClose={() => setAsking(null)}
+          onClose={() => {
+            if (!call.pending) setAsking(null);
+          }}
           initialFocus={cancel}
           actions={
             <>
@@ -384,6 +408,7 @@ export function TypeProposalCard({
                 </Button>
               ) : (
                 <Button
+                  variant={asking === 'approve' ? 'primary' : 'destructive-solid'}
                   loading={call.pending}
                   disabled={call.pending}
                   onClick={() => void answer(asking)}

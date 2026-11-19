@@ -60,6 +60,13 @@ import { DISPUTE_REPOSITORY } from './application/ports/dispute.repository';
 import { SELLER_NAMES, type SellerNames } from './application/ports/seller-names';
 import { DecideDispute } from './application/use-cases/decide-dispute.use-case';
 import { ListDisputes } from './application/use-cases/list-disputes.use-case';
+import { ExportDisputes } from './application/use-cases/export-disputes.use-case';
+import { DisputeAttributeProbe } from './application/use-cases/dispute-attribute-probe.use-case';
+import { ADMIN_DISPUTE_LIST_READER } from './application/ports/admin-dispute-list.reader';
+import {
+  DISPUTE_ROW_KEYS,
+  type AdminDisputeListDependencies,
+} from './application/admin-dispute-list-flow';
 import { ListOwnDisputes } from './application/use-cases/list-own-disputes.use-case';
 import { SyncDispute } from './application/use-cases/sync-dispute.use-case';
 import { ViewDispute } from './application/use-cases/view-dispute.use-case';
@@ -92,14 +99,20 @@ import { RecordRefund } from './application/use-cases/record-refund.use-case';
 import { SellerLostDisputes } from './application/use-cases/seller-lost-disputes.use-case';
 import { RecordSellerOrderDelivered } from './application/use-cases/record-seller-order-delivered.use-case';
 import { RecordSellerOrderPaid } from './application/use-cases/record-seller-order-paid.use-case';
+import { RecordSellerCashback } from './application/use-cases/record-seller-cashback.use-case';
+import { RecordSellerCashbackReturn } from './application/use-cases/record-seller-cashback-return.use-case';
+import { SellerOrderPayoutAnchorQuery } from './application/use-cases/seller-order-payout-anchor.use-case';
 import { ReleasePayoutHold } from './application/use-cases/release-payout-hold.use-case';
 import { SetCommissionRate } from './application/use-cases/set-commission-rate.use-case';
 import { SetSellerPayoutTerms } from './application/use-cases/set-seller-payout-terms.use-case';
 import { ViewCommissionRate } from './application/use-cases/view-commission-rate.use-case';
 import { ViewSellerPayoutTerms } from './application/use-cases/view-seller-payout-terms.use-case';
+import { ViewOwnExclusiveCommission } from './application/use-cases/view-own-exclusive-commission.use-case';
 import { ViewOwnLedger } from './application/use-cases/view-own-ledger.use-case';
 import { ViewSellerLedger } from './application/use-cases/view-seller-ledger.use-case';
 import { ExportSellerLedger } from './application/use-cases/export-seller-ledger.use-case';
+import { ExportOwnPayouts } from './application/use-cases/export-own-payouts.use-case';
+import type { OwnPayoutListDependencies } from './application/own-payout-list-flow';
 import { ExportSellerPayoutHolds } from './application/use-cases/export-seller-payout-holds.use-case';
 import { SELLER_PAGE_LIST_READER } from './application/ports/seller-page-list.reader';
 import {
@@ -113,6 +126,7 @@ import {
   AdminCommissionController,
   SellerLedgerController,
 } from './presentation/commission-payouts.controller';
+import { SellerExclusiveCommissionController } from './presentation/exclusive-commission.controller';
 import {
   AdminPayoutHoldsController,
   AdminPayoutTermsController,
@@ -138,6 +152,7 @@ const PORTS: readonly [keyof CommissionPayoutsDependencies, InjectionToken][] = 
   ['terms', PAYOUT_TERMS_RESOLVER],
   ['anchors', ELIGIBILITY_ANCHOR_REPOSITORY],
   ['holds', PAYOUT_HOLD_REPOSITORY],
+  ['disputes', DISPUTE_REPOSITORY],
   ['sellers', SELLER_DIRECTORY],
   ['cursors', PAYOUT_CURSOR_REPOSITORY],
   ['outbox', OUTBOX_WRITER],
@@ -260,6 +275,66 @@ function payoutListUseCaseProvider<U>(type: PayoutListUseCaseClass<U>): FactoryP
   };
 }
 
+type OwnPayoutListUseCaseClass<U> = new (gate: UseCaseGate, deps: OwnPayoutListDependencies) => U;
+
+/** The seller's Earnings payouts list and its export (super list 33). */
+function ownPayoutListUseCaseProvider<U>(type: OwnPayoutListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_PAYOUT_LIST_READER, SHEET_WRITER, CLOCK],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: OwnPayoutListDependencies['unitOfWork'],
+      payouts: OwnPayoutListDependencies['payouts'],
+      sheetWriter: OwnPayoutListDependencies['sheetWriter'],
+      clock: OwnPayoutListDependencies['clock'],
+    ) => new type(gate, { unitOfWork, payouts, sheetWriter, clock }),
+  };
+}
+
+type DisputeListUseCaseClass<U> = new (gate: UseCaseGate, deps: AdminDisputeListDependencies) => U;
+
+/** The admin Disputes list and its export (super list 23) share one dependency object. */
+function disputeListUseCaseProvider<U>(type: DisputeListUseCaseClass<U>): FactoryProvider<U> {
+  return {
+    provide: type,
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      ADMIN_DISPUTE_LIST_READER,
+      DISPUTE_REPOSITORY,
+      SELLER_NAMES,
+      STORE_NAME_SEARCH,
+      DisputeAttributeProbe,
+      SHEET_WRITER,
+      CLOCK,
+    ],
+    useFactory: (
+      gate: UseCaseGate,
+      unitOfWork: AdminDisputeListDependencies['unitOfWork'],
+      list: AdminDisputeListDependencies['list'],
+      disputes: AdminDisputeListDependencies['disputes'],
+      sellerNames: AdminDisputeListDependencies['sellerNames'],
+      storeSearch: AdminDisputeListDependencies['storeSearch'],
+      attribute: DisputeAttributeProbe,
+      sheetWriter: AdminDisputeListDependencies['sheetWriter'],
+      clock: AdminDisputeListDependencies['clock'],
+    ) => {
+      const [attributeKey] = DISPUTE_ROW_KEYS;
+      return new type(gate, {
+        unitOfWork,
+        list,
+        disputes,
+        sellerNames,
+        storeSearch,
+        probes: { [attributeKey]: attribute },
+        sheetWriter,
+        clock,
+      });
+    },
+  };
+}
+
 type SellerPageListUseCaseClass<U> = new (gate: UseCaseGate, deps: SellerPageListDependencies) => U;
 
 /** The seller page's ledger and holds lists and their exports (super lists 27 and 28). */
@@ -348,6 +423,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   controllers: [
     AdminCommissionController,
     SellerLedgerController,
+    SellerExclusiveCommissionController,
     AdminPayoutTermsController,
     AdminPayoutHoldsController,
     AdminDisputesController,
@@ -403,6 +479,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CommissionRates,
       OwnCommissionOn,
       RecordSellerOrderPaid,
+      RecordSellerCashback,
+      SellerOrderPayoutAnchorQuery,
+      RecordSellerCashbackReturn,
       RecordRefund,
       RecordSellerOrderDelivered,
       PlaceSellerSuspendedHold,
@@ -416,15 +495,11 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       PlacePayoutHold,
       ReleasePayoutHold,
       ViewOwnLedger,
+      ViewOwnExclusiveCommission,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
-    ...[
-      SyncDispute,
-      ListDisputes,
-      ViewDispute,
-      DecideDispute,
-      ListOwnDisputes,
-      SellerLostDisputes,
-    ].map((type) => disputeUseCaseProvider(type as DisputeUseCaseClass<unknown>)),
+    ...[SyncDispute, ViewDispute, DecideDispute, ListOwnDisputes, SellerLostDisputes].map((type) =>
+      disputeUseCaseProvider(type as DisputeUseCaseClass<unknown>),
+    ),
     ...[
       RunPayouts,
       ReconcileInstructions,
@@ -432,22 +507,30 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ViewPayout,
       ApprovePayout,
       ViewNextPayout,
-      ListOwnPayouts,
       ListOwnPayoutHolds,
     ].map((type) => payoutUseCaseProvider(type as PayoutUseCaseClass<unknown>)),
     ...[ViewSellerLedger, ExportSellerLedger, ListSellerPayoutHolds, ExportSellerPayoutHolds].map(
       (type) => sellerPageListUseCaseProvider(type as SellerPageListUseCaseClass<unknown>),
     ),
+    ...[ListOwnPayouts, ExportOwnPayouts].map((type) =>
+      ownPayoutListUseCaseProvider(type as OwnPayoutListUseCaseClass<unknown>),
+    ),
     ...[ListPayouts, ExportPayouts].map((type) =>
       payoutListUseCaseProvider(type as PayoutListUseCaseClass<unknown>),
     ),
-    ...[PayoutApproveProbe, PayoutHoldPlaceProbe, PayoutHoldReleaseProbe].map(
-      (type): FactoryProvider => ({
-        provide: type,
-        inject: [USE_CASE_GATE],
-        useFactory: (gate: UseCaseGate) => new type(gate),
-      }),
+    ...[ListDisputes, ExportDisputes].map((type) =>
+      disputeListUseCaseProvider(type as DisputeListUseCaseClass<unknown>),
     ),
+    ...[
+      PayoutApproveProbe,
+      PayoutHoldPlaceProbe,
+      PayoutHoldReleaseProbe,
+      DisputeAttributeProbe,
+    ].map((type): FactoryProvider => ({
+      provide: type,
+      inject: [USE_CASE_GATE],
+      useFactory: (gate: UseCaseGate) => new type(gate),
+    })),
     // Package 6d: the payout run (every 15 minutes) and the reconciliation of instructed
     // transfers (every 5 minutes), once per Market under the scheduler's advisory lock.
     registerJobsFrom(
@@ -467,6 +550,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         RecordSellerOrderDelivered,
         SellerLostDisputes,
         OwnCommissionOn,
+        RecordSellerCashback,
+        SellerOrderPayoutAnchorQuery,
+        RecordSellerCashbackReturn,
       ],
       useFactory: (
         rates: CommissionRates,
@@ -475,7 +561,21 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         delivered: RecordSellerOrderDelivered,
         lost: SellerLostDisputes,
         own: OwnCommissionOn,
-      ) => new CommissionPayoutsFacadeImplementation(rates, record, refund, delivered, lost, own),
+        cashback: RecordSellerCashback,
+        anchor: SellerOrderPayoutAnchorQuery,
+        cashbackReturn: RecordSellerCashbackReturn,
+      ) =>
+        new CommissionPayoutsFacadeImplementation(
+          rates,
+          record,
+          refund,
+          delivered,
+          lost,
+          own,
+          cashback,
+          anchor,
+          cashbackReturn,
+        ),
     },
   ],
   // The dispute pieces are exported for the binding module of the same folder only (they are not

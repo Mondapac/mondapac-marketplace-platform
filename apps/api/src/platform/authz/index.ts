@@ -37,12 +37,14 @@ export type {
 export {
   declarePermissions,
   definePermission,
+  isDeclarablePermissionKey,
   MAX_PERMISSION_KEY_LENGTH,
   type PermissionCatalogue,
   type PermissionDeclaration,
   type PermissionScope,
 } from './permission';
 export { frozenKeySet } from './frozen-key-set';
+export { isPlatformAdminActor } from './platform-admin';
 export {
   PermissionRegistry,
   registerPermissions,

@@ -44,7 +44,7 @@ import { OrdersTable } from './orders-table.tsx';
 import { FILTERS, type AdminOrderPage, type OrderCounts, type StatusFilter } from './types.ts';
 
 /** Rows that can be ticked one by one; "Select all matching" has no such limit. */
-const SELECTION_MAX = 200;
+const SELECTION_MAX = 100;
 const OPEN_ENDED = Number.MAX_SAFE_INTEGER;
 
 type Failure = 'refused' | 'search-unavailable' | 'unavailable';
@@ -97,6 +97,7 @@ export function OrdersList({
   marketId,
   csrfToken = '',
   zone,
+  customerAccountId,
 }: {
   readonly paging?: ListPaging;
   readonly accountId: string;
@@ -104,6 +105,12 @@ export function OrdersList({
   readonly csrfToken?: string;
   /** The IANA zone of the table's times and of the day filters (ADR-0005). */
   readonly zone: string;
+  /**
+   * The Orders tab of a customer's page: only this customer's orders (`accountId`, fixed, not a
+   * chip), no Customer column, no saved filters (they belong to the Orders page) and no "select
+   * all matching" (the export route takes no customer, so a bulk export goes by ticked ids).
+   */
+  readonly customerAccountId?: string;
 }) {
   const t = useTranslations('orders');
   const ts = useTranslations('sales-lists');
@@ -140,7 +147,14 @@ export function OrdersList({
   const [saved, setSaved] = useState<SavedFiltersAnswer | null>(null);
   const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
   const latest = useRef(0);
-  const storageKey = prefsKey('admin', marketId, accountId, 'orders-columns');
+  // A customer's Orders tab keeps its own column choice: it never shows the Customer column, so
+  // sharing the Orders page's choice would drop that column there.
+  const storageKey = prefsKey(
+    'admin',
+    marketId,
+    accountId,
+    customerAccountId === undefined ? 'orders-columns' : 'customer-orders-columns',
+  );
   // After a page change the focus moves to the top of the list, so a keyboard or screen reader
   // user starts on the new rows and not on the pager they used.
   const listTop = useRef<HTMLDivElement>(null);
@@ -152,6 +166,7 @@ export function OrdersList({
   }, [storageKey]);
 
   const loadSaved = useCallback(async (): Promise<readonly SavedFilter[] | null> => {
+    if (customerAccountId !== undefined) return null;
     const result = await callApi<SavedFiltersAnswer>(
       'GET',
       `ordering/admin/saved-filters?listKey=${LIST_KEY}`,
@@ -160,7 +175,7 @@ export function OrdersList({
     setSaved(result.body);
     const items: readonly SavedFilter[] = result.body.items;
     return items;
-  }, []);
+  }, [customerAccountId]);
 
   useEffect(() => {
     void loadSaved();
@@ -185,7 +200,13 @@ export function OrdersList({
         setFailure(null);
         return;
       }
-      const request = queryString(asked, { paging, zone, now: new Date() });
+      const asText = queryString(asked, { paging, zone, now: new Date() });
+      const request =
+        customerAccountId === undefined
+          ? asText
+          : [`accountId=${encodeURIComponent(customerAccountId)}`, asText]
+              .filter(Boolean)
+              .join('&');
       const ticket = ++latest.current;
       setLoading(true);
       setFailure(null);
@@ -204,7 +225,7 @@ export function OrdersList({
       setAnswer(result.body);
       setCounts(result.body.counts);
     },
-    [paging, zone],
+    [paging, zone, customerAccountId],
   );
 
   // A query that is equal in content is not a new list: load again only when it changed.
@@ -228,6 +249,9 @@ export function OrdersList({
   const rows = answer?.orders;
   const pageIds = useMemo(() => rows?.map((row) => row.orderId) ?? [], [rows]);
   const selection = useRowSelection(pageIds, SELECTION_MAX, listKey);
+  // On a customer's page every row is that customer's: the Customer column says nothing.
+  const shownColumns =
+    customerAccountId === undefined ? columns : columns.filter((column) => column !== 'customer');
   // Panel loading L2: skeleton rows on the first load, dimmed rows on a later one.
   const status = useListLoading(loading, answer !== null);
   // A first load that runs past 30 s gives up: its answer is dropped and Try again starts anew.
@@ -341,7 +365,9 @@ export function OrdersList({
     filtered || query.tab !== 'all' || query.sort !== 'created' || query.direction !== 'desc';
 
   const total = failure === null && mode === 'pages' ? (answer?.total ?? null) : null;
-  const rowActions = useOrderRowActions();
+  const rowActions = useOrderRowActions(
+    customerAccountId === undefined ? undefined : { accountId: customerAccountId, tab: 'orders' },
+  );
   const summary = [
     t(query.tab === 'all' ? 'tab.all' : `status.${query.tab}`),
     ...chips.filter((chip) => chip.key !== 'search').map((chip) => chip.label),
@@ -398,7 +424,9 @@ export function OrdersList({
       <SelectionBar
         active={selection.selected.size > 0 || selection.allMatching}
         allMatching={selection.allMatching}
-        canSelectAll={wholePageTicked && moreThanPage && failure === null}
+        canSelectAll={
+          customerAccountId === undefined && wholePageTicked && moreThanPage && failure === null
+        }
         labels={{
           selected: t('selection.selected', { count: selection.selected.size }),
           all: total === null ? t('selection.all-open') : t('selection.all', { count: total }),
@@ -414,8 +442,11 @@ export function OrdersList({
       <div ref={listTop} tabIndex={-1} className="outline-none">
         <OrdersTable
           rows={shown}
-          columns={columns}
+          columns={shownColumns}
           zone={zone}
+          {...(customerAccountId === undefined
+            ? {}
+            : { fromCustomer: { accountId: customerAccountId, tab: 'orders' as const } })}
           empty={empty}
           skeletonRows={skeleton ? listSkeletonRowCount(PAGE_SIZE) : undefined}
           // Rows kept after a failed refresh belong to another list than the query: no actions.
@@ -429,7 +460,7 @@ export function OrdersList({
   return (
     <SuperList
       heading={{
-        subtitle: t('intro'),
+        subtitle: t(customerAccountId === undefined ? 'intro' : 'customer-intro'),
         note: t('zone-note', { zone }),
         actions: (
           <OrdersBulk
@@ -444,6 +475,7 @@ export function OrdersList({
               }
               return params.toString();
             }}
+            columns={shownColumns}
             nameSearch={routeSearch(query.q).kind === 'search'}
             empty={answer !== null && shown.length === 0}
           />
@@ -518,7 +550,12 @@ export function OrdersList({
       columns={{
         label: ts('columns.button'),
         panel: (close) => (
-          <OrdersColumnsPanel columns={columns} onSave={saveColumns} close={close} />
+          <OrdersColumnsPanel
+            columns={shownColumns}
+            onSave={saveColumns}
+            close={close}
+            {...(customerAccountId === undefined ? {} : { without: 'customer' as const })}
+          />
         ),
       }}
       sortedLine={t('sorted', { field: t(`sort.field.${query.sort}`), order: sortOrder })}

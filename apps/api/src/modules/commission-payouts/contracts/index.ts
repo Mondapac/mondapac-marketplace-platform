@@ -22,6 +22,8 @@ export {
   type CommissionPayoutsFailure,
   type CommissionRate,
   type CommissionRateMap,
+  type CommissionRateReason,
+  type ExclusiveBuyer,
   type OwnCommissionPreview,
   type DeliverySource,
   type PaidLine,
@@ -32,6 +34,9 @@ export {
   type RefundLossBearer,
   type SellerLostDisputeCount,
   type SellerLostDisputesFailure,
+  type SellerCashback,
+  type SellerCashbackReturn,
+  type SellerOrderPayoutAnchor,
   type SellerOrderDelivered,
 } from './commission-payouts.facade';
 export {

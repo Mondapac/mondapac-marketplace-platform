@@ -332,6 +332,8 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           taxInclusive: inclusive,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
+          commissionRateReason: 'standard',
+          exclusiveSeller: false,
           taxRateBps: inclusive ? 1000 : 1500,
           taxAmount: lineTax,
           taxCategoryCode: inclusive ? 'taxable' : 'zz_standard',
@@ -1829,6 +1831,7 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         terms: new PayoutTermsResolver(new ConfigPayoutTermsPolicy(markets), termsOverrides),
         anchors: new PrismaEligibilityAnchorRepository(db.service),
         holds: new PrismaPayoutHoldRepository(db.service),
+        disputes: { decisionsForSeller: () => Promise.resolve([]) },
         sellers: { exists: () => Promise.resolve(true) },
         // Only the ledger paths run here: the payout schedule, the outbox and the step-up are not used.
         cursors: new PrismaPayoutCursorRepository(db.service),
@@ -1853,6 +1856,9 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
           recordSellerOrderDelivered: () => Promise.reject(new Error('not used')),
           sellerLostDisputes: () => Promise.reject(new Error('not used')),
           ownCommissionOn: () => Promise.reject(new Error('not used')),
+          recordSellerCashback: () => Promise.reject(new Error('not used')),
+          sellerOrderPayoutAnchor: () => Promise.reject(new Error('not used')),
+          recordSellerCashbackReturn: () => Promise.reject(new Error('not used')),
         },
       };
     });

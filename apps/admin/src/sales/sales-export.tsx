@@ -18,8 +18,10 @@ import { numberFormat } from '../shared/intl.ts';
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-/** The keys of the list query that name a page or an order: the file has all rows, in its own order. */
-const PAGING_KEYS = ['page', 'pageSize', 'cursor', 'limit', 'sort', 'direction'] as const;
+/** The keys of the list query that name a page: the file has all rows. */
+const PAGING_KEYS = ['page', 'pageSize', 'cursor', 'limit'] as const;
+/** The keys that name an order: dropped too, unless the export keeps the list's order. */
+const ORDER_KEYS = ['sort', 'direction'] as const;
 
 /** The rows the Bulk action menu acts on: the ticked ones, or, after "Select all", the filter. */
 export interface ExportSelection {
@@ -31,7 +33,8 @@ export interface ExportSelection {
 
 /**
  * The query of the export: the list's own filter keys exactly as the list sends them (`listQuery`,
- * the list's query string), without paging or sort; then `format`, `columns` (the visible columns,
+ * the list's query string), without paging or sort (the sort stays with `keepOrder`, for an export
+ * that writes the rows in the list's order); then `format`, `columns` (the visible columns,
  * in the shown order; the server adds the fixed ones), `zone`, and `ids` when rows are ticked and
  * "Select all matching" is not on (with it on, the filter alone says which rows).
  */
@@ -39,14 +42,17 @@ export function exportQuery(input: {
   readonly listQuery: string;
   readonly format: ExportFormat;
   readonly columns: readonly string[];
-  readonly zone: string;
+  /** The IANA zone the file's times are written in; null when the route takes no `zone` (Orders). */
+  readonly zone: string | null;
   readonly selection: ExportSelection;
+  readonly keepOrder?: boolean;
 }): string {
   const params = new URLSearchParams(input.listQuery);
   for (const key of PAGING_KEYS) params.delete(key);
+  if (input.keepOrder !== true) for (const key of ORDER_KEYS) params.delete(key);
   params.set('format', input.format);
   params.set('columns', input.columns.join(','));
-  params.set('zone', input.zone);
+  if (input.zone !== null) params.set('zone', input.zone);
   if (!input.selection.allMatching) {
     // An empty `ids` would be refused by the relay, and dropping it would widen the file to the
     // whole filter: with nothing ticked and "Select all matching" off there is nothing to export.
@@ -72,13 +78,19 @@ interface ErrorBody {
   readonly details?: {
     readonly max?: number;
     readonly total?: number;
+    /** The rows the filter matches, as the Orders export names them. */
+    readonly matching?: number;
     readonly fields?: readonly { readonly path?: string; readonly code?: string }[];
   };
 }
 
 function failureOf(status: number, body: ErrorBody | null): ExportFailure {
   if (status === 413 && body?.code === 'batch.too-large') {
-    return new ExportFailure('too-large', body.details?.max ?? null, body.details?.total ?? null);
+    return new ExportFailure(
+      'too-large',
+      body.details?.max ?? null,
+      body.details?.total ?? body.details?.matching ?? null,
+    );
   }
   if (status === 401 || status === 403) return new ExportFailure('denied');
   if (status === 400) {
@@ -110,10 +122,10 @@ export function safeFileName(name: string): string {
 }
 
 /** The day in the list's zone, for the name of a file the server did not name. */
-function dayIn(zone: string): string {
+function dayIn(zone: string | null): string {
   try {
     return new Intl.DateTimeFormat('en-CA', {
-      timeZone: zone,
+      timeZone: zone ?? 'UTC',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -132,7 +144,7 @@ export async function downloadSalesExport(input: {
   readonly query: string;
   readonly format: ExportFormat;
   readonly fallbackName: string;
-  readonly zone: string;
+  readonly zone: string | null;
   readonly knownRows: number | null;
 }): Promise<number | null> {
   let response: Response;
@@ -184,8 +196,12 @@ export function useSalesExport(input: {
   readonly fallbackName: string;
   readonly listQuery: string;
   readonly columns: readonly string[];
-  readonly zone: string;
+  readonly zone: string | null;
   readonly selection: ExportSelection;
+  /** A list whose export has its own rules for the query (ids alone, no zone): it builds the string. */
+  readonly buildQuery?: (format: ExportFormat) => string;
+  /** The file keeps the list's sort (`sort` and `direction` of `listQuery`). */
+  readonly keepOrder?: boolean;
 }): { readonly item: ActionMenuItem; readonly dialog: ReactNode; readonly busy: boolean } {
   const t = useTranslations('sales-lists.export');
   const locale = useLocale();
@@ -214,13 +230,16 @@ export function useSalesExport(input: {
     setBusy(true);
     const work = downloadSalesExport({
       path: input.path,
-      query: exportQuery({
-        listQuery: input.listQuery,
-        format,
-        columns: input.columns,
-        zone: input.zone,
-        selection,
-      }),
+      query:
+        input.buildQuery?.(format) ??
+        exportQuery({
+          listQuery: input.listQuery,
+          format,
+          columns: input.columns,
+          zone: input.zone,
+          selection,
+          ...(input.keepOrder === true ? { keepOrder: true } : {}),
+        }),
       format,
       fallbackName: input.fallbackName,
       zone: input.zone,

@@ -1,17 +1,26 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from 'vitest';
 import messages from '../../messages/en.json';
+import type { callApi } from '../api/client.ts';
 
-vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+// The queue's own routes answer through `call`; the saved filters (the lists module's generic
+// routes) through `saved`, so a test of the queue does not have to answer them in turn.
+const { call, saved } = vi.hoisted(() => ({
+  call: vi.fn<typeof callApi>(),
+  saved: vi.fn<typeof callApi>(),
+}));
+vi.mock('../api/client.ts', () => ({
+  callApi: (...args: Parameters<typeof callApi>) =>
+    String(args[1]).startsWith('lists/admin/saved-filters') ? saved(...args) : call(...args),
+}));
 
-import { callApi } from '../api/client.ts';
+import { toast } from '@mondapac/ui';
 import { expectToast } from '../../test/toast-spy.ts';
 import { QueueList } from './queue-list.tsx';
 import type { Counts, RequestPage, SystemRequest } from './types.ts';
 
-const call = vi.mocked(callApi);
 const ME = '0190a000-0000-7000-8000-0000000000a1';
 const OTHER = '0190a000-0000-7000-8000-0000000000b2';
 const ok = (body: unknown) => ({ ok: true as const, status: 200, body });
@@ -30,6 +39,7 @@ const row = (n: number, over: Partial<SystemRequest> = {}): SystemRequest => ({
   subjectRef: '0190a000-0000-7000-8000-0000000009ff',
   risk: 'low',
   status: 'open',
+  mode: 'review',
   before: null,
   after: null,
   note: `Note for request ${n}`,
@@ -88,6 +98,7 @@ const lastList = () => {
 
 beforeEach(() => {
   vi.resetAllMocks();
+  saved.mockResolvedValue({ ok: true, status: 200, body: { items: [], canShare: false } });
   window.localStorage.clear();
   window.history.replaceState(null, '', '/system-requests');
   HTMLDialogElement.prototype.showModal = function showModal() {
@@ -133,6 +144,20 @@ describe('QueueList', () => {
     expect(within(line).getAllByText('Money').length).toBeGreaterThan(0);
     // The first load keeps the address in step with the list.
     expect(window.location.search).toContain('view=needs-my-review');
+  });
+
+  it('lays a phone card out with a 44 px number link, room for the menu and the whole note', async () => {
+    call.mockResolvedValue(ok(page([row(1, { note: 'x'.repeat(200) })])));
+    mount();
+    const link = await screen.findByRole('link', { name: 'SR-1041' });
+    expect(link.className).toContain('max-lg:min-h-11');
+    const line = link.closest('tr') as HTMLElement;
+    // The status cell clears the 44 px menu button, and the note spans the card, never clamped.
+    expect(within(line).getByText('Open').closest('td')?.className).toContain('max-lg:pe-14');
+    const note = within(line).getByText('x'.repeat(200));
+    expect(note.className).toContain('max-lg:col-span-2');
+    expect(note.className).not.toContain('line-clamp');
+    expect(link.closest('th')?.className).toContain('max-lg:contents');
   });
 
   it('shows 10,000+ at the cap of a view count', async () => {
@@ -343,6 +368,28 @@ describe('QueueList', () => {
     ]);
   });
 
+  it('lists Withdraw my request in the menu of an approval row to its author', async () => {
+    call.mockResolvedValueOnce(
+      ok(
+        page([
+          row(1, {
+            mode: 'approval',
+            requestedBy: ME,
+            actions: ['open', 'copy-link', 'withdraw'],
+          }),
+        ]),
+      ),
+    );
+    mount();
+    await screen.findByRole('link', { name: 'SR-1041' });
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for SR-1041' }));
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Open',
+      'Copy link',
+      'Withdraw my request',
+    ]);
+  });
+
   it('approves one request from its row menu and loads the list again', async () => {
     call.mockResolvedValueOnce(ok(page([row(1)])));
     mount();
@@ -487,6 +534,44 @@ describe('QueueList bulk approve', () => {
     expect(screen.getByText('1 selected')).toBeTruthy();
   });
 
+  it('shows the badge on an approval row and never offers it to bulk approve', async () => {
+    call.mockResolvedValueOnce(ok(page([row(1), row(2, { mode: 'approval' })])));
+    mount();
+    await screen.findByRole('link', { name: 'SR-1041' });
+    expect(screen.getAllByText('Waits for approval')).toHaveLength(1);
+    tick('SR-1042');
+    const approve = screen.getByRole<HTMLButtonElement>('button', { name: 'Approve selected' });
+    expect(approve.disabled).toBe(true);
+    expect(
+      screen.getByText(/Actions that wait for approval are applied on their own approval\./),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Deselect 1 that cannot be approved' }));
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Bulk actions' })).toBeNull());
+    // The row's own menu words reject for an action that was never applied.
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for SR-1042' }));
+    expect(screen.getByRole('menuitem', { name: 'Reject' })).toBeTruthy();
+  });
+
+  it('words the one-by-one outcome of a bulk approve', async () => {
+    call.mockResolvedValueOnce(ok(page([row(1), row(2)])));
+    mount();
+    await screen.findByRole('link', { name: 'SR-1041' });
+    tick('SR-1041');
+    tick('SR-1042');
+    fireEvent.click(screen.getByRole('button', { name: 'Approve selected' }));
+    call.mockResolvedValueOnce(
+      ok({
+        results: [
+          { requestId: id(1), outcome: 'approved' },
+          { requestId: id(2), outcome: 'system-requests.one-by-one' },
+        ],
+      }),
+    );
+    call.mockResolvedValueOnce(ok(page([row(2)])));
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve 2 requests' }));
+    expect(await screen.findByText('Waits for approval: approve it on its own page.')).toBeTruthy();
+  });
+
   it('selects all matching and approves them 100 at a time until none remain', async () => {
     call.mockResolvedValueOnce(
       ok(page([row(1), row(2)], { total: 250, counts: counts({ 'needs-my-review': 250 }) })),
@@ -583,13 +668,269 @@ describe('QueueList bulk approve', () => {
     ).toBeTruthy();
     expect(call.mock.calls.filter(([method]) => method === 'POST')).toHaveLength(1);
   });
+});
 
-  it('shows Export disabled, with the reason, instead of hiding it', async () => {
-    call.mockResolvedValueOnce(ok(page([row(1)])));
+describe('QueueList saved filters', () => {
+  const LIST_KEY = 'admin.system-requests.requests';
+  const stored = (n: number, name: string, payload: unknown) => ({
+    id: `0190a000-0000-7000-8000-0000000005${String(n).padStart(2, '0')}`,
+    listKey: LIST_KEY,
+    name,
+    visibility: 'me',
+    payload,
+    ownedByMe: true,
+    canManage: true,
+    createdAt: '2026-11-14T01:00:00.000Z',
+    updatedAt: '2026-11-14T01:00:00.000Z',
+  });
+  const serve = (items: unknown[], canShare = false) =>
+    saved.mockImplementation((method, _path, body) => {
+      if (method === 'POST') {
+        const sent = body as { name: string; payload: unknown };
+        const created = stored(9, sent.name, sent.payload);
+        items.push(created);
+        return Promise.resolve({ ok: true, status: 201, body: created });
+      }
+      return Promise.resolve({ ok: true, status: 200, body: { items: [...items], canShare } });
+    });
+
+  it('shows saved filters as tabs after the views, and opens one with its filters and sort', async () => {
+    serve([
+      stored(1, 'Urgent money', {
+        v: 1,
+        view: 'all-open',
+        filters: { area: ['money'], risk: ['high'], overdue: true },
+        sort: 'due',
+      }),
+    ]);
+    call.mockResolvedValue(ok(page([row(1)])));
     mount();
     await screen.findByRole('link', { name: 'SR-1041' });
-    const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Export' });
-    expect(button.disabled).toBe(true);
-    expect(screen.getByTitle('Export comes with saved filters')).toBeTruthy();
+    expect(saved).toHaveBeenCalledWith('GET', `lists/admin/saved-filters?listKey=${LIST_KEY}`);
+    expect(await screen.findByRole('button', { name: 'Manage filters' })).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Urgent money' }));
+    await waitFor(() => expect(lastList().get('view')).toBe('all-open'));
+    expect(lastList().get('area')).toBe('money');
+    expect(lastList().get('risk')).toBe('high');
+    expect(lastList().get('overdue')).toBe('true');
+    expect(lastList().get('sort')).toBe('due');
+    expect(lastList().get('direction')).toBe('asc');
+    expect(screen.getByRole('button', { name: 'Urgent money' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    // A built-in view opened from the saved tab starts from the defaults.
+    fireEvent.click(screen.getByRole('button', { name: /^All \(/ }));
+    await waitFor(() => expect(lastList().get('view')).toBe('all'));
+    expect(lastList().get('area')).toBeNull();
+    expect(lastList().get('sort')).toBe('applied');
+  });
+
+  it('saves the view, filters and sort as the canonical payload, never the search', async () => {
+    serve([]);
+    call.mockResolvedValue(ok(page([row(1)])));
+    mount('pages', 'view=all&q=limit&area=people,money&risk=low&from=2026-11-01&sort=number');
+    await screen.findByRole('button', { name: 'Manage filters' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
+    expect(
+      within(dialog).getByText('Saved for you only. Your role can’t share filters.'),
+    ).toBeTruthy();
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'People' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save filter' }));
+    await screen.findByRole('button', { name: 'People' });
+    expect(saved).toHaveBeenCalledWith(
+      'POST',
+      'lists/admin/saved-filters',
+      {
+        listKey: LIST_KEY,
+        name: 'People',
+        visibility: 'me',
+        payload: {
+          v: 1,
+          view: 'all',
+          filters: { area: ['people', 'money'], risk: ['low'], from: '2026-11-01' },
+          sort: 'number',
+        },
+      },
+      'csrf',
+    );
+  });
+
+  it('offers Everyone to an admin who can share', async () => {
+    serve([], true);
+    call.mockResolvedValue(ok(page([row(1)])));
+    mount('pages', 'view=all');
+    fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
+    fireEvent.click(within(dialog).getByRole('radio', { name: 'Everyone' }));
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Team' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save filter' }));
+    await screen.findByRole('button', { name: 'Team' });
+    expect(saved.mock.calls.find(([method]) => method === 'POST')?.[2]).toMatchObject({
+      visibility: 'everyone',
+    });
+  });
+
+  it('keeps the built-in views only when the saved filters cannot be read', async () => {
+    saved.mockResolvedValue(refused(403, 'access.denied'));
+    call.mockResolvedValue(ok(page([row(1)])));
+    mount('pages', 'view=all');
+    await screen.findByRole('link', { name: 'SR-1041' });
+    expect(screen.queryByRole('button', { name: 'Manage filters' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save filter…' })).toBeNull();
+  });
+});
+
+describe('QueueList export', () => {
+  const fetched: string[] = [];
+  const names: string[] = [];
+  let click: { mockRestore: () => void };
+  let promised: MockInstance<typeof toast.promise>;
+  const tick = (number: string) =>
+    fireEvent.click(screen.getByRole('checkbox', { name: `Select ${number}` }));
+  /** The words the export's toast ends on: its success or its error, as the toast shows them. */
+  const outcome = async (): Promise<string> => {
+    await waitFor(() => expect(promised).toHaveBeenCalled());
+    const [work, words] = promised.mock.calls[0]!;
+    try {
+      const rows = await work;
+      return typeof words.success === 'function' ? words.success(rows) : words.success;
+    } catch (reason) {
+      return typeof words.error === 'function' ? words.error(reason) : words.error;
+    }
+  };
+  const answerCsv = (text: string) =>
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        fetched.push(url);
+        return Promise.resolve(
+          new Response(text, {
+            status: 200,
+            headers: {
+              'content-type': 'text/csv; charset=utf-8',
+              'content-disposition': 'attachment; filename="system-requests-2026-11-15.csv"',
+            },
+          }),
+        );
+      }),
+    );
+  const exportAs = async () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('radio', { name: /^CSV/ }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+  };
+
+  beforeEach(() => {
+    fetched.length = 0;
+    names.length = 0;
+    Object.assign(URL, { createObjectURL: vi.fn(() => 'blob:x'), revokeObjectURL: vi.fn() });
+    click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      names.push(this.download);
+    });
+    promised = vi.spyOn(toast, 'promise');
+  });
+  afterEach(() => {
+    click.mockRestore();
+    promised.mockRestore();
+    vi.unstubAllGlobals();
+  });
+
+  it('exports every row the view and filters match, in the list order, with the columns shown', async () => {
+    call.mockResolvedValue(ok(page([row(1), row(2)])));
+    mount('pages', 'view=all&risk=high&sort=number&direction=asc');
+    await screen.findByRole('link', { name: 'SR-1041' });
+    answerCsv('\uFEFFRequest,Note\r\nSR-1041,a\r\nSR-1042,b\r\n');
+    await exportAs();
+    expect(await outcome()).toBe('Exported 2 rows.');
+    expect(fetched).toHaveLength(1);
+    const [path, search] = fetched[0]!.split('?');
+    expect(path).toBe('/api/system-requests/admin/requests/export');
+    const params = new URLSearchParams(search);
+    expect(params.get('view')).toBe('all');
+    expect(params.get('risk')).toBe('high');
+    expect(params.get('sort')).toBe('number');
+    expect(params.get('direction')).toBe('asc');
+    expect(params.get('format')).toBe('csv');
+    expect(params.get('columns')).toBe('subject,requestedBy,applied,due');
+    expect(params.get('zone')).toBe('Australia/Brisbane');
+    expect(params.has('ids')).toBe(false);
+    expect(params.has('page')).toBe(false);
+    expect(params.has('pageSize')).toBe(false);
+    expect(names).toEqual(['system-requests-2026-11-15.csv']);
+  });
+
+  it('exports only the ticked rows', async () => {
+    call.mockResolvedValue(ok(page([row(1), row(2), row(3)])));
+    mount('pages', 'view=all');
+    await screen.findByRole('link', { name: 'SR-1041' });
+    tick('SR-1043');
+    tick('SR-1041');
+    answerCsv('\uFEFFRequest\r\nSR-1043\r\nSR-1041\r\n');
+    await exportAs();
+    expect(await outcome()).toBe('Exported 2 rows.');
+    const params = new URLSearchParams(fetched[0]!.split('?')[1]);
+    expect(params.get('ids')).toBe(`${id(3)},${id(1)}`);
+  });
+
+  it('says how far to narrow when the filter matches too many rows', async () => {
+    call.mockResolvedValue(ok(page([row(1)])));
+    mount('pages', 'view=all');
+    await screen.findByRole('link', { name: 'SR-1041' });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({ code: 'batch.too-large', details: { max: 10000, total: 12345 } }),
+            { status: 413, headers: { 'content-type': 'application/json' } },
+          ),
+        ),
+      ),
+    );
+    await exportAs();
+    expect(await outcome()).toBe(
+      'Too many rows to export: 12,345 match, and one file holds up to 10,000. Narrow the filter or select fewer rows.',
+    );
+  });
+
+  it('titles the dialog with the rows the search and filters match, or all matching at the cap', async () => {
+    // The API counts each view for the same search and filters: 2 of the view's rows match.
+    call.mockResolvedValue(ok(page([row(1), row(2)], { counts: counts({ all: 2 }) })));
+    mount('pages', 'view=all&q=limit&risk=high');
+    await screen.findByRole('link', { name: 'SR-1041' });
+    expect(lastList().get('q')).toBe('limit');
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    expect(await screen.findByRole('heading', { name: 'Export 2 rows' })).toBeTruthy();
+    cleanup();
+
+    call.mockResolvedValue(ok(page([row(1)], { counts: counts({ all: 10_000 }) })));
+    mount('pages', 'view=all&risk=high');
+    await screen.findByRole('link', { name: 'SR-1041' });
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    expect(await screen.findByRole('heading', { name: 'Export all matching rows' })).toBeTruthy();
+  });
+
+  it('titles the dialog with the ticked rows when rows are ticked', async () => {
+    call.mockResolvedValue(ok(page([row(1), row(2), row(3)])));
+    mount('pages', 'view=all');
+    await screen.findByRole('link', { name: 'SR-1041' });
+    tick('SR-1042');
+    fireEvent.click(screen.getByRole('button', { name: 'Export' }));
+    expect(await screen.findByRole('heading', { name: 'Export 1 row' })).toBeTruthy();
+  });
+
+  it('offers no export while the view is empty', async () => {
+    call.mockResolvedValue(
+      ok(page([], { counts: counts({ 'needs-my-review': 0, 'all-open': 0 }) })),
+    );
+    mount('pages', 'view=all-open');
+    await screen.findByRole('button', { name: /^All open/ });
+    await waitFor(() =>
+      expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Export' }).disabled).toBe(true),
+    );
   });
 });

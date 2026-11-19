@@ -274,6 +274,19 @@ export class PrismaWalletRepository implements WalletRepository {
     return row === null ? null : toLot(row);
   }
 
+  async findLotOfJournal(market: MarketContext, journalId: Id<'WalletJournal'>) {
+    const row = await this.prisma.tx(market).walletLot.findFirst({
+      where: { marketId: market.marketId, journalId },
+      select: { id: true, walletAccountId: true },
+    });
+    return row === null
+      ? null
+      : {
+          lotId: row.id as Id<'WalletLot'>,
+          walletAccountId: row.walletAccountId as Id<'WalletAccount'>,
+        };
+  }
+
   async findLotWallet(market: MarketContext, lotId: Id<'WalletLot'>) {
     const row = await this.prisma.tx(market).walletLot.findFirst({
       where: { marketId: market.marketId, id: lotId },

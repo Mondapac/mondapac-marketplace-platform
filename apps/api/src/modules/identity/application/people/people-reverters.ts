@@ -96,7 +96,7 @@ const labelLogger = new Logger('IdentityPeopleLabels');
  * Runs one label read; a refusal or a throw answers no label (the queue shows none, it never
  * fails). The log line carries the kind of failure only, never an id or a name.
  */
-async function labelsOrNone(
+export async function labelsOrNone(
   context: CallContext,
   kind: string,
   read: () => Promise<ReadonlyMap<string, string>>,
@@ -116,7 +116,7 @@ async function labelsOrNone(
 }
 
 /** The display name of each admin account among `subjectRefs`, in the context's Market. */
-function describeAdmins(
+export function describeAdmins(
   labels: PeopleLabelReads,
   context: CallContext,
   kind: string,
@@ -142,7 +142,7 @@ function describeAdmins(
 }
 
 /** The name of each custom platform role among `subjectRefs`, for a viewer who may list roles. */
-function describeRoles(
+export function describeRoles(
   labels: PeopleLabelReads,
   context: CallContext,
   kind: string,
@@ -163,7 +163,7 @@ function describeRoles(
 }
 
 /** The deciding admin; a revert needs one acting as themselves (System requests checks it too). */
-function decider(context: CallContext): Id<'Account'> {
+export function decider(context: CallContext): Id<'Account'> {
   const admin = adminOf(context);
   if (admin === null) {
     throw new Error('identity: a revert needs a signed-in admin acting as themselves');
@@ -171,7 +171,7 @@ function decider(context: CallContext): Id<'Account'> {
   return admin;
 }
 
-const idOf = <K extends string>(value: unknown): Id<K> | null => {
+export const idOf = <K extends string>(value: unknown): Id<K> | null => {
   if (typeof value !== 'string') return null;
   const parsed = parseId<K>(value);
   return parsed.ok ? parsed.value : null;
@@ -184,14 +184,14 @@ const singleRoleId = (values: Readonly<Record<string, unknown>>): Id<'Role'> | n
 };
 
 /** The signed-in admin acting as themselves, or null (System requests refuses any other). */
-function adminOf(context: CallContext): Id<'Account'> | null {
+export function adminOf(context: CallContext): Id<'Account'> | null {
   const actor = context.actor;
   return actor.kind === 'authenticated' && actor.population === 'admin' && !isActingAsSession(actor)
     ? actor.accountId
     : null;
 }
 
-const sameList = (a: readonly string[], b: unknown): boolean =>
+export const sameList = (a: readonly string[], b: unknown): boolean =>
   Array.isArray(b) && a.length === b.length && a.every((item, index) => item === b[index]);
 
 /**
@@ -368,7 +368,7 @@ function isSubject(context: CallContext, subjectRef: string): boolean {
 }
 
 /** The deciding admin holds the role `subjectRef` now. */
-async function holdsRole(
+export async function holdsRole(
   deps: PeopleReverterDependencies,
   context: CallContext,
   subjectRef: string,

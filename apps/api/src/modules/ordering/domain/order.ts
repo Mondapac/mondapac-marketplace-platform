@@ -55,6 +55,22 @@ export interface OrderLine {
    */
   readonly commissionRateBps: number | null;
   /**
+   * Why the line carries its rate, frozen with it (customers phase 4b): `standard`, or `exclusive`
+   * (the Market's lower rate for the seller's exclusive customer).
+   */
+  readonly commissionRateReason: 'standard' | 'exclusive';
+  /**
+   * On a line whose rate was lowered (`exclusive`): the rate it would have carried without it, the
+   * seller's rate in force at placement, frozen with it so the ledger can show the seller's saving.
+   * Absent or null on every other line (and on lines lowered before it was frozen).
+   */
+  readonly commissionStandardRateBps?: number | null;
+  /**
+   * Whether the buyer was the exclusive customer of the line's seller at placement (joined through
+   * its invite link), whether or not a lower rate applied. Lines before phase 4b: false.
+   */
+  readonly exclusiveSeller: boolean;
+  /**
    * The tax rate and the tax of the line, frozen at placement from `tax` (ADR-0039 decision 4).
    * Both null only on lines placed before tax was recorded. The tax is part of `lineAmount` when
    * the price includes tax, and added on top of it otherwise.

@@ -37,10 +37,13 @@ import { EngagementModule } from '../engagement';
 import { CountGroupSegmentUses } from './application/use-cases/count-group-segment-uses.use-case';
 import {
   CUSTOMER_GROUP_MEMBERSHIP,
+  EXCLUSIVE_CUSTOMERS,
   CUSTOMER_ORDER_HISTORY,
   STORE_FOLLOWS,
 } from './application/ports/customer-facts';
 import { DELIVERED_ORDER_FACTS } from './application/ports/order-facts';
+import { SELLER_CASHBACK_LEDGER } from './application/ports/seller-cashback-ledger';
+import { PAYOUT_ANCHORS } from './application/ports/payout-anchors';
 import { REFERRAL_SIGNALS } from './application/ports/referral-signals';
 import { WALLET_CREDIT } from './application/ports/wallet-credit';
 import { BATCH_CODE_REPOSITORY } from './application/ports/batch-code.repository';
@@ -62,11 +65,16 @@ import {
 import type { PromotionsDependencies } from './application/promotions-dependencies';
 import { ApplyReferralCode } from './application/use-cases/apply-referral-code.use-case';
 import { CashbackOnDelivery } from './application/use-cases/cashback-on-delivery.use-case';
+import { ClawBackOnRefund } from './application/use-cases/claw-back-on-refund.use-case';
+import { GrantDueCredits } from './application/use-cases/grant-due-credits.use-case';
+import { grantDueCreditsJob } from './presentation/jobs/grant-due-credits.job';
+import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { ListCustomerPromotionCredits } from './application/use-cases/list-customer-promotion-credits.use-case';
 import { ListCustomerPromotionUsages } from './application/use-cases/list-customer-promotion-usages.use-case';
 import { ListPromotionCredits } from './application/use-cases/list-promotion-credits.use-case';
 import { QualifyReferralOnDelivery } from './application/use-cases/qualify-referral-on-delivery.use-case';
 import { ViewMyReferral } from './application/use-cases/view-my-referral.use-case';
+import { ViewMyUpcomingCashback } from './application/use-cases/view-my-upcoming-cashback.use-case';
 import { ViewStoreFollowGift } from './application/use-cases/view-store-follow-gift.use-case';
 import { GenerateBatchCodes } from './application/use-cases/generate-batch-codes.use-case';
 import { ViewBatchCodeSummary } from './application/use-cases/view-batch-code-summary.use-case';
@@ -117,6 +125,7 @@ import { promotionsProviders } from './infrastructure/promotions-providers';
 import {
   AdminPromotionsController,
   CustomerReferralController,
+  CustomerCashbackController,
   StoreFollowGiftController,
   SellerPromotionsController,
 } from './presentation/promotions.controller';
@@ -144,7 +153,10 @@ const PORTS: readonly [keyof PromotionsDependencies, InjectionToken][] = [
   ['orderHistory', CUSTOMER_ORDER_HISTORY],
   ['storeFollows', STORE_FOLLOWS],
   ['groupMembership', CUSTOMER_GROUP_MEMBERSHIP],
+  ['exclusiveCustomers', EXCLUSIVE_CUSTOMERS],
   ['orderFacts', DELIVERED_ORDER_FACTS],
+  ['sellerCashbackLedger', SELLER_CASHBACK_LEDGER],
+  ['payoutAnchors', PAYOUT_ANCHORS],
   ['referralSignals', REFERRAL_SIGNALS],
   ['walletCredit', WALLET_CREDIT],
   ['credits', CREDIT_REPOSITORY],
@@ -194,6 +206,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     AdminPromotionsController,
     SellerPromotionsController,
     CustomerReferralController,
+    CustomerCashbackController,
     StoreFollowGiftController,
   ],
   providers: [
@@ -253,11 +266,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ListCustomerPromotionUsages,
       ApplyReferralCode,
       ViewMyReferral,
+      ViewMyUpcomingCashback,
       ViewStoreFollowGift,
       CashbackOnDelivery,
       QualifyReferralOnDelivery,
+      GrantDueCredits,
+      ClawBackOnRefund,
       CountGroupSegmentUses,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
+    // Customers phase 4c: the cashback that waited for its seller order's payout release.
+    registerJobsFrom('promotions', [GrantDueCredits], (grantDue: GrantDueCredits) => [
+      grantDueCreditsJob(grantDue),
+    ]),
     {
       provide: PROMOTIONS_FACADE,
       inject: [
@@ -293,8 +313,10 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   // ordering's events (ordering imports promotions, so this module cannot).
   exports: [
     PROMOTIONS_FACADE,
+    DELIVERED_ORDER_FACTS,
     CashbackOnDelivery,
     QualifyReferralOnDelivery,
+    ClawBackOnRefund,
     ConfirmRedemptions,
     ReleaseCancelledRedemptions,
   ],

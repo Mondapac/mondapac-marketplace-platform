@@ -1,3 +1,5 @@
+import type { PayoutAnchors } from './ports/payout-anchors';
+import type { SellerCashbackLedger } from './ports/seller-cashback-ledger';
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { AuditTrailReader } from '../../../platform/audit/audit-trail-reader';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
@@ -8,6 +10,7 @@ import type { BatchCodeCrypto } from './ports/batch-code-crypto';
 import type { CreditRepository, ReferralRepository } from './ports/credit.repository';
 import type {
   CustomerGroupMembership,
+  ExclusiveCustomers,
   CustomerOrderHistory,
   StoreFollows,
 } from './ports/customer-facts';
@@ -57,7 +60,13 @@ export interface PromotionsDependencies {
   readonly storeFollows: StoreFollows;
   /** Whether a customer is in a manual customer group (customer-group segment MANUAL_GROUP). */
   readonly groupMembership: CustomerGroupMembership;
+  /** Whose exclusive customer the customer is (customer-group segment SELLER_EXCLUSIVE). */
+  readonly exclusiveCustomers: ExclusiveCustomers;
   readonly orderFacts: DeliveredOrderFacts;
+  /** The seller ledger, for a seller's cashback (customers phase 4c). */
+  readonly sellerCashbackLedger: SellerCashbackLedger;
+  /** When a delivered seller order's payout is released: a real cashback waits for it. */
+  readonly payoutAnchors: PayoutAnchors;
   readonly referralSignals: ReferralSignals;
   readonly walletCredit: WalletCredit;
   readonly credits: CreditRepository;

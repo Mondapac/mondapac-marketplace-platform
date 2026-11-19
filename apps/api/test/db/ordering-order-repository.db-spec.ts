@@ -135,6 +135,8 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
           taxInclusive: true,
           reservationLineId: ids.next<'ReservationLine'>(),
           commissionRateBps: 1500,
+          commissionRateReason: 'standard',
+          exclusiveSeller: false,
           taxRateBps: 1000,
           taxAmount: 227n,
           taxCategoryCode: 'taxable',
@@ -643,6 +645,63 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
         ],
       ),
     ).toBe(CHECK);
+  });
+
+  it('keeps the exclusive seller and the rate reason of a line (customers phase 4b)', async () => {
+    const base = newOrder();
+    const order = {
+      ...base,
+      lines: base.lines.map((line) => ({
+        ...line,
+        commissionRateBps: 750,
+        commissionRateReason: 'exclusive' as const,
+        exclusiveSeller: true,
+        commissionStandardRateBps: 1500,
+      })),
+    };
+    await value(market, () => repository.insert(market, order));
+    expect(await value(market, () => repository.findById(market, order.id))).toEqual(order);
+
+    const seller = order.sellerOrders[0]!;
+    const line = order.lines[0]!;
+    const insertLine = (
+      reason: string,
+      exclusive: boolean,
+      rate: number | null,
+      standard: number | null = null,
+    ) =>
+      sql
+        .query(
+          `INSERT INTO ordering.order_lines (id, market_id, tenant_id, order_id, seller_order_id, offer_id, variant_id, quantity, unit_amount, line_amount, tax_inclusive, reservation_line_id, commission_rate_bps, commission_rate_reason, exclusive_seller, commission_standard_rate_bps)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 1, 100, 100, true, $8, $9, $10, $11, $12)`,
+          [
+            ids.next(),
+            market.marketId,
+            market.tenantId,
+            order.id,
+            seller.id,
+            line.offerId,
+            ids.next(),
+            ids.next(),
+            rate,
+            reason,
+            exclusive,
+            standard,
+          ],
+        )
+        .then(
+          () => null,
+          (error: { code?: string }) => error.code ?? 'unknown',
+        );
+    // A lowered rate only on a line of the buyer's exclusive seller, with a frozen rate.
+    expect(await insertLine('exclusive', false, 750)).toBe(CHECK);
+    expect(await insertLine('exclusive', true, null)).toBe(CHECK);
+    expect(await insertLine('lowered', true, 750)).toBe(CHECK);
+    // The standard rate only on a lowered line, never below its rate (savings follow-up).
+    expect(await insertLine('standard', true, 1500, 1500)).toBe(CHECK);
+    expect(await insertLine('exclusive', true, 750, 700)).toBe(CHECK);
+    expect(await insertLine('exclusive', true, 750, 3001)).toBe(CHECK);
+    expect(await insertLine('exclusive', true, 750, 1500)).toBeNull();
   });
 
   it('round-trips the discounts of a line and a seller order, and keeps them consistent (package T2)', async () => {

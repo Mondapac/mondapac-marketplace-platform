@@ -604,6 +604,7 @@ describe.each(TEST_MARKETS)('slice 7a stores in market %s (database integration)
       kind: 'seller-owner' | 'staff',
       sellerId: Id<'Seller'>,
       address: string,
+      at: Temporal.Instant = NOW,
     ) =>
       Invitation.issue({
         id: randomUUID() as Id<'Invitation'>,
@@ -614,7 +615,7 @@ describe.each(TEST_MARKETS)('slice 7a stores in market %s (database integration)
         roleId: randomUUID() as Id<'Role'>,
         sellerId,
         invitedByAccountId: null,
-        now: NOW,
+        now: at,
       });
     /** A seller access row the seller-scoped invitations point at (RESTRICT FK). */
     async function insertSeller(): Promise<Id<'Seller'>> {
@@ -754,7 +755,7 @@ describe.each(TEST_MARKETS)('slice 7a stores in market %s (database integration)
       ).resolves.toBeUndefined();
     });
 
-    it('purges decided invitations older than the cut-off only, never a pending one by that clause (Sajad 2)', async () => {
+    it('purges decided invitations older than the cut-off only, never a pending one by that clause (Sajad 2) nor an accepted admin one (Hassan M1)', async () => {
       const cutoff = NOW.subtract({ hours: 30 * 24 });
       const made: Record<string, Id<'Invitation'>> = {};
       for (const [name, how, decidedAt] of [
@@ -777,9 +778,24 @@ describe.each(TEST_MARKETS)('slice 7a stores in market %s (database integration)
       pendingOld.dispatch(HASH(), cutoff.subtract({ hours: 48 }), 60 * 24 * 365);
       await unit(() => invitations.add(market, pendingOld));
 
+      // An accepted Staff invitation past the cut-off goes as before.
+      const sellerId = await insertSeller();
+      const staffAt = cutoff.subtract({ hours: 24 });
+      const staffOld = sellerInvitation(
+        'staff',
+        sellerId,
+        `StaffOld.${randomUUID()}@example.test`,
+        staffAt,
+      );
+      staffOld.dispatch(HASH(), staffAt, 60);
+      await unit(() => invitations.add(market, staffOld));
+      await decide(staffOld.state.id, 'accept', staffAt.add({ minutes: 1 }));
+
       await unit(() => invitations.purge(market, NOW, cutoff));
 
-      expect(await exists(made.acceptedOld!)).toBe(false);
+      // Kept: an invitation's System request reaches the admin it created through this row.
+      expect(await exists(made.acceptedOld!)).toBe(true);
+      expect(await exists(staffOld.state.id)).toBe(false);
       expect(await exists(made.revokedOld!)).toBe(false);
       expect(await exists(made.acceptedNew!)).toBe(true);
       expect(await exists(made.revokedNew!)).toBe(true);

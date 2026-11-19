@@ -2,7 +2,7 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import Link from 'next/link';
-import { useCallback, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import * as api from '../account/customer-api.ts';
 import { formatMoney } from '../format/money.ts';
 import { useStore } from '../shell/store-context.tsx';
@@ -64,6 +64,25 @@ function useCartGuard() {
     return Object.keys(latest.current.cart).length === 0;
   };
   return { live, holdsOtherStore, moveAway, settle, refreshCart };
+}
+
+/**
+ * True once the buyer's live cart has changed since this card was first shown with the live cart.
+ * The numbers on an older card (quantities, what can still be added, what the list adds up to)
+ * were true when the assistant wrote it, so the card says so and its button stays off until the
+ * buyer asks again. A cart that has not been read yet (`cartReady` false) never counts as a change.
+ */
+function useCartChanged(): boolean {
+  const { cartReady, cart } = useStore();
+  const signature = Object.keys(cart)
+    .sort()
+    .map((key) => `${key}:${cart[key]?.quantity ?? 0}`)
+    .join('|');
+  const [shown, setShown] = useState<string | null>(null);
+  useEffect(() => {
+    if (cartReady && shown === null) setShown(signature);
+  }, [cartReady, shown, signature]);
+  return shown !== null && shown !== signature;
 }
 
 function useMoney() {
@@ -186,6 +205,7 @@ export function CartActionCardView({
 
   const choose = async (how: 'save' | 'remove') => {
     setStep('busy');
+    setActed(true);
     try {
       if (!(await guard.moveAway(how))) {
         setStep('failed');
@@ -203,6 +223,9 @@ export function CartActionCardView({
   const canAdd = card.action !== 'add' || ceiling > 0;
   const addNotPossible = card.action === 'add' && (card.cartFull === true || ceiling === 0);
   const live = guard.live;
+  const [acted, setActed] = useState(false);
+  const outdated = useCartChanged() && step === 'idle' && !acted;
+  const outdatedId = `${uid}-outdated`;
 
   return (
     <section className="ascc" aria-label={title}>
@@ -256,7 +279,7 @@ export function CartActionCardView({
             <button
               type="button"
               aria-label={t('cart-less')}
-              disabled={quantity <= 1 || step === 'busy' || step === 'done'}
+              disabled={quantity <= 1 || step === 'busy' || step === 'done' || outdated}
               onClick={() => setWanted(quantity - 1)}
             >
               −
@@ -267,7 +290,7 @@ export function CartActionCardView({
             <button
               type="button"
               aria-label={t('cart-more')}
-              disabled={quantity >= ceiling || step === 'busy' || step === 'done'}
+              disabled={quantity >= ceiling || step === 'busy' || step === 'done' || outdated}
               onClick={() => setWanted(quantity + 1)}
             >
               +
@@ -307,6 +330,11 @@ export function CartActionCardView({
               {t(outcomeKey(step))}
             </p>
           ) : null}
+          {outdated ? (
+            <p className="asnote" id={outdatedId}>
+              {t('cart-card-outdated')}
+            </p>
+          ) : null}
           {!live ? (
             <p className="asnote">{t('cart-unavailable')}</p>
           ) : addNotPossible ? null : (
@@ -314,7 +342,8 @@ export function CartActionCardView({
               <button
                 type="button"
                 className={card.action === 'remove' ? 'btn small alt' : 'btn small'}
-                disabled={step === 'busy'}
+                disabled={step === 'busy' || outdated}
+                aria-describedby={outdated ? outdatedId : undefined}
                 onClick={() => void press()}
               >
                 {step === 'busy'
@@ -341,6 +370,7 @@ export function CartSummaryCardView({
 }) {
   const t = useTranslations('assistant');
   const money = useMoney();
+  const outdated = useCartChanged();
   if (card.lineCount === 0 || card.groups.length === 0) {
     return (
       <section className="ascc" aria-label={t('cart-summary-title')}>
@@ -351,6 +381,7 @@ export function CartSummaryCardView({
   return (
     <section className="ascc" aria-label={t('cart-summary-title')}>
       <p className="ascc-t">{t('cart-summary-lines', { count: card.lineCount })}</p>
+      {outdated ? <p className="asnote">{t('cart-card-outdated-summary')}</p> : null}
       {card.groups.map((group, at) => (
         <div className="ascc-group" key={group.sellerId ?? `g${at}`}>
           <div className="ascc-gh">
@@ -437,6 +468,13 @@ const rowKey = (row: { pick: BasketOptionView; packs: number }) =>
 /** The most packs of one line the planner ever proposes; the cart route has its own limit. */
 const PACKS_MAX = 99;
 
+/** The most packs of this product the buyer can set: the server's own ceiling, never above PACKS_MAX. */
+const packsLimit = (option: BasketOptionView) =>
+  Math.max(1, Math.min(PACKS_MAX, option.maxQuantity ?? PACKS_MAX));
+
+/** A pick can go into the cart only with a sell unit and a ceiling above zero (0 = none to add). */
+const addable = (option: BasketOptionView) => option.variantId !== null && option.maxQuantity !== 0;
+
 /** A planned shopping list: edit packs, swap a product, drop a line, then add the whole list. */
 export function BasketProposalCardView({
   card,
@@ -490,13 +528,17 @@ export function BasketProposalCardView({
       ...row,
       pick,
       choices,
-      packs: edit?.packs ?? (swapped ? (pick.quantity ?? 1) : row.packs),
+      // The planner's pack count (or the buyer's edit) never goes past what the product allows.
+      packs: Math.min(
+        edit?.packs ?? (swapped ? (pick.quantity ?? 1) : row.packs),
+        packsLimit(pick),
+      ),
       chosen: swapped,
       off: edit?.off ?? (uncertainIndexes.has(row.itemIndex) && !swapped),
     };
   });
   const active = rows.filter((row) => !row.off);
-  const ready = active.filter((row) => row.pick.variantId !== null);
+  const ready = active.filter((row) => addable(row.pick));
   const sellers = [...new Set(active.map((row) => row.pick.sellerId))];
   const oneStoreBroken = card.mode === 'single-store' && sellers.length > 1;
   const totals = useMemo(() => {
@@ -536,6 +578,11 @@ export function BasketProposalCardView({
     }
   }, [ready, results, guard]);
 
+  // The buyer is told why "+" is off: the product's own ceiling is reached.
+  const uid = useId();
+  const atCeiling = (row: { pick: BasketOptionView; packs: number }) =>
+    row.pick.maxQuantity !== null && row.packs >= packsLimit(row.pick);
+
   const [moveFailed, setMoveFailed] = useState(false);
   const press = async () => {
     setMoveFailed(false);
@@ -552,6 +599,7 @@ export function BasketProposalCardView({
 
   const chooseAway = async (how: 'save' | 'remove') => {
     setStep('busy');
+    setActed(true);
     try {
       if (!(await guard.moveAway(how))) {
         setMoveFailed(true);
@@ -572,6 +620,11 @@ export function BasketProposalCardView({
   const added = ready.filter((row) => results[rowKey(row)] === 'ok').length;
   const everyLineAdded = ready.length > 0 && ready.every((row) => results[rowKey(row)] === 'ok');
   const locked = step === 'busy';
+  // Before anything was added from this card, a changed cart makes its list and total old news.
+  const [acted, setActed] = useState(false);
+  const outdated =
+    useCartChanged() && step === 'idle' && !acted && Object.keys(results).length === 0;
+  const outdatedId = `${uid}-outdated`;
 
   // Rows sit under the store of the product they now name, with that store's subtotal of the
   // lines in the list (the grand total below is the sum, so who is paid is never hidden).
@@ -632,7 +685,11 @@ export function BasketProposalCardView({
         ) : (
           <div className="ascb-edit">
             <div className="ascc-qty">
-              <div role="group" aria-label={t('cart-quantity')}>
+              <div
+                role="group"
+                aria-label={t('cart-quantity')}
+                aria-describedby={atCeiling(row) ? `${uid}-max-${row.itemIndex}` : undefined}
+              >
                 <button
                   type="button"
                   aria-label={t('cart-less')}
@@ -647,12 +704,17 @@ export function BasketProposalCardView({
                 <button
                   type="button"
                   aria-label={t('cart-more')}
-                  disabled={locked || row.packs >= PACKS_MAX}
+                  disabled={locked || row.packs >= packsLimit(row.pick)}
                   onClick={() => patch(row.itemIndex, { packs: row.packs + 1 })}
                 >
                   +
                 </button>
               </div>
+              {atCeiling(row) ? (
+                <small id={`${uid}-max-${row.itemIndex}`} className="ascb-why">
+                  {t('basket-max-packs', { count: packsLimit(row.pick) })}
+                </small>
+              ) : null}
             </div>
             <button
               type="button"
@@ -665,7 +727,7 @@ export function BasketProposalCardView({
             </button>
           </div>
         )}
-        {!row.off && row.pick.variantId === null ? (
+        {!row.off && !addable(row.pick) ? (
           <small className="ascb-why">{t('basket-cannot-add')}</small>
         ) : null}
         {row.choices.length > 0 ? (
@@ -799,6 +861,11 @@ export function BasketProposalCardView({
               {t('basket-some-failed', { count: failed })}
             </p>
           ) : null}
+          {outdated ? (
+            <p className="asnote" id={outdatedId}>
+              {t('cart-card-outdated')}
+            </p>
+          ) : null}
           {!guard.live ? (
             <p className="asnote">{t('cart-unavailable')}</p>
           ) : (
@@ -806,7 +873,10 @@ export function BasketProposalCardView({
               <button
                 type="button"
                 className="btn small"
-                disabled={locked || ready.length === 0 || oneStoreBroken || everyLineAdded}
+                disabled={
+                  locked || outdated || ready.length === 0 || oneStoreBroken || everyLineAdded
+                }
+                aria-describedby={outdated ? outdatedId : undefined}
                 onClick={() => void press()}
               >
                 {locked

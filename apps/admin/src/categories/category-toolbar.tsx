@@ -8,8 +8,10 @@ import {
   ConfirmCategoryDialog,
   CreateCategoryDialog,
   EditDetailsDialog,
+  ReviewNoteDialog,
   type ConfirmKind,
 } from './category-dialogs.tsx';
+import { useSentForReview } from '../shared/review-note.tsx';
 import { MoveProductsDialog } from './move-products-dialog.tsx';
 import { RestructureDialog } from './restructure-dialog.tsx';
 import type { RestructureKind } from './restructure-model.ts';
@@ -17,7 +19,16 @@ import { useCategoryCall } from './use-category-call.ts';
 import { CategoryProblemBanner } from './category-problem.tsx';
 import { API_CATEGORIES, type CategoryRow, type DetailBody, type WriteWrap } from './types.ts';
 
-type Open = 'edit' | 'add-child' | 'slug' | 'move-products' | ConfirmKind | RestructureKind | null;
+type Open =
+  | 'edit'
+  | 'add-child'
+  | 'slug'
+  | 'move-products'
+  | 'reorder-up'
+  | 'reorder-down'
+  | ConfirmKind
+  | RestructureKind
+  | null;
 
 /** What an admin may do to the picked category: edit, add a child, move, hide or show, rename its URL, discard. */
 export function CategoryToolbar({
@@ -58,7 +69,10 @@ export function CategoryToolbar({
   const t = useTranslations('categories.toolbar');
   const [open, setOpen] = useState<Open>(null);
   const move = useCategoryCall(csrfToken);
+  const sentForReview = useSentForReview();
   const { category } = body;
+  // Where the Market reviews area catalogue, a reorder needs a note (it opens a review).
+  const reviewed = body.review?.reviewed === true;
   // A hidden category is edited like an active one; the API refuses an archived or merged one.
   const editable = category.status === 'active' || category.status === 'hidden';
   const isHidden = category.status === 'hidden';
@@ -79,14 +93,32 @@ export function CategoryToolbar({
     document.querySelector<HTMLElement>(`[data-row-id="${category.id}"]`)?.focus();
   }, [open, category.id]);
 
-  async function reorder(direction: 'up' | 'down') {
+  async function reorder(
+    direction: 'up' | 'down',
+    note?: string,
+  ): Promise<'done' | 'note-refused'> {
     const answer = await move.run<WriteWrap>('POST', `${API_CATEGORIES}/${category.id}/reorder`, {
       direction,
       treeVersion: body.treeVersion,
+      ...(note === undefined ? {} : { note }),
     });
+    // A refused note stays in the note dialog, on its field, so it can be written again.
+    if (!answer.ok && note !== undefined && answer.problem?.fields['note'] !== undefined) {
+      move.clear();
+      return 'note-refused';
+    }
+    setOpen(null);
     // A refusal stays in view with a button to read again; reading at once would clear it.
-    if (answer.ok) onChanged(t(direction === 'up' ? 'note-up' : 'note-down'), category.id);
+    if (answer.ok) {
+      sentForReview(answer.body);
+      onChanged(t(direction === 'up' ? 'note-up' : 'note-down'), category.id);
+    }
+    return 'done';
   }
+  const askReorder = (direction: 'up' | 'down') => {
+    if (reviewed) setOpen(direction === 'up' ? 'reorder-up' : 'reorder-down');
+    else void reorder(direction);
+  };
 
   // The action map marks only `active` categories as allowed, and a hidden one is edited too, so
   // the buttons follow the permission and the status; the API checks both again on every write.
@@ -140,7 +172,7 @@ export function CategoryToolbar({
           variant="secondary"
           disabled={!rename || firstSibling || move.pending}
           aria-describedby={showReason ? 'category-move-reason' : undefined}
-          onClick={() => void reorder('up')}
+          onClick={() => askReorder('up')}
         >
           {t('move-up')}
         </Button>
@@ -148,7 +180,7 @@ export function CategoryToolbar({
           variant="secondary"
           disabled={!rename || lastSibling || move.pending}
           aria-describedby={showReason ? 'category-move-reason' : undefined}
-          onClick={() => void reorder('down')}
+          onClick={() => askReorder('down')}
         >
           {t('move-down')}
         </Button>
@@ -221,8 +253,18 @@ export function CategoryToolbar({
           onReload={() => closeAndRefresh()}
         />
       ) : null}
+      {open === 'reorder-up' || open === 'reorder-down' ? (
+        <ReviewNoteDialog
+          title={t(open === 'reorder-up' ? 'move-up' : 'move-down')}
+          action={t(open === 'reorder-up' ? 'move-up' : 'move-down')}
+          pending={move.pending}
+          onClose={() => setOpen(null)}
+          onSubmit={(note) => reorder(open === 'reorder-up' ? 'up' : 'down', note)}
+        />
+      ) : null}
       {open === 'add-child' ? (
         <CreateCategoryDialog
+          reviewed={reviewed}
           parent={category.id}
           parentName={title}
           treeVersion={body.treeVersion}
@@ -266,6 +308,7 @@ export function CategoryToolbar({
       ) : null}
       {open === 'move-products' ? (
         <MoveProductsDialog
+          reviewed={reviewed}
           categoryId={category.id}
           name={title}
           rows={rows}

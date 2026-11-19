@@ -2,8 +2,9 @@ import { NextIntlClientProvider } from 'next-intl';
 import { createRoot } from 'react-dom/client';
 import messages from '../../messages/en.json';
 import '../../app/globals.css';
+import { blankProduct } from '../../src/catalog/add-offer.tsx';
 import { EditForm } from '../../src/catalog/edit-form.tsx';
-import type { ProductView } from '../../src/catalog/types.ts';
+import type { ProductOptions, ProductView } from '../../src/catalog/types.ts';
 
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
 const names = (en: string) => ({ 'en-AU': en });
@@ -38,7 +39,10 @@ const product: ProductView = {
   createdAt: '2026-11-05T01:00:00.000Z',
   pendingSubmittedAt: null,
   form: {
-    taxCategoryCodes: ['gst-free-food', 'gst'],
+    taxCategories: [
+      { code: 'gst-free-food', labelKey: 'catalog.tax.gst-free-food' },
+      { code: 'gst', labelKey: 'catalog.tax.gst' },
+    ],
     units: [],
     fields: [
       field('origin', 'Country of origin', 'select', false, [
@@ -74,7 +78,27 @@ const product: ProductView = {
   published: null,
   pending: null,
 };
-window.fetch = () => Promise.resolve(new Response(JSON.stringify({ images: [] }), { status: 200 }));
+const pickerChoices = [
+  {
+    id: id(11),
+    level: 4,
+    name: 'Rice',
+    path: ['Pantry', 'Rice'],
+    general: false,
+    status: 'active',
+  },
+];
+window.fetch = (input) =>
+  Promise.resolve(
+    new Response(
+      JSON.stringify(
+        String(input instanceof Request ? input.url : input).includes('category-picker')
+          ? { locale: 'en-AU', choices: pickerChoices }
+          : { images: [] },
+      ),
+      { status: 200 },
+    ),
+  );
 const scenario = new URLSearchParams(location.search).get('s') ?? 'edit';
 const shown: ProductView =
   scenario === 'paused'
@@ -93,16 +117,29 @@ const shown: ProductView =
         },
       }
     : product;
+const addOptions: ProductOptions = {
+  productTypes: ['grocery', 'dry-goods', 'frozen'],
+  conditions: ['new', 'used'],
+  taxCategories: [
+    { code: 'gst-free-food', labelKey: 'catalog.tax.gst-free-food' },
+    { code: 'gst', labelKey: 'catalog.tax.gst' },
+  ],
+  categories: product.form.categories,
+  locales: { default: 'en-AU', supported: ['en-AU', 'ar'] },
+  sellerCanCreateProduct: true,
+};
+const adding = scenario === 'add';
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
     <main className="mx-auto max-w-7xl p-4 md:p-6">
       <EditForm
-        product={shown}
+        product={adding ? blankProduct(addOptions) : shown}
         photos={[]}
         locales={['en-AU', 'ar']}
         defaultLocale="en-AU"
         marketName="Australia"
         csrfToken="tok"
+        {...(adding ? { add: { options: addOptions } } : {})}
       />
     </main>
   </NextIntlClientProvider>,

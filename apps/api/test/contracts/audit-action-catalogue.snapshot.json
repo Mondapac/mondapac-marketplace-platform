@@ -10,6 +10,7 @@
     },
     "after": {
       "relaxationRequestId": "optional(id)",
+      "requestId": "optional(id)",
       "requestedByAccountId": "optional(id)",
       "status": "enumOf(archived)"
     }
@@ -38,6 +39,7 @@
       "status": "enumOf(draft)"
     },
     "after": {
+      "requestId": "optional(id)",
       "status": "enumOf(archived)"
     }
   },
@@ -53,6 +55,7 @@
     "after": {
       "mappedValueCount": "integer",
       "mergedIntoId": "id",
+      "requestId": "optional(id)",
       "status": "enumOf(archived)"
     }
   },
@@ -139,6 +142,7 @@
       "material": "boolean",
       "mergedValueCount": "integer",
       "optionCount": "integer",
+      "requestId": "optional(id)",
       "revisionNo": "integer",
       "status": "enumOf(draft|active|archived)"
     }
@@ -178,6 +182,7 @@
       "groupCount": "integer",
       "optionalCount": "integer",
       "recommendedCount": "integer",
+      "requestId": "optional(id)",
       "requiredCount": "integer",
       "revisionNo": "integer"
     }
@@ -267,6 +272,7 @@
       "status": "enumOf(draft|active|archived)"
     },
     "after": {
+      "reasonGiven": "boolean",
       "status": "enumOf(archived)"
     }
   },
@@ -638,7 +644,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|seller.catalog.offers)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -650,7 +656,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|seller.catalog.offers)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -664,7 +670,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|seller.catalog.offers)",
       "visibility": "enumOf(me|everyone)"
     }
   },
@@ -1777,7 +1783,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "section": "enumOf(sign-ins|saved-items|cart-reminders|cart-additions|consent-history|assistant-conversations)",
+      "section": "enumOf(sign-ins|saved-items|cart-reminders|cart-additions|reviews|seller-ratings|helpful-votes|review-reports|consent-history|assistant-conversations)",
       "format": "enumOf(csv|xlsx)",
       "rowCount": "integer",
       "stepUpSessionId": "id",
@@ -1807,7 +1813,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.customers.customers)",
+      "listKey": "enumOf(admin.customers.customers|admin.customers.seller-attributions)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -1819,7 +1825,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.customers.customers)",
+      "listKey": "enumOf(admin.customers.customers|admin.customers.seller-attributions)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -1833,7 +1839,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.customers.customers)",
+      "listKey": "enumOf(admin.customers.customers|admin.customers.seller-attributions)",
       "visibility": "enumOf(me|everyone)"
     }
   },
@@ -1847,6 +1853,45 @@
       "format": "enumOf(csv|xlsx)",
       "rowCount": "integer",
       "selection": "enumOf(codes|filter)"
+    }
+  },
+  {
+    "action": "customers.seller-attribution.decided",
+    "targetType": "customers.customer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "status": "enumOf(active|rejected)"
+    },
+    "after": {
+      "sellerId": "id",
+      "status": "enumOf(active|rejected)",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "customers.seller-attributions.exported",
+    "targetType": "customers.seller-attributions-export",
+    "targetId": "enumOf(seller-attributions-export)",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer",
+      "selection": "enumOf(ids|filter)",
+      "stepUpSessionId": "id",
+      "stepUpVerifiedAt": "instant"
+    }
+  },
+  {
+    "action": "customers.seller-invite-link.drawn",
+    "targetType": "customers.seller-invite-link",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "replacedLinkId": "optional(id)",
+      "sellerId": "id"
     }
   },
   {
@@ -1917,6 +1962,37 @@
     "after": {
       "population": "enumOf(admin|customer)",
       "status": "enumOf(active|disabled)"
+    }
+  },
+  {
+    "action": "identity.account.email-change-cancelled",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "stepUpSessionId": "id"
+    }
+  },
+  {
+    "action": "identity.account.email-change-requested",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "stepUpSessionId": "id"
+    }
+  },
+  {
+    "action": "identity.account.email-changed",
+    "targetType": "identity.account",
+    "targetId": "id",
+    "actors": ["anonymous"],
+    "before": null,
+    "after": {
+      "boundSubjectId": "id",
+      "revokedSessions": "integer"
     }
   },
   {
@@ -2022,7 +2098,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customer-email.change|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "cause": "enumOf(invalid|locked)",
       "sessionId": "id"
     }
@@ -2034,7 +2110,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customer-email.change|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "sessionId": "id"
     }
   },
@@ -2074,6 +2150,18 @@
     }
   },
   {
+    "action": "identity.invitation.reverted",
+    "targetType": "identity.invitation",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(seller-owner|staff|admin)",
+      "requestId": "id",
+      "roleId": "id"
+    }
+  },
+  {
     "action": "identity.invitation.revoked",
     "targetType": "identity.invitation",
     "targetId": "id",
@@ -2097,6 +2185,19 @@
     }
   },
   {
+    "action": "identity.role.creation-reverted",
+    "targetType": "identity.role",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "removedKeys": "listOf(permissionKey, max 40)",
+      "scope": "enumOf(platform|seller)"
+    },
+    "after": {
+      "requestId": "id"
+    }
+  },
+  {
     "action": "identity.role.deleted",
     "targetType": "identity.role",
     "targetId": "id",
@@ -2107,6 +2208,19 @@
       "sellerId": "optional(id)"
     },
     "after": null
+  },
+  {
+    "action": "identity.role.deletion-approved",
+    "targetType": "identity.role",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "removedKeys": "listOf(permissionKey, max 40)",
+      "scope": "enumOf(platform|seller)"
+    },
+    "after": {
+      "requestId": "id"
+    }
   },
   {
     "action": "identity.role.reverted",
@@ -2340,11 +2454,11 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customer-email.change|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     },
     "after": {
-      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
+      "actionKey": "enumOf(catalog.offer.delete|customers.account-deletion-settings.change|customers.buyer-account.delete|customers.customer-email.change|customers.customers.export|identity.second-factor.manage|identity.team.change-role|identity.team.invite-remove|payments.payout-account.change|pricing.price.change|sellers.business-activity.change|sellers.store-terms.change|storefront.seo.change-protected|wallet.credit.approve|wallet.credit.issue|wallet.settings.change)",
       "required": "boolean"
     }
   },
@@ -2357,7 +2471,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -2369,7 +2483,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -2383,7 +2497,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list)",
       "visibility": "enumOf(me|everyone)"
     }
   },
@@ -2487,7 +2601,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.ordering.orders)",
+      "listKey": "enumOf(admin.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
       "visibility": "enumOf(me|everyone)"
     }
   },
@@ -2500,7 +2614,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.ordering.orders)",
+      "listKey": "enumOf(admin.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -2512,7 +2626,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.ordering.orders)",
+      "listKey": "enumOf(admin.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -3331,6 +3445,7 @@
     "after": {
       "kind": "enumOf(cheapest|weighted|fixed-priority)",
       "order": "listOf(enumOf(mondapac-drive|uber-direct|zoom2u|doordash-drive|auspost|fake-test), max 8)",
+      "requestId": "optional(id)",
       "version": "integer",
       "weightEta": "optional(integer)",
       "weightPrice": "optional(integer)",
@@ -3913,6 +4028,7 @@
     "after": {
       "activitiesUnlinked": "integer",
       "reasonGiven": "boolean",
+      "requestId": "optional(id)",
       "status": "enumOf(active|hidden|archived)",
       "tagsMarked": "integer"
     }
@@ -3998,6 +4114,7 @@
       "status": "enumOf(active|hidden|archived)"
     },
     "after": {
+      "requestId": "optional(id)",
       "status": "enumOf(active|hidden|archived)"
     }
   },
@@ -4011,6 +4128,7 @@
     },
     "after": {
       "cascaded": "integer",
+      "requestId": "optional(id)",
       "status": "enumOf(active|hidden|archived)"
     }
   },
@@ -4051,6 +4169,7 @@
       "childrenMoved": "integer",
       "mergedIntoId": "id",
       "reasonGiven": "boolean",
+      "requestId": "optional(id)",
       "tagsMarked": "integer"
     }
   },
@@ -4067,6 +4186,7 @@
       "level": "integer",
       "parentId": "optional(id)",
       "reasonGiven": "boolean",
+      "requestId": "optional(id)",
       "subtreeSize": "integer",
       "tagsMarked": "integer"
     }
@@ -4082,6 +4202,7 @@
     "after": {
       "jobId": "id",
       "reasonGiven": "boolean",
+      "requestId": "optional(id)",
       "targetCategoryId": "id"
     }
   },
@@ -4110,7 +4231,8 @@
       "position": "integer"
     },
     "after": {
-      "position": "integer"
+      "position": "integer",
+      "requestId": "optional(id)"
     }
   },
   {

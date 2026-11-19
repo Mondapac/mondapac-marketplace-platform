@@ -128,6 +128,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'identity.access_decisions': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Social sign-in: a provider identity is written once; it goes with its account (cascade).
     'identity.external_identities': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Customers admin email change (Hassan M1): one notice per confirmed change, written once and
+    // deleted once by its handler; never updated.
+    'identity.email_change_notices': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'platform.audit_log': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/platform.md 11.6 (identity slice 6a): append-only like the audit log;
     // INSERT moves to a worker-only group before the hardening trigger (11.6, PA 13).
@@ -483,7 +486,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['count', 'window_started_at'],
     },
     // The shared store of saved filters of every super list (super list phase 0): the same rules,
-    // one table. The two old tables stay until they are dropped one release later.
+    // one table. The old catalog and ordering tables were dropped by 20261118150000.
     'lists.saved_filters': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['name', 'position', 'updated_at', 'visibility'],
@@ -493,12 +496,6 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'lists.column_preferences': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['columns', 'updated_at'],
-    },
-    // docs/design/data/ordering.md 3.15: a saved view of an order list; a filter is a preference, so
-    // the application deletes it; only the name and who can use it change.
-    'ordering.saved_filters': {
-      table: ['DELETE', 'INSERT', 'SELECT'],
-      columnUpdate: ['name', 'updated_at', 'visibility'],
     },
     // Saved for later: saved again moves the item to the top; removed, moved to the cart or
     // purged a year after it was last saved.
@@ -893,9 +890,23 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'status',
       ],
     },
+    // Customers phase 4c: a waiting cashback's amount is lowered and its wait ended or put back.
     'promotions.credit_issuances': {
       table: ['INSERT', 'SELECT'],
-      columnUpdate: ['failure_code', 'settled_at', 'status', 'wallet_journal_id'],
+      columnUpdate: [
+        'amount_minor',
+        'failure_code',
+        'grant_after',
+        'settled_at',
+        'status',
+        'wallet_journal_id',
+      ],
+    },
+    // Customers phase 4c-2: a refund's clawback is settled once (status, what was taken, the
+    // wallet journal, when) and never removed.
+    'promotions.credit_clawbacks': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['clawed_minor', 'settled_at', 'status', 'wallet_journal_id'],
     },
     'promotions.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'promotions.co_funding_opt_ins': {
@@ -1064,6 +1075,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
     },
+    // Customers phase 4a: a seller's invite link is only revoked; an attribution is decided (status,
+    // reason, who, when, version) and never removed by the API.
+    'customers.seller_invite_links': { table: ['INSERT', 'SELECT'], columnUpdate: ['revoked_at'] },
+    'customers.seller_attributions': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['decided_at', 'decided_by_account_id', 'reject_reason', 'status', 'version'],
+    },
     // Legal (personalization 1b): the current marketing consent changes (granted, source, time)
     // and is never removed by the API; its history is append-only.
     'legal.marketing_consents': {
@@ -1071,6 +1089,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['changed_at', 'granted', 'source'],
     },
     'legal.marketing_consent_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Customers phase 2b, part 4: legal's outbox (consent changed), as every module's outbox.
+    'legal.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Engagement (personalization 1a): behaviour events are inserted and deleted (retention purge,
     // switch off, account deletion), never changed; the switch changes and goes with the account.
     'engagement.behaviour_events': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
@@ -1392,6 +1412,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
         'approved_by',
+        'archive_reason',
         'header_image_id',
         'logo_alt',
         'logo_image_id',
@@ -1743,12 +1764,6 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'settled_at',
         'state',
       ],
-    },
-    // docs/design/data/catalog.md 3.28: a saved view of an admin list; a filter is a preference, so
-    // the application deletes it; only the name and who can use it change.
-    'catalog.saved_filters': {
-      table: ['DELETE', 'INSERT', 'SELECT'],
-      columnUpdate: ['name', 'updated_at', 'visibility'],
     },
     // docs/design/data/catalog.md 3.29: the admin product import. A job moves through its states by
     // column and a row records its result as the run goes; DELETE belongs to the purge (old jobs,

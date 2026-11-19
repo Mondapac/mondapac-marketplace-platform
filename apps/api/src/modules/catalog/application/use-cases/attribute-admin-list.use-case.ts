@@ -39,6 +39,8 @@ import type {
   AttributeAdminReader,
   AttributeDefinitionRecord,
 } from '../ports/attribute-admin.reader';
+import type { SystemRequestRecorder } from '../../../system-requests';
+import { catalogueReview, type CatalogueReview } from '../catalogue-review';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 
 export interface AttributeAdminListInput {
@@ -98,6 +100,11 @@ export interface AttributeAdminListOutput {
   readonly locales: MarketLocales;
   /** The units the Market offers for a number-with-unit attribute (attributes A3). */
   readonly units: readonly MarketUnit[];
+  /**
+   * Whether a create, move or reorder is reviewed and a discard, merge or archive waits for
+   * approval in the Market (Admin Inbox › System requests, area catalogue): the page asks for a note.
+   */
+  readonly review: CatalogueReview;
   /** The families the "Used in" filter offers, by code. */
   readonly featureSets: readonly { readonly id: string; readonly code: string }[];
   /** True when the Market holds more definitions than one read loads (never silently partial). */
@@ -114,6 +121,8 @@ export interface AttributeAdminListDependencies {
   /** The gate's answers to "does the caller hold this key", for the row actions. */
   readonly attributeEditProbe: PermissionProbe;
   readonly attributeRestructureProbe: PermissionProbe;
+  /** Reads the review policy of area catalogue, so the page asks for a note where it is reviewed. */
+  readonly review: Pick<SystemRequestRecorder, 'areaPolicy'>;
 }
 
 /**
@@ -230,6 +239,8 @@ export class AttributeAdminList extends UseCase<
             ? definition.status
             : definition.code;
     const reader = this.deps.attributeAdminReader;
+    // Its own read-only unit, before the list's (units do not nest).
+    const review = await catalogueReview(this.deps.review, context);
     const read = await this.deps.unitOfWork.run(
       market,
       async () => {
@@ -283,6 +294,7 @@ export class AttributeAdminList extends UseCase<
           totalAll: loaded.length,
           locales,
           units: this.deps.policy.units(market).map((unit) => ({ ...unit })),
+          review,
           featureSets: featureSets.map((set) => ({ id: set.id, code: set.code })),
           truncated: definitions.length > ATTRIBUTE_LOAD_MAX,
         });

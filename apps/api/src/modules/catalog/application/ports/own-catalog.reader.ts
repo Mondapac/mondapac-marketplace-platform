@@ -107,6 +107,8 @@ export interface OwnOffersFilter {
   readonly text: string | null;
   /** The locale the product name is searched in. */
   readonly locale: string;
+  /** Only these Offers (the rows an export names); absent or null keeps all that match. */
+  readonly offerIds?: readonly Id<'Offer'>[] | null;
 }
 
 /** The filters of the seller's product list; `statuses` is already narrowed by view and status. */
@@ -257,6 +259,25 @@ export interface OwnCatalogReader {
   ): Promise<readonly Offer[]>;
 
   /**
+   * The ids of the Offers `filter` keeps, in `order` (ties on the id), at most `limit`: the
+   * snapshot an export reads its rows by.
+   */
+  listOfferIds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnOffersFilter,
+    order: { readonly sort: OwnOfferSort; readonly direction: OwnSortDirection },
+    limit: number,
+  ): Promise<readonly Id<'Offer'>[]>;
+
+  /** The seller's own Offers of these ids that are not deleted, in the order of `ids`. */
+  listOffersByIds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    ids: readonly Id<'Offer'>[],
+  ): Promise<readonly Offer[]>;
+
+  /**
    * The Offers `filter` keeps, per status (one grouped count); `filter.statuses` is ignored and
    * every status but `deleted` is counted, so each tab shows its own number.
    */
@@ -331,6 +352,13 @@ export interface OwnCatalogReader {
    * missing or archived: an empty list.
    */
   productForm(market: MarketContext, familyCode: string): Promise<ProductForm>;
+
+  /**
+   * The active platform categories a product may be filed under: the `categories` of
+   * {@link productForm}, which does not depend on the family. The product form options read it
+   * before any product exists.
+   */
+  productCategories(market: MarketContext): Promise<readonly ProductFormCategory[]>;
 
   /** The working copies of the given products (at most 100 ids), in no order. */
   findWorkingCopies(

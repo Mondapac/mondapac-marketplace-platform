@@ -11,6 +11,7 @@ import {
   type KeyboardEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
+import { portalHostOf } from './portal-host.ts';
 import { Icon, type IconName } from '../icon/icon.tsx';
 
 /** Gap between the menu and its trigger, and the least space kept to the viewport edge. */
@@ -151,28 +152,43 @@ export function ActionMenu({
     run();
   };
 
+  // A disabled button takes neither hover nor focus, so its reason would never reach a keyboard or
+  // screen-reader user: the button sits in a focusable wrapper that carries the hint as its title
+  // and its accessible description.
+  const explained = disabled === true && hint !== undefined;
+  const hintId = `${menuId}-hint`;
   return (
     <div className="inline-block">
-      <button
-        ref={trigger}
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        disabled={disabled}
-        title={hint}
-        onClick={() => setOpen((value) => !value)}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowDown' && !open && !disabled) {
-            event.preventDefault();
-            setOpen(true);
-          }
-        }}
-        className="inline-flex h-(--mp-size-control) items-center justify-center gap-2 rounded-md border border-line-control bg-surface px-4 font-medium text-fg hover:bg-muted disabled:cursor-not-allowed disabled:text-fg-muted disabled:hover:bg-surface"
+      <span
+        className="inline-block rounded-md"
+        {...(explained ? { tabIndex: 0, title: hint, 'aria-describedby': hintId } : {})}
       >
-        {label}
-        <Icon name="chevron-down" className="text-icon" />
-      </button>
+        <button
+          ref={trigger}
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={open ? menuId : undefined}
+          disabled={disabled}
+          title={hint}
+          onClick={() => setOpen((value) => !value)}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowDown' && !open && !disabled) {
+              event.preventDefault();
+              setOpen(true);
+            }
+          }}
+          className="inline-flex h-(--mp-size-control) items-center justify-center gap-2 rounded-md border border-line-control bg-surface px-4 font-medium text-fg hover:bg-muted disabled:cursor-not-allowed disabled:text-fg-muted disabled:hover:bg-surface"
+        >
+          {label}
+          <Icon name="chevron-down" className="text-icon" />
+        </button>
+        {explained ? (
+          <span id={hintId} className="sr-only">
+            {hint}
+          </span>
+        ) : null}
+      </span>
       {open
         ? createPortal(
             <div
@@ -252,7 +268,7 @@ export function ActionMenu({
                 </div>
               )}
             </div>,
-            document.body,
+            portalHostOf(trigger.current),
           )
         : null}
     </div>

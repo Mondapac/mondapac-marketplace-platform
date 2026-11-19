@@ -17,6 +17,7 @@ import type {
   OwnSortDirection,
   PendingRevisionRow,
   ProductForm,
+  ProductFormCategory,
   ProductFormField,
   ProductLabel,
   RevisionQueueFilter,
@@ -144,6 +145,7 @@ function offersWhere(
     sellerId,
     status: { in: [...filter.statuses] },
     ...(filter.listed === null ? {} : { listed: filter.listed }),
+    ...(filter.offerIds == null ? {} : { id: { in: [...filter.offerIds] } }),
     ...(part === null
       ? {}
       : {
@@ -588,6 +590,47 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
     return rows.map((row) => offerFromRow(row));
   }
 
+  async listOfferIds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    filter: OwnOffersFilter,
+    order: { readonly sort: OwnOfferSort; readonly direction: OwnSortDirection },
+    limit: number,
+  ): Promise<readonly Id<'Offer'>[]> {
+    const key = order.sort === 'created' ? 'id' : order.sort === 'sku' ? 'sellerSku' : 'status';
+    const rows = await this.prisma.tx(market).catalogOffer.findMany({
+      where: offersWhere(market, sellerId, filter),
+      orderBy:
+        key === 'id'
+          ? [{ id: order.direction }]
+          : [{ [key]: order.direction }, { id: order.direction }],
+      select: { id: true },
+      take: limit,
+    });
+    return rows.map((row) => row.id as Id<'Offer'>);
+  }
+
+  async listOffersByIds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    ids: readonly Id<'Offer'>[],
+  ): Promise<readonly Offer[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.tx(market).catalogOffer.findMany({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        status: { not: 'deleted' },
+        id: { in: [...ids] },
+      },
+    });
+    const byId = new Map(rows.map((row) => [row.id, row]));
+    return ids.flatMap((id) => {
+      const row = byId.get(id);
+      return row === undefined ? [] : [offerFromRow(row)];
+    });
+  }
+
   async countOffersByStatus(
     market: MarketContext,
     sellerId: Id<'Seller'>,
@@ -855,20 +898,21 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
           })),
       });
     }
-    const categories = await tx.catalogPlatformCategory.findMany({
+    return { fields, categories: await this.productCategories(market) };
+  }
+
+  async productCategories(market: MarketContext): Promise<readonly ProductFormCategory[]> {
+    const categories = await this.prisma.tx(market).catalogPlatformCategory.findMany({
       where: { marketId: market.marketId, status: 'active', publishedRevisionId: { not: null } },
       include: { publishedRevision: { include: { names: true } } },
       orderBy: { slug: 'asc' },
     });
-    return {
-      fields,
-      categories: categories.map((row) => ({
-        categoryId: row.id,
-        parentId: row.parentId,
-        names: Object.fromEntries(
-          (row.publishedRevision?.names ?? []).map((entry) => [entry.locale, entry.name]),
-        ),
-      })),
-    };
+    return categories.map((row) => ({
+      categoryId: row.id,
+      parentId: row.parentId,
+      names: Object.fromEntries(
+        (row.publishedRevision?.names ?? []).map((entry) => [entry.locale, entry.name]),
+      ),
+    }));
   }
 }

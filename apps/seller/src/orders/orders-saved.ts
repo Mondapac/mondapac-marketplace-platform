@@ -4,8 +4,16 @@
 
 import type { SavedViewProblem, SavedViewVisibility } from '@mondapac/ui';
 import type { ApiFailure } from '../api/client.ts';
-import { NO_DAYS, type Days, type SortId } from './orders-query.ts';
-import { FULFILMENT_FILTERS, type FulfilmentFilter } from './types.ts';
+import {
+  DEFAULT_QUERY,
+  presetDays,
+  savedDays,
+  sortIdOf,
+  sortOf,
+  type Query,
+  type SortId,
+} from './orders-query.ts';
+import { FULFILMENT_FILTERS } from './types.ts';
 
 /** The list the order page's saved views belong to. */
 export const LIST_KEY = 'seller.ordering.orders';
@@ -37,31 +45,39 @@ export interface SavedFiltersAnswer {
   readonly limits: { readonly perOwner: number; readonly shared: number };
 }
 
-/** The document that saves what the page shows now. */
-export function payloadOf(filter: FulfilmentFilter, days: Days, sort: SortId): SavedPayload {
-  const conditions = {
-    ...(days.from === '' ? {} : { from: days.from }),
-    ...(days.to === '' ? {} : { to: days.to }),
-  };
+/**
+ * The document that saves what the page shows now. A saved filter keeps calendar days, not the
+ * name of a preset, so "Last 7 days" is saved as the days it means today.
+ */
+export function payloadOf(query: Query, zone: string, now: Date): SavedPayload {
+  const days =
+    query.filters.paid === undefined ? query.days : presetDays(query.filters.paid, zone, now);
+  const conditions =
+    days === null
+      ? {}
+      : {
+          ...(days.from === undefined ? {} : { from: days.from }),
+          ...(days.to === undefined ? {} : { to: days.to }),
+        };
+  const sort = sortIdOf(query.sort, query.direction);
   return {
     v: 1,
-    tab: filter,
+    tab: query.tab,
     ...(Object.keys(conditions).length === 0 ? {} : { filters: conditions }),
     ...(sort === 'newest' ? {} : { sort }),
   };
 }
 
-/** The tab, days and sort a saved view opens. */
-export function stateOf(payload: SavedPayload): {
-  filter: FulfilmentFilter;
-  days: Days;
-  sort: SortId;
-} {
-  const tab = FULFILMENT_FILTERS.find((id) => id === payload.tab) ?? 'all';
+/** The query a saved view opens: its tab, days and sort, on the first page. */
+export function queryOf(payload: SavedPayload): Query {
+  const { from, to } = payload.filters ?? {};
+  const { sort, direction } = sortOf(payload.sort ?? 'newest');
   return {
-    filter: tab,
-    days: { ...NO_DAYS, from: payload.filters?.from ?? '', to: payload.filters?.to ?? '' },
-    sort: payload.sort ?? 'newest',
+    ...DEFAULT_QUERY,
+    tab: FULFILMENT_FILTERS.find((id) => id === payload.tab) ?? 'all',
+    days: savedDays(from, to),
+    sort,
+    direction,
   };
 }
 

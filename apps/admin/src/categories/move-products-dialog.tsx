@@ -2,8 +2,9 @@
 
 import { Banner, Button, Dialog, SkeletonRows, TextAreaField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { useApprovalAction, useSentForApproval } from '../shared/review-note.tsx';
 import { CategoryProblemBanner } from './category-problem.tsx';
 import {
   MAX_MISSES,
@@ -212,9 +213,12 @@ export function MoveProductsDialog({
   rows,
   locale,
   csrfToken,
+  reviewed = false,
   onClose,
   onReload,
 }: {
+  /** Where the Market reviews area catalogue the move waits for another admin's approval. */
+  readonly reviewed?: boolean;
   readonly categoryId: string;
   readonly name: string;
   /** Every category of the tree, in tree order. */
@@ -227,6 +231,7 @@ export function MoveProductsDialog({
   readonly onReload: () => void;
 }) {
   const t = useTranslations('categories.move-products');
+  const actionLabel = useApprovalAction();
   const call = useCategoryCall(csrfToken, 'move-products');
   const [target, setTarget] = useState<string | null>(null);
   const [reason, setReason] = useState('');
@@ -252,9 +257,12 @@ export function MoveProductsDialog({
   const noteId = useId();
   const heading = useRef<HTMLHeadingElement>(null);
   const finished = progress.kind === 'job' && isFinished(progress.job);
+  const sentForApproval = useSentForApproval();
 
   // The form is gone once the job is queued: focus goes to the progress heading, not to the page.
-  useEffect(() => {
+  // A layout effect, so focus moves in the same commit that shows the heading (a passive effect
+  // runs in a later task and can lose the race with a test or user that reads focus right away).
+  useLayoutEffect(() => {
     if (started !== null) heading.current?.focus();
   }, [started]);
 
@@ -280,7 +288,7 @@ export function MoveProductsDialog({
 
   async function submit() {
     if (!ready || target === null) return;
-    const answer = await call.run<MoveStarted>(
+    const answer = await call.run<MoveStarted | { readonly request: unknown }>(
       'POST',
       `${API_CATEGORIES}/${categoryId}/move-products`,
       {
@@ -288,7 +296,10 @@ export function MoveProductsDialog({
         reason: reasonOf(reason),
       },
     );
-    if (answer.ok) setStarted(answer.body);
+    if (!answer.ok) return;
+    // Sent for approval: no job yet, and the category stays as it is.
+    if (sentForApproval(answer.body)) onClose(false);
+    else setStarted(answer.body as MoveStarted);
   }
 
   const reasonError =
@@ -325,7 +336,7 @@ export function MoveProductsDialog({
                 aria-describedby={note === undefined ? undefined : noteId}
                 onClick={() => void submit()}
               >
-                {t('action')}
+                {actionLabel(t('action'), reviewed)}
               </Button>
             )}
           </>
@@ -364,7 +375,8 @@ export function MoveProductsDialog({
               ) : null}
             </>
           )}
-          <p className="m-0">{t('intro', { name })}</p>
+          <p className="m-0">{t(reviewed ? 'approval-intro' : 'intro', { name })}</p>
+          {reviewed ? <Banner tone="info">{t('approval-note')}</Banner> : null}
           <TargetPicker
             legend={t('target')}
             rows={candidates}

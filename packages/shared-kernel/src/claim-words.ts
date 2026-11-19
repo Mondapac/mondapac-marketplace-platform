@@ -1,8 +1,8 @@
 /**
  * The words and the folding every AI text guard shares (ADR-0019 R1, R13): which spellings of a
  * certification, religious-standard or diet claim a model reply must never carry. Pure, with no
- * import (shared kernel, ADR-0008). The assistant's reply guard and its list-line check use it; the
- * catalog draft guard keeps its own copy until it is moved here (follow-up).
+ * import (shared kernel, ADR-0008). The assistant's reply guard and its list-line check use it, and
+ * so does the catalog description draft guard.
  *
  * Only functions are exported: a shared regular expression could be altered by any importer.
  */
@@ -83,6 +83,8 @@ function prepare(text: string): string {
       enclosedLetter,
     )
     .replaceAll('\u00B5', 'u')
+    .replaceAll('\u0153', 'oe')
+    .replaceAll('\u0152', 'OE')
     .normalize('NFKC')
     .replace(DRAWS_NOTHING, '')
     .replaceAll('\u200D', '');
@@ -161,6 +163,61 @@ const STEM_SOURCES = [
   'βιολογικ',
   'endors',
   'afic',
+  // Malaysia (Malay) and European languages. Words that already contain a listed stem
+  // (glutenfrei, vegetariano, biologisch, zertifiziert's "zertif") are covered by it.
+  'ecolog',
+  'zertifi',
+  'sijil',
+  'disahkan',
+  'diperakui',
+  'ditauliah',
+  'sembelih',
+  'alergi',
+  'alerji',
+  'alergen',
+  'alerjen',
+  'alahan',
+  'koser',
+  'koosjer',
+  'organik',
+  'gecertific',
+  '(?:ber|pen)sijil',
+  'diiktiraf',
+  '(?:di|pen)?y?sembelih',
+  'musulman',
+  'islam(?:ique|isch|itisch|i)',
+  'hukum[\\s-]*syarak',
+  'abattage',
+  'geschacht',
+  'ritueel',
+  'coeliak|coeliaq|zoliak|celiak|cholak',
+  'glutin',
+  'vejetaryen',
+  'vejeteryan',
+  // Nordic and Finnish eco, free-from and diet wording; Malay, Turkish and German phrases.
+  'luomu',
+  '(?:laktoosi|maido)ton',
+  'gluteenit',
+  'alkoholit',
+  'vegaani',
+  'kasvisruok',
+  'krav[\\s-]*markt',
+  'svane[\\s-]*m(?:ae|a)rke',
+  'mengikut[\\s-]+syarak',
+  'sayuran[\\s-]+sahaja',
+  'vegetaal',
+  'vejetaryan',
+  'organiese',
+  'hechsher|hekhsher',
+  'xalaal',
+  'tierisch(?:e|en)[\\s-]+(?:bestandteil|inhaltsstoff|produkt)',
+  'origen[\\s-]+animal',
+  '(?:fleisch|schweine?|milch)los',
+  'kosjer|kasjer',
+  'belgeli',
+  'helal',
+  'toyyib',
+  'jakim',
 ];
 const STEMS = STEM_SOURCES.map((stem) => `${START}(?:${stem})${REST}`);
 // A stem that must end where the window ends (an optional plural aside): "hara" + "masala" is no claim.
@@ -168,6 +225,11 @@ const STRICT_STEMS = STEM_SOURCES.map((stem) => `${START}(?:${stem})(?:s|es)?${E
 
 const WORDS = [
   'bio',
+  'eko',
+  'oko',
+  'tacc',
+  'pflanzlich',
+  'plantaardig',
   'био',
   'glatt',
   'gf',
@@ -178,6 +240,9 @@ const WORDS = [
 ].map((word) => `${START}${word}${END}`);
 
 const FOODS = String.raw`(?:pork|swine|alcohol|lard|gelatin|nuts?|dairy|lactose|meat|milk|eggs?|gluten|wheat|sesame|shellfish)`;
+// Food words of the "free of" patterns in other languages. Open endings are bounded, so a long run
+// of letters cannot make the patterns backtrack far.
+const OTHER_FOODS = String.raw`(?:(?:porc|porco|cerdo|maiale|suino|schwein|varken|babi|khinzir|domuz|svin|alcool|alcohol|alkohol|alkol|alcol|gelatin|laktos|lactos|laktoz|lattos|glutin|gluten|fleisch|vlees|viande|carne|daging|kacang|nuss|nusse|nuts|noten|laitier|arachide|nott|milch|leche|lait|oeuf|huevo|sianliha|gluteeni|laktoosi|maito|flask|tenusu|susu)\p{L}{0,30}|ei|eier|telur|sut(?:u|lu|e)?|melk|latte|nuezes|produits[\s-]+laitiers)`;
 const FREE_FROM = [
   String.raw`(?:pork|alcohol|lard|gelatin|lactose|dairy|nut|egg|soy|meat|milk|wheat|sesame|shellfish|sugar|fat|msg|gmo)[\s-]*free${END}`,
   String.raw`${START}(?:no|without|free\s+from)[\s-]+(?:lactose|dairy|nuts?|pork|alcohol|lard|gelatin|sugar|meat|milk|eggs?)${END}`,
@@ -188,6 +253,14 @@ const FREE_FROM = [
   String.raw`${START}no-?(?:pork|swine)${END}`,
   String.raw`allerg`,
   String.raw`sertifi`,
+  // "Free of" in other languages: "ohne Schweinefleisch", "sans porc", "bebas babi", "senza alcol".
+  String.raw`${START}(?:sans|sin|senza|ohne|zonder|tanpa|bebas|uden|uten|utan|ilman|ohne[\s-]+zusatz[\s-]+von|sem|geen|kein\p{L}{0,2}|pas[\s-]+de|bukan|non|tiada|tidak[\s-]+ada|tidak[\s-]+mengandung(?:i)?|bebas[\s-]+daripada|ne[\s-]+contient[\s-]+pas[\s-]+de|enth[aä]lt[\s-]+kein\p{L}{0,2}|frei[\s-]+von|libre[\s-]+de|vrij[\s-]+van|fri[\s-]+(?:fr[aå]n|f[oö]r)|(?<![\p{N},.])0[,.]?0?%)[\s-]+(?:(?:lemak|bahan|unsur|dna|daripada)[\s-]+){0,2}${OTHER_FOODS}${END}`,
+  String.raw`${START}(?:uden|uten|utan)[\s-]+gris\p{L}{0,30}${END}`,
+  String.raw`${START}(?:ne[\s-]+contient[\s-]+pas|pas)[\s-]+d'${OTHER_FOODS}${END}`,
+  // Suffix forms ("alkoholfrei", "alcoholvrije", "alkolsuz"), also declined, and "içermez".
+  String.raw`${START}${OTHER_FOODS}[\s-]*(?:frei|vrij|fri)(?:e|es|er|en|em|t|tt)?${END}`,
+  String.raw`${START}${OTHER_FOODS}-?suz${END}`,
+  String.raw`${START}${OTHER_FOODS}(?:[\s-]+(?:eti|yagi))?[\s-]+(?:icermez|icermemektedir|yok)${END}`,
 ];
 
 // Arabic, Persian (spelled with the Persian letters the fold produces; no ZWNJ) and Hebrew
@@ -351,7 +424,11 @@ function replaceLeet(text: string): string {
 function skeletonOf(folded: string): string {
   return folded.replace(
     SKELETON_LETTER,
-    (letter) => SKELETON[letter.toLowerCase()] ?? SKELETON[letter] ?? letter,
+    (letter) =>
+      SKELETON[letter.toLowerCase()] ??
+      SKELETON[letter] ??
+      SKELETON[letter.toUpperCase()] ??
+      letter,
   );
 }
 
@@ -360,7 +437,10 @@ export function hasClaimWord(text: string): boolean {
   return (
     carriesClaim(folded) ||
     carriesClaim(folded.replace(L_READING, 'l')) ||
+    carriesClaim(foldForClaims(text.replace(/[\u0153\u0152]/gu, 'o'))) ||
+    carriesClaim(foldForClaims(replaceLeet(prepare(text.replace(/[\u0153\u0152]/gu, 'o'))))) ||
     carriesClaim(foldForClaims(replaceLeet(prepare(text)))) ||
+    carriesClaim(foldForClaims(replaceLeet(prepare(text).replaceAll('1', 'i')))) ||
     carriesClaim(foldForClaims(replaceLeet(prepare(text)).replaceAll('a', 'e'))) ||
     carriesClaim(foldForClaims(replaceLeet(prepare(text).replaceAll('@', 'e')))) ||
     carriesClaim(skeletonOf(folded)) ||

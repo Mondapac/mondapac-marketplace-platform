@@ -1,10 +1,11 @@
 'use client';
 
 import { Badge, Button, Card, CheckboxRow } from '@mondapac/ui';
+import { useId } from 'react';
 import { useTranslations } from 'next-intl';
 import { readable } from './format.ts';
 
-export type Blocker = 'title' | 'category' | 'tax' | 'details';
+export type Blocker = 'title' | 'type' | 'sku' | 'category' | 'tax' | 'details' | 'save';
 
 const TONE = { draft: 'neutral', published: 'success' } as const;
 
@@ -49,6 +50,7 @@ export function StatusCard({
   } | null;
 }) {
   const t = useTranslations('catalog.edit');
+  const blockersId = useId();
   return (
     <Card title={t('status.title')}>
       <div className="flex flex-wrap items-center gap-2">
@@ -70,10 +72,21 @@ export function StatusCard({
           onChange={(event) => replacePending.onChange(event.target.checked)}
         />
       )}
-      <Button disabled={pending || !canSubmit} onClick={onSubmit}>
+      <Button
+        disabled={pending}
+        softDisabled={!canSubmit}
+        aria-describedby={blockers === null ? undefined : blockersId}
+        onClick={onSubmit}
+      >
         {t('submit')}
       </Button>
-      {blockers === null ? null : <p className="text-xs text-fg-muted">{blockers}</p>}
+      <div aria-live="polite">
+        {blockers === null ? null : (
+          <p id={blockersId} className="text-sm text-fg-muted">
+            {blockers}
+          </p>
+        )}
+      </div>
     </Card>
   );
 }
@@ -95,7 +108,7 @@ export function OrganisationCard({
         <dt className="text-fg-muted">{t('scope')}</dt>
         <dd>{t('scope-own')}</dd>
         <dt className="text-fg-muted">{t('type')}</dt>
-        <dd>{readable(typeCode)}</dd>
+        <dd>{typeCode === '' ? t('type-unset') : readable(typeCode)}</dd>
       </dl>
     </Card>
   );

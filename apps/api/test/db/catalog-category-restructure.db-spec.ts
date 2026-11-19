@@ -10,7 +10,8 @@ import type { AuthorisationCheck } from '../../src/platform/authz';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../src/platform/market-config/market-config';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
-import type { CategoryRestructureDependencies } from '../../src/modules/catalog/application/categories/category-restructure';
+import type { CategoryRestructureRouteDependencies } from '../../src/modules/catalog/application/categories/category-restructure';
+import { NO_PROPOSAL, NO_REVIEW } from '../../src/modules/catalog/application/catalogue-review';
 import { CategoryArchive } from '../../src/modules/catalog/application/use-cases/category-archive.use-case';
 import { CategoryMerge } from '../../src/modules/catalog/application/use-cases/category-merge.use-case';
 import { CategoryMove } from '../../src/modules/catalog/application/use-cases/category-move.use-case';
@@ -22,10 +23,17 @@ import type { EditableCategory } from '../../src/modules/catalog/domain/category
 import { runStructural } from '../../src/modules/catalog/application/categories/category-editor';
 import { PrismaCategoryEditStore } from '../../src/modules/catalog/infrastructure/prisma-category-edit.store';
 import { PrismaPlatformCategoryRepository } from '../../src/modules/catalog/infrastructure/prisma-platform-category.repository';
+import { CATALOG_EVENTS } from '../../src/modules/catalog/domain/events';
+import { SystemClock } from '../../src/platform/clock/system-clock';
+import { EventCatalogue } from '../../src/platform/events/event-catalogue';
+import { NO_PERMISSION_KEYS } from '../../src/platform/events/outbox-writer';
+import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
+import { PrismaOutboxWriterFactory } from '../../src/platform/persistence/outbox/prisma-outbox-writer';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS, TEST_MARKETS } from '../support/test-config';
 import {
   createPersistence,
   marketOf,
+  modelMap,
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
@@ -543,7 +551,7 @@ describe.each(TEST_MARKETS)(
       let audits: AuditEntry[];
       let events: PendingEvent[];
       let asked: string[][];
-      let deps: CategoryRestructureDependencies;
+      let deps: CategoryRestructureRouteDependencies;
       let requests: PrismaTagReevaluationRequests;
       const admin = (): CallContext =>
         testCallContext(
@@ -562,8 +570,20 @@ describe.each(TEST_MARKETS)(
         );
         const admitAll: AuthorisationCheck = { check: () => Promise.resolve({ allowed: true }) };
         const ids = { next: <K extends string>() => uuid7() as Id<K> };
+        const catalogue = new EventCatalogue();
+        catalogue.register('catalog', CATALOG_EVENTS);
+        catalogue.seal();
+        const realOutbox = new PrismaOutboxWriterFactory(
+          modelMap,
+          db.service,
+          catalogue,
+          new UuidV7IdGenerator(new SystemClock()),
+          NO_PERMISSION_KEYS,
+        ).forModule('catalog');
         requests = new PrismaTagReevaluationRequests(db.service);
         deps = {
+          review: NO_REVIEW,
+          proposer: NO_PROPOSAL,
           unitOfWork: db.unitOfWork,
           store,
           restructure: store,
@@ -584,10 +604,12 @@ describe.each(TEST_MARKETS)(
               return Promise.resolve();
             },
           },
+          // The real catalog outbox (its unique key on market, aggregate and version), recording
+          // what it wrote: a fake outbox hid two events at one version (system requests, 18 Nov).
           outbox: {
-            append: (_c, batch) => {
+            append: async (context, batch, causedBy) => {
+              await realOutbox.append(context, batch, causedBy);
               events.push(...batch);
-              return Promise.resolve();
             },
           },
           clock,
@@ -642,6 +664,33 @@ describe.each(TEST_MARKETS)(
             [market.marketId, revisionId],
           )
         ).rows;
+      /** The catalog outbox rows of one category, by version. */
+      const outboxOf = async (categoryId: string) =>
+        (
+          await owner.query<{ type: string; aggregate_version: number }>(
+            `SELECT type, aggregate_version FROM catalog.outbox
+              WHERE market_id = $1 AND aggregate_id = $2 ORDER BY aggregate_version`,
+            [market.marketId, categoryId],
+          )
+        ).rows;
+      /**
+       * The acted-on category: `changed` then the action's own event, one version each (Q-K3), the
+       * row at the last; the answer carries that version and one new revision.
+       */
+      const expectTwoVersionSteps = async (answer: unknown, categoryId: string, own: string) => {
+        const row = await load(market, categoryId);
+        expect(row.version).toBe(3);
+        expect(row.revisionNo).toBe(2);
+        expect(answer).toMatchObject({
+          ok: true,
+          value: { category: { version: 3, revisionNo: 2 } },
+        });
+        expect(await outboxOf(categoryId)).toEqual([
+          { type: 'catalog.platform-category-changed.v1', aggregate_version: 2 },
+          { type: own, aggregate_version: 3 },
+        ]);
+      };
+
       /** What the product's own publish wrote: one settled request for the revision. */
       const settledPublishRequest = async (published: {
         productId: string;
@@ -678,6 +727,7 @@ describe.each(TEST_MARKETS)(
         );
         expect(answer.ok).toBe(true);
         expect(await load(market, c)).toMatchObject({ parentId: e, position: 0 });
+        await expectTwoVersionSteps(answer, c, 'catalog.platform-category-moved.v1');
         expect(asked).toEqual([[c, b, a]]);
         expect(await tagStatuses(published.productId)).toEqual(['rechecking', 'rechecking']);
         expect(await historyPaths(published.productId)).toEqual([
@@ -699,6 +749,9 @@ describe.each(TEST_MARKETS)(
         );
         expect(back.ok).toBe(true);
         expect(await requestRows(published.revisionId)).toHaveLength(1);
+        // The second move takes the next two versions on the same outbox.
+        expect((await outboxOf(c)).map((row) => row.aggregate_version)).toEqual([2, 3, 4, 5]);
+        expect((await load(market, c)).version).toBe(5);
       });
 
       it('merges: the children last under the target in their order, activities relinked, products marked', async () => {
@@ -726,6 +779,14 @@ describe.each(TEST_MARKETS)(
           status: 'merged',
           mergedIntoId: d,
         });
+        await expectTwoVersionSteps(answer, b, 'catalog.platform-category-merged.v1');
+        // The moved children get `changed` once, at their one new version.
+        for (const child of [c1, c2]) {
+          expect(await outboxOf(child)).toEqual([
+            { type: 'catalog.platform-category-changed.v1', aggregate_version: 2 },
+          ]);
+          expect((await load(market, child)).version).toBe(2);
+        }
         expect(await activityLinks(market, shop)).toEqual([d]);
         expect(await tagStatuses(published.productId)).toEqual(['rechecking']);
         expect(await requestRows(published.revisionId)).toEqual([
@@ -749,6 +810,7 @@ describe.each(TEST_MARKETS)(
         );
         expect(answer.ok).toBe(true);
         expect((await load(market, c)).status).toBe('archived');
+        await expectTwoVersionSteps(answer, c, 'catalog.platform-category-archived.v1');
         // The product keeps Zeta, under Xi: Beta and Alpha leave its path.
         expect(asked).toEqual([[c, b, a]]);
         expect(await activityLinks(market, shop)).toEqual([]);

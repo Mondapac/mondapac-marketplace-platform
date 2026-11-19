@@ -101,12 +101,17 @@ export class MemoryAdminPayoutList implements AdminPayoutListReader {
     return Promise.resolve(this.#rows(market).filter((payout) => matches(payout, filter)).length);
   }
 
-  countByState(market: MarketContext): Promise<PayoutStateCounts> {
+  countByState(
+    market: MarketContext,
+    sellerId: Id<'Seller'> | null = null,
+  ): Promise<PayoutStateCounts> {
     const counts = Object.fromEntries(PAYOUT_STATES.map((state) => [state, 0])) as Record<
       Payout['state'],
       number
     >;
-    for (const payout of this.#rows(market)) counts[payout.state] += 1;
+    for (const payout of this.#rows(market)) {
+      if (sellerId === null || payout.sellerId === sellerId) counts[payout.state] += 1;
+    }
     return Promise.resolve(counts);
   }
 
