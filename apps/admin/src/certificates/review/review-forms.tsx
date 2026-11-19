@@ -1,11 +1,20 @@
 'use client';
 
-import { Banner, Button, Dialog, Select, TextAreaField } from '@mondapac/ui';
+import {
+  Banner,
+  Button,
+  CheckboxRow,
+  Dialog,
+  Select,
+  TextAreaField,
+  TextField,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useId, useRef, useState, type FormEvent } from 'react';
 import { wordsFor } from './label.ts';
 import {
   API_CERTIFICATES,
+  CONFIRMATION_REFERENCE_MAX,
   REASON_TEXT_MAX,
   type CheckResultCode,
   type ReviewCheck,
@@ -162,6 +171,123 @@ export function ScopeForm({
       />
       <div>
         <Button type="submit" variant="secondary" loading={call.pending} disabled={call.pending}>
+          {t('save')}
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/**
+ * Records that the reviewer confirmed the certificate with its issuer (certification design 3.2
+ * rule 7). The channel is one the issuer has registered, never typed; the date, an issuer
+ * reference and both ticks (number, holder) are required. One confirmation per submission. It moves
+ * the record's version, so the page is read again after it is saved.
+ */
+export function ConfirmationForm({
+  certificateId,
+  submissionId,
+  csrfToken,
+  issuerName,
+  channels,
+}: Common & {
+  readonly issuerName: string;
+  readonly channels: readonly {
+    readonly channelId: string;
+    readonly kind: string;
+    readonly value: string;
+  }[];
+}) {
+  const t = useTranslations('certificates.review.confirmation');
+  const tr = useTranslations();
+  const call = useReviewCall(csrfToken);
+  const [channelId, setChannelId] = useState('');
+  const [confirmedOn, setConfirmedOn] = useState('');
+  const [reference, setReference] = useState('');
+  const [number, setNumber] = useState(false);
+  const [holder, setHolder] = useState(false);
+  const [checked, setChecked] = useState(false);
+  const [done, setDone] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setChecked(true);
+    if (channelId === '' || confirmedOn === '' || reference.trim() === '' || !number || !holder) {
+      return;
+    }
+    const answer = await call.run(`${API_CERTIFICATES}/${certificateId}/issuer-confirmation`, {
+      submissionId,
+      channelId,
+      confirmedOn,
+      reference: reference.trim(),
+      confirmsNumber: number,
+      confirmsHolder: holder,
+    });
+    if (answer.ok) {
+      setDone(true);
+      // The record's version moved: the page is read again so a decision names the new one.
+      window.location.reload();
+    }
+  }
+
+  return (
+    <form onSubmit={(event) => void submit(event)} noValidate className="mt-3 flex flex-col gap-3">
+      <div aria-live="polite">
+        {call.problem === null ? null : (
+          <Banner tone="critical">{tr(call.problem.key as never)}</Banner>
+        )}
+        {done ? <Banner tone="success">{t('saved')}</Banner> : null}
+      </div>
+      <p className="text-sm text-fg-muted">{t('help', { issuer: issuerName })}</p>
+      <Select
+        label={t('channel')}
+        required
+        placeholder={t('channel-placeholder')}
+        value={channelId}
+        onChange={(event) => setChannelId(event.target.value)}
+        options={channels.map((channel) => ({
+          value: channel.channelId,
+          label: `${channel.kind}: ${channel.value}`,
+        }))}
+        error={checked && channelId === '' ? t('required') : undefined}
+      />
+      <TextField
+        label={t('date')}
+        type="date"
+        required
+        value={confirmedOn}
+        onChange={(event) => setConfirmedOn(event.target.value)}
+        error={checked && confirmedOn === '' ? t('required') : undefined}
+      />
+      <TextField
+        label={t('reference')}
+        help={t('reference-help')}
+        required
+        maxLength={CONFIRMATION_REFERENCE_MAX}
+        value={reference}
+        onChange={(event) => setReference(event.target.value)}
+        error={checked && reference.trim() === '' ? t('required') : undefined}
+      />
+      <fieldset className="flex flex-col gap-2">
+        <legend className="mb-1 text-sm font-medium">{t('confirms')}</legend>
+        <CheckboxRow
+          label={t('confirms-number')}
+          checked={number}
+          onChange={(event) => setNumber(event.target.checked)}
+        />
+        <CheckboxRow
+          label={t('confirms-holder')}
+          checked={holder}
+          onChange={(event) => setHolder(event.target.checked)}
+        />
+        {checked && (!number || !holder) ? (
+          <p role="alert" className="text-sm text-fg-critical">
+            {t('both-required')}
+          </p>
+        ) : null}
+      </fieldset>
+      <div>
+        <Button type="submit" variant="secondary" loading={call.pending}>
           {t('save')}
         </Button>
       </div>

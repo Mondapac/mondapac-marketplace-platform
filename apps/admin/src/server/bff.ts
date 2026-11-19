@@ -411,6 +411,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Review one seller certificate (certification): record a check or the scope, then decide.
     'certification/admin/seller-certificates/:id/checks',
     'certification/admin/seller-certificates/:id/scope',
+    // The reviewer's confirmation with the issuer (certification), on the submission read.
+    'certification/admin/seller-certificates/:id/issuer-confirmation',
     'certification/admin/seller-certificates/:id/approve',
     'certification/admin/seller-certificates/:id/request-changes',
     'certification/admin/seller-certificates/:id/decline',

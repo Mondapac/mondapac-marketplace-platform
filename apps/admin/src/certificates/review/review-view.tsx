@@ -4,7 +4,7 @@ import { shortId } from '../../shared/short-id.ts';
 import { When } from '../../shared/when.tsx';
 import { wordsFor } from './label.ts';
 import { FullHistory, RevokeAction } from './record-forms.tsx';
-import { ChecksForm, DecisionForm, ScopeForm } from './review-forms.tsx';
+import { ChecksForm, ConfirmationForm, DecisionForm, ScopeForm } from './review-forms.tsx';
 import { type ReviewPage } from './types.ts';
 
 const ISSUER_TONE: Readonly<Record<string, BadgeTone>> = {
@@ -237,6 +237,17 @@ export function ReviewView({
         ) : (
           <p>{t('confirmation.done', { date: page.confirmation.confirmedOn })}</p>
         )}
+        {page.confirmation === null &&
+        canReview &&
+        (!decided || certificate.status === 'approved') &&
+        submission.issuer !== null &&
+        (submission.issuer.channels ?? []).length > 0 ? (
+          <ConfirmationForm
+            {...common}
+            issuerName={submission.issuer.displayName}
+            channels={submission.issuer.channels ?? []}
+          />
+        ) : null}
       </Section>
 
       <Section id="rv-dups" title={t('duplicates.title')}>

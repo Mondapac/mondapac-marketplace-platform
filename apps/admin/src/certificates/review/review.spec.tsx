@@ -16,6 +16,7 @@ import type { ReviewPage } from './types.ts';
 const call = vi.mocked(callApi);
 const CERT = '0190a000-0000-7000-8000-0000000000c1';
 const SUB = '0190a000-0000-7000-8000-0000000000d1';
+const CHANNEL = '0190a000-0000-7000-8000-0000000000f1';
 const page = (over: Partial<ReviewPage> = {}): ReviewPage => ({
   certificate: {
     certificateId: CERT,
@@ -144,6 +145,101 @@ describe('review page', () => {
       location: 'Brisbane',
       scope: 'Beef',
     });
+  });
+
+  const withChannels = (
+    over: Partial<ReviewPage> = {},
+    submission: Partial<ReviewPage['submission']> = {},
+  ) =>
+    page({
+      ...over,
+      submission: {
+        ...page().submission,
+        issuer: {
+          issuerId: 'i1',
+          displayName: 'Halal Authority',
+          state: 'active',
+          channels: [{ channelId: CHANNEL, kind: 'phone', value: '+61 7 0000 0000' }],
+        },
+        ...submission,
+      },
+    });
+
+  it('records an issuer confirmation with the chosen channel and both ticks, then reloads', async () => {
+    const reload = vi.fn();
+    vi.stubGlobal('location', { ...window.location, reload });
+    call.mockResolvedValueOnce({ ok: true, status: 201, body: {} });
+    view(withChannels());
+    const save = () => fireEvent.click(screen.getByRole('button', { name: 'Record confirmation' }));
+    save();
+    expect(call).not.toHaveBeenCalled();
+    expect(screen.getByText(/Tick both/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/Channel used/), { target: { value: CHANNEL } });
+    fireEvent.change(screen.getByLabelText(/Date of the confirmation/), {
+      target: { value: '2026-11-10' },
+    });
+    fireEvent.change(screen.getByLabelText(/Issuer reference/), { target: { value: ' REF-9 ' } });
+    fireEvent.click(screen.getByLabelText('The certificate number is genuine'));
+    save();
+    expect(call).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByLabelText("The holder is the seller's business"));
+    save();
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(call.mock.calls[0]?.[1]).toContain(`${CERT}/issuer-confirmation`);
+    expect(call.mock.calls[0]?.[2]).toEqual({
+      submissionId: SUB,
+      channelId: CHANNEL,
+      confirmedOn: '2026-11-10',
+      reference: 'REF-9',
+      confirmsNumber: true,
+      confirmsHolder: true,
+    });
+    await waitFor(() => expect(reload).toHaveBeenCalledTimes(1));
+  });
+
+  it('words the refusals of a confirmation and does not reload', async () => {
+    const reload = vi.fn();
+    vi.stubGlobal('location', { ...window.location, reload });
+    call.mockResolvedValueOnce({
+      ok: false,
+      failure: { status: 409, code: 'confirmation.exists', details: undefined },
+    } as never);
+    view(withChannels());
+    fireEvent.change(screen.getByLabelText(/Channel used/), { target: { value: CHANNEL } });
+    fireEvent.change(screen.getByLabelText(/Date of the confirmation/), {
+      target: { value: '2026-11-10' },
+    });
+    fireEvent.change(screen.getByLabelText(/Issuer reference/), { target: { value: 'R' } });
+    fireEvent.click(screen.getByLabelText('The certificate number is genuine'));
+    fireEvent.click(screen.getByLabelText("The holder is the seller's business"));
+    fireEvent.click(screen.getByRole('button', { name: 'Record confirmation' }));
+    await screen.findByText('This submission already has a confirmation. Reload the page.');
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('offers the confirmation only where it can be recorded', () => {
+    // No channel registered, already confirmed, no review permission: no form.
+    view(page());
+    expect(screen.queryByRole('button', { name: 'Record confirmation' })).toBeNull();
+    cleanup();
+    view(withChannels({ confirmation: { confirmedOn: '2026-11-10', recordedAt: 'x' } }));
+    expect(screen.queryByRole('button', { name: 'Record confirmation' })).toBeNull();
+    cleanup();
+    view(withChannels(), false);
+    expect(screen.queryByRole('button', { name: 'Record confirmation' })).toBeNull();
+    cleanup();
+    // A declined submission of a record that is not approved cannot take one.
+    view(withChannels({}, { pending: false }));
+    expect(screen.queryByRole('button', { name: 'Record confirmation' })).toBeNull();
+    cleanup();
+    // An approved record takes a late one.
+    view(
+      withChannels(
+        { certificate: { ...page().certificate, status: 'approved' } },
+        { pending: false },
+      ),
+    );
+    expect(screen.getByRole('button', { name: 'Record confirmation' })).toBeTruthy();
   });
 
   it('approves with the record version read and goes back to the queue', async () => {
@@ -472,12 +568,13 @@ describe('review relay', () => {
     return upstream.mock.calls.length;
   };
 
-  it('relays the checks, scope, three decisions and revoke, and not confirmation or documents', async () => {
+  it('relays the checks, scope, confirmation, three decisions and revoke, and not documents', async () => {
     const base = `certification/admin/seller-certificates/${CERT}`;
     for (const action of ['checks', 'scope', 'approve', 'request-changes', 'decline', 'revoke']) {
       expect(await send('POST', `${base}/${action}`)).toBe(1);
     }
-    expect(await send('POST', `${base}/issuer-confirmation`)).toBe(0);
+    expect(await send('POST', `${base}/issuer-confirmation`)).toBe(1);
+    expect(await send('GET', `${base}/issuer-confirmation`)).toBe(0);
     expect(await send('GET', `${base}/documents/${SUB}`)).toBe(0);
     expect(await send('POST', 'certification/admin/seller-certificates/not-an-id/approve')).toBe(0);
   });
