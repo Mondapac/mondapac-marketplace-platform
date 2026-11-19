@@ -51,6 +51,14 @@ import { IssuerRequestAnswer } from '../application/use-cases/issuer-request-ans
 import { IssuerRequestDocumentRead } from '../application/use-cases/issuer-request-document-read.use-case';
 import { IssuerRequestRead } from '../application/use-cases/issuer-request-read.use-case';
 import { IssuerRequestsQueue } from '../application/use-cases/issuer-requests-queue.use-case';
+import { IssuerRequestEditProbe } from '../application/use-cases/issuer-request-edit-probe.use-case';
+import { IssuerRequestsExport } from '../application/use-cases/issuer-requests-export.use-case';
+import { IssuerRequestsQuery } from '../application/use-cases/issuer-requests-query.use-case';
+import {
+  ISSUER_ROW_KEYS,
+  type IssuerRequestListDependencies,
+} from '../application/issuer-requests/issuer-request-list-flow';
+import { ExceljsSheetWriter, type SheetWriter } from '../../../platform/list-export';
 import { OwnIssuerRequestCreate } from '../application/use-cases/own-issuer-request-create.use-case';
 import {
   SendIssuerRequestMail,
@@ -60,6 +68,8 @@ import { PrismaIssuerRequestRepository } from './prisma-issuer-request.repositor
 
 const ISSUER_REQUEST_DEPENDENCIES = Symbol('CERTIFICATION_ISSUER_REQUEST_DEPENDENCIES');
 const ISSUER_REQUEST_MAIL_DEPENDENCIES = Symbol('CERTIFICATION_ISSUER_REQUEST_MAIL_DEPENDENCIES');
+
+const ISSUER_REQUEST_LIST_DEPENDENCIES = Symbol('CERTIFICATION_ISSUER_REQUEST_LIST_DEPENDENCIES');
 
 const issuerRequestUseCases = [
   OwnIssuerRequestCreate,
@@ -178,5 +188,36 @@ export const issuerRequestProviders: readonly Provider[] = [
     useFactory: (gate: UseCaseGate, deps: IssuerRequestMailDependencies) =>
       new SendIssuerRequestMail(gate, deps),
   },
+  {
+    provide: IssuerRequestEditProbe,
+    inject: [USE_CASE_GATE],
+    useFactory: (gate: UseCaseGate) => new IssuerRequestEditProbe(gate),
+  },
+  {
+    // The super list (list 36) and its export share one dependency object.
+    provide: ISSUER_REQUEST_LIST_DEPENDENCIES,
+    inject: [ISSUER_REQUEST_DEPENDENCIES, IssuerRequestEditProbe, CLOCK],
+    useFactory: (
+      deps: IssuerRequestDependencies,
+      edit: IssuerRequestEditProbe,
+      clock: Clock,
+    ): IssuerRequestListDependencies => {
+      const [editKey] = ISSUER_ROW_KEYS;
+      const sheetWriter: SheetWriter = new ExceljsSheetWriter();
+      return {
+        unitOfWork: deps.unitOfWork,
+        requests: deps.requests,
+        sellers: deps.sellers,
+        probes: { [editKey]: edit },
+        sheetWriter,
+        clock,
+      };
+    },
+  },
+  ...[IssuerRequestsQuery, IssuerRequestsExport].map((type): FactoryProvider => ({
+    provide: type,
+    inject: [USE_CASE_GATE, ISSUER_REQUEST_LIST_DEPENDENCIES],
+    useFactory: (gate: UseCaseGate, deps: IssuerRequestListDependencies) => new type(gate, deps),
+  })),
   ...useCaseProviders,
 ];

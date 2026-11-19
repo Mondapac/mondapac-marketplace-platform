@@ -3,7 +3,7 @@
 import { Banner, Tabs } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
-import { RequestsTab } from './requests-tab.tsx';
+import { RequestsList } from './requests-list.tsx';
 import { VariantTypesTab } from './variant-types-tab.tsx';
 import { VariantsList } from './variants-list.tsx';
 import type { ListPagingMode } from '../shared/paged-list/types.ts';
@@ -87,7 +87,14 @@ export function VariantsView({
       {tab === 'variants' ? (
         <VariantsList paging={paging} accountId={accountId} marketId={marketId} />
       ) : null}
-      {tab === 'waiting' ? <RequestsTab csrfToken={csrfToken} /> : null}
+      {tab === 'waiting' ? (
+        <RequestsList
+          paging={paging}
+          accountId={accountId}
+          marketId={marketId}
+          csrfToken={csrfToken}
+        />
+      ) : null}
     </div>
   );
 }

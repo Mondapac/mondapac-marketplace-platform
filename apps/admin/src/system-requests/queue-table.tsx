@@ -24,6 +24,7 @@ import {
   usePersonName,
 } from './request-parts.tsx';
 import {
+  isApproval,
   requestPath,
   subjectHref,
   type OptionalColumn,
@@ -80,7 +81,7 @@ export function useRowMenu(
           return [
             {
               id: 'reject',
-              label: t('action.reject'),
+              label: t(isApproval(row) ? 'action.approval-reject' : 'action.reject'),
               tone: 'critical',
               onSelect: () => onDecide(row, 'reject'),
             },
@@ -89,7 +90,7 @@ export function useRowMenu(
           return [
             {
               id: 'withdraw',
-              label: t('action.withdraw'),
+              label: t(isApproval(row) ? 'action.approval-withdraw' : 'action.withdraw'),
               tone: 'critical',
               onSelect: () => onDecide(row, 'withdraw'),
             },

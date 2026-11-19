@@ -177,6 +177,10 @@ model OrderingOrderLine {
   /// True when the buyer was the exclusive customer of this line's seller at placement (joined
   /// through its invite link), whether or not a lower rate applied.
   exclusiveSeller   Boolean              @default(false) @map("exclusive_seller")
+  /// On a line whose rate was lowered (`exclusive`): the rate it would have carried without it,
+  /// the seller's rate in force at placement (CHECK: only then, and never below the line's rate).
+  /// Null on every other line and on lines lowered before it was frozen.
+  commissionStandardRateBps Int?        @map("commission_standard_rate_bps")
   /// The tax rate in basis points and the tax of the line in minor units, frozen when the order
   /// was placed (ADR-0039); both null only on lines placed before tax was recorded (CHECK).
   taxRateBps        Int?                 @map("tax_rate_bps")
@@ -524,30 +528,3 @@ model OrderingSellerOrderNote {
   @@schema("ordering")
 }
 
-/// A saved view of an order list: the tab, filters and sort of the admin or the seller order list
-/// under a name, for its owner (`me`) or, on the admin list only, for every admin of the Market who
-/// can see it (`everyone`). `list_key` names the list (`admin.ordering.orders`,
-/// `seller.ordering.orders`). The payload is a closed document validated on write by the application
-/// (the CHECKs only bound its type and size). `owner_account_id` is an identity account id with no
-/// foreign key. The CHECKs, the two case-insensitive name uniques and the grants are hand-written in
-/// the migration.
-model OrderingSavedFilter {
-  id             String   @id @db.Uuid
-  marketId       String   @map("market_id") @db.VarChar(8)
-  tenantId       String   @map("tenant_id")
-  ownerAccountId String   @map("owner_account_id") @db.Uuid
-  /// me | everyone.
-  visibility     String
-  listKey        String   @map("list_key")
-  /// 1 to 60 characters, trimmed, no control character (CHECK).
-  name           String
-  payload        Json
-  /// The order of the owner's filters in the list (1 and up); set at creation.
-  position       Int
-  createdAt      DateTime @map("created_at") @db.Timestamptz(6)
-  updatedAt      DateTime @map("updated_at") @db.Timestamptz(6)
-
-  @@unique([marketId, id])
-  @@map("saved_filters")
-  @@schema("ordering")
-}
