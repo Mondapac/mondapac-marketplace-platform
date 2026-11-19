@@ -263,6 +263,18 @@ describe('Issuer requests list: Previous and next', () => {
   });
 });
 
+describe('Issuer requests list: second fixture ZZ', () => {
+  it('follows the Market paging mode and the list zone', async () => {
+    serve(() => openPage([row()], true));
+    mount({ marketId: 'ZZ', zone: 'Pacific/Auckland', paging: 'prev-next' });
+    await screen.findByText(STORE);
+    expect(paramsOf(urls()[0]!)).toMatchObject({ paging: 'prev-next', page: '1' });
+    expect(screen.getByText('Times and days are in Pacific/Auckland.')).toBeTruthy();
+    expect(screen.queryByText(/ of /)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Next' })).toHaveProperty('disabled', false);
+  });
+});
+
 describe('Issuer requests list: search', () => {
   const box = () => screen.getByRole('searchbox', { name: 'Search' });
   const ID = id(5);
@@ -638,6 +650,7 @@ describe('Issuer requests list: states', () => {
     serve(() => 'denied');
     mount();
     expect(await screen.findByText("You don't have access to issuer requests.")).toBeTruthy();
+    expect(screen.getByText(/needs the issuer view permission/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Back to dashboard' }).getAttribute('href')).toBe('/');
   });
 
@@ -956,12 +969,24 @@ describe('Issuer requests list: export', () => {
     expect(names).toEqual(['issuer-requests-2026-11-17.xlsx']);
   });
 
-  it('says so when the API refuses a file of a list cut at 500 requests', async () => {
+  it('does not offer "Select all matching" when the list is cut at 500: ticked rows still export by id', async () => {
     serve(() => pageOf([row()], { total: 60, truncated: true }));
     mount();
     await screen.findAllByText(STORE);
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all requests on this page' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Select all 60 matching' }));
+    expect(screen.queryByRole('button', { name: /^Select all .* matching$/ })).toBeNull();
+    answerWith(() => new Response('\uFEFFRequest\r\nrow 1\r\n', { status: 200, headers: CSV }));
+    confirm(await openExport());
+    expect(await screen.findByText('Exported 1 row.')).toBeTruthy();
+    expect(sent().params['ids']).toBe(id(1));
+    expect(sent().params['view']).toBeUndefined();
+  });
+
+  it('says so when the API refuses an export with 413 batch.too-large', async () => {
+    serve(() => pageOf([row()], { total: 60 }));
+    mount();
+    await screen.findAllByText(STORE);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all requests on this page' }));
     answerWith(
       () =>
         new Response(JSON.stringify({ code: 'batch.too-large', details: { max: 500 } }), {
@@ -971,6 +996,21 @@ describe('Issuer requests list: export', () => {
     );
     confirm(await openExport());
     expect(await screen.findByText(/Too many rows to export/)).toBeTruthy();
+  });
+
+  it('exports the shown columns of the second fixture ZZ, read from its own preference key', async () => {
+    window.localStorage.setItem(
+      'mp:admin:ZZ:acc-1:issuer-requests-columns',
+      JSON.stringify(['seller-id']),
+    );
+    serve(() => pageOf([row()]));
+    mount({ marketId: 'ZZ', zone: 'Pacific/Auckland' });
+    await screen.findAllByText(STORE);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all requests on this page' }));
+    answerWith(() => new Response('\uFEFFRequest\r\nrow 1\r\n', { status: 200, headers: CSV }));
+    confirm(await openExport());
+    expect(await screen.findByText('Exported 1 row.')).toBeTruthy();
+    expect(sent().params).toEqual({ format: 'csv', columns: 'seller-id', ids: id(1) });
   });
 
   it('says so when the export fails, and when one id is no longer open', async () => {

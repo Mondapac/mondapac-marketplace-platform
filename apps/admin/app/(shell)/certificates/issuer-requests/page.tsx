@@ -1,4 +1,4 @@
-import { Banner, LoadError } from '@mondapac/ui';
+import { Banner, LoadError, NoAccess } from '@mondapac/ui';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
@@ -49,14 +49,12 @@ export default async function IssuerRequestsPage({
   );
   if (!keys.includes(REQUESTS_VIEW_PERMISSION)) {
     return shell(
-      <>
-        <p className="text-fg-muted">{t('certificates.requests.no-access')}</p>
-        <p className="mt-4">
-          <a className="font-medium text-link underline" href="/">
-            {t('certificates.queue.back-home')}
-          </a>
-        </p>
-      </>,
+      <NoAccess
+        title={t('certificates.requests.no-access')}
+        body={t('certificates.requests.no-access-body')}
+        backHref="/"
+        backLabel={t('certificates.requests.back-home')}
+      />,
     );
   }
 

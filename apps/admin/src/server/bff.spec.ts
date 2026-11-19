@@ -4504,6 +4504,32 @@ describe('relay of the security alert super list', () => {
     expect(bad.url).toBe('http://api.test/security/admin/alerts/list');
   });
 
+  it('refuses a malformed issuer-request export filter or 201 ids instead of widening the file', async () => {
+    const many = Array.from({ length: 201 }, () => ID).join(',');
+    for (const query of [
+      `ids=${many}`,
+      'sellerId=nope',
+      'sellerId=',
+      'q=nope',
+      'type=Not%20A%20Code',
+      'view=other',
+      'from=2026-13',
+      'to=x',
+      'sort=x',
+      'direction=up',
+      'format=pdf',
+      'columns=secret',
+    ]) {
+      const prefix = query.startsWith('format=') ? '' : 'format=csv&';
+      const bad = await get(`certification/admin/issuer-requests/export?${prefix}${query}`);
+      expect([query.slice(0, 20), bad.response.status]).toEqual([query.slice(0, 20), 400]);
+      expect(bad.url).toBeUndefined();
+    }
+    const ids = Array.from({ length: 200 }, () => ID).join(',');
+    const { url } = await get(`certification/admin/issuer-requests/export?format=csv&ids=${ids}`);
+    expect(url).toContain(`ids=${encodeURIComponent(ids)}`);
+  });
+
   it('keeps the single-alert route apart from the list and the export', async () => {
     const one = await get(`security/admin/alerts/${ID}`);
     expect(one.response.status).toBe(404);
