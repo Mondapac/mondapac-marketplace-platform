@@ -506,6 +506,22 @@ describe('admin brands', () => {
         'csrf-1',
       );
     });
+
+    it('sends the optional reason when a live brand is archived', async () => {
+      serve({ ...lists([brand(1)]), 'POST catalog/admin/brands/': ok({ brand: brand(1) }) });
+      mount();
+      await screen.findByText('Brand 1');
+      await act('Brand 1', 'Archive…');
+      fireEvent.change(screen.getByLabelText(/Reason/), { target: { value: 'Closed down' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Archive brand' }));
+      await expectToast('Brand 1 was archived.');
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        `catalog/admin/brands/${id(1)}/archive`,
+        { version: 3, reason: 'Closed down' },
+        'csrf-1',
+      );
+    });
   });
 
   describe('merge', () => {

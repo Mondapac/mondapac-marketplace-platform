@@ -1065,6 +1065,40 @@ describe('relay of the brands list', () => {
     await relay(config, get(`?q=a%0Ab&search=${'x'.repeat(101)}&status=active`), path, refused);
     expect(refused.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/brands?status=active');
   });
+
+  it('refuses an origin country that is not two capital letters, on the list and the export', async () => {
+    for (const bad of ['nz', 'NZL', 'N', 'N%0A']) {
+      const list = upstreamOk();
+      await relay(config, get(`?originCountry=${bad}&status=active`), path, list);
+      expect(list.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/brands?status=active');
+      const file = upstreamOk();
+      await relay(
+        config,
+        new Request(
+          `http://admin.localhost:3002/api/catalog/admin/brands/export?originCountry=${bad}&format=csv`,
+          { method: 'GET', headers: { host: 'admin.localhost:3002' } },
+        ),
+        [...path, 'export'],
+        file,
+      );
+      expect(file.mock.calls[0]?.[0]).toBe(
+        'http://api.test/catalog/admin/brands/export?format=csv',
+      );
+    }
+    const ok = upstreamOk();
+    await relay(
+      config,
+      new Request(
+        'http://admin.localhost:3002/api/catalog/admin/brands/export?format=xlsx&status=draft&originCountry=NZ&q=Halal',
+        { method: 'GET', headers: { host: 'admin.localhost:3002' } },
+      ),
+      [...path, 'export'],
+      ok,
+    );
+    expect(ok.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/brands/export?format=xlsx&status=draft&originCountry=NZ&q=Halal',
+    );
+  });
 });
 
 describe('relay of the connected accounts list', () => {
