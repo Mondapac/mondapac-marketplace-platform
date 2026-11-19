@@ -8,10 +8,12 @@ import type {
   ListedSeller,
 } from '../../src/modules/sellers/application/ports/seller-list.repository';
 import type { FileTab as ListTab, ListCursor } from '../../src/modules/sellers/domain/seller-list';
+import type { SellerListOrder } from '../../src/modules/sellers/domain/seller-super-list';
 import { SellerFile } from '../../src/modules/sellers/domain/seller-file';
 import { PrismaSellerFileRepository } from '../../src/modules/sellers/infrastructure/prisma-seller-file.repository';
 import { PrismaSellerListRepository } from '../../src/modules/sellers/infrastructure/prisma-seller-list.repository';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
+import { modelCount, modelPage } from '../support/seller-list-model';
 import { TEST_MARKETS } from '../support/test-config';
 import {
   createPersistence,
@@ -591,6 +593,127 @@ describe.each(TEST_MARKETS)('the admin seller list in market %s', (code) => {
       );
 
       expect(result.ids).toEqual([]);
+    });
+  });
+  // The super list (list 15): the same tabs read by OFFSET in either order, and the filtered
+  // count, against the naive in-memory model of test/support/seller-list-model.ts.
+  describe('order, OFFSET and count of the super list (list 15)', () => {
+    const ORDERS: readonly SellerListOrder[] = [
+      { key: 'queue', direction: 'asc' },
+      { key: 'queue', direction: 'desc' },
+      { key: 'name', direction: 'asc' },
+      { key: 'name', direction: 'desc' },
+    ];
+
+    /** Files with ties on every order key, nameless files, pending, approved and complete ones. */
+    async function seed(): Promise<void> {
+      const twinA = await newFile(3, { storeName: 'Twin', address: envelope(60), area: 'open' });
+      const twinB = await newFile(3, { storeName: 'twin', address: envelope(60), area: 'closed' });
+      const nameless = await newFile(1);
+      const namelessToo = await newFile(1, { address: envelope(60), area: null });
+      const alpha = await newFile(2, {
+        storeName: 'alpha',
+        slug: `alpha-${randomUUID().slice(0, 8)}`,
+      });
+      const beta = await newFile(5, { storeName: 'Beta', area: 'open' });
+      const done = await newFile(4, { storeName: 'Done', complete: true });
+      const approved = await newFile(6, { storeName: 'Approved' });
+      const zed = await newFile(7, { storeName: 'zed', address: envelope(60), area: 'closed' });
+      await approve(approved, 60);
+      // Two submissions at the same instant, one earlier, one later; both kinds.
+      await pending(alpha, 20);
+      await pending(beta, 20, 'identity-change');
+      await pending(done, 10);
+      await pending(namelessToo, 30);
+      void [twinA, twinB, nameless, zed];
+    }
+
+    const FILTERS: readonly (readonly [ListTab, Partial<ListPageQuery>])[] = [
+      ['all', {}],
+      ['all', { areaCode: 'open' }],
+      ['incomplete', {}],
+      ['incomplete', { outsideArea: true }],
+      ['incomplete', { areaCode: 'closed' }],
+      ['awaiting-review', {}],
+      ['awaiting-review', { kind: 'onboarding' }],
+      ['awaiting-review', { areaCode: 'open' }],
+    ];
+
+    const readTab = (tab: ListTab, query: ListPageQuery) =>
+      read(() =>
+        tab === 'all'
+          ? list.all(market, query)
+          : tab === 'incomplete'
+            ? list.incomplete(market, query)
+            : list.awaitingReview(market, query),
+      );
+
+    it.each(FILTERS)(
+      '%s %j: every order, both directions, paged by OFFSET, matches the model; the count too',
+      async (tab, filter) => {
+        await seed();
+        // The model's input: every file this test made, as the list reads it.
+        const rows = await read(() => list.all(market, q({ take: 100 })));
+        expect(rows).toHaveLength(9);
+
+        const counted = await read(() => list.countMatching(market, tab, q(filter)));
+        expect(counted).toBe(modelCount(tab, rows, q(filter)));
+        expect(counted).toBeGreaterThan(0);
+
+        for (const order of ORDERS) {
+          const expected = modelPage(tab, rows, q({ ...filter, order, offset: 0, take: 100 }));
+          const pages: string[][] = [];
+          for (let offset = 0; offset <= expected.length; offset += 2) {
+            const page = await readTab(tab, q({ ...filter, order, offset, take: 2 }));
+            pages.push(idsOf(page));
+          }
+          expect([order, pages.flat()]).toEqual([order, idsOf(expected)]);
+          // The last read past the end is empty, and no page holds more than asked.
+          expect(pages[pages.length - 1]).toEqual(
+            expected.length % 2 === 0 ? [] : [expected[expected.length - 1]!.sellerId],
+          );
+          expect(pages.every((page) => page.length <= 2)).toBe(true);
+        }
+      },
+    );
+
+    it('keeps a nameless file after every name A to Z, and before them Z to A', async () => {
+      const named = await newFile(1, { storeName: 'middle' });
+      const nameless = await newFile(2);
+      const first = await newFile(3, { storeName: 'aaa' });
+
+      const asc = await read(() =>
+        list.all(market, q({ order: { key: 'name', direction: 'asc' } })),
+      );
+      const desc = await read(() =>
+        list.all(market, q({ order: { key: 'name', direction: 'desc' } })),
+      );
+
+      expect(idsOf(asc)).toEqual([first, named, nameless]);
+      expect(idsOf(desc)).toEqual([nameless, named, first]);
+    });
+
+    it('counts and pages a Market only, whatever the other Market holds', async () => {
+      const mine = await newFile(1);
+      await pending(mine, 10);
+      const foreign = await newFile(2, { marketCode: other });
+      await pending(foreign, 11, 'onboarding', other);
+      const both = { onlyIds: [mine, foreign] };
+
+      for (const tab of ['all', 'awaiting-review'] as const) {
+        expect(await read(() => list.countMatching(market, tab, q(both)))).toBe(1);
+        expect(
+          idsOf(await readTab(tab, q({ ...both, order: { key: 'queue', direction: 'asc' } }))),
+        ).toEqual([mine]);
+      }
+    });
+
+    it('leaves the keyset reads of the older list as they were when no order is given', async () => {
+      const a = await newFile(1);
+      const b = await newFile(2);
+      // An offset without an order is not read: the keyset list never skips rows.
+      const rows = await read(() => list.all(market, q({ offset: 1 })));
+      expect(idsOf(rows)).toEqual([b, a]);
     });
   });
 });
