@@ -914,6 +914,52 @@ describe.each(['AU', 'ZZ'] as const)('admin review of a seller certificate, Mark
       expect(r.outbox.events).toEqual([]);
     });
 
+    it('refuses a declined or revoked record and accepts a late one on an approved record', async () => {
+      const declined = rig();
+      const reason = declined.reasons.find((x) => x.outcomes.includes('declined'))!;
+      await declined.decline.execute(declined.actor(), {
+        certificateId: declined.certificateId,
+        submissionId: declined.submissionId,
+        version: 3,
+        reasonCode: reason.code,
+      });
+      expect(await declined.confirm.execute(declined.actor(), confirmation(declined))).toEqual({
+        ok: false,
+        error: { code: 'review.not-current-submission' },
+      });
+      expect(declined.outbox.events.map((e) => e.type)).not.toContain(
+        'certification.seller-certification-issuer-confirmed.v1',
+      );
+
+      const approved = rig();
+      const context = approved.actor();
+      await approved.recordAll(context);
+      await approved.recordScope(context);
+      await approved.approve.execute(context, {
+        certificateId: approved.certificateId,
+        submissionId: approved.submissionId,
+        version: 3,
+      });
+      expect(await approved.confirm.execute(context, confirmation(approved))).toMatchObject({
+        ok: true,
+      });
+
+      const revoked = rig();
+      const ctx = revoked.actor();
+      await revoked.recordAll(ctx);
+      await revoked.recordScope(ctx);
+      await revoked.approve.execute(ctx, {
+        certificateId: revoked.certificateId,
+        submissionId: revoked.submissionId,
+        version: 3,
+      });
+      revoked.reviews.certificate.status = 'revoked';
+      expect(await revoked.confirm.execute(ctx, confirmation(revoked))).toEqual({
+        ok: false,
+        error: { code: 'review.not-current-submission' },
+      });
+    });
+
     it('refuses a submission with no issuer', async () => {
       const r = rig({ mode: 'SELF_DECLARATION' });
       expect(await r.confirm.execute(r.actor(), confirmation(r))).toEqual({
