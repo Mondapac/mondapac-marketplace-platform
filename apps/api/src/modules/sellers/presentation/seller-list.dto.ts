@@ -8,6 +8,11 @@ import {
   SEARCH_MAX_LENGTH,
   SEARCH_MIN_LENGTH,
 } from '../domain/seller-list';
+import {
+  SELLER_LIST_EXPORT_COLUMNS,
+  SELLER_LIST_ROW_ACTIONS,
+  SELLER_LIST_SORT_KEYS,
+} from '../domain/seller-super-list';
 
 /**
  * The request of the admin seller list (sellers design 7.8; SEL-14). A POST body, so a search
@@ -268,6 +273,150 @@ export class SellerListBody {
     description:
       "True when the health of this page could not be loaded: every row's `health` is then null " +
       'because of the failure, not because the seller is unmeasured.',
+  })
+  healthUnavailable!: boolean;
+}
+
+/**
+ * The request of the Sellers super list (list 15): a POST body, so a search term never sits in a
+ * URL. Closed: any other field is `validation.failed`.
+ */
+export class SellerSuperListRequest {
+  @ApiPropertyOptional({
+    enum: LIST_TABS,
+    default: 'all',
+    description:
+      'The tab. awaiting-review, incomplete and all are read from the seller files (page numbers ' +
+      'to row 10,000). changes-needed, not-approved, approved and suspended page through the ' +
+      'access state of identity, newest first, to row 2,000, and need ' +
+      'identity.seller-access.view too (else access.denied); they take no q, kind, outsideArea, ' +
+      'areaCode or name sort.',
+  })
+  view?: (typeof LIST_TABS)[number];
+
+  @ApiPropertyOptional({ enum: LIST_KINDS, description: 'Awaiting review only.' })
+  kind?: (typeof LIST_KINDS)[number];
+
+  @ApiPropertyOptional({
+    oneOf: [{ type: 'boolean' }, { type: 'string', enum: ['true', 'false'] }],
+    description:
+      'Incomplete only: files whose saved address is outside every area that takes new sellers.',
+  })
+  outsideArea?: boolean | 'true' | 'false';
+
+  @ApiPropertyOptional({
+    description: 'The tabs read from the seller files only: one service area.',
+  })
+  areaCode?: string;
+
+  @ApiPropertyOptional({
+    minLength: SEARCH_MIN_LENGTH,
+    maxLength: SEARCH_MAX_LENGTH,
+    description:
+      'A prefix of the store name, and of the shop slug when it has only slug characters; the ' +
+      'tabs read from the seller files only. A term naming too many sellers is search.too-broad.',
+  })
+  q?: string;
+
+  @ApiPropertyOptional({
+    enum: SELLER_LIST_SORT_KEYS,
+    default: 'queue',
+    description:
+      "queue is the tab's own order (awaiting review: oldest submission first; incomplete: " +
+      'latest change first; all and the state tabs: newest seller first); name is the store ' +
+      'name, A to Z, a seller with no name last. The seller id breaks a tie. A state tab takes ' +
+      'queue, desc only.',
+  })
+  sort?: (typeof SELLER_LIST_SORT_KEYS)[number];
+
+  @ApiPropertyOptional({ enum: ['asc', 'desc'] })
+  direction?: 'asc' | 'desc';
+
+  @ApiPropertyOptional({
+    enum: ['pages', 'prev-next'],
+    default: 'pages',
+    description: "The Market's List paging setting: page numbers with a total, or Previous/Next.",
+  })
+  paging?: 'pages' | 'prev-next';
+
+  @ApiPropertyOptional({ minimum: 1, default: 1 })
+  page?: number;
+
+  @ApiPropertyOptional({ minimum: 1, maximum: 100, default: 25 })
+  pageSize?: number;
+}
+
+/** The export of the Sellers super list: the list's selector, or the chosen ids. */
+export class SellerSuperListExportRequest {
+  @ApiPropertyOptional({ enum: ['csv', 'xlsx'], default: 'csv' })
+  format?: 'csv' | 'xlsx';
+
+  @ApiPropertyOptional({
+    description: `Comma-separated optional columns (${SELLER_LIST_EXPORT_COLUMNS.join(', ')}).`,
+  })
+  columns?: string;
+
+  @ApiPropertyOptional({
+    description:
+      'Comma-separated seller ids, at most 200, no repeat; no selector or sort beside them. An ' +
+      'id with no seller file in the Market refuses the whole file (file.not-found).',
+  })
+  ids?: string;
+
+  @ApiPropertyOptional({ enum: LIST_TABS, default: 'all' }) view?: string;
+  @ApiPropertyOptional({ enum: LIST_KINDS }) kind?: string;
+  @ApiPropertyOptional({
+    oneOf: [{ type: 'boolean' }, { type: 'string', enum: ['true', 'false'] }],
+  })
+  outsideArea?: boolean | 'true' | 'false';
+  @ApiPropertyOptional() areaCode?: string;
+  @ApiPropertyOptional({ minLength: SEARCH_MIN_LENGTH, maxLength: SEARCH_MAX_LENGTH }) q?: string;
+  @ApiPropertyOptional({ enum: SELLER_LIST_SORT_KEYS }) sort?: string;
+  @ApiPropertyOptional({ enum: ['asc', 'desc'] }) direction?: string;
+}
+
+export class SellerSuperListRowView extends SellerListRowView {
+  @ApiProperty({
+    enum: SELLER_LIST_ROW_ACTIONS,
+    isArray: true,
+    description: 'The row actions the caller may run (Open, the seller file).',
+  })
+  actions!: string[];
+}
+
+export class SellerSuperListBody {
+  @ApiProperty({ enum: LIST_TABS })
+  tab!: (typeof LIST_TABS)[number];
+
+  @ApiProperty({ type: [SellerSuperListRowView] })
+  items!: SellerSuperListRowView[];
+
+  @ApiProperty({ nullable: true, type: Number, description: 'Null with `paging=prev-next`.' })
+  total!: number | null;
+
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty() hasNext!: boolean;
+
+  @ApiProperty({ type: SellerListCounts })
+  counts!: SellerListCounts;
+
+  @ApiProperty({
+    type: SellerListStateCounts,
+    nullable: true,
+    description:
+      'The counts of the identity state tabs; null when the caller does not also hold ' +
+      'identity.seller-access.view.',
+  })
+  stateCounts!: SellerListStateCounts | null;
+
+  @ApiProperty({ type: [SellerListAreaView] })
+  areas!: SellerListAreaView[];
+
+  @ApiProperty({
+    description:
+      "True when the health of this page could not be loaded (every row's `health` is then null).",
   })
   healthUnavailable!: boolean;
 }
