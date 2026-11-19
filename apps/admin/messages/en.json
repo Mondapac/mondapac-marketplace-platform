@@ -1355,6 +1355,15 @@
         "decide": "Decide…"
       }
     },
+    "file-download": {
+      "button": "Download file {n}",
+      "failure": {
+        "disabled": "Downloading files is switched off for this Market.",
+        "denied": "You may not download this file.",
+        "missing": "This file is no longer available.",
+        "unavailable": "The file could not be downloaded. Try again."
+      }
+    },
     "tabs": {
       "label": "Certificates sections",
       "queue": "Review queue",
@@ -1583,7 +1592,7 @@
         "title": "Documents",
         "none": "No file was sent.",
         "file": "File {n} · {type} · {pages, plural, one {# page} other {# pages}} · {size} MB",
-        "note": "Opening a file is recorded. Downloads are not offered on this screen yet."
+        "note": "Each download is recorded."
       },
       "business": {
         "title": "From the seller's application",
@@ -1830,7 +1839,7 @@
         "files": "Files",
         "no-files": "No file was sent.",
         "file": "File {n} · {type}{pages, plural, =0 {} one { · # page} other { · # pages}} · {size}",
-        "files-note": "Downloads are not offered on this screen yet."
+        "files-note": "Each download is recorded."
       },
       "answer": {
         "title": "Answer",

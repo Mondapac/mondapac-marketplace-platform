@@ -100,11 +100,13 @@ export function QueueTable({
       skeleton: 'date',
       cell: (row) => <TimeCell at={row.submittedAt} zone={zone} />,
     },
-    ...columns.map((column): SuperColumn<QueueListRow> => ({
-      id: column,
-      header: t(`col.${column}`),
-      cell: (row) => optional(column, row),
-    })),
+    ...columns.map(
+      (column): SuperColumn<QueueListRow> => ({
+        id: column,
+        header: t(`col.${column}`),
+        cell: (row) => optional(column, row),
+      }),
+    ),
   ];
 
   return (
