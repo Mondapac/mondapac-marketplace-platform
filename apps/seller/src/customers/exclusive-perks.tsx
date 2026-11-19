@@ -12,38 +12,29 @@ import {
   Spinner,
   TextField,
   toast,
-  type BadgeTone,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { callApi, type ApiFailure } from '../api/client.ts';
+import { callApi } from '../api/client.ts';
 import { formatInstant } from '../catalog/format.ts';
 import { formatMinor, inputOf, minorOf } from '../price/money.ts';
 import { instantOfZoned, resolveZone } from '../price/zone-time.ts';
+import { CashbackCard } from './exclusive-cashback.tsx';
+import {
+  PROMOTIONS_BASE_PATH,
+  STATUS_TONE,
+  displayStatus,
+  problemOf,
+  type OwnPromotion,
+} from './perks-shared.ts';
+
+export { displayStatus, problemOf, type OwnPromotion };
 
 export const PROMOTION_VIEW_PERMISSION = 'promotions.promotion.view';
 export const PROMOTION_MANAGE_PERMISSION = 'promotions.promotion.manage';
 
 const LIST_PATH = 'promotions/seller/promotions?type=CUSTOMER_GROUP&limit=100';
-const BASE_PATH = 'promotions/seller/promotions';
-
-export interface OwnPromotion {
-  readonly id: string;
-  readonly type: string;
-  readonly status: 'PENDING_APPROVAL' | 'ACTIVE' | 'PAUSED' | 'REJECTED';
-  readonly name: string;
-  readonly funding: string;
-  readonly startsAt: string;
-  readonly endsAt: string | null;
-  readonly currency: string;
-  readonly reward: {
-    readonly kind: 'PERCENT' | 'FIXED';
-    readonly bps: number | null;
-    readonly amountMinor: string | null;
-  };
-  readonly segment: { readonly kind: string } | null;
-  readonly pausedBy: 'ADMIN' | 'SELLER' | null;
-}
+const BASE_PATH = PROMOTIONS_BASE_PATH;
 
 /** The exclusive discount among the seller's customer-group promotions (the one with this segment). */
 export function exclusiveOf(items: readonly OwnPromotion[]): OwnPromotion | null {
@@ -52,45 +43,6 @@ export function exclusiveOf(items: readonly OwnPromotion[]): OwnPromotion | null
       (item) => item.type === 'CUSTOMER_GROUP' && item.segment?.kind === 'SELLER_EXCLUSIVE',
     ) ?? null
   );
-}
-
-const PROBLEM_BY_CODE: Readonly<Record<string, string>> = {
-  'promotions.code-taken': 'taken',
-  'promotions.too-many-active': 'too-many',
-  'promotions.not-editable': 'not-editable',
-  'promotions.invalid-state': 'invalid-state',
-  'promotions.not-found': 'not-found',
-  'access.denied': 'denied',
-  'request.csrf': 'csrf',
-};
-
-/** The message key (under `customers.perks.error`) of a failed promotion call. */
-export function problemOf(failure: ApiFailure): string {
-  if (failure.status === 429) return 'throttled';
-  const named = PROBLEM_BY_CODE[failure.code];
-  if (named !== undefined) return named;
-  if (failure.code === 'validation.failed') return 'invalid';
-  return failure.status === 0 || failure.status >= 500 ? 'unavailable' : 'unknown';
-}
-
-const STATUS_TONE: Record<string, BadgeTone> = {
-  ACTIVE: 'success',
-  PAUSED: 'attention',
-  PENDING_APPROVAL: 'info',
-  REJECTED: 'critical',
-  ENDED: 'neutral',
-};
-
-/** What the card calls a promotion: its status, or Ended once an active one passed its end. */
-export function displayStatus(promotion: OwnPromotion, now: Date): string {
-  if (
-    promotion.status === 'ACTIVE' &&
-    promotion.endsAt !== null &&
-    new Date(promotion.endsAt).getTime() < now.getTime()
-  ) {
-    return 'ENDED';
-  }
-  return promotion.status;
 }
 
 /** The body of a create or an edit: the whole definition, with the segment fixed to the shop's customers. */
@@ -276,8 +228,8 @@ type Load =
  * a seller promotion of type CUSTOMER_GROUP with the SELLER_EXCLUSIVE segment (the seller pays; the
  * segment is fixed and cannot be changed here). Create exclusive discount…, Edit…, Pause… and
  * Resume… follow the manage key. The API's own limits (the seller cap, review after publishing) are
- * shown as given. The cashback card waits for its API and the commission card for a seller route;
- * neither is drawn.
+ * shown as given. The cashback card is in exclusive-cashback.tsx (same patterns, type CASHBACK); each
+ * card hides alone on a 403. The commission card waits for a seller route and is not drawn.
  */
 export function ExclusivePerks({
   canManage,
@@ -296,6 +248,8 @@ export function ExclusivePerks({
   const [dialog, setDialog] = useState<'form' | 'pause' | 'resume' | null>(null);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  const [cashbackHidden, setCashbackHidden] = useState(false);
+  const hideCashback = useCallback(() => setCashbackHidden(true), []);
 
   const load = useCallback(async () => {
     const result = await callApi<{ readonly items: readonly OwnPromotion[] }>('GET', LIST_PATH);
@@ -344,113 +298,126 @@ export function ExclusivePerks({
     setProblem(problemOf(result.failure));
   }
 
-  if (state.kind === 'hidden') return null;
+  if (state.kind === 'hidden' && cashbackHidden) return null;
   const now = new Date();
   const status = promotion === null ? null : displayStatus(promotion, now);
   const adminPaused = promotion?.status === 'PAUSED' && promotion.pausedBy === 'ADMIN';
   return (
     <div className="flex flex-col gap-4">
       <p className="text-fg-muted">{t('intro')}</p>
-      <Card title={t('discount.title')}>
-        {state.kind === 'loading' ? (
-          <div className="flex items-center gap-2 text-fg-muted" role="status">
-            <Spinner />
-            {t('loading')}
-          </div>
-        ) : state.kind === 'off' ? (
-          <p>{t('off')}</p>
-        ) : state.kind === 'failed' ? (
-          <LoadError
-            className="w-full"
-            message={t(`error.${state.key}`)}
-            retryLabel={tl('retry')}
-            onRetry={() => {
-              setState({ kind: 'loading' });
-              void load();
-            }}
-          />
-        ) : promotion === null ? (
-          <EmptyState
-            size="compact"
-            icon="tag"
-            title={t('discount.none-title')}
-            body={t('discount.none-body')}
-            action={
-              canManage ? (
-                <Button onClick={() => setDialog('form')}>{t('discount.create')}</Button>
-              ) : undefined
-            }
-          />
-        ) : (
-          <>
-            <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-base font-semibold">{promotion.name}</h3>
-              <Badge tone={STATUS_TONE[status ?? ''] ?? 'neutral'}>
-                {t(`status.${status ?? ''}`)}
-              </Badge>
+      {state.kind === 'hidden' ? null : (
+        <Card title={t('discount.title')}>
+          {state.kind === 'loading' ? (
+            <div className="flex items-center gap-2 text-fg-muted" role="status">
+              <Spinner />
+              {t('loading')}
             </div>
-            <dl className="grid gap-2 text-sm sm:grid-cols-3">
-              <div>
-                <dt className="text-fg-muted">{t('discount.reward')}</dt>
-                <dd className="font-medium" dir="ltr">
-                  {promotion.reward.kind === 'PERCENT'
-                    ? `${(promotion.reward.bps ?? 0) / 100}%`
-                    : formatMinor(promotion.reward.amountMinor ?? '0', promotion.currency, locale)}
-                </dd>
+          ) : state.kind === 'off' ? (
+            <p>{t('off')}</p>
+          ) : state.kind === 'failed' ? (
+            <LoadError
+              className="w-full"
+              message={t(`error.${state.key}`)}
+              retryLabel={tl('retry')}
+              onRetry={() => {
+                setState({ kind: 'loading' });
+                void load();
+              }}
+            />
+          ) : promotion === null ? (
+            <EmptyState
+              size="compact"
+              icon="tag"
+              title={t('discount.none-title')}
+              body={t('discount.none-body')}
+              action={
+                canManage ? (
+                  <Button onClick={() => setDialog('form')}>{t('discount.create')}</Button>
+                ) : undefined
+              }
+            />
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-2">
+                <h3 className="text-base font-semibold">{promotion.name}</h3>
+                <Badge tone={STATUS_TONE[status ?? ''] ?? 'neutral'}>
+                  {t(`status.${status ?? ''}`)}
+                </Badge>
               </div>
-              <div>
-                <dt className="text-fg-muted">{t('discount.who')}</dt>
-                <dd className="font-medium">{t('form.who-value')}</dd>
-              </div>
-              <div>
-                <dt className="text-fg-muted">{t('discount.dates')}</dt>
-                <dd className="font-medium">
-                  {formatInstant(promotion.startsAt, locale, zone)}
-                  {promotion.endsAt === null
-                    ? ` - ${t('discount.no-end')}`
-                    : ` - ${formatInstant(promotion.endsAt, locale, zone)}`}
-                </dd>
-              </div>
-            </dl>
-            <p className="text-sm text-fg-muted">{t('form.fail-closed')}</p>
-            {promotion.status === 'PENDING_APPROVAL' ? (
-              <Banner tone="info">{t('discount.pending')}</Banner>
-            ) : null}
-            {adminPaused ? <Banner tone="attention">{t('discount.admin-paused')}</Banner> : null}
-            {canManage ? (
-              <div className="flex flex-wrap gap-2">
-                {status !== 'ENDED' ? (
-                  <Button variant="secondary" onClick={() => setDialog('form')}>
-                    {t('discount.edit')}
-                  </Button>
-                ) : null}
-                {promotion.status === 'ACTIVE' && status !== 'ENDED' ? (
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setProblem(null);
-                      setDialog('pause');
-                    }}
-                  >
-                    {t('discount.pause')}
-                  </Button>
-                ) : null}
-                {promotion.status === 'PAUSED' && !adminPaused ? (
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setProblem(null);
-                      setDialog('resume');
-                    }}
-                  >
-                    {t('discount.resume')}
-                  </Button>
-                ) : null}
-              </div>
-            ) : null}
-          </>
-        )}
-      </Card>
+              <dl className="grid gap-2 text-sm sm:grid-cols-3">
+                <div>
+                  <dt className="text-fg-muted">{t('discount.reward')}</dt>
+                  <dd className="font-medium" dir="ltr">
+                    {promotion.reward.kind === 'PERCENT'
+                      ? `${(promotion.reward.bps ?? 0) / 100}%`
+                      : formatMinor(
+                          promotion.reward.amountMinor ?? '0',
+                          promotion.currency,
+                          locale,
+                        )}
+                  </dd>
+                </div>
+                <div>
+                  <dt className="text-fg-muted">{t('discount.who')}</dt>
+                  <dd className="font-medium">{t('form.who-value')}</dd>
+                </div>
+                <div>
+                  <dt className="text-fg-muted">{t('discount.dates')}</dt>
+                  <dd className="font-medium">
+                    {formatInstant(promotion.startsAt, locale, zone)}
+                    {promotion.endsAt === null
+                      ? ` - ${t('discount.no-end')}`
+                      : ` - ${formatInstant(promotion.endsAt, locale, zone)}`}
+                  </dd>
+                </div>
+              </dl>
+              <p className="text-sm text-fg-muted">{t('form.fail-closed')}</p>
+              {promotion.status === 'PENDING_APPROVAL' ? (
+                <Banner tone="info">{t('discount.pending')}</Banner>
+              ) : null}
+              {adminPaused ? <Banner tone="attention">{t('discount.admin-paused')}</Banner> : null}
+              {canManage ? (
+                <div className="flex flex-wrap gap-2">
+                  {status !== 'ENDED' ? (
+                    <Button variant="secondary" onClick={() => setDialog('form')}>
+                      {t('discount.edit')}
+                    </Button>
+                  ) : null}
+                  {promotion.status === 'ACTIVE' && status !== 'ENDED' ? (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setProblem(null);
+                        setDialog('pause');
+                      }}
+                    >
+                      {t('discount.pause')}
+                    </Button>
+                  ) : null}
+                  {promotion.status === 'PAUSED' && !adminPaused ? (
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setProblem(null);
+                        setDialog('resume');
+                      }}
+                    >
+                      {t('discount.resume')}
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
+            </>
+          )}
+        </Card>
+      )}
+      <CashbackCard
+        canManage={canManage}
+        csrfToken={csrfToken}
+        timeZone={zone}
+        currencyHint={promotion?.currency ?? null}
+        onHidden={hideCashback}
+      />
       {dialog === 'form' ? (
         <ExclusiveDialog
           promotion={promotion}

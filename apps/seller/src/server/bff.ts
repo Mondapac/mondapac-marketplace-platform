@@ -39,7 +39,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'ordering/seller/orders',
     // The shop's invite link and its sign-up count (customers phase 4a).
     'customers/seller/invite-link',
-    // The seller's own promotions (query: `type`, `limit`): the exclusive discount is one of them.
+    // The seller's own promotions (query: `type`, `limit`): the exclusive discount and cashback are two of them.
     'promotions/seller/promotions',
     // The Offer list (list mode: tabs, search, filters, sort and page; the API validates every value).
     'catalog/seller/offers',
@@ -106,7 +106,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'customers/seller/customers/export',
     // Draws a new invite link; the old one stops working. No body.
     'customers/seller/invite-link/refresh',
-    // A seller promotion (the exclusive discount is one of type CUSTOMER_GROUP).
+    // A seller promotion (the exclusive discount is of type CUSTOMER_GROUP, the cashback of type CASHBACK).
     'promotions/seller/promotions',
     // The packing slips of a selection of orders (up to 50 ids in the body; a read).
     'ordering/seller/orders/documents',
@@ -268,8 +268,8 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   },
   // The seller's own promotions list: the type filter and the page size.
   'promotions/seller/promotions': {
-    // Only what the Exclusive perks page asks for.
-    type: /^CUSTOMER_GROUP$/,
+    // Only what the Exclusive perks page asks for: the discount and the cashback.
+    type: /^(CUSTOMER_GROUP|CASHBACK)$/,
     limit: /^[0-9]{1,3}$/,
   },
   'ordering/seller/saved-filters': { listKey: /^seller\.ordering\.orders$/ },

@@ -107,7 +107,7 @@ describe('relay allowlist for customers and exclusive perks', () => {
     expect(headers.get('x-market-id')).toBe('NZ');
   });
 
-  it('passes only type=CUSTOMER_GROUP and limit on the promotion list', async () => {
+  it('passes only type=CUSTOMER_GROUP or CASHBACK and limit on the promotion list', async () => {
     const upstream = upstreamOk();
     const path = 'promotions/seller/promotions';
     await relay(
@@ -117,9 +117,20 @@ describe('relay allowlist for customers and exclusive perks', () => {
       upstream,
     );
     await relay(config, send('GET', `${path}?type=REFERRAL`), path.split('/'), upstream);
+    await relay(
+      config,
+      send('GET', `${path}?type=CASHBACK&limit=100&x=1`),
+      path.split('/'),
+      upstream,
+    );
+    await relay(config, send('GET', `${path}?type=CASHBACK,REFERRAL`), path.split('/'), upstream);
     expect(String(upstream.mock.calls[0]?.[0] as string)).toBe(
       `http://api.test/${path}?type=CUSTOMER_GROUP&limit=100`,
     );
     expect(String(upstream.mock.calls[1]?.[0] as string)).toBe(`http://api.test/${path}`);
+    expect(String(upstream.mock.calls[2]?.[0] as string)).toBe(
+      `http://api.test/${path}?type=CASHBACK&limit=100`,
+    );
+    expect(String(upstream.mock.calls[3]?.[0] as string)).toBe(`http://api.test/${path}`);
   });
 });

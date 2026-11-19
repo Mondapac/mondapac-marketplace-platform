@@ -4262,7 +4262,7 @@
         "title": "You can't open exclusive perks",
         "body": "Ask the account owner to give your role access to promotions."
       },
-      "intro": "Perks for customers who joined through your invite link. You choose the discount; the cashback and the lower commission are not shown here yet.",
+      "intro": "Perks for customers who joined through your invite link. You choose the discount and the cashback; the lower commission is applied automatically.",
       "loading": "Loading perks…",
       "off": "Promotions are not available in your Market",
       "discount": {
@@ -4279,6 +4279,65 @@
         "edit": "Edit…",
         "pause": "Pause…",
         "resume": "Resume…"
+      },
+      "cashback": {
+        "title": "Cashback for exclusive customers",
+        "none-title": "No exclusive cashback yet",
+        "none-body": "Give customers who joined through your link credit back after each delivered order.",
+        "pause": {
+          "title": "Pause this cashback?",
+          "body": "Exclusive customers are not credited for new orders until you resume it.",
+          "confirm": "Pause cashback",
+          "done": "Cashback paused"
+        },
+        "resume": {
+          "title": "Resume this cashback?",
+          "body": "Exclusive customers are credited for new orders again.",
+          "confirm": "Resume cashback",
+          "done": "Cashback resumed"
+        },
+        "current": "Current cashback",
+        "percent": "Cashback",
+        "cap": "Most per order",
+        "since": "Since",
+        "terms": "Credit is added after delivery from that store's order amount and can be spent at any MondaPac store. It is paid from your payout.",
+        "wallet-off": "Cashback needs the customer wallet, which is off in your Market.",
+        "pending": "This cashback is waiting for review by MondaPac before it applies.",
+        "admin-paused": "MondaPac paused this cashback. Only MondaPac can resume it.",
+        "form": {
+          "title-create": "Create exclusive cashback",
+          "title-edit": "Edit exclusive cashback",
+          "who": "Who:",
+          "who-value": "Your exclusive customers",
+          "percent": "Cashback (%)",
+          "percent-help": "Percent of the goods the customer paid in your store. Your Market sets the lowest and the highest.",
+          "cap": "Most credited per order ({currency})",
+          "cap-help": "The most one order of that customer is credited.",
+          "cap-minor": "Most credited per order (minor units)",
+          "cap-minor-help": "Digits only, in the smallest unit of your Market's currency, for example cents.",
+          "cancel": "Cancel",
+          "create": "Create cashback",
+          "save": "Save changes",
+          "created": "Cashback created",
+          "saved": "Cashback saved",
+          "error": {
+            "percent": "Enter a percentage like 5 or 2.5.",
+            "percent-high": "That is above the highest cashback your Market allows.",
+            "percent-low": "That is below the lowest cashback your Market allows for sellers.",
+            "cap": "Enter an amount like 20.00.",
+            "cap-minor": "Enter whole minor units, like 2000.",
+            "cap-high": "That is above the highest per-order cap your Market allows."
+          }
+        },
+        "error": {
+          "throttled": "Try again in {n, plural, one {# minute} other {# minutes}}."
+        },
+        "button": {
+          "create": "Create exclusive cashback…",
+          "edit": "Edit…",
+          "pause": "Pause…",
+          "resume": "Resume…"
+        }
       },
       "status": {
         "ACTIVE": "Active",

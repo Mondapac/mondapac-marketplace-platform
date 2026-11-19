@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 import { toast } from '@mondapac/ui';
+import { servePerks } from '../../test/serve-perks.ts';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 vi.mock('next/navigation', () => ({
@@ -305,7 +306,7 @@ describe('exclusive discount in a second Market', () => {
     pausedBy: null,
   });
   const edit = async (promotion: OwnPromotion, locale: string) => {
-    call.mockResolvedValueOnce(ok({ items: [promotion] }));
+    servePerks(call, { discount: [ok({ items: [promotion] })], writes: [ok({})] });
     render(wrap(<ExclusivePerks canManage csrfToken="c" timeZone="Australia/Brisbane" />, locale));
     fireEvent.click(await screen.findByRole('button', { name: 'Edit…' }));
   };
@@ -314,12 +315,10 @@ describe('exclusive discount in a second Market', () => {
     await edit(fixed('JPY', '500'), 'ja-JP');
     const field = screen.getByLabelText<HTMLInputElement>('Discount (JPY)');
     expect(field.value).toBe('500');
-    call.mockResolvedValueOnce(ok({}));
-    call.mockResolvedValueOnce(ok({ items: [] }));
     fireEvent.change(field, { target: { value: '750' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-    await waitFor(() => expect(call.mock.calls[1]?.[0]).toBe('PATCH'));
-    expect(call.mock.calls[1]?.[2]).toMatchObject({
+    await waitFor(() => expect(call.mock.calls.some((c) => c[0] === 'PATCH')).toBe(true));
+    expect(call.mock.calls.find((c) => c[0] === 'PATCH')?.[2]).toMatchObject({
       reward: { kind: 'FIXED', amountMinor: '750' },
       segment: { kind: 'SELLER_EXCLUSIVE' },
     });
@@ -330,12 +329,10 @@ describe('exclusive discount in a second Market', () => {
     await edit(fixed('AUD', '1250'), 'en-AU');
     const field = screen.getByLabelText<HTMLInputElement>('Discount (AUD)');
     expect(field.value).toBe('12.50');
-    call.mockResolvedValueOnce(ok({}));
-    call.mockResolvedValueOnce(ok({ items: [] }));
     fireEvent.change(field, { target: { value: '20' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
-    await waitFor(() => expect(call.mock.calls[1]?.[0]).toBe('PATCH'));
-    expect(call.mock.calls[1]?.[2]).toMatchObject({
+    await waitFor(() => expect(call.mock.calls.some((c) => c[0] === 'PATCH')).toBe(true));
+    expect(call.mock.calls.find((c) => c[0] === 'PATCH')?.[2]).toMatchObject({
       reward: { kind: 'FIXED', amountMinor: '2000' },
     });
   });
@@ -345,6 +342,6 @@ describe('exclusive discount in a second Market', () => {
     fireEvent.change(screen.getByLabelText('Discount (JPY)'), { target: { value: '5.5' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByText('Enter an amount like 12.50.')).toBeTruthy();
-    expect(call).toHaveBeenCalledTimes(1);
+    expect(call.mock.calls.some((c) => c[0] !== 'GET')).toBe(false);
   });
 });

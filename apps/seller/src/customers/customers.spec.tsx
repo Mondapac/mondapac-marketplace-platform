@@ -5,6 +5,7 @@ import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 import { decodeSetupQr } from '../../test/decode-qr.ts';
+import { servePerks } from '../../test/serve-perks.ts';
 import { expectToast } from '../../test/toast-spy.ts';
 import { sellerNavItems } from '../nav.ts';
 
@@ -434,15 +435,17 @@ describe('ExclusivePerks', () => {
   });
 
   it('shows the current discount with a status word and the manage actions', async () => {
-    call.mockResolvedValue(ok({ items: [promo()] }));
+    servePerks(call, { discount: [ok({ items: [promo()] })] });
     mount();
     expect(await screen.findByText('Friends 10')).toBeTruthy();
-    expect(screen.getByText('Active')).toBeTruthy();
+    expect(screen.getAllByText('Active').length).toBe(1);
     expect(screen.getByText('10%')).toBeTruthy();
     expect(screen.getByText('Your exclusive customers')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Edit…' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Pause…' })).toBeTruthy();
-    expect(call.mock.calls[0]?.[1]).toContain('promotions/seller/promotions?type=CUSTOMER_GROUP');
+    expect(call.mock.calls.map((c) => c[1])).toContain(
+      'promotions/seller/promotions?type=CUSTOMER_GROUP&limit=100',
+    );
   });
 
   it('is view only without the manage key, and offers Resume only for a seller pause', async () => {
@@ -458,17 +461,16 @@ describe('ExclusivePerks', () => {
   });
 
   it('creates the discount through the dialog and shows the API refusal as given', async () => {
-    call.mockResolvedValueOnce(ok({ items: [] }));
+    servePerks(call, {
+      writes: [fail(400, 'validation.failed', { fields: [{ path: 'reward', code: 'range' }] })],
+    });
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Create exclusive discount…' }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Friends' } });
     fireEvent.change(screen.getByLabelText('Discount (%)'), { target: { value: '90' } });
-    call.mockResolvedValueOnce(
-      fail(400, 'validation.failed', { fields: [{ path: 'reward', code: 'range' }] }),
-    );
     fireEvent.click(screen.getByRole('button', { name: 'Create discount' }));
     expect(await screen.findByText(/above the limit for sellers/)).toBeTruthy();
-    expect(call.mock.calls[1]).toEqual([
+    expect(call.mock.calls.find((c) => c[0] === 'POST')).toEqual([
       'POST',
       'promotions/seller/promotions',
       expect.objectContaining({
@@ -482,11 +484,14 @@ describe('ExclusivePerks', () => {
   });
 
   it('says promotions are off in the Market on 404, and hides on 403', async () => {
-    call.mockResolvedValueOnce(fail(404, 'promotions.disabled'));
+    servePerks(call, { discount: [fail(404, 'promotions.disabled')] });
     mount();
     expect(await screen.findByText('Promotions are not available in your Market')).toBeTruthy();
     cleanup();
-    call.mockResolvedValueOnce(fail(403, 'access.denied'));
+    servePerks(call, {
+      discount: [fail(403, 'access.denied')],
+      cashback: [fail(403, 'access.denied')],
+    });
     const { container } = mount();
     await waitFor(() => expect(container.textContent).toBe(''));
   });
