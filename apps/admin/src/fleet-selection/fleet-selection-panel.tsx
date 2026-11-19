@@ -498,19 +498,21 @@ export function FleetSelectionPanel({
                           })}
                     </p>
                     {canManage ? (
-                      <Menu
-                        label={t(`${P}.models.actions-for`, { name: model.name })}
-                        items={[
-                          {
-                            id: 'edit',
-                            label: t(`${P}.models.edit`),
-                            onSelect: () => {
-                              setFormProblem(null);
-                              setEditing({ kind: 'edit', model });
+                      <span className="ms-auto shrink-0">
+                        <Menu
+                          label={t(`${P}.models.actions-for`, { name: model.name })}
+                          items={[
+                            {
+                              id: 'edit',
+                              label: t(`${P}.models.edit`),
+                              onSelect: () => {
+                                setFormProblem(null);
+                                setEditing({ kind: 'edit', model });
+                              },
                             },
-                          },
-                        ]}
-                      />
+                          ]}
+                        />
+                      </span>
                     ) : null}
                   </div>
                 </li>

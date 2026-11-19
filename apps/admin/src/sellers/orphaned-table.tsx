@@ -1,4 +1,4 @@
-import { Badge, Menu, type BadgeTone } from '@mondapac/ui';
+import { Badge, CARD_TABLE, Menu, type BadgeTone } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { shortInstant } from '../shared/format.ts';
 import { known } from './format.ts';
@@ -30,44 +30,41 @@ export function OrphanedTable({
   const t = useTranslations('sellers.orphaned');
   const locale = useLocale();
   return (
-    <div className="relative overflow-x-auto rounded-lg border border-line">
-      <table className="w-full min-w-120 text-start text-sm">
+    <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
+      <table className={CARD_TABLE.table}>
         <caption className="sr-only">{t('title')}</caption>
-        <thead className="bg-muted text-fg-muted">
+        <thead className={CARD_TABLE.head}>
           <tr>
-            <th scope="col" className="whitespace-nowrap px-3 py-3 font-medium">
+            <th scope="col" className="px-4 py-3 font-medium">
               {t('col.seller')}
             </th>
-            <th scope="col" className="whitespace-nowrap px-3 py-3 font-medium">
+            <th scope="col" className="px-4 py-3 font-medium">
               {t('col.access')}
             </th>
-            <th scope="col" className="whitespace-nowrap px-3 py-3 font-medium">
+            <th scope="col" className="px-4 py-3 font-medium">
               {t('col.created')}
             </th>
-            <th scope="col" className="px-3 py-3 text-end font-medium">
+            <th scope="col" className={CARD_TABLE.actionsHead}>
               {t('col.actions')}
             </th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-line-row">
+        <tbody className={CARD_TABLE.body}>
           {rows.map((row) => {
             const state = known(row.state, ORPHAN_STATES);
             const invite = row.actions.invite;
             return (
-              <tr key={row.sellerId}>
-                <td
-                  className="whitespace-nowrap px-3 py-3 font-medium text-fg"
-                  title={row.sellerId}
-                >
+              <tr key={row.sellerId} className={CARD_TABLE.row}>
+                <td className={`${CARD_TABLE.cell} font-medium text-fg`} title={row.sellerId}>
                   {shortSellerId(row.sellerId)}
                 </td>
-                <td className="whitespace-nowrap px-3 py-3">
+                <td className={CARD_TABLE.corner}>
                   <Badge tone={TONE[state] ?? 'neutral'}>{t(`state.${state}`)}</Badge>
                 </td>
-                <td className="px-3 py-3">
+                <td className={CARD_TABLE.labelled} data-label={t('col.created')}>
                   <time dateTime={row.createdAt}>{shortInstant(row.createdAt, locale)}</time>
                 </td>
-                <td className="px-3 py-3 text-end">
+                <td className={CARD_TABLE.actions}>
                   <Menu
                     label={t('actions-for', { id: shortSellerId(row.sellerId) })}
                     items={[

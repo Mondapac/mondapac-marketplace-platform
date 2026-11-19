@@ -46,6 +46,7 @@ export function ConfirmDialog({
         : 'built-in-dialog';
   const name = action.kind === 'built-in' ? '' : action.strategy.name;
   const rate = percentOf(builtInRateBps);
+  const cancelButton = useRef<HTMLButtonElement>(null);
   const typedOk = action.kind !== 'delete' || (name.trim() !== '' && typed.trim() === name.trim());
 
   async function confirm() {
@@ -94,17 +95,24 @@ export function ConfirmDialog({
   return (
     <Dialog
       open
+      initialFocus={cancelButton}
       title={t(`${scope}.title`, { name })}
       onClose={() => {
         if (!pending) onClose();
       }}
       actions={
         <>
-          <Button variant="secondary" className="min-h-12" onClick={onClose} disabled={pending}>
+          <Button
+            ref={cancelButton}
+            variant="secondary"
+            className="min-h-12"
+            onClick={onClose}
+            disabled={pending}
+          >
             {t('cancel')}
           </Button>
           <Button
-            variant={action.kind === 'delete' ? 'destructive-solid' : 'primary'}
+            variant="destructive-solid"
             className="min-h-12"
             loading={pending}
             disabled={!typedOk && !pending}

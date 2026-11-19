@@ -267,6 +267,10 @@ describe('TaxPanel', () => {
     expect(
       screen.getByRole<HTMLButtonElement>('button', { name: 'Delete strategy' }).disabled,
     ).toBe(true);
+    typeName('GST 1');
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Delete strategy' }).disabled,
+    ).toBe(true);
     typeName('GST 10');
     fireEvent.click(screen.getByRole('button', { name: 'Delete strategy' }));
     expect(await screen.findByText(/This strategy is in force/)).toBeTruthy();

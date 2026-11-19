@@ -150,10 +150,8 @@ describe('sellers without an owner', () => {
     mount();
     fireEvent.click(await screen.findByRole('button', { name: /Actions for seller/ }));
     const item = await screen.findByRole('menuitem', { name: /Invite owner…/ });
-    expect(item.getAttribute('aria-disabled') ?? String((item as HTMLButtonElement).disabled)).toBe(
-      'true',
-    );
-    expect(screen.getByText(help)).toBeTruthy();
+    expect(item.getAttribute('aria-disabled')).toBe('true');
+    expect(within(item).getByText(help)).toBeTruthy();
   });
 
   it('sends the invitation, removes the row and says so', async () => {
