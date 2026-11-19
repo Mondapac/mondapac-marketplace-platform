@@ -4,10 +4,15 @@ import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 
+const push = vi.fn();
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() }),
+}));
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi, type ApiResult } from '../api/client.ts';
-import type { VariantPage, VariantTypeDetail, VariantTypeSummary } from './types.ts';
+import type { PagedAnswer } from '../shared/paged-list/types.ts';
+import type { VariantRow, VariantTypeDetail, VariantTypeSummary } from './types.ts';
 import { VariantsView } from './variants-view.tsx';
 
 const call = vi.mocked(callApi);
@@ -72,7 +77,7 @@ function fixtures(locales: readonly string[]) {
     sellerHelp: {},
     settingsVersion: 2,
   };
-  const page: VariantPage = {
+  const page: PagedAnswer<VariantRow> = {
     items: [
       {
         productId: id(10),
@@ -89,9 +94,14 @@ function fixtures(locales: readonly string[]) {
         sellers: 0,
         issues: ['no-seller-selling', 'duplicate-gtin'],
         missingLocales: [],
+        actions: ['open-product', 'copy-code'],
       },
     ],
-    nextAfter: id(20),
+    total: 61,
+    page: 1,
+    pageSize: 25,
+    paging: 'pages',
+    hasNext: true,
   };
   return { summary, detail, page };
 }
@@ -130,6 +140,7 @@ function mount(
     canReview?: boolean;
     tab?: 'types' | 'variants' | 'waiting';
     id?: string | null;
+    paging?: 'pages' | 'prev-next';
   } = {},
 ) {
   return render(
@@ -141,6 +152,9 @@ function mount(
         csrfToken="csrf-1"
         initialTab={props.tab ?? 'types'}
         initialId={props.id === undefined ? TYPE : props.id}
+        paging={props.paging ?? 'pages'}
+        accountId={id(99)}
+        marketId="AU"
       />
     </NextIntlClientProvider>,
   );
@@ -150,6 +164,12 @@ afterEach(() => cleanup());
 
 describe.each(MARKETS)('admin Variants page ($name)', ({ locales }) => {
   beforeEach(() => {
+    HTMLDialogElement.prototype.showModal = function showModal() {
+      this.setAttribute('open', '');
+    };
+    HTMLDialogElement.prototype.close = function close() {
+      this.removeAttribute('open');
+    };
     call.mockReset();
     window.history.replaceState(null, '', '/catalog/variants');
   });
@@ -262,34 +282,123 @@ describe.each(MARKETS)('admin Variants page ($name)', ({ locales }) => {
     ).toBeTruthy();
   });
 
-  it('lists the variants with their issues and filters by an issue chip', async () => {
+  const variantCalls = () =>
+    call.mock.calls
+      .filter(([method, path]) => method === 'GET' && path.startsWith('catalog/admin/variants?'))
+      .map(([, path]) => new URLSearchParams(path.split('?')[1]));
+
+  it('lists the variants as a super list and asks for page one in the Market paging mode', async () => {
     route(locales);
     mount({ tab: 'variants', id: null });
     expect(await screen.findByText('MP-004127-02')).toBeTruthy();
     expect(screen.getByText('9 300633 01234 5')).toBeTruthy();
-    const issues = screen.getByRole('group', { name: 'Issues' });
-    const chip = await within(issues).findByRole('button', { name: 'Missing GTIN · 388' });
-    fireEvent.click(chip);
-    await waitFor(() =>
-      expect(
-        call.mock.calls.some(
-          ([method, path]) =>
-            method === 'GET' &&
-            path.startsWith('catalog/admin/variants?') &&
-            path.includes('issue=missing-gtin'),
-        ),
-      ).toBe(true),
-    );
-    expect(chip.getAttribute('aria-pressed')).toBe('true');
+    const first = variantCalls()[0];
+    expect(first?.get('page')).toBe('1');
+    expect(first?.get('pageSize')).toBe('25');
+    expect(first?.get('paging')).toBe('pages');
+    expect(first?.get('sort')).toBe('newest');
+    expect(first?.get('direction')).toBe('desc');
+    expect(screen.getByRole('button', { name: 'Sort' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Filter' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Columns' })).toBeTruthy();
   });
 
-  it('asks for the next page after the last variant id', async () => {
+  it('keeps every row action in the Actions menu, never in the row', async () => {
     route(locales);
     mount({ tab: 'variants', id: null });
-    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
+    await screen.findByText('MP-004127-02');
+    const row = screen.getByText('MP-004127-02').closest('tr') as HTMLElement;
+    expect(within(row).queryByRole('button', { name: /^Open product|Copy/ })).toBeNull();
+    fireEvent.click(within(row).getByRole('button', { name: /Actions for/ }));
+    expect(await screen.findByRole('menuitem', { name: 'Open product' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Copy variant code' })).toBeTruthy();
+  });
+
+  it('offers only the row actions the API names', async () => {
+    const { page } = fixtures(locales);
+    const row = page.items[0] as VariantRow;
+    route(locales, {
+      'GET catalog/admin/variants': ok({ ...page, items: [{ ...row, actions: ['copy-code'] }] }),
+    });
+    mount({ tab: 'variants', id: null });
+    const cell = (await screen.findByText('MP-004127-02')).closest('tr') as HTMLElement;
+    fireEvent.click(within(cell).getByRole('button', { name: /Actions for/ }));
+    expect(screen.queryByRole('menuitem', { name: 'Open product' })).toBeNull();
+    expect(await screen.findByRole('menuitem', { name: 'Copy variant code' })).toBeTruthy();
+  });
+
+  it('shows the issues as tabs with counts and asks for the issue the tab names', async () => {
+    route(locales);
+    mount({ tab: 'variants', id: null });
+    await screen.findByText('MP-004127-02');
+    const tab = await screen.findByRole('button', { name: 'Missing GTIN (388)' });
+    fireEvent.click(tab);
     await waitFor(() =>
-      expect(call.mock.calls.some(([, path]) => path.includes(`after=${id(20)}`))).toBe(true),
+      expect(variantCalls().some((params) => params.get('issue') === 'missing-gtin')).toBe(true),
     );
+  });
+
+  it('filters by variant type, shows the chip and takes it off again', async () => {
+    route(locales);
+    mount({ tab: 'variants', id: null });
+    await screen.findByText('MP-004127-02');
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    fireEvent.change(await screen.findByLabelText('Field'), { target: { value: 'typeCode' } });
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'pack-size' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() =>
+      expect(variantCalls().some((params) => params.get('typeCode') === 'pack-size')).toBe(true),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: /Remove filter Variant type is/ }));
+    await waitFor(() => expect(variantCalls().at(-1)?.get('typeCode')).toBeNull());
+  });
+
+  it('searches after a pause and starts again at page one', async () => {
+    route(locales);
+    mount({ tab: 'variants', id: null });
+    await screen.findByText('MP-004127-02');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search variants' }), {
+      target: { value: 'basmati' },
+    });
+    await waitFor(() =>
+      expect(variantCalls().some((params) => params.get('q') === 'basmati')).toBe(true),
+    );
+    expect(variantCalls().at(-1)?.get('page')).toBe('1');
+  });
+
+  it('sends no sort and no total with Previous and next', async () => {
+    const { page } = fixtures(locales);
+    route(locales, {
+      'GET catalog/admin/variants': ok({ ...page, total: null, paging: 'prev-next' }),
+    });
+    mount({ tab: 'variants', id: null, paging: 'prev-next' });
+    await screen.findByText('MP-004127-02');
+    const first = variantCalls()[0];
+    expect(first?.get('paging')).toBe('prev-next');
+    expect(first?.get('sort')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Sort' })).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Next' })).toBeTruthy();
+  });
+
+  it('moves to the next page with the page buttons', async () => {
+    route(locales);
+    mount({ tab: 'variants', id: null });
+    await screen.findByText('MP-004127-02');
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    await waitFor(() =>
+      expect(variantCalls().some((params) => params.get('page') === '2')).toBe(true),
+    );
+  });
+
+  it('exports the current view and filters from the Bulk action menu', async () => {
+    route(locales);
+    mount({ tab: 'variants', id: null });
+    await screen.findByText('MP-004127-02');
+    const row = screen.getByText('MP-004127-02').closest('tr') as HTMLElement;
+    fireEvent.click(within(row).getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Export…' }));
+    expect(await screen.findByRole('dialog', { name: 'Export variants' })).toBeTruthy();
   });
 
   it('offers a retry when the list cannot load', async () => {

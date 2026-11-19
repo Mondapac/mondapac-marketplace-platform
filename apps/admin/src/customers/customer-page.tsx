@@ -25,6 +25,12 @@ import { numberFormat } from '../shared/intl.ts';
 import { formatMinor } from '../wallet/money.ts';
 import { RecentActivity } from './customer-activity.tsx';
 import { CustomerEditDialog } from './customer-edit.tsx';
+import {
+  CancelEmailChangeDialog,
+  CustomerEmailDialog,
+  PendingEmailBanner,
+  type PendingEmailChange,
+} from './customer-email.tsx';
 import { CustomerGroupsCard } from './customer-groups-card.tsx';
 import { CustomerMoney } from './customer-money.tsx';
 import { CustomerReviews } from './customer-reviews.tsx';
@@ -40,6 +46,7 @@ import { STATUS_PERMISSION, titleOf } from './list-types.ts';
 import { PASSWORD_RESET_SEND, SESSION_END } from './security-types.ts';
 import {
   BUYER_DELETE,
+  EMAIL_CHANGE,
   WALLET_ISSUE,
   WALLET_VIEW,
   averageMinor,
@@ -148,6 +155,8 @@ export function CustomerPage({
   const [deleteSignal, setDeleteSignal] = useState(0);
   const [pendingDeletion, setPendingDeletion] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [cancelEmailOpen, setCancelEmailOpen] = useState(false);
   // Account & security: the header's account actions and the sessions list they refresh.
   const [securityAction, setSecurityAction] = useState<SecurityAction | null>(null);
   const [sessionsVersion, setSessionsVersion] = useState(0);
@@ -313,9 +322,26 @@ export function CustomerPage({
   const walletTile = keys.has(WALLET_VIEW) && wallet !== 'off';
 
   const canEdit = keys.has(CUSTOMER_EDIT);
+  const pendingEmail = customer.pendingEmailChange ?? null;
+  const setPendingEmail = (change: PendingEmailChange | null) =>
+    setPage((current) =>
+      current.state === 'ready'
+        ? { state: 'ready', customer: { ...current.customer, pendingEmailChange: change } }
+        : current,
+    );
   const more: MenuItem[] = [
     ...(canEdit && !wide
       ? [{ id: 'edit', label: t('header.edit'), onSelect: () => setEditing(true) }]
+      : []),
+    ...(keys.has(EMAIL_CHANGE)
+      ? [
+          {
+            id: 'email',
+            label:
+              pendingEmail === null ? t('header.edit-email') : t('header.change-pending-email'),
+            onSelect: () => setEmailOpen(true),
+          },
+        ]
       : []),
     ...(keys.has(STATUS_PERMISSION)
       ? [
@@ -388,6 +414,9 @@ export function CustomerPage({
               {pendingDeletion ? (
                 <Badge tone="attention">{t('header.deletion-pending')}</Badge>
               ) : null}
+              {pendingEmail === null ? null : (
+                <Badge tone="attention">{t('header.email-pending')}</Badge>
+              )}
               <span className="text-sm text-fg-muted">
                 {t('header.joined', { date: dayOf(customer.signedUpAt, locale, zone) })}
               </span>
@@ -425,6 +454,14 @@ export function CustomerPage({
           />
         ) : null}
       </Card>
+      {pendingEmail === null ? null : (
+        <PendingEmailBanner
+          pending={pendingEmail}
+          zone={zone}
+          canCancel={keys.has(EMAIL_CHANGE)}
+          onCancel={() => setCancelEmailOpen(true)}
+        />
+      )}
       {tabs.length > 1 ? (
         <Tabs
           label={t('tabs')}
@@ -643,6 +680,29 @@ export function CustomerPage({
               ? { state: 'ready', customer: { ...current.customer, displayName } }
               : current,
           );
+          setActivityRefresh((value) => value + 1);
+        }}
+      />
+      <CustomerEmailDialog
+        open={emailOpen}
+        accountId={accountId}
+        email={customer.email}
+        pending={pendingEmail}
+        csrfToken={csrfToken}
+        onClose={() => setEmailOpen(false)}
+        onSent={(change) => {
+          setPendingEmail(change);
+          setActivityRefresh((value) => value + 1);
+        }}
+      />
+      <CancelEmailChangeDialog
+        open={cancelEmailOpen}
+        accountId={accountId}
+        pending={pendingEmail}
+        csrfToken={csrfToken}
+        onClose={() => setCancelEmailOpen(false)}
+        onCancelled={() => {
+          setPendingEmail(null);
           setActivityRefresh((value) => value + 1);
         }}
       />
