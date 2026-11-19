@@ -1,8 +1,8 @@
 'use client';
 
-import { Banner, Button, Dialog } from '@mondapac/ui';
+import { Banner, Button, Dialog, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { API_BRANDS, type BrandRow, type BrandWrap } from './types.ts';
 import { useBrandCall } from './use-brand-call.ts';
 
@@ -35,8 +35,17 @@ export function BrandConfirmDialog({
   const cancelRef = useRef<HTMLButtonElement>(null);
   const path = `${API_BRANDS}/${brand.id}/${kind === 'approve' ? 'approve' : 'archive'}`;
 
+  // Turning a proposal down or archiving a brand may carry a short reason (one line, up to 500).
+  const asksReason = kind !== 'approve';
+  const [reason, setReason] = useState('');
+
   async function confirm() {
-    const answer = await call.run<BrandWrap>('POST', path, { version: brand.version });
+    const note = reason.trim();
+    const body =
+      asksReason && note !== ''
+        ? { version: brand.version, reason: note }
+        : { version: brand.version };
+    const answer = await call.run<BrandWrap>('POST', path, body);
     if (answer.ok) onDone(answer.body.brand);
   }
 
@@ -70,6 +79,17 @@ export function BrandConfirmDialog({
       <div className="flex flex-col gap-3">
         {problem === null ? null : <Banner tone="critical">{tr(problem.key)}</Banner>}
         <p>{t('body', { name: brand.name })}</p>
+        {asksReason ? (
+          <TextField
+            label={tr('brands.confirm.reason.label')}
+            optionalLabel={tr('brands.confirm.reason.optional')}
+            help={tr('brands.confirm.reason.help')}
+            maxLength={500}
+            value={reason}
+            disabled={call.pending}
+            onChange={(event) => setReason(event.target.value.replace(/[\r\n]+/g, ' '))}
+          />
+        ) : null}
       </div>
     </Dialog>
   );

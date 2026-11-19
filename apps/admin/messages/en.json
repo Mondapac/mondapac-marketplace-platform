@@ -9209,6 +9209,11 @@
         "body": "The brand page stops answering. Products keep their brand. To fold it into another brand, merge instead.",
         "yes": "Archive brand",
         "cancel": "Cancel"
+      },
+      "reason": {
+        "label": "Reason",
+        "optional": "optional",
+        "help": "One line, up to 500 characters. It is kept with the brand."
       }
     },
     "merge": {

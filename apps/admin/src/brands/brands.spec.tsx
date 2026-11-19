@@ -460,6 +460,25 @@ describe('admin brands', () => {
       );
     });
 
+    it('sends the optional reason when a proposal is turned down', async () => {
+      serve({ ...lists([], [proposal]), 'POST catalog/admin/brands/': ok({ brand: proposal }) });
+      mount();
+      fireEvent.click(await screen.findByRole('button', { name: 'Proposed (1)' }));
+      await screen.findByText('Brand 2');
+      await act('Brand 2', 'Turn down…');
+      fireEvent.change(screen.getByLabelText(/Reason/), {
+        target: { value: '  Same as Brand 1 \n' },
+      });
+      fireEvent.click(screen.getByRole('button', { name: 'Turn down proposal' }));
+      await expectToast('The proposal Brand 2 was turned down.');
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        `catalog/admin/brands/${id(2)}/archive`,
+        { version: 5, reason: 'Same as Brand 1' },
+        'csrf-1',
+      );
+    });
+
     it('explains a proposal that is no longer a draft', async () => {
       serve({
         ...lists([], [proposal]),
