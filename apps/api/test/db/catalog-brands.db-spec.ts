@@ -516,11 +516,12 @@ describe.each(TEST_MARKETS)('catalog brands in market %s (database integration)'
       }
       const [a, b, c] = made.map((brand) => brand.state.id);
       // a: AU at T0; b: NZ one hour later; c: no country two hours later.
-      await app.query(
+      // The application role may not write these columns (the owner sets up the fixture rows).
+      await owner.query(
         "UPDATE catalog.brands SET origin_country = 'NZ', created_at = $2 WHERE id = $1",
         [b, T0.add({ hours: 1 }).toString()],
       );
-      await app.query(
+      await owner.query(
         'UPDATE catalog.brands SET origin_country = NULL, created_at = $2 WHERE id = $1',
         [c, T0.add({ hours: 2 }).toString()],
       );
