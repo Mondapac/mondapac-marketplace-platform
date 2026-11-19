@@ -26,7 +26,7 @@ const server = createServer((req, res) => {
   res
     .writeHead(200, { 'content-type': types[extname(f)] ?? 'application/octet-stream' })
     .end(readFileSync(f));
-}).listen(0);
+}).listen(0, '127.0.0.1');
 const port = server.address().port;
 const { chromium } = createRequire(import.meta.url)('playwright');
 const browser = await chromium.launch();

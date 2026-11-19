@@ -2708,6 +2708,12 @@ describe('relay of the wallet and step-up routes', () => {
     );
   });
 
+  it('refuses a malformed id search of the deletion request list instead of reading every request', async () => {
+    const refused = await run('GET', 'customers/admin/deletion-requests?q=ada', readHeaders);
+    expect(refused.response.status).toBe(400);
+    expect(refused.upstream).not.toHaveBeenCalled();
+  });
+
   it('passes the Account deletion requests super list query and its export only in the shapes the API takes', async () => {
     const listed = await run(
       'GET',
@@ -2719,7 +2725,7 @@ describe('relay of the wallet and step-up routes', () => {
     );
     const dropped = await run(
       'GET',
-      'customers/admin/deletion-requests?view=open&requestedBy=seller&q=someone@example.com&sort=account&pageSize=500&from=2026-11-01',
+      'customers/admin/deletion-requests?view=open&requestedBy=seller&sort=account&pageSize=500&from=2026-11-01',
       readHeaders,
     );
     expect(dropped.upstream.mock.calls[0]?.[0]).toBe(

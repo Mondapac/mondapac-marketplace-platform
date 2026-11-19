@@ -200,6 +200,14 @@ describe('Deletion requests list: page numbers', () => {
     ).toEqual(['Cancel request…']);
   });
 
+  it('links no account of a status it does not know', async () => {
+    serve(() => pageOf([row(3, { status: 'archived', actions: [] })]));
+    mount({ view: 'all' });
+    expect(await screen.findByText(account(3))).toBeTruthy();
+    expect(screen.queryByRole('link', { name: account(3) })).toBeNull();
+    expect(screen.queryByText('Account erased')).toBeNull();
+  });
+
   it('offers no menu on a row that names no action, and no link to an erased account', async () => {
     serve(() =>
       pageOf([
@@ -211,6 +219,7 @@ describe('Deletion requests list: page numbers', () => {
     expect(await accountLink(1)).toBeTruthy();
     expect(screen.queryByRole('link', { name: account(2) })).toBeNull();
     expect(screen.getByText(account(2))).toBeTruthy();
+    expect(screen.getByText('Account erased')).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Actions for/ })).toBeNull();
     expect(screen.getByText('In progress', { selector: 'span' })).toBeTruthy();
     expect(screen.getByText('Deleted', { selector: 'span' })).toBeTruthy();
@@ -271,7 +280,7 @@ describe('Deletion requests list: page numbers', () => {
     });
     await applyFilter('deletes', '7d');
     await waitFor(() => expect(lastParams()['scheduledBefore']).toBe('2026-11-23T20:30:00.000Z'));
-    expect(screen.getByText('Deletes is Within 7 days')).toBeTruthy();
+    expect(screen.getByText('Deletes on is Within 7 days')).toBeTruthy();
   });
 
   it('starts each sort on its own first order, and labels the first order as that', async () => {
@@ -586,7 +595,7 @@ describe('Deletion requests list: Cancel request', () => {
     await accountLink();
     fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: 'Cancel request…' }));
     const dialog = await screen.findByRole('dialog', { name: 'Cancel this deletion request?' });
-    expect(within(dialog).getByText(/The buyer is not told/)).toBeTruthy();
+    expect(within(dialog).getByText(/The buyer won't be notified/)).toBeTruthy();
     expect(within(dialog).getByText("Not saved. Don't enter personal data.")).toBeTruthy();
     expect(document.activeElement).toBe(within(dialog).getByLabelText('Reason'));
     return dialog;
@@ -793,11 +802,14 @@ describe('Deletion requests list: review follow-ups', () => {
     );
   });
 
+  const saved = vi.fn(() => 'blob:x');
   async function exportWith(response: Response) {
+    saved.mockClear();
     vi.stubGlobal(
       'fetch',
       vi.fn(() => Promise.resolve(response)),
     );
+    vi.stubGlobal('URL', Object.assign(URL, { createObjectURL: saved, revokeObjectURL: () => {} }));
     serve(() => pageOf([row()]));
     mount();
     await accountLink();
@@ -821,6 +833,8 @@ describe('Deletion requests list: review follow-ups', () => {
   it('says when the file would be too large', async () => {
     await exportWith(json(413, { code: 'batch.too-large', details: { max: 10000, total: 12000 } }));
     expect(await screen.findByText(/Too many rows to export/)).toBeTruthy();
+    // No file is offered when the export is refused.
+    expect(saved).not.toHaveBeenCalled();
   });
 
   it('says when the export filters are refused', async () => {
@@ -828,6 +842,13 @@ describe('Deletion requests list: review follow-ups', () => {
       json(400, { code: 'validation.failed', details: { fields: [{ path: 'from' }] } }),
     );
     expect(await screen.findByText(/can't be exported with its current filters/)).toBeTruthy();
+    expect(saved).not.toHaveBeenCalled();
+  });
+
+  it('says when the export service is down, and offers no file', async () => {
+    await exportWith(json(503, { code: 'customers.unavailable' }));
+    expect(await screen.findByText('Export failed. Try again.')).toBeTruthy();
+    expect(saved).not.toHaveBeenCalled();
   });
 
   it('keeps the column choice for this viewer in storage, and drops an unknown stored id', async () => {
@@ -870,7 +891,7 @@ describe('Deletion requests list: review follow-ups', () => {
     mount({ zone: 'Pacific/Auckland', marketId: 'NZ', view: 'completed' });
     await screen.findByText(account(1));
     const table = screen.getByRole('table');
-    expect(within(table).getByRole('columnheader', { name: 'Deleted' })).toBeTruthy();
+    expect(within(table).getByRole('columnheader', { name: 'Deleted on' })).toBeTruthy();
     expect(within(table).queryByRole('columnheader', { name: 'Requested by' })).toBeNull();
     expect(within(table).getAllByText(/11 Nov/).length).toBeGreaterThan(0);
     expect(within(table).queryByText(/10 Nov/)).toBeNull();

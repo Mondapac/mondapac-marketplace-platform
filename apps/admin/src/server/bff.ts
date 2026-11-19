@@ -2505,7 +2505,10 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
  * Query keys that narrow a read to one owner: a malformed value is refused (400), never dropped,
  * so a read meant for one customer can never come back as the whole Market's.
  */
-const SCOPE_KEYS: ReadonlySet<string> = new Set(['ordering/admin/orders:accountId']);
+const SCOPE_KEYS: ReadonlySet<string> = new Set([
+  'ordering/admin/orders:accountId',
+  'customers/admin/deletion-requests:q',
+]);
 
 /** Whether the request names a scope key whose value has the wrong shape. */
 function badScope(method: string, target: string, requestUrl: string): boolean {

@@ -47,8 +47,8 @@ export function exportParams(input: {
 }
 
 /**
- * The Bulk action menu of the Account deletion requests list. Money is never decided in bulk (each approval
- * is one request, with a typed confirmation and a code), so the one item is Export. The button is
+ * The Bulk action menu of the Account deletion requests list. A request is never cancelled in bulk (each
+ * cancel is one request, with a reason and a code), so the one item is Export. The button is
  * disabled until a row is selected.
  */
 export function RequestsBulk({

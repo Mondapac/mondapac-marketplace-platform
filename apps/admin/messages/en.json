@@ -7648,7 +7648,7 @@
     },
     "cancel-request": {
       "title": "Cancel this deletion request?",
-      "body": "The account is kept. The buyer is not told (email is not available yet).",
+      "body": "The account is kept. The buyer won't be notified.",
       "keep": "Keep request",
       "confirm": "Cancel request"
     },
@@ -7716,9 +7716,9 @@
         "requested": "Requested",
         "deletes-on": "Deletes on",
         "requested-by": "Requested by",
-        "cancelled": "Cancelled",
+        "cancelled": "Cancelled on",
         "cancel-reason": "Cancelled because",
-        "completed": "Deleted",
+        "completed": "Deleted on",
         "actions": "Actions"
       },
       "caption": "Account deletion requests",
@@ -7752,7 +7752,7 @@
           "requestedBy": "Requested by",
           "cancelReason": "Cancelled because",
           "requested": "Requested",
-          "deletes": "Deletes"
+          "deletes": "Deletes on"
         },
         "by": {
           "customer": "Buyer",
@@ -7775,8 +7775,8 @@
         "field": {
           "scheduled": "Deletes on",
           "requested": "Requested",
-          "cancelled": "Cancelled",
-          "completed": "Deleted"
+          "cancelled": "Cancelled on",
+          "completed": "Deleted on"
         },
         "scheduled": {
           "first": "Earliest first",
@@ -7835,7 +7835,8 @@
       },
       "notice": {
         "cancelled": "Deletion request cancelled. The account is kept."
-      }
+      },
+      "erased": "Account erased"
     }
   },
   "route": {

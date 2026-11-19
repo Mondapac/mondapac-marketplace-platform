@@ -15,6 +15,9 @@ import { shortId } from '../../shared/short-id.ts';
 import type { OptionalColumn } from './requests-columns.ts';
 import { STATUSES, type DeletionListRow } from './requests-list-types.ts';
 
+/** The statuses whose account still exists, so the account id links to the customer. */
+const LINKED_STATUSES: readonly string[] = ['pending', 'executing', 'cancelled'];
+
 const STATUS_TONE: Readonly<Record<(typeof STATUSES)[number], BadgeTone>> = {
   pending: 'attention',
   executing: 'info',
@@ -78,8 +81,14 @@ export function RequestsTable({
       header: tl('col.account'),
       primary: true,
       cell: (row) =>
-        row.status === 'completed' ? (
-          <code className="font-mono text-sm wrap-anywhere select-all">{row.accountId}</code>
+        // Only a status whose account still exists links to it; an erased or unknown one does not.
+        !LINKED_STATUSES.includes(row.status) ? (
+          <span className="flex flex-col gap-0.5">
+            <code className="font-mono text-sm wrap-anywhere select-all">{row.accountId}</code>
+            {row.status === 'completed' ? (
+              <span className="text-sm text-fg-muted">{tl('erased')}</span>
+            ) : null}
+          </span>
         ) : (
           <a
             className="font-mono text-sm font-semibold text-link underline wrap-anywhere"
