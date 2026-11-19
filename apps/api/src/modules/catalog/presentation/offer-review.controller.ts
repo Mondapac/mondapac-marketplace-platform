@@ -43,7 +43,7 @@ import {
   REVIEW_QUEUE_KINDS,
   ReviewQueueList,
 } from '../application/use-cases/review-queue-list.use-case';
-import { closedBody, pageQuery, refusalWith } from './http-answers';
+import { closedBody, numericQuery, pageQuery, refusalWith } from './http-answers';
 import {
   OfferApproveRequest,
   OfferDecided,
@@ -122,6 +122,16 @@ export class OfferReviewController {
     description: 'The last Offer id of the previous page.',
   })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 50, default 25.' })
+  @ApiQuery({ name: 'sort', required: false, enum: ['submitted'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number, 1 to 20.' })
+  @ApiQuery({ name: 'pageSize', required: false, description: '1 to 50, default 25.' })
+  @ApiQuery({
+    name: 'paging',
+    required: false,
+    enum: ['pages', 'prev-next'],
+    description: 'The Market "List paging" setting; `prev-next` gives no total.',
+  })
   @ApiQuery({ name: 'kind', required: false, enum: REVIEW_QUEUE_KINDS })
   @ApiQuery({ name: 'sellerId', required: false, description: "One seller's rows only (uuid)." })
   @ApiQuery({
@@ -148,7 +158,7 @@ export class OfferReviewController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<ReviewQueueListDto> {
-    const result = await this.queue.execute(context, flagQuery(pageQuery(query)));
+    const result = await this.queue.execute(context, numericQuery(flagQuery(pageQuery(query))));
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as ReviewQueueListDto)
       : refusalWith(OFFER_REVIEW_STATUS, result.error, response, context);

@@ -12,7 +12,12 @@ Speed mode (CLAUDE.md): no G1/G2 or design document. The owner approved the supe
 - `catalog` (admin and seller Products) and `ordering` (admin and seller Orders) use the store
   through their old repository ports; their routes, use cases and rules are unchanged.
 - The migration `20261115160000_lists_saved_filters` copies the rows of `catalog.saved_filters` and
-  `ordering.saved_filters`; the old tables are dropped one release later.
+  `ordering.saved_filters`. `20261118150000_lists_drop_old_saved_filters` drops the old tables: it
+  first copies what old pods saved after the first copy (rows created since that migration began,
+  `ON CONFLICT (id) DO NOTHING`, a name clash fails the migration) and takes a newer rename or
+  visibility change, then drops. Rows an old pod deleted after the copy stay (a filter is a
+  preference). Deploy it only when no pod of the release before the shared store runs. Before
+  deploying, compare the per-list row counts of old and new tables on a copy of production.
 
 ## B0-1b (admin)
 
@@ -35,6 +40,25 @@ closed (`v: 1`; date filters are relative presets, never dates; search text is n
   `lossBearer`, `ledger`, `requested`; sort `requested|settled|amount`.
 - `admin.ordering.documents` (the Invoices page): tab `order-confirmation|credit-note`; filter
   `issued`; sort `issued|amount`.
+
+## Certification and sellers lists (phase 3)
+
+`certification` and `sellers` register four admin lists; no migration (the `list_key` CHECK is a
+pattern). Each `viewKey` is the key its list route checks; each `shareKey` is the module's new
+unprotected `<module>.saved-filter.share` (no default role lists it yet, like
+`ordering.saved-filter.share`). The payload is one closed shape, `closedListPayloadParser`
+(`contracts/closed-list-payload.ts`): `{v: 1, view, filters?, sort?, direction?}`; date filters
+are the Sales lists' relative presets; search text, the seller link and paging are never saved.
+
+- `admin.certification.issuer-requests` (36; `certification.issuer.view`): view `all`; filters
+  `type` (a type code), `submitted` (preset); sort `submitted|type`.
+- `admin.certification.review-queue` (17; `certification.seller-certificate.view`): view
+  `all|initial|resubmission|renewal`; filters `type`, `submitted`; sort `queue|submitted|type`.
+- `admin.sellers.health-queue` (16; `sellers.seller.view`): view `all` or a health measure;
+  filters `minScore`, `maxScore` (digits 0 to 100, min not above max); sort `score|name|day`.
+- `admin.sellers.list` (15; `sellers.seller.view`): view one of the seven tabs; filters `kind`
+  (Awaiting review only), `outsideArea: true` (Incomplete only), `areaCode` (not on a state tab);
+  sort `queue|name`, and a state tab takes only `queue`, `desc` (as the list route).
 
 ## System requests queue (system-requests)
 

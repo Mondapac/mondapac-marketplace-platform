@@ -963,8 +963,9 @@ describe.each(TEST_MARKETS)(
           .set(session)
           .send({ treeVersion: 1, parentId: id<'Category'>(0xd5), reason: REASON })
           .expect(200);
+        // `changed` and `moved` for the category: two version steps (catalog data design Q-K3).
         expect(moved.body).toMatchObject({
-          category: { id: id<'Category'>(0xd3), version: 2, treeVersion: 2 },
+          category: { id: id<'Category'>(0xd3), version: 3, treeVersion: 2 },
         });
         expect(retirementChecked).toEqual([
           [id<'Category'>(0xd3), id<'Category'>(0xd2), id<'Category'>(0xd1)],

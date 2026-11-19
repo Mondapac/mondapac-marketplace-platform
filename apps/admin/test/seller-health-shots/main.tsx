@@ -25,6 +25,7 @@ const row = (n: number, storeName: string, h: ReturnType<typeof health> | null) 
   timezone: 'Australia/Brisbane',
   createdAt: '2026-10-01T00:00:00.000Z',
   lastChangedAt: '2026-11-08T01:00:00.000Z',
+  actions: ['open'],
   ...(h === undefined ? {} : { health: h }),
 });
 const items = [
@@ -38,7 +39,11 @@ const items = [
 const body = {
   tab: 'approved',
   items,
-  next: null,
+  total: items.length,
+  page: 1,
+  pageSize: 25,
+  paging: 'pages',
+  hasNext: false,
   counts: { awaitingReview: { onboarding: 0, identityChange: 0 }, incomplete: 0, all: 6 },
   areas: [{ code: 'greater-brisbane', name: 'Greater Brisbane' }],
   stateCounts: { changesNeeded: 0, notApproved: 0, approved: 6, suspended: 0 },
@@ -59,7 +64,7 @@ window.fetch = () =>
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages} timeZone="UTC">
     <main className="mx-auto max-w-7xl p-4 md:p-6">
-      <SellersList csrfToken="tok" canReview />
+      <SellersList csrfToken="tok" paging="pages" accountId="acc" marketId="AU" />
     </main>
   </NextIntlClientProvider>,
 );

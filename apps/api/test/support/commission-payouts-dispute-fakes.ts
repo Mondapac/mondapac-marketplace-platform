@@ -87,6 +87,9 @@ export class MarketLedger implements LedgerRepository {
   sums() {
     return Promise.resolve([]);
   }
+  savingsBetween(_m: MarketContext, _s: Id<'Seller'>, windows: readonly unknown[]) {
+    return Promise.resolve(windows.map(() => []));
+  }
 }
 
 export class MemoryDisputes implements DisputeRepository {

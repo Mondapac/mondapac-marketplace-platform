@@ -74,6 +74,18 @@ describe('reverseLine', () => {
     expect(reverseLine(rows, 0, 3, 3)).toEqual({ sale: 3300n, commission: 450n, base: 3000n });
   });
 
+  it('gives a lowered line’s saving back in the same cumulative proportion', () => {
+    const rows = { sale: 3300n, commission: 225n, commissionBase: 3000n, saved: 226n };
+    const parts = [
+      reverseLine(rows, 0, 1, 3),
+      reverseLine(rows, 1, 1, 3),
+      reverseLine(rows, 2, 1, 3),
+    ];
+    expect(parts.map((part) => part.saved)).toEqual([75n, 76n, 75n]);
+    expect(parts.reduce((n, part) => n + part.saved!, 0n)).toBe(226n);
+    expect(reverseLine({ ...rows, saved: null }, 0, 1, 3)).not.toHaveProperty('saved');
+  });
+
   it('keeps the commission under its base even where rounding would not', () => {
     // One cent of commission against a base of 6 over 12 units: 5 -> 6 units moves the commission
     // by 1 and the plain base by 0; the base is raised to the commission.

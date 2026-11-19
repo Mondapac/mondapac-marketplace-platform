@@ -3485,13 +3485,19 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         const sellerOrder = order.sellerOrders.find((s) => s.sellerId === sellerId)!;
         return order.lines
           .filter((l) => l.sellerOrderId === sellerOrder.id)
-          .map((l) => [l.commissionRateBps, l.commissionRateReason, l.exclusiveSeller]);
+          .map((l) => [
+            l.commissionRateBps,
+            l.commissionRateReason,
+            l.exclusiveSeller,
+            l.commissionStandardRateBps,
+          ]);
       };
+      // The lowered lines also keep the rate they would have carried (for the seller's savings).
       expect(linesOf(SELLER_A)).toEqual([
-        [750, 'exclusive', true],
-        [750, 'exclusive', true],
+        [750, 'exclusive', true, 1500],
+        [750, 'exclusive', true, 1500],
       ]);
-      expect(linesOf(SELLER_B)).toEqual([[1500, 'standard', false]]);
+      expect(linesOf(SELLER_B)).toEqual([[1500, 'standard', false, null]]);
     });
 
     it('marks the exclusive seller even when no lower rate applies', async () => {
@@ -4325,6 +4331,7 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
           currency,
           goods,
           refundedGoods: 0n,
+          succeededRefundedGoods: 0n,
           exclusiveSeller: false,
           placedAt: stored.createdAt,
           deliveredAt: T0.add({ hours: 5 }),
@@ -4373,6 +4380,8 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       const answer = await facts({ orderId: order.id, sellerOrderId: sellerOrder.id });
       // 1000 from the first, 700 - 500 = 200 from the second; the failed one counts nothing.
       expect(answer.ok && answer.value.refundedGoods).toBe(1200n);
+      // Only the first succeeded: a clawback counts 1000 (Hassan L-9).
+      expect(answer.ok && answer.value.succeededRefundedGoods).toBe(1000n);
       expect(answer.ok && answer.value.exclusiveSeller).toBe(true);
       expect(asked).toEqual([[sellerOrder.id, SELLER_A]]);
     });

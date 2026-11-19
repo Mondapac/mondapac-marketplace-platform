@@ -150,7 +150,7 @@ describe.each([
       fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
       await waitFor(() => expect(puts()).toHaveLength(1));
       expect(puts()[0]![2]).toMatchObject({ note: 'Colour first' });
-      await expectToast('Sent for review as SR-52', 'info');
+      await expectToast('Sent for review (SR-52)', 'info');
     });
 
     it('shows a 400 on note on the note field', async () => {

@@ -12,7 +12,12 @@ import {
   FleetReliabilityReverted,
   FleetReliabilitySet,
 } from '../domain/audit';
-import type { ChangeValues, RevertOutcome, RevertRequest } from '../../system-requests';
+import type {
+  ApplyOutcome,
+  ChangeValues,
+  RevertOutcome,
+  RevertRequest,
+} from '../../system-requests';
 import { DEFAULT_FLEET_ORDER, FLEET_CODES, isFleetCode, type FleetCode } from '../domain/fleet';
 import {
   DEFAULT_RELIABILITY,
@@ -29,15 +34,19 @@ import {
 
 export type { FleetSelectionView, FleetStatusView } from '../domain/fleet-selection';
 import type { ActorId } from './ports/fleet-selection.repository';
-import type { ShippingDependencies } from './shipping-dependencies';
+import type { FleetModelCreateDependencies, ShippingDependencies } from './shipping-dependencies';
 import {
   DELIVERY_REVIEW_AREA,
+  FLEET_MODEL_CREATE_SUBJECT_KIND,
   FLEET_MODEL_SUBJECT_KIND,
   FLEET_SELECTION_SUBJECT_KIND,
   FLEET_SELECTION_SUBJECT_REF,
   deliveryReview,
+  fleetModelNameRef,
+  isActingAs,
   requestRef,
   reverterOf,
+  type ShippingProposal,
   type ShippingRequestRef,
   type ShippingReview,
 } from './shipping-review';
@@ -208,38 +217,137 @@ function parseModelInput(input: {
     : { ok: false, fields };
 }
 
-/** `create-fleet-selection-model`: a new named model, version 1; the name is unique in the Market. */
+/** A created model, or the proposal filed where its create waits for a second admin's approval. */
+export type FleetModelCreateAnswer = FleetSelectionModel | ShippingProposal;
+
+export type FleetModelCreateFailure =
+  | FleetSelectionFailure
+  /** Another proposal of a model with this name waits for approval (its number). */
+  | { readonly code: 'system-requests.already-pending'; readonly pendingNumber: number };
+
+/**
+ * `create-fleet-selection-model`: a new named model, version 1; the name is unique in the Market.
+ *
+ * A model has no delete, so a reviewer could not undo its create: where the Market reviews area
+ * delivery the create waits for a second admin's approval instead (owner decision of 18 Nov 2026,
+ * "mixed"). After the same checks (the input, then the name in the open unit) the proposal is
+ * filed with the admin's `note` and nothing is written in shipping; the answer is only
+ * `{request}`. The approval creates the model through {@link createModelInUnit}
+ * (shipping-appliers.ts). Where the area is not reviewed the model is created at once, as before.
+ */
 export async function createFleetSelectionModel(
-  deps: ShippingDependencies,
+  deps: FleetModelCreateDependencies,
   context: CallContext,
-  input: { readonly name: unknown; readonly rule: unknown },
-): Promise<Result<FleetSelectionModel, FleetSelectionFailure>> {
+  input: { readonly name: unknown; readonly rule: unknown; readonly note?: unknown },
+): Promise<Result<FleetModelCreateAnswer, FleetModelCreateFailure>> {
   const admin = adminOf(context);
-  if (admin === null) return err({ code: 'access.denied' });
+  // Never in an acting-as session, reviewed or not (the proposer refuses one too).
+  if (admin === null || isActingAs(context)) return err({ code: 'access.denied' });
   const parsed = parseModelInput(input);
   if (!parsed.ok) return err({ code: 'validation.failed', fields: parsed.fields });
+  const asked = { name: parsed.name, rule: parsed.rule };
+  return deps.unitOfWork.run<FleetModelCreateAnswer, FleetModelCreateFailure>(
+    context.market,
+    async () => {
+      if (await deps.selection.nameTaken(context.market, asked.name)) {
+        return err({ code: 'shipping.fleet-model-name-taken' });
+      }
+      const proposed = await deps.proposer.proposeChange(context, {
+        area: DELIVERY_REVIEW_AREA,
+        subjectKind: FLEET_MODEL_CREATE_SUBJECT_KIND,
+        subjectRef: fleetModelNameRef(asked.name),
+        before: NO_MODEL_BEFORE,
+        after: modelProposalValues(asked),
+        note: input?.note,
+      });
+      if (!proposed.ok) return err(proposed.error);
+      const request = requestRef(proposed.value);
+      if (request !== null) return ok({ request });
+      return createModelInUnit(deps, context, admin, asked, null);
+    },
+  );
+}
+
+/**
+ * Writes a new model inside the open unit: version 1, the name checked against the Market's
+ * models, and its audit row naming the request whose approval created it (null for an admin's
+ * own create). Shared by the route and the approval of a proposed create.
+ */
+export async function createModelInUnit(
+  deps: ShippingDependencies,
+  context: CallContext,
+  admin: ActorId,
+  asked: { readonly name: string; readonly rule: SelectionRule },
+  requestId: Id<'SystemRequest'> | null,
+): Promise<Result<FleetSelectionModel, FleetSelectionFailure>> {
   const now: Temporal.Instant = deps.clock.now();
   const model: FleetSelectionModel = {
     id: deps.ids.next<'FleetSelectionModel'>(),
-    name: parsed.name,
-    rule: parsed.rule,
+    name: asked.name,
+    rule: asked.rule,
     version: 1,
     createdAt: now,
     updatedAt: now,
   };
-  return deps.unitOfWork.run<FleetSelectionModel, FleetSelectionFailure>(
-    context.market,
-    async () => {
-      if ((await deps.selection.insertModel(context.market, model, admin)) === 'name-taken') {
-        return err({ code: 'shipping.fleet-model-name-taken' });
-      }
-      await deps.audit.record(
-        context,
-        FleetModelCreated.entry(model.id, { after: shapeOf(model) }),
-      );
-      return ok(model);
-    },
+  if ((await deps.selection.insertModel(context.market, model, admin)) === 'name-taken') {
+    return err({ code: 'shipping.fleet-model-name-taken' });
+  }
+  await deps.audit.record(
+    context,
+    FleetModelCreated.entry(model.id, { after: { ...shapeOf(model), requestId } }),
   );
+  return ok(model);
+}
+
+/** What a proposed model holds before its create: nothing. */
+const NO_MODEL_BEFORE: ChangeValues = { exists: false };
+
+/** A proposed model as the values of a request: the action, the name and the rule. */
+function modelProposalValues(asked: {
+  readonly name: string;
+  readonly rule: SelectionRule;
+}): ChangeValues {
+  return { action: 'create', ...modelValues(asked) };
+}
+
+/**
+ * The model a proposal's values ask for, checked as the route checks it; null when they are not
+ * a proposed create of this module or no longer validate (a fleet code that was retired, ...).
+ */
+export function modelProposalOf(
+  values: unknown,
+): { readonly name: string; readonly rule: SelectionRule } | null {
+  if (!isRecord(values) || values.action !== 'create') return null;
+  const keys = Object.keys(values).sort();
+  if (keys.length !== 3 || keys[0] !== 'action' || keys[1] !== 'name' || keys[2] !== 'rule') {
+    return null;
+  }
+  const parsed = parseModelInput({ name: values.name, rule: values.rule });
+  return parsed.ok ? { name: parsed.name, rule: parsed.rule } : null;
+}
+
+/**
+ * Applies an approved proposal of a new model, in the open unit of the approval, as the approving
+ * admin: the values are checked again as the route checks them, a name another model took
+ * meanwhile is `changed-since`, and the model is written through {@link createModelInUnit}, its
+ * audit row naming the request. Nothing is written on any other answer.
+ */
+export async function applyFleetModelCreate(
+  deps: ShippingDependencies,
+  context: CallContext,
+  request: RevertRequest,
+): Promise<ApplyOutcome> {
+  const admin = reverterOf(context);
+  const asked = modelProposalOf(request.after);
+  if (asked === null || request.before.exists !== false) return 'gone';
+  // The subject is the name: values that name another subject are not this request's.
+  if (request.subjectRef !== fleetModelNameRef(asked.name)) return 'gone';
+  if (await deps.selection.nameTaken(context.market, asked.name)) return 'changed-since';
+  const created = await createModelInUnit(deps, context, admin, asked, request.requestId);
+  if (created.ok) return 'applied';
+  return created.error.code === 'shipping.fleet-model-name-taken'
+    ? 'changed-since'
+    : 'not-permitted';
 }
 
 /** `update-fleet-selection-model`: renames or reshapes a model; `expectedVersion` guards a stale page. */

@@ -42,7 +42,8 @@ export function exportQuery(input: {
   readonly listQuery: string;
   readonly format: ExportFormat;
   readonly columns: readonly string[];
-  readonly zone: string;
+  /** The IANA zone the file's times are written in; null when the route takes no `zone` (Orders). */
+  readonly zone: string | null;
   readonly selection: ExportSelection;
   readonly keepOrder?: boolean;
 }): string {
@@ -51,7 +52,7 @@ export function exportQuery(input: {
   if (input.keepOrder !== true) for (const key of ORDER_KEYS) params.delete(key);
   params.set('format', input.format);
   params.set('columns', input.columns.join(','));
-  params.set('zone', input.zone);
+  if (input.zone !== null) params.set('zone', input.zone);
   if (!input.selection.allMatching) {
     // An empty `ids` would be refused by the relay, and dropping it would widen the file to the
     // whole filter: with nothing ticked and "Select all matching" off there is nothing to export.
@@ -77,13 +78,19 @@ interface ErrorBody {
   readonly details?: {
     readonly max?: number;
     readonly total?: number;
+    /** The rows the filter matches, as the Orders export names them. */
+    readonly matching?: number;
     readonly fields?: readonly { readonly path?: string; readonly code?: string }[];
   };
 }
 
 function failureOf(status: number, body: ErrorBody | null): ExportFailure {
   if (status === 413 && body?.code === 'batch.too-large') {
-    return new ExportFailure('too-large', body.details?.max ?? null, body.details?.total ?? null);
+    return new ExportFailure(
+      'too-large',
+      body.details?.max ?? null,
+      body.details?.total ?? body.details?.matching ?? null,
+    );
   }
   if (status === 401 || status === 403) return new ExportFailure('denied');
   if (status === 400) {
@@ -115,10 +122,10 @@ export function safeFileName(name: string): string {
 }
 
 /** The day in the list's zone, for the name of a file the server did not name. */
-function dayIn(zone: string): string {
+function dayIn(zone: string | null): string {
   try {
     return new Intl.DateTimeFormat('en-CA', {
-      timeZone: zone,
+      timeZone: zone ?? 'UTC',
       year: 'numeric',
       month: '2-digit',
       day: '2-digit',
@@ -137,7 +144,7 @@ export async function downloadSalesExport(input: {
   readonly query: string;
   readonly format: ExportFormat;
   readonly fallbackName: string;
-  readonly zone: string;
+  readonly zone: string | null;
   readonly knownRows: number | null;
 }): Promise<number | null> {
   let response: Response;
@@ -189,7 +196,7 @@ export function useSalesExport(input: {
   readonly fallbackName: string;
   readonly listQuery: string;
   readonly columns: readonly string[];
-  readonly zone: string;
+  readonly zone: string | null;
   readonly selection: ExportSelection;
   /** A list whose export has its own rules for the query (ids alone, no zone): it builds the string. */
   readonly buildQuery?: (format: ExportFormat) => string;

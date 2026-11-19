@@ -273,6 +273,11 @@
     "whenSellerNotApproved": "deny"
   },
   {
+    "name": "commission-payouts.export-own-payouts",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
     "name": "commission-payouts.list-own-disputes",
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
@@ -297,6 +302,7 @@
   { "name": "commission-payouts.reconcile-instructions", "rule": "system" },
   { "name": "commission-payouts.record-refund", "rule": "system" },
   { "name": "commission-payouts.record-seller-cashback", "rule": "system" },
+  { "name": "commission-payouts.record-seller-cashback-return", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-delivered", "rule": "system" },
   { "name": "commission-payouts.record-seller-order-paid", "rule": "system" },
   { "name": "commission-payouts.run-payouts", "rule": "system" },
@@ -306,6 +312,11 @@
   {
     "name": "commission-payouts.view-next-payout",
     "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "commission-payouts.view-own-exclusive-commission",
+    "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
   {
@@ -776,6 +787,7 @@
   },
   { "name": "promotions.cashback-on-delivery", "rule": "system" },
   { "name": "promotions.check-was-price", "rule": "anonymous" },
+  { "name": "promotions.claw-back-on-refund", "rule": "system" },
   { "name": "promotions.confirm-redemptions", "rule": "system" },
   { "name": "promotions.grant-due-credits", "rule": "system" },
   { "name": "promotions.list-stale-redemptions", "rule": "system" },
@@ -1016,6 +1028,7 @@
   { "name": "tax.reverse-refund-tax", "rule": "anonymous" },
   { "name": "wallet.balance-of", "rule": "system" },
   { "name": "wallet.capture-hold", "rule": "system" },
+  { "name": "wallet.claw-back-credit", "rule": "system" },
   { "name": "wallet.expire-admin-credit-requests", "rule": "system" },
   { "name": "wallet.expire-wallet-credit", "rule": "system" },
   { "name": "wallet.grant-credit", "rule": "system" },

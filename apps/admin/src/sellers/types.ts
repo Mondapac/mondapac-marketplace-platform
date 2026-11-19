@@ -58,6 +58,7 @@ export interface SellerListStateCounts {
   readonly suspended: number;
 }
 
+/** The answer of the older cursor list (`sellers/admin/list`), still read by the dashboard. */
 export interface SellerListPage {
   readonly tab: Tab;
   readonly items: readonly SellerRow[];
@@ -70,6 +71,32 @@ export interface SellerListPage {
   /** True when the health of this page could not be read: every row's `health` is then null. */
   readonly healthUnavailable?: boolean;
 }
+
+/** One row of the super list: the row of the older list plus what the caller may do with it. */
+export interface SellerSuperRow extends SellerRow {
+  readonly actions: readonly string[];
+}
+
+/** The answer of POST `sellers/admin/sellers/list` (super list 15). */
+export interface SellerSuperPage {
+  readonly tab: Tab;
+  readonly items: readonly SellerSuperRow[];
+  /** Null with Previous and next. */
+  readonly total: number | null;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly paging: 'pages' | 'prev-next';
+  readonly hasNext: boolean;
+  readonly counts: SellerListCounts;
+  /** Null when the admin may not see identity's state: the state tabs are then not shown. */
+  readonly stateCounts: SellerListStateCounts | null;
+  /** Every service area of the Market, for the area filter. */
+  readonly areas: readonly { readonly code: string; readonly name: string }[];
+  readonly healthUnavailable: boolean;
+}
+
+export const SELLER_LIST_PATH = 'sellers/admin/sellers/list';
+export const SELLER_EXPORT_PATH = 'sellers/admin/sellers/export';
 
 export const STATUSES = [
   'details-incomplete',
