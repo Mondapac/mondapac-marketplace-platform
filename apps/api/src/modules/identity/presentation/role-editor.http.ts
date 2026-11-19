@@ -148,6 +148,7 @@ export function catalogueView(catalogue: Omit<PlatformRoleCatalogue, 'review'>):
       permissionCount: role.permissionCount,
       permissionKeys: [...role.permissionKeys],
       grantable: role.grantable,
+      sensitive: role.sensitive,
       version: role.version,
       actions: { edit: { ...role.actions.edit }, delete: { ...role.actions.delete } },
     })),

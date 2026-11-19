@@ -19,6 +19,7 @@ import { LastHolderPolicy } from '../../domain/last-holder-policy';
 import type { Role } from '../../domain/role';
 import { writeAccountStatus } from '../accounts/account-status';
 import { isSystemRole } from '../accounts/admin-verdicts';
+import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { InvitationRepository } from '../ports/invitation.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import { readActingGrants, roleIsInActorsReach, type GrantSubject } from '../roles/granting';
@@ -49,11 +50,13 @@ import {
 // revoked, every challenge void, as a disable does), and keeps the last Platform Administrator
 // who can sign in (`LastHolderPolicy`), else `not-permitted`.
 
-/** The ports of the creation reverters and the delete applier. */
+/** The ports of the creation reverters and the appliers (role delete, sensitive invitation). */
 export interface PeopleCreationDependencies extends PeopleReverterDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly invitations: InvitationRepository;
   readonly grants: RoleGrantReader;
+  /** The admin invitation lifetime (a held invitation past it is gone). */
+  readonly policy: Pick<IdentityMarketPolicy, 'invitationLifetimeMinutes'>;
 }
 
 const isDeclaredBy =
