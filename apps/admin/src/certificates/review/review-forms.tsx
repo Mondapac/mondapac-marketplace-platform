@@ -178,6 +178,11 @@ export function ScopeForm({
   );
 }
 
+/** The latest date the API takes: one day ahead of UTC, for a reviewer east of it. */
+function latestDate(): string {
+  return new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
 /**
  * Records that the reviewer confirmed the certificate with its issuer (certification design 3.2
  * rule 7). The channel is one the issuer has registered, never typed; the date, an issuer
@@ -255,6 +260,7 @@ export function ConfirmationForm({
         label={t('date')}
         type="date"
         required
+        max={latestDate()}
         value={confirmedOn}
         onChange={(event) => setConfirmedOn(event.target.value)}
         error={checked && confirmedOn === '' ? t('required') : undefined}
@@ -272,11 +278,13 @@ export function ConfirmationForm({
         <legend className="mb-1 text-sm font-medium">{t('confirms')}</legend>
         <CheckboxRow
           label={t('confirms-number')}
+          touch
           checked={number}
           onChange={(event) => setNumber(event.target.checked)}
         />
         <CheckboxRow
           label={t('confirms-holder')}
+          touch
           checked={holder}
           onChange={(event) => setHolder(event.target.checked)}
         />
@@ -287,7 +295,7 @@ export function ConfirmationForm({
         ) : null}
       </fieldset>
       <div>
-        <Button type="submit" variant="secondary" loading={call.pending}>
+        <Button type="submit" variant="secondary" loading={call.pending} disabled={done}>
           {t('save')}
         </Button>
       </div>
