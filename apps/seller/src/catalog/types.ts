@@ -98,9 +98,17 @@ export interface TopicPage {
   readonly maxPerProduct: number;
 }
 
+/** A tax category of the Market with the message key it is shown by (from its Market file). */
+export interface TaxCategory {
+  readonly code: string;
+  readonly labelKey: string;
+}
+
 /** What the product form is drawn from: `GET catalog/seller/products/:id` -> `form`. */
 export interface ProductForm {
   readonly taxCategoryCodes: readonly string[];
+  /** The categories with their label keys; when absent the code is shown as words. */
+  readonly taxCategories?: readonly TaxCategory[] | undefined;
   /** The Market's units; a measure field names the ones it offers by code. */
   readonly units: readonly FormUnit[];
   readonly fields: readonly FormField[];
@@ -244,6 +252,8 @@ export interface ProductOptions {
   readonly locales: { readonly default: string; readonly supported: readonly string[] };
   /** The Market's tax category codes, as `form.taxCategoryCodes` of a product read. */
   readonly taxCategoryCodes: readonly string[];
+  /** The categories with their label keys; when absent the code is shown as words. */
+  readonly taxCategories?: readonly TaxCategory[] | undefined;
   /** The categories a product may be filed under, as `form.categories` of a product read. */
   readonly categories: readonly FormCategory[];
   readonly sellerCanCreateProduct: boolean;
