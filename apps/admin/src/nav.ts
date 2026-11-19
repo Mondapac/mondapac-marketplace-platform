@@ -179,6 +179,15 @@ export const adminNav: NavConfig = {
       anyOf: ['customers.customers.view'],
     },
     {
+      // Customers management phase 4a: customers who joined a seller by its invite link.
+      id: 'customer-attributions',
+      icon: 'shield-check',
+      labelKey: 'nav.customer-attributions',
+      href: '/customers/attributions',
+      group: 'customers',
+      anyOf: ['customers.customers.view'],
+    },
+    {
       id: 'review-moderation',
       icon: 'shield-check',
       labelKey: 'nav.review-moderation',

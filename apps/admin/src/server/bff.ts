@@ -378,6 +378,12 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'customers/admin/list',
     'customers/admin/saved-filters',
     'customers/admin/export',
+    // The suspicious attributions list (customers, phase 4a): list, "select all matching" ids, the
+    // reject or restore decision (at most 100 ids), and the export behind a fresh two-step code.
+    'customers/admin/seller-attributions/list',
+    'customers/admin/seller-attributions/list/ids',
+    'customers/admin/seller-attributions/decide',
+    'customers/admin/seller-attributions/export',
     // Save the current view of a Sales list as a tab (lists): a closed body, for me or everyone.
     'lists/admin/saved-filters',
     // Make a manual customer group (customers, phase 2a).
@@ -448,6 +454,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'customers/admin/customers/:id/addresses/:id/reveal',
     'customers/admin/customers/:id/consent-history',
     'customers/admin/customers/:id/consent-history/export',
+    // A seller's customers as a super list (customers, phase 3): a POST, as the filters are JSON.
+    'customers/admin/sellers/:id/customers/list',
     // Customers phase 2b, part C (Shopping and Reviews tabs): the super lists are read in the
     // body (filters, direction, page, pageSize, paging), each with its export behind a fresh
     // two-step code. Ids, counts and instants only; never a review's text or a search text.
@@ -802,6 +810,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'customers/admin/customers/:id/consent',
     // Customers phase 2b, part C: the current cart and the behaviour summary (cart, engagement).
     'customers/admin/customers/:id/cart',
+    // The counts and 12-month trend of a seller's customers (customers, phase 3; no query).
+    'customers/admin/sellers/:id/customers/summary',
     'customers/admin/customers/:id/behaviour',
     // The customer page's Money tab: the newest refunds (ordering) and the wallet credits from
     // promotions (promotions; query: `limit`, `cursor`).
@@ -2620,6 +2630,8 @@ const PRODUCT_IMAGE_PATH = /^catalog\/admin\/platform-products\/[0-9a-f-]{36}\/i
  * JSON); more go as the list's filter. The API caps the ids itself.
  */
 const CUSTOMERS_EXPORT_PATH = 'customers/admin/export';
+/** The attributions export takes up to 1000 ticked ids (customers, phase 4a): the same cap. */
+const ATTRIBUTIONS_EXPORT_PATH = 'customers/admin/seller-attributions/export';
 const MAX_EXPORT_BODY_BYTES = 48 * 1024;
 /** The email change of a customer carries one address (at most 254 characters): 1 KB is plenty. */
 const EMAIL_CHANGE_PATH = /^customers\/admin\/customers\/[0-9a-f-]{36}\/email$/i;
@@ -2631,6 +2643,7 @@ const GROUP_MEMBERS_PATH = /^customers\/admin\/groups\/[0-9a-f-]{36}\/members\/(
 function bodyCapOf(method: string, target: string): number {
   if (method === 'POST' && target === UPLOAD_PATH) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'POST' && target === CUSTOMERS_EXPORT_PATH) return MAX_EXPORT_BODY_BYTES;
+  if (method === 'POST' && target === ATTRIBUTIONS_EXPORT_PATH) return MAX_EXPORT_BODY_BYTES;
   if (method === 'POST' && GROUP_MEMBERS_PATH.test(target)) return MAX_EXPORT_BODY_BYTES;
   if (method === 'PUT' && EMAIL_CHANGE_PATH.test(target)) return MAX_EMAIL_CHANGE_BODY_BYTES;
   if (method === 'PUT' && BLOG_DRAFT_PATH.test(target)) return MAX_BLOG_DRAFT_BYTES;

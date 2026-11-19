@@ -1298,6 +1298,70 @@ describe('relay of the customers list and customer page', () => {
     });
   });
 
+  describe('customers phases 3 and 4a: seller customers and attributions', () => {
+    const send = (method: string, target: string, body = '{}') =>
+      new Request(`http://admin.localhost:3002/api/${target}`, {
+        method,
+        headers: {
+          ...sameOrigin,
+          host: 'admin.localhost:3002',
+          'content-type': 'application/json',
+        },
+        ...(method === 'GET' ? {} : { body }),
+      });
+    const A = 'customers/admin/seller-attributions';
+    const S = `customers/admin/sellers/${ID}/customers`;
+
+    it.each([
+      ['GET', `${S}/summary`],
+      ['POST', `${S}/list`],
+      ['POST', `${A}/list`],
+      ['POST', `${A}/list/ids`],
+      ['POST', `${A}/decide`],
+      ['POST', `${A}/export`],
+    ])('relays %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(200);
+    });
+
+    it.each([
+      ['POST', `${S}/summary`],
+      ['GET', `${S}/list`],
+      ['PUT', `${S}/list`],
+      ['GET', `${A}/list`],
+      ['GET', `${A}/export`],
+      ['DELETE', `${A}/decide`],
+      ['POST', `${A}/other`],
+      ['POST', 'customers/admin/sellers/not-an-id/customers/list'],
+    ])('refuses %s %s', async (method, target) => {
+      const upstream = upstreamOk();
+      const response = await relay(config, send(method, target), pathOf(target), upstream);
+      expect(response.status).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    });
+
+    it('forwards no query string of the summary read', async () => {
+      const upstream = upstreamOk();
+      const target = `${S}/summary?x=1`;
+      await relay(config, send('GET', target), pathOf(target), upstream);
+      expect(upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${S}/summary`);
+    });
+
+    it('takes a 1000-id export body and a list body under 16 KB, and refuses a larger list body', async () => {
+      const upstream = upstreamOk();
+      const ids = JSON.stringify({ ids: Array.from({ length: 1000 }, () => ID) });
+      expect(
+        (await relay(config, send('POST', `${A}/export`, ids), pathOf(`${A}/export`), upstream))
+          .status,
+      ).toBe(200);
+      const big = JSON.stringify({ q: 'x'.repeat(17 * 1024) });
+      expect(
+        (await relay(config, send('POST', `${A}/list`, big), pathOf(`${A}/list`), upstream)).status,
+      ).toBe(413);
+    });
+  });
+
   describe('customers phase 2b, part B: account and security', () => {
     const A = '0190a000-0000-7000-8000-0000000000c1';
     const send = (method: string, target: string, body = '{}') =>
