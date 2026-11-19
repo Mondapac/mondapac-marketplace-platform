@@ -1448,6 +1448,7 @@
     "basket-line-added": "Added",
     "basket-not-found": "Not found",
     "basket-not-found-line": "We could not find: {wish}",
+    "basket-max-packs": "{count, plural, one {The most you can add is # pack.} other {The most you can add is # packs.}}",
     "basket-cannot-add": "This item cannot be added from here. Open the product to add it.",
     "basket-unsure": "Not sure which one you meant. Choose it to add it.",
     "basket-removed": "Not added. Choose it to put it back.",
