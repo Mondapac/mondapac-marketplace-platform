@@ -86,7 +86,7 @@ export default async function IssuerRequestsPage({
 
   return shell(
     <div className="flex flex-col gap-4">
-      <CertificatesTabs active="requests" permissionKeys={keys} />
+      <CertificatesTabs active="requests" permissionKeys={keys} requestCount={result.body.total} />
       {answered === '1' ? (
         <Banner tone="success">{t('certificates.requests.answered')}</Banner>
       ) : null}
