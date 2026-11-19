@@ -50,6 +50,14 @@ import { SellerCertificateReviewDocumentRead } from '../application/use-cases/se
 import { SellerCertificateReviewRead } from '../application/use-cases/seller-certificate-review-read.use-case';
 import { RevokeSellerCertificate } from '../application/use-cases/seller-certificate-revoke.use-case';
 import { SellerCertificatesQueue } from '../application/use-cases/seller-certificates-queue.use-case';
+import { SellerCertificateApproveProbe } from '../application/use-cases/seller-certificate-approve-probe.use-case';
+import { SellerCertificatesQueueExport } from '../application/use-cases/seller-certificates-queue-export.use-case';
+import { SellerCertificatesQueueQuery } from '../application/use-cases/seller-certificates-queue-query.use-case';
+import {
+  QUEUE_ROW_KEYS,
+  type CertificateQueueListDependencies,
+} from '../application/review/certificate-queue-list-flow';
+import { ExceljsSheetWriter, type SheetWriter } from '../../../platform/list-export';
 import {
   SendDecisionMail,
   type DecisionMailDependencies,
@@ -61,6 +69,9 @@ import { CheckedInReviewPolicy } from './review-policy/checked-in-review-policy'
 import { SellersReviewSource } from './sellers-review.source';
 
 const REVIEW_DEPENDENCIES = Symbol('CERTIFICATION_REVIEW_DEPENDENCIES');
+const CERTIFICATE_QUEUE_LIST_DEPENDENCIES = Symbol(
+  'CERTIFICATION_CERTIFICATE_QUEUE_LIST_DEPENDENCIES',
+);
 const DECISION_MAIL_DEPENDENCIES = Symbol('CERTIFICATION_DECISION_MAIL_DEPENDENCIES');
 
 /** The admin review use cases: the gate and the shared dependencies. */
@@ -167,6 +178,37 @@ export const reviewProviders: readonly Provider[] = [
       documentDownloadEnabled: config.certificationReviewerDocumentsEnabled,
     }),
   },
+  {
+    provide: SellerCertificateApproveProbe,
+    inject: [USE_CASE_GATE],
+    useFactory: (gate: UseCaseGate) => new SellerCertificateApproveProbe(gate),
+  },
+  {
+    // The certificates queue super list (list 17) and its export share one dependency object.
+    provide: CERTIFICATE_QUEUE_LIST_DEPENDENCIES,
+    inject: [REVIEW_DEPENDENCIES, SellerCertificateApproveProbe, CLOCK],
+    useFactory: (
+      deps: ReviewDependencies,
+      approve: SellerCertificateApproveProbe,
+      clock: Clock,
+    ): CertificateQueueListDependencies => {
+      const [approveKey] = QUEUE_ROW_KEYS;
+      const sheetWriter: SheetWriter = new ExceljsSheetWriter();
+      return {
+        unitOfWork: deps.unitOfWork,
+        reviews: deps.reviews,
+        sellers: deps.sellers,
+        probes: { [approveKey]: approve },
+        sheetWriter,
+        clock,
+      };
+    },
+  },
+  ...[SellerCertificatesQueueQuery, SellerCertificatesQueueExport].map((type): FactoryProvider => ({
+    provide: type,
+    inject: [USE_CASE_GATE, CERTIFICATE_QUEUE_LIST_DEPENDENCIES],
+    useFactory: (gate: UseCaseGate, deps: CertificateQueueListDependencies) => new type(gate, deps),
+  })),
   {
     provide: DECISION_MAIL_DEPENDENCIES,
     inject: [

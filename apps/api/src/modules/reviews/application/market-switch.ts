@@ -10,7 +10,7 @@ import type { ReviewsDependencies } from './reviews-dependencies';
  * read-write unit of the use case opens, never inside one.
  */
 export async function activeSettings(
-  deps: ReviewsDependencies,
+  deps: Pick<ReviewsDependencies, 'policy' | 'unitOfWork' | 'settings'>,
   context: CallContext,
 ): Promise<
   Result<
