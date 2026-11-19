@@ -5,7 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useRef, useState, type ReactNode } from 'react';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { isFieldFailure, notifyChanged, refusalOf, type Refusal } from './errors.ts';
-import { BASE, NOTE_MAX, type SystemRequest } from './types.ts';
+import { BASE, NOTE_MAX, isApproval, type SystemRequest } from './types.ts';
 
 export type Decide = 'approve' | 'reject' | 'withdraw';
 
@@ -106,6 +106,8 @@ function DecisionBody({
   const inFlight = useRef(false);
   const needsReason = kind !== 'approve';
   const number = request.displayNumber;
+  // An action that waits for approval has its own words: approving applies it, declining changes nothing.
+  const group = isApproval(request) ? `approval.${kind}` : kind;
 
   async function confirm() {
     if (inFlight.current) return;
@@ -126,7 +128,7 @@ function DecisionBody({
     inFlight.current = false;
     setBusy(false);
     if (result.ok) {
-      toast.success(t(`toast.${kind}`, { number }));
+      toast.success(t(`toast.${isApproval(request) ? `approval-${kind}` : kind}`, { number }));
       notifyChanged();
       onDecided(kind, result.body);
       return;
@@ -145,7 +147,7 @@ function DecisionBody({
       setProblem('rejected');
       return;
     }
-    onRefused(refusalOf(failure), kind, text);
+    onRefused(refusalOf(failure, isApproval(request)), kind, text);
   }
 
   const cancel = (
@@ -166,13 +168,13 @@ function DecisionBody({
       loading={busy}
       onClick={() => void confirm()}
     >
-      {t(`${kind}.confirm`)}
+      {t(`${group}.confirm`)}
     </Button>
   );
 
   return (
     <Frame
-      title={t(`${kind}.title`, { number })}
+      title={t(`${group}.title`, { number })}
       onClose={() => {
         if (!busy) onClose();
       }}
@@ -184,9 +186,9 @@ function DecisionBody({
       }
     >
       <div className="flex flex-col gap-3">
-        <p>{t(`${kind}.body`)}</p>
+        <p>{t(`${group}.body`)}</p>
         {kind === 'approve' && request.risk === 'high' ? (
-          <p className="font-medium text-attention-fg">{t('approve.high-risk')}</p>
+          <p className="font-medium text-attention-fg">{t(`${group}.high-risk`)}</p>
         ) : null}
         {needsReason ? (
           <>
@@ -195,7 +197,7 @@ function DecisionBody({
             ) : null}
             <TextAreaField
               name="reason"
-              label={t(`${kind}.reason`)}
+              label={t(`${group}.reason`)}
               rows={3}
               maxLength={NOTE_MAX}
               autoFocus

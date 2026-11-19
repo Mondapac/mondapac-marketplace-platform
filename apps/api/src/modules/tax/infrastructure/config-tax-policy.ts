@@ -9,9 +9,14 @@ export class ConfigTaxPolicy implements TaxPolicy {
   settings(market: MarketContext): TaxSettings | null {
     const config = this.markets.get(market.marketId);
     if (config.tax === undefined) return null;
+    const categories = (config.catalog?.taxCategories ?? []).map(({ code, labelKey }) => ({
+      code,
+      labelKey,
+    }));
     return {
       defaultRateBps: config.tax.defaultRateBps,
-      categoryCodes: (config.catalog?.taxCategories ?? []).map((category) => category.code),
+      categoryCodes: categories.map((category) => category.code),
+      categories,
     };
   }
 }

@@ -1,6 +1,8 @@
 // Answers of the admin tax strategy routes (apps/api tax tax.controller.ts). Reading needs
 // `tax.strategy.view`; every change needs the protected `tax.strategy.manage`.
 
+import type { TaxCategory } from '../shared/tax-category-options.ts';
+
 export const TAX_VIEW_PERMISSION = 'tax.strategy.view';
 export const TAX_MANAGE_PERMISSION = 'tax.strategy.manage';
 export const TAX_STRATEGIES_PATH = 'tax/admin/strategies';
@@ -27,6 +29,8 @@ export interface TaxStrategyList {
   readonly builtInRateBps: number;
   readonly activeStrategyId: string | null;
   readonly categoryCodes: readonly string[];
+  /** The same categories with the message key each is shown by; absent from an older API. */
+  readonly categories?: readonly TaxCategory[] | undefined;
   readonly strategies: readonly TaxStrategy[];
 }
 

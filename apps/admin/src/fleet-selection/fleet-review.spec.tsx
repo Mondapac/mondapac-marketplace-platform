@@ -130,15 +130,90 @@ describe('the model editor where a change is reviewed', () => {
     });
   });
 
-  it('does not ask for a note when a model is created, and sends none', async () => {
-    call.mockResolvedValueOnce(ok({})).mockResolvedValueOnce(ok(selection({ review })));
-    mount(selection({ review }));
+  it('creates a model at once with no note where delivery is not reviewed', async () => {
+    const off = { reviewed: false, risk: 'medium' };
+    call
+      .mockResolvedValueOnce({ ok: true as const, status: 201, body: { id: 'm2' } })
+      .mockResolvedValueOnce(ok(selection({ review: off })));
+    mount(selection({ review: off }));
     fireEvent.click(screen.getByRole('button', { name: 'New model' }));
-    expect(screen.getAllByLabelText('Note for reviewers')).toHaveLength(1);
+    expect(screen.queryByLabelText('Note for reviewers')).toBeNull();
+    expect(screen.queryByText(/Nothing changes until another admin approves it/)).toBeNull();
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Fresh' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
     await expectToast(/^Model created\./);
     expect(call.mock.calls[0]?.[2]).not.toHaveProperty('note');
+  });
+
+  it('sends a create for approval where delivery is reviewed: a note, then SR-n, the list unchanged', async () => {
+    mount(selection({ review }));
+    fireEvent.click(screen.getByRole('button', { name: 'New model' }));
+    // The page's own note plus the form's, which says the create waits for approval.
+    expect(screen.getAllByLabelText('Note for reviewers')).toHaveLength(2);
+    expect(
+      screen.getByText(
+        'Nothing changes until another admin approves it in Admin Inbox > System requests.',
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Save model' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Fresh' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
+    expect(await screen.findAllByText(/Write a note for the reviewers/)).toHaveLength(1);
+    expect(call).not.toHaveBeenCalled();
+
+    type('A faster rule', 1);
+    call.mockResolvedValueOnce({
+      ok: true as const,
+      status: 202,
+      body: { request: { id: 'r9', number: 7 } },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
+    await expectToast('Sent for approval (SR-7)', 'info');
+    expect(call.mock.calls[0]).toEqual([
+      'POST',
+      'shipping/admin/fleet-selection/models',
+      { name: 'Fresh', rule: { kind: 'cheapest' }, note: 'A faster rule' },
+      'csrf',
+    ]);
+    // Nothing was created: the page is not read again and keeps its one model; no "created".
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(screen.queryByRole('button', { name: 'Send for approval' })).toBeNull();
+    expect(screen.getAllByText('Cheapest first').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Fresh')).toBeNull();
+  });
+
+  it('names the proposal that already waits when the create is refused with 409', async () => {
+    call.mockResolvedValueOnce({
+      ok: false as const,
+      failure: {
+        status: 409,
+        code: 'system-requests.already-pending',
+        details: { pendingNumber: 7 },
+      },
+    });
+    mount(selection({ review }));
+    fireEvent.click(screen.getByRole('button', { name: 'New model' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Fresh' } });
+    type('Again', 1);
+    fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
+    expect(await screen.findByText('This is already waiting for approval (SR-7).')).toBeTruthy();
+    // The form stays open with the admin's draft.
+    expect(screen.getByRole('button', { name: 'Send for approval' })).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('falls back to the generic error when the 409 names no pending request', async () => {
+    call.mockResolvedValueOnce({
+      ok: false as const,
+      failure: { status: 409, code: 'system-requests.already-pending' },
+    });
+    mount(selection({ review }));
+    fireEvent.click(screen.getByRole('button', { name: 'New model' }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Fresh' } });
+    type('Again', 1);
+    fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
+    expect(await screen.findByText('Something went wrong. Try again.')).toBeTruthy();
+    expect(screen.queryByText(/already waiting for approval/)).toBeNull();
   });
 
   it('shows a 400 on note on the model form', async () => {
