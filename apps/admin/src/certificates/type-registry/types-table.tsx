@@ -34,7 +34,9 @@ export function TypesTable({ rows }: { readonly rows: readonly TypeRow[] }) {
                     {name !== undefined && name !== '' ? name : row.code}
                   </a>
                   {row.pending.length === 0 ? null : (
-                    <span className="ms-2 text-sm text-fg-muted">{t('pending')}</span>
+                    <span className="ms-2">
+                      <Badge tone="attention">{t('pending')}</Badge>
+                    </span>
                   )}
                 </td>
                 <td className={CARD_TABLE.corner}>

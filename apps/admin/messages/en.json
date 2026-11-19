@@ -1364,6 +1364,7 @@
     },
     "issuers": {
       "title": "Certificate issuers",
+      "lifecycle-unavailable": "The number of certificates this issuer affects could not be read, so closing, derecognising and reactivating are not offered. Reload the page to try again.",
       "no-access": "You don't have access to certificate issuers.",
       "unavailable": "Issuers could not be loaded.",
       "none-active": "No issuer is active yet, so no certificate that needs an issuer can be approved. Activate one with the expert's approval.",
