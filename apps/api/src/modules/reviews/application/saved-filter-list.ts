@@ -1,7 +1,17 @@
-import { err, ok, Temporal } from '@mondapac/shared-kernel';
+import { err, ok } from '@mondapac/shared-kernel';
 import type { Result } from '@mondapac/shared-kernel';
 import type { ListDefinition, ListPayloadFailure } from '../../lists';
-import { REVIEWS_SELLER_VIEW } from '../contracts/permissions';
+import {
+  REVIEWS_MODERATION_QUEUE,
+  REVIEWS_SAVED_FILTER_SHARE,
+  REVIEWS_SELLER_VIEW,
+} from '../contracts/permissions';
+import {
+  MODERATION_LIST_VIEWS,
+  MODERATION_SORT_KEYS,
+  type ModerationListView,
+  type ModerationSortKey,
+} from '../domain/moderation-list';
 import {
   SELLER_REVIEW_SORT_KEYS,
   SELLER_REVIEW_VIEWS,
@@ -9,44 +19,64 @@ import {
   type SellerReviewView_,
 } from '../domain/seller-review-list';
 
-// The saved filters of the seller's Reviews list (super list phase 3, list 32; CLAUDE.md rule 14),
-// through the generic routes of `lists` (`lists/seller/saved-filters`). This module keeps the
-// meaning of a saved filter's document and the key that guards the list; `lists` keeps the table,
-// the caps and the names. The document is closed: the view, the star range, the days, the sort and
-// its direction. The search text and a pasted id are never saved (they name one review). The list
-// is private to the shop's user: it has no share key.
+// The saved filters of the review lists (super list phase 3, lists 32 and 18; CLAUDE.md rule 14),
+// through the generic routes of `lists`. This module keeps the meaning of a saved filter's
+// document and the keys that guard each list; `lists` keeps the table, the caps, the names and the
+// sharing rules. Each document is closed: the view, the star range ("1" to "5", as the panel keeps
+// them), a date preset, the sort and its direction (the moderation list adds the report reason).
+// The search text, a pasted id and the seller link are never saved. The seller's list is private
+// to the shop's user (no share key); the moderation list may be shared with the share key.
 
 export const SELLER_REVIEWS_LIST_KEY = 'seller.reviews.reviews';
+export const MODERATION_LIST_KEY = 'admin.reviews.moderation';
 
-/** The closed document of a saved filter, in its canonical form (an empty part is left out). */
+/**
+ * The date presets a saved filter may hold. The panel turns one into instants on its own clock when
+ * it applies the filter, so a saved "Last 7 days" keeps meaning the last seven days. Same ids as
+ * the panel's date presets.
+ */
+export const REVIEW_DATE_PRESETS = [
+  'today',
+  'yesterday',
+  'last-7-days',
+  'last-30-days',
+  'this-month',
+  'last-month',
+] as const;
+export type ReviewDatePreset = (typeof REVIEW_DATE_PRESETS)[number];
+
+const STARS = ['1', '2', '3', '4', '5'] as const;
+type Stars = (typeof STARS)[number];
+const REASON_CODE = /^[a-z][a-z-]{0,39}$/;
+const TOP_KEYS = ['v', 'view', 'filters', 'sort', 'direction'] as const;
+
+/** The closed filters of a document, in canonical key order. */
+interface ReviewFilters {
+  readonly minRating?: Stars;
+  readonly maxRating?: Stars;
+  readonly reportReason?: string;
+  readonly published?: ReviewDatePreset;
+  readonly submitted?: ReviewDatePreset;
+}
+
 export interface SellerReviewFilterPayload {
   readonly v: 1;
   readonly view: SellerReviewView_;
-  readonly filters?: {
-    readonly minRating?: number;
-    readonly maxRating?: number;
-    /** Calendar days (`YYYY-MM-DD`) on the seller's clock; the panel turns them into instants. */
-    readonly from?: string;
-    readonly to?: string;
-  };
+  readonly filters?: Pick<ReviewFilters, 'minRating' | 'maxRating' | 'published'>;
   readonly sort?: SellerReviewSortKey;
   readonly direction?: 'asc' | 'desc';
 }
 
-const TOP_KEYS = ['v', 'view', 'filters', 'sort', 'direction'] as const;
-const FILTER_KEYS = ['minRating', 'maxRating', 'from', 'to'] as const;
-
-const DAY = /^\d{4}-\d{2}-\d{2}$/;
-/** A real calendar day: 2026-02-31 is refused, not rolled over to March. */
-const isDay = (value: unknown): value is string => {
-  if (typeof value !== 'string' || !DAY.test(value)) return false;
-  try {
-    Temporal.PlainDate.from(value, { overflow: 'reject' });
-    return true;
-  } catch {
-    return false;
-  }
-};
+export interface ModerationFilterPayload {
+  readonly v: 1;
+  readonly view: ModerationListView;
+  readonly filters?: Pick<
+    ReviewFilters,
+    'minRating' | 'maxRating' | 'reportReason' | 'submitted'
+  >;
+  readonly sort?: ModerationSortKey;
+  readonly direction?: 'asc' | 'desc';
+}
 
 const invalid = (path: string, code: string): { ok: false; error: ListPayloadFailure } =>
   err({ code: 'validation.failed', fields: [{ path, code }] }) as {
@@ -57,17 +87,37 @@ const invalid = (path: string, code: string): { ok: false; error: ListPayloadFai
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-const isStars = (value: unknown): value is number =>
-  typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 5;
+const isStars = (value: unknown): value is Stars =>
+  typeof value === 'string' && (STARS as readonly string[]).includes(value);
+
+const isPreset = (value: unknown): value is ReviewDatePreset =>
+  typeof value === 'string' && (REVIEW_DATE_PRESETS as readonly string[]).includes(value);
+
+interface ListShape<View extends string, Sort extends string> {
+  readonly views: readonly View[];
+  readonly sorts: readonly Sort[];
+  /** The filter keys this list accepts, in canonical order; `date` names its preset key. */
+  readonly filterKeys: readonly (keyof ReviewFilters)[];
+}
 
 /**
- * Reads a saved filter's document and returns its canonical form, or the first field it refuses
- * (`payload.<path>`, `unknown`, `type` or `value`). A top star count below the lowest one, or an
- * end day before the start day, is refused: the list itself refuses those ranges.
+ * Reads a saved filter's document of one review list and returns its canonical form, or the first
+ * field it refuses (`payload.<path>`, `unknown`, `type` or `value`). A top star count below the
+ * lowest one is refused: the list itself refuses that range.
  */
-export function parseSellerReviewFilterPayload(
+function parseReviewDocument<View extends string, Sort extends string>(
   raw: unknown,
-): Result<SellerReviewFilterPayload, ListPayloadFailure> {
+  shape: ListShape<View, Sort>,
+): Result<
+  {
+    readonly v: 1;
+    readonly view: View;
+    readonly filters?: ReviewFilters;
+    readonly sort?: Sort;
+    readonly direction?: 'asc' | 'desc';
+  },
+  ListPayloadFailure
+> {
   if (!isRecord(raw)) return invalid('payload', 'type');
   for (const key of Object.keys(raw)) {
     if (!(TOP_KEYS as readonly string[]).includes(key)) return invalid(`payload.${key}`, 'unknown');
@@ -75,21 +125,21 @@ export function parseSellerReviewFilterPayload(
   if (raw['v'] !== 1) return invalid('payload.v', 'value');
   const view = raw['view'];
   if (typeof view !== 'string') return invalid('payload.view', 'type');
-  const knownView = SELLER_REVIEW_VIEWS.find((candidate) => candidate === view);
+  const knownView = shape.views.find((candidate) => candidate === view);
   if (knownView === undefined) return invalid('payload.view', 'value');
 
-  const filters: { minRating?: number; maxRating?: number; from?: string; to?: string } = {};
+  const filters: { -readonly [K in keyof ReviewFilters]: ReviewFilters[K] } = {};
   const given = raw['filters'];
   if (given !== undefined && given !== null) {
     if (!isRecord(given)) return invalid('payload.filters', 'type');
     for (const key of Object.keys(given)) {
-      if (!(FILTER_KEYS as readonly string[]).includes(key)) {
+      if (!(shape.filterKeys as readonly string[]).includes(key)) {
         return invalid(`payload.filters.${key}`, 'unknown');
       }
     }
     for (const field of ['minRating', 'maxRating'] as const) {
       const stars = given[field];
-      if (stars === undefined || stars === null) continue;
+      if (stars === undefined || stars === null || stars === '') continue;
       if (!isStars(stars)) return invalid(`payload.filters.${field}`, 'value');
       filters[field] = stars;
     }
@@ -100,21 +150,25 @@ export function parseSellerReviewFilterPayload(
     ) {
       return invalid('payload.filters.maxRating', 'value');
     }
-    for (const field of ['from', 'to'] as const) {
-      const day = given[field];
-      if (day === undefined || day === null || day === '') continue;
-      if (!isDay(day)) return invalid(`payload.filters.${field}`, 'value');
-      filters[field] = day;
+    const reason = given['reportReason'];
+    if (reason !== undefined && reason !== null && reason !== '') {
+      if (typeof reason !== 'string' || !REASON_CODE.test(reason)) {
+        return invalid('payload.filters.reportReason', 'value');
+      }
+      filters.reportReason = reason;
     }
-    if (filters.from !== undefined && filters.to !== undefined && filters.to < filters.from) {
-      return invalid('payload.filters.to', 'value');
+    for (const field of ['published', 'submitted'] as const) {
+      const preset = given[field];
+      if (preset === undefined || preset === null || preset === '') continue;
+      if (!isPreset(preset)) return invalid(`payload.filters.${field}`, 'value');
+      filters[field] = preset;
     }
   }
 
   const sort = raw['sort'];
-  let knownSort: SellerReviewSortKey | undefined;
+  let knownSort: Sort | undefined;
   if (sort !== undefined && sort !== null) {
-    knownSort = SELLER_REVIEW_SORT_KEYS.find((candidate) => candidate === sort);
+    knownSort = shape.sorts.find((candidate) => candidate === sort);
     if (knownSort === undefined) return invalid('payload.sort', 'value');
   }
   const direction = raw['direction'];
@@ -128,20 +182,43 @@ export function parseSellerReviewFilterPayload(
   }
 
   const ordered = Object.fromEntries(
-    FILTER_KEYS.flatMap((key) => (filters[key] === undefined ? [] : [[key, filters[key]]])),
-  ) as SellerReviewFilterPayload['filters'];
+    shape.filterKeys.flatMap((key) => (filters[key] === undefined ? [] : [[key, filters[key]]])),
+  ) as ReviewFilters;
   return ok({
     v: 1,
     view: knownView,
-    ...(Object.keys(ordered ?? {}).length === 0 ? {} : { filters: ordered }),
+    ...(Object.keys(ordered).length === 0 ? {} : { filters: ordered }),
     ...(knownSort === undefined ? {} : { sort: knownSort }),
     ...(direction === 'asc' || direction === 'desc' ? { direction } : {}),
   });
 }
 
+/** Reads a saved document of the seller's Reviews list, in its canonical form. */
+export function parseSellerReviewFilterPayload(
+  raw: unknown,
+): Result<SellerReviewFilterPayload, ListPayloadFailure> {
+  return parseReviewDocument(raw, {
+    views: SELLER_REVIEW_VIEWS,
+    sorts: SELLER_REVIEW_SORT_KEYS,
+    filterKeys: ['minRating', 'maxRating', 'published'],
+  });
+}
+
+/** Reads a saved document of the admin moderation list, in its canonical form. */
+export function parseModerationFilterPayload(
+  raw: unknown,
+): Result<ModerationFilterPayload, ListPayloadFailure> {
+  return parseReviewDocument(raw, {
+    views: MODERATION_LIST_VIEWS,
+    sorts: MODERATION_SORT_KEYS,
+    filterKeys: ['minRating', 'maxRating', 'reportReason', 'submitted'],
+  });
+}
+
 /**
  * The lists reviews registers with `lists` (`registerLists('reviews', ...)`): the seller's Reviews
- * list, guarded by its own view key. A seller's filter is never shared, so there is no share key.
+ * list, guarded by its view key and never shared, and the admin moderation list, guarded by the
+ * queue key, whose filters may be shared with the module's share key.
  */
 export const REVIEWS_LISTS: readonly ListDefinition[] = [
   {
@@ -149,5 +226,12 @@ export const REVIEWS_LISTS: readonly ListDefinition[] = [
     population: 'seller',
     viewKey: REVIEWS_SELLER_VIEW.key,
     parsePayload: (raw) => parseSellerReviewFilterPayload(raw),
+  },
+  {
+    listKey: MODERATION_LIST_KEY,
+    population: 'admin',
+    viewKey: REVIEWS_MODERATION_QUEUE.key,
+    shareKey: REVIEWS_SAVED_FILTER_SHARE.key,
+    parsePayload: (raw) => parseModerationFilterPayload(raw),
   },
 ];
