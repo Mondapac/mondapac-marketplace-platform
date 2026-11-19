@@ -27,13 +27,6 @@ export interface ListCaller {
   readonly sellerId: Id<'Seller'> | null;
 }
 
-/** The account of an admin call; null for anything else (column preferences are admin-only so far). */
-export function adminOf(context: CallContext): { readonly accountId: Id<'Account'> } | null {
-  const { actor } = context;
-  if (actor.kind !== 'authenticated' || actor.population !== 'admin') return null;
-  return { accountId: actor.accountId };
-}
-
 /**
  * The caller of a route of `population`. Any other population is `access.denied`. A seller who
  * acts as the store for another person (Login as Seller) is refused: a saved view is the seller's

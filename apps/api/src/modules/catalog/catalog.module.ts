@@ -411,6 +411,7 @@ import { BrandCreate } from './application/use-cases/brand-create.use-case';
 import { BrandEdit } from './application/use-cases/brand-edit.use-case';
 import { BrandGet } from './application/use-cases/brand-get.use-case';
 import { BrandList } from './application/use-cases/brand-list.use-case';
+import { BrandExport } from './application/use-cases/brand-export.use-case';
 import { BrandMerge } from './application/use-cases/brand-merge.use-case';
 import { BrandMergeQueueDismiss } from './application/use-cases/brand-merge-queue-dismiss.use-case';
 import { BrandMergeQueueList } from './application/use-cases/brand-merge-queue-list.use-case';
@@ -1430,6 +1431,12 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       ids: true,
     }),
     useCaseProvider(BrandList, { unitOfWork: true, brandReader: true, brandEditProbe: true }),
+    useCaseProvider(BrandExport, {
+      unitOfWork: true,
+      brandReader: true,
+      sheetWriter: true,
+      clock: true,
+    }),
     useCaseProvider(AttributeAdminList, {
       unitOfWork: true,
       attributeAdminReader: true,

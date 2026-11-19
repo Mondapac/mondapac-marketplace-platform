@@ -38,6 +38,18 @@ describe('ActionMenu', () => {
     expect(render({ disabled: true })).not.toContain('tabindex');
   });
 
+  it('exposes the hint once and shows a focus ring on the focusable wrapper', () => {
+    const html = render({ disabled: true, hint: 'Tick orders to export them.' });
+    // Only the wrapper carries the title; the inner button does not repeat it.
+    expect(html.match(/title="Tick orders to export them\."/g)).toHaveLength(1);
+    expect(html).toMatch(/<button(?![^>]*title=)[^>]*>/);
+    expect(html).toMatch(
+      /<span[^>]*class="[^"]*focus-visible:outline-2 focus-visible:outline-focus[^"]*"[^>]*tabindex="0"|<span[^>]*tabindex="0"[^>]*class="[^"]*focus-visible:outline-2 focus-visible:outline-focus/,
+    );
+    // Without the wrapper (enabled), the button keeps its own title as before.
+    expect(render({ hint: 'x' })).toMatch(/<button[^>]*title="x"/);
+  });
+
   it('is a disabled button when there is nothing to act on', () => {
     expect(render({ disabled: true })).toContain('disabled=""');
     expect(render()).not.toContain('disabled=""');

@@ -48,6 +48,7 @@ const ENTRY_FIELDS = [
   'permissionKeys',
   'roleId',
   'seedCode',
+  'sensitive',
   'version',
 ];
 

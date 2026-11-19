@@ -163,6 +163,7 @@ describe('admin seller list over HTTP (integration, slice 9b)', () => {
       invitedByAccountId: ROOT,
       tokenHash: new Uint8Array(32).fill(9),
       expiresAt: START.add({ hours: 1 }),
+      heldForApproval: false,
       state: 'pending',
       decidedAt: null,
       acceptedAccountId: null,

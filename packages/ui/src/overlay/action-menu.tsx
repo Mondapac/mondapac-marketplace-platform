@@ -160,7 +160,7 @@ export function ActionMenu({
   return (
     <div className="inline-block">
       <span
-        className="inline-block rounded-md"
+        className="inline-block rounded-md focus-visible:outline-2 focus-visible:outline-focus"
         {...(explained ? { tabIndex: 0, title: hint, 'aria-describedby': hintId } : {})}
       >
         <button
@@ -170,7 +170,7 @@ export function ActionMenu({
           aria-expanded={open}
           aria-controls={open ? menuId : undefined}
           disabled={disabled}
-          title={hint}
+          title={explained ? undefined : hint}
           onClick={() => setOpen((value) => !value)}
           onKeyDown={(event) => {
             if (event.key === 'ArrowDown' && !open && !disabled) {

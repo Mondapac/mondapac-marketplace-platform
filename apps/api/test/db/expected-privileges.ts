@@ -1412,6 +1412,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
         'approved_by',
+        'archive_reason',
         'header_image_id',
         'logo_alt',
         'logo_image_id',
