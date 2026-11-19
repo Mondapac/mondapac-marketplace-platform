@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { useDrawerLabels } from '../settings/drawer-labels.ts';
+import { useTaxCategoryOptions, type TaxCategory } from '../shared/tax-category-options.ts';
 import { taxProblemOf } from './errors.ts';
 import {
   parsePercent,
@@ -23,6 +24,7 @@ import {
 export function StrategyDialog({
   strategy,
   categoryCodes,
+  categories,
   csrfToken,
   onClose,
   onSaved,
@@ -31,6 +33,8 @@ export function StrategyDialog({
   /** The strategy to edit; null adds a new one. */
   readonly strategy: TaxStrategy | null;
   readonly categoryCodes: readonly string[];
+  /** The categories with their label keys; when absent the code is shown as words. */
+  readonly categories?: readonly TaxCategory[] | undefined;
   readonly csrfToken: string;
   readonly onClose: () => void;
   /** The list changed: the screen reads it again. */
@@ -41,6 +45,9 @@ export function StrategyDialog({
   const t = useTranslations('tax.dialog');
   const errors = useTranslations('tax.error');
   const kinds = useTranslations('tax.kind');
+  const categoryLabels = new Map(
+    useTaxCategoryOptions(categoryCodes, categories).map((option) => [option.value, option.label]),
+  );
   const [name, setName] = useState(strategy?.name ?? '');
   const [kind, setKind] = useState<StrategyKind>(strategy?.kind ?? 'flat-rate');
   const [rate, setRate] = useState(strategy?.rateBps == null ? '' : percentInput(strategy.rateBps));
@@ -176,7 +183,7 @@ export function StrategyDialog({
             categoryCodes.map((code) => (
               <TextField
                 key={code}
-                label={t('category-rate', { code })}
+                label={t('category-rate', { category: categoryLabels.get(code) ?? code })}
                 inputMode="decimal"
                 value={rates[code] ?? ''}
                 error={invalid.has(code) ? rateError : undefined}
