@@ -10617,12 +10617,12 @@
           "second": "Oldest first"
         },
         "updated": {
-          "first": "Most recent first",
-          "second": "Least recent first"
+          "first": "Newest first",
+          "second": "Oldest first"
         },
         "published": {
-          "first": "Most recent first",
-          "second": "Least recent first"
+          "first": "Newest first",
+          "second": "Oldest first"
         },
         "scheduled": {
           "first": "Soonest first",
@@ -10637,7 +10637,7 @@
         "refused": "This search can't be run. Change the text or the filters, or clear them."
       },
       "empty": {
-        "all": "No posts yet. They will show here once the first one is written.",
+        "all": "No posts yet.",
         "draft": "No posts are drafts.",
         "in_review": "No posts are waiting for review.",
         "changes_requested": "No posts have been sent back for changes.",
@@ -10647,7 +10647,8 @@
         "unpublished": "No posts are off the site.",
         "archived": "No posts are archived.",
         "no-match": "No posts match",
-        "no-match-help": "Try other words or filters, or clear them."
+        "no-match-help": "Try other words or filters, or clear them.",
+        "all-create": "No posts yet. Use New post to write the first one."
       },
       "select": {
         "page": "Select all posts on this page",
@@ -10670,9 +10671,7 @@
       "actions": {
         "for": "Actions for {name}",
         "open": "Open",
-        "edit": "Edit",
-        "review": "Review",
-        "publishing": "Publishing"
+        "review": "Review and publish"
       }
     }
   },

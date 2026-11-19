@@ -284,42 +284,45 @@ describe('Blog posts list: page numbers', () => {
     expect(buttons).toEqual([`Actions for ${nameOf(1)}`]);
     const menu = await openMenu();
     const items = within(menu).getAllByRole('menuitem');
-    expect(items.map((item) => item.textContent)).toEqual(['Open', 'Edit', 'Review', 'Publishing']);
-    fireEvent.click(items[2]!);
+    // Two items, two destinations.
+    expect(items.map((item) => item.textContent)).toEqual(['Open', 'Review and publish']);
+    fireEvent.click(items[1]!);
     expect(nav.push).toHaveBeenCalledWith(`/content/blog/${id(1)}/review`);
   });
 
-  it('offers exactly what the row names: Open alone, Edit only when named, Review and Publishing apart', async () => {
+  it('offers exactly what the row names, never two items for one page', async () => {
     serve(() =>
       pageOf([
         row(1, { actions: ['open'] }),
-        row(2, { actions: ['open', 'edit'] }),
+        row(2, { actions: ['edit'] }),
         row(3, { actions: ['open', 'request-changes'] }),
-        row(4, { actions: ['open', 'archive'] }),
+        row(4, { actions: ['open', 'archive', 'pause'] }),
+        row(5, { actions: ['submit', 'teleport'] }),
+        row(6, { actions: ['feature'] }),
       ]),
     );
     mount();
     await postLink(1);
-    const labels = async (n: number) =>
-      within(await openMenu(nameOf(n)))
+    const labels = async (n: number) => {
+      const found = within(await openMenu(nameOf(n)))
         .getAllByRole('menuitem')
         .map((item) => item.textContent);
+      fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+      return found;
+    };
     expect(await labels(1)).toEqual(['Open']);
-    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
-    expect(await labels(2)).toEqual(['Open', 'Edit']);
-    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
-    expect(await labels(3)).toEqual(['Open', 'Review']);
-    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
-    expect(await labels(4)).toEqual(['Open', 'Publishing']);
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Publishing' }));
-    expect(nav.push).toHaveBeenCalledWith(`/content/blog/${id(4)}/review`);
+    expect(await labels(2)).toEqual(['Open']);
+    expect(await labels(3)).toEqual(['Open', 'Review and publish']);
+    expect(await labels(4)).toEqual(['Open', 'Review and publish']);
+    expect(await labels(5)).toEqual(['Open']);
+    expect(await labels(6)).toEqual(['Review and publish']);
   });
 
-  it('sends Open and Edit to the post page', async () => {
+  it('sends Open to the post page', async () => {
     serve(() => pageOf([row()]));
     mount();
     await postLink();
-    fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: 'Edit' }));
+    fireEvent.click(within(await openMenu()).getByRole('menuitem', { name: 'Open' }));
     expect(nav.push).toHaveBeenCalledWith(`/content/blog/${id(1)}`);
   });
 
@@ -416,7 +419,7 @@ describe('Blog posts list: page numbers', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Updated on' }));
     await waitFor(() => expect(lastParams()['sort']).toBe('updated'));
     expect(lastParams()['direction']).toBe('desc');
-    const recent = screen.getByRole('radio', { name: 'Most recent first' });
+    const recent = screen.getByRole('radio', { name: 'Newest first' });
     expect((recent as HTMLInputElement).checked).toBe(true);
   });
 
@@ -516,7 +519,111 @@ describe('Blog posts list: page numbers', () => {
   it('says so when no post exists at all', async () => {
     serve(() => pageOf([], { total: 0, counts: { ...COUNTS, all: 0 } }));
     mount();
-    expect(await screen.findByText(/No posts yet/)).toBeTruthy();
+    expect(await screen.findByText('No posts yet.')).toBeTruthy();
+    // Nothing to export: the Bulk action button is disabled.
+    expect(screen.getByRole('button', { name: 'Bulk action' }).hasAttribute('disabled')).toBe(true);
+  });
+
+  it('points to New post in the empty All view for an editor only', async () => {
+    serve(() => pageOf([], { total: 0, counts: { ...COUNTS, all: 0 } }));
+    mount({ canEdit: true });
+    expect(
+      await screen.findByText('No posts yet. Use New post to write the first one.'),
+    ).toBeTruthy();
+  });
+
+  it('keeps the rows and says so when a later page cannot be read, with no actions on them', async () => {
+    serve((url) => (url.includes('page=2') ? 'fail' : pageOf([row()], { total: 60 })));
+    mount();
+    await postLink();
+    fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
+    expect(await screen.findByText('The posts could not be loaded.')).toBeTruthy();
+    expect(screen.getByRole('link', { name: nameOf(1) })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Actions for/ })).toBeNull();
+  });
+
+  it('ticks at most 200 rows', async () => {
+    serve(() =>
+      pageOf(
+        Array.from({ length: 250 }, (_, n) => row(n + 1)),
+        { total: 250 },
+      ),
+    );
+    mount();
+    await postLink();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all posts on this page' }));
+    expect(screen.getByText('200 posts selected')).toBeTruthy();
+  });
+
+  it('selects all matching in Previous and next, and exports by the selector', async () => {
+    const fetched: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) => {
+        fetched.push(url);
+        return Promise.resolve(
+          new Response('id\n1\n', { headers: { 'content-type': 'text/csv' } }),
+        );
+      }),
+    );
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, { createObjectURL: () => 'blob:x', revokeObjectURL: () => {} }),
+    );
+    serve(() => openPage([row()], 'c1'));
+    mount({ paging: 'prev-next' });
+    await postLink();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all posts on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select all matching' }));
+    expect(screen.getByText('All matching posts are selected')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(
+      within(await screen.findByRole('menu', { name: 'Bulk action' })).getByRole('menuitem', {
+        name: /^Export/,
+      }),
+    );
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Export' }),
+    );
+    await waitFor(() => expect(fetched).toHaveLength(1));
+    const params = Object.fromEntries(new URL(fetched[0]!, 'http://x').searchParams);
+    expect(params['ids']).toBeUndefined();
+    expect(params).toMatchObject({ view: 'all', sort: 'created', direction: 'desc' });
+  });
+
+  it('says the file is too large for an all-matching export, and offers no file', async () => {
+    const objectUrl = vi.fn(() => 'blob:x');
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify({ code: 'batch.too-large', details: { max: 10000, total: 12000 } }),
+            { status: 413, headers: { 'content-type': 'application/json' } },
+          ),
+        ),
+      ),
+    );
+    vi.stubGlobal(
+      'URL',
+      Object.assign(URL, { createObjectURL: objectUrl, revokeObjectURL: () => {} }),
+    );
+    serve(() => pageOf([row()], { total: 30 }));
+    mount();
+    await postLink();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all posts on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select all 30 matching' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(
+      within(await screen.findByRole('menu', { name: 'Bulk action' })).getByRole('menuitem', {
+        name: /^Export/,
+      }),
+    );
+    fireEvent.click(
+      within(await screen.findByRole('dialog')).getByRole('button', { name: 'Export' }),
+    );
+    expect(await screen.findByText(/Too many rows to export/)).toBeTruthy();
+    expect(objectUrl).not.toHaveBeenCalled();
   });
 });
 

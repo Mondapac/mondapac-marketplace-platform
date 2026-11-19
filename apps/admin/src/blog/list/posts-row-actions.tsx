@@ -21,13 +21,12 @@ const PUBLISHING: readonly RowAction[] = [
 
 /**
  * The Actions menu of a post row: what the row's `actions` array names (the API decides per
- * caller, state and owner), in a fixed order. Every item opens a page (the post, or its review
- * page) and none acts here, so each label is plain; the page runs the action behind its own
- * checks, so no answer comes back to this list. An id this panel does not know is ignored.
- *   - Open: the post's page (always named).
- *   - Edit: the editor, for a post the caller may change.
- *   - Review: when the caller may decide on the version in review.
- *   - Publishing: when the caller may publish, schedule, pause, put back, archive or feature it.
+ * caller, state and owner), as at most two items with different destinations. Every item opens a
+ * page and none acts here, so each label is plain; the page runs the action behind its own checks,
+ * so no answer comes back to this list. An id this panel does not know is ignored.
+ *   - Open: the post's editor, when the row names open, edit or submit.
+ *   - Review and publish: the review page, when the caller may decide on the version in review or
+ *     publish, schedule, pause, put back, archive or feature the post.
  */
 export function usePostRowActions(): (row: PostListRow) => readonly MenuItem[] {
   const t = useTranslations('blog.list.actions');
@@ -39,12 +38,10 @@ export function usePostRowActions(): (row: PostListRow) => readonly MenuItem[] {
     const items: MenuItem[] = [];
     const go = (id: string, label: string, href: string) =>
       items.push({ id, label, onSelect: () => router.push(href) });
-    if (has('open')) go('open', t('open'), postPath(row.id));
-    if (has('edit')) go('edit', t('edit'), postPath(row.id));
-    if (has(...REVIEWING)) {
+    if (has('open', 'edit', 'submit')) go('open', t('open'), postPath(row.id));
+    if (has(...REVIEWING, ...PUBLISHING)) {
       go('review', t('review'), `${postPath(row.id)}/review`);
     }
-    if (has(...PUBLISHING)) go('publishing', t('publishing'), `${postPath(row.id)}/review`);
     return items;
   };
 }

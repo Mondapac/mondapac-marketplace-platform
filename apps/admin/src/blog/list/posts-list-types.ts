@@ -30,6 +30,7 @@ export const defaultDirection = (sort: Sort): Direction => (sort === 'scheduled'
 export const ROW_ACTIONS = [
   'open',
   'edit',
+  'submit',
   'approve',
   'request-changes',
   'reviewer-edit',

@@ -62,6 +62,7 @@ export function callApi(_method: string, path: string) {
   if (path.startsWith('blog/admin/posts?')) {
     const params = new URL(`http://x/${path}`).searchParams;
     const none =
+      globalThis.location.search.includes('empty') ||
       params.get('q') !== null ||
       params.get('view') === 'draft' ||
       params.get('view') === 'archived';
@@ -70,7 +71,9 @@ export function callApi(_method: string, path: string) {
       status: 200,
       body: {
         items: none ? [] : entries,
-        counts,
+        counts: globalThis.location.search.includes('empty')
+          ? Object.fromEntries(Object.keys(counts).map((key) => [key, 0]))
+          : counts,
         total: none ? 0 : 94,
         page: 1,
         pageSize: 25,

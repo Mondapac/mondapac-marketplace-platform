@@ -295,7 +295,11 @@ export function PostsList({
     <EmptyState
       size="compact"
       icon={filtered ? 'search' : 'file'}
-      title={filtered ? t('empty.no-match') : t(`empty.${query.view}`)}
+      title={
+        filtered
+          ? t('empty.no-match')
+          : t(query.view === 'all' && canEdit ? 'empty.all-create' : `empty.${query.view}`)
+      }
       body={filtered ? t('empty.no-match-help') : undefined}
       action={
         filtered ? (

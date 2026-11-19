@@ -54,6 +54,7 @@ const steps = {
     await page.getByRole('button', { name: /^Drafts/ }).click();
     await page.getByText('No posts are drafts.').waitFor();
   },
+  'empty-all': async () => {},
   columns: async (page) => {
     await page.getByRole('button', { name: 'Columns' }).click();
     await page.getByRole('dialog', { name: 'Columns' }).waitFor();
@@ -87,12 +88,14 @@ for (const scheme of ['light', 'dark']) {
         deviceScaleFactor: 2,
       });
       const page = await ctx.newPage();
-      await page.goto(`http://localhost:${port}/`);
+      const empty = name === 'empty-all';
+      await page.goto(`http://localhost:${port}/${empty ? '?empty' : ''}`);
       await page.evaluate(
         (s) => globalThis.document.documentElement.setAttribute('data-theme', s),
         scheme,
       );
-      await page.getByRole('table').waitFor();
+      if (empty) await page.getByText(/No posts yet/).waitFor();
+      else await page.getByRole('table').waitFor();
       await steps[name](page);
       await page.waitForTimeout(300);
       const over = await page.evaluate(
