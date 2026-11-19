@@ -143,6 +143,39 @@ export const RoleRevertedAudit = defineAuditAction({
 });
 
 /**
+ * A reviewer rejected, or its author withdrew, the creation of a custom platform role in Admin
+ * Inbox › System requests, and the role was deleted again: only while nobody held it and its keys
+ * were those it was created with. Target: the role. The keys it held; `requestId` names the
+ * System request. No step-up of its own: the decision spent the reviewer's (high risk).
+ */
+export const RoleCreationRevertedAudit = defineAuditAction({
+  action: 'identity.role.creation-reverted',
+  targetType: 'identity.role',
+  actors: ['authenticated'],
+  before: {
+    scope: auditField.enumOf(ROLE_SCOPES),
+    removedKeys: auditField.listOf(auditField.permissionKey(), MAX_CUSTOM_ROLE_KEYS),
+  },
+  after: { requestId: auditField.id() },
+});
+
+/**
+ * Another admin approved the delete of a custom platform role that waited in Admin Inbox › System
+ * requests, and the role, unchanged and still held by nobody, was deleted. The actor is the
+ * approving admin. Target: the role. The keys it held; `requestId` names the System request.
+ */
+export const RoleDeletionApprovedAudit = defineAuditAction({
+  action: 'identity.role.deletion-approved',
+  targetType: 'identity.role',
+  actors: ['authenticated'],
+  before: {
+    scope: auditField.enumOf(ROLE_SCOPES),
+    removedKeys: auditField.listOf(auditField.permissionKey(), MAX_CUSTOM_ROLE_KEYS),
+  },
+  after: { requestId: auditField.id() },
+});
+
+/**
  * The founding rows of a self-registered seller (identity design 5.5; PA 5 row 2, Q1 decided
  * by Ali 2026-10-08): written when the Seller Owner verifies the email, the moment the
  * membership and the assignment take effect, in the unit that records `seller-registered`.
@@ -417,6 +450,23 @@ export const InvitationRevokedAudit = defineAuditAction({
   after: {
     kind: auditField.enumOf(INVITATION_KINDS),
     roleId: auditField.id(),
+  },
+});
+
+/**
+ * A reviewer rejected, or its author withdrew, an admin invitation in Admin Inbox › System
+ * requests while it was still pending, and it was revoked (its link stops working, the address is
+ * cleared). Target: the invitation. `requestId` names the System request. An invitation already
+ * accepted is undone by disabling its account instead (`identity.account-status.reverted`).
+ */
+export const InvitationRevertedAudit = defineAuditAction({
+  action: 'identity.invitation.reverted',
+  targetType: 'identity.invitation',
+  actors: ['authenticated'],
+  after: {
+    kind: auditField.enumOf(INVITATION_KINDS),
+    roleId: auditField.id(),
+    requestId: auditField.id(),
   },
 });
 
@@ -738,6 +788,8 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   RoleCreatedAudit,
   RoleUpdatedAudit,
   RoleDeletedAudit,
+  RoleCreationRevertedAudit,
+  RoleDeletionApprovedAudit,
   RoleRevertedAudit,
   SellerAccessFounded,
   SellerMemberAdded,
@@ -754,6 +806,7 @@ export const IDENTITY_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.f
   InvitationIssuedAudit,
   InvitationReissuedAudit,
   InvitationRevokedAudit,
+  InvitationRevertedAudit,
   InvitationAcceptedAudit,
   SecondFactorActivatedAudit,
   SecondFactorReplacedAudit,

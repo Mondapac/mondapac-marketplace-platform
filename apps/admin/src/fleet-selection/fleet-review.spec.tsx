@@ -93,7 +93,7 @@ describe('the fleet page where a change is reviewed', () => {
     );
     saveBar();
     confirmDialog();
-    await expectToast('Sent for review as SR-5', 'info');
+    await expectToast('Sent for review (SR-5)', 'info');
     expect(call.mock.calls[0]?.[2]).toMatchObject({ expectedVersion: 3, note: 'Cheaper' });
     expect(screen.getByLabelText<HTMLTextAreaElement>('Note for reviewers').value).toBe('');
   });
@@ -121,7 +121,7 @@ describe('the model editor where a change is reviewed', () => {
       .mockResolvedValueOnce(ok({ request: { id: 'r4', number: 6 } }))
       .mockResolvedValueOnce(ok(selection({ review })));
     fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
-    await expectToast('Sent for review as SR-6', 'info');
+    await expectToast('Sent for review (SR-6)', 'info');
     expect(call.mock.calls[0]?.[2]).toEqual({
       name: 'Cheapest first',
       rule: { kind: 'cheapest' },
