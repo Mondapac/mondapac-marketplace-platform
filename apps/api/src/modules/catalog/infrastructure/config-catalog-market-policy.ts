@@ -5,6 +5,7 @@ import type { MarketRegistry } from '../../../platform/market-config/market-regi
 import {
   CatalogNotConfiguredError,
   type CatalogMarketPolicy,
+  type TaxCategoryOption,
 } from '../application/ports/catalog-market-policy';
 import type { SensitiveChangesPolicy } from '../domain/product-revision-policy';
 import { DEFAULT_MAX_PENDING_PROPOSALS } from '../domain/seller-category';
@@ -17,6 +18,10 @@ export class ConfigCatalogMarketPolicy implements CatalogMarketPolicy {
 
   taxCategoryCodes(market: MarketContext): readonly string[] {
     return this.section(market).taxCategories.map((category) => category.code);
+  }
+
+  taxCategories(market: MarketContext): readonly TaxCategoryOption[] {
+    return this.section(market).taxCategories.map(({ code, labelKey }) => ({ code, labelKey }));
   }
 
   sensitiveChanges(market: MarketContext): SensitiveChangesPolicy {

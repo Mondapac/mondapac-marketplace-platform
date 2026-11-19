@@ -59,6 +59,7 @@ import { RedeemDiscounts } from './use-cases/redeem-discounts.use-case';
 import { SetPromotionBudget } from './use-cases/set-promotion-budget.use-case';
 import { SetPromotionsStatus } from './use-cases/set-promotions-status.use-case';
 import { ViewMyReferral } from './use-cases/view-my-referral.use-case';
+import { ViewMyUpcomingCashback } from './use-cases/view-my-upcoming-cashback.use-case';
 import { ViewStoreFollowGift } from './use-cases/view-store-follow-gift.use-case';
 import type { PromotionRecord } from '../domain/promotion';
 
@@ -1230,12 +1231,12 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           expect(await run(facts)).toEqual({ ok: true, value: { outcome: 'pending' } });
           expect(await grantDue()).toEqual({
             ok: true,
-            value: { issued: 0, failed: 0, retried: 0 },
+            value: { issued: 0, failed: 0, retried: 0, held: 0 },
           });
           clock.advance(Temporal.Duration.from(HOLD));
           expect(await grantDue()).toEqual({
             ok: true,
-            value: { issued: 1, failed: 0, retried: 0 },
+            value: { issued: 1, failed: 0, retried: 0, held: 0 },
           });
           expect(credits()[0]).toMatchObject({
             status: 'GRANTED',
@@ -1247,7 +1248,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           // Done: the next run finds nothing.
           expect(await grantDue()).toEqual({
             ok: true,
-            value: { issued: 0, failed: 0, retried: 0 },
+            value: { issued: 0, failed: 0, retried: 0, held: 0 },
           });
         });
 
@@ -1264,7 +1265,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           clock.advance(Temporal.Duration.from(HOLD));
           expect(await grantDue()).toEqual({
             ok: true,
-            value: { issued: 1, failed: 1, retried: 0 },
+            value: { issued: 1, failed: 1, retried: 0, held: 0 },
           });
           const bySource = new Map(credits().map((c) => [c.sourceId, c]));
           expect(bySource.get(kept.sellerOrderId)).toMatchObject({
@@ -1279,6 +1280,56 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           expect(p3.sellerCashbackLedger.entries.map((e) => e.amount)).toEqual([200n]);
         });
 
+        it('shows the customer their own waiting cashback with its date, and nothing once credited (display only)', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          const facts = deliverHeld(1);
+          await run(facts);
+          const upcoming = (context: CallContext, input: { orderId?: string } = {}) =>
+            make(ViewMyUpcomingCashback).execute(context, input);
+          const release = clock.now().add(HOLD);
+          const expected = {
+            ok: true,
+            value: {
+              cashback: [
+                { orderId: facts.orderId, amountMinor: 400n, currency, creditOn: release },
+              ],
+            },
+          };
+          expect(await upcoming(customerOf(REFERRER))).toEqual(expected);
+          expect(await upcoming(customerOf(REFERRER), { orderId: facts.orderId })).toEqual(
+            expected,
+          );
+          // Another customer, another order: none. No wallet call, no balance change.
+          expect(await upcoming(customerOf(NEWBIE))).toEqual({ ok: true, value: { cashback: [] } });
+          expect(await upcoming(customerOf(REFERRER), { orderId: id<'Order'>(0x0eee) })).toEqual({
+            ok: true,
+            value: { cashback: [] },
+          });
+          expect(p3.walletCredit.calls).toBe(0);
+          expect(await upcoming(customerOf(REFERRER), { orderId: 'x' })).toMatchObject({
+            ok: false,
+            error: { code: 'validation.failed' },
+          });
+          expect(await upcoming(admin())).toMatchObject({ ok: false });
+          // Past its day but not yet paid: on its way, no date.
+          clock.advance(Temporal.Duration.from(HOLD));
+          expect(await upcoming(customerOf(REFERRER))).toMatchObject({
+            value: { cashback: [{ creditOn: null }] },
+          });
+          await grantDue();
+          expect(await upcoming(customerOf(REFERRER))).toEqual({
+            ok: true,
+            value: { cashback: [] },
+          });
+          // Promotions off: an empty list.
+          await make(SetPromotionsStatus).execute(admin(), { status: 'off' });
+          expect(await upcoming(customerOf(REFERRER))).toEqual({
+            ok: true,
+            value: { cashback: [] },
+          });
+        });
+
         it('cancels a seller’s cashback whose customer stopped being its exclusive customer during the hold', async () => {
           await sellerCashback();
           p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
@@ -1287,7 +1338,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           clock.advance(Temporal.Duration.from(HOLD));
           expect(await grantDue()).toEqual({
             ok: true,
-            value: { issued: 0, failed: 1, retried: 0 },
+            value: { issued: 0, failed: 1, retried: 0, held: 0 },
           });
           expect(credits()[0]).toMatchObject({ status: 'FAILED', failureCode: 'not-exclusive' });
           expect(p3.walletCredit.calls).toBe(0);
@@ -1303,16 +1354,23 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           p3.orderFacts.orders.delete(facts.sellerOrderId);
           expect(await grantDue()).toEqual({
             ok: true,
-            value: { issued: 0, failed: 0, retried: 1 },
+            value: { issued: 0, failed: 0, retried: 1, held: 0 },
           });
           p3.orderFacts.add(facts);
+          // Put back for an hour (Hassan L-4): not due again before then.
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 0, failed: 0, retried: 0, held: 0 },
+          });
+          clock.advance(Temporal.Duration.from({ minutes: 61 }));
           p3.exclusiveCustomers.broken = true;
           expect((await grantDue()).ok && credits()[0]!.status).toBe('PENDING');
           p3.exclusiveCustomers.broken = false;
+          clock.advance(Temporal.Duration.from({ minutes: 61 }));
           p3.sellerCashbackLedger.fails = true;
           expect(await grantDue()).toEqual({
             ok: true,
-            value: { issued: 0, failed: 0, retried: 1 },
+            value: { issued: 0, failed: 0, retried: 1, held: 0 },
           });
           // The amount is final now; the wallet holds it under its key, the seller is not debited.
           expect(credits()[0]).toMatchObject({ status: 'PENDING', grantAfter: null });
@@ -1322,7 +1380,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           clock.advance(Temporal.Duration.from({ minutes: 61 }));
           expect(await grantDue()).toEqual({
             ok: true,
-            value: { issued: 1, failed: 0, retried: 0 },
+            value: { issued: 1, failed: 0, retried: 0, held: 0 },
           });
           expect(p3.walletCredit.grants).toHaveLength(1);
           expect(p3.sellerCashbackLedger.entries).toHaveLength(1);
@@ -1355,6 +1413,75 @@ describe.each([['AU'], ['ZZ']] as const)('promotions phase 3 types in market %s'
           });
           expect((await run(facts)).ok).toBe(true);
           expect(credits()).toHaveLength(0);
+        });
+
+        it('keeps the credit waiting while a payout hold covers the seller order, and credits it once the hold goes (Hassan M-2)', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          const facts = deliverHeld(1);
+          await run(facts);
+          // A chargeback is opened during the hold.
+          p3.payoutAnchors.held.add(facts.sellerOrderId);
+          clock.advance(Temporal.Duration.from(HOLD));
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 0, failed: 0, retried: 0, held: 1 },
+          });
+          expect(credits()[0]).toMatchObject({ status: 'PENDING', amountMinor: 400n });
+          expect(credits()[0]!.grantAfter!.epochMilliseconds).toBe(
+            clock.now().add({ hours: 6 }).epochMilliseconds,
+          );
+          expect(p3.walletCredit.calls).toBe(0);
+          expect(p3.sellerCashbackLedger.calls).toBe(0);
+          // Not due again before the re-check, even with the hold gone.
+          p3.payoutAnchors.held.delete(facts.sellerOrderId);
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 0, failed: 0, retried: 0, held: 0 },
+          });
+          clock.advance(Temporal.Duration.from({ hours: 6 }));
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 1, failed: 0, retried: 0, held: 0 },
+          });
+          expect(p3.walletCredit.grants.map((g) => g.amount)).toEqual([money(400n, currency)]);
+        });
+
+        it('cancels the credit when a chargeback took the seller order’s money (Hassan M-2)', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          const facts = deliverHeld(1);
+          await run(facts);
+          p3.payoutAnchors.held.add(facts.sellerOrderId);
+          p3.payoutAnchors.disputesLost.add(facts.sellerOrderId);
+          clock.advance(Temporal.Duration.from(HOLD));
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 0, failed: 1, retried: 0, held: 0 },
+          });
+          expect(credits()[0]).toMatchObject({ status: 'FAILED', failureCode: 'order-disputed' });
+          expect(p3.walletCredit.calls).toBe(0);
+          expect(p3.sellerCashbackLedger.calls).toBe(0);
+        });
+
+        it('reserves nothing for a seller order a chargeback already took, and makes a held one wait even after its release date', async () => {
+          await sellerCashback();
+          p3.exclusiveCustomers.sellers.set(REFERRER, SELLER);
+          const lost = deliverOrder(1, REFERRER, 10000n);
+          p3.payoutAnchors.disputesLost.add(lost.sellerOrderId);
+          expect((await run(lost)).ok).toBe(true);
+          expect(credits()).toHaveLength(0);
+          // Released already (the default anchor is in the past), but held now.
+          const held = deliverOrder(2, REFERRER, 10000n);
+          p3.payoutAnchors.held.add(held.sellerOrderId);
+          expect(await run(held)).toEqual({ ok: true, value: { outcome: 'pending' } });
+          expect(credits()[0]).toMatchObject({ status: 'PENDING' });
+          expect(credits()[0]!.grantAfter).not.toBeNull();
+          expect(p3.walletCredit.calls).toBe(0);
+          expect(await grantDue()).toEqual({
+            ok: true,
+            value: { issued: 0, failed: 0, retried: 0, held: 1 },
+          });
         });
 
         it('gives a seller’s cashback nothing when the order was not flagged exclusive at checkout', async () => {
