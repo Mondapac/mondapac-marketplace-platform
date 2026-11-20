@@ -769,6 +769,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // The full status history of one seller certificate (certification): an audited read that
     // needs the protected document view permission (query: `beforeId`, `limit`).
     'certification/admin/seller-certificates/:id/history',
+    // The bytes of one file of a submission, and of one issuer request (certification): an audited
+    // read, an attachment under a name the server made. The API answers 403
+    // `document.download-disabled` while the Market's switch is off.
+    'certification/admin/seller-certificates/:id/documents/:id',
+    'certification/admin/issuer-requests/:id/documents/:id',
     // The photo library of a platform product, for the form's images card (catalog, P1).
     'catalog/admin/platform-products/:id/images',
     // The primary photo of a listed product, thumbnail size only (catalog).
