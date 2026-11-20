@@ -1,6 +1,7 @@
 import { CARD_TABLE, EmptyState } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { When } from '../../shared/when.tsx';
+import { IssuerRowActions } from './issuer-row-actions.tsx';
 import { IssuerStateBadge } from './state-badge.tsx';
 import type { IssuerRow } from './types.ts';
 
@@ -30,6 +31,9 @@ export function IssuersTable({
                 {t(`col.${col}`)}
               </th>
             ))}
+            <th scope="col" className={CARD_TABLE.actionsHead}>
+              {t('col.actions')}
+            </th>
           </tr>
         </thead>
         <tbody className={CARD_TABLE.body}>
@@ -57,6 +61,9 @@ export function IssuersTable({
               </td>
               <td className={CARD_TABLE.labelled} data-label={t('col.changed')}>
                 <When iso={row.stateChangedAt} missing="-" />
+              </td>
+              <td className={CARD_TABLE.actions}>
+                <IssuerRowActions issuerId={row.issuerId} name={row.displayName} />
               </td>
             </tr>
           ))}

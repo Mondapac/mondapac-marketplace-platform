@@ -1479,7 +1479,10 @@
       "none-active": "No issuer is active yet, so no certificate that needs an issuer can be approved. Activate one with the expert's approval.",
       "empty": "No issuers yet. Add one, then activate it with the expert's approval.",
       "empty-page": "Nothing on this page. Go back to the first page.",
+      "actions-for": "Actions for {name}",
+      "open-issuer": "Open issuer",
       "col": {
+        "actions": "Actions",
         "name": "Issuer",
         "type": "Type",
         "state": "State",
@@ -9700,10 +9703,9 @@
           "merged": "Merged",
           "archived": "Archived"
         },
-        "promote": "Promote",
-        "promote-for": "Promote the shelf {name}",
-        "merge": "Merge",
-        "merge-for": "Merge the shelf {name}",
+        "promote": "Promote…",
+        "merge": "Merge…",
+        "actions-for": "Actions for the shelf {name}",
         "done": {
           "promote": "Promoted as a hidden platform category. {n, plural, one {# Offer lost} other {# Offers lost}} the shelf.",
           "merge": "Merged. {n, plural, one {# Offer lost} other {# Offers lost}} the shelf."
@@ -9762,6 +9764,7 @@
         "impact-published": "No published product revision changes.",
         "target": "Merge into",
         "target-choose": "Choose a platform category",
+        "type-label": "Type the shelf name to confirm",
         "cancel": "Cancel",
         "confirm": "Merge shelf",
         "reload": "Reload"
@@ -11242,9 +11245,9 @@
       "cancel": "Cancel",
       "same-admin-note": "A different administrator must confirm your request.",
       "view-only-body": "Requests to turn off Material are confirmed by administrators who can edit attributes. Archive requests need permission to restructure attributes.",
-      "confirm-named": "Confirm request for {name}",
-      "withdraw-named": "Withdraw request for {name}",
-      "open-named": "Open {name}",
+      "actions-for": "Actions for {name}",
+      "confirm-item": "Confirm…",
+      "withdraw-item": "Withdraw…",
       "confirm-archive-title": "Archive {name}?",
       "confirm-archive-body": "The attribute is archived at once. Products that already have its values keep them, and feature sets can no longer offer it.",
       "withdraw-archive-body": "The request closes and the attribute stays as it is.",
