@@ -44,16 +44,35 @@ vi.mock('../../../../src/account-deletion/settings-panel.tsx', () => ({
     return <div>panel</div>;
   },
 }));
+vi.mock('next/headers', () => ({ headers: () => Promise.resolve(new Headers()) }));
+vi.mock('../../../../src/server/config.ts', () => ({ panelConfig: () => ({}) }));
+vi.mock('../../../../src/server/bff.ts', () => ({ panelHostFor: () => ({ marketId: 'AU' }) }));
 vi.mock('../../../../src/account-deletion/requests-list.tsx', () => ({
-  RequestsList: ({ canCancel }: { readonly canCancel: boolean }) => (
-    <div>{canCancel ? 'list-with-cancel' : 'list-read-only'}</div>
+  RequestsList: (props: {
+    readonly initialView: string;
+    readonly paging: string;
+    readonly marketId: string;
+    readonly csrfToken: string;
+    readonly accountId: string;
+    readonly zone: string;
+  }) => (
+    <div
+      data-list=""
+      data-view={props.initialView}
+      data-paging={props.paging}
+      data-market={props.marketId}
+      data-csrf={props.csrfToken}
+      data-account={props.accountId}
+      data-zone={props.zone}
+    >
+      the list
+    </div>
   ),
 }));
 
 const SETTINGS_VIEW = 'customers.account-deletion-settings.view';
 const SETTINGS_MANAGE = 'customers.account-deletion-settings.manage';
 const REQUESTS_VIEW = 'customers.account-deletion-requests.view';
-const DELETE = 'customers.buyer-account.delete';
 const session = (permissionKeys: string[]): AdminSession => ({
   accountId: 'a',
   roleId: 'r',
@@ -142,36 +161,64 @@ describe('settings account deletion page', () => {
 });
 
 describe('deletion requests page', () => {
-  it('shows no-access without the requests view key', async () => {
+  const search = (view?: string) => ({ searchParams: Promise.resolve({ view }) });
+  const list = () => document.querySelector('[data-list]');
+
+  it('shows no-access without the requests view key, and reads nothing', async () => {
     as(SETTINGS_VIEW);
-    render(await RequestsPage());
+    render(await RequestsPage(search()));
     expect(
       screen.getByText(/needs the permission "View account deletion requests"\./),
     ).toBeTruthy();
-    expect(screen.queryByText(/^list-/)).toBeNull();
+    expect(screen.queryByText('the list')).toBeNull();
+    expect(mocks.get).not.toHaveBeenCalled();
   });
 
   it('is a nested sub-page of Account deletion, with a way back to it', async () => {
     as(REQUESTS_VIEW);
-    const { container } = render(await RequestsPage());
+    const { container } = render(await RequestsPage(search()));
     const main = container.querySelector('main');
     expect(main?.getAttribute('data-link')).toBe('account-deletion');
     expect(main?.getAttribute('data-nested')).toBe('yes');
     expect(screen.getByRole('link', { name: 'Account deletion' }).getAttribute('href')).toBe(
       '/settings/account-deletion',
     );
+    expect(screen.getByRole('heading', { name: 'Account deletion requests' })).toBeTruthy();
   });
 
-  it('shows the list read-only without the delete key, and with cancel with it', async () => {
+  it('hands the list the Market paging, market, zone and viewer; Waiting is the default view', async () => {
     as(REQUESTS_VIEW);
-    render(await RequestsPage());
-    expect(screen.getByText('list-read-only')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Account deletion' }).getAttribute('href')).toBe(
-      '/settings/account-deletion',
-    );
+    mocks.get.mockResolvedValue({ kind: 'ok', body: { listPaging: 'pages' } });
+    render(await RequestsPage(search()));
+    expect(mocks.get).toHaveBeenCalledWith('settings/admin/list-paging');
+    expect(list()?.getAttribute('data-view')).toBe('pending');
+    expect(list()?.getAttribute('data-paging')).toBe('pages');
+    expect(list()?.getAttribute('data-market')).toBe('AU');
+    expect(list()?.getAttribute('data-csrf')).toBe('c');
+    expect(list()?.getAttribute('data-account')).toBe('a');
+    // No zone of its own: the Market's.
+    expect(list()?.getAttribute('data-zone')).toBe('UTC');
+  });
+
+  it('opens the view of the link, and an unknown one as Waiting', async () => {
+    as(REQUESTS_VIEW);
+    render(await RequestsPage(search('completed')));
+    expect(list()?.getAttribute('data-view')).toBe('completed');
     cleanup();
-    as(REQUESTS_VIEW, DELETE);
-    render(await RequestsPage());
-    expect(screen.getByText('list-with-cancel')).toBeTruthy();
+    render(await RequestsPage(search('everything')));
+    expect(list()?.getAttribute('data-view')).toBe('pending');
+  });
+
+  it('uses Previous and next when the List paging setting cannot be read', async () => {
+    as(REQUESTS_VIEW);
+    mocks.get.mockResolvedValue({ kind: 'unavailable' });
+    render(await RequestsPage(search()));
+    expect(list()?.getAttribute('data-paging')).toBe('prev-next');
+  });
+
+  it('shows the way to retry when the session cannot be read', async () => {
+    mocks.session.mockResolvedValue({ kind: 'unavailable' });
+    render(await RequestsPage(search()));
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 });

@@ -14,6 +14,7 @@ import { useRouter } from 'next/navigation';
 import { useMemo, type MouseEvent, type ReactNode } from 'react';
 import { callApi } from '../api/client.ts';
 import {
+  ASSISTANT_SPEND_CAP_REACHED,
   CERTIFICATE_SUBMITTED,
   DELIVERY_FALLBACK_OVER_CAP,
   PLATFORM_IMPORT_FINISHED,
@@ -45,6 +46,7 @@ const LOOK: Readonly<
   [REVIEW_HELD]: { icon: 'star', tone: 'info', category: 'reviews' },
   [REVIEW_REPORTED]: { icon: 'star', tone: 'attention', category: 'reviews' },
   [SELLER_REFUND_LIMIT_REACHED]: { icon: 'wallet', tone: 'attention', category: 'refunds' },
+  [ASSISTANT_SPEND_CAP_REACHED]: { icon: 'wallet', tone: 'attention', category: 'assistant' },
 };
 const OVERDUE_LOOK = {
   icon: 'alert-circle',
@@ -81,6 +83,7 @@ function hrefOf(notice: AdminNotice): string | null {
     return `/system-requests/${notice.params.requestId}`;
   }
   if (notice.kind === DELIVERY_FALLBACK_OVER_CAP) return '/settings/delivery';
+  if (notice.kind === ASSISTANT_SPEND_CAP_REACHED) return '/settings/assistant';
   if (notice.kind === PLATFORM_IMPORT_FINISHED && notice.params.importId !== undefined) {
     return `/catalog/products/import?id=${notice.params.importId}`;
   }
@@ -155,6 +158,11 @@ export function AdminNotifications({ csrfToken }: { readonly csrfToken: string }
         return t.rich('kind.seller-refund-limit-reached', {
           strong,
           limit: notice.params.limit ?? 'other',
+        });
+      case ASSISTANT_SPEND_CAP_REACHED:
+        return t.rich('kind.assistant-spend-cap-reached', {
+          strong,
+          cap: notice.params.cap ?? 'other',
         });
       default:
         if (SYSTEM_REQUEST_OVERDUE_KINDS.has(notice.kind)) {
