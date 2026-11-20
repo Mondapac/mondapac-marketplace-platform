@@ -11,8 +11,8 @@ import {
   DashboardLoading,
   DistributionCardSkeleton,
   StatCardSkeleton,
-  activitySkeletonColumns,
 } from './dashboard-loading.tsx';
+import { activitySkeletonColumns } from './activity-skeleton-columns.ts';
 import { DashboardSlot } from './dashboard-slot.tsx';
 
 // Panel loading L4: each dashboard card has a skeleton of its own shape (real label, title,

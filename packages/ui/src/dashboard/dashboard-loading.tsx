@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { CARD_TABLE } from '../data/card-table.ts';
 import { Icon, type IconName } from '../icon/icon.tsx';
 import { useDelayedLoading, type DelayedLoading } from '../loading/use-delayed-loading.ts';
-import type { ActivityColumn } from './activity-table.tsx';
+import type { ActivitySkeletonColumn } from './activity-skeleton-columns.ts';
 import { DashboardCard, SWATCH, type DistributionPart } from './dashboard.tsx';
 
 type Register = () => () => void;
@@ -106,25 +106,6 @@ export function StatCardSkeleton({ icon, label, stalledLabel }: StatCardSkeleton
       </div>
     </li>
   );
-}
-
-/** A column of an ActivityTable without its cells: what its skeleton needs. */
-export type ActivitySkeletonColumn = Pick<
-  ActivityColumn<unknown>,
-  'id' | 'header' | 'kind' | 'size' | 'align'
->;
-
-/** The columns of an ActivityTable as its skeleton takes them (cell functions cannot reach a client component). */
-export function activitySkeletonColumns(
-  columns: readonly ActivityColumn<never>[],
-): ActivitySkeletonColumn[] {
-  return columns.map(({ id, header, kind, size, align }) => ({
-    id,
-    header,
-    kind,
-    ...(size === undefined ? {} : { size }),
-    ...(align === undefined ? {} : { align }),
-  }));
 }
 
 // The same column widths as ActivityTable, so the header does not move when the rows arrive.
