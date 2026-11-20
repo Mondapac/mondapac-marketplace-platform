@@ -3439,6 +3439,31 @@ describe('relay of the wallet and step-up routes', () => {
     );
   });
 
+  it('passes the Payouts Status and Amount filters of the list and of its strict export', async () => {
+    const query = 'status=paid&minAmount=10000&maxAmount=500000';
+    const listed = await run('GET', `commission-payouts/admin/payouts?${query}`, readHeaders);
+    expect(listed.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/payouts?${query}`,
+    );
+    const file = await run(
+      'GET',
+      `commission-payouts/admin/payouts/export?format=csv&${query}`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/payouts/export?format=csv&${query}`,
+    );
+    for (const bad of ['minAmount=1.5', 'maxAmount=-1', 'minAmount=abc', 'status=nope']) {
+      const refused = await run(
+        'GET',
+        `commission-payouts/admin/payouts/export?format=csv&${bad}`,
+        readHeaders,
+      );
+      expect([bad, refused.response.status]).toEqual([bad, 400]);
+      expect(refused.upstream).not.toHaveBeenCalled();
+    }
+  });
+
   it('passes the version and reason of removing payout terms, and nothing else', async () => {
     const ok = await run(
       'DELETE',

@@ -9581,8 +9581,11 @@
       "filter": {
         "title": "Filter payouts",
         "name": {
+          "status": "State",
           "approvalMode": "Approval mode",
-          "created": "Created"
+          "created": "Created",
+          "minAmount": "Transfer at least",
+          "maxAmount": "Transfer at most"
         },
         "mode": {
           "AUTO": "Automatic",

@@ -26,20 +26,39 @@ const server = createServer((req, res) => {
   res
     .writeHead(200, { 'content-type': types[extname(f)] ?? 'application/octet-stream' })
     .end(readFileSync(f));
-}).listen(0);
+}).listen(0, '127.0.0.1');
+await new Promise((resolve) => server.once('listening', resolve));
 const port = server.address().port;
 const { chromium } = createRequire(import.meta.url)('playwright');
 const browser = await chromium.launch();
+const ALL = [
+  'list',
+  'hold',
+  'approve',
+  'approve-typed',
+  'approve-blocked',
+  'filters-open',
+  'chips',
+];
+// ONLY=filters-open,chips retakes just those states; WIDTHS=1280,375 just those widths.
+const only = process.env.ONLY ? process.env.ONLY.split(',') : ALL.slice(0, 5);
+const widths = process.env.WIDTHS ? process.env.WIDTHS.split(',').map(Number) : [1280, 768, 375];
+/** Sets one condition in the open filter panel, adding a row after the ones already there. */
+async function setCondition(dialog, field, value, first) {
+  if (!first) await dialog.getByRole('button', { name: 'Add condition' }).click();
+  await dialog.getByLabel('Field').last().selectOption(field);
+  await dialog.getByLabel('Value').last().selectOption(value);
+}
 for (const scheme of ['light', 'dark']) {
-  for (const width of [1280, 768, 375]) {
-    for (const name of ['list', 'hold', 'approve', 'approve-typed', 'approve-blocked']) {
+  for (const width of widths) {
+    for (const name of only) {
       const ctx = await browser.newContext({
         viewport: { width, height: 900 },
         colorScheme: scheme,
         deviceScaleFactor: 2,
       });
       const page = await ctx.newPage();
-      await page.goto(`http://localhost:${port}/`);
+      await page.goto(`http://127.0.0.1:${port}/`);
       await page.evaluate(
         (s) => globalThis.document.documentElement.setAttribute('data-theme', s),
         scheme,
@@ -57,6 +76,18 @@ for (const scheme of ['light', 'dark']) {
         await page.getByRole('dialog').getByText('Transfer', { exact: true }).waitFor();
         if (name === 'approve-typed') {
           await page.getByLabel(`Type ${ref} to confirm`).fill(ref);
+        }
+      }
+      if (name === 'filters-open' || name === 'chips') {
+        await page.getByRole('button', { name: /^Filter/ }).click();
+        const dialog = page.getByRole('dialog', { name: 'Filter' });
+        await dialog.waitFor();
+        await setCondition(dialog, 'status', 'awaiting-approval', true);
+        await setCondition(dialog, 'minAmount', '100', false);
+        await setCondition(dialog, 'maxAmount', '1000', false);
+        if (name === 'chips') {
+          await dialog.getByRole('button', { name: 'Apply' }).click();
+          await page.getByRole('button', { name: /^Remove filter Status/ }).waitFor();
         }
       }
       await page.waitForTimeout(300);

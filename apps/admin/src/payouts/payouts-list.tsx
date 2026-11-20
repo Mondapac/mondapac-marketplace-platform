@@ -25,7 +25,7 @@ import { stepStack } from '../sales/cursor-paging.ts';
 import { SelectionBar } from '../sales/selection-bar.tsx';
 import { numberFormat } from '../shared/intl.ts';
 import { shortId } from '../shared/short-id.ts';
-import { formatMinor } from '../wallet/money.ts';
+import { formatMinor, parseAmount } from '../wallet/money.ts';
 import { ApproveDialog } from './approve-dialog.tsx';
 import { PayoutHoldDialog, type HoldAsk } from './list/payout-hold-dialog.tsx';
 import { DEFAULT_COLUMNS, cleanColumns, type OptionalColumn } from './list/payouts-columns.ts';
@@ -43,6 +43,7 @@ import {
   SELECTION_MAX,
   VIEWS,
   filterCount,
+  filtersForView,
   type FilterField,
   type Filters,
   type PayoutListPage,
@@ -54,7 +55,7 @@ import {
 import { payoutSearchRoute, queryString } from './list/payouts-query.ts';
 import { PayoutsSortPanel } from './list/payouts-sort-panel.tsx';
 import { PayoutsTable } from './list/payouts-table.tsx';
-import type { Approved } from './types.ts';
+import type { Approved, PayoutState } from './types.ts';
 
 type Failure = 'denied' | 'refused' | 'unavailable';
 
@@ -73,6 +74,8 @@ const forView = (view: string): Query => ({ ...DEFAULT_QUERY, view: view as View
 const withView = (current: Query, view: string): Query => ({
   ...current,
   view: view as View,
+  // A status the new view does not hold would show nothing: it goes with the old view.
+  filters: filtersForView(current.filters, view as View),
   cursors: [],
 });
 const searchOf = (current: Query): string => current.q;
@@ -109,6 +112,7 @@ export function PayoutsList({
   csrfToken,
   initialView = 'all',
   sellerId = null,
+  currency: marketCurrency = null,
 }: {
   /** The Market's "List paging" setting, Previous and next when it could not be read. */
   readonly paging: ListPagingMode;
@@ -121,6 +125,11 @@ export function PayoutsList({
   readonly initialView?: View;
   /** One seller's payouts, from a link; shown as a chip that can be removed. */
   readonly sellerId?: string | null;
+  /**
+   * The Market currency of the amount filters, when the page knows it; otherwise the currency of
+   * the rows last read is used (kept when a filter leaves no rows). Without either, the amount filters are left out.
+   */
+  readonly currency?: string | null;
 }) {
   const t = useTranslations('payouts.list');
   const tp = useTranslations('payouts');
@@ -141,6 +150,11 @@ export function PayoutsList({
 
   const [answer, setAnswer] = useState<PayoutListPage | null>(null);
   // The view counts of the last answer: they stay while a page loads or a read fails.
+  // The currency of the rows last read: the amount steps are whole units of it.
+  const [rowCurrency, setRowCurrency] = useState<string | null>(null);
+  const currency = marketCurrency ?? rowCurrency;
+  const currencyNow = useRef(currency);
+  currencyNow.current = currency;
   const [counts, setCounts] = useState<ViewCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<Failure | null>(null);
@@ -167,7 +181,7 @@ export function PayoutsList({
   const load = useCallback(
     async (asked: Query, quiet = false) => {
       const now = new Date();
-      const request = queryString(asked, { paging, zone, now });
+      const request = queryString(asked, { paging, zone, now, currency: currencyNow.current });
       const ticket = ++latest.current;
       if (!quiet) {
         setLoading(true);
@@ -195,6 +209,8 @@ export function PayoutsList({
       }
       setFailure(null);
       setAnswer(result.body);
+      const seen = result.body.payouts[0]?.transfer.currency;
+      if (seen !== undefined) setRowCurrency(seen);
       setCounts(result.body.counts);
       setReadAt(now);
     },
@@ -285,6 +301,11 @@ export function PayoutsList({
   const filterValue = (field: FilterField): string | null => {
     const value = query.filters[field];
     if (value === undefined) return null;
+    if (field === 'status') return tp(`state.${value as PayoutState}`);
+    if (field === 'minAmount' || field === 'maxAmount') {
+      const parsed = currency === null ? null : parseAmount(value, currency);
+      return parsed?.ok && currency !== null ? formatMinor(parsed.minor, currency, locale) : null;
+    }
     return field === 'approvalMode'
       ? t(`filter.mode.${value as 'AUTO' | 'MANUAL'}`)
       : ts(`date-preset.${value}`);
@@ -472,6 +493,7 @@ export function PayoutsList({
         note: t('zone-note', { zone }),
         actions: (
           <PayoutsBulk
+            currency={currency}
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}
             query={query}
             paging={paging}
@@ -525,6 +547,8 @@ export function PayoutsList({
         panel: (close) => (
           <PayoutsFilterPanel
             filters={query.filters}
+            view={query.view}
+            currency={currency}
             onApply={(filters) => changeList({ filters })}
             close={close}
           />

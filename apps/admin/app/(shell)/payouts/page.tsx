@@ -119,6 +119,7 @@ export default async function PayoutsPage({
           marketId={marketId}
           zone={zone}
           csrfToken={session.csrfToken}
+          currency={limits?.todayTotal.currency ?? null}
         />
         <p className="text-sm text-fg-muted">{t('payouts.footnote', { zone })}</p>
       </div>
