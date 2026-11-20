@@ -93,7 +93,22 @@ export const REVIEWS_SELLER_SAVED_FILTER_SHARE = definePermission('reviews', {
   protected: false,
 });
 
+/**
+ * Share a saved filter of the moderation list with every moderator, and change or delete one
+ * another moderator shared (the generic saved-filter routes of `lists`). Without it a moderator
+ * keeps filters for themselves only; the list itself still needs `reviews.moderation.queue`.
+ * Platform scope and protected: a shared filter shapes what every moderator sees first, so a role
+ * gets it by name. A filter holds only the selector (view, stars, report reason, date preset,
+ * sort), never a buyer.
+ */
+export const REVIEWS_MODERATION_SAVED_FILTER_SHARE = definePermission('reviews', {
+  key: 'reviews.moderation-saved-filter.share',
+  scope: 'platform',
+  protected: true,
+});
+
 export const REVIEWS_PERMISSIONS = declarePermissions('reviews', [
+  REVIEWS_MODERATION_SAVED_FILTER_SHARE,
   REVIEWS_CUSTOMER_REVIEW_VIEW,
   REVIEWS_SELLER_REPLY,
   REVIEWS_SELLER_REPORT,

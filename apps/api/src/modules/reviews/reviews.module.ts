@@ -21,6 +21,7 @@ import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CATALOG_FACADE, CatalogModule } from '../catalog';
 import { IdentityModule } from '../identity';
 import { ListsModule, registerLists } from '../lists';
+import { REVIEWS_MODERATION_LISTS } from './application/moderation-saved-filter-list';
 import { REVIEWS_LISTS } from './application/saved-filter-list';
 import { ORDERING_FACADE, OrderingModule } from '../ordering';
 import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.repository';
@@ -257,7 +258,7 @@ function moderationListUseCaseProvider<U>(type: ModerationListUseCaseClass<U>): 
     registerPermissions('reviews', REVIEWS_PERMISSIONS),
     registerStepUpActions('reviews', REVIEWS_STEP_UP_ACTIONS),
     // The seller Reviews list's saved filters, through the generic routes of `lists` (rule 14).
-    registerLists('reviews', REVIEWS_LISTS),
+    registerLists('reviews', [...REVIEWS_LISTS, ...REVIEWS_MODERATION_LISTS]),
     ...reviewsProviders,
     ...[
       SubmitProductReview,

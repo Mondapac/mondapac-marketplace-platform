@@ -2495,7 +2495,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|seller.reviews.list)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|seller.reviews.list|admin.reviews.moderation)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -2507,7 +2507,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|seller.reviews.list)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|seller.reviews.list|admin.reviews.moderation)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -2521,7 +2521,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|seller.reviews.list)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|seller.reviews.list|admin.reviews.moderation)",
       "visibility": "enumOf(me|everyone)"
     }
   },
