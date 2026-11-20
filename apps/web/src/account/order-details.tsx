@@ -166,6 +166,12 @@ export function OrderDetails({
               <dt>{t('order.seller-delivery')}</dt>
               <dd className="num">{money(part.deliveryFee)}</dd>
             </div>
+            {part.deliveryDiscount ? (
+              <div>
+                <dt>{t('order.delivery-discount')}</dt>
+                <dd className="num">−{money(part.deliveryDiscount)}</dd>
+              </div>
+            ) : null}
           </dl>
         </section>
       ))}
@@ -176,10 +182,22 @@ export function OrderDetails({
             <dt>{t('order.items', { count: totals.count })}</dt>
             <dd className="num">{money(totals.items)}</dd>
           </div>
+          {totals.discount.amount > 0 ? (
+            <div>
+              <dt>{t('order.discount')}</dt>
+              <dd className="num">−{money(totals.discount)}</dd>
+            </div>
+          ) : null}
           <div>
             <dt>{t('order.delivery')}</dt>
             <dd className="num">{money(totals.delivery)}</dd>
           </div>
+          {totals.deliveryDiscount.amount > 0 ? (
+            <div>
+              <dt>{t('order.delivery-discount')}</dt>
+              <dd className="num">−{money(totals.deliveryDiscount)}</dd>
+            </div>
+          ) : null}
           <div className="tot">
             <dt>{t('order.total')}</dt>
             <dd className="num">{money(totals.total)}</dd>
