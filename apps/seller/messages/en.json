@@ -3558,7 +3558,10 @@
       "saved-edit": "Reply updated",
       "edited": "edited",
       "editable-until": "you can edit it until {date}",
-      "locked": "it can no longer be edited"
+      "locked": "it can no longer be edited",
+      "dialog-new": "Reply to this review",
+      "dialog-edit": "Edit your reply",
+      "about": "Your reply goes under the review \"{name}\" and everyone who reads it will see it."
     },
     "report": {
       "action": "Report",
@@ -3573,7 +3576,8 @@
       },
       "send": "Send report",
       "sent": "Report sent",
-      "sent-badge": "Reported"
+      "sent-badge": "Reported",
+      "title": "Report \"{name}\"?"
     },
     "error": {
       "already-replied": "This review already has a reply. Reload the page.",
@@ -3586,6 +3590,184 @@
       "denied": "You do not have permission to do this.",
       "unavailable": "Reviews could not be loaded. Try again in a moment.",
       "unknown": "Something went wrong. Try again."
+    },
+    "list": {
+      "intro": "What customers wrote about your products. You can answer each review once in public and report one that breaks the rules. Only the platform can hide or remove a review.",
+      "tabs": "Review views",
+      "tab": {
+        "all": "All",
+        "unanswered": "Unanswered",
+        "answered": "Answered",
+        "low": "Low stars"
+      },
+      "loading": "Loading reviews",
+      "error": {
+        "unavailable": "We couldn’t load your reviews. Try again.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      },
+      "chip": "{field} is {value}",
+      "chip-search": "Search: {text}",
+      "chip-remove": "Remove filter {filter}",
+      "clear-all": "Clear all",
+      "match": "{count, plural, one {# review matches} other {# reviews match}}",
+      "range": "{from} to {to} of {total}",
+      "sorted": "Sorted by {field}, {order}",
+      "columns-button": "Columns",
+      "too-many": "Page numbers stop at the first {limit} reviews. Narrow the list with a search or a filter to reach the rest.",
+      "untitled": "Review with {rating, plural, one {# star} other {# stars}}",
+      "empty": {
+        "all": {
+          "title": "No reviews yet",
+          "body": "Reviews of your products show up here after customers rate what they received."
+        },
+        "unanswered": {
+          "title": "No reviews waiting for a reply",
+          "body": "Reviews you have not answered appear here."
+        },
+        "answered": {
+          "title": "No answered reviews",
+          "body": "Reviews you have replied to appear here."
+        },
+        "low": {
+          "title": "No low-star reviews",
+          "body": "Reviews with 1 or 2 stars appear here."
+        }
+      },
+      "empty-filtered": {
+        "title": "No reviews match",
+        "body": "Change or clear the search and filters to see more reviews."
+      },
+      "search": {
+        "label": "Search reviews",
+        "placeholder": "Search the text or paste a review, order, offer or product ID"
+      },
+      "filter": {
+        "button": "Filter",
+        "title": "Filter reviews",
+        "match-all": "Match all conditions",
+        "field": "Field",
+        "field-placeholder": "Field",
+        "is": "is",
+        "value": "Value",
+        "value-placeholder": "Value",
+        "remove": "Remove condition",
+        "add": "Add condition",
+        "cancel": "Cancel",
+        "apply": "Apply",
+        "reply": "Reply",
+        "reply-value": {
+          "none": "Not answered",
+          "published": "Answered"
+        },
+        "min-rating": "Minimum stars",
+        "max-rating": "Maximum stars",
+        "stars": "{count, plural, one {# star} other {# stars}}",
+        "within": "Published",
+        "within-value": "In the last {days} days"
+      },
+      "sort": {
+        "button": "Sort",
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "published": "Published",
+          "rating": "Stars"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "rating": {
+          "first": "Most stars first",
+          "second": "Fewest stars first"
+        }
+      },
+      "col": {
+        "rating": "Stars",
+        "review": "Review",
+        "published": "Published",
+        "product": "Product link",
+        "order": "Order link",
+        "reply": "Your reply"
+      },
+      "columns": {
+        "title": "Details",
+        "help": "Choose what each review shows. Saved for you only, in this browser.",
+        "always": "Always shown",
+        "up": "Move {column} up",
+        "down": "Move {column} down",
+        "reset": "Reset to default",
+        "save": "Save"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# review selected} other {# reviews selected}}",
+        "all": "All {count, plural, one {# matching review is} other {# matching reviews are}} selected",
+        "all-open": "All matching reviews are selected",
+        "select-all": "Select all {count} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "select": {
+        "page": "Select all reviews on this page",
+        "row": "Select {name}"
+      },
+      "paging": {
+        "rows-per-page": "Rows per page",
+        "previous": "Previous",
+        "next": "Next",
+        "pages": "Pages",
+        "page": "Page {page}",
+        "narrow": "Narrow the list to see more.",
+        "narrow-help": "Lists stop at row 10,000. Add a search or a filter to see other rows."
+      },
+      "row-actions": {
+        "for": "Actions for {name}",
+        "product": "View product",
+        "order": "View order",
+        "reply": "Reply…",
+        "edit-reply": "Edit reply…",
+        "report": "Report…"
+      },
+      "export-button": "Export…",
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# review selected} other {# reviews selected}}",
+        "all-open": "All matching reviews selected",
+        "none-selected": "Select reviews to use a bulk action.",
+        "export": "Export…",
+        "export-help": "Download the selected reviews as CSV or XLSX."
+      },
+      "export": {
+        "title": "Export {count, plural, one {# review} other {# reviews}}",
+        "title-open": "Export reviews",
+        "body": "The file has the stars, title, review text and published time, and the details the list shows. It never has the customer's name.",
+        "legend": "File format",
+        "csv": "CSV",
+        "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+        "xlsx": "XLSX",
+        "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+        "confirm": "Export",
+        "cancel": "Cancel",
+        "pending": "Preparing your export…",
+        "done": "{count, plural, one {# review exported.} other {# reviews exported.}}",
+        "done-open": "The export is saved.",
+        "error": {
+          "unavailable": "The export didn’t work. Try again.",
+          "denied": "You don’t have access to export reviews.",
+          "too-large": "Too many reviews to export ({total}). Narrow the list to {max} or fewer, then try again.",
+          "too-many-selected": "You can export up to {max} selected reviews at a time.",
+          "not-found": "Some of the selected reviews are no longer available. Reload the list and try again.",
+          "invalid": "That export can’t be done. Reload the page and try again."
+        }
+      },
+      "saved": {
+        "manage-link": "Manage filters…",
+        "save-link": "Save filter…"
+      },
+      "chip-min": "At least {count, plural, one {# star} other {# stars}}",
+      "chip-max": "At most {count, plural, one {# star} other {# stars}}",
+      "link-product": "View product of {name}",
+      "link-order": "View order of {name}"
     }
   },
   "notifications": {
