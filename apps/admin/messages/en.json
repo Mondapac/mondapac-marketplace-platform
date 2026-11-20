@@ -3921,12 +3921,6 @@
         "disputes": "Disputes",
         "seller-cashback": "Cashback to exclusive customers"
       },
-      "col": {
-        "when": "Date",
-        "order": "Order",
-        "kind": "Kind",
-        "amount": "Amount"
-      },
       "kind": {
         "sale": "Sale",
         "shipping": "Shipping",
@@ -3939,10 +3933,107 @@
         "cashback-seller": "Cashback to exclusive customers"
       },
       "empty": "No ledger rows yet. They appear when this seller's orders are paid.",
-      "more": "Load more",
-      "more-failed": "More rows could not be loaded. Try again.",
       "unavailable": "The commission details could not be loaded.",
-      "retry": "Try again"
+      "list": {
+        "intro": "Every row of this seller's ledger. The totals above cover all of them.",
+        "intro-filtered": "Only the rows that match are listed. The totals above still cover every row of this seller.",
+        "zone-note": "Dates are shown in {zone}.",
+        "loading": "Loading the ledger",
+        "no-access": "You do not have access to this ledger.",
+        "none": "None",
+        "kind-unknown": "Other",
+        "caption": "Ledger rows",
+        "row-name": "ledger row {id}",
+        "col": {
+          "kind": "Kind",
+          "amount": "Amount",
+          "recorded": "Recorded on",
+          "order": "Order",
+          "occurred": "Occurred on",
+          "seller-order": "Seller order",
+          "order-line": "Order line",
+          "rate": "Commission rate",
+          "base": "Amount before GST",
+          "source": "Refund or dispute",
+          "entry": "Row ID",
+          "actions": "Actions"
+        },
+        "search": {
+          "label": "Search",
+          "placeholder": "Order ID or seller order ID",
+          "help": "A full order ID or seller order ID.",
+          "not-id": "That is not an ID. Type a full order ID or seller order ID."
+        },
+        "chip-id": "Order or seller order ID is {text}",
+        "filter": {
+          "title": "Filter ledger rows",
+          "name": {
+            "kind": "Kind",
+            "side": "Credit or debit",
+            "recorded": "Recorded on",
+            "minAmount": "Amount at least",
+            "maxAmount": "Amount at most"
+          },
+          "side": {
+            "credit": "Credit",
+            "debit": "Debit"
+          }
+        },
+        "sort": {
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "recorded": "Recorded on",
+            "occurred": "Occurred on",
+            "amount": "Amount"
+          },
+          "recorded": {
+            "first": "Newest first",
+            "second": "Oldest first"
+          },
+          "occurred": {
+            "first": "Newest first",
+            "second": "Oldest first"
+          },
+          "amount": {
+            "first": "Largest first",
+            "second": "Smallest first"
+          }
+        },
+        "sorted": "Sorted by {field}: {order}",
+        "match": "{count, plural, one {# row matches} other {# rows match}}",
+        "range": "{from}–{to} of {total} rows",
+        "error": {
+          "unavailable": "The ledger rows could not be loaded.",
+          "refused": "This search can't be run. Change the text or the filters, or clear them."
+        },
+        "empty": {
+          "no-match": "No ledger rows match",
+          "no-match-help": "Try other filters or clear them."
+        },
+        "select": {
+          "page": "Select all rows on this page",
+          "page-short": "Select all on this page",
+          "row": "Select {name}"
+        },
+        "selection": {
+          "selected": "{count, plural, one {# row selected} other {# rows selected}}",
+          "all": "{count, plural, one {The # matching row is selected} other {All # matching rows are selected}}",
+          "all-open": "All matching rows are selected",
+          "select-all": "Select all {count, number} matching",
+          "select-all-open": "Select all matching",
+          "clear": "Clear selection"
+        },
+        "bulk": {
+          "button": "Bulk action",
+          "selected": "{count, plural, one {# row selected} other {# rows selected}}",
+          "all-open": "All matching rows selected"
+        },
+        "actions": {
+          "for": "Actions for {name}",
+          "open-order": "Open order"
+        }
+      }
     }
   },
   "catalog": {
@@ -9484,10 +9575,8 @@
       },
       "holds": {
         "title": "Payout holds",
-        "place": "Place a hold",
-        "place-title": "Place a payout hold",
+        "place": "Place hold…",
         "place-intro": "While a hold is active, the money it covers is not paid out. The seller sees only that it is on hold.",
-        "place-yes": "Place hold",
         "reason-label": "Reason",
         "reason-placeholder": "Choose a reason",
         "scope": {
@@ -9511,40 +9600,25 @@
           "seller-reinstated": "Seller reinstated",
           "review-complete": "Review complete"
         },
-        "release-title": "Release hold",
         "release-body": "Release the {reason} hold on {covers}? The money it covers can be paid out in the next payout.",
         "release-reason-label": "Reason for releasing",
-        "release-yes": "Release hold",
         "suspended-note": "A suspended seller's hold is never released by the system. Only an admin can release it.",
-        "release-action": "Release",
         "cancel": "Cancel",
         "whole-seller": "Whole seller",
         "order": "Seller order {id}",
-        "col": {
-          "covers": "Covers",
-          "reason": "Reason",
-          "placed": "Placed",
-          "status": "Status",
-          "actions": "Actions"
-        },
         "origin": {
-          "admin": "admin",
-          "system": "system"
+          "admin": "Admin",
+          "system": "System"
         },
-        "placed-by": "{when}, {origin}",
-        "active": "Active",
-        "released": "Released {when}, {reason}",
         "empty": {
           "title": "No holds",
           "body": "Nothing stops this seller's payouts."
         },
-        "footnote": "Times are shown in {zone}. A dispute, refund or bank-change hold is released by the system when it ends. A suspended seller's hold is released only by an admin.",
         "done": {
           "placed": "Hold placed.",
           "released": "Hold released."
         },
         "error": {
-          "reason": "Choose a reason.",
           "order": "Enter the full seller order ID.",
           "seller-not-found": "This seller no longer exists.",
           "order-not-found": "That order is not one of this seller's orders.",
@@ -9556,6 +9630,126 @@
           "denied": "You cannot do this. Your account may lack permission, or you may be acting as a seller.",
           "unavailable": "The change could not be saved. Try again.",
           "unknown": "The change could not be saved. Try again."
+        },
+        "active": "Active",
+        "list": {
+          "intro": "Holds stop the money they cover from being paid out.",
+          "intro-counts": "{active, plural, one {# active hold} other {# active holds}} and {released, plural, one {# released hold} other {# released holds}}. A hold stops the money it covers from being paid out.",
+          "note": "Times are shown in {zone}. A dispute, refund or bank-change hold is released by the system when it ends. A suspended seller's hold is released only by an admin.",
+          "loading": "Loading the holds",
+          "no-access": "You do not have access to these holds.",
+          "none": "None",
+          "released": "Released",
+          "release-unknown": "Other reason",
+          "caption": "Payout holds",
+          "row-name": "hold {id}",
+          "col": {
+            "covers": "Covers",
+            "reason": "Reason",
+            "placed": "Placed on",
+            "status": "Status",
+            "origin": "Placed by",
+            "released": "Released on",
+            "release-reason": "Released because",
+            "hold": "Hold ID",
+            "actions": "Actions"
+          },
+          "search": {
+            "label": "Search",
+            "placeholder": "Seller order ID",
+            "help": "A full seller order ID.",
+            "not-id": "That is not an ID. Type a full seller order ID."
+          },
+          "chip-id": "Seller order ID is {text}",
+          "filter": {
+            "title": "Filter holds",
+            "name": {
+              "status": "Status",
+              "reason": "Reason",
+              "origin": "Placed by",
+              "scope": "Covers",
+              "placed": "Placed on"
+            },
+            "status": {
+              "active": "Active",
+              "released": "Released"
+            },
+            "origin": {
+              "admin": "Admin",
+              "system": "System"
+            },
+            "scope": {
+              "seller": "Whole seller",
+              "order": "One seller order"
+            }
+          },
+          "sort": {
+            "by": "Sort by",
+            "order": "Order",
+            "field": {
+              "active-first": "Status",
+              "placed": "Placed on",
+              "released": "Released on"
+            },
+            "active-first": {
+              "first": "Active first",
+              "second": "Released first"
+            },
+            "placed": {
+              "first": "Newest first",
+              "second": "Oldest first"
+            },
+            "released": {
+              "first": "Newest first",
+              "second": "Oldest first"
+            }
+          },
+          "sorted": "Sorted by {field}: {order}",
+          "match": "{count, plural, one {# hold matches} other {# holds match}}",
+          "range": "{from}–{to} of {total} holds",
+          "error": {
+            "unavailable": "The holds could not be loaded.",
+            "refused": "This search can't be run. Change the text or the filters, or clear them."
+          },
+          "empty": {
+            "no-match": "No holds match",
+            "no-match-help": "Try other filters or clear them."
+          },
+          "select": {
+            "page": "Select all holds on this page",
+            "page-short": "Select all on this page",
+            "row": "Select {name}"
+          },
+          "selection": {
+            "selected": "{count, plural, one {# hold selected} other {# holds selected}}",
+            "all": "{count, plural, one {The # matching hold is selected} other {All # matching holds are selected}}",
+            "all-open": "All matching holds are selected",
+            "select-all": "Select all {count, number} matching",
+            "select-all-open": "Select all matching",
+            "clear": "Clear selection"
+          },
+          "bulk": {
+            "button": "Bulk action",
+            "selected": "{count, plural, one {# hold selected} other {# holds selected}}",
+            "all-open": "All matching holds selected"
+          },
+          "actions": {
+            "for": "Actions for {name}",
+            "release": "Release hold…"
+          },
+          "dialog": {
+            "place": {
+              "title": "Place a payout hold?",
+              "confirm": "Place hold",
+              "type": "Type the seller ID {id} to confirm."
+            },
+            "release": {
+              "title": "Release this payout hold?",
+              "confirm": "Release hold",
+              "type": "Type the hold ID {id} to confirm."
+            },
+            "step-up-note": "You will be asked for your two-step code next."
+          }
         }
       },
       "load-failed": "The payout terms and holds could not be loaded."

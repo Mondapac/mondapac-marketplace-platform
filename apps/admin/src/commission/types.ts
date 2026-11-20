@@ -32,14 +32,37 @@ export type LedgerKind =
   | 'dispute-reinstate'
   | 'cashback-seller';
 
+export const LEDGER_KINDS: readonly LedgerKind[] = [
+  'sale',
+  'shipping',
+  'commission',
+  'refund-sale',
+  'refund-shipping',
+  'refund-commission',
+  'dispute-debit',
+  'dispute-reinstate',
+  'cashback-seller',
+];
+
 export interface LedgerEntry {
   readonly entryId: string;
   readonly orderId: string;
+  readonly sellerOrderId: string;
+  readonly orderLineId: string | null;
   readonly kind: LedgerKind;
   readonly direction: 'credit' | 'debit';
   /** Minor units, never negative. */
   readonly amount: string;
+  /** Commission and its refund only, in basis points. */
+  readonly rateBps: number | null;
+  /** Commission and its refund only: the line amount without GST, in minor units. */
+  readonly baseAmount: string | null;
+  /** The refund or dispute a reversal row comes from. */
+  readonly sourceId: string | null;
   readonly occurredAt: string;
+  readonly recordedAt: string;
+  /** The row Actions menu, named by the API (`open-order`). */
+  readonly actions: readonly string[];
 }
 
 export interface Ledger {
@@ -60,7 +83,12 @@ export interface Ledger {
     readonly balance: string;
   };
   readonly entries: readonly LedgerEntry[];
+  /** Previous and next: the cursor of the next page, null on the last one. */
   readonly nextCursor: string | null;
+  /** Page numbers only; null with Previous and next. */
+  readonly total: number | null;
+  readonly page: number | null;
+  readonly pageSize: number;
 }
 
 /** 1500 as "15", 1250 as "12.5" in the Market's locale: the percent text of a rate. */
