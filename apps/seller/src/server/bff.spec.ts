@@ -1063,13 +1063,47 @@ describe('relay of the seller payout routes', () => {
     ).toBe(
       `http://api.test/commission-payouts/seller/payouts/export?format=xlsx&columns=${encodeURIComponent('gross,created,updated')}&ids=${encodeURIComponent(`${ID},${ID}`)}&status=failed&sort=slot`,
     );
-    // The old `slot` column is gone: the payout day is the base "Payout on" column.
-    expect(await send(file, 'columns=gross,slot')).toBe(
-      'http://api.test/commission-payouts/seller/payouts/export',
-    );
+    // The export is strict: a known key out of shape refuses (400) and nothing goes upstream, so a
+    // filter is never dropped into a wider file. The old `slot` column is gone.
+    const strict = async (query: string) => {
+      const upstream = upstreamOk();
+      const response = await relay(
+        config,
+        new Request(`http://seller.localhost:3001/api/${file.join('/')}?${query}`, {
+          method: 'GET',
+          headers: { host: 'seller.localhost:3001' },
+        }),
+        file,
+        upstream,
+      );
+      return { response, upstream };
+    };
     const many = Array.from({ length: 201 }, () => ID).join(',');
-    expect(await send(file, `ids=${many}&columns=fee`)).toBe(
-      'http://api.test/commission-payouts/seller/payouts/export',
+    for (const [query, key] of [
+      ['columns=gross,slot', 'columns'],
+      [`ids=${many}`, 'ids'],
+      [`ids=${ID},nope`, 'ids'],
+      ['status=voided', 'status'],
+      ['from=yesterday', 'from'],
+      ['to=2026-11-01', 'to'],
+      ['minAmount=-1', 'minAmount'],
+      ['maxAmount=1.5', 'maxAmount'],
+      ['format=pdf', 'format'],
+      ['sort=fee', 'sort'],
+      ['direction=up', 'direction'],
+      ['q=x', 'q'],
+    ] as const) {
+      const { response, upstream } = await strict(query);
+      expect(response.status, query).toBe(400);
+      expect(await response.json()).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: key }] },
+      });
+      expect(upstream, query).not.toHaveBeenCalled();
+    }
+    // A key the export does not take is dropped, not refused.
+    expect(await send(file, 'format=csv&page=2&sellerId=x')).toBe(
+      'http://api.test/commission-payouts/seller/payouts/export?format=csv',
     );
   });
 

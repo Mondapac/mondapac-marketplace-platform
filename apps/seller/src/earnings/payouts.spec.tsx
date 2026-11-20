@@ -12,7 +12,7 @@ import { Earnings } from './earnings.tsx';
 import type {
   NextPayout,
   OwnHeld,
-  OwnPayout,
+  OwnPayoutRow,
   OwnPayouts,
   PayoutMoney,
   PayoutsInitial,
@@ -54,7 +54,7 @@ const held = (over: Partial<OwnHeld> = {}): OwnHeld => ({
   availableFrom: '2026-10-29T23:00:00.000Z',
   ...over,
 });
-const payout = (over: Partial<OwnPayout> = {}): OwnPayout => ({
+const payout = (over: Partial<OwnPayoutRow> = {}): OwnPayoutRow => ({
   payoutId: '0190a000-0000-7000-8000-0000000000a1',
   status: 'paid',
   gross: aud('120410'),
@@ -64,12 +64,32 @@ const payout = (over: Partial<OwnPayout> = {}): OwnPayout => ({
   createdAt: '2026-10-26T22:00:00.000Z',
   updatedAt: '2026-10-27T01:00:00.000Z',
   reason: null,
+  actions: ['open'],
+  ...over,
+});
+const page = (payouts: OwnPayoutRow[], over: Partial<OwnPayouts> = {}): OwnPayouts => ({
+  payouts,
+  counts: {
+    all: payouts.length,
+    scheduled: 0,
+    'awaiting-approval': 0,
+    'on-its-way': 0,
+    paid: payouts.length,
+    'not-sent': 0,
+    failed: 0,
+    settled: 0,
+  },
+  total: null,
+  page: null,
+  pageSize: 25,
+  nextCursor: null,
   ...over,
 });
 const initial = (over: Partial<PayoutsInitial> = {}): PayoutsInitial => ({
   next: next(),
   holds: [held()],
-  history: { payouts: [payout()], nextCursor: null },
+  history: page([payout()]),
+  paging: 'prev-next',
   canOpenAccount: true,
   ...over,
 });
@@ -269,18 +289,16 @@ describe('money on hold', () => {
 });
 
 describe('payout history', () => {
-  const status = (value: string, over: Partial<OwnPayout> = {}) => {
-    mount(
-      initial({ history: { payouts: [payout({ status: value, ...over })], nextCursor: null } }),
-    );
+  const status = (value: string, over: Partial<OwnPayoutRow> = {}) => {
+    mount(initial({ history: page([payout({ status: value, ...over })]) }));
   };
+  const table = () => screen.getByRole('table', { name: 'Payout history' });
 
   it('shows Paid with the transfer amount and no Test label on the row', () => {
     mount();
-    const table = screen.getByRole('table', { name: 'Payout history' });
-    expect(within(table).getByText('Paid')).toBeTruthy();
-    expect(within(table).getByText('$1,204.10')).toBeTruthy();
-    expect(within(table).queryByText('Test')).toBeNull();
+    expect(within(table()).getByText('Paid')).toBeTruthy();
+    expect(within(table()).getByText('$1,204.10')).toBeTruthy();
+    expect(within(table()).queryByText('Test')).toBeNull();
   });
 
   it.each([
@@ -292,9 +310,7 @@ describe('payout history', () => {
     ['not-sent', 'Not sent'],
   ])('shows %s as "%s"', (value, label) => {
     status(value);
-    expect(
-      within(screen.getByRole('table', { name: 'Payout history' })).getByText(label),
-    ).toBeTruthy();
+    expect(within(table()).getByText(label)).toBeTruthy();
   });
 
   it('says "We will contact you" for a failed payout', () => {
@@ -320,59 +336,31 @@ describe('payout history', () => {
     expect(screen.getByText('Unknown')).toBeTruthy();
   });
 
-  it('has an empty state and a retry', async () => {
-    mount(initial({ history: { payouts: [], nextCursor: null } }));
+  it('has an empty state, and a retry that reads the first page again', async () => {
+    mount(initial({ history: page([]) }));
     expect(screen.getByText('No payouts yet')).toBeTruthy();
     cleanup();
     mount(initial({ history: null }));
-    call.mockResolvedValueOnce(ok<OwnPayouts>({ payouts: [payout()], nextCursor: null }));
+    expect(screen.getByText('Your payout history could not be loaded.')).toBeTruthy();
+    call.mockResolvedValueOnce(ok<OwnPayouts>(page([payout()])));
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(await screen.findByText('Paid')).toBeTruthy();
-    expect(call).toHaveBeenCalledWith('GET', 'commission-payouts/seller/payouts?limit=20');
-  });
-
-  it('loads more with the cursor, drops a repeated row and hides the button at the end', async () => {
-    mount(initial({ history: { payouts: [payout()], nextCursor: 'cur-1' } }));
-    call.mockResolvedValueOnce(
-      ok<OwnPayouts>({
-        payouts: [
-          payout(),
-          payout({ payoutId: '0190a000-0000-7000-8000-0000000000a2', status: 'failed' }),
-        ],
-        nextCursor: null,
-      }),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
-    await waitFor(() => expect(screen.getByText('Failed')).toBeTruthy());
-    expect(call).toHaveBeenCalledWith(
-      'GET',
-      'commission-payouts/seller/payouts?limit=20&cursor=cur-1',
-    );
-    expect(screen.getAllByText('Paid')).toHaveLength(1);
-    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
-  });
-
-  it('says when more could not be loaded and keeps the button', async () => {
-    mount(initial({ history: { payouts: [payout()], nextCursor: 'cur-1' } }));
-    call.mockResolvedValueOnce(refuse(503));
-    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
-    expect(await screen.findByText('More payouts could not be loaded. Try again.')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Load more' })).toBeTruthy();
+    expect(call).toHaveBeenCalledWith('GET', 'commission-payouts/seller/payouts?limit=25');
   });
 
   it('sends a signed-out seller to the session-ended route', async () => {
     const assign = vi.fn();
     vi.stubGlobal('location', { assign });
-    mount(initial({ history: { payouts: [payout()], nextCursor: 'cur-1' } }));
+    mount(initial({ history: null }));
     call.mockResolvedValueOnce(refuse(401, 'session.invalid'));
-    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
     vi.unstubAllGlobals();
   });
 });
 
 describe('payout history zone', () => {
-  it('shows the slot in the store zone even when the next payout could not be read', () => {
+  it('shows the payout day in the store zone even when the next payout could not be read', () => {
     mount(initial({ next: null }));
     // 23:00 UTC on 26 Oct is 10:00 on 27 Oct in Melbourne (AEDT), not 11 pm UTC.
     const table = screen.getByRole('table', { name: 'Payout history' });
