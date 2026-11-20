@@ -47,6 +47,12 @@ export interface PayoutListCursor {
   readonly payoutId: Id<'Payout'>;
 }
 
+/** Where a Previous/Next page by payout day starts: after this payout, latest slot first. */
+export interface PayoutSlotCursor {
+  readonly slotAt: Temporal.Instant;
+  readonly payoutId: Id<'Payout'>;
+}
+
 /** Every field is an AND; null leaves it out. */
 export interface PayoutListFilter {
   /** The states of the view (null: every state). */
@@ -57,7 +63,12 @@ export interface PayoutListFilter {
   readonly payoutId: Id<'Payout'> | null;
   readonly sellerId: Id<'Seller'> | null;
   readonly approvalMode: ApprovalMode | null;
-  /** Created at or after `from`, before `to`. */
+  /**
+   * The date `from` and `to` compare: `created` (absent: the admin list) or `slot` (the payout
+   * day, the seller's own list).
+   */
+  readonly dateOn?: 'created' | 'slot';
+  /** At or after `from`, before `to`, on the date `dateOn` names. */
   readonly from: Temporal.Instant | null;
   readonly to: Temporal.Instant | null;
   /** The transfer in minor units of the Market's currency, both ends included. */

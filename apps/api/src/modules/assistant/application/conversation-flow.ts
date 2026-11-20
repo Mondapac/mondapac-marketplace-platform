@@ -142,6 +142,8 @@ async function checkLimits(
 interface Turn {
   readonly cards: AssistantCard[];
   readonly notices: Set<AssistantNotice>;
+  /** A product search of this turn found nothing. */
+  emptySearch: boolean;
   text: string;
   costMicroUsd: number;
   inputTokens: number;
@@ -164,6 +166,7 @@ async function runModel(
   const turn: Turn = {
     cards: [],
     notices: new Set(),
+    emptySearch: false,
     text: '',
     costMicroUsd: 0,
     inputTokens: 0,
@@ -259,6 +262,7 @@ async function runModel(
       const outcome = await deps.tools.run(context, request);
       showCards(outcome.cards);
       for (const notice of outcome.notices) turn.notices.add(notice);
+      if (outcome.noResults === true) turn.emptySearch = true;
       results.push({
         type: 'tool-result',
         callId: call.id,
@@ -435,6 +439,8 @@ export async function sendMessage(
         text: replyText,
         cards: turn.cards.map(cardRefOf),
         at: now,
+        notices: [...turn.notices],
+        emptySearch: turn.emptySearch,
       });
       return ok(null);
     });

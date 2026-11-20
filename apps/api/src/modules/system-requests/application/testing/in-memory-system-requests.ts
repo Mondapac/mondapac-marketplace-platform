@@ -13,6 +13,7 @@ import type {
   StepUpRefusal,
 } from '../../../../platform/authz';
 import type {
+  ChangeImpact,
   RevertOutcome,
   RevertRequest,
   SystemChangeReverter,
@@ -468,6 +469,29 @@ export class FakeSubjects implements SystemChangeReverter {
       if (label !== undefined) found.set(ref, label);
     }
     return Promise.resolve(found);
+  }
+
+  /** The impact the owning module would answer, per Market and ref (`unknown`: any shape). */
+  readonly impacts = new Map<string, unknown>();
+  /** Every impact asked: the Market of the context and the request. */
+  readonly impactAsked: { readonly marketId: string; readonly request: RevertRequest }[] = [];
+  /** `fail`: the read throws; `hang`: it never settles. */
+  impactMode: 'answer' | 'fail' | 'hang' = 'answer';
+
+  /** The signal of each impact asked, to see it abort when System requests stops waiting. */
+  readonly impactSignals: (AbortSignal | undefined)[] = [];
+
+  impact(
+    context: CallContext,
+    request: RevertRequest,
+    signal?: AbortSignal,
+  ): Promise<ChangeImpact | null> {
+    this.impactAsked.push({ marketId: context.market.marketId, request });
+    this.impactSignals.push(signal);
+    if (this.impactMode === 'fail') return Promise.reject(new Error('count down'));
+    if (this.impactMode === 'hang') return new Promise(() => undefined);
+    const answer = this.impacts.get(`${context.market.marketId}:${request.subjectRef}`);
+    return Promise.resolve((answer ?? null) as ChangeImpact | null);
   }
 }
 

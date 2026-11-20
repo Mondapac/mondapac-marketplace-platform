@@ -1,5 +1,6 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
+import { parseInstantRange } from '../../../../platform/list-query';
 import type { BrandState } from '../../domain/brand';
 import { BRAND_STATUSES, type BrandStatus } from '../../domain/brand';
 
@@ -96,6 +97,61 @@ export function statusFilterOf(raw: unknown): Result<BrandStatus | null, Validat
     return invalid('status', 'unknown');
   }
   return ok(raw as BrandStatus);
+}
+
+/** The filter keys the admin Brands list and its export both read. */
+export const BRAND_FILTER_KEYS = ['status', 'originCountry', 'createdFrom', 'createdTo'] as const;
+
+/** The filter of the admin Brands list (and its export), as {@link brandListFilterOf} reads it. */
+export interface BrandListFilter {
+  readonly status: BrandStatus | null;
+  /** ISO 3166-1 alpha-2, uppercase; exact match on the brand's origin country. */
+  readonly originCountry: string | null;
+  /** Created at or after this instant (inclusive). */
+  readonly createdFrom: Temporal.Instant | null;
+  /** Created before this instant (exclusive). */
+  readonly createdTo: Temporal.Instant | null;
+}
+
+const COUNTRY_CODE = /^[A-Z]{2}$/;
+const absentValue = (value: unknown): boolean =>
+  value === undefined || value === null || value === '';
+
+/**
+ * Reads the list filter of a closed record: `status` (draft, active, archived; anything else is
+ * `unknown`), `originCountry` (two uppercase letters, as the brand stores it; anything else, a
+ * control character included, is `format`), and `createdFrom` / `createdTo`, ISO 8601 instants with
+ * an offset or `Z` (the panel turns the admin's days into instants in the admin's zone, ADR-0005);
+ * `createdFrom` is inclusive, `createdTo` exclusive, and a range that ends at or before it starts is
+ * `range`. Absent or empty values do not filter.
+ */
+export function brandListFilterOf(
+  record: Readonly<Record<string, unknown>>,
+): Result<BrandListFilter, ValidationFailure> {
+  const status = statusFilterOf(record['status']);
+  if (!status.ok) return status;
+  let originCountry: string | null = null;
+  const rawCountry = record['originCountry'];
+  if (!absentValue(rawCountry)) {
+    if (typeof rawCountry !== 'string') return invalid('originCountry', 'type');
+    if (!COUNTRY_CODE.test(rawCountry)) return invalid('originCountry', 'format');
+    originCountry = rawCountry;
+  }
+  const range = parseInstantRange({ from: record['createdFrom'], to: record['createdTo'] }, '');
+  if (!range.ok) {
+    return invalidFields(
+      range.error.fields.map((field) => ({
+        path: field.path === 'from' ? 'createdFrom' : 'createdTo',
+        code: field.code,
+      })),
+    );
+  }
+  return ok({
+    status: status.value,
+    originCountry,
+    createdFrom: range.value.from,
+    createdTo: range.value.to,
+  });
 }
 
 /** A closed input: only these keys, as an object. */

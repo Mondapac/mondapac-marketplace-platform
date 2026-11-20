@@ -2,6 +2,7 @@ import { ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import type {
   ApplyOutcome,
+  ChangeImpact,
   RevertOutcome,
   RevertRequest,
   SystemChangeApplier,
@@ -19,6 +20,7 @@ import { LastHolderPolicy } from '../../domain/last-holder-policy';
 import type { Role } from '../../domain/role';
 import { writeAccountStatus } from '../accounts/account-status';
 import { isSystemRole } from '../accounts/admin-verdicts';
+import type { IdentityMarketPolicy } from '../ports/identity-market-policy';
 import type { InvitationRepository } from '../ports/invitation.repository';
 import type { RoleGrantReader } from '../ports/role-grant-reader';
 import { readActingGrants, roleIsInActorsReach, type GrantSubject } from '../roles/granting';
@@ -31,6 +33,7 @@ import {
   holdsRole,
   idOf,
   labelsOrNone,
+  roleHolderImpact,
   sameList,
   type PeopleLabelReads,
   type PeopleReverterDependencies,
@@ -49,11 +52,13 @@ import {
 // revoked, every challenge void, as a disable does), and keeps the last Platform Administrator
 // who can sign in (`LastHolderPolicy`), else `not-permitted`.
 
-/** The ports of the creation reverters and the delete applier. */
+/** The ports of the creation reverters and the appliers (role delete, sensitive invitation). */
 export interface PeopleCreationDependencies extends PeopleReverterDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly invitations: InvitationRepository;
   readonly grants: RoleGrantReader;
+  /** The admin invitation lifetime (a held invitation past it is gone). */
+  readonly policy: Pick<IdentityMarketPolicy, 'invitationLifetimeMinutes'>;
 }
 
 const isDeclaredBy =
@@ -383,5 +388,14 @@ export class PlatformRoleDeletionApplier implements SystemChangeApplier {
   /** The role's name, for a viewer who may list the platform roles (else none). */
   describe(context: CallContext, subjectRefs: readonly string[]) {
     return describeRoles(this.labels, context, 'identity.platform-role-deletion', subjectRefs);
+  }
+
+  /** The admins who hold the role (a held role is not deleted: the approval answers so). */
+  impact(
+    context: CallContext,
+    request: RevertRequest,
+    signal?: AbortSignal,
+  ): Promise<ChangeImpact | null> {
+    return roleHolderImpact(this.deps, this.labels, context, request.subjectRef, signal);
   }
 }

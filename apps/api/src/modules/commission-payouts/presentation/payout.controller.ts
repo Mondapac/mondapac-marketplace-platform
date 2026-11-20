@@ -50,12 +50,26 @@ const OWN_PAYOUT_QUERY = [
     enum: ['scheduled', 'awaiting-approval', 'on-its-way', 'paid', 'not-sent', 'failed', 'settled'],
   },
   { name: 'q', required: false, description: 'A payout id, exact.' },
-  { name: 'from', required: false, description: 'Created at or after (ISO instant).' },
-  { name: 'to', required: false, description: 'Created before (ISO instant).' },
+  {
+    name: 'from',
+    required: false,
+    description:
+      'Payout day (slotAt) at or after (ISO instant; the panel sends the start of a store-zone day).',
+  },
+  {
+    name: 'to',
+    required: false,
+    description: 'Payout day (slotAt) before (ISO instant; the start of the store-zone day after).',
+  },
   { name: 'minAmount', required: false, description: 'The transfer, minor units.' },
   { name: 'maxAmount', required: false, description: 'The transfer, minor units.' },
-  { name: 'sort', required: false, enum: [...OWN_PAYOUT_SORT_KEYS] },
-  { name: 'direction', required: false, enum: ['asc', 'desc'] },
+  {
+    name: 'sort',
+    required: false,
+    enum: [...OWN_PAYOUT_SORT_KEYS],
+    description: 'Default slot (the payout day), ties by payout id.',
+  },
+  { name: 'direction', required: false, enum: ['asc', 'desc'], description: 'Default desc.' },
 ];
 const ownPayoutQueries = () => applyDecorators(...OWN_PAYOUT_QUERY.map((q) => ApiQuery(q)));
 import { sendExport } from './list-export-route';
@@ -396,13 +410,20 @@ export class SellerPayoutsController {
     description:
       'The Earnings super list (list 33). A payout that was voided never happened and is not ' +
       'listed. Filters: status (scheduled, awaiting-approval, on-its-way, paid, not-sent, failed, ' +
-      'settled), q (a payout id, exact), from and to (ISO instants on the creation), minAmount ' +
-      'and maxAmount (the transfer in minor units). Page numbers: page, pageSize (default 25, at ' +
-      'most 100; page x pageSize at most 10,000), sort (created, amount, slot) and direction. ' +
-      'Previous/Next: limit (default 50) and cursor, newest first, with no page, pageSize, sort ' +
-      'or direction. counts covers every shown payout of the seller.',
+      'settled), q (a payout id, exact), from and to (ISO instants on the payout day, slotAt), ' +
+      'minAmount and maxAmount (the transfer in minor units). Page numbers: page, pageSize ' +
+      '(default 25, at most 100; page x pageSize at most 10,000), sort (slot, created, amount; ' +
+      'default slot, the payout day) and direction (default desc), ties by payout id. ' +
+      'Previous/Next: limit (default 50) and cursor, latest payout day first, or newest created ' +
+      'first with sort=created; no page, pageSize or direction, and no sort=amount ' +
+      '(details.fields code with-cursor). The cursor names its sort ("slot.<ms>.<id>" or ' +
+      '"created.<ms>.<id>"): a cursor of another sort is refused (cursor: other-sort), an older ' +
+      'cursor without a sort as format. counts covers every shown payout of the seller.',
   })
-  @ApiQuery(CURSOR)
+  @ApiQuery({
+    ...CURSOR,
+    example: 'slot.1793998800000.01990000-0000-7000-8000-000000001001',
+  })
   @ApiQuery(LIMIT)
   @ownPayoutQueries()
   @ApiQuery({ name: 'page', required: false, type: Number })
@@ -433,8 +454,12 @@ export class SellerPayoutsController {
     summary: "Export the seller's payouts as a file",
     description:
       '`format` is csv (default) or xlsx. `columns` is the comma-separated optional columns in ' +
-      `the order shown (${OWN_PAYOUT_EXPORT_COLUMNS.join(', ')}); payout id, status, amount, ` +
-      'currency and created are always there; amounts are decimals of the currency. The ' +
+      `the order shown (${OWN_PAYOUT_EXPORT_COLUMNS.join(', ')}; headers Earned, Kept against ` +
+      'what you owed, Created on, Updated on). The base headers are always there: Payout ID, ' +
+      'Status, Amount, Currency, Payout on (slotAt). Dates are ISO 8601 in the store zone with ' +
+      'its offset (for example 2026-11-06T01:00:00+10:00; UTC while the store has no zone); ' +
+      'amounts are decimals of the currency. The file follows the list sort (default slot ' +
+      'desc). The ' +
       "payouts are `ids` (at most 200; an id that is not one of the seller's payouts refuses " +
       'the whole file as not found; the filter keys are then ignored) or the filter keys of the ' +
       'list with sort and direction, at most 10,000 (more: batch.too-large with the total).',
@@ -443,12 +468,22 @@ export class SellerPayoutsController {
   @ApiQuery({ name: 'columns', required: false })
   @ApiQuery({ name: 'ids', required: false })
   @ownPayoutQueries()
-  @ApiOkResponse({ description: 'payouts-<date>.csv or payouts-<date>.xlsx, as an attachment' })
+  @ApiOkResponse({
+    description:
+      'payouts-<date>.csv or payouts-<date>.xlsx (the date in the store zone), as an attachment. ' +
+      'Example CSV with columns=created: "Payout ID,Status,Amount,Currency,Payout on,Created on" ' +
+      'then "01990000-0000-7000-8000-000000001001,Paid,123.45,<currency>,2026-11-06T01:00:00+10:00,' +
+      '2026-11-05T23:30:00+10:00".',
+  })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
   @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
   @ApiNotFoundResponse({ ...ERROR, description: 'commission-payouts.payout-not-found' })
   @ApiPayloadTooLargeResponse({ ...ERROR, description: 'batch.too-large (details.max, total)' })
+  @ApiServiceUnavailableResponse({
+    ...ERROR,
+    description: "commission-payouts.unavailable (the store's zone could not be read)",
+  })
   async exportPayouts(
     @Call() context: CallContext,
     @Query() query: Record<string, unknown>,

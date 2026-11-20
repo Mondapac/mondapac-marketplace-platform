@@ -1341,20 +1341,30 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
         '/commission-payouts/seller/payouts?page=2&pageSize=25&status=paid&sort=amount',
         session,
       );
+      // Previous/Next by creation, with the cursor that names its sort; the use case checks both.
+      const cursor = `created.1793998800000.${PAYOUT}`;
+      await call(
+        'get',
+        'seller',
+        `/commission-payouts/seller/payouts?limit=5&sort=created&cursor=${cursor}`,
+        session,
+      );
       expect(calls.map((c) => c.name)).toEqual([
         'next-payout',
         'own-payouts',
         'own-payout-holds',
         'own-payouts',
+        'own-payouts',
       ]);
       expect(calls[1]!.input).toEqual({ limit: 5 });
       expect(calls[3]!.input).toEqual({ page: 2, pageSize: 25, status: 'paid', sort: 'amount' });
+      expect(calls[4]!.input).toEqual({ limit: 5, sort: 'created', cursor });
     });
 
     it('sends the seller its payouts file, and maps a refusal', async () => {
       await boot();
       const session = seller();
-      const chunks = ['\uFEFFCreated\r\n', 'row\r\n'];
+      const chunks = ['\uFEFFPayout ID,Status,Amount,Currency,Payout on\r\n', 'row\r\n'];
       next = ok({
         filename: 'payouts-2026-11-02.csv',
         contentType: 'text/csv; charset=utf-8',
@@ -1371,6 +1381,7 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
         'attachment; filename="payouts-2026-11-02.csv"',
       );
       expect(file.headers['cache-control']).toBe('no-store');
+      expect(file.text).toContain('Payout on');
       expect(file.text).toContain('row');
       next = err({ code: 'commission-payouts.payout-not-found' });
       const missing = await call(
@@ -1384,10 +1395,23 @@ describe.each(TEST_MARKETS)('commission and ledger over HTTP in market %s', (cod
       expect(
         (await call('get', 'seller', '/commission-payouts/seller/payouts/export', session)).status,
       ).toBe(413);
+      // The store's zone could not be read: no file in a zone the screen does not use.
+      next = err({ code: 'commission-payouts.unavailable' });
+      const noZone = await call(
+        'get',
+        'seller',
+        '/commission-payouts/seller/payouts/export?sort=created&columns=created,updated',
+        session,
+      );
+      expect(noZone.status).toBe(503);
       expect(calls).toEqual([
         { name: 'export-own-payouts', input: { status: 'paid', format: 'csv' } },
         { name: 'export-own-payouts', input: { ids: 'x' } },
         { name: 'export-own-payouts', input: {} },
+        {
+          name: 'export-own-payouts',
+          input: { sort: 'created', columns: 'created,updated' },
+        },
       ]);
     });
 

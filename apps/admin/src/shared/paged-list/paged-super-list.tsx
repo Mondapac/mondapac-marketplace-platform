@@ -58,11 +58,14 @@ function failureOf(status: number, code: string): Failure {
 
 /** The query string a list route is asked: the tab, search, filters, sort and page. */
 export function pagedQueryString<Row>(
-  config: Pick<PagedListConfig<Row>, 'tabs' | 'tabParam'>,
+  config: Pick<PagedListConfig<Row>, 'tabs' | 'tabParam' | 'tabParams'>,
   query: PagedQuery,
   paging: ListPagingMode,
 ): string {
   const params = new URLSearchParams();
+  for (const [name, value] of Object.entries(config.tabParams?.(query.tab) ?? {})) {
+    params.set(name, value);
+  }
   if (query.tab !== config.tabs[0] && config.tabParam !== undefined) {
     params.set(config.tabParam, query.tab);
   }
@@ -102,6 +105,7 @@ export function PagedSuperList<Row>({
   heading,
   dialogs,
   refreshKey = 0,
+  onAnswer,
 }: {
   readonly config: PagedListConfig<Row>;
   /** The Market's "List paging" setting; Previous and next when it could not be read. */
@@ -118,6 +122,8 @@ export function PagedSuperList<Row>({
   readonly dialogs?: React.ReactNode;
   /** Changes when the page changed rows (a decision was made): the list is read again. */
   readonly refreshKey?: number;
+  /** Each good answer, whole (a list route may carry more than the contract, such as locales). */
+  readonly onAnswer?: (answer: PagedAnswer<Row>) => void;
 }) {
   const t = useTranslations(config.ns);
   const ts = useTranslations('sales-lists');
@@ -141,6 +147,8 @@ export function PagedSuperList<Row>({
   const [dialog, setDialog] = useState<'export' | null>(null);
   const [exporting, setExporting] = useState(false);
   const latest = useRef(0);
+  const onAnswerRef = useRef(onAnswer);
+  onAnswerRef.current = onAnswer;
   const storageKey = prefsKey('admin', marketId, accountId, `${config.ns}-columns`);
   const listTop = useRef<HTMLDivElement>(null);
   const focusList = useRef(false);
@@ -175,6 +183,7 @@ export function PagedSuperList<Row>({
         return;
       }
       setAnswer(result.body);
+      onAnswerRef.current?.(result.body);
     },
     [config, paging],
   );
@@ -197,7 +206,7 @@ export function PagedSuperList<Row>({
     return () => {
       current = false;
     };
-  }, [loadCounts, filtersKey]);
+  }, [loadCounts, filtersKey, refreshKey]);
 
   // A new tab, search, filter or sort is another list: the selection does not follow it.
   const listKey = JSON.stringify([query.tab, query.q, query.filters, query.sort, query.direction]);

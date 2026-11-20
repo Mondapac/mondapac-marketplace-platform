@@ -40,7 +40,7 @@ describe('sellers without an owner', () => {
   it('keeps the table in its own scroll box and uses no fixed pixel width', () => {
     const table = read('src/sellers/orphaned-table.tsx');
     expect(table).toContain('overflow-x-auto');
-    expect(table).toContain('min-w-120');
+    expect(table).toContain('CARD_TABLE.table');
     for (const file of files) {
       expect(read(file), file).not.toMatch(/\bw-\[\d+px\]|\bmin-w-\[\d+px\]|width:\s*\d+px/);
     }

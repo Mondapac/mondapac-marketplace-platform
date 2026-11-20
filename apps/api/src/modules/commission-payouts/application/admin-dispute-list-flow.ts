@@ -184,17 +184,19 @@ type Paging =
       readonly limit: number;
     };
 
-interface Selector {
+export interface DisputeSelector {
   /** The filter without the seller part; `orderIds` is resolved in the read unit. */
   readonly filter: DisputeListFilter;
   readonly sellerId: Id<'Seller'> | null;
   readonly search: string | null;
 }
 
-type Fields = { path: string; code: string }[];
+export type Fields = { path: string; code: string }[];
 
-/** The selector keys (view, search, filters) shared by the list and the export. */
-function parseSelector(input: DisputeListInput, fields: Fields): Selector {
+/**
+ * The selector keys (view, search, filters) shared by the list, the export and the saved filters.
+ */
+export function parseDisputeSelector(input: DisputeListInput, fields: Fields): DisputeSelector {
   const oneOf = <T extends string>(path: string, value: unknown, list: readonly T[]): T | null => {
     if (value === undefined || value === '') return null;
     if (list.includes(value as T)) return value as T;
@@ -297,9 +299,12 @@ function parseSort(input: DisputeListInput, fields: Fields): DisputeSort {
 
 function parse(
   input: DisputeListInput,
-): Result<Selector & { readonly sort: DisputeSort; readonly paging: Paging }, DisputeListFailure> {
+): Result<
+  DisputeSelector & { readonly sort: DisputeSort; readonly paging: Paging },
+  DisputeListFailure
+> {
   const fields: Fields = [];
-  const selector = parseSelector(input, fields);
+  const selector = parseDisputeSelector(input, fields);
   const prevNext = input.cursor !== undefined || input.limit !== undefined;
   let paging: Paging;
   let sort: DisputeSort = { key: 'opened', direction: 'desc' };
@@ -353,7 +358,7 @@ const isAdmin = (context: CallContext) =>
 async function resolveSellers(
   deps: AdminDisputeListDependencies,
   context: CallContext,
-  selector: Selector,
+  selector: DisputeSelector,
 ): Promise<
   Result<{ sellerIds: readonly Id<'Seller'>[] | null; capped: boolean }, DisputeListFailure>
 > {
@@ -685,7 +690,7 @@ export async function exportAdminDisputes(
     ids = wanted;
   } else {
     const fields: Fields = [];
-    const selector = parseSelector(input, fields);
+    const selector = parseDisputeSelector(input, fields);
     const sort = parseSort(input, fields);
     if (fields.length > 0) return err({ code: 'validation.failed', fields });
     const sellers = await resolveSellers(deps, context, selector);

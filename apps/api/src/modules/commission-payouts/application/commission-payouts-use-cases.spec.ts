@@ -687,6 +687,21 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       expect([...(await reverter().describe(admin, refs))]).toEqual([]);
     });
 
+    it("gives one seller as the impact of a seller's own rate or terms, and none for a bad ref", async () => {
+      const ask = (subjectRef: string) => ({
+        requestId: id<'SystemRequest'>(0x5e2),
+        subjectRef,
+        before: {},
+        after: {},
+      });
+      for (const hook of [new CommissionRateReverter(deps), new PayoutTermsReverter(deps)]) {
+        expect(await hook.impact(admin, ask(SELLER_A))).toEqual({
+          items: [{ label: 'sellers', count: 1, atLeast: false }],
+        });
+        expect(await hook.impact(admin, ask('not-a-seller'))).toBeNull();
+      }
+    });
+
     it('opens nothing and needs no note where the Market does not review money', async () => {
       expect(await setRate(SELLER_A, 1000)).toMatchObject({ ok: true, value: { request: null } });
       expect(review.opened).toHaveLength(0);

@@ -19,6 +19,7 @@ import {
   exportRequests,
   type SystemRequestsExportDependencies,
 } from '../../src/modules/system-requests/application/export-flow';
+import { ImpactCache } from '../../src/modules/system-requests/application/impact-cache';
 import {
   POLICY_REPOSITORY,
   type PolicyRepository,
@@ -426,6 +427,7 @@ describe('system requests (database integration)', () => {
         adminNames: { namesOf: () => Promise.resolve(new Map()) },
         ids: new SequenceIdGenerator(clock),
         clock,
+        impactCache: new ImpactCache(),
         sheetWriter: new ExceljsSheetWriter(),
         zone: { zoneOf: () => 'UTC' },
       };

@@ -16,6 +16,7 @@ import {
   StepUpActionRegistry,
   type StepUpCheck,
   USE_CASE_GATE,
+  type AuthorisationCheck,
   type UseCaseGate,
 } from '../../platform/authz';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
@@ -127,6 +128,7 @@ import {
   PEOPLE_REVIEW_AREA,
   PLATFORM_ROLE_CREATION_SUBJECT_KIND,
   PLATFORM_ROLE_DELETION_SUBJECT_KIND,
+  SENSITIVE_ADMIN_INVITATION_SUBJECT_KIND,
   PLATFORM_ROLE_SUBJECT_KIND,
 } from './application/people/people-review';
 import {
@@ -135,6 +137,10 @@ import {
   PlatformRoleDeletionApplier,
   type PeopleCreationDependencies,
 } from './application/people/people-creations';
+import {
+  INVITE_ADMIN_KEYS,
+  SensitiveAdminInvitationApplier,
+} from './application/people/people-invitations';
 import {
   AdminRolesReverter,
   AdminStatusReverter,
@@ -419,6 +425,7 @@ function roleEditorProvider<U>(
 
 /** The ports of the people reverters (Admin Inbox › System requests, area people). */
 const PEOPLE_REVERTER_PORTS = {
+  unitOfWork: true,
   accounts: true,
   roles: true,
   assignments: true,
@@ -445,17 +452,23 @@ function peopleReverter(
   return [
     {
       provide: token,
-      inject: [ChangeActorLabels, ListPlatformRoles, ...names.map((name) => PORT[name])],
+      inject: [
+        ChangeActorLabels,
+        ListPlatformRoles,
+        AUTHORISATION_CHECK,
+        ...names.map((name) => PORT[name]),
+      ],
       useFactory: (
         adminNames: ChangeActorLabels,
         platformRoles: ListPlatformRoles,
+        authorisation: AuthorisationCheck,
         ...values: unknown[]
       ) =>
         new type(
           Object.fromEntries(
             names.map((name, index) => [name, values[index]]),
           ) as unknown as PeopleReverterDependencies,
-          { adminNames, platformRoles },
+          { adminNames, platformRoles, authorisation },
         ),
     },
     registerSystemChangeReverter('identity', subjectKind, PEOPLE_REVIEW_AREA, token),
@@ -465,9 +478,9 @@ function peopleReverter(
 /** The ports of the people creation reverters and the delete applier (owner decision 18 Nov). */
 const PEOPLE_CREATION_PORTS = {
   ...PEOPLE_REVERTER_PORTS,
-  unitOfWork: true,
   invitations: true,
   grants: true,
+  policy: true,
 } as const satisfies { readonly [K in keyof PeopleCreationDependencies]-?: true };
 
 /**
@@ -476,7 +489,7 @@ const PEOPLE_CREATION_PORTS = {
  */
 function peopleCreationHook(
   subjectKind: string,
-  mode: 'review' | { readonly approvalKey: string },
+  mode: 'review' | { readonly approvalKeys: readonly string[] },
   type: new (
     deps: PeopleCreationDependencies,
     labels: PeopleLabelReads,
@@ -488,17 +501,23 @@ function peopleCreationHook(
   return [
     {
       provide: token,
-      inject: [ChangeActorLabels, ListPlatformRoles, ...names.map((name) => PORT[name])],
+      inject: [
+        ChangeActorLabels,
+        ListPlatformRoles,
+        AUTHORISATION_CHECK,
+        ...names.map((name) => PORT[name]),
+      ],
       useFactory: (
         adminNames: ChangeActorLabels,
         platformRoles: ListPlatformRoles,
+        authorisation: AuthorisationCheck,
         ...values: unknown[]
       ) =>
         new type(
           Object.fromEntries(
             names.map((name, index) => [name, values[index]]),
           ) as unknown as PeopleCreationDependencies,
-          { adminNames, platformRoles },
+          { adminNames, platformRoles, authorisation },
         ),
     },
     mode === 'review'
@@ -507,7 +526,7 @@ function peopleCreationHook(
           'identity',
           subjectKind,
           PEOPLE_REVIEW_AREA,
-          mode.approvalKey,
+          mode.approvalKeys,
           token,
         ),
   ];
@@ -1704,6 +1723,7 @@ function useCaseProvider<D, U>(
     }),
     useCaseProvider(InviteAdmin, {
       review: true,
+      proposer: true,
       unitOfWork: true,
       accounts: true,
       roles: true,
@@ -1782,8 +1802,14 @@ function useCaseProvider<D, U>(
     ...peopleCreationHook(ADMIN_INVITATION_SUBJECT_KIND, 'review', AdminInvitationReverter),
     ...peopleCreationHook(
       PLATFORM_ROLE_DELETION_SUBJECT_KIND,
-      { approvalKey: PLATFORM_ROLE_DELETE.key },
+      { approvalKeys: [PLATFORM_ROLE_DELETE.key] },
       PlatformRoleDeletionApplier,
+    ),
+    // Owner decision of 18 Nov 2026, 14:06Z: with every key of InviteAdmin's rule (`allOf`).
+    ...peopleCreationHook(
+      SENSITIVE_ADMIN_INVITATION_SUBJECT_KIND,
+      { approvalKeys: INVITE_ADMIN_KEYS },
+      SensitiveAdminInvitationApplier,
     ),
     useCaseProvider(DisableCustomerAccount, {
       unitOfWork: true,

@@ -106,6 +106,14 @@ export class RoleView {
   })
   grantable!: boolean;
 
+  @ApiProperty({
+    description:
+      'Whether giving this role needs the system role of the scope: it is that role or it ' +
+      'confers a protected permission. Where the Market reviews area people, an admin ' +
+      "invitation to such a platform role waits for another admin's approval.",
+  })
+  sensitive!: boolean;
+
   @ApiProperty({ description: 'Changes with every edit.' })
   version!: number;
 

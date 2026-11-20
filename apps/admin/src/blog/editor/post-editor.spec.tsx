@@ -74,13 +74,14 @@ function serve(detail: PostDetail = post()) {
     return Promise.reject(new Error(`unexpected ${String(path)}`));
   });
 }
-function show(props: { canEdit?: boolean; canReview?: boolean } = {}) {
+function show(props: { canEdit?: boolean; canReview?: boolean; canUploadMedia?: boolean } = {}) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
       <PostEditor
         postId={POST}
         canEdit={props.canEdit ?? true}
         canReview={props.canReview ?? false}
+        canUploadMedia={props.canUploadMedia ?? true}
         csrfToken="csrf-1"
         zone="Australia/Brisbane"
       />
@@ -103,8 +104,9 @@ describe('admin blog post editor', () => {
     expect(screen.getByText('All changes saved')).toBeTruthy();
     expect(screen.getByRole('option', { name: 'Pantry' })).toBeTruthy();
     expect(screen.getByRole('checkbox', { name: 'Spices' })).toBeTruthy();
-    // The image block is kept, not edited.
-    expect(screen.getByText(/Images are kept as they are/u)).toBeTruthy();
+    // The image block is edited: its picture, alt text and caption.
+    expect(screen.getByDisplayValue('Jars')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Replace image, Block 2: Image' })).toBeTruthy();
   });
 
   it('saves the whole content and the address with PUT, and keeps the image block', async () => {
@@ -139,7 +141,7 @@ describe('admin blog post editor', () => {
     expect(items.map((li) => li.getAttribute('aria-label'))).toEqual([
       'Block 1: Paragraph',
       'Block 2: Heading',
-      'Block 3: Kept block',
+      'Block 3: Image',
     ]);
     fireEvent.click(screen.getByRole('button', { name: 'Remove block 2' }));
     expect(screen.queryByDisplayValue('Baharat')).toBeNull();
@@ -276,7 +278,8 @@ describe('admin blog post editor', () => {
     );
     const { container } = show();
     await screen.findByDisplayValue('<img src=x onerror=alert(1)>');
-    expect(container.querySelector('img')).toBeNull();
+    // The typed markup is text: no image element is made from it (the block's own thumbnail is).
+    expect(container.querySelector('img[src="x"]')).toBeNull();
   });
 
   const eventPost = (live: boolean): PostDetail => {
