@@ -523,6 +523,7 @@ import { AttributeArchiveConfirm } from './application/use-cases/attribute-archi
 import { AttributeRestructureController } from './presentation/attribute-restructure.controller';
 import { PRODUCT_DETAILS_GAP_READER } from './application/ports/product-details-gap.reader';
 import { ProductsMissingDetailsList } from './application/use-cases/products-missing-details-list.use-case';
+import { ProductsMissingDetailsExport } from './application/use-cases/products-missing-details-export.use-case';
 import { ADMIN_CATEGORY_READER } from './application/ports/admin-category.reader';
 import { CATEGORY_EDIT_STORE } from './application/ports/category-edit.store';
 import { CATEGORY_IMAGE_STORE } from './application/ports/category-image.store';
@@ -1834,6 +1835,15 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       familyResolver: true,
       emailStore: true,
       attributeEditProbe: true,
+    }),
+    useCaseProvider(ProductsMissingDetailsExport, {
+      unitOfWork: true,
+      detailsGapReader: true,
+      attributes: true,
+      policy: true,
+      familyResolver: true,
+      sheetWriter: true,
+      clock: true,
     }),
     useCaseProvider(FeatureSetAdminGet, {
       unitOfWork: true,
