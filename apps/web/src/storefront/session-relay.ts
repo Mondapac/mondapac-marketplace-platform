@@ -33,6 +33,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'reviews/me',
     // Whether the buyer assistant shows to this visitor (`?visitor=&lang=` only; see ASSISTANT).
     'assistant/storefront',
+    // A signed-in buyer's own conversations (history, F2; `?cursor=&limit=` only).
+    'assistant/conversations',
     // The customer's followed stores (My stores; `?cursor=&limit=` only) and the store they joined
     // through (customers management phases 3 and 4a).
     'customers/me/followed-stores',
@@ -75,6 +77,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Whether the customer follows one store, and the store's Follow gift (public).
     'customers/me/followed-stores/:id',
     'promotions/stores/:id/follow-gift',
+    // One of the signed-in buyer's own assistant conversations, with its messages (history).
+    'assistant/conversations/:id',
   ],
   POST: [
     'customers/me/addresses/:id/default',
@@ -83,6 +87,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'reviews/seller-orders/:id/rating',
     // One message to the buyer assistant; the answer is a `text/event-stream`.
     'assistant/conversations/:id/messages',
+    // A thumbs up or down on one assistant message (`:pos` is its position, 1 to 60).
+    'assistant/conversations/:id/messages/:pos/feedback',
   ],
   // The buyer edits their own review.
   PATCH: ['reviews/products/:id'],
@@ -93,6 +99,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'customers/me/addresses/:id',
     'cart/saved/:id',
     'reviews/products/:id',
+    // The buyer deletes one of their own assistant conversations.
+    'assistant/conversations/:id',
   ],
 };
 
@@ -102,6 +110,9 @@ const SIGNS_IN: ReadonlySet<string> = new Set([
   'identity/customer/confirm-email',
 ]);
 
+/** A message position of an assistant conversation (1 to 60): 1 to 60, no leading zero. */
+const MESSAGE_POSITION = /^([1-9]|[1-5][0-9]|60)$/;
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function matches(template: string, path: readonly string[]): boolean {
@@ -109,7 +120,11 @@ function matches(template: string, path: readonly string[]): boolean {
   return (
     parts.length === path.length &&
     parts.every((part, index) =>
-      part === ':id' ? UUID.test(path[index] ?? '') : part === path[index],
+      part === ':id'
+        ? UUID.test(path[index] ?? '')
+        : part === ':pos'
+          ? MESSAGE_POSITION.test(path[index] ?? '')
+          : part === path[index],
     )
   );
 }
@@ -490,7 +505,11 @@ export async function relaySession(
   const scope: CookieScope = assistant ? 'assistant' : 'session';
   // What is logged: the route, never the conversation id.
   const logged =
-    assistant && path[1] === 'conversations' ? 'assistant/conversations/:id/messages' : target;
+    assistant && path[1] === 'conversations'
+      ? ['assistant', 'conversations', ':id', 'messages', ':n', 'feedback']
+          .slice(0, path.length)
+          .join('/')
+      : target;
   if (!isSessionPathAllowed(request.method, path)) return notFound();
   if (request.headers.has('authorization')) return jsonError(401, 'session.invalid');
   if (request.method === 'GET') {
@@ -530,7 +549,7 @@ export async function relaySession(
     const query =
       target === 'assistant/storefront'
         ? assistantQuery(request.url)
-        : target === 'customers/me/followed-stores'
+        : target === 'customers/me/followed-stores' || target === 'assistant/conversations'
           ? myStoresQuery(request.url)
           : '';
     upstream = await fetchImpl(`${config.apiBaseUrl}/${target}${query}`, {
