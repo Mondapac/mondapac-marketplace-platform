@@ -1,20 +1,38 @@
 import { BackLink, LoadError, NoAccess, SettingsTitle } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
+import { headers } from 'next/headers';
 import { RequestsList } from '../../../../../src/account-deletion/requests-list.tsx';
+import { isView, type View } from '../../../../../src/account-deletion/list/requests-list-types.ts';
 import {
-  BUYER_DELETE_PERMISSION,
   REQUESTS_VIEW_PERMISSION,
   SETTINGS_HREF,
 } from '../../../../../src/account-deletion/types.ts';
+import { panelHostFor } from '../../../../../src/server/bff.ts';
+import { panelConfig } from '../../../../../src/server/config.ts';
+import { serverGet } from '../../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../../src/server/session.ts';
 import { SettingsShell } from '../../../../../src/server/settings-shell.tsx';
+import { localZone } from '../../../../../src/shared/format.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations();
   return { title: t('account-deletion.requests.title') };
 }
 
-export default async function DeletionRequestsPage() {
+const one = (value: string | readonly string[] | undefined): string | undefined =>
+  typeof value === 'string' ? value : undefined;
+
+/**
+ * Account deletion requests (list 25): the Market's buyer deletion requests as a super list. A link
+ * may open a view (`?view=`); the page reads the Market's List paging setting and hands the list
+ * its zone, and the list reads its own rows. Cancelling stays with its own permission: the list
+ * shows it in a row only when the API names it.
+ */
+export default async function DeletionRequestsPage({
+  searchParams,
+}: {
+  readonly searchParams: Promise<{ readonly view?: string | readonly string[] }>;
+}) {
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
@@ -22,6 +40,20 @@ export default async function DeletionRequestsPage() {
   }
   const title = t('account-deletion.requests.title');
   const keys = new Set(gate.session.permissionKeys);
+  const allowed = keys.has(REQUESTS_VIEW_PERMISSION);
+  const asked = one((await searchParams).view);
+  const view: View = isView(asked) ? asked : 'pending';
+  // List paging (settings): page numbers only when the Market says so; a value that cannot be
+  // read (or may not be read) means Previous and next. Not read without the view permission.
+  const [mode, host] = allowed
+    ? await Promise.all([
+        serverGet<{ readonly listPaging: string }>('settings/admin/list-paging'),
+        headers(),
+      ])
+    : [null, null];
+  const paging = mode?.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
+  const marketId =
+    host === null ? '' : (panelHostFor(panelConfig(), host.get('host'))?.marketId ?? '');
   return (
     // Nested: the breadcrumb is Settings / Marketplace / Account deletion, then this page.
     <SettingsShell session={gate.session} linkId="account-deletion" title={title} nested>
@@ -29,10 +61,16 @@ export default async function DeletionRequestsPage() {
       <div className="mb-4">
         <SettingsTitle>{title}</SettingsTitle>
       </div>
-      {keys.has(REQUESTS_VIEW_PERMISSION) ? (
+      {allowed ? (
         <RequestsList
-          canCancel={keys.has(BUYER_DELETE_PERMISSION)}
+          // A link to another view is a fresh list.
+          key={view}
+          initialView={view}
+          paging={paging}
+          accountId={gate.session.accountId}
           csrfToken={gate.session.csrfToken}
+          marketId={marketId}
+          zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
         />
       ) : (
         <NoAccess

@@ -3616,7 +3616,8 @@
       "loading": "Loading reviews",
       "error": {
         "unavailable": "We couldn’t load your reviews. Try again.",
-        "refused": "This search can't be run. Change the text or the filters, or clear them."
+        "refused": "This search can't be run. Change the text or the filters, or clear them.",
+        "off": "Customer reviews are not switched on at the moment."
       },
       "chip": "{field} is {value}",
       "chip-search": "Search: {text}",

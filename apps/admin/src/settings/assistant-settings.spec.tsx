@@ -51,6 +51,7 @@ const answer = (
     { tier: 'fast', modelId: 'model-fast-test' },
     { tier: 'balanced', modelId: null },
   ],
+  spend: { todayMicroUsd: 0, monthMicroUsd: 0, conversationsToday: 0, lastAutoOff: null },
   unavailableOptions: UNAVAILABLE,
   ...more,
 });
@@ -221,6 +222,41 @@ describe('AssistantSettingsPanel', () => {
     cleanup();
     mount(answer({ enabled: true }, { apiKey: 'set' }));
     expect(screen.queryByText(/buyers do not see it yet/)).toBeNull();
+  });
+
+  it('fills the status card with spend, conversations, cost and the last switch-off', () => {
+    render(
+      wrap(
+        <AssistantSettingsPanel
+          initial={answer(
+            { dailySpendCapUsdCents: 1_000, monthlySpendCapUsdCents: 20_000 },
+            {
+              spend: {
+                todayMicroUsd: 2_345_000,
+                monthMicroUsd: 61_500_000,
+                conversationsToday: 17,
+                lastAutoOff: { at: '2026-11-18T03:00:00Z', cap: 'daily' },
+              },
+            },
+          )}
+          canManage
+          csrfToken="csrf"
+          zone="Australia/Brisbane"
+          averageCostUsd={0.0123}
+        />,
+      ),
+    );
+    expect(screen.getByText('USD 2.35 of USD 10.00')).toBeTruthy();
+    expect(screen.getByText('USD 61.50 of USD 200.00')).toBeTruthy();
+    expect(screen.getByText('17')).toBeTruthy();
+    expect(screen.getByText('USD 0.0123 over the last 30 days')).toBeTruthy();
+    expect(screen.getByText(/Daily cap reached, /)).toBeTruthy();
+  });
+
+  it('says so when no cap ever switched the assistant off and no cost is known', () => {
+    mount(answer());
+    expect(screen.getByText('Never switched off by a cap')).toBeTruthy();
+    expect(screen.getAllByText('Recorded once buyers have chatted').length).toBeGreaterThan(0);
   });
 
   it('shows a read-only summary without the manage permission', () => {

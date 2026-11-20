@@ -54,6 +54,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'ordering/admin/documents/export',
     // The Market's buyer assistant settings, read again after another admin saved first.
     'assistant/admin/settings',
+    // How the buyer assistant is doing (assistant, Insights tab), read-only (query: `from`, `to`,
+    // `page`, `pageSize`; see QUERY_KEYS).
+    'assistant/admin/insights',
     // The Market's support email, read again after another admin saved first.
     'notifications/admin/support-contact',
     // The topbar bell (in-app notifications package 3): the list (query: `show`, `before`) and
@@ -424,6 +427,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Review one seller certificate (certification): record a check or the scope, then decide.
     'certification/admin/seller-certificates/:id/checks',
     'certification/admin/seller-certificates/:id/scope',
+    // The reviewer's confirmation with the issuer (certification), on the submission read.
+    'certification/admin/seller-certificates/:id/issuer-confirmation',
     'certification/admin/seller-certificates/:id/approve',
     'certification/admin/seller-certificates/:id/request-changes',
     'certification/admin/seller-certificates/:id/decline',
@@ -872,6 +877,8 @@ const GENERIC_LIST_KEY =
 const SYSTEM_REQUESTS_EXPORT = 'system-requests/admin/requests/export';
 
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
+  // The assistant insights: the day range and the page of the unanswered questions.
+  'assistant/admin/insights': ['from', 'to', 'page', 'pageSize'],
   // The System requests queue: the view, search, filters, sort and either page numbers or a
   // cursor (the API validates every value as well).
   'system-requests/admin/requests': [
@@ -1615,6 +1622,12 @@ const ACCOUNT_LIST_SHAPES: Readonly<Record<string, RegExp>> = {
   direction: /^(asc|desc)$/,
 };
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'assistant/admin/insights': {
+    from: /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/,
+    to: /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/,
+    page: /^[1-9][0-9]{0,2}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+  },
   'system-requests/admin/requests': {
     view: /^(needs-my-review|all-open|mine|approved|reverted|overdue|all)$/,
     q: /^.{1,100}$/,
@@ -2112,7 +2125,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   },
   'certification/admin/issuer-requests/export': {
     format: /^(csv|xlsx)$/,
-    columns: /^(request-id|seller-id|documents)(,(request-id|seller-id|documents)){0,2}$/,
+    // Empty is valid: no optional column shown, so the file has its fixed columns only.
+    columns: /^$|^(request-id|seller-id|documents)(,(request-id|seller-id|documents)){0,2}$/,
     ids: UUID_LIST_200,
     view: /^all$/,
     type: /^[a-z0-9][a-z0-9_-]{0,63}$/,
@@ -2554,7 +2568,10 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
  * Query keys that narrow a read to one owner: a malformed value is refused (400), never dropped,
  * so a read meant for one customer can never come back as the whole Market's.
  */
-const SCOPE_KEYS: ReadonlySet<string> = new Set(['ordering/admin/orders:accountId']);
+const SCOPE_KEYS: ReadonlySet<string> = new Set([
+  'ordering/admin/orders:accountId',
+  'customers/admin/deletion-requests:q',
+]);
 
 /** Whether the request names a scope key whose value has the wrong shape. */
 function badScope(method: string, target: string, requestUrl: string): boolean {
@@ -2577,6 +2594,7 @@ function badScope(method: string, target: string, requestUrl: string): boolean {
 const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
   'payments/admin/connected-accounts/export',
   'security/admin/alerts/export',
+  'certification/admin/issuer-requests/export',
   'certification/admin/seller-certificates/export',
   'reviews/admin/moderation/export',
   // Super list phase 4 exports (Hassan S1): a bad `ids` or filter refuses, never widens the file.

@@ -13,6 +13,7 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
 import { HealthQueue } from './health-queue.tsx';
+import { payloadOf, queryOf, somethingToSave } from './health-queue-saved.ts';
 import {
   DEFAULT_COLUMNS,
   OPTIONAL_COLUMNS,
@@ -60,9 +61,15 @@ const openPage = (items: HealthQueueRow[], hasNext = false, page = 1) =>
 
 type Answer = HealthQueuePage | 'fail' | 'denied' | 'unauthenticated' | 'refused';
 
+type SavedRoute = (method: string, path: string) => Promise<never>;
+/** Until a test says otherwise the saved-filter route is not there: the controls stay hidden. */
+const noSavedRoute: SavedRoute = () =>
+  Promise.resolve({ ok: false, failure: { status: 404, code: 'not-found' } } as never);
+
 /** The list answers by URL, so the order of the calls does not matter. */
-function serve(answer: (url: string) => Answer) {
-  call.mockImplementation((_method, path) => {
+function serve(answer: (url: string) => Answer, saved: SavedRoute = noSavedRoute) {
+  call.mockImplementation((method, path) => {
+    if (path.startsWith('lists/admin/saved-filters')) return saved(method, path);
     const result = answer(path);
     if (result === 'fail') {
       return Promise.resolve({ ok: false, failure: { status: 503, code: 'sellers.unavailable' } });
@@ -82,7 +89,8 @@ function serve(answer: (url: string) => Answer) {
     return Promise.resolve({ ok: true, status: 200, body: result } as never);
   });
 }
-const urls = () => call.mock.calls.map((entry) => entry[1]);
+const urls = () =>
+  call.mock.calls.map((entry) => entry[1]).filter((url) => !url.startsWith('lists/admin/'));
 const lastUrl = () => urls()[urls().length - 1]!;
 const paramsOf = (url: string) => Object.fromEntries(new URL(`http://x/${url}`).searchParams);
 
@@ -90,6 +98,7 @@ function mount(options: { paging?: 'pages' | 'prev-next'; marketId?: string } = 
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
       <HealthQueue
+        csrfToken="csrf-1"
         paging={options.paging ?? 'pages'}
         accountId="acc-1"
         marketId={options.marketId ?? 'AU'}
@@ -571,6 +580,97 @@ describe('Needs a look list: notice, actions, columns', () => {
     expect(cleanColumns(['seller-id', 'x', 'seller-id', 'score'])).toEqual(['seller-id', 'score']);
     expect(exportColumnIds(OPTIONAL_COLUMNS)).toEqual(['day', 'seller-id']);
     expect(queryString({ ...DEFAULT_QUERY, q: 'a' }, 'pages')).not.toContain('q=');
+  });
+});
+
+describe('Needs a look list: saved filters', () => {
+  const SAVED = 'lists/admin/saved-filters';
+  const item = {
+    id: '0190a000-0000-7000-8000-0000000000e1',
+    listKey: 'admin.sellers.health-queue',
+    name: 'Late and weak',
+    visibility: 'me',
+    payload: {
+      v: 1,
+      view: 'late-ready',
+      filters: { maxScore: '40' },
+      sort: 'name',
+      direction: 'desc',
+    },
+    ownedByMe: true,
+    canManage: true,
+    createdAt: '2026-11-01T00:00:00.000Z',
+    updatedAt: '2026-11-01T00:00:00.000Z',
+  };
+  const savedWith =
+    (items: unknown[], canShare = false): SavedRoute =>
+    (_method, path) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        body: path.startsWith(SAVED) ? { items, canShare } : {},
+      } as never);
+
+  it.each(['AU', 'ZZ'])(
+    'adds the saved filter as a tab and opens it with its view, range and sort (%s)',
+    async (marketId) => {
+      serve(() => pageOf([row(1)]), savedWith([item]));
+      mount({ marketId });
+      await screen.findByText('Store 1');
+      fireEvent.click(await screen.findByRole('button', { name: 'Late and weak' }));
+      await waitFor(() => expect(paramsOf(lastUrl())['view']).toBe('late-ready'));
+      expect(paramsOf(lastUrl())).toMatchObject({
+        maxScore: '40',
+        sort: 'name',
+        direction: 'desc',
+        page: '1',
+      });
+      expect(screen.getByRole('button', { name: 'Manage filters' })).toBeTruthy();
+    },
+  );
+
+  it('offers Save filter... on a built-in view that shows something to keep', async () => {
+    serve(() => pageOf([row(1)]), savedWith([], true));
+    mount();
+    await screen.findByText('Store 1');
+    expect(screen.queryByRole('button', { name: /^Save filter/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^Orders ready late/ }));
+    expect(await screen.findByRole('button', { name: 'Save filter…' })).toBeTruthy();
+  });
+
+  it('leaves the search out of the save dialog summary', async () => {
+    serve(() => pageOf([row(1)]), savedWith([], true));
+    mount();
+    await screen.findByText('Store 1');
+    fireEvent.click(screen.getByRole('button', { name: /^Orders ready late/ }));
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'abc' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByText(/abc/)).toBeNull();
+    expect(within(dialog).getByText(/Orders ready late/)).toBeTruthy();
+  });
+
+  it('keeps the controls hidden while the saved-filter route cannot answer', async () => {
+    serve(() => pageOf([row(1)]));
+    mount();
+    await screen.findByText('Store 1');
+    expect(screen.queryByRole('button', { name: 'Manage filters' })).toBeNull();
+  });
+
+  it('keeps a name sort in the direction that is not its default, and drops the default', () => {
+    const base = { ...DEFAULT_QUERY, sort: 'name' as const };
+    const desc = { ...base, direction: 'desc' as const };
+    expect(somethingToSave(desc)).toBe(true);
+    expect(payloadOf(desc)).toEqual({ v: 1, view: 'all', sort: 'name', direction: 'desc' });
+    expect(queryOf(payloadOf(desc))).toMatchObject({ sort: 'name', direction: 'desc' });
+    const asc = { ...base, direction: 'asc' as const };
+    expect(payloadOf(asc)).toEqual({ v: 1, view: 'all', sort: 'name' });
+    expect(somethingToSave(DEFAULT_QUERY)).toBe(false);
+    // The search text is never saved; a value the page does not know is dropped.
+    expect(payloadOf({ ...DEFAULT_QUERY, q: 'abc' })).toEqual({ v: 1, view: 'all' });
+    expect(
+      queryOf({ v: 1, view: 'bogus' as never, filters: { minScore: 'x' }, sort: 'zzz' as never }),
+    ).toEqual(DEFAULT_QUERY);
   });
 });
 

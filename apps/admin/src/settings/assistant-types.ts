@@ -54,6 +54,13 @@ export interface AssistantSettingsAnswer {
   readonly apiKey: 'set' | 'not-set';
   /** The model the server configures for each tier; null when none is. */
   readonly models: readonly { readonly tier: ModelTier; readonly modelId: string | null }[];
+  /** Read-only figures: spend in micro US dollars (1e-6 USD), the Market's own days. */
+  readonly spend: {
+    readonly todayMicroUsd: number;
+    readonly monthMicroUsd: number;
+    readonly conversationsToday: number;
+    readonly lastAutoOff: { readonly at: string; readonly cap: 'daily' | 'monthly' } | null;
+  };
   /** Options shown but not selectable yet. */
   readonly unavailableOptions: {
     readonly scope: readonly Scope[];

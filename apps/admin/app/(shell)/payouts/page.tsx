@@ -1,34 +1,24 @@
-import { Badge, LoadError, Tabs } from '@mondapac/ui';
+import { Badge, LoadError } from '@mondapac/ui';
 import { getLocale, getTranslations } from 'next-intl/server';
+import { headers } from 'next/headers';
+import { isView, type View } from '../../../src/payouts/list/payouts-list-types.ts';
 import { PayoutsList } from '../../../src/payouts/payouts-list.tsx';
-import {
-  APPROVE_PERMISSION,
-  COUNT_PAGE_SIZE,
-  TABS,
-  VIEW_PERMISSION,
-  type PayoutDetail,
-  type PayoutPage,
-  type Tab,
-} from '../../../src/payouts/types.ts';
+import { VIEW_PERMISSION, type PayoutDetail, type PayoutPage } from '../../../src/payouts/types.ts';
+import { toId } from '../../../src/sales/search-route.ts';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
+import { panelHostFor } from '../../../src/server/bff.ts';
+import { panelConfig } from '../../../src/server/config.ts';
 import { serverGet } from '../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../src/server/session.ts';
 import { displayZone } from '../../../src/shared/format.ts';
 import { formatMinor } from '../../../src/wallet/money.ts';
 
+/** The page opens on the payouts that wait for an admin, the work of this page. */
+const START_VIEW: View = 'awaiting-approval';
+
 export async function generateMetadata() {
   const t = await getTranslations();
   return { title: t('payouts.title') };
-}
-
-/** How many payouts wait in a state: one page of the API, so "100+" when there is more. */
-async function countOf(status: string): Promise<{ n: number; more: boolean } | null> {
-  const read = await serverGet<PayoutPage>(
-    `commission-payouts/admin/payouts?status=${status}&limit=${COUNT_PAGE_SIZE}`,
-  );
-  return read.kind === 'ok'
-    ? { n: read.body.payouts.length, more: read.body.nextCursor !== null }
-    : null;
 }
 
 /**
@@ -45,12 +35,18 @@ async function todayLimits(): Promise<PayoutDetail['limits']> {
   return detail.kind === 'ok' ? detail.body.limits : null;
 }
 
+const one = (value: string | readonly string[] | undefined): string | undefined =>
+  typeof value === 'string' ? value : undefined;
+
 export default async function PayoutsPage({
   searchParams,
 }: {
-  readonly searchParams: Promise<{ readonly status?: string | readonly string[] }>;
+  readonly searchParams: Promise<{
+    readonly status?: string | readonly string[];
+    readonly sellerId?: string | readonly string[];
+  }>;
 }) {
-  const { status } = await searchParams;
+  const query = await searchParams;
   const gate = await requireSession();
   const t = await getTranslations();
   const locale = await getLocale();
@@ -78,27 +74,26 @@ export default async function PayoutsPage({
       </AdminShell>
     );
   }
-  const tab: Tab = TABS.find((entry) => entry === status) ?? 'awaiting-approval';
-  const [awaiting, failed, limits] = await Promise.all([
-    countOf('awaiting-approval'),
-    countOf('failed'),
+  const status = one(query.status);
+  const view: View = isView(status) ? status : START_VIEW;
+  const seller = one(query.sellerId);
+  // The API takes UUID v7 ids only; any other text is dropped rather than sent and refused.
+  const sellerId = seller === undefined ? null : toId(seller);
+  // List paging (settings): page numbers only when the Market says so; a value that cannot be
+  // read means Previous and next.
+  const [mode, limits, host] = await Promise.all([
+    serverGet<{ readonly listPaging: string }>('settings/admin/list-paging'),
     todayLimits(),
+    headers(),
   ]);
-  const counts: Partial<Record<Tab, string>> = {
-    ...(awaiting === null
-      ? {}
-      : { 'awaiting-approval': `${awaiting.n}${awaiting.more ? '+' : ''}` }),
-    ...(failed === null ? {} : { failed: `${failed.n}${failed.more ? '+' : ''}` }),
-  };
+  const paging = mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
+  const marketId = panelHostFor(panelConfig(), host.get('host'))?.marketId ?? '';
   const zone = displayZone(session.timezone);
   return (
     <AdminShell session={session} activeId="payouts" title={title}>
       <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
       <div className="flex flex-col gap-4">
-        <div className="flex max-w-(--mp-size-form-max) flex-col gap-1 text-fg-muted">
-          <p>{t('payouts.intro')}</p>
-          <p className="text-sm">{t('step-up.wait-note')}</p>
-        </div>
+        <p className="max-w-(--mp-size-form-max) text-sm text-fg-muted">{t('step-up.wait-note')}</p>
         {limits === null ? null : (
           <p className="text-sm text-fg-muted">
             {t('payouts.today.line', {
@@ -114,26 +109,14 @@ export default async function PayoutsPage({
             ) : null}
           </p>
         )}
-        <Tabs
-          label={t('payouts.tabs')}
-          activeId={tab}
-          items={TABS.map((id) => {
-            const count = counts[id];
-            return {
-              id,
-              label:
-                count === undefined
-                  ? t(`payouts.tab.${id}`)
-                  : t('payouts.tab-count', { label: t(`payouts.tab.${id}`), count }),
-              href: id === 'awaiting-approval' ? '/payouts' : `/payouts?status=${id}`,
-            };
-          })}
-        />
         <PayoutsList
-          // A tab is a fresh list: its own rows, cursors and open dialog.
-          key={tab}
-          tab={tab}
-          canApprove={session.permissionKeys.includes(APPROVE_PERMISSION)}
+          // A link to another view or seller is a fresh list.
+          key={`${view}:${sellerId ?? ''}`}
+          initialView={view}
+          sellerId={sellerId}
+          paging={paging}
+          accountId={session.accountId}
+          marketId={marketId}
           zone={zone}
           csrfToken={session.csrfToken}
         />
