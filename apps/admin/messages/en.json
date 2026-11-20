@@ -2426,10 +2426,11 @@
         "action": {
           "edit": "Edit",
           "view": "View",
-          "review": "Review",
-          "pause": "Pause",
+          "review": "Review…",
+          "pause": "Pause…",
           "resume": "Resume…"
         },
+        "actions-for": "Actions for {name}",
         "done-paused": "Paused “{name}”. Buyers stop seeing it within a minute.",
         "done-resumed": "Resumed “{name}”. Buyers see it again within a minute.",
         "stale": "That slide changed while you were looking at it. The list is up to date again."
@@ -2769,8 +2770,8 @@
           "draft-pending": "Draft · waiting",
           "earlier": "Earlier"
         },
-        "restore": "Restore",
-        "restore-for": "version {version}",
+        "restore": "Restore…",
+        "actions-for": "Actions for version {version}",
         "done": "Version {from} was copied into the draft as version {to}. Buyers see it only after a platform admin approves."
       },
       "view": {
@@ -2874,11 +2875,14 @@
         "footnote": "Dates are shown in {zone}.",
         "system": "System page",
         "unpublished-changes": "Unpublished changes",
+        "actions-for": "Actions for {name}",
+        "open-page": "Open page",
         "never": "Never published",
         "col": {
           "page": "Page",
           "address": "Address",
           "template": "Template",
+          "actions": "Actions",
           "editing": "Editing",
           "status": "Status",
           "published": "Last published"
@@ -3213,8 +3217,8 @@
         "state-unknown": "Unknown",
         "saved-at": "Saved {when}",
         "published-on": "Published {when}",
-        "restore": "Restore",
-        "restore-label": "Restore version {n}",
+        "restore": "Restore…",
+        "actions-for": "Actions for version {n}",
         "restore-title": "Restore version {n}?",
         "restore-body": "This replaces the current draft, including any unpublished changes. Buyers see no change until you publish.",
         "restore-confirm": "Restore to draft",
@@ -10521,12 +10525,12 @@
       "edit-category": "Edit category",
       "add-tag": "Add tag",
       "edit": "Edit",
-      "delete": "Delete",
+      "delete": "Delete…",
       "delete-sure": "Delete {name}?",
-      "delete-named": "Delete {name}",
-      "delete-confirm-named": "Yes, delete {name}",
-      "edit-named": "Edit {name}",
-      "delete-confirm": "Yes, delete",
+      "delete-body": "This can't be undone. A category or tag that a post uses can't be deleted.",
+      "delete-type": "Type the name to confirm",
+      "actions-for": "Actions for {name}",
+      "delete-confirm": "Delete",
       "cancel": "Cancel",
       "save": "Save",
       "optional": "optional",

@@ -63,7 +63,11 @@ function mount(slide: SlideDetail, keys: Keys = {}) {
 }
 const rowOf = (versionNo: number) =>
   screen.getByRole('rowheader', { name: `Version ${versionNo}` }).closest('tr')!;
-const restoreButtons = () => screen.queryAllByRole('button', { name: /^Restore/ });
+const restoreButtons = () => screen.queryAllByRole('button', { name: /^Actions for version/ });
+const restore = (n: number) => {
+  fireEvent.click(within(rowOf(n)).getByRole('button', { name: /^Actions for version/ }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Restore…' }));
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -152,9 +156,10 @@ describe('Restore (storefront.slide.edit)', () => {
 
   it('is on the live and earlier versions with the key, not on the draft it would copy into', () => {
     mount(withVersions(), { canEdit: true });
-    expect(
-      restoreButtons().map((button) => button.textContent?.replace(/\s+/g, ' ').trim()),
-    ).toEqual(['Restore version 2', 'Restore version 1']);
+    expect(restoreButtons().map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Actions for version 2',
+      'Actions for version 1',
+    ]);
     expect(within(rowOf(3)).queryByRole('button')).toBeNull();
     expect(screen.queryByText(/but not restore one/)).toBeNull();
   });
@@ -177,7 +182,7 @@ describe('Restore (storefront.slide.edit)', () => {
     });
     call.mockResolvedValue({ ok: true, status: 200, body: restored });
     mount(withVersions(), { canEdit: true });
-    fireEvent.click(within(rowOf(1)).getByRole('button', { name: /Restore/ }));
+    restore(1);
     const dialog = screen.getByRole('dialog', { name: 'Restore version 1?' });
     expect(within(dialog).getByText(/copied into the draft as a new version/)).toBeTruthy();
     expect(within(dialog).getByText(/Buyers keep seeing the live version/)).toBeTruthy();
@@ -198,10 +203,10 @@ describe('Restore (storefront.slide.edit)', () => {
 
   it('does nothing on Cancel or Escape', () => {
     mount(withVersions(), { canEdit: true });
-    fireEvent.click(within(rowOf(2)).getByRole('button', { name: /Restore/ }));
+    restore(2);
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(document.querySelectorAll('dialog[open]')).toHaveLength(0);
-    fireEvent.click(within(rowOf(2)).getByRole('button', { name: /Restore/ }));
+    restore(2);
     fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }));
     expect(document.querySelectorAll('dialog[open]')).toHaveLength(0);
     expect(call).not.toHaveBeenCalled();
@@ -215,7 +220,7 @@ describe('Restore (storefront.slide.edit)', () => {
   ])('says what a %s refusal means and keeps the list', async (code, status, text) => {
     call.mockResolvedValue({ ok: false, failure: { status, code } });
     mount(withVersions(), { canEdit: true });
-    fireEvent.click(within(rowOf(1)).getByRole('button', { name: /Restore/ }));
+    restore(1);
     fireEvent.click(screen.getByRole('button', { name: 'Restore to draft' }));
     expect((await screen.findByRole('alert')).textContent).toMatch(text);
     expect(screen.getAllByRole('row')).toHaveLength(4);

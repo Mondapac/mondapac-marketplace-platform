@@ -1,7 +1,8 @@
 'use client';
 
-import { Button, LinkButton } from '@mondapac/ui';
+import { Menu, type MenuItem } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
+import { useRouter } from 'next/navigation';
 import { useState } from 'react';
 import { SlideConfirmDialog } from './slide-dialogs.tsx';
 import {
@@ -24,9 +25,9 @@ export function rowActionOf(slide: SlideSummary, gates: SlideGates): RowActionKi
 }
 
 /**
- * Review (to the editor with the approval dialog open), Pause and Resume… (each behind a
- * confirmation) or the link to the editor. A control is absent without its key; the API checks it
- * again.
+ * The row's Actions menu: Review… (to the editor with the approval dialog open), Pause… and
+ * Resume… (each behind a confirmation) and Edit or View. An item is absent without its key; the
+ * API checks it again.
  */
 export function SlideRowAction({
   slide,
@@ -44,16 +45,34 @@ export function SlideRowAction({
   readonly onStale: () => void;
 }) {
   const t = useTranslations('content.slides.list');
+  const router = useRouter();
   const [asking, setAsking] = useState(false);
   const kind = rowActionOf(slide, gates);
-  const name = <span className="sr-only"> {slide.internalName}</span>;
+  const open: RowActionKind = gates.edit ? 'edit' : 'view';
+  const items: MenuItem[] = [];
+  if (kind === 'review') {
+    items.push({
+      id: 'review',
+      label: t('action.review'),
+      onSelect: () => router.push(reviewPath(slide.id)),
+    });
+  }
   if (kind === 'pause' || kind === 'resume') {
-    return (
-      <>
-        <Button variant="secondary" onClick={() => setAsking(true)}>
-          {t(`action.${kind}`)}
-          {name}
-        </Button>
+    items.push({
+      id: kind,
+      label: t(`action.${kind}`),
+      onSelect: () => setAsking(true),
+    });
+  }
+  items.push({
+    id: open,
+    label: t(`action.${open}`),
+    onSelect: () => router.push(`${SLIDES_PATH}/${slide.id}`),
+  });
+  return (
+    <>
+      <Menu label={t('actions-for', { name: slide.internalName })} items={items} />
+      {kind === 'pause' || kind === 'resume' ? (
         <SlideConfirmDialog
           kind={kind}
           open={asking}
@@ -67,14 +86,7 @@ export function SlideRowAction({
           }}
           onStale={onStale}
         />
-      </>
-    );
-  }
-  const href = kind === 'review' ? reviewPath(slide.id) : `${SLIDES_PATH}/${slide.id}`;
-  return (
-    <LinkButton variant="secondary" href={href}>
-      {t(`action.${kind}`)}
-      {name}
-    </LinkButton>
+      ) : null}
+    </>
   );
 }
