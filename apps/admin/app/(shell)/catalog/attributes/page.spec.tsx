@@ -7,7 +7,12 @@ import messages from '../../../../messages/en.json';
 import type { AdminSession } from '../../../../src/server/session.ts';
 import AttributesPage from './page.tsx';
 
-const mocks = vi.hoisted(() => ({ session: vi.fn() }));
+const mocks = vi.hoisted(() => ({
+  session: vi.fn(),
+  redirect: vi.fn((to: string) => {
+    throw new Error(`redirect:${to}`);
+  }),
+}));
 
 vi.mock('next-intl/server', () => ({
   getTranslations: (namespace?: string) =>
@@ -19,6 +24,15 @@ vi.mock('next-intl/server', () => ({
       } as never),
     ),
 }));
+vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
+vi.mock('next/headers', () => ({
+  headers: () => Promise.resolve(new Headers({ host: 'admin.localhost' })),
+}));
+vi.mock('../../../../src/server/server-fetch.ts', () => ({
+  serverGet: () => Promise.resolve({ kind: 'ok', body: { listPaging: 'pages' } }),
+}));
+vi.mock('../../../../src/server/bff.ts', () => ({ panelHostFor: () => ({ marketId: 'AU' }) }));
+vi.mock('../../../../src/server/config.ts', () => ({ panelConfig: () => ({}) }));
 vi.mock('../../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
 vi.mock('../../../../src/server/admin-shell.tsx', () => ({
   AdminShell: ({
@@ -36,6 +50,8 @@ vi.mock('../../../../src/attributes/attributes-view.tsx', () => ({
     readonly canDecide: boolean;
     readonly initialTab: string;
     readonly initialId: string | null;
+    readonly paging: string;
+    readonly marketId: string;
   }) => (
     <p
       data-testid="view"
@@ -44,6 +60,8 @@ vi.mock('../../../../src/attributes/attributes-view.tsx', () => ({
       data-decide={String(props.canDecide)}
       data-tab={props.initialTab}
       data-id={String(props.initialId)}
+      data-paging={props.paging}
+      data-market={props.marketId}
     >
       view
     </p>
@@ -69,6 +87,8 @@ describe('admin attributes page', () => {
     expect(view().getAttribute('data-brands')).toBe('false');
     expect(view().getAttribute('data-tab')).toBe('attributes');
     expect(view().getAttribute('data-id')).toBe('null');
+    expect(view().getAttribute('data-paging')).toBe('pages');
+    expect(view().getAttribute('data-market')).toBe('AU');
     expect(container.querySelector('[data-active="attributes"]')).not.toBeNull();
   });
 
@@ -82,7 +102,7 @@ describe('admin attributes page', () => {
     expect(view().getAttribute('data-brands')).toBe('true');
   });
 
-  it('opens the tab and the row the address names, and ignores anything else', async () => {
+  it('opens the tab and the feature set the address names, and ignores anything else', async () => {
     mocks.session.mockResolvedValue({ kind: 'ok', session: session(['catalog.attribute.view']) });
     await open({ tab: 'feature-sets', id: ID });
     expect(view().getAttribute('data-tab')).toBe('feature-sets');
@@ -92,9 +112,14 @@ describe('admin attributes page', () => {
     expect(view().getAttribute('data-tab')).toBe('attributes');
     expect(view().getAttribute('data-id')).toBe('null');
     cleanup();
-    await open({ tab: ['waiting', 'x'], id: [ID] });
+    await open({ tab: ['waiting', 'x'] });
     expect(view().getAttribute('data-tab')).toBe('attributes');
-    expect(view().getAttribute('data-id')).toBe('null');
+  });
+
+  it('sends an old ?id= link of the Attributes tab to the attribute page', async () => {
+    mocks.session.mockResolvedValue({ kind: 'ok', session: session(['catalog.attribute.view']) });
+    await expect(open({ id: ID })).rejects.toThrow(`redirect:/catalog/attributes/${ID}`);
+    await expect(open({ tab: 'attributes', id: ID })).rejects.toThrow('redirect:');
   });
 
   it('shows a no-access message, and no screen, without the view key', async () => {

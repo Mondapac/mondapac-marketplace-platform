@@ -8,6 +8,7 @@ import { expectToast } from '../../test/toast-spy.ts';
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi, type ApiResult } from '../api/client.ts';
+import { AttributeDetailPage } from './attribute-detail-page.tsx';
 import { AttributesView } from './attributes-view.tsx';
 import type {
   AttributeDetail,
@@ -127,14 +128,11 @@ const pageOf = (locales: MarketLocales): AttributePage => ({
 function mount(canRestructure: boolean) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <AttributesView
+      <AttributeDetailPage
+        attributeId={id(1)}
         canEdit={false}
         canRestructure={canRestructure}
         csrfToken="csrf-1"
-        canSeeBrands={false}
-        canDecide={false}
-        initialTab="attributes"
-        initialId={id(1)}
       />
     </NextIntlClientProvider>,
   );
@@ -451,6 +449,9 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
           canDecide={false}
           initialTab="waiting"
           initialId={null}
+          paging="pages"
+          accountId="a"
+          marketId="AU"
         />
       </NextIntlClientProvider>,
     );
@@ -479,6 +480,9 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
           canDecide={false}
           initialTab="waiting"
           initialId={null}
+          paging="pages"
+          accountId="a"
+          marketId="AU"
         />
       </NextIntlClientProvider>
     );
@@ -517,6 +521,9 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
           canDecide={false}
           initialTab="waiting"
           initialId={null}
+          paging="pages"
+          accountId="a"
+          marketId="AU"
         />
       </NextIntlClientProvider>,
     );

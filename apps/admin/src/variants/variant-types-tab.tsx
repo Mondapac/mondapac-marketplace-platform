@@ -340,7 +340,7 @@ function VariantTypePanel({
         {canOpenAttributes ? (
           <a
             className="ms-auto text-sm font-medium text-link underline"
-            href={`${ATTRIBUTES_PATH}?id=${encodeURIComponent(detail.id)}`}
+            href={`${ATTRIBUTES_PATH}/${encodeURIComponent(detail.id)}`}
           >
             {t('edit-in-attributes')}
           </a>

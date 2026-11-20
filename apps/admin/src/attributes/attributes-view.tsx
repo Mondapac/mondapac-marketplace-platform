@@ -3,16 +3,18 @@
 import { Banner, Tabs } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
-import { AttributesTab } from './attributes-tab.tsx';
+import type { ListPagingMode } from '../shared/paged-list/types.ts';
+import { AttributesList } from './attributes-list.tsx';
 import { FeatureSetsTab } from './feature-sets-tab.tsx';
 import { MissingDetailsTab } from './missing-details-tab.tsx';
 import { SuggestionsTab } from './suggestions-tab.tsx';
 import { WaitingTab } from './waiting-tab.tsx';
-import { ATTRIBUTES_PATH, BRANDS_PATH, type Tab } from './types.ts';
+import { ATTRIBUTES_PATH, BRANDS_PATH, attributePath, type Tab } from './types.ts';
 
 /**
- * The Attributes page (attributes plan 16, package A1): four tabs. Attributes and Feature sets
- * are a list with the chosen row's details beside it (below it on a narrow screen); Brands is the
+ * The Attributes page (attributes plan 16, package A1): four tabs. Attributes is a full-width super
+ * list (an attribute opens on its own page); Feature sets is a list with the chosen set's details
+ * beside it (below it on a narrow screen); Brands is the
  * brands page; Missing details is the report of products missing a required detail (A4); Waiting for you holds the requests to turn off Material (A2 part 3) and the sellers' value
  * suggestions (A5). An admin with `catalog.attribute.edit`
  * adds and edits attributes (package A2); any other admin sees the view-only notice.
@@ -25,6 +27,9 @@ export function AttributesView({
   canDecide,
   initialTab,
   initialId,
+  paging,
+  accountId,
+  marketId,
 }: {
   readonly canEdit: boolean;
   /** `catalog.attribute.restructure`: merge values, archive and confirm an archive request. */
@@ -33,7 +38,11 @@ export function AttributesView({
   readonly canSeeBrands: boolean;
   readonly canDecide: boolean;
   readonly initialTab: Tab;
+  /** The feature set the address names (`?id=` on the Feature sets tab). */
   readonly initialId: string | null;
+  readonly paging: ListPagingMode;
+  readonly accountId: string;
+  readonly marketId: string;
 }) {
   const t = useTranslations('attributes');
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -43,8 +52,10 @@ export function AttributesView({
   useEffect(() => {
     const query = new URLSearchParams();
     if (tab !== 'attributes') query.set('tab', tab);
-    if (selected !== null) query.set('id', selected);
+    if (tab === 'feature-sets' && selected !== null) query.set('id', selected);
     const next = query.size === 0 ? ATTRIBUTES_PATH : `${ATTRIBUTES_PATH}?${query.toString()}`;
+    // The list keeps its own query (views, filters, sort, page) in the address.
+    if (tab === 'attributes') return;
     if (`${window.location.pathname}${window.location.search}` !== next) {
       window.history.replaceState(null, '', next);
     }
@@ -76,16 +87,12 @@ export function AttributesView({
         </Banner>
       )}
       {tab === 'attributes' ? (
-        <AttributesTab
-          selectedId={selected}
-          onSelect={setSelected}
+        <AttributesList
+          paging={paging}
+          accountId={accountId}
+          marketId={marketId}
           canEdit={canEdit}
-          canRestructure={canRestructure}
           csrfToken={csrfToken}
-          onOpenWaiting={() => {
-            setTab('waiting');
-            setSelected(null);
-          }}
         />
       ) : null}
       {tab === 'feature-sets' ? (
@@ -94,10 +101,7 @@ export function AttributesView({
           csrfToken={csrfToken}
           selectedId={selected}
           onSelect={setSelected}
-          onOpenAttribute={(id) => {
-            setTab('attributes');
-            setSelected(id);
-          }}
+          onOpenAttribute={(id) => window.location.assign(attributePath(id))}
         />
       ) : null}
       {tab === 'waiting' ? (
@@ -105,10 +109,7 @@ export function AttributesView({
           canEdit={canEdit}
           canRestructure={canRestructure}
           csrfToken={csrfToken}
-          onOpenAttribute={(id) => {
-            setTab('attributes');
-            setSelected(id);
-          }}
+          onOpenAttribute={(id) => window.location.assign(attributePath(id))}
         />
       ) : null}
       {tab === 'missing-details' ? (
