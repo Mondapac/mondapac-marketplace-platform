@@ -111,6 +111,7 @@ describe('the catalog phase 2 saved-filter lists', () => {
 
     it.each([
       [{ v: 1, sort, direction: 'asc', q: 'a'.repeat(121) }, 'payload.q', 'length'],
+      [{ v: 1, sort, direction: 'asc', q: 'a\u0007b' }, 'payload.q', 'format'],
       [
         { v: 1, sort, direction: 'asc', filters: { status: 'open' } },
         'payload.filters.status',
@@ -248,6 +249,22 @@ describe('the catalog phase 2 saved-filter lists', () => {
   });
 
   describe('admin.catalog.business-activities and admin.catalog.tags', () => {
+    it.each(['admin.catalog.business-activities', 'admin.catalog.tags', 'admin.catalog.brands'])(
+      '%s reads the search like its list: 120 characters, no control characters',
+      (key) => {
+        const list = byKey(key);
+        const sort =
+          key === 'admin.catalog.tags' ? 'slug' : key.endsWith('brands') ? 'name' : 'code';
+        const base = { v: 1, sort, direction: 'asc' };
+        expect(list.parsePayload({ ...base, q: 'a'.repeat(120) }).ok).toBe(true);
+        expect(fieldsOf(list, { ...base, q: 'a'.repeat(121) })).toEqual([
+          { path: 'payload.q', code: 'length' },
+        ]);
+        expect(fieldsOf(list, { ...base, q: 'a\nb' })).toEqual([
+          { path: 'payload.q', code: 'format' },
+        ]);
+      },
+    );
     it('keeps the status of an activity and refuses a bad one', () => {
       const list = byKey('admin.catalog.business-activities');
       expect(
