@@ -72,7 +72,26 @@ vi.mock('../../../../src/sellers/blog-access-card.tsx', async (importOriginal) =
   ),
 }));
 vi.mock('../../../../src/commission/rate-card.tsx', () => ({ CommissionRateCard: () => <div /> }));
-vi.mock('../../../../src/commission/ledger-card.tsx', () => ({ LedgerCard: () => <div /> }));
+vi.mock('../../../../src/commission/ledger-card.tsx', () => ({
+  LedgerCard: ({
+    paging,
+    marketId,
+    currency,
+  }: {
+    paging: string;
+    marketId: string;
+    currency: string;
+  }) => (
+    <section data-paging={paging} data-market={marketId} data-currency={currency}>
+      ledger card
+    </section>
+  ),
+}));
+vi.mock('next/headers', () => ({
+  headers: () => Promise.resolve(new Headers({ host: 'admin.localhost:3002' })),
+}));
+vi.mock('../../../../src/server/config.ts', () => ({ panelConfig: () => ({}) }));
+vi.mock('../../../../src/server/bff.ts', () => ({ panelHostFor: () => ({ marketId: 'AU' }) }));
 vi.mock('../../../../src/payouts/terms-card.tsx', () => ({
   PayoutTermsCard: ({ currency, canEdit }: { currency: string | null; canEdit: boolean }) => (
     <section data-currency={String(currency)} data-can-edit={String(canEdit)}>
@@ -81,8 +100,16 @@ vi.mock('../../../../src/payouts/terms-card.tsx', () => ({
   ),
 }));
 vi.mock('../../../../src/payouts/holds-card.tsx', () => ({
-  PayoutHoldsCard: ({ canPlace, canRelease }: { canPlace: boolean; canRelease: boolean }) => (
-    <section data-can-place={String(canPlace)} data-can-release={String(canRelease)}>
+  PayoutHoldsCard: ({
+    canPlace,
+    paging,
+    marketId,
+  }: {
+    canPlace: boolean;
+    paging: string;
+    marketId: string;
+  }) => (
+    <section data-can-place={String(canPlace)} data-paging={paging} data-market={marketId}>
       payout holds card
     </section>
   ),
@@ -268,9 +295,9 @@ describe('admin seller page: payout terms and holds', () => {
     mocks.get.mockImplementation((path: string) =>
       Promise.resolve({
         kind: 'ok',
-        body: path.endsWith('payout-holds')
-          ? { holds: [] }
-          : path.endsWith('/ledger?limit=20')
+        body: path.endsWith('settings/admin/list-paging')
+          ? { listPaging: 'pages' }
+          : path.endsWith('/ledger?limit=1')
             ? { currency: 'AUD', entries: [], totals: {}, nextCursor: null }
             : {},
       }),
@@ -303,7 +330,16 @@ describe('admin seller page: payout terms and holds', () => {
     expect(container.querySelector('[data-can-edit]')?.getAttribute('data-can-edit')).toBe('false');
   });
 
-  it('shows the holds with the place and release keys told apart', async () => {
+  it('shows the holds with the place key told apart from the view key, and does not read them', async () => {
+    mocks.session.mockResolvedValue({
+      kind: 'ok',
+      session: session([REVIEW, 'commission-payouts.settlement.view']),
+    });
+    const { container } = await show();
+    expect(container.querySelector('[data-can-place]')?.getAttribute('data-can-place')).toBe(
+      'false',
+    );
+    cleanup();
     mocks.session.mockResolvedValue({
       kind: 'ok',
       session: session([
@@ -312,13 +348,47 @@ describe('admin seller page: payout terms and holds', () => {
         'commission-payouts.payout-hold.place',
       ]),
     });
-    const { container } = await show();
+    const placing = await show();
     expect(screen.getByText('payout holds card')).toBeTruthy();
-    expect(container.querySelector('[data-can-place]')?.getAttribute('data-can-place')).toBe(
-      'true',
+    expect(
+      placing.container.querySelector('[data-can-place]')?.getAttribute('data-can-place'),
+    ).toBe('true');
+    // The card reads its own rows: the page asks for none of them.
+    const paths = mocks.get.mock.calls.map((call) => String(call[0]));
+    expect(paths.some((path) => path.includes('payout-holds'))).toBe(false);
+  });
+
+  it("hands both lists the Market's List paging setting, and Previous and next when it cannot be read", async () => {
+    mocks.session.mockResolvedValue({
+      kind: 'ok',
+      session: session([REVIEW, 'commission-payouts.settlement.view']),
+    });
+    const pages = await show();
+    expect(
+      pages.container.querySelector('[data-paging="pages"][data-market="AU"][data-currency="AUD"]'),
+    ).toBeTruthy();
+    expect(pages.container.querySelectorAll('[data-paging="pages"]')).toHaveLength(2);
+    cleanup();
+    mocks.get.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.endsWith('settings/admin/list-paging')
+          ? { kind: 'forbidden' }
+          : {
+              kind: 'ok',
+              body: path.endsWith('/ledger?limit=1')
+                ? { currency: 'AUD', entries: [], totals: {}, nextCursor: null }
+                : {},
+            },
+      ),
     );
-    expect(container.querySelector('[data-can-release]')?.getAttribute('data-can-release')).toBe(
-      'false',
-    );
+    const fallback = await show();
+    expect(fallback.container.querySelectorAll('[data-paging="prev-next"]')).toHaveLength(2);
+  });
+
+  it('reads no paging setting for a role that sees neither list', async () => {
+    mocks.session.mockResolvedValue({ kind: 'ok', session: session([REVIEW]) });
+    await show();
+    const paths = mocks.get.mock.calls.map((call) => String(call[0]));
+    expect(paths.some((path) => path.includes('list-paging'))).toBe(false);
   });
 });

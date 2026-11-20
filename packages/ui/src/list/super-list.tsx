@@ -33,8 +33,11 @@ export interface SuperListProps {
   };
   /** A notice between the heading and the tabs (for example a view-only banner). */
   readonly notice?: ReactNode;
-  /** Built-in tabs with their counts, then the saved filters, and "Manage filters…". */
-  readonly views: ListViewsBarProps;
+  /**
+   * Built-in tabs with their counts, then the saved filters, and "Manage filters…". Left out by a
+   * compact list inside a page's card (no views, no saved filters): no tab row.
+   */
+  readonly views?: ListViewsBarProps;
   /** Left out for a list its API cannot search (a customer's activity): no search box. */
   readonly search?: {
     readonly label: string;
@@ -164,7 +167,7 @@ export function SuperList({
         )}
       </div>
       {notice}
-      <ListViewsBar {...views} />
+      {views === undefined ? null : <ListViewsBar {...views} />}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
         {search === undefined ? null : (
           <>

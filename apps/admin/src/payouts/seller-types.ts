@@ -72,11 +72,3 @@ export interface PayoutHold {
   readonly releasedAt: string | null;
   readonly releaseReason: string | null;
 }
-
-/**
- * A hold an admin may release: one an admin placed, and a suspended seller's (the system never
- * releases that one). The system's own holds (a dispute, a refund, a bank-change waiting period)
- * end by themselves, so no button stands in the way of that.
- */
-export const canReleaseHold = (hold: PayoutHold): boolean =>
-  hold.active && (hold.origin === 'admin' || hold.reason === 'seller-suspended');

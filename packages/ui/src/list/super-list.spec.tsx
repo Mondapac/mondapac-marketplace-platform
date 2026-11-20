@@ -217,6 +217,14 @@ describe('SuperList', () => {
     expect(list()).not.toContain('SCOPE');
   });
 
+  it('draws no tab row for a compact list that leaves the views out', () => {
+    const html = list({ views: undefined });
+    expect(html).not.toContain('aria-label="Views"');
+    expect(html).not.toContain('Manage filters');
+    expect(html).toContain('Search people');
+    expect(html).toContain('TABLE');
+  });
+
   it('gives a tab its pointer hint when it has one', () => {
     const html = list({
       views: {

@@ -10,9 +10,8 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 import { callApi } from '../api/client.ts';
 import { STEP_UP_CANCELLED } from '../step-up/step-up.tsx';
 import { commissionProblemOf } from './errors.ts';
-import { LedgerCard } from './ledger-card.tsx';
 import { CommissionRateCard } from './rate-card.tsx';
-import { bpsOf, percentOf, type CommissionRate, type Ledger, type LedgerEntry } from './types.ts';
+import { bpsOf, percentOf, type CommissionRate } from './types.ts';
 import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
@@ -200,125 +199,6 @@ describe('CommissionRateCard', () => {
     typeNote(screen);
     fireEvent.click(screen.getByRole('button', { name: 'Save rate' }));
     expect(await screen.findByText('Your role cannot change commission rates.')).toBeTruthy();
-  });
-});
-
-const entry = (n: number, over: Partial<LedgerEntry> = {}): LedgerEntry => ({
-  entryId: `0190a000-0000-7000-8000-00000000e${n.toString().padStart(3, '0')}`,
-  orderId: `0190a000-0000-7000-8000-00000000b${n.toString().padStart(3, '0')}`,
-  kind: 'sale',
-  direction: 'credit',
-  amount: '3000',
-  occurredAt: '2026-10-14T10:00:00.000Z',
-  ...over,
-});
-const ledger = (entries: LedgerEntry[], nextCursor: string | null = null): Ledger => ({
-  sellerId: SELLER,
-  currency: 'AUD',
-  totals: {
-    sales: '3000',
-    shipping: '500',
-    commission: '450',
-    refundedSales: '0',
-    refundedShipping: '0',
-    refundedCommission: '0',
-    disputeDebits: '0',
-    disputeReinstated: '0',
-    sellerCashback: '0',
-    balance: '3050',
-  },
-  entries,
-  nextCursor,
-});
-const mountLedger = (initial: Ledger) => render(wrap(<LedgerCard initial={initial} />));
-
-describe('LedgerCard', () => {
-  it('shows totals and rows, the commission as a debit', () => {
-    mountLedger(
-      ledger([entry(1), entry(2, { kind: 'commission', direction: 'debit', amount: '450' })]),
-    );
-    const balance = screen.getAllByText('Balance').find((n) => n.tagName === 'DT');
-    expect(balance?.nextElementSibling?.textContent).toBe('$30.50');
-    expect(screen.getAllByRole('row')).toHaveLength(3);
-    expect(screen.getByText('−$4.50')).toBeTruthy();
-    expect(screen.getByRole('columnheader', { name: 'Amount' }).className).toContain('text-end');
-  });
-
-  it('shows the refund totals, the kinds and a balance below zero', () => {
-    const initial = ledger([
-      entry(1, { kind: 'refund-sale', direction: 'debit', amount: '1100' }),
-      entry(2, { kind: 'refund-commission', direction: 'credit', amount: '150' }),
-    ]);
-    mountLedger({
-      ...initial,
-      totals: {
-        ...initial.totals,
-        refundedSales: '1100',
-        refundedShipping: '250',
-        refundedCommission: '150',
-        balance: '-1200',
-      },
-    });
-    for (const [label, value] of [
-      ['Refunds', '$13.50'],
-      ['Commission returned', '$1.50'],
-      ['Balance', '-$12.00'],
-    ] as const) {
-      const term = screen.getAllByText(label).find((n) => n.tagName === 'DT');
-      expect(term?.nextElementSibling?.textContent).toBe(value);
-    }
-    expect(screen.getByText('Refund of sale')).toBeTruthy();
-    expect(screen.getAllByText('Commission returned').length).toBeGreaterThan(1);
-  });
-
-  it('shows the seller cashback tile and kind as a debit, in AUD and JPY', () => {
-    mountLedger(ledger([entry(1)]));
-    expect(screen.queryByText('Cashback to exclusive customers')).toBeNull();
-    cleanup();
-    for (const currency of ['AUD', 'JPY']) {
-      const initial = ledger([
-        entry(1, { kind: 'cashback-seller', direction: 'debit', amount: '500' }),
-      ]);
-      mountLedger({
-        ...initial,
-        currency,
-        totals: { ...initial.totals, sellerCashback: '500' },
-      });
-      const term = screen
-        .getAllByText('Cashback to exclusive customers')
-        .find((n) => n.tagName === 'DT');
-      expect(term?.nextElementSibling?.textContent).toMatch(
-        currency === 'AUD' ? /\$5\.00/ : /(?<![\d,.])500(?![\d,.])/,
-      );
-      expect(screen.getAllByText('Cashback to exclusive customers').length).toBeGreaterThan(1);
-      expect(screen.getByText(/^−/)).toBeTruthy();
-      cleanup();
-    }
-  });
-
-  it('shows an empty state without rows', () => {
-    mountLedger(ledger([]));
-    expect(screen.getByText(/No ledger rows yet/)).toBeTruthy();
-    expect(screen.queryByRole('table')).toBeNull();
-  });
-
-  it('loads more with the cursor, skipping rows already shown', async () => {
-    call.mockResolvedValue({ ok: true, status: 200, body: ledger([entry(1), entry(2)], null) });
-    mountLedger(ledger([entry(1)], 'c1'));
-    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
-    await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(3));
-    expect(call).toHaveBeenCalledWith(
-      'GET',
-      `commission-payouts/admin/sellers/${SELLER}/ledger?limit=20&cursor=c1`,
-    );
-    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
-  });
-
-  it('reports a failed page and keeps the button', async () => {
-    call.mockResolvedValue({ ok: false, failure: { status: 503, code: 'x' } });
-    mountLedger(ledger([entry(1)], 'c1'));
-    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
-    expect(await screen.findByText(/More rows could not be loaded/)).toBeTruthy();
   });
 });
 
