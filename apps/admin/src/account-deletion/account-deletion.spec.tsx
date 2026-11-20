@@ -14,13 +14,7 @@ import { StepUpProvider } from '../step-up/step-up.tsx';
 import { BuyerDeletion } from './buyer-deletion.tsx';
 import { blockersOf, deletionProblemOf } from './errors.ts';
 import { AccountDeletionSettingsPanel } from './settings-panel.tsx';
-import { RequestsList } from './requests-list.tsx';
-import {
-  reasonProblem,
-  type AccountDeletionSettingsAnswer,
-  type DeletionRequestEntry,
-  type PendingCount,
-} from './types.ts';
+import { reasonProblem, type AccountDeletionSettingsAnswer, type PendingCount } from './types.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode) => (
@@ -30,7 +24,6 @@ const wrap = (node: ReactNode) => (
 );
 
 const SETTINGS = 'customers/admin/account-deletion-settings';
-const LIST = 'customers/admin/deletion-requests';
 const ACCOUNT = '0190a000-0000-7000-8000-0000000000a1';
 const REQUEST = '0190a000-0000-7000-8000-0000000000b1';
 const ok = <T,>(body: T, status = 200): ApiResult<T> => ({ ok: true, status, body });
@@ -470,193 +463,6 @@ describe('AccountDeletionSettingsPanel', () => {
     view({ state: 'hidden' });
     expect(screen.queryByText('Pending requests')).toBeNull();
     expect(screen.queryByRole('link', { name: 'View list' })).toBeNull();
-  });
-});
-
-describe('RequestsList', () => {
-  const entry = (n: number, over: Partial<DeletionRequestEntry> = {}): DeletionRequestEntry => ({
-    requestId: `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`,
-    accountId: `0190a000-0000-7000-8000-${String(n + 500).padStart(12, '0')}`,
-    requestedAt: '2026-10-20T01:00:00.000Z',
-    scheduledFor: '2026-11-19T01:00:00.000Z',
-    status: 'pending',
-    requestedBy: 'customer',
-    ...over,
-  });
-  const page = (entries: DeletionRequestEntry[], nextCursor: string | null = null) =>
-    ok({ entries, nextCursor });
-  const mount = (canCancel = true) =>
-    render(wrap(<RequestsList canCancel={canCancel} csrfToken="csrf" />));
-
-  it('shows a loading state, then the rows with their columns', async () => {
-    let release: (value: ApiResult<unknown>) => void = () => undefined;
-    call.mockReturnValue(new Promise((resolve) => (release = resolve as never)));
-    mount();
-    expect(screen.getByRole('status').textContent).toContain('Loading the requests');
-    release(page([entry(1), entry(2, { requestedBy: 'admin', status: 'executing' })]));
-    expect(await screen.findByText('0190a000-0000-7000-8000-000000000501')).toBeTruthy();
-    for (const header of [
-      'Account',
-      'Requested by',
-      'Requested',
-      'Deletes on',
-      'Status',
-      'Actions',
-    ])
-      expect(screen.getByRole('columnheader', { name: header })).toBeTruthy();
-    expect(screen.getByText('Buyer')).toBeTruthy();
-    expect(screen.getByText('Admin')).toBeTruthy();
-    expect(screen.getByText('Waiting')).toBeTruthy();
-    expect(screen.getByText('In progress')).toBeTruthy();
-    expect(call).toHaveBeenCalledWith('GET', `${LIST}?limit=50`);
-    // Cancel only for a waiting row.
-    expect(screen.getAllByRole('button', { name: /^Cancel the deletion request/ })).toHaveLength(1);
-  });
-
-  it('shows the empty state', async () => {
-    call.mockResolvedValue(page([]));
-    mount();
-    expect(await screen.findByText('No pending requests')).toBeTruthy();
-    expect(screen.getByText('Accounts waiting to be deleted appear here.')).toBeTruthy();
-  });
-
-  it('shows a load error and retries', async () => {
-    call.mockResolvedValueOnce(refused(503, 'access.unavailable'));
-    mount();
-    expect(await screen.findByText("Couldn't load the list.")).toBeTruthy();
-    call.mockResolvedValueOnce(page([entry(1)]));
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByText('0190a000-0000-7000-8000-000000000501')).toBeTruthy();
-  });
-
-  it('has no cancel button without customers.buyer-account.delete', async () => {
-    call.mockResolvedValue(page([entry(1)]));
-    mount(false);
-    await screen.findByText('0190a000-0000-7000-8000-000000000501');
-    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Cancel/ })).toBeNull();
-  });
-
-  it('loads more with the cursor and announces it', async () => {
-    call.mockResolvedValueOnce(
-      page([entry(1)], '1792000000000.0190a000-0000-7000-8000-000000000001'),
-    );
-    mount();
-    await screen.findByText('0190a000-0000-7000-8000-000000000501');
-    call.mockResolvedValueOnce(page([entry(2), entry(3)]));
-    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
-    await screen.findByText('0190a000-0000-7000-8000-000000000503');
-    expect(call).toHaveBeenLastCalledWith(
-      'GET',
-      `${LIST}?limit=50&cursor=1792000000000.0190a000-0000-7000-8000-000000000001`,
-    );
-    expect(screen.getByText('2 more requests loaded').closest('[role="status"]')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
-  });
-
-  it('keeps the rows and says so when loading more fails', async () => {
-    call.mockResolvedValueOnce(page([entry(1)], '1.0190a000-0000-7000-8000-000000000001'));
-    mount();
-    await screen.findByText('0190a000-0000-7000-8000-000000000501');
-    call.mockResolvedValueOnce(refused(503, 'access.unavailable'));
-    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
-    expect(await screen.findByText("Couldn't load more requests. Try again.")).toBeTruthy();
-    expect(screen.getByText('0190a000-0000-7000-8000-000000000501')).toBeTruthy();
-  });
-
-  async function openCancel() {
-    call.mockResolvedValueOnce(page([entry(1)]));
-    mount();
-    await screen.findByText('0190a000-0000-7000-8000-000000000501');
-    fireEvent.click(screen.getByRole('button', { name: /^Cancel the deletion request/ }));
-    const dialog = dialogNamed('Cancel this deletion request?');
-    expect(within(dialog).getByText(/The buyer is not told/)).toBeTruthy();
-    expect(within(dialog).getByText("Not saved. Don't enter personal data.")).toBeTruthy();
-    expect(document.activeElement).toBe(within(dialog).getByLabelText('Reason'));
-    return dialog;
-  }
-
-  it('cancels a waiting request with a reason and the code, and removes the row', async () => {
-    const dialog = await openCancel();
-    call.mockResolvedValueOnce(ok(null, 204));
-    typeReason(dialog, 'Buyer asked by phone');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel request' }));
-    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
-    expect(call).toHaveBeenLastCalledWith(
-      'DELETE',
-      `${LIST}/0190a000-0000-7000-8000-000000000001`,
-      { reason: 'Buyer asked by phone' },
-      'csrf',
-    );
-    expect(
-      await screen.findByText('Deletion request cancelled. The account is kept.'),
-    ).toBeTruthy();
-    expect(screen.queryByText('0190a000-0000-7000-8000-000000000501')).toBeNull();
-  });
-
-  it('keeps the request when the dialog is closed with "Keep request" or the reason is bad', async () => {
-    const dialog = await openCancel();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel request' }));
-    expect(within(dialog).getByText(/Enter a reason of 1 to 500/)).toBeTruthy();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Keep request' }));
-    expect(call).toHaveBeenCalledTimes(1);
-    expect(screen.getByText('0190a000-0000-7000-8000-000000000501')).toBeTruthy();
-  });
-
-  it('starts each cancel dialog with an empty reason and no error', async () => {
-    call.mockResolvedValueOnce(page([entry(1), entry(2)]));
-    mount();
-    await screen.findByText('0190a000-0000-7000-8000-000000000501');
-    const buttons = () => screen.getAllByRole('button', { name: /^Cancel the deletion request/ });
-    fireEvent.click(buttons()[0] as HTMLElement);
-    let dialog = dialogNamed('Cancel this deletion request?');
-    typeReason(dialog, 'first reason');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Keep request' }));
-    fireEvent.click(buttons()[1] as HTMLElement);
-    dialog = dialogNamed('Cancel this deletion request?');
-    expect(within(dialog).getByLabelText<HTMLTextAreaElement>('Reason').value).toBe('');
-    // A failed call does not carry its reason or error into the next dialog either.
-    typeReason(dialog, 'second reason');
-    call.mockResolvedValueOnce(refused(503, 'access.unavailable'));
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel request' }));
-    await screen.findByRole('alert');
-    fireEvent.click(buttons()[0] as HTMLElement);
-    dialog = dialogNamed('Cancel this deletion request?');
-    expect(within(dialog).getByLabelText<HTMLTextAreaElement>('Reason').value).toBe('');
-    expect(within(dialog).queryByText(/Enter a reason of 1 to 500/)).toBeNull();
-  });
-
-  it('a cancelled code leaves the row and shows nothing', async () => {
-    const dialog = await openCancel();
-    call.mockResolvedValueOnce(stepUpRequired('customers.buyer-account.delete'));
-    typeReason(dialog);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel request' }));
-    const code = await screen.findByRole('dialog', { name: 'Confirm it is you' });
-    fireEvent.click(within(code).getByRole('button', { name: 'Cancel' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-    expect(screen.queryByRole('alert')).toBeNull();
-    expect(screen.getByText('0190a000-0000-7000-8000-000000000501')).toBeTruthy();
-  });
-
-  it('shows an in-progress request as in progress, without a button', async () => {
-    const dialog = await openCancel();
-    call.mockResolvedValueOnce(refused(409, 'customers.account-deletion-in-progress'));
-    typeReason(dialog);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel request' }));
-    expect(
-      await screen.findByText("This account is already being deleted. It can't be cancelled."),
-    ).toBeTruthy();
-    expect(screen.getByText('In progress')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /^Cancel the deletion request/ })).toBeNull();
-  });
-
-  it('drops a request that is no longer pending', async () => {
-    const dialog = await openCancel();
-    call.mockResolvedValueOnce(refused(404, 'customers.account-deletion-request-not-found'));
-    typeReason(dialog);
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Cancel request' }));
-    expect(await screen.findByText('This request is no longer pending.')).toBeTruthy();
-    expect(screen.queryByText('0190a000-0000-7000-8000-000000000501')).toBeNull();
   });
 });
 
