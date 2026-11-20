@@ -1639,6 +1639,14 @@
         "reject": "Reject",
         "withdraw": "Withdraw request",
         "second-admin": "You asked for this reactivation, so a different admin has to answer it.",
+        "expert": {
+          "title": "New expert approval",
+          "view": "View the new expert approval",
+          "confirmed-by": "Confirmed by",
+          "reference": "Reference",
+          "audited": "Viewing is recorded.",
+          "not-found": "This request has no new expert approval to show. Reload the page."
+        },
         "reload": "Reload",
         "no-actions": "Nothing can be done with this request from your account right now.",
         "cancel": "Cancel",
