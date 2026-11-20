@@ -14,22 +14,22 @@ const payouts = Array.from({ length: 25 }, (_, n) => n).map((n) => {
   const i = n % 6;
   const storeName = stores[i]!;
   return {
-  payoutId: id(100 + n),
-  sellerId: id(300 + i),
-  storeName,
-  state: states[i]!,
-  gross: aud(String(330000 + i * 12345)),
-  netted: aud(i === 1 ? '25000' : '0'),
-  transfer: aud(String(330000 + i * 12345 - (i === 1 ? 25000 : 0))),
-  approvalMode: i < 2 ? 'MANUAL' : 'AUTO',
-  approvalReason: i === 0 ? 'first-payout' : i === 1 ? 'terms' : null,
-  slotAt: `2026-11-${String(18 + (i % 3)).padStart(2, '0')}T00:00:00Z`,
-  outcomeCode: i === 5 ? 'payout-unwound' : null,
-  createdAt: `2026-11-${String(10 + i).padStart(2, '0')}T0${n % 10}:30:00Z`,
-  stateChangedAt: `2026-11-${String(12 + i).padStart(2, '0')}T05:00:00Z`,
-  activeHoldId: i === 2 ? id(900) : null,
-  actions:
-    i < 2 ? ['open', 'approve', 'place-hold'] : i === 2 ? ['open', 'release-hold'] : ['open'],
+    payoutId: id(100 + n),
+    sellerId: id(300 + i),
+    storeName,
+    state: states[i]!,
+    gross: aud(String(330000 + i * 12345)),
+    netted: aud(i === 1 ? '25000' : '0'),
+    transfer: aud(String(330000 + i * 12345 - (i === 1 ? 25000 : 0))),
+    approvalMode: i < 2 ? 'MANUAL' : 'AUTO',
+    approvalReason: i === 0 ? 'first-payout' : i === 1 ? 'terms' : null,
+    slotAt: `2026-11-${String(18 + (i % 3)).padStart(2, '0')}T00:00:00Z`,
+    outcomeCode: i === 5 ? 'payout-unwound' : null,
+    createdAt: `2026-11-${String(10 + i).padStart(2, '0')}T0${n % 10}:30:00Z`,
+    stateChangedAt: `2026-11-${String(12 + i).padStart(2, '0')}T05:00:00Z`,
+    activeHoldId: i === 2 ? id(900) : null,
+    actions:
+      i < 2 ? ['open', 'approve', 'place-hold'] : i === 2 ? ['open', 'release-hold'] : ['open'],
   };
 });
 
