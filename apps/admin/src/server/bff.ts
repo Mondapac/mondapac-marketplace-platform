@@ -1483,7 +1483,18 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   // The category tree, narrowed to the categories of one feature set (categories, A4).
   'catalog/admin/categories': ['featureSetId'],
   'catalog/admin/category-proposals': ['afterId', 'limit'],
-  'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
+  'catalog/admin/business-activities': [
+    'status',
+    'search',
+    'afterId',
+    'limit',
+    'q',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/topics': ['status', 'group', 'search', 'afterId', 'limit'],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
   'catalog/admin/variant-requests': [
@@ -2328,6 +2339,11 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     status: /^(active|inactive)$/,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^(code|status|created|updated)$/,
+    direction: /^(asc|desc)$/,
   },
   'catalog/admin/topics': {
     status: /^(active|archived)$/,

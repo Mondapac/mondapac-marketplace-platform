@@ -21,6 +21,11 @@ import {
 import { BusinessActivitiesView } from './business-activities-view.tsx';
 import type { ActivityRow, Locales } from './types.ts';
 
+const push = vi.fn();
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() }),
+}));
+
 const call = vi.mocked(callApi);
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
 const LOCALES: Locales = { default: 'en', supported: ['en', 'ar', 'fa'] };
@@ -51,8 +56,22 @@ const refuse = (status: number, code: string, details?: object): ApiResult<unkno
   ok: false,
   failure: { status, code, ...(details === undefined ? {} : { details }) },
 });
-const page = (items: ActivityRow[], nextAfterId: string | null = null) =>
-  ok({ items, nextAfterId, locales: LOCALES });
+/** What the API names for a row (the reader gets none), by status. */
+let granted = true;
+const actionsOf = (row: ActivityRow): string[] =>
+  !granted ? [] : row.status === 'active' ? ['edit', 'deactivate'] : ['edit'];
+const page =
+  (items: ActivityRow[], total: number = items.length, hasNext = false) =>
+  () =>
+    ok({
+      items: items.map((row) => ({ ...row, actions: actionsOf(row) })),
+      total,
+      page: 1,
+      pageSize: 25,
+      paging: 'pages',
+      hasNext,
+      locales: LOCALES,
+    });
 
 /** Answers by `METHOD path`: the longest registered prefix of the call wins. */
 function serve(routes: Record<string, Handler>) {
@@ -72,11 +91,24 @@ const base = (items: ActivityRow[] = []) => ({
 });
 
 function mount(canEdit = true) {
+  granted = canEdit;
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <BusinessActivitiesView canEdit={canEdit} csrfToken="csrf-1" />
+      <BusinessActivitiesView
+        canEdit={canEdit}
+        csrfToken="csrf-1"
+        paging="pages"
+        accountId={id(99)}
+        marketId="AU"
+      />
     </NextIntlClientProvider>,
   );
+}
+
+/** Opens the row's Actions menu and picks an item: no row action is a button in the row. */
+async function act(name: string, item: string) {
+  fireEvent.click(await screen.findByRole('button', { name: `Actions for ${name}` }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: item }));
 }
 const calls = (method: string, prefix: string) =>
   call.mock.calls.filter(([m, path]) => m === method && path.startsWith(prefix));
@@ -117,35 +149,40 @@ describe('admin business activities', () => {
     expect(screen.getByText('Dry goods')).toBeTruthy();
     expect(screen.getByText('2')).toBeTruthy();
     expect(screen.getByText('Inactive', { selector: 'span' })).toBeTruthy();
-    expect(calls('GET', 'catalog/admin/business-activities')[0]?.[1]).toBe(
-      'catalog/admin/business-activities?limit=25',
+    const first = new URLSearchParams(
+      calls('GET', 'catalog/admin/business-activities')[0]?.[1].split('?')[1],
     );
+    expect(first.get('page')).toBe('1');
+    expect(first.get('paging')).toBe('pages');
+    expect(first.get('sort')).toBe('code');
+    expect(first.get('direction')).toBe('asc');
+    expect(first.get('status')).toBeNull();
   });
 
-  it('filters by status and searches on the server', async () => {
+  it('has Active and Inactive as views and searches on the server', async () => {
     serve(base([activity(1)]));
     mount();
     await screen.findByText('Activity 1');
-    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'inactive' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Inactive' }));
     await waitFor(() =>
-      expect(calls('GET', 'catalog/admin/business-activities').at(-1)?.[1]).toBe(
-        'catalog/admin/business-activities?limit=25&status=inactive',
-      ),
+      expect(
+        calls('GET', 'catalog/admin/business-activities').at(-1)?.[1].includes('status=inactive'),
+      ).toBe(true),
     );
-    fireEvent.change(screen.getByLabelText('Search by name or code'), {
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search activities' }), {
       target: { value: 'gro' },
     });
-    await waitFor(() =>
-      expect(calls('GET', 'catalog/admin/business-activities').at(-1)?.[1]).toBe(
-        'catalog/admin/business-activities?limit=25&status=inactive&search=gro',
-      ),
-    );
+    await waitFor(() => {
+      const last = calls('GET', 'catalog/admin/business-activities').at(-1)?.[1] ?? '';
+      expect(last).toContain('q=gro');
+      expect(last).toContain('status=inactive');
+    });
   });
 
   it('says so when nothing matches, and shows a load error with a retry', async () => {
     serve(base());
     mount();
-    expect(await screen.findByText(/No business activities yet/)).toBeTruthy();
+    expect(await screen.findByText('No business activities yet')).toBeTruthy();
     cleanup();
     serve({ 'GET catalog/admin/business-activities': refuse(500, 'internal') });
     mount();
@@ -153,17 +190,18 @@ describe('admin business activities', () => {
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
-  it('appends the next page', async () => {
-    serve({
-      ...base(),
-      'GET catalog/admin/business-activities?limit=25&afterId': page([activity(2)]),
-      'GET catalog/admin/business-activities?limit=25': page([activity(1)], id(1)),
-    });
+  it('moves to the next page with the page buttons', async () => {
+    serve({ ...base(), 'GET catalog/admin/business-activities': page([activity(1)], 40, true) });
     mount();
     await screen.findByText('Activity 1');
-    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
-    expect(await screen.findByText('Activity 2')).toBeTruthy();
-    expect(screen.getByText('Activity 1')).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    await waitFor(() =>
+      expect(
+        calls('GET', 'catalog/admin/business-activities').some(([, path]) =>
+          path.includes('page=2'),
+        ),
+      ).toBe(true),
+    );
   });
 
   it('shows activity text as plain text', async () => {
@@ -177,7 +215,43 @@ describe('admin business activities', () => {
     mount(false);
     expect(await screen.findByText('Activity 1')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'New activity' })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Edit/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Actions for/ })).toBeNull();
+  });
+
+  it('keeps Edit and Deactivate in the Actions menu, and Deactivate only for an active one', async () => {
+    serve(base([activity(1), activity(2, { status: 'inactive' })]));
+    mount();
+    await screen.findByText('Activity 1');
+    expect(screen.queryByRole('button', { name: /^(Edit|Deactivate)/ })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for Activity 1' }));
+    expect(await screen.findByRole('menuitem', { name: 'Edit…' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Deactivate…' })).toBeTruthy();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for Activity 2' }));
+    expect(await screen.findByRole('menuitem', { name: 'Edit…' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Deactivate…' })).toBeNull();
+  });
+
+  it('deactivates after a confirmation, sending the row content back with the version', async () => {
+    serve({
+      ...base([activity(1, { description: 'Dry goods', categoryIds: [id(102)] })]),
+      'PUT catalog/admin/business-activities/': ok({
+        activity: activity(1, { status: 'inactive' }),
+      }),
+    });
+    mount();
+    await act('Activity 1', 'Deactivate…');
+    const dialog = await screen.findByRole('dialog', { name: 'Deactivate Activity 1?' });
+    expect(calls('PUT', 'catalog/admin/business-activities/')).toHaveLength(0);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Deactivate activity' }));
+    await expectToast('Activity 1 was deactivated.');
+    expect(calls('PUT', 'catalog/admin/business-activities/')[0]?.[2]).toEqual({
+      names: { en: 'Activity 1' },
+      description: 'Dry goods',
+      categoryIds: [id(102)],
+      status: 'inactive',
+      version: 3,
+    });
   });
 
   describe('the form', () => {
@@ -243,8 +317,8 @@ describe('admin business activities', () => {
         'PUT catalog/admin/business-activities/': ok({ activity: activity(1) }),
       });
       mount();
-      fireEvent.click(await screen.findByRole('button', { name: 'Edit Grocery' }));
-      const dialog = screen.getByRole('dialog');
+      await act('Grocery', 'Edit…');
+      const dialog = await screen.findByRole('dialog');
       const code = within(dialog).getByLabelText<HTMLInputElement>('Code');
       expect(code.readOnly).toBe(true);
       expect(code.value).toBe('grocery');
@@ -280,7 +354,7 @@ describe('admin business activities', () => {
         'PUT catalog/admin/business-activities/': refuse(409, 'conflict.stale'),
       });
       mount();
-      fireEvent.click(await screen.findByRole('button', { name: 'Edit Grocery' }));
+      await act('Grocery', 'Edit…');
       fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Save' }));
       fireEvent.click(await screen.findByRole('button', { name: 'Reload the list' }));
       expect(await screen.findByText(/That activity changed while you were looking/)).toBeTruthy();

@@ -10293,7 +10293,8 @@
     },
     "done": {
       "created": "{name} was created.",
-      "saved": "{name} was saved."
+      "saved": "{name} was saved.",
+      "deactivated": "{name} was deactivated."
     },
     "error": {
       "invalid": "Some values were not accepted. Check the fields and try again.",
@@ -10354,6 +10355,94 @@
         "claim-word": "Names cannot claim a certification such as halal.",
         "code-taken": "This code is already used.",
         "refused": "This value was not accepted."
+      }
+    },
+    "deactivate": {
+      "title": "Deactivate {name}?",
+      "body": "{name} stops being offered when sellers choose what they sell. Categories and products keep it, and you can activate it again by editing it.",
+      "yes": "Deactivate activity",
+      "cancel": "Keep it"
+    },
+    "list": {
+      "title": "Business activities",
+      "intro": "What sellers do in this Market (Grocery, Butcher, ...). Each links to categories.",
+      "tabs": "Activity views",
+      "tab": {
+        "all": "All",
+        "active": "Active",
+        "inactive": "Inactive"
+      },
+      "search": {
+        "label": "Search activities",
+        "placeholder": "Name, code or description"
+      },
+      "filter": {
+        "title": "Filter activities"
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "code": "Code",
+          "status": "Status",
+          "created": "Date added",
+          "updated": "Last updated"
+        },
+        "az": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        }
+      },
+      "sorted": "Sorted by {field}, {order}",
+      "col": {
+        "name": "Name",
+        "code": "Code",
+        "description": "Description",
+        "categories": "Categories",
+        "status": "Status"
+      },
+      "chip-search": "Search: {text}",
+      "loading": "Loading business activities",
+      "match": "{count, plural, one {# activity matches} other {# activities match}}",
+      "range": "{from}–{to} of {total}",
+      "too-many": "More than {limit} activities match. Add a search to see the rest.",
+      "no-access": "You do not have access to the business activities.",
+      "error": {
+        "unavailable": "The business activities could not be loaded. Check your connection and try again.",
+        "refused": "The search cannot be used. Change it and try again."
+      },
+      "empty": {
+        "title": "No business activities yet",
+        "no-match": "No activities match",
+        "no-match-help": "Change the search or clear it."
+      },
+      "select": {
+        "page": "Select all activities on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# activity selected} other {# activities selected}}",
+        "all": "{count, plural, one {The # matching activity is selected} other {All # matching activities are selected}}",
+        "all-open": "All matching activities are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}",
+        "edit": "Edit…",
+        "deactivate": "Deactivate…"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# activity selected} other {# activities selected}}",
+        "all-open": "All matching activities selected"
       }
     }
   },
