@@ -101,6 +101,7 @@ import { ProductRevisionRequestChanges } from './application/use-cases/product-r
 import { ProductRevisionAdminRead } from './application/use-cases/revision-review-read.use-case';
 import { ProductReviewController } from './presentation/product-review.controller';
 import { OwnOfferCreateOnPlatformProduct } from './application/use-cases/own-offer-create-on-platform-product.use-case';
+import { ReviewQueueBulkDecide } from './application/use-cases/review-queue-bulk-decide.use-case';
 import { OfferApprove } from './application/use-cases/offer-approve.use-case';
 import { OfferRequestChanges } from './application/use-cases/offer-request-changes.use-case';
 import { OwnOfferDelete } from './application/use-cases/own-offer-delete.use-case';
@@ -705,6 +706,10 @@ const PORT = {
   topicReject: TopicSuggestionReject,
   proposalApprove: CategoryProposalApprove,
   proposalReject: CategoryProposalReject,
+  revisionApprove: ProductRevisionApprove,
+  revisionRequestChanges: ProductRevisionRequestChanges,
+  offerApprove: OfferApprove,
+  offerRequestChanges: OfferRequestChanges,
   activityEditProbe: BusinessActivityEditProbe,
   topicManageProbe: TopicManageProbe,
   ownEditProbe: OwnProductEditProbe,
@@ -2440,6 +2445,12 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     }),
     useCaseProvider(TopicSuggestionBulkDecide, { topicApprove: true, topicReject: true }),
     useCaseProvider(CategoryProposalBulkDecide, { proposalApprove: true, proposalReject: true }),
+    useCaseProvider(ReviewQueueBulkDecide, {
+      revisionApprove: true,
+      revisionRequestChanges: true,
+      offerApprove: true,
+      offerRequestChanges: true,
+    }),
     useCaseProvider(BusinessActivityEditProbe, {}),
     useCaseProvider(TopicManageProbe, {}),
     useCaseProvider(OwnProductEditProbe, {}),

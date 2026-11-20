@@ -128,3 +128,14 @@ checks the values. Each list is guarded by the key its list use case checks; adm
 shared with `catalog.saved-filter.share`, seller filters with `catalog.own-saved-filter.share`. The
 lists have no column choice yet (no `columns`). A saved attribute `missing` locale is checked for
 shape only; the Market's supported locales are not known when a filter is saved.
+
+## Bulk decide of the review queue (list 13)
+
+`POST /catalog/admin/review-queue/bulk-decide` (use case `catalog.review-queue-bulk-decide`, key
+`catalog.product.approve`, admin only). Body: `kind` (`revision` or `offer`), `action` (`approve` or
+`request-changes`), `reasonCode` (only with `request-changes`; the product or the offer change
+reasons), `items` (1 to 50). Revision items are `{ id: productId, revisionId, version }`, offer
+items `{ id: offerId, version }`; results are keyed by `id`. Each row runs the single use case as
+the caller. A bulk approve passes no ticked check, so a revision whose review needs checks comes
+back `skipped` with `review.checks-missing` (owner decision 20 Nov 2026). Offers and revisions are
+separate calls because their reason codes differ.
