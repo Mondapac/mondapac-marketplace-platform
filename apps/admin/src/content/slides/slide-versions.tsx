@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Button, CARD_TABLE, type BadgeTone, toast } from '@mondapac/ui';
+import { Badge, Banner, CARD_TABLE, Menu, type BadgeTone, toast } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useState } from 'react';
@@ -93,7 +93,7 @@ export function SlideVersions({
                   <th scope="col" className="px-4 py-3 font-medium">
                     {t('col.state')}
                   </th>
-                  <th scope="col" className="px-4 py-3 font-medium">
+                  <th scope="col" className={CARD_TABLE.actionsHead}>
                     {t('col.actions')}
                   </th>
                 </tr>
@@ -125,20 +125,19 @@ export function SlideVersions({
                             : t(`state.${state}`)}
                         </Badge>
                       </td>
-                      <td className={`${CARD_TABLE.cell} max-lg:col-span-2 max-lg:pt-1`}>
+                      <td className={CARD_TABLE.actions}>
                         {editable && state !== 'draft' ? (
-                          <Button
-                            variant="secondary"
-                            onClick={() =>
-                              setRestoring({ id: version.id, versionNo: version.versionNo })
-                            }
-                          >
-                            {t('restore')}
-                            <span className="sr-only">
-                              {' '}
-                              {t('restore-for', { version: version.versionNo })}
-                            </span>
-                          </Button>
+                          <Menu
+                            label={t('actions-for', { version: version.versionNo })}
+                            items={[
+                              {
+                                id: 'restore',
+                                label: t('restore'),
+                                onSelect: () =>
+                                  setRestoring({ id: version.id, versionNo: version.versionNo }),
+                              },
+                            ]}
+                          />
                         ) : null}
                       </td>
                     </tr>

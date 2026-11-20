@@ -24,6 +24,7 @@ export const LISTS_AUDIT_LIST_KEYS = [
   'admin.certification.review-queue',
   'admin.sellers.health-queue',
   'admin.sellers.list',
+  'seller.reviews.list',
 ] as const;
 export type ListsAuditListKey = (typeof LISTS_AUDIT_LIST_KEYS)[number];
 

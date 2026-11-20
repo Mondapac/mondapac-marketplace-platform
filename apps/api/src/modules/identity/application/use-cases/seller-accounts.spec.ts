@@ -451,6 +451,7 @@ describe.each(TEST_MARKETS)(
           invitedByAccountId: COMPLIANCE,
           tokenHash: new Uint8Array(32).fill(7),
           expiresAt: START.add({ hours: 1 }),
+          heldForApproval: false,
           state: 'pending',
           decidedAt: null,
           acceptedAccountId: null,

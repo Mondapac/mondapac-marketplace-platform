@@ -35,6 +35,7 @@ export interface RequestDetail {
   /** The seller's text, decrypted for this read; null when it is no longer available. */
   readonly typedIssuerName: string | null;
   readonly documents: readonly {
+    readonly documentId?: string;
     readonly position?: number;
     readonly mediaType?: string;
     readonly byteSize?: number;

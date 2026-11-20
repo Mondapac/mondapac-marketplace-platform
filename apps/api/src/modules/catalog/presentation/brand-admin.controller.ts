@@ -1,4 +1,5 @@
 import {
+  applyDecorators,
   Body,
   Controller,
   Get,
@@ -108,6 +109,36 @@ const refusal = (error: Refusal, response: Response, context?: CallContext): Htt
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthenticated';
 const BRAND_PARAM = { name: 'brandId', description: 'The brand. A UUID v7.' };
+/** The filter query parameters the list and the export share. */
+const FILTER_QUERIES = [
+  { name: 'status', required: false, enum: ['draft', 'active', 'archived'] },
+  {
+    name: 'originCountry',
+    required: false,
+    description: 'ISO 3166-1 alpha-2 code, two uppercase letters; exact match.',
+  },
+  {
+    name: 'createdFrom',
+    required: false,
+    description: 'ISO 8601 instant with an offset or Z; brands created at or after it (inclusive).',
+    example: '2026-11-01T00:00:00+10:00',
+  },
+  {
+    name: 'createdTo',
+    required: false,
+    description:
+      'ISO 8601 instant with an offset or Z; brands created before it (exclusive). Must be ' +
+      'after createdFrom.',
+    example: '2026-12-01T00:00:00+10:00',
+  },
+] as const;
+const FILTER_TEXT =
+  '`status` and `originCountry` (ISO 3166-1 alpha-2, uppercase, exact) filter; `createdFrom` ' +
+  '(inclusive) and `createdTo` (exclusive) are ISO 8601 instants with an offset; an unknown ' +
+  'status, a malformed country or instant, or a range that ends at or before it starts is 400 ' +
+  'validation.failed.';
+const filterQueries = (): MethodDecorator & ClassDecorator =>
+  applyDecorators(...FILTER_QUERIES.map((query) => ApiQuery({ ...query })));
 const CONTENT_KEYS = [
   'slug',
   'summary',
@@ -155,10 +186,12 @@ export class BrandAdminController {
       'Previous and Next (`paging=prev-next`, no total), sorted by `sort` (name, status, created, ' +
       'updated) and `direction`; or, as the older panel does, keyset-paged by name: send ' +
       '`nextAfterId` of the previous page as `afterId` (`afterId`/`limit` do not mix with the page ' +
-      'keys). `status` filters; `q` (older name `search`) matches the name, the slug or an alias. ' +
+      'keys). ' +
+      FILTER_TEXT +
+      ' `q` (older name `search`) matches the name, the slug or an alias. ' +
       '`pageSize` and `limit` are 1 to 100. Each row names the `actions` the caller may run.',
   })
-  @ApiQuery({ name: 'status', required: false, enum: ['draft', 'active', 'archived'] })
+  @filterQueries()
   @ApiQuery({ name: 'q', required: false })
   @ApiQuery({ name: 'search', required: false, deprecated: true, description: 'Older name of q.' })
   @ApiQuery({ name: 'sort', required: false, enum: ['name', 'status', 'created', 'updated'] })
@@ -255,8 +288,9 @@ export class BrandAdminController {
       'header row: Brand, Slug, Status, Origin country, Last changed, then the optional ' +
       '`columns` (comma-separated, in the order given). The brands are `ids` (comma-separated, at ' +
       `most ${BRAND_EXPORT_MAX_IDS}, in the order given; an unknown id is brand.not-found) or ` +
-      'every brand the list filter matches (`status`, `q` or its older name `search`, `sort`, ' +
-      `\`direction\`), at most ${BRAND_EXPORT_MAX_ROWS}; more is batch.too-large with ` +
+      'every brand the list filter matches (`status`, `originCountry`, `createdFrom`, ' +
+      '`createdTo`, `q` or its older name `search`, `sort`, `direction`; read as the list reads ' +
+      `them), at most ${BRAND_EXPORT_MAX_ROWS}; more is batch.too-large with ` +
       '`details.total`. The file streams as an attachment. CSV: a text cell that starts with = + - @ ' +
       'is written with a leading quote. XLSX: every cell is a string value, never a formula.',
   })
@@ -267,7 +301,7 @@ export class BrandAdminController {
     description: `Any of: ${BRAND_EXPORT_COLUMNS.join(', ')}.`,
   })
   @ApiQuery({ name: 'ids', required: false, description: 'Comma-separated brand ids.' })
-  @ApiQuery({ name: 'status', required: false, enum: ['draft', 'active', 'archived'] })
+  @filterQueries()
   @ApiQuery({ name: 'q', required: false })
   @ApiQuery({ name: 'search', required: false, deprecated: true, description: 'Older name of q.' })
   @ApiQuery({ name: 'sort', required: false, enum: ['name', 'status', 'created', 'updated'] })

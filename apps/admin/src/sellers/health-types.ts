@@ -62,3 +62,35 @@ export interface HealthQueueRead {
 }
 
 export const HEALTH_QUEUE_PATH = 'sellers/admin/health-queue';
+
+// The "Needs a look" super list: GET sellers/admin/health-queue/list and its export (list 16).
+export const HEALTH_QUEUE_LIST_PATH = 'sellers/admin/health-queue/list';
+export const HEALTH_QUEUE_EXPORT_PATH = 'sellers/admin/health-queue/export';
+
+export const VIEWS = ['all', ...HEALTH_METRICS] as const;
+export type View = (typeof VIEWS)[number];
+export const SORTS = ['score', 'name', 'day'] as const;
+export type Sort = (typeof SORTS)[number];
+export type Direction = 'asc' | 'desc';
+export const ROW_ACTIONS = ['open'] as const;
+
+export interface HealthQueueRow extends HealthQueueItem {
+  /** What this admin may do on the row; the API names it, the panel shows only what it knows. */
+  readonly actions: readonly string[];
+}
+
+export type HealthViewCounts = Readonly<Record<View, number>>;
+
+export interface HealthQueuePage {
+  readonly items: readonly HealthQueueRow[];
+  readonly page: number;
+  readonly pageSize: number;
+  readonly paging: 'pages' | 'prev-next';
+  /** Null with Previous and next (never counted). */
+  readonly total: number | null;
+  readonly hasNext: boolean;
+  /** The count of each view among the sellers read, whatever the filter. */
+  readonly counts: HealthViewCounts;
+  /** More sellers were unhealthy than the queue holds (200). */
+  readonly truncated: boolean;
+}

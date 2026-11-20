@@ -539,6 +539,10 @@ model IdentityInvitation {
   /// SHA-256 of the token; set with expires_at at dispatch, replaced by a re-send.
   tokenHash          Bytes?                @map("token_hash")
   expiresAt          DateTime?             @map("expires_at") @db.Timestamptz(6)
+  /// An admin invitation to a sensitive role waiting for another admin's approval: never
+  /// dispatched or re-sent until released (owner decision of 18 Nov 2026). Only while pending,
+  /// admin and without a token (CHECK hand-written in the migration).
+  heldForApproval    Boolean               @default(false) @map("held_for_approval")
   /// pending | accepted | revoked.
   state              String
   decidedAt          DateTime?             @map("decided_at") @db.Timestamptz(6)

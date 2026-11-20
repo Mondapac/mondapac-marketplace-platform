@@ -412,6 +412,14 @@ describe.each([
     expect(await uc.list.execute(seller(RIVAL), { view: 'referred' })).toMatchObject({
       value: { items: [], counts: { referred: 0 } },
     });
+    // The admin's summary of the shop: one exclusive customer, new this month; none for the rival.
+    const summary = await uc.summary.execute(admin, { sellerId: SHOP });
+    if (!summary.ok) throw new Error('summary refused');
+    expect(summary.value.counts.referred).toBe(1);
+    expect(summary.value.months.at(-1)).toMatchObject({ newExclusive: 1 });
+    expect(summary.value.months.slice(0, -1).every((m) => m.newExclusive === 0)).toBe(true);
+    const rival = await uc.summary.execute(admin, { sellerId: RIVAL });
+    expect(rival.ok && rival.value.months.at(-1)).toMatchObject({ newExclusive: 0 });
 
     // An admin rejected it: the row leaves the referred view (the shop keeps nothing else of it).
     await attributions.update(
@@ -421,6 +429,9 @@ describe.each([
     );
     await sync(BOB);
     expect(rows.rows.map((row) => row.sellerId)).toEqual([RIVAL]);
+    // A rejected attribution is not an exclusive customer in the trend either.
+    const after = await uc.summary.execute(admin, { sellerId: SHOP });
+    expect(after.ok && after.value.months.at(-1)).toMatchObject({ newExclusive: 0 });
   });
 
   it('goes on past an account whose sync fails, and counts it', async () => {
@@ -644,7 +655,11 @@ describe.each([
       if (!summary.ok) throw new Error('summary refused');
       expect(summary.value.counts).toEqual({ all: 2, buyers: 1, followers: 1, referred: 0 });
       expect(summary.value.months).toHaveLength(12);
-      expect(summary.value.months.at(-1)).toMatchObject({ newBuyers: 1, newFollowers: 1 });
+      expect(summary.value.months.at(-1)).toMatchObject({
+        newBuyers: 1,
+        newFollowers: 1,
+        newExclusive: 0,
+      });
     });
 
     it('leaves no row once the account is erased', async () => {

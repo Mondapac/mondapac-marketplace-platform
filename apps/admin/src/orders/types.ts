@@ -24,6 +24,7 @@ export const CANCEL_REASONS = [
   'stock-unavailable',
   'superseded',
   'provider-failed',
+  'discount-changed',
 ] as const;
 
 export interface Money {
@@ -32,13 +33,20 @@ export interface Money {
   readonly currency: string;
 }
 
+/** Whether an amount is more than zero (a discount row is shown only then). */
+export const isPositive = (money: Money | undefined): money is Money =>
+  money !== undefined && /^[0-9]+$/u.test(money.amount) && BigInt(money.amount) > 0n;
+
 export interface OrderLine {
   readonly lineId: string;
   readonly offerId: string;
   readonly variantId: string;
   readonly quantity: number;
   readonly unitPrice: Money;
+  /** The unit price times the quantity, before any discount. */
   readonly lineAmount: Money;
+  /** The discount on the line (promotions), frozen at placement; zero without one. */
+  readonly discount: Money;
   readonly taxInclusive: boolean;
   /** The tax rate in basis points frozen at placement; null on orders from before tax was recorded. */
   readonly taxRateBps: number | null;
@@ -56,8 +64,13 @@ export interface SellerPart {
   readonly sellerId: string;
   /** The seller's public store name; null when unknown. */
   readonly storeName: string | null;
+  /** The goods before discounts. */
   readonly subtotal: Money;
   readonly shipping: Money;
+  /** The sum of the lines' discounts; zero without any. */
+  readonly discount: Money;
+  /** The discount on the delivery fee; zero without one. */
+  readonly shippingDiscount: Money;
   /**
    * The delivery fee as paid, tax included: the most a refund gives back of it. Null on an older
    * order whose delivery tax was not recorded (its fee is not refunded here).

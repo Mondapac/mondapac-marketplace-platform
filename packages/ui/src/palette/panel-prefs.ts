@@ -21,6 +21,7 @@ export type PrefsKind =
   | 'shipments-columns'
   | 'refunds-columns'
   | 'invoices-columns'
+  | 'seller-health-columns'
   | 'system-requests-columns'
   | 'system-requests-view'
   | 'system-requests-query'

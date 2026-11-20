@@ -509,3 +509,91 @@ describe('invite an admin in a reviewed Market', () => {
     expect(call.mock.calls[0]?.[2]).toEqual({ email: 'new@example.com', roleId: 'r-finance' });
   });
 });
+
+describe('invite with a sensitive role: it waits for approval (owner decision of 18 Nov 2026)', () => {
+  const withSensitive: PlatformRole[] = [
+    ...roles,
+    {
+      roleId: 'r-admin',
+      kind: 'system',
+      seedCode: 'platform-administrator',
+      permissionCount: 90,
+      grantable: true,
+      sensitive: true,
+    },
+  ];
+  const APPROVAL_TEXT = /another admin must approve the invitation/;
+  const dialog = (reviewed: boolean) =>
+    wrap(
+      <InviteAdminDialog
+        open
+        onClose={() => undefined}
+        roles={withSensitive}
+        csrfToken="csrf-1"
+        reviewed={reviewed}
+      />,
+    );
+  const fill = (roleId: string) => {
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@example.com' } });
+    fireEvent.change(screen.getByLabelText('Role'), { target: { value: roleId } });
+  };
+
+  it('says it waits for approval, asks "Send for approval", and on 202 announces the request only', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 202,
+      body: { code: 'invitation.proposed', invitationId: ID, request },
+    });
+    dialog(true);
+    fill('r-admin');
+    expect(screen.getByText(APPROVAL_TEXT)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Send invitation' })).toBeNull();
+    fireEvent.change(screen.getByLabelText(NOTE_FIELD), {
+      target: { value: ' Second administrator ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        'identity/admin/invitations',
+        { email: 'new@example.com', roleId: 'r-admin', note: 'Second administrator' },
+        'csrf-1',
+      ),
+    );
+    expect(await screen.findByText('Sent for approval (SR-42)')).toBeTruthy();
+    // Nothing was sent: no "Invitation sent" toast, no review toast.
+    expect(screen.queryByText(/Invitation sent to/)).toBeNull();
+    expect(screen.queryByText(/Sent for review/)).toBeNull();
+  });
+
+  it('keeps "Send invitation" and no approval text for a role that is not sensitive', () => {
+    dialog(true);
+    fill('r-finance');
+    expect(screen.queryByText(APPROVAL_TEXT)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Send invitation' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Send for approval' })).toBeNull();
+  });
+
+  it('invites at once where the Market does not review people, even for a sensitive role', () => {
+    dialog(false);
+    fill('r-admin');
+    expect(screen.queryByText(APPROVAL_TEXT)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Send invitation' })).toBeTruthy();
+  });
+
+  it('says which request it already waits on (409)', async () => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: {
+        status: 409,
+        code: 'system-requests.already-pending',
+        details: { pendingNumber: 7 },
+      },
+    } as never);
+    dialog(true);
+    fill('r-admin');
+    fireEvent.change(screen.getByLabelText(NOTE_FIELD), { target: { value: 'Again' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
+    expect(await screen.findByText('This is already waiting for approval (SR-7).')).toBeTruthy();
+  });
+});
