@@ -49,6 +49,7 @@ const line = (over: Partial<OrderLineView> = {}): OrderLineView => ({
   quantity: 2,
   unitPrice: aud('1500'),
   lineAmount: aud('3000'),
+  discount: aud('0'),
   taxInclusive: true,
   ...over,
 });
@@ -58,6 +59,8 @@ const order = (over: Partial<SellerOrderView> = {}): SellerOrderView => ({
   paidAt: '2026-10-14T10:00:00.000Z',
   subtotal: aud('3000'),
   shipping: aud('500'),
+  discount: aud('0'),
+  shippingDiscount: aud('0'),
   total: aud('3500'),
   fulfilment: 'to-ship',
   carrier: null,
@@ -174,8 +177,10 @@ describe('OrderDetail', () => {
           initial={order({
             subtotal: nzd('3000'),
             shipping: nzd('500'),
+            discount: nzd('0'),
+            shippingDiscount: nzd('0'),
             total: nzd('3500'),
-            lines: [line({ unitPrice: nzd('1500'), lineAmount: nzd('3000') })],
+            lines: [line({ unitPrice: nzd('1500'), lineAmount: nzd('3000'), discount: nzd('0') })],
           })}
           csrfToken="csrf"
           canMarkReady={true}
@@ -186,6 +191,42 @@ describe('OrderDetail', () => {
     expect(screen.getByText('Aged Basmati Rice · 5 kg')).toBeTruthy();
     expect(screen.getByText('$35.00')).toBeTruthy();
     expect(screen.getByText(/^Paid 14 Oct 2026, 11:00 pm NZDT · 2 items$/)).toBeTruthy();
+  });
+
+  it('shows the discounts of the lines and the delivery only when there are any', () => {
+    for (const [currency, locale] of [
+      ['AUD', 'en-AU'],
+      ['NZD', 'en-NZ'],
+    ] as const) {
+      const cash = (amount: string) => ({ amount, currency });
+      render(
+        <NextIntlClientProvider locale={locale} timeZone="UTC" messages={messages}>
+          <OrderDetail
+            initial={order({
+              subtotal: cash('3000'),
+              shipping: cash('500'),
+              discount: cash('450'),
+              shippingDiscount: cash('500'),
+              total: cash('2550'),
+              lines: [
+                line({ unitPrice: cash('1500'), lineAmount: cash('3000'), discount: cash('450') }),
+              ],
+            })}
+            csrfToken="csrf"
+            canMarkReady={true}
+            canDeliver={true}
+          />
+        </NextIntlClientProvider>,
+      );
+      expect(screen.getByText('Discount: $4.50')).toBeTruthy();
+      expect(screen.getByText('−$4.50')).toBeTruthy();
+      expect(screen.getByText('Delivery discount')).toBeTruthy();
+      expect(screen.getByText('−$5.00')).toBeTruthy();
+      expect(screen.getByText('$25.50')).toBeTruthy();
+      cleanup();
+    }
+    mountDetail();
+    expect(screen.queryByText(/Discount/)).toBeNull();
   });
 
   it('puts the next step in its own card above the lines', () => {

@@ -1,5 +1,6 @@
 import { Badge, CARD_TABLE, EmptyState, Icon, SettingsSection, type BadgeTone } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
+import { RoleRowActions } from './role-row-actions.tsx';
 import { roleName } from './role-name.ts';
 import type { RoleRecord } from './types.ts';
 
@@ -14,10 +15,13 @@ const TONE: Record<RoleRecord['kind'], BadgeTone> = {
 export async function RolesTable({
   roles,
   members = null,
+  canDuplicate = false,
 }: {
   readonly roles: readonly RoleRecord[];
   /** Active accounts per role id; null leaves the Members column out. */
   readonly members?: ReadonlyMap<string, number> | null;
+  /** The actor may create roles: each row then offers Duplicate role. */
+  readonly canDuplicate?: boolean;
 }) {
   const t = await getTranslations();
   return (
@@ -64,7 +68,7 @@ export async function RolesTable({
                           {t('identity.roles.label.members')}
                         </th>
                       )}
-                      <th scope="col" className="px-4 py-3 text-end font-medium">
+                      <th scope="col" className={CARD_TABLE.actionsHead}>
                         {t('identity.members.actions')}
                       </th>
                     </tr>
@@ -107,20 +111,13 @@ export async function RolesTable({
                               })}
                             </td>
                           )}
-                          <td
-                            className={`${CARD_TABLE.cell} text-end max-lg:col-span-2 max-lg:text-start`}
-                          >
-                            <a
-                              className="font-medium text-link underline"
-                              href={`/settings/roles/${role.roleId}`}
-                            >
-                              {t(
-                                role.kind === 'custom' && role.actions.edit.allowed
-                                  ? 'identity.roles.action.edit'
-                                  : 'identity.roles.action.view',
-                              )}{' '}
-                              <span className="sr-only">{name}</span>
-                            </a>
+                          <td className={CARD_TABLE.actions}>
+                            <RoleRowActions
+                              roleId={role.roleId}
+                              name={name}
+                              editable={role.kind === 'custom' && role.actions.edit.allowed}
+                              canDuplicate={canDuplicate}
+                            />
                           </td>
                         </tr>
                       );

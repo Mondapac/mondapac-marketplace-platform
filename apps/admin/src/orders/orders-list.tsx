@@ -115,6 +115,11 @@ export function OrdersList({
   const t = useTranslations('orders');
   const ts = useTranslations('sales-lists');
   const tl = useTranslations('load');
+  const daysWords = {
+    range: (from: string, to: string) => t('days.range', { from, to }),
+    from: (day: string) => t('days.from', { day }),
+    until: (day: string) => t('days.until', { day }),
+  };
   const locale = useLocale();
   const {
     query,
@@ -343,7 +348,7 @@ export function OrdersList({
               key: 'days',
               label: ts('chip', {
                 field: t('filter.name.placed'),
-                value: daysLabel(query.days),
+                value: daysLabel(query.days, daysWords),
               }),
               onRemove: () => change({ days: null }),
             },

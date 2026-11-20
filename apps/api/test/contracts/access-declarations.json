@@ -12,6 +12,8 @@
   { "name": "assistant.purge-conversations", "rule": "system" },
   { "name": "assistant.send-guest-message", "rule": "anonymous" },
   { "name": "assistant.send-message", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "assistant.submit-feedback", "rule": "own-resources", "whenSellerNotApproved": "deny" },
+  { "name": "assistant.submit-guest-feedback", "rule": "anonymous" },
   {
     "name": "assistant.view-conversation",
     "rule": "own-resources",

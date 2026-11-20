@@ -21,12 +21,15 @@ export function EditNamesDialog({
   csrfToken,
   onClose,
   onSaved,
+  onRefused,
 }: {
   readonly area: AreaRow;
   readonly config: Pick<AreaNames, 'defaultLanguage' | 'languages'>;
   readonly csrfToken: string;
   readonly onClose: () => void;
   readonly onSaved: (area: AreaRow) => void;
+  /** The API refused the save: the panel reads the list again. */
+  readonly onRefused: () => void;
 }) {
   const t = useTranslations('serviceAreas.dialog');
   const errors = useTranslations('serviceAreas.error');
@@ -108,6 +111,7 @@ export function EditNamesDialog({
         return;
       }
       setProblem(errors(areaProblemOf(result.failure)));
+      onRefused();
     } finally {
       inFlight.current = false;
       setPending(false);

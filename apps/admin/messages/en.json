@@ -384,6 +384,7 @@
         "active": "Active",
         "invited": "Invited",
         "expired": "Invitation expired",
+        "awaiting-approval": "Awaiting approval",
         "deactivated": "Deactivated"
       },
       "role": {
@@ -449,6 +450,8 @@
           "help": "They'll get an email with a link to set their own password. The link works for {duration}.",
           "duration": "72 hours",
           "action": "Send invitation",
+          "action-approval": "Send for approval",
+          "approval-body": "This role has protected permissions, so another admin must approve the invitation in Admin Inbox > System requests. Nothing is sent until then.",
           "cancel": "Cancel",
           "toast-sent": "Invitation sent to {email}."
         },
@@ -607,9 +610,10 @@
         "body": "Custom roles you create will appear here."
       },
       "action": {
-        "view": "View",
-        "edit": "Edit",
         "duplicate": "Duplicate",
+        "view-role": "View role",
+        "edit-role": "Edit role",
+        "duplicate-role": "Duplicate role",
         "create": "New role"
       },
       "back": "Back to roles",
@@ -989,9 +993,9 @@
         "created": "Created (UTC)",
         "actions": "Actions"
       },
+      "actions-for": "Actions for seller {id}",
       "invite": {
-        "action": "Invite owner",
-        "row-label": "Invite owner for seller {id}",
+        "action": "Invite owner…",
         "unavailable": {
           "denied": "You don't have permission to invite owners.",
           "unavailable": "Invitations aren't available in this market.",
@@ -1108,12 +1112,14 @@
       "title": "Sellers that need a look",
       "link": "Sellers that need a look",
       "back": "Back to sellers",
-      "intro": "Sellers whose latest health is Unhealthy, worst score first. Open a seller to see the measures and the trend.",
+      "intro": "Sellers whose latest health is Unhealthy, worst score first. Pick a measure to see the sellers it set, or open a seller to see the measures and the trend.",
       "col": {
         "seller": "Seller",
         "score": "Score",
         "lowest": "Lowest measure",
-        "measured": "Measured"
+        "measured": "Measured",
+        "seller-id": "Seller ID",
+        "actions": "Actions"
       },
       "unnamed": "Unnamed store",
       "unhealthy": "Unhealthy",
@@ -1126,15 +1132,106 @@
       },
       "empty": {
         "title": "No seller needs a look",
-        "body": "No seller is in the Unhealthy band right now."
+        "body": "No seller is in the Unhealthy band right now.",
+        "no-match": "No seller matches",
+        "no-match-help": "Change or clear the search and filters to see more sellers.",
+        "view": {
+          "all": "No seller needs a look",
+          "seller-cancellations": "No seller is unhealthy because of cancellations by the seller",
+          "late-ready": "No seller is unhealthy because of orders ready late",
+          "customer-rating": "No seller is unhealthy because of the customer rating",
+          "lost-disputes": "No seller is unhealthy because of disputes lost",
+          "reports": "No seller is unhealthy because of reports"
+        }
       },
-      "truncated": "Only the worst sellers are shown.",
+      "truncated": "Only the 200 sellers with the worst scores are in this list, so some unhealthy sellers are not shown. Exporting every matching seller is not possible until fewer are unhealthy; tick sellers to export them.",
       "unavailable": "We couldn't load the sellers. Try again.",
       "no-access": {
         "title": "You don't have access to this page",
         "body": "Ask an administrator for the permission to view sellers."
       },
-      "informs": "Health only informs. Nothing happens to a seller because of its score."
+      "informs": "Health only informs. Nothing happens to a seller because of its score.",
+      "back-home": "Back to home",
+      "views": "Seller health views",
+      "view": {
+        "all": "All"
+      },
+      "search": {
+        "label": "Search",
+        "placeholder": "Store name or slug",
+        "help": "Matches the start of a store name or slug. Type at least 2 characters.",
+        "too-short": "Type at least {min} characters to search."
+      },
+      "chip-search": "Search: \"{text}\"",
+      "filter": {
+        "title": "Filter sellers",
+        "name": {
+          "score": "Score"
+        },
+        "chip": {
+          "minScore": "Score from",
+          "maxScore": "Score up to"
+        },
+        "from": "From",
+        "to": "To",
+        "cancel": "Cancel",
+        "apply": "Apply",
+        "error": {
+          "score": "Use a whole number from 0 to 100.",
+          "range": "The end of the range is before its start."
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "score": "Score",
+          "name": "Store name",
+          "day": "Measured"
+        },
+        "score": {
+          "first": "Lowest first",
+          "second": "Highest first"
+        },
+        "name": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# seller matches} other {# sellers match}}",
+      "range": "{from}–{to} of {total} sellers",
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# seller selected} other {# sellers selected}}",
+        "all-open": "All matching sellers selected"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# seller selected} other {# sellers selected}}",
+        "all": "{count, plural, one {The # matching seller is selected} other {All # matching sellers are selected}}",
+        "all-open": "All matching sellers are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "select": {
+        "page": "Select all sellers on this page",
+        "page-short": "Select all",
+        "row": "Select {name}"
+      },
+      "row": {
+        "open": "Open",
+        "menu": "Actions for {name}"
+      },
+      "loading": "Loading sellers...",
+      "error": {
+        "unavailable": "We couldn't load the sellers. Try again.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      }
     },
     "health": {
       "title": "Seller health",
@@ -1245,6 +1342,7 @@
     "queue": {
       "title": "Certificates waiting for a decision",
       "no-access": "You don't have access to certificates.",
+      "no-access-body": "Viewing the certificate queue needs the certificate view permission. Ask an administrator who can grant it.",
       "back-home": "Back to dashboard",
       "unavailable": "Certificates could not be loaded.",
       "more": "Next page",
@@ -1356,11 +1454,21 @@
         "decide": "Decide…"
       }
     },
+    "file-download": {
+      "button": "Download file {n}",
+      "failure": {
+        "disabled": "Downloading files is switched off.",
+        "denied": "You may not download this file.",
+        "missing": "This file is no longer available.",
+        "unavailable": "The file could not be downloaded. Try again."
+      }
+    },
     "tabs": {
       "label": "Certificates sections",
       "queue": "Review queue",
       "issuers": "Issuers",
       "requests": "Issuer requests",
+      "requests-open": "Issuer requests ({count})",
       "types": "Types"
     },
     "issuers": {
@@ -1371,7 +1479,10 @@
       "none-active": "No issuer is active yet, so no certificate that needs an issuer can be approved. Activate one with the expert's approval.",
       "empty": "No issuers yet. Add one, then activate it with the expert's approval.",
       "empty-page": "Nothing on this page. Go back to the first page.",
+      "actions-for": "Actions for {name}",
+      "open-issuer": "Open issuer",
       "col": {
+        "actions": "Actions",
         "name": "Issuer",
         "type": "Type",
         "state": "State",
@@ -1592,7 +1703,7 @@
         "title": "Documents",
         "none": "No file was sent.",
         "file": "File {n} · {type} · {pages, plural, one {# page} other {# pages}} · {size} MB",
-        "note": "Opening a file is recorded. Downloads are not offered on this screen yet."
+        "note": "Each download is recorded."
       },
       "business": {
         "title": "From the seller's application",
@@ -1631,7 +1742,20 @@
       "confirmation": {
         "title": "Issuer confirmation",
         "none": "No confirmation recorded.",
-        "done": "Confirmed with the issuer on {date}."
+        "done": "Confirmed with the issuer on {date}.",
+        "help": "Record that you confirmed this certificate with {issuer}. Choose one of the channels the issuer has registered. Plain text only.",
+        "channel": "Channel used",
+        "channel-placeholder": "Choose a channel",
+        "date": "Date of the confirmation",
+        "reference": "Issuer reference",
+        "reference-help": "The reference the issuer gave for this confirmation. It is stored encrypted.",
+        "confirms": "The issuer confirmed",
+        "confirms-number": "The certificate number is genuine",
+        "confirms-holder": "The holder is the seller's business",
+        "both-required": "Tick both. Without both, the confirmation is not recorded.",
+        "required": "This is required.",
+        "save": "Record confirmation",
+        "saved": "Confirmation recorded."
       },
       "duplicates": {
         "title": "Possible duplicates",
@@ -1711,6 +1835,8 @@
         "csrf": "Your session needs a refresh. Reload the page.",
         "unavailable": "The service is not available. Try again.",
         "unknown": "Something went wrong. Nothing was recorded.",
+        "confirmation-exists": "This submission already has a confirmation. Reload the page.",
+        "confirmation-no-issuer": "This submission has no issuer in the registry, so there is no one to confirm with.",
         "zone": "The seller's time zone isn't set yet. Ask the seller to finish their address.",
         "type-inactive": "This certificate type is no longer in use.",
         "revoked": "This certificate is already revoked. Reload the page.",
@@ -1839,7 +1965,7 @@
         "files": "Files",
         "no-files": "No file was sent.",
         "file": "File {n} · {type}{pages, plural, =0 {} one { · # page} other { · # pages}} · {size}",
-        "files-note": "Downloads are not offered on this screen yet."
+        "files-note": "Each download is recorded."
       },
       "answer": {
         "title": "Answer",
@@ -2323,10 +2449,11 @@
         "action": {
           "edit": "Edit",
           "view": "View",
-          "review": "Review",
-          "pause": "Pause",
+          "review": "Review…",
+          "pause": "Pause…",
           "resume": "Resume…"
         },
+        "actions-for": "Actions for {name}",
         "done-paused": "Paused “{name}”. Buyers stop seeing it within a minute.",
         "done-resumed": "Resumed “{name}”. Buyers see it again within a minute.",
         "stale": "That slide changed while you were looking at it. The list is up to date again."
@@ -2666,8 +2793,8 @@
           "draft-pending": "Draft · waiting",
           "earlier": "Earlier"
         },
-        "restore": "Restore",
-        "restore-for": "version {version}",
+        "restore": "Restore…",
+        "actions-for": "Actions for version {version}",
         "done": "Version {from} was copied into the draft as version {to}. Buyers see it only after a platform admin approves."
       },
       "view": {
@@ -2771,11 +2898,14 @@
         "footnote": "Dates are shown in {zone}.",
         "system": "System page",
         "unpublished-changes": "Unpublished changes",
+        "actions-for": "Actions for {name}",
+        "open-page": "Open page",
         "never": "Never published",
         "col": {
           "page": "Page",
           "address": "Address",
           "template": "Template",
+          "actions": "Actions",
           "editing": "Editing",
           "status": "Status",
           "published": "Last published"
@@ -3110,8 +3240,8 @@
         "state-unknown": "Unknown",
         "saved-at": "Saved {when}",
         "published-on": "Published {when}",
-        "restore": "Restore",
-        "restore-label": "Restore version {n}",
+        "restore": "Restore…",
+        "actions-for": "Actions for version {n}",
         "restore-title": "Restore version {n}?",
         "restore-body": "This replaces the current draft, including any unpublished changes. Buyers see no change until you publish.",
         "restore-confirm": "Restore to draft",
@@ -3553,8 +3683,8 @@
       "empty": "No models yet. The built-in order is in use.",
       "new": "New model",
       "editing": "Edit model",
-      "edit": "Edit",
-      "edit-named": "Edit {name}",
+      "edit": "Edit…",
+      "actions-for": "Actions for {name}",
       "used": "Active for: {methods}",
       "unused": "Not active for any method",
       "active-note": "This model is active for {methods}. Saving applies it to every new order of that method."
@@ -5221,6 +5351,11 @@
   },
   "orders": {
     "title": "Orders",
+    "days": {
+      "range": "{from} to {to}",
+      "from": "from {day}",
+      "until": "until {day}"
+    },
     "page-title": "Orders",
     "intro": "The Market's orders. Open one to see its payment, delivery and notes.",
     "zone-note": "Times and days are in {zone}.",
@@ -5258,6 +5393,7 @@
       "stock-unavailable": "Stock ran out",
       "superseded": "Replaced by a newer checkout",
       "provider-failed": "Payment provider failed",
+      "discount-changed": "A discount no longer applied",
       "unknown": "Other"
     },
     "col": {
@@ -5329,7 +5465,9 @@
       "shipped": "Shipped",
       "delivered": "Delivered",
       "subtotal": "Goods",
+      "discount": "Discount",
       "shipping": "Delivery",
+      "shipping-discount": "Delivery discount",
       "part-total": "Seller total",
       "delivery-method": "Delivery",
       "delivery-window": "Customer window"
@@ -5339,7 +5477,8 @@
       "offer": "Offer {id}",
       "quantity": "{quantity} x {price}",
       "tax-included": "Tax included",
-      "tax": "Tax {rate}: {amount}"
+      "tax": "Tax {rate}: {amount}",
+      "discount": "Discount: {amount}"
     },
     "detail": {
       "page-title": "Order",
@@ -5542,7 +5681,8 @@
       "quantity": "Qty",
       "unit-price": "Unit price",
       "amount": "Amount",
-      "tax-included": "Tax incl."
+      "tax-included": "Tax incl.",
+      "discount": "Discount"
     },
     "range": "{from} to {to} of {total}",
     "too-many": "Page numbers stop at the first {limit} orders. Narrow the filters to reach the rest, or switch List paging to Previous and next in Settings.",
@@ -5674,13 +5814,13 @@
   "payments": {
     "accounts": {
       "title": "Seller accounts",
-      "intro": "The Stripe payout accounts of the sellers, newest first. Read-only.",
-      "no-access": "You don't have access to connected accounts.",
+      "intro": "The Stripe payout accounts of the sellers. Read only.",
+      "no-access": "You don't have access to seller accounts.",
       "no-access-title": "You don't have access to this page",
       "not-found": "We couldn't find a connected account for this seller.",
       "not-found-title": "Account not found",
       "back-home": "Back to dashboard",
-      "tabs": "Connected account statuses",
+      "tabs": "Seller accounts by status",
       "tab": {
         "all": "All"
       },
@@ -5699,20 +5839,13 @@
         "requirements": "Details due",
         "cooling-off": "Waiting period until",
         "paused": "Payouts paused",
-        "last-read": "Last checked",
-        "cooling-off-utc": "Waiting until (UTC)",
-        "last-read-utc": "Last checked (UTC)"
+        "last-read": "Last checked"
       },
       "unnamed": "Unnamed seller",
       "yes": "Yes",
       "no": "No",
       "past-due": "Past due",
-      "loading": "Loading connected accounts...",
-      "more": "Show more",
-      "empty": {
-        "all": "No connected accounts yet. They appear here when a seller starts connecting a payout account.",
-        "status": "No connected accounts with this status."
-      },
+      "loading": "Loading seller accounts…",
       "error": {
         "unavailable": "We couldn't load the connected accounts. Try again."
       },
@@ -5735,6 +5868,113 @@
         "past-due": "Stripe is waiting for details that were due already. Payouts may stop until the seller adds them.",
         "back": "Back to connected accounts",
         "past-due-title": "Requirements past due"
+      },
+      "list": {
+        "zone-note": "Times are shown in {zone}.",
+        "col": {
+          "seller": "Seller",
+          "status": "Status",
+          "ready": "Ready",
+          "requirements": "Details due",
+          "cooling-off": "Waiting until",
+          "paused": "Payouts paused",
+          "last-read": "Last checked",
+          "seller-id": "Seller ID",
+          "actions": "Actions"
+        },
+        "none": "None",
+        "never": "Never",
+        "search": {
+          "label": "Search",
+          "placeholder": "Store name or seller ID",
+          "help": "A store name (2 characters or more), or a full seller ID.",
+          "too-short": "Type at least {min} characters, or a full seller ID."
+        },
+        "chip-id": "Seller ID is {text}",
+        "chip-store": "Store contains \"{text}\"",
+        "search-capped": "The search matched too many stores, so not every account of them is listed. Type more of the store name.",
+        "filter": {
+          "title": "Filter seller accounts",
+          "name": {
+            "ready": "Ready for payouts",
+            "requirements": "Details due",
+            "waiting": "Payout hold",
+            "created": "Created"
+          },
+          "ready": {
+            "yes": "Yes",
+            "no": "No"
+          },
+          "requirements": {
+            "past-due": "Past due",
+            "due": "Due",
+            "none": "None"
+          },
+          "waiting": {
+            "cooling-off": "Bank change waiting period",
+            "paused": "Payouts paused"
+          }
+        },
+        "sort": {
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "created": "Created",
+            "last-read": "Last checked",
+            "requirements": "Details due"
+          },
+          "created": {
+            "first": "Newest first",
+            "second": "Oldest first"
+          },
+          "last-read": {
+            "first": "Most recent first",
+            "second": "Least recent first"
+          },
+          "requirements": {
+            "first": "Most details due first",
+            "second": "Fewest details due first"
+          }
+        },
+        "sorted": "Sorted by {field}: {order}",
+        "match": "{count, plural, one {# account matches} other {# accounts match}}",
+        "range": "{from}–{to} of {total} accounts",
+        "error": {
+          "unavailable": "The seller accounts could not be loaded.",
+          "refused": "This search can't be run. Change the text or the filters, or clear them."
+        },
+        "empty": {
+          "no-match": "No seller accounts match",
+          "no-match-help": "Try other filters or clear them.",
+          "all": "No seller accounts yet",
+          "not-started": "No accounts waiting to start",
+          "pending": "No pending accounts",
+          "enabled": "No enabled accounts",
+          "restricted": "No restricted accounts",
+          "rejected": "No rejected accounts"
+        },
+        "select": {
+          "page": "Select all accounts on this page",
+          "page-short": "Select all on this page",
+          "row": "Select {name}"
+        },
+        "selection": {
+          "selected": "{count, plural, one {# account selected} other {# accounts selected}}",
+          "all": "{count, plural, one {The # matching account is selected} other {All # matching accounts are selected}}",
+          "all-open": "All matching accounts are selected",
+          "select-all": "Select all {count, number} matching",
+          "select-all-open": "Select all matching",
+          "clear": "Clear selection"
+        },
+        "bulk": {
+          "button": "Bulk action",
+          "selected": "{count, plural, one {# account selected} other {# accounts selected}}",
+          "all-open": "All matching accounts selected"
+        },
+        "actions": {
+          "for": "Actions for {name}",
+          "open": "Open"
+        }
       }
     }
   },
@@ -7196,12 +7436,13 @@
           "zone": "Months in {zone}",
           "show-table": "Show as table",
           "show-chart": "Show as chart",
-          "caption": "New buyers and new followers by month",
+          "caption": "New buyers, new followers and new exclusive customers by month",
           "month": "Month",
           "new-buyers": "New buyers",
           "new-followers": "New followers",
+          "new-exclusive": "New exclusive customers",
           "legend": "Chart legend",
-          "chart-label": "Bar chart of new buyers and new followers by month, months in {zone}. Use Show as table for the figures."
+          "chart-label": "Bar chart of new buyers, new followers and new exclusive customers by month, months in {zone}. Use Show as table for the figures."
         }
       },
       "list": {
@@ -7471,7 +7712,7 @@
         "to": "To",
         "cancel": "Cancel",
         "apply": "Apply",
-        "utc-days": "Days are UTC days.",
+        "zone-days": "Days are in your panel time zone.",
         "name": {
           "sellerId": "Store",
           "status": "Status",
@@ -9594,10 +9835,9 @@
           "merged": "Merged",
           "archived": "Archived"
         },
-        "promote": "Promote",
-        "promote-for": "Promote the shelf {name}",
-        "merge": "Merge",
-        "merge-for": "Merge the shelf {name}",
+        "promote": "Promote…",
+        "merge": "Merge…",
+        "actions-for": "Actions for the shelf {name}",
         "done": {
           "promote": "Promoted as a hidden platform category. {n, plural, one {# Offer lost} other {# Offers lost}} the shelf.",
           "merge": "Merged. {n, plural, one {# Offer lost} other {# Offers lost}} the shelf."
@@ -9656,6 +9896,7 @@
         "impact-published": "No published product revision changes.",
         "target": "Merge into",
         "target-choose": "Choose a platform category",
+        "type-label": "Type the shelf name to confirm",
         "cancel": "Cancel",
         "confirm": "Merge shelf",
         "reload": "Reload"
@@ -9666,13 +9907,11 @@
   "brands": {
     "title": "Brands",
     "intro": "Brands are shared by all markets. Products link to a brand instead of typing its name.",
-    "new": "New brand",
+    "new": "New brand…",
     "tabs": "Brand lists",
     "tab": {
-      "active": "Active",
-      "draft": "Proposed",
-      "duplicates": "Duplicates",
-      "archived": "Archived"
+      "brands": "Brands",
+      "duplicates": "Duplicates"
     },
     "search": "Search by name, slug or alias",
     "search-label": "Search brands",
@@ -9783,13 +10022,18 @@
         "title": "Turn down {name}?",
         "body": "The proposal is archived and its page stays off the site. Products keep the brand they have.",
         "yes": "Turn down proposal",
-        "cancel": "Keep it"
+        "cancel": "Cancel"
       },
       "archive": {
         "title": "Archive {name}?",
         "body": "The brand page stops answering. Products keep their brand. To fold it into another brand, merge instead.",
         "yes": "Archive brand",
-        "cancel": "Keep it"
+        "cancel": "Cancel"
+      },
+      "reason": {
+        "label": "Reason",
+        "optional": "optional",
+        "help": "One line, up to 500 characters. It is kept with the brand."
       }
     },
     "merge": {
@@ -9829,32 +10073,117 @@
       "confirm-yes": "{count, plural, one {Merge # value} other {Merge # values}}",
       "confirm-body": "{count, plural, one {# other value is} other {# other values are}} archived and {moved, plural, one {# product moves} other {# products move}} to {name}. The old names stay as aliases."
     },
-    "not-set": "Not set"
+    "not-set": "Not set",
+    "list": {
+      "title": "Brands",
+      "intro": "Brands are shared by all markets. Products link to a brand instead of typing its name.",
+      "tabs": "Brand views",
+      "tab": {
+        "active": "Active",
+        "draft": "Proposed",
+        "archived": "Archived"
+      },
+      "search": {
+        "label": "Search brands",
+        "placeholder": "Name, web address or alias"
+      },
+      "filter": {
+        "title": "Filter brands",
+        "name": {
+          "originCountry": "Origin country"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "name": "Name",
+          "status": "Status",
+          "created": "Date added",
+          "updated": "Last updated"
+        },
+        "az": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        }
+      },
+      "sorted": "Sorted by {field}, {order}",
+      "col": {
+        "brand": "Brand",
+        "origin": "Origin",
+        "status": "Status",
+        "updated": "Updated"
+      },
+      "chip-search": "Search: {text}",
+      "loading": "Loading brands",
+      "match": "{count, plural, one {# brand matches} other {# brands match}}",
+      "range": "{from}–{to} of {total}",
+      "too-many": "More than {limit} brands match. Add a search to see the rest.",
+      "no-access": "You do not have access to the brands.",
+      "error": {
+        "unavailable": "The brands could not be loaded. Check your connection and try again.",
+        "refused": "The search cannot be used. Change it and try again."
+      },
+      "empty": {
+        "title": "No brands here yet",
+        "body": "Brands that match the view will show here.",
+        "no-match": "No brands match",
+        "no-match-help": "Change the search or clear it."
+      },
+      "select": {
+        "page": "Select all brands on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# brand selected} other {# brands selected}}",
+        "all": "{count, plural, one {The # matching brand is selected} other {All # matching brands are selected}}",
+        "all-open": "All matching brands are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}",
+        "approve": "Approve…",
+        "edit": "Edit…",
+        "merge": "Merge into this…",
+        "archive": "Archive…",
+        "reject": "Turn down…"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# brand selected} other {# brands selected}}",
+        "all-open": "All matching brands selected",
+        "export": "Export…"
+      },
+      "export": {
+        "title": "Export brands",
+        "body": "The file holds every brand the current view, search and filters match.",
+        "legend": "File format",
+        "csv": "CSV",
+        "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+        "xlsx": "XLSX",
+        "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+        "confirm": "Export",
+        "cancel": "Cancel",
+        "pending": "Preparing the file",
+        "done": "File downloaded",
+        "too-large": "More than {max} brands match. Narrow the filter and export again.",
+        "unavailable": "The file could not be made. Try again in a moment."
+      }
+    }
   },
   "reviews-moderation": {
     "title": "Reviews",
     "page-title": "Reviews",
     "no-access": "You do not have access to the buyer review queue.",
     "back-home": "Back to the dashboard",
-    "intro": "Reviews waiting for a person, reviews buyers have reported, and reviews already hidden or removed. A review is moderated as a whole: its text is never edited. A true negative review that follows the review policy is never hidden for being negative.",
-    "tabs": "Queue",
-    "tab": {
-      "held": "Held",
-      "reported": "Reported",
-      "actioned": "Hidden or removed"
-    },
-    "empty": {
-      "held": "No review is waiting.",
-      "reported": "No review has an open report.",
-      "actioned": "No review has been hidden or removed."
-    },
-    "col": {
-      "review": "Review",
-      "rating": "Rating",
-      "status": "Status",
-      "flags": "Flags",
-      "submitted": "Submitted"
-    },
     "stars": "{rating} out of 5",
     "status": {
       "published": "Published",
@@ -9886,8 +10215,6 @@
     "no-text": "No text, rating only",
     "loading": "Loading reviews",
     "retry": "Try again",
-    "more": "Show more",
-    "footnote": "Hiding can be undone; removing cannot. Every change needs a fresh two-step code and is recorded with your account and a reason.",
     "error": {
       "unavailable": "The reviews could not be loaded. Try again.",
       "not-found": "This review no longer exists.",
@@ -9902,7 +10229,15 @@
       "action-placeholder": "Choose an action",
       "reason": "Reason",
       "reason-placeholder": "Choose a reason",
-      "remove-note": "Removing is for illegal, defamatory or private content. It cannot be undone."
+      "remove-note": "Removing is for illegal, defamatory or private content. It cannot be undone.",
+      "type-to-remove": "Type {id} to remove this review",
+      "title-for": {
+        "publish": "Publish review",
+        "hide": "Hide review",
+        "restore": "Restore review",
+        "remove": "Remove review",
+        "dismiss-reports": "Dismiss reports"
+      }
     },
     "submitted": "Submitted {date}",
     "product": "Product",
@@ -9954,7 +10289,114 @@
       "author": "the buyer"
     },
     "no-actions": "No action applies to this review now.",
-    "policy-note": "Choose a reason from the list. There is no reason for a negative review: a true negative review is never hidden."
+    "policy-note": "Choose a reason from the list. There is no reason for a negative review: a true negative review is never hidden.",
+    "list": {
+      "title": "Reviews to moderate",
+      "intro": "Reviews waiting for a person, reviews a shop has reported, and reviews already hidden or removed. A review is moderated as a whole: its text is never edited, and a true negative review is never hidden for being negative. Every change needs a reason and a fresh two-step code. Hiding can be undone; removing cannot.",
+      "zone-note": "Times are shown in {zone}.",
+      "no-access": "You do not have access to the buyer review queue.",
+      "back-home": "Back to the dashboard",
+      "views": "Moderation views",
+      "view": {
+        "all": "All",
+        "held": "Held",
+        "reported": "Reported",
+        "actioned": "Hidden or removed"
+      },
+      "row-name": "the {rating}-star review {text}",
+      "none": "None",
+      "not-edited": "Not edited",
+      "col": {
+        "review": "Review",
+        "rating": "Rating",
+        "status": "Status",
+        "reports": "Open reports",
+        "submitted": "Submitted",
+        "actions": "Actions",
+        "review-id": "Review ID",
+        "product-id": "Product ID",
+        "offer-id": "Offer ID",
+        "seller-id": "Seller ID",
+        "locale": "Language",
+        "edited": "Edited",
+        "signals": "Automatic checks"
+      },
+      "search": {
+        "label": "Search",
+        "placeholder": "Search review text, or a review, offer or product ID"
+      },
+      "chip-search": "Search is {text}",
+      "chip-seller": "Seller is {id}",
+      "filter": {
+        "title": "Filter reviews",
+        "stars": "{count, plural, one {# star} other {# stars}}",
+        "name": {
+          "minRating": "Stars at least",
+          "maxRating": "Stars at most",
+          "reportReason": "Report reason",
+          "submitted": "Submitted"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "submitted": "Submitted",
+          "rating": "Rating"
+        },
+        "submitted": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "rating": {
+          "first": "Lowest first",
+          "second": "Highest first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# review matches} other {# reviews match}}",
+      "range": "{from}-{to} of {total}",
+      "loading": "Loading reviews…",
+      "error": {
+        "unavailable": "The reviews couldn't be loaded.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      },
+      "empty": {
+        "all": "No review needs a moderator.",
+        "held": "No review is waiting.",
+        "reported": "No review has an open report.",
+        "actioned": "No review has been hidden or removed.",
+        "no-match": "No reviews match",
+        "no-match-help": "Try other filters or clear them."
+      },
+      "select": {
+        "page": "Select all reviews on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# review selected} other {# reviews selected}}",
+        "all": "{count, plural, one {The # matching review is selected} other {All # matching reviews are selected}}",
+        "all-open": "All matching reviews are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# review selected} other {# reviews selected}}",
+        "all-open": "All matching reviews selected"
+      },
+      "actions": {
+        "for": "Actions for {name}",
+        "open": "Open…",
+        "publish": "Publish…",
+        "restore": "Restore…",
+        "dismiss-reports": "Dismiss reports…",
+        "hide": "Hide…",
+        "remove": "Remove…"
+      }
+    }
   },
   "business-activities": {
     "title": "Business activities",
@@ -9992,7 +10434,8 @@
     },
     "done": {
       "created": "{name} was created.",
-      "saved": "{name} was saved."
+      "saved": "{name} was saved.",
+      "deactivated": "{name} was deactivated."
     },
     "error": {
       "invalid": "Some values were not accepted. Check the fields and try again.",
@@ -10054,10 +10497,140 @@
         "code-taken": "This code is already used.",
         "refused": "This value was not accepted."
       }
+    },
+    "deactivate": {
+      "title": "Deactivate {name}?",
+      "body": "{name} stops being offered when sellers choose what they sell. Categories and products keep it, and you can activate it again by editing it.",
+      "yes": "Deactivate activity",
+      "cancel": "Keep it"
+    },
+    "list": {
+      "title": "Business activities",
+      "intro": "What sellers do in this Market (Grocery, Butcher, ...). Each links to categories.",
+      "tabs": "Activity views",
+      "tab": {
+        "all": "All",
+        "active": "Active",
+        "inactive": "Inactive"
+      },
+      "search": {
+        "label": "Search activities",
+        "placeholder": "Name, code or description"
+      },
+      "filter": {
+        "title": "Filter activities"
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "code": "Code",
+          "status": "Status",
+          "created": "Date added",
+          "updated": "Last updated"
+        },
+        "az": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        }
+      },
+      "sorted": "Sorted by {field}, {order}",
+      "col": {
+        "name": "Name",
+        "code": "Code",
+        "description": "Description",
+        "categories": "Categories",
+        "status": "Status"
+      },
+      "chip-search": "Search: {text}",
+      "loading": "Loading business activities",
+      "match": "{count, plural, one {# activity matches} other {# activities match}}",
+      "range": "{from}–{to} of {total}",
+      "too-many": "More than {limit} activities match. Add a search to see the rest.",
+      "no-access": "You do not have access to the business activities.",
+      "error": {
+        "unavailable": "The business activities could not be loaded. Check your connection and try again.",
+        "refused": "The search cannot be used. Change it and try again."
+      },
+      "empty": {
+        "title": "No business activities yet",
+        "no-match": "No activities match",
+        "no-match-help": "Change the search or clear it."
+      },
+      "select": {
+        "page": "Select all activities on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# activity selected} other {# activities selected}}",
+        "all": "{count, plural, one {The # matching activity is selected} other {All # matching activities are selected}}",
+        "all-open": "All matching activities are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}",
+        "edit": "Edit…",
+        "deactivate": "Deactivate…"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# activity selected} other {# activities selected}}",
+        "all-open": "All matching activities selected"
+      }
     }
   },
   "blog": {
     "taxonomy-link": "Categories and tags",
+    "media": {
+      "title": "Choose an image",
+      "close": "Close",
+      "upload": "Upload a new image",
+      "uploading": "Uploading the image",
+      "upload-help": "JPEG, PNG or WebP, up to 4 MB, at least 400 pixels on the longest side.",
+      "no-upload": "Your role can choose images but not upload new ones.",
+      "loading": "Loading the media library",
+      "load-error": "The media library could not be loaded. Check your connection and try again.",
+      "retry": "Try again",
+      "empty": "The library has no images yet. Upload the first one.",
+      "empty-readonly": "The library has no images yet.",
+      "grid": "Media library",
+      "choose": "Choose the image uploaded on {date}, {width} by {height} pixels",
+      "choose-current": "Choose the image uploaded on {date}, {width} by {height} pixels (current image)",
+      "load-more": "Load more",
+      "more-loaded": "More images loaded.",
+      "more-error": "More images could not be loaded. Try again.",
+      "none": "No image chosen.",
+      "chosen": "An image is chosen for {name}.",
+      "preview-missing": "The preview could not be loaded.",
+      "choose-image": "Choose image",
+      "replace": "Replace image",
+      "remove": "Remove image",
+      "choose-for": "Choose image, {name}",
+      "replace-for": "Replace image, {name}",
+      "remove-for": "Remove image, {name}",
+      "error": {
+        "invalid": "The image could not be read. Try another file.",
+        "too-large": "This file is too large. The limit is 4 MB.",
+        "unsupported": "This file type is not supported. Use JPEG, PNG or WebP.",
+        "too-small": "This image is too small. The longest side must be at least 400 pixels.",
+        "too-many-pixels": "This image has too many pixels. Use a smaller one.",
+        "unreadable": "This file could not be read as an image. Try another file.",
+        "busy": "The library is busy. Wait a moment and try again.",
+        "denied": "Your role cannot upload images.",
+        "csrf": "Your session changed. Reload the page and try again.",
+        "throttled": "Too many uploads. Wait a minute and try again.",
+        "unavailable": "The image could not be uploaded. Check your connection and try again.",
+        "unknown": "The image could not be uploaded. Try again."
+      }
+    },
     "taxonomy": {
       "title": "Blog categories and tags",
       "intro": "The vocabulary editors choose from. A category or tag that a post uses cannot be deleted.",
@@ -10075,12 +10648,12 @@
       "edit-category": "Edit category",
       "add-tag": "Add tag",
       "edit": "Edit",
-      "delete": "Delete",
+      "delete": "Delete…",
       "delete-sure": "Delete {name}?",
-      "delete-named": "Delete {name}",
-      "delete-confirm-named": "Yes, delete {name}",
-      "edit-named": "Edit {name}",
-      "delete-confirm": "Yes, delete",
+      "delete-body": "This can't be undone. A category or tag that a post uses can't be deleted.",
+      "delete-type": "Type the name to confirm",
+      "actions-for": "Actions for {name}",
+      "delete-confirm": "Delete",
       "cancel": "Cancel",
       "save": "Save",
       "optional": "optional",
@@ -10301,9 +10874,10 @@
         "author-help": "Leave empty to show Mondapac team.",
         "tags": "Tags (up to {max})",
         "tags-none": "No tags yet.",
-        "cover-id": "Cover image ID",
-        "cover-help": "The ID of an image in the media library. An image picker comes in a later release.",
         "cover-alt": "Cover image description (alt text)",
+        "cover-alt-help": "Required. Say what the picture shows, for readers who cannot see it.",
+        "cover-alt-missing": "Describe the cover image.",
+        "cover-not-found": "This image is no longer in the media library. Choose another one.",
         "seo-help": "Optional. When empty, the title and excerpt are used.",
         "seo-title": "Search title",
         "seo-description": "Search description",
@@ -10328,6 +10902,10 @@
         "items-help": "One item per line, up to {max}.",
         "attribution": "Who said it",
         "tip-title": "Title",
+        "image-alt": "Image description (alt text)",
+        "image-alt-help": "Say what the picture shows, for readers who cannot see it. Needed before you send the post for review.",
+        "image-caption": "Caption",
+        "image-not-found": "This image is no longer in the media library. Choose another one.",
         "invalid": "This block has a problem. Check its text.",
         "up": "Move block {n} up",
         "down": "Move block {n} down",
@@ -10341,17 +10919,18 @@
           "list": "List",
           "quote": "Quote",
           "tip": "Tip",
+          "image": "Image",
           "kept": "Kept block"
         },
         "kept": {
-          "image": "Image {value}. Images are kept as they are; the image block editor comes in a later release.",
           "product_cards": "Product cards ({value} products). Kept as they are; the product picker comes in a later release.",
           "seller_card": "Seller card {value}. Kept as it is.",
           "paragraph": "",
           "heading": "",
           "list": "",
           "quote": "",
-          "tip": ""
+          "tip": "",
+          "image": ""
         }
       },
       "checks": {
@@ -10483,46 +11062,20 @@
   },
   "tags": {
     "title": "Tags",
-    "intro": "Shopping themes that group products across categories, such as Ramadan or BBQ. Sellers pick from this list.",
     "new": "New tag",
-    "search": "Search by name, synonym or address",
-    "search-label": "Search tags",
-    "status-filter": "Status",
-    "group-filter": "Group",
-    "loading": "Loading tags",
-    "load-error": "The tags could not be loaded. Check your connection and try again.",
-    "retry": "Try again",
-    "more": "Load more",
-    "more-error": "More tags could not be loaded. Try again.",
     "stale": "Someone else changed that tag. The list is up to date now; nothing was saved.",
     "no-access": "Your role cannot see tags.",
     "back-home": "Back to the dashboard",
-    "empty": "No tags yet. Create the first one with New tag.",
-    "empty-reader": "No tags yet.",
-    "empty-filtered": "No tag matches these filters.",
     "not-set": "Not set",
     "and-more": "and {count} more",
-    "col": {
-      "name": "Name",
-      "group": "Group",
-      "synonyms": "Synonyms",
-      "status": "Status",
-      "actions": "Actions"
-    },
     "status": {
-      "all": "All",
       "active": "Active",
       "archived": "Archived"
     },
     "group": {
-      "all": "All",
       "occasion": "Occasion",
       "cuisine": "Cuisine",
       "use": "Use"
-    },
-    "action": {
-      "edit": "Edit",
-      "edit-name": "Edit {name}"
     },
     "done": {
       "created": "{name} was created.",
@@ -10687,6 +11240,88 @@
         "unavailable": "Could not reach the server. Try again.",
         "unknown": "Something went wrong. Try again."
       }
+    },
+    "list": {
+      "intro": "Shopping themes that group products across categories, such as Ramadan or BBQ. Sellers pick from this list.",
+      "tabs": "Tag views",
+      "tab": {
+        "all": "All",
+        "active": "Active",
+        "archived": "Archived"
+      },
+      "search": {
+        "label": "Search tags",
+        "placeholder": "Name, synonym or address"
+      },
+      "filter": {
+        "title": "Filter tags",
+        "group": "Group"
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "slug": "Address",
+          "group": "Group",
+          "status": "Status",
+          "created": "Date added",
+          "updated": "Last updated"
+        },
+        "az": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        }
+      },
+      "sorted": "Sorted by {field}, {order}",
+      "col": {
+        "name": "Name",
+        "group": "Group",
+        "synonyms": "Synonyms",
+        "status": "Status"
+      },
+      "chip-search": "Search: {text}",
+      "loading": "Loading tags",
+      "match": "{count, plural, one {# tag matches} other {# tags match}}",
+      "range": "{from}–{to} of {total}",
+      "too-many": "More than {limit} tags match. Add a search to see the rest.",
+      "no-access": "Your role cannot see tags.",
+      "error": {
+        "unavailable": "The tags could not be loaded. Check your connection and try again.",
+        "refused": "The search cannot be used. Change it and try again."
+      },
+      "empty": {
+        "title": "No tags yet",
+        "body": "Create the first one with New tag.",
+        "no-match": "No tags match",
+        "no-match-help": "Change the search or filters, or clear them."
+      },
+      "select": {
+        "page": "Select all tags on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# tag selected} other {# tags selected}}",
+        "all": "{count, plural, one {The # matching tag is selected} other {All # matching tags are selected}}",
+        "all-open": "All matching tags are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}",
+        "edit": "Edit…"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# tag selected} other {# tags selected}}",
+        "all-open": "All matching tags selected"
+      }
     }
   },
   "attributes": {
@@ -10798,9 +11433,9 @@
       "cancel": "Cancel",
       "same-admin-note": "A different administrator must confirm your request.",
       "view-only-body": "Requests to turn off Material are confirmed by administrators who can edit attributes. Archive requests need permission to restructure attributes.",
-      "confirm-named": "Confirm request for {name}",
-      "withdraw-named": "Withdraw request for {name}",
-      "open-named": "Open {name}",
+      "actions-for": "Actions for {name}",
+      "confirm-item": "Confirm…",
+      "withdraw-item": "Withdraw…",
       "confirm-archive-title": "Archive {name}?",
       "confirm-archive-body": "The attribute is archived at once. Products that already have its values keep them, and feature sets can no longer offer it.",
       "withdraw-archive-body": "The request closes and the attribute stays as it is.",
@@ -11544,12 +12179,10 @@
     "empty-title": "No tax strategies yet",
     "empty-body": "The built-in rate applies. Add a strategy to charge another rate.",
     "add": "Add strategy",
-    "edit": "Edit",
-    "edit-label": "Edit {name}",
-    "activate": "Activate",
-    "activate-label": "Activate {name}",
-    "delete": "Delete",
-    "delete-label": "Delete {name}",
+    "edit": "Edit…",
+    "activate": "Activate…",
+    "delete": "Delete…",
+    "actions-for": "Actions for {name}",
     "back-to-built-in": "Back to built-in rate",
     "dialog": {
       "add-title": "Add tax strategy",
@@ -11583,6 +12216,7 @@
     "delete-dialog": {
       "title": "Delete {name}?",
       "body": "This cannot be undone. Orders that already used it keep their tax.",
+      "type-label": "Type the strategy name to confirm",
       "confirm": "Delete strategy",
       "done": "Strategy deleted."
     },
@@ -11611,9 +12245,10 @@
       "names": "Names",
       "actions": "Actions"
     },
+    "empty": "No service areas are configured for this Market.",
     "edited": "Edited",
-    "edit": "Edit names",
-    "edit-label": "Edit the names of {code}",
+    "edit": "Edit names…",
+    "actions-for": "Actions for {name}",
     "dialog": {
       "title": "Names of {code}",
       "language": "Language",
@@ -12452,6 +13087,24 @@
       "reason": "Reason",
       "note": "Why this change was made",
       "note-approval": "Why this action was requested"
+    },
+    "impact": {
+      "title": "Impact",
+      "hint": "How many records this change touches, counted when you opened this request.",
+      "at-least": "at least {text}",
+      "item": {
+        "products": "{count, plural, one {# product} other {# products}}",
+        "drafts": "{count, plural, one {# product draft} other {# product drafts}}",
+        "offers": "{count, plural, one {# offer} other {# offers}}",
+        "offers-with-active-tag": "{count, plural, one {# offer with an active certification} other {# offers with an active certification}}",
+        "subcategories": "{count, plural, one {# subcategory} other {# subcategories}}",
+        "categories": "{count, plural, one {# category} other {# categories}}",
+        "filters": "{count, plural, one {# category filter} other {# category filters}}",
+        "feature-sets": "{count, plural, one {# feature set} other {# feature sets}}",
+        "variant-products": "{count, plural, one {# product with live variants} other {# products with live variants}}",
+        "admins": "{count, plural, one {# admin} other {# admins}}",
+        "sellers": "{count, plural, one {# seller} other {# sellers}}"
+      }
     },
     "banner": {
       "live": "This change is already live. Approve to keep it, or reject to put the previous value back.",

@@ -100,8 +100,9 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
     },
   });
 
-  async function boot() {
+  async function boot(env: Record<string, string> = {}) {
     ({ app } = await createTestApp({
+      env,
       panelOrigins: true,
       override: (builder) =>
         fakes
@@ -379,6 +380,7 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
           body: null,
         },
       ],
+      impact: null,
     });
     const detail = await send('get', `/system-requests/admin/requests/${REQUEST}`, session);
     expect(detail.status).toBe(200);
@@ -387,9 +389,44 @@ describe.each(TEST_MARKETS)('system requests over HTTP in market %s', (code) => 
       supersededByNumber: 13,
       subjectLabel: 'List paging',
       activity: [{ actor: AUTHOR, actorName: 'Maryam K.', at: START.toString() }],
+      impact: null,
     });
     expect(calls.map((call) => call.name)).toEqual(['count', 'view']);
   });
+
+  it('answers the impact counts on the detail only, as the use case gives them', async () => {
+    await boot();
+    const session = sessionOf('admin');
+    const items = [
+      { label: 'products', count: 1240, atLeast: false },
+      { label: 'offers', count: 10_000, atLeast: true },
+    ];
+    next = ok({ ...view, activity: [], impact: { items } });
+    const detail = await send('get', `/system-requests/admin/requests/${REQUEST}`, session);
+    expect(detail.status).toBe(200);
+    expect((detail.body as { impact: unknown }).impact).toEqual({ items });
+    next = ok({ rows: [view], counts: {}, total: 1, page: 1, pageSize: 25, nextCursor: null });
+    const listed = await send('get', '/system-requests/admin/requests?view=all&page=1', session);
+    expect(listed.status).toBe(200);
+    expect((listed.body as { rows: unknown[] }).rows[0]).not.toHaveProperty('impact');
+  });
+
+  it('documents the impact on the detail in OpenAPI', async () => {
+    await boot({ API_DOCS_ENABLED: 'true' });
+    const document = (await http().get('/docs-json').expect(200)).body as {
+      components: { schemas: Record<string, { properties: Record<string, unknown> }> };
+    };
+    const { schemas } = document.components;
+    expect(schemas['RequestDetailBody']?.properties['impact']).toBeDefined();
+    expect(schemas['RequestBody']?.properties['impact']).toBeUndefined();
+    expect(schemas['SystemRequestImpactItemBody']?.properties).toMatchObject({
+      label: {
+        enum: expect.arrayContaining(['products', 'offers', 'admins', 'sellers']) as unknown,
+      },
+      count: { maximum: 10_000 },
+      atLeast: { type: 'boolean' },
+    });
+  }, 30_000);
 
   it('approves one, and bulk-approves through its own route', async () => {
     await boot();

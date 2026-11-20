@@ -1,4 +1,4 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { Prisma } from '../../../generated/prisma/client';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
@@ -15,9 +15,24 @@ import type { BrandState } from '../domain/brand';
 import { likeLiteral } from './like-literal';
 import { brandStateOf } from './prisma-brand.repository';
 
+/**
+ * The instant as a `Date`, rounded up to the millisecond: rows written by the application have
+ * millisecond precision, so `>= ceil(from)` and `< ceil(to)` keep a sub-millisecond bound exact.
+ * The column is `timestamptz(6)` and the first migration's backfill wrote `now()` (microseconds),
+ * so a backfilled row inside the same millisecond as a sub-millisecond bound may fall either way.
+ */
+function ceilDate(instant: Temporal.Instant): Date {
+  const ms = instant.epochMilliseconds;
+  return new Date(instant.epochNanoseconds % 1_000_000n === 0n ? ms : ms + 1);
+}
+
 function brandFilters(filter: BrandPageFilter): Prisma.CatalogBrandWhereInput[] {
   const filters: Prisma.CatalogBrandWhereInput[] = [];
   if (filter.status !== null) filters.push({ status: filter.status });
+  if (filter.originCountry !== null) filters.push({ originCountry: filter.originCountry });
+  if (filter.createdFrom !== null)
+    filters.push({ createdAt: { gte: ceilDate(filter.createdFrom) } });
+  if (filter.createdTo !== null) filters.push({ createdAt: { lt: ceilDate(filter.createdTo) } });
   if (filter.search !== null) {
     const typed = likeLiteral(filter.search);
     filters.push({
@@ -85,6 +100,14 @@ export class PrismaBrandReader implements BrandReader {
     return this.prisma
       .tx(market)
       .catalogBrand.count({ where: filters.length === 0 ? {} : { AND: filters } });
+  }
+
+  async byIds(market: MarketContext, ids: readonly Id<'Brand'>[]): Promise<readonly BrandState[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma
+      .tx(market)
+      .catalogBrand.findMany({ where: { id: { in: [...ids] } } });
+    return rows.map(brandStateOf);
   }
 
   async detail(market: MarketContext, id: Id<'Brand'>): Promise<BrandDetailRecord | null> {

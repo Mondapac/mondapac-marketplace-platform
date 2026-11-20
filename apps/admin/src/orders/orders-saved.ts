@@ -6,6 +6,7 @@ import type { ApiFailure } from '../api/client.ts';
 import {
   DEFAULT_QUERY,
   presetDays,
+  savedDays,
   sortIdOf,
   sortOf,
   type Query,
@@ -58,7 +59,12 @@ export function payloadOf(query: Query, zone: string, now: Date): SavedPayload {
   const conditions = {
     ...(filters.paymentState === undefined ? {} : { paymentState: filters.paymentState }),
     ...(filters.fulfilment === undefined ? {} : { fulfilment: filters.fulfilment }),
-    ...(days === null ? {} : { from: days.from, to: days.to }),
+    ...(days === null
+      ? {}
+      : {
+          ...(days.from === undefined ? {} : { from: days.from }),
+          ...(days.to === undefined ? {} : { to: days.to }),
+        }),
   };
   const sort = sortIdOf(query.sort, query.direction);
   return {
@@ -86,7 +92,7 @@ export function queryOf(payload: SavedPayload): Query {
         ? {}
         : { fulfilment: payload.filters.fulfilment }),
     },
-    days: from === undefined || to === undefined || from === '' || to === '' ? null : { from, to },
+    days: savedDays(from, to),
     sort,
     direction,
   };

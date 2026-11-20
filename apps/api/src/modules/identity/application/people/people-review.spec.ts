@@ -45,6 +45,7 @@ import {
   PlatformRoleDeletionApplier,
   type PeopleCreationDependencies,
 } from './people-creations';
+import { INVITE_ADMIN_KEYS, SensitiveAdminInvitationApplier } from './people-invitations';
 import {
   AdminRolesReverter,
   AdminStatusReverter,
@@ -73,6 +74,8 @@ const REQUEST = id<'SystemRequest'>('01990000-0000-7000-8000-00000000d001');
 const NARROW = id<'Role'>('01990000-0000-7000-8000-00000000c0a1');
 const WIDE = id<'Role'>('01990000-0000-7000-8000-00000000c0a2');
 const GONE_ROLE = id<'Role'>('01990000-0000-7000-8000-00000000c0ff');
+/** A custom role with a protected key (R11): sensitive (owner decision of 18 Nov 2026). */
+const SENSITIVE = id<'Role'>('01990000-0000-7000-8000-00000000c0a3');
 
 const ROOT = accountId(1);
 const CHECKER = accountId(2);
@@ -93,6 +96,7 @@ const INVITEE = 'Invitee.Person@example.com';
 
 const NARROW_KEYS = ['identity.admin-account.view'];
 const WIDE_KEYS = ['identity.admin-account.view', 'identity.platform-role.view'];
+const SENSITIVE_KEYS = ['identity.admin-account.invite', 'identity.admin-account.view'];
 
 describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (code) => {
   const market = testMarketContext(code, PLATFORM_TENANT_ID);
@@ -156,6 +160,7 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
       });
     custom(NARROW, 'Narrow', NARROW_KEYS);
     custom(WIDE, 'Wide', WIDE_KEYS);
+    custom(SENSITIVE, 'Sensitive', SENSITIVE_KEYS);
     const admin = (n: number, account: Id<'Account'>, roleId: Id<'Role'>, active = true) => {
       fakes.seedAccount({
         id: account,
@@ -210,17 +215,15 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
     const clock = new FixedClock(START);
     const permissions = realPermissionRegistry();
     const effectiveKeys = realEffectiveKeys(permissions);
-    const gate = createUseCaseGate(
-      markets,
-      new AccountAuthorisationCheck({
-        unitOfWork: fakes.unitOfWork,
-        accounts: fakes.accountRepository,
-        memberships: fakes.membershipRepository,
-        sellerAccess: fakes.sellerAccessRepository,
-        grants: fakes.grantReader,
-        effectiveKeys,
-      }),
-    );
+    const authorisation = new AccountAuthorisationCheck({
+      unitOfWork: fakes.unitOfWork,
+      accounts: fakes.accountRepository,
+      memberships: fakes.membershipRepository,
+      sellerAccess: fakes.sellerAccessRepository,
+      grants: fakes.grantReader,
+      effectiveKeys,
+    });
+    const gate = createUseCaseGate(markets, authorisation);
     const common = {
       unitOfWork: fakes.unitOfWork,
       accounts: fakes.accountRepository,
@@ -239,6 +242,7 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
       challenges: fakes.challengeRepository,
     };
     const reverters: PeopleReverterDependencies = {
+      unitOfWork: fakes.unitOfWork,
       accounts: fakes.accountRepository,
       roles: fakes.roleRepository,
       assignments: fakes.assignmentRepository,
@@ -252,9 +256,9 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
     };
     const creations: PeopleCreationDependencies = {
       ...reverters,
-      unitOfWork: fakes.unitOfWork,
       invitations: fakes.invitationRepository,
       grants: fakes.grantReader,
+      policy: new MarketConfigIdentityPolicy(markets),
     };
     const labels: PeopleLabelReads = {
       adminNames: new ChangeActorLabels(gate, {
@@ -265,6 +269,7 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
         effectiveKeys,
       }),
       platformRoles: new ListPlatformRoles(gate, { ...common, permissions }),
+      authorisation,
     };
     return {
       labels,
@@ -286,6 +291,7 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
         policy: new MarketConfigIdentityPolicy(markets),
       }),
       reverters,
+      creations,
       create: new CreatePlatformRole(gate, {
         ...common,
         permissions,
@@ -301,6 +307,7 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
       }),
       invite: new InviteAdmin(gate, {
         ...common,
+        proposer: review,
         permissions,
         invitations: fakes.invitationRepository,
         throttles: fakes.throttleRepository,
@@ -311,6 +318,8 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
       creationReverter: new PlatformRoleCreationReverter(creations, labels),
       invitationReverter: new AdminInvitationReverter(creations, labels),
       deletionApplier: new PlatformRoleDeletionApplier(creations, labels),
+      sensitiveApplier: new SensitiveAdminInvitationApplier(creations),
+      clock,
       roleReverter: new PlatformRoleReverter(reverters, labels),
       rolesReverter: new AdminRolesReverter(reverters, labels),
       statusReverter: new AdminStatusReverter(reverters, labels),
@@ -1094,6 +1103,254 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
     });
   });
 
+  describe("a sensitive role's invitation waits for approval (owner decision of 18 Nov 2026, 14:06Z)", () => {
+    const request = (subjectRef: string, before: object, after: object) => ({
+      requestId: REQUEST,
+      subjectRef,
+      before: before as Record<string, never>,
+      after: after as Record<string, never>,
+    });
+    const issuedEventsOf = (invitationId: string) =>
+      fakes.events.filter(
+        (event) =>
+          event.type === 'identity.invitation-issued.v1' && event.aggregateId === invitationId,
+      );
+    const lifetime = () =>
+      new MarketConfigIdentityPolicy(markets).invitationLifetimeMinutes(market, 'admin')!;
+
+    it('registers the applier with every key of the invite rule', () => {
+      const rule = InviteAdmin.access.rule;
+      expect(rule.kind === 'permissions' ? rule.allOf : null).toEqual(INVITE_ADMIN_KEYS);
+    });
+
+    it.each([
+      ['the Platform Administrator', () => roleOf('platform-administrator')],
+      ['a custom role with a protected key', () => SENSITIVE],
+    ])(
+      'files %s for approval: held, nothing sent, no address in the request or the audit',
+      async (_name, roleFor) => {
+        const { invite } = setUp();
+        const roleId = roleFor();
+        const result = await invite.execute(as(ROOT), {
+          email: INVITEE,
+          roleId,
+          origin: '203.0.113.9',
+          note: 'Second Platform Administrator',
+        });
+        if (!result.ok) throw new Error(JSON.stringify(result.error));
+        expect(result.value).toMatchObject({
+          code: 'invitation.proposed',
+          replaced: false,
+          request: { number: 1 },
+        });
+        const invitationId = result.value.invitationId;
+        expect(review.opened).toEqual([]);
+        expect(review.proposed).toEqual([
+          {
+            area: 'people',
+            subjectKind: 'identity.admin-invitation-sensitive',
+            subjectRef: invitationId,
+            before: { roleId, roleVersion: 1 },
+            after: { action: 'invite', roleId },
+            note: 'Second Platform Administrator',
+            risk: 'high',
+          },
+        ]);
+        expect(fakes.invitations.get(invitationId)).toMatchObject({
+          state: 'pending',
+          heldForApproval: true,
+          tokenHash: null,
+          expiresAt: null,
+          invitedByAccountId: ROOT,
+        });
+        // No issue event: the mail handler never sees it, so no mail and no token.
+        expect(issuedEventsOf(invitationId)).toEqual([]);
+        expect(fakes.audits.at(-1)).toMatchObject({
+          action: 'identity.invitation.proposed',
+          actor: 'authenticated',
+          targetId: invitationId,
+          after: { kind: 'admin', roleId, requestId: expect.any(String) as string },
+        });
+        const written = JSON.stringify([review.proposed, fakes.audits]).toLowerCase();
+        expect(written).not.toContain(INVITEE.toLowerCase());
+      },
+    );
+
+    it('issues it at once, as any invitation, where the Market does not review people', async () => {
+      const { invite } = setUp({ reviewed: false });
+      const result = await invite.execute(as(ROOT), {
+        email: INVITEE,
+        roleId: roleOf('platform-administrator'),
+        origin: '203.0.113.9',
+      });
+      if (!result.ok) throw new Error(JSON.stringify(result.error));
+      expect(result.value).toMatchObject({ code: 'invitation.issued', request: null });
+      expect(fakes.invitations.get(result.value.invitationId)?.heldForApproval).toBe(false);
+      expect(issuedEventsOf(result.value.invitationId)).toHaveLength(1);
+      expect(review.proposed).toEqual([]);
+    });
+
+    it('keeps a non-sensitive role reviewed after, and refuses a sensitive one without a note', async () => {
+      const { invite } = setUp();
+      expect(
+        await invite.execute(as(ROOT), {
+          email: INVITEE,
+          roleId: SENSITIVE,
+          origin: '203.0.113.9',
+        }),
+      ).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] },
+      });
+      expect(fakes.invitations.size).toBe(0);
+      expect(review.proposed).toEqual([]);
+      const narrow = await invite.execute(as(ROOT), {
+        email: INVITEE,
+        roleId: NARROW,
+        origin: '203.0.113.9',
+        note: 'Joins support',
+      });
+      expect(narrow).toMatchObject({ ok: true, value: { code: 'invitation.issued' } });
+      expect(review.opened).toHaveLength(1);
+      expect(review.proposed).toEqual([]);
+    });
+
+    it('answers invitation.already-pending for the same address while one waits', async () => {
+      const { invite } = setUp();
+      const first = await invite.execute(as(ROOT), {
+        email: INVITEE,
+        roleId: SENSITIVE,
+        origin: '203.0.113.9',
+        note: 'First',
+      });
+      expect(first).toMatchObject({ ok: true, value: { code: 'invitation.proposed' } });
+      expect(
+        await invite.execute(as(CHECKER), {
+          email: INVITEE.toUpperCase(),
+          roleId: roleOf('platform-administrator'),
+          origin: '203.0.113.9',
+          note: 'Second',
+        }),
+      ).toEqual({ ok: false, error: { code: 'invitation.already-pending' } });
+      expect(review.proposed).toHaveLength(1);
+    });
+
+    it('sends it once approved, as the approver, only while R1 and R11 hold for them', async () => {
+      const { invite, sensitiveApplier } = setUp();
+      const result = await invite.execute(as(ROOT), {
+        email: INVITEE,
+        roleId: SENSITIVE,
+        origin: '203.0.113.9',
+        note: 'Joins as inviter',
+      });
+      if (!result.ok) throw new Error(JSON.stringify(result.error));
+      const invitationId = result.value.invitationId;
+      const proposal = review.proposed[0]!;
+      const apply = request(invitationId, proposal.before, proposal.after);
+
+      // MEMBER lacks the invite key; nothing is sent.
+      expect(await sensitiveApplier.check(as(MEMBER), apply)).toBe('not-permitted');
+      expect(await sensitiveApplier.apply(as(MEMBER), apply)).toBe('not-permitted');
+      // MEMBER now holds the invite key, but a protected key needs the system role (R11).
+      const membership = [...fakes.assignments.values()].find((a) => a.accountId === MEMBER)!;
+      fakes.assignments.set(membership.id, { ...membership, roleId: SENSITIVE });
+      expect(await sensitiveApplier.check(as(MEMBER), apply)).toBe('not-permitted');
+      expect(await sensitiveApplier.apply(as(MEMBER), apply)).toBe('not-permitted');
+      const system = testCallContext(market, 'system', 'people-review-0020');
+      expect(await sensitiveApplier.check(system, apply)).toBe('not-permitted');
+      expect(issuedEventsOf(invitationId)).toEqual([]);
+      expect(fakes.invitations.get(invitationId)?.heldForApproval).toBe(true);
+
+      expect(await sensitiveApplier.isInterested(as(CHECKER), apply)).toBe(false);
+      expect(await sensitiveApplier.check(as(CHECKER), apply)).toBe('ok');
+      const audits = fakes.audits.length;
+      expect(await sensitiveApplier.apply(as(CHECKER), apply)).toBe('applied');
+      expect(fakes.invitationLocks.at(-1)).toBe(invitationId);
+      expect(fakes.invitations.get(invitationId)).toMatchObject({
+        state: 'pending',
+        heldForApproval: false,
+        version: 2,
+        invitedByAccountId: ROOT,
+      });
+      expect(issuedEventsOf(invitationId)).toEqual([
+        expect.objectContaining({ aggregateVersion: 2 }),
+      ]);
+      expect(fakes.audits).toHaveLength(audits + 1);
+      expect(fakes.audits.at(-1)).toMatchObject({
+        action: 'identity.invitation.approved',
+        actor: 'authenticated',
+        targetId: invitationId,
+        after: { kind: 'admin', roleId: SENSITIVE, requestId: REQUEST },
+      });
+      expect(JSON.stringify(fakes.audits).toLowerCase()).not.toContain(INVITEE.toLowerCase());
+      // Released once: a second approval writes nothing.
+      expect(await sensitiveApplier.apply(as(CHECKER), apply)).toBe('changed-since');
+      expect(issuedEventsOf(invitationId)).toHaveLength(1);
+    });
+
+    it('answers changed-since after a role edit or a revoke, gone once purged or lapsed, and not-permitted once the address has an account', async () => {
+      const { invite, edit, sensitiveApplier, clock } = setUp();
+      const issue = async (email: string) => {
+        const invited = await invite.execute(as(ROOT), {
+          email,
+          roleId: SENSITIVE,
+          origin: '203.0.113.9',
+          note: 'Joins as inviter',
+        });
+        if (!invited.ok) throw new Error(JSON.stringify(invited.error));
+        const proposal = review.proposed.at(-1)!;
+        return {
+          invitationId: invited.value.invitationId,
+          apply: request(invited.value.invitationId, proposal.before, proposal.after),
+        };
+      };
+      const sends = () => fakes.events.filter((e) => e.type === 'identity.invitation-issued.v1');
+
+      // Revoked by the inviter's side meanwhile.
+      const revoked = await issue('revoked.person@example.com');
+      fakes.invitations.set(revoked.invitationId, {
+        ...fakes.invitations.get(revoked.invitationId)!,
+        state: 'revoked',
+        email: null,
+        heldForApproval: false,
+        decidedAt: START,
+      });
+      expect(await sensitiveApplier.apply(as(CHECKER), revoked.apply)).toBe('changed-since');
+
+      // The address has an admin account since: acceptance could only fail.
+      const taken = await issue('taken.person@example.com');
+      fakes.seedAccount({
+        ...fakes.accounts.get(MEMBER)!,
+        id: accountId(40),
+        email: { typed: 'taken.person@example.com', normalized: 'taken.person@example.com' },
+      });
+      expect(await sensitiveApplier.isInterested(as(accountId(40)), taken.apply)).toBe(true);
+      expect(await sensitiveApplier.apply(as(CHECKER), taken.apply)).toBe('not-permitted');
+
+      // Purged: gone.
+      const purged = await issue('purged.person@example.com');
+      fakes.invitations.delete(purged.invitationId);
+      expect(await sensitiveApplier.apply(as(CHECKER), purged.apply)).toBe('gone');
+
+      // The role was edited since it was asked for (a new version).
+      const edited = await issue('edited.person@example.com');
+      await edit.execute(as(ROOT), {
+        roleId: SENSITIVE,
+        name: 'Sensitive plus',
+        permissionKeys: [...SENSITIVE_KEYS, 'identity.platform-role.view'],
+        expectedVersion: 1,
+        note: 'Wider',
+      });
+      expect(await sensitiveApplier.apply(as(CHECKER), edited.apply)).toBe('changed-since');
+
+      // Past the Market's admin invitation lifetime it is a lapsed, never-sent invitation.
+      const lapsed = await issue('lapsed.person@example.com');
+      clock.advance(Temporal.Duration.from({ minutes: lifetime() }));
+      expect(await sensitiveApplier.apply(as(CHECKER), lapsed.apply)).toBe('gone');
+      expect(sends()).toEqual([]);
+    });
+  });
+
   describe('labels for the queue (describe)', () => {
     it("names this Market's admins by display name, and no one else", async () => {
       const { rolesReverter, statusReverter } = setUp();
@@ -1134,6 +1391,7 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
       const down: PeopleLabelReads = {
         adminNames: { execute: () => Promise.reject(new Error('down')) },
         platformRoles: { execute: () => Promise.reject(new Error('down')) },
+        authorisation: { check: () => Promise.reject(new Error('down')) },
       };
       expect(
         await new AdminStatusReverter(reverters, down).describe(as(CHECKER), [MEMBER]),
@@ -1141,6 +1399,104 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
       expect(
         await new PlatformRoleReverter(reverters, down).describe(as(CHECKER), [NARROW]),
       ).toEqual(new Map());
+    });
+  });
+
+  describe("the impact count (a request's detail page)", () => {
+    const requestOf = (subjectRef: string) => ({
+      requestId: REQUEST,
+      subjectRef,
+      before: {},
+      after: {},
+    });
+    const admins = (count: number) => ({ items: [{ label: 'admins', count, atLeast: false }] });
+
+    it('counts the admins who hold the role and can sign in, for its edit and its delete', async () => {
+      const { roleReverter, deletionApplier } = setUp();
+      // NARROW: MEMBER (active) and OFF (disabled, so not counted).
+      expect(await roleReverter.impact(as(CHECKER), requestOf(NARROW))).toEqual(admins(1));
+      expect(
+        await roleReverter.impact(as(CHECKER), requestOf(roleOf('platform-administrator'))),
+      ).toEqual(admins(2));
+      expect(await deletionApplier.impact(as(CHECKER), requestOf(WIDE))).toEqual(admins(0));
+    });
+
+    it('gives none to an admin without identity.admin-account.view, asking no role list (Hassan L1)', async () => {
+      const { reverters, labels, creations } = setUp();
+      const asked: string[] = [];
+      const withoutTeamKey: PeopleLabelReads = {
+        ...labels,
+        platformRoles: {
+          execute: (context, input) => {
+            asked.push('roles');
+            return labels.platformRoles.execute(context, input);
+          },
+        },
+        authorisation: {
+          check: (context, declaration) =>
+            declaration.rule.kind === 'permissions' &&
+            (declaration.rule.allOf as readonly string[]).includes('identity.admin-account.view')
+              ? Promise.resolve({ allowed: false, denial: { code: 'access.denied' } })
+              : labels.authorisation.check(context, declaration),
+        },
+      };
+      expect(
+        await new PlatformRoleReverter(reverters, withoutTeamKey).impact(
+          as(CHECKER),
+          requestOf(NARROW),
+        ),
+      ).toBeNull();
+      expect(
+        await new PlatformRoleDeletionApplier(creations, withoutTeamKey).impact(
+          as(CHECKER),
+          requestOf(WIDE),
+        ),
+      ).toBeNull();
+      expect(asked).toEqual([]);
+    });
+
+    it('stops before the read once the wait is over (the abort signal)', async () => {
+      const { roleReverter } = setUp();
+      const aborted = new AbortController();
+      aborted.abort();
+      expect(await roleReverter.impact(as(CHECKER), requestOf(NARROW), aborted.signal)).toBeNull();
+    });
+
+    it('gives none to an admin who may not list the roles, for an unknown role, or on a failure', async () => {
+      const { roleReverter, reverters } = setUp();
+      // MEMBER's role lacks identity.platform-role.view.
+      expect(await roleReverter.impact(as(MEMBER), requestOf(NARROW))).toBeNull();
+      expect(await roleReverter.impact(as(CHECKER), requestOf(GONE_ROLE))).toBeNull();
+      expect(await roleReverter.impact(as(CHECKER), requestOf('not-an-id'))).toBeNull();
+      const system = testCallContext(market, 'system', 'people-review-0005');
+      expect(await roleReverter.impact(system, requestOf(NARROW))).toBeNull();
+      const down: PeopleLabelReads = {
+        adminNames: { execute: () => Promise.reject(new Error('down')) },
+        platformRoles: { execute: () => Promise.reject(new Error('down')) },
+        authorisation: { check: () => Promise.reject(new Error('down')) },
+      };
+      expect(
+        await new PlatformRoleReverter(reverters, down).impact(as(CHECKER), requestOf(NARROW)),
+      ).toBeNull();
+    });
+
+    it("keeps the Market: another Market's admin sees no count of this Market's role", async () => {
+      const { roleReverter } = setUp();
+      const elsewhere = testMarketContext(
+        TEST_MARKETS.find((other) => other !== code)!,
+        PLATFORM_TENANT_ID,
+      );
+      const foreign = testCallContext(
+        elsewhere,
+        testAuthenticatedActor(elsewhere, {
+          population: 'admin',
+          accountId: ELSEWHERE,
+          sessionId: id<'Session'>('01990000-0000-7000-8000-00000000f002'),
+          sellerId: null,
+        }),
+        'people-review-0006',
+      );
+      expect(await roleReverter.impact(foreign, requestOf(NARROW))).toBeNull();
     });
   });
 });

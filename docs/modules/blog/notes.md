@@ -138,3 +138,10 @@ category and paging, `posts/:slug`, `events/upcoming`, `taxonomy`).
 - Out of scope: the new-seller-form flag, preview links, withdraw from review. A seller's "delete" is
   archive.
 - The version cap is 100 per post (a CHECK); raising it needs a migration.
+
+## Saved filters (super list phase 4, PR10)
+
+The admin Blog posts list (`admin.blog.posts`, key `blog.post.read`) has saved filters through
+`lists` (`application/saved-filters/list-definitions.ts`); the older `status`-as-view is not a
+saved key. Sharing one needs the new unprotected key `blog.saved-filter.share`; no role is seeded
+with it. See docs/modules/lists/notes.md.

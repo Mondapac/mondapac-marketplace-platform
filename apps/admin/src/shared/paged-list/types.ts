@@ -63,6 +63,8 @@ export interface PagedListConfig<Row> {
   readonly tabs: readonly string[];
   /** The query parameter a tab other than the first sets to its id (for example `issue`). */
   readonly tabParam?: string;
+  /** Query parameters of a tab when one id is not enough (`status=draft`); sent for every tab. */
+  readonly tabParams?: (tab: string) => Readonly<Record<string, string>>;
   readonly search: { readonly max: number };
   readonly sorts: readonly PagedSort[];
   readonly defaultSort: string;

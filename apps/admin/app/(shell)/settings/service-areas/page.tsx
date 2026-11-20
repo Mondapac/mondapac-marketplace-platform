@@ -3,7 +3,6 @@ import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { ServiceAreaNamesPanel } from '../../../../src/service-area-names/service-area-names-panel.tsx';
 import {
-  AREAS_EDIT_PERMISSION,
   AREAS_PATH,
   AREAS_VIEW_PERMISSION,
   type AreaNames,
@@ -56,11 +55,5 @@ export default async function ServiceAreaNamesPage() {
       </SettingsPage>,
     );
   }
-  return shell(
-    <ServiceAreaNamesPanel
-      initial={read.body}
-      canEdit={permissionKeys.includes(AREAS_EDIT_PERMISSION)}
-      csrfToken={csrfToken}
-    />,
-  );
+  return shell(<ServiceAreaNamesPanel initial={read.body} csrfToken={csrfToken} />);
 }

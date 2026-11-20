@@ -7,6 +7,7 @@ import type { ApiFailure } from '../api/client.ts';
 import {
   DEFAULT_QUERY,
   presetDays,
+  savedDays,
   sortIdOf,
   sortOf,
   type Query,
@@ -51,7 +52,13 @@ export interface SavedFiltersAnswer {
 export function payloadOf(query: Query, zone: string, now: Date): SavedPayload {
   const days =
     query.filters.paid === undefined ? query.days : presetDays(query.filters.paid, zone, now);
-  const conditions = days === null ? {} : { from: days.from, to: days.to };
+  const conditions =
+    days === null
+      ? {}
+      : {
+          ...(days.from === undefined ? {} : { from: days.from }),
+          ...(days.to === undefined ? {} : { to: days.to }),
+        };
   const sort = sortIdOf(query.sort, query.direction);
   return {
     v: 1,
@@ -68,7 +75,7 @@ export function queryOf(payload: SavedPayload): Query {
   return {
     ...DEFAULT_QUERY,
     tab: FULFILMENT_FILTERS.find((id) => id === payload.tab) ?? 'all',
-    days: from === undefined || to === undefined || from === '' || to === '' ? null : { from, to },
+    days: savedDays(from, to),
     sort,
     direction,
   };

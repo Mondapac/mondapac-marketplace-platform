@@ -51,7 +51,9 @@ import {
 import { SendGuestMessage } from '../application/use-cases/send-guest-message.use-case';
 import { SendMessage } from '../application/use-cases/send-message.use-case';
 import type { AssistantCard } from '../domain/cards';
-import { PREVIEW_HEADER, SendMessageRequest } from './assistant.dto';
+import { SubmitFeedback } from '../application/use-cases/submit-feedback.use-case';
+import { SubmitGuestFeedback } from '../application/use-cases/submit-guest-feedback.use-case';
+import { FeedbackBody, FeedbackRequest, PREVIEW_HEADER, SendMessageRequest } from './assistant.dto';
 import { basketCardBody } from './basket-card-body';
 import { guestCookie, guestTokenOf } from './guest-cookie';
 import { closedBody, fail, refusal } from './http-answers';
@@ -128,6 +130,8 @@ export class ConversationController {
   constructor(
     private readonly sendAccount: SendMessage,
     private readonly sendGuest: SendGuestMessage,
+    private readonly feedbackAccount: SubmitFeedback,
+    private readonly feedbackGuest: SubmitGuestFeedback,
     private readonly list: ListConversations,
     private readonly view: ViewConversation,
     private readonly remove: DeleteConversation,
@@ -236,6 +240,63 @@ export class ConversationController {
     signedInOnly(context);
     const result = await this.remove.execute(context, { conversationId: id });
     if (!result.ok) throw refusal(result.error, context, this.#logger);
+  }
+
+  @Post(':id/messages/:messageId/feedback')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: "A buyer's thumbs up or down on one assistant message",
+    description:
+      'messageId is the position (1 to 60) of an assistant message of the conversation. One ' +
+      'thumbs per message: giving it again replaces the earlier one. reason (wrong, not-found, ' +
+      "other) is allowed only with rating down. Only the conversation's owner (the account, or " +
+      'the guest cookie that started it) may give it; anyone else gets the same 404 as an unknown ' +
+      'conversation. The feedback is kept as long as the message.',
+  })
+  @ApiParam({ name: 'id', type: String })
+  @ApiParam({ name: 'messageId', type: String })
+  @ApiHeader({
+    name: CSRF_HEADER,
+    required: false,
+    description: 'The CSRF token of the session; required for a signed-in customer',
+  })
+  @ApiBody({ type: FeedbackRequest })
+  @ApiOkResponse({ type: FeedbackBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'assistant.off' })
+  @ApiNotFoundResponse({
+    ...ERROR,
+    description: 'assistant.conversation-not-found, assistant.message-not-found',
+  })
+  @ApiUnsupportedMediaTypeResponse({ ...ERROR, description: 'request.body-unsupported' })
+  async feedback(
+    @Call() context: CallContext,
+    @Param('id') id: string,
+    @Param('messageId') messageId: string,
+    @Body() body: unknown,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const closed = closedBody(request, body, ['rating', 'reason']);
+    if (closed !== null) throw closed;
+    const fields = body as { rating?: unknown; reason?: unknown };
+    const input = {
+      conversationId: id,
+      messageId,
+      rating: fields.rating,
+      reason: fields.reason,
+    };
+    const result =
+      context.actor.kind === 'authenticated'
+        ? await this.feedbackAccount.execute(context, input)
+        : await this.feedbackGuest.execute(context, {
+            ...input,
+            token: guestTokenOf(request.headers.cookie, context.market.marketId),
+          });
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return result.value;
   }
 
   @Post(':id/messages')

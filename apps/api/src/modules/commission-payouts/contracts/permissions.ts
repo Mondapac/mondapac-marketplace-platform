@@ -83,6 +83,17 @@ export const COMMISSION_PAYOUTS_PAYOUT_APPROVE = definePermission('commission-pa
   protected: true,
 });
 
+/**
+ * Share a saved filter of the Payouts or Disputes list with every admin of the Market (and manage
+ * one that somebody else shared). Unprotected; also needs the list's view key
+ * (`commission-payouts.payout.view` or `commission-payouts.dispute.view`).
+ */
+export const COMMISSION_PAYOUTS_SAVED_FILTER_SHARE = definePermission('commission-payouts', {
+  key: 'commission-payouts.saved-filter.share',
+  scope: 'platform',
+  protected: false,
+});
+
 export const COMMISSION_PAYOUTS_PERMISSIONS = declarePermissions('commission-payouts', [
   COMMISSION_PAYOUTS_RATE_EDIT,
   COMMISSION_PAYOUTS_PAYOUT_TERMS_VIEW,
@@ -95,4 +106,5 @@ export const COMMISSION_PAYOUTS_PERMISSIONS = declarePermissions('commission-pay
   COMMISSION_PAYOUTS_DISPUTE_ATTRIBUTE,
   COMMISSION_PAYOUTS_PAYOUT_VIEW,
   COMMISSION_PAYOUTS_PAYOUT_APPROVE,
+  COMMISSION_PAYOUTS_SAVED_FILTER_SHARE,
 ]);

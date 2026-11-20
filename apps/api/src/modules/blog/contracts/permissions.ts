@@ -66,6 +66,16 @@ export const BLOG_SELLER_POST_EDIT = definePermission('blog', {
   protected: false,
 });
 
+/**
+ * Share a saved filter of the Blog posts list with every admin of the Market (and manage one that
+ * somebody else shared). Unprotected; also needs `blog.post.read`.
+ */
+export const BLOG_SAVED_FILTER_SHARE = definePermission('blog', {
+  key: 'blog.saved-filter.share',
+  scope: 'platform',
+  protected: false,
+});
+
 export const BLOG_PERMISSIONS = declarePermissions('blog', [
   BLOG_MEDIA_EDIT,
   BLOG_POST_EDIT,
@@ -75,4 +85,5 @@ export const BLOG_PERMISSIONS = declarePermissions('blog', [
   BLOG_POST_REVIEW,
   BLOG_SELLER_POST_EDIT,
   BLOG_TAXONOMY_EDIT,
+  BLOG_SAVED_FILTER_SHARE,
 ]);

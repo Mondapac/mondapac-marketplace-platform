@@ -4,7 +4,7 @@ import { formatMoney } from '../pricing/format.ts';
 import { formatInstant } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
 import { PrintButton } from './print-button.tsx';
-import type { Money, SellerPart } from './types.ts';
+import { isPositive, type Money, type SellerPart } from './types.ts';
 
 /** The order document of the API (presentation/documents.dto.ts OrderDocumentBody). */
 export interface OrderDocument {
@@ -20,11 +20,14 @@ export interface OrderDocument {
       readonly quantity: number;
       readonly unitPrice: Money;
       readonly lineAmount: Money;
+      readonly discount: Money;
       readonly taxInclusive: boolean;
       readonly tax: Money | null;
     }[];
     readonly subtotal: Money;
+    readonly discount: Money;
     readonly shipping: Money;
+    readonly shippingDiscount: Money;
     readonly tax: Money | null;
     readonly total: Money;
   }[];
@@ -100,6 +103,11 @@ export function OrderDocumentView({
                       </td>
                       <td className="py-1 text-end tabular-nums">
                         {formatMoney(line.lineAmount, locale)}
+                        {isPositive(line.discount) ? (
+                          <span className="block text-fg-muted">
+                            {t('discount')} −{formatMoney(line.discount, locale)}
+                          </span>
+                        ) : null}
                       </td>
                     </tr>
                   ))}
@@ -109,8 +117,24 @@ export function OrderDocumentView({
             <dl className="grid grid-cols-[1fr_auto] gap-x-3 gap-y-1 border-t border-line pt-2 text-sm">
               <dt className="text-fg-muted">{to('field.subtotal')}</dt>
               <dd className="text-end tabular-nums">{formatMoney(section.subtotal, locale)}</dd>
+              {isPositive(section.discount) ? (
+                <>
+                  <dt className="text-fg-muted">{to('field.discount')}</dt>
+                  <dd className="text-end tabular-nums">
+                    −{formatMoney(section.discount, locale)}
+                  </dd>
+                </>
+              ) : null}
               <dt className="text-fg-muted">{to('field.shipping')}</dt>
               <dd className="text-end tabular-nums">{formatMoney(section.shipping, locale)}</dd>
+              {isPositive(section.shippingDiscount) ? (
+                <>
+                  <dt className="text-fg-muted">{to('field.shipping-discount')}</dt>
+                  <dd className="text-end tabular-nums">
+                    −{formatMoney(section.shippingDiscount, locale)}
+                  </dd>
+                </>
+              ) : null}
               <dt className="text-fg-muted">{to('field.tax')}</dt>
               <dd className="text-end tabular-nums">
                 {section.tax === null ? to('tax.not-recorded') : formatMoney(section.tax, locale)}

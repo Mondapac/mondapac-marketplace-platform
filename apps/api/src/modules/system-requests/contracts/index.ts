@@ -25,7 +25,13 @@ export {
   type SystemRequestRecorder,
 } from './recorder';
 export {
+  CHANGE_IMPACT_LABELS,
+  impactItem,
   MAX_DESCRIBE_REFS,
+  MAX_IMPACT_COUNT,
+  type ChangeImpact,
+  type ChangeImpactItem,
+  type ChangeImpactLabel,
   registerSystemChangeApplier,
   registerSystemChangeReverter,
   SYSTEM_CHANGE_REVERTERS,

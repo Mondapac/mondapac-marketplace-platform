@@ -118,7 +118,7 @@ const hasControl = (text: string): boolean =>
 
 const absent = (value: unknown): boolean => value === undefined || value === null || value === '';
 
-function parseSelector(
+export function parseSelector(
   record: SellerReviewListInput,
 ): Result<SellerReviewFilter, ListQueryFailure> {
   let view: SellerReviewView_ = 'all';

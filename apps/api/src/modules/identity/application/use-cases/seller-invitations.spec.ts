@@ -302,6 +302,7 @@ describe.each(TEST_MARKETS)(
         invitedByAccountId: ADMIN,
         tokenHash: issued.tokenHash,
         expiresAt: START.add({ hours: 24 }),
+        heldForApproval: false,
         state: 'pending',
         decidedAt: null,
         acceptedAccountId: null,

@@ -61,6 +61,11 @@ and the attribute links of a category (`PUT catalog/admin/categories/:id/attribu
   The panel has no feature-set create page yet.
 - Not hooked: the category-tree import and the attribute file import (see the system-requests
   notes); they run unreviewed.
+- Impact counts on the request's detail page (19 Nov 2026): the category and attribute appliers
+  answer `impact` (`application/catalogue-impact.ts`) with the counts of the admin impact dialogs,
+  behind the same read keys (`catalog.category-tree.view`, `catalog.attribute.restructure`), in a
+  read-only unit of the request's Market; the category product facts read is bounded at 2 s
+  ("at least" after). Once System requests' abort signal fired, no read starts. See "Impact counts" in the system-requests notes.
 
 ## Add product is the edit form in add mode (seller #991, admin #994)
 
@@ -96,3 +101,16 @@ known.
 - **DOM order equals visual order.** The two-column layout is an explicit `lg:` grid with
   `col-start`/`row-start`/`row-span`; no `order-*` classes, so tab and screen-reader order match
   what is seen. Add a card by giving it an explicit cell, not by reordering.
+
+## Brand archive reason
+
+`POST catalog/admin/brands/:id/archive` takes an optional `reason` next to `version` (trimmed, at
+most 500 characters, no control characters or line breaks; empty or null means none; anything else
+is `validation.failed` on `reason`). It is used when an admin turns a seller's proposal down or
+retires a live brand. The text is stored on the brand (`catalog.brands.archive_reason`, CHECK:
+only on an archived row) for the proposing seller's notice; the audit row `catalog.brand.archived`
+records only `reasonGiven` (audit rows and events carry no text, ADR-0009 decision 6). No decision
+reads it; a merge never sets it. It is not in the brand answers yet: the notice slice reads it.
+
+Any panel that shows the archive reason (the seller's notice, an admin view) must render it as plain
+text, never as HTML: no `dangerouslySetInnerHTML`, no Markdown, no auto-linking.

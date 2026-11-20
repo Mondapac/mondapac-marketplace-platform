@@ -9,6 +9,7 @@ import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { IssuePreviewToken } from '../src/modules/assistant/application/use-cases/issue-preview-token.use-case';
 import { SetAssistantSettings } from '../src/modules/assistant/application/use-cases/set-assistant-settings.use-case';
+import { ViewAssistantInsights } from '../src/modules/assistant/application/use-cases/view-assistant-insights.use-case';
 import { ViewAssistantSettings } from '../src/modules/assistant/application/use-cases/view-assistant-settings.use-case';
 import { ViewAssistantSettingsHistory } from '../src/modules/assistant/application/use-cases/view-assistant-settings-history.use-case';
 import { ViewStorefrontAssistant } from '../src/modules/assistant/application/use-cases/view-storefront-assistant.use-case';
@@ -84,6 +85,7 @@ it('maps every refusal code of the assistant routes to its exact status', () => 
     'assistant.off': 403,
     'assistant.sign-in-required': 403,
     'assistant.conversation-not-found': 404,
+    'assistant.message-not-found': 404,
     'assistant.conversation-full': 409,
     'request.throttled': 429,
     'assistant.paused': 503,
@@ -128,6 +130,8 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
           .useValue(stub('history'))
           .overrideProvider(ViewStorefrontAssistant)
           .useValue(stub('public'))
+          .overrideProvider(ViewAssistantInsights)
+          .useValue(stub('insights'))
           .overrideProvider(IssuePreviewToken)
           .useValue(stub('preview')),
     }));
@@ -491,5 +495,74 @@ describe.each(TEST_MARKETS)('assistant settings over HTTP in market %s', (code) 
     });
     next = err({ code: 'access.denied' });
     expect((await put()).status).toBe(403);
+  });
+
+  it('reads the insights for an admin: no-store, query to the use case, days and instants as text', async () => {
+    await boot();
+    next = ok({
+      from: Temporal.PlainDate.from('2026-10-18'),
+      to: Temporal.PlainDate.from('2026-10-19'),
+      days: [
+        { day: Temporal.PlainDate.from('2026-10-18'), conversations: 2, spendMicroUsd: 900 },
+        { day: Temporal.PlainDate.from('2026-10-19'), conversations: 0, spendMicroUsd: 0 },
+      ],
+      totals: { conversations: 2, spendMicroUsd: 900 },
+      feedback: {
+        up: 1,
+        down: 1,
+        upShare: 0.5,
+        reasons: { wrong: 1, 'not-found': 0, other: 0 },
+      },
+      handoffs: 1,
+      unanswered: {
+        total: 1,
+        page: 1,
+        pageSize: 50,
+        truncated: false,
+        rows: [
+          {
+            query: 'saffron?',
+            count: 2,
+            lastAt: Temporal.Instant.from('2026-10-19T01:00:00Z'),
+            reasons: { unavailable: 0, 'tool-failed': 0, 'no-results': 2, 'thumbs-down': 0 },
+          },
+        ],
+      },
+    });
+    const session = sessionOf('admin', 2);
+    const read = await http()
+      .get('/assistant/admin/insights?from=2026-10-18&to=2026-10-19&page=1')
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session });
+    expect(read.status).toBe(200);
+    expect(read.headers['cache-control']).toBe('no-store');
+    expect(read.body).toMatchObject({
+      from: '2026-10-18',
+      to: '2026-10-19',
+      days: [
+        { day: '2026-10-18', conversations: 2, spendMicroUsd: 900 },
+        { day: '2026-10-19', conversations: 0, spendMicroUsd: 0 },
+      ],
+      handoffs: 1,
+      unanswered: { rows: [{ query: 'saffron?', count: 2, lastAt: '2026-10-19T01:00:00Z' }] },
+    });
+    expect(calls).toEqual([
+      { name: 'insights', input: { from: '2026-10-18', to: '2026-10-19', page: '1' } },
+    ]);
+    expect(actorKinds).toEqual(['authenticated']);
+
+    next = err({ code: 'validation.failed', fields: [{ path: 'from', code: 'range' }] });
+    const bad = await http()
+      .get('/assistant/admin/insights?from=x')
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'admin'), ...session });
+    expect(bad.status).toBe(400);
+    expect(bad.body).toMatchObject({ details: { fields: [{ path: 'from', code: 'range' }] } });
+
+    // Without a session the gate sees an anonymous actor; the use case refuses it.
+    next = err({ code: 'access.unauthenticated' });
+    const anonymous = await http()
+      .get('/assistant/admin/insights')
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') });
+    expect(anonymous.status).toBe(401);
+    expect(actorKinds.at(-1)).toBe('anonymous');
   });
 });

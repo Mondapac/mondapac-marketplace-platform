@@ -134,6 +134,19 @@ export function roleGrantVerdict(
   );
 }
 
+/**
+ * Whether `role` is sensitive (owner decision of 18 Nov 2026): giving it needs the system role of
+ * its scope, because it is that role or confers a protected key (`GrantPolicy.needsSystemRole`, on
+ * what the role confers now, as {@link roleGrantVerdict} reads it). An admin invitation to a
+ * sensitive role waits for another admin's approval where area people is reviewed.
+ */
+export function roleIsSensitive(role: Role, deps: RoleGrantDependencies): boolean {
+  return GrantPolicy.needsSystemRole(
+    grantedRoleOf(role, deps.effectiveKeys),
+    protectedKeysOf(deps.permissions),
+  );
+}
+
 /** The ports {@link readActingGrants} and {@link inviterMayStillGrant} read. */
 export interface ActingGrantDependencies {
   readonly accounts: AccountRepository;

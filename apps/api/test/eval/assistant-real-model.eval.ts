@@ -46,9 +46,11 @@ import type {
   ModelAnswer,
 } from '../../src/modules/assistant/application/ports/assistant-runtime';
 import {
+  FakeInsights,
   FakePreviewTokens,
   FixedQuickPrompts,
   MemoryConversations,
+  MemoryFeedback,
   MemoryLimits,
   MemorySpend,
   RecordingOutbox,
@@ -305,6 +307,7 @@ function syntheticTools(currency: string, recorded: string[]) {
         slug,
         name: storeName(seller),
         serviceAreaCode: 'BNE',
+        serviceAreaName: 'Brisbane',
         sellingSince: 2024,
       };
       return Promise.resolve({ ok: true, value: store });
@@ -508,6 +511,7 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
         async (_id, item, index) => {
           const toolsCalled: string[] = [];
           const runtime = new RecordingRuntime(new GatewayAssistantRuntime(gateway));
+          const conversations = new MemoryConversations();
           const deps: AssistantDependencies = {
             unitOfWork: new FakeUnitOfWork(),
             settings: new FixedSettings({
@@ -520,7 +524,7 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
             runtime,
             audit: new NoAudit(),
             clock: new FixedClock(T0),
-            conversations: new MemoryConversations(),
+            conversations,
             spend: new MemorySpend(),
             tools: syntheticTools(currency, toolsCalled),
             limits: new MemoryLimits(),
@@ -529,6 +533,8 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
             outbox: new RecordingOutbox(),
             quickPrompts: new FixedQuickPrompts(),
             previewTokens: new FakePreviewTokens(),
+            feedback: new MemoryFeedback(conversations),
+            insights: new FakeInsights(),
             trail: unusedChangeTrail,
           };
           const conversationId = `0199eeee-0000-7000-8000-${(index + 1).toString(16).padStart(12, '0')}`;

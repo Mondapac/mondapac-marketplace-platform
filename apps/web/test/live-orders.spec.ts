@@ -6,6 +6,7 @@ import {
   orderReference,
   shipToLine,
 } from '../src/account/live-orders.ts';
+import { orderTotals } from '../src/account/account-state.tsx';
 
 // The buyer's real orders as the account pages show them, for two Markets (AUD and a synthetic
 // zero-decimal currency): only paid orders, each field checked on its own.
@@ -106,6 +107,57 @@ describe.each(['AUD', 'JPY'])('a paid order in %s', (currency) => {
     const cancelled = accountOrderOf(orderBody(currency, { status: 'cancelled' }), LABELS);
     expect(cancelled?.status).toBe('cancelled');
     expect(cancelled?.parts.map((part) => part.status)).toEqual(['cancelled', 'cancelled']);
+  });
+
+  it('reads the discounts of a part and takes them off the total the buyer paid', () => {
+    const body: { sellerOrders: Record<string, unknown>[] } = orderBody(currency);
+    body.sellerOrders[0] = {
+      ...body.sellerOrders[0]!,
+      discount: money('500', currency),
+      shippingDiscount: money('750', currency),
+    };
+    body.sellerOrders[1] = {
+      ...body.sellerOrders[1]!,
+      discount: money('0', currency),
+      shippingDiscount: money('0', currency),
+    };
+    const order = accountOrderOf(body, LABELS)!;
+    expect(order.parts[0].discount).toEqual({ amount: 500, currency });
+    expect(order.parts[0].deliveryDiscount).toEqual({ amount: 750, currency });
+    expect(order.parts[1]).not.toHaveProperty('discount');
+    expect(order.parts[1]).not.toHaveProperty('deliveryDiscount');
+    expect(orderTotals(order)).toEqual({
+      count: 4,
+      items: { amount: 5000, currency },
+      discount: { amount: 500, currency },
+      delivery: { amount: 750, currency },
+      deliveryDiscount: { amount: 750, currency },
+      total: { amount: 4500, currency },
+    });
+  });
+
+  it('refuses a part whose discount it cannot read or that exceeds what it comes off', () => {
+    const bad: { sellerOrders: Record<string, unknown>[] } = orderBody(currency);
+    bad.sellerOrders[0] = {
+      ...bad.sellerOrders[0]!,
+      discount: money('-1', currency),
+    };
+    expect(accountOrderOf(bad, LABELS)).toBeNull();
+    const over: { sellerOrders: Record<string, unknown>[] } = orderBody(currency);
+    over.sellerOrders[0] = {
+      ...over.sellerOrders[0]!,
+      shippingDiscount: money('751', currency),
+    };
+    expect(accountOrderOf(over, LABELS)).toBeNull();
+    const text: { sellerOrders: Record<string, unknown>[] } = orderBody(currency);
+    text.sellerOrders[0] = { ...text.sellerOrders[0]!, discount: money('5.00', currency) };
+    expect(accountOrderOf(text, LABELS)).toBeNull();
+    const goods: { sellerOrders: Record<string, unknown>[] } = orderBody(currency);
+    goods.sellerOrders[0] = { ...goods.sellerOrders[0]!, discount: money('2501', currency) };
+    expect(accountOrderOf(goods, LABELS)).toBeNull();
+    const whole: { sellerOrders: Record<string, unknown>[] } = orderBody(currency);
+    whole.sellerOrders[0] = { ...whole.sellerOrders[0]!, discount: money('2500', currency) };
+    expect(accountOrderOf(whole, LABELS)?.parts[0].discount).toEqual({ amount: 2500, currency });
   });
 
   it('has no GST line without a tax record', () => {
