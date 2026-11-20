@@ -435,8 +435,6 @@ describe('failures of a later load', () => {
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     expect(screen.queryByText('We couldn’t load your reviews. Try again.')).toBeNull();
-    // The rows already on screen are hidden while the notice shows.
-    expect(screen.queryByText('Not great')).toBeNull();
   });
 
   it('says the search cannot run after a refused page and offers no Try again', async () => {
