@@ -24,6 +24,7 @@ const row = (patch: Partial<AreaRow> = {}): AreaRow => ({
   region: 'QLD',
   sellerOnboardingEnabled: true,
   deliveryEnabled: true,
+  actions: ['edit-names'],
   names: { en: { name: 'Greater Brisbane', configuredName: 'Greater Brisbane', edited: false } },
   ...patch,
 });
@@ -32,8 +33,12 @@ const data = (areas: readonly AreaRow[] = [row()]): AreaNames => ({
   languages: ['en', 'fa', 'ar'],
   areas,
 });
-const mount = (initial: AreaNames, canEdit = true) =>
-  render(wrap(<ServiceAreaNamesPanel initial={initial} canEdit={canEdit} csrfToken="csrf" />));
+const mount = (initial: AreaNames) =>
+  render(wrap(<ServiceAreaNamesPanel initial={initial} csrfToken="csrf" />));
+const openEditor = () => {
+  fireEvent.click(screen.getByRole('button', { name: /^Actions for / }));
+  fireEvent.click(screen.getByRole('menuitem', { name: 'Edit names…' }));
+};
 
 vi.setConfig({ testTimeout: 30_000 });
 beforeEach(() => {
@@ -65,10 +70,79 @@ describe('ServiceAreaNamesPanel', () => {
     expect(screen.getByText('brisbane · QLD')).toBeTruthy();
   });
 
-  it('shows no edit button to a viewer', () => {
-    mount(data(), false);
-    expect(screen.queryByRole('button', { name: /Edit the names/ })).toBeNull();
+  it('offers Edit names… in the Actions menu only, never as an in-row button', () => {
+    mount(data());
+    expect(screen.queryByRole('button', { name: /Edit/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Greater Brisbane' }));
+    expect(screen.getAllByRole('menuitem').map((item) => item.textContent)).toEqual([
+      'Edit names…',
+    ]);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit names…' }));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('says so when the Market has no service areas', () => {
+    mount(data([]));
+    expect(screen.queryByRole('table')).toBeNull();
+    expect(screen.getByText(/The names buyers and sellers see/)).toBeTruthy();
+    expect(screen.queryByText(/can see the names but not change/)).toBeNull();
+    expect(screen.getByText('No service areas are configured for this Market.')).toBeTruthy();
+  });
+
+  it('shows no menu to a viewer and says the names are read-only', () => {
+    mount(data([row({ actions: [] })]));
+    expect(screen.queryByRole('button', { name: /Actions for/ })).toBeNull();
     expect(screen.getByText(/can see the names but not change/)).toBeTruthy();
+  });
+
+  it('drops the Actions column when no row has a known action, and keeps it otherwise', () => {
+    const { unmount } = mount(data([row({ actions: [] })]));
+    expect(screen.queryByRole('columnheader', { name: 'Actions' })).toBeNull();
+    unmount();
+    mount(data());
+    expect(screen.getByRole('columnheader', { name: 'Actions' })).toBeTruthy();
+  });
+
+  it('lays each area out as a stacked card below sm with the menu trigger at the top end', () => {
+    mount(data());
+    expect(screen.getByRole('table').className).toContain('max-sm:block');
+    const tr = screen.getAllByRole('row')[1]!;
+    expect(tr.className).toContain('max-sm:relative');
+    const trigger = screen.getByRole('button', { name: /^Actions for / });
+    expect(trigger.closest('td')!.className).toMatch(/max-sm:absolute.*max-sm:end-2.*max-sm:top-2/);
+  });
+
+  it('ignores unknown action ids: a row with none known shows no menu', () => {
+    mount(data([row({ actions: ['delete-area', 'rename'] })]));
+    expect(screen.queryByRole('button', { name: /Actions for/ })).toBeNull();
+  });
+
+  it('works for another Market with other languages and a menu per row that offers edit', () => {
+    const other: AreaNames = {
+      defaultLanguage: 'ms',
+      languages: ['ms', 'en'],
+      areas: [
+        row({
+          code: 'kl',
+          region: 'WP',
+          names: {
+            ms: { name: 'Kuala Lumpur', configuredName: 'Kuala Lumpur', edited: false },
+            en: { name: 'KL', configuredName: null, edited: true },
+          },
+        }),
+        row({
+          code: 'penang',
+          region: null,
+          actions: [],
+          names: { ms: { name: 'Pulau Pinang', configuredName: 'Pulau Pinang', edited: false } },
+        }),
+      ],
+    };
+    mount(other);
+    expect(screen.getAllByText('Malay:')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: /Actions for/ })).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Actions for Kuala Lumpur' })).toBeTruthy();
+    expect(screen.getByText('penang')).toBeTruthy();
   });
 
   it('saves a name in another language and shows it without a reload', async () => {
@@ -80,7 +154,7 @@ describe('ServiceAreaNamesPanel', () => {
     });
     call.mockResolvedValue({ ok: true, status: 200, body: { area: saved, changed: 1 } });
     mount(data());
-    fireEvent.click(screen.getByRole('button', { name: 'Edit the names of brisbane' }));
+    openEditor();
     const dialog = screen.getByRole('dialog');
     fireEvent.change(within(dialog).getByLabelText('Language'), { target: { value: 'fa' } });
     fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: ' بریزبین ' } });
@@ -96,11 +170,11 @@ describe('ServiceAreaNamesPanel', () => {
 
   it('asks before Cancel throws away a typed name, and closes at once when nothing changed', () => {
     mount(data());
-    fireEvent.click(screen.getByRole('button', { name: 'Edit the names of brisbane' }));
+    openEditor();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.queryByRole('dialog', { name: /Names of/ })).toBeNull();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit the names of brisbane' }));
+    openEditor();
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Somewhere' } });
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.getByRole('dialog', { name: 'Discard your input?' })).toBeTruthy();
@@ -111,7 +185,7 @@ describe('ServiceAreaNamesPanel', () => {
 
   it('refuses an empty required name before calling the API', () => {
     mount(data());
-    fireEvent.click(screen.getByRole('button', { name: 'Edit the names of brisbane' }));
+    openEditor();
     const dialog = screen.getByRole('dialog');
     fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: '  ' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save names' }));
@@ -125,7 +199,7 @@ describe('ServiceAreaNamesPanel', () => {
     });
     call.mockResolvedValue({ ok: true, status: 200, body: { area: row(), changed: 1 } });
     mount(data([edited]));
-    fireEvent.click(screen.getByRole('button', { name: 'Edit the names of brisbane' }));
+    openEditor();
     const dialog = screen.getByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Restore configured name' }));
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save names' }));
@@ -138,16 +212,50 @@ describe('ServiceAreaNamesPanel', () => {
     );
   });
 
-  it('says why a refused save failed and keeps the dialog open', async () => {
-    call.mockResolvedValue({ ok: false, failure: { status: 403, code: 'access.denied' } });
+  it('says why a refused save failed, keeps the dialog open and reads the list again', async () => {
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 403, code: 'access.denied' } });
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: data([row({ actions: [] })]),
+    });
     mount(data());
-    fireEvent.click(screen.getByRole('button', { name: 'Edit the names of brisbane' }));
+    openEditor();
     const dialog = screen.getByRole('dialog');
     fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Brisbane' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save names' }));
     await waitFor(() =>
       expect(within(dialog).getByText(/cannot change service area/)).toBeTruthy(),
     );
+    await waitFor(() => expect(call).toHaveBeenCalledWith('GET', 'sellers/admin/service-areas'));
+    await waitFor(() => expect(screen.queryByRole('button', { name: /Actions for/ })).toBeNull());
+  });
+  it('a 409 refusal keeps the dialog with its error and reads the list again', async () => {
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'conflict' } });
+    call.mockResolvedValueOnce({ ok: true, status: 200, body: data([row()]) });
+    mount(data());
+    openEditor();
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Brisbane' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save names' }));
+    await waitFor(() =>
+      expect(within(dialog).getByText('Something went wrong. Try again.')).toBeTruthy(),
+    );
+    await waitFor(() => expect(call).toHaveBeenCalledWith('GET', 'sellers/admin/service-areas'));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('keeps the shown rows when the re-read after a refusal fails', async () => {
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'conflict' } });
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 0, code: 'network' } });
+    mount(data());
+    openEditor();
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Brisbane' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save names' }));
+    await waitFor(() => expect(call).toHaveBeenCalledWith('GET', 'sellers/admin/service-areas'));
+    expect(screen.getByText('brisbane · QLD')).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Actions for / })).toBeTruthy();
   });
 });
 

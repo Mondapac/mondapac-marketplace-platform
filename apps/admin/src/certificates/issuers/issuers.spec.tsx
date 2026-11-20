@@ -7,6 +7,8 @@ import { relay } from '../../server/bff.ts';
 import type { PanelConfig } from '../../server/config.ts';
 
 vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
+const push = vi.fn();
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push }) }));
 
 import { callApi } from '../../api/client.ts';
 import { issuerProblemOf } from './errors.ts';
@@ -92,6 +94,15 @@ describe('issuers list', () => {
     expect(screen.getByText('Not recognised')).toBeTruthy();
     expect(screen.getByText('HCA-0042')).toBeTruthy();
     expect(screen.getAllByText('Halal').length).toBe(2);
+  });
+
+  it('opens an issuer from its Actions menu', () => {
+    wrap(<IssuersTable rows={[row()]} typeNames={names} morePages={false} />);
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Actions for Halal Certification Authority' }),
+    );
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open issuer' }));
+    expect(push).toHaveBeenCalledWith(`/certificates/issuers/${ID}`);
   });
 
   it('tells an empty registry from an empty page, and renders names as plain text', () => {

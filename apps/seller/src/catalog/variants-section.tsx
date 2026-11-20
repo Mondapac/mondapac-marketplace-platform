@@ -7,6 +7,7 @@ import { NO_VARIANT_FIELDS, pickLabel, variantTitle, type VariantRow } from './d
 import { secondAxisChoices } from './add-sizes.ts';
 import { SecondAxisStep } from './second-axis-step.tsx';
 import { VariantDetails } from './variant-details.tsx';
+import { VariantLabelsPreview } from './variant-labels-preview.tsx';
 import type { FormField } from './types.ts';
 import {
   activeOptionsOf,
@@ -40,6 +41,7 @@ export function VariantsSection({
   maxAxes,
   review,
   defaultLocale,
+  locales,
   max,
   productId,
   galleryIds,
@@ -58,6 +60,8 @@ export function VariantsSection({
   /** Adding a second type waits for review (the product's sensitive fields include `axis-added`). */
   readonly review: boolean;
   readonly defaultLocale: string;
+  /** The Market's languages, for the read-only label previews. */
+  readonly locales: readonly string[];
   readonly max: number;
   readonly productId: string;
   /** The product's photos in the draft, for the photo picks of each variant. */
@@ -131,7 +135,7 @@ export function VariantsSection({
         key: `new-${added.current}`,
         state: 'new',
         options: combo.options,
-        labels: {},
+        variantCode: null,
         ...NO_VARIANT_FIELDS,
       };
       onChange({ rows: [...rows, row], axes: [...axes] });
@@ -352,6 +356,10 @@ export function VariantsSection({
             </div>
           )}
         </section>
+      )}
+
+      {first === undefined ? null : (
+        <VariantLabelsPreview rows={rows} fields={fields} axes={axes} locales={locales} />
       )}
 
       {first === undefined ? null : (

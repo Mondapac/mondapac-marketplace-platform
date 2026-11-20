@@ -2,8 +2,14 @@
 // lives in platform (so identity, which imports no module, can reach it too: ADR-0018 decision 4);
 // system-requests implements the registry, and other modules keep importing it from here.
 export {
+  CHANGE_IMPACT_LABELS,
+  impactItem,
   MAX_DESCRIBE_REFS,
   createSystemChangeRegistrar,
+  MAX_IMPACT_COUNT,
+  type ChangeImpact,
+  type ChangeImpactItem,
+  type ChangeImpactLabel,
   SYSTEM_CHANGE_REVERTERS,
   type ApplyOutcome,
   type RevertOutcome,

@@ -12,9 +12,12 @@ if (!vitePath) throw new Error('set VITE_PATH to the vite package folder');
 execFileSync(
   'node',
   [join(vitePath, 'bin/vite.js'), 'build', '--config', join(here, 'vite.config.mjs')],
-  { stdio: 'inherit', env: process.env },
+  {
+    stdio: 'inherit',
+    env: process.env,
+  },
 );
-const dist = process.env.SHOTS_DIST ?? join(here, 'dist');
+const dist = join(here, 'dist');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
 const server = createServer((req, res) => {
   const p = new URL(req.url, 'http://x').pathname;
@@ -26,40 +29,44 @@ const server = createServer((req, res) => {
   res
     .writeHead(200, { 'content-type': types[extname(f)] ?? 'application/octet-stream' })
     .end(readFileSync(f));
-}).listen(0);
+});
+await new Promise((r) => server.listen(0, '127.0.0.1', r));
 const port = server.address().port;
-const requireFrom = createRequire(import.meta.url);
-const { chromium } = process.env.PLAYWRIGHT_PATH
-  ? requireFrom(process.env.PLAYWRIGHT_PATH)
-  : requireFrom('playwright');
+const { chromium } = createRequire(import.meta.url)('playwright');
 const browser = await chromium.launch();
-// name, scenario
-const views = [
-  ['admin-health-queue-list', 'list'],
-  ['admin-health-queue-truncated', 'truncated'],
-  ['admin-health-queue-empty', 'empty'],
-];
 for (const scheme of ['light', 'dark']) {
-  for (const width of [1280, 768, 375]) {
-    for (const [name, scenario] of views) {
+  for (const width of [1280, 375]) {
+    for (const step of ['list', 'menu', 'dialog', 'empty', 'error']) {
       const ctx = await browser.newContext({
         viewport: { width, height: 900 },
         colorScheme: scheme,
         deviceScaleFactor: 2,
       });
       const page = await ctx.newPage();
-      await page.goto(`http://localhost:${port}/?s=${scenario}`);
+      await page.goto(
+        `http://127.0.0.1:${port}/?state=${step === 'menu' || step === 'dialog' ? 'list' : step}`,
+      );
       await page.evaluate(
         (s) => globalThis.document.documentElement.setAttribute('data-theme', s),
         scheme,
       );
-      await page.getByRole('heading', { level: 1 }).waitFor();
+      if (step === 'empty') await page.getByText('No service areas are configured').waitFor();
+      else if (step === 'error') await page.getByText('could not be loaded').waitFor();
+      else await page.getByText('Greater Brisbane').first().waitFor();
+      if (step === 'menu' || step === 'dialog') {
+        await page.getByRole('button', { name: 'Actions for Greater Brisbane' }).click();
+        if (step === 'dialog') await page.getByRole('menuitem', { name: 'Edit names…' }).click();
+        await page.waitForTimeout(300);
+      }
       await page.waitForTimeout(300);
       const over = await page.evaluate(
         () => globalThis.document.documentElement.scrollWidth > globalThis.innerWidth,
       );
-      console.log(name, width, scheme, 'horizontal overflow:', over);
-      await page.screenshot({ path: join(out, `${name}-${width}-${scheme}.png`), fullPage: true });
+      console.log(step, width, scheme, 'horizontal overflow:', over);
+      await page.screenshot({
+        path: join(out, `${step}-${width}-${scheme}.png`),
+        fullPage: step !== 'menu' && step !== 'dialog',
+      });
       await ctx.close();
     }
   }

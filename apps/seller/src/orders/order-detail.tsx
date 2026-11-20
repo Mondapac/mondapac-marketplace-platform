@@ -15,6 +15,7 @@ import { orderProblemOf } from './errors.ts';
 import { PickupHandover } from './pickup-handover.tsx';
 import { shortId, statusOf, TONE } from './status.ts';
 import {
+  isPositive,
   remainingUnits,
   type ActivityEvent,
   type SellerNote,
@@ -310,6 +311,11 @@ export function OrderDetail({
                           className={`${CARD_TABLE.corner} font-medium tabular-nums lg:px-5 lg:text-end`}
                         >
                           {money(line.lineAmount)}
+                          {isPositive(line.discount) ? (
+                            <span className="block text-xs font-normal text-fg-muted">
+                              {t('line.discount', { amount: money(line.discount) })}
+                            </span>
+                          ) : null}
                         </td>
                         {/* Phones: quantity and unit price on one line under the name. */}
                         <td className="text-fg-muted max-lg:col-span-2 lg:hidden">
@@ -355,10 +361,16 @@ export function OrderDetail({
               missing={t('not-given')}
               rows={[
                 { label: t('subtotal'), value: money(order.subtotal) },
+                ...(isPositive(order.discount)
+                  ? [{ label: t('discount'), value: `−${money(order.discount)}` }]
+                  : []),
                 {
                   label: t('delivery'),
                   value: order.shipping.amount === '0' ? t('delivery-free') : money(order.shipping),
                 },
+                ...(isPositive(order.shippingDiscount)
+                  ? [{ label: t('delivery-discount'), value: `−${money(order.shippingDiscount)}` }]
+                  : []),
                 { label: t('total'), value: money(order.total), emphasis: true },
               ]}
             />

@@ -15,7 +15,7 @@ import { AREA_OWNERS, type AreaOwners } from './area-owners';
 export type RequestMode = 'review' | 'approval';
 
 /** What both a reverter and an applier may answer about their subjects. */
-export type SubjectHooks = Pick<SystemChangeReverter, 'isInterested' | 'describe'>;
+export type SubjectHooks = Pick<SystemChangeReverter, 'isInterested' | 'describe' | 'impact'>;
 
 /**
  * A registered kind and the one area its changes are reviewed in: a reverter (changes applied at

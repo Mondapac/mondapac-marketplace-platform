@@ -95,6 +95,11 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
    `check(context, request): Promise<'ok' | 'not-permitted'>`: `revertRequest` calls it after
    `prepareDecision` and before the decision unit opens (reject and withdraw); `not-permitted`
    writes nothing and leaves the request open (403 `system-requests.revert-not-permitted`).
+5. Optionally, give the reverter or applier an `impact(context, request)` that answers how many
+   records the change touches: `{items: [{label, count, atLeast}]} | null` (see "Impact counts"
+   below). Build each item with `impactItem(label, count, atLeast)`; read in a read-only unit of
+   your own (never a write unit), check that the viewing admin holds your own read key for those
+   counts (fail closed: null), and give counts only, never a name or an id.
 
 ## Hooked areas
 
@@ -404,6 +409,62 @@ bulk-approve-matching, reject, withdraw, `review-policy`, and the two policy wri
   `updatedBy` (the same names port, one read per page; null when unknown or unreadable), on the
   view and on both policy writes' answers.
 
+### Impact counts (request detail)
+
+Owner request of 19 Nov 2026: a reviewer sees how many records a change touches before deciding
+("1,240 products", "at least 10,000 offers"). No schema change: the counts are read when the detail
+is opened, never stored and never in the list or the export.
+
+- **Port**: optional `impact(context, request, signal)` on `SystemChangeReverter` and
+  `SystemChangeApplier` (platform/change-review), next to `check` and `describe`. `request` is the
+  request's id, subject and values; `context` is the viewing admin's, unchanged, so the Market is
+  the request's own (the detail found it in that Market). Answer `{items: [{label, count,
+  atLeast}]}` or null.
+- **Labels** (closed list `CHANGE_IMPACT_LABELS`): `products` (published), `drafts`, `offers`,
+  `offers-with-active-tag`, `subcategories`, `categories`, `filters`, `feature-sets`,
+  `variant-products`, `admins`, `sellers`. The panel words each one; a label it
+  does not know is not shown.
+- **When**: `GET requests/:id` only, for an open request whose values the caller sees (its author
+  or a reviewer of its area): counts never go further than the values do. A decided request, a
+  queue viewer without the area's review key and a kind without the hook answer `impact: null`.
+  The hook runs after the read unit, outside any unit; the access rule of the detail is unchanged
+  (`system-requests.request.view`), and each module checks its own read key for the counts.
+- **Bounds**: System requests waits at most `IMPACT_TIMEOUT_MS` (3 s). A throw, a timeout, a null
+  and a malformed answer show no impact and never fail the page (log
+  `system-requests.impact-unavailable` with the kind and the error name only). Items are checked
+  (known label, once each, a whole count from 0, a boolean `atLeast`), at most 8, and a count of
+  `MAX_IMPACT_COUNT` (10,000) or more is shown as "at least 10,000". Advisory only: no decision
+  reads it; the applier and the reverter check everything again.
+- **Abort** (Hassan L2 on PR #1146): the hook gets an `AbortSignal` that aborts when the 3 s wait
+  ends. A hook checks it before each read it would start (catalog and identity check it after
+  their permission check, before the read unit), so a slow count stops early instead of running
+  on after the page has answered.
+- **Cache** (Hassan L2, Sajad 1 on PR #1146): an in-process `ImpactCache` keeps each answer
+  (null included) for 30 s, keyed by Market, request id, request status and the request that
+  superseded it, and the viewing admin (each module counts behind the viewer's own keys, so the
+  answer is per viewer). At most 500 answers, the oldest dropped first; time from the injected
+  Clock. A timeout or a failure is not kept, so the next open asks again. Each API instance has its
+  own cache: reopening a request within 30 s can show counts up to 30 s old.
+- **Implemented by**:
+  - catalog (`application/catalogue-impact.ts`): category discard, merge and archive (the
+    subtree's published products, their Offers, the Offers with an active certification tag, the
+    subcategories; the product facts read of `platform-category.impact` with a 2 s bound, "at
+    least" when it runs out), products move (the published products that name the category
+    itself, `CategoryProductMoveStore.countProducts`), both behind `catalog.category-tree.view`;
+    attribute discard, archive, merge and merge of values (what `attribute-definition.impact`
+    counts: products, drafts, feature sets, categories, filters, and live variants for a variant
+    option), behind `catalog.attribute.restructure`.
+  - identity: `identity.platform-role` (an edit) and `identity.platform-role-deletion`: the admins
+    holding the role who can sign in (`countActiveHolders`, stopped at 10,001), only when the
+    viewer holds `identity.admin-account.view` (authorisation port, outside any unit; Hassan L1)
+    and the viewer's `ListPlatformRoles` read lists the role (key `identity.platform-role.view`).
+  - commission-payouts: `commission-payouts.commission-rate` and `.payout-terms`: one seller (the
+    subject; no read).
+  - Not yet: settings, wallet, shipping, certification and the review policy (no cheap count that
+    a reviewer could weigh; a module adds the hook when it has one).
+- **Panel**: an "Impact" card on the detail page, below the note, one line per item ("1 seller",
+  "at least 10,000 offers"), hidden when `impact` is null.
+
 ### Select all matching (rule 14)
 
 `POST requests/bulk-approve-matching` takes the list's filter as a closed JSON body of strings,
@@ -483,7 +544,8 @@ or the values.
 - The area hooks in the other owning modules (roles, payouts, delivery, catalogue, ...) are
   follow-ups, one per module. Creating and moving are reviewed after; deleting, merging and
   importing wait for approval (owner decision of 18 Nov 2026, "Actions that wait for approval").
-- An impact count per request, and email reminders (the reminder is an in-app admin notice).
+- Email reminders (the reminder is an in-app admin notice). The impact count per request is
+  built (see "Impact counts").
 - Excluding the author from their own request's reminder: notices are Market-wide and shown by
   permission (below), so an author who also holds the area's review key sees it too.
 - The admin panel pages (frontend package).

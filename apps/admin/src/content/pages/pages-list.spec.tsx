@@ -4,6 +4,8 @@ import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/en.json';
 
+const router = { push: vi.fn(), replace: vi.fn(), refresh: vi.fn() };
+vi.mock('next/navigation', () => ({ useRouter: () => router }));
 vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../../api/client.ts';
@@ -88,6 +90,15 @@ describe('pages list', () => {
     expect(call).toHaveBeenCalledWith('GET', 'storefront/admin/pages');
     expect(screen.queryByText('Navigation')).toBeNull();
     expect(screen.getAllByRole('row')).toHaveLength(5);
+  });
+
+  it('opens a saved page from its Actions menu', async () => {
+    mount();
+    await screen.findByRole('table');
+    const button = screen.getAllByRole('button', { name: /^Actions for / })[0]!;
+    fireEvent.click(button);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Open page' }));
+    expect(router.push).toHaveBeenCalledWith(expect.stringMatching(/^\/content\/pages\//));
   });
 
   it('links a saved page by id and an unchanged system page by key', async () => {

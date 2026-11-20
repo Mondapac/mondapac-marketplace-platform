@@ -9,4 +9,8 @@ export class RegistryMarketCalendar implements MarketCalendar {
   dayOf(market: MarketContext, at: Temporal.Instant): Temporal.PlainDate {
     return at.toZonedDateTimeISO(this.markets.get(market.marketId).timezone).toPlainDate();
   }
+
+  startOf(market: MarketContext, day: Temporal.PlainDate): Temporal.Instant {
+    return day.toZonedDateTime(this.markets.get(market.marketId).timezone).toInstant();
+  }
 }
