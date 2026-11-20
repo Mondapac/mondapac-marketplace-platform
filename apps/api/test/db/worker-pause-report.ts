@@ -10,6 +10,8 @@
  *
  * Quiet unless a pause reaches REPORT_MS; it never fails a test.
  */
+import { loadavg } from 'node:os';
+
 const TICK_MS = 100;
 const REPORT_MS = 1500;
 const ALWAYS_REPORT_MS = 2500;
@@ -32,7 +34,7 @@ const ticker = setInterval(() => {
     if (!busy || (inTest && pause >= ALWAYS_REPORT_MS)) {
       process.stderr.write(
         `[db-test worker pause] ${(pause / 1000).toFixed(1)} s ending ${new Date().toISOString()}, ` +
-          `CPU ${(share * 100).toFixed(0)}% of one core, heap ${Math.round(process.memoryUsage().heapUsed / 1e6)} MB, ` +
+          `CPU ${(share * 100).toFixed(0)}% of one core (whole process), runner load ${loadavg()[0]!.toFixed(1)}, heap ${Math.round(process.memoryUsage().heapUsed / 1e6)} MB, ` +
           `${state.testPath?.split('/').pop() ?? '?'} › ${state.currentTestName ?? '(between tests)'}\n`,
       );
     }
