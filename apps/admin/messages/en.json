@@ -7295,12 +7295,13 @@
           "zone": "Months in {zone}",
           "show-table": "Show as table",
           "show-chart": "Show as chart",
-          "caption": "New buyers and new followers by month",
+          "caption": "New buyers, new followers and new exclusive customers by month",
           "month": "Month",
           "new-buyers": "New buyers",
           "new-followers": "New followers",
+          "new-exclusive": "New exclusive customers",
           "legend": "Chart legend",
-          "chart-label": "Bar chart of new buyers and new followers by month, months in {zone}. Use Show as table for the figures."
+          "chart-label": "Bar chart of new buyers, new followers and new exclusive customers by month, months in {zone}. Use Show as table for the figures."
         }
       },
       "list": {
