@@ -361,6 +361,64 @@ describe.each(MARKETS)('tag suggestions list ($name)', ({ locales }) => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
+  it('creates tags from the ticked suggestions in one group, and says what was skipped', async () => {
+    call.mockResolvedValueOnce(ok(list(locales, ['One', 'Two'])));
+    mount();
+    await screen.findByText('One');
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select One' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select Two' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Approve ticked…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Create tags from 2 suggestions?' });
+    const confirm = within(dialog).getByRole<HTMLButtonElement>('button', {
+      name: 'Create 2 tags',
+    });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.change(within(dialog).getByLabelText(/Group/), { target: { value: 'occasion' } });
+    call.mockResolvedValueOnce(
+      ok({ action: 'approve', counts: { done: 1, skipped: 1, failed: 0 }, results: [] }),
+    );
+    call.mockResolvedValueOnce(ok(list(locales, ['Two'])));
+    fireEvent.click(confirm);
+    expect(await within(dialog).findByText('1 row decided, 1 skipped.')).toBeTruthy();
+    expect(posts()[0]).toEqual([
+      'POST',
+      'catalog/admin/topic-suggestions/bulk-decide',
+      {
+        action: 'approve',
+        items: [
+          { id: id(1), version: 3 },
+          { id: id(2), version: 4 },
+        ],
+        group: 'occasion',
+      },
+      'csrf-1',
+    ]);
+  });
+
+  it('rejects the ticked suggestions only with a reason, and refuses more than 50 at once', async () => {
+    call.mockResolvedValueOnce(ok(list(locales, ['One'])));
+    mount();
+    await screen.findByText('One');
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select One' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Reject ticked…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Reject 1 suggestion?' });
+    const confirm = within(dialog).getByRole<HTMLButtonElement>('button', {
+      name: 'Reject 1 suggestion',
+    });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Too broad' } });
+    call.mockResolvedValueOnce(fail(413, 'batch.too-large'));
+    fireEvent.click(confirm);
+    expect(await within(dialog).findByText('At most 50 rows can be decided at once.')).toBeTruthy();
+    expect(posts()[0]?.[2]).toEqual({
+      action: 'reject',
+      items: [{ id: id(1), version: 3 }],
+      reason: 'Too broad',
+    });
+  });
+
   it('keeps the dialog and its inputs open on a refusal the admin can fix', async () => {
     call.mockResolvedValueOnce(ok(list(locales)));
     mount();

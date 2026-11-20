@@ -1,8 +1,9 @@
 'use client';
 
-import { toast, type MenuItem, type SuperColumn } from '@mondapac/ui';
+import { TextAreaField, toast, type MenuItem, type SuperColumn } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useMemo, useState } from 'react';
+import { BulkDecideDialog } from '../shared/paged-list/bulk-decide-dialog.tsx';
 import { PagedSuperList } from '../shared/paged-list/paged-super-list.tsx';
 import type { ListPagingMode, PagedListConfig } from '../shared/paged-list/types.ts';
 import { When } from '../shared/when.tsx';
@@ -31,6 +32,11 @@ export function RequestsList({
 }) {
   const t = useTranslations('variants.requests');
   const [open, setOpen] = useState<{ item: RequestItem; decision: Decision } | null>(null);
+  const [bulk, setBulk] = useState<{
+    action: 'approve' | 'decline';
+    rows: readonly RequestItem[];
+  } | null>(null);
+  const [bulkReason, setBulkReason] = useState('');
   const [refresh, setRefresh] = useState(0);
 
   const rowActions = useCallback(
@@ -133,6 +139,14 @@ export function RequestsList({
       defaultColumns: ['product', 'seller', 'requested', 'existing'],
       columnDefs,
       rowActions,
+      bulk: (['approve', 'decline'] as const).map((action) => ({
+        id: action,
+        label: t(`bulk.${action}`),
+        run: (rows: readonly RequestItem[]) => {
+          setBulkReason('');
+          setBulk({ action, rows });
+        },
+      })),
       icon: 'columns',
     }),
     [t, columnDefs, rowActions],
@@ -146,17 +160,49 @@ export function RequestsList({
       marketId={marketId}
       refreshKey={refresh}
       dialogs={
-        <RequestDecisionDialog
-          item={open?.item ?? null}
-          decision={open?.decision ?? null}
-          csrfToken={csrfToken}
-          onClose={() => setOpen(null)}
-          onSettled={(why) => {
-            setOpen(null);
-            if (why !== undefined) toast.error(t(`error.${why}`));
-            setRefresh((value) => value + 1);
-          }}
-        />
+        <>
+          {bulk === null ? null : (
+            <BulkDecideDialog
+              endpoint={`${API_REQUESTS}/bulk-decide`}
+              action={bulk.action}
+              rows={bulk.rows.map(({ id, version }) => ({ id, version }))}
+              title={t(`bulk.dialog.${bulk.action}.title`, { count: bulk.rows.length })}
+              body={t(`bulk.dialog.${bulk.action}.body`, { count: bulk.rows.length })}
+              confirm={t(`bulk.dialog.${bulk.action}.confirm`, { count: bulk.rows.length })}
+              ready={bulk.action === 'approve' || bulkReason.trim() !== ''}
+              extraBody={bulk.action === 'decline' ? { reason: bulkReason.trim() } : {}}
+              csrfToken={csrfToken}
+              fields={
+                bulk.action === 'decline' ? (
+                  <TextAreaField
+                    name="reason"
+                    label={t('reason')}
+                    help={t('reason-help')}
+                    rows={3}
+                    value={bulkReason}
+                    maxLength={300}
+                    dir="auto"
+                    counter={`${bulkReason.length} / 300`}
+                    onChange={(event) => setBulkReason(event.target.value)}
+                  />
+                ) : null
+              }
+              onClose={() => setBulk(null)}
+              onFinished={() => setRefresh((value) => value + 1)}
+            />
+          )}
+          <RequestDecisionDialog
+            item={open?.item ?? null}
+            decision={open?.decision ?? null}
+            csrfToken={csrfToken}
+            onClose={() => setOpen(null)}
+            onSettled={(why) => {
+              setOpen(null);
+              if (why !== undefined) toast.error(t(`error.${why}`));
+              setRefresh((value) => value + 1);
+            }}
+          />
+        </>
       }
     />
   );

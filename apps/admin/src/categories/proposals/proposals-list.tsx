@@ -155,7 +155,7 @@ export function ProposalsList({
       sorts: [
         {
           id: 'created',
-          orders: [tl('sort.date.first'), tl('sort.date.second')],
+          orders: [tl('sort.date.second'), tl('sort.date.first')],
           defaultDirection: 'asc',
         },
       ],
