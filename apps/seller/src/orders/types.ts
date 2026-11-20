@@ -14,6 +14,10 @@ export interface Money {
   readonly currency: string;
 }
 
+/** Whether an amount is more than zero (a discount row is shown only then). */
+export const isPositive = (money: Money | undefined): money is Money =>
+  money !== undefined && /^[0-9]+$/u.test(money.amount) && BigInt(money.amount) > 0n;
+
 export type Fulfilment = 'to-ship' | 'shipped' | 'delivered';
 
 /** What the customer chose at checkout; the seller cannot change it. */
@@ -29,7 +33,10 @@ export interface OrderLineView {
   readonly variantLabel: string | null;
   readonly quantity: number;
   readonly unitPrice: Money;
+  /** The unit price times the quantity, before any discount. */
   readonly lineAmount: Money;
+  /** The discount on the line (promotions), frozen at placement; zero without one. */
+  readonly discount: Money;
   readonly taxInclusive: boolean;
 }
 
@@ -65,8 +72,13 @@ export interface SellerOrderView {
   readonly sellerOrderId: string;
   readonly orderId: string;
   readonly paidAt: string;
+  /** The items before discounts. */
   readonly subtotal: Money;
   readonly shipping: Money;
+  /** The sum of the lines' discounts; zero without any. */
+  readonly discount: Money;
+  /** The discount on the delivery fee; zero without one. */
+  readonly shippingDiscount: Money;
   readonly total: Money;
   readonly fulfilment: Fulfilment;
   readonly carrier: string | null;

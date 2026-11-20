@@ -66,10 +66,13 @@ export class AdminSecondFactorReset {
 
 export class AdminInvitationIssued {
   @ApiProperty({
-    enum: ['invitation.issued'],
-    description: 'The invitation exists; its mail is sent shortly, with a new token.',
+    enum: ['invitation.issued', 'invitation.proposed'],
+    description:
+      'issued (201): the invitation exists; its mail is sent shortly, with a new token. ' +
+      "proposed (202): a sensitive role's invitation that waits for another admin's approval " +
+      '(`request`); nothing is sent until then.',
   })
-  code!: 'invitation.issued';
+  code!: 'invitation.issued' | 'invitation.proposed';
 
   @ApiProperty({ format: 'uuid' })
   invitationId!: string;
@@ -206,10 +209,13 @@ export class AdminTeamInvitationRowView {
   invitedByAccountId!: string | null;
 
   @ApiProperty({
-    enum: ['pending', 'expired'],
-    description: 'expired: past the expiry of its last mail (it may still be re-sent).',
+    enum: ['pending', 'expired', 'awaiting-approval'],
+    description:
+      'expired: past the expiry of its last mail (it may still be re-sent). awaiting-approval: ' +
+      "an invitation to a sensitive role that waits for another admin's approval in Admin " +
+      'Inbox › System requests; nothing is sent, and it cannot be re-sent, until then.',
   })
-  status!: 'pending' | 'expired';
+  status!: 'pending' | 'expired' | 'awaiting-approval';
 
   @ApiProperty({ format: 'date-time' })
   createdAt!: string;

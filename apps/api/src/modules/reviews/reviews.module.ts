@@ -20,6 +20,8 @@ import { MarketRegistry } from '../../platform/market-config/market-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CATALOG_FACADE, CatalogModule } from '../catalog';
 import { IdentityModule } from '../identity';
+import { ListsModule, registerLists } from '../lists';
+import { REVIEWS_LISTS } from './application/saved-filter-list';
 import { ORDERING_FACADE, OrderingModule } from '../ordering';
 import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.repository';
 import { REVIEW_REPOSITORY } from './application/ports/review.repository';
@@ -239,7 +241,7 @@ function moderationListUseCaseProvider<U>(type: ModerationListUseCaseClass<U>): 
  * code, behind the admin's two-step proof. The seller's side (package 4) lists the shop's reviews, writes and edits one public reply and reports a review.
  */
 @Module({
-  imports: [OrderingModule, CatalogModule, IdentityModule],
+  imports: [OrderingModule, CatalogModule, IdentityModule, ListsModule],
   controllers: [
     BuyerReviewsController,
     PublicReviewsController,
@@ -254,6 +256,8 @@ function moderationListUseCaseProvider<U>(type: ModerationListUseCaseClass<U>): 
     registerAuditActions('reviews', REVIEWS_AUDIT_ACTIONS),
     registerPermissions('reviews', REVIEWS_PERMISSIONS),
     registerStepUpActions('reviews', REVIEWS_STEP_UP_ACTIONS),
+    // The seller Reviews list's saved filters, through the generic routes of `lists` (rule 14).
+    registerLists('reviews', REVIEWS_LISTS),
     ...reviewsProviders,
     ...[
       SubmitProductReview,

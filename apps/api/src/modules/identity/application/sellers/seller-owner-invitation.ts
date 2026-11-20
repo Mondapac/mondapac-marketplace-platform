@@ -99,7 +99,10 @@ export async function sellerInviterStillStands(
 export async function sellerInvitationResendVerdict(
   deps: ActingGrantDependencies,
   market: MarketContext,
-  invitation: Pick<InvitationState, 'state' | 'createdAt' | 'invitedByAccountId'> & {
+  invitation: Pick<
+    InvitationState,
+    'state' | 'createdAt' | 'invitedByAccountId' | 'heldForApproval'
+  > & {
     readonly hasAddress: boolean;
   },
   now: Temporal.Instant,

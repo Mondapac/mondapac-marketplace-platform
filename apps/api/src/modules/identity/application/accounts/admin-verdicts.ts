@@ -136,7 +136,10 @@ export async function adminInvitationResendVerdict(
   deps: ResendVerdictDependencies,
   market: MarketContext,
   actor: { readonly self: GrantSubject; readonly view: GrantingActor },
-  invitation: Pick<InvitationState, 'invitedByAccountId' | 'state' | 'roleId' | 'createdAt'>,
+  invitation: Pick<
+    InvitationState,
+    'invitedByAccountId' | 'state' | 'roleId' | 'createdAt' | 'heldForApproval'
+  >,
   now: Temporal.Instant,
   lifetimeMinutes: number,
 ): Promise<Result<Role, ResendVerdictRefusal>> {

@@ -45,14 +45,17 @@ export function exportQuery(input: {
   /** The IANA zone the file's times are written in; null when the route takes no `zone` (Orders). */
   readonly zone: string | null;
   readonly selection: ExportSelection;
+  /** A list whose export has no `zone` key (its cells hold no times of day) leaves it out. */
+  readonly omitZone?: boolean;
   readonly keepOrder?: boolean;
 }): string {
   const params = new URLSearchParams(input.listQuery);
   for (const key of PAGING_KEYS) params.delete(key);
   if (input.keepOrder !== true) for (const key of ORDER_KEYS) params.delete(key);
   params.set('format', input.format);
-  params.set('columns', input.columns.join(','));
-  if (input.zone !== null) params.set('zone', input.zone);
+  // No optional column shown: the key is left out and the file has its fixed columns.
+  if (input.columns.length > 0) params.set('columns', input.columns.join(','));
+  if (input.omitZone !== true && input.zone !== null) params.set('zone', input.zone);
   if (!input.selection.allMatching) {
     // An empty `ids` would be refused by the relay, and dropping it would widen the file to the
     // whole filter: with nothing ticked and "Select all matching" off there is nothing to export.
@@ -198,6 +201,7 @@ export function useSalesExport(input: {
   readonly columns: readonly string[];
   readonly zone: string | null;
   readonly selection: ExportSelection;
+  readonly omitZone?: boolean;
   /** A list whose export has its own rules for the query (ids alone, no zone): it builds the string. */
   readonly buildQuery?: (format: ExportFormat) => string;
   /** The file keeps the list's sort (`sort` and `direction` of `listQuery`). */
@@ -238,6 +242,7 @@ export function useSalesExport(input: {
           columns: input.columns,
           zone: input.zone,
           selection,
+          ...(input.omitZone === true ? { omitZone: true } : {}),
           ...(input.keepOrder === true ? { keepOrder: true } : {}),
         }),
       format,

@@ -2,7 +2,12 @@ import type { Id } from '@mondapac/shared-kernel';
 import type { SealedPermissionCatalogue } from '../../../../platform/authz';
 import type { GrantingActor } from '../../domain/grant-policy';
 import type { Role, RoleKind, RoleScope } from '../../domain/role';
-import { roleGrantVerdict, type GrantSubject, roleIsInActorsReach } from './granting';
+import {
+  roleGrantVerdict,
+  roleIsInActorsReach,
+  roleIsSensitive,
+  type GrantSubject,
+} from './granting';
 import type { RoleGrantDependencies } from './granting';
 import {
   conferredKeysOf,
@@ -42,6 +47,12 @@ export interface RoleEntry {
    * invite commands). It says nothing about whether the actor holds those permissions.
    */
   readonly grantable: boolean;
+  /**
+   * Whether giving the role needs the system role of the scope: it is that role or confers a
+   * protected key (`roleIsSensitive`). In platform scope, where area people is reviewed, an
+   * invitation to it waits for another admin's approval (owner decision of 18 Nov 2026).
+   */
+  readonly sensitive: boolean;
   /** The aggregate version: changes with every edit. */
   readonly version: number;
   /** The editor's actions on this role; `access.denied` where the actor lacks the key. */
@@ -96,6 +107,7 @@ export function buildRoleCatalogue(input: RoleCatalogueInput): RoleCatalogue {
         permissionCount: permissionKeys.length,
         permissionKeys,
         grantable: roleGrantVerdict(actor, role, deps).ok,
+        sensitive: roleIsSensitive(role, deps),
         version: role.state.version,
         actions: {
           edit: !mayEdit ? denied('access.denied') : hintOf(roleEditVerdict(actor, role, deps)),

@@ -151,7 +151,7 @@ export async function staffInvitationResendVerdict(
   actor: { readonly self: GrantSubject; readonly view: GrantingActor },
   invitation: Pick<
     InvitationState,
-    'invitedByAccountId' | 'state' | 'roleId' | 'createdAt' | 'sellerId'
+    'invitedByAccountId' | 'state' | 'roleId' | 'createdAt' | 'sellerId' | 'heldForApproval'
   >,
   now: Temporal.Instant,
   lifetimeMinutes: number,

@@ -483,10 +483,17 @@ export function trendMonths(
   return months;
 }
 
+/** One month of the admin's trend: new buyers and followers, and new exclusive customers. */
+export interface SummaryMonth extends MonthlyCount {
+  /** Customers who joined through the seller's invite link that month and are still active. */
+  readonly newExclusive: number;
+}
+
 export interface SellerCustomerSummary {
+  /** `referred` is the seller's exclusive customers (active attribution), as the seller's view. */
   readonly counts: Readonly<Record<SellerCustomerTab, number>>;
   readonly zone: string;
-  readonly months: readonly MonthlyCount[];
+  readonly months: readonly SummaryMonth[];
 }
 
 export async function sellerCustomerSummary(
@@ -499,11 +506,16 @@ export async function sellerCustomerSummary(
   const read = await deps.unitOfWork.run(
     context.market,
     async () => {
-      const [counts, monthly] = await Promise.all([
+      const [counts, monthly, exclusive] = await Promise.all([
         deps.sellerCustomers.tabCounts(context.market, sellerId),
         deps.sellerCustomers.monthly(context.market, sellerId, months),
+        deps.attributions.activeCountsOfSellerBetween(context.market, sellerId, months),
       ]);
-      return ok({ counts, zone, months: monthly });
+      return ok({
+        counts,
+        zone,
+        months: monthly.map((month, index) => ({ ...month, newExclusive: exclusive[index] ?? 0 })),
+      });
     },
     { readOnly: true },
   );
