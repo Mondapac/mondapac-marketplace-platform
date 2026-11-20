@@ -339,6 +339,12 @@ export const ICON_PATHS = {
       <path d="M12 10v4M12 17v.5" />
     </>
   ),
+  trash: (
+    <>
+      <path d="M4 7h16M10 7V4.5h4V7" />
+      <path d="M6 7l1 13h10l1-13M10 11v6M14 11v6" />
+    </>
+  ),
   pen: (
     <>
       <path d="M4 20v-3.5L15.5 5a2.1 2.1 0 0 1 3 3L7 19.5z" />
