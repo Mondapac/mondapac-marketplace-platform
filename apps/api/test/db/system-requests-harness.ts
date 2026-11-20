@@ -63,6 +63,7 @@ import { MarketRegistry } from '../../src/platform/market-config/market-registry
 import { loadServiceAreas } from '../../src/platform/market-config/service-area-config';
 import { PrismaService } from '../../src/platform/persistence/prisma.service';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
+import { createSystemChangeRegistrar } from '../../src/platform/change-review/change-review';
 import { ListRegistry } from '../support/shipping-fakes';
 import {
   testAppConfig,
@@ -71,6 +72,9 @@ import {
   TEST_SERVICE_AREA_CONFIG_DIRS,
 } from '../support/test-config';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+
+/** The harness's own registry registers shipping's real hooks under a test registrar. */
+const SHIPPING_REGISTRAR = createSystemChangeRegistrar('shipping');
 
 // What the System requests decision specs share (system-requests-concurrency and
 // system-requests-decisions): the application graph on the run's database, the real request and
@@ -209,9 +213,9 @@ export async function startHarness(
     },
   };
   const registry = new ReverterRegistry();
-  registry.register('shipping', FLEET_MODEL_SUBJECT_KIND, 'delivery', reverter);
+  registry.register(SHIPPING_REGISTRAR, FLEET_MODEL_SUBJECT_KIND, 'delivery', reverter);
   registry.registerApplier(
-    'shipping',
+    SHIPPING_REGISTRAR,
     FLEET_MODEL_CREATE_SUBJECT_KIND,
     'delivery',
     SHIPPING_APPLIER_PERMISSIONS.get(FLEET_MODEL_CREATE_SUBJECT_KIND)!,
