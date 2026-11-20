@@ -478,14 +478,18 @@ export function PagedSuperList<Row>({
         })),
         manage: null,
       }}
-      search={{
-        label: t('search.label'),
-        placeholder: t('search.placeholder'),
-        value: draft,
-        maxLength: config.search.max,
-        onChange: setDraft,
-        onSubmit: (value) => change({ q: value }),
-      }}
+      {...(config.search === undefined
+        ? {}
+        : {
+            search: {
+              label: t('search.label'),
+              placeholder: t('search.placeholder'),
+              value: draft,
+              maxLength: config.search.max,
+              onChange: setDraft,
+              onSubmit: (value: string) => change({ q: value }),
+            },
+          })}
       {...(fields.length === 0
         ? {}
         : {

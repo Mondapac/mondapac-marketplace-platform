@@ -71,7 +71,8 @@ export interface PagedListConfig<Row> {
   readonly tabParam?: string;
   /** Query parameters of a tab when one id is not enough (`status=draft`); sent for every tab. */
   readonly tabParams?: (tab: string) => Readonly<Record<string, string>>;
-  readonly search: { readonly max: number };
+  /** Absent when the route has no text search (the review queue). */
+  readonly search?: { readonly max: number };
   readonly sorts: readonly PagedSort[];
   readonly defaultSort: string;
   /** Columns always shown (the first is the card's title) and the ones an admin can hide. */

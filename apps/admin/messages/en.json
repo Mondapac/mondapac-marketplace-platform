@@ -4033,7 +4033,8 @@
           "for": "Actions for {name}",
           "open-order": "Open order"
         }
-      }
+      },
+      "col": {}
     }
   },
   "catalog": {
@@ -4088,6 +4089,18 @@
         "unavailable": "The decision could not be sent. Try again later.",
         "csrf": "Your session could not be checked. Reload the page and try again.",
         "unknown": "Something went wrong. Try again."
+      },
+      "dialog": {
+        "approve": {
+          "title": "Approve {name}?",
+          "body": "{name} goes on sale now. The seller is told.",
+          "confirm": "Approve"
+        },
+        "request-changes": {
+          "title": "Send {name} back?",
+          "body": "{name} goes back to the seller with the reason you choose. It stays off sale until they send it again.",
+          "confirm": "Send back"
+        }
       }
     },
     "products": {
@@ -5345,6 +5358,178 @@
         "offer": "No offers are waiting for review.",
         "page": "Nothing on this page. More of the queue is on the next page.",
         "filtered": "Nothing matches these filters."
+      },
+      "list": {
+        "title": "Product revisions",
+        "intro": "Product changes that sellers sent for review, oldest first. Open one to check it and decide.",
+        "tabs": "Review queue views",
+        "tab": {
+          "revision": "Product revisions"
+        },
+        "filter": {
+          "title": "Filter revisions"
+        },
+        "sort": {
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "submitted": "Waiting since"
+          },
+          "waiting": {
+            "first": "Oldest first",
+            "second": "Newest first"
+          }
+        },
+        "sorted": "Sorted by {field}, {order}",
+        "col": {
+          "product": "Product",
+          "change": "Change",
+          "seller": "Seller",
+          "reasons": "Reasons",
+          "checks": "Checks",
+          "waiting": "Waiting since (UTC)"
+        },
+        "chip-search": "Search: {text}",
+        "loading": "Loading revisions",
+        "match": "{count, plural, one {# revision matches} other {# revisions match}}",
+        "range": "{from}–{to} of {total}",
+        "too-many": "More than {limit} revisions match. Add a filter to see the rest.",
+        "no-access": "Your role cannot see the review queue.",
+        "error": {
+          "unavailable": "The revisions could not be loaded. Check your connection and try again.",
+          "refused": "The filters cannot be used. Change them and try again."
+        },
+        "empty": {
+          "title": "Nothing is waiting",
+          "body": "No revisions are waiting for review.",
+          "no-match": "No revisions match",
+          "no-match-help": "Change the filters, or clear them."
+        },
+        "select": {
+          "page": "Select all revisions on this page",
+          "page-short": "Select all on this page",
+          "row": "Select {name}"
+        },
+        "selection": {
+          "selected": "{count, plural, one {# revision selected} other {# revisions selected}}",
+          "all": "{count, plural, one {The # matching revision is selected} other {All # matching revisions are selected}}",
+          "all-open": "All matching revisions are selected",
+          "select-all": "Select all {count, number} matching",
+          "select-all-open": "Select all matching",
+          "clear": "Clear selection"
+        },
+        "actions": {
+          "header": "Actions",
+          "for": "Actions for {name}",
+          "open": "Open review…"
+        },
+        "bulk": {
+          "button": "Bulk action",
+          "selected": "{count, plural, one {# revision selected} other {# revisions selected}}",
+          "all-open": "All matching revisions selected",
+          "export": "Export…"
+        },
+        "export": {
+          "title": "Export product revisions",
+          "body": "The file holds every product revision the current view and filters match, oldest first.",
+          "legend": "File format",
+          "csv": "CSV",
+          "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+          "xlsx": "XLSX",
+          "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+          "confirm": "Export",
+          "cancel": "Cancel",
+          "pending": "Preparing the file",
+          "done": "File downloaded",
+          "too-large": "More than {max} product revisions match. Narrow the filter and export again.",
+          "unavailable": "The file could not be made. Try again in a moment."
+        }
+      },
+      "offers": {
+        "title": "Offers",
+        "intro": "Offers waiting for their first publication, oldest first.",
+        "tabs": "Review queue views",
+        "tab": {
+          "offer": "Offers"
+        },
+        "filter": {
+          "title": "Filter offers"
+        },
+        "sort": {
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "submitted": "Waiting since"
+          },
+          "waiting": {
+            "first": "Oldest first",
+            "second": "Newest first"
+          }
+        },
+        "sorted": "Sorted by {field}, {order}",
+        "col": {
+          "offer": "Offer",
+          "condition": "Condition",
+          "handling": "Handling",
+          "seller": "Seller",
+          "waiting": "Waiting since (UTC)"
+        },
+        "chip-search": "Search: {text}",
+        "loading": "Loading offers",
+        "match": "{count, plural, one {# offer matches} other {# offers match}}",
+        "range": "{from}–{to} of {total}",
+        "too-many": "More than {limit} offers match. Add a filter to see the rest.",
+        "no-access": "Your role cannot see the review queue.",
+        "error": {
+          "unavailable": "The offers could not be loaded. Check your connection and try again.",
+          "refused": "The filters cannot be used. Change them and try again."
+        },
+        "empty": {
+          "title": "Nothing is waiting",
+          "body": "No offers are waiting for review.",
+          "no-match": "No offers match",
+          "no-match-help": "Change the filters, or clear them."
+        },
+        "select": {
+          "page": "Select all offers on this page",
+          "page-short": "Select all on this page",
+          "row": "Select {name}"
+        },
+        "selection": {
+          "selected": "{count, plural, one {# offer selected} other {# offers selected}}",
+          "all": "{count, plural, one {The # matching offer is selected} other {All # matching offers are selected}}",
+          "all-open": "All matching offers are selected",
+          "select-all": "Select all {count, number} matching",
+          "select-all-open": "Select all matching",
+          "clear": "Clear selection"
+        },
+        "actions": {
+          "header": "Actions",
+          "for": "Actions for {name}",
+          "approve": "Approve…",
+          "request-changes": "Send back…"
+        },
+        "bulk": {
+          "button": "Bulk action",
+          "selected": "{count, plural, one {# offer selected} other {# offers selected}}",
+          "all-open": "All matching offers selected",
+          "export": "Export…"
+        },
+        "export": {
+          "title": "Export offers",
+          "body": "The file holds every offer the current view and filters match, oldest first.",
+          "legend": "File format",
+          "csv": "CSV",
+          "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+          "xlsx": "XLSX",
+          "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+          "confirm": "Export",
+          "cancel": "Cancel",
+          "pending": "Preparing the file",
+          "done": "File downloaded",
+          "too-large": "More than {max} offers match. Narrow the filter and export again.",
+          "unavailable": "The file could not be made. Try again in a moment."
+        }
       }
     },
     "version": {
@@ -9750,7 +9935,8 @@
             },
             "step-up-note": "You will be asked for your two-step code next."
           }
-        }
+        },
+        "col": {}
       },
       "load-failed": "The payout terms and holds could not be loaded."
     },
