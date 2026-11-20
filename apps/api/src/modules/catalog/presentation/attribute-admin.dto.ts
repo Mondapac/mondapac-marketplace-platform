@@ -606,6 +606,21 @@ export class MissingDetailsListBody {
     description: 'Feature sets that could not be read; their products are not judged.',
   })
   unreadableFeatureSets!: string[];
+  @ApiProperty({ description: '1-based page number (1 on a keyset read).' }) page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ enum: ['pages', 'prev-next'] }) paging!: string;
+  @ApiProperty() hasNext!: boolean;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description:
+      'The products with a gap over all pages; null in `prev-next` mode and on a keyset read.',
+  })
+  total!: number | null;
+  @ApiProperty({
+    description: 'False when a page read hit the 10,000-product scan cap: `total` is then partial.',
+  })
+  complete!: boolean;
 }
 
 export class MissingDetailsEmailRequest {

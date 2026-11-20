@@ -42,6 +42,7 @@ const EXPECTED: Readonly<Record<Code, number>> = {
   'account.exists': 409,
   'invitation.already-pending': 409,
   'invitation.rejected': 409,
+  'system-requests.already-pending': 409,
   'second-factor.none': 409,
   'request.throttled': 429,
   'access.unavailable': 503,

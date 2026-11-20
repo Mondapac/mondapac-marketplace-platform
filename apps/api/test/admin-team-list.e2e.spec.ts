@@ -106,6 +106,7 @@ describe('admin team list over HTTP (integration, slice 8c)', () => {
       invitedByAccountId: ROOT,
       tokenHash: TOKEN_HASH,
       expiresAt: START.add({ hours: 1 }),
+      heldForApproval: false,
       state: 'pending',
       decidedAt: null,
       acceptedAccountId: null,

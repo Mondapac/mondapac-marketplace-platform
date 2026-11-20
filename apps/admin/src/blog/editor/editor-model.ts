@@ -1,6 +1,7 @@
 // The editor's working copy of a version and its way to and from the API body. Blocks the editor
-// has no control for (image, product cards, seller card) travel as `kept` blocks: shown, movable
-// and removable, never altered, so saving the text never loses them.
+// has no control for (product cards, seller card) travel as `kept` blocks: shown, movable and
+// removable, never altered, so saving the text never loses them. An image block is edited: the
+// picture is chosen in the media library and its alt text and caption are typed.
 
 import { eventContentOf, eventFormOf, type EventForm } from './event-model.ts';
 import type { ApiBlock, ApiContent, ApiLink } from './types.ts';
@@ -16,6 +17,14 @@ export type EditBlock =
     }
   | { readonly key: string; readonly type: 'quote'; readonly text: string; readonly by: string }
   | { readonly key: string; readonly type: 'tip'; readonly title: string; readonly text: string }
+  | {
+      readonly key: string;
+      readonly type: 'image';
+      /** Empty while a new block has no picture yet; such a block is not saved. */
+      readonly imageId: string;
+      readonly alt: string;
+      readonly caption: string;
+    }
   | { readonly key: string; readonly type: 'kept'; readonly block: ApiBlock };
 
 export type TextBlockType = 'paragraph' | 'heading' | 'list' | 'quote' | 'tip';
@@ -67,9 +76,22 @@ export function blockFromApi(block: ApiBlock): EditBlock {
       return { key, type: 'quote', text: block.text, by: block.attribution ?? '' };
     case 'tip':
       return { key, type: 'tip', title: block.title ?? '', text: block.text };
+    case 'image':
+      return {
+        key,
+        type: 'image',
+        imageId: block.imageId,
+        alt: block.alt,
+        caption: block.caption ?? '',
+      };
     default:
       return { key, type: 'kept', block };
   }
+}
+
+/** A new image block with no picture chosen yet. */
+export function emptyImageBlock(): EditBlock {
+  return { key: newKey(), type: 'image', imageId: '', alt: '', caption: '' };
 }
 
 export function emptyBlock(type: TextBlockType): EditBlock {
@@ -126,6 +148,13 @@ function blockBody(block: EditBlock): ApiBlock {
         title: block.title.trim() === '' ? null : block.title.trim(),
         text: block.text.trim(),
       };
+    case 'image':
+      return {
+        type: 'image',
+        imageId: block.imageId,
+        alt: block.alt.trim(),
+        caption: block.caption.trim() === '' ? null : block.caption.trim(),
+      };
     case 'kept':
       return block.block;
   }
@@ -138,10 +167,27 @@ const isBlank = (block: EditBlock): boolean => {
       return itemsOf(block.text).length === 0;
     case 'kept':
       return false;
+    case 'image':
+      // Only the picture counts: a chosen picture is saved even with its alt text still empty.
+      return block.imageId === '';
     default:
       return block.text.trim() === '';
   }
 };
+
+/**
+ * The position block `index` has in the saved body, which leaves blank blocks out: the API names a
+ * refused block by that position (`content.body[2].imageId`). Null when the block is not saved.
+ */
+export function savedIndexOf(blocks: readonly EditBlock[], index: number): number | null {
+  const block = blocks[index];
+  if (block === undefined || isBlank(block)) return null;
+  return blocks.slice(0, index).filter((entry) => !isBlank(entry)).length;
+}
+
+/** Whether a cover is chosen but has no alt text yet (the editor asks for it). */
+export const coverNeedsAlt = (draft: Pick<Draft, 'coverImageId' | 'coverAlt'>): boolean =>
+  draft.coverImageId.trim() !== '' && draft.coverAlt.trim() === '';
 
 const orNull = (value: string): string | null => (value.trim() === '' ? null : value.trim());
 

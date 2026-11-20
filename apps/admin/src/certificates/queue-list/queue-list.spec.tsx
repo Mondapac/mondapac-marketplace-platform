@@ -215,6 +215,26 @@ describe('Certificate queue: page numbers', () => {
   });
 });
 
+describe('Certificate queue: second fixture ZZ', () => {
+  it('follows the Market paging mode and the list zone', async () => {
+    serve(() => noTotal([row()], true));
+    mount({ marketId: 'ZZ', zone: 'Pacific/Auckland', paging: 'prev-next' });
+    await screen.findByText(STORE);
+    expect(paramsOf(urls()[0]!)).toMatchObject({ paging: 'prev-next', page: '1' });
+    expect(screen.getByText('Times are shown in Pacific/Auckland.')).toBeTruthy();
+    expect(screen.queryByText(/ of /)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Next' })).toHaveProperty('disabled', false);
+  });
+
+  it('shows page numbers with a total under page-number paging', async () => {
+    serve(() => pageOf([row()], { total: 60 }));
+    mount({ marketId: 'ZZ', zone: 'Pacific/Auckland' });
+    await screen.findByText(STORE);
+    expect(screen.getByText('1-1 of 60')).toBeTruthy();
+    expect(screen.getByText('Times are shown in Pacific/Auckland.')).toBeTruthy();
+  });
+});
+
 describe('Certificate queue: Previous and next', () => {
   it('sends paging=prev-next, keeps Sort, shows no total and walks the pages', async () => {
     serve((url) =>
@@ -649,12 +669,25 @@ describe('Certificate queue: selection and Export', () => {
     expect(names).toEqual(['certificate-queue-2026-11-17.xlsx']);
   });
 
-  it('says so when more than 500 are waiting and the whole list cannot be exported', async () => {
-    serve(() => pageOf([row()], { total: 600, truncated: true }));
+  it('does not offer "Select all matching" when more than 500 are waiting: ticked rows still export by id', async () => {
+    serve(() => pageOf([row()], { total: 501, truncated: true }));
     mount();
     await screen.findAllByText(STORE);
     fireEvent.click(screen.getByRole('checkbox', { name: 'Select all submissions on this page' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Select all 600 matching' }));
+    expect(screen.getByText('1 submission selected')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /^Select all .* matching$/ })).toBeNull();
+    answerWith(() => new Response('\uFEFFType\r\nrow 1\r\n', { status: 200, headers: CSV }));
+    confirm(await openExport());
+    expect(await screen.findByText('Exported 1 row.')).toBeTruthy();
+    expect(sent().params['ids']).toBe(CERT);
+    expect(sent().params['view']).toBeUndefined();
+  });
+
+  it('says so when the API refuses an export with 413 batch.too-large', async () => {
+    serve(() => pageOf([row()], { total: 500 }));
+    mount();
+    await screen.findAllByText(STORE);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all submissions on this page' }));
     answerWith(
       () =>
         new Response('{"statusCode":413,"code":"batch.too-large","details":{"max":500}}', {
@@ -666,6 +699,21 @@ describe('Certificate queue: selection and Export', () => {
       await screen.findByText('Too many rows to export. Narrow the filter or select fewer rows.'),
     ).toBeTruthy();
     expect(names).toEqual([]);
+  });
+
+  it('exports the shown columns of the second fixture ZZ, read from its own preference key', async () => {
+    window.localStorage.setItem(
+      'mp:admin:ZZ:acc-1:certificate-queue-columns',
+      JSON.stringify(['certificate-id']),
+    );
+    serve(() => pageOf([row()]));
+    mount({ marketId: 'ZZ', zone: 'Pacific/Auckland' });
+    await screen.findAllByText(STORE);
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all submissions on this page' }));
+    answerWith(() => new Response('\uFEFFType\r\nrow 1\r\n', { status: 200, headers: CSV }));
+    confirm(await openExport());
+    expect(await screen.findByText('Exported 1 row.')).toBeTruthy();
+    expect(sent().params).toEqual({ format: 'csv', columns: 'certificate-id', ids: CERT });
   });
 
   it('does not keep the selection when the view changes', async () => {
@@ -718,6 +766,7 @@ describe('Certificate queue: states', () => {
     serve(() => 'denied');
     mount();
     expect(await screen.findByText("You don't have access to certificates.")).toBeTruthy();
+    expect(screen.getByText(/needs the certificate view permission/)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Back to dashboard' }).getAttribute('href')).toBe('/');
   });
 

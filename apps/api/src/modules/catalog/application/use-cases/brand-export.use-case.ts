@@ -17,12 +17,13 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { CATALOG_BRAND_READ } from '../../contracts/permissions';
 import type { BrandState, BrandStatus } from '../../domain/brand';
 import {
+  BRAND_FILTER_KEYS,
   BRAND_PAGE_DEFAULT,
   BRAND_PAGE_MAX,
   brandIdOf,
+  brandListFilterOf,
   closedInput,
   invalid,
-  statusFilterOf,
   type ValidationFailure,
 } from '../brands/brand-views';
 import { readCatalogListInput } from '../lists/catalog-list-input';
@@ -42,7 +43,8 @@ export type BrandExportColumn = (typeof BRAND_EXPORT_COLUMNS)[number];
 const CHUNK = 500;
 
 const OWN_KEYS = ['format', 'columns', 'ids'] as const;
-const SELECTOR_KEYS = ['status', 'q', 'search', 'sort', 'direction'] as const;
+const READ_KEYS = ['q', 'search', 'sort', 'direction'] as const;
+const SELECTOR_KEYS = [...BRAND_FILTER_KEYS, ...READ_KEYS] as const;
 
 export const BRAND_EXPORT_HEADERS: Readonly<
   Record<BrandExportColumn | 'name' | 'slug' | 'status' | 'origin' | 'updated', string>
@@ -94,7 +96,8 @@ export interface BrandExportDependencies {
  * last change are always there; `columns` adds `id`, `created`, `summary` in the order given. The
  * brands are the selected `ids` (at most {@link BRAND_EXPORT_MAX_IDS}, in the order given; an id
  * that is no brand refuses the whole request as `brand.not-found`) or every brand the list's
- * filter matches (`status`, `q` or its older name `search`, `sort`, `direction`; the same reading
+ * filter matches (`status`, `originCountry`, `createdFrom`, `createdTo`, `q` or its older name
+ * `search`, `sort`, `direction`; the same reading
  * as `brand.list`), at most {@link BRAND_EXPORT_MAX_ROWS} (more is `batch.too-large` with the
  * total). Rule: the key `catalog.brand.read` and the admin population, as the list. One read-only
  * unit before the first byte; CSV text cells a spreadsheet would run as a formula get a leading
@@ -143,13 +146,14 @@ export class BrandExport extends UseCase<BrandExportInput, BrandExportOutput, Br
     const columns = parseExportColumns(body.value['columns'], BRAND_EXPORT_COLUMNS);
     if (!columns.ok) return columns;
     // The filter is read even when ids pick the brands, so a malformed one is never ignored.
-    const status = statusFilterOf(body.value['status']);
-    if (!status.ok) return status;
+    const filtered = brandListFilterOf(body.value);
+    if (!filtered.ok) return filtered;
     const read = readCatalogListInput(
       Object.fromEntries(
-        SELECTOR_KEYS.filter((key) => key !== 'status' && body.value[key] !== undefined).map(
-          (key) => [key, body.value[key]],
-        ),
+        READ_KEYS.filter((key) => body.value[key] !== undefined).map((key) => [
+          key,
+          body.value[key],
+        ]),
       ),
       {
         sorts: BRAND_SORTS,
@@ -179,7 +183,7 @@ export class BrandExport extends UseCase<BrandExportInput, BrandExportOutput, Br
 
     const { deps } = this;
     const { market } = context;
-    const filter = { status: status.value, search: q };
+    const filter = { ...filtered.value, search: q };
     const unit = await deps.unitOfWork.run(
       market,
       async (): Promise<Result<{ rows: readonly BrandState[]; total: number }, never>> => {

@@ -19,6 +19,14 @@ vi.mock('next-intl/server', () => ({
       } as never),
     ),
 }));
+vi.mock('next/headers', () => ({
+  headers: () => Promise.resolve(new Headers({ host: 'admin.localhost' })),
+}));
+vi.mock('../../../../src/server/server-fetch.ts', () => ({
+  serverGet: () => Promise.resolve({ kind: 'ok', body: { listPaging: 'pages' } }),
+}));
+vi.mock('../../../../src/server/bff.ts', () => ({ panelHostFor: () => ({ marketId: 'AU' }) }));
+vi.mock('../../../../src/server/config.ts', () => ({ panelConfig: () => ({}) }));
 vi.mock('../../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
 vi.mock('../../../../src/server/admin-shell.tsx', () => ({
   AdminShell: ({
@@ -33,18 +41,28 @@ vi.mock('../../../../src/brands/brands-view.tsx', () => ({
   BrandsView: ({
     canEdit,
     csrfToken,
+    paging,
+    marketId,
   }: {
     readonly canEdit: boolean;
     readonly csrfToken: string;
+    readonly paging: string;
+    readonly marketId: string;
   }) => (
-    <p data-testid="view" data-can-edit={String(canEdit)} data-csrf={csrfToken}>
+    <p
+      data-testid="view"
+      data-can-edit={String(canEdit)}
+      data-csrf={csrfToken}
+      data-paging={paging}
+      data-market={marketId}
+    >
       view
     </p>
   ),
 }));
 
 const session = (permissionKeys: string[]): AdminSession =>
-  ({ permissionKeys, csrfToken: 'csrf-9' }) as unknown as AdminSession;
+  ({ permissionKeys, csrfToken: 'csrf-9', accountId: 'acc-1' }) as unknown as AdminSession;
 const open = async () => render(await BrandsPage());
 
 describe('admin brands page', () => {
@@ -57,6 +75,8 @@ describe('admin brands page', () => {
     expect(screen.getByRole('heading', { name: 'Brands' })).toBeTruthy();
     expect(screen.getByTestId('view').getAttribute('data-can-edit')).toBe('false');
     expect(screen.getByTestId('view').getAttribute('data-csrf')).toBe('csrf-9');
+    expect(screen.getByTestId('view').getAttribute('data-paging')).toBe('pages');
+    expect(screen.getByTestId('view').getAttribute('data-market')).toBe('AU');
   });
 
   it('turns the writes on for catalog.brand.edit', async () => {

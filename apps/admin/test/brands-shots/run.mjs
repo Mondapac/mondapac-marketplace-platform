@@ -14,7 +14,7 @@ execFileSync(
   [join(vitePath, 'bin/vite.js'), 'build', '--config', join(here, 'vite.config.mjs')],
   { stdio: 'inherit', env: process.env },
 );
-const dist = process.env.SHOTS_DIST ?? join(here, 'dist');
+const dist = join(here, 'dist');
 const types = { '.html': 'text/html', '.js': 'text/javascript', '.css': 'text/css' };
 const server = createServer((req, res) => {
   const p = new URL(req.url, 'http://x').pathname;
@@ -28,32 +28,28 @@ const server = createServer((req, res) => {
     .end(readFileSync(f));
 }).listen(0);
 const port = server.address().port;
-const requireFrom = createRequire(import.meta.url);
-const { chromium } = process.env.PLAYWRIGHT_PATH
-  ? requireFrom(process.env.PLAYWRIGHT_PATH)
-  : requireFrom('playwright');
+const { chromium } = createRequire(import.meta.url)('playwright');
 const browser = await chromium.launch();
-// name, scenario
-const views = [
-  ['admin-health-queue-list', 'list'],
-  ['admin-health-queue-truncated', 'truncated'],
-  ['admin-health-queue-empty', 'empty'],
-];
+const views = [['brands', '', 'text:Al Noor Foods']];
 for (const scheme of ['light', 'dark']) {
   for (const width of [1280, 768, 375]) {
-    for (const [name, scenario] of views) {
+    for (const [name, query, region] of views) {
       const ctx = await browser.newContext({
         viewport: { width, height: 900 },
         colorScheme: scheme,
         deviceScaleFactor: 2,
       });
       const page = await ctx.newPage();
-      await page.goto(`http://localhost:${port}/?s=${scenario}`);
+      await page.goto(`http://localhost:${port}/${query}`);
       await page.evaluate(
         (s) => globalThis.document.documentElement.setAttribute('data-theme', s),
         scheme,
       );
-      await page.getByRole('heading', { level: 1 }).waitFor();
+      if (region?.startsWith('list:'))
+        await page.getByRole('list', { name: region.slice(5) }).waitFor();
+      else if (region?.startsWith('text:')) await page.getByText(region.slice(5)).waitFor();
+      else if (region) await page.getByRole('region', { name: region }).waitFor();
+      else await page.getByText('MP-004127-02').first().waitFor();
       await page.waitForTimeout(300);
       const over = await page.evaluate(
         () => globalThis.document.documentElement.scrollWidth > globalThis.innerWidth,

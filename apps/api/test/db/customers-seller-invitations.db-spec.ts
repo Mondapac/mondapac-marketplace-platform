@@ -352,6 +352,27 @@ describe.each(TEST_MARKETS)(
           active: 0,
           rejected: 0,
         });
+        // The admin's monthly trend: active attributions per window, rejected ones left out.
+        const windows = [
+          { from: T0.subtract({ hours: 24 }), to: T0 },
+          { from: T0, to: T0.add({ hours: 48 }) },
+        ];
+        expect(
+          await inUnit(market, () =>
+            attributions.activeCountsOfSellerBetween(market, shop, windows),
+          ),
+        ).toEqual([0, 1]);
+        expect(
+          await inUnit(market, () =>
+            attributions.activeCountsOfSellerBetween(market, rival, [
+              { from: T0, to: T0.add({ hours: 1 }) },
+              { from: T0.add({ hours: 1 }), to: T0.add({ hours: 2 }) },
+            ]),
+          ),
+        ).toEqual([0, 1]);
+        expect(
+          await inUnit(other, () => attributions.activeCountsOfSellerBetween(other, shop, windows)),
+        ).toEqual([0, 0]);
 
         const mine = { ...ALL, emailPrefix: prefix };
         const accounts = (selector: ZonedAttributionSelector, direction: 'asc' | 'desc' = 'desc') =>
