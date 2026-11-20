@@ -11,6 +11,7 @@ import type {
   PagedListConfig,
 } from '../shared/paged-list/types.ts';
 import { shortInstant } from '../shared/format.ts';
+import { ReviewBulkDialog, type ReviewBulk } from './review-bulk.tsx';
 import { OfferDecisionDialog, type OfferDecision } from './offer-decision-dialog.tsx';
 import { revisionHref } from './review-queue-params.ts';
 import { REVISION_REASONS, type QueuePage, type ReviewRow, type RevisionRow } from './types.ts';
@@ -41,16 +42,21 @@ export function RevisionsList({
   paging,
   accountId,
   marketId,
+  csrfToken,
   onTotals,
 }: {
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  readonly csrfToken: string;
   readonly onTotals: (totals: Totals) => void;
 }) {
   const t = useTranslations('catalog.queue');
   const tl = useTranslations('catalog.queue.list');
+  const tb = useTranslations('catalog.queue.bulk');
   const locale = useLocale();
+  const [bulk, setBulk] = useState<ReviewBulk | null>(null);
+  const [refresh, setRefresh] = useState(0);
 
   const rowActions = useCallback(
     (row: RevisionListRow): readonly MenuItem[] => [
@@ -152,9 +158,23 @@ export function RevisionsList({
       defaultColumns: ['change', 'seller', 'reasons', 'checks', 'waiting'],
       columnDefs,
       rowActions,
+      bulk: (['approve', 'request-changes'] as const).map((action) => ({
+        id: action,
+        label: tb(`${action}.menu`),
+        run: (rows: readonly RevisionListRow[]) =>
+          setBulk({
+            kind: 'revision',
+            action,
+            rows: rows.map((row) => ({
+              id: row.productId,
+              revisionId: row.revisionId,
+              version: row.version,
+            })),
+          }),
+      })),
       icon: 'package',
     }),
-    [t, tl, columnDefs, rowActions],
+    [t, tl, tb, columnDefs, rowActions],
   );
   const fields: readonly PagedFilterField[] = useMemo(
     () => [
@@ -181,8 +201,17 @@ export function RevisionsList({
       accountId={accountId}
       marketId={marketId}
       fields={fields}
+      refreshKey={refresh}
       onAnswer={(answer: PagedAnswer<RevisionListRow>) =>
         onTotals((answer as unknown as QueuePage<unknown>).totals)
+      }
+      dialogs={
+        <ReviewBulkDialog
+          bulk={bulk}
+          csrfToken={csrfToken}
+          onClose={() => setBulk(null)}
+          onFinished={() => setRefresh((value) => value + 1)}
+        />
       }
     />
   );
@@ -210,7 +239,9 @@ export function OffersList({
   const t = useTranslations('catalog.review');
   const tr = useTranslations();
   const tl = useTranslations('catalog.queue.offers');
+  const tb = useTranslations('catalog.queue.bulk');
   const locale = useLocale();
+  const [bulk, setBulk] = useState<ReviewBulk | null>(null);
   const [open, setOpen] = useState<{ row: OfferListRow; decision: OfferDecision } | null>(null);
   const [refresh, setRefresh] = useState(0);
   const nameOf = useCallback(
@@ -286,9 +317,19 @@ export function OffersList({
       defaultColumns: ['condition', 'handling', 'seller', 'waiting'],
       columnDefs,
       rowActions,
+      bulk: (['approve', 'request-changes'] as const).map((action) => ({
+        id: action,
+        label: tb(`${action}.menu`),
+        run: (rows: readonly OfferListRow[]) =>
+          setBulk({
+            kind: 'offer',
+            action,
+            rows: rows.map((row) => ({ id: row.offerId, version: row.version })),
+          }),
+      })),
       icon: 'package',
     }),
-    [tl, columnDefs, rowActions, nameOf],
+    [tl, tb, columnDefs, rowActions, nameOf],
   );
   return (
     <PagedSuperList
@@ -301,17 +342,25 @@ export function OffersList({
         onTotals((answer as unknown as QueuePage<unknown>).totals)
       }
       dialogs={
-        <OfferDecisionDialog
-          row={open?.row ?? null}
-          decision={open?.decision ?? null}
-          csrfToken={csrfToken}
-          onClose={() => setOpen(null)}
-          onSettled={(why) => {
-            setOpen(null);
-            if (why !== undefined) toast.error(tr(why));
-            setRefresh((value) => value + 1);
-          }}
-        />
+        <>
+          <ReviewBulkDialog
+            bulk={bulk}
+            csrfToken={csrfToken}
+            onClose={() => setBulk(null)}
+            onFinished={() => setRefresh((value) => value + 1)}
+          />
+          <OfferDecisionDialog
+            row={open?.row ?? null}
+            decision={open?.decision ?? null}
+            csrfToken={csrfToken}
+            onClose={() => setOpen(null)}
+            onSettled={(why) => {
+              setOpen(null);
+              if (why !== undefined) toast.error(tr(why));
+              setRefresh((value) => value + 1);
+            }}
+          />
+        </>
       }
     />
   );

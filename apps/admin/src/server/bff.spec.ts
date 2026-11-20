@@ -1111,6 +1111,13 @@ describe('relay allowlist for seller decisions', () => {
         (await relay(config, request('POST', path), path.split('/'), upstreamOk())).status,
       ).toBe(200);
     }
+    const bulk = 'catalog/admin/review-queue/bulk-decide';
+    expect((await relay(config, request('POST', bulk), bulk.split('/'), upstreamOk())).status).toBe(
+      200,
+    );
+    const notBulk = upstreamOk();
+    expect((await relay(config, request('PUT', bulk), bulk.split('/'), notBulk)).status).toBe(404);
+    expect(notBulk).not.toHaveBeenCalled();
     for (const [method, path] of [
       ['PUT', `catalog/admin/offers/${id}/approve`],
       ['POST', 'catalog/admin/offers/nope/approve'],

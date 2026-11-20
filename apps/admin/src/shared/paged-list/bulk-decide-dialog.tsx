@@ -8,6 +8,8 @@ import { callApi } from '../../api/client.ts';
 export interface BulkRow {
   readonly id: string;
   readonly version: number;
+  /** The revision a decision names, for a queue of product revisions. */
+  readonly revisionId?: string;
 }
 export interface BulkCounts {
   readonly done: number;
@@ -17,6 +19,12 @@ export interface BulkCounts {
 interface BulkAnswer {
   readonly action: string;
   readonly counts: BulkCounts;
+  /** One entry per row: what happened and, when it was not decided, a stable reason code. */
+  readonly results?: readonly {
+    readonly id: string;
+    readonly outcome: string;
+    readonly reason?: string;
+  }[];
 }
 
 /**
@@ -35,6 +43,8 @@ export function BulkDecideDialog({
   confirm,
   fields,
   extraBody = {},
+  toItem = ({ id, version }) => ({ id, version }),
+  reasonText,
   ready = true,
   csrfToken,
   onClose,
@@ -44,6 +54,13 @@ export function BulkDecideDialog({
   readonly endpoint: string;
   readonly action: string;
   readonly rows: readonly BulkRow[];
+  /** The body of one item when it needs more than `{ id, version }` (a revision names its id). */
+  readonly toItem?: (row: BulkRow) => Record<string, unknown>;
+  /**
+   * The sentence for the rows that were not decided for one reason code (`count` rows), or null to
+   * leave that code unexplained. The default help line is told for the rest.
+   */
+  readonly reasonText?: (reason: string, count: number) => string | null;
   readonly title: string;
   readonly body: string;
   readonly confirm: string;
@@ -63,6 +80,7 @@ export function BulkDecideDialog({
   const busy = useRef(false);
   const [pending, setPending] = useState(false);
   const [counts, setCounts] = useState<BulkCounts | null>(null);
+  const [notes, setNotes] = useState<readonly string[]>([]);
   const [problem, setProblem] = useState<string | null>(null);
 
   async function submit() {
@@ -73,12 +91,23 @@ export function BulkDecideDialog({
     const result = await callApi<BulkAnswer>(
       'POST',
       endpoint,
-      { action, items: rows.map(({ id, version }) => ({ id, version })), ...extraBody },
+      { action, items: rows.map((row) => toItem(row)), ...extraBody },
       csrfToken,
     );
     busy.current = false;
     setPending(false);
     if (result.ok) {
+      const reasons = new Map<string, number>();
+      for (const entry of result.body.results ?? []) {
+        if (entry.outcome !== 'done' && entry.reason !== undefined) {
+          reasons.set(entry.reason, (reasons.get(entry.reason) ?? 0) + 1);
+        }
+      }
+      setNotes(
+        reasonText === undefined
+          ? []
+          : [...reasons].flatMap(([reason, count]) => reasonText(reason, count) ?? []),
+      );
       setCounts(result.body.counts);
       onFinished();
       return;
@@ -148,7 +177,12 @@ export function BulkDecideDialog({
           {counts.failed > 0 ? (
             <Banner tone="critical">{t('done.failed', { count: counts.failed })}</Banner>
           ) : null}
-          {counts.skipped > 0 ? (
+          {notes.map((note) => (
+            <Banner key={note} tone="attention">
+              {note}
+            </Banner>
+          ))}
+          {counts.skipped > 0 && notes.length === 0 ? (
             <p className="text-sm text-fg-muted">{t('done.skipped-help')}</p>
           ) : null}
         </div>

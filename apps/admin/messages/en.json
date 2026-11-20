@@ -5530,6 +5530,35 @@
           "too-large": "More than {max} offers match. Narrow the filter and export again.",
           "unavailable": "The file could not be made. Try again in a moment."
         }
+      },
+      "bulk": {
+        "approve": {
+          "menu": "Approve ticked…",
+          "title": {
+            "revision": "Approve {count, plural, one {# product revision} other {# product revisions}}?",
+            "offer": "Approve {count, plural, one {# offer} other {# offers}}?"
+          },
+          "revision": "{count, plural, one {The # ticked product revision goes live.} other {The # ticked product revisions go live.}} Revisions whose review needs manual checks are skipped: a bulk approval never ticks a check.",
+          "offer": "{count, plural, one {The # ticked offer goes on sale now.} other {The # ticked offers go on sale now.}} Each seller is told.",
+          "confirm": {
+            "revision": "Approve {count, plural, one {# product revision} other {# product revisions}}",
+            "offer": "Approve {count, plural, one {# offer} other {# offers}}"
+          }
+        },
+        "request-changes": {
+          "menu": "Send back ticked…",
+          "title": {
+            "revision": "Send back {count, plural, one {# product revision} other {# product revisions}}?",
+            "offer": "Send back {count, plural, one {# offer} other {# offers}}?"
+          },
+          "revision": "{count, plural, one {The # ticked product revision goes back to its seller} other {The # ticked product revisions go back to their sellers}} with the reason you choose. Each stays unpublished until the seller sends a new version.",
+          "offer": "{count, plural, one {The # ticked offer goes back to its seller} other {The # ticked offers go back to their sellers}} with the reason you choose. Each stays off sale until the seller sends it again.",
+          "confirm": {
+            "revision": "Send back {count, plural, one {# product revision} other {# product revisions}}",
+            "offer": "Send back {count, plural, one {# offer} other {# offers}}"
+          }
+        },
+        "checks-missing": "{count, plural, one {# revision needs manual checks, so it was not approved.} other {# revisions need manual checks, so they were not approved.}} They are still in the queue. Open each one from its Actions menu and tick the checks."
       }
     },
     "version": {
