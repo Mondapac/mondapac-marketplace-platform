@@ -145,7 +145,21 @@ const ownSeller = (context: CallContext): Id<'Seller'> | null =>
     ? sellerIdOf(context.actor.sellerId)
     : null;
 
-function filterOf(fields: Fields, sellerId: Id<'Seller'>, input: Input): PayoutListFilter {
+/** The selector of the list (status, payout id, window, amounts), without the seller. */
+export interface OwnPayoutSelector {
+  readonly status: SellerPayoutState | null;
+  readonly payoutId: Id<'Payout'> | null;
+  readonly from: PayoutListFilter['from'];
+  readonly to: PayoutListFilter['to'];
+  readonly minAmount: bigint | null;
+  readonly maxAmount: bigint | null;
+}
+
+/**
+ * The selector keys (status, `q`, the filters) shared by the list, the export and the saved
+ * filters (seller routes of `lists`).
+ */
+export function parseOwnPayoutSelector(input: Input, fields: Fields): OwnPayoutSelector {
   const status = oneOf(fields, 'status', input.status, OWN_PAYOUT_STATUSES);
   // A payout id, exact; never echoed or logged.
   const payoutId = idOf<'Payout'>(fields, 'q', input.q);
@@ -162,6 +176,14 @@ function filterOf(fields: Fields, sellerId: Id<'Seller'>, input: Input): PayoutL
   if (minAmount !== null && maxAmount !== null && minAmount > maxAmount) {
     fields.push({ path: 'maxAmount', code: 'range' });
   }
+  return { status, payoutId, from, to, minAmount, maxAmount };
+}
+
+function filterOf(fields: Fields, sellerId: Id<'Seller'>, input: Input): PayoutListFilter {
+  const { status, payoutId, from, to, minAmount, maxAmount } = parseOwnPayoutSelector(
+    input,
+    fields,
+  );
   return {
     states: status === null ? SHOWN_STATES : STATUS_STATES[status],
     state: null,

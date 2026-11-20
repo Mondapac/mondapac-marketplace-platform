@@ -890,6 +890,60 @@ describe('relay allowlist for seller decisions', () => {
     expect((await send(`commission-payouts/admin/sellers/nope/ledger/export`)).status).toBe(404);
   });
 
+  it.each([
+    ['ledger', 'q'],
+    ['payout-holds', 'sellerOrderId'],
+  ])(
+    'refuses a malformed order key of the seller %s list and its export, never dropping it',
+    async (list, key) => {
+      const base = `commission-payouts/admin/sellers/${ID}/${list}`;
+      const many = Array.from({ length: 201 }, () => ID).join(',');
+      const cases = [
+        `${base}?${key}=someone`,
+        `${base}?${key}=nope&${key}=${ID}`,
+        `${base}/export?${key}=someone`,
+        `${base}/export?format=csv&${key}=`,
+        `${base}/export?ids=${many}`,
+        `${base}/export?ids=not-an-id`,
+        `${base}/export?format=xls`,
+        `${base}/export?columns=secret`,
+        `${base}/export?from=yesterday&${key}=${ID}`,
+        `${base}/export?sort=secret`,
+      ];
+      for (const target of cases) {
+        const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+        const response = await relay(
+          config,
+          new Request(`http://admin.localhost:3002/api/${target}`, {
+            method: 'GET',
+            headers: { host: 'admin.localhost:3002' },
+          }),
+          target.split('?')[0]!.split('/'),
+          upstream,
+        );
+        const isList = !target.includes('/export');
+        // The list drops a value that is not its own shape, except the order key it is scoped by.
+        if (isList && !target.includes(`${key}=`)) continue;
+        expect(response.status, target).toBe(400);
+        expect(upstream, target).not.toHaveBeenCalled();
+      }
+      // A good order id crosses on both.
+      const upstream = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+      const good = `${base}/export?${key}=${ID}&format=csv`;
+      const response = await relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${good}`, {
+          method: 'GET',
+          headers: { host: 'admin.localhost:3002' },
+        }),
+        good.split('?')[0]!.split('/'),
+        upstream,
+      );
+      expect(response.status).toBe(200);
+      expect(upstream).toHaveBeenCalledOnce();
+    },
+  );
+
   it('relays approve, reject and the manual check for a seller UUID only', async () => {
     expect((await call('POST', `sellers/admin/${ID}/review/approve`)).status).toBe(200);
     expect((await call('POST', `sellers/admin/${ID}/review/reject`)).status).toBe(200);
@@ -2988,6 +3042,50 @@ describe('relay of the wallet and step-up routes', () => {
       readHeaders,
     );
     expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/topics');
+  });
+
+  it('passes the review queue list keys in their shapes, and drops the rest', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/review-queue?kind=product-revision&sellerId=${id}&firstPublication=false&hasImages=true&page=2&pageSize=25&paging=pages&sort=submitted&direction=desc&q=oil&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/review-queue?kind=product-revision&sellerId=${id}&firstPublication=false&hasImages=true&page=2&pageSize=25&paging=pages&sort=submitted&direction=desc`,
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/review-queue?kind=offers&sellerId=nope&hasImages=false&page=0&sort=name&direction=up',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/review-queue');
+  });
+
+  it('passes the review queue export keys in their shapes, and never the sort or direction', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/review-queue/export?format=xlsx&kind=offer-first-publication&sellerId=${id}&firstPublication=true&hasImages=true&sort=submitted&direction=desc&q=oil`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/review-queue/export?format=xlsx&kind=offer-first-publication&sellerId=${id}&firstPublication=true&hasImages=true`,
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/review-queue/export?format=pdf&kind=offers&sellerId=nope&hasImages=false',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/review-queue/export',
+    );
+    const more = await run(
+      'GET',
+      'catalog/admin/review-queue/export?format=csv&kind=&sellerId=&firstPublication=false&page=1&pageSize=25&paging=pages',
+      readHeaders,
+    );
+    expect(more.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/review-queue/export?format=csv&firstPublication=false',
+    );
   });
 
   it('passes only the action of the category impact read, in its shape, and no query on the tree', async () => {

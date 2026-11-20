@@ -38,6 +38,12 @@ export interface PagedFilterField {
   readonly options: readonly { readonly value: string; readonly label: string }[];
 }
 
+export interface PagedBulkAction<Row> {
+  readonly id: string;
+  readonly label: string;
+  readonly run: (rows: readonly Row[]) => void;
+}
+
 export interface PagedSort {
   readonly id: string;
   /** "Newest first" and "Oldest first" (the first reads for the default direction). */
@@ -65,7 +71,8 @@ export interface PagedListConfig<Row> {
   readonly tabParam?: string;
   /** Query parameters of a tab when one id is not enough (`status=draft`); sent for every tab. */
   readonly tabParams?: (tab: string) => Readonly<Record<string, string>>;
-  readonly search: { readonly max: number };
+  /** Absent when the route has no text search (the review queue). */
+  readonly search?: { readonly max: number };
   readonly sorts: readonly PagedSort[];
   readonly defaultSort: string;
   /** Columns always shown (the first is the card's title) and the ones an admin can hide. */
@@ -74,6 +81,11 @@ export interface PagedListConfig<Row> {
   readonly defaultColumns: readonly string[];
   readonly columnDefs: (id: string, header: string) => SuperColumn<Row>;
   readonly rowActions: (row: Row) => readonly MenuItem[];
+  /**
+   * Bulk decisions of a queue (accept, reject): each is in the Bulk action menu, on only while rows
+   * of this page are ticked, and runs on those rows (never on "all matching").
+   */
+  readonly bulk?: readonly PagedBulkAction<Row>[];
   readonly icon?: 'package' | 'search' | 'columns';
 }
 

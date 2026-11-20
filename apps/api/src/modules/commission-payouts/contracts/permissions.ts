@@ -94,6 +94,17 @@ export const COMMISSION_PAYOUTS_SAVED_FILTER_SHARE = definePermission('commissio
   protected: false,
 });
 
+/**
+ * Share a saved filter of the seller Earnings › Payouts list with the whole store (and manage one
+ * a colleague shared). Unprotected, seller scope; also needs `commission-payouts.earnings.view`.
+ * The Seller Owner holds every seller key, so it holds this one with no seed change.
+ */
+export const COMMISSION_PAYOUTS_OWN_SAVED_FILTER_SHARE = definePermission('commission-payouts', {
+  key: 'commission-payouts.own-saved-filter.share',
+  scope: 'seller',
+  protected: false,
+});
+
 export const COMMISSION_PAYOUTS_PERMISSIONS = declarePermissions('commission-payouts', [
   COMMISSION_PAYOUTS_RATE_EDIT,
   COMMISSION_PAYOUTS_PAYOUT_TERMS_VIEW,
@@ -107,4 +118,5 @@ export const COMMISSION_PAYOUTS_PERMISSIONS = declarePermissions('commission-pay
   COMMISSION_PAYOUTS_PAYOUT_VIEW,
   COMMISSION_PAYOUTS_PAYOUT_APPROVE,
   COMMISSION_PAYOUTS_SAVED_FILTER_SHARE,
+  COMMISSION_PAYOUTS_OWN_SAVED_FILTER_SHARE,
 ]);

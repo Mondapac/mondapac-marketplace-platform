@@ -8,7 +8,12 @@ import {
   postcodesClash,
   type ParsedPostcodes,
 } from './postcode-entry';
-import { ServiceAreaDirectory, type ServiceAreaDefinition } from './service-area-directory';
+import {
+  ServiceAreaDirectory,
+  type CrossAreaSelling,
+  type LaneEnd,
+  type ServiceAreaDefinition,
+} from './service-area-directory';
 
 /** Codes from configuration are text, never a closed list (sellers data design S8). */
 const AREA_CODE = /^[a-z0-9][a-z0-9-]{0,63}$/u;
@@ -52,9 +57,27 @@ const areaSchema = z.strictObject({
   deliveryEnabled: z.boolean(),
 });
 
+const laneEndSchema = z.union([
+  z.strictObject({ area: z.string().regex(AREA_CODE) }),
+  z.strictObject({ region: z.string().regex(/^[A-Za-z0-9]{1,8}$/u) }),
+  z.strictObject({ all: z.literal(true) }),
+]);
+
+/**
+ * Cross-area selling (seller city, package 8). `enabled` is the Market switch and is OFF unless
+ * it says true; with it off the lanes do nothing and a seller serves only its own area. A lane
+ * names where the seller is (`from`) and where the buyer is (`to`), each an area, a region
+ * (state) or `all`. No lane means no cross-area selling.
+ */
+const crossAreaSellingSchema = z.strictObject({
+  enabled: z.boolean().default(false),
+  lanes: z.array(z.strictObject({ from: laneEndSchema, to: laneEndSchema })).default([]),
+});
+
 const fileSchema = z.strictObject({
   market: z.string(),
   areas: z.array(areaSchema),
+  crossAreaSelling: crossAreaSellingSchema.optional(),
 });
 
 export class InvalidServiceAreaConfigError extends Error {
@@ -103,6 +126,7 @@ export function loadServiceAreas(
   }
 
   const byMarket = new Map<MarketId, readonly ServiceAreaDefinition[]>();
+  const crossArea = new Map<MarketId, CrossAreaSelling>();
   for (const marketId of hostedMarkets) {
     const file = files.get(marketId);
     if (file === undefined) {
@@ -162,6 +186,26 @@ export function loadServiceAreas(
       );
     }
     byMarket.set(marketId, Object.freeze(areas));
+    const rules = parsed.data.crossAreaSelling;
+    if (rules !== undefined) {
+      const known = (end: LaneEnd): boolean =>
+        'all' in end
+          ? true
+          : 'area' in end
+            ? areas.some((area) => area.code === end.area)
+            : areas.some((area) => area.region === end.region);
+      rules.lanes.forEach((lane, index) => {
+        if (!known(lane.from) || !known(lane.to)) {
+          throw new InvalidServiceAreaConfigError(
+            `${file}: crossAreaSelling lane ${index} names an area or region the Market does not list`,
+          );
+        }
+      });
+      crossArea.set(
+        marketId,
+        Object.freeze({ enabled: rules.enabled, lanes: Object.freeze(rules.lanes) }),
+      );
+    }
   }
-  return new ServiceAreaDirectory(byMarket);
+  return new ServiceAreaDirectory(byMarket, crossArea);
 }

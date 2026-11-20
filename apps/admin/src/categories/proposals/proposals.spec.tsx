@@ -1,13 +1,16 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/en.json';
 
 vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
-vi.mock('next/navigation', () => ({ useRouter: () => ({ push: vi.fn() }) }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+}));
 
 import { callApi, type ApiResult } from '../../api/client.ts';
+import { expectToast } from '../../../test/toast-spy.ts';
 import type { CategoryRow, TreeBody } from '../types.ts';
 import { CategoriesTabs } from './categories-tabs.tsx';
 import { mergeTargets, pathText, problemOf, suggestSlug } from './model.ts';
@@ -112,7 +115,17 @@ beforeEach(() => {
     }
     if (path === 'catalog/admin/categories') return Promise.resolve(ok(tree) as ApiResult<never>);
     if (path.startsWith('catalog/admin/category-proposals')) {
-      return Promise.resolve(ok({ items: queue, nextAfterId: null }) as ApiResult<never>);
+      return Promise.resolve(
+        ok({
+          items: queue.map((item) => ({ ...item, actions: ['approve', 'reject'] })),
+          nextAfterId: null,
+          total: queue.length,
+          page: 1,
+          pageSize: 25,
+          paging: 'pages',
+          hasNext: false,
+        }) as ApiResult<never>,
+      );
     }
     if (path.includes('/shelves')) return Promise.resolve(ok({ shelves }) as ApiResult<never>);
     return Promise.resolve(fail(404, 'x'));
@@ -126,7 +139,14 @@ const view = (ui: React.ReactElement) =>
       {ui}
     </NextIntlClientProvider>,
   );
-const tab = (canPromote = true) => view(<ProposalsTab csrfToken="tok" canPromote={canPromote} />);
+const where = { paging: 'pages', accountId: id(99), marketId: 'AU' } as const;
+const tab = (canPromote = true) =>
+  view(<ProposalsTab csrfToken="tok" canPromote={canPromote} {...where} />);
+/** Opens the row's Actions menu and picks an item: no row action is a button in the row. */
+async function act(name: string, item: string) {
+  fireEvent.click(await screen.findByRole('button', { name: `Actions for ${name}` }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: item }));
+}
 
 describe('proposal model', () => {
   it('builds the parent path, merge targets (live only) and a URL name from English letters', () => {
@@ -158,22 +178,27 @@ describe('proposal model', () => {
   });
 });
 
-describe('Category proposals queue', () => {
+describe('Category proposals list', () => {
   it('lists store, parent path, names per locale (Persian right to left) and the time', async () => {
     tab();
-    const list = await screen.findByRole('list', { name: 'Waiting category proposals' });
-    const first = within(list).getAllByRole('listitem')[0]!;
-    expect(within(first).getByText('Store 1')).toBeTruthy();
-    expect(within(first).getByText(/Under Pantry › Rice/)).toBeTruthy();
-    expect(within(first).getByText('Saffron 1')).toBeTruthy();
-    const persian = within(first).getByText('زعفران');
+    const list = await screen.findByRole('list', { name: 'Names of the proposal Saffron 1' });
+    expect(within(list).getByText('Saffron 1')).toBeTruthy();
+    const persian = within(list).getAllByText('زعفران')[0]!;
     expect(persian.getAttribute('dir')).toBe('rtl');
     expect(persian.getAttribute('lang')).toBe('fa');
-    expect(within(first).getByText('Waiting')).toBeTruthy();
-    expect(within(first).getByText(/2026/)).toBeTruthy();
+    expect(screen.getAllByText('Store 1').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('Pantry › Rice').length).toBeGreaterThan(0);
+    const first = new URLSearchParams(
+      call.mock.calls
+        .find(([, path]) => path.startsWith('catalog/admin/category-proposals'))?.[1]
+        .split('?')[1],
+    );
+    expect(first.get('page')).toBe('1');
+    expect(first.get('sort')).toBe('created');
+    expect(first.get('direction')).toBe('asc');
   });
 
-  it('shows an empty state and a retry on a failed load', async () => {
+  it('shows an empty state and a failed load', async () => {
     queue = [];
     tab();
     expect(await screen.findByText('No proposals are waiting')).toBeTruthy();
@@ -184,22 +209,34 @@ describe('Category proposals queue', () => {
     expect(await screen.findByText('The category proposals could not be loaded.')).toBeTruthy();
   });
 
-  it('approves with the version read and shows the outcome in place', async () => {
+  it('has no button in a row: every decision and the shelves are in the Actions menu', async () => {
     tab();
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve the proposal Saffron 1' }));
-    await screen.findByText('Approved: shelf created');
+    await screen.findByText('Store 1');
+    expect(screen.queryByRole('button', { name: /^(Approve|Reject|Show)/ })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for Saffron 1' }));
+    expect(await screen.findByRole('menuitem', { name: 'Approve…' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Reject…' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: 'Seller’s shelves…' })).toBeTruthy();
+  });
+
+  it('approves after a confirmation, with the version read', async () => {
+    tab();
+    await act('Saffron 1', 'Approve…');
+    const dialog = await screen.findByRole('dialog', { name: 'Approve “Saffron 1”?' });
+    expect(writes).toHaveLength(0);
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve proposal' }));
+    await expectToast('Approved. The seller now has the shelf.');
     expect(writes).toEqual([
       { path: `catalog/admin/category-proposals/${id(101)}/approve`, body: { version: 3 } },
     ]);
-    expect(screen.queryByRole('button', { name: 'Approve the proposal Saffron 1' })).toBeNull();
-    // The other row is untouched.
-    expect(screen.getByRole('button', { name: 'Approve the proposal Saffron 2' })).toBeTruthy();
   });
 
   it('rejects only with one of the prepared reasons', async () => {
     tab();
-    fireEvent.click(await screen.findByRole('button', { name: 'Reject the proposal Saffron 1' }));
-    const select = screen.getByLabelText<HTMLSelectElement>('Reason');
+    await act('Saffron 1', 'Reject…');
+    const dialog = await screen.findByRole('dialog', { name: 'Reject “Saffron 1”?' });
+    const select = within(dialog).getByLabelText<HTMLSelectElement>('Reason');
     expect([...select.options].map((o) => o.value)).toEqual([
       '',
       'already-exists',
@@ -209,13 +246,14 @@ describe('Category proposals queue', () => {
       'not-sold-here',
       'other',
     ]);
-    expect(
-      screen.getByRole<HTMLButtonElement>('button', { name: 'Reject proposal' }).disabled,
-    ).toBe(true);
+    const confirm = within(dialog).getByRole<HTMLButtonElement>('button', {
+      name: 'Reject proposal',
+    });
+    expect(confirm.disabled).toBe(true);
     fireEvent.change(select, { target: { value: 'too-narrow' } });
     writeAnswer = () => ok({ status: 'rejected', version: 4 });
-    fireEvent.click(screen.getByRole('button', { name: 'Reject proposal' }));
-    await screen.findByText('Rejected: Too narrow');
+    fireEvent.click(confirm);
+    await expectToast('Proposal rejected.');
     expect(writes).toEqual([
       {
         path: `catalog/admin/category-proposals/${id(101)}/reject`,
@@ -224,47 +262,102 @@ describe('Category proposals queue', () => {
     ]);
   });
 
-  it('shows "Closed: permission removed" for a proposal the seller lost the right to make', async () => {
-    queue = [proposal(1, { status: 'cancelled', reasonCode: 'permission-revoked' })];
-    tab();
-    expect(await screen.findByText('Closed: permission removed')).toBeTruthy();
-    expect(screen.queryByRole('button', { name: /^Approve/ })).toBeNull();
-  });
-
-  it('shows the same words when the approve answer says the proposal was cancelled', async () => {
+  it('tells the seller lost the right when the approve answer says the proposal was cancelled', async () => {
     writeAnswer = () => ok({ status: 'cancelled', version: 4 });
     tab();
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve the proposal Saffron 1' }));
-    expect(await screen.findByText('Closed: permission removed')).toBeTruthy();
+    await act('Saffron 1', 'Approve…');
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve proposal' }));
+    await expectToast('The seller can no longer propose categories, so the proposal was closed.');
   });
 
-  it('says a refused approve and reads the queue again when it was decided elsewhere', async () => {
+  it('closes the dialog and says so when the proposal was decided elsewhere', async () => {
     writeAnswer = () => fail(409, 'category-proposal.not-pending');
     tab();
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve the proposal Saffron 1' }));
-    await waitFor(() =>
-      expect(
-        screen.getAllByText('Someone else changed the queue. The list has been refreshed.').length,
-      ).toBeGreaterThan(0),
+    await act('Saffron 1', 'Approve…');
+    fireEvent.click(await screen.findByRole('button', { name: 'Approve proposal' }));
+    await expectToast(
+      'Someone else already decided this proposal. The list has been refreshed.',
+      'error',
     );
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('says why a seller without the permission cannot be approved', async () => {
+  it('says why a seller without the permission cannot be approved, and keeps the dialog', async () => {
     writeAnswer = () => fail(403, 'category-proposal.not-allowed');
     tab();
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve the proposal Saffron 1' }));
+    await act('Saffron 1', 'Approve…');
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve proposal' }));
     expect(
-      await screen.findByText(
+      await within(dialog).findByText(
         "This seller may not propose categories any more, so the proposal can't be approved.",
       ),
     ).toBeTruthy();
+  });
+
+  it('approves the ticked rows together, names how many, and reports the skipped ones', async () => {
+    writeAnswer = (path) =>
+      path.endsWith('bulk-decide')
+        ? ok({
+            action: 'approve',
+            counts: { done: 1, skipped: 1, failed: 0 },
+            results: [],
+          })
+        : ok({ status: 'approved', version: 4 });
+    tab();
+    await screen.findByText('Store 1');
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Bulk action' }).disabled).toBe(
+      true,
+    );
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select Saffron 1' }));
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select Saffron 2' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Approve ticked…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Approve 2 proposals?' });
+    expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve 2 proposals' }));
+    expect(await within(dialog).findByText('1 row decided, 1 skipped.')).toBeTruthy();
+    expect(writes).toEqual([
+      {
+        path: 'catalog/admin/category-proposals/bulk-decide',
+        body: {
+          action: 'approve',
+          items: [
+            { id: id(101), version: 3 },
+            { id: id(102), version: 3 },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it('rejects the ticked rows with one prepared reason code', async () => {
+    writeAnswer = () =>
+      ok({ action: 'reject', counts: { done: 1, skipped: 0, failed: 0 }, results: [] });
+    tab();
+    fireEvent.click(await screen.findByRole('checkbox', { name: 'Select Saffron 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Reject ticked…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Reject 1 proposal?' });
+    const confirm = within(dialog).getByRole<HTMLButtonElement>('button', {
+      name: 'Reject 1 proposal',
+    });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'too-broad' } });
+    fireEvent.click(confirm);
+    await within(dialog).findByText('1 row decided, 0 skipped.');
+    expect(writes[0]?.body).toEqual({
+      action: 'reject',
+      items: [{ id: id(101), version: 3 }],
+      reasonCode: 'too-broad',
+    });
   });
 });
 
 describe('Seller shelves: promote and merge', () => {
   async function openShelves() {
     tab();
-    fireEvent.click(await screen.findByRole('button', { name: 'Show the shelves of Store 1' }));
+    await act('Saffron 1', 'Seller’s shelves…');
     return screen.findByRole('list', { name: 'Shelves of Store 1' });
   }
 
@@ -286,7 +379,7 @@ describe('Seller shelves: promote and merge', () => {
 
   it('hides Promote and Merge without the promote-merge key', async () => {
     tab(false);
-    fireEvent.click(await screen.findByRole('button', { name: 'Show the shelves of Store 1' }));
+    await act('Saffron 1', 'Seller’s shelves…');
     await screen.findByRole('list', { name: 'Shelves of Store 1' });
     expect(screen.queryByRole('button', { name: /^Actions for the shelf/ })).toBeNull();
   });
@@ -387,14 +480,13 @@ describe('Seller shelves: promote and merge', () => {
 
 describe('Categories page tabs', () => {
   it('shows the tab only to an admin who may decide, and opens a seller from the address', async () => {
-    const props = { canEdit: false, csrfToken: 'tok', canPromote: true };
+    const props = { canEdit: false, csrfToken: 'tok', canPromote: true, ...where };
     view(<CategoriesTabs {...props} canDecide={false} />);
     expect(screen.queryByRole('button', { name: 'Category proposals' })).toBeNull();
     cleanup();
     window.history.replaceState(null, '', `/catalog/categories?tab=proposals&seller=${id(201)}`);
     view(<CategoriesTabs {...props} canDecide />);
     expect(await screen.findByRole('heading', { name: 'Shelves of this seller' })).toBeTruthy();
-    expect(screen.getByRole('heading', { name: 'Category proposals' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Category tree' }));
     expect(window.location.search).toBe('');
   });

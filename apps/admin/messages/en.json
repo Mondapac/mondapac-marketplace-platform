@@ -3921,12 +3921,6 @@
         "disputes": "Disputes",
         "seller-cashback": "Cashback to exclusive customers"
       },
-      "col": {
-        "when": "Date",
-        "order": "Order",
-        "kind": "Kind",
-        "amount": "Amount"
-      },
       "kind": {
         "sale": "Sale",
         "shipping": "Shipping",
@@ -3939,10 +3933,108 @@
         "cashback-seller": "Cashback to exclusive customers"
       },
       "empty": "No ledger rows yet. They appear when this seller's orders are paid.",
-      "more": "Load more",
-      "more-failed": "More rows could not be loaded. Try again.",
       "unavailable": "The commission details could not be loaded.",
-      "retry": "Try again"
+      "list": {
+        "intro": "Every row of this seller's ledger. The totals above cover all of them.",
+        "intro-filtered": "Only the rows that match are listed. The totals above still cover every row of this seller.",
+        "zone-note": "Dates are shown in {zone}.",
+        "loading": "Loading the ledger",
+        "no-access": "You do not have access to this ledger.",
+        "none": "None",
+        "kind-unknown": "Other",
+        "caption": "Ledger rows",
+        "row-name": "ledger row {id}",
+        "col": {
+          "kind": "Kind",
+          "amount": "Amount",
+          "recorded": "Recorded on",
+          "order": "Order",
+          "occurred": "Occurred on",
+          "seller-order": "Seller order",
+          "order-line": "Order line",
+          "rate": "Commission rate",
+          "base": "Amount before GST",
+          "source": "Refund or dispute",
+          "entry": "Row ID",
+          "actions": "Actions"
+        },
+        "search": {
+          "label": "Search",
+          "placeholder": "Order ID or seller order ID",
+          "help": "A full order ID or seller order ID.",
+          "not-id": "That is not an ID. Type a full order ID or seller order ID."
+        },
+        "chip-id": "Order or seller order ID is {text}",
+        "filter": {
+          "title": "Filter ledger rows",
+          "name": {
+            "kind": "Kind",
+            "side": "Credit or debit",
+            "recorded": "Recorded on",
+            "minAmount": "Amount at least",
+            "maxAmount": "Amount at most"
+          },
+          "side": {
+            "credit": "Credit",
+            "debit": "Debit"
+          }
+        },
+        "sort": {
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "recorded": "Recorded on",
+            "occurred": "Occurred on",
+            "amount": "Amount"
+          },
+          "recorded": {
+            "first": "Newest first",
+            "second": "Oldest first"
+          },
+          "occurred": {
+            "first": "Newest first",
+            "second": "Oldest first"
+          },
+          "amount": {
+            "first": "Largest first",
+            "second": "Smallest first"
+          }
+        },
+        "sorted": "Sorted by {field}: {order}",
+        "match": "{count, plural, one {# row matches} other {# rows match}}",
+        "range": "{from}–{to} of {total} rows",
+        "error": {
+          "unavailable": "The ledger rows could not be loaded.",
+          "refused": "This search can't be run. Change the text or the filters, or clear them."
+        },
+        "empty": {
+          "no-match": "No ledger rows match",
+          "no-match-help": "Try other filters or clear them."
+        },
+        "select": {
+          "page": "Select all rows on this page",
+          "page-short": "Select all on this page",
+          "row": "Select {name}"
+        },
+        "selection": {
+          "selected": "{count, plural, one {# row selected} other {# rows selected}}",
+          "all": "{count, plural, one {The # matching row is selected} other {All # matching rows are selected}}",
+          "all-open": "All matching rows are selected",
+          "select-all": "Select all {count, number} matching",
+          "select-all-open": "Select all matching",
+          "clear": "Clear selection"
+        },
+        "bulk": {
+          "button": "Bulk action",
+          "selected": "{count, plural, one {# row selected} other {# rows selected}}",
+          "all-open": "All matching rows selected"
+        },
+        "actions": {
+          "for": "Actions for {name}",
+          "open-order": "Open order"
+        }
+      },
+      "col": {}
     }
   },
   "catalog": {
@@ -3997,6 +4089,18 @@
         "unavailable": "The decision could not be sent. Try again later.",
         "csrf": "Your session could not be checked. Reload the page and try again.",
         "unknown": "Something went wrong. Try again."
+      },
+      "dialog": {
+        "approve": {
+          "title": "Approve {name}?",
+          "body": "{name} goes on sale now. The seller is told.",
+          "confirm": "Approve"
+        },
+        "request-changes": {
+          "title": "Send {name} back?",
+          "body": "{name} goes back to the seller with the reason you choose. It stays off sale until they send it again.",
+          "confirm": "Send back"
+        }
       }
     },
     "products": {
@@ -5254,6 +5358,178 @@
         "offer": "No offers are waiting for review.",
         "page": "Nothing on this page. More of the queue is on the next page.",
         "filtered": "Nothing matches these filters."
+      },
+      "list": {
+        "title": "Product revisions",
+        "intro": "Product changes that sellers sent for review, oldest first. Open one to check it and decide.",
+        "tabs": "Review queue views",
+        "tab": {
+          "revision": "Product revisions"
+        },
+        "filter": {
+          "title": "Filter revisions"
+        },
+        "sort": {
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "submitted": "Waiting since"
+          },
+          "waiting": {
+            "first": "Oldest first",
+            "second": "Newest first"
+          }
+        },
+        "sorted": "Sorted by {field}, {order}",
+        "col": {
+          "product": "Product",
+          "change": "Change",
+          "seller": "Seller",
+          "reasons": "Reasons",
+          "checks": "Checks",
+          "waiting": "Waiting since (UTC)"
+        },
+        "chip-search": "Search: {text}",
+        "loading": "Loading revisions",
+        "match": "{count, plural, one {# revision matches} other {# revisions match}}",
+        "range": "{from}–{to} of {total}",
+        "too-many": "More than {limit} revisions match. Add a filter to see the rest.",
+        "no-access": "Your role cannot see the review queue.",
+        "error": {
+          "unavailable": "The revisions could not be loaded. Check your connection and try again.",
+          "refused": "The filters cannot be used. Change them and try again."
+        },
+        "empty": {
+          "title": "Nothing is waiting",
+          "body": "No revisions are waiting for review.",
+          "no-match": "No revisions match",
+          "no-match-help": "Change the filters, or clear them."
+        },
+        "select": {
+          "page": "Select all revisions on this page",
+          "page-short": "Select all on this page",
+          "row": "Select {name}"
+        },
+        "selection": {
+          "selected": "{count, plural, one {# revision selected} other {# revisions selected}}",
+          "all": "{count, plural, one {The # matching revision is selected} other {All # matching revisions are selected}}",
+          "all-open": "All matching revisions are selected",
+          "select-all": "Select all {count, number} matching",
+          "select-all-open": "Select all matching",
+          "clear": "Clear selection"
+        },
+        "actions": {
+          "header": "Actions",
+          "for": "Actions for {name}",
+          "open": "Open review…"
+        },
+        "bulk": {
+          "button": "Bulk action",
+          "selected": "{count, plural, one {# revision selected} other {# revisions selected}}",
+          "all-open": "All matching revisions selected",
+          "export": "Export…"
+        },
+        "export": {
+          "title": "Export product revisions",
+          "body": "The file holds every product revision waiting for review that the current filters match, oldest first, whatever the list is sorted by. Ticked rows don't change what is exported.",
+          "legend": "File format",
+          "csv": "CSV",
+          "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+          "xlsx": "XLSX",
+          "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+          "confirm": "Export",
+          "cancel": "Cancel",
+          "pending": "Preparing the file",
+          "done": "File downloaded",
+          "too-large": "More than {max} product revisions match. Narrow the filter and export again.",
+          "unavailable": "The file could not be made. Try again in a moment."
+        }
+      },
+      "offers": {
+        "title": "Offers",
+        "intro": "Offers waiting for their first publication, oldest first.",
+        "tabs": "Review queue views",
+        "tab": {
+          "offer": "Offers"
+        },
+        "filter": {
+          "title": "Filter offers"
+        },
+        "sort": {
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "submitted": "Waiting since"
+          },
+          "waiting": {
+            "first": "Oldest first",
+            "second": "Newest first"
+          }
+        },
+        "sorted": "Sorted by {field}, {order}",
+        "col": {
+          "offer": "Offer",
+          "condition": "Condition",
+          "handling": "Handling",
+          "seller": "Seller",
+          "waiting": "Waiting since (UTC)"
+        },
+        "chip-search": "Search: {text}",
+        "loading": "Loading offers",
+        "match": "{count, plural, one {# offer matches} other {# offers match}}",
+        "range": "{from}–{to} of {total}",
+        "too-many": "More than {limit} offers match. Add a filter to see the rest.",
+        "no-access": "Your role cannot see the review queue.",
+        "error": {
+          "unavailable": "The offers could not be loaded. Check your connection and try again.",
+          "refused": "The filters cannot be used. Change them and try again."
+        },
+        "empty": {
+          "title": "Nothing is waiting",
+          "body": "No offers are waiting for review.",
+          "no-match": "No offers match",
+          "no-match-help": "Change the filters, or clear them."
+        },
+        "select": {
+          "page": "Select all offers on this page",
+          "page-short": "Select all on this page",
+          "row": "Select {name}"
+        },
+        "selection": {
+          "selected": "{count, plural, one {# offer selected} other {# offers selected}}",
+          "all": "{count, plural, one {The # matching offer is selected} other {All # matching offers are selected}}",
+          "all-open": "All matching offers are selected",
+          "select-all": "Select all {count, number} matching",
+          "select-all-open": "Select all matching",
+          "clear": "Clear selection"
+        },
+        "actions": {
+          "header": "Actions",
+          "for": "Actions for {name}",
+          "approve": "Approve…",
+          "request-changes": "Send back…"
+        },
+        "bulk": {
+          "button": "Bulk action",
+          "selected": "{count, plural, one {# offer selected} other {# offers selected}}",
+          "all-open": "All matching offers selected",
+          "export": "Export…"
+        },
+        "export": {
+          "title": "Export offers",
+          "body": "The file holds every offer waiting for review that the current filters match, oldest first, whatever the list is sorted by. Ticked rows don't change what is exported.",
+          "legend": "File format",
+          "csv": "CSV",
+          "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+          "xlsx": "XLSX",
+          "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+          "confirm": "Export",
+          "cancel": "Cancel",
+          "pending": "Preparing the file",
+          "done": "File downloaded",
+          "too-large": "More than {max} offers match. Narrow the filter and export again.",
+          "unavailable": "The file could not be made. Try again in a moment."
+        }
       }
     },
     "version": {
@@ -5890,7 +6166,8 @@
     },
     "search-stores": "Only store names were searched. Searching customer names needs access to customer accounts.",
     "search-capped": "More than 200 customers or stores match, so some results are left out. Type more of the name.",
-    "customer-intro": "This customer’s orders in this market, newest first."
+    "customer-intro": "This customer’s orders in this market, newest first.",
+    "export": {}
   },
   "load": {
     "retry": "Try again",
@@ -6060,7 +6337,8 @@
           "for": "Actions for {name}",
           "open": "Open"
         }
-      }
+      },
+      "empty": {}
     }
   },
   "customers": {
@@ -7977,7 +8255,11 @@
       "title": "Account deletion requests",
       "back": "Account deletion",
       "permission-view": "View account deletion requests",
-      "cancel": "Cancel request"
+      "cancel": "Cancel request",
+      "col": {},
+      "by": {},
+      "status": {},
+      "empty": {}
     },
     "cancel-request": {
       "title": "Cancel this deletion request?",
@@ -8954,6 +9236,18 @@
       "unknown": "Something went wrong. Try again, or ask the team if it keeps happening.",
       "cap-exceeded-decide": "The customer's wallet no longer has room for this amount.",
       "currency-unsupported": "This wallet's currency is not supported here, so credit cannot be issued."
+    },
+    "queue": {
+      "tab": {},
+      "caption": {},
+      "empty": {},
+      "col": {},
+      "status": {},
+      "detail": {},
+      "reject-reason": {},
+      "approve-dialog": {},
+      "reject-dialog": {},
+      "notice": {}
     }
   },
   "disputes": {
@@ -9225,7 +9519,9 @@
         "open": "Open case",
         "decide": "Record a decision"
       }
-    }
+    },
+    "empty": {},
+    "col": {}
   },
   "payouts": {
     "title": "Payouts",
@@ -9464,10 +9760,8 @@
       },
       "holds": {
         "title": "Payout holds",
-        "place": "Place a hold",
-        "place-title": "Place a payout hold",
+        "place": "Place hold…",
         "place-intro": "While a hold is active, the money it covers is not paid out. The seller sees only that it is on hold.",
-        "place-yes": "Place hold",
         "reason-label": "Reason",
         "reason-placeholder": "Choose a reason",
         "scope": {
@@ -9491,40 +9785,25 @@
           "seller-reinstated": "Seller reinstated",
           "review-complete": "Review complete"
         },
-        "release-title": "Release hold",
         "release-body": "Release the {reason} hold on {covers}? The money it covers can be paid out in the next payout.",
         "release-reason-label": "Reason for releasing",
-        "release-yes": "Release hold",
         "suspended-note": "A suspended seller's hold is never released by the system. Only an admin can release it.",
-        "release-action": "Release",
         "cancel": "Cancel",
         "whole-seller": "Whole seller",
         "order": "Seller order {id}",
-        "col": {
-          "covers": "Covers",
-          "reason": "Reason",
-          "placed": "Placed",
-          "status": "Status",
-          "actions": "Actions"
-        },
         "origin": {
-          "admin": "admin",
-          "system": "system"
+          "admin": "Admin",
+          "system": "System"
         },
-        "placed-by": "{when}, {origin}",
-        "active": "Active",
-        "released": "Released {when}, {reason}",
         "empty": {
           "title": "No holds",
           "body": "Nothing stops this seller's payouts."
         },
-        "footnote": "Times are shown in {zone}. A dispute, refund or bank-change hold is released by the system when it ends. A suspended seller's hold is released only by an admin.",
         "done": {
           "placed": "Hold placed.",
           "released": "Hold released."
         },
         "error": {
-          "reason": "Choose a reason.",
           "order": "Enter the full seller order ID.",
           "seller-not-found": "This seller no longer exists.",
           "order-not-found": "That order is not one of this seller's orders.",
@@ -9536,7 +9815,128 @@
           "denied": "You cannot do this. Your account may lack permission, or you may be acting as a seller.",
           "unavailable": "The change could not be saved. Try again.",
           "unknown": "The change could not be saved. Try again."
-        }
+        },
+        "active": "Active",
+        "list": {
+          "intro": "Holds stop the money they cover from being paid out.",
+          "intro-counts": "{active, plural, one {# active hold} other {# active holds}} and {released, plural, one {# released hold} other {# released holds}}. A hold stops the money it covers from being paid out.",
+          "note": "Times are shown in {zone}. A dispute, refund or bank-change hold is released by the system when it ends. A suspended seller's hold is released only by an admin.",
+          "loading": "Loading the holds",
+          "no-access": "You do not have access to these holds.",
+          "none": "None",
+          "released": "Released",
+          "release-unknown": "Other reason",
+          "caption": "Payout holds",
+          "row-name": "hold {id}",
+          "col": {
+            "covers": "Covers",
+            "reason": "Reason",
+            "placed": "Placed on",
+            "status": "Status",
+            "origin": "Placed by",
+            "released": "Released on",
+            "release-reason": "Released because",
+            "hold": "Hold ID",
+            "actions": "Actions"
+          },
+          "search": {
+            "label": "Search",
+            "placeholder": "Seller order ID",
+            "help": "A full seller order ID.",
+            "not-id": "That is not an ID. Type a full seller order ID."
+          },
+          "chip-id": "Seller order ID is {text}",
+          "filter": {
+            "title": "Filter holds",
+            "name": {
+              "status": "Status",
+              "reason": "Reason",
+              "origin": "Placed by",
+              "scope": "Covers",
+              "placed": "Placed on"
+            },
+            "status": {
+              "active": "Active",
+              "released": "Released"
+            },
+            "origin": {
+              "admin": "Admin",
+              "system": "System"
+            },
+            "scope": {
+              "seller": "Whole seller",
+              "order": "One seller order"
+            }
+          },
+          "sort": {
+            "by": "Sort by",
+            "order": "Order",
+            "field": {
+              "active-first": "Status",
+              "placed": "Placed on",
+              "released": "Released on"
+            },
+            "active-first": {
+              "first": "Active first",
+              "second": "Released first"
+            },
+            "placed": {
+              "first": "Newest first",
+              "second": "Oldest first"
+            },
+            "released": {
+              "first": "Newest first",
+              "second": "Oldest first"
+            }
+          },
+          "sorted": "Sorted by {field}: {order}",
+          "match": "{count, plural, one {# hold matches} other {# holds match}}",
+          "range": "{from}–{to} of {total} holds",
+          "error": {
+            "unavailable": "The holds could not be loaded.",
+            "refused": "This search can't be run. Change the text or the filters, or clear them."
+          },
+          "empty": {
+            "no-match": "No holds match",
+            "no-match-help": "Try other filters or clear them."
+          },
+          "select": {
+            "page": "Select all holds on this page",
+            "page-short": "Select all on this page",
+            "row": "Select {name}"
+          },
+          "selection": {
+            "selected": "{count, plural, one {# hold selected} other {# holds selected}}",
+            "all": "{count, plural, one {The # matching hold is selected} other {All # matching holds are selected}}",
+            "all-open": "All matching holds are selected",
+            "select-all": "Select all {count, number} matching",
+            "select-all-open": "Select all matching",
+            "clear": "Clear selection"
+          },
+          "bulk": {
+            "button": "Bulk action",
+            "selected": "{count, plural, one {# hold selected} other {# holds selected}}",
+            "all-open": "All matching holds selected"
+          },
+          "actions": {
+            "for": "Actions for {name}",
+            "release": "Release hold…"
+          },
+          "dialog": {
+            "place": {
+              "title": "Place a payout hold?",
+              "confirm": "Place hold",
+              "type": "Type the seller ID {id} to confirm."
+            },
+            "release": {
+              "title": "Release this payout hold?",
+              "confirm": "Release hold",
+              "type": "Type the hold ID {id} to confirm."
+            },
+            "step-up-note": "You will be asked for your two-step code next."
+          }
+        },
+        "col": {}
       },
       "load-failed": "The payout terms and holds could not be loaded."
     },
@@ -9678,7 +10078,10 @@
         },
         "release-step-up-note": "Releasing a hold changes when the seller is paid. Next, you will be asked for your two-step code."
       }
-    }
+    },
+    "tab": {},
+    "empty": {},
+    "col": {}
   },
   "security": {
     "title": "Account security",
@@ -10423,7 +10826,111 @@
         "confirm": "Merge shelf",
         "reload": "Reload"
       },
-      "shelves-open": "Seller's shelves"
+      "shelves-open": "Seller's shelves",
+      "actions": {
+        "approve": "Approve…",
+        "reject": "Reject…",
+        "shelves": "Seller’s shelves…"
+      },
+      "dialog": {
+        "approve": {
+          "title": "Approve “{name}”?",
+          "body": "{store} gets a shelf called “{name}” in its own shop. It does not add a platform category. The seller is told.",
+          "confirm": "Approve proposal"
+        },
+        "reject": {
+          "title": "Reject “{name}”?",
+          "body": "The proposal from {store} is closed and the seller sees the reason you pick. This cannot be undone.",
+          "confirm": "Reject proposal"
+        }
+      },
+      "bulk": {
+        "approve": "Approve ticked…",
+        "reject": "Reject ticked…",
+        "dialog": {
+          "approve": {
+            "title": "Approve {count, plural, one {# proposal} other {# proposals}}?",
+            "body": "Each ticked seller gets a shelf with the name they asked for. None of them becomes a platform category.",
+            "confirm": "Approve {count, plural, one {# proposal} other {# proposals}}"
+          },
+          "reject": {
+            "title": "Reject {count, plural, one {# proposal} other {# proposals}}?",
+            "body": "Every ticked proposal is closed with the reason you pick, and the sellers see it. This cannot be undone.",
+            "confirm": "Reject {count, plural, one {# proposal} other {# proposals}}"
+          }
+        }
+      },
+      "list": {
+        "title": "Category proposals",
+        "intro": "Categories that sellers asked for. Approving one gives the seller a shelf in their own shop. It does not add a platform category.",
+        "tabs": "Proposal views",
+        "tab": {
+          "waiting": "Waiting"
+        },
+        "search": {
+          "label": "Search proposals",
+          "placeholder": "The proposed name"
+        },
+        "filter": {
+          "title": "Filter proposals"
+        },
+        "sort": {
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "created": "Date added"
+          },
+          "date": {
+            "first": "Newest first",
+            "second": "Oldest first"
+          }
+        },
+        "sorted": "Sorted by {field}, {order}",
+        "col": {
+          "proposal": "Proposal",
+          "store": "Store",
+          "under": "Under",
+          "requested": "Requested"
+        },
+        "chip-search": "Search: {text}",
+        "loading": "Loading category proposals",
+        "match": "{count, plural, one {# proposal matches} other {# proposals match}}",
+        "range": "{from}–{to} of {total}",
+        "too-many": "More than {limit} proposals match. Add a search to see the rest.",
+        "no-access": "Your role can't decide category proposals.",
+        "error": {
+          "unavailable": "The category proposals could not be loaded. Check your connection and try again.",
+          "refused": "The search cannot be used. Change it and try again."
+        },
+        "empty": {
+          "title": "No proposals are waiting",
+          "body": "When a seller suggests a category, it appears here.",
+          "no-match": "No proposals match",
+          "no-match-help": "Change the search or clear it."
+        },
+        "select": {
+          "page": "Select all proposals on this page",
+          "page-short": "Select all on this page",
+          "row": "Select {name}"
+        },
+        "selection": {
+          "selected": "{count, plural, one {# proposal selected} other {# proposals selected}}",
+          "all": "{count, plural, one {The # matching proposal is selected} other {All # matching proposals are selected}}",
+          "all-open": "All matching proposals are selected",
+          "select-all": "Select all {count, number} matching",
+          "select-all-open": "Select all matching",
+          "clear": "Clear selection"
+        },
+        "actions": {
+          "header": "Actions",
+          "for": "Actions for {name}"
+        },
+        "bulk": {
+          "button": "Bulk action",
+          "selected": "{count, plural, one {# proposal selected} other {# proposals selected}}",
+          "all-open": "All matching proposals selected"
+        }
+      }
     }
   },
   "brands": {
@@ -10918,7 +11425,10 @@
         "hide": "Hide…",
         "remove": "Remove…"
       }
-    }
+    },
+    "tab": {},
+    "empty": {},
+    "col": {}
   },
   "business-activities": {
     "title": "Business activities",
@@ -11671,7 +12181,12 @@
         "open": "Open",
         "review": "Review and publish"
       }
-    }
+    },
+    "col": {},
+    "status": {},
+    "owner": {},
+    "author": {},
+    "open-note": {}
   },
   "tags": {
     "title": "Tags",
@@ -11922,6 +12437,23 @@
           "button": "Bulk action",
           "selected": "{count, plural, one {# suggestion selected} other {# suggestions selected}}",
           "all-open": "All matching suggestions selected"
+        },
+        "title": "Tag suggestions"
+      },
+      "bulk": {
+        "approve": "Approve ticked…",
+        "reject": "Reject ticked…",
+        "dialog": {
+          "approve": {
+            "title": "Create tags from {count, plural, one {# suggestion} other {# suggestions}}?",
+            "body": "Each ticked suggestion becomes a tag named as the seller wrote it, in the group you pick, and the seller is emailed. A name that already exists is skipped; map those one by one.",
+            "confirm": "Create {count, plural, one {# tag} other {# tags}}"
+          },
+          "reject": {
+            "title": "Reject {count, plural, one {# suggestion} other {# suggestions}}?",
+            "body": "Every ticked suggestion is closed with the reason you write, and the sellers are emailed. This cannot be undone.",
+            "confirm": "Reject {count, plural, one {# suggestion} other {# suggestions}}"
+          }
         }
       }
     },
@@ -12005,89 +12537,8 @@
         "button": "Bulk action",
         "selected": "{count, plural, one {# tag selected} other {# tags selected}}",
         "all-open": "All matching tags selected"
-      }
-    },
-    "list": {
-      "intro": "Shopping themes that group products across categories, such as Ramadan or BBQ. Sellers pick from this list.",
-      "tabs": "Tag views",
-      "tab": {
-        "all": "All",
-        "active": "Active",
-        "archived": "Archived"
       },
-      "search": {
-        "label": "Search tags",
-        "placeholder": "Name, synonym or address"
-      },
-      "filter": {
-        "title": "Filter tags",
-        "group": "Group"
-      },
-      "sort": {
-        "by": "Sort by",
-        "order": "Order",
-        "field": {
-          "slug": "Address",
-          "group": "Group",
-          "status": "Status",
-          "created": "Date added",
-          "updated": "Last updated"
-        },
-        "az": {
-          "first": "A to Z",
-          "second": "Z to A"
-        },
-        "date": {
-          "first": "Newest first",
-          "second": "Oldest first"
-        }
-      },
-      "sorted": "Sorted by {field}, {order}",
-      "col": {
-        "name": "Name",
-        "group": "Group",
-        "synonyms": "Synonyms",
-        "status": "Status"
-      },
-      "chip-search": "Search: {text}",
-      "loading": "Loading tags",
-      "match": "{count, plural, one {# tag matches} other {# tags match}}",
-      "range": "{from}–{to} of {total}",
-      "too-many": "More than {limit} tags match. Add a search to see the rest.",
-      "no-access": "Your role cannot see tags.",
-      "error": {
-        "unavailable": "The tags could not be loaded. Check your connection and try again.",
-        "refused": "The search cannot be used. Change it and try again."
-      },
-      "empty": {
-        "title": "No tags yet",
-        "body": "Create the first one with New tag.",
-        "no-match": "No tags match",
-        "no-match-help": "Change the search or filters, or clear them."
-      },
-      "select": {
-        "page": "Select all tags on this page",
-        "page-short": "Select all on this page",
-        "row": "Select {name}"
-      },
-      "selection": {
-        "selected": "{count, plural, one {# tag selected} other {# tags selected}}",
-        "all": "{count, plural, one {The # matching tag is selected} other {All # matching tags are selected}}",
-        "all-open": "All matching tags are selected",
-        "select-all": "Select all {count, number} matching",
-        "select-all-open": "Select all matching",
-        "clear": "Clear selection"
-      },
-      "actions": {
-        "header": "Actions",
-        "for": "Actions for {name}",
-        "edit": "Edit…"
-      },
-      "bulk": {
-        "button": "Bulk action",
-        "selected": "{count, plural, one {# tag selected} other {# tags selected}}",
-        "all-open": "All matching tags selected"
-      }
+      "title": "Tags"
     }
   },
   "attributes": {
@@ -13250,6 +13701,22 @@
           "button": "Bulk action",
           "selected": "{count, plural, one {# request selected} other {# requests selected}}",
           "all-open": "All matching requests selected"
+        }
+      },
+      "bulk": {
+        "approve": "Approve ticked…",
+        "decline": "Decline ticked…",
+        "dialog": {
+          "approve": {
+            "title": "Approve {count, plural, one {# size request} other {# size requests}}?",
+            "body": "Each ticked size is added to its product. A request whose size already exists, or that needs a permission you do not have, is skipped. Sellers are told.",
+            "confirm": "Approve {count, plural, one {# request} other {# requests}}"
+          },
+          "decline": {
+            "title": "Decline {count, plural, one {# size request} other {# size requests}}?",
+            "body": "Every ticked request is closed with the reason you write, and the sellers read it. This cannot be undone.",
+            "confirm": "Decline {count, plural, one {# request} other {# requests}}"
+          }
         }
       }
     },
@@ -15003,6 +15470,24 @@
         "unavailable": "The file couldn't be made."
       },
       "loading": "Loading questions…"
+    }
+  },
+  "bulk-decide": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "note": "{count, plural, one {The # row ticked on this page is decided.} other {The # rows ticked on this page are decided.}} Each goes through the usual decision with your own permissions.",
+    "done": {
+      "title": "Decision made",
+      "summary": "{done, plural, one {# row decided} other {# rows decided}}, {skipped, plural, one {# skipped} other {# skipped}}.",
+      "failed": "{count, plural, one {# row could not be decided and is still waiting.} other {# rows could not be decided and are still waiting.}}",
+      "skipped-help": "A row that changed, was decided by someone else or needs a permission you do not have is skipped, never forced."
+    },
+    "error": {
+      "too-large": "At most 50 rows can be decided at once.",
+      "denied": "Your role cannot do this.",
+      "invalid": "Check the fields and try again.",
+      "unavailable": "Could not reach the server. Nothing was decided. Try again.",
+      "unknown": "Something went wrong. Nothing was decided."
     }
   }
 }

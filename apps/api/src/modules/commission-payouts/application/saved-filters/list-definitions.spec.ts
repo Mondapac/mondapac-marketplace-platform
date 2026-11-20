@@ -1,9 +1,12 @@
 import { COMMISSION_PAYOUTS_LISTS } from './list-definitions';
 import {
   COMMISSION_PAYOUTS_DISPUTE_VIEW,
+  COMMISSION_PAYOUTS_EARNINGS_VIEW,
+  COMMISSION_PAYOUTS_OWN_SAVED_FILTER_SHARE,
   COMMISSION_PAYOUTS_PAYOUT_VIEW,
   COMMISSION_PAYOUTS_SAVED_FILTER_SHARE,
 } from '../../contracts/permissions';
+import { ExportOwnPayouts } from '../use-cases/export-own-payouts.use-case';
 import { ListDisputes } from '../use-cases/list-disputes.use-case';
 import { ListPayouts } from '../use-cases/list-payouts.use-case';
 
@@ -18,6 +21,7 @@ const listOf = (key: string) => {
 };
 const PAYOUTS = listOf('admin.commission-payouts.payouts');
 const DISPUTES = listOf('admin.commission-payouts.disputes');
+const OWN_PAYOUTS = listOf('seller.commission-payouts.payouts');
 const fieldsOf = (result: ReturnType<typeof PAYOUTS.parsePayload>) =>
   result.ok ? null : result.error.fields;
 
@@ -27,7 +31,7 @@ describe('the commission-payouts saved-filter lists', () => {
     expect(ListPayouts.access.rule).toEqual({ kind: 'permissions', allOf: [PAYOUTS.viewKey] });
     expect(DISPUTES.viewKey).toBe(COMMISSION_PAYOUTS_DISPUTE_VIEW.key);
     expect(ListDisputes.access.rule).toEqual({ kind: 'permissions', allOf: [DISPUTES.viewKey] });
-    for (const list of COMMISSION_PAYOUTS_LISTS) {
+    for (const list of [PAYOUTS, DISPUTES]) {
       expect(list.population).toBe('admin');
       expect(list.shareKey).toBe(COMMISSION_PAYOUTS_SAVED_FILTER_SHARE.key);
     }
@@ -157,5 +161,77 @@ describe('the commission-payouts saved-filter lists', () => {
       { path: 'payload.sort', code: 'value' },
     ]);
     expect(fieldsOf(DISPUTES.parsePayload('{}'))).toEqual([{ path: 'payload', code: 'type' }]);
+  });
+
+  describe('the seller Earnings › Payouts list (33)', () => {
+    it('is a store list guarded by the earnings key and shared with the own share key', () => {
+      expect(OWN_PAYOUTS.population).toBe('seller');
+      expect(OWN_PAYOUTS.scope).toBe('store');
+      expect(OWN_PAYOUTS.viewKey).toBe(COMMISSION_PAYOUTS_EARNINGS_VIEW.key);
+      // The same key as the list's export.
+      expect(ExportOwnPayouts.access.rule).toEqual({
+        kind: 'permissions',
+        allOf: [OWN_PAYOUTS.viewKey],
+      });
+      expect(OWN_PAYOUTS.shareKey).toBe(COMMISSION_PAYOUTS_OWN_SAVED_FILTER_SHARE.key);
+    });
+
+    it('keeps a document in its canonical form', () => {
+      expect(
+        OWN_PAYOUTS.parsePayload({
+          v: 1,
+          q: ` ${ID} `,
+          filters: {
+            status: 'paid',
+            from: '2026-11-01T00:00:00+10:00',
+            to: '',
+            minAmount: '0100',
+            maxAmount: '2500',
+          },
+          sort: 'amount',
+          direction: 'asc',
+        }),
+      ).toEqual({
+        ok: true,
+        value: {
+          v: 1,
+          q: ID.toLowerCase(),
+          filters: {
+            status: 'paid',
+            from: '2026-10-31T14:00:00Z',
+            minAmount: '100',
+            maxAmount: '2500',
+          },
+          sort: 'amount',
+          direction: 'asc',
+        },
+      });
+    });
+
+    it.each([
+      [
+        { v: 1, view: 'all', filters: {}, sort: 'created', direction: 'desc' },
+        'payload.view',
+        'unknown',
+      ],
+      [
+        { v: 1, filters: { sellerId: ID }, sort: 'created', direction: 'desc' },
+        'payload.filters.sellerId',
+        'unknown',
+      ],
+      [
+        { v: 1, filters: { status: 'VOIDED' }, sort: 'created', direction: 'desc' },
+        'payload.filters.status',
+        'value',
+      ],
+      [
+        { v: 1, filters: { minAmount: '9', maxAmount: '1' }, sort: 'created', direction: 'desc' },
+        'payload.filters.maxAmount',
+        'range',
+      ],
+      [{ v: 1, filters: {}, sort: 'seller', direction: 'desc' }, 'payload.sort', 'value'],
+    ])('refuses a document the list does not accept (%#)', (payload, path, code) => {
+      expect(fieldsOf(OWN_PAYOUTS.parsePayload(payload))).toContainEqual({ path, code });
+    });
   });
 });

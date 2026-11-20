@@ -1,4 +1,5 @@
 import { LoadError } from '@mondapac/ui';
+import { headers } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { CategoriesTabs } from '../../../../src/categories/proposals/categories-tabs.tsx';
 import {
@@ -12,6 +13,9 @@ import {
 } from '../../../../src/categories/types.ts';
 import { IMPORT_PERMISSION } from '../../../../src/categories/import/import-model.ts';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
+import { panelHostFor } from '../../../../src/server/bff.ts';
+import { panelConfig } from '../../../../src/server/config.ts';
+import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
 
 export async function generateMetadata() {
@@ -25,6 +29,10 @@ export default async function CategoriesPage() {
   if (gate.kind === 'unavailable') {
     return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
+  // List paging (settings): page numbers only when the Market says so; unreadable means Previous and next.
+  const mode = await serverGet<{ readonly listPaging: string }>('settings/admin/list-paging');
+  const paging = mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
+  const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
   const title = t('categories.title');
   const { permissionKeys } = gate.session;
   return (
@@ -38,6 +46,9 @@ export default async function CategoriesPage() {
           canRestructure={permissionKeys.includes(RESTRUCTURE_PERMISSION)}
           canImport={permissionKeys.includes(IMPORT_PERMISSION)}
           csrfToken={gate.session.csrfToken}
+          paging={paging}
+          accountId={gate.session.accountId}
+          marketId={marketId}
         />
       ) : (
         <>

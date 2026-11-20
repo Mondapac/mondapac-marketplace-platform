@@ -213,6 +213,11 @@ export function PagedSuperList<Row>({
   const rows = answer?.items;
   const pageIds = useMemo(() => rows?.map(config.rowId) ?? [], [rows, config]);
   const selection = useRowSelection(pageIds, SELECTION_MAX, listKey);
+  // A change the page made (a decision) leaves nothing ticked.
+  const clearSelection = selection.clear;
+  useEffect(() => {
+    clearSelection();
+  }, [refreshKey, clearSelection]);
   const status = useListLoading(loading, answer !== null);
   useEffect(() => {
     if (!status.stalled) return;
@@ -352,10 +357,21 @@ export function PagedSuperList<Row>({
   const selectedCount = selection.allMatching ? (total ?? 0) : selection.selected.size;
   const hasSelection = selection.allMatching || selection.selected.size > 0;
 
-  const bulkItems: ActionMenuItem[] =
-    config.exportEndpoint === undefined
+  // Bulk decisions run on the ticked rows of this page: their versions are the ones it showed.
+  const tickedHere = selection.allMatching
+    ? []
+    : shown.filter((row) => selection.selected.has(config.rowId(row)));
+  const bulkItems: ActionMenuItem[] = [
+    ...(config.bulk ?? []).map((action) => ({
+      id: action.id,
+      label: action.label,
+      disabled: tickedHere.length === 0 || failure !== null,
+      onSelect: () => action.run(tickedHere),
+    })),
+    ...(config.exportEndpoint === undefined
       ? []
-      : [{ id: 'export', label: t('bulk.export'), onSelect: () => setDialog('export') }];
+      : [{ id: 'export', label: t('bulk.export'), onSelect: () => setDialog('export') }]),
+  ];
 
   const empty = (
     <EmptyState
@@ -462,14 +478,18 @@ export function PagedSuperList<Row>({
         })),
         manage: null,
       }}
-      search={{
-        label: t('search.label'),
-        placeholder: t('search.placeholder'),
-        value: draft,
-        maxLength: config.search.max,
-        onChange: setDraft,
-        onSubmit: (value) => change({ q: value }),
-      }}
+      {...(config.search === undefined
+        ? {}
+        : {
+            search: {
+              label: t('search.label'),
+              placeholder: t('search.placeholder'),
+              value: draft,
+              maxLength: config.search.max,
+              onChange: setDraft,
+              onSubmit: (value: string) => change({ q: value }),
+            },
+          })}
       {...(fields.length === 0
         ? {}
         : {

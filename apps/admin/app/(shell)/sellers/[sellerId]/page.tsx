@@ -1,7 +1,10 @@
 import { EmptyState, LoadError } from '@mondapac/ui';
+import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
+import { panelHostFor } from '../../../../src/server/bff.ts';
+import { panelConfig } from '../../../../src/server/config.ts';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
 import {
@@ -48,11 +51,9 @@ import { PayoutHoldsCard } from '../../../../src/payouts/holds-card.tsx';
 import { PayoutTermsCard } from '../../../../src/payouts/terms-card.tsx';
 import {
   HOLD_PLACE_PERMISSION,
-  HOLD_RELEASE_PERMISSION,
   HOLD_VIEW_PERMISSION,
   TERMS_EDIT_PERMISSION,
   TERMS_VIEW_PERMISSION,
-  type PayoutHold,
   type PayoutTerms,
 } from '../../../../src/payouts/seller-types.ts';
 import { SellerActivitiesCard } from '../../../../src/sellers/seller-activities-card.tsx';
@@ -71,7 +72,7 @@ import {
   sellerReadPath,
   type RefundLimits,
 } from '../../../../src/refund-limits/types.ts';
-import { displayZone } from '../../../../src/shared/format.ts';
+import { displayZone, localZone } from '../../../../src/shared/format.ts';
 import { SellerMethodsCard } from '../../../../src/delivery-settings/seller-methods-card.tsx';
 import {
   DELIVERY_MANAGE_PERMISSION,
@@ -129,16 +130,6 @@ async function loadTerms(sellerId: string, canView: boolean): Promise<PayoutTerm
   return read.kind === 'ok' ? read.body : null;
 }
 
-/** The seller's payout holds, or null when the role cannot see them or they cannot be read. */
-async function loadHolds(sellerId: string, canView: boolean): Promise<PayoutHold[] | null> {
-  if (!canView) return null;
-  const read = await serverGet<{ holds: PayoutHold[] }>(
-    `commission-payouts/admin/sellers/${sellerId}/payout-holds`,
-  );
-  if (read.kind === 'signed-out') redirect('/session-ended');
-  return read.kind === 'ok' ? read.body.holds : null;
-}
-
 /** The activities the seller carries, or null when the role cannot see them or they cannot be read. */
 async function loadActivities(
   sellerId: string,
@@ -175,9 +166,11 @@ type CommissionRead =
 async function loadCommission(sellerId: string, canView: boolean): Promise<CommissionRead> {
   if (!canView) return { kind: 'hidden' };
   const base = `commission-payouts/admin/sellers/${sellerId}`;
+  // One row only: the page needs the Market currency and the totals (they cover every row); the
+  // ledger list reads its own rows.
   const [rate, ledger] = await Promise.all([
     serverGet<CommissionRate>(`${base}/commission-rate`),
-    serverGet<Ledger>(`${base}/ledger?limit=20`),
+    serverGet<Ledger>(`${base}/ledger?limit=1`),
   ]);
   if (rate.kind === 'signed-out' || ledger.kind === 'signed-out') redirect('/session-ended');
   if (rate.kind === 'forbidden' || ledger.kind === 'forbidden') return { kind: 'hidden' };
@@ -247,27 +240,31 @@ export default async function SellerReviewPage({
       canCheck: permissionKeys.includes(CHECK_PERMISSION),
       csrfToken,
     };
-    const [
-      commission,
-      methods,
-      terms,
-      holds,
-      health,
-      activities,
-      aiAccess,
-      blogAccess,
-      refundLimits,
-    ] = await Promise.all([
-      loadCommission(sellerId, permissionKeys.includes(SETTLEMENT_VIEW_PERMISSION)),
-      loadMethods(sellerId, permissionKeys.includes(DELIVERY_VIEW_PERMISSION)),
-      loadTerms(sellerId, permissionKeys.includes(TERMS_VIEW_PERMISSION)),
-      loadHolds(sellerId, permissionKeys.includes(HOLD_VIEW_PERMISSION)),
-      loadHealth(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
-      loadActivities(sellerId, permissionKeys),
-      loadAiAccess(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
-      loadBlogAccess(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
-      loadRefundLimits(sellerId, permissionKeys.includes(REFUND_LIMITS_VIEW_PERMISSION)),
-    ]);
+    const [commission, methods, terms, health, activities, aiAccess, blogAccess, refundLimits] =
+      await Promise.all([
+        loadCommission(sellerId, permissionKeys.includes(SETTLEMENT_VIEW_PERMISSION)),
+        loadMethods(sellerId, permissionKeys.includes(DELIVERY_VIEW_PERMISSION)),
+        loadTerms(sellerId, permissionKeys.includes(TERMS_VIEW_PERMISSION)),
+        loadHealth(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
+        loadActivities(sellerId, permissionKeys),
+        loadAiAccess(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
+        loadBlogAccess(sellerId, permissionKeys.includes(SELLER_VIEW_PERMISSION)),
+        loadRefundLimits(sellerId, permissionKeys.includes(REFUND_LIMITS_VIEW_PERMISSION)),
+      ]);
+    const canViewHolds = permissionKeys.includes(HOLD_VIEW_PERMISSION);
+    // List paging (settings): page numbers only when the Market says so; a value that cannot be
+    // read (or may not be read) means Previous and next. Read only for the lists that need it.
+    const [mode, host] =
+      commission.kind === 'ok' || canViewHolds
+        ? await Promise.all([
+            serverGet<{ readonly listPaging: string }>('settings/admin/list-paging'),
+            headers(),
+          ])
+        : [null, null];
+    const paging = mode?.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
+    const marketId =
+      host === null ? '' : (panelHostFor(panelConfig(), host.get('host'))?.marketId ?? '');
+    const zone = localZone(gate.session.timezone, gate.session.marketTimezone);
     return shell(
       <div className="flex flex-col gap-6">
         <ReviewView review={result.body} decide={decide} />
@@ -357,7 +354,7 @@ export default async function SellerReviewPage({
             ) : null}
           </div>
         )}
-        {terms === null && holds === null ? null : (
+        {terms === null && !canViewHolds ? null : (
           // Stacked, not side by side: the holds table needs the full width to stay unscrolled.
           <div className="flex flex-col gap-6">
             {terms === null ? null : (
@@ -369,19 +366,30 @@ export default async function SellerReviewPage({
                 csrfToken={csrfToken}
               />
             )}
-            {holds === null ? null : (
+            {canViewHolds ? (
               <PayoutHoldsCard
                 sellerId={sellerId}
-                initial={holds}
-                zone={displayZone(gate.session.timezone)}
+                paging={paging}
+                accountId={gate.session.accountId}
+                marketId={marketId}
+                zone={zone}
                 canPlace={permissionKeys.includes(HOLD_PLACE_PERMISSION)}
-                canRelease={permissionKeys.includes(HOLD_RELEASE_PERMISSION)}
                 csrfToken={csrfToken}
               />
-            )}
+            ) : null}
           </div>
         )}
-        {commission.kind === 'ok' ? <LedgerCard initial={commission.ledger} /> : null}
+        {commission.kind === 'ok' ? (
+          <LedgerCard
+            sellerId={sellerId}
+            currency={commission.ledger.currency}
+            initialTotals={commission.ledger.totals}
+            paging={paging}
+            accountId={gate.session.accountId}
+            marketId={marketId}
+            zone={zone}
+          />
+        ) : null}
         {commission.kind === 'unavailable' ? (
           <LoadError
             className="flex flex-col items-start gap-3 rounded-lg border border-line p-5"

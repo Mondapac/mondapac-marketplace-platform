@@ -112,8 +112,11 @@ true`), `sort`, `direction`. Search text and the deep-link subject are never sav
   lower case, instants as ISO text in UTC, minor units as digits). Every saved text (`q` and each filter
   value) must be a string: `null` or another type is `type`, a control, private-use, surrogate or
   unassigned character is `format`, and blank text is left out.
-- The compact lists 27 and 28 have no saved filters. The seller Payouts list (33) joins on the
-  seller routes (B0-1b) in a follow-up.
+- The compact lists 27 and 28 have no saved filters. The seller Earnings › Payouts list (33),
+  `seller.commission-payouts.payouts`, is on the seller routes (B0-1b): store-scoped, view key
+  `commission-payouts.earnings.view` (as its export), share key
+  `commission-payouts.own-saved-filter.share` (the Seller Owner holds it with no seed change), no
+  views (the status tabs are a filter). The seller panel still has to call these routes.
 
 ## Not here yet
 
