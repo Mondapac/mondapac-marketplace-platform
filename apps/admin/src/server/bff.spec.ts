@@ -2216,6 +2216,8 @@ describe('relay of the blog posts list', () => {
     expect(zwnjExport.mock.calls[0]?.[0]).toBe(
       `http://api.test/blog/admin/posts/export?format=csv&q=${encodeURIComponent('می\u200Cخواهم')}`,
     );
+    // The export is strict: a control character in the search refuses it (400), so the file is
+    // never wider than the list that was asked for.
     const controlExport = upstreamOk();
     const refused = await relay(
       config,
@@ -2238,6 +2240,55 @@ describe('relay of the blog posts list', () => {
     expect(file.mock.calls[0]?.[0]).toBe(
       `http://api.test/blog/admin/posts/export?format=xlsx&columns=slug%2Cpublished&ids=${seller}&view=all`,
     );
+  });
+});
+
+describe('relay of the blog posts export (strict)', () => {
+  const ID = '0190a000-0000-7000-8000-0000000000a1';
+  const get = async (path: string) => {
+    const upstream = upstreamOk();
+    const response = await relay(
+      config,
+      new Request(`http://admin.localhost:3002/api/${path}`, {
+        method: 'GET',
+        headers: { host: 'admin.localhost:3002' },
+      }),
+      path.split('?')[0]!.split('/'),
+      upstream,
+    );
+    return { response, upstream };
+  };
+
+  it('refuses a malformed key with no upstream call, instead of widening the file', async () => {
+    for (const query of [
+      'view=live',
+      'kind=podcast',
+      'owner=all',
+      'featured=yes',
+      `q=${'a'.repeat(101)}`,
+      'from=2026-11-01',
+      'sort=title',
+      'direction=up',
+      'format=pdf',
+      'columns=body',
+      'ids=nope',
+    ]) {
+      const { response, upstream } = await get(`blog/admin/posts/export?${query}`);
+      expect(response.status, query).toBe(400);
+      expect(upstream, query).not.toHaveBeenCalled();
+    }
+  });
+
+  it('relays 200 ids whole and refuses 201', async () => {
+    const two = Array.from({ length: 200 }, () => ID).join(',');
+    const ok = await get(`blog/admin/posts/export?ids=${two}`);
+    expect(ok.response.status).toBe(200);
+    expect(ok.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/blog/admin/posts/export?ids=${two.replaceAll(',', '%2C')}`,
+    );
+    const many = await get(`blog/admin/posts/export?ids=${two},${ID}`);
+    expect(many.response.status).toBe(400);
+    expect(many.upstream).not.toHaveBeenCalled();
   });
 });
 
@@ -3386,6 +3437,31 @@ describe('relay of the wallet and step-up routes', () => {
     expect(file.upstream.mock.calls[0]?.[0]).toBe(
       `http://api.test/commission-payouts/admin/payouts/export?format=xlsx&columns=gross%2Coutcome&ids=${id}&view=paid`,
     );
+  });
+
+  it('passes the Payouts Status and Amount filters of the list and of its strict export', async () => {
+    const query = 'status=paid&minAmount=10000&maxAmount=500000';
+    const listed = await run('GET', `commission-payouts/admin/payouts?${query}`, readHeaders);
+    expect(listed.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/payouts?${query}`,
+    );
+    const file = await run(
+      'GET',
+      `commission-payouts/admin/payouts/export?format=csv&${query}`,
+      readHeaders,
+    );
+    expect(file.upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/commission-payouts/admin/payouts/export?format=csv&${query}`,
+    );
+    for (const bad of ['minAmount=1.5', 'maxAmount=-1', 'minAmount=abc', 'status=nope']) {
+      const refused = await run(
+        'GET',
+        `commission-payouts/admin/payouts/export?format=csv&${bad}`,
+        readHeaders,
+      );
+      expect([bad, refused.response.status]).toEqual([bad, 400]);
+      expect(refused.upstream).not.toHaveBeenCalled();
+    }
   });
 
   it('passes the version and reason of removing payout terms, and nothing else', async () => {

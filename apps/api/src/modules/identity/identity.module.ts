@@ -22,8 +22,7 @@ import {
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import {
-  registerSystemChangeApplier,
-  registerSystemChangeReverter,
+  createSystemChangeRegistrar,
   SYSTEM_ACTION_PROPOSER,
   SYSTEM_REQUEST_RECORDER,
   type SystemChangeApplier,
@@ -423,6 +422,9 @@ function roleEditorProvider<U>(
   });
 }
 
+/** This module's own registrar for System requests (never exported from the barrel). */
+const IDENTITY_SYSTEM_CHANGES = createSystemChangeRegistrar('identity');
+
 /** The ports of the people reverters (Admin Inbox › System requests, area people). */
 const PEOPLE_REVERTER_PORTS = {
   unitOfWork: true,
@@ -471,7 +473,7 @@ function peopleReverter(
           { adminNames, platformRoles, authorisation },
         ),
     },
-    registerSystemChangeReverter('identity', subjectKind, PEOPLE_REVIEW_AREA, token),
+    IDENTITY_SYSTEM_CHANGES.reverter(subjectKind, PEOPLE_REVIEW_AREA, token),
   ];
 }
 
@@ -521,14 +523,8 @@ function peopleCreationHook(
         ),
     },
     mode === 'review'
-      ? registerSystemChangeReverter('identity', subjectKind, PEOPLE_REVIEW_AREA, token)
-      : registerSystemChangeApplier(
-          'identity',
-          subjectKind,
-          PEOPLE_REVIEW_AREA,
-          mode.approvalKeys,
-          token,
-        ),
+      ? IDENTITY_SYSTEM_CHANGES.reverter(subjectKind, PEOPLE_REVIEW_AREA, token)
+      : IDENTITY_SYSTEM_CHANGES.applier(subjectKind, PEOPLE_REVIEW_AREA, mode.approvalKeys, token),
   ];
 }
 

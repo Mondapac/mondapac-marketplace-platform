@@ -159,10 +159,8 @@ export function RequestsList({
   const listTop = useRef<HTMLDivElement>(null);
   const focusList = useRef(false);
   // The saved filters: null until they load, and when the route cannot answer (the list then has
-  // its built-in tab only, no Save filter and no Manage filters).
-  // Saved filters stay hidden until the lists route answers for LIST_KEY (it does once the key is
-  // registered backend-side, #1091): `useSavedFilters` is null until then, and every control that
-  // needs it checks for null.
+  // its built-in tab only, no Save filter and no Manage filters). Every control that needs them
+  // checks for null.
   const { saved, reload: loadSaved } = useSavedFilters<SavedPayload>(LIST_KEY);
   const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
 

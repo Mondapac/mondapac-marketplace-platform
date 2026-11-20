@@ -2,6 +2,8 @@
 // Ids, enums, minor-unit strings and instants only: the API never sends a hold id, a note, an
 // admin or a transfer id to a seller.
 
+export type ListPaging = 'pages' | 'prev-next';
+
 export interface PayoutMoney {
   /** Minor units, as a string. */
   readonly amountMinor: string;
@@ -53,8 +55,24 @@ export interface OwnPayout {
   readonly reason: string | null;
 }
 
+/** One row of the payout list: the payout and what the row Actions menu may offer. */
+export interface OwnPayoutRow extends OwnPayout {
+  /** The API's row actions; today only `open`, which the panel has no page for. */
+  readonly actions: readonly string[];
+}
+
+/** The seller's payouts per status, and all of them (`counts.all`). */
+export type OwnPayoutCounts = Readonly<Record<'all' | PayoutStatus, number>>;
+
+/** The answer of GET commission-payouts/seller/payouts (the Earnings super list). */
 export interface OwnPayouts {
-  readonly payouts: readonly OwnPayout[];
+  readonly payouts: readonly OwnPayoutRow[];
+  readonly counts: OwnPayoutCounts;
+  /** Page numbers only; null with Previous and next. */
+  readonly total: number | null;
+  readonly page: number | null;
+  readonly pageSize: number;
+  /** Previous and next only: names its sort, null on the last page. */
   readonly nextCursor: string | null;
 }
 
@@ -84,8 +102,8 @@ export interface PayoutsInitial {
   readonly next: NextPayout | null;
   readonly holds: readonly OwnHeld[] | null;
   readonly history: OwnPayouts | null;
+  /** The Market's List paging setting, read with the page. */
+  readonly paging: ListPaging;
   /** The seller may open the payout account page (payments.payout-account.view). */
   readonly canOpenAccount: boolean;
 }
-
-export const HISTORY_PAGE = 20;

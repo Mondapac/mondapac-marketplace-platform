@@ -130,7 +130,8 @@ strategy implementation, not in core logic.
 
 ## Commands
 - Requires Node.js 24.20.0+ and pnpm 10 (ADR-0014, minimum raised by ADR-0021 and its
-  decision 3; CI also runs the exact minimum).
+  decision 3; CI also runs the exact minimum on every push to main, pull requests run `.nvmrc`
+  only, ADR-0021 decision 2).
 - `docker compose up -d` starts Postgres, Redis, mail catcher (no object storage yet, ADR-0016). Copy `.env.example`
   to `.env` first.
 - `pnpm install` / `pnpm dev` / `pnpm build` / `pnpm lint` / `pnpm typecheck` / `pnpm format`

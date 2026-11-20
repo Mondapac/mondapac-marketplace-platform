@@ -1,7 +1,6 @@
 import { CertificationModule } from '../certification';
 import {
-  registerSystemChangeApplier,
-  registerSystemChangeReverter,
+  createSystemChangeRegistrar,
   SYSTEM_ACTION_PROPOSER,
   SYSTEM_REQUEST_RECORDER,
 } from '../system-requests';
@@ -601,6 +600,9 @@ import { AttributeFileController } from './presentation/attribute-file.controlle
 import { AdminVariantsList } from './application/use-cases/admin-variants-list.use-case';
 import { VariantTypeSettingsEdit } from './application/use-cases/variant-type-settings-edit.use-case';
 import { VariantAdminController } from './presentation/variant-admin.controller';
+
+/** This module's own registrar for System requests (never exported from the barrel). */
+const CATALOG_SYSTEM_CHANGES = createSystemChangeRegistrar('catalog');
 
 /** The three key probes the category reads use for their allowed actions (categories C1). */
 const CATEGORY_ACTION_PROBES = Symbol('CATEGORY_ACTION_PROBES');
@@ -1967,21 +1969,21 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
               ) as unknown as CatalogueRevertDependencies,
             ),
         },
-        registerSystemChangeReverter('catalog', kind, CATALOGUE_REVIEW_AREA, token),
+        CATALOG_SYSTEM_CHANGES.reverter(kind, CATALOGUE_REVIEW_AREA, token),
       ];
     }),
     ...STRUCTURE_REVERTERS.flatMap(([kind, build]) => {
       const token = Symbol(`CATALOG_REVERTER:${kind}`);
       return [
         structureProvider(token, build),
-        registerSystemChangeReverter('catalog', kind, CATALOGUE_REVIEW_AREA, token),
+        CATALOG_SYSTEM_CHANGES.reverter(kind, CATALOGUE_REVIEW_AREA, token),
       ];
     }),
     ...APPLIERS.flatMap(([kind, permission, build]) => {
       const token = Symbol(`CATALOG_APPLIER:${kind}`);
       return [
         structureProvider(token, build),
-        registerSystemChangeApplier('catalog', kind, CATALOGUE_REVIEW_AREA, permission, token),
+        CATALOG_SYSTEM_CHANGES.applier(kind, CATALOGUE_REVIEW_AREA, permission, token),
       ];
     }),
     useCaseProvider(CategoryReorder, {

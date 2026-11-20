@@ -85,12 +85,17 @@ export function Earnings({
   initial,
   disputes = [],
   payouts,
+  accountId = '',
+  marketId = '',
 }: {
   readonly initial: Ledger;
   /** The orders a dispute holds now, listed in a card above the ledger. */
   readonly disputes?: readonly OwnDispute[];
   /** The next payout, the money on hold and the payout history; absent shows none of them. */
   readonly payouts?: PayoutsInitial;
+  /** The signed-in account and the Market: the key of the seller's own list preferences. */
+  readonly accountId?: string;
+  readonly marketId?: string;
 }) {
   const t = useTranslations('earnings');
   const locale = useLocale();
@@ -146,6 +151,8 @@ export function Earnings({
           currency={currency}
           balance={totals.balance}
           disputes={disputes}
+          accountId={accountId}
+          marketId={marketId}
         >
           <LedgerTotals items={totalItems(totals, t, money)} />
           <DisputedOrders disputes={disputes} />

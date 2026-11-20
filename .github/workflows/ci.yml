@@ -28,13 +28,12 @@ jobs:
         region:
           - name: au
             hosted_markets: AU
-        # ADR-0021: the exact minimum of `engines` in package.json, and the version in
-        # .nvmrc. Raise both together (ADR-0021 decision 3).
-        node:
-          - label: minimum
-            version: 24.20.0
-          - label: .nvmrc
-            version-file: .nvmrc
+        # ADR-0021 decision 2, as amended on 2026-11-20: a pull request runs the .nvmrc version
+        # only; a push to main runs both the exact minimum of `engines` (24.20.0) and .nvmrc, so
+        # every merge is still tested on the minimum. This halves the jobs of each pull request
+        # run (16 to 8); the account runs at most 20 jobs at once. Raise the number together
+        # with package.json `engines` (ADR-0021 decision 3).
+        node: ${{ fromJSON(github.event_name == 'pull_request' && '[{"label":".nvmrc","version-file":".nvmrc"}]' || '[{"label":"minimum","version":"24.20.0"},{"label":".nvmrc","version-file":".nvmrc"}]') }}
 
     services:
       # Same image and major version as docker-compose.yml. Pulled from Google's mirror of the
@@ -185,11 +184,7 @@ jobs:
         region:
           - name: au
             hosted_markets: AU
-        node:
-          - label: minimum
-            version: 24.20.0
-          - label: .nvmrc
-            version-file: .nvmrc
+        node: ${{ fromJSON(github.event_name == 'pull_request' && '[{"label":".nvmrc","version-file":".nvmrc"}]' || '[{"label":"minimum","version":"24.20.0"},{"label":".nvmrc","version-file":".nvmrc"}]') }}
         shard: [1, 2, 3]
 
     services:
@@ -253,11 +248,7 @@ jobs:
         region:
           - name: au
             hosted_markets: AU
-        node:
-          - label: minimum
-            version: 24.20.0
-          - label: .nvmrc
-            version-file: .nvmrc
+        node: ${{ fromJSON(github.event_name == 'pull_request' && '[{"label":".nvmrc","version-file":".nvmrc"}]' || '[{"label":"minimum","version":"24.20.0"},{"label":".nvmrc","version-file":".nvmrc"}]') }}
 
     env:
       DATABASE_URL: postgresql://mondapac_api:mondapac_api@localhost:5432/mondapac
@@ -299,11 +290,7 @@ jobs:
         region:
           - name: au
             hosted_markets: AU
-        node:
-          - label: minimum
-            version: 24.20.0
-          - label: .nvmrc
-            version-file: .nvmrc
+        node: ${{ fromJSON(github.event_name == 'pull_request' && '[{"label":".nvmrc","version-file":".nvmrc"}]' || '[{"label":"minimum","version":"24.20.0"},{"label":".nvmrc","version-file":".nvmrc"}]') }}
         shard: [1, 2, 3]
 
     services:

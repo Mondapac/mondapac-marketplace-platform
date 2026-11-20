@@ -129,7 +129,7 @@ describe('the navigation editor', () => {
     expect(screen.getByText(/view the navigation but not change it/)).toBeTruthy();
     expect(screen.queryByRole('button', { name: /^Add/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Save to draft' })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Restore version/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Actions for version/ })).toBeNull();
   });
 
   it('saves the whole draft in order after a local change', async () => {
@@ -260,10 +260,11 @@ describe('the navigation editor', () => {
   it('does not offer a restore while there are unsaved changes', () => {
     mount();
     fireEvent.change(screen.getAllByLabelText('Label')[0]!, { target: { value: 'Edited' } });
-    expect(screen.getByRole('button', { name: 'Restore version 1' }).matches(':disabled')).toBe(
-      true,
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for version 1' }));
+    expect(screen.getByRole('menuitem', { name: /^Restore…/ }).getAttribute('aria-disabled')).toBe(
+      'true',
     );
-    expect(screen.getByText(/Save or discard your changes before restoring/)).toBeTruthy();
+    expect(screen.getAllByText(/Save or discard your changes before restoring/).length).toBe(2);
   });
 
   it('shows Shown or Hidden next to each switch', () => {
@@ -280,7 +281,8 @@ describe('the navigation editor', () => {
       method === 'POST' ? new Promise((resolve) => (finish = resolve)) : reads(method, ...rest),
     );
     mount();
-    fireEvent.click(screen.getByRole('button', { name: 'Restore version 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for version 1' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Restore…' }));
     const dialog = screen.getByRole('dialog', { name: 'Restore version 1?', hidden: true });
     const confirm = within(dialog).getByRole('button', { name: 'Restore to draft', hidden: true });
     fireEvent.click(confirm);
@@ -294,7 +296,8 @@ describe('the navigation editor', () => {
 
   it('restores an earlier version after asking', async () => {
     mount();
-    fireEvent.click(screen.getByRole('button', { name: 'Restore version 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for version 1' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Restore…' }));
     expect(screen.getByText(/replaces the current draft/)).toBeTruthy();
     const dialog = screen.getByRole('dialog', { name: 'Restore version 1?', hidden: true });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Restore to draft', hidden: true }));
@@ -305,6 +308,6 @@ describe('the navigation editor', () => {
       { versionId: 'v1' },
       'c1',
     );
-    expect(screen.queryByRole('button', { name: 'Restore version 2' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Actions for version 2' })).toBeNull();
   });
 });

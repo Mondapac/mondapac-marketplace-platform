@@ -9,7 +9,7 @@ import { MARKET_SETTING_REPOSITORY } from './application/ports/market-setting.re
 import type { SettingsDependencies } from './application/settings-dependencies';
 import { SETTING_SUBJECT_KIND, SETTINGS_REVIEW_AREA } from './application/settings-flow';
 import { SettingsReverter } from './application/settings-reverter';
-import { registerSystemChangeReverter, SYSTEM_REQUEST_RECORDER } from '../system-requests';
+import { createSystemChangeRegistrar, SYSTEM_REQUEST_RECORDER } from '../system-requests';
 import { ChangeAiSetting } from './application/use-cases/change-ai-setting.use-case';
 import { ReadAiDescriptionWriter } from './application/use-cases/read-ai-description-writer.use-case';
 import { ReadCartMode } from './application/use-cases/read-cart-mode.use-case';
@@ -39,6 +39,8 @@ const PORTS: readonly [keyof SettingsDependencies, InjectionToken][] = [
 
 /** The reverter of a Market setting change, registered with System requests below. */
 const SETTINGS_REVERTER = Symbol('SETTINGS_REVERTER');
+/** This module's own registrar for System requests (never exported from the barrel). */
+const SETTINGS_SYSTEM_CHANGES = createSystemChangeRegistrar('settings');
 
 const dependenciesOf = (values: readonly unknown[]): SettingsDependencies =>
   Object.fromEntries(
@@ -85,12 +87,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       inject: PORTS.map(([, token]) => token),
       useFactory: (...values: unknown[]) => new SettingsReverter(dependenciesOf(values)),
     },
-    registerSystemChangeReverter(
-      'settings',
-      SETTING_SUBJECT_KIND,
-      SETTINGS_REVIEW_AREA,
-      SETTINGS_REVERTER,
-    ),
+    SETTINGS_SYSTEM_CHANGES.reverter(SETTING_SUBJECT_KIND, SETTINGS_REVIEW_AREA, SETTINGS_REVERTER),
     {
       provide: SETTINGS_FACADE,
       inject: [ReadAiDescriptionWriter, ReadCartMode],
