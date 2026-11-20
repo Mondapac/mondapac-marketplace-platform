@@ -3554,10 +3554,15 @@
         "model": "Configured model",
         "spend-today": "Spend today",
         "spend-month": "Spend this month",
-        "not-measured": "Recorded once buyers can chat",
+        "not-measured": "Recorded once buyers have chatted",
         "not-configured": "The assistant is switched on, but buyers do not see it yet: the server is missing the model API key or a model for the chosen tier. See the rows below.",
         "conversations-today": "Conversations today",
-        "last-auto-off": "Last automatic switch-off"
+        "last-auto-off": "Last automatic switch-off",
+        "spend-of": "{spent} of {cap}",
+        "cost-per-conversation": "Average cost per conversation (all tiers)",
+        "cost-per-conversation-value": "{amount} over the last 30 days",
+        "never-auto-off": "Never switched off by a cap",
+        "auto-off-value": "{cap, select, daily {Daily cap} monthly {Monthly cap} other {A cap}} reached, {when}"
       },
       "summary": {
         "title": "Settings in force"
@@ -3597,7 +3602,7 @@
         "balanced": "Balanced",
         "none": "Not configured",
         "configured": "{tier}: {model}",
-        "help": "A tier without a model on the server cannot be chosen. The cost per conversation is shown once buyers can chat."
+        "help": "A tier without a model on the server cannot be chosen. The average cost per conversation is in the Status card once buyers have chatted."
       },
       "language": {
         "label": "Reply language",
@@ -3631,7 +3636,8 @@
         "daily-help": "From {min, number} to {max, number}, and no more than the monthly cap.",
         "monthly": "Monthly cap",
         "monthly-help": "From {min, number} to {max, number}.",
-        "amount": "{amount, number, ::currency/USD}"
+        "amount": "{amount, number, ::currency/USD}",
+        "amount-precise": "{amount, number, ::currency/USD .00##}"
       },
       "retention": {
         "label": "Keep conversations",
@@ -3667,7 +3673,14 @@
         "unknown": "Something went wrong. Try again."
       },
       "not-configured-option": "{option} (not configured on the server)",
-      "version-defaults": "Built-in defaults, never saved"
+      "version-defaults": "Built-in defaults, never saved",
+      "tabs": {
+        "label": "Smart assistant pages",
+        "settings": "Settings",
+        "insights": "Insights"
+      },
+      "insights-title": "Smart assistant insights",
+      "insights-intro": "How buyers use the shopping assistant, what it costs, how they rate its answers, and the questions it could not answer."
     },
     "view-only": {
       "title": "View only",
@@ -8307,7 +8320,8 @@
       "review-held": "A <strong>review</strong> is held for moderation",
       "review-reported": "A seller reported a <strong>review</strong>",
       "seller-refund-limit-reached": "{limit, select, count {A seller reached the <strong>refund count cap</strong>} amount {A seller reached the <strong>refund amount cap</strong>} unset {A seller tried to refund with <strong>no refund cap set</strong>} other {A seller reached a <strong>refund cap</strong>}}",
-      "system-request-overdue": "<strong>SR-{number}</strong> has waited {ageDays, plural, one {# day} other {# days}} for review"
+      "system-request-overdue": "<strong>SR-{number}</strong> has waited {ageDays, plural, one {# day} other {# days}} for review",
+      "assistant-spend-cap-reached": "{cap, select, daily {The shopping assistant reached its <strong>daily spend cap</strong> and is switched off until tomorrow} monthly {The shopping assistant reached its <strong>monthly spend cap</strong> and is switched off until next month} other {The shopping assistant reached a <strong>spend cap</strong> and is switched off}}"
     },
     "category": {
       "certificates": "Certificates",
@@ -8318,7 +8332,8 @@
       "reviews": "Reviews",
       "refunds": "Refunds",
       "other": "Other",
-      "system-requests": "System requests"
+      "system-requests": "System requests",
+      "assistant": "Smart assistant"
     },
     "empty": {
       "unread": {
@@ -14573,6 +14588,166 @@
         "title": "No credit notes yet",
         "body": "One is issued for each completed refund."
       }
+    }
+  },
+  "assistant-insights": {
+    "loading": "Loading insights…",
+    "refresh": "Refresh",
+    "error": {
+      "unavailable": "The insights couldn't be loaded.",
+      "partial": "Only the first part of the unanswered questions could be loaded. Refresh to try again.",
+      "refresh": "The insights couldn't be refreshed. What you see is from the last successful read."
+    },
+    "range": {
+      "label": "Days to show",
+      "days": "{count, plural, one {Last # day} other {Last # days}}",
+      "note": "{from} to {to}, in the Market's days."
+    },
+    "summary": {
+      "title": "Summary",
+      "conversations": "Conversations",
+      "spend": "Spend",
+      "average": "Average cost per conversation",
+      "handoffs": "Support hand-offs",
+      "none": "No conversations yet"
+    },
+    "daily": {
+      "title": "Conversations per day",
+      "empty": "No conversations in these days yet.",
+      "chart-label": "Conversations per day over {days} days, {total} in all.",
+      "bar": "{day}: {count, plural, one {# conversation} other {# conversations}}, {spend}",
+      "table-toggle": "Show as a table",
+      "col": {
+        "day": "Day",
+        "conversations": "Conversations",
+        "spend": "Spend"
+      },
+      "peak": "Peak: {count} a day"
+    },
+    "feedback": {
+      "title": "How buyers rate the answers",
+      "empty": "No thumbs up or down in these days yet.",
+      "share": "{share} thumbs up ({up} up, {down} down).",
+      "reason": "{reason}: {count}",
+      "reasons": {
+        "wrong": "Wrong",
+        "not-found": "Not found",
+        "other": "Other reason"
+      }
+    },
+    "list": {
+      "title": "Questions the assistant could not answer",
+      "intro": "Questions grouped by their wording, most asked first: the assistant was unavailable or a tool failed, a product search found nothing, or the buyer gave a thumbs down. Buyer text is shown masked, as it was stored.",
+      "truncated": "More than 1,000 flagged turns exist in these days: only the newest 1,000 are grouped.",
+      "views": "Views",
+      "view": {
+        "all": "All",
+        "thumbs-down": "Thumbs down",
+        "no-results": "Nothing found",
+        "failed": "Failed"
+      },
+      "reason": {
+        "unavailable": "Unavailable",
+        "tool-failed": "Tool failed",
+        "no-results": "Nothing found",
+        "thumbs-down": "Thumbs down"
+      },
+      "reason-count": "{reason}: {count}",
+      "row-name": "the question “{text}”",
+      "col": {
+        "query": "Question",
+        "count": "Times asked",
+        "reasons": "Why unanswered",
+        "last": "Last asked",
+        "unavailable": "Unavailable",
+        "tool-failed": "Tool failed",
+        "no-results": "Nothing found",
+        "thumbs-down": "Thumbs down"
+      },
+      "search": {
+        "label": "Search",
+        "placeholder": "Search the question text"
+      },
+      "chip-search": "Search is {text}",
+      "filter": {
+        "title": "Filter questions",
+        "at-least": "{count, plural, one {At least # time} other {At least # times}}",
+        "name": {
+          "reason": "Reason",
+          "minCount": "Times asked"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "count": "Times asked",
+          "last": "Last asked",
+          "query": "Question"
+        },
+        "count": {
+          "first": "Most asked first",
+          "second": "Least asked first"
+        },
+        "last": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "query": {
+          "first": "A to Z",
+          "second": "Z to A"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# question matches} other {# questions match}}",
+      "range": "{from}-{to} of {total}",
+      "empty": {
+        "all": "No unanswered questions in these days.",
+        "thumbs-down": "No answer got a thumbs down.",
+        "no-results": "No search came back empty.",
+        "failed": "No turn failed.",
+        "no-match": "No questions match",
+        "no-match-help": "Try other filters or clear them."
+      },
+      "select": {
+        "page": "Select all questions on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# question selected} other {# questions selected}}",
+        "all": "{count, plural, one {The # matching question is selected} other {All # matching questions are selected}}",
+        "select-all": "Select all {count, number} matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# question selected} other {# questions selected}}",
+        "export": "Export…",
+        "none": "Select questions to export them"
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}",
+        "copy": "Copy question",
+        "copied": "Question copied.",
+        "copy-failed": "The question couldn't be copied."
+      },
+      "export": {
+        "title": "Export questions",
+        "body": "The file holds the selected questions as shown here: the masked text, how often it was asked, the count by reason and when it was last asked.",
+        "legend": "File format",
+        "csv": "CSV",
+        "csv-help": "Opens in any spreadsheet or text tool.",
+        "xlsx": "XLSX",
+        "xlsx-help": "Opens in Excel and similar tools.",
+        "confirm": "Export",
+        "cancel": "Cancel",
+        "sheet": "Unanswered questions",
+        "done": "The file was saved.",
+        "unavailable": "The file couldn't be made."
+      },
+      "loading": "Loading questions…"
     }
   }
 }
