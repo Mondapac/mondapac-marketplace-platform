@@ -14,6 +14,25 @@ export interface ServiceArea {
   readonly deliveryEnabled: boolean;
 }
 
+/** One side of a lane: one area, every area of a region (state), or every area of the Market. */
+export type LaneEnd =
+  { readonly area: string } | { readonly region: string } | { readonly all: true };
+
+/** A cross-area selling rule: a seller in `from` may serve a buyer in `to`. */
+export interface AreaLane {
+  readonly from: LaneEnd;
+  readonly to: LaneEnd;
+}
+
+/**
+ * The cross-area selling rules of one Market. `enabled` is the Market switch, OFF unless the
+ * file says otherwise; while it is off the lanes are ignored and a seller serves only its own area.
+ */
+export interface CrossAreaSelling {
+  readonly enabled: boolean;
+  readonly lanes: readonly AreaLane[];
+}
+
 export interface ServiceAreaDefinition extends ServiceArea {
   /** Digits-only postcodes and ranges. */
   readonly intervals: readonly PostcodeInterval[];
@@ -30,7 +49,37 @@ export interface ServiceAreaDefinition extends ServiceArea {
 export class ServiceAreaDirectory {
   constructor(
     private readonly areasByMarket: ReadonlyMap<MarketId, readonly ServiceAreaDefinition[]>,
+    private readonly crossAreaByMarket: ReadonlyMap<MarketId, CrossAreaSelling> = new Map(),
   ) {}
+
+  /**
+   * Whether a seller in `sellerAreaCode` may serve a buyer in `buyerAreaCode`. Fail-closed: the
+   * same area always works; any other pair needs the Market switch ON and a lane that names
+   * both sides. An unknown or missing area, a Market with no rules and an unknown Market all
+   * answer false.
+   */
+  sellerMayServe(
+    marketId: MarketId,
+    sellerAreaCode: string | null,
+    buyerAreaCode: string | null,
+  ): boolean {
+    if (sellerAreaCode === null || buyerAreaCode === null) return false;
+    const areas = this.areasByMarket.get(marketId) ?? [];
+    const seller = areas.find((area) => area.code === sellerAreaCode);
+    const buyer = areas.find((area) => area.code === buyerAreaCode);
+    if (seller === undefined || buyer === undefined) return false;
+    if (seller.code === buyer.code) return true;
+    const rules = this.crossAreaByMarket.get(marketId);
+    if (rules === undefined || !rules.enabled) return false;
+    const matches = (end: LaneEnd, area: ServiceAreaDefinition): boolean =>
+      'all' in end ? true : 'area' in end ? end.area === area.code : end.region === area.region;
+    return rules.lanes.some((lane) => matches(lane.from, seller) && matches(lane.to, buyer));
+  }
+
+  /** Whether the Market switch for cross-area selling is ON. */
+  crossAreaSellingEnabled(marketId: MarketId): boolean {
+    return this.crossAreaByMarket.get(marketId)?.enabled === true;
+  }
 
   areaFor(marketId: MarketId, postcode: string): ServiceArea | undefined {
     if (typeof postcode !== 'string') return undefined;

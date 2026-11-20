@@ -39,3 +39,29 @@ Market, validated when the API starts. The directory is read by `ServiceAreaDire
 The `greater-brisbane` postcode set is a **draft** (Brisbane, Logan, Ipswich, Moreton Bay,
 Redland) for the product owner to confirm, and both flags are `false` until the owner opens
 the area. Until then every AU address is outside the open areas (fail-closed).
+
+## Cross-area selling (seller city, package 8)
+
+Selling across areas is OFF at launch. A seller serves buyers in its own area only. The
+infrastructure to allow more is an optional `crossAreaSelling` section in the same file:
+
+```json
+"crossAreaSelling": {
+  "enabled": false,
+  "lanes": [
+    { "from": { "area": "greater-brisbane" }, "to": { "region": "QLD" } },
+    { "from": { "region": "NSW" }, "to": { "all": true } }
+  ]
+}
+```
+
+- `enabled` is the Market switch and is `false` when the section or the key is missing. While it
+  is off, every lane is ignored.
+- A lane says where the seller is (`from`) and where the buyer is (`to`). Each side is one
+  `area`, a `region` (every area of that state) or `all`. A lane works in one direction only.
+- No matching lane means no cross-area selling (fail-closed). An unknown area, a missing area
+  and a lane naming an area or region the file does not list (the API refuses to start) all
+  answer no.
+- `ServiceAreaDirectory.sellerMayServe(market, sellerArea, buyerArea)` is the one question
+  callers ask. Checkout and the storefront do not ask it yet: that is the next step, together
+  with the carrier and cost per lane, which this section leaves out on purpose.

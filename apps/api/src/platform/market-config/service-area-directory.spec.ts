@@ -249,3 +249,87 @@ describe('loadServiceAreas', () => {
     expect(() => loadServiceAreas([dir], [AU])).not.toThrow();
   });
 });
+
+describe.each([
+  ['AU', AU],
+  ['ZZ', ZZ],
+] as const)('cross-area selling, Market %s', (code, marketId) => {
+  const areas = [
+    { ...area('a-one', ['1000-1099']), region: 'R1' },
+    { ...area('a-two', ['2000-2099']), region: 'R1' },
+    { ...area('b-one', ['3000-3099']), region: 'R2' },
+  ];
+  const load = (crossAreaSelling?: unknown) =>
+    loadServiceAreas(
+      [directoryWith({ [`${code}.json`]: { market: code, areas, crossAreaSelling } })],
+      [marketId],
+    );
+
+  it('serves only the own area when no rules are given (switch off by default)', () => {
+    const directory = load();
+    expect(directory.crossAreaSellingEnabled(marketId)).toBe(false);
+    expect(directory.sellerMayServe(marketId, 'a-one', 'a-one')).toBe(true);
+    expect(directory.sellerMayServe(marketId, 'a-one', 'a-two')).toBe(false);
+  });
+
+  it('ignores every lane while the switch is off', () => {
+    const directory = load({ lanes: [{ from: { all: true }, to: { all: true } }] });
+    expect(directory.crossAreaSellingEnabled(marketId)).toBe(false);
+    expect(directory.sellerMayServe(marketId, 'a-one', 'b-one')).toBe(false);
+  });
+
+  it('with the switch on, serves exactly what a lane names, in that direction only', () => {
+    const directory = load({
+      enabled: true,
+      lanes: [
+        { from: { area: 'a-one' }, to: { area: 'a-two' } },
+        { from: { region: 'R2' }, to: { region: 'R1' } },
+      ],
+    });
+    expect(directory.sellerMayServe(marketId, 'a-one', 'a-two')).toBe(true);
+    expect(directory.sellerMayServe(marketId, 'a-two', 'a-one')).toBe(false);
+    expect(directory.sellerMayServe(marketId, 'a-one', 'b-one')).toBe(false);
+    expect(directory.sellerMayServe(marketId, 'b-one', 'a-one')).toBe(true);
+    expect(directory.sellerMayServe(marketId, 'b-one', 'a-two')).toBe(true);
+  });
+
+  it('answers false for a missing or unknown area, whatever the rules say', () => {
+    const directory = load({ enabled: true, lanes: [{ from: { all: true }, to: { all: true } }] });
+    expect(directory.sellerMayServe(marketId, null, 'a-one')).toBe(false);
+    expect(directory.sellerMayServe(marketId, 'a-one', null)).toBe(false);
+    expect(directory.sellerMayServe(marketId, 'a-one', 'nowhere')).toBe(false);
+    expect(directory.sellerMayServe(marketId, 'a-one', 'b-one')).toBe(true);
+  });
+
+  it('refuses a lane that names an area or region the Market does not list', () => {
+    expect(() =>
+      load({ enabled: true, lanes: [{ from: { area: 'ghost' }, to: { all: true } }] }),
+    ).toThrow(/lane 0/);
+    expect(() =>
+      load({ enabled: true, lanes: [{ from: { all: true }, to: { region: 'R9' } }] }),
+    ).toThrow(/lane 0/);
+  });
+
+  it('never lets one Market use the rules of another', () => {
+    const other = marketId === AU ? ZZ : AU;
+    const otherCode = marketId === AU ? 'ZZ' : 'AU';
+    const directory = loadServiceAreas(
+      [
+        directoryWith({
+          [`${code}.json`]: {
+            market: code,
+            areas,
+            crossAreaSelling: {
+              enabled: true,
+              lanes: [{ from: { all: true }, to: { all: true } }],
+            },
+          },
+          [`${otherCode}.json`]: { market: otherCode, areas },
+        }),
+      ],
+      [marketId, other],
+    );
+    expect(directory.sellerMayServe(marketId, 'a-one', 'b-one')).toBe(true);
+    expect(directory.sellerMayServe(other, 'a-one', 'b-one')).toBe(false);
+  });
+});
