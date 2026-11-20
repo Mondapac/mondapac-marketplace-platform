@@ -74,13 +74,24 @@ export interface BulkDecideCounts {
 }
 
 /** Refusals of one row that mean "this row is not decidable now": the row is skipped. */
-const SKIPPED_CODES = new Set(['access.denied', 'conflict.stale', 'category-proposal.not-allowed']);
+const SKIPPED_CODES = new Set([
+  'access.denied',
+  'conflict.stale',
+  'category-proposal.not-allowed',
+  // The review queue: a revision that needs ticked checks is left for a person (never ticked in
+  // bulk), a seller who may not sell now or a product that is not published is not decidable now.
+  'review.checks-missing',
+  'review.not-current-revision',
+  'offer.product-not-published',
+  'seller.not-eligible',
+]);
 
 const isSkipped = (code: string): boolean =>
   SKIPPED_CODES.has(code) ||
   code.endsWith('.not-found') ||
   code.endsWith('.not-open') ||
   code.endsWith('.not-pending') ||
+  code.endsWith('.not-pending-review') ||
   code.endsWith('.stale');
 
 /**

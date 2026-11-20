@@ -22,6 +22,7 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { AttributeSuggestionBulkDecide } from '../application/use-cases/attribute-suggestion-bulk-decide.use-case';
 import { CategoryProposalBulkDecide } from '../application/use-cases/category-proposal-bulk-decide.use-case';
+import { ReviewQueueBulkDecide } from '../application/use-cases/review-queue-bulk-decide.use-case';
 import { TopicSuggestionBulkDecide } from '../application/use-cases/topic-suggestion-bulk-decide.use-case';
 import { VariantRequestBulkDecide } from '../application/use-cases/variant-request-bulk-decide.use-case';
 import { closedBody, refusalWith, type Refusal } from './http-answers';
@@ -66,6 +67,7 @@ export class QueueBulkController {
     private readonly attributeSuggestions: AttributeSuggestionBulkDecide,
     private readonly topicSuggestions: TopicSuggestionBulkDecide,
     private readonly categoryProposals: CategoryProposalBulkDecide,
+    private readonly reviewQueue: ReviewQueueBulkDecide,
   ) {}
 
   @Post('variant-requests/bulk-decide')
@@ -199,6 +201,43 @@ export class QueueBulkController {
       ['action', 'items'],
       (input) => this.categoryProposals.execute(context, input),
       ['reasonCode'],
+    );
+  }
+
+  @Post('review-queue/bulk-decide')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Approve or send back several rows of the review queue',
+    description:
+      'Needs catalog.product.approve. `kind` is `revision` (items `{ id: productId, revisionId, version }`) or `offer` (items `{ id: offerId, version }`). `action` is `approve` or `request-changes` (with `reasonCode`). ' +
+      'A bulk approve never ticks a manual check: a revision whose review needs checks is skipped with `review.checks-missing` and must be opened and decided one by one.' +
+      BULK_NOTE,
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: BulkDecideRequest })
+  @ApiOkResponse({ type: BulkDecideBody })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiPayloadTooLargeResponse({ type: ApiErrorBody, description: 'batch.too-large (max 50)' })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  reviewQueueDecide(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<BulkDecideBody> {
+    return this.run(
+      'catalog.review-queue-bulk-decide',
+      context,
+      response,
+      request,
+      body,
+      ['action', 'items'],
+      (input) => this.reviewQueue.execute(context, input),
+      ['kind', 'reasonCode'],
     );
   }
 

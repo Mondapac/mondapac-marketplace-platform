@@ -21,6 +21,7 @@ import { CATEGORY_PROPOSAL_ADMIN_STATUS } from '../src/modules/catalog/presentat
 import { OWN_CATEGORY_PROPOSAL_STATUS } from '../src/modules/catalog/presentation/own-category-proposal.controller';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
+import { PRODUCT_CHANGE_REASONS } from '../src/modules/catalog/domain/events';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
@@ -207,7 +208,7 @@ describe.each(TEST_MARKETS)(
         seedVersion: null,
         sellerId: null,
         name: 'Proposal decider',
-        permissionKeys: ['catalog.category-proposal.decide'],
+        permissionKeys: ['catalog.category-proposal.decide', 'catalog.product.approve'],
         version: 1,
         createdAt: START,
       });
@@ -471,6 +472,58 @@ describe.each(TEST_MARKETS)(
           .post(`${ADMIN_BASE}/category-proposals/bulk-decide`)
           .set(seller())
           .send({ action: 'approve', items: [{ id: one, version: 1 }] })
+          .expect((res) => expect([401, 403]).toContain(res.status));
+      });
+    });
+
+    describe('the review queue bulk decide', () => {
+      const URL = '/catalog/admin/review-queue/bulk-decide';
+      const OFFER = id<'Offer'>(0xdffe);
+      const PRODUCT = id<'Product'>(0xdffd);
+      const REVISION = id<'ProductRevision'>(0xdffc);
+
+      it('answers per row, refuses a bad request whole, and needs the key and the admin session', async () => {
+        const offers = await http()
+          .post(URL)
+          .set(admin())
+          .send({ kind: 'offer', action: 'approve', items: [{ id: OFFER, version: 1 }] })
+          .expect(200);
+        expect((offers.body as { results: unknown[] }).results).toHaveLength(1);
+        expect((offers.body as { counts: { done: number } }).counts.done).toBe(0);
+        const revisions = await http()
+          .post(URL)
+          .set(admin())
+          .send({
+            kind: 'revision',
+            action: 'request-changes',
+            reasonCode: PRODUCT_CHANGE_REASONS[0],
+            items: [{ id: PRODUCT, revisionId: REVISION, version: 1 }],
+          })
+          .expect(200);
+        expect((revisions.body as { results: unknown[] }).results).toHaveLength(1);
+        expect((revisions.body as { counts: { done: number } }).counts.done).toBe(0);
+        const bad = [
+          { kind: 'offer', action: 'approve', items: [] },
+          { kind: 'offer', action: 'request-changes', items: [{ id: OFFER, version: 1 }] },
+          { kind: 'revision', action: 'approve', items: [{ id: PRODUCT, version: 1 }] },
+          { kind: 'queue', action: 'approve', items: [{ id: OFFER, version: 1 }] },
+        ];
+        for (const body of bad) await http().post(URL).set(admin()).send(body).expect(400);
+        const many = Array.from({ length: 51 }, () => ({ id: OFFER, version: 1 }));
+        await http()
+          .post(URL)
+          .set(admin())
+          .send({ kind: 'offer', action: 'approve', items: many })
+          .expect(413);
+        await http()
+          .post(URL)
+          .set(anonymous('admin'))
+          .send({ kind: 'offer', action: 'approve', items: [{ id: OFFER, version: 1 }] })
+          .expect(401);
+        await http()
+          .post(URL)
+          .set(seller())
+          .send({ kind: 'offer', action: 'approve', items: [{ id: OFFER, version: 1 }] })
           .expect((res) => expect([401, 403]).toContain(res.status));
       });
     });
