@@ -88,7 +88,16 @@ true`), `sort`, `direction`. Search text and the deep-link subject are never sav
 - An acting-as (Login as Seller) session is refused with `access.acting-as-refused` (403) in every
   use case; admin and seller lists never answer each other's routes.
 
+## B0-2 (seller)
+
+- Routes: `GET/PUT/DELETE /lists/seller/column-preferences`, same bodies as the admin ones. The
+  handler functions (`handleColumnPreference*`) are shared; the seller classes declare their own
+  access (`own-resources`, open while the store is onboarding). A store-scoped list keeps one choice
+  per member and store, an account-scoped list one per account (`seller_id` null).
+- `seller.catalog.products` offers `code, updated, created, offers, type` and
+  `seller.ordering.orders` offers `paid, delivery, items, total`; `panel-columns.spec.ts` pins both to
+  the seller panel's `OPTIONAL_COLUMNS`.
+
 ## Not here yet
 
-- Seller column preferences (the seller panels' column vocabulary) and the switch of the panels to
-  the generic routes.
+- The switch of the panels to the generic `/lists/*` routes.

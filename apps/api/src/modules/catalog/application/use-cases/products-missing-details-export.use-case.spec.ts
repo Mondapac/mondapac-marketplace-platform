@@ -16,7 +16,7 @@ import type { AuthorisationCheck } from '../../../../platform/authz';
 import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
-import type { UnitOfWork, UnitOfWorkOptions } from '../../../../platform/unit-of-work/unit-of-work';
+import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
 import type {
   ProductDetailsGapReader,
@@ -25,11 +25,6 @@ import type {
 } from '../ports/product-details-gap.reader';
 import type { ProductFamilyResolver } from '../attributes/product-family-resolver';
 import type { AttributeRepository } from '../ports/attribute.repository';
-import type {
-  MissingDetailsEmailKey,
-  MissingDetailsEmailRecord,
-  MissingDetailsEmailStore,
-} from '../ports/missing-details-email.store';
 import { GAP_PAGE_SCAN_MAX } from './products-missing-details-list.use-case';
 import { ProductsMissingDetailsExport } from './products-missing-details-export.use-case';
 import type { SheetWriter } from '../../../../platform/list-export/sheet-writer';
@@ -131,8 +126,8 @@ describe.each(['AU', 'ZZ'] as const)('missing details export in market %s', (cod
   } as unknown as ProductFamilyResolver;
   const sheetWriter: SheetWriter = {
     async *xlsx(name, rows) {
-      yield `sheet:${name}\n`;
-      for await (const row of rows) yield `${row.join('|')}\n`;
+      yield new TextEncoder().encode(`sheet:${name}\n`);
+      for await (const row of rows) yield new TextEncoder().encode(`${row.join('|')}\n`);
     },
   };
   const useCase = () =>
