@@ -43,6 +43,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue bulk decide in market %s', (c
   type Answer = Result<unknown, { readonly code: string }>;
   function setup(
     answer: (action: string, input: Record<string, unknown>) => Answer = () => ok({}),
+    allow = true,
   ) {
     const calls: { action: string; input: Record<string, unknown> }[] = [];
     const single = (action: string) => ({
@@ -51,7 +52,12 @@ describe.each(['AU', 'ZZ'] as const)('review queue bulk decide in market %s', (c
         return Promise.resolve(answer(action, input));
       },
     });
-    const check: AuthorisationCheck = { check: () => Promise.resolve({ allowed: true }) };
+    const check: AuthorisationCheck = {
+      check: () =>
+        Promise.resolve(
+          allow ? { allowed: true } : { allowed: false, denial: { code: 'access.denied' } },
+        ),
+    };
     const useCase = new ReviewQueueBulkDecide(createUseCaseGate(markets, check), {
       revisionApprove: single('revision-approve') as unknown as ProductRevisionApprove,
       revisionRequestChanges: single(
@@ -198,6 +204,55 @@ describe.each(['AU', 'ZZ'] as const)('review queue bulk decide in market %s', (c
       expect(!result.ok && result.error.code).toBe('validation.failed');
     }
     expect(calls).toEqual([]);
+  });
+
+  it('refuses an admin who lacks the approve key before any row runs', async () => {
+    const { useCase, calls } = setup(() => ok({}), false);
+    const result = await useCase.execute(context('admin'), {
+      kind: 'offer',
+      action: 'approve',
+      items: [{ id: offer(), version: 1 }],
+    });
+    expect(result).toEqual({ ok: false, error: { code: 'access.denied' } });
+    expect(calls).toEqual([]);
+  });
+
+  it('skips a row whose own key check is denied and goes on with the rest', async () => {
+    const [a, b] = [offer(), offer()];
+    const { useCase } = setup((_a, input) =>
+      input['offerId'] === a ? err({ code: 'access.denied' }) : ok({}),
+    );
+    const result = await useCase.execute(context('admin'), {
+      kind: 'offer',
+      action: 'approve',
+      items: [a, b].map((id) => ({ id, version: 1 })),
+    });
+    expect(result.ok && result.value.counts).toEqual({ done: 1, skipped: 1, failed: 0 });
+  });
+
+  it('takes exactly 50 rows and refuses a reason code of the other kind', async () => {
+    const { useCase, calls } = setup();
+    const items = Array.from({ length: 50 }, () => ({ id: offer(), version: 1 }));
+    const fifty = await useCase.execute(context('admin'), {
+      kind: 'offer',
+      action: 'approve',
+      items,
+    });
+    expect(fifty.ok && fifty.value.counts.done).toBe(50);
+    const wrong = [...PRODUCT_CHANGE_REASONS].find(
+      (r) => !(OFFER_CHANGE_REASONS as readonly string[]).includes(r),
+    );
+    const before = calls.length;
+    if (wrong !== undefined) {
+      const result = await useCase.execute(context('admin'), {
+        kind: 'offer',
+        action: 'request-changes',
+        reasonCode: wrong,
+        items: [{ id: offer(), version: 1 }],
+      });
+      expect(result.ok).toBe(false);
+      expect(calls).toHaveLength(before);
+    }
   });
 
   it('refuses more than 50 rows', async () => {
