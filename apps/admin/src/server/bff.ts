@@ -216,7 +216,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The seller category proposals waiting for a decision (catalog, categories C9a; query:
     // `afterId`, `limit`).
     'catalog/admin/category-proposals',
-    // The tag suggestions waiting for a decision (catalog topics, product tags T5).
+    // The tag suggestions waiting for a decision (catalog topics, product tags T5; query: `q`,
+    // `page`, `pageSize`, `paging`, `sort`, `direction`, `limit`).
     'catalog/admin/topic-suggestions',
     // Requests to turn off Material waiting for a second administrator (attributes A2 part 3).
     'catalog/admin/attribute-relaxations',
@@ -1517,6 +1518,15 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'direction',
   ],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
+  'catalog/admin/topic-suggestions': [
+    'limit',
+    'q',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/variant-requests': [
     'limit',
     'q',
@@ -2175,6 +2185,14 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     categoryId: UUID,
     typeCode: /^[a-z0-9][a-z0-9_-]{0,63}$/,
     sellerId: UUID,
+  },
+  'catalog/admin/topic-suggestions': {
+    limit: /^([1-9][0-9]?|100)$/,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^created$/,
+    direction: /^(asc|desc)$/,
   },
   'catalog/admin/variant-requests': {
     limit: /^([1-9][0-9]?|100)$/,

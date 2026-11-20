@@ -2,13 +2,14 @@ import 'server-only';
 import { redirect } from 'next/navigation';
 import type { OwnDispute } from '../disputes/types.ts';
 import {
-  HISTORY_PAGE,
+  type ListPaging,
   type NextPayout,
   type OwnHolds,
   type OwnPayouts,
   type PayoutsInitial,
 } from '../earnings/payout-types.ts';
 import { EARNINGS_VIEW_PERMISSION, type Ledger } from '../earnings/types.ts';
+import { firstPageQuery } from '../earnings/list/payouts-query.ts';
 import { PAYOUT_VIEW_PERMISSION } from '../payout/types.ts';
 import { SETUP_ROOT } from '../setup/steps.ts';
 import { loadOwnDisputes } from './own-disputes.ts';
@@ -35,12 +36,17 @@ export async function loadEarningsPage(): Promise<EarningsPage> {
   if (!session.permissionKeys.includes(EARNINGS_VIEW_PERMISSION)) {
     return { kind: 'no-access', session };
   }
+  // List paging (settings): page numbers only when the Market says so. A value that cannot be
+  // read means Previous and next, which works for any number of payouts.
+  const setting = await serverGet<{ readonly listPaging: string }>('settings/seller/list-paging');
+  const paging: ListPaging =
+    setting.kind === 'ok' && setting.body.listPaging === 'pages' ? 'pages' : 'prev-next';
   const [ledger, disputes, next, holds, history] = await Promise.all([
     serverGet<Ledger>('commission-payouts/seller/ledger?limit=20'),
     loadOwnDisputes(),
     serverGet<NextPayout>('commission-payouts/seller/payouts/next'),
     serverGet<OwnHolds>('commission-payouts/seller/payout-holds'),
-    serverGet<OwnPayouts>(`commission-payouts/seller/payouts?limit=${HISTORY_PAGE}`),
+    serverGet<OwnPayouts>(`commission-payouts/seller/payouts?${firstPageQuery(paging)}`),
   ]);
   if (ledger.kind === 'signed-out') redirect('/session-ended');
   if (ledger.kind !== 'ok') return { kind: 'unavailable' };
@@ -49,6 +55,7 @@ export async function loadEarningsPage(): Promise<EarningsPage> {
     next: next.kind === 'ok' ? next.body : null,
     holds: holds.kind === 'ok' ? holds.body.holds : null,
     history: history.kind === 'ok' ? history.body : null,
+    paging,
     canOpenAccount: session.permissionKeys.includes(PAYOUT_VIEW_PERMISSION),
   };
   return { kind: 'ok', session, ledger: ledger.body, disputes, payouts };
