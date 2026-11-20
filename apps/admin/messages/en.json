@@ -5431,7 +5431,7 @@
         },
         "export": {
           "title": "Export product revisions",
-          "body": "The file holds every product revision the current view and filters match, oldest first.",
+          "body": "The file holds every product revision waiting for review that the current filters match, oldest first, whatever the list is sorted by. Ticked rows don't change what is exported.",
           "legend": "File format",
           "csv": "CSV",
           "csv-help": "Plain text. Opens in any spreadsheet or tool.",
@@ -5517,7 +5517,7 @@
         },
         "export": {
           "title": "Export offers",
-          "body": "The file holds every offer the current view and filters match, oldest first.",
+          "body": "The file holds every offer waiting for review that the current filters match, oldest first, whatever the list is sorted by. Ticked rows don't change what is exported.",
           "legend": "File format",
           "csv": "CSV",
           "csv-help": "Plain text. Opens in any spreadsheet or tool.",

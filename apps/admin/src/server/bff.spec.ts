@@ -3078,6 +3078,14 @@ describe('relay of the wallet and step-up routes', () => {
     expect(bad.upstream.mock.calls[0]?.[0]).toBe(
       'http://api.test/catalog/admin/review-queue/export',
     );
+    const more = await run(
+      'GET',
+      'catalog/admin/review-queue/export?format=csv&kind=&sellerId=&firstPublication=false&page=1&pageSize=25&paging=pages',
+      readHeaders,
+    );
+    expect(more.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/review-queue/export?format=csv&firstPublication=false',
+    );
   });
 
   it('passes only the action of the category impact read, in its shape, and no query on the tree', async () => {

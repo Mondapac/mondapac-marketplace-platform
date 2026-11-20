@@ -171,7 +171,33 @@ describe('review queue lists', () => {
     expect(query.get('kind')).toBe('offer-first-publication');
     expect(query.get('format')).toBe('csv');
     expect(query.has('direction')).toBe(false);
-    expect(query.has('sort')).toBe(false);
+    for (const key of ['sort', 'page', 'pageSize', 'paging', 'q'])
+      expect(query.has(key)).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
+  it('exports the revisions kind', async () => {
+    call.mockResolvedValue(answer([revision()]));
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        new Response('x', {
+          status: 200,
+          headers: { 'content-disposition': 'attachment; filename="product-revisions.csv"' },
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    Object.assign(URL, { createObjectURL: () => 'blob:x', revokeObjectURL: () => undefined });
+    mount('revision');
+    const row = (await screen.findByText('Dates')).closest('tr') as HTMLElement;
+    fireEvent.click(within(row).getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Export…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Export product revisions' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const url = String((fetchMock.mock.calls as unknown as string[][])[0]?.[0]);
+    expect(new URLSearchParams(url.split('?')[1]).get('kind')).toBe('product-revision');
     vi.unstubAllGlobals();
   });
 
