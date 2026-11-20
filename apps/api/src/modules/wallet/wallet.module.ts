@@ -61,7 +61,7 @@ import { expireWalletCreditJob } from './presentation/jobs/expire-wallet-credit.
 import { AdminWalletCreditController } from './presentation/admin-credit.controller';
 import { AdminWalletController, CustomerWalletController } from './presentation/wallet.controller';
 import { WalletFacadeImplementation } from './presentation/wallet.facade';
-import { registerSystemChangeReverter, SYSTEM_REQUEST_RECORDER } from '../system-requests';
+import { createSystemChangeRegistrar, SYSTEM_REQUEST_RECORDER } from '../system-requests';
 import { WALLET_REVIEW_AREA, WALLET_STATUS_SUBJECT_KIND } from './application/wallet-review';
 import { WalletStatusReverter } from './application/wallet-reverter';
 import { ListsModule, registerLists } from '../lists';
@@ -86,6 +86,8 @@ const PORTS: readonly [keyof AdminCreditDependencies, InjectionToken][] = [
 
 /** The reverter of the wallet switch (Admin Inbox › System requests, area money). */
 const WALLET_STATUS_REVERTER = Symbol('WALLET_STATUS_REVERTER');
+/** This module's own registrar for System requests (never exported from the barrel). */
+const WALLET_SYSTEM_CHANGES = createSystemChangeRegistrar('wallet');
 
 const dependenciesOf = (values: readonly unknown[]): AdminCreditDependencies =>
   Object.fromEntries(
@@ -161,8 +163,7 @@ function creditListUseCaseProvider<U>(type: CreditListUseCaseClass<U>): FactoryP
       inject: PORTS.map(([, token]) => token),
       useFactory: (...values: unknown[]) => new WalletStatusReverter(dependenciesOf(values)),
     },
-    registerSystemChangeReverter(
-      'wallet',
+    WALLET_SYSTEM_CHANGES.reverter(
       WALLET_STATUS_SUBJECT_KIND,
       WALLET_REVIEW_AREA,
       WALLET_STATUS_REVERTER,

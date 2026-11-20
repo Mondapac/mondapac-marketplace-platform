@@ -217,7 +217,8 @@ export class ProductsMissingDetailsList extends UseCase<
       market,
       async () =>
         ok(
-          await this.#scan(
+          await scanMissingDetails(
+            this.deps,
             market,
             read.value.mode === 'cursor'
               ? {
@@ -289,112 +290,6 @@ export class ProductsMissingDetailsList extends UseCase<
     });
   }
 
-  async #scan(
-    market: MarketContext,
-    filter: {
-      readonly afterId: string | null;
-      readonly sellerId: string | null;
-      readonly familyCode: string | null;
-      /** Lower-cased search in the product code and name, or null. */
-      readonly text: string | null;
-      /** Rows wanted (a cursor read); `Infinity` with `all`. */
-      readonly limit: number;
-      /** A page read: scan on to the end of the Market or {@link GAP_PAGE_SCAN_MAX}. */
-      readonly all: boolean;
-    },
-    locale: string,
-    ordered: readonly string[],
-  ): Promise<{
-    readonly items: readonly Omit<MissingDetailsItem, 'lastEmailedAt' | 'actions'>[];
-    readonly nextAfterId: string | null;
-    readonly scanned: number;
-    readonly unreadableFeatureSets: readonly string[];
-    readonly complete: boolean;
-  }> {
-    // The feature set a product is judged against is the one its published revision's primary
-    // category holds now: what its next submit will ask (CAT-10). When that cannot be resolved the
-    // product is judged against the feature set its revision was frozen under.
-    const session = await this.deps.familyResolver.open(market);
-    const schemas = new Map<string, AttributeSchema | null>();
-    const items: Omit<MissingDetailsItem, 'lastEmailedAt' | 'actions'>[] = [];
-    const scanMax = filter.all ? GAP_PAGE_SCAN_MAX : GAP_SCAN_MAX;
-    let cursor = filter.afterId;
-    let scanned = 0;
-    let exhausted = false;
-    while ((filter.all || items.length < filter.limit) && scanned < scanMax) {
-      const requested = Math.min(GAP_BATCH, scanMax - scanned);
-      const batch = await this.deps.detailsGapReader.published(market, {
-        afterId: cursor,
-        sellerId: filter.sellerId,
-        limit: requested,
-        locale,
-      });
-      if (batch.length === 0) {
-        exhausted = true;
-        break;
-      }
-      let pageFull = false;
-      for (const [index, product] of batch.entries()) {
-        const resolved = await session.resolve(product.primaryCategoryId);
-        const familyCode = resolved.ok ? resolved.familyCode : product.revisionFamilyCode;
-        if (!schemas.has(familyCode)) {
-          schemas.set(familyCode, await this.deps.attributes.loadSchema(market, familyCode));
-        }
-        const schema = schemas.get(familyCode) ?? null;
-        cursor = product.productId;
-        scanned += 1;
-        if (schema === null) continue;
-        if (filter.familyCode !== null && familyCode !== filter.familyCode) continue;
-        if (
-          filter.text !== null &&
-          !product.productCode.toLowerCase().includes(filter.text) &&
-          !(product.name ?? '').toLowerCase().includes(filter.text)
-        ) {
-          continue;
-        }
-        const missing = missingRequiredCodes(schema, product.attributeValues, ordered);
-        if (missing.length > 0) {
-          items.push({
-            productId: product.productId,
-            productCode: product.productCode,
-            name: product.name,
-            sellerId: product.ownerSellerId,
-            featureSetCode: familyCode,
-            missing,
-          });
-        }
-        if (!filter.all && items.length >= filter.limit) {
-          // The page is full; the rest of this batch is read by the next call.
-          exhausted = index === batch.length - 1 && batch.length < requested;
-          pageFull = true;
-          break;
-        }
-      }
-      // A short batch is the end of the Market: no empty read is needed to know it.
-      if (!pageFull && batch.length < requested) exhausted = true;
-    }
-    if (filter.all && !exhausted && scanned >= scanMax) {
-      // The cap was reached on a full batch: one row past it tells whether the Market ended there.
-      const probe = await this.deps.detailsGapReader.published(market, {
-        afterId: cursor,
-        sellerId: filter.sellerId,
-        limit: 1,
-        locale,
-      });
-      exhausted = probe.length === 0;
-    }
-    return {
-      items,
-      nextAfterId: exhausted ? null : cursor,
-      scanned,
-      unreadableFeatureSets: [...schemas.entries()]
-        .filter(([, schema]) => schema === null)
-        .map(([code]) => code)
-        .sort(),
-      complete: exhausted,
-    };
-  }
-
   /**
    * "Last emailed" (A4-4): the latest "Email sellers" request of the row's seller and product, when
    * it was sent. PLATFORM products have no seller and are never emailed.
@@ -418,6 +313,117 @@ export class ProductsMissingDetailsList extends UseCase<
     }
     return sentAt;
   }
+}
+
+/** The shared scan of the list and its export (one read-only unit, in memory). */
+export async function scanMissingDetails(
+  deps: Pick<
+    ProductsMissingDetailsListDependencies,
+    'detailsGapReader' | 'attributes' | 'familyResolver'
+  >,
+  market: MarketContext,
+  filter: {
+    readonly afterId: string | null;
+    readonly sellerId: string | null;
+    readonly familyCode: string | null;
+    /** Lower-cased search in the product code and name, or null. */
+    readonly text: string | null;
+    /** Rows wanted (a cursor read); `Infinity` with `all`. */
+    readonly limit: number;
+    /** A page read: scan on to the end of the Market or {@link GAP_PAGE_SCAN_MAX}. */
+    readonly all: boolean;
+  },
+  locale: string,
+  ordered: readonly string[],
+): Promise<{
+  readonly items: readonly Omit<MissingDetailsItem, 'lastEmailedAt' | 'actions'>[];
+  readonly nextAfterId: string | null;
+  readonly scanned: number;
+  readonly unreadableFeatureSets: readonly string[];
+  readonly complete: boolean;
+}> {
+  // The feature set a product is judged against is the one its published revision's primary
+  // category holds now: what its next submit will ask (CAT-10). When that cannot be resolved the
+  // product is judged against the feature set its revision was frozen under.
+  const session = await deps.familyResolver.open(market);
+  const schemas = new Map<string, AttributeSchema | null>();
+  const items: Omit<MissingDetailsItem, 'lastEmailedAt' | 'actions'>[] = [];
+  const scanMax = filter.all ? GAP_PAGE_SCAN_MAX : GAP_SCAN_MAX;
+  let cursor = filter.afterId;
+  let scanned = 0;
+  let exhausted = false;
+  while ((filter.all || items.length < filter.limit) && scanned < scanMax) {
+    const requested = Math.min(GAP_BATCH, scanMax - scanned);
+    const batch = await deps.detailsGapReader.published(market, {
+      afterId: cursor,
+      sellerId: filter.sellerId,
+      limit: requested,
+      locale,
+    });
+    if (batch.length === 0) {
+      exhausted = true;
+      break;
+    }
+    let pageFull = false;
+    for (const [index, product] of batch.entries()) {
+      const resolved = await session.resolve(product.primaryCategoryId);
+      const familyCode = resolved.ok ? resolved.familyCode : product.revisionFamilyCode;
+      if (!schemas.has(familyCode)) {
+        schemas.set(familyCode, await deps.attributes.loadSchema(market, familyCode));
+      }
+      const schema = schemas.get(familyCode) ?? null;
+      cursor = product.productId;
+      scanned += 1;
+      if (schema === null) continue;
+      if (filter.familyCode !== null && familyCode !== filter.familyCode) continue;
+      if (
+        filter.text !== null &&
+        !product.productCode.toLowerCase().includes(filter.text) &&
+        !(product.name ?? '').toLowerCase().includes(filter.text)
+      ) {
+        continue;
+      }
+      const missing = missingRequiredCodes(schema, product.attributeValues, ordered);
+      if (missing.length > 0) {
+        items.push({
+          productId: product.productId,
+          productCode: product.productCode,
+          name: product.name,
+          sellerId: product.ownerSellerId,
+          featureSetCode: familyCode,
+          missing,
+        });
+      }
+      if (!filter.all && items.length >= filter.limit) {
+        // The page is full; the rest of this batch is read by the next call.
+        exhausted = index === batch.length - 1 && batch.length < requested;
+        pageFull = true;
+        break;
+      }
+    }
+    // A short batch is the end of the Market: no empty read is needed to know it.
+    if (!pageFull && batch.length < requested) exhausted = true;
+  }
+  if (filter.all && !exhausted && scanned >= scanMax) {
+    // The cap was reached on a full batch: one row past it tells whether the Market ended there.
+    const probe = await deps.detailsGapReader.published(market, {
+      afterId: cursor,
+      sellerId: filter.sellerId,
+      limit: 1,
+      locale,
+    });
+    exhausted = probe.length === 0;
+  }
+  return {
+    items,
+    nextAfterId: exhausted ? null : cursor,
+    scanned,
+    unreadableFeatureSets: [...schemas.entries()]
+      .filter(([, schema]) => schema === null)
+      .map(([code]) => code)
+      .sort(),
+    complete: exhausted,
+  };
 }
 
 /**

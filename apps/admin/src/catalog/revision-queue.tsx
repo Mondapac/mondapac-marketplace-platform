@@ -203,7 +203,7 @@ export function RevisionQueueTable({
                 >
                   {shortInstant(row.submittedAt, locale)}
                 </td>
-                <td className={`${CARD_TABLE.cell} max-lg:col-span-2 max-lg:pt-2 lg:text-end`}>
+                <td className={`${CARD_TABLE.cell} max-lg:col-span-full max-lg:pt-2 lg:text-end`}>
                   <LinkButton
                     variant="secondary"
                     className="max-lg:w-full"

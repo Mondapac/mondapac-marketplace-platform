@@ -28,7 +28,21 @@ export const ASSISTANT_CUSTOMER_CONVERSATION_VIEW = definePermission('assistant'
   protected: false,
 });
 
+/**
+ * Share a saved filter of the insights list with every admin who can see it, and change or delete
+ * one another admin shared (the generic saved-filter routes of `lists`). Without it an admin keeps
+ * filters for themselves only; the list itself still needs `assistant.settings.view`. Platform
+ * scope and protected: a shared filter shapes what every admin sees first, so a role gets it by
+ * name. A filter holds only the selector (view, reason, minimum count, sort), never buyer text.
+ */
+export const ASSISTANT_INSIGHTS_SAVED_FILTER_SHARE = definePermission('assistant', {
+  key: 'assistant.insights-saved-filter.share',
+  scope: 'platform',
+  protected: true,
+});
+
 export const ASSISTANT_PERMISSIONS = declarePermissions('assistant', [
+  ASSISTANT_INSIGHTS_SAVED_FILTER_SHARE,
   ASSISTANT_CUSTOMER_CONVERSATION_VIEW,
   ASSISTANT_SETTINGS_MANAGE,
   ASSISTANT_SETTINGS_VIEW,

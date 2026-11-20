@@ -21,6 +21,7 @@ export function exportParams(input: {
   readonly columns: readonly OptionalColumn[];
   readonly selection: ExportSelection;
   readonly now?: Date;
+  readonly currency?: string | null;
 }): string {
   const { selection, query } = input;
   const params = new URLSearchParams();
@@ -29,6 +30,7 @@ export function exportParams(input: {
       paging: input.paging,
       zone: input.zone,
       now: input.now ?? new Date(),
+      currency: input.currency ?? null,
     })) {
       params.set(key, value);
     }
@@ -56,6 +58,7 @@ export function PayoutsBulk({
   zone,
   columns,
   now,
+  currency,
 }: {
   readonly selection: ExportSelection;
   readonly query: Query;
@@ -64,6 +67,8 @@ export function PayoutsBulk({
   readonly columns: readonly OptionalColumn[];
   /** When the rows on show were read; the date presets of "all matching" use this clock. */
   readonly now?: Date;
+  /** The Market currency the amount filters are read in. */
+  readonly currency?: string | null;
 }) {
   const t = useTranslations('payouts.list.bulk');
   const count = selection.allMatching ? (selection.total ?? 0) : selection.ids.length;
@@ -75,7 +80,8 @@ export function PayoutsBulk({
     columns,
     zone,
     selection,
-    buildQuery: (format) => exportParams({ query, paging, zone, format, columns, selection, now }),
+    buildQuery: (format) =>
+      exportParams({ query, paging, zone, format, columns, selection, now, currency }),
   });
   return (
     <>

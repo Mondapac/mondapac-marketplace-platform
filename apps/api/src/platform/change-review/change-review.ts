@@ -38,7 +38,7 @@ export interface AppliedChange {
   readonly area: ChangeReviewArea;
   /**
    * `<module>.<subject>`, the kind the owning module registered a reverter for (see
-   * `registerSystemChangeReverter`): it restores `before` when a reviewer rejects the change.
+   * {@link SystemChangeRegistrar.reverter}): it restores `before` when a reviewer rejects the change.
    */
   readonly subjectKind: string;
   /** Which item of the kind changed (a setting code, a role id, ...); `[A-Za-z0-9._:-]`, 128 at most. */
@@ -107,7 +107,7 @@ export type ProposeFailure =
  *
  * The caller holds its subject's row lock (or an equal lock) when it calls: two changes of one
  * subject must open their requests one after the other, so the later one supersedes the earlier.
- * `subjectKind` must be registered in `area` (see `registerSystemChangeReverter`), or this throws.
+ * `subjectKind` must be registered in `area` (see {@link SystemChangeRegistrar.reverter}), or this throws.
  *
  * The answer is `ok(null)` when the area is not reviewed in the context's Market (the change
  * stays live and nothing is opened), else the new request. A later change of the same subject
@@ -145,7 +145,7 @@ export interface SystemActionProposer {
    * `openReview` does; the caller has checked the admin's permission and validated the action as
    * it would before applying it, and holds the subject's row lock.
    *
-   * `subjectKind` must be registered with an applier (see `registerSystemChangeApplier`), or this
+   * `subjectKind` must be registered with an applier (see {@link SystemChangeRegistrar.applier}), or this
    * throws. The answer is `ok(null)` when the area is not reviewed in the context's Market: the
    * caller then applies the action at once, in the same unit, as it did before. Otherwise the new
    * request; its approval runs the kind's {@link SystemChangeApplier.apply}. One proposal waits per
@@ -361,13 +361,15 @@ export interface SystemChangeApplier {
 export const MAX_DESCRIBE_REFS = 100;
 
 /**
- * Where a module registers its kinds, at boot (sealed after it). A kind belongs to one reviewed
- * area: `openReview` refuses a change of that kind filed under another area. Register only:
- * nothing outside system-requests can look a reverter up.
+ * Where a module's registrar registers its kinds, at boot (sealed after it). A kind belongs to one
+ * reviewed area: `openReview` refuses a change of that kind filed under another area. Register
+ * only: nothing outside system-requests can look a reverter up. A module never calls this itself:
+ * it adds the providers of its own {@link SystemChangeRegistrar}, which pass the registrar (not a
+ * module name), so system-requests binds each kind to the module that holds the registrar.
  */
 export interface SystemChangeReverters {
   register(
-    module: string,
+    registrar: SystemChangeRegistrar,
     subjectKind: string,
     area: ChangeReviewArea,
     reverter: SystemChangeReverter,
@@ -379,7 +381,7 @@ export interface SystemChangeReverters {
    * whatever the applier's `check` answers.
    */
   registerApplier(
-    module: string,
+    registrar: SystemChangeRegistrar,
     subjectKind: string,
     area: ChangeReviewArea,
     permission: string | readonly string[],
@@ -390,47 +392,116 @@ export interface SystemChangeReverters {
 export const SYSTEM_CHANGE_REVERTERS = Symbol('SYSTEM_CHANGE_REVERTERS');
 
 /**
- * The one provider a module adds to register its reverter for `subjectKind` (whose first segment
- * must be the module's name) in its reviewed area: `registerSystemChangeReverter('settings',
- * 'settings.market-setting', 'marketplace', SETTINGS_REVERTER)`, where the token resolves to a
- * {@link SystemChangeReverter}.
+ * A module's own registration facade for System requests: created once per module, in a file of
+ * that module that its public barrel never exports, with {@link createSystemChangeRegistrar}. It
+ * registers kinds only under the module's own name and kind prefix (`<module>.`); system-requests
+ * also refuses, at boot, a second registrar of the same module name, a kind registered twice and
+ * an area the module does not own. Every refusal throws while the application starts, never at
+ * request time.
  */
-export function registerSystemChangeReverter(
-  module: string,
-  subjectKind: string,
-  area: ChangeReviewArea,
-  reverter: InjectionToken,
-): Provider {
-  return {
-    provide: Symbol(`system-requests:reverter:${subjectKind}`),
-    inject: [SYSTEM_CHANGE_REVERTERS, reverter],
-    useFactory: (registry: SystemChangeReverters, implementation: SystemChangeReverter) => {
-      registry.register(module, subjectKind, area, implementation);
-      return subjectKind;
-    },
-  };
+export interface SystemChangeRegistrar {
+  /** The module the registrar was created for (the first segment of each of its kinds). */
+  readonly module: string;
+  /**
+   * The provider that registers the reverter of `subjectKind` (`<module>.<subject>`) in its
+   * reviewed area, where the token resolves to a {@link SystemChangeReverter}:
+   * `SETTINGS_SYSTEM_CHANGES.reverter('settings.market-setting', 'marketplace', SETTINGS_REVERTER)`.
+   */
+  reverter(subjectKind: string, area: ChangeReviewArea, reverter: InjectionToken): Provider;
+  /**
+   * The provider that registers the applier of `subjectKind` (see {@link SystemChangeApplier}),
+   * with the permission key the action needs (or every key its use case declares, as an array):
+   * `CATALOG_SYSTEM_CHANGES.applier('catalog.category-discard', 'catalogue',
+   * CATALOG_CATEGORY_TREE_EDIT.key, CATEGORY_DISCARD_APPLIER)`.
+   */
+  applier(
+    subjectKind: string,
+    area: ChangeReviewArea,
+    permission: string | readonly string[],
+    applier: InjectionToken,
+  ): Provider;
+}
+
+/** A module name: the first segment of its kinds. */
+const MODULE_NAME = /^[a-z][a-z0-9-]{0,63}$/;
+
+/**
+ * The registrars {@link createSystemChangeRegistrar} made, each with the place it was created (a
+ * stack line), so a refused second registrar names both: a copy or a hand-made object is none.
+ */
+const registrars = new WeakMap<SystemChangeRegistrar, string>();
+
+/** The caller of `createSystemChangeRegistrar`: the stack line after this file's own frames. */
+function creationSite(): string {
+  const lines = (new Error().stack ?? '').split('\n').slice(1);
+  const outside = lines.find((line) => !line.includes('change-review'));
+  return outside?.trim().replace(/^at\s+/, '') ?? 'unknown';
+}
+
+/** A registrar refused while the module files load: a bad module name or another module's kind. */
+export class SystemChangeRegistrarError extends Error {
+  override readonly name = 'SystemChangeRegistrarError';
 }
 
 /**
- * The one provider a module adds to register its applier for `subjectKind` (see
- * {@link SystemChangeApplier}), with the permission key the action needs (or every key its use case declares, as an array):
- * `registerSystemChangeApplier('catalog', 'catalog.category-delete', 'catalogue',
- * CATALOG_CATEGORY_DELETE.key, CATEGORY_DELETE_APPLIER)`; as {@link registerSystemChangeReverter}
- * otherwise.
+ * Creates `module`'s registrar. Call it once, in one file of the module (a module constant such
+ * as `CATALOG_SYSTEM_CHANGES`), and never export it from the module's barrel: the registrar is
+ * the module's identity towards System requests. A kind outside `<module>.` throws at once.
  */
-export function registerSystemChangeApplier(
-  module: string,
-  subjectKind: string,
-  area: ChangeReviewArea,
-  permission: string | readonly string[],
-  applier: InjectionToken,
-): Provider {
-  return {
-    provide: Symbol(`system-requests:applier:${subjectKind}`),
-    inject: [SYSTEM_CHANGE_REVERTERS, applier],
-    useFactory: (registry: SystemChangeReverters, implementation: SystemChangeApplier) => {
-      registry.registerApplier(module, subjectKind, area, permission, implementation);
-      return subjectKind;
-    },
+export function createSystemChangeRegistrar(module: string): SystemChangeRegistrar {
+  if (typeof module !== 'string' || !MODULE_NAME.test(module)) {
+    throw new SystemChangeRegistrarError(`${JSON.stringify(module)} is not a module name`);
+  }
+  const ownKind = (subjectKind: string): string => {
+    if (typeof subjectKind !== 'string' || !subjectKind.startsWith(`${module}.`)) {
+      throw new SystemChangeRegistrarError(
+        `Module "${module}" cannot register ${JSON.stringify(subjectKind)}: its kinds start with "${module}."`,
+      );
+    }
+    return subjectKind;
   };
+  const registrar: SystemChangeRegistrar = Object.freeze({
+    module,
+    reverter: (subjectKind: string, area: ChangeReviewArea, reverter: InjectionToken): Provider => {
+      const kind = ownKind(subjectKind);
+      return {
+        provide: Symbol(`system-requests:reverter:${kind}`),
+        inject: [SYSTEM_CHANGE_REVERTERS, reverter],
+        useFactory: (registry: SystemChangeReverters, implementation: SystemChangeReverter) => {
+          registry.register(registrar, kind, area, implementation);
+          return kind;
+        },
+      };
+    },
+    applier: (
+      subjectKind: string,
+      area: ChangeReviewArea,
+      permission: string | readonly string[],
+      applier: InjectionToken,
+    ): Provider => {
+      const kind = ownKind(subjectKind);
+      return {
+        provide: Symbol(`system-requests:applier:${kind}`),
+        inject: [SYSTEM_CHANGE_REVERTERS, applier],
+        useFactory: (registry: SystemChangeReverters, implementation: SystemChangeApplier) => {
+          registry.registerApplier(registrar, kind, area, permission, implementation);
+          return kind;
+        },
+      };
+    },
+  });
+  registrars.set(registrar, creationSite());
+  return registrar;
+}
+
+/** Whether `value` is a registrar {@link createSystemChangeRegistrar} made (for system-requests). */
+export function isSystemChangeRegistrar(value: unknown): value is SystemChangeRegistrar {
+  return (
+    typeof value === 'object' && value !== null && registrars.has(value as SystemChangeRegistrar)
+  );
+}
+
+/** Where a registrar was created (a stack line), for a boot error; `unknown` for anything else. */
+export function systemChangeRegistrarSite(registrar: SystemChangeRegistrar): string {
+  return registrars.get(registrar) ?? 'unknown';
 }

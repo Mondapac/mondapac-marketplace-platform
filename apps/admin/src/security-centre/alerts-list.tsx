@@ -492,7 +492,7 @@ function AlertsTable({
                 <td className={CARD_TABLE.corner}>
                   <SeverityBadge severity={alert.severity} />
                 </td>
-                <td className={CARD_TABLE.cell}>
+                <td className={`${CARD_TABLE.cell} max-lg:col-span-full`}>
                   <span className="break-all">
                     <span className="text-fg-muted">{t(`key.${alert.keyType}`)}: </span>
                     <span className="font-mono">{alert.keyLabel}</span>

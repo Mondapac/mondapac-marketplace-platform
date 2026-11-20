@@ -287,6 +287,37 @@ describe('products missing required details over HTTP (integration)', () => {
       expect(next.body).toMatchObject({ items: [{ productCode: 'P3' }], nextAfterId: null });
     }, 30_000);
 
+    it('exports the gaps as CSV and XLSX with the list filter and refuses a bad format', async () => {
+      await boot();
+      await seeded(code);
+      const viewer = adminSession(code, EDITOR, 1);
+      const csv = await http()
+        .get(`${REPORT}/export?sort=code&direction=desc`)
+        .set(viewer)
+        .buffer(true)
+        .expect(200);
+      expect(csv.headers['content-type']).toContain('text/csv');
+      expect(csv.headers['content-disposition']).toMatch(
+        /^attachment; filename="products-missing-details-.*\.csv"$/,
+      );
+      expect(csv.headers['cache-control']).toBe('no-store');
+      const lines = csv.text.replace('\uFEFF', '').trim().split(/\r?\n/);
+      expect(lines[0]).toBe('product_code,name,seller_id,feature_set,missing_count,missing');
+      expect(lines).toHaveLength(3);
+      const xlsx = await http()
+        .get(`${REPORT}/export?format=xlsx`)
+        .set(viewer)
+        .buffer(true)
+        .expect(200);
+      expect(xlsx.headers['content-type']).toContain('spreadsheetml');
+      await http().get(`${REPORT}/export?format=pdf`).set(viewer).expect(400);
+      await http().get(`${REPORT}/export?page=2`).set(viewer).expect(400);
+      await http()
+        .get(`${REPORT}/export`)
+        .set({ 'x-market-id': code, ...panelHeaders(code, 'admin') })
+        .expect(401);
+    });
+
     it('refuses a malformed query, an anonymous caller and an unknown parameter', async () => {
       await boot();
       await seeded(code);

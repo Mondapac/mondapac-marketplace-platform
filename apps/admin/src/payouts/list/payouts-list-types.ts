@@ -2,7 +2,7 @@
 // commission-payouts payout.dto.ts, `PayoutListBody`) and the list's own state.
 
 import { isDatePreset, type DatePreset } from '../../sales/date-presets.ts';
-import type { PayoutRow } from '../types.ts';
+import { PAYOUT_STATES, type PayoutRow, type PayoutState } from '../types.ts';
 
 export const PAGE_SIZES = [25, 50, 100] as const;
 /** Rows that can be ticked one by one for an export (the API takes up to 200 ids). */
@@ -48,28 +48,73 @@ export interface PayoutListPage {
   readonly searchCapped: boolean;
 }
 
-export const FILTER_FIELDS = ['approvalMode', 'created'] as const;
+export const FILTER_FIELDS = [
+  'status',
+  'approvalMode',
+  'created',
+  'minAmount',
+  'maxAmount',
+] as const;
 export type FilterField = (typeof FILTER_FIELDS)[number];
 
 export const APPROVAL_MODES = ['AUTO', 'MANUAL'] as const;
 export type ApprovalModeFilter = (typeof APPROVAL_MODES)[number];
 
-/** The conditions of the filter panel; each is one value. */
+/**
+ * The states each view holds, as the API's own table does (a voided payout and one settled by
+ * netting show under All only). The Status filter works inside the view, so it offers these.
+ */
+export const VIEW_STATES: Readonly<Record<Exclude<View, 'all'>, readonly PayoutState[]>> = {
+  'awaiting-approval': ['awaiting-approval'],
+  sending: ['approved', 'instructing', 'instructed'],
+  paid: ['paid'],
+  failed: ['failed'],
+  'not-sent': ['not-sent'],
+};
+
+/** The statuses the filter offers in a view: every state under All, the view's own otherwise. */
+export const statusesOf = (view: View): readonly PayoutState[] =>
+  view === 'all' ? PAYOUT_STATES : VIEW_STATES[view];
+
+/** The fixed amount steps of the filter, in whole units of the Market currency. */
+export const AMOUNT_STEPS = ['10', '50', '100', '500', '1000', '5000'] as const;
+export type AmountStep = (typeof AMOUNT_STEPS)[number];
+export const isAmountStep = (value: unknown): value is AmountStep =>
+  AMOUNT_STEPS.some((step) => step === value);
+
+/** The conditions of the filter panel; each is one value. Amounts are whole units, not minor. */
 export interface Filters {
+  readonly status?: PayoutState;
   readonly approvalMode?: ApprovalModeFilter;
   readonly created?: DatePreset;
+  readonly minAmount?: AmountStep;
+  readonly maxAmount?: AmountStep;
 }
 
 export const filterCount = (filters: Filters): number => Object.keys(filters).length;
 
 /** The filters a panel answer holds: only a known value of a known field. */
 export function filtersOf(values: Readonly<Record<string, string | undefined>>): Filters {
-  const next: { approvalMode?: ApprovalModeFilter; created?: DatePreset } = {};
+  const next: {
+    -readonly [K in keyof Filters]: Filters[K];
+  } = {};
+  const status = PAYOUT_STATES.find((value) => value === values['status']);
+  if (status !== undefined) next.status = status;
   const mode = APPROVAL_MODES.find((value) => value === values['approvalMode']);
   if (mode !== undefined) next.approvalMode = mode;
   const created = values['created'];
   if (isDatePreset(created)) next.created = created;
+  const min = values['minAmount'];
+  if (isAmountStep(min)) next.minAmount = min;
+  const max = values['maxAmount'];
+  if (isAmountStep(max)) next.maxAmount = max;
   return next;
+}
+
+/** The filters that still fit a view: a status outside it is dropped. */
+export function filtersForView(filters: Filters, view: View): Filters {
+  if (filters.status === undefined || statusesOf(view).includes(filters.status)) return filters;
+  return Object.fromEntries(Object.entries(filters).filter(([name]) => name !== 'status'));
 }
 
 export interface Query {

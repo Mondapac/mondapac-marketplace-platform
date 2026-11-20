@@ -50,20 +50,26 @@ describe.each(['AU', 'ZZ'] as const)('"Needs a look" list and export in market %
     >();
     let truncated = false;
     let failing = false;
+    // The Market each store read was made for: it must be the caller's, never a default.
+    const marketsSeen: string[] = [];
     const healthStore = {
-      unhealthy: () =>
-        failing
+      unhealthy: (m: MarketContext) => {
+        marketsSeen.push(m.marketId);
+        return failing
           ? Promise.reject(new Error('db down'))
-          : Promise.resolve({ sellers: unhealthy, truncated }),
+          : Promise.resolve({ sellers: unhealthy, truncated });
+      },
     } as unknown as SellerHealthStore;
     const list = {
-      all: (_m: MarketContext, query: { onlyIds: readonly Id<'Seller'>[] | null }) =>
-        Promise.resolve(
+      all: (m: MarketContext, query: { onlyIds: readonly Id<'Seller'>[] | null }) => {
+        marketsSeen.push(m.marketId);
+        return Promise.resolve(
           (query.onlyIds ?? []).flatMap((one) => {
             const file = files.get(one);
             return file === undefined ? [] : [file as ListedSeller];
           }),
-        ),
+        );
+      },
     } as unknown as SellerListRepository;
     const unitOfWork: UnitOfWork = {
       run: <T, E>(_m: MarketContext, work: () => Promise<Result<T, E>>) => work(),
@@ -94,11 +100,12 @@ describe.each(['AU', 'ZZ'] as const)('"Needs a look" list and export in market %
       score: number,
       metric: SellerHealthMetric = 'late-ready',
       slug: string | null = null,
+      day = '2026-11-10',
     ) {
       const sellerId = ids.next<'Seller'>();
       unhealthy.push({
         sellerId,
-        day: Temporal.PlainDate.from('2026-11-10'),
+        day: Temporal.PlainDate.from(day),
         kind: 'scored',
         band: 'unhealthy',
         score,
@@ -118,6 +125,7 @@ describe.each(['AU', 'ZZ'] as const)('"Needs a look" list and export in market %
       admin,
       add,
       ask,
+      marketsSeen,
       setTruncated: (value: boolean) => {
         truncated = value;
       },
@@ -174,6 +182,44 @@ describe.each(['AU', 'ZZ'] as const)('"Needs a look" list and export in market %
     expect(await idsOf({ sort: 'score', direction: 'desc' })).toEqual([a, b]);
     const sameDay = await idsOf({ sort: 'day', direction: 'asc' });
     expect([...sameDay].sort()).toEqual([a, b].sort());
+  });
+
+  it('sorts by the measured day in both directions', async () => {
+    const { ask, add } = setup();
+    const old = add('Old', 10, 'late-ready', null, '2026-11-08');
+    const fresh = add('Fresh', 20, 'late-ready', null, '2026-11-10');
+    const mid = add('Mid', 30, 'late-ready', null, '2026-11-09');
+    const idsOf = async (input: Record<string, unknown>) =>
+      (await ask(input)).items.map((r) => r.sellerId);
+    expect(await idsOf({ sort: 'day', direction: 'asc' })).toEqual([old, mid, fresh]);
+    expect(await idsOf({ sort: 'day', direction: 'desc' })).toEqual([fresh, mid, old]);
+  });
+
+  it('reads the queue and the files for the caller Market only', async () => {
+    const { ask, exporter, admin, add, marketsSeen } = setup();
+    const mine = add('Shop', 1);
+    // The list read and the export read each name the caller's Market, and no other.
+    await ask({});
+    expect(marketsSeen.length).toBeGreaterThan(0);
+    expect(new Set(marketsSeen)).toEqual(new Set([code]));
+    marketsSeen.length = 0;
+    const done = await exporter.execute(admin(), { ids: mine });
+    expect(done.ok).toBe(true);
+    expect(marketsSeen.length).toBeGreaterThan(0);
+    expect(new Set(marketsSeen)).toEqual(new Set([code]));
+    // An id that is not in the queue is refused whole.
+    expect(
+      await exporter.execute(admin(), { ids: '01990000-0000-7000-8000-0000000000aa' }),
+    ).toMatchObject({ ok: false, error: { code: 'file.not-found' } });
+  });
+
+  it('exports XLSX with its own content type and file name', async () => {
+    const { exporter, admin, add } = setup();
+    add('Shop', 1);
+    const done = await exporter.execute(admin(), { format: 'xlsx' });
+    if (!done.ok) throw new Error(JSON.stringify(done.error));
+    expect(done.value.filename).toBe('sellers-needing-attention-2026-11-10.xlsx');
+    expect(done.value.contentType).toContain('spreadsheetml');
   });
 
   it('pages with a total, or Previous/Next without one, and refuses bad input', async () => {

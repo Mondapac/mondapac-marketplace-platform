@@ -504,12 +504,8 @@ describe('claim text matcher: spans on unreliable piece counts (Hassan #380 L1)'
   });
 });
 
-// Timing tests compare against a baseline measured in the same process, so a busy machine slows
-// both sides: a wall-clock bound alone flakes under the parallel load of jest and CI.
 // The best time of two functions, taken in alternation: a burst of load (a neighbour job, GC, a
-// CPU-frequency step) then lands on both sides instead of only the one measured during it. Run
-// back to back, a control measured in a quiet moment and a subject measured in a busy one gave a
-// ratio over the bound with nothing wrong in the code (CI 42333353789).
+// CPU-frequency step) then lands on both sides instead of only the one measured during it.
 const minMsPair = (a: () => void, b: () => void, runs = 9): [number, number] => {
   let bestA = Infinity;
   let bestB = Infinity;
@@ -524,24 +520,35 @@ const minMsPair = (a: () => void, b: () => void, runs = 9): [number, number] => 
   return [bestA, bestB];
 };
 
+// The speed guard counts work instead of reading a clock. A wall-clock ratio against a control
+// flaked under the parallel load of jest and CI (CI 42333353789, and again on 7 Nov), however the
+// two sides were interleaved. The regression it guards (Hassan S4) is a per-character recompute:
+// before the memo each of the 20,000 characters ran the case-row lookup (toLowerCase/toUpperCase)
+// again, so the call count grew with the text; with the memo it is the number of DISTINCT
+// characters, a small constant. Counting calls is exact on any machine.
+const countCaseCalls = (run: () => void): number => {
+  const lower = jest.spyOn(String.prototype, 'toLowerCase');
+  const upper = jest.spyOn(String.prototype, 'toUpperCase');
+  try {
+    run();
+    return lower.mock.calls.length + upper.mock.calls.length;
+  } finally {
+    lower.mockRestore();
+    upper.mockRestore();
+  }
+};
+
 describe('claim text matcher: speed (Hassan S4, #380 M1)', () => {
   it.each(['長', '♪'])(
-    'normalises 20,000 x %s no slower than a fixed multiple of a control',
+    'looks each distinct character up once, not once per occurrence, for 20,000 x %s',
     (ch) => {
       const text = ch.repeat(20_000);
-      normaliseClaimText(text);
-      normaliseClaimText(text, true);
-      // Control: the same length of ASCII, which takes the fast path the memo gives other characters.
-      const control = 'a'.repeat(20_000);
-      // Under jest, memoised: 長 about 4x the control, ♪ about 3x; before the memo 長 ran at about
-      // 15x and ♪ at 7-12x. 長 is the meaningful check (2x margin each side); ♪ is a smoke test.
-      const bound = ch === '長' ? 8 : 15;
+      // Measured under jest: 長 10 calls, ♪ 8, with a cold or warm memo; without the memo at
+      // least one per character (20,000 or more). The bound sits far from both.
+      const bound = 500;
       for (const visual of [false, true]) {
-        const [base, ms] = minMsPair(
-          () => normaliseClaimText(control, true),
-          () => normaliseClaimText(text, visual),
-        );
-        expect([ch, visual, ms < bound * base]).toEqual([ch, visual, true]);
+        const calls = countCaseCalls(() => normaliseClaimText(text, visual));
+        expect([ch, visual, calls < bound]).toEqual([ch, visual, true]);
       }
     },
   );

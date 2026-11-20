@@ -3,7 +3,6 @@
 import {
   Badge,
   Banner,
-  Button,
   Card,
   CARD_TABLE,
   DataList,
@@ -11,7 +10,6 @@ import {
   LoadError,
   DetailSkeleton,
   TableSkeleton,
-  type BadgeTone,
 } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useState, type ReactNode } from 'react';
@@ -21,31 +19,18 @@ import { resolveZone } from '../price/zone-time.ts';
 import { dateFormat } from '../shared/intl.ts';
 import type { OwnDispute } from '../disputes/types.ts';
 import { shortId } from '../orders/status.ts';
+import { PayoutsList } from './list/payouts-list.tsx';
 import { PAYOUT_ACCOUNT_PATH } from '../payout/types.ts';
 import { formatMinor } from '../price/money.ts';
 import {
   BLOCK_REASONS,
   HELD_REASONS,
-  HISTORY_PAGE,
-  PAYOUT_STATUSES,
   type NextPayout,
   type OwnHeld,
   type OwnHolds,
-  type OwnPayout,
-  type OwnPayouts,
   type PayoutMoney,
   type PayoutsInitial,
 } from './payout-types.ts';
-
-const STATUS_TONE: Readonly<Record<string, BadgeTone>> = {
-  scheduled: 'neutral',
-  'awaiting-approval': 'attention',
-  'on-its-way': 'info',
-  paid: 'success',
-  'not-sent': 'neutral',
-  failed: 'critical',
-  settled: 'neutral',
-};
 
 /** Add up minor-unit strings without a float. */
 const sum = (values: readonly string[]): bigint =>
@@ -64,6 +49,8 @@ export function PayoutSections({
   currency,
   balance,
   disputes,
+  accountId = '',
+  marketId = '',
   children,
 }: {
   readonly initial: PayoutsInitial;
@@ -73,6 +60,9 @@ export function PayoutSections({
   /** The ledger balance in minor units; below zero is what the seller owes. */
   readonly balance: string;
   readonly disputes: readonly OwnDispute[];
+  /** The signed-in account and the Market: the key of the seller's own list preferences. */
+  readonly accountId?: string;
+  readonly marketId?: string;
 }) {
   const t = useTranslations('payouts');
   const tl = useTranslations('load');
@@ -84,11 +74,6 @@ export function PayoutSections({
   const [holds, setHolds] = useState<Load<readonly OwnHeld[]> | 'loading'>(
     initial.holds === null ? { kind: 'failed' } : { kind: 'ok', value: initial.holds },
   );
-  const [history, setHistory] = useState<Load<OwnPayouts> | 'loading'>(
-    initial.history === null ? { kind: 'failed' } : { kind: 'ok', value: initial.history },
-  );
-  const [moreFailed, setMoreFailed] = useState(false);
-  const [moreLoading, setMoreLoading] = useState(false);
   const money = (value: PayoutMoney) => formatMinor(value.amountMinor, value.currency, locale);
   const major = (minor: bigint) => formatMinor(minor.toString(), currency, locale);
 
@@ -108,34 +93,6 @@ export function PayoutSections({
       return;
     }
     set({ kind: 'failed' });
-  }
-
-  async function more() {
-    if (history === 'loading' || history.kind !== 'ok' || history.value.nextCursor === null) return;
-    if (moreLoading) return;
-    setMoreLoading(true);
-    setMoreFailed(false);
-    const result = await callApi<OwnPayouts>(
-      'GET',
-      `commission-payouts/seller/payouts?limit=${HISTORY_PAGE}&cursor=${encodeURIComponent(history.value.nextCursor)}`,
-    );
-    setMoreLoading(false);
-    if (!result.ok) {
-      if (result.failure.status === 401) window.location.assign('/session-ended');
-      else setMoreFailed(true);
-      return;
-    }
-    const known = new Set(history.value.payouts.map((payout) => payout.payoutId));
-    setHistory({
-      kind: 'ok',
-      value: {
-        payouts: [
-          ...history.value.payouts,
-          ...result.body.payouts.filter((payout) => !known.has(payout.payoutId)),
-        ],
-        nextCursor: result.body.nextCursor,
-      },
-    });
   }
 
   const owed = BigInt(/^-[0-9]{1,18}$/.test(balance) ? balance.slice(1) : '0');
@@ -262,57 +219,14 @@ export function PayoutSections({
         <h2 id="history-title" className="text-lg font-semibold">
           {t('history.title')}
         </h2>
-        {history === 'loading' ? (
-          <TableSkeleton
-            label={t('loading')}
-            slowLabel={tl('slow')}
-            rows={4}
-            columns={[
-              { header: t('history.col.date'), kind: 'title' },
-              { header: t('history.col.status'), kind: 'status' },
-              { header: t('history.col.note'), kind: 'text' },
-              { header: t('history.col.amount'), kind: 'number' },
-            ]}
-          />
-        ) : null}
-        {history !== 'loading' && history.kind === 'failed' ? (
-          <LoadError
-            className="flex flex-col items-start gap-3"
-            message={t('history.unavailable')}
-            retryLabel={tl('retry')}
-            onRetry={() =>
-              void reread<OwnPayouts>(
-                `commission-payouts/seller/payouts?limit=${HISTORY_PAGE}`,
-                setHistory,
-                (body: OwnPayouts) => body,
-              )
-            }
-          />
-        ) : null}
-        {history !== 'loading' && history.kind === 'ok' ? (
-          history.value.payouts.length === 0 ? (
-            <EmptyState
-              icon="receipt"
-              title={t('history.empty.title')}
-              body={t('history.empty.body')}
-            />
-          ) : (
-            <HistoryTable
-              payouts={history.value.payouts}
-              zone={initial.next?.zone ?? zone ?? null}
-              locale={locale}
-              money={money}
-            />
-          )
-        ) : null}
-        {moreFailed ? <Banner tone="critical">{t('history.more-failed')}</Banner> : null}
-        {history !== 'loading' && history.kind === 'ok' && history.value.nextCursor !== null ? (
-          <div>
-            <Button variant="secondary" loading={moreLoading} onClick={() => void more()}>
-              {t('history.more')}
-            </Button>
-          </div>
-        ) : null}
+        <PayoutsList
+          initial={initial.history}
+          paging={initial.paging}
+          zone={resolveZone(initial.next?.zone ?? zone)}
+          currency={currency}
+          accountId={accountId}
+          marketId={marketId}
+        />
       </section>
     </>
   );
@@ -479,92 +393,4 @@ function shortDay(iso: string, locale: string, zone: string | undefined): string
     month: 'short',
     timeZone: resolveZone(zone),
   }).format(date);
-}
-
-function HistoryTable({
-  payouts,
-  zone,
-  locale,
-  money,
-}: {
-  readonly payouts: readonly OwnPayout[];
-  readonly zone: string | null;
-  readonly locale: string;
-  readonly money: (value: PayoutMoney) => string;
-}) {
-  const t = useTranslations('payouts.history');
-  const tn = useTranslations('payouts.next');
-  return (
-    <div className="relative overflow-x-auto rounded-lg border border-line bg-surface">
-      <table className={CARD_TABLE.table}>
-        <caption className="sr-only">{t('title')}</caption>
-        <thead className={CARD_TABLE.head}>
-          <tr>
-            {(['date', 'status', 'note', 'amount'] as const).map((col) => (
-              <th
-                key={col}
-                scope="col"
-                className={`whitespace-nowrap px-4 py-3 font-medium ${col === 'amount' ? 'text-end' : ''}`}
-              >
-                {t(`col.${col}`)}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody className={CARD_TABLE.body}>
-          {payouts.map((payout) => {
-            const status = (PAYOUT_STATUSES as readonly string[]).includes(payout.status)
-              ? payout.status
-              : 'unknown';
-            const reasonKey =
-              payout.reason !== null && (BLOCK_REASONS as readonly string[]).includes(payout.reason)
-                ? payout.reason
-                : null;
-            const keptNote =
-              BigInt(payout.netted.amountMinor) > 0n && status !== 'settled'
-                ? t('kept', { amount: money(payout.netted) })
-                : null;
-            return (
-              <tr key={payout.payoutId} className={CARD_TABLE.row}>
-                <td className={CARD_TABLE.cell}>
-                  {shortInstant(payout.slotAt, locale, zone ?? undefined)}
-                </td>
-                <td className={CARD_TABLE.corner}>
-                  <Badge tone={STATUS_TONE[status] ?? 'neutral'}>
-                    {t(`status.${status}` as 'status.paid')}
-                  </Badge>
-                </td>
-                <td className={CARD_TABLE.labelled} data-label={t('col.note')}>
-                  <span>
-                    {status === 'failed'
-                      ? t('failed-note')
-                      : status === 'not-sent'
-                        ? reasonKey === null
-                          ? t('not-sent-note')
-                          : tn(`block-short.${reasonKey}` as 'block-short.below-minimum')
-                        : status === 'settled'
-                          ? t('settled-note', { amount: money(payout.netted) })
-                          : status === 'awaiting-approval'
-                            ? t('first-note')
-                            : '-'}
-                  </span>
-                </td>
-                <td
-                  className={`${CARD_TABLE.labelled} font-medium tabular-nums lg:text-end`}
-                  data-label={t('col.amount')}
-                >
-                  <span className="flex flex-col lg:items-end">
-                    <span>{money(payout.transfer)}</span>
-                    {keptNote === null ? null : (
-                      <span className="text-xs font-normal text-fg-muted">{keptNote}</span>
-                    )}
-                  </span>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
 }

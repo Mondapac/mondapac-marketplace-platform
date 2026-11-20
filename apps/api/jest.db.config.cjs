@@ -11,6 +11,12 @@ module.exports = {
   testRegex: 'test/db/.*\\.db-spec\\.ts$',
   globalSetup: '<rootDir>/test/db/global-setup.ts',
   globalTeardown: '<rootDir>/test/db/global-teardown.ts',
+  // A line on stderr when a worker's event loop stops for 1.5 s or more during a test, so that a
+  // 55P03 race failure on CI can be told apart from a slow holder (test/db/worker-pause-report.ts).
+  setupFilesAfterEnv: [
+    ...(base.setupFilesAfterEnv ?? []),
+    '<rootDir>/test/db/worker-pause-report.ts',
+  ],
   // Several specs build a whole Nest application per test; with every spec running in parallel
   // that can take longer than Jest's 5 s default, which then fails a hook rather than a check.
   testTimeout: 30_000,
