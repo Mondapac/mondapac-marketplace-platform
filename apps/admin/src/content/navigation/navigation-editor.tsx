@@ -353,11 +353,8 @@ export function NavigationEditor({
         ) : (
           <ol aria-label={t('versions')} className="m-0 flex list-none flex-col gap-2 p-0">
             {versions.map((version) => (
-              <li
-                key={version.id}
-                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2"
-              >
-                <span className="flex flex-wrap items-center gap-2">
+              <li key={version.id} className="flex items-center justify-between gap-x-4 gap-y-2">
+                <span className="flex min-w-0 flex-wrap items-center gap-2">
                   <span className="font-medium">{t('version', { n: version.versionNo })}</span>
                   <Badge
                     tone={
