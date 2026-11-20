@@ -4,6 +4,7 @@ import type { AdminPayoutListReader } from '../application/ports/admin-payout-li
 import type {
   PayoutListCursor,
   PayoutListFilter,
+  PayoutSlotCursor,
   PayoutSort,
   PayoutStateCounts,
 } from '../domain/admin-payout-list';
@@ -11,6 +12,16 @@ import { PAYOUT_STATES, type PayoutState } from '../domain/payout';
 import { toPayout } from './prisma-payout.repository';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
+
+/** The `from`/`to` window on the date the filter names (the creation unless it says slot). */
+function dateWindow(filter: PayoutListFilter) {
+  if (filter.from === null && filter.to === null) return {};
+  const range = {
+    ...(filter.from === null ? {} : { gte: toDate(filter.from) }),
+    ...(filter.to === null ? {} : { lt: toDate(filter.to) }),
+  };
+  return filter.dateOn === 'slot' ? { slotAt: range } : { createdAt: range };
+}
 
 /** The WHERE of a filter; every branch keeps the Market's own rows only. */
 function where(market: MarketContext, filter: PayoutListFilter) {
@@ -24,14 +35,7 @@ function where(market: MarketContext, filter: PayoutListFilter) {
     ...(filter.payoutId === null ? {} : { id: filter.payoutId }),
     ...(filter.sellerId === null ? {} : { sellerId: filter.sellerId }),
     ...(filter.approvalMode === null ? {} : { approvalMode: filter.approvalMode }),
-    ...(filter.from === null && filter.to === null
-      ? {}
-      : {
-          createdAt: {
-            ...(filter.from === null ? {} : { gte: toDate(filter.from) }),
-            ...(filter.to === null ? {} : { lt: toDate(filter.to) }),
-          },
-        }),
+    ...dateWindow(filter),
     ...(filter.minAmount === null && filter.maxAmount === null
       ? {}
       : {
@@ -42,6 +46,23 @@ function where(market: MarketContext, filter: PayoutListFilter) {
         }),
     AND: and,
   };
+}
+
+/** The rows after a Previous/Next cursor, newest first on the cursor's own column. */
+function afterCursor(after: PayoutListCursor | PayoutSlotCursor): object[] {
+  // The plain bound lets the index start at the cursor; the OR keeps the tie order.
+  if ('slotAt' in after) {
+    const at = toDate(after.slotAt);
+    return [
+      { slotAt: { lte: at } },
+      { OR: [{ slotAt: { lt: at } }, { slotAt: at, id: { lt: after.payoutId } }] },
+    ];
+  }
+  const at = toDate(after.createdAt);
+  return [
+    { createdAt: { lte: at } },
+    { OR: [{ createdAt: { lt: at } }, { createdAt: at, id: { lt: after.payoutId } }] },
+  ];
 }
 
 function orderBy(sort: PayoutSort) {
@@ -71,27 +92,11 @@ export class PrismaAdminPayoutListReader implements AdminPayoutListReader {
     sort: PayoutSort,
     offset: number,
     limit: number,
-    after: PayoutListCursor | null = null,
+    after: PayoutListCursor | PayoutSlotCursor | null = null,
   ) {
     const base = where(market, filter);
     const rows = await this.prisma.tx(market).commissionPayoutsPayout.findMany({
-      where:
-        after === null
-          ? base
-          : {
-              ...base,
-              AND: [
-                ...base.AND,
-                // The plain bound lets the index start at the cursor; the OR keeps the tie order.
-                { createdAt: { lte: toDate(after.createdAt) } },
-                {
-                  OR: [
-                    { createdAt: { lt: toDate(after.createdAt) } },
-                    { createdAt: toDate(after.createdAt), id: { lt: after.payoutId } },
-                  ],
-                },
-              ],
-            },
+      where: after === null ? base : { ...base, AND: [...base.AND, ...afterCursor(after)] },
       orderBy: orderBy(sort),
       skip: offset,
       take: limit,

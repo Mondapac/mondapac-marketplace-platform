@@ -188,15 +188,17 @@ type Paging =
   | { readonly kind: 'pages'; readonly page: number; readonly pageSize: number }
   | { readonly kind: 'prev-next'; readonly after: PayoutListCursor | null; readonly limit: number };
 
-interface Selector {
+export interface PayoutSelector {
   readonly filter: PayoutListFilter;
   readonly search: string | null;
 }
 
-type Fields = { path: string; code: string }[];
+export type Fields = { path: string; code: string }[];
 
-/** The selector keys (view, search, filters) shared by the list and the export. */
-function parseSelector(input: PayoutListInput, fields: Fields): Selector {
+/**
+ * The selector keys (view, search, filters) shared by the list, the export and the saved filters.
+ */
+export function parsePayoutSelector(input: PayoutListInput, fields: Fields): PayoutSelector {
   const oneOf = <T extends string>(path: string, value: unknown, list: readonly T[]): T | null => {
     if (value === undefined || value === '') return null;
     if (list.includes(value as T)) return value as T;
@@ -276,9 +278,9 @@ const whole = (value: unknown, min: number, max: number): number | null =>
 
 function parse(
   input: PayoutListInput,
-): Result<Selector & { readonly sort: PayoutSort; readonly paging: Paging }, PayoutFailure> {
+): Result<PayoutSelector & { readonly sort: PayoutSort; readonly paging: Paging }, PayoutFailure> {
   const fields: Fields = [];
-  const selector = parseSelector(input, fields);
+  const selector = parsePayoutSelector(input, fields);
   const prevNext = input.cursor !== undefined || input.limit !== undefined;
   let paging: Paging;
   let sort: PayoutSort = { key: 'created', direction: 'desc' };
@@ -342,7 +344,7 @@ const isAdmin = (context: CallContext) =>
 async function resolveSearch(
   deps: AdminPayoutListDependencies,
   context: CallContext,
-  selector: Selector,
+  selector: PayoutSelector,
 ): Promise<Result<{ filter: PayoutListFilter; capped: boolean }, PayoutFailure>> {
   if (selector.search === null) return ok({ filter: selector.filter, capped: false });
   try {
@@ -638,7 +640,7 @@ export async function exportAdminPayouts(
     ids = wanted;
   } else {
     const fields: Fields = [];
-    const selector = parseSelector(input, fields);
+    const selector = parsePayoutSelector(input, fields);
     let sort: PayoutSort = { key: 'created', direction: 'desc' };
     if (input.sort !== undefined) {
       if ((PAYOUT_SORT_KEYS as readonly unknown[]).includes(input.sort)) {

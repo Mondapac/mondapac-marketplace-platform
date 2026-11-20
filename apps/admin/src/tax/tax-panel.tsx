@@ -1,6 +1,14 @@
 'use client';
 
-import { Badge, Button, CARD_TABLE, EmptyState, SettingsPage, SettingsSection } from '@mondapac/ui';
+import {
+  Badge,
+  Button,
+  CARD_TABLE,
+  EmptyState,
+  Menu,
+  SettingsPage,
+  SettingsSection,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -108,8 +116,8 @@ export function TaxPanel({
                       {t('col.rate')}
                     </th>
                     {canManage ? (
-                      <th scope="col" className="px-4 py-3 font-medium">
-                        <span className="sr-only">{t('col.actions')}</span>
+                      <th scope="col" className={CARD_TABLE.actionsHead}>
+                        {t('col.actions')}
                       </th>
                     ) : null}
                   </tr>
@@ -132,47 +140,40 @@ export function TaxPanel({
                         {rateOf(strategy)}
                       </td>
                       {canManage ? (
-                        <td className={`${CARD_TABLE.cell} max-lg:col-span-2 max-lg:pt-2`}>
-                          <div className="flex flex-wrap gap-2 lg:flex-nowrap lg:justify-end">
-                            <Button
-                              variant="secondary"
-                              className="min-h-12"
-                              aria-label={t('edit-label', { name: strategy.name })}
-                              onClick={() => setOpen({ kind: 'form', strategy })}
-                            >
-                              {t('edit')}
-                            </Button>
-                            {strategy.active ? null : (
-                              <>
-                                <Button
-                                  variant="secondary"
-                                  className="min-h-12"
-                                  aria-label={t('activate-label', { name: strategy.name })}
-                                  onClick={() =>
-                                    setOpen({
-                                      kind: 'confirm',
-                                      action: { kind: 'activate', strategy },
-                                    })
-                                  }
-                                >
-                                  {t('activate')}
-                                </Button>
-                                <Button
-                                  variant="destructive"
-                                  className="min-h-12"
-                                  aria-label={t('delete-label', { name: strategy.name })}
-                                  onClick={() =>
-                                    setOpen({
-                                      kind: 'confirm',
-                                      action: { kind: 'delete', strategy },
-                                    })
-                                  }
-                                >
-                                  {t('delete')}
-                                </Button>
-                              </>
-                            )}
-                          </div>
+                        <td className={CARD_TABLE.actions}>
+                          <Menu
+                            label={t('actions-for', { name: strategy.name })}
+                            items={[
+                              {
+                                id: 'edit',
+                                label: t('edit'),
+                                onSelect: () => setOpen({ kind: 'form', strategy }),
+                              },
+                              ...(strategy.active
+                                ? []
+                                : [
+                                    {
+                                      id: 'activate',
+                                      label: t('activate'),
+                                      onSelect: () =>
+                                        setOpen({
+                                          kind: 'confirm',
+                                          action: { kind: 'activate', strategy },
+                                        }),
+                                    },
+                                    {
+                                      id: 'delete',
+                                      label: t('delete'),
+                                      tone: 'critical' as const,
+                                      onSelect: () =>
+                                        setOpen({
+                                          kind: 'confirm',
+                                          action: { kind: 'delete', strategy },
+                                        }),
+                                    },
+                                  ]),
+                            ]}
+                          />
                         </td>
                       ) : null}
                     </tr>

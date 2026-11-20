@@ -79,6 +79,13 @@ Design: G2 section 3.6 (state machine), 4.5 to 4.7 (planning, gate, run), 11 (re
   step-up, echoes the transfer amount; approval binds the amount).
 - Seller (`commission-payouts/seller`): `payouts/next`, `payouts`, `payout-holds`. The seller id comes
   from the session only.
+- The seller's `payouts` list and its `payouts/export` (super list 33) use the payout day (`slotAt`)
+  as their one date, per `list33-earnings-date-decision`: default sort slot desc (ties by payout id),
+  `from`/`to` compare `slotAt`, the Previous/Next cursor names its sort (`slot.<ms>.<id>` or
+  `created.<ms>.<id>`; another sort's cursor is refused), and the file's base date column is
+  "Payout on", written with the rest of its dates in the store's zone with its offset (UTC while the
+  store has no zone; `commission-payouts.unavailable` when the zone cannot be read). The admin list
+  keeps the creation instant.
 
 **Rules worth knowing**
 - One live payout per seller (partial unique index). One unfreed item per seller order.
@@ -149,3 +156,12 @@ customer: it needs that credit's `cashback-seller` row for the same seller and o
 returns together never exceed it. The anchor's `disputeLost` also counts any dispute decision on the
 seller order (Hassan L-6), so a chargeback the platform bore still cancels the cashback. Migration
 `20261117150001_ledger_seller_cashback_return`; `down.sql` refuses while such rows exist.
+
+## Saved filters (super list phase 4, PR10)
+
+The admin Payouts list (`admin.commission-payouts.payouts`, key `commission-payouts.payout.view`)
+and the admin Disputes list (`admin.commission-payouts.disputes`, key
+`commission-payouts.dispute.view`) have saved filters through `lists`
+(`application/saved-filters/list-definitions.ts`). Sharing one with every admin needs the new
+unprotected key `commission-payouts.saved-filter.share`; no role is seeded with it. The seller
+Payouts list (33) joins when `lists` has the seller routes. See docs/modules/lists/notes.md.

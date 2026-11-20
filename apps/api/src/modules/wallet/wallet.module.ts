@@ -64,6 +64,8 @@ import { WalletFacadeImplementation } from './presentation/wallet.facade';
 import { createSystemChangeRegistrar, SYSTEM_REQUEST_RECORDER } from '../system-requests';
 import { WALLET_REVIEW_AREA, WALLET_STATUS_SUBJECT_KIND } from './application/wallet-review';
 import { WalletStatusReverter } from './application/wallet-reverter';
+import { ListsModule, registerLists } from '../lists';
+import { WALLET_LISTS } from './application/saved-filters/list-definitions';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: AdminCreditDependencies) => U;
 
@@ -146,7 +148,7 @@ function creditListUseCaseProvider<U>(type: CreditListUseCaseClass<U>): FactoryP
  * No card, bank or Stripe call exists here.
  */
 @Module({
-  imports: [IdentityModule],
+  imports: [IdentityModule, ListsModule],
   controllers: [AdminWalletController, AdminWalletCreditController, CustomerWalletController],
   providers: [
     PersistenceModule.auditWriterFor('wallet'),
@@ -154,6 +156,7 @@ function creditListUseCaseProvider<U>(type: CreditListUseCaseClass<U>): FactoryP
     changeTrailProvider(),
     registerAuditActions('wallet', WALLET_AUDIT_ACTIONS),
     registerPermissions('wallet', WALLET_PERMISSIONS),
+    registerLists('wallet', WALLET_LISTS),
     registerStepUpActions('wallet', WALLET_STEP_UP_ACTIONS),
     {
       provide: WALLET_STATUS_REVERTER,

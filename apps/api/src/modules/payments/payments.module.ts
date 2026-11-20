@@ -70,6 +70,8 @@ import { AdminConnectedAccountsController } from './presentation/admin-connected
 import { PaymentsFacadeImplementation } from './presentation/payments.facade';
 import { SellerPayoutAccountController } from './presentation/seller-payout-account.controller';
 import { StripeWebhookController } from './presentation/stripe-webhook.controller';
+import { ListsModule, registerLists } from '../lists';
+import { PAYMENTS_LISTS } from './application/saved-filters/list-definitions';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: PaymentsDependencies) => U;
 
@@ -151,7 +153,7 @@ function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
  * outcome. Test mode only.
  */
 @Module({
-  imports: [OrderingModule, IdentityModule, SellersModule],
+  imports: [OrderingModule, IdentityModule, ListsModule, SellersModule],
   controllers: [
     StripeWebhookController,
     SellerPayoutAccountController,
@@ -165,6 +167,7 @@ function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
     registerEvents('payments', PAYMENTS_EVENTS),
     registerAuditActions('payments', PAYMENTS_AUDIT_ACTIONS),
     registerPermissions('payments', PAYMENTS_PERMISSIONS),
+    registerLists('payments', PAYMENTS_LISTS),
     registerStepUpActions('payments', PAYMENTS_STEP_UP_ACTIONS),
     ...paymentsProviders,
     useCaseProvider(ReceiveStripeEvent),

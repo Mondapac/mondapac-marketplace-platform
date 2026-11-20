@@ -21,7 +21,8 @@ const draftOf = (filters: AttributionFilters): Draft => ({
 
 /**
  * The filter panel of the attributions list: store (a picker), status, reject reason, flag and
- * the attribution days. The days are UTC days, as the API reads them, and the panel says so.
+ * the attribution days. The API reads the days in the admin's panel time zone (else the Market's),
+ * and the panel says so.
  */
 export function AttributionsFilterPanel({
   filters,
@@ -131,7 +132,7 @@ export function AttributionsFilterPanel({
       </div>
       <fieldset className="flex flex-col gap-2">
         <legend className="mb-1 text-sm font-medium text-fg">{t('name.attributed')}</legend>
-        <p className="text-sm text-fg-muted">{t('utc-days')}</p>
+        <p className="text-sm text-fg-muted">{t('zone-days')}</p>
         <div className="grid grid-cols-2 gap-3">
           <TextField
             label={t('from')}

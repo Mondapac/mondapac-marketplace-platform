@@ -5,6 +5,8 @@ export const REVIEW_PERMISSION = 'certification.seller-certificate.review';
 export const APPROVE_PERMISSION = 'certification.seller-certificate.approve';
 export const REVOKE_PERMISSION = 'certification.seller-certificate.revoke';
 export const HISTORY_PERMISSION = 'certification.document.view';
+/** The longest issuer reference the API keeps (the domain's own limit). */
+export const CONFIRMATION_REFERENCE_MAX = 500;
 export const API_CERTIFICATES = 'certification/admin/seller-certificates';
 export const REASON_TEXT_MAX = 1000;
 
@@ -53,6 +55,12 @@ export interface ReviewPage {
       readonly issuerId: string;
       readonly displayName: string;
       readonly state: string;
+      /** The issuer's registered contact channels still in use; the confirmation names one. */
+      readonly channels?: readonly {
+        readonly channelId: string;
+        readonly kind: string;
+        readonly value: string;
+      }[];
     } | null;
     readonly certificateNumber: string | null;
     readonly issueDate: string | null;

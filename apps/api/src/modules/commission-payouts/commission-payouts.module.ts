@@ -140,6 +140,8 @@ import {
   PAYOUT_TERMS_SUBJECT_KIND,
 } from './application/money-review';
 import { CommissionRateReverter, PayoutTermsReverter } from './application/money-reverters';
+import { ListsModule, registerLists } from '../lists';
+import { COMMISSION_PAYOUTS_LISTS } from './application/saved-filters/list-definitions';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: CommissionPayoutsDependencies) => U;
 
@@ -283,14 +285,22 @@ type OwnPayoutListUseCaseClass<U> = new (gate: UseCaseGate, deps: OwnPayoutListD
 function ownPayoutListUseCaseProvider<U>(type: OwnPayoutListUseCaseClass<U>): FactoryProvider<U> {
   return {
     provide: type,
-    inject: [USE_CASE_GATE, UNIT_OF_WORK, ADMIN_PAYOUT_LIST_READER, SHEET_WRITER, CLOCK],
+    inject: [
+      USE_CASE_GATE,
+      UNIT_OF_WORK,
+      ADMIN_PAYOUT_LIST_READER,
+      SELLER_PAYOUT_ACCESS,
+      SHEET_WRITER,
+      CLOCK,
+    ],
     useFactory: (
       gate: UseCaseGate,
       unitOfWork: OwnPayoutListDependencies['unitOfWork'],
       payouts: OwnPayoutListDependencies['payouts'],
+      access: OwnPayoutListDependencies['access'],
       sheetWriter: OwnPayoutListDependencies['sheetWriter'],
       clock: OwnPayoutListDependencies['clock'],
-    ) => new type(gate, { unitOfWork, payouts, sheetWriter, clock }),
+    ) => new type(gate, { unitOfWork, payouts, access, sheetWriter, clock }),
   };
 }
 
@@ -421,7 +431,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * (payments reaches this module through ordering, so this module cannot import them).
  */
 @Module({
-  imports: [IdentityModule, SellersModule],
+  imports: [IdentityModule, ListsModule, SellersModule],
   controllers: [
     AdminCommissionController,
     SellerLedgerController,
@@ -465,6 +475,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     PersistenceModule.auditWriterFor('commission-payouts'),
     registerAuditActions('commission-payouts', COMMISSION_PAYOUTS_AUDIT_ACTIONS),
     registerPermissions('commission-payouts', COMMISSION_PAYOUTS_PERMISSIONS),
+    registerLists('commission-payouts', COMMISSION_PAYOUTS_LISTS),
     registerStepUpActions('commission-payouts', COMMISSION_PAYOUTS_STEP_UP_ACTIONS),
     // Package 6b: identity's seller access suspends or reinstates a seller's payouts
     // (commission_payouts.inbox).

@@ -307,6 +307,7 @@ function syntheticTools(currency: string, recorded: string[]) {
         slug,
         name: storeName(seller),
         serviceAreaCode: 'BNE',
+        serviceAreaName: 'Brisbane',
         sellingSince: 2024,
       };
       return Promise.resolve({ ok: true, value: store });
