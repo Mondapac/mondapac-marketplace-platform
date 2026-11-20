@@ -86,15 +86,16 @@ describe.each(TEST_MARKETS)('public store reads in market %s', (code) => {
     decidedAt: string | null,
     area: string,
     m: MarketContext = market,
+    postcode: string | null = null,
   ): Promise<string> {
     const revisionId = ids.next<'BusinessFileRevision'>();
     await owner.query(
       `INSERT INTO sellers.business_file_revisions
         (id, market_id, tenant_id, seller_id, kind, revision_no, status, author_kind, author_account_id,
          content_ciphertext, content_schema_version, content_hash, operating_timezone, service_area_code,
-         register_outcome, register_mismatches, created_at, status_changed_at, decided_at)
+         register_outcome, register_mismatches, created_at, status_changed_at, decided_at, operating_postcode)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'seller', $8, $9, 1, $10, 'Australia/Brisbane', $11,
-               'not-performed', '{}', $12, $12, $13)`,
+               'not-performed', '{}', $12, $12, $13, $14)`,
       [
         revisionId,
         m.marketId,
@@ -109,6 +110,7 @@ describe.each(TEST_MARKETS)('public store reads in market %s', (code) => {
         area,
         T0.toString(),
         decidedAt,
+        postcode,
       ],
     );
     return revisionId;
@@ -161,6 +163,25 @@ describe.each(TEST_MARKETS)('public store reads in market %s', (code) => {
     expect(
       (await inUnit(() => stores.approvedStores(market, 1000))).map((s) => s.sellerId),
     ).toContain(sellerId);
+  });
+
+  it('reads the clear operating postcode of the approved revision', async () => {
+    const sellerId = await newSeller();
+    const current = await addRevision(
+      sellerId,
+      1,
+      'approved',
+      '2026-03-01T00:00:00Z',
+      'area-new',
+      market,
+      '4000',
+    );
+    await approve(sellerId, current, 'Postcode Store');
+    await holdSlug(sellerId, `postcode-${suffix}`);
+
+    const found = await inUnit(() => stores.approvedStoreBySlug(market, `postcode-${suffix}`));
+
+    expect(found?.operatingPostcode).toBe('4000');
   });
 
   it('leaves out a seller with no approved revision, or with no held slug', async () => {

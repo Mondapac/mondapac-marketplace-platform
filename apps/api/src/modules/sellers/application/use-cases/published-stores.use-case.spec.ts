@@ -366,6 +366,44 @@ describe.each([
     expect(await code('gamma-market')).toBe('area-1');
   });
 
+  it('ignores an edited name in another language and gives no name for an unknown area', async () => {
+    addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
+    editedNames.set('area-1', { fr: 'Zone Un' });
+    const fallback = await read.execute(anonymous(), { slug: 'alpha-market' });
+    expect(fallback.ok && fallback.value.serviceAreaName).toBe('Area One');
+
+    stores[0] = { ...stores[0]!, serviceAreaCode: 'area-9' };
+    const unknown = await read.execute(anonymous(), { slug: 'alpha-market' });
+    expect(unknown.ok && unknown.value.serviceAreaName).toBeNull();
+  });
+
+  it('carries the area name on each list item', async () => {
+    addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
+    editedNames.set('area-1', { en: 'Greater Area One' });
+    const listed = await page();
+    expect(listed.items.map((item) => item.serviceAreaName)).toEqual(['Greater Area One']);
+  });
+
+  it('names the live area, with its edited name, and lists it the same way', async () => {
+    addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null, postcode: '4000' });
+    editedNames.set('area-2', { en: 'Area Two Edited' });
+
+    const answer = await read.execute(anonymous(), { slug: 'alpha-market' });
+    expect(answer.ok && answer.value.serviceAreaCode).toBe('area-2');
+    expect(answer.ok && answer.value.serviceAreaName).toBe('Area Two Edited');
+
+    const listed = await page();
+    expect(listed.items.map((item) => [item.serviceAreaCode, item.serviceAreaName])).toEqual([
+      ['area-2', 'Area Two Edited'],
+    ]);
+  });
+
+  it('keeps an empty postcode on the stored area', async () => {
+    addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null, postcode: '' });
+    const answer = await read.execute(anonymous(), { slug: 'alpha-market' });
+    expect(answer.ok && answer.value.serviceAreaCode).toBe('area-1');
+  });
+
   it('reads one store by its exact slug', async () => {
     const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', {
       minimum: null,
