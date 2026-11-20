@@ -462,6 +462,8 @@ function strictQueryRefusal(
   for (const [key, shape] of Object.entries(QUERY_KEYS[target] ?? {})) {
     const value = source.get(key);
     if (value === null) continue;
+    // A repeated key refuses too: the file must match the request exactly.
+    if (source.getAll(key).length > 1) return key;
     const max = QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX;
     if (value.length > max || (shape !== null && !shape.test(value))) return key;
   }

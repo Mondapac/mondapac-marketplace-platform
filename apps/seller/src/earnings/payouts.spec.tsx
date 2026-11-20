@@ -303,9 +303,9 @@ describe('payout history', () => {
 
   it.each([
     ['on-its-way', 'Sending'],
-    ['awaiting-approval', 'Waiting for our check'],
+    ['awaiting-approval', 'Waiting for check'],
     ['scheduled', 'Planned'],
-    ['settled', 'Settled against what you owe'],
+    ['settled', 'Settled'],
     ['failed', 'Failed'],
     ['not-sent', 'Not sent'],
   ])('shows %s as "%s"', (value, label) => {

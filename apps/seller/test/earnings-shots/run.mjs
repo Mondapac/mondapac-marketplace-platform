@@ -34,7 +34,10 @@ const browser = await chromium.launch({
   ...(process.env.CHROME_PATH ? { executablePath: process.env.CHROME_PATH } : {}),
 });
 
-const STATES = ['list', 'filters', 'sort', 'columns', 'export', 'empty', 'error'];
+const STATES = (process.env.SHOTS_ONLY ?? 'list,filters,sort,columns,export,empty,error').split(
+  ',',
+);
+const WIDTHS = (process.env.SHOTS_WIDTHS ?? '1280,768,375').split(',').map(Number);
 
 async function openTool(page, name) {
   await page
@@ -45,7 +48,7 @@ async function openTool(page, name) {
 }
 
 for (const scheme of ['light', 'dark']) {
-  for (const width of [1280, 768, 375]) {
+  for (const width of WIDTHS) {
     for (const name of STATES) {
       const ctx = await browser.newContext({
         viewport: { width, height: 900 },
@@ -87,6 +90,19 @@ for (const scheme of ['light', 'dark']) {
         await page.getByRole('button', { name: 'Bulk action' }).click();
         await page.getByRole('menuitem', { name: /^Export/ }).click();
         await page.getByRole('dialog', { name: /^Export/ }).waitFor();
+      }
+      if (name === 'tabs') {
+        const nav = page.getByRole('navigation', { name: 'Payout status' });
+        const scrolls = await nav.evaluate((el) => el.scrollWidth > el.clientWidth);
+        await page.getByRole('button', { name: /^Settled/ }).focus();
+        await page.waitForTimeout(300);
+        const left = await nav.evaluate((el) => el.scrollLeft);
+        const inView = await page.getByRole('button', { name: /^Settled/ }).evaluate((el) => {
+          const r = el.getBoundingClientRect();
+          const n = el.parentElement.getBoundingClientRect();
+          return r.left >= n.left - 1 && r.right <= n.right + 1;
+        });
+        console.log('tabs scroll:', scrolls, 'scrollLeft:', left, 'focused tab in view:', inView);
       }
       await page.waitForTimeout(300);
       const over = await page.evaluate(() => {

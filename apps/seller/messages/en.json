@@ -4080,12 +4080,12 @@
       },
       "status": {
         "scheduled": "Planned",
-        "awaiting-approval": "Waiting for our check",
+        "awaiting-approval": "Waiting for check",
         "on-its-way": "Sending",
         "paid": "Paid",
         "not-sent": "Not sent",
         "failed": "Failed",
-        "settled": "Settled against what you owe",
+        "settled": "Settled",
         "unknown": "Unknown"
       },
       "first-note": "First payout, checked by our team.",

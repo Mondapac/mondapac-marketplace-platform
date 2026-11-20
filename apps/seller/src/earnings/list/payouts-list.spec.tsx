@@ -1,5 +1,7 @@
 // @vitest-environment jsdom
 import { Toaster, toast } from '@mondapac/ui';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -628,5 +630,115 @@ describe('payout list selection and export', () => {
       expect(screen.getAllByText('The export didn’t work. Try again.')).toBeTruthy(),
     );
     expect(createUrl).not.toHaveBeenCalled();
+  });
+});
+
+describe('payout list review follow-ups', () => {
+  const many = (from: number, count: number) =>
+    Array.from({ length: count }, (_, i) => row(from + i));
+  const tickPage = () =>
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all payouts on this page' }));
+
+  it('stops ticking rows at the 200 cap: the 201st row cannot be ticked', async () => {
+    mount(pages(many(1000, 100), 201, { pageSize: 100 }), 'pages');
+    tickPage();
+    serve((url) =>
+      pages(many(2000, 100), 201, { pageSize: 100, page: Number(paramsOf(url)['page']) }),
+    );
+    fireEvent.click(OPEN('Page 2'));
+    await screen.findAllByRole('checkbox', { name: /^Select Payout/ });
+    await waitFor(() => expect(paramsOf(lastUrl())['page']).toBe('2'));
+    tickPage();
+    expect(screen.getByText('200 payouts selected')).toBeTruthy();
+    serve((url) => pages([row(3000)], 201, { pageSize: 100, page: Number(paramsOf(url)['page']) }));
+    fireEvent.click(OPEN('Page 3'));
+    await waitFor(() => expect(paramsOf(lastUrl())['page']).toBe('3'));
+    const box = await screen.findByRole<HTMLInputElement>('checkbox', { name: /^Select Payout/ });
+    expect(box.disabled).toBe(true);
+    expect(screen.getByText('200 payouts selected')).toBeTruthy();
+  });
+
+  it('clears the selection when a filter or the sort changes', async () => {
+    mount(pages([row(1)], 40), 'pages');
+    serve(() => pages([row(1)], 40));
+    tickPage();
+    expect(screen.getByText('1 payout selected')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^Filter/ }));
+    const panel = await screen.findByRole('dialog', { name: 'Filter' });
+    fireEvent.change(within(panel).getByLabelText('Field'), { target: { value: 'minAmount' } });
+    fireEvent.change(within(panel).getByLabelText('Value'), { target: { value: '10' } });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Apply' }));
+    await waitFor(() => expect(screen.queryByText(/payouts? selected/)).toBeNull());
+    tickPage();
+    expect(screen.getByText('1 payout selected')).toBeTruthy();
+    fireEvent.click(OPEN('Sort'));
+    const sort = await screen.findByRole('dialog', { name: 'Sort' });
+    fireEvent.click(within(sort).getByRole('radio', { name: 'Amount' }));
+    await waitFor(() => expect(screen.queryByText(/payouts? selected/)).toBeNull());
+  });
+
+  it('drops the cursor when the sort flips to or from Created on', async () => {
+    window.localStorage.setItem(KEY('AU'), JSON.stringify(['note', 'created']));
+    mount(pageOf([row(1)], { nextCursor: 'slot.1.a' }));
+    await waitFor(() => expect(heads()).toContain('Created on'));
+    serve(() => pageOf([row(2)], { nextCursor: 'slot.2.b' }));
+    fireEvent.click(OPEN('Next'));
+    await waitFor(() => expect(paramsOf(lastUrl())['cursor']).toBe('slot.1.a'));
+    fireEvent.click(OPEN('Sort'));
+    const panel = await screen.findByRole('dialog', { name: 'Sort' });
+    fireEvent.click(within(panel).getByRole('radio', { name: 'Created on: Newest first' }));
+    await waitFor(() => expect(paramsOf(lastUrl())).toEqual({ limit: '25', sort: 'created' }));
+    fireEvent.click(OPEN('Next'));
+    await waitFor(() => expect(paramsOf(lastUrl())['cursor']).toBe('slot.2.b'));
+    fireEvent.click(within(panel).getByRole('radio', { name: 'Payout on: Newest first' }));
+    await waitFor(() => expect(paramsOf(lastUrl())).toEqual({ limit: '25' }));
+  });
+
+  it('shows the year of a payout day that is not in the current year', () => {
+    mount(pageOf([row(1, { slotAt: '2024-03-05T00:00:00.000Z' })]));
+    expect(within(screen.getByRole('table')).getByText(/5 Mar 2024/)).toBeTruthy();
+  });
+
+  it('phone layout: lines are labelled, and a Details line with no value is left out', () => {
+    mount(pageOf([row(1), row(2, { status: 'failed' })]));
+    const cells = [...document.querySelectorAll('tbody td[data-label]')];
+    expect(cells.some((cell) => cell.getAttribute('data-label') === 'Amount')).toBe(true);
+    // The paid row has no details: its cell holds the marker the phone stylesheet hides.
+    expect(document.querySelectorAll('td > [data-empty-line]')).toHaveLength(1);
+    const css = readFileSync(join(__dirname, '../../../app/globals.css'), 'utf8');
+    expect(css).toMatch(
+      /max-width: 1023\.98px[\s\S]*td:has\(> \[data-empty-line\]\)[\s\S]*display: none/,
+    );
+    expect(screen.getByText('Select page')).toBeTruthy();
+  });
+
+  it('saves the API bytes of a CSV, so the byte-order mark survives', async () => {
+    const save = vi.fn();
+    const createUrl = vi.fn((blob: Blob) => {
+      save(blob);
+      return 'blob:x';
+    });
+    URL.createObjectURL = createUrl;
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    const bytes = new Uint8Array([
+      0xef,
+      0xbb,
+      0xbf,
+      ...new TextEncoder().encode('Payout ID\r\nrow\r\n'),
+    ]);
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(bytes, { status: 200, headers: { 'content-type': 'text/csv; charset=utf-8' } }),
+    );
+    mount(pages([row(1)], 60), 'pages');
+    tickPage();
+    fireEvent.click(OPEN('Bulk action'));
+    fireEvent.click(await screen.findByRole('menuitem', { name: /^Export/ }));
+    const dialog = await screen.findByRole('dialog', { name: /^Export/ });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(save).toHaveBeenCalled());
+    const blob = save.mock.calls[0]![0] as Blob;
+    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(bytes);
+    vi.restoreAllMocks();
   });
 });

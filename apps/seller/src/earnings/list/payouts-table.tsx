@@ -85,8 +85,10 @@ export function PayoutsTable({
 
   const content = (column: OptionalColumn, row: OwnPayoutRow): ReactNode => {
     switch (column) {
-      case 'note':
-        return note(row);
+      case 'note': {
+        const text = note(row);
+        return text === '-' ? <span data-empty-line>-</span> : text;
+      }
       case 'amount': {
         const kept =
           BigInt(row.netted.amountMinor) > 0n && statusOf(row) !== 'settled'

@@ -150,9 +150,10 @@ async function download(
       saveFile(new Blob([await response.arrayBuffer()], { type: XLSX_TYPE }), name);
       return knownRows;
     }
-    const text = await response.text();
-    saveFile(new Blob([text], { type: 'text/csv;charset=utf-8' }), name);
-    return csvRecords(text);
+    // Save the API's own bytes (its CSV byte-order mark must survive); count rows from a copy.
+    const bytes = await response.arrayBuffer();
+    saveFile(new Blob([bytes], { type: 'text/csv;charset=utf-8' }), name);
+    return csvRecords(new TextDecoder().decode(bytes));
   } catch {
     throw new ExportFailure('unavailable');
   }

@@ -1092,6 +1092,8 @@ describe('relay of the seller payout routes', () => {
       ['sort=fee', 'sort'],
       ['direction=up', 'direction'],
       ['q=x', 'q'],
+      [`ids=${ID}&ids=${ID}`, 'ids'],
+      ['format=csv&format=xlsx', 'format'],
     ] as const) {
       const { response, upstream } = await strict(query);
       expect(response.status, query).toBe(400);
