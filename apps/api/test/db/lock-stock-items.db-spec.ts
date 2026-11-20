@@ -270,6 +270,7 @@ describe.each(TEST_MARKETS)('inventory.lock-stock-items in market %s (database)'
       // holder released from this process (a timer, then COMMIT) could be held up past that by a
       // pause of this Jest worker on a busy CI runner, and the unit would end with 55P03 for a
       // reason that is not the option under test.
+      // Same login as the units: pg_stat_activity shows query_start only for one's own role.
       const holderSql = new Client({ connectionString: testDatabaseUrl() });
       await holderSql.connect();
       try {
@@ -279,6 +280,8 @@ describe.each(TEST_MARKETS)('inventory.lock-stock-items in market %s (database)'
           wanted,
         );
         const holder = holderSql.query(RELEASE_AFTER_A_WAIT_OF_500_MS);
+        // Awaited below; a rejection before then must not surface as unhandled.
+        holder.catch(() => undefined);
 
         const short = await timed(
           db.unitOfWork.run(market, async () => ok(await lock(market, wanted)), {
