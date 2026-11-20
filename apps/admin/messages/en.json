@@ -5890,7 +5890,8 @@
     },
     "search-stores": "Only store names were searched. Searching customer names needs access to customer accounts.",
     "search-capped": "More than 200 customers or stores match, so some results are left out. Type more of the name.",
-    "customer-intro": "This customer’s orders in this market, newest first."
+    "customer-intro": "This customer’s orders in this market, newest first.",
+    "export": {}
   },
   "load": {
     "retry": "Try again",
@@ -6060,7 +6061,8 @@
           "for": "Actions for {name}",
           "open": "Open"
         }
-      }
+      },
+      "empty": {}
     }
   },
   "customers": {
@@ -7977,7 +7979,11 @@
       "title": "Account deletion requests",
       "back": "Account deletion",
       "permission-view": "View account deletion requests",
-      "cancel": "Cancel request"
+      "cancel": "Cancel request",
+      "col": {},
+      "by": {},
+      "status": {},
+      "empty": {}
     },
     "cancel-request": {
       "title": "Cancel this deletion request?",
@@ -8954,6 +8960,18 @@
       "unknown": "Something went wrong. Try again, or ask the team if it keeps happening.",
       "cap-exceeded-decide": "The customer's wallet no longer has room for this amount.",
       "currency-unsupported": "This wallet's currency is not supported here, so credit cannot be issued."
+    },
+    "queue": {
+      "tab": {},
+      "caption": {},
+      "empty": {},
+      "col": {},
+      "status": {},
+      "detail": {},
+      "reject-reason": {},
+      "approve-dialog": {},
+      "reject-dialog": {},
+      "notice": {}
     }
   },
   "disputes": {
@@ -9225,7 +9243,9 @@
         "open": "Open case",
         "decide": "Record a decision"
       }
-    }
+    },
+    "empty": {},
+    "col": {}
   },
   "payouts": {
     "title": "Payouts",
@@ -9678,7 +9698,10 @@
         },
         "release-step-up-note": "Releasing a hold changes when the seller is paid. Next, you will be asked for your two-step code."
       }
-    }
+    },
+    "tab": {},
+    "empty": {},
+    "col": {}
   },
   "security": {
     "title": "Account security",
@@ -10423,7 +10446,111 @@
         "confirm": "Merge shelf",
         "reload": "Reload"
       },
-      "shelves-open": "Seller's shelves"
+      "shelves-open": "Seller's shelves",
+      "actions": {
+        "approve": "Approve…",
+        "reject": "Reject…",
+        "shelves": "Seller’s shelves…"
+      },
+      "dialog": {
+        "approve": {
+          "title": "Approve “{name}”?",
+          "body": "{store} gets a shelf called “{name}” in its own shop. It does not add a platform category. The seller is told.",
+          "confirm": "Approve proposal"
+        },
+        "reject": {
+          "title": "Reject “{name}”?",
+          "body": "The proposal from {store} is closed and the seller sees the reason you pick. This cannot be undone.",
+          "confirm": "Reject proposal"
+        }
+      },
+      "bulk": {
+        "approve": "Approve ticked…",
+        "reject": "Reject ticked…",
+        "dialog": {
+          "approve": {
+            "title": "Approve {count, plural, one {# proposal} other {# proposals}}?",
+            "body": "Each ticked seller gets a shelf with the name they asked for. None of them becomes a platform category.",
+            "confirm": "Approve {count, plural, one {# proposal} other {# proposals}}"
+          },
+          "reject": {
+            "title": "Reject {count, plural, one {# proposal} other {# proposals}}?",
+            "body": "Every ticked proposal is closed with the reason you pick, and the sellers see it. This cannot be undone.",
+            "confirm": "Reject {count, plural, one {# proposal} other {# proposals}}"
+          }
+        }
+      },
+      "list": {
+        "title": "Category proposals",
+        "intro": "Categories that sellers asked for. Approving one gives the seller a shelf in their own shop. It does not add a platform category.",
+        "tabs": "Proposal views",
+        "tab": {
+          "waiting": "Waiting"
+        },
+        "search": {
+          "label": "Search proposals",
+          "placeholder": "The proposed name"
+        },
+        "filter": {
+          "title": "Filter proposals"
+        },
+        "sort": {
+          "by": "Sort by",
+          "order": "Order",
+          "field": {
+            "created": "Date added"
+          },
+          "date": {
+            "first": "Newest first",
+            "second": "Oldest first"
+          }
+        },
+        "sorted": "Sorted by {field}, {order}",
+        "col": {
+          "proposal": "Proposal",
+          "store": "Store",
+          "under": "Under",
+          "requested": "Requested"
+        },
+        "chip-search": "Search: {text}",
+        "loading": "Loading category proposals",
+        "match": "{count, plural, one {# proposal matches} other {# proposals match}}",
+        "range": "{from}–{to} of {total}",
+        "too-many": "More than {limit} proposals match. Add a search to see the rest.",
+        "no-access": "Your role can't decide category proposals.",
+        "error": {
+          "unavailable": "The category proposals could not be loaded. Check your connection and try again.",
+          "refused": "The search cannot be used. Change it and try again."
+        },
+        "empty": {
+          "title": "No proposals are waiting",
+          "body": "When a seller suggests a category, it appears here.",
+          "no-match": "No proposals match",
+          "no-match-help": "Change the search or clear it."
+        },
+        "select": {
+          "page": "Select all proposals on this page",
+          "page-short": "Select all on this page",
+          "row": "Select {name}"
+        },
+        "selection": {
+          "selected": "{count, plural, one {# proposal selected} other {# proposals selected}}",
+          "all": "{count, plural, one {The # matching proposal is selected} other {All # matching proposals are selected}}",
+          "all-open": "All matching proposals are selected",
+          "select-all": "Select all {count, number} matching",
+          "select-all-open": "Select all matching",
+          "clear": "Clear selection"
+        },
+        "actions": {
+          "header": "Actions",
+          "for": "Actions for {name}"
+        },
+        "bulk": {
+          "button": "Bulk action",
+          "selected": "{count, plural, one {# proposal selected} other {# proposals selected}}",
+          "all-open": "All matching proposals selected"
+        }
+      }
     }
   },
   "brands": {
@@ -10918,7 +11045,10 @@
         "hide": "Hide…",
         "remove": "Remove…"
       }
-    }
+    },
+    "tab": {},
+    "empty": {},
+    "col": {}
   },
   "business-activities": {
     "title": "Business activities",
@@ -11671,7 +11801,12 @@
         "open": "Open",
         "review": "Review and publish"
       }
-    }
+    },
+    "col": {},
+    "status": {},
+    "owner": {},
+    "author": {},
+    "open-note": {}
   },
   "tags": {
     "title": "Tags",
@@ -11922,7 +12057,8 @@
           "button": "Bulk action",
           "selected": "{count, plural, one {# suggestion selected} other {# suggestions selected}}",
           "all-open": "All matching suggestions selected"
-        }
+        },
+        "title": "Tag suggestions"
       }
     },
     "list": {
@@ -12005,89 +12141,8 @@
         "button": "Bulk action",
         "selected": "{count, plural, one {# tag selected} other {# tags selected}}",
         "all-open": "All matching tags selected"
-      }
-    },
-    "list": {
-      "intro": "Shopping themes that group products across categories, such as Ramadan or BBQ. Sellers pick from this list.",
-      "tabs": "Tag views",
-      "tab": {
-        "all": "All",
-        "active": "Active",
-        "archived": "Archived"
       },
-      "search": {
-        "label": "Search tags",
-        "placeholder": "Name, synonym or address"
-      },
-      "filter": {
-        "title": "Filter tags",
-        "group": "Group"
-      },
-      "sort": {
-        "by": "Sort by",
-        "order": "Order",
-        "field": {
-          "slug": "Address",
-          "group": "Group",
-          "status": "Status",
-          "created": "Date added",
-          "updated": "Last updated"
-        },
-        "az": {
-          "first": "A to Z",
-          "second": "Z to A"
-        },
-        "date": {
-          "first": "Newest first",
-          "second": "Oldest first"
-        }
-      },
-      "sorted": "Sorted by {field}, {order}",
-      "col": {
-        "name": "Name",
-        "group": "Group",
-        "synonyms": "Synonyms",
-        "status": "Status"
-      },
-      "chip-search": "Search: {text}",
-      "loading": "Loading tags",
-      "match": "{count, plural, one {# tag matches} other {# tags match}}",
-      "range": "{from}–{to} of {total}",
-      "too-many": "More than {limit} tags match. Add a search to see the rest.",
-      "no-access": "Your role cannot see tags.",
-      "error": {
-        "unavailable": "The tags could not be loaded. Check your connection and try again.",
-        "refused": "The search cannot be used. Change it and try again."
-      },
-      "empty": {
-        "title": "No tags yet",
-        "body": "Create the first one with New tag.",
-        "no-match": "No tags match",
-        "no-match-help": "Change the search or filters, or clear them."
-      },
-      "select": {
-        "page": "Select all tags on this page",
-        "page-short": "Select all on this page",
-        "row": "Select {name}"
-      },
-      "selection": {
-        "selected": "{count, plural, one {# tag selected} other {# tags selected}}",
-        "all": "{count, plural, one {The # matching tag is selected} other {All # matching tags are selected}}",
-        "all-open": "All matching tags are selected",
-        "select-all": "Select all {count, number} matching",
-        "select-all-open": "Select all matching",
-        "clear": "Clear selection"
-      },
-      "actions": {
-        "header": "Actions",
-        "for": "Actions for {name}",
-        "edit": "Edit…"
-      },
-      "bulk": {
-        "button": "Bulk action",
-        "selected": "{count, plural, one {# tag selected} other {# tags selected}}",
-        "all-open": "All matching tags selected"
-      }
+      "title": "Tags"
     }
   },
   "attributes": {
@@ -15003,6 +15058,24 @@
         "unavailable": "The file couldn't be made."
       },
       "loading": "Loading questions…"
+    }
+  },
+  "bulk-decide": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "note": "{count, plural, one {The # row ticked on this page is decided.} other {The # rows ticked on this page are decided.}} Each goes through the usual decision with your own permissions.",
+    "done": {
+      "title": "Decision made",
+      "summary": "{done, plural, one {# row decided} other {# rows decided}}, {skipped, plural, one {# skipped} other {# skipped}}.",
+      "failed": "{count, plural, one {# row could not be decided and is still waiting.} other {# rows could not be decided and are still waiting.}}",
+      "skipped-help": "A row that changed, was decided by someone else or needs a permission you do not have is skipped, never forced."
+    },
+    "error": {
+      "too-large": "At most 50 rows can be decided at once.",
+      "denied": "Your role cannot do this.",
+      "invalid": "Check the fields and try again.",
+      "unavailable": "Could not reach the server. Nothing was decided. Try again.",
+      "unknown": "Something went wrong. Nothing was decided."
     }
   }
 }

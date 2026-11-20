@@ -4,6 +4,7 @@ import { Tabs } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import { CategoriesView } from '../categories-view.tsx';
+import type { ListPagingMode } from '../../shared/paged-list/types.ts';
 import { CATEGORIES_PATH } from '../types.ts';
 import { ProposalsTab } from './proposals-tab.tsx';
 
@@ -19,11 +20,17 @@ export function CategoriesTabs({
   canDecide,
   canPromote,
   csrfToken,
+  paging,
+  accountId,
+  marketId,
   ...tree
 }: {
   readonly canDecide: boolean;
   readonly canPromote: boolean;
   readonly csrfToken: string;
+  readonly paging: ListPagingMode;
+  readonly accountId: string;
+  readonly marketId: string;
   readonly canEdit: boolean;
   readonly canRestructure?: boolean;
   readonly canImport?: boolean;
@@ -60,7 +67,14 @@ export function CategoriesTabs({
       />
       {tab === 'tree' ? <CategoriesView {...tree} csrfToken={csrfToken} /> : null}
       {tab === 'proposals' ? (
-        <ProposalsTab csrfToken={csrfToken} canPromote={canPromote} initialSellerId={seller} />
+        <ProposalsTab
+          csrfToken={csrfToken}
+          canPromote={canPromote}
+          paging={paging}
+          accountId={accountId}
+          marketId={marketId}
+          initialSellerId={seller}
+        />
       ) : null}
     </div>
   );
