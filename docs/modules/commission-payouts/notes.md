@@ -79,6 +79,13 @@ Design: G2 section 3.6 (state machine), 4.5 to 4.7 (planning, gate, run), 11 (re
   step-up, echoes the transfer amount; approval binds the amount).
 - Seller (`commission-payouts/seller`): `payouts/next`, `payouts`, `payout-holds`. The seller id comes
   from the session only.
+- The seller's `payouts` list and its `payouts/export` (super list 33) use the payout day (`slotAt`)
+  as their one date, per `list33-earnings-date-decision`: default sort slot desc (ties by payout id),
+  `from`/`to` compare `slotAt`, the Previous/Next cursor names its sort (`slot.<ms>.<id>` or
+  `created.<ms>.<id>`; another sort's cursor is refused), and the file's base date column is
+  "Payout on", written with the rest of its dates in the store's zone with its offset (UTC while the
+  store has no zone; `commission-payouts.unavailable` when the zone cannot be read). The admin list
+  keeps the creation instant.
 
 **Rules worth knowing**
 - One live payout per seller (partial unique index). One unfreed item per seller order.

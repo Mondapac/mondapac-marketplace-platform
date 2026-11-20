@@ -1,5 +1,5 @@
 import { err, ok, parseId } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import {
   buildExportFile,
   checkExportSize,
@@ -14,13 +14,25 @@ import {
   type SheetWriter,
 } from '../../../platform/list-export';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
-import type { PayoutListCursor, PayoutListFilter, PayoutSort } from '../domain/admin-payout-list';
+import type {
+  PayoutListCursor,
+  PayoutListFilter,
+  PayoutSlotCursor,
+} from '../domain/admin-payout-list';
 import {
+  decodeOwnPayoutCursor,
+  encodeOwnPayoutCursor,
+  OWN_PAYOUT_CURSOR_KEYS,
+  OWN_PAYOUT_DEFAULT_SORT,
   OWN_PAYOUT_EXPORT_COLUMNS,
   OWN_PAYOUT_SORT_KEYS,
+  type OwnPayoutCursor,
+  type OwnPayoutCursorKey,
   type OwnPayoutExportColumn,
   type OwnPayoutRowAction,
+  type OwnPayoutSortKey,
 } from '../domain/own-payout-list';
+import { isKnownZone } from '../domain/payout-schedule';
 import { PAYOUT_STATES, type Payout, type PayoutState } from '../domain/payout';
 import { decimalOf } from './admin-payout-list-flow';
 import {
@@ -30,10 +42,9 @@ import {
   type SellerPayoutState,
 } from './payout-seller-flow';
 import type { AdminPayoutListReader } from './ports/admin-payout-list.reader';
+import type { SellerPayoutAccess } from './ports/payout-gateways';
 import { sellerIdOf } from './rate-flow';
 import {
-  cursorOf,
-  decodeCursor,
   idOf,
   instantWindow,
   oneOf,
@@ -47,10 +58,14 @@ import {
 // The seller panel's Earnings › Payouts list (super list phase 4, list 33) and its export: the
 // signed-in seller's own payouts, voided ones hidden, as a super list (status tabs, search by
 // payout id, filters, sort, paging, export). Read only. The seller id is always the session's.
+// The list's one date is the payout day (`slotAt`): the default sort, the Previous/Next cursor,
+// the `from`/`to` filter and the export's "Payout on" column (list33-earnings-date-decision).
 
 export interface OwnPayoutListDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly payouts: AdminPayoutListReader;
+  /** The store's operating zone, for the dates of the export (as the next-payout card reads it). */
+  readonly access: SellerPayoutAccess;
   readonly sheetWriter: SheetWriter;
   readonly clock: Clock;
 }
@@ -93,7 +108,11 @@ export type OwnPayoutListFailure =
     }
   | { readonly code: 'commission-payouts.payout-not-found' };
 
-export type OwnPayoutExportFailure = OwnPayoutListFailure | ExportInputFailure | ExportTooLarge;
+export type OwnPayoutExportFailure =
+  | OwnPayoutListFailure
+  | ExportInputFailure
+  | ExportTooLarge
+  | { readonly code: 'commission-payouts.unavailable' };
 
 export interface OwnPayoutRow extends OwnPayoutView {
   readonly actions: readonly OwnPayoutRowAction[];
@@ -171,6 +190,8 @@ function filterOf(fields: Fields, sellerId: Id<'Seller'>, input: Input): PayoutL
     payoutId,
     sellerId,
     approvalMode: null,
+    // The payout day, not the creation: the window the panel sends is the store-zone days.
+    dateOn: 'slot',
     from,
     to,
     minAmount,
@@ -179,14 +200,44 @@ function filterOf(fields: Fields, sellerId: Id<'Seller'>, input: Input): PayoutL
   };
 }
 
-const decodeListCursor = (value: unknown): PayoutListCursor | null => {
-  const decoded = decodeCursor<'Payout'>(value);
-  return decoded === null ? null : { createdAt: decoded.at, payoutId: decoded.id };
-};
+/** The reader's cursor for one of this list's cursors (the column follows the cursor's sort). */
+const readerCursor = (cursor: OwnPayoutCursor): PayoutListCursor | PayoutSlotCursor =>
+  cursor.key === 'slot'
+    ? { slotAt: cursor.at, payoutId: cursor.payoutId }
+    : { createdAt: cursor.at, payoutId: cursor.payoutId };
+
+/** The value a cursor of this sort carries for a payout. */
+const cursorAt = (key: OwnPayoutCursorKey, payout: Payout): Temporal.Instant =>
+  key === 'slot' ? payout.slotAt : payout.createdAt;
+
+/**
+ * The sort of Previous/Next: `slot` unless `sort` names `created` (newest first only; `amount`
+ * and `direction` have page numbers only). A cursor made for another sort is refused, never
+ * read as the wrong date.
+ */
+function cursorSortOf(
+  fields: Fields,
+  input: Input,
+  after: OwnPayoutCursor | null,
+): OwnPayoutCursorKey {
+  let key: OwnPayoutCursorKey = OWN_PAYOUT_DEFAULT_SORT as OwnPayoutCursorKey;
+  if (input.sort !== undefined) {
+    if ((OWN_PAYOUT_CURSOR_KEYS as readonly unknown[]).includes(input.sort)) {
+      key = input.sort as OwnPayoutCursorKey;
+    } else if ((OWN_PAYOUT_SORT_KEYS as readonly unknown[]).includes(input.sort)) {
+      fields.push({ path: 'sort', code: 'with-cursor' });
+    } else {
+      fields.push({ path: 'sort', code: 'value' });
+    }
+  }
+  if (after !== null && after.key !== key) fields.push({ path: 'cursor', code: 'other-sort' });
+  return key;
+}
 
 /**
  * The signed-in seller's payouts as a super list. The query the older Earnings card sends
- * (`limit`, `cursor`) answers as before: Previous/Next, newest first.
+ * (`limit`, `cursor`) answers Previous/Next, latest payout day first (or newest created first
+ * with `sort=created`).
  */
 export async function listOwnPayoutPage(
   deps: OwnPayoutListDependencies,
@@ -198,14 +249,26 @@ export async function listOwnPayoutPage(
   const fields: Fields = [];
   const key = unknownKey(input ?? {}, LIST_KEYS);
   if (key !== null) fields.push({ path: key, code: 'unknown' });
-  const filter = filterOf(fields, sellerId, input ?? {});
-  const { paging, sort } = pagingOf<PayoutSort['key'], PayoutListCursor>(
+  const given = input ?? {};
+  const filter = filterOf(fields, sellerId, given);
+  // Previous/Next takes `sort` too (slot or created); the shared paging check would refuse it.
+  const prevNext = given.cursor !== undefined || given.limit !== undefined;
+  const { sort: _sort, ...unsorted } = given;
+  void _sort;
+  const { paging, sort } = pagingOf<OwnPayoutSortKey, OwnPayoutCursor>(
     fields,
-    input ?? {},
+    prevNext ? unsorted : given,
     OWN_PAYOUT_SORT_KEYS,
-    { sort: 'created', pageSize: OWN_PAYOUT_DEFAULT_PAGE_SIZE, limit: OWN_PAYOUT_DEFAULT_LIMIT },
-    decodeListCursor,
+    {
+      sort: OWN_PAYOUT_DEFAULT_SORT,
+      pageSize: OWN_PAYOUT_DEFAULT_PAGE_SIZE,
+      limit: OWN_PAYOUT_DEFAULT_LIMIT,
+    },
+    decodeOwnPayoutCursor,
   );
+  // Page numbers use `sort`; this is only the walk of Previous/Next.
+  const cursorKey: OwnPayoutCursorKey =
+    paging.kind === 'prev-next' ? cursorSortOf(fields, given, paging.after) : 'slot';
   if (fields.length > 0) return err({ code: 'validation.failed', fields });
   return deps.unitOfWork.run<OwnPayoutListPage, OwnPayoutListFailure>(
     context.market,
@@ -225,15 +288,19 @@ export async function listOwnPayoutPage(
         const read = await deps.payouts.page(
           market,
           filter,
-          { key: 'created', direction: 'desc' },
+          { key: cursorKey, direction: 'desc' },
           0,
           paging.limit + 1,
-          paging.after,
+          paging.after === null ? null : readerCursor(paging.after),
         );
         rows = read.slice(0, paging.limit);
         const last = rows[rows.length - 1];
         if (read.length > paging.limit && last !== undefined) {
-          nextCursor = cursorOf(last.createdAt, last.id);
+          nextCursor = encodeOwnPayoutCursor({
+            key: cursorKey,
+            at: cursorAt(cursorKey, last),
+            payoutId: last.id,
+          });
         }
       } else {
         rows = await deps.payouts.page(
@@ -269,25 +336,45 @@ const STATUS_LABELS: Readonly<Record<SellerPayoutState, string>> = Object.freeze
   settled: 'Settled against what you owe',
 });
 
-const BASE_HEADERS = ['Payout ID', 'Status', 'Amount', 'Currency', 'Created'] as const;
+const BASE_HEADERS = ['Payout ID', 'Status', 'Amount', 'Currency', 'Payout on'] as const;
 const HEADERS: Readonly<Record<OwnPayoutExportColumn, string>> = {
   gross: 'Earned',
   netted: 'Kept against what you owed',
-  slot: 'Planned for',
-  updated: 'Last change',
+  created: 'Created on',
+  updated: 'Updated on',
 };
 
-function cellOf(column: OwnPayoutExportColumn, payout: Payout): ExportCell {
+/** An instant in the store's zone, ISO 8601 with its offset ("2026-11-06T01:00:00+10:00"). */
+const zonedText = (instant: Temporal.Instant, zone: string): string =>
+  instant.toZonedDateTimeISO(zone).toString({ timeZoneName: 'never', smallestUnit: 'second' });
+
+function cellOf(column: OwnPayoutExportColumn, payout: Payout, zone: string): ExportCell {
   switch (column) {
     case 'gross':
       return decimalOf(payout.gross, payout.currency);
     case 'netted':
       return decimalOf(payout.netted, payout.currency);
-    case 'slot':
-      return payout.slotAt.toString();
+    case 'created':
+      return zonedText(payout.createdAt, zone);
     case 'updated':
-      return payout.stateChangedAt.toString();
+      return zonedText(payout.stateChangedAt, zone);
   }
+}
+
+/**
+ * The store's zone as the next-payout card reads it (the approved operating zone). A store with
+ * no zone yet gets UTC, as the panel shows it; an unclear answer (null) refuses the file rather
+ * than writing it in a zone the screen does not use.
+ */
+async function storeZone(
+  deps: OwnPayoutListDependencies,
+  context: CallContext,
+  sellerId: Id<'Seller'>,
+): Promise<string | null> {
+  const zones = await deps.access.zones(context, [sellerId]);
+  if (zones === 'unavailable') return null;
+  const found = zones.get(sellerId);
+  return found === undefined || found.provisional || !isKnownZone(found.zone) ? 'UTC' : found.zone;
 }
 
 /**
@@ -340,11 +427,11 @@ export async function exportOwnPayouts(
   } else {
     const fields: Fields = [];
     const filter = filterOf(fields, sellerId, input);
-    const sort: { key: PayoutSort['key']; direction: 'asc' | 'desc' } = {
-      key: 'created',
+    const sort: { key: OwnPayoutSortKey; direction: 'asc' | 'desc' } = {
+      key: OWN_PAYOUT_DEFAULT_SORT,
       direction: 'desc',
     };
-    sortOf(fields, input, OWN_PAYOUT_SORT_KEYS as unknown as readonly PayoutSort['key'][], sort);
+    sortOf(fields, input, OWN_PAYOUT_SORT_KEYS, sort);
     if (fields.length > 0) return err({ code: 'validation.failed', fields });
     const picked = await deps.unitOfWork.run<
       { readonly found: readonly Id<'Payout'>[]; readonly total: number },
@@ -363,6 +450,9 @@ export async function exportOwnPayouts(
     if (!size.ok) return size;
     ids = picked.value.found;
   }
+  const found = await storeZone(deps, context, sellerId);
+  if (found === null) return err({ code: 'commission-payouts.unavailable' });
+  const zone: string = found;
   const chosen = columns.value;
   async function* rows(): AsyncGenerator<readonly (readonly ExportCell[])[]> {
     yield [[...BASE_HEADERS, ...chosen.map((column) => HEADERS[column])]];
@@ -384,8 +474,8 @@ export async function exportOwnPayouts(
             STATUS_LABELS[SELLER_STATUS[payout.state]!],
             decimalOf(payout.transfer, payout.currency),
             payout.currency,
-            payout.createdAt.toString(),
-            ...chosen.map((column) => cellOf(column, payout)),
+            zonedText(payout.slotAt, zone),
+            ...chosen.map((column) => cellOf(column, payout, zone)),
           ],
         ];
       });
@@ -396,7 +486,7 @@ export async function exportOwnPayouts(
       format: format.value,
       baseName: 'payouts',
       sheetName: 'Payouts',
-      day: deps.clock.now().toString().slice(0, 10),
+      day: deps.clock.now().toZonedDateTimeISO(zone).toPlainDate().toString(),
       groups: rows(),
       sheetWriter: deps.sheetWriter,
     }),

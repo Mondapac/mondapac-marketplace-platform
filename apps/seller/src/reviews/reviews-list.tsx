@@ -45,9 +45,12 @@ import type { ReviewListCounts, ReviewListPage } from './types.ts';
 
 const OPEN_ENDED = Number.MAX_SAFE_INTEGER;
 
-type Failure = 'refused' | 'unavailable';
+type Failure = 'refused' | 'off' | 'unavailable';
 
 function failureOf(status: number, code: string): Failure {
+  // Reviews were switched off after the page opened: the API answers "not found", and asking
+  // again cannot work either.
+  if (status === 404) return 'off';
   // The API refused the query itself (a page past row 10,000, a closed value): asking again
   // can never work.
   return status === 400 && code === 'validation.failed' ? 'refused' : 'unavailable';
@@ -489,9 +492,9 @@ export function ReviewsList({
       failure={
         failure === null
           ? null
-          : failure === 'refused'
-            ? // Asking again cannot work: no Try again, the words say what to change.
-              { message: ts('error.refused') }
+          : failure === 'refused' || failure === 'off'
+            ? // Asking again cannot work: no Try again, the words say what is wrong.
+              { message: ts(failure === 'off' ? 'error.off' : 'error.refused') }
             : {
                 message: ts('error.unavailable'),
                 retry: { label: tl('retry'), onClick: () => void load(query) },

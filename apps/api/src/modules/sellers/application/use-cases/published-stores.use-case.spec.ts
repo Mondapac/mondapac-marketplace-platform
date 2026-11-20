@@ -70,6 +70,7 @@ describe.each([
   let identityCalls: number;
   let identityDown: boolean;
   let clock: FixedClock;
+  let editedNames: Map<string, Record<string, string>>;
   let list: PublishedStoreList;
   let read: PublishedStoreRead;
   let sellerIdRead: PublishedStoreSellerId;
@@ -109,6 +110,7 @@ describe.each([
     failStores = false;
     identityCalls = 0;
     identityDown = false;
+    editedNames = new Map();
     clock = new FixedClock(Temporal.Instant.from('2026-10-20T00:00:00Z'));
     const publishedStores: PublishedStoreRepository = {
       approvedStores: (_market, limit) =>
@@ -182,6 +184,13 @@ describe.each([
       minimumOrderPolicy,
       publishedContent,
       clock,
+      onboardingAreas: {
+        nameOf: (_m: unknown, code: string) => (code === 'area-1' ? 'Area One' : null),
+      } as never,
+      areaNames: {
+        edited: () => Promise.resolve(editedNames),
+        forget: () => undefined,
+      } as never,
     };
     list = new PublishedStoreList(gate, deps);
     read = new PublishedStoreRead(gate, deps);
@@ -213,6 +222,7 @@ describe.each([
           slug: 'alpha-market',
           name: 'alpha market',
           serviceAreaCode: 'area-1',
+          serviceAreaName: 'Area One',
           sellingSince: 2026,
           minimumOrder: { amount: 3000n, currency },
           logo: null,
@@ -222,6 +232,7 @@ describe.each([
           slug: 'zeta-foods',
           name: 'Zeta Foods',
           serviceAreaCode: 'area-1',
+          serviceAreaName: 'Area One',
           sellingSince: 2025,
           minimumOrder: null,
           logo: null,
@@ -326,6 +337,34 @@ describe.each([
     });
   });
 
+  it('names the area: the edited English name, else the configured one', async () => {
+    addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
+    const named = await read.execute(anonymous(), { slug: 'alpha-market' });
+    expect(named.ok && named.value.serviceAreaName).toBe('Area One');
+
+    editedNames.set('area-1', { en: 'Greater Area One' });
+    const edited = await read.execute(anonymous(), { slug: 'alpha-market' });
+    expect(edited.ok && edited.value.serviceAreaName).toBe('Greater Area One');
+  });
+
+  it('ignores an edited name in another language and gives no name for an unknown area', async () => {
+    addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
+    editedNames.set('area-1', { fr: 'Zone Un' });
+    const fallback = await read.execute(anonymous(), { slug: 'alpha-market' });
+    expect(fallback.ok && fallback.value.serviceAreaName).toBe('Area One');
+
+    stores[0] = { ...stores[0]!, serviceAreaCode: 'area-9' };
+    const unknown = await read.execute(anonymous(), { slug: 'alpha-market' });
+    expect(unknown.ok && unknown.value.serviceAreaName).toBeNull();
+  });
+
+  it('carries the area name on each list item', async () => {
+    addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
+    editedNames.set('area-1', { en: 'Greater Area One' });
+    const listed = await page();
+    expect(listed.items.map((item) => item.serviceAreaName)).toEqual(['Greater Area One']);
+  });
+
   it('reads one store by its exact slug', async () => {
     const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', {
       minimum: null,
@@ -337,6 +376,7 @@ describe.each([
         slug: 'alpha-market',
         name: 'Alpha',
         serviceAreaCode: 'area-1',
+        serviceAreaName: 'Area One',
         sellingSince: 2026,
         minimumOrder: null,
         about: null,
@@ -363,6 +403,7 @@ describe.each([
         'name',
         'sellerId',
         'serviceAreaCode',
+        'serviceAreaName',
         'sellingSince',
         'slug',
       ].sort(),
