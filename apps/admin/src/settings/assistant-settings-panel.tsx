@@ -20,8 +20,9 @@ import {
   type FieldChange,
   type SaveResult,
 } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
+import { useState, type ReactNode } from 'react';
+import { shortInstantInZone } from '../shared/format.ts';
 import { callApi } from '../api/client.ts';
 import { SettingsConflictView } from './conflict-view.tsx';
 import { useChangeHistory } from './last-changed.tsx';
@@ -172,10 +173,19 @@ export function AssistantSettingsPanel({
   initial,
   canManage,
   csrfToken,
+  zone = 'UTC',
+  tabs = null,
+  averageCostUsd = null,
 }: {
   readonly initial: AssistantSettingsAnswer;
   readonly canManage: boolean;
   readonly csrfToken: string;
+  /** The IANA zone of the last automatic switch-off time. */
+  readonly zone?: string;
+  /** The Settings / Insights tab row, shown under the title. */
+  readonly tabs?: ReactNode;
+  /** What one conversation cost on average over the last 30 days, in US dollars; null: none yet. */
+  readonly averageCostUsd?: number | null;
 }) {
   const t = useTranslations();
   // The fields the server refused on the last save (a rule only it knows); the rest is worked out live.
@@ -279,7 +289,7 @@ export function AssistantSettingsPanel({
       };
     });
 
-  const status = <StatusCard answer={answer} />;
+  const status = <StatusCard answer={answer} zone={zone} averageCostUsd={averageCostUsd} />;
   // The error summary names the fields, so the generic "fix" line is left out.
   const shownProblem = problem === 'fix' ? null : problem;
   const lastChanged = changeHistory.line ?? {
@@ -289,6 +299,7 @@ export function AssistantSettingsPanel({
         : t(`${P}.version`, { version: answer.version }),
   };
   const banners = [
+    tabs === null ? null : <div key="tabs">{tabs}</div>,
     canManage ? null : (
       <SettingsViewOnlyBanner key="read-only" title={t('settings.view-only.title')}>
         {t(`${P}.read-only`)}
@@ -627,8 +638,20 @@ export function AssistantSettingsPanel({
 }
 
 /** What is in force, read-only: the switch, the server's key and model, and spend. */
-function StatusCard({ answer }: { readonly answer: AssistantSettingsAnswer }) {
+function StatusCard({
+  answer,
+  zone,
+  averageCostUsd,
+}: {
+  readonly answer: AssistantSettingsAnswer;
+  readonly zone: string;
+  readonly averageCostUsd: number | null;
+}) {
   const t = useTranslations();
+  const locale = useLocale();
+  const { spend, settings } = answer;
+  const usd = (amount: number) => t(`${P}.spend.amount`, { amount });
+  const usdPrecise = (amount: number) => t(`${P}.spend.amount-precise`, { amount });
   const model = modelOf(answer, answer.settings.modelTier);
   const muted = (text: string) => <span className="text-fg-muted">{text}</span>;
   const rows: DataListRow[] = [
@@ -653,10 +676,44 @@ function StatusCard({ answer }: { readonly answer: AssistantSettingsAnswer }) {
       label: t(`${P}.status.model`),
       value: model === null ? muted(t(`${P}.model.none`)) : <span dir="ltr">{model}</span>,
     },
-    { label: t(`${P}.status.spend-today`), value: muted(t(`${P}.status.not-measured`)) },
-    { label: t(`${P}.status.spend-month`), value: muted(t(`${P}.status.not-measured`)) },
-    { label: t(`${P}.status.conversations-today`), value: muted(t(`${P}.status.not-measured`)) },
-    { label: t(`${P}.status.last-auto-off`), value: muted(t(`${P}.status.not-measured`)) },
+    {
+      label: t(`${P}.status.spend-today`),
+      value: t(`${P}.status.spend-of`, {
+        spent: usd(spend.todayMicroUsd / 1_000_000),
+        cap: usd(settings.dailySpendCapUsdCents / 100),
+      }),
+    },
+    {
+      label: t(`${P}.status.spend-month`),
+      value: t(`${P}.status.spend-of`, {
+        spent: usd(spend.monthMicroUsd / 1_000_000),
+        cap: usd(settings.monthlySpendCapUsdCents / 100),
+      }),
+    },
+    {
+      label: t(`${P}.status.conversations-today`),
+      value: String(spend.conversationsToday),
+    },
+    {
+      label: t(`${P}.status.cost-per-conversation`),
+      value:
+        averageCostUsd === null
+          ? muted(t(`${P}.status.not-measured`))
+          : t(`${P}.status.cost-per-conversation-value`, {
+              amount: usdPrecise(averageCostUsd),
+              tier: t(`${P}.model.${settings.modelTier}`),
+            }),
+    },
+    {
+      label: t(`${P}.status.last-auto-off`),
+      value:
+        spend.lastAutoOff === null
+          ? muted(t(`${P}.status.never-auto-off`))
+          : t(`${P}.status.auto-off-value`, {
+              cap: spend.lastAutoOff.cap,
+              when: shortInstantInZone(spend.lastAutoOff.at, locale, zone, true),
+            }),
+    },
   ];
   return (
     <SettingsSection title={t(`${P}.status.title`)}>
