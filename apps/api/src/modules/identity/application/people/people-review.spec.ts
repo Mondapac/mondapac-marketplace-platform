@@ -215,17 +215,15 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
     const clock = new FixedClock(START);
     const permissions = realPermissionRegistry();
     const effectiveKeys = realEffectiveKeys(permissions);
-    const gate = createUseCaseGate(
-      markets,
-      new AccountAuthorisationCheck({
-        unitOfWork: fakes.unitOfWork,
-        accounts: fakes.accountRepository,
-        memberships: fakes.membershipRepository,
-        sellerAccess: fakes.sellerAccessRepository,
-        grants: fakes.grantReader,
-        effectiveKeys,
-      }),
-    );
+    const authorisation = new AccountAuthorisationCheck({
+      unitOfWork: fakes.unitOfWork,
+      accounts: fakes.accountRepository,
+      memberships: fakes.membershipRepository,
+      sellerAccess: fakes.sellerAccessRepository,
+      grants: fakes.grantReader,
+      effectiveKeys,
+    });
+    const gate = createUseCaseGate(markets, authorisation);
     const common = {
       unitOfWork: fakes.unitOfWork,
       accounts: fakes.accountRepository,
@@ -244,6 +242,7 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
       challenges: fakes.challengeRepository,
     };
     const reverters: PeopleReverterDependencies = {
+      unitOfWork: fakes.unitOfWork,
       accounts: fakes.accountRepository,
       roles: fakes.roleRepository,
       assignments: fakes.assignmentRepository,
@@ -257,7 +256,6 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
     };
     const creations: PeopleCreationDependencies = {
       ...reverters,
-      unitOfWork: fakes.unitOfWork,
       invitations: fakes.invitationRepository,
       grants: fakes.grantReader,
       policy: new MarketConfigIdentityPolicy(markets),
@@ -271,6 +269,7 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
         effectiveKeys,
       }),
       platformRoles: new ListPlatformRoles(gate, { ...common, permissions }),
+      authorisation,
     };
     return {
       labels,
@@ -292,6 +291,7 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
         policy: new MarketConfigIdentityPolicy(markets),
       }),
       reverters,
+      creations,
       create: new CreatePlatformRole(gate, {
         ...common,
         permissions,
@@ -1391,6 +1391,7 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
       const down: PeopleLabelReads = {
         adminNames: { execute: () => Promise.reject(new Error('down')) },
         platformRoles: { execute: () => Promise.reject(new Error('down')) },
+        authorisation: { check: () => Promise.reject(new Error('down')) },
       };
       expect(
         await new AdminStatusReverter(reverters, down).describe(as(CHECKER), [MEMBER]),
@@ -1398,6 +1399,104 @@ describe.each(TEST_MARKETS)('people reviews in market %s (System requests)', (co
       expect(
         await new PlatformRoleReverter(reverters, down).describe(as(CHECKER), [NARROW]),
       ).toEqual(new Map());
+    });
+  });
+
+  describe("the impact count (a request's detail page)", () => {
+    const requestOf = (subjectRef: string) => ({
+      requestId: REQUEST,
+      subjectRef,
+      before: {},
+      after: {},
+    });
+    const admins = (count: number) => ({ items: [{ label: 'admins', count, atLeast: false }] });
+
+    it('counts the admins who hold the role and can sign in, for its edit and its delete', async () => {
+      const { roleReverter, deletionApplier } = setUp();
+      // NARROW: MEMBER (active) and OFF (disabled, so not counted).
+      expect(await roleReverter.impact(as(CHECKER), requestOf(NARROW))).toEqual(admins(1));
+      expect(
+        await roleReverter.impact(as(CHECKER), requestOf(roleOf('platform-administrator'))),
+      ).toEqual(admins(2));
+      expect(await deletionApplier.impact(as(CHECKER), requestOf(WIDE))).toEqual(admins(0));
+    });
+
+    it('gives none to an admin without identity.admin-account.view, asking no role list (Hassan L1)', async () => {
+      const { reverters, labels, creations } = setUp();
+      const asked: string[] = [];
+      const withoutTeamKey: PeopleLabelReads = {
+        ...labels,
+        platformRoles: {
+          execute: (context, input) => {
+            asked.push('roles');
+            return labels.platformRoles.execute(context, input);
+          },
+        },
+        authorisation: {
+          check: (context, declaration) =>
+            declaration.rule.kind === 'permissions' &&
+            (declaration.rule.allOf as readonly string[]).includes('identity.admin-account.view')
+              ? Promise.resolve({ allowed: false, denial: { code: 'access.denied' } })
+              : labels.authorisation.check(context, declaration),
+        },
+      };
+      expect(
+        await new PlatformRoleReverter(reverters, withoutTeamKey).impact(
+          as(CHECKER),
+          requestOf(NARROW),
+        ),
+      ).toBeNull();
+      expect(
+        await new PlatformRoleDeletionApplier(creations, withoutTeamKey).impact(
+          as(CHECKER),
+          requestOf(WIDE),
+        ),
+      ).toBeNull();
+      expect(asked).toEqual([]);
+    });
+
+    it('stops before the read once the wait is over (the abort signal)', async () => {
+      const { roleReverter } = setUp();
+      const aborted = new AbortController();
+      aborted.abort();
+      expect(await roleReverter.impact(as(CHECKER), requestOf(NARROW), aborted.signal)).toBeNull();
+    });
+
+    it('gives none to an admin who may not list the roles, for an unknown role, or on a failure', async () => {
+      const { roleReverter, reverters } = setUp();
+      // MEMBER's role lacks identity.platform-role.view.
+      expect(await roleReverter.impact(as(MEMBER), requestOf(NARROW))).toBeNull();
+      expect(await roleReverter.impact(as(CHECKER), requestOf(GONE_ROLE))).toBeNull();
+      expect(await roleReverter.impact(as(CHECKER), requestOf('not-an-id'))).toBeNull();
+      const system = testCallContext(market, 'system', 'people-review-0005');
+      expect(await roleReverter.impact(system, requestOf(NARROW))).toBeNull();
+      const down: PeopleLabelReads = {
+        adminNames: { execute: () => Promise.reject(new Error('down')) },
+        platformRoles: { execute: () => Promise.reject(new Error('down')) },
+        authorisation: { check: () => Promise.reject(new Error('down')) },
+      };
+      expect(
+        await new PlatformRoleReverter(reverters, down).impact(as(CHECKER), requestOf(NARROW)),
+      ).toBeNull();
+    });
+
+    it("keeps the Market: another Market's admin sees no count of this Market's role", async () => {
+      const { roleReverter } = setUp();
+      const elsewhere = testMarketContext(
+        TEST_MARKETS.find((other) => other !== code)!,
+        PLATFORM_TENANT_ID,
+      );
+      const foreign = testCallContext(
+        elsewhere,
+        testAuthenticatedActor(elsewhere, {
+          population: 'admin',
+          accountId: ELSEWHERE,
+          sessionId: id<'Session'>('01990000-0000-7000-8000-00000000f002'),
+          sellerId: null,
+        }),
+        'people-review-0006',
+      );
+      expect(await roleReverter.impact(foreign, requestOf(NARROW))).toBeNull();
     });
   });
 });

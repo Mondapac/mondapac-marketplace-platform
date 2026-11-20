@@ -1000,3 +1000,11 @@ card, the storefront's invite banner and the admin list's screens follow in the 
   so a seller-funded credit is never made for a seller order the ledger cannot debit. This also wires the platform's cashback,
   which until now never found an order's facts.
 - Not yet (4c-2): a refund claws back the unused cashback pro rata (`refund-cashback-seller`).
+
+## Saved filters of the Account deletion requests list (super list phase 4, PR10)
+
+The admin Account deletion requests list (`admin.customers.deletion-requests`, key
+`customers.account-deletion-requests.view`) has saved filters through `lists`
+(`application/saved-filters/list-definitions.ts`); sharing reuses `customers.saved-filter.share`.
+The Customers list keeps its own saved-filter routes until it moves to `lists`. See
+docs/modules/lists/notes.md.

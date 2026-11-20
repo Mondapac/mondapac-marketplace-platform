@@ -1125,6 +1125,21 @@ export class IdentityFakes {
           })
           .map((a) => a.accountId),
       ),
+    countActiveHolders: (market, roleId, limit) =>
+      Promise.resolve(
+        Math.min(
+          limit,
+          [...this.assignments.values()].filter((a) => {
+            const account = this.accounts.get(a.accountId);
+            return (
+              a.marketId === market.marketId &&
+              a.roleId === roleId &&
+              account?.status === 'active' &&
+              account.emailVerifiedAt !== null
+            );
+          }).length,
+        ),
+      ),
     activeHoldersOfInSeller: (market, roleId, sellerId) =>
       Promise.resolve(
         [...this.assignments.values()]

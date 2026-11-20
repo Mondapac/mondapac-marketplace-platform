@@ -28,8 +28,25 @@ vi.mock('next-intl/server', () => ({
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect, notFound: mocks.notFound }));
 vi.mock('../../../src/server/server-fetch.ts', () => ({ serverGet: mocks.get }));
 vi.mock('../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
+vi.mock('next/headers', () => ({ headers: () => Promise.resolve(new Headers()) }));
+vi.mock('../../../src/server/config.ts', () => ({ panelConfig: () => ({}) }));
+vi.mock('../../../src/server/bff.ts', () => ({ panelHostFor: () => ({ marketId: 'AU' }) }));
 vi.mock('../../../src/disputes/disputes-list.tsx', () => ({
-  DisputesList: () => <p>the list</p>,
+  DisputesList: (props: {
+    readonly initialView: string;
+    readonly sellerId: string | null;
+    readonly paging: string;
+    readonly marketId: string;
+  }) => (
+    <p
+      data-view={props.initialView}
+      data-seller={props.sellerId ?? ''}
+      data-paging={props.paging}
+      data-market={props.marketId}
+    >
+      the list
+    </p>
+  ),
 }));
 vi.mock('../../../src/disputes/dispute-detail.tsx', () => ({
   DisputeDetailView: ({ canDecide }: { readonly canDecide: boolean }) => (
@@ -56,25 +73,62 @@ const session = (permissionKeys: string[]): AdminSession => ({
   displayName: 'Ada',
   csrfToken: 'c',
 });
+const SELLER = '0190a000-0000-7000-8000-0000000000c1';
+const search = (view?: string, sellerId?: string) => ({
+  searchParams: Promise.resolve({ view, sellerId }),
+});
+const list = () => document.querySelector('[data-view]');
 const params = (disputeId = ID) => ({ params: Promise.resolve({ disputeId }) });
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.session.mockResolvedValue({ kind: 'ok', session: session([VIEW]) });
-  mocks.get.mockResolvedValue({ kind: 'ok', body: { disputeId: ID } });
+  mocks.get.mockImplementation((path: string) =>
+    Promise.resolve(
+      path === 'settings/admin/list-paging'
+        ? { kind: 'ok', body: { listPaging: 'pages' } }
+        : { kind: 'ok', body: { disputeId: ID } },
+    ),
+  );
 });
 afterEach(cleanup);
 
 describe('disputes list page', () => {
   it('shows the list to an admin who may view disputes', async () => {
-    render(await DisputesPageRoute());
+    render(await DisputesPageRoute(search()));
     expect(screen.getByText('the list')).toBeTruthy();
     expect(screen.getByRole('heading', { level: 1, name: 'Disputes' })).toBeTruthy();
+    // No view in the link: the cases that wait for evidence; the Market's paging and the Market.
+    expect(list()?.getAttribute('data-view')).toBe('needs-response');
+    expect(list()?.getAttribute('data-paging')).toBe('pages');
+    expect(list()?.getAttribute('data-market')).toBe('AU');
+  });
+
+  it('opens the view of the link, and an unknown one as Needs response', async () => {
+    render(await DisputesPageRoute(search('won')));
+    expect(list()?.getAttribute('data-view')).toBe('won');
+    cleanup();
+    render(await DisputesPageRoute(search('everything')));
+    expect(list()?.getAttribute('data-view')).toBe('needs-response');
+  });
+
+  it('hands the list one seller of a link, and drops one that is not a UUID v7', async () => {
+    render(await DisputesPageRoute(search('all', SELLER.toUpperCase())));
+    expect(list()?.getAttribute('data-seller')).toBe(SELLER);
+    cleanup();
+    render(await DisputesPageRoute(search('all', '3f2c9a8e-1b4d-4c6e-9f00-112233445566')));
+    expect(list()?.getAttribute('data-seller')).toBe('');
+  });
+
+  it('uses Previous and next when the List paging setting cannot be read', async () => {
+    mocks.get.mockResolvedValue({ kind: 'unavailable' });
+    render(await DisputesPageRoute(search()));
+    expect(list()?.getAttribute('data-paging')).toBe('prev-next');
   });
 
   it('shows no list without the view permission, but still a heading and a way back', async () => {
     mocks.session.mockResolvedValue({ kind: 'ok', session: session([]) });
-    render(await DisputesPageRoute());
+    render(await DisputesPageRoute(search()));
     expect(screen.queryByText('the list')).toBeNull();
     expect(screen.getByText(messages.disputes['no-access'])).toBeTruthy();
     expect(screen.getByRole('heading', { level: 1, name: 'Disputes' })).toBeTruthy();
@@ -83,7 +137,7 @@ describe('disputes list page', () => {
 
   it('keeps its heading when the session cannot be read', async () => {
     mocks.session.mockResolvedValue({ kind: 'unavailable' });
-    render(await DisputesPageRoute());
+    render(await DisputesPageRoute(search()));
     expect(screen.getByRole('heading', { level: 1, name: 'Disputes' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });

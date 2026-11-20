@@ -1,4 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { CHANGE_IMPACT_LABELS, MAX_IMPACT_COUNT } from '../contracts/reverters';
 import { POLICY_AREAS, REVIEW_AREAS, RISKS } from '../domain/areas';
 import {
   ACTIVITY_KINDS,
@@ -132,8 +133,30 @@ export class ActivityBody {
   body!: string | null;
 }
 
+export class SystemRequestImpactItemBody {
+  @ApiProperty({ enum: CHANGE_IMPACT_LABELS, description: 'What is counted.' }) label!: string;
+  @ApiProperty({ minimum: 0, maximum: MAX_IMPACT_COUNT }) count!: number;
+  @ApiProperty({
+    description: `The real number is count or more (a cap of ${MAX_IMPACT_COUNT} or a time bound).`,
+  })
+  atLeast!: boolean;
+}
+
+export class SystemRequestImpactBody {
+  @ApiProperty({ type: [SystemRequestImpactItemBody] }) items!: SystemRequestImpactItemBody[];
+}
+
 export class RequestDetailBody extends RequestBody {
   @ApiProperty({ type: [ActivityBody], description: 'Oldest first.' }) activity!: ActivityBody[];
+  @ApiProperty({
+    type: SystemRequestImpactBody,
+    nullable: true,
+    description:
+      'How many records the change touches, from the owning module (counts only). Null when ' +
+      'the kind gives none, the request is decided, the caller is neither its author nor a ' +
+      'reviewer of its area, or the count failed or took too long.',
+  })
+  impact!: SystemRequestImpactBody | null;
 }
 
 export class RequestCountsBody {
@@ -366,6 +389,12 @@ export const activityBody = (line: ActivityView): ActivityBody => ({
 export const requestDetailBody = (view: RequestDetailView): RequestDetailBody => ({
   ...requestBody(view),
   activity: view.activity.map(activityBody),
+  impact:
+    view.impact === null
+      ? null
+      : {
+          items: view.impact.items.map(({ label, count, atLeast }) => ({ label, count, atLeast })),
+        },
 });
 
 export const requestListBody = (view: RequestListView): RequestListBody => ({

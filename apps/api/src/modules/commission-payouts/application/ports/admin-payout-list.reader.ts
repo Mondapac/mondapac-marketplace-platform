@@ -2,6 +2,7 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type {
   PayoutListCursor,
   PayoutListFilter,
+  PayoutSlotCursor,
   PayoutSort,
   PayoutStateCounts,
 } from '../../domain/admin-payout-list';
@@ -17,7 +18,9 @@ export const ADMIN_PAYOUT_LIST_READER = Symbol('COMMISSION_PAYOUTS_ADMIN_PAYOUT_
 export interface AdminPayoutListReader {
   /**
    * One page of the payouts matching the filter, in the sort's order (ties by id). With `after`
-   * (Previous/Next paging, newest first only) the page starts after that payout.
+   * (Previous/Next paging, newest first only) the page starts after that payout: a
+   * {@link PayoutListCursor} walks `created` desc, a {@link PayoutSlotCursor} walks `slot` desc,
+   * and the sort passed must be that one.
    */
   page(
     market: MarketContext,
@@ -25,7 +28,7 @@ export interface AdminPayoutListReader {
     sort: PayoutSort,
     offset: number,
     limit: number,
-    after?: PayoutListCursor | null,
+    after?: PayoutListCursor | PayoutSlotCursor | null,
   ): Promise<readonly Payout[]>;
 
   /** Only the ids of {@link page} (the export's selector: no row is read twice). */

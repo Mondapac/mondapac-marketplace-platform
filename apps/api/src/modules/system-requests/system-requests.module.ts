@@ -37,6 +37,7 @@ import { REQUEST_REPOSITORY } from './application/ports/request.repository';
 import { DUE_DAYS_KIND, POLICY_AREA_KIND, PolicyReverter } from './application/policy-flow';
 import { ReverterRegistry } from './application/reverter-registry';
 import { SystemRequestRecorderImplementation } from './application/system-request-recorder';
+import { ImpactCache } from './application/impact-cache';
 import type { SystemRequestsDependencies } from './application/system-requests-dependencies';
 import { ApproveMatchingSystemRequests } from './application/use-cases/approve-matching-system-requests.use-case';
 import { ApproveSystemRequest } from './application/use-cases/approve-system-request.use-case';
@@ -76,6 +77,8 @@ const DUE_DAYS_REVERTER = Symbol('SYSTEM_REQUESTS_DUE_DAYS_REVERTER');
 const REVERTER_REGISTRY = Symbol('SYSTEM_REQUESTS_REVERTER_REGISTRY');
 /** What the overdue reminder run needs (a smaller set than the admin use cases'). */
 const REMINDER_DEPENDENCIES = Symbol('SYSTEM_REQUESTS_REMINDER_DEPENDENCIES');
+/** The request detail's impact answers (one per process). */
+const IMPACT_CACHE = Symbol('SYSTEM_REQUESTS_IMPACT_CACHE');
 
 const PORTS: readonly [keyof SystemRequestsDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
@@ -88,6 +91,7 @@ const PORTS: readonly [keyof SystemRequestsDependencies, InjectionToken][] = [
   ['adminNames', ADMIN_NAMES],
   ['ids', ID_GENERATOR],
   ['clock', CLOCK],
+  ['impactCache', IMPACT_CACHE],
 ];
 
 function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
@@ -125,6 +129,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerLists('system-requests', SYSTEM_REQUESTS_LISTS),
     ...systemRequestsProviders,
     { provide: REVERTER_REGISTRY, useFactory: () => new ReverterRegistry() },
+    { provide: IMPACT_CACHE, useFactory: () => new ImpactCache() },
     {
       provide: SYSTEM_CHANGE_REVERTERS,
       inject: [REVERTER_REGISTRY],

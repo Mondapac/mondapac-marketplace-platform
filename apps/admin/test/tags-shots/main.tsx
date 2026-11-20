@@ -39,8 +39,13 @@ window.fetch = ((input: string) => {
   const body =
     path === 'catalog/admin/topics'
       ? {
-          items,
-          nextAfterId: id(5),
+          items: items.map((row) => ({ ...row, actions: ['edit'] })),
+          nextAfterId: null,
+          total: 61,
+          page: 1,
+          pageSize: 25,
+          paging: 'pages',
+          hasNext: true,
           locales: { default: 'en-AU', supported: ['en-AU', 'ar-AU'] },
           groups: ['occasion', 'cuisine', 'use'],
           maxSynonyms: 10,
@@ -53,7 +58,7 @@ createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
     <main className="mx-auto max-w-7xl p-4 md:p-6">
       <h1 className="mb-4 text-2xl font-semibold">{messages.tags.title}</h1>
-      <TagsView canManage csrfToken="tok" />
+      <TagsView canManage csrfToken="tok" paging="pages" accountId={id(99)} marketId="AU" />
     </main>
   </NextIntlClientProvider>,
 );

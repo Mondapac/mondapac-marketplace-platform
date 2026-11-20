@@ -256,7 +256,7 @@ describe('two-step pages', () => {
 describe('payout account pages', () => {
   const files = [
     '../src/payout/payout-account.tsx',
-    '../../admin/src/payments/accounts-table.tsx',
+    '../../admin/src/payments/list/accounts-table.tsx',
     '../../admin/src/payments/accounts-list.tsx',
     '../../admin/src/payments/account-detail.tsx',
   ];
@@ -274,13 +274,25 @@ describe('payout account pages', () => {
   });
 
   it('keep the admin table in its own scroll box, with the tabs in one scrolling row', () => {
+    // The accounts list is a super list: the shared SuperTable keeps the table in its own scroll
+    // box and, below 1024 px, shows each account as a card (CARD_TABLE classes), no hidden columns.
     const table = readFileSync(join(__dirname, files[1] as string), 'utf8');
-    expect(table).toContain('overflow-x-auto');
-    // Below 1024 px each account is a card (the shared CARD_TABLE classes), no hidden columns.
-    expect(table).toContain('CARD_TABLE.row');
-    // The tabs are the shared Tabs row: one line that scrolls sideways, 48 px touch targets.
+    expect(table).toContain('<SuperTable');
+    const superTable = readFileSync(
+      join(__dirname, '../../../packages/ui/src/list/super-table.tsx'),
+      'utf8',
+    );
+    expect(superTable).toContain('overflow-x-auto');
+    expect(superTable).toContain('CARD_TABLE');
+    // The views are the shared views bar on the Tabs row: one line that scrolls sideways, 48 px
+    // touch targets.
     const list = readFileSync(join(__dirname, files[2] as string), 'utf8');
-    expect(list).toContain('<Tabs');
+    expect(list).toContain('<SuperList');
+    const viewsBar = readFileSync(
+      join(__dirname, '../../../packages/ui/src/list/list-views-bar.tsx'),
+      'utf8',
+    );
+    expect(viewsBar).toContain('<Tabs');
     const tabs = readFileSync(join(__dirname, '../../../packages/ui/src/shell/tabs.tsx'), 'utf8');
     expect(tabs).toContain('overflow-x-auto');
     expect(tabs).toContain('min-h-12');
