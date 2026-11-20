@@ -1,9 +1,12 @@
 import { LoadError, NoAccess } from '@mondapac/ui';
+import { headers } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { REVIEW_PERMISSION } from '../../../../../src/tags/suggestion-types.ts';
 import { SuggestionsView } from '../../../../../src/tags/suggestions-view.tsx';
-import { MANAGE_PERMISSION } from '../../../../../src/tags/types.ts';
 import { AdminShell } from '../../../../../src/server/admin-shell.tsx';
+import { panelHostFor } from '../../../../../src/server/bff.ts';
+import { panelConfig } from '../../../../../src/server/config.ts';
+import { serverGet } from '../../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../../src/server/session.ts';
 
 export async function generateMetadata() {
@@ -21,6 +24,10 @@ export default async function TagSuggestionsPage() {
   if (gate.kind === 'unavailable') {
     return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
+  // List paging (settings): page numbers only when the Market says so; unreadable means Previous and next.
+  const mode = await serverGet<{ readonly listPaging: string }>('settings/admin/list-paging');
+  const paging = mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
+  const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
   const title = t('tags.suggestions.title');
   const { permissionKeys, csrfToken } = gate.session;
   const noAccess = (
@@ -36,9 +43,10 @@ export default async function TagSuggestionsPage() {
     <AdminShell session={gate.session} activeId="tags" title={title}>
       {permissionKeys.includes(REVIEW_PERMISSION) ? (
         <SuggestionsView
-          canApprove={permissionKeys.includes(MANAGE_PERMISSION)}
           csrfToken={csrfToken}
-          noAccess={noAccess}
+          paging={paging}
+          accountId={gate.session.accountId}
+          marketId={marketId}
         />
       ) : (
         noAccess

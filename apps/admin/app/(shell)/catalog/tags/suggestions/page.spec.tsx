@@ -19,6 +19,14 @@ vi.mock('next-intl/server', () => ({
       } as never),
     ),
 }));
+vi.mock('next/headers', () => ({
+  headers: () => Promise.resolve(new Headers({ host: 'admin.localhost' })),
+}));
+vi.mock('../../../../../src/server/server-fetch.ts', () => ({
+  serverGet: () => Promise.resolve({ kind: 'ok', body: { listPaging: 'pages' } }),
+}));
+vi.mock('../../../../../src/server/bff.ts', () => ({ panelHostFor: () => ({ marketId: 'AU' }) }));
+vi.mock('../../../../../src/server/config.ts', () => ({ panelConfig: () => ({}) }));
 vi.mock('../../../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
 vi.mock('../../../../../src/server/admin-shell.tsx', () => ({
   AdminShell: ({
@@ -30,39 +38,40 @@ vi.mock('../../../../../src/server/admin-shell.tsx', () => ({
   }) => <div data-active={activeId}>{children}</div>,
 }));
 vi.mock('../../../../../src/tags/suggestions-view.tsx', () => ({
-  SuggestionsView: (props: { readonly canApprove: boolean; readonly csrfToken: string }) => (
-    <p data-testid="view" data-can-approve={String(props.canApprove)} data-csrf={props.csrfToken}>
+  SuggestionsView: (props: {
+    readonly csrfToken: string;
+    readonly paging: string;
+    readonly marketId: string;
+  }) => (
+    <p
+      data-testid="view"
+      data-csrf={props.csrfToken}
+      data-paging={props.paging}
+      data-market={props.marketId}
+    >
       view
     </p>
   ),
 }));
 
 const session = (permissionKeys: string[]): AdminSession =>
-  ({ permissionKeys, csrfToken: 'csrf-9' }) as unknown as AdminSession;
+  ({ permissionKeys, csrfToken: 'csrf-9', accountId: 'acc-1' }) as unknown as AdminSession;
 const open = async () => render(await TagSuggestionsPage());
 
 describe('admin tag suggestions page', () => {
   beforeEach(() => vi.clearAllMocks());
   afterEach(cleanup);
 
-  it('shows the queue to a reviewer who cannot manage tags, with Approve off', async () => {
+  it('shows the queue to a reviewer with the Market paging and market', async () => {
     mocks.session.mockResolvedValue({
       kind: 'ok',
       session: session(['catalog.topic-suggestion.review']),
     });
     const { container } = await open();
-    expect(screen.getByTestId('view').getAttribute('data-can-approve')).toBe('false');
     expect(screen.getByTestId('view').getAttribute('data-csrf')).toBe('csrf-9');
+    expect(screen.getByTestId('view').getAttribute('data-paging')).toBe('pages');
+    expect(screen.getByTestId('view').getAttribute('data-market')).toBe('AU');
     expect(container.querySelector('[data-active="tags"]')).not.toBeNull();
-  });
-
-  it('lets a reviewer who can manage tags approve', async () => {
-    mocks.session.mockResolvedValue({
-      kind: 'ok',
-      session: session(['catalog.topic-suggestion.review', 'catalog.topic.manage']),
-    });
-    await open();
-    expect(screen.getByTestId('view').getAttribute('data-can-approve')).toBe('true');
   });
 
   it('renders NoAccess, and no queue, without the review key', async () => {
