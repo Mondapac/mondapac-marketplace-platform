@@ -9949,25 +9949,6 @@
     "page-title": "Reviews",
     "no-access": "You do not have access to the buyer review queue.",
     "back-home": "Back to the dashboard",
-    "intro": "Reviews waiting for a person, reviews buyers have reported, and reviews already hidden or removed. A review is moderated as a whole: its text is never edited. A true negative review that follows the review policy is never hidden for being negative.",
-    "tabs": "Queue",
-    "tab": {
-      "held": "Held",
-      "reported": "Reported",
-      "actioned": "Hidden or removed"
-    },
-    "empty": {
-      "held": "No review is waiting.",
-      "reported": "No review has an open report.",
-      "actioned": "No review has been hidden or removed."
-    },
-    "col": {
-      "review": "Review",
-      "rating": "Rating",
-      "status": "Status",
-      "flags": "Flags",
-      "submitted": "Submitted"
-    },
     "stars": "{rating} out of 5",
     "status": {
       "published": "Published",
@@ -9999,8 +9980,6 @@
     "no-text": "No text, rating only",
     "loading": "Loading reviews",
     "retry": "Try again",
-    "more": "Show more",
-    "footnote": "Hiding can be undone; removing cannot. Every change needs a fresh two-step code and is recorded with your account and a reason.",
     "error": {
       "unavailable": "The reviews could not be loaded. Try again.",
       "not-found": "This review no longer exists.",
@@ -10015,7 +9994,15 @@
       "action-placeholder": "Choose an action",
       "reason": "Reason",
       "reason-placeholder": "Choose a reason",
-      "remove-note": "Removing is for illegal, defamatory or private content. It cannot be undone."
+      "remove-note": "Removing is for illegal, defamatory or private content. It cannot be undone.",
+      "type-to-remove": "Type {id} to remove this review",
+      "title-for": {
+        "publish": "Publish review",
+        "hide": "Hide review",
+        "restore": "Restore review",
+        "remove": "Remove review",
+        "dismiss-reports": "Dismiss reports"
+      }
     },
     "submitted": "Submitted {date}",
     "product": "Product",
@@ -10067,7 +10054,114 @@
       "author": "the buyer"
     },
     "no-actions": "No action applies to this review now.",
-    "policy-note": "Choose a reason from the list. There is no reason for a negative review: a true negative review is never hidden."
+    "policy-note": "Choose a reason from the list. There is no reason for a negative review: a true negative review is never hidden.",
+    "list": {
+      "title": "Reviews to moderate",
+      "intro": "Reviews waiting for a person, reviews a shop has reported, and reviews already hidden or removed. A review is moderated as a whole: its text is never edited, and a true negative review is never hidden for being negative. Every change needs a reason and a fresh two-step code. Hiding can be undone; removing cannot.",
+      "zone-note": "Times are shown in {zone}.",
+      "no-access": "You do not have access to the buyer review queue.",
+      "back-home": "Back to the dashboard",
+      "views": "Moderation views",
+      "view": {
+        "all": "All",
+        "held": "Held",
+        "reported": "Reported",
+        "actioned": "Hidden or removed"
+      },
+      "row-name": "the {rating}-star review {text}",
+      "none": "None",
+      "not-edited": "Not edited",
+      "col": {
+        "review": "Review",
+        "rating": "Rating",
+        "status": "Status",
+        "reports": "Open reports",
+        "submitted": "Submitted",
+        "actions": "Actions",
+        "review-id": "Review ID",
+        "product-id": "Product ID",
+        "offer-id": "Offer ID",
+        "seller-id": "Seller ID",
+        "locale": "Language",
+        "edited": "Edited",
+        "signals": "Automatic checks"
+      },
+      "search": {
+        "label": "Search",
+        "placeholder": "Search review text, or a review, offer or product ID"
+      },
+      "chip-search": "Search is {text}",
+      "chip-seller": "Seller is {id}",
+      "filter": {
+        "title": "Filter reviews",
+        "stars": "{count, plural, one {# star} other {# stars}}",
+        "name": {
+          "minRating": "Stars at least",
+          "maxRating": "Stars at most",
+          "reportReason": "Report reason",
+          "submitted": "Submitted"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "submitted": "Submitted",
+          "rating": "Rating"
+        },
+        "submitted": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "rating": {
+          "first": "Lowest first",
+          "second": "Highest first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# review matches} other {# reviews match}}",
+      "range": "{from}-{to} of {total}",
+      "loading": "Loading reviews…",
+      "error": {
+        "unavailable": "The reviews couldn't be loaded.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      },
+      "empty": {
+        "all": "No review needs a moderator.",
+        "held": "No review is waiting.",
+        "reported": "No review has an open report.",
+        "actioned": "No review has been hidden or removed.",
+        "no-match": "No reviews match",
+        "no-match-help": "Try other filters or clear them."
+      },
+      "select": {
+        "page": "Select all reviews on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# review selected} other {# reviews selected}}",
+        "all": "{count, plural, one {The # matching review is selected} other {All # matching reviews are selected}}",
+        "all-open": "All matching reviews are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# review selected} other {# reviews selected}}",
+        "all-open": "All matching reviews selected"
+      },
+      "actions": {
+        "for": "Actions for {name}",
+        "open": "Open…",
+        "publish": "Publish…",
+        "restore": "Restore…",
+        "dismiss-reports": "Dismiss reports…",
+        "hide": "Hide…",
+        "remove": "Remove…"
+      }
+    }
   },
   "business-activities": {
     "title": "Business activities",
