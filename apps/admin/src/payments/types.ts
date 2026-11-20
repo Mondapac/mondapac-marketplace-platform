@@ -1,14 +1,10 @@
 // Answers of GET payments/admin/connected-accounts (read-only; no Stripe id or bank detail).
 
 export const VIEW_PERMISSION = 'payments.connected-account.view';
-export const PAGE_SIZE = 25;
 
 /** The statuses of accounts that exist (an admin row is never "not connected"). */
 export const STATUSES = ['not-started', 'pending', 'enabled', 'restricted', 'rejected'] as const;
 export type AccountStatus = (typeof STATUSES)[number];
-/** The filter: one status, or every account. */
-export type StatusFilter = AccountStatus | 'all';
-export const FILTERS: readonly StatusFilter[] = ['all', ...STATUSES];
 
 export const CHANGE_KINDS = ['initial', 'added', 'updated', 'removed'] as const;
 

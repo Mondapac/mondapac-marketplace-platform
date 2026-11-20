@@ -5,10 +5,10 @@ import messages from '../../messages/en.json';
 import '../../app/globals.css';
 import { RequestView } from '../../src/certificates/requests/request-view.tsx';
 import { RequestsTable } from '../../src/certificates/requests/requests-table.tsx';
-import type { RequestDetail, RequestRow } from '../../src/certificates/requests/types.ts';
+import type { ListRow, RequestDetail } from '../../src/certificates/requests/types.ts';
 
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
-const rows: RequestRow[] = [
+const rows: ListRow[] = [
   {
     issuerRequestId: id(1),
     version: 2,
@@ -17,6 +17,7 @@ const rows: RequestRow[] = [
     storeName: 'Logan Road Grocer',
     documentCount: 2,
     createdAt: '2026-11-08T01:00:00Z',
+    actions: ['open', 'answer'],
   },
   {
     issuerRequestId: id(2),
@@ -26,6 +27,7 @@ const rows: RequestRow[] = [
     storeName: null,
     documentCount: 0,
     createdAt: '2026-11-09T01:00:00Z',
+    actions: ['open'],
   },
 ];
 const detail: RequestDetail = {
@@ -42,7 +44,16 @@ const detail: RequestDetail = {
   activeIssuers: [{ issuerId: id(5), displayName: 'Halal Certification Authority' }],
   reasons: [{ code: 'not-an-issuer', label: 'This is not a certificate issuer.' }],
 };
-const names = new Map([['halal', 'Halal']]);
+const names = { halal: 'Halal' };
+const selection = {
+  selected: new Set<string>(),
+  allMatching: false,
+  full: false,
+  toggleRow: () => {},
+  togglePage: () => {},
+  selectAllMatching: () => {},
+  clear: () => {},
+};
 const view = new URLSearchParams(location.search).get('view') ?? 'queue';
 
 const tabs = (
@@ -67,7 +78,14 @@ function Body() {
       <div className="flex flex-col gap-4">
         {tabs}
         <p className="text-sm text-fg-muted">2 requests are open, oldest first.</p>
-        <RequestsTable rows={rows} typeNames={names} morePages={false} />
+        <RequestsTable
+          rows={rows}
+          columns={['documents']}
+          typeNames={names}
+          zone="Australia/Brisbane"
+          selection={selection}
+          actions={() => []}
+        />
       </div>
     );
   }

@@ -10,30 +10,30 @@ import IssuerRequestsPage from './page.tsx';
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
   session: vi.fn(),
-  redirect: vi.fn((to: string) => {
-    throw new Error(`redirect:${to}`);
-  }),
 }));
 
 vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve(createTranslator({ locale: 'en-AU', messages })),
   getLocale: () => Promise.resolve('en-AU'),
 }));
-vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
+vi.mock('next/headers', () => ({ headers: () => Promise.resolve(new Headers()) }));
+vi.mock('../../../../src/server/bff.ts', () => ({ panelHostFor: () => ({ marketId: 'AU' }) }));
+vi.mock('../../../../src/server/config.ts', () => ({ panelConfig: () => ({}) }));
 vi.mock('../../../../src/server/server-fetch.ts', () => ({ serverGet: mocks.get }));
 vi.mock('../../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
 vi.mock('../../../../src/server/admin-shell.tsx', () => ({
   AdminShell: ({ children }: { readonly children: ReactNode }) => <main>{children}</main>,
 }));
 vi.mock('../../../../src/certificates/tabs.tsx', () => ({ CertificatesTabs: () => null }));
-vi.mock('../../../../src/certificates/requests/requests-table.tsx', () => ({
-  RequestsTable: ({
-    rows,
-    typeNames,
-  }: {
-    rows: readonly unknown[];
-    typeNames: ReadonlyMap<string, string>;
-  }) => <p>{`${rows.length} rows, ${typeNames.get('halal') ?? 'no names'}`}</p>,
+vi.mock('../../../../src/certificates/requests/requests-list.tsx', () => ({
+  RequestsList: (props: {
+    paging: string;
+    zone: string;
+    sellerId: string | null;
+    typeNames: Record<string, string>;
+  }) => (
+    <p>{`list ${props.paging} ${props.zone} ${props.sellerId ?? 'no-seller'} ${props.typeNames['halal'] ?? 'no names'}`}</p>
+  ),
 }));
 
 const VIEW = 'certification.issuer.view';
@@ -50,17 +50,26 @@ const session = (permissionKeys: string[]): AdminSession => ({
   marketTimezone: 'Australia/Brisbane',
   csrfToken: 'c',
 });
-const CURSOR = '0190a000-0000-7000-8000-0000000000e1';
 const search = (values: Record<string, string> = {}) => ({ searchParams: Promise.resolve(values) });
-const page = (next: string | null = null) => ({
-  kind: 'ok',
-  body: { items: [{}], nextAfterId: next, total: 1 },
-});
+const SELLER = '0190a000-0000-7000-8000-0000000000B1';
+
+/** The page's own reads: the paging setting and, when asked, the types. */
+function serve(paging: unknown, types: unknown = { kind: 'unavailable' }) {
+  mocks.get.mockImplementation((path: string) =>
+    Promise.resolve(
+      path === 'settings/admin/list-paging'
+        ? paging
+        : path.startsWith('certification/admin/types')
+          ? types
+          : { kind: 'unavailable' },
+    ),
+  );
+}
 
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.session.mockResolvedValue({ kind: 'ok', session: session([VIEW]) });
-  mocks.get.mockResolvedValue(page());
+  serve({ kind: 'ok', body: { listPaging: 'pages' } });
 });
 afterEach(cleanup);
 
@@ -70,23 +79,24 @@ describe('issuer requests page', () => {
     render(await IssuerRequestsPage(search()));
     expect(mocks.get).not.toHaveBeenCalled();
     expect(screen.getByText(messages.certificates.requests['no-access'])).toBeTruthy();
+    expect(screen.queryByText(/^list /)).toBeNull();
   });
 
-  it('reads the queue and uses only a UUID cursor', async () => {
-    render(await IssuerRequestsPage(search({ after: 'not-a-uuid' })));
+  it('hands the list the Market paging mode and the zone, and reads no requests itself', async () => {
+    render(await IssuerRequestsPage(search()));
     expect(mocks.get).toHaveBeenCalledTimes(1);
-    expect(mocks.get).toHaveBeenCalledWith('certification/admin/issuer-requests?limit=25');
-    expect(screen.getByText('1 rows, no names')).toBeTruthy();
+    expect(mocks.get).toHaveBeenCalledWith('settings/admin/list-paging');
+    expect(screen.getByText('list pages Australia/Brisbane no-seller no names')).toBeTruthy();
+  });
+
+  it('falls back to Previous and next when the setting cannot be read or is not pages', async () => {
+    serve({ kind: 'unavailable' });
+    render(await IssuerRequestsPage(search()));
+    expect(screen.getByText(/^list prev-next /)).toBeTruthy();
     cleanup();
-    mocks.get.mockResolvedValue(page('0190a000-0000-7000-8000-0000000000e2'));
-    render(await IssuerRequestsPage(search({ after: CURSOR })));
-    expect(mocks.get).toHaveBeenLastCalledWith(
-      `certification/admin/issuer-requests?limit=25&afterId=${CURSOR}`,
-    );
-    expect(screen.getByRole('link', { name: 'Next page' }).getAttribute('href')).toContain(
-      '?after=',
-    );
-    expect(screen.getByRole('link', { name: 'First page' })).toBeTruthy();
+    serve({ kind: 'ok', body: { listPaging: 'prev-next' } });
+    render(await IssuerRequestsPage(search()));
+    expect(screen.getByText(/^list prev-next /)).toBeTruthy();
   });
 
   it('names the types only for a reader who may view them', async () => {
@@ -94,24 +104,24 @@ describe('issuer requests page', () => {
       kind: 'ok',
       session: session([VIEW, 'certification.type.view']),
     });
-    mocks.get.mockImplementation((path: string) =>
-      Promise.resolve(
-        path.startsWith('certification/admin/types')
-          ? { kind: 'ok', body: { items: [{ code: 'halal', names: { en: 'Halal' } }] } }
-          : page(),
-      ),
+    serve(
+      { kind: 'ok', body: { listPaging: 'pages' } },
+      { kind: 'ok', body: { items: [{ code: 'halal', names: { en: 'Halal' } }] } },
     );
     render(await IssuerRequestsPage(search()));
-    expect(screen.getByText('1 rows, Halal')).toBeTruthy();
+    expect(screen.getByText(/ Halal$/)).toBeTruthy();
     cleanup();
-    mocks.get.mockImplementation((path: string) =>
-      Promise.resolve(
-        path.startsWith('certification/admin/types') ? { kind: 'unavailable' } : page(),
-      ),
-    );
+    serve({ kind: 'ok', body: { listPaging: 'pages' } }, { kind: 'unavailable' });
     render(await IssuerRequestsPage(search()));
-    expect(screen.getByText('1 rows, no names')).toBeTruthy();
-    expect(screen.getByText('1 request is open, oldest first.')).toBeTruthy();
+    expect(screen.getByText(/ no names$/)).toBeTruthy();
+  });
+
+  it('passes a seller link on as a lower-case id, and ignores anything else', async () => {
+    render(await IssuerRequestsPage(search({ sellerId: SELLER })));
+    expect(screen.getByText(new RegExp(` ${SELLER.toLowerCase()} `))).toBeTruthy();
+    cleanup();
+    render(await IssuerRequestsPage(search({ sellerId: 'not-an-id' })));
+    expect(screen.getByText(/ no-seller /)).toBeTruthy();
   });
 
   it('says a request was answered, for the flag only', async () => {
@@ -122,15 +132,10 @@ describe('issuer requests page', () => {
     expect(screen.queryByText(/Request answered/)).toBeNull();
   });
 
-  it('handles refused, unavailable and signed-out reads', async () => {
-    mocks.get.mockResolvedValueOnce({ kind: 'forbidden' });
+  it('shows the load error when the session cannot be read', async () => {
+    mocks.session.mockResolvedValue({ kind: 'unavailable' });
     render(await IssuerRequestsPage(search()));
-    expect(screen.getByText(messages.certificates.requests['no-access'])).toBeTruthy();
-    cleanup();
-    mocks.get.mockResolvedValueOnce({ kind: 'unavailable' });
-    render(await IssuerRequestsPage(search()));
-    expect(screen.getByText(messages.certificates.requests.unavailable)).toBeTruthy();
-    mocks.get.mockResolvedValueOnce({ kind: 'signed-out' });
-    await expect(IssuerRequestsPage(search())).rejects.toThrow('redirect:/session-ended');
+    expect(screen.getByText(messages.identity.error.unknown)).toBeTruthy();
+    expect(mocks.get).not.toHaveBeenCalled();
   });
 });
