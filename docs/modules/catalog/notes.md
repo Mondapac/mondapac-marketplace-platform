@@ -114,3 +114,17 @@ reads it; a merge never sets it. It is not in the brand answers yet: the notice 
 
 Any panel that shows the archive reason (the seller's notice, an admin view) must render it as plain
 text, never as HTML: no `dangerouslySetInnerHTML`, no Markdown, no auto-linking.
+
+## Saved filters of the phase 2 lists
+
+Eleven admin lists and two seller lists register with `lists` (super list B0-1b), so they have
+saved filters through the generic routes: `admin.catalog.variants`, `variant-requests`,
+`attributes`, `products-missing-details`, `attribute-suggestions`, `brands`, `business-activities`,
+`tags`, `tag-suggestions`, `category-proposals`, `review-queue` (the Product review queue and the
+Revision queue are one list, told apart by the `kind` filter), and `seller.catalog.attribute-suggestions`
+and `seller.catalog.topic-suggestions` (one set per store). The saved document is
+`{ v: 1, q?, filters, sort, direction }` with no tabs; each list's own reading of its filter keys
+checks the values. Each list is guarded by the key its list use case checks; admin filters are
+shared with `catalog.saved-filter.share`, seller filters with `catalog.own-saved-filter.share`. The
+lists have no column choice yet (no `columns`). A saved attribute `missing` locale is checked for
+shape only; the Market's supported locales are not known when a filter is saved.
