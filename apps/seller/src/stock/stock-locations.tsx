@@ -7,6 +7,7 @@ import {
   SettingsViewOnlyBanner,
   Button,
   DataList,
+  Menu,
   SettingsPage,
   SettingsSection,
   toast,
@@ -218,31 +219,27 @@ function SourceRow({
         />
       </div>
       {canEdit ? (
-        <div className="mt-3 flex flex-wrap gap-2">
-          <Button variant="secondary" onClick={onEdit} disabled={busy}>
-            {t('stock.edit')}
-          </Button>
+        <div className="mt-3">
           {/* Moving only shows where it can move: not up from the first, not down from the last. */}
-          {index > 0 ? (
-            <Button
-              variant="secondary"
-              onClick={() => onMove(-1)}
-              disabled={busy}
-              aria-label={t('stock.move-up', { name: source.name })}
-            >
-              {t('stock.up')}
-            </Button>
-          ) : null}
-          {last ? null : (
-            <Button
-              variant="secondary"
-              onClick={() => onMove(1)}
-              disabled={busy}
-              aria-label={t('stock.move-down', { name: source.name })}
-            >
-              {t('stock.down')}
-            </Button>
-          )}
+          <Menu
+            label={t('stock.actions-for', { name: source.name })}
+            items={[
+              { id: 'edit', label: t('stock.edit'), disabled: busy, onSelect: onEdit },
+              ...(index > 0
+                ? [{ id: 'up', label: t('stock.up'), disabled: busy, onSelect: () => onMove(-1) }]
+                : []),
+              ...(last
+                ? []
+                : [
+                    {
+                      id: 'down',
+                      label: t('stock.down'),
+                      disabled: busy,
+                      onSelect: () => onMove(1),
+                    },
+                  ]),
+            ]}
+          />
         </div>
       ) : null}
     </li>
