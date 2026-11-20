@@ -347,6 +347,24 @@ describe.each([
     expect(edited.ok && edited.value.serviceAreaName).toBe('Greater Area One');
   });
 
+  it('ignores an edited name in another language and gives no name for an unknown area', async () => {
+    addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
+    editedNames.set('area-1', { fr: 'Zone Un' });
+    const fallback = await read.execute(anonymous(), { slug: 'alpha-market' });
+    expect(fallback.ok && fallback.value.serviceAreaName).toBe('Area One');
+
+    stores[0] = { ...stores[0]!, serviceAreaCode: 'area-9' };
+    const unknown = await read.execute(anonymous(), { slug: 'alpha-market' });
+    expect(unknown.ok && unknown.value.serviceAreaName).toBeNull();
+  });
+
+  it('carries the area name on each list item', async () => {
+    addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', { minimum: null });
+    editedNames.set('area-1', { en: 'Greater Area One' });
+    const listed = await page();
+    expect(listed.items.map((item) => item.serviceAreaName)).toEqual(['Greater Area One']);
+  });
+
   it('reads one store by its exact slug', async () => {
     const sellerId = addStore('alpha-market', 'Alpha', '2026-01-10T00:00:00Z', {
       minimum: null,
