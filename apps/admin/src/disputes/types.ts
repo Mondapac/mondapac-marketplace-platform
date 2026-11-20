@@ -2,7 +2,6 @@
 
 export const VIEW_PERMISSION = 'commission-payouts.dispute.view';
 export const ATTRIBUTE_PERMISSION = 'commission-payouts.dispute.attribute';
-export const PAGE_SIZE = 25;
 
 /**
  * Where a case is opened in Stripe's Dashboard. Test mode only for now: the live base is chosen
@@ -44,12 +43,6 @@ export interface DisputeRow {
   readonly evidenceDueBy: string | null;
   readonly amount: DisputeMoney;
   readonly openedAt: string;
-}
-
-export interface DisputePage {
-  readonly counts: Readonly<Record<Bucket, number>>;
-  readonly disputes: readonly DisputeRow[];
-  readonly nextCursor: string | null;
 }
 
 export interface DisputeDecided {

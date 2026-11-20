@@ -381,3 +381,33 @@ describe('AdminNotifications refund cap notice', () => {
     expect(screen.queryByRole('link')).toBeNull();
   });
 });
+
+describe('AdminNotifications assistant spend cap notice', () => {
+  it('words each cap and links to the assistant settings', async () => {
+    const items = [
+      notice(NEW, { kind: 'admin.assistant-spend-cap-reached', params: { cap: 'daily' } }),
+      notice(OLD, { kind: 'admin.assistant-spend-cap-reached', params: { cap: 'monthly' } }),
+    ];
+    counts = [{ unread: 2, newest: items[0]! }];
+    call.mockImplementation((method, path) =>
+      Promise.resolve(
+        path.endsWith('/unread-count') || method === 'POST'
+          ? answer(path, method)
+          : { ok: true as const, status: 200, body: { items, next: null } },
+      ),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Notifications, 2 unread' }));
+    const daily = await screen.findByRole('link', {
+      name: /shopping assistant reached its daily spend cap and is switched off until tomorrow/,
+    });
+    expect(daily.getAttribute('href')).toBe('/settings/assistant');
+    expect(
+      screen.getByRole('link', { name: /monthly spend cap and is switched off until next month/ }),
+    ).toBeTruthy();
+  });
+
+  it('shows the bell to an admin who may view the assistant settings', () => {
+    expect(showsNoticeBell(['assistant.settings.view'])).toBe(true);
+  });
+});
