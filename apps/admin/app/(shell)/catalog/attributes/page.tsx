@@ -1,4 +1,6 @@
 import { LoadError } from '@mondapac/ui';
+import { headers } from 'next/headers';
+import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AttributesView } from '../../../../src/attributes/attributes-view.tsx';
 import {
@@ -7,10 +9,14 @@ import {
   EDIT_PERMISSION,
   RESTRUCTURE_PERMISSION,
   TABS,
+  attributePath,
   VIEW_PERMISSION,
   type Tab,
 } from '../../../../src/attributes/types.ts';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
+import { panelHostFor } from '../../../../src/server/bff.ts';
+import { panelConfig } from '../../../../src/server/config.ts';
+import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
 
 export async function generateMetadata() {
@@ -24,8 +30,7 @@ const one = (value: string | readonly string[] | undefined): string | undefined 
 
 /**
  * Catalogue > Attributes (attributes plan, packages A1 and A2): the attributes and feature sets of
- * the Market; an admin with `catalog.attribute.edit` adds and edits attributes. `?tab=` opens a tab and `?id=` an attribute or a feature set, so a link can
- * point at one. The Brands tab is the existing brands page.
+ * the Market; an admin with `catalog.attribute.edit` adds and edits attributes. `?tab=` opens a tab and `?id=` a feature set (an attribute has its own page, `/catalog/attributes/<id>`). The Brands tab is the existing brands page.
  */
 export default async function AttributesPage({
   searchParams,
@@ -48,6 +53,12 @@ export default async function AttributesPage({
       : 'attributes';
   const rawId = one(query.id);
   const selectedId = rawId !== undefined && UUID.test(rawId) ? rawId : null;
+  // An attribute has its own page now: an old `?id=` link on the Attributes tab goes there.
+  if (tab === 'attributes' && selectedId !== null) redirect(attributePath(selectedId));
+  // List paging (settings): page numbers only when the Market says so; unreadable means Previous and next.
+  const mode = await serverGet<{ readonly listPaging: string }>('settings/admin/list-paging');
+  const paging = mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
+  const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
   const title = t('attributes.title');
   const { permissionKeys, csrfToken } = gate.session;
   return (
@@ -62,6 +73,9 @@ export default async function AttributesPage({
           canDecide={permissionKeys.includes(DECIDE_PERMISSION)}
           initialTab={tab}
           initialId={selectedId}
+          paging={paging}
+          accountId={gate.session.accountId}
+          marketId={marketId}
         />
       ) : (
         <>

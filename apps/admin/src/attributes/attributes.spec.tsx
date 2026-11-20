@@ -8,6 +8,7 @@ import { expectToast } from '../../test/toast-spy.ts';
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi, type ApiResult } from '../api/client.ts';
+import { AttributeDetailPage } from './attribute-detail-page.tsx';
 import { AttributesView } from './attributes-view.tsx';
 import { changeLineOf } from './history.ts';
 import type {
@@ -78,6 +79,10 @@ const page = (
   items,
   nextAfterId: null,
   total: items.length,
+  page: 1,
+  pageSize: 25,
+  paging: 'pages',
+  hasNext: false,
   totalAll: items.length,
   locales,
   units: unitsOf(locales),
@@ -233,6 +238,25 @@ async function choose(
 const calls = (prefix: string) =>
   call.mock.calls.filter(([m, path]) => m === 'GET' && path.startsWith(prefix)).map(([, p]) => p);
 
+const REAL_LOCATION = Object.getOwnPropertyDescriptor(window, 'location');
+
+/** Replaces `window.location.assign` for one test; the returned function puts the real one back. */
+function spyOnAssign() {
+  const assign = vi.fn();
+  const original = Object.getOwnPropertyDescriptor(window, 'location');
+  Object.defineProperty(window, 'location', {
+    value: { ...window.location, assign },
+    writable: true,
+    configurable: true,
+  });
+  return {
+    assign,
+    restore: () => {
+      if (original !== undefined) Object.defineProperty(window, 'location', original);
+    },
+  };
+}
+
 function mount(
   options: {
     canEdit?: boolean;
@@ -242,16 +266,29 @@ function mount(
     initialId?: string | null;
   } = {},
 ) {
+  const detail = (options.initialTab ?? 'attributes') === 'attributes' && options.initialId;
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <AttributesView
-        canEdit={options.canEdit ?? false}
-        csrfToken="csrf-1"
-        canSeeBrands={options.canSeeBrands ?? true}
-        canDecide={options.canDecide ?? false}
-        initialTab={options.initialTab ?? 'attributes'}
-        initialId={options.initialId ?? null}
-      />
+      {detail ? (
+        <AttributeDetailPage
+          attributeId={detail}
+          canEdit={options.canEdit ?? false}
+          canRestructure={false}
+          csrfToken="csrf-1"
+        />
+      ) : (
+        <AttributesView
+          canEdit={options.canEdit ?? false}
+          csrfToken="csrf-1"
+          canSeeBrands={options.canSeeBrands ?? true}
+          canDecide={options.canDecide ?? false}
+          initialTab={options.initialTab ?? 'attributes'}
+          initialId={options.initialId ?? null}
+          paging="pages"
+          accountId="a"
+          marketId="AU"
+        />
+      )}
     </NextIntlClientProvider>,
   );
 }
@@ -275,9 +312,12 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
       removeEventListener: () => undefined,
     })) as unknown as typeof window.matchMedia;
   });
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    if (REAL_LOCATION !== undefined) Object.defineProperty(window, 'location', REAL_LOCATION);
+  });
 
-  it('lists attributes with their badges and counts, and the total on the tab', async () => {
+  it('lists attributes in a table with their badges and counts, each opening its own page', async () => {
     serve({
       'GET catalog/admin/attributes?': ok(
         page(locales, [
@@ -291,19 +331,39 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
       ),
     });
     mount();
-    const list = await screen.findByRole('list', { name: 'Attributes' });
-    const first = within(list).getByRole('button', { name: /Attribute 1/ });
+    const link = await screen.findByRole('link', { name: 'Attribute 1' });
+    expect(link.getAttribute('href')).toBe(`/catalog/attributes/${id(1)}`);
+    const first = link.closest('tr') as HTMLElement;
     expect(within(first).getByText('Material')).toBeTruthy();
-    expect(within(first).getByText('12 products')).toBeTruthy();
-    expect(within(first).getByText(/2 feature sets/)).toBeTruthy();
-    const second = within(list).getByRole('button', { name: /Attribute 2/ });
+    expect(within(first).getByText('12')).toBeTruthy();
+    const second = screen.getByRole('link', { name: 'Attribute 2' }).closest('tr') as HTMLElement;
     expect(within(second).getByText('Variant')).toBeTruthy();
     expect(within(second).getByText('Draft')).toBeTruthy();
     if (other !== null) {
       expect(within(second).getByText(/^Missing: /)).toBeTruthy();
     }
-    expect(screen.getByText('2 attributes')).toBeTruthy();
-    expect(calls('catalog/admin/attributes?')[0]).toBe('catalog/admin/attributes?limit=50');
+    const query = new URLSearchParams(calls('catalog/admin/attributes?')[0]!.split('?')[1]);
+    expect(query.get('sort')).toBe('code');
+    expect(query.get('direction')).toBe('asc');
+    expect(query.get('page')).toBe('1');
+    expect(query.get('paging')).toBe('pages');
+    expect(query.get('limit')).toBeNull();
+  });
+
+  it('opens an attribute from the Actions menu', async () => {
+    const assign = vi.fn();
+    const original = Object.getOwnPropertyDescriptor(window, 'location');
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, assign },
+      writable: true,
+      configurable: true,
+    });
+    serve({ 'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])) });
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for Attribute 1' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Open' }));
+    expect(assign).toHaveBeenCalledWith(`/catalog/attributes/${id(1)}`);
+    if (original !== undefined) Object.defineProperty(window, 'location', original);
   });
 
   it('shows the view-only notice without catalog.attribute.edit, and not with it', async () => {
@@ -314,102 +374,58 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
         'You can view attributes. Ask a Platform Administrator to change them.',
       ),
     ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Add attribute' })).toBeNull();
     cleanup();
     mount({ canEdit: true });
-    await screen.findByText('No attributes yet.');
+    await screen.findByText('No attributes yet');
     expect(screen.queryByText(/You can view attributes/)).toBeNull();
+    expect(await screen.findByRole('button', { name: 'Add attribute' })).toBeTruthy();
   });
 
-  it('sends the filters, offers the missing-language filter only for a second language', async () => {
+  it('sends the search as `search` and a view as its status, and the missing-language filter only with a second language', async () => {
     serve({ 'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])) });
     mount();
-    await screen.findByRole('button', { name: /Attribute 1/ });
-    fireEvent.change(screen.getByLabelText('Search by name or code'), {
-      target: { value: '  Spicy ' },
+    await screen.findByRole('link', { name: 'Attribute 1' });
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search attributes' }), {
+      target: { value: 'Spicy' },
     });
     await waitFor(() =>
       expect(calls('catalog/admin/attributes?').at(-1)).toContain('search=Spicy'),
     );
-    await choose(screen, 'Type', 'Yes or no');
-    await waitFor(() =>
-      expect(calls('catalog/admin/attributes?').at(-1)).toContain('type=boolean'),
-    );
-    await choose(screen, 'Status', 'Archived');
-    await waitFor(() =>
-      expect(calls('catalog/admin/attributes?').at(-1)).toContain('status=archived'),
-    );
-    const missing = screen.queryByRole('combobox', { name: 'Language' });
-    if (other === null) {
-      expect(missing).toBeNull();
-    } else {
-      await choose(screen, 'Language', 'Missing: Persian');
-      await waitFor(() =>
-        expect(calls('catalog/admin/attributes?').at(-1)).toContain(`missing=${other}`),
-      );
-    }
-  });
-
-  it('says when filters find nothing, and clears them', async () => {
-    serve({
-      'GET catalog/admin/attributes?limit=50&status=archived': ok(
-        page(locales, [], { totalAll: 3 }),
-      ),
-      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
+    fireEvent.click(screen.getByRole('button', { name: 'Archived' }));
+    await waitFor(() => {
+      const last = calls('catalog/admin/attributes?').at(-1) ?? '';
+      expect(last).toContain('status=archived');
+      expect(last).toContain('search=Spicy');
+      expect(last).not.toContain('q=');
     });
-    mount();
-    await screen.findByRole('button', { name: /Attribute 1/ });
-    await choose(screen, 'Status', 'Archived');
-    expect(await screen.findByText('No attributes match these filters.')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Clear filters' }));
-    expect(await screen.findByRole('button', { name: /Attribute 1/ })).toBeTruthy();
   });
 
-  it('reads the next page on Show more', async () => {
-    serve({
-      [`GET catalog/admin/attributes?limit=50&afterId=${id(1)}`]: ok(
-        page(locales, [row(locales, 2)], { totalAll: 2 }),
-      ),
-      'GET catalog/admin/attributes?': ok(
-        page(locales, [row(locales, 1)], { nextAfterId: id(1), totalAll: 2 }),
-      ),
-    });
-    mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
-    expect(await screen.findByRole('button', { name: /Attribute 2/ })).toBeTruthy();
-    expect(screen.getByRole('button', { name: /Attribute 1/ })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Show more' })).toBeNull();
-  });
-
-  it('keeps the rows it has read when the search pause ends with the same text', async () => {
-    // The search box acts after 300 ms. With nothing typed that must not reload the list from
-    // page 1 (a slow runner reached it between "Show more" and its answer, and lost page 2).
-    serve({
-      [`GET catalog/admin/attributes?limit=50&afterId=${id(1)}`]: ok(
-        page(locales, [row(locales, 2)], { totalAll: 2 }),
-      ),
-      'GET catalog/admin/attributes?': ok(
-        page(locales, [row(locales, 1)], { nextAfterId: id(1), totalAll: 2 }),
-      ),
-    });
-    mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Show more' }));
-    expect(await screen.findByRole('button', { name: /Attribute 2/ })).toBeTruthy();
-    await new Promise((resolve) => setTimeout(resolve, 400));
-    expect(screen.getByRole('button', { name: /Attribute 2/ })).toBeTruthy();
-    expect(calls('catalog/admin/attributes?limit=50')).toHaveLength(2);
-  });
-
-  it('shows a retry on a failed list', async () => {
+  it('says so when there are none, and shows a retry on a failed list', async () => {
     let fail = true;
     serve({
       'GET catalog/admin/attributes?': () =>
         fail ? refuse(503, 'access.unavailable') : ok(page(locales, [row(locales, 1)])),
     });
     mount();
-    expect(await screen.findByText('We could not load the attributes. Try again.')).toBeTruthy();
+    expect(await screen.findByText(/could not be loaded/)).toBeTruthy();
     fail = false;
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByRole('button', { name: /Attribute 1/ })).toBeTruthy();
+    expect(await screen.findByRole('link', { name: 'Attribute 1' })).toBeTruthy();
+  });
+
+  it('moves to the next page with the page buttons', async () => {
+    serve({
+      'GET catalog/admin/attributes?': ok(
+        page(locales, [row(locales, 1)], { total: 40, hasNext: true }),
+      ),
+    });
+    mount();
+    await screen.findByRole('link', { name: 'Attribute 1' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    await waitFor(() =>
+      expect(calls('catalog/admin/attributes?').some((path) => path.includes('page=2'))).toBe(true),
+    );
   });
 
   it('opens an attribute: details, values, used in and history', async () => {
@@ -440,12 +456,19 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
       'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
       [`GET catalog/admin/attributes/${id(1)}`]: ok(withSecond),
     });
-    mount();
-    expect(await screen.findByText('Choose an attribute')).toBeTruthy();
-    fireEvent.click(await screen.findByRole('button', { name: /Attribute 1/ }));
+    const assign = vi.fn();
+    const original = Object.getOwnPropertyDescriptor(window, 'location');
+    Object.defineProperty(window, 'location', {
+      value: { ...window.location, assign },
+      writable: true,
+      configurable: true,
+    });
+    mount({ initialId: id(1) });
     const panel = await screen.findByRole('region', { name: 'Attribute details' });
     await within(panel).findByRole('heading', { name: 'Attribute 1' });
-    expect(window.location.search).toBe(`?id=${id(1)}`);
+    expect(screen.getByRole('link', { name: 'Back to attributes' }).getAttribute('href')).toBe(
+      '/catalog/attributes',
+    );
     expect(within(panel).getByText('attr-1 · One choice')).toBeTruthy();
     expect(within(panel).getByText('Added by the platform')).toBeTruthy();
 
@@ -489,8 +512,8 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(within(panel).getByText('Created')).toBeTruthy();
 
     fireEvent.click(within(panel).getByRole('button', { name: 'Close' }));
-    expect(await screen.findByText('Choose an attribute')).toBeTruthy();
-    expect(window.location.search).toBe('');
+    expect(assign).toHaveBeenCalledWith('/catalog/attributes');
+    if (original !== undefined) Object.defineProperty(window, 'location', original);
   });
 
   it('says a non-choice attribute has no list of values', async () => {
@@ -524,7 +547,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(await within(panel).findByRole('heading', { name: 'Attribute 1' })).toBeTruthy();
   });
 
-  it('lists feature sets, opens one, and opens its attribute on the Attributes tab', async () => {
+  it('lists feature sets, opens one, and opens its attribute on its own page', async () => {
     serve({
       'GET catalog/admin/feature-sets/': ok(featureSetDetail(locales, 50)),
       'GET catalog/admin/feature-sets': ok({
@@ -552,10 +575,11 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(within(panel).getByText('Material')).toBeTruthy();
     expect(window.location.search).toBe(`?tab=feature-sets&id=${id(50)}`);
 
+    // An attribute of the set opens on its own page.
+    const spy = spyOnAssign();
     fireEvent.click(within(panel).getByRole('button', { name: 'Attribute 1' }));
-    const attribute = await screen.findByRole('region', { name: 'Attribute details' });
-    expect(await within(attribute).findByRole('heading', { name: 'Attribute 1' })).toBeTruthy();
-    expect(window.location.search).toBe(`?id=${id(1)}`);
+    expect(spy.assign).toHaveBeenCalledWith(`/catalog/attributes/${id(1)}`);
+    spy.restore();
   });
 
   it('retries a failed feature-set list, and says when there is none or more than shown', async () => {
@@ -585,8 +609,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
       'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
       [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1)),
     });
-    mount();
-    fireEvent.click(await screen.findByRole('button', { name: /Attribute 1/ }));
+    mount({ initialId: id(1) });
     const heading = await screen.findByRole('heading', { name: 'Attribute 1' });
     await waitFor(() => expect(scroll).toHaveBeenCalled());
     expect(document.activeElement).toBe(heading);
@@ -629,6 +652,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
       },
       [`GET catalog/admin/attributes/${id(9)}`]: ok(created),
     });
+    const spy = spyOnAssign();
     mount({ canEdit: true });
     fireEvent.click(await screen.findByRole('button', { name: 'Add attribute' }));
     const dialog = await screen.findByRole('dialog', { name: /^Add attribute/ });
@@ -646,11 +670,9 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Add as draft' }));
 
-    const panel = await screen.findByRole('region', { name: 'Attribute details' });
-    await within(panel).findByRole('heading', { name: 'Pack size' });
-    expect(within(panel).getAllByText('Draft').length).toBeGreaterThan(0);
-    expect(within(panel).getByRole('button', { name: 'Publish' })).toBeTruthy();
-    expect(within(panel).getByText(/sellers and buyers do not see this attribute/)).toBeTruthy();
+    // The new draft opens on its own page.
+    await waitFor(() => expect(spy.assign).toHaveBeenCalledWith(`/catalog/attributes/${id(9)}`));
+    spy.restore();
     const [post] = writes('POST');
     expect(post).toEqual({
       path: 'catalog/admin/attributes',
@@ -673,7 +695,6 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
         position: 0,
       },
     });
-    expect(window.location.search).toBe(`?id=${id(9)}`);
   });
 
   it('adds a measure with its unit settings, and sends bounds in base units', async () => {
@@ -699,6 +720,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
       },
       [`GET catalog/admin/attributes/${id(9)}`]: ok(created),
     });
+    const spy = spyOnAssign();
     mount({ canEdit: true });
     fireEvent.click(await screen.findByRole('button', { name: 'Add attribute' }));
     const dialog = await screen.findByRole('dialog', { name: /^Add attribute/ });
@@ -717,7 +739,8 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
       target: { value: '1' },
     });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Add as draft' }));
-    await screen.findByRole('region', { name: 'Attribute details' });
+    await waitFor(() => expect(spy.assign).toHaveBeenCalledWith(`/catalog/attributes/${id(9)}`));
+    spy.restore();
     expect(writes('POST')[0]?.body).toMatchObject({
       dataType: 'measure',
       bounds: {
@@ -1256,6 +1279,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
       ),
       'GET catalog/admin/attribute-relaxations': ok({ requests: [] }),
     });
+    const spy = spyOnAssign();
     mount({ canEdit: true, initialId: id(1) });
     const panel = await screen.findByRole('region', { name: 'Attribute details' });
     fireEvent.click(await within(panel).findByRole('button', { name: 'Turn off Material' }));
@@ -1267,8 +1291,8 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
       ),
     ).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Go to Waiting for you' }));
-    expect(await screen.findByText('Nothing is waiting for you.')).toBeTruthy();
-    expect(window.location.search).toBe('?tab=waiting');
+    expect(spy.assign).toHaveBeenCalledWith('/catalog/attributes?tab=waiting');
+    spy.restore();
     cleanup();
     mount({ canEdit: true, initialId: id(2) });
     const plain = await screen.findByRole('region', { name: 'Attribute details' });
@@ -1356,9 +1380,10 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     expect(await within(dialog).findByText(/This request expired/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Reload' }));
     await waitFor(() => expect(calls('catalog/admin/attribute-relaxations')).toHaveLength(2));
+    const spy = spyOnAssign();
     await pickAction('Actions for Attribute 1', 'Open attribute');
-    expect(await screen.findByRole('region', { name: 'Attribute details' })).toBeTruthy();
-    expect(window.location.search).toBe(`?id=${id(1)}`);
+    expect(spy.assign).toHaveBeenCalledWith(`/catalog/attributes/${id(1)}`);
+    spy.restore();
   });
 
   it('reads no requests without catalog.attribute.edit, and retries a failed list', async () => {

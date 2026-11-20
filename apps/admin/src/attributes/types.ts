@@ -6,6 +6,8 @@ export const EDIT_PERMISSION = 'catalog.attribute.edit';
 export const RESTRUCTURE_PERMISSION = 'catalog.attribute.restructure';
 export const BRANDS_READ_PERMISSION = 'catalog.brand.read';
 export const ATTRIBUTES_PATH = '/catalog/attributes';
+/** The page of one attribute. */
+export const attributePath = (id: string): string => `${ATTRIBUTES_PATH}/${encodeURIComponent(id)}`;
 export const BRANDS_PATH = '/catalog/brands';
 export const API_ATTRIBUTES = 'catalog/admin/attributes';
 export const API_FEATURE_SETS = 'catalog/admin/feature-sets';
@@ -90,6 +92,11 @@ export interface AttributePage {
   readonly items: readonly AttributeRow[];
   readonly nextAfterId: string | null;
   readonly total: number;
+  /** The page read (the list query contract); absent from the older keyset read. */
+  readonly page?: number;
+  readonly pageSize?: number;
+  readonly paging?: 'pages' | 'prev-next';
+  readonly hasNext?: boolean;
   readonly totalAll: number;
   readonly locales: MarketLocales;
   readonly units: readonly MarketUnit[];

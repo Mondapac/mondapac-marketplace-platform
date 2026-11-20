@@ -13258,6 +13258,89 @@
       "value-code-needed": "Required: the name has no Latin letters or digits. Use letters a to z, digits and hyphens.",
       "value-code-bad": "Start with a letter; use only letters a to z, digits and hyphens.",
       "title": "Value suggestions from sellers"
+    },
+    "detail-page": {
+      "back": "Back to attributes"
+    },
+    "list": {
+      "title": "Attributes",
+      "intro": "Attributes are the fields a product carries, such as size or flavour.",
+      "tabs": "Attribute views",
+      "tab": {
+        "all": "All",
+        "active": "Active",
+        "draft": "Draft",
+        "archived": "Archived"
+      },
+      "search": {
+        "label": "Search attributes",
+        "placeholder": "Name or code"
+      },
+      "filter": {
+        "title": "Filter attributes"
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "code": "Code",
+          "name": "Name",
+          "type": "Type",
+          "status": "Status"
+        },
+        "az": {
+          "first": "A to Z",
+          "second": "Z to A"
+        }
+      },
+      "sorted": "Sorted by {field}, {order}",
+      "col": {
+        "attribute": "Attribute",
+        "type": "Type",
+        "status": "Status",
+        "products": "Products",
+        "feature-sets": "Feature sets",
+        "languages": "Languages"
+      },
+      "chip-search": "Search: {text}",
+      "loading": "Loading attributes",
+      "match": "{count, plural, one {# attribute matches} other {# attributes match}}",
+      "range": "{from}–{to} of {total}",
+      "too-many": "More than {limit} attributes match. Add a search to see the rest.",
+      "no-access": "Your role cannot see attributes.",
+      "error": {
+        "unavailable": "The attributes could not be loaded. Check your connection and try again.",
+        "refused": "The search cannot be used. Change it and try again."
+      },
+      "empty": {
+        "title": "No attributes yet",
+        "body": "Create the first one with Add attribute.",
+        "no-match": "No attributes match",
+        "no-match-help": "Change the search or filters, or clear them."
+      },
+      "select": {
+        "page": "Select all attributes on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# attribute selected} other {# attributes selected}}",
+        "all": "{count, plural, one {The # matching attribute is selected} other {All # matching attributes are selected}}",
+        "all-open": "All matching attributes are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}",
+        "open": "Open"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# attribute selected} other {# attributes selected}}",
+        "all-open": "All matching attributes selected"
+      }
     }
   },
   "ship-to-retention": {

@@ -58,7 +58,7 @@ function failureOf(status: number, code: string): Failure {
 
 /** The query string a list route is asked: the tab, search, filters, sort and page. */
 export function pagedQueryString<Row>(
-  config: Pick<PagedListConfig<Row>, 'tabs' | 'tabParam' | 'tabParams'>,
+  config: Pick<PagedListConfig<Row>, 'tabs' | 'tabParam' | 'tabParams' | 'search'>,
   query: PagedQuery,
   paging: ListPagingMode,
 ): string {
@@ -69,7 +69,7 @@ export function pagedQueryString<Row>(
   if (query.tab !== config.tabs[0] && config.tabParam !== undefined) {
     params.set(config.tabParam, query.tab);
   }
-  if (query.q !== '') params.set('q', query.q);
+  if (query.q !== '') params.set(config.search?.param ?? 'q', query.q);
   for (const [name, value] of Object.entries(query.filters)) params.set(name, value);
   params.set('page', String(query.page));
   params.set('pageSize', String(PAGE_SIZE));
