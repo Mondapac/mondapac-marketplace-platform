@@ -86,19 +86,28 @@ function cancelParts([first, ...rest]: AccountOrder['parts']): AccountOrder['par
   return [cancel(first), ...rest.map(cancel)];
 }
 
-/** The item count, items subtotal, delivery fees and total of an order. */
+/**
+ * The item count, items subtotal, delivery fees and total of an order, with what discounts took
+ * off the items and the delivery (zero without any). The total is what the buyer paid.
+ */
 export function orderTotals(order: AccountOrder): {
   count: number;
   items: Money;
+  discount: Money;
   delivery: Money;
+  deliveryDiscount: Money;
   total: Money;
 } {
   const currency = order.includedTax.currency;
   let count = 0;
   let items = 0;
+  let discount = 0;
   let delivery = 0;
+  let deliveryDiscount = 0;
   for (const part of order.parts) {
     delivery += part.deliveryFee.amount;
+    discount += part.discount?.amount ?? 0;
+    deliveryDiscount += part.deliveryDiscount?.amount ?? 0;
     for (const line of part.lines) {
       count += line.quantity;
       items += line.unitPrice.amount * line.quantity;
@@ -107,8 +116,10 @@ export function orderTotals(order: AccountOrder): {
   return {
     count,
     items: { amount: items, currency },
+    discount: { amount: discount, currency },
     delivery: { amount: delivery, currency },
-    total: { amount: items + delivery, currency },
+    deliveryDiscount: { amount: deliveryDiscount, currency },
+    total: { amount: items - discount + delivery - deliveryDiscount, currency },
   };
 }
 

@@ -41,3 +41,28 @@ export interface SellerReviewPage {
   readonly items: readonly SellerReview[];
   readonly nextCursor: string | null;
 }
+
+/** The actions the API names for a row of the list (the server decides per caller and review). */
+export type ReviewRowAction = 'open' | 'reply' | 'edit-reply' | 'report';
+
+export interface SellerReviewRow extends SellerReview {
+  readonly actions: readonly ReviewRowAction[];
+}
+
+export interface ReviewListCounts {
+  readonly all: number;
+  readonly unanswered: number;
+  readonly answered: number;
+  readonly low: number;
+}
+
+/** The answer of GET reviews/seller/list. `total` is null with Previous and next. */
+export interface ReviewListPage {
+  readonly items: readonly SellerReviewRow[];
+  readonly counts: ReviewListCounts;
+  readonly total: number | null;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly paging: 'pages' | 'prev-next';
+  readonly hasNext: boolean;
+}

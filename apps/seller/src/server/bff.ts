@@ -40,6 +40,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // export as a file (the chosen ids or the list's own query).
     'reviews/seller/list',
     'reviews/seller/export',
+    // The saved filters of the seller lists that use the generic routes (lists; query: `listKey`).
+    'lists/seller/saved-filters',
     'payments/seller/payout-account',
     'ordering/seller/orders',
     // The shop's invite link and its sign-up count (customers phase 4a).
@@ -160,6 +162,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'notifications/seller/notices/read-all',
     // Save the order list's current view as a tab (ordering): a closed body, always for the member.
     'ordering/seller/saved-filters',
+    // Save the current view of a generic seller list (reviews): a closed body, for me or the store.
+    'lists/seller/saved-filters',
     // Propose a category (a shelf of the seller's shop; categories C9b).
     'catalog/seller/category-proposals',
   ]),
@@ -171,6 +175,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
  */
 const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   PUT: [
+    // A saved filter of a generic seller list: its name and who can use it (lists).
+    'lists/seller/saved-filters/:id',
     // A saved view of the order list: its name (ordering).
     'ordering/seller/saved-filters/:id',
     'inventory/seller/sources/:id',
@@ -230,6 +236,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   ],
   PATCH: ['reviews/seller/:id/reply', 'promotions/seller/promotions/:id'],
   DELETE: [
+    // A saved filter of a generic seller list (lists); the list key is in the query.
+    'lists/seller/saved-filters/:id',
     'catalog/seller/offers/:id',
     'catalog/seller/products/:id/images/:id',
     'catalog/seller/saved-filters/:id',
@@ -264,6 +272,8 @@ const OWN_PAYOUT_SELECTOR: Readonly<Record<string, RegExp>> = {
   direction: /^(asc|desc)$/,
 };
 /** Per GET target, the query keys passed on and, where set, the shape each value must have. */
+/** The seller lists on the generic saved-filter routes of `lists`. */
+const GENERIC_LIST_KEY = /^seller\.reviews\.list$/;
 const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>>>> = {
   // The page mode and the filters of the orders list (the API validates every value).
   'ordering/seller/orders': {
@@ -373,6 +383,7 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     direction: /^(asc|desc)$/,
   },
   'catalog/seller/saved-filters': { listKey: /^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,3}$/ },
+  'lists/seller/saved-filters': { listKey: GENERIC_LIST_KEY },
   'notifications/seller/notices': { show: /^(unread|read|all)$/, before: UUID },
   'reviews/seller/list': {
     view: /^(all|unanswered|answered|low)$/,
@@ -414,6 +425,10 @@ const QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp
   'customers/seller/customers/:code': { page: /^[0-9]{1,4}$/, pageSize: /^[0-9]{1,3}$/ },
   'catalog/seller/imports/:id/report': { kind: /^(errors|full)$/ },
 };
+/** DELETE templates whose query crosses: the list key of a generic saved filter. */
+const DELETE_QUERY_KEYS_WITH_ID: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'lists/seller/saved-filters/:id': { listKey: GENERIC_LIST_KEY },
+};
 const QUERY_VALUE_MAX = 512;
 /** A longer value for a key that carries a list: 100 ids of 36 characters and 99 commas. */
 const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
@@ -428,10 +443,12 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */
 function upstreamQuery(method: string, path: readonly string[], requestUrl: string): string {
   const keys =
-    method !== 'GET'
-      ? undefined
-      : (QUERY_KEYS[path.join('/')] ??
-        Object.entries(QUERY_KEYS_WITH_ID).find(([template]) => matches(template, path))?.[1]);
+    method === 'DELETE'
+      ? Object.entries(DELETE_QUERY_KEYS_WITH_ID).find(([template]) => matches(template, path))?.[1]
+      : method !== 'GET'
+        ? undefined
+        : (QUERY_KEYS[path.join('/')] ??
+          Object.entries(QUERY_KEYS_WITH_ID).find(([template]) => matches(template, path))?.[1]);
   if (keys === undefined) return '';
   const source = new URL(requestUrl).searchParams;
   const kept = new URLSearchParams();

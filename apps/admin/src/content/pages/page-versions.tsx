@@ -1,9 +1,9 @@
 'use client';
 
-import { Badge, Banner, Button, Dialog, toast, type BadgeTone } from '@mondapac/ui';
+import { Badge, Banner, Button, Dialog, Menu, toast, type BadgeTone } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { formatInstantInZone } from '../../shared/format.ts';
 import { PageActions } from './page-actions.tsx';
 import { PageEditorHeader } from './page-editor-header.tsx';
@@ -47,6 +47,7 @@ export function PageVersions({
   const router = useRouter();
   const problemText = useProblemText();
   const command = usePageCommand(csrfToken);
+  const cancelButton = useRef<HTMLButtonElement>(null);
   const [restoring, setRestoring] = useState<PageVersion | null>(null);
 
   const readOnly = isReadOnlyPage(page, canEdit);
@@ -121,17 +122,20 @@ export function PageVersions({
                 </p>
               </div>
               {readOnly || version.state === 'draft' ? null : (
-                <Button
-                  variant="secondary"
-                  aria-label={t('restore-label', { n: version.versionNo })}
-                  disabled={command.pending}
-                  onClick={() => {
-                    command.reset();
-                    setRestoring(version);
-                  }}
-                >
-                  {t('restore')}
-                </Button>
+                <Menu
+                  label={t('actions-for', { n: version.versionNo })}
+                  items={[
+                    {
+                      id: 'restore',
+                      label: t('restore'),
+                      disabled: command.pending,
+                      onSelect: () => {
+                        command.reset();
+                        setRestoring(version);
+                      },
+                    },
+                  ]}
+                />
               )}
             </li>
           ))}
@@ -140,11 +144,12 @@ export function PageVersions({
       {restoring === null ? null : (
         <Dialog
           open
+          initialFocus={cancelButton}
           title={t('restore-title', { n: restoring.versionNo })}
           onClose={close}
           actions={
             <>
-              <Button variant="secondary" onClick={close}>
+              <Button ref={cancelButton} variant="secondary" onClick={close}>
                 {t('cancel')}
               </Button>
               {stale ? (
@@ -157,7 +162,11 @@ export function PageVersions({
                   {t('reload')}
                 </Button>
               ) : (
-                <Button loading={command.pending} onClick={() => void restore()}>
+                <Button
+                  variant="destructive-solid"
+                  loading={command.pending}
+                  onClick={() => void restore()}
+                >
                   {t('restore-confirm')}
                 </Button>
               )}

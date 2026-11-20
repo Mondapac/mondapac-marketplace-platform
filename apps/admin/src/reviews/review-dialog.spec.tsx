@@ -8,8 +8,9 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
-import { ModerationQueue } from './moderation-queue.tsx';
-import { REASONS, type QueuePage, type ReviewDetail, type ReviewRow } from './types.ts';
+import { shortId } from '../shared/short-id.ts';
+import { ReviewDialog } from './review-dialog.tsx';
+import { REASONS, type Action, type ReviewDetail, type ReviewRow } from './types.ts';
 
 const call = vi.mocked(callApi);
 const REVIEW = '0190a000-0000-7000-8000-0000000000a1';
@@ -36,12 +37,6 @@ const row = (over: Partial<ReviewRow> = {}): ReviewRow => ({
   signalCodes: ['profanity'],
   ...over,
 });
-const counts = { held: 2, reported: 1, actioned: 0 };
-const queue = (items: ReviewRow[], nextCursor: string | null = null, tab = 'held') => ({
-  ok: true as const,
-  status: 200,
-  body: { tab, items, nextCursor, counts } as QueuePage,
-});
 const detail = (over: Partial<ReviewDetail> = {}) => ({
   ok: true as const,
   status: 200,
@@ -62,13 +57,25 @@ const detail = (over: Partial<ReviewDetail> = {}) => ({
     ...over,
   },
 });
-const mount = (canModerate = true, canRemove = true) =>
+const changed = vi.fn();
+const mount = (canModerate = true, canRemove = true, initialAction: Action | null = null) =>
   render(
-    wrap(<ModerationQueue canModerate={canModerate} canRemove={canRemove} csrfToken="csrf-1" />),
+    wrap(
+      <ReviewDialog
+        reviewId={REVIEW}
+        initialAction={initialAction}
+        canModerate={canModerate}
+        canRemove={canRemove}
+        csrfToken="csrf-1"
+        onClose={() => {}}
+        onChanged={changed}
+      />,
+    ),
   );
 
 beforeEach(() => {
   call.mockReset();
+  changed.mockReset();
   HTMLDialogElement.prototype.showModal = function showModal() {
     this.setAttribute('open', '');
   };
@@ -78,50 +85,10 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-describe('the buyer review queue', () => {
-  it('lists held reviews with their flags and counts per tab, and reads the other tab on click', async () => {
-    call.mockResolvedValueOnce(queue([row()]));
-    mount();
-    expect(await screen.findByRole('button', { name: /Awful - Not what I ordered/ })).toBeTruthy();
-    expect(screen.getByText('Blocked word')).toBeTruthy();
-    expect(screen.getByRole('img', { name: '1 out of 5' })).toBeTruthy();
-    expect(call).toHaveBeenCalledWith('GET', 'reviews/admin/moderation?tab=held&limit=25');
-    call.mockResolvedValueOnce(queue([], null, 'reported'));
-    fireEvent.click(screen.getByRole('button', { name: /Reported/ }));
-    expect(await screen.findByText('No review has an open report.')).toBeTruthy();
-    expect(call).toHaveBeenLastCalledWith('GET', 'reviews/admin/moderation?tab=reported&limit=25');
-  });
-
-  it('pages with the cursor and shows an error with a retry', async () => {
-    call.mockResolvedValueOnce(queue([row()], 'cursor-1'));
-    mount();
-    await screen.findByRole('button', { name: /Awful/ });
-    call.mockResolvedValueOnce(
-      queue([row({ id: '0190a000-0000-7000-8000-0000000000a2', title: 'Second' })]),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
-    expect(await screen.findByRole('button', { name: /Second/ })).toBeTruthy();
-    expect(call).toHaveBeenLastCalledWith(
-      'GET',
-      'reviews/admin/moderation?tab=held&limit=25&cursor=cursor-1',
-    );
-  });
-
-  it('shows a load error and loads again on retry', async () => {
-    call.mockResolvedValueOnce({ ok: false, failure: { status: 503, code: 'unknown' } });
-    mount();
-    expect(await screen.findByText('The reviews could not be loaded. Try again.')).toBeTruthy();
-    call.mockResolvedValueOnce(queue([row()]));
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByRole('button', { name: /Awful/ })).toBeTruthy();
-  });
-
+describe('the review dialog', () => {
   it('opens a review with its reports and history, and hides it with a reason after a two-step code', async () => {
-    call.mockResolvedValueOnce(queue([row()]));
-    mount();
-    const opener = await screen.findByRole('button', { name: /Awful/ });
     call.mockResolvedValueOnce(detail());
-    fireEvent.click(opener);
+    mount();
     expect(await screen.findByText('Not what I ordered')).toBeTruthy();
     expect(screen.getByText('Abusive (2)')).toBeTruthy();
     expect(screen.getByText(/Held for review by the system or the buyer/)).toBeTruthy();
@@ -139,7 +106,6 @@ describe('the buyer review queue', () => {
       },
     });
     call.mockResolvedValueOnce(detail({ status: 'hidden', allowedActions: ['restore', 'remove'] }));
-    call.mockResolvedValueOnce(queue([row({ status: 'hidden' })]));
     fireEvent.click(screen.getByRole('button', { name: 'Hide' }));
     await waitFor(() =>
       expect(call).toHaveBeenCalledWith(
@@ -153,16 +119,12 @@ describe('the buyer review queue', () => {
   });
 
   it('applies an action that needs no code and shows the review as it is now', async () => {
-    call.mockResolvedValueOnce(queue([row()]));
-    mount();
-    const opener = await screen.findByRole('button', { name: /Awful/ });
     call.mockResolvedValueOnce(detail());
-    fireEvent.click(opener);
+    mount();
     await screen.findByText('Not what I ordered');
     fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'dismiss-reports' } });
     fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'duplicate' } });
     call.mockResolvedValueOnce(detail({ reportReasons: [], allowedActions: ['publish', 'hide'] }));
-    call.mockResolvedValueOnce(queue([row()]));
     fireEvent.click(screen.getByRole('button', { name: 'Dismiss reports' }));
     await waitFor(() =>
       expect(call).toHaveBeenCalledWith(
@@ -176,11 +138,8 @@ describe('the buyer review queue', () => {
   });
 
   it('shows what changed when another moderator moved the review first', async () => {
-    call.mockResolvedValueOnce(queue([row()]));
-    mount();
-    const opener = await screen.findByRole('button', { name: /Awful/ });
     call.mockResolvedValueOnce(detail());
-    fireEvent.click(opener);
+    mount();
     await screen.findByText('Not what I ordered');
     fireEvent.change(screen.getByLabelText('Action'), { target: { value: 'publish' } });
     fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'checked-ok' } });
@@ -189,7 +148,6 @@ describe('the buyer review queue', () => {
       failure: { status: 409, code: 'reviews.not-moderatable' },
     });
     call.mockResolvedValueOnce(detail({ status: 'hidden', allowedActions: ['restore'] }));
-    call.mockResolvedValueOnce(queue([]));
     fireEvent.click(screen.getByRole('button', { name: 'Publish' }));
     expect(
       await screen.findByText(
@@ -199,11 +157,8 @@ describe('the buyer review queue', () => {
   });
 
   it('offers only the actions the person may take: no remove without the remove permission', async () => {
-    call.mockResolvedValueOnce(queue([row()]));
-    mount(true, false);
-    const opener = await screen.findByRole('button', { name: /Awful/ });
     call.mockResolvedValueOnce(detail());
-    fireEvent.click(opener);
+    mount(true, false);
     await screen.findByText('Not what I ordered');
     const options = within(screen.getByLabelText('Action'))
       .getAllByRole('option')
@@ -212,13 +167,50 @@ describe('the buyer review queue', () => {
   });
 
   it('offers no action to someone who can only view', async () => {
-    call.mockResolvedValueOnce(queue([row()]));
-    mount(false, false);
-    const opener = await screen.findByRole('button', { name: /Awful/ });
     call.mockResolvedValueOnce(detail());
-    fireEvent.click(opener);
+    mount(false, false);
     expect(await screen.findByText('No action applies to this review now.')).toBeTruthy();
     expect(screen.queryByLabelText('Action')).toBeNull();
+  });
+
+  it('starts with the action the row menu chose, when the review still allows it', async () => {
+    call.mockResolvedValueOnce(detail());
+    mount(true, true, 'hide');
+    await screen.findByText('Not what I ordered');
+    expect(screen.getByLabelText<HTMLSelectElement>('Action').value).toBe('hide');
+    expect(screen.getByLabelText('Reason')).toBeTruthy();
+  });
+
+  it('starts with no action when the chosen one no longer applies', async () => {
+    call.mockResolvedValueOnce(detail({ status: 'hidden', allowedActions: ['restore', 'remove'] }));
+    mount(true, true, 'hide');
+    await screen.findByText('Not what I ordered');
+    expect(screen.getByLabelText<HTMLSelectElement>('Action').value).toBe('');
+  });
+
+  it('removes only after the short id is typed (it cannot be undone)', async () => {
+    call.mockResolvedValueOnce(detail());
+    mount(true, true, 'remove');
+    await screen.findByText('Not what I ordered');
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'illegal' } });
+    const remove = screen.getByRole<HTMLButtonElement>('button', { name: 'Remove' });
+    expect(remove.disabled).toBe(true);
+    const box = screen.getByLabelText(`Type ${shortId(REVIEW)} to remove this review`);
+    fireEvent.change(box, { target: { value: 'wrong' } });
+    expect(remove.disabled).toBe(true);
+    fireEvent.change(box, { target: { value: ` ${shortId(REVIEW).toUpperCase()} ` } });
+    expect(remove.disabled).toBe(false);
+    call.mockResolvedValueOnce(detail({ status: 'removed', allowedActions: [] }));
+    fireEvent.click(remove);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        `reviews/admin/moderation/${REVIEW}/remove`,
+        { reasonCode: 'illegal' },
+        'csrf-1',
+      ),
+    );
+    await waitFor(() => expect(changed).toHaveBeenCalled());
   });
 
   it('has no reason that would hide a review for being negative', () => {

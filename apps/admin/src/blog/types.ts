@@ -33,3 +33,9 @@ export const BLOG_TAXONOMY_PERMISSION = 'blog.taxonomy.edit';
 export const TAXONOMY_PATH = '/content/blog/taxonomy';
 export const BLOG_PUBLISH_PERMISSION = 'blog.post.publish';
 export const BLOG_PAUSE_PERMISSION = 'blog.post.pause';
+
+/** The blog media library: the upload key, the list and upload route, and a picture's rendition. */
+export const BLOG_MEDIA_EDIT_PERMISSION = 'blog.media.edit';
+export const API_BLOG_MEDIA = 'blog/admin/media';
+export const mediaUrl = (id: string, size: 'thumb' | 'large'): string =>
+  `/api/${API_BLOG_MEDIA}/${id}/${size}`;

@@ -392,3 +392,70 @@ describe('orders nav', () => {
     expect(ids(['ordering.order.view'])).toContain('orders');
   });
 });
+
+describe('order discounts (promotions T2)', () => {
+  it.each([
+    ['AUD', '$'],
+    ['NZD', 'NZD '],
+  ])(
+    'shows the discounts of a line and a seller part only when there are any (%s)',
+    (currency, sign) => {
+      const cash = (amount: string) => ({ amount, currency });
+      const discounted = part({
+        subtotal: cash('2000'),
+        shipping: cash('500'),
+        shippingGross: cash('0'),
+        discount: cash('300'),
+        shippingDiscount: cash('500'),
+        tax: cash('155'),
+        total: cash('1700'),
+        lines: part().lines.map((line) => ({
+          ...line,
+          unitPrice: cash('1000'),
+          lineAmount: cash('2000'),
+          discount: cash('300'),
+          tax: cash('155'),
+        })),
+      });
+      render(
+        wrap(
+          <OrderDetail
+            {...DETAIL_PROPS}
+            canViewCustomer={false}
+            order={order({ total: cash('1700'), tax: cash('155'), sellerOrders: [discounted] })}
+          />,
+        ),
+      );
+      expect(screen.getByText((text) => text.includes(`Discount: ${sign}3.00`))).toBeTruthy();
+      expect(screen.getByText('Discount')).toBeTruthy();
+      expect(screen.getByText(`−${sign}3.00`)).toBeTruthy();
+      expect(screen.getByText('Delivery discount')).toBeTruthy();
+      expect(screen.getByText(`−${sign}5.00`)).toBeTruthy();
+      cleanup();
+      render(wrap(<OrderDetail {...DETAIL_PROPS} canViewCustomer={false} order={order()} />));
+      expect(screen.queryByText(/Discount/)).toBeNull();
+      expect(screen.queryByText('Delivery discount')).toBeNull();
+    },
+  );
+
+  it('names the discount-changed cancel reason', () => {
+    render(
+      wrap(
+        <OrderDetail
+          {...DETAIL_PROPS}
+          canViewCustomer={false}
+          order={order({
+            status: 'cancelled',
+            cancelReason: 'discount-changed',
+            cancelledAt: '2026-10-13T02:00:00.000Z',
+            confirmedAt: null,
+            paymentState: 'none',
+          })}
+        />,
+      ),
+    );
+    expect(
+      screen.getByText(/This order was cancelled: A discount no longer applied\./),
+    ).toBeTruthy();
+  });
+});

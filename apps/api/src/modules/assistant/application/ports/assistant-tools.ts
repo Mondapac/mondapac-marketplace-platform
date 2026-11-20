@@ -9,6 +9,8 @@ export interface ToolOutcome {
   readonly isError: boolean;
   readonly cards: readonly AssistantCard[];
   readonly notices: readonly AssistantNotice[];
+  /** A product search that found nothing (feeds the admin's unanswered questions). */
+  readonly noResults?: boolean;
 }
 
 /**
