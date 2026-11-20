@@ -184,7 +184,7 @@ describe.each(['AU', 'ZZ'] as const)('"Needs a look" list and export in market %
     expect([...sameDay].sort()).toEqual([a, b].sort());
   });
 
-  it('sorts by the measured day in both directions, the seller id breaking a tie', async () => {
+  it('sorts by the measured day in both directions', async () => {
     const { ask, add } = setup();
     const old = add('Old', 10, 'late-ready', null, '2026-11-08');
     const fresh = add('Fresh', 20, 'late-ready', null, '2026-11-10');
@@ -198,18 +198,19 @@ describe.each(['AU', 'ZZ'] as const)('"Needs a look" list and export in market %
   it('reads the queue and the files for the caller Market only', async () => {
     const { ask, exporter, admin, add, marketsSeen } = setup();
     const mine = add('Shop', 1);
+    // The list read and the export read each name the caller's Market, and no other.
     await ask({});
+    expect(marketsSeen.length).toBeGreaterThan(0);
+    expect(new Set(marketsSeen)).toEqual(new Set([code]));
+    marketsSeen.length = 0;
     const done = await exporter.execute(admin(), { ids: mine });
     expect(done.ok).toBe(true);
-    expect(marketsSeen.length).toBeGreaterThan(1);
+    expect(marketsSeen.length).toBeGreaterThan(0);
     expect(new Set(marketsSeen)).toEqual(new Set([code]));
-    // An id that is not in this Market's queue (another Market's seller) is refused whole.
+    // An id that is not in the queue is refused whole.
     expect(
       await exporter.execute(admin(), { ids: '01990000-0000-7000-8000-0000000000aa' }),
-    ).toMatchObject({
-      ok: false,
-      error: { code: 'file.not-found' },
-    });
+    ).toMatchObject({ ok: false, error: { code: 'file.not-found' } });
   });
 
   it('exports XLSX with its own content type and file name', async () => {
