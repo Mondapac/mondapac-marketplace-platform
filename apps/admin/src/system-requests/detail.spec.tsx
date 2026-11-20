@@ -152,6 +152,65 @@ describe('RequestDetail', () => {
     ).toBeTruthy();
   });
 
+  it('shows the impact counts the API sent, with "at least" for a capped one', async () => {
+    call.mockResolvedValue(
+      ok(
+        detail({
+          subjectKind: 'catalog.category-restructure',
+          area: 'catalogue',
+          mode: 'approval',
+          impact: {
+            items: [
+              { label: 'products', count: 1240, atLeast: false },
+              { label: 'offers', count: 10_000, atLeast: true },
+              { label: 'subcategories', count: 1, atLeast: false },
+              { label: 'something-new', count: 4, atLeast: false },
+            ],
+          },
+        }),
+      ),
+    );
+    mount();
+    const heading = await screen.findByRole('heading', { name: 'Impact' });
+    const card = heading.closest('section') as HTMLElement;
+    const lines = within(card)
+      .getAllByRole('listitem')
+      .map((line) => line.textContent);
+    // A label this build does not know is left out.
+    expect(lines).toEqual(['1,240 products', 'at least 10,000 offers', '1 subcategory']);
+    expect(
+      within(card).getByText(
+        'How many records this change touches, counted when you opened this request.',
+      ),
+    ).toBeTruthy();
+  });
+
+  it('shows one seller in the singular', async () => {
+    call.mockResolvedValue(
+      ok(detail({ impact: { items: [{ label: 'sellers', count: 1, atLeast: false }] } })),
+    );
+    mount();
+    const card = (await screen.findByRole('heading', { name: 'Impact' })).closest(
+      'section',
+    ) as HTMLElement;
+    expect(within(card).getByRole('listitem').textContent).toBe('1 seller');
+  });
+
+  it('hides the impact when the API sends none, nothing known, or no field', async () => {
+    for (const impact of [
+      null,
+      { items: [] },
+      { items: [{ label: 'secrets', count: 3, atLeast: false }] },
+      undefined,
+    ]) {
+      call.mockResolvedValue(ok(detail({ impact })));
+      mount();
+      await screen.findByRole('heading', { level: 1 });
+      expect(screen.queryByRole('heading', { name: 'Impact' })).toBeNull();
+      cleanup();
+    }
+  });
+
   it('shows a null rate as the Market default', async () => {
     call.mockResolvedValue(ok(detail({ before: { rateBps: null }, after: { rateBps: 900 } })));
     mount();

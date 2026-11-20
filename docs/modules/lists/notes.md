@@ -98,6 +98,23 @@ true`), `sort`, `direction`. Search text and the deep-link subject are never sav
   `seller.ordering.orders` offers `paid, delivery, items, total`; `panel-columns.spec.ts` pins both to
   the seller panel's `OPTIONAL_COLUMNS`.
 
+## Phase 4 lists (PR10)
+
+- Registered admin lists: `admin.commission-payouts.payouts` (21), `admin.commission-payouts.disputes`
+  (23), `admin.payments.connected-accounts` (22), `admin.wallet.credit-requests` (24),
+  `admin.customers.deletion-requests` (25) and `admin.blog.posts` (26). Each `viewKey` is the key
+  its list use case checks; each `shareKey` is its module's `<module>.saved-filter.share`
+  (customers reuses `customers.saved-filter.share`).
+- Their payload is one closed shape, `savedListPayloadParser` (`contracts/saved-list-payload.ts`):
+  `{v: 1, view, q?, filters, sort, direction}`, `view` only for a list with views (the Seller
+  accounts list has none), no paging or columns. The view, `q` and filters go through the list's own
+  selector reader, so a saved value is one the list accepts; the stored form is canonical (ids in
+  lower case, instants as ISO text in UTC, minor units as digits). Every saved text (`q` and each filter
+  value) must be a string: `null` or another type is `type`, a control, private-use, surrogate or
+  unassigned character is `format`, and blank text is left out.
+- The compact lists 27 and 28 have no saved filters. The seller Payouts list (33) joins on the
+  seller routes (B0-1b) in a follow-up.
+
 ## Not here yet
 
 - The switch of the panels to the generic `/lists/*` routes.

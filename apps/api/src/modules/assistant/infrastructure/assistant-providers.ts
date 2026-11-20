@@ -34,6 +34,14 @@ import { MESSAGE_LIMITS, type MessageLimits } from '../application/ports/message
 import { PREVIEW_TOKENS, type PreviewTokens } from '../application/ports/preview-tokens';
 import { QUICK_PROMPTS, type QuickPrompts } from '../application/ports/quick-prompts';
 import { SPEND_REPOSITORY, type SpendRepository } from '../application/ports/spend.repository';
+import {
+  FEEDBACK_REPOSITORY,
+  type FeedbackRepository,
+} from '../application/ports/feedback.repository';
+import {
+  INSIGHTS_REPOSITORY,
+  type InsightsRepository,
+} from '../application/ports/insights.repository';
 import { CatalogueQuickPrompts } from './catalogue-quick-prompts';
 import { CryptoGuestTokens } from './crypto-guest-tokens';
 import { HmacPreviewTokens } from './hmac-preview-tokens';
@@ -43,6 +51,8 @@ import { FacadeBasketSources } from './facade-basket-sources';
 import { GatewayAssistantRuntime } from './gateway-assistant-runtime';
 import { PrismaAssistantSettingsRepository } from './prisma-assistant-settings.repository';
 import { PrismaConversationRepository } from './prisma-conversation.repository';
+import { PrismaFeedbackRepository } from './prisma-feedback.repository';
+import { PrismaInsightsRepository } from './prisma-insights.repository';
 import { PrismaSpendRepository } from './prisma-spend.repository';
 import { RegistryMarketCalendar } from './registry-market-calendar';
 import { SubjectMessageLimits } from './subject-message-limits';
@@ -65,6 +75,17 @@ export const assistantProviders: readonly FactoryProvider[] = [
     inject: [PrismaService, SUBJECT_KEY_SERVICE],
     useFactory: (prisma: PrismaService, keys: SubjectKeyService): ConversationRepository =>
       new PrismaConversationRepository(prisma, keys),
+  },
+  {
+    provide: FEEDBACK_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): FeedbackRepository => new PrismaFeedbackRepository(prisma),
+  },
+  {
+    provide: INSIGHTS_REPOSITORY,
+    inject: [PrismaService, SUBJECT_KEY_SERVICE],
+    useFactory: (prisma: PrismaService, keys: SubjectKeyService): InsightsRepository =>
+      new PrismaInsightsRepository(prisma, keys),
   },
   {
     provide: SPEND_REPOSITORY,

@@ -531,6 +531,22 @@ export class PrismaRoleAssignmentRepository implements RoleAssignmentRepository 
     return rows.map((row) => row.accountId as Id<'Account'>);
   }
 
+  async countActiveHolders(
+    market: MarketContext,
+    roleId: Id<'Role'>,
+    limit: number,
+  ): Promise<number> {
+    // The read of activeHoldersOf, counted and stopped at `limit` rows.
+    return this.prisma.tx(market).identityRoleAssignment.count({
+      where: {
+        marketId: market.marketId,
+        roleId,
+        account: { status: 'active', emailVerifiedAt: { not: null } },
+      },
+      take: limit,
+    });
+  }
+
   async activeHoldersOfInSeller(
     market: MarketContext,
     roleId: Id<'Role'>,

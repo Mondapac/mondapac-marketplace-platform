@@ -38,6 +38,8 @@ import {
   FixedQuickPrompts,
   SequenceGuestTokens,
   UtcCalendar,
+  FakeInsights,
+  MemoryFeedback,
 } from './testing/assistant-fakes';
 import type {
   AssistantSettingsRecord,
@@ -295,13 +297,16 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
     actors = new FakeChangeActors();
     runtime = new FakeRuntime();
     const unitOfWork = new FakeUnitOfWork();
+    const conversations = new MemoryConversations();
     deps = {
       unitOfWork,
       settings,
       runtime,
       audit,
       clock,
-      conversations: new MemoryConversations(),
+      conversations,
+      feedback: new MemoryFeedback(conversations),
+      insights: new FakeInsights(),
       spend: new MemorySpend(),
       tools: new FakeTools(),
       limits: new MemoryLimits(),

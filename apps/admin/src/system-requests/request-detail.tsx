@@ -27,6 +27,7 @@ import { dayInZone, formatInstantInZone } from '../shared/format.ts';
 import { Activity } from './activity.tsx';
 import { DecisionDialog, type Decide } from './decision-dialogs.tsx';
 import { ChangeDiff, RequestedAction } from './diff.tsx';
+import { RequestImpactCard } from './impact.tsx';
 import type { Refusal } from './errors.ts';
 import {
   AreaBadge,
@@ -376,6 +377,7 @@ export function RequestDetail({
       <Card title={t(approval ? 'detail.note-approval' : 'detail.note')}>
         <p className="whitespace-pre-wrap break-words text-fg-secondary">{request.note}</p>
       </Card>
+      <RequestImpactCard impact={request.impact} />
       {approval ? (
         <RequestedAction
           kind={request.subjectKind}
