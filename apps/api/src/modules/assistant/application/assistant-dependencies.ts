@@ -7,6 +7,8 @@ import type { AssistantRuntime } from './ports/assistant-runtime';
 import type { AssistantSettingsRepository } from './ports/assistant-settings.repository';
 import type { AssistantTools } from './ports/assistant-tools';
 import type { ConversationRepository } from './ports/conversation.repository';
+import type { FeedbackRepository } from './ports/feedback.repository';
+import type { InsightsRepository } from './ports/insights.repository';
 import type { GuestTokens } from './ports/guest-tokens';
 import type { MarketCalendar } from './ports/market-calendar';
 import type { MessageLimits } from './ports/message-limits';
@@ -23,6 +25,8 @@ export interface AssistantDependencies {
   readonly clock: Clock;
   readonly conversations: ConversationRepository;
   readonly spend: SpendRepository;
+  readonly feedback: FeedbackRepository;
+  readonly insights: InsightsRepository;
   readonly tools: AssistantTools;
   readonly limits: MessageLimits;
   readonly guestTokens: GuestTokens;
