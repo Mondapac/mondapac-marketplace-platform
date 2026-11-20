@@ -10,6 +10,7 @@ import { forgetCsrfToken } from '../src/account/customer-api.ts';
 import { AccountSettings } from '../src/account/settings.tsx';
 import { Header } from '../src/shell/header.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
+import { keepInvite, readInvite } from '../src/invite/invite-cookie.ts';
 import { loadAccount } from '../src/storefront/source.ts';
 
 vi.mock('next/navigation', () => ({
@@ -440,6 +441,21 @@ describe('log out', () => {
     fireEvent.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Log out' }));
     expect(await screen.findByRole('heading', { level: 1, name: 'Log in' })).toBeTruthy();
     expect(called('POST', 'identity/customer/sign-out')).toHaveLength(1);
+  });
+
+  it('forgets a kept store invite on log out, and keeps it when log out fails', async () => {
+    keepInvite('abcdEFGH1234_-', 'Green Grocer');
+    signedIn({ 'POST identity/customer/sign-out': { status: 503, body: { code: 'x' } } });
+    renderLive(<p>Account page</p>);
+    await screen.findByText('Account page');
+    const logOut = within(screen.getByRole('banner')).getByRole('button', { name: 'Log out' });
+    fireEvent.click(logOut);
+    await waitFor(() => expect(called('POST', 'identity/customer/sign-out')).toHaveLength(1));
+    expect(readInvite()?.token).toBe('abcdEFGH1234_-');
+    signedIn({ 'POST identity/customer/sign-out': { status: 200 } });
+    fireEvent.click(logOut);
+    expect(await screen.findByRole('heading', { level: 1, name: 'Log in' })).toBeTruthy();
+    expect(readInvite()).toBeNull();
   });
 
   it('stays signed in when the API could not end the session', async () => {

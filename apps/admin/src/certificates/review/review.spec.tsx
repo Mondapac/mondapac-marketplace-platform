@@ -108,6 +108,17 @@ describe('review page', () => {
     expect(screen.getByText("The seller's business details were not found.")).toBeTruthy();
   });
 
+  it('offers a download for a file with an id, through the certificate path', () => {
+    view(
+      page({
+        documents: [
+          { documentId: SUB, position: 0, mediaType: 'application/pdf', byteSize: 1, pageCount: 1 },
+        ],
+      }),
+    );
+    expect(screen.getByRole('button', { name: 'Download file 1' })).toBeTruthy();
+  });
+
   it('names the missing required checks as text and keeps Approve from opening', () => {
     view(page());
     expect(screen.getByText('Record 1 required check first.')).toBeTruthy();
@@ -568,14 +579,17 @@ describe('review relay', () => {
     return upstream.mock.calls.length;
   };
 
-  it('relays the checks, scope, confirmation, three decisions and revoke, and not documents', async () => {
+  it('relays the checks, scope, confirmation, three decisions, revoke and one file read', async () => {
     const base = `certification/admin/seller-certificates/${CERT}`;
     for (const action of ['checks', 'scope', 'approve', 'request-changes', 'decline', 'revoke']) {
       expect(await send('POST', `${base}/${action}`)).toBe(1);
     }
     expect(await send('POST', `${base}/issuer-confirmation`)).toBe(1);
     expect(await send('GET', `${base}/issuer-confirmation`)).toBe(0);
-    expect(await send('GET', `${base}/documents/${SUB}`)).toBe(0);
+    expect(await send('GET', `${base}/documents/${SUB}`)).toBe(1);
+    expect(await send('POST', `${base}/documents/${SUB}`)).toBe(0);
+    expect(await send('GET', `${base}/documents/not-an-id`)).toBe(0);
+    expect(await send('GET', `${base}/documents`)).toBe(0);
     expect(await send('POST', 'certification/admin/seller-certificates/not-an-id/approve')).toBe(0);
   });
 });

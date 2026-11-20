@@ -22,6 +22,8 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
+import { SalesSavedViews } from '../sales/sales-saved-views.tsx';
+import { useSavedFilters } from '../sales/sales-saved.ts';
 import { SelectionBar } from '../sales/selection-bar.tsx';
 import { numberFormat } from '../shared/intl.ts';
 import { When } from '../shared/when.tsx';
@@ -49,6 +51,13 @@ import {
   type OptionalColumn,
   type Query,
 } from './seller-list-query.ts';
+import {
+  LIST_KEY,
+  payloadOf,
+  queryOf,
+  somethingToSave,
+  type SavedPayload,
+} from './seller-list-saved.ts';
 import { SellersBulk } from './sellers-bulk.tsx';
 import { HealthCell, StatusCell } from './sellers-cells.tsx';
 import { SellersColumnsPanel, SellersFilterPanel, SellersSortPanel } from './sellers-panels.tsx';
@@ -98,7 +107,8 @@ function countOf(
  * or filter); chips, columns, row selection with "select all matching", Export, the row Actions
  * menu and the footer of the Market's List paging setting. A seller's decision stays on its own
  * page, so there is no bulk action but Export. The column choice is the admin's own and lives in
- * this browser's storage. Saved filters are not wired yet (see seller-list-saved.ts).
+ * this browser's storage. Saved filters (personal, and shared with a permission) sit beside the
+ * built-in views; a saved state view is listed only for an admin who may see identity's state.
  */
 export function SellersList({
   csrfToken,
@@ -129,6 +139,8 @@ export function SellersList({
   });
   const { query } = list;
   const stateView = isStateTab(query.view);
+  const { saved, reload: loadSaved } = useSavedFilters<SavedPayload>(LIST_KEY);
+  const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
   const shortSearch = list.draft.trim().length > 0 && list.draft.trim().length < SEARCH_MIN;
 
   const [answer, setAnswer] = useState<SellerSuperPage | null>(null);
@@ -253,6 +265,14 @@ export function SellersList({
   const filters = filtersFor(query.view, query.filters);
   const withoutFilter = (field: FilterField): Filters =>
     Object.fromEntries(Object.entries(filters).filter(([name]) => name !== field));
+  // A saved tab that was deleted (here or by its owner) is no longer the one on show.
+  const { savedId, forgetSaved, openSaved } = list;
+  useEffect(() => {
+    if (savedId !== null && saved !== null && !saved.items.some((item) => item.id === savedId)) {
+      forgetSaved();
+    }
+  }, [saved, savedId, forgetSaved]);
+
   const clearAll = () => list.reset({ q: '', filters: {} });
 
   const searched = stateView ? undefined : searchOf(query.q);
@@ -288,6 +308,13 @@ export function SellersList({
     }),
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
   const filtered = chips.length > 0;
+  // The state views need identity's access key: a saved filter on one is listed only with it.
+  const stateKnown = stateCounts !== null || stateView;
+  const savedTabs = (saved?.items ?? []).filter(
+    (item) => stateKnown || !isStateTab(item.payload.view),
+  );
+  // "Save filter" is offered on a built-in view that shows something a saved filter can keep.
+  const canSave = saved !== null && savedId === null && somethingToSave(query);
 
   const healthDown = answer?.healthUnavailable === true;
   const optionalColumn = (id: OptionalColumn): SuperColumn<SellerSuperRow> => {
@@ -447,6 +474,17 @@ export function SellersList({
     `sort.${sortKind}.${query.direction === defaultDirection(query.sort, query.view) ? 'first' : 'second'}`,
   );
 
+  // What a saved filter holds, in words (the save dialog shows it).
+  const summary = [
+    t(`tab.${query.view}`),
+    // The search text is never saved, so its chip is not in the summary.
+    ...chips.filter((chip) => chip.key !== 'search').map((chip) => chip.label),
+    ...(query.sort !== DEFAULT_QUERY.sort ||
+    query.direction !== defaultDirection(query.sort, query.view)
+      ? [ts('saved.summary-sort', { field: `${t(`sort.field.${query.sort}`)}, ${sortOrder}` })]
+      : []),
+  ].join(' · ');
+
   const table = (
     <div className="flex flex-col gap-4">
       <SelectionBar
@@ -513,23 +551,34 @@ export function SellersList({
       }
       views={{
         label: t('tabs'),
-        activeId: query.view,
+        activeId: savedId ?? query.view,
         onSelect: (id) => {
+          const filter = savedTabs.find((item) => item.id === id);
+          if (filter !== undefined) {
+            const next = queryOf(filter.payload);
+            openSaved(id, next);
+            if (isStateTab(next.view)) list.setDraft('');
+            return;
+          }
           list.openView(id);
           // A state view has no search box: what was typed does not wait for a later view.
           if (isStateTab(id as Tab)) list.setDraft('');
         },
         // The state views need identity's access key: without it the answer carries no counts.
-        items: (stateCounts !== null || stateView ? [...FILE_TABS, ...STATE_TABS] : FILE_TABS).map(
-          (view) => {
+        items: [
+          ...(stateKnown ? [...FILE_TABS, ...STATE_TABS] : FILE_TABS).map((view) => {
             const count = countOf(counts, stateCounts, view);
             return {
               id: view,
               label: `${t(`tab.${view}`)}${count === null ? '' : ` (${number(count)})`}`,
             };
-          },
-        ),
-        manage: null,
+          }),
+          ...savedTabs.map((item) => ({ id: item.id, label: item.name })),
+        ],
+        manage:
+          saved === null
+            ? null
+            : { label: ts('saved.manage-link'), onClick: () => setDialog('manage') },
       }}
       {...(stateView
         ? {}
@@ -579,10 +628,13 @@ export function SellersList({
         ),
       }}
       chips={
-        filtered || shortSearch
+        filtered || shortSearch || canSave
           ? {
               chips,
               ...(filtered ? { clearAll: { label: ts('clear-all'), onClick: clearAll } } : {}),
+              ...(canSave
+                ? { save: { label: ts('saved.save-link'), onClick: () => setDialog('save') } }
+                : {}),
               status: shortSearch
                 ? t('search.too-short', { min: SEARCH_MIN })
                 : total === null || failure !== null
@@ -610,6 +662,28 @@ export function SellersList({
       loadingLabel={t('loading')}
       slowLabel={tl('slow')}
       ready={answer !== null}
+      dialogs={
+        saved === null ? undefined : (
+          <SalesSavedViews
+            dialog={dialog}
+            onClose={() => setDialog(null)}
+            listKey={LIST_KEY}
+            payload={payloadOf(query)}
+            summary={summary}
+            saved={saved}
+            csrfToken={csrfToken}
+            idPrefix="sellers-list"
+            onSaved={(filter) => {
+              void loadSaved().then((items) => {
+                // Only a filter that is in the reloaded list can be the tab on show.
+                if (items?.some((item) => item.id === filter.id) === true)
+                  openSaved(filter.id, queryOf(filter.payload));
+              });
+            }}
+            onChanged={() => void loadSaved()}
+          />
+        )
+      }
       table={table}
       pagination={
         answer !== null && answer.items.length > 0 && failure === null

@@ -164,6 +164,83 @@ describe.each([
     );
   });
 
+  describe('held for approval (sensitive role, owner decision of 18 Nov 2026)', () => {
+    const held = () =>
+      Invitation.hold({
+        id: INVITATION_ID,
+        marketId,
+        kind: 'admin',
+        email: email('New.Admin@Example.test'),
+        roleId: ROLE_ID,
+        sellerId: null,
+        invitedByAccountId: ACCOUNT_ID,
+        now: NOW,
+      });
+
+    it('is stored pending and held, records no issue event, and is never dispatched, re-sent or accepted', () => {
+      const invitation = held();
+      expect(invitation.state).toMatchObject({
+        state: 'pending',
+        heldForApproval: true,
+        tokenHash: null,
+        version: 1,
+      });
+      expect(invitation.pendingEvents).toEqual([]);
+      const restored = Invitation.restore(invitation.state);
+      expect(restored.dispatch(HASH, NOW, lifetimeMinutes)).toEqual({
+        ok: false,
+        error: { code: 'invitation.rejected' },
+      });
+      expect(restored.reissuableAt(NOW, lifetimeMinutes)).toBe(false);
+      expect(restored.reissue(NOW, lifetimeMinutes).ok).toBe(false);
+      expect(restored.accept(ACCOUNT_ID, NOW).ok).toBe(false);
+      expect(restored.state.version).toBe(1);
+      expect(restored.pendingEvents).toEqual([]);
+    });
+
+    it('is released once: the issue event at the new version, then dispatched as usual', () => {
+      const invitation = Invitation.restore(held().state);
+      const later = NOW.add({ hours: 1 });
+      expect(invitation.release(later)).toEqual({ ok: true, value: undefined });
+      expect(invitation.state).toMatchObject({ heldForApproval: false, version: 2 });
+      expect(invitation.pendingEvents).toEqual([
+        expect.objectContaining({
+          type: 'identity.invitation-issued.v1',
+          aggregateVersion: 2,
+          payload: { invitationId: INVITATION_ID, kind: 'admin', sellerId: null },
+        }),
+      ]);
+      expect(invitation.release(later).ok).toBe(false);
+      expect(invitation.dispatch(HASH, later, lifetimeMinutes).ok).toBe(true);
+      expect(invitation.usableAt(later)).toBe(true);
+    });
+
+    it('is revoked like any pending invitation, and is then neither held nor released', () => {
+      const invitation = Invitation.restore(held().state);
+      expect(invitation.revoke(NOW).ok).toBe(true);
+      expect(invitation.state).toMatchObject({
+        state: 'revoked',
+        heldForApproval: false,
+        email: null,
+      });
+      expect(invitation.release(NOW).ok).toBe(false);
+    });
+
+    it('is never stored held unless pending, admin and unsent', () => {
+      expect(() => Invitation.restore({ ...dispatched().state, heldForApproval: true })).toThrow(
+        InvitationInvariantError,
+      );
+      expect(() =>
+        Invitation.restore({
+          ...held().state,
+          state: 'revoked',
+          email: null,
+          decidedAt: NOW,
+        }),
+      ).toThrow(InvitationInvariantError);
+    });
+  });
+
   it('refuses a short hash or a lifetime that is not a positive whole number', () => {
     const invitation = admin();
     expect(() => invitation.dispatch(new Uint8Array(31), NOW, lifetimeMinutes)).toThrow(RangeError);

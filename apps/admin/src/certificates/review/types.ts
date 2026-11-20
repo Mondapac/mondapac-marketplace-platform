@@ -26,6 +26,7 @@ export interface ReviewReason {
 }
 
 export interface ReviewDocument {
+  readonly documentId?: string;
   readonly position?: number;
   readonly mediaType?: string;
   readonly byteSize?: number;

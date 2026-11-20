@@ -41,6 +41,7 @@ import type {
   DeliveryWish,
   Money,
 } from '../storefront/types.ts';
+import { clearInvite } from '../invite/invite-cookie.ts';
 import { PALETTE_COOKIE, TEXT_SIZE_COOKIE, savePreference } from '../preferences/preferences.ts';
 import { checkReachable, reachable } from './connection.ts';
 
@@ -502,6 +503,9 @@ export function StoreProvider({
       setSaved([]);
       void readCart();
     }
+    // A store invite kept for this browser's sign-up must not carry over to the next person who
+    // signs in on it (a shared computer).
+    clearInvite();
     setCustomer(null);
     return true;
   }, [live, readCart]);
