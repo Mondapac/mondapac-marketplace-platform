@@ -222,6 +222,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/variants',
     'catalog/admin/variants/issue-counts',
     'catalog/admin/variants/export',
+    // The Brands list as a file (CSV or XLSX): the list's own filter (`status`, `q`).
+    'catalog/admin/brands/export',
     // The report of published products missing a required detail (catalog, attributes A4;
     // query: `sellerId`, `familyCode`, `afterId`, `limit`).
     'catalog/admin/reports/products-missing-details',
@@ -767,6 +769,11 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // The full status history of one seller certificate (certification): an audited read that
     // needs the protected document view permission (query: `beforeId`, `limit`).
     'certification/admin/seller-certificates/:id/history',
+    // The bytes of one file of a submission, and of one issuer request (certification): an audited
+    // read, an attachment under a name the server made. The API answers 403
+    // `document.download-disabled` while the Market's switch is off.
+    'certification/admin/seller-certificates/:id/documents/:id',
+    'certification/admin/issuer-requests/:id/documents/:id',
     // The photo library of a platform product, for the form's images card (catalog, P1).
     'catalog/admin/platform-products/:id/images',
     // The primary photo of a listed product, thumbnail size only (catalog).
@@ -1451,7 +1458,19 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sort',
     'direction',
   ],
-  'catalog/admin/brands': ['status', 'search', 'afterId', 'limit'],
+  'catalog/admin/brands': [
+    'status',
+    'originCountry',
+    'search',
+    'afterId',
+    'limit',
+    'q',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
   // The category tree, narrowed to the categories of one feature set (categories, A4).
   'catalog/admin/categories': ['featureSetId'],
   'catalog/admin/category-proposals': ['afterId', 'limit'],
@@ -1481,6 +1500,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   ],
   'catalog/admin/variants/issue-counts': ['typeCode'],
   'catalog/admin/variants/export': ['format', 'q', 'typeCode', 'issue'],
+  'catalog/admin/brands/export': ['format', 'status', 'originCountry', 'q'],
   'catalog/admin/reports/products-missing-details': ['sellerId', 'familyCode', 'afterId', 'limit'],
   'ordering/admin/refund-limits': ['sellerId'],
 };
@@ -2132,6 +2152,13 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sort: /^(newest|code|gtin)$/,
     direction: /^(asc|desc)$/,
   },
+  'catalog/admin/brands/export': {
+    format: /^(csv|xlsx)$/,
+    status: /^(draft|active|archived)$/,
+    originCountry: /^[A-Z]{2}$/,
+    // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+    q: /^[^\u0000-\u001f\u007f]{1,100}$/u,
+  },
   'catalog/admin/variants/issue-counts': { typeCode: /^[a-z][a-z0-9_-]{0,63}$/ },
   'catalog/admin/variants/export': {
     format: /^(csv|xlsx)$/,
@@ -2267,8 +2294,19 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'catalog/admin/category-proposals': { afterId: UUID, limit: /^[0-9]{1,2}$/ },
   'catalog/admin/brands': {
     status: /^(draft|active|archived)$/,
+    originCountry: /^[A-Z]{2}$/,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
+    // The search text: no control characters (a newline would pass a plain `.`), up to 100.
+    // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+    q: /^[^\u0000-\u001f\u007f]{1,100}$/u,
+    // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
+    search: /^[^\u0000-\u001f\u007f]{1,100}$/u,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^(name|status|created|updated)$/,
+    direction: /^(asc|desc)$/,
   },
   // `targetId` is the picked new parent or merge target, or `top` for a department (C4b).
   'catalog/admin/categories/:id/impact': {
@@ -2495,18 +2533,37 @@ function badScope(method: string, target: string, requestUrl: string): boolean {
 const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
   'payments/admin/connected-accounts/export',
   'security/admin/alerts/export',
+  'certification/admin/seller-certificates/export',
   'reviews/admin/moderation/export',
+  // Super list phase 4 exports (Hassan S1): a bad `ids` or filter refuses, never widens the file.
+  'commission-payouts/admin/payouts/export',
+  'commission-payouts/admin/disputes/export',
+  'wallet/admin/credit-requests/export',
+  'customers/admin/deletion-requests/export',
+  'blog/admin/posts/export',
+  'commission-payouts/admin/sellers/:id/ledger/export',
+  'commission-payouts/admin/sellers/:id/payout-holds/export',
 ]);
 
 /** The first known key of a strict target whose value cannot cross, or null. */
 function strictQueryRefusal(method: string, target: string, requestUrl: string): string | null {
-  if (method !== 'GET' || !STRICT_QUERY_TARGETS.has(target)) return null;
-  const shapes = QUERY_SHAPES[target] ?? {};
+  if (method !== 'GET') return null;
+  // A seller-page export carries the seller id in the path; match it by its `:id` template too.
+  const template = target
+    .split('/')
+    .map((part) => (UUID.test(part) ? ':id' : part))
+    .join('/');
+  if (!STRICT_QUERY_TARGETS.has(target) && !STRICT_QUERY_TARGETS.has(template)) return null;
+  const keys = QUERY_KEYS[target] ?? QUERY_KEYS_WITH_ID[template] ?? [];
+  const shapes = QUERY_SHAPES[target] ?? QUERY_SHAPES[template] ?? {};
   const source = new URL(requestUrl).searchParams;
-  for (const key of QUERY_KEYS[target] ?? []) {
+  for (const key of keys) {
     const value = source.get(key);
     if (value === null) continue;
-    const max = QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX;
+    const max =
+      QUERY_VALUE_MAX_FOR[`${target}:${key}`] ??
+      QUERY_VALUE_MAX_FOR[`${template}:${key}`] ??
+      QUERY_VALUE_MAX;
     if (value.length > max || shapes[key]?.test(value) === false) return key;
   }
   return null;

@@ -394,6 +394,8 @@ export class ListSellerAccounts extends UseCase<
             state: invitation.state,
             createdAt: invitation.createdAt,
             invitedByAccountId: invitation.invitedByAccountId,
+            // Only an admin invitation is ever held for approval.
+            heldForApproval: false,
             hasAddress: invitation.email !== '',
           },
           now,

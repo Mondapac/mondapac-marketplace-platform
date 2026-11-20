@@ -63,9 +63,18 @@ const openPage = (items: SellerSuperRow[], hasNext = false, page = 1) =>
 
 type Answer = SellerSuperPage | 'fail' | 'denied' | 'unauthenticated' | 'refused' | 'too-broad';
 
+type SavedRoute = (method: string, path: string) => Promise<never>;
+/** Until a test says otherwise the saved-filter route is not there: the controls stay hidden. */
+const noSavedRoute: SavedRoute = () =>
+  Promise.resolve({ ok: false, failure: { status: 404, code: 'not-found' } } as never);
+
 /** The list answers by its body, so the order of the calls does not matter. */
-function serve(answer: (body: Record<string, unknown>) => Answer) {
-  call.mockImplementation((_method, _path, body) => {
+function serve(
+  answer: (body: Record<string, unknown>) => Answer,
+  saved: SavedRoute = noSavedRoute,
+) {
+  call.mockImplementation((method, path, body) => {
+    if (path.startsWith('lists/admin/saved-filters')) return saved(method, path);
     const result = answer(body as Record<string, unknown>);
     const failure = (status: number, code: string) =>
       Promise.resolve({ ok: false as const, failure: { status, code } });
@@ -77,7 +86,10 @@ function serve(answer: (body: Record<string, unknown>) => Answer) {
     return Promise.resolve({ ok: true as const, status: 200, body: result } as never);
   });
 }
-const bodies = () => call.mock.calls.map((entry) => entry[2] as Record<string, unknown>);
+const bodies = () =>
+  call.mock.calls
+    .filter((entry) => !entry[1].startsWith('lists/admin/'))
+    .map((entry) => entry[2] as Record<string, unknown>);
 const lastBody = () => bodies()[bodies().length - 1]!;
 
 function mount(options: { paging?: 'pages' | 'prev-next'; initialTab?: Tab } = {}) {
@@ -665,6 +677,138 @@ describe('Sellers list: selection and Export', () => {
     );
     confirm(await openExport());
     expect(await screen.findByText(messages['sales-lists'].export.error['too-broad'])).toBeTruthy();
+  });
+});
+
+describe('Sellers list: saved filter tabs', () => {
+  const SAVED = 'lists/admin/saved-filters';
+  const item = (view: string, over: Record<string, unknown> = {}) => ({
+    id: '0190a000-0000-7000-8000-0000000000e1',
+    listKey: 'admin.sellers.list',
+    name: 'Brisbane reviews',
+    visibility: 'me',
+    payload: { v: 1, view, filters: { kind: 'onboarding' }, sort: 'name', direction: 'asc' },
+    ownedByMe: true,
+    canManage: true,
+    createdAt: '2026-11-01T00:00:00.000Z',
+    updatedAt: '2026-11-01T00:00:00.000Z',
+    ...over,
+  });
+  const savedWith =
+    (items: unknown[], canShare = false): SavedRoute =>
+    (_method, path) =>
+      Promise.resolve({
+        ok: true,
+        status: 200,
+        body: path.startsWith(SAVED) ? { items, canShare } : {},
+      } as never);
+
+  it('adds the saved filter as a tab and opens it with its view, filters and sort', async () => {
+    serve(() => pageOf([row(1)]), savedWith([item('awaiting-review')]));
+    mount();
+    await screen.findByText('Store 1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Brisbane reviews' }));
+    await waitFor(() => expect(lastBody()).toMatchObject({ view: 'awaiting-review' }));
+    expect(lastBody()).toMatchObject({ sort: 'name', direction: 'asc', page: 1 });
+    expect(lastBody()).toMatchObject({ kind: 'onboarding' });
+    expect(screen.getByRole('button', { name: 'Manage filters' })).toBeTruthy();
+  });
+
+  it('offers Save filter... on a built-in view that shows something to keep', async () => {
+    serve(() => pageOf([row(1)]), savedWith([], true));
+    mount();
+    await screen.findByText('Store 1');
+    expect(screen.queryByRole('button', { name: /^Save filter/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /^Awaiting review/ }));
+    expect(await screen.findByRole('button', { name: 'Save filter…' })).toBeTruthy();
+  });
+
+  it('keeps the controls hidden while the saved-filter route cannot answer', async () => {
+    serve(() => pageOf([row(1)]));
+    mount();
+    await screen.findByText('Store 1');
+    expect(screen.queryByRole('button', { name: 'Manage filters' })).toBeNull();
+  });
+
+  it('hides a saved state-view filter from an admin without identity.seller-access.view', async () => {
+    serve(
+      () => pageOf([row(1)], { stateCounts: null }),
+      savedWith([item('approved', { payload: { v: 1, view: 'approved' } })]),
+    );
+    mount();
+    await screen.findByText('Store 1');
+    expect(screen.queryByRole('button', { name: 'Brisbane reviews' })).toBeNull();
+  });
+
+  it('shows a saved state-view filter when the state views are known', async () => {
+    serve(
+      () => pageOf([row(1)]),
+      savedWith([item('approved', { payload: { v: 1, view: 'approved' } })]),
+    );
+    mount();
+    await screen.findByText('Store 1');
+    expect(await screen.findByRole('button', { name: 'Brisbane reviews' })).toBeTruthy();
+  });
+
+  it('clears the search when a saved tab opens, and leaves it out of the save summary', async () => {
+    serve(() => pageOf([row(1)]), savedWith([item('awaiting-review')], true));
+    mount();
+    await screen.findByText('Store 1');
+    fireEvent.click(screen.getByRole('button', { name: /^Awaiting review/ }));
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'abc' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByText(/abc/)).toBeNull();
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Brisbane reviews' }));
+    await waitFor(() => expect(screen.getByRole<HTMLInputElement>('searchbox').value).toBe(''));
+  });
+
+  it('falls back to the built-in view when the active saved tab is deleted', async () => {
+    let items: unknown[] = [item('awaiting-review')];
+    serve(
+      () => pageOf([row(1)]),
+      (method, path) =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          body: path.startsWith(SAVED) && method === 'GET' ? { items, canShare: false } : {},
+        } as never),
+    );
+    mount();
+    await screen.findByText('Store 1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Brisbane reviews' }));
+    await waitFor(() => expect(lastBody()).toMatchObject({ view: 'awaiting-review' }));
+    items = [];
+    fireEvent.click(screen.getByRole('button', { name: 'Manage filters' }));
+    await screen.findByRole('dialog');
+  });
+
+  it('keeps a name sort in the direction that is not its default, on every view', () => {
+    const base = { ...DEFAULT_QUERY, sort: 'name' as const };
+    for (const [view, direction] of [
+      ['all', 'desc'],
+      ['awaiting-review', 'desc'],
+    ] as const) {
+      const query = { ...base, view, direction };
+      expect(somethingToSave(query)).toBe(true);
+      expect(queryOf(payloadOf(query))).toMatchObject({ view, sort: 'name', direction });
+    }
+    // The default direction of a name sort is ascending and needs no key.
+    const asc = { ...base, direction: 'asc' as const };
+    expect(payloadOf(asc)).toEqual({ v: 1, view: 'all', sort: 'name' });
+    expect(queryOf(payloadOf(asc))).toMatchObject({ sort: 'name', direction: 'asc' });
+  });
+
+  it('works in a synthetic market too', async () => {
+    serve(() => pageOf([row(1)]), savedWith([item('awaiting-review')]));
+    render(
+      <NextIntlClientProvider locale="en-NZ" messages={messages}>
+        <SellersList csrfToken="csrf-1" paging="pages" accountId="acc-1" marketId="ZZ" />
+      </NextIntlClientProvider>,
+    );
+    await screen.findByText('Store 1');
+    expect(await screen.findByRole('button', { name: 'Brisbane reviews' })).toBeTruthy();
   });
 });
 

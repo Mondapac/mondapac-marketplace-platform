@@ -4,6 +4,7 @@ import {
   Banner,
   Button,
   EmptyState,
+  NoAccess,
   SuperList,
   browserStorage,
   listSkeletonRowCount,
@@ -39,6 +40,7 @@ import {
   FILTER_FIELDS,
   PAGE_SIZE,
   SELECTION_MAX,
+  TRUNCATE_AT,
   VIEWS,
   filterCount,
   type Filters,
@@ -144,6 +146,9 @@ export function QueueList({
   // user starts on the new rows and not on the pager they used.
   const listTop = useRef<HTMLDivElement>(null);
   const focusList = useRef(false);
+  // Saved filters stay hidden until the lists route answers for LIST_KEY (it does once the key is
+  // registered backend-side, #1091): `useSavedFilters` is null until then, and every control that
+  // needs it checks for null.
   const { saved, reload: loadSaved } = useSavedFilters<SavedPayload>(LIST_KEY);
   const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
   const typeNames = useMemo(
@@ -344,14 +349,12 @@ export function QueueList({
 
   if (failure === 'denied') {
     return (
-      <div>
-        <p className="text-fg-muted">{t('no-access')}</p>
-        <p className="mt-4">
-          <a className="font-medium text-link underline" href="/">
-            {t('back-home')}
-          </a>
-        </p>
-      </div>
+      <NoAccess
+        title={t('no-access')}
+        body={t('no-access-body')}
+        backHref="/"
+        backLabel={t('back-home')}
+      />
     );
   }
 
@@ -371,7 +374,11 @@ export function QueueList({
       <SelectionBar
         active={selection.selected.size > 0 || selection.allMatching}
         allMatching={selection.allMatching}
-        canSelectAll={wholePageTicked && moreThanPage && failure === null}
+        // Not offered over the cap: the API refuses a selector export of a cut list (413 batch.too-large),
+        // so the admin ticks rows instead (up to 200).
+        canSelectAll={
+          wholePageTicked && moreThanPage && failure === null && answer?.truncated !== true
+        }
         labels={{
           selected: t('selection.selected', { count: selection.selected.size }),
           all: total === null ? t('selection.all-open') : t('selection.all', { count: total }),
@@ -417,7 +424,7 @@ export function QueueList({
       }}
       notice={
         answer?.truncated === true && failure === null ? (
-          <Banner tone="info">{t('truncated', { limit: number(500) })}</Banner>
+          <Banner tone="info">{t('truncated', { limit: number(TRUNCATE_AT) })}</Banner>
         ) : undefined
       }
       views={{

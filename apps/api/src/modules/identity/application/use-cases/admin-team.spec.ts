@@ -292,6 +292,7 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       }),
       invite: new InviteAdmin(gate, {
         ...common,
+        proposer: common.review,
         throttles: fakes.throttleRepository,
         keys,
         permissions,
@@ -408,6 +409,7 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       invitedByAccountId: ROOT,
       tokenHash: new Uint8Array(32).fill(7),
       expiresAt: START.add({ hours: 1 }),
+      heldForApproval: false,
       state: 'pending',
       decidedAt: null,
       acceptedAccountId: null,

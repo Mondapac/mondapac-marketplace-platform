@@ -384,6 +384,7 @@
         "active": "Active",
         "invited": "Invited",
         "expired": "Invitation expired",
+        "awaiting-approval": "Awaiting approval",
         "deactivated": "Deactivated"
       },
       "role": {
@@ -449,6 +450,8 @@
           "help": "They'll get an email with a link to set their own password. The link works for {duration}.",
           "duration": "72 hours",
           "action": "Send invitation",
+          "action-approval": "Send for approval",
+          "approval-body": "This role has protected permissions, so another admin must approve the invitation in Admin Inbox > System requests. Nothing is sent until then.",
           "cancel": "Cancel",
           "toast-sent": "Invitation sent to {email}."
         },
@@ -1108,12 +1111,14 @@
       "title": "Sellers that need a look",
       "link": "Sellers that need a look",
       "back": "Back to sellers",
-      "intro": "Sellers whose latest health is Unhealthy, worst score first. Open a seller to see the measures and the trend.",
+      "intro": "Sellers whose latest health is Unhealthy, worst score first. Pick a measure to see the sellers it set, or open a seller to see the measures and the trend.",
       "col": {
         "seller": "Seller",
         "score": "Score",
         "lowest": "Lowest measure",
-        "measured": "Measured"
+        "measured": "Measured",
+        "seller-id": "Seller ID",
+        "actions": "Actions"
       },
       "unnamed": "Unnamed store",
       "unhealthy": "Unhealthy",
@@ -1126,15 +1131,106 @@
       },
       "empty": {
         "title": "No seller needs a look",
-        "body": "No seller is in the Unhealthy band right now."
+        "body": "No seller is in the Unhealthy band right now.",
+        "no-match": "No seller matches",
+        "no-match-help": "Change or clear the search and filters to see more sellers.",
+        "view": {
+          "all": "No seller needs a look",
+          "seller-cancellations": "No seller is unhealthy because of cancellations by the seller",
+          "late-ready": "No seller is unhealthy because of orders ready late",
+          "customer-rating": "No seller is unhealthy because of the customer rating",
+          "lost-disputes": "No seller is unhealthy because of disputes lost",
+          "reports": "No seller is unhealthy because of reports"
+        }
       },
-      "truncated": "Only the worst sellers are shown.",
+      "truncated": "Only the 200 sellers with the worst scores are in this list, so some unhealthy sellers are not shown. Exporting every matching seller is not possible until fewer are unhealthy; tick sellers to export them.",
       "unavailable": "We couldn't load the sellers. Try again.",
       "no-access": {
         "title": "You don't have access to this page",
         "body": "Ask an administrator for the permission to view sellers."
       },
-      "informs": "Health only informs. Nothing happens to a seller because of its score."
+      "informs": "Health only informs. Nothing happens to a seller because of its score.",
+      "back-home": "Back to home",
+      "views": "Seller health views",
+      "view": {
+        "all": "All"
+      },
+      "search": {
+        "label": "Search",
+        "placeholder": "Store name or slug",
+        "help": "Matches the start of a store name or slug. Type at least 2 characters.",
+        "too-short": "Type at least {min} characters to search."
+      },
+      "chip-search": "Search: \"{text}\"",
+      "filter": {
+        "title": "Filter sellers",
+        "name": {
+          "score": "Score"
+        },
+        "chip": {
+          "minScore": "Score from",
+          "maxScore": "Score up to"
+        },
+        "from": "From",
+        "to": "To",
+        "cancel": "Cancel",
+        "apply": "Apply",
+        "error": {
+          "score": "Use a whole number from 0 to 100.",
+          "range": "The end of the range is before its start."
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "score": "Score",
+          "name": "Store name",
+          "day": "Measured"
+        },
+        "score": {
+          "first": "Lowest first",
+          "second": "Highest first"
+        },
+        "name": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# seller matches} other {# sellers match}}",
+      "range": "{from}–{to} of {total} sellers",
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# seller selected} other {# sellers selected}}",
+        "all-open": "All matching sellers selected"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# seller selected} other {# sellers selected}}",
+        "all": "{count, plural, one {The # matching seller is selected} other {All # matching sellers are selected}}",
+        "all-open": "All matching sellers are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "select": {
+        "page": "Select all sellers on this page",
+        "page-short": "Select all",
+        "row": "Select {name}"
+      },
+      "row": {
+        "open": "Open",
+        "menu": "Actions for {name}"
+      },
+      "loading": "Loading sellers...",
+      "error": {
+        "unavailable": "We couldn't load the sellers. Try again.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      }
     },
     "health": {
       "title": "Seller health",
@@ -1245,6 +1341,7 @@
     "queue": {
       "title": "Certificates waiting for a decision",
       "no-access": "You don't have access to certificates.",
+      "no-access-body": "Viewing the certificate queue needs the certificate view permission. Ask an administrator who can grant it.",
       "back-home": "Back to dashboard",
       "unavailable": "Certificates could not be loaded.",
       "more": "Next page",
@@ -1356,11 +1453,21 @@
         "decide": "Decide…"
       }
     },
+    "file-download": {
+      "button": "Download file {n}",
+      "failure": {
+        "disabled": "Downloading files is switched off.",
+        "denied": "You may not download this file.",
+        "missing": "This file is no longer available.",
+        "unavailable": "The file could not be downloaded. Try again."
+      }
+    },
     "tabs": {
       "label": "Certificates sections",
       "queue": "Review queue",
       "issuers": "Issuers",
       "requests": "Issuer requests",
+      "requests-open": "Issuer requests ({count})",
       "types": "Types"
     },
     "issuers": {
@@ -1584,7 +1691,7 @@
         "title": "Documents",
         "none": "No file was sent.",
         "file": "File {n} · {type} · {pages, plural, one {# page} other {# pages}} · {size} MB",
-        "note": "Opening a file is recorded. Downloads are not offered on this screen yet."
+        "note": "Each download is recorded."
       },
       "business": {
         "title": "From the seller's application",
@@ -1831,7 +1938,7 @@
         "files": "Files",
         "no-files": "No file was sent.",
         "file": "File {n} · {type}{pages, plural, =0 {} one { · # page} other { · # pages}} · {size}",
-        "files-note": "Downloads are not offered on this screen yet."
+        "files-note": "Each download is recorded."
       },
       "answer": {
         "title": "Answer",
@@ -9658,13 +9765,11 @@
   "brands": {
     "title": "Brands",
     "intro": "Brands are shared by all markets. Products link to a brand instead of typing its name.",
-    "new": "New brand",
+    "new": "New brand…",
     "tabs": "Brand lists",
     "tab": {
-      "active": "Active",
-      "draft": "Proposed",
-      "duplicates": "Duplicates",
-      "archived": "Archived"
+      "brands": "Brands",
+      "duplicates": "Duplicates"
     },
     "search": "Search by name, slug or alias",
     "search-label": "Search brands",
@@ -9775,13 +9880,18 @@
         "title": "Turn down {name}?",
         "body": "The proposal is archived and its page stays off the site. Products keep the brand they have.",
         "yes": "Turn down proposal",
-        "cancel": "Keep it"
+        "cancel": "Cancel"
       },
       "archive": {
         "title": "Archive {name}?",
         "body": "The brand page stops answering. Products keep their brand. To fold it into another brand, merge instead.",
         "yes": "Archive brand",
-        "cancel": "Keep it"
+        "cancel": "Cancel"
+      },
+      "reason": {
+        "label": "Reason",
+        "optional": "optional",
+        "help": "One line, up to 500 characters. It is kept with the brand."
       }
     },
     "merge": {
@@ -9821,32 +9931,117 @@
       "confirm-yes": "{count, plural, one {Merge # value} other {Merge # values}}",
       "confirm-body": "{count, plural, one {# other value is} other {# other values are}} archived and {moved, plural, one {# product moves} other {# products move}} to {name}. The old names stay as aliases."
     },
-    "not-set": "Not set"
+    "not-set": "Not set",
+    "list": {
+      "title": "Brands",
+      "intro": "Brands are shared by all markets. Products link to a brand instead of typing its name.",
+      "tabs": "Brand views",
+      "tab": {
+        "active": "Active",
+        "draft": "Proposed",
+        "archived": "Archived"
+      },
+      "search": {
+        "label": "Search brands",
+        "placeholder": "Name, web address or alias"
+      },
+      "filter": {
+        "title": "Filter brands",
+        "name": {
+          "originCountry": "Origin country"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "name": "Name",
+          "status": "Status",
+          "created": "Date added",
+          "updated": "Last updated"
+        },
+        "az": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        }
+      },
+      "sorted": "Sorted by {field}, {order}",
+      "col": {
+        "brand": "Brand",
+        "origin": "Origin",
+        "status": "Status",
+        "updated": "Updated"
+      },
+      "chip-search": "Search: {text}",
+      "loading": "Loading brands",
+      "match": "{count, plural, one {# brand matches} other {# brands match}}",
+      "range": "{from}–{to} of {total}",
+      "too-many": "More than {limit} brands match. Add a search to see the rest.",
+      "no-access": "You do not have access to the brands.",
+      "error": {
+        "unavailable": "The brands could not be loaded. Check your connection and try again.",
+        "refused": "The search cannot be used. Change it and try again."
+      },
+      "empty": {
+        "title": "No brands here yet",
+        "body": "Brands that match the view will show here.",
+        "no-match": "No brands match",
+        "no-match-help": "Change the search or clear it."
+      },
+      "select": {
+        "page": "Select all brands on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# brand selected} other {# brands selected}}",
+        "all": "{count, plural, one {The # matching brand is selected} other {All # matching brands are selected}}",
+        "all-open": "All matching brands are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}",
+        "approve": "Approve…",
+        "edit": "Edit…",
+        "merge": "Merge into this…",
+        "archive": "Archive…",
+        "reject": "Turn down…"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# brand selected} other {# brands selected}}",
+        "all-open": "All matching brands selected",
+        "export": "Export…"
+      },
+      "export": {
+        "title": "Export brands",
+        "body": "The file holds every brand the current view, search and filters match.",
+        "legend": "File format",
+        "csv": "CSV",
+        "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+        "xlsx": "XLSX",
+        "xlsx-help": "An Excel workbook. Every cell is plain text, so nothing runs as a formula.",
+        "confirm": "Export",
+        "cancel": "Cancel",
+        "pending": "Preparing the file",
+        "done": "File downloaded",
+        "too-large": "More than {max} brands match. Narrow the filter and export again.",
+        "unavailable": "The file could not be made. Try again in a moment."
+      }
+    }
   },
   "reviews-moderation": {
     "title": "Reviews",
     "page-title": "Reviews",
     "no-access": "You do not have access to the buyer review queue.",
     "back-home": "Back to the dashboard",
-    "intro": "Reviews waiting for a person, reviews buyers have reported, and reviews already hidden or removed. A review is moderated as a whole: its text is never edited. A true negative review that follows the review policy is never hidden for being negative.",
-    "tabs": "Queue",
-    "tab": {
-      "held": "Held",
-      "reported": "Reported",
-      "actioned": "Hidden or removed"
-    },
-    "empty": {
-      "held": "No review is waiting.",
-      "reported": "No review has an open report.",
-      "actioned": "No review has been hidden or removed."
-    },
-    "col": {
-      "review": "Review",
-      "rating": "Rating",
-      "status": "Status",
-      "flags": "Flags",
-      "submitted": "Submitted"
-    },
     "stars": "{rating} out of 5",
     "status": {
       "published": "Published",
@@ -9878,8 +10073,6 @@
     "no-text": "No text, rating only",
     "loading": "Loading reviews",
     "retry": "Try again",
-    "more": "Show more",
-    "footnote": "Hiding can be undone; removing cannot. Every change needs a fresh two-step code and is recorded with your account and a reason.",
     "error": {
       "unavailable": "The reviews could not be loaded. Try again.",
       "not-found": "This review no longer exists.",
@@ -9894,7 +10087,15 @@
       "action-placeholder": "Choose an action",
       "reason": "Reason",
       "reason-placeholder": "Choose a reason",
-      "remove-note": "Removing is for illegal, defamatory or private content. It cannot be undone."
+      "remove-note": "Removing is for illegal, defamatory or private content. It cannot be undone.",
+      "type-to-remove": "Type {id} to remove this review",
+      "title-for": {
+        "publish": "Publish review",
+        "hide": "Hide review",
+        "restore": "Restore review",
+        "remove": "Remove review",
+        "dismiss-reports": "Dismiss reports"
+      }
     },
     "submitted": "Submitted {date}",
     "product": "Product",
@@ -9946,7 +10147,114 @@
       "author": "the buyer"
     },
     "no-actions": "No action applies to this review now.",
-    "policy-note": "Choose a reason from the list. There is no reason for a negative review: a true negative review is never hidden."
+    "policy-note": "Choose a reason from the list. There is no reason for a negative review: a true negative review is never hidden.",
+    "list": {
+      "title": "Reviews to moderate",
+      "intro": "Reviews waiting for a person, reviews a shop has reported, and reviews already hidden or removed. A review is moderated as a whole: its text is never edited, and a true negative review is never hidden for being negative. Every change needs a reason and a fresh two-step code. Hiding can be undone; removing cannot.",
+      "zone-note": "Times are shown in {zone}.",
+      "no-access": "You do not have access to the buyer review queue.",
+      "back-home": "Back to the dashboard",
+      "views": "Moderation views",
+      "view": {
+        "all": "All",
+        "held": "Held",
+        "reported": "Reported",
+        "actioned": "Hidden or removed"
+      },
+      "row-name": "the {rating}-star review {text}",
+      "none": "None",
+      "not-edited": "Not edited",
+      "col": {
+        "review": "Review",
+        "rating": "Rating",
+        "status": "Status",
+        "reports": "Open reports",
+        "submitted": "Submitted",
+        "actions": "Actions",
+        "review-id": "Review ID",
+        "product-id": "Product ID",
+        "offer-id": "Offer ID",
+        "seller-id": "Seller ID",
+        "locale": "Language",
+        "edited": "Edited",
+        "signals": "Automatic checks"
+      },
+      "search": {
+        "label": "Search",
+        "placeholder": "Search review text, or a review, offer or product ID"
+      },
+      "chip-search": "Search is {text}",
+      "chip-seller": "Seller is {id}",
+      "filter": {
+        "title": "Filter reviews",
+        "stars": "{count, plural, one {# star} other {# stars}}",
+        "name": {
+          "minRating": "Stars at least",
+          "maxRating": "Stars at most",
+          "reportReason": "Report reason",
+          "submitted": "Submitted"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "submitted": "Submitted",
+          "rating": "Rating"
+        },
+        "submitted": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "rating": {
+          "first": "Lowest first",
+          "second": "Highest first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# review matches} other {# reviews match}}",
+      "range": "{from}-{to} of {total}",
+      "loading": "Loading reviews…",
+      "error": {
+        "unavailable": "The reviews couldn't be loaded.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      },
+      "empty": {
+        "all": "No review needs a moderator.",
+        "held": "No review is waiting.",
+        "reported": "No review has an open report.",
+        "actioned": "No review has been hidden or removed.",
+        "no-match": "No reviews match",
+        "no-match-help": "Try other filters or clear them."
+      },
+      "select": {
+        "page": "Select all reviews on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# review selected} other {# reviews selected}}",
+        "all": "{count, plural, one {The # matching review is selected} other {All # matching reviews are selected}}",
+        "all-open": "All matching reviews are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# review selected} other {# reviews selected}}",
+        "all-open": "All matching reviews selected"
+      },
+      "actions": {
+        "for": "Actions for {name}",
+        "open": "Open…",
+        "publish": "Publish…",
+        "restore": "Restore…",
+        "dismiss-reports": "Dismiss reports…",
+        "hide": "Hide…",
+        "remove": "Remove…"
+      }
+    }
   },
   "business-activities": {
     "title": "Business activities",
