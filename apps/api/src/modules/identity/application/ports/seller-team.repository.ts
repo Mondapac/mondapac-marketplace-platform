@@ -151,6 +151,13 @@ export interface RoleAssignmentRepository {
   activeHoldersOf(market: MarketContext, roleId: Id<'Role'>): Promise<Id<'Account'>[]>;
 
   /**
+   * How many holders of this role can sign in (the read of {@link activeHoldersOf}), counting at
+   * most `limit`: a bounded count for the System requests impact (Hassan I1 on PR #1146), read in
+   * a read-only unit.
+   */
+  countActiveHolders(market: MarketContext, roleId: Id<'Role'>, limit: number): Promise<number>;
+
+  /**
    * The holders of this role in one seller that can sign in: accounts with an active membership
    * of `sellerId` and an assignment of `roleId`, active and with a verified email (identity design
    * 5.5, `LastHolderPolicy` for the Seller Owner role; slice 11). Read in the caller's

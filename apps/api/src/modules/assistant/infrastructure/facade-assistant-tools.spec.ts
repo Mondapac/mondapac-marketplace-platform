@@ -64,6 +64,7 @@ const store: PublishedStore = {
   slug: 'fresh-farm',
   name: 'Fresh Farm',
   serviceAreaCode: 'BNE',
+  serviceAreaName: 'Brisbane',
   sellingSince: 2024,
 };
 

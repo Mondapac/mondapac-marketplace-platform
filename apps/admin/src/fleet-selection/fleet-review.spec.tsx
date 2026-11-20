@@ -112,7 +112,8 @@ describe('the fleet page where a change is reviewed', () => {
 describe('the model editor where a change is reviewed', () => {
   it('asks a model edit for a note by the page flag, and sends it', async () => {
     mount(selection({ review }));
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Cheapest first' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Cheapest first' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit…' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
     expect(await screen.findAllByText(/Write a note for the reviewers/)).toHaveLength(1);
     expect(call).not.toHaveBeenCalled();
@@ -219,7 +220,8 @@ describe('the model editor where a change is reviewed', () => {
   it('shows a 400 on note on the model form', async () => {
     call.mockResolvedValue(noteRefused);
     mount(selection({ review }));
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Cheapest first' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Cheapest first' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit…' }));
     type('x', 1);
     fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
     expect(await screen.findByText(/The note was refused/)).toBeTruthy();

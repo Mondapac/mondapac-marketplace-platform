@@ -30,7 +30,7 @@ export interface AttributionFilters {
   readonly status?: 'active' | 'rejected';
   readonly rejectReason?: 'seller-team' | 'admin';
   readonly flag?: 'link-burst';
-  /** UTC days, YYYY-MM-DD. */
+  /** Days in the admin's panel time zone (else the Market's), YYYY-MM-DD. */
   readonly attributedFrom?: string;
   readonly attributedTo?: string;
 }

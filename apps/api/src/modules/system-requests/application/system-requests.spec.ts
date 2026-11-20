@@ -26,9 +26,11 @@ import {
   SYSTEM_REQUESTS_REQUEST_VIEW,
 } from '../contracts/permissions';
 import type { AppliedChange, ProposedChange } from '../contracts/recorder';
-import type {
-  ChangeReviewArea,
-  ChangeReviewRisk,
+import {
+  IMPACT_TIMEOUT_MS,
+  MAX_IMPACT_COUNT,
+  type ChangeReviewArea,
+  type ChangeReviewRisk,
 } from '../../../platform/change-review/change-review';
 import { POLICY_AREAS, RISKS, type PolicyArea, type Risk } from '../domain/areas';
 import {
@@ -38,7 +40,8 @@ import {
 import { EXPORT_TOTAL_CAP, type SystemRequestsExportDependencies } from './export-flow';
 import { listRequests } from './list-flow';
 import { changeAreaPolicy, DUE_DAYS_KIND, POLICY_AREA_KIND, PolicyReverter } from './policy-flow';
-import { approveRequest, commentOnRequest, withdrawRequest } from './request-flow';
+import { approveRequest, commentOnRequest, impactOf, withdrawRequest } from './request-flow';
+import { IMPACT_CACHE_TTL_MS, ImpactCache } from './impact-cache';
 import { ReverterRegistry, ReverterRegistryError } from './reverter-registry';
 import { SystemRequestRecorderImplementation } from './system-request-recorder';
 import type { SystemRequestsDependencies } from './system-requests-dependencies';
@@ -199,6 +202,7 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       adminNames: names,
       ids: new SequenceIdGenerator(clock),
       clock,
+      impactCache: new ImpactCache(),
     };
     for (const [area, kind] of Object.entries(KIND_OF)) {
       registry.facade.register('settings', kind, area as keyof typeof KIND_OF, subjects);
@@ -1759,6 +1763,226 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
         ok: false,
         error: { fields: [{ path: 'cursor', code: 'format' }] },
       });
+    });
+  });
+
+  describe('the impact count (detail only)', () => {
+    const view = (who: Id<'Account'>, requestId: string, ctx = market) =>
+      useCase(ViewSystemRequest).execute(admin(who, ctx), { requestId });
+    const impactOfView = async (who: Id<'Account'>, requestId: string) => {
+      const detail = await view(who, requestId);
+      if (!detail.ok) throw new Error('view failed');
+      return detail.value.impact;
+    };
+    /** Past the cache's lifetime, so the next view asks the module again. */
+    const pastCache = () =>
+      clock.advance(Temporal.Duration.from({ milliseconds: IMPACT_CACHE_TTL_MS }));
+
+    it("shows the owning module's counts on an open request to its author and its reviewers", async () => {
+      const items = [
+        { label: 'products', count: 1240, atLeast: false },
+        { label: 'offers', count: 3800, atLeast: true },
+      ];
+      subjects.impacts.set(`${market.marketId}:list-paging`, { items });
+      const opened = await change(MAKER, 'list-paging', { v: 1 }, { v: 2 });
+      expect(await impactOfView(CHECKER, opened.id)).toEqual({ items });
+      expect(await impactOfView(MAKER, opened.id)).toEqual({ items });
+      // The hook gets the request's values and the viewer's context, in the request's Market.
+      expect(subjects.impactAsked).toEqual([
+        {
+          marketId: market.marketId,
+          request: {
+            requestId: opened.id,
+            subjectRef: 'list-paging',
+            before: { v: 1 },
+            after: { v: 2 },
+          },
+        },
+        expect.objectContaining({ marketId: market.marketId }),
+      ]);
+    });
+
+    it('asks nothing and shows none to a viewer who may not see the values, or on a decided request', async () => {
+      subjects.impacts.set(`${market.marketId}:list-paging`, {
+        items: [{ label: 'products', count: 3, atLeast: false }],
+      });
+      const opened = await change(MAKER, 'list-paging', { v: 1 }, { v: 2 });
+      // OUTSIDER sees the queue but reviews no area: no values, so no counts either.
+      expect(await impactOfView(OUTSIDER, opened.id)).toBeNull();
+      expect(subjects.impactAsked).toEqual([]);
+      await useCase(ApproveSystemRequest).execute(admin(CHECKER), { requestId: opened.id });
+      expect(await impactOfView(CHECKER, opened.id)).toBeNull();
+      expect(subjects.impactAsked).toEqual([]);
+    });
+
+    it('shows none for a kind without the hook', async () => {
+      const proposal = await propose(MAKER, 'spices');
+      expect(await impactOfView(CHECKER, proposal.id)).toBeNull();
+    });
+
+    it("keeps the Market: the request's own Market's counts only, never found from another", async () => {
+      subjects.impacts.set(`${market.marketId}:list-paging`, {
+        items: [{ label: 'products', count: 5, atLeast: false }],
+      });
+      subjects.impacts.set(`${other.marketId}:list-paging`, {
+        items: [{ label: 'products', count: 7, atLeast: false }],
+      });
+      const opened = await change(MAKER, 'list-paging', { v: 1 }, { v: 2 });
+      expect(await impactOfView(CHECKER, opened.id)).toEqual({
+        items: [{ label: 'products', count: 5, atLeast: false }],
+      });
+      expect(await view(CHECKER, opened.id, other)).toMatchObject({
+        ok: false,
+        error: { code: 'system-requests.not-found' },
+      });
+      expect(subjects.impactAsked.map((asked) => asked.marketId)).toEqual([market.marketId]);
+    });
+
+    it(`caps each count at ${MAX_IMPACT_COUNT} as "at least", and drops what is not a known whole count`, async () => {
+      subjects.impacts.set(`${market.marketId}:list-paging`, {
+        items: [
+          { label: 'products', count: 25_000, atLeast: false },
+          { label: 'offers', count: MAX_IMPACT_COUNT - 1, atLeast: false },
+          { label: 'admins', count: MAX_IMPACT_COUNT, atLeast: false },
+          { label: 'sellers', count: MAX_IMPACT_COUNT + 1, atLeast: false },
+          { label: 'categories', count: MAX_IMPACT_COUNT + 1, atLeast: true },
+          { label: 'products', count: 1, atLeast: false }, // a second products line
+          { label: 'secrets', count: 1, atLeast: false },
+          { label: 'sellers', count: -1, atLeast: false },
+          { label: 'drafts', count: 1.5, atLeast: false },
+          { label: 'filters', count: '4', atLeast: false },
+          { label: 'categories', count: 4, atLeast: 'no' },
+          null,
+          { label: 'feature-sets', count: 0, atLeast: false },
+        ],
+      });
+      const opened = await change(MAKER, 'list-paging', { v: 1 }, { v: 2 });
+      expect(await impactOfView(CHECKER, opened.id)).toEqual({
+        items: [
+          { label: 'products', count: MAX_IMPACT_COUNT, atLeast: true },
+          { label: 'offers', count: MAX_IMPACT_COUNT - 1, atLeast: false },
+          { label: 'admins', count: MAX_IMPACT_COUNT, atLeast: true },
+          { label: 'sellers', count: MAX_IMPACT_COUNT, atLeast: true },
+          { label: 'categories', count: MAX_IMPACT_COUNT, atLeast: true },
+          { label: 'feature-sets', count: 0, atLeast: false },
+        ],
+      });
+    });
+
+    it('shows none when the module answers null, nothing valid or another shape, or fails', async () => {
+      const opened = await change(MAKER, 'list-paging', { v: 1 }, { v: 2 });
+      const key = `${market.marketId}:list-paging`;
+      expect(await impactOfView(CHECKER, opened.id)).toBeNull(); // the module answers null
+      for (const answer of [
+        { items: [] },
+        { items: [{ label: 'secrets', count: 1, atLeast: false }] },
+        { items: 'many' },
+        'products: 3',
+      ]) {
+        pastCache();
+        subjects.impacts.set(key, answer);
+        expect(await impactOfView(CHECKER, opened.id)).toBeNull();
+      }
+      pastCache();
+      subjects.impactMode = 'fail';
+      // The page still answers, with everything else.
+      expect(await view(CHECKER, opened.id)).toMatchObject({
+        ok: true,
+        value: { id: opened.id, subjectRef: 'list-paging', impact: null },
+      });
+    });
+
+    it(`shows none when the module takes longer than its wait (${IMPACT_TIMEOUT_MS} ms on the page)`, async () => {
+      subjects.impacts.set(`${market.marketId}:list-paging`, {
+        items: [{ label: 'products', count: 5, atLeast: false }],
+      });
+      const opened = await change(MAKER, 'list-paging', { v: 1 }, { v: 2 });
+      const detail = await view(CHECKER, opened.id);
+      if (!detail.ok) throw new Error('view failed');
+      expect(detail.value.impact).not.toBeNull();
+      pastCache();
+      subjects.impactMode = 'hang';
+      // The view's own wait, shortened here: the hook never settles, and its signal aborts.
+      expect(await impactOf(deps, admin(CHECKER), detail.value, 20)).toBeNull();
+      const signal = subjects.impactSignals.at(-1);
+      expect(signal?.aborted).toBe(true);
+      // A timeout is not kept: the next view asks again.
+      subjects.impactMode = 'answer';
+      expect(await impactOfView(CHECKER, opened.id)).not.toBeNull();
+      expect(subjects.impactSignals.at(-1)?.aborted).toBe(false);
+    });
+
+    it('keeps an answer for 30 s per request, state and viewer, then asks again', async () => {
+      const key = `${market.marketId}:list-paging`;
+      subjects.impacts.set(key, { items: [{ label: 'products', count: 5, atLeast: false }] });
+      const opened = await change(MAKER, 'list-paging', { v: 1 }, { v: 2 });
+      expect(await impactOfView(CHECKER, opened.id)).toEqual({
+        items: [{ label: 'products', count: 5, atLeast: false }],
+      });
+      subjects.impacts.set(key, { items: [{ label: 'products', count: 6, atLeast: false }] });
+      // Reopened within the lifetime: the kept answer, the module is not asked.
+      clock.advance(Temporal.Duration.from({ milliseconds: IMPACT_CACHE_TTL_MS - 1 }));
+      expect(await impactOfView(CHECKER, opened.id)).toEqual({
+        items: [{ label: 'products', count: 5, atLeast: false }],
+      });
+      expect(subjects.impactAsked).toHaveLength(1);
+      // Another viewer is asked for on their own (each module checks the viewer's keys).
+      expect(await impactOfView(MAKER, opened.id)).toEqual({
+        items: [{ label: 'products', count: 6, atLeast: false }],
+      });
+      expect(subjects.impactAsked).toHaveLength(2);
+      // Expired: asked again.
+      clock.advance(Temporal.Duration.from({ milliseconds: 1 }));
+      expect(await impactOfView(CHECKER, opened.id)).toEqual({
+        items: [{ label: 'products', count: 6, atLeast: false }],
+      });
+      expect(subjects.impactAsked).toHaveLength(3);
+      // A null answer is kept too; a failure is not.
+      subjects.impacts.delete(key);
+      pastCache();
+      expect(await impactOfView(CHECKER, opened.id)).toBeNull();
+      expect(await impactOfView(CHECKER, opened.id)).toBeNull();
+      expect(subjects.impactAsked).toHaveLength(4);
+      pastCache();
+      subjects.impactMode = 'fail';
+      expect(await impactOfView(CHECKER, opened.id)).toBeNull();
+      expect(await impactOfView(CHECKER, opened.id)).toBeNull();
+      expect(subjects.impactAsked).toHaveLength(6);
+    });
+
+    it('bounds the cache, dropping the oldest answer first', () => {
+      const cache = new ImpactCache(IMPACT_CACHE_TTL_MS, 2);
+      const now = clock.now();
+      const keyOf = (requestId: string) => ({
+        marketId: market.marketId,
+        requestId,
+        status: 'open',
+        supersededBy: null,
+        viewerId: CHECKER,
+      });
+      const impact = { items: [{ label: 'products' as const, count: 1, atLeast: false }] };
+      cache.set(keyOf('a'), impact, now);
+      cache.set(keyOf('b'), impact, now);
+      cache.set(keyOf('c'), impact, now);
+      expect(cache.size).toBe(2);
+      expect(cache.get(keyOf('a'), now)).toBeUndefined();
+      expect(cache.get(keyOf('c'), now)).toEqual(impact);
+      // Another Market or a decided state is another entry.
+      expect(cache.get({ ...keyOf('c'), marketId: other.marketId }, now)).toBeUndefined();
+      expect(cache.get({ ...keyOf('c'), status: 'approved' }, now)).toBeUndefined();
+    });
+
+    it('waits for the page at most its bound, then shows the request without counts', async () => {
+      const opened = await change(MAKER, 'list-paging', { v: 1 }, { v: 2 });
+      subjects.impactMode = 'hang';
+      jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
+      try {
+        const pending = view(CHECKER, opened.id);
+        await jest.advanceTimersByTimeAsync(IMPACT_TIMEOUT_MS);
+        expect(await pending).toMatchObject({ ok: true, value: { id: opened.id, impact: null } });
+      } finally {
+        jest.useRealTimers();
+      }
     });
   });
 

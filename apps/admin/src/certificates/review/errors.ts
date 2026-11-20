@@ -17,6 +17,8 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'certificate.already-expired': 'expired',
   'certificate.revoked': 'revoked',
   'certificate.not-revocable': 'not-revocable',
+  'confirmation.exists': 'confirmation-exists',
+  'confirmation.no-issuer': 'confirmation-no-issuer',
   'conflict.stale': 'stale',
   'conflict.retry': 'retry',
   'access.denied': 'denied',
@@ -39,6 +41,7 @@ export function reviewProblemOf(failure: ApiFailure): ReviewProblem {
     key: `certificates.review.error.${key}`,
     reload:
       key === 'stale' ||
+      key === 'confirmation-exists' ||
       key === 'gone' ||
       key === 'replaced' ||
       key === 'revoked' ||

@@ -31,7 +31,6 @@ export const REJECT_REASONS = [
   'policy',
 ] as const;
 export const NOTE_MAX = 500;
-export const PAGE_SIZE = 20;
 
 export interface WalletSettings {
   /** The newest change, from the audit log; null while it was never changed. */
@@ -76,11 +75,3 @@ export interface AdminCredit {
   readonly decisionReason: string | null;
   readonly journalId: string | null;
 }
-
-export interface CreditList {
-  readonly entries: readonly AdminCredit[];
-  readonly nextCursor: string | null;
-}
-
-export type QueueTab = 'pending' | 'decided' | 'granted';
-export const QUEUE_TABS: readonly QueueTab[] = ['pending', 'decided', 'granted'];

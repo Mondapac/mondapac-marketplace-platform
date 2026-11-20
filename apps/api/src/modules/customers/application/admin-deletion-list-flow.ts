@@ -49,7 +49,7 @@ import type { AdminDeletionListReader } from './ports/admin-deletion-list.reader
 // open; cancelling runs through its own use case, which checks the key, the step-up and the status
 // again. No name, email, ticket reference or admin reason is read or written here.
 
-type FieldError = { path: string; code: string };
+export type FieldError = { path: string; code: string };
 
 export interface AdminDeletionListDependencies {
   readonly unitOfWork: UnitOfWork;
@@ -159,8 +159,11 @@ function isAdmin(context: CallContext): boolean {
   );
 }
 
-/** The selector keys (view and filters) shared by the list and the export. */
-function parseSelector(input: DeletionListInput, fields: FieldError[]): DeletionListFilter {
+/** The selector keys (view and filters) shared by the list, the export and the saved filters. */
+export function parseDeletionSelector(
+  input: DeletionListInput,
+  fields: FieldError[],
+): DeletionListFilter {
   const oneOf = <T extends string>(path: string, value: unknown, list: readonly T[]): T | null => {
     if (value === undefined || value === '') return null;
     if (list.includes(value as T)) return value as T;
@@ -252,7 +255,7 @@ function parse(
   AdminDeletionListFailure
 > {
   const fields: FieldError[] = [];
-  const filter = parseSelector(input, fields);
+  const filter = parseDeletionSelector(input, fields);
   const prevNext = input.cursor !== undefined || input.limit !== undefined;
   let paging: Paging;
   let sort = EARLIEST;
@@ -505,7 +508,7 @@ export async function exportAdminDeletionRequests(
     ids = wanted;
   } else {
     const fields: FieldError[] = [];
-    const filter = parseSelector(input, fields);
+    const filter = parseDeletionSelector(input, fields);
     const sort = parseSort(input, fields);
     if (fields.length > 0) return err({ code: 'validation.failed', fields });
     const picked = await deps.unitOfWork.run<

@@ -1,10 +1,11 @@
 'use client';
 
-import { Banner, Button, DataList, Dialog, LoadError, SkeletonRows } from '@mondapac/ui';
+import { Banner, Button, DataList, Dialog, LoadError, SkeletonRows, TextField } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { shortInstantInZone } from '../shared/format.ts';
+import { shortId } from '../shared/short-id.ts';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { formatMinor } from '../wallet/money.ts';
 import { approveProblemOf, STALE_PROBLEMS } from './errors.ts';
@@ -15,9 +16,10 @@ type Load = { readonly kind: 'loading' } | { readonly kind: 'failed' } | { reado
 /**
  * Approves one payout that waits for an admin. The payout is read when the dialog opens, so the
  * admin approves what is on screen: the primary button carries the exact transfer amount and the
- * same amount is echoed to the server, which refuses a different one. No code is asked for here:
- * the guarded call opens the shared step-up dialog, and a cancelled code leaves this one as it
- * was. Focus starts on Cancel. When the payout cannot be approved (account not ready,
+ * same amount is echoed to the server, which refuses a different one. Approving is a money action
+ * of level 3: the admin types the payout's reference before the red button works. No code is
+ * asked for here: the guarded call opens the shared step-up dialog, and a cancelled code leaves
+ * this one as it was. Focus starts on Cancel. When the payout cannot be approved (account not ready,
  * above the limit, no longer waiting) the reason is shown and there is no approve button.
  */
 export function ApproveDialog({
@@ -43,7 +45,9 @@ export function ApproveDialog({
   const [detail, setDetail] = useState<PayoutDetail | null>(null);
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  const [typed, setTyped] = useState('');
   const busy = useRef(false);
+  const cancel = useRef<HTMLButtonElement>(null);
   const ticket = useRef(0);
 
   const read = useCallback(async (id: string) => {
@@ -72,6 +76,7 @@ export function ApproveDialog({
     setDetail(null);
     setProblem(null);
     setPending(false);
+    setTyped('');
     void read(payoutId);
   }, [payoutId, read]);
 
@@ -84,9 +89,11 @@ export function ApproveDialog({
   const aboveLimit = detail?.limits?.transferAboveLimit === true;
   const stopped = problem !== null && STALE_PROBLEMS.includes(problem);
   const canApprove = detail !== null && waiting && !notReady && !aboveLimit && !stopped;
+  const reference = detail === null ? '' : shortId(detail.payoutId);
+  const confirmed = reference !== '' && typed.trim() === reference;
 
   async function approve() {
-    if (detail === null || busy.current || !canApprove) return;
+    if (detail === null || busy.current || !canApprove || !confirmed) return;
     busy.current = true;
     setPending(true);
     setProblem(null);
@@ -153,17 +160,30 @@ export function ApproveDialog({
   return (
     <Dialog
       open={payoutId !== null}
-      title={t('title')}
+      title={
+        detail === null
+          ? t('title')
+          : t(canApprove ? 'title-named' : 'title-blocked', {
+              id: reference,
+              store: detail.storeName ?? t('unnamed'),
+            })
+      }
+      initialFocus={cancel}
       onClose={() => {
         if (!busy.current) onClose();
       }}
       actions={
         <>
-          <Button variant="secondary" autoFocus onClick={onClose} disabled={pending}>
+          <Button ref={cancel} variant="secondary" onClick={onClose} disabled={pending}>
             {stopped || (detail !== null && !canApprove) ? t('close') : t('cancel')}
           </Button>
           {canApprove && detail !== null ? (
-            <Button loading={pending} onClick={() => void approve()}>
+            <Button
+              variant="destructive-solid"
+              loading={pending}
+              disabled={!confirmed && !pending}
+              onClick={() => void approve()}
+            >
               {t('action', { amount: money(detail.transfer) })}
             </Button>
           ) : null}
@@ -197,6 +217,20 @@ export function ApproveDialog({
           ) : null}
           <DataList missing="-" rows={rows} />
           <p className="text-sm text-fg-muted">{t('zone-note', { zone })}</p>
+          {canApprove ? (
+            <>
+              <p className="text-sm text-fg-muted">{t('step-up-note')}</p>
+              <TextField
+                label={t('type-to-confirm', { id: reference })}
+                help={<span className="font-medium text-fg">{reference}</span>}
+                value={typed}
+                autoComplete="off"
+                spellCheck={false}
+                disabled={pending}
+                onChange={(event) => setTyped(event.target.value)}
+              />
+            </>
+          ) : null}
         </div>
       ) : null}
     </Dialog>
