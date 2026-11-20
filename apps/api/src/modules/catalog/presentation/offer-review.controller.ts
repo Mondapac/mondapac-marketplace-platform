@@ -21,6 +21,7 @@ import {
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
+  ApiPayloadTooLargeResponse,
   ApiParam,
   ApiQuery,
   ApiServiceUnavailableResponse,
@@ -43,6 +44,8 @@ import {
   REVIEW_QUEUE_KINDS,
   ReviewQueueList,
 } from '../application/use-cases/review-queue-list.use-case';
+import { ReviewQueueExport } from '../application/use-cases/review-queue-export.use-case';
+import { writeChunks } from './write-chunks';
 import { closedBody, numericQuery, pageQuery, refusalWith } from './http-answers';
 import {
   OfferApproveRequest,
@@ -68,6 +71,7 @@ export const OFFER_REVIEW_STATUS: Readonly<Record<string, number>> = Object.free
   'conflict.stale': 409,
   'conflict.retry': 409,
   'claim-text.refused': 422,
+  'batch.too-large': 413,
   'access.unavailable': 503,
   'claim.check-unavailable': 503,
 });
@@ -101,6 +105,7 @@ export class OfferReviewController {
     private readonly queue: ReviewQueueList,
     private readonly approveOffer: OfferApprove,
     private readonly requestChanges: OfferRequestChanges,
+    private readonly exportQueue: ReviewQueueExport,
   ) {}
 
   @Get('review-queue')
@@ -163,6 +168,71 @@ export class OfferReviewController {
       ? (JSON.parse(JSON.stringify(result.value)) as ReviewQueueListDto)
       : refusalWith(OFFER_REVIEW_STATUS, result.error, response, context);
     return this.settle('catalog.review-queue-list', context, outcome);
+  }
+
+  @Get('review-queue/export')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Export the review queue as a file',
+    description:
+      'Needs catalog.product.view. The rows of the review queue for the same filters ' +
+      '(`kind`, `sellerId`, `firstPublication`, `hasImages`), oldest submit first. `format` is csv (the default) or xlsx, with the same ' +
+      'columns: kind, product_code, product_name, seller_id, store_name, seller_sku, ' +
+      'first_publication, reasons, required_checks, has_images, warnings, submitted_at. At most ' +
+      '1,000 rows (the pages the list reaches); a longer queue is refused whole as ' +
+      'batch.too-large, never cut. The file is an attachment. CSV: a text cell that starts with ' +
+      '= + - @ is written with a leading quote. XLSX: every cell is a string value, never a formula.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: ['csv', 'xlsx'] })
+  @ApiQuery({ name: 'kind', required: false, enum: REVIEW_QUEUE_KINDS })
+  @ApiQuery({ name: 'sellerId', required: false })
+  @ApiQuery({ name: 'firstPublication', required: false, enum: ['true', 'false'] })
+  @ApiQuery({ name: 'hasImages', required: false, enum: ['true', 'false'] })
+  @ApiOkResponse({
+    description:
+      'text/csv; charset=utf-8 (review-queue-<date>.csv) or ' +
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet (.xlsx), as an attachment',
+  })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiPayloadTooLargeResponse({ type: ApiErrorBody, description: 'batch.too-large' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async download(
+    @Call() context: CallContext,
+    @Res() response: Response,
+    @Query() query: Record<string, unknown>,
+  ): Promise<void> {
+    const result = await this.exportQueue.execute(context, flagQuery(query));
+    const log = (outcome: string): void =>
+      this.#logger.log({
+        msg: 'catalog.review-queue-export',
+        outcome,
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+    if (!result.ok) {
+      const error = refusalWith(OFFER_REVIEW_STATUS, result.error, response, context);
+      log((error.getResponse() as { code: string }).code);
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      await writeChunks(response, chunks);
+      log('ok');
+    } catch {
+      log('stream-failed');
+      response.destroy();
+    }
   }
 
   @Post('offers/:offerId/approve')
