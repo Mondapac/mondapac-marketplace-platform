@@ -53,7 +53,9 @@ const DATE = /^\d{4}-\d{2}-\d{2}$/;
  * or on the approved one. The channel is chosen from the issuer's **registered** channels (never
  * typed in), the date and an encrypted reference are kept, and both ticks (the number, the
  * holder) are required: the submission is then `verifiedWithIssuer`. One confirmation per
- * submission. It never changes "allowed". It moves the record's version and publishes
+ * submission, and only on a live one: the pending submission, or the approved one while the
+ * record is `approved` (anything else answers `review.not-current-submission`). It never changes
+ * "allowed". It moves the record's version and publishes
  * `seller-certification-issuer-confirmed.v1`. Audited. Rule: key
  * `certification.seller-certificate.review`, the admin population, not acting-as.
  */
@@ -150,6 +152,11 @@ export class SellerCertificateRecordConfirmation extends UseCase<
           }
           const { submission, certificate } = snapshot;
           if (submission.id !== submissionId) {
+            return err({ code: 'review.not-current-submission' } as const);
+          }
+          // Only a submission that is live takes one: the pending one, or the approved one of an
+          // approved record (a late confirmation). A declined, expired or revoked one is closed.
+          if (!snapshot.pending && certificate.status !== 'approved') {
             return err({ code: 'review.not-current-submission' } as const);
           }
           if (submission.issuer === null) return err({ code: 'confirmation.no-issuer' } as const);
