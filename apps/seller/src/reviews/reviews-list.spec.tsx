@@ -428,13 +428,15 @@ describe('failures of a later load', () => {
 
   it('says reviews are off after a 404 and offers no Try again', async () => {
     mount();
-    failWith(404, 'reviews.not-found');
+    failWith(404, 'reviews.disabled');
     fireEvent.click(screen.getByRole('button', { name: /Unanswered/ }));
     expect(
       await screen.findByText('Customer reviews are not switched on at the moment.'),
     ).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
     expect(screen.queryByText('We couldn’t load your reviews. Try again.')).toBeNull();
+    // The rows already on screen are hidden while the notice shows.
+    expect(screen.queryByText('Not great')).toBeNull();
   });
 
   it('says the search cannot run after a refused page and offers no Try again', async () => {
