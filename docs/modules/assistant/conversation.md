@@ -221,6 +221,12 @@ The answer holds:
   most), `count`, `lastAt` and the count per reason. `truncated` says that more than 1000 flagged
   turns existed and only the newest 1000 were grouped. This is the data of the F3 super list.
 
+Saved filters of that super list use the list key `admin.assistant.insights` (generic `lists`
+routes, guarded by `assistant.settings.view`). The saved payload is closed: view, filters `reason`
+and `minCount`, sort and direction; search text is never saved. Sharing a filter with everyone
+needs the protected platform permission `assistant.insights-saved-filter.share`; without it
+filters stay personal.
+
 Retention limits what it shows: a conversation that keeps no text (retention `none`) has no
 messages, so its unavailable, failed or empty turns, hand-offs and thumbs are not in these
 numbers (only its spend day is); and a guest's conversation is purged after 30 days, so a thumbs
