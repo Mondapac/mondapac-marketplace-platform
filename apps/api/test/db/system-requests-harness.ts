@@ -50,6 +50,7 @@ import {
   REQUEST_REPOSITORY,
   type RequestRepository,
 } from '../../src/modules/system-requests/application/ports/request.repository';
+import { ImpactCache } from '../../src/modules/system-requests/application/impact-cache';
 import { ReverterRegistry } from '../../src/modules/system-requests/application/reverter-registry';
 import type { SystemRequestsDependencies } from '../../src/modules/system-requests/application/system-requests-dependencies';
 import { AUDIT_WRITER, type AuditWriter } from '../../src/platform/audit/audit-writer';
@@ -232,6 +233,7 @@ export async function startHarness(
     adminNames: { namesOf: () => Promise.resolve(new Map()) },
     ids: new UuidV7IdGenerator(app.get(CLOCK)),
     clock: app.get(CLOCK),
+    impactCache: new ImpactCache(),
   };
   const sql = new Client({ connectionString: testDatabaseUrl() });
   await sql.connect();

@@ -46,7 +46,12 @@ export default async function SellersNeedingALookPage() {
     body = (
       <>
         <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
-        <HealthQueue paging={paging} accountId={gate.session.accountId} marketId={marketId} />
+        <HealthQueue
+          csrfToken={gate.session.csrfToken}
+          paging={paging}
+          accountId={gate.session.accountId}
+          marketId={marketId}
+        />
       </>
     );
   }

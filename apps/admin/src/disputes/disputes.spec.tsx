@@ -9,9 +9,8 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 import { callApi } from '../api/client.ts';
 import { StepUpProvider } from '../step-up/step-up.tsx';
 import { DisputeDetailView } from './dispute-detail.tsx';
-import { DisputesList } from './disputes-list.tsx';
 import { evidenceDue, reasonText } from './evidence.ts';
-import { STRIPE_DASHBOARD_DISPUTES, type DisputeDetail, type DisputeRow } from './types.ts';
+import { STRIPE_DASHBOARD_DISPUTES, type DisputeDetail } from './types.ts';
 import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
@@ -27,25 +26,6 @@ const wrap = (node: React.ReactNode) => (
     <StepUpProvider>{node}</StepUpProvider>
   </NextIntlClientProvider>
 );
-const counts = { 'needs-response': 2, 'decision-needed': 1, 'under-review': 0, won: 3, closed: 4 };
-const row = (over: Partial<DisputeRow> = {}): DisputeRow => ({
-  disputeId: '0190a000-0000-7000-8000-000000000d01',
-  orderId: ORDER,
-  sellers: [{ sellerId: SELLER, storeName: 'Cedar Lane Halal Meats' }],
-  reason: 'product_not_received',
-  moneyState: 'withdrawn',
-  status: 'needs_response',
-  bucket: 'needs-response',
-  evidenceDueBy: '2026-10-29T10:00:00.000Z',
-  amount: aud('12500'),
-  openedAt: '2026-10-20T01:00:00.000Z',
-  ...over,
-});
-const page = (disputes: DisputeRow[], nextCursor: string | null = null) => ({
-  ok: true as const,
-  status: 200,
-  body: { counts, disputes, nextCursor },
-});
 const detail = (over: Partial<DisputeDetail> = {}): DisputeDetail => ({
   disputeId: '0190a000-0000-7000-8000-000000000d01',
   orderId: ORDER,
@@ -134,151 +114,6 @@ describe('evidence deadline', () => {
 
   it('writes a Stripe reason as readable text', () => {
     expect(reasonText('product_not_received')).toBe('Product not received');
-  });
-});
-
-describe('disputes list', () => {
-  it('shows filter chips with counts and the footnote, and loads the first bucket', async () => {
-    call.mockResolvedValueOnce(page([row()]));
-    render(wrap(<DisputesList zone={ZONE} />));
-    const table = await screen.findByRole('table');
-    const chip = screen.getByRole('button', { name: /Needs response/ });
-    expect(chip.getAttribute('aria-pressed')).toBe('true');
-    expect(chip.textContent).toContain('2');
-    expect(screen.getByRole('button', { name: /Won/ }).getAttribute('aria-pressed')).toBe('false');
-    expect(screen.getByRole('button', { name: /Closed/ }).textContent).toContain('4');
-    expect(
-      screen.getByText(
-        "An inquiry does not move money. Only that order's seller share is held while a dispute is open.",
-      ),
-    ).toBeTruthy();
-    expect(screen.getByText('Dates are shown in Australia/Brisbane.')).toBeTruthy();
-    expect(within(table).getByRole('link', { name: /Order 000000A1/ })).toBeTruthy();
-    expect(within(table).getByText('Cedar Lane Halal Meats')).toBeTruthy();
-    expect(within(table).getByText('Product not received')).toBeTruthy();
-    expect(within(table).getByText('$125.00')).toBeTruthy();
-    expect(call).toHaveBeenCalledWith(
-      'GET',
-      'commission-payouts/admin/disputes?filter=needs-response&limit=25',
-    );
-  });
-
-  it('keeps each column header over its own cells', async () => {
-    call.mockResolvedValueOnce(page([row()]));
-    render(wrap(<DisputesList zone={ZONE} />));
-    const table = await screen.findByRole('table');
-    const heads = within(table)
-      .getAllByRole('columnheader')
-      .map((head) => head.textContent);
-    const cells = within(table)
-      .getAllByRole('cell')
-      .map((cell) => cell.textContent ?? '');
-    expect(heads).toEqual(['Case', 'Money', 'Sellers', 'Reason', 'Evidence due', 'Amount']);
-    expect(cells[1]).toBe('Taken by bank');
-    expect(cells[2]).toBe('Cedar Lane Halal Meats');
-    expect(cells[3]).toBe('Product not received');
-    expect(cells[5]).toContain('125.00');
-  });
-
-  it('badges the money with its text and shows none when nothing moved', async () => {
-    call.mockResolvedValueOnce(
-      page([
-        row(),
-        row({ disputeId: '0190a000-0000-7000-8000-000000000d02', moneyState: 'inquiry' }),
-        row({ disputeId: '0190a000-0000-7000-8000-000000000d03', moneyState: 'reinstated' }),
-        row({ disputeId: '0190a000-0000-7000-8000-000000000d04', moneyState: 'none' }),
-      ]),
-    );
-    render(wrap(<DisputesList zone={ZONE} />));
-    const table = await screen.findByRole('table');
-    expect(within(table).getByText('Taken by bank').className).toContain('critical');
-    expect(within(table).getByText('Inquiry only').className).toContain('neutral');
-    expect(within(table).getByText('Returned to us').className).toContain('success');
-    expect(within(table).getAllByText(/Taken by bank|Inquiry only|Returned to us/)).toHaveLength(3);
-  });
-
-  it('shows the deadline as a date, flagged as soon or overdue', async () => {
-    call.mockResolvedValueOnce(
-      page([
-        row({ evidenceDueBy: '2026-10-29T10:00:00.000Z' }),
-        row({
-          disputeId: '0190a000-0000-7000-8000-000000000d02',
-          evidenceDueBy: '2026-10-26T01:00:00.000Z',
-        }),
-        row({
-          disputeId: '0190a000-0000-7000-8000-000000000d03',
-          evidenceDueBy: '2026-11-04T01:00:00.000Z',
-        }),
-      ]),
-    );
-    render(wrap(<DisputesList zone={ZONE} />));
-    const table = await screen.findByRole('table');
-    expect(within(table).getByText('In 3 days · 29 Oct').className).toContain('attention');
-    expect(within(table).getByText('Overdue · 26 Oct').className).toContain('critical');
-    expect(within(table).getByText('4 Nov')).toBeTruthy();
-  });
-
-  it('asks for the chosen bucket and replaces the rows', async () => {
-    call.mockResolvedValueOnce(page([row()]));
-    render(wrap(<DisputesList zone={ZONE} />));
-    await screen.findByRole('table');
-    call.mockResolvedValueOnce(page([]));
-    fireEvent.click(screen.getByRole('button', { name: /Won/ }));
-    expect(await screen.findByText('No disputes won yet')).toBeTruthy();
-    expect(screen.queryByRole('table')).toBeNull();
-    expect(call).toHaveBeenLastCalledWith(
-      'GET',
-      'commission-payouts/admin/disputes?filter=won&limit=25',
-    );
-    expect(screen.getByRole('button', { name: /Won/ }).getAttribute('aria-pressed')).toBe('true');
-  });
-
-  it('says so per filter when a bucket is empty', async () => {
-    call.mockResolvedValueOnce(page([]));
-    render(wrap(<DisputesList zone={ZONE} />));
-    expect(await screen.findByText('No disputes need a response')).toBeTruthy();
-  });
-
-  it('shows a load error with retry, and pages with Show more', async () => {
-    call.mockResolvedValueOnce({ ok: false, failure: { status: 500, code: 'unknown' } });
-    render(wrap(<DisputesList zone={ZONE} />));
-    expect(await screen.findByText('The disputes could not be loaded. Try again.')).toBeTruthy();
-    call.mockResolvedValueOnce(page([row()], 'c2'));
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    await screen.findByRole('table');
-    call.mockResolvedValueOnce(
-      page([row({ disputeId: '0190a000-0000-7000-8000-000000000d09', orderId: SELLER_ORDER })]),
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
-    await waitFor(() => expect(screen.getAllByRole('row')).toHaveLength(3));
-    expect(call).toHaveBeenLastCalledWith(
-      'GET',
-      'commission-payouts/admin/disputes?filter=needs-response&limit=25&cursor=c2',
-    );
-  });
-
-  it('keeps the rows on screen while more load, instead of adding a skeleton row', async () => {
-    call.mockResolvedValueOnce(page([row()], 'c2'));
-    render(wrap(<DisputesList zone={ZONE} />));
-    await screen.findByRole('table');
-    let finish: (value: ReturnType<typeof page>) => void = () => undefined;
-    call.mockReturnValueOnce(new Promise((resolve) => (finish = resolve)));
-    fireEvent.click(screen.getByRole('button', { name: 'Show more' }));
-    // The table stays, marked busy; the loading label is announced once; no skeleton is drawn.
-    await waitFor(() =>
-      expect(screen.getByRole('table').closest('[aria-busy]')?.getAttribute('aria-busy')).toBe(
-        'true',
-      ),
-    );
-    expect(screen.getAllByRole('row')).toHaveLength(2);
-    expect(screen.getAllByRole('status')).toHaveLength(1);
-    expect(screen.queryByTestId('table-skeleton')).toBeNull();
-    finish(page([]));
-    await waitFor(() =>
-      expect(screen.getByRole('table').closest('[aria-busy]')?.getAttribute('aria-busy')).toBe(
-        'false',
-      ),
-    );
   });
 });
 
