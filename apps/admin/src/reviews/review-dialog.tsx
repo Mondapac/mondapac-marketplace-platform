@@ -1,11 +1,11 @@
 'use client';
 
-import { Banner, Button, Dialog, LoadError, Select, SkeletonRows } from '@mondapac/ui';
+import { Banner, Button, Dialog, LoadError, Select, SkeletonRows, TextField } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { labelOr } from './label.ts';
-import { formatInstant } from '../shared/format.ts';
+import { formatInstant, formatInstantInZone } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { Stars } from './stars.tsx';
@@ -14,15 +14,32 @@ import { REASONS, type Action, type ReviewDetail } from './types.ts';
 
 const KNOWN_ACTIONS = new Set<string>(Object.keys(REASONS));
 
+/** The actions the review allows now that this moderator holds the key for. */
+const allowedOf = (
+  detail: ReviewDetail | null,
+  canModerate: boolean,
+  canRemove: boolean,
+): readonly Action[] =>
+  (detail?.allowedActions ?? []).filter(
+    (name): name is Action =>
+      KNOWN_ACTIONS.has(name) && (name === 'remove' ? canRemove : canModerate),
+  );
+
 /**
  * One review for a moderator: the content as written, the open report reasons, the signals and
  * the history, then the actions that apply now, each with a reason from a closed list. The two-step
  * code is not asked for here: the change goes through the guarded call, so the shared step-up
  * dialog asks for it, and a cancelled code leaves this dialog as it was. The author is never named.
  * A review is hidden or removed for a reason in the policy, never for being negative.
+ *
+ * Opened from a row's Actions menu, the dialog starts with that action chosen (when the review
+ * still allows it). Removing cannot be undone (confirmation level 3): the moderator also types the
+ * review's short id before the red Remove button works.
  */
 export function ReviewDialog({
   reviewId,
+  initialAction = null,
+  zone,
   canModerate,
   canRemove,
   csrfToken,
@@ -30,9 +47,13 @@ export function ReviewDialog({
   onChanged,
 }: {
   readonly reviewId: string | null;
+  /** The action the row menu chose; null opens the review with no action chosen. */
+  readonly initialAction?: Action | null;
   readonly canModerate: boolean;
   readonly canRemove: boolean;
   readonly csrfToken: string;
+  /** The IANA zone the list shows times in; without one the dialog keeps the instant's own form. */
+  readonly zone?: string;
   readonly onClose: () => void;
   /** The review changed (or was found changed): the queue reads again. */
   readonly onChanged: () => void;
@@ -44,9 +65,19 @@ export function ReviewDialog({
   const [state, setState] = useState<'loading' | 'ready' | 'failed' | 'not-found'>('loading');
   const [action, setAction] = useState<Action | ''>('');
   const [reason, setReason] = useState('');
+  const [typed, setTyped] = useState('');
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
+  // A change that affects others starts with the focus on Close (confirmation rule).
+  const closeButton = useRef<HTMLButtonElement>(null);
+  // The row menu's action waits for the first read of the review, and is chosen only if the review
+  // still allows it then (another moderator may have moved it).
+  const firstAction = useRef<Action | null>(null);
+  const keys = useRef({ canModerate, canRemove });
+  keys.current = { canModerate, canRemove };
+  const asked = useRef(initialAction);
+  asked.current = initialAction;
 
   const load = useCallback(async (id: string) => {
     setState('loading');
@@ -55,7 +86,15 @@ export function ReviewDialog({
       `reviews/admin/moderation/${encodeURIComponent(id)}`,
     );
     if (result.ok) {
+      const wanted = firstAction.current;
+      firstAction.current = null;
       setDetail(result.body);
+      if (
+        wanted !== null &&
+        allowedOf(result.body, keys.current.canModerate, keys.current.canRemove).includes(wanted)
+      ) {
+        setAction(wanted);
+      }
       setState('ready');
       return;
     }
@@ -72,17 +111,20 @@ export function ReviewDialog({
     setDetail(null);
     setAction('');
     setReason('');
+    setTyped('');
     setProblem(null);
+    // The action belongs to this opening only: a later change of it does not read the review again.
+    firstAction.current = asked.current;
     void load(reviewId);
   }, [reviewId, load]);
 
-  const allowed = (detail?.allowedActions ?? []).filter(
-    (name): name is Action =>
-      KNOWN_ACTIONS.has(name) && (name === 'remove' ? canRemove : canModerate),
-  );
+  const allowed = allowedOf(detail, canModerate, canRemove);
+
+  const confirmId = detail === null ? '' : shortId(detail.id);
+  const typedOk = action !== 'remove' || typed.trim().toLowerCase() === confirmId.toLowerCase();
 
   async function apply() {
-    if (detail === null || action === '' || reason === '' || busy.current) return;
+    if (detail === null || action === '' || reason === '' || !typedOk || busy.current) return;
     busy.current = true;
     setPending(true);
     setProblem(null);
@@ -98,6 +140,7 @@ export function ReviewDialog({
       setDetail(result.body);
       setAction('');
       setReason('');
+      setTyped('');
       onChanged();
       return;
     }
@@ -121,22 +164,26 @@ export function ReviewDialog({
   }
 
   const reasons = action === '' ? [] : REASONS[action];
+  const when = (iso: string) =>
+    zone === undefined ? formatInstant(iso, locale) : formatInstantInZone(iso, locale, zone);
 
   return (
     <Dialog
       open={reviewId !== null}
-      title={t('dialog.title')}
+      title={initialAction === null ? t('dialog.title') : t(`dialog.title-for.${initialAction}`)}
+      initialFocus={closeButton}
       onClose={() => {
         if (!busy.current) onClose();
       }}
       actions={
         <>
-          <Button variant="secondary" onClick={onClose} disabled={pending}>
+          <Button ref={closeButton} variant="secondary" onClick={onClose} disabled={pending}>
             {t('dialog.close')}
           </Button>
           {allowed.length === 0 ? null : (
             <Button
-              disabled={action === '' || reason === ''}
+              variant={action === 'remove' || action === 'hide' ? 'destructive-solid' : 'primary'}
+              disabled={action === '' || reason === '' || !typedOk}
               loading={pending}
               onClick={() => void apply()}
             >
@@ -162,7 +209,7 @@ export function ReviewDialog({
             <Stars rating={detail.rating} />
             <StatusBadge status={detail.status} />
             <span className="text-sm text-fg-muted">
-              {t('submitted', { date: formatInstant(detail.createdAt, locale) })}
+              {t('submitted', { date: when(detail.createdAt) })}
             </span>
           </div>
           <div className="rounded-lg border border-line bg-muted p-4">
@@ -213,7 +260,7 @@ export function ReviewDialog({
               {detail.history.map((h, index) => (
                 <li key={`${h.at}-${index}`}>
                   {t('history-line', {
-                    date: formatInstant(h.at, locale),
+                    date: when(h.at),
                     who: t(h.byModerator ? 'who.moderator' : 'who.system-or-author'),
                     action: labelOr(t, `history-action.${h.action}`, h.action),
                     reason: labelOr(t, `reason.${h.reasonCode}`, h.reasonCode),
@@ -239,6 +286,7 @@ export function ReviewDialog({
                 onChange={(event) => {
                   setAction(event.target.value as Action | '');
                   setReason('');
+                  setTyped('');
                 }}
               />
               {action === '' ? null : (
@@ -255,6 +303,17 @@ export function ReviewDialog({
                   onChange={(event) => setReason(event.target.value)}
                 />
               )}
+              {action === 'remove' ? (
+                <TextField
+                  label={t('dialog.type-to-remove', { id: confirmId })}
+                  name="confirmId"
+                  value={typed}
+                  autoComplete="off"
+                  spellCheck={false}
+                  disabled={pending}
+                  onChange={(event) => setTyped(event.target.value)}
+                />
+              ) : null}
             </div>
           )}
         </div>

@@ -2,6 +2,7 @@ import { Badge, Banner, type BadgeTone } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { shortId } from '../../shared/short-id.ts';
 import { When } from '../../shared/when.tsx';
+import { FileDownload } from '../file-download.tsx';
 import { wordsFor } from './label.ts';
 import { FullHistory, RevokeAction } from './record-forms.tsx';
 import { ChecksForm, DecisionForm, ScopeForm } from './review-forms.tsx';
@@ -188,13 +189,24 @@ export function ReviewView({
         ) : (
           <ul className="flex flex-col gap-1">
             {page.documents.map((doc, index) => (
-              <li key={doc.position ?? index}>
-                {t('documents.file', {
-                  n: (doc.position ?? index) + 1,
-                  type: doc.mediaType === 'application/pdf' ? 'PDF' : (doc.mediaType ?? '?'),
-                  pages: doc.pageCount ?? 0,
-                  size: ((doc.byteSize ?? 0) / (1024 * 1024)).toFixed(1),
-                })}
+              <li
+                key={doc.position ?? index}
+                className="flex flex-wrap items-center gap-x-4 gap-y-1"
+              >
+                <span>
+                  {t('documents.file', {
+                    n: (doc.position ?? index) + 1,
+                    type: doc.mediaType === 'application/pdf' ? 'PDF' : (doc.mediaType ?? '?'),
+                    pages: doc.pageCount ?? 0,
+                    size: ((doc.byteSize ?? 0) / (1024 * 1024)).toFixed(1),
+                  })}
+                </span>
+                {doc.documentId === undefined ? null : (
+                  <FileDownload
+                    path={`certification/admin/seller-certificates/${page.certificate.certificateId}/documents/${doc.documentId}`}
+                    n={(doc.position ?? index) + 1}
+                  />
+                )}
               </li>
             ))}
           </ul>

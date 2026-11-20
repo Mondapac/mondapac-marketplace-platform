@@ -9,6 +9,8 @@ import type { QueueRow } from '../types.ts';
 export const PAGE_SIZE = 25;
 /** Rows that can be ticked one by one for an export (the API takes up to 200 ids). */
 export const SELECTION_MAX = 200;
+/** The most waiting submissions the list reads; over it the answer is `truncated` (API: 500). */
+export const TRUNCATE_AT = 500;
 
 /** The views: every waiting submission, then one per kind. */
 export const VIEWS = ['all', 'initial', 'resubmission', 'renewal'] as const;

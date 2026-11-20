@@ -324,7 +324,16 @@ describe.each(TEST_MARKETS)('the admin team list in market %s (database, slice 8
     expect(read.value.after.every((i) => i.id > first)).toBe(true);
     // A summary: no token hash (Hassan L1 on PR #196).
     expect(Object.keys(read.value.all[0]!).sort()).toEqual(
-      ['createdAt', 'email', 'expiresAt', 'id', 'invitedByAccountId', 'roleId', 'state'].sort(),
+      [
+        'createdAt',
+        'email',
+        'expiresAt',
+        'heldForApproval',
+        'id',
+        'invitedByAccountId',
+        'roleId',
+        'state',
+      ].sort(),
     );
     expect([...read.value.factors]).toEqual([withFactor]);
     const admins = read.value.admins.map((a) => a.accountId as string);

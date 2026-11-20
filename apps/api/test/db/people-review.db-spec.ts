@@ -956,4 +956,94 @@ describe.each(TEST_MARKETS)('people reviews in market %s (database, System reque
     expect(await statusOf(invitee)).toBe('disabled');
     expect(await revokedReasonsOf(invitee)).toEqual(['account-disabled']);
   });
+  const heldOf = async (invitationId: string) =>
+    (
+      await sql.query<{ state: string; held: boolean; unsent: boolean }>(
+        `SELECT state, held_for_approval AS held, token_hash IS NULL AS unsent
+         FROM identity.invitations WHERE market_id = $1 AND id = $2`,
+        [code, invitationId],
+      )
+    ).rows[0];
+
+  it("holds a sensitive role's invitation until another admin approves it: nothing sent before, the mail's event after (owner decision of 18 Nov 2026)", async () => {
+    const pa = await seededRole('platform-administrator');
+    const root = await admin(pa);
+    const checker = await admin(pa);
+    const email = `Sensitive.${randomUUID()}@Review.example`;
+
+    const proposed = await app.get(InviteAdmin).execute(as(root), {
+      email,
+      roleId: pa,
+      origin: `client-${randomUUID()}`,
+      note: 'A second Platform Administrator',
+    });
+    if (!proposed.ok || proposed.value.request === null) throw new Error('no request filed');
+    expect(proposed.value.code).toBe('invitation.proposed');
+    const { invitationId } = proposed.value;
+    const requestId = proposed.value.request.id;
+    expect(await heldOf(invitationId)).toEqual({ state: 'pending', held: true, unsent: true });
+    expect(await outboxTypesOf(invitationId)).toEqual([]);
+    const requests = await requestsOf(invitationId, 'identity.admin-invitation-sensitive');
+    expect(requests).toMatchObject([
+      {
+        status: 'open',
+        risk: 'high',
+        area: 'people',
+        before: { roleId: pa, roleVersion: await roleVersionOf(pa) },
+        after: { action: 'invite', roleId: pa },
+      },
+    ]);
+    expect(await auditRowsOf('identity.invitation.proposed', invitationId)).toMatchObject([
+      { actor_id: root, after: { kind: 'admin', roleId: pa, requestId } },
+    ]);
+    const written = JSON.stringify([
+      requests,
+      await auditRowsOf('identity.invitation.proposed', invitationId),
+    ]);
+    expect(written.toLowerCase()).not.toContain(email.toLowerCase());
+    // The author never approves their own request.
+    expect(await approve(root, requestId)).toMatchObject({ ok: false });
+    expect(await outboxTypesOf(invitationId)).toEqual([]);
+
+    expect(await approve(checker, requestId)).toMatchObject({
+      ok: true,
+      value: { status: 'approved' },
+    });
+    expect(await heldOf(invitationId)).toEqual({ state: 'pending', held: false, unsent: true });
+    expect(await outboxTypesOf(invitationId)).toEqual(['identity.invitation-issued.v1']);
+    expect(await auditRowsOf('identity.invitation.approved', invitationId)).toMatchObject([
+      { actor_id: checker, after: { kind: 'admin', roleId: pa, requestId } },
+    ]);
+  });
+
+  it('sends nothing for a rejected sensitive invitation, and refuses an approver who could not give the role (R11)', async () => {
+    const pa = await seededRole('platform-administrator');
+    const root = await admin(pa);
+    const checker = await admin(pa);
+    const sensitive = await customRole(root, [
+      'identity.admin-account.invite',
+      'identity.admin-account.view',
+    ]);
+    // Holds the invite key, but a protected key is given only with the system role.
+    const inviter = await admin(sensitive);
+    const proposed = await app.get(InviteAdmin).execute(as(root), {
+      email: `Rejected.${randomUUID()}@Review.example`,
+      roleId: sensitive,
+      origin: `client-${randomUUID()}`,
+      note: 'Joins as inviter',
+    });
+    if (!proposed.ok || proposed.value.request === null) throw new Error('no request filed');
+    expect(proposed.value.code).toBe('invitation.proposed');
+    const { invitationId } = proposed.value;
+    const requestId = proposed.value.request.id;
+
+    expect(await approve(inviter, requestId)).toMatchObject({ ok: false });
+    expect(await heldOf(invitationId)).toEqual({ state: 'pending', held: true, unsent: true });
+
+    expect(await reject(checker, requestId)).toMatchObject({ ok: true });
+    expect((await requestsOf(invitationId)).map((r) => r.status)).not.toContain('open');
+    expect(await heldOf(invitationId)).toEqual({ state: 'pending', held: true, unsent: true });
+    expect(await outboxTypesOf(invitationId)).toEqual([]);
+    expect(await auditRowsOf('identity.invitation.approved', invitationId)).toEqual([]);
+  });
 });
