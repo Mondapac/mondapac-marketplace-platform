@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { Logger } from '@nestjs/common';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import {
@@ -27,6 +28,7 @@ import {
 } from '../contracts/permissions';
 import type { AppliedChange, ProposedChange } from '../contracts/recorder';
 import {
+  createSystemChangeRegistrar,
   IMPACT_TIMEOUT_MS,
   MAX_IMPACT_COUNT,
   type ChangeReviewArea,
@@ -39,7 +41,14 @@ import {
 } from '../contracts/step-up';
 import { EXPORT_TOTAL_CAP, type SystemRequestsExportDependencies } from './export-flow';
 import { listRequests } from './list-flow';
-import { changeAreaPolicy, DUE_DAYS_KIND, POLICY_AREA_KIND, PolicyReverter } from './policy-flow';
+import { AREA_OWNERS, type AreaOwners } from './area-owners';
+import {
+  changeAreaPolicy,
+  DUE_DAYS_KIND,
+  POLICY_AREA_KIND,
+  PolicyReverter,
+  SYSTEM_REQUESTS_SYSTEM_CHANGES,
+} from './policy-flow';
 import { approveRequest, commentOnRequest, impactOf, withdrawRequest } from './request-flow';
 import { IMPACT_CACHE_TTL_MS, ImpactCache } from './impact-cache';
 import { ReverterRegistry, ReverterRegistryError } from './reverter-registry';
@@ -97,6 +106,20 @@ const KIND_OF = {
   marketplace: 'settings.listing-rule',
   money: 'settings.money-rule',
 } as const;
+/** The registrars of the two stand-in modules (one each, as a module creates its own once). */
+const SETTINGS_REGISTRAR = createSystemChangeRegistrar('settings');
+const CATALOG_REGISTRAR = createSystemChangeRegistrar('catalog');
+/**
+ * The flow specs let the stand-in modules register where they need to (the application's own
+ * owners are checked in "the reverter registry" below).
+ */
+const FLOW_OWNERS: AreaOwners = {
+  ...AREA_OWNERS,
+  catalogue: ['settings', 'catalog'],
+  people: ['settings'],
+  marketplace: ['settings', 'catalog'],
+  money: ['settings'],
+};
 
 type AuditEntry = Parameters<AuditWriter['record']>[1];
 
@@ -188,7 +211,7 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
     stepUp = new FakeStepUp(clock);
     subjects = new FakeSubjects();
     applier = new FakeApplier();
-    registry = new ReverterRegistry();
+    registry = new ReverterRegistry(FLOW_OWNERS);
     audit = new Audit();
     names = new FakeAdminNames({ [MAKER]: 'Maryam K.', [CHECKER]: 'Ali R.' });
     deps = {
@@ -205,29 +228,29 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
       impactCache: new ImpactCache(),
     };
     for (const [area, kind] of Object.entries(KIND_OF)) {
-      registry.facade.register('settings', kind, area as keyof typeof KIND_OF, subjects);
+      registry.facade.register(SETTINGS_REGISTRAR, kind, area as keyof typeof KIND_OF, subjects);
     }
     registry.register(
-      'system-requests',
+      SYSTEM_REQUESTS_SYSTEM_CHANGES,
       POLICY_AREA_KIND,
       'review-policy',
       new PolicyReverter(deps, POLICY_AREA_KIND),
     );
     registry.register(
-      'system-requests',
+      SYSTEM_REQUESTS_SYSTEM_CHANGES,
       DUE_DAYS_KIND,
       'review-policy',
       new PolicyReverter(deps, DUE_DAYS_KIND),
     );
     registry.facade.registerApplier(
-      'catalog',
+      CATALOG_REGISTRAR,
       'catalog.category',
       'catalogue',
       DELETE_KEY,
       applier,
     );
     registry.facade.registerApplier(
-      'catalog',
+      CATALOG_REGISTRAR,
       'catalog.listing',
       'marketplace',
       DELETE_KEY,
@@ -514,6 +537,119 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
         ok: false,
         error: { code: 'access.denied' },
       });
+    });
+
+    it('logs every refused decision with its correlation id, and writes no audit row for it', async () => {
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        const opened = await change(MAKER, 'list-paging', { size: 25 }, { size: 50 });
+        const proposal = await propose(MAKER, 'p1');
+        const rows = audit.rows.length;
+        const author = admin(MAKER);
+        const outsider = admin(OUTSIDER);
+        const checker = admin(CHECKER);
+        const stranger = admin(STRANGER);
+        const reason = 'Not this one';
+        expect(
+          await useCase(ApproveSystemRequest).execute(author, { requestId: opened.id }),
+        ).toEqual({ ok: false, error: { code: 'system-requests.own-request' } });
+        expect(
+          await useCase(ApproveSystemRequest).execute(author, { requestId: proposal.id }),
+        ).toEqual({ ok: false, error: { code: 'system-requests.own-request' } });
+        expect(
+          await useCase(RejectSystemRequest).execute(outsider, { requestId: opened.id, reason }),
+        ).toEqual({ ok: false, error: { code: 'system-requests.not-reviewer' } });
+        expect(
+          await useCase(WithdrawSystemRequest).execute(checker, { requestId: opened.id, reason }),
+        ).toEqual({ ok: false, error: { code: 'system-requests.not-author' } });
+        subjects.interested.add(`${CHECKER}:list-paging`);
+        expect(
+          await useCase(ApproveSystemRequest).execute(checker, { requestId: opened.id }),
+        ).toEqual({ ok: false, error: { code: 'system-requests.own-subject' } });
+        // A caller the gate refuses is logged by the gate itself.
+        expect(
+          await useCase(ApproveSystemRequest).execute(stranger, { requestId: opened.id }),
+        ).toMatchObject({ ok: false, error: { code: 'access.denied' } });
+
+        expect(audit.rows).toHaveLength(rows);
+        const logged = warn.mock.calls.map(([entry]) => entry as Record<string, unknown>);
+        const refusal = (
+          context: CallContext,
+          code: string,
+          decision: string,
+          requestId: Id<'SystemRequest'>,
+        ) => ({
+          msg: 'system-requests.decision-refused',
+          code,
+          decision,
+          requestId,
+          actorId: context.actor.kind === 'authenticated' ? context.actor.accountId : null,
+          marketId: market.marketId,
+          correlationId: context.correlationId,
+        });
+        expect(logged.filter((entry) => entry?.msg === 'system-requests.decision-refused')).toEqual(
+          [
+            refusal(author, 'system-requests.own-request', 'approve', opened.id),
+            refusal(author, 'system-requests.own-request', 'approve', proposal.id),
+            refusal(outsider, 'system-requests.not-reviewer', 'reject', opened.id),
+            refusal(checker, 'system-requests.not-author', 'withdraw', opened.id),
+            refusal(checker, 'system-requests.own-subject', 'approve', opened.id),
+          ],
+        );
+        expect(logged.filter((entry) => entry?.msg === 'access.denied')).toEqual([
+          expect.objectContaining({
+            useCase: 'system-requests.approve-system-request',
+            actorId: STRANGER,
+            correlationId: stranger.correlationId,
+          }),
+        ]);
+        expect(
+          new Set(
+            logged
+              .filter((entry) => entry?.msg === 'system-requests.decision-refused')
+              .map((entry) => entry.correlationId),
+          ).has(undefined),
+        ).toBe(false);
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
+    it('logs a bulk approval refused for want of the area review key', async () => {
+      policy.areaRows.set(`${market.marketId}:marketplace`, {
+        area: 'marketplace',
+        enabled: true,
+        risk: 'low',
+        version: 1,
+        updatedAt: START,
+        updatedBy: CHECKER,
+      });
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        const low = await change(MAKER, 'a', { v: 1 }, { v: 2 }, { area: 'marketplace' });
+        const reviewerOnly = admin(REVIEWER_ONLY);
+        expect(
+          await useCase(ApproveSystemRequests).execute(reviewerOnly, { requestIds: [low.id] }),
+        ).toEqual({
+          ok: true,
+          value: [{ requestId: low.id, outcome: 'system-requests.not-reviewer' }],
+        });
+        expect(
+          warn.mock.calls
+            .map(([entry]) => entry as Record<string, unknown>)
+            .filter((entry) => entry?.msg === 'system-requests.decision-refused'),
+        ).toEqual([
+          expect.objectContaining({
+            code: 'system-requests.not-reviewer',
+            decision: 'bulk-approve',
+            requestId: low.id,
+            actorId: REVIEWER_ONLY,
+            correlationId: reviewerOnly.correlationId,
+          }),
+        ]);
+      } finally {
+        warn.mockRestore();
+      }
     });
 
     it('refuses every write in an acting-as session', async () => {
@@ -2149,6 +2285,10 @@ describe.each([['AU'], ['ZZ']] as const)('system requests in market %s', (code) 
 
 describe('the reverter registry', () => {
   const reverter = { revert: () => Promise.resolve('reverted' as const) };
+  const applier = {
+    apply: () => Promise.resolve('applied' as const),
+    check: () => Promise.resolve('ok' as const),
+  };
 
   it('takes the same areas and risks as the platform port the modules call', () => {
     // A compile-time check: the port's lists and system-requests' own lists are one.
@@ -2160,34 +2300,45 @@ describe('the reverter registry', () => {
   });
 
   it('takes a kind of the registering module once, in one area, and nothing after it is sealed', () => {
-    const registry = new ReverterRegistry();
+    const registry = new ReverterRegistry(FLOW_OWNERS);
     const register = (...args: Parameters<typeof registry.facade.register>) =>
       registry.facade.register(...args);
-    register('settings', 'settings.market-setting', 'catalogue', reverter);
-    expect(() => register('settings', 'settings.market-setting', 'catalogue', reverter)).toThrow(
+    register(SETTINGS_REGISTRAR, 'settings.market-setting', 'catalogue', reverter);
+    expect(() =>
+      register(SETTINGS_REGISTRAR, 'settings.market-setting', 'catalogue', reverter),
+    ).toThrow(ReverterRegistryError);
+    // The same kind as an applier is a second registration too.
+    expect(() =>
+      registry.facade.registerApplier(
+        SETTINGS_REGISTRAR,
+        'settings.market-setting',
+        'catalogue',
+        DELETE_KEY,
+        applier,
+      ),
+    ).toThrow(ReverterRegistryError);
+    expect(() => register(SETTINGS_REGISTRAR, 'catalog.product', 'catalogue', reverter)).toThrow(
       ReverterRegistryError,
     );
-    expect(() => register('settings', 'catalog.product', 'catalogue', reverter)).toThrow(
-      ReverterRegistryError,
-    );
-    expect(() => register('settings', 'settings', 'catalogue', reverter)).toThrow(
+    expect(() => register(SETTINGS_REGISTRAR, 'settings', 'catalogue', reverter)).toThrow(
       ReverterRegistryError,
     );
     // Only system-requests registers in the review-policy area, and not through the facade.
     expect(() =>
-      register('settings', 'settings.policy', 'review-policy' as never, reverter),
+      register(SETTINGS_REGISTRAR, 'settings.policy', 'review-policy' as never, reverter),
     ).toThrow(ReverterRegistryError);
     expect(() =>
-      registry.register('settings', 'settings.policy', 'review-policy', reverter),
+      registry.register(SETTINGS_REGISTRAR, 'settings.policy', 'review-policy', reverter),
     ).toThrow(ReverterRegistryError);
     // The facade hands out no lookup.
     expect(Object.keys(registry.facade)).toEqual(['register', 'registerApplier']);
     registry.seal();
-    expect(() => register('catalog', 'catalog.product', 'catalogue', reverter)).toThrow(
+    expect(() => register(CATALOG_REGISTRAR, 'catalog.product', 'catalogue', reverter)).toThrow(
       ReverterRegistryError,
     );
     expect(registry.find('settings.market-setting')).toEqual({
       mode: 'review',
+      module: 'settings',
       reverter,
       applier: null,
       hooks: reverter,
@@ -2196,21 +2347,162 @@ describe('the reverter registry', () => {
     expect(registry.find('catalog.product')).toBeNull();
   });
 
-  it('takes an applier only with a permission key, apply and check, never in the review-policy area', () => {
+  it('binds the module to its registrar: a module name, a copy or a second registrar is refused', () => {
     const registry = new ReverterRegistry();
-    const applier = {
-      apply: () => Promise.resolve('applied' as const),
-      check: () => Promise.resolve('ok' as const),
-    };
+    // A plain name or an object that only looks like a registrar is no identity.
+    for (const forged of [
+      'settings',
+      { module: 'settings' },
+      { ...SETTINGS_REGISTRAR },
+      Object.create(SETTINGS_REGISTRAR) as object,
+      null,
+    ]) {
+      expect(() =>
+        registry.facade.register(
+          forged as never,
+          'settings.market-setting',
+          'marketplace',
+          reverter,
+        ),
+      ).toThrow(ReverterRegistryError);
+      expect(() =>
+        registry.facade.registerApplier(
+          forged as never,
+          'settings.market-setting',
+          'marketplace',
+          DELETE_KEY,
+          applier,
+        ),
+      ).toThrow(ReverterRegistryError);
+    }
+    registry.facade.register(
+      SETTINGS_REGISTRAR,
+      'settings.market-setting',
+      'marketplace',
+      reverter,
+    );
+    // Another module creating a registrar under settings' name fails at boot, whatever its kind.
+    const impostor = createSystemChangeRegistrar('settings');
     expect(() =>
-      registry.facade.registerApplier('catalog', 'catalog.category', 'catalogue', DELETE_KEY, {
-        apply: applier.apply,
-      } as never),
+      registry.facade.register(impostor, 'settings.other-setting', 'marketplace', reverter),
+    ).toThrow(/second registrar/);
+    // The error names where each registrar was created.
+    expect(() =>
+      registry.facade.register(impostor, 'settings.other-setting', 'marketplace', reverter),
+    ).toThrow(
+      /first created at .*system-requests\.spec\.ts:\d+.*second at .*system-requests\.spec\.ts:\d+/,
+    );
+    expect(registry.find('settings.other-setting')).toBeNull();
+    // The real registrar keeps working.
+    registry.facade.register(SETTINGS_REGISTRAR, 'settings.listing', 'marketplace', reverter);
+    expect(registry.kinds()).toEqual(['settings.listing', 'settings.market-setting']);
+  });
+
+  it('takes a kind only in an area its module owns (the application owners)', () => {
+    expect(AREA_OWNERS).toEqual({
+      people: ['identity'],
+      money: ['commission-payouts', 'wallet'],
+      delivery: ['shipping'],
+      catalogue: ['catalog'],
+      certification: ['certification'],
+      marketplace: ['settings'],
+      content: [],
+      'review-policy': ['system-requests'],
+    });
+    expect(Object.isFrozen(AREA_OWNERS)).toBe(true);
+    expect(Object.isFrozen(AREA_OWNERS.money)).toBe(true);
+    const registry = new ReverterRegistry();
+    const identity = createSystemChangeRegistrar('identity');
+    const wallet = createSystemChangeRegistrar('wallet');
+    const payouts = createSystemChangeRegistrar('commission-payouts');
+    // Each in its own area.
+    registry.facade.register(
+      SETTINGS_REGISTRAR,
+      'settings.market-setting',
+      'marketplace',
+      reverter,
+    );
+    registry.facade.register(identity, 'identity.platform-role', 'people', reverter);
+    registry.facade.register(wallet, 'wallet.market-status', 'money', reverter);
+    registry.facade.register(payouts, 'commission-payouts.commission-rate', 'money', reverter);
+    registry.facade.registerApplier(
+      CATALOG_REGISTRAR,
+      'catalog.category-discard',
+      'catalogue',
+      DELETE_KEY,
+      applier,
+    );
+    // Not in another module's area, nor in content (no owner yet), as a reverter or an applier.
+    expect(() =>
+      registry.facade.register(SETTINGS_REGISTRAR, 'settings.people', 'people', reverter),
+    ).toThrow(/does not own/);
+    expect(() =>
+      registry.facade.register(identity, 'identity.listing', 'marketplace', reverter),
+    ).toThrow(/does not own/);
+    expect(() => registry.facade.register(wallet, 'wallet.content', 'content', reverter)).toThrow(
+      /does not own/,
+    );
+    expect(() =>
+      registry.facade.registerApplier(
+        CATALOG_REGISTRAR,
+        'catalog.money',
+        'money',
+        DELETE_KEY,
+        applier,
+      ),
+    ).toThrow(/does not own/);
+    // The review policy's own kinds only from system-requests' registrar.
+    registry.register(SYSTEM_REQUESTS_SYSTEM_CHANGES, POLICY_AREA_KIND, 'review-policy', reverter);
+    expect(() =>
+      registry.register(SYSTEM_REQUESTS_SYSTEM_CHANGES, 'system-requests.money', 'money', reverter),
+    ).toThrow(/does not own/);
+    expect(registry.kinds()).toEqual([
+      'catalog.category-discard',
+      'commission-payouts.commission-rate',
+      'identity.platform-role',
+      'settings.market-setting',
+      'system-requests.policy-area',
+      'wallet.market-status',
+    ]);
+  });
+
+  it('refuses a kind outside the module prefix when the registrar builds the provider', () => {
+    expect(() => createSystemChangeRegistrar('Settings')).toThrow();
+    expect(() => createSystemChangeRegistrar('')).toThrow();
+    expect(() => createSystemChangeRegistrar('settings.x')).toThrow();
+    const token = Symbol('REVERTER');
+    expect(() => SETTINGS_REGISTRAR.reverter('catalog.product', 'catalogue', token)).toThrow(
+      /its kinds start with "settings."/,
+    );
+    expect(() => SETTINGS_REGISTRAR.reverter('settingsx.product', 'marketplace', token)).toThrow();
+    expect(() =>
+      CATALOG_REGISTRAR.applier('identity.account-delete', 'people', DELETE_KEY, token),
+    ).toThrow();
+    // The provider it builds registers through the registrar itself, never a name.
+    const provider = SETTINGS_REGISTRAR.reverter('settings.market-setting', 'marketplace', token);
+    const registry = new ReverterRegistry();
+    const factory = (provider as { useFactory: (...args: unknown[]) => unknown }).useFactory;
+    expect(factory(registry.facade, reverter)).toBe('settings.market-setting');
+    expect(registry.find('settings.market-setting')).toMatchObject({ area: 'marketplace' });
+    expect(() => factory(registry.facade, reverter)).toThrow(/registered twice/);
+    expect(Object.isFrozen(SETTINGS_REGISTRAR)).toBe(true);
+  });
+
+  it('takes an applier only with a permission key, apply and check, never in the review-policy area', () => {
+    const registry = new ReverterRegistry(FLOW_OWNERS);
+    expect(() =>
+      registry.facade.registerApplier(
+        CATALOG_REGISTRAR,
+        'catalog.category',
+        'catalogue',
+        DELETE_KEY,
+        { apply: applier.apply } as never,
+      ),
     ).toThrow(ReverterRegistryError);
     for (const permission of ['', 'Delete', undefined]) {
       expect(() =>
         registry.facade.registerApplier(
-          'catalog',
+          CATALOG_REGISTRAR,
           'catalog.category',
           'catalogue',
           permission as never,
@@ -2220,7 +2512,7 @@ describe('the reverter registry', () => {
     }
     expect(() =>
       registry.registerApplier(
-        'system-requests',
+        SYSTEM_REQUESTS_SYSTEM_CHANGES,
         'system-requests.x',
         'review-policy',
         DELETE_KEY,
@@ -2228,7 +2520,7 @@ describe('the reverter registry', () => {
       ),
     ).toThrow(ReverterRegistryError);
     registry.facade.registerApplier(
-      'catalog',
+      CATALOG_REGISTRAR,
       'catalog.category',
       'catalogue',
       DELETE_KEY,
@@ -2241,7 +2533,7 @@ describe('the reverter registry', () => {
     });
     // Several keys: all are required; an empty list or a bad key is refused.
     registry.facade.registerApplier(
-      'catalog',
+      CATALOG_REGISTRAR,
       'catalog.products-move',
       'catalogue',
       [DELETE_KEY, 'catalog.product.approve'],
@@ -2252,11 +2544,17 @@ describe('the reverter registry', () => {
     });
     for (const keys of [[], [DELETE_KEY, 'Bad']]) {
       expect(() =>
-        registry.facade.registerApplier('catalog', 'catalog.other', 'catalogue', keys, applier),
+        registry.facade.registerApplier(
+          CATALOG_REGISTRAR,
+          'catalog.other',
+          'catalogue',
+          keys,
+          applier,
+        ),
       ).toThrow(ReverterRegistryError);
     }
     expect(() =>
-      registry.facade.register('catalog', 'catalog.category', 'catalogue', {
+      registry.facade.register(CATALOG_REGISTRAR, 'catalog.category', 'catalogue', {
         revert: () => Promise.resolve('reverted' as const),
       }),
     ).toThrow(ReverterRegistryError);

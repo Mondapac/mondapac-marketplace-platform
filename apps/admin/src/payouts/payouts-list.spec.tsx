@@ -17,6 +17,7 @@ import { cleanColumns } from './list/payouts-columns.ts';
 import { exportParams } from './list/payouts-export.tsx';
 import {
   DEFAULT_QUERY,
+  filtersForView as filtersForViewOf,
   filtersOf,
   type PayoutListPage,
   type PayoutListRow,
@@ -112,9 +113,10 @@ const lastParams = () => {
 
 function mount(
   options: {
+    currency?: string | null;
     paging?: 'pages' | 'prev-next';
     sellerId?: string | null;
-    initialView?: 'all' | 'awaiting-approval' | 'failed';
+    initialView?: 'all' | 'awaiting-approval' | 'failed' | 'sending' | 'paid';
   } = {},
 ) {
   return render(
@@ -128,6 +130,7 @@ function mount(
           csrfToken="csrf-1"
           initialView={options.initialView ?? 'all'}
           sellerId={options.sellerId ?? null}
+          currency={options.currency ?? null}
         />
       </StepUpProvider>
       <Toaster labels={{ region: messages.toast.region, close: messages.toast.close }} />
@@ -855,5 +858,189 @@ describe('Payouts list: export edges', () => {
       }),
     );
     expect(await screen.findByText(/too broad to export/)).toBeTruthy();
+  });
+});
+
+describe('Payouts list: Status and Amount filters', () => {
+  const jpy = (amountMinor: string) => ({ amountMinor, currency: 'JPY' });
+  // The panel opens on the conditions already set: a new one is added after them.
+  const addFilter = async (field: string, value: string) => {
+    fireEvent.click(screen.getByRole('button', { name: /^Filter/ }));
+    const panel = await screen.findByRole('dialog', { name: 'Filter' });
+    const before = within(panel).queryAllByLabelText('Field');
+    if (before.length > 0 && (before[before.length - 1] as HTMLSelectElement).value !== '') {
+      fireEvent.click(within(panel).getByRole('button', { name: 'Add condition' }));
+    }
+    const fields = within(panel).getAllByLabelText('Field');
+    fireEvent.change(fields[fields.length - 1]!, { target: { value: field } });
+    const values = within(panel).getAllByLabelText('Value');
+    fireEvent.change(values[values.length - 1]!, { target: { value } });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Apply' }));
+  };
+
+  it('sends the status, shows a chip and drops it again', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    await addFilter('status', 'instructed');
+    await waitFor(() => expect(lastParams()['status']).toBe('instructed'));
+    const chip = screen.getByRole('button', { name: 'Remove filter State is Sent' });
+    fireEvent.click(chip);
+    await waitFor(() => expect(lastParams()['status']).toBeUndefined());
+  });
+
+  it('offers only the states of the view, and drops a status the next view does not hold', async () => {
+    serve(() => pageOf([row()]));
+    mount({ initialView: 'sending' });
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    fireEvent.click(screen.getByRole('button', { name: /^Filter/ }));
+    const panel = await screen.findByRole('dialog', { name: 'Filter' });
+    fireEvent.change(within(panel).getByLabelText('Field'), { target: { value: 'status' } });
+    expect(within(panel).queryByRole('option', { name: 'Paid' })).toBeNull();
+    expect(within(panel).getByRole('option', { name: 'Sent' })).toBeTruthy();
+    fireEvent.click(within(panel).getByRole('button', { name: 'Cancel' }));
+    cleanup();
+    // A view with one state has nothing to choose: the State field is not offered.
+    mount({ initialView: 'paid' });
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    fireEvent.click(screen.getByRole('button', { name: /^Filter/ }));
+    const single = await screen.findByRole('dialog', { name: 'Filter' });
+    fireEvent.change(within(single).getByLabelText('Field'), { target: { value: 'approvalMode' } });
+    expect(within(single).queryByRole('option', { name: 'State' })).toBeNull();
+    expect(filtersForViewOf({ status: 'failed' }, 'paid')).toEqual({});
+    expect(filtersForViewOf({ status: 'approved' }, 'sending')).toEqual({ status: 'approved' });
+  });
+
+  it('sends the amount bounds in AUD minor units, with money chips', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    await addFilter('minAmount', '100');
+    await waitFor(() => expect(lastParams()['minAmount']).toBe('10000'));
+    await addFilter('maxAmount', '5000');
+    await waitFor(() => expect(lastParams()['maxAmount']).toBe('500000'));
+    expect(
+      screen.getByRole('button', { name: 'Remove filter Transfer at least is $100.00' }),
+    ).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove filter Transfer at most is $5,000.00' }),
+    );
+    await waitFor(() => expect(lastParams()['maxAmount']).toBeUndefined());
+    expect(lastParams()['minAmount']).toBe('10000');
+  });
+
+  it('sends whole yen for a currency with no decimals', async () => {
+    serve(() => pageOf([row({ transfer: jpy('31000') })]));
+    mount();
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    await addFilter('minAmount', '500');
+    await waitFor(() => expect(lastParams()['minAmount']).toBe('500'));
+    expect(
+      screen.getByRole('button', { name: /^Remove filter Transfer at least is .*500$/ }),
+    ).toBeTruthy();
+  });
+
+  it('builds the amounts from the page currency when no row is there yet', () => {
+    const query = {
+      ...DEFAULT_QUERY,
+      filters: { minAmount: '10' as const, maxAmount: '50' as const },
+    };
+    const context = { paging: 'pages' as const, zone: BRISBANE, now: NOW };
+    const sent = (currency: string | null) =>
+      Object.fromEntries(new URLSearchParams(queryString(query, { ...context, currency })));
+    expect(sent('JPY')).toMatchObject({ minAmount: '10', maxAmount: '50' });
+    expect(sent('AUD')).toMatchObject({ minAmount: '1000', maxAmount: '5000' });
+    expect(sent(null)['minAmount']).toBeUndefined();
+  });
+
+  it('carries status and amounts into an all-matching export', () => {
+    const query = {
+      ...DEFAULT_QUERY,
+      filters: { status: 'paid' as const, minAmount: '100' as const, maxAmount: '1000' as const },
+    };
+    const base = {
+      query,
+      paging: 'pages' as const,
+      zone: BRISBANE,
+      format: 'csv',
+      columns: [] as never[],
+      selection: { ids: [PAYOUT], allMatching: true, total: 30 },
+      now: NOW,
+    };
+    expect(
+      Object.fromEntries(new URLSearchParams(exportParams({ ...base, currency: 'AUD' }))),
+    ).toMatchObject({ status: 'paid', minAmount: '10000', maxAmount: '100000' });
+    expect(
+      Object.fromEntries(new URLSearchParams(exportParams({ ...base, currency: 'JPY' }))),
+    ).toMatchObject({ status: 'paid', minAmount: '100', maxAmount: '1000' });
+  });
+
+  it('shows the cannot-be-run state when the API refuses a minimum above the maximum', async () => {
+    serve((url) =>
+      url.includes('minAmount=500000') && url.includes('maxAmount=1000')
+        ? 'refused'
+        : pageOf([row()]),
+    );
+    mount();
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    await addFilter('minAmount', '5000');
+    await waitFor(() => expect(lastParams()['minAmount']).toBe('500000'));
+    await addFilter('maxAmount', '10');
+    expect(await screen.findByText(/can.t be run/i)).toBeTruthy();
+  });
+
+  it('keeps the amount filters when a filter leaves no rows, and prefers the page currency', async () => {
+    serve((url) => (url.includes('status=paid') ? pageOf([]) : pageOf([row()])));
+    mount();
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    await addFilter('status', 'paid');
+    await waitFor(() => expect(lastParams()['status']).toBe('paid'));
+    await screen.findByText(/No payouts match|no payouts/i);
+    fireEvent.click(screen.getByRole('button', { name: /^Filter/ }));
+    const panel = await screen.findByRole('dialog', { name: 'Filter' });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Add condition' }));
+    const fields = within(panel).getAllByLabelText('Field');
+    expect(
+      within(fields[fields.length - 1]!)
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toContain('Transfer at least');
+    cleanup();
+    // The page currency wins over the rows' own.
+    serve(() => pageOf([row()]));
+    mount({ currency: 'JPY' });
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    await addFilter('minAmount', '100');
+    await waitFor(() => expect(lastParams()['minAmount']).toBe('100'));
+  });
+
+  it('drops the ticked rows when the state or an amount changes', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    const tick = async () => {
+      fireEvent.click(screen.getByRole('checkbox', { name: `Select payout 000000A1 of ${STORE}` }));
+      expect(await screen.findByText('1 payout selected')).toBeTruthy();
+    };
+    const cleared = () => waitFor(() => expect(screen.queryByText('1 payout selected')).toBeNull());
+    await tick();
+    await addFilter('status', 'paid');
+    await cleared();
+    await tick();
+    await addFilter('minAmount', '50');
+    await cleared();
+    await tick();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove filter Transfer at least is $50.00' }),
+    );
+    await cleared();
+  });
+
+  it('ignores an unknown status or amount', () => {
+    expect(filtersOf({ status: 'bogus', minAmount: '7', maxAmount: '1e9' })).toEqual({});
+    expect(filtersOf({ status: 'voided', minAmount: '50' })).toEqual({
+      status: 'voided',
+      minAmount: '50',
+    });
   });
 });

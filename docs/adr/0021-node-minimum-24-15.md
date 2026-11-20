@@ -37,6 +37,12 @@ decision is changed, so none is asked; the owner is informed in the Phase 2 stat
 2. **CI tests the minimum.** The verify job gets a Node axis with two values: exactly the
    minimum (24.15.0) and the `.nvmrc` version. Each runs the full job: frozen install,
    `pnpm verify`, `pnpm build` and the boot probe.
+   *(Amended on 2026-11-20 by the owner, CI capacity: a pull request run uses the `.nvmrc`
+   version only, and every push to `main` runs both values on all four CI jobs. The account
+   runs at most 20 GitHub-hosted jobs at once and each CI run had 16, so pull requests and
+   merges queued for 30 to 60 minutes. The minimum is still tested on every merge; a change
+   that breaks only on the minimum shows on `main` right after the merge instead of on the
+   pull request.)*
 3. **The number and the axis move together.** A later raise within 24.x is one shared-file
    PR (root `package.json` `engines`, the CI axis, `README.md`, the Commands section of
    `CLAUDE.md`) approved by the CTO and noted inline in ADR-0014 decision 1 and its first

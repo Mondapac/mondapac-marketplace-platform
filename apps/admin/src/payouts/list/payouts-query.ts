@@ -3,6 +3,7 @@
 // `pageSize`, `sort` and `direction`; Previous and next sends `limit` and `cursor` only, newest
 // first (the API refuses a sort beside a cursor).
 
+import { parseAmount } from '../../wallet/money.ts';
 import type { ListPagingMode } from '../../sales/cursor-paging.ts';
 import { presetRange } from '../../sales/date-presets.ts';
 import { isUuid } from '../../sales/search-route.ts';
@@ -31,6 +32,8 @@ export interface QueryContext {
   /** The IANA zone of the table's times; the date presets are read on its clock (ADR-0005). */
   readonly zone: string;
   readonly now: Date;
+  /** The Market currency of the amount filters (from the rows); null: they are not sent. */
+  readonly currency?: string | null;
 }
 
 /** The keys that choose which rows the list holds (an export of "all matching" sends these). */
@@ -42,6 +45,13 @@ export function selectorParams(query: Query, context: QueryContext): URLSearchPa
   if (route.kind === 'store') params.set('search', route.value);
   if (query.sellerId !== null) params.set('sellerId', query.sellerId);
   const { filters } = query;
+  if (filters.status !== undefined) params.set('status', filters.status);
+  for (const key of ['minAmount', 'maxAmount'] as const) {
+    const step = filters[key];
+    const minor =
+      step === undefined || !context.currency ? null : parseAmount(step, context.currency);
+    if (minor?.ok) params.set(key, minor.minor);
+  }
   if (filters.approvalMode !== undefined) params.set('approvalMode', filters.approvalMode);
   if (filters.created !== undefined) {
     const range = presetRange(filters.created, context.zone, context.now);

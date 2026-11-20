@@ -837,6 +837,43 @@ export async function commentOnRequest(
 
 type DecisionKind = 'approve' | 'reject' | 'withdraw';
 
+/** The refusals of a decision the use-case gate admitted: who may decide, not whether they may. */
+type DecisionRefusal =
+  | 'system-requests.own-request'
+  | 'system-requests.own-subject'
+  | 'system-requests.not-author'
+  | 'system-requests.not-reviewer';
+
+/**
+ * Refuses a decision after the use-case gate admitted the caller: the author approving or
+ * rejecting their own change, a change about the decider, a withdraw by someone else, or a
+ * caller without the area's review key. Such a refusal writes no audit row (nothing was decided)
+ * and the gate's own denial log never sees it, so it is logged here, with the correlation id
+ * (Hassan, PR #904).
+ */
+export function refuseDecision<C extends DecisionRefusal>(
+  context: CallContext,
+  code: C,
+  kind: DecisionKind | 'bulk-approve' | 'approve-matching',
+  requestId: Id<'SystemRequest'>,
+): Result<never, { readonly code: C }> {
+  try {
+    const actor = context.actor;
+    logger.warn({
+      msg: 'system-requests.decision-refused',
+      code,
+      decision: kind,
+      requestId,
+      actorId: actor.kind === 'authenticated' ? actor.accountId : null,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+  } catch {
+    // A failure to log never turns a refusal into a decision.
+  }
+  return err({ code });
+}
+
 interface DecisionInput {
   readonly requestId: unknown;
   readonly reason?: unknown;
@@ -884,7 +921,7 @@ async function prepareDecision(
   if (seen.value === null) return err({ code: 'system-requests.not-found' });
   // The area never changes (a column the application cannot update), so the first look is safe.
   if (!(await reviews(deps, context, seen.value.area))) {
-    return err({ code: 'system-requests.not-reviewer' });
+    return refuseDecision(context, 'system-requests.not-reviewer', kind, id);
   }
   return ok({ admin, id, reason });
 }
@@ -905,8 +942,12 @@ export async function decidable(
   if (request === null) return err({ code: 'system-requests.not-found' });
   if (request.status !== 'open') return err({ code: 'system-requests.decided' });
   const own = request.requestedBy === admin;
-  if (kind === 'withdraw' && !own) return err({ code: 'system-requests.not-author' });
-  if (kind !== 'withdraw' && own) return err({ code: 'system-requests.own-request' });
+  if (kind === 'withdraw' && !own) {
+    return refuseDecision(context, 'system-requests.not-author', kind, id);
+  }
+  if (kind !== 'withdraw' && own) {
+    return refuseDecision(context, 'system-requests.own-request', kind, id);
+  }
   if (kind !== 'withdraw') {
     const reverter = deps.reverters.find(request.subjectKind)?.hooks;
     if (
@@ -918,7 +959,7 @@ export async function decidable(
         after: request.after,
       }))
     ) {
-      return err({ code: 'system-requests.own-subject' });
+      return refuseDecision(context, 'system-requests.own-subject', kind, id);
     }
   }
   return ok(request);
@@ -1102,7 +1143,9 @@ async function applyProposal(
   const checked = await askCheck(context, seen, (c, r) => applier.check(c, r));
   if (!checked.ok) return checked;
   const areas = await reviewableAreas(deps, context);
-  if (!areas.has(seen.area)) return err({ code: 'system-requests.not-reviewer' });
+  if (!areas.has(seen.area)) {
+    return refuseDecision(context, 'system-requests.not-reviewer', 'approve', id);
+  }
   if (!(await permitted())) return err({ code: 'system-requests.revert-not-permitted' });
   const decided = await deps.unitOfWork.run<RequestView, SystemRequestsFailure>(
     context.market,
@@ -1320,7 +1363,9 @@ export async function approveRequests(
         if (found.value.risk !== 'low') return err({ code: 'system-requests.not-low-risk' });
         // A proposal is applied when approved, so it is approved one by one.
         if (found.value.mode !== 'review') return err({ code: 'system-requests.one-by-one' });
-        if (!areas.has(found.value.area)) return err({ code: 'system-requests.not-reviewer' });
+        if (!areas.has(found.value.area)) {
+          return refuseDecision(context, 'system-requests.not-reviewer', 'bulk-approve', id);
+        }
         return ok(await approveInUnit(deps, context, admin, found.value, null));
       },
     );

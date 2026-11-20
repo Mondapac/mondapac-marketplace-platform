@@ -2,7 +2,7 @@
 
 import { Banner, Button, Dialog, FileButton, LoadError } from '@mondapac/ui';
 import { useFormatter, useTranslations } from 'next-intl';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { callApi } from '../../api/client.ts';
 import { prepareImage } from '../../categories/image-prepare.ts';
 import { API_BLOG_MEDIA, mediaUrl } from '../types.ts';
@@ -104,7 +104,9 @@ function Library({
     return () => onBusy(false);
   }, [uploading, onBusy]);
 
-  useEffect(() => {
+  // A layout effect: focus moves in the same commit that shows the new pictures, so nothing that
+  // reads focus right after them (a test, a screen reader) can see the old focus.
+  useLayoutEffect(() => {
     const target = focusId.current;
     if (target === null) return;
     focusId.current = null;

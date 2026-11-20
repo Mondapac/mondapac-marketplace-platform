@@ -31,6 +31,7 @@ export const LISTS_AUDIT_LIST_KEYS = [
   'admin.wallet.credit-requests',
   'admin.customers.deletion-requests',
   'admin.blog.posts',
+  'admin.assistant.insights',
   'admin.reviews.moderation',
 ] as const;
 export type ListsAuditListKey = (typeof LISTS_AUDIT_LIST_KEYS)[number];

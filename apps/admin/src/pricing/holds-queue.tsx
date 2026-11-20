@@ -173,7 +173,7 @@ function HoldLine({
       <td className={CARD_TABLE.labelled} data-label={t('col.submitted')}>
         <When iso={row.submittedAt} missing="-" />
       </td>
-      <td className={`${CARD_TABLE.cell} max-lg:col-span-2 max-lg:pt-2`}>
+      <td className={`${CARD_TABLE.cell} max-lg:col-span-full max-lg:pt-2`}>
         <div className="flex flex-col gap-3 lg:min-w-56">
           {problem === null ? null : <Banner tone="critical">{tr(problem.key)}</Banner>}
           {!canDecide ? (

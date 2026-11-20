@@ -93,13 +93,13 @@ export class MemoryReviews implements CertificateReviewRepository {
   ): Promise<ReviewSnapshot | null> {
     if (!this.own(market) || certificateId !== this.certificate.id) return Promise.resolve(null);
     const pending = this.certificate.pendingSubmissionId === this.submission.id;
-    const approved = this.certificate.approvedSubmissionId === this.submission.id;
     return Promise.resolve({
       certificate: {
         ...this.certificate,
         version: this.certificate.version + (lockContext.getStore() === undefined ? 0 : 1),
       },
-      submission: pending || approved ? { ...this.submission } : null,
+      // As the repository picks: the pending submission, else the approved one, else the latest.
+      submission: { ...this.submission },
       pending,
       history: [...this.history],
       others: options.others === true ? [...this.others] : [],

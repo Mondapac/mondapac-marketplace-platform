@@ -20,6 +20,12 @@ mode from the design; no separate brief.
   403 `system-requests.own-subject`. identity declares it: an admin's own role change or enabling,
   or an edit of the role the admin holds now. Withdraw is not affected, and a module without the
   check decides as before.
+- **Refusals are logged**: a caller the use-case gate refuses is logged by the gate
+  (`access.denied`). A decision the gate admitted but System requests refuses (`own-request`,
+  `own-subject`, `not-author`, `not-reviewer`, in approve, reject, withdraw, bulk approve and
+  approve all matching) writes no audit row, so it is logged as a warning
+  `system-requests.decision-refused` with the code, the decision, the request id, the actor id,
+  the Market and the correlation id.
 - **Revert only if unchanged**: the owning module's `SystemChangeReverter` compares the current
   value with `after` and refuses with `changed-since` when they differ. It may also answer
   `not-permitted` (403 `system-requests.revert-not-permitted`) when the decider may not make the
@@ -60,11 +66,25 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
 
 1. Export a `SystemChangeReverter` for each subject kind (`<module>.<subject>`), optionally with
    `describe` (the queue's subject label, see "Labels for the panel") and `isInterested` (the
-   separation-of-duties check), and add
-   `registerSystemChangeReverter('<module>', '<module>.<subject>', '<area>', TOKEN)` to the
+   separation-of-duties check). Create the module's registrar once, in a file of the module that
+   its barrel never exports (`const SETTINGS_SYSTEM_CHANGES = createSystemChangeRegistrar('settings')`),
+   and add `SETTINGS_SYSTEM_CHANGES.reverter('<module>.<subject>', '<area>', TOKEN)` to the
    module's providers. A kind is reviewed in that one area: `openReview` throws for a change of
    the kind filed under another area. Registration is sealed once the application has started;
    other modules can register but never look a reverter up.
+   The registrar is the module's identity (Hassan, PR #904): the registry takes only a registrar
+   `createSystemChangeRegistrar` made (never a module name or a copy), and refuses at boot (the
+   application does not start) a second registrar of the same module name, a kind outside
+   `<module>.`, a kind registered twice (as a reverter or an applier) and an area the module does
+   not own. Area owners (`application/area-owners.ts`): people identity; money
+   commission-payouts and wallet; delivery shipping; catalogue catalog; certification
+   certification; marketplace settings; review-policy system-requests; content none yet. A module
+   that hooks a new area adds itself there in the same change. The contract spec
+   `test/contracts/system-change-registrars.contract.spec.ts` checks that each registrar is created
+   once, in its own module's folder, imported under its own name and called only with a literal
+   module name, and that no barrel exports one. It also pins every kind the booted application
+   registers (module, area, mode, permission keys): a new kind or a changed key updates that table
+   in the same change. A refused second registrar names where both were created.
 2. In the use case that saves the change: lock and write the subject, then call `openReview` in
    the same unit with the values before and after (plain JSON, depth 3, 10 KB at most, no control
    characters, never a secret). An `err` answer is the use case's own refusal.
@@ -314,8 +334,8 @@ a merge or an import cannot be undone cleanly, so it waits for another admin's a
   answer is `null` when the area is not reviewed in the Market (the module applies the action at
   once, in the same unit, as before), the new request, or `system-requests.already-pending`
   (`pendingNumber`): one open proposal per subject (also a partial unique index).
-- The kind registers an applier (`registerSystemChangeApplier(module, kind, area, permission,
-  token)`): the permission key the action needs (an array when its use case declares several; all
+- The kind registers an applier (`<MODULE>_SYSTEM_CHANGES.applier(kind, area, permission,
+  token)`, through the module's registrar as above): the permission key the action needs (an array when its use case declares several; all
   are required), which system-requests checks itself (Hassan M1:
   a module `check` that answers `ok` for anyone cannot let a reviewer run an action they may not
   run); `apply` (in the approval's serializable unit: compares the subject with `before`, runs the
