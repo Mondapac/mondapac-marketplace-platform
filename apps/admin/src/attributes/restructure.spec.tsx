@@ -454,7 +454,8 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
         />
       </NextIntlClientProvider>,
     );
-    fireEvent.click(await screen.findByRole('button', { name: 'Confirm request for Pack type' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for Pack type' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Confirm…' }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText(/archived at once/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));

@@ -8,6 +8,13 @@ import { RoleView } from './role-view.tsx';
 import { groupByResource, humanise } from './role-name.ts';
 import type { RoleCatalogue, RoleRecord } from './types.ts';
 
+vi.mock('./role-row-actions.tsx', () => ({
+  RoleRowActions: (props: { name: string; editable: boolean; canDuplicate: boolean }) => (
+    <button type="button" data-editable={props.editable} data-duplicate={props.canDuplicate}>
+      Actions for {props.name}
+    </button>
+  ),
+}));
 vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve(createTranslator({ locale: 'en-AU', messages })),
   getLocale: () => Promise.resolve('en-AU'),
@@ -62,9 +69,10 @@ describe('admin roles', () => {
     expect(screen.getByText('All')).toBeTruthy();
     expect(screen.getByText('2 permissions')).toBeTruthy();
     expect(screen.getByText('None yet')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Edit Night shift' }).getAttribute('href')).toBe(
-      '/settings/roles/0190a000-0000-7000-8000-0000000000a3',
-    );
+    expect(screen.queryByRole('link', { name: /Edit|View/ })).toBeNull();
+    expect(
+      screen.getByRole('button', { name: 'Actions for Night shift' }).getAttribute('data-editable'),
+    ).toBe('true');
   });
 
   it('gives every group the same fixed columns, one per header', async () => {
@@ -114,7 +122,9 @@ describe('admin roles', () => {
       actions: { edit: { allowed: false, code: 'access.denied' }, delete: allowed },
     });
     render(await RolesTable({ roles: [locked] }));
-    expect(screen.getByRole('link', { name: 'View Held' })).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Actions for Held' }).getAttribute('data-editable'),
+    ).toBe('false');
     cleanup();
     render(await RoleView({ role: locked, catalogue, canDuplicate: true }));
     expect(screen.getByRole('link', { name: 'Duplicate' }).getAttribute('href')).toBe(

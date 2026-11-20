@@ -186,6 +186,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'blog/admin/posts/export',
     // The blog categories and tags the editor offers (blog), read only.
     'blog/admin/taxonomy',
+    // The blog media library, newest first (blog; query: `page`), read only.
+    'blog/admin/media',
     // The brands (catalog; query: `status`, `search`, `afterId`, `limit`) and the brand merge
     // queue. One brand is not read by the panel: the list rows carry the version a change needs.
     'catalog/admin/brands',
@@ -334,6 +336,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // A new blog category or tag (blog).
     'blog/admin/taxonomy/categories',
     'blog/admin/taxonomy/tags',
+    // Upload a picture to the blog media library (blog): a base64 picture, so the body cap of this
+    // path is the larger image one.
+    'blog/admin/media',
     // A new fleet-selection model (shipping).
     'shipping/admin/fleet-selection/models',
     // A new tax strategy, and the choice of the active one (tax; protected key).
@@ -769,8 +774,16 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // The full status history of one seller certificate (certification): an audited read that
     // needs the protected document view permission (query: `beforeId`, `limit`).
     'certification/admin/seller-certificates/:id/history',
+    // The bytes of one file of a submission, and of one issuer request (certification): an audited
+    // read, an attachment under a name the server made. The API answers 403
+    // `document.download-disabled` while the Market's switch is off.
+    'certification/admin/seller-certificates/:id/documents/:id',
+    'certification/admin/issuer-requests/:id/documents/:id',
     // The photo library of a platform product, for the form's images card (catalog, P1).
     'catalog/admin/platform-products/:id/images',
+    // A blog library picture, thumbnail and large size only (blog).
+    'blog/admin/media/:id/thumb',
+    'blog/admin/media/:id/large',
     // The primary photo of a listed product, thumbnail size only (catalog).
     'catalog/admin/products/:id/images/:id/thumb',
     // A product version's photo opened large, for its review (catalog).
@@ -1103,6 +1116,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'notifications/admin/notices': ['show', 'before'],
   'storefront/admin/slides': ['state', 'position'],
   'storefront/admin/slides/order': ['position', 'scope', 'scopeId'],
+  'blog/admin/media': ['page'],
   // The view, search, filters and page mode of the Blog posts super list.
   'blog/admin/posts': [
     'view',
@@ -1469,7 +1483,18 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   // The category tree, narrowed to the categories of one feature set (categories, A4).
   'catalog/admin/categories': ['featureSetId'],
   'catalog/admin/category-proposals': ['afterId', 'limit'],
-  'catalog/admin/business-activities': ['status', 'search', 'afterId', 'limit'],
+  'catalog/admin/business-activities': [
+    'status',
+    'search',
+    'afterId',
+    'limit',
+    'q',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/topics': ['status', 'group', 'search', 'afterId', 'limit'],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
   'catalog/admin/variant-requests': [
@@ -2314,6 +2339,11 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     status: /^(active|inactive)$/,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^(code|status|created|updated)$/,
+    direction: /^(asc|desc)$/,
   },
   'catalog/admin/topics': {
     status: /^(active|archived)$/,
@@ -2384,6 +2414,7 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sort: /^(created|updated|published|scheduled)$/,
     direction: /^(asc|desc)$/,
   },
+  'blog/admin/media': { page: /^[0-9]{1,4}$/ },
   'storefront/admin/slides/order': {
     position: /^[a-z]+(?:\.[a-z-]+)+$/,
     scope: /^(all|category|product|seller|page)$/,
@@ -2547,8 +2578,14 @@ function badScope(method: string, target: string, requestUrl: string): boolean {
 const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
   'payments/admin/connected-accounts/export',
   'security/admin/alerts/export',
+  'certification/admin/seller-certificates/export',
   'reviews/admin/moderation/export',
-  // The seller page's ledger and payout holds exports (lists 27, 28); the seller is in the path.
+  // Super list phase 4 exports (Hassan S1): a bad `ids` or filter refuses, never widens the file.
+  'commission-payouts/admin/payouts/export',
+  'commission-payouts/admin/disputes/export',
+  'wallet/admin/credit-requests/export',
+  'customers/admin/deletion-requests/export',
+  'blog/admin/posts/export',
   'commission-payouts/admin/sellers/:id/ledger/export',
   'commission-payouts/admin/sellers/:id/payout-holds/export',
 ]);
@@ -2746,6 +2783,8 @@ const CERT_DOCUMENT_PATH =
   /^certification\/admin\/product-certificates\/[0-9a-f-]{36}\/documents$/i;
 /** A platform product photo upload (catalog, P1): the same base64 photo cap. */
 const PRODUCT_IMAGE_PATH = /^catalog\/admin\/platform-products\/[0-9a-f-]{36}\/images$/i;
+/** A blog media library upload (blog): the same base64 picture cap. */
+const BLOG_MEDIA_PATH = 'blog/admin/media';
 
 /**
  * The customer export (customers) names up to 1000 ticked ids of 36 characters (about 40 kB as
@@ -2773,6 +2812,7 @@ function bodyCapOf(method: string, target: string): number {
   if (method === 'PUT' && CATEGORY_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
   if (method === 'POST' && CERT_DOCUMENT_PATH.test(target)) return MAX_UPLOAD_BODY_BYTES;
   if (method === 'POST' && PRODUCT_IMAGE_PATH.test(target)) return MAX_IMAGE_BODY_BYTES;
+  if (method === 'POST' && target === BLOG_MEDIA_PATH) return MAX_IMAGE_BODY_BYTES;
   return MAX_BODY_BYTES;
 }
 

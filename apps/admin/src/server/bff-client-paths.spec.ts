@@ -29,6 +29,9 @@ const files = [
   ...readdirSync(path.join(src, 'reviews'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'reviews', name)),
+  ...readdirSync(path.join(src, 'reviews', 'moderation-list'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'reviews', 'moderation-list', name)),
   ...readdirSync(path.join(src, 'payouts'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'payouts', name)),
@@ -112,7 +115,7 @@ describe('every path the wallet, dispute, review moderation, account deletion, s
         'POST wallet/admin/credit-requests/:id/approve',
         'POST wallet/admin/credit-requests/:id/reject',
         'GET commission-payouts/admin/disputes',
-        'GET reviews/admin/moderation',
+        'GET reviews/admin/moderation/list',
         'GET reviews/admin/moderation/:id',
         'POST reviews/admin/moderation/:id/publish',
         'POST reviews/admin/moderation/:id/hide',

@@ -68,7 +68,7 @@ export function SlidesTable({
             <th scope="col" className="px-4 py-3 font-medium lg:px-2">
               {t('col.status')}
             </th>
-            <th scope="col" className="px-4 py-3 font-medium lg:px-2">
+            <th scope="col" className={CARD_TABLE.actionsHead}>
               {t('col.actions')}
             </th>
           </tr>
@@ -128,7 +128,7 @@ export function SlidesTable({
                 <td className={`${CARD_TABLE.corner} lg:px-2`}>
                   <SlideStatusBadge status={slide.status} />
                 </td>
-                <td className={`${CARD_TABLE.cell} max-lg:col-span-2 max-lg:pt-1 lg:px-2`}>
+                <td className={CARD_TABLE.actions}>
                   <SlideRowAction
                     slide={slide}
                     gates={gates}

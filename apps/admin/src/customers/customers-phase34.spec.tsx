@@ -77,8 +77,8 @@ const summary = (): SellerCustomersSummary => ({
   counts: { all: 40, buyers: 25, followers: 30, referred: 7 },
   zone: 'Pacific/Auckland',
   months: [
-    { month: '2026-09', newBuyers: 3, newFollowers: 5 },
-    { month: '2026-10', newBuyers: 4, newFollowers: 2 },
+    { month: '2026-09', newBuyers: 3, newFollowers: 5, newExclusive: 2 },
+    { month: '2026-10', newBuyers: 4, newFollowers: 2, newExclusive: 1 },
   ],
 });
 const customerRow = (over: Partial<SellerCustomerRow> = {}): SellerCustomerRow => ({
@@ -128,11 +128,31 @@ describe('the seller Customers tab', () => {
     expect(within(tiles).getByText('Buyers').nextElementSibling?.textContent).toBe('25');
     expect(screen.getByText('Months in Pacific/Auckland')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Show as table' }));
-    const table = screen.getByRole('table', { name: 'New buyers and new followers by month' });
+    const table = screen.getByRole('table', {
+      name: 'New buyers, new followers and new exclusive customers by month',
+    });
     expect(within(table).getAllByRole('row')).toHaveLength(3);
+    expect(
+      within(table).getByRole('columnheader', { name: 'New exclusive customers' }),
+    ).toBeTruthy();
+    const cells = within(within(table).getAllByRole('row')[1]!).getAllByRole('cell');
+    expect(cells.map((c) => c.textContent)).toEqual(['3', '5', '2']);
     expect(screen.getByRole('button', { name: 'Show as chart' }).getAttribute('aria-pressed')).toBe(
       'true',
     );
+  });
+
+  it('shows the error state when a month has no newExclusive', async () => {
+    call.mockImplementation((_method, path) => {
+      if (path.endsWith('/customers/summary')) {
+        const bad = summary() as unknown as { months: Record<string, unknown>[] };
+        delete bad.months[0]!.newExclusive;
+        return Promise.resolve(ok(bad));
+      }
+      return Promise.resolve(ok(customersPage([])));
+    });
+    render(wrap(<SellerCustomersTab {...tabProps} />));
+    expect(await screen.findByText('The summary could not be loaded. Try again.')).toBeTruthy();
   });
 
   it('lists the customers with the code, money from the API and a link to the customer page', async () => {

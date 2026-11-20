@@ -7,6 +7,7 @@ import { callApi } from '../api/client.ts';
 import { numberFormat } from '../shared/intl.ts';
 import { minutesOf } from './security-shared.tsx';
 import {
+  parseSellerCustomersSummary,
   SELLER_VIEWS,
   type SellerCustomersSummary,
   type SellerView,
@@ -33,7 +34,7 @@ export function monthLabel(month: string, locale: string): string {
 
 /**
  * The head of a seller's Customers tab (customers management phase 3): the four counts as tiles
- * and the last 12 months of new buyers and new followers, as bars with a table alternative (the
+ * and the last 12 months of new buyers, new followers and new exclusive customers, as bars with a table alternative (the
  * table is the default on a phone under 480 px). The section owns its card: a 403 removes it.
  */
 export function SellerCustomersSummaryCard({
@@ -51,12 +52,13 @@ export function SellerCustomersSummaryCard({
 
   const read = useCallback(async () => {
     setLoad({ state: 'loading' });
-    const result = await callApi<SellerCustomersSummary>(
+    const result = await callApi<unknown>(
       'GET',
       `customers/admin/sellers/${encodeURIComponent(sellerId)}/customers/summary`,
     );
     if (result.ok) {
-      setLoad({ state: 'ready', summary: result.body });
+      const summary = parseSellerCustomersSummary(result.body);
+      setLoad(summary === null ? { state: 'failed', minutes: null } : { state: 'ready', summary });
       return;
     }
     if (result.failure.status === 401) {
@@ -112,7 +114,10 @@ export function SellerCustomersSummaryCard({
   }
 
   const { summary } = load;
-  const peak = Math.max(1, ...summary.months.flatMap((m) => [m.newBuyers, m.newFollowers]));
+  const peak = Math.max(
+    1,
+    ...summary.months.flatMap((m) => [m.newBuyers, m.newFollowers, m.newExclusive]),
+  );
   const tileLabel = (view: SellerView) => t(`tile.${view}`);
 
   return (
@@ -156,8 +161,11 @@ export function SellerCustomersSummaryCard({
                 <th scope="col" className="py-2 pe-4 text-end font-medium">
                   {t('trend.new-buyers')}
                 </th>
-                <th scope="col" className="py-2 text-end font-medium">
+                <th scope="col" className="py-2 pe-4 text-end font-medium">
                   {t('trend.new-followers')}
+                </th>
+                <th scope="col" className="py-2 text-end font-medium">
+                  {t('trend.new-exclusive')}
                 </th>
               </tr>
             </thead>
@@ -168,7 +176,8 @@ export function SellerCustomersSummaryCard({
                     {monthLabel(m.month, locale)}
                   </th>
                   <td className="py-2 pe-4 text-end tabular-nums">{number(m.newBuyers)}</td>
-                  <td className="py-2 text-end tabular-nums">{number(m.newFollowers)}</td>
+                  <td className="py-2 pe-4 text-end tabular-nums">{number(m.newFollowers)}</td>
+                  <td className="py-2 text-end tabular-nums">{number(m.newExclusive)}</td>
                 </tr>
               ))}
             </tbody>
@@ -176,7 +185,10 @@ export function SellerCustomersSummaryCard({
         </div>
       ) : (
         <div>
-          <ul className="mb-2 flex gap-4 text-sm text-fg-secondary" aria-label={t('trend.legend')}>
+          <ul
+            className="mb-2 flex flex-wrap gap-x-4 gap-y-1 text-sm text-fg-secondary"
+            aria-label={t('trend.legend')}
+          >
             <li className="flex items-center gap-2">
               <span aria-hidden="true" className="inline-block size-3 rounded-sm bg-accent" />
               {t('trend.new-buyers')}
@@ -184,6 +196,10 @@ export function SellerCustomersSummaryCard({
             <li className="flex items-center gap-2">
               <span aria-hidden="true" className="inline-block size-3 rounded-sm bg-info-fg" />
               {t('trend.new-followers')}
+            </li>
+            <li className="flex items-center gap-2">
+              <span aria-hidden="true" className="inline-block size-3 rounded-sm bg-success-fg" />
+              {t('trend.new-exclusive')}
             </li>
           </ul>
           {/* The figures are exact in the table; the bars are an overview, so they are hidden from
@@ -197,14 +213,19 @@ export function SellerCustomersSummaryCard({
               <div key={m.month} className="flex min-w-8 flex-1 flex-col items-center gap-1">
                 <div className="flex h-32 w-full items-end justify-center gap-1">
                   <span
-                    className="w-1/2 rounded-t-sm bg-accent"
+                    className="w-1/3 rounded-t-sm bg-accent"
                     style={{ height: `${(m.newBuyers / peak) * 100}%` }}
                     title={`${t('trend.new-buyers')}: ${number(m.newBuyers)}`}
                   />
                   <span
-                    className="w-1/2 rounded-t-sm bg-info-fg"
+                    className="w-1/3 rounded-t-sm bg-info-fg"
                     style={{ height: `${(m.newFollowers / peak) * 100}%` }}
                     title={`${t('trend.new-followers')}: ${number(m.newFollowers)}`}
+                  />
+                  <span
+                    className="w-1/3 rounded-t-sm bg-success-fg"
+                    style={{ height: `${(m.newExclusive / peak) * 100}%` }}
+                    title={`${t('trend.new-exclusive')}: ${number(m.newExclusive)}`}
                   />
                 </div>
                 <span className="text-xs text-fg-muted">{monthLabel(m.month, locale)}</span>

@@ -51,7 +51,12 @@ describe.each(['AU', 'ZZ'] as const)('brand export in market %s', (code) => {
   function setup(options: { readonly allow?: boolean; readonly unitFails?: boolean } = {}) {
     const brands = new MemoryBrands();
     brands.seed(brandState(brandId(1), 'Acme Tea', { originCountry: 'AU' }));
-    brands.seed(brandState(brandId(2), '=Formula Foods', { summary: 'Sweet' }));
+    brands.seed(
+      brandState(brandId(2), '=Formula Foods', {
+        summary: 'Sweet',
+        createdAt: Temporal.Instant.from('2026-11-01T00:00:00Z'),
+      }),
+    );
     brands.seed(brandState(brandId(3), 'Draft Brand', { status: 'draft' }));
     brands.seed(brandState(brandId(4), 'Old Brand', { status: 'archived' }));
     const checked: AccessDeclaration[] = [];
@@ -151,6 +156,9 @@ describe.each(['AU', 'ZZ'] as const)('brand export in market %s', (code) => {
     expect(pages).toEqual([
       {
         status: 'active',
+        originCountry: null,
+        createdFrom: null,
+        createdTo: null,
         search: 'a',
         sort: 'name',
         direction: 'desc',
@@ -158,6 +166,37 @@ describe.each(['AU', 'ZZ'] as const)('brand export in market %s', (code) => {
         limit: BRAND_EXPORT_MAX_ROWS + 1,
       },
     ]);
+  });
+
+  it('exports only the brands of the origin country and creation window the list filter names', async () => {
+    const { useCase, pages } = setup();
+    const from = '2026-10-28T10:00:00+10:00';
+    const to = '2026-11-01T00:00:00Z';
+
+    const result = await useCase.execute(contextOf('admin'), {
+      originCountry: 'AU',
+      createdFrom: from,
+      createdTo: to,
+    });
+
+    if (!result.ok) throw new Error(JSON.stringify(result.error));
+    const names = (await text(result.value.chunks))
+      .replace(/^\uFEFF/, '')
+      .trimEnd()
+      .split('\r\n')
+      .slice(1)
+      .map((line) => line.split(',')[0]);
+    expect(names).toEqual(['Acme Tea']);
+    expect(pages[0]).toMatchObject({
+      originCountry: 'AU',
+      createdFrom: Temporal.Instant.from(from),
+      createdTo: Temporal.Instant.from(to),
+    });
+
+    // The window is [from, to): Formula Foods, created exactly at `to`, is left out above and in here.
+    const later = await useCase.execute(contextOf('admin'), { createdFrom: to });
+    if (!later.ok) throw new Error(JSON.stringify(later.error));
+    expect((await text(later.value.chunks)).trimEnd().split('\r\n').slice(1)).toHaveLength(1);
   });
 
   it('exports the selected ids in the order given as XLSX, every status', async () => {
@@ -229,6 +268,16 @@ describe.each(['AU', 'ZZ'] as const)('brand export in market %s', (code) => {
     [{ format: 'pdf' }, 'format', 'value'],
     [{ columns: 'logo' }, 'columns', 'value'],
     [{ page: '2' }, 'page', 'unknown'],
+    [{ originCountry: 'au' }, 'originCountry', 'format'],
+    [{ originCountry: 'A\u0000' }, 'originCountry', 'format'],
+    [{ originCountry: ['AU', 'NZ'] }, 'originCountry', 'type'],
+    [{ createdFrom: '2026-11-01' }, 'createdFrom', 'format'],
+    [{ createdTo: '2026-11-01T00:00:00Z\u0007' }, 'createdTo', 'format'],
+    [
+      { createdFrom: '2026-11-01T00:00:00Z', createdTo: '2026-11-01T00:00:00Z' },
+      'createdTo',
+      'range',
+    ],
   ])('refuses %j as validation.failed', async (input, path, reason) => {
     const { useCase, units } = setup();
     expect(await useCase.execute(contextOf('admin'), input)).toEqual({
