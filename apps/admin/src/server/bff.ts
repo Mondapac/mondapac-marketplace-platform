@@ -2114,7 +2114,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   },
   'certification/admin/issuer-requests/export': {
     format: /^(csv|xlsx)$/,
-    columns: /^(request-id|seller-id|documents)(,(request-id|seller-id|documents)){0,2}$/,
+    // Empty is valid: no optional column shown, so the file has its fixed columns only.
+    columns: /^$|^(request-id|seller-id|documents)(,(request-id|seller-id|documents)){0,2}$/,
     ids: UUID_LIST_200,
     view: /^all$/,
     type: /^[a-z0-9][a-z0-9_-]{0,63}$/,
@@ -2579,6 +2580,7 @@ function badScope(method: string, target: string, requestUrl: string): boolean {
 const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
   'payments/admin/connected-accounts/export',
   'security/admin/alerts/export',
+  'certification/admin/issuer-requests/export',
   'certification/admin/seller-certificates/export',
   'reviews/admin/moderation/export',
   // Super list phase 4 exports (Hassan S1): a bad `ids` or filter refuses, never widens the file.
