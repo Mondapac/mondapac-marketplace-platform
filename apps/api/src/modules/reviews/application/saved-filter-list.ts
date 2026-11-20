@@ -71,10 +71,7 @@ export interface SellerReviewFilterPayload {
 export interface ModerationFilterPayload {
   readonly v: 1;
   readonly view: ModerationListView;
-  readonly filters?: Pick<
-    ReviewFilters,
-    'minRating' | 'maxRating' | 'reportReason' | 'submitted'
-  >;
+  readonly filters?: Pick<ReviewFilters, 'minRating' | 'maxRating' | 'reportReason' | 'submitted'>;
   readonly sort?: ModerationSortKey;
   readonly direction?: 'asc' | 'desc';
 }
