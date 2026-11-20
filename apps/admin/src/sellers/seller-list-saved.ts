@@ -1,14 +1,14 @@
 // Saved filters of the Sellers list (list key `admin.sellers.list`, registered by the lists
 // module): the closed document a saved filter keeps and the two conversions between it and the
-// page's query. NOT wired into the page yet: the follow-up adds `useSavedFilters(LIST_KEY)` and the
-// views bar `manage`, as the queue lists do. The search text is never saved.
+// page's query. The page wires them to `useSavedFilters(LIST_KEY)` and the views bar `manage`, as
+// the queue lists do. The search text is never saved.
 
 import { stringsOf } from '../sales/sales-saved.ts';
 import {
   DEFAULT_QUERY,
   SORTS,
   filtersFor,
-  queueDirection,
+  defaultDirection,
   type Direction,
   type Filters,
   type Query,
@@ -33,7 +33,7 @@ export function somethingToSave(query: Query): boolean {
     query.view !== DEFAULT_QUERY.view ||
     Object.keys(filtersFor(query.view, query.filters)).length > 0 ||
     query.sort !== DEFAULT_QUERY.sort ||
-    query.direction !== queueDirection(query.view)
+    query.direction !== defaultDirection(query.sort, query.view)
   );
 }
 
@@ -44,7 +44,9 @@ export function payloadOf(query: Query): SavedPayload {
     view: query.view,
     ...(Object.keys(filters).length === 0 ? {} : { filters }),
     ...(query.sort !== DEFAULT_QUERY.sort ? { sort: query.sort } : {}),
-    ...(query.direction !== queueDirection(query.view) ? { direction: query.direction } : {}),
+    ...(query.direction !== defaultDirection(query.sort, query.view)
+      ? { direction: query.direction }
+      : {}),
   };
 }
 
@@ -61,8 +63,6 @@ export function queryOf(payload: SavedPayload): Query {
   const direction: Direction =
     payload.direction === 'asc' || payload.direction === 'desc'
       ? payload.direction
-      : sort === 'name'
-        ? 'asc'
-        : queueDirection(view);
+      : defaultDirection(sort, view);
   return { ...DEFAULT_QUERY, view, filters, sort, direction };
 }

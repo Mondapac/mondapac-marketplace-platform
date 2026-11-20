@@ -55,12 +55,17 @@ export interface Filters {
 }
 
 /** Calendar days (yyyy-mm-dd, both included) of a saved filter or a range typed in a link. */
-export interface DayRange {
-  /** The first day; absent for a range that runs up to `to` with no lower bound. */
-  readonly from?: string;
-  /** The last day; absent for a range that runs from `from` with no upper bound. */
-  readonly to?: string;
-}
+export type DayRange =
+  | {
+      /** The first day; the range may stop at `to` or run on without an upper bound. */
+      readonly from: string;
+      readonly to?: string;
+    }
+  | {
+      /** The last day; a range with no `from` runs up to it with no lower bound. */
+      readonly from?: undefined;
+      readonly to: string;
+    };
 
 export interface Query {
   readonly tab: StatusFilter;
@@ -165,21 +170,26 @@ export function queryString(query: Query, context: QueryContext): string {
   return params.toString();
 }
 
+/** The words around a day range; the app supplies them translated (next-intl, `orders.days.*`). */
+export interface DaysWords {
+  readonly range: (from: string, to: string) => string;
+  readonly from: (day: string) => string;
+  readonly until: (day: string) => string;
+}
+
 /** The days a query holds, named in words for a chip or a saved filter ("2026-10-01 to 2026-10-31"). */
-export const daysLabel = (days: DayRange): string => {
-  const { from, to } = days;
-  if (from !== undefined && to !== undefined) return from === to ? from : `${from} to ${to}`;
-  if (from !== undefined) return `from ${from}`;
-  return `until ${to ?? ''}`;
+export const daysLabel = (days: DayRange, words: DaysWords): string => {
+  if (days.from !== undefined && days.to !== undefined) {
+    return days.from === days.to ? days.from : words.range(days.from, days.to);
+  }
+  if (days.from !== undefined) return words.from(days.from);
+  return words.until(days.to);
 };
 
 /** The range a saved document holds: only the bounds that are set; null when none is. */
 export function savedDays(from: string | undefined, to: string | undefined): DayRange | null {
   const first = from === undefined || from === '' ? undefined : from;
   const last = to === undefined || to === '' ? undefined : to;
-  if (first === undefined && last === undefined) return null;
-  return {
-    ...(first === undefined ? {} : { from: first }),
-    ...(last === undefined ? {} : { to: last }),
-  };
+  if (first === undefined) return last === undefined ? null : { to: last };
+  return last === undefined ? { from: first } : { from: first, to: last };
 }

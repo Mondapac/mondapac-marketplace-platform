@@ -511,8 +511,12 @@ total covers what is left); the cancel reason `discount-changed`. Existing rows 
   refused (`ordering.check-unavailable`) before anything is reserved; a seller part at no cost sends no Stripe
   line.
 - Follow-ups: orders at no cost (a 100% voucher) need an owner decision; manual-group audiences do not match under the customer's context yet (customers' group check is
-  system-only); the admin panel's cancel-reason list lacks `discount-changed` and the web checkout has no code
-  field yet (part C); the refund release waits for the owner's decision.
+  system-only); the web checkout's code box still checks the sample codes, because the storefront's Pay is not
+  wired to `POST /orders/pay` yet (the live checkout sends the code once it is); the refund release waits for the
+  owner's decision.
+- **Part C (panels)**: the admin and seller order pages and the admin order document show each line's discount
+  and the seller order's goods and delivery discounts (rows only when above zero); the admin names the cancel
+  reason `discount-changed`. The buyer's account orders read the same fields and total what the buyer paid.
 - **A customer's usages** (customers management phase 2b, item e; 17 Nov 2026):
   `GET promotions/admin/customers/:customerAccountId/usages` (`promotions.list-customer-promotion-usages`,
   `promotions.promotion.view` and `customers.customers.view`, like every customer-page tab; admin only, refused in

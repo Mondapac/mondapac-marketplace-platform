@@ -287,6 +287,14 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
   (`not-permitted`): reject the role assignment first. The hourly purge never deletes an accepted
   admin invitation (Hassan M1 on PR #1058), so a reject still reaches the admin it created however
   late it comes; an invitation that is `gone` is one that was never accepted and has expired.
+- An admin invitation to a sensitive role (the Platform Administrator, or a role with a protected
+  key) waits for approval since 18 Nov 14:06Z (`identity.admin-invitation-sensitive`): identity
+  holds the invitation, address included, and sends nothing until the approval. A reject or
+  withdraw asks identity nothing, so the held row stays pending (still blocking a new invitation
+  to that address) until the inviter revokes it or it passes the admin invitation lifetime, after
+  which it is replaced or purged; an approval after that lifetime answers `gone`. Identity cannot
+  release it on its own when the proposal closes: the port has no proposal read and no decision
+  event (follow-up, Hassan on PR #1081).
 
 ## Actions that wait for approval (approval mode)
 
@@ -326,8 +334,10 @@ a merge or an import cannot be undone cleanly, so it waits for another admin's a
   CHECK and partial unique index above, activity kind `proposed`. Its `down.sql` refuses to run
   while any proposal exists.
 - Which actions use it, per module, and their panel pages: catalog and shipping (the create of
-  a fleet-selection model on the delivery fleets page; see "Hooked areas"); the other modules are
-  follow-up PRs (plan in the project files, `handoffs/system-requests/deferred-hooks-plan.md`).
+  a fleet-selection model on the delivery fleets page; see "Hooked areas"); area people: the
+  custom platform role delete, and an admin invitation to a sensitive role (identity notes,
+  2026-11-18); the other modules are follow-up PRs (plan in the project files,
+  `handoffs/system-requests/deferred-hooks-plan.md`).
 
 ## Supersession and locks
 

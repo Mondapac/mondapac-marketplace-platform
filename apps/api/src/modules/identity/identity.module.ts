@@ -127,6 +127,7 @@ import {
   PEOPLE_REVIEW_AREA,
   PLATFORM_ROLE_CREATION_SUBJECT_KIND,
   PLATFORM_ROLE_DELETION_SUBJECT_KIND,
+  SENSITIVE_ADMIN_INVITATION_SUBJECT_KIND,
   PLATFORM_ROLE_SUBJECT_KIND,
 } from './application/people/people-review';
 import {
@@ -135,6 +136,10 @@ import {
   PlatformRoleDeletionApplier,
   type PeopleCreationDependencies,
 } from './application/people/people-creations';
+import {
+  INVITE_ADMIN_KEYS,
+  SensitiveAdminInvitationApplier,
+} from './application/people/people-invitations';
 import {
   AdminRolesReverter,
   AdminStatusReverter,
@@ -468,6 +473,7 @@ const PEOPLE_CREATION_PORTS = {
   unitOfWork: true,
   invitations: true,
   grants: true,
+  policy: true,
 } as const satisfies { readonly [K in keyof PeopleCreationDependencies]-?: true };
 
 /**
@@ -476,7 +482,7 @@ const PEOPLE_CREATION_PORTS = {
  */
 function peopleCreationHook(
   subjectKind: string,
-  mode: 'review' | { readonly approvalKey: string },
+  mode: 'review' | { readonly approvalKeys: readonly string[] },
   type: new (
     deps: PeopleCreationDependencies,
     labels: PeopleLabelReads,
@@ -507,7 +513,7 @@ function peopleCreationHook(
           'identity',
           subjectKind,
           PEOPLE_REVIEW_AREA,
-          mode.approvalKey,
+          mode.approvalKeys,
           token,
         ),
   ];
@@ -1704,6 +1710,7 @@ function useCaseProvider<D, U>(
     }),
     useCaseProvider(InviteAdmin, {
       review: true,
+      proposer: true,
       unitOfWork: true,
       accounts: true,
       roles: true,
@@ -1782,8 +1789,14 @@ function useCaseProvider<D, U>(
     ...peopleCreationHook(ADMIN_INVITATION_SUBJECT_KIND, 'review', AdminInvitationReverter),
     ...peopleCreationHook(
       PLATFORM_ROLE_DELETION_SUBJECT_KIND,
-      { approvalKey: PLATFORM_ROLE_DELETE.key },
+      { approvalKeys: [PLATFORM_ROLE_DELETE.key] },
       PlatformRoleDeletionApplier,
+    ),
+    // Owner decision of 18 Nov 2026, 14:06Z: with every key of InviteAdmin's rule (`allOf`).
+    ...peopleCreationHook(
+      SENSITIVE_ADMIN_INVITATION_SUBJECT_KIND,
+      { approvalKeys: INVITE_ADMIN_KEYS },
+      SensitiveAdminInvitationApplier,
     ),
     useCaseProvider(DisableCustomerAccount, {
       unitOfWork: true,

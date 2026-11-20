@@ -181,6 +181,69 @@ session and CSRF token, only after the buyer clicks (ADR-0019 R4).
   model, tier, commit, ref and run id, each case with what the model wrote and what the buyer would see; never the key) is
   kept as the run's artifact for 90 days: that run is the record the switch needs.
 
+## Feedback and insights (B3)
+
+### Thumbs on an answer
+
+`POST /assistant/conversations/:id/messages/:messageId/feedback`, body `{ rating: "up" | "down",
+reason?: "wrong" | "not-found" | "other" }` (closed; `reason` only with `down`). `messageId` is
+the position (1 to 60) of an assistant message of the conversation; the reply to the buyer's
+n-th message is position 2n. Answers 200 `{ rating, reason }` (`Cache-Control: no-store`).
+
+| Caller | Use case (rule) | Owner check |
+|---|---|---|
+| Signed-in customer (session cookie and CSRF token) | `assistant.submit-feedback` (`own-resources`) | the account of the session |
+| Anyone else | `assistant.submit-guest-feedback` (`anonymous`) | the assistant guest cookie |
+
+Refusals: 400 `validation.failed`, 403 `assistant.off` (the Market switch is off), 404
+`assistant.conversation-not-found` (unknown, another owner's, or a guest with no or an unknown
+cookie: always the same answer) and 404 `assistant.message-not-found` (a buyer message, a position
+that does not exist, or a conversation that keeps no text). One row per message in
+`assistant.feedback`; giving it again replaces the earlier one (last write wins). The row is
+deleted with its message (cascade), so it follows the conversation's retention and the purge.
+
+### Admin insights
+
+`GET /assistant/admin/insights?from&to&page&pageSize`, admin session, permission
+`assistant.settings.view` (use case `assistant.view-assistant-insights`). `from` and `to` are days
+of the Market's calendar (`YYYY-MM-DD`, both included; default the 30 days ending today; at most 92).
+The answer holds:
+
+- `days`: every day of the range with `conversations` and `spendMicroUsd` (from `spend_days`), and
+  their `totals`.
+- `feedback`: `up`, `down`, `upShare` (null with no thumbs) and the `down` count by reason, for
+  assistant messages written in the range.
+- `handoffs`: assistant replies that showed the support card.
+- `unanswered`: turns whose reply carried the notice `unavailable` or `tool-failed`, whose product
+  search was empty, or that got a thumbs down; grouped by normalized query (Unicode-folded, lower
+  case, no punctuation), most asked first, then newest; top 200 groups, paged with `page` and
+  `pageSize` (default 50, at most 100). Each row: `query` (the newest wording, 200 characters at
+  most), `count`, `lastAt` and the count per reason. `truncated` says that more than 1000 flagged
+  turns existed and only the newest 1000 were grouped. This is the data of the F3 super list.
+
+Retention limits what it shows: a conversation that keeps no text (retention `none`) has no
+messages, so its unavailable, failed or empty turns, hand-offs and thumbs are not in these
+numbers (only its spend day is); and a guest's conversation is purged after 30 days, so a thumbs
+share over a longer range covers the surviving account conversations only.
+
+Buyer text is the masked text that was stored, decrypted per conversation only to build these
+rows; no account, guest or conversation id leaves the module. Only conversations that keep text
+appear (a conversation with retention `none` leaves its spend day only). The route is
+`no-store` and the text is never logged.
+
+Each assistant message now stores `notices` (the fixed notice codes of the reply, at most 8) and
+`empty_search`, written with the message, to feed the unanswered rows.
+
+### Tables (Mojtaba's sign-off before merge)
+
+Migration `20261119110000_assistant_feedback`. `feedback`: PK (Market, conversation, position),
+FK to `messages` on the same three columns with `ON DELETE CASCADE`; CHECKs: rating `up|down`,
+reason only with `down` and one of three values, the application role
+can SELECT and INSERT, and UPDATE only `rating`, `reason` and `updated_at`; no DELETE (the cascade
+needs none). `messages` gains `notices VARCHAR(32)[]` and `empty_search`; two partial indexes
+on (`market_id`, `created_at`) for assistant rows: all of them (the range reads) and the flagged
+ones only (the unanswered read).
+
 ## A signed-in buyer's history (stage 0, B2)
 
 Three routes on the same controller, for a signed-in customer only (session cookie; DELETE also

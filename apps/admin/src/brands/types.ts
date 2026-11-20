@@ -71,3 +71,9 @@ export const STATUS_OF: Readonly<Record<Exclude<Tab, 'duplicates'>, BrandStatus>
   draft: 'draft',
   archived: 'archived',
 };
+
+/** One row of the page-numbered brands list: the brand and the row actions the caller may run. */
+export interface BrandListRow extends BrandRow {
+  /** `edit`, `merge`, `deactivate` (archive, or turn down a proposal), by caller and status. */
+  readonly actions: readonly string[];
+}

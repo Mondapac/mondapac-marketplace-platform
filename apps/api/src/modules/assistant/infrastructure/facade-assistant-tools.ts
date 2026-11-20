@@ -16,11 +16,16 @@ import type { AssistantTools, ToolOutcome } from '../application/ports/assistant
 import type { AssistantCard, CartActionCard, CartCard } from '../domain/cards';
 import { TOOL_ITEM_LIMIT, type CartChange, type ToolRequest } from '../domain/tools';
 
-const shown = (cards: readonly AssistantCard[], forModel: unknown): ToolOutcome => ({
+const shown = (
+  cards: readonly AssistantCard[],
+  forModel: unknown,
+  noResults = false,
+): ToolOutcome => ({
   forModel: JSON.stringify(forModel),
   isError: false,
   cards,
   notices: [],
+  ...(noResults ? { noResults } : {}),
 });
 
 const notFound: ToolOutcome = Object.freeze({
@@ -170,7 +175,11 @@ export class FacadeAssistantTools implements AssistantTools {
           limit: TOOL_ITEM_LIMIT,
         });
         if (!found.ok) return failed;
-        return shown(found.value.map(productCard), forModelOf(found.value));
+        return shown(
+          found.value.map(productCard),
+          forModelOf(found.value),
+          found.value.length === 0,
+        );
       }
       case 'list_bestsellers': {
         const found = await this.search.bestsellers(context, {
