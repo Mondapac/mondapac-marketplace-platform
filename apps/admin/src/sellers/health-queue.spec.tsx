@@ -638,6 +638,18 @@ describe('Needs a look list: saved filters', () => {
     expect(await screen.findByRole('button', { name: 'Save filter…' })).toBeTruthy();
   });
 
+  it('leaves the search out of the save dialog summary', async () => {
+    serve(() => pageOf([row(1)]), savedWith([], true));
+    mount();
+    await screen.findByText('Store 1');
+    fireEvent.click(screen.getByRole('button', { name: /^Orders ready late/ }));
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'abc' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).queryByText(/abc/)).toBeNull();
+    expect(within(dialog).getByText(/Orders ready late/)).toBeTruthy();
+  });
+
   it('keeps the controls hidden while the saved-filter route cannot answer', async () => {
     serve(() => pageOf([row(1)]));
     mount();
