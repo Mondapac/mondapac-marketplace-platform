@@ -12803,7 +12803,8 @@
       "merged": "Values merged.",
       "archived": "Attribute archived.",
       "archive-requested": "Request sent. A different administrator can confirm it under Waiting for you.",
-      "discard-approval-body": "If another admin approves, the draft is archived. Its history is kept."
+      "discard-approval-body": "If another admin approves, the draft is archived. Its history is kept.",
+      "more": "More"
     },
     "values": {
       "not-choice": "This attribute has no list of values: sellers type or pick its value.",
@@ -13204,7 +13205,8 @@
       },
       "merge-approval-body": "If another admin approves, the value you merge away stays in the list, switched off and marked as merged. Products keep what they have. The storefront, filters and search show the value you merge into, and a product’s next save stores that value.",
       "merge-attributes-approval-body": "If another admin approves, {name} is archived and points at the attribute you choose. Products keep what they have, and product pages show the other attribute.",
-      "archive-approval-body": "If another admin approves, it is no longer offered to sellers. Products that already have its values keep them, and its history is kept."
+      "archive-approval-body": "If another admin approves, it is no longer offered to sellers. Products that already have its values keep them, and its history is kept.",
+      "type-code": "Type {code} to confirm"
     },
     "suggestions": {
       "list-label": "Value suggestions",
