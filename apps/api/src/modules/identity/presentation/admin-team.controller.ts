@@ -122,6 +122,7 @@ export const ADMIN_TEAM_STATUS: Readonly<Record<string, number>> = Object.freeze
   'account.exists': 409,
   'invitation.already-pending': 409,
   'invitation.rejected': 409,
+  'system-requests.already-pending': 409,
   'second-factor.none': 409,
   'request.throttled': 429,
   'access.unavailable': 503,
@@ -131,6 +132,8 @@ type Refusal = {
   readonly code: string;
   readonly fields?: readonly unknown[];
   readonly retryAfterSeconds?: number;
+  /** `system-requests.already-pending`: the number of the request that already waits (SR-n). */
+  readonly pendingNumber?: number;
 };
 
 function refusal(error: Refusal, response?: Response): HttpException {
@@ -139,6 +142,9 @@ function refusal(error: Refusal, response?: Response): HttpException {
     ACCESS_DENIED_STATUS[error.code as keyof typeof ACCESS_DENIED_STATUS] ??
     500;
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  if (error.pendingNumber !== undefined) {
+    return fail(status, error.code, { pendingNumber: error.pendingNumber });
+  }
   // The re-send's invitation mail counters (6.8): 429 with Retry-After, as the seller re-send.
   if (error.retryAfterSeconds !== undefined) {
     response?.setHeader('Retry-After', String(error.retryAfterSeconds));
@@ -634,11 +640,20 @@ export class AdminTeamController {
       'Where the Market reviews area people (`review` of the team list), the invitation needs a ' +
       '`note`, is sent at once and opens a high-risk review in Admin Inbox › System requests ' +
       '(`request`); a reviewer who rejects it revokes it while pending, or disables the admin ' +
-      'who accepted it and ends their sessions.',
+      'who accepted it and ends their sessions. An invitation to a sensitive role (the Platform ' +
+      'Administrator, or a role with a protected permission: `sensitive` of the role catalogue) ' +
+      "waits for another admin's approval there instead: 202 with code invitation.proposed and " +
+      '`request`, nothing is sent and no link exists until the approval, which sends it only if ' +
+      'the role is unchanged and the approving admin could give it too. One pending or waiting ' +
+      'invitation per address (invitation.already-pending).',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: AdminInviteReviewedRequest })
-  @ApiCreatedResponse({ type: AdminInvitationIssuedReviewed })
+  @ApiCreatedResponse({ type: AdminInvitationIssuedReviewed, description: 'invitation.issued' })
+  @ApiAcceptedResponse({
+    type: AdminInvitationIssuedReviewed,
+    description: 'invitation.proposed: waits for approval (request); nothing is sent yet.',
+  })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({
@@ -648,7 +663,9 @@ export class AdminTeamController {
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'role.unknown' })
   @ApiConflictResponse({
     type: ApiErrorBody,
-    description: 'account.exists, invitation.already-pending or conflict.stale',
+    description:
+      'account.exists, invitation.already-pending (also while one waits for approval), ' +
+      'system-requests.already-pending (details.pendingNumber) or conflict.stale',
   })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'Not application/json' })
   @ApiTooManyRequestsResponse({
@@ -681,6 +698,8 @@ export class AdminTeamController {
             note: split.note,
           })
         : err({ code: 'validation.failed', fields: [{ path: 'roleId', code: 'format' }] });
+      // An invitation that waits for approval sent nothing yet: 202 Accepted.
+      if (result.ok && result.value.code === 'invitation.proposed') response.status(202);
       outcome = result.ok
         ? {
             code: result.value.code,

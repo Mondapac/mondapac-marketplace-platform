@@ -1534,6 +1534,10 @@ model CatalogBrand {
   approvedBy         String?                      @map("approved_by") @db.Uuid
   /// Set exactly when the brand was archived by a merge: the brand that took its products.
   mergedIntoId       String?                      @map("merged_into_id") @db.Uuid
+  /// The admin's optional note when it archived the brand (trimmed, 1 to 500 characters, no control
+  /// character), for the proposing seller's notice; null otherwise and for a merge. Never audited
+  /// and never an input to a decision.
+  archiveReason      String?                      @map("archive_reason")
   createdAt          DateTime                     @map("created_at") @db.Timestamptz(6)
   updatedAt          DateTime                     @map("updated_at") @db.Timestamptz(6)
   /// Optimistic version (P 10); 1 at insert.

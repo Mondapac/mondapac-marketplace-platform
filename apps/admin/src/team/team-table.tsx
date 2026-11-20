@@ -19,6 +19,9 @@ function statusOf(
   row: TeamRow,
 ): { readonly tone: BadgeTone; readonly label: string; readonly sent?: boolean } {
   if (row.type === 'invitation') {
+    if (row.status === 'awaiting-approval') {
+      return { tone: 'attention', label: t('identity.members.status.awaiting-approval') };
+    }
     return row.status === 'expired'
       ? { tone: 'attention', label: t('identity.members.status.expired') }
       : { tone: 'neutral', label: t('identity.members.status.invited'), sent: true };
