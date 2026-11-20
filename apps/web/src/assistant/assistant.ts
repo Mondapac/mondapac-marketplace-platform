@@ -9,7 +9,15 @@ import {
   type CartAction,
   type CartSummary,
 } from './cart-cards.ts';
-import { id, isRecord, moneyOf, optionalMoney, text, type CardMoney } from './card-values.ts';
+import {
+  id,
+  isRecord,
+  moneyOf,
+  optionalMoney,
+  text,
+  whole,
+  type CardMoney,
+} from './card-values.ts';
 
 export { moneyOf, type CardMoney };
 
@@ -529,4 +537,245 @@ export function visitorId(storage: Pick<Storage, 'getItem' | 'setItem'> | null):
   } catch {
     return null;
   }
+}
+
+// ---- History and feedback (F2; routes of B2 and B3, docs/modules/assistant/conversation.md) ----
+
+/** One row of "Your conversations". The title is the buyer's first line, masked by the server. */
+export interface ConversationSummary {
+  readonly id: string;
+  readonly title: string;
+  readonly turns: number;
+  /** The conversation has reached its turn limit: open it to read, start a new chat to ask more. */
+  readonly full: boolean;
+  /** ISO instants as the API sends them; shown through the formatter, never parsed for logic. */
+  readonly lastMessageAt: string;
+}
+
+export interface ConversationPage {
+  readonly items: readonly ConversationSummary[];
+  readonly nextCursor: string | null;
+}
+
+/** A stored message. Cards are kinds and ids only: a price or product text is never replayed. */
+export interface StoredMessage {
+  readonly position: number;
+  readonly role: 'user' | 'assistant';
+  readonly text: string;
+  /** Pages and the support card are rebuilt; product and store cards are not shown again. */
+  readonly pages: readonly Extract<AssistantCard, { kind: 'page' }>[];
+  readonly support: boolean;
+  /** The reply had product or store cards that history does not show. */
+  readonly hadListings: boolean;
+}
+
+export interface StoredConversation extends ConversationSummary {
+  readonly messages: readonly StoredMessage[];
+}
+
+export type FeedbackReason = 'wrong' | 'not-found' | 'other';
+export type FeedbackRating = 'up' | 'down';
+
+export type ApiResult<T> =
+  | { readonly ok: true; readonly value: T }
+  | { readonly ok: false; readonly refusal: AssistantRefusal };
+
+const TITLE_MAX = 120;
+const TEXT_MAX = 4000;
+const MESSAGES_MAX = 120;
+const CURSOR = /^[A-Za-z0-9._~=-]{1,300}$/;
+
+function summaryOf(data: unknown): ConversationSummary | null {
+  if (!isRecord(data)) return null;
+  const conversation = id(data.id);
+  const turns = whole(data.turns, 0, 1000);
+  if (conversation === null || turns === null || typeof data.full !== 'boolean') return null;
+  if (typeof data.lastMessageAt !== 'string' || Number.isNaN(Date.parse(data.lastMessageAt)))
+    return null;
+  // A title can be empty when the first line was all masked: the widget shows a plain label.
+  const title = typeof data.title === 'string' ? data.title.slice(0, TITLE_MAX) : '';
+  return { id: conversation, title, turns, full: data.full, lastMessageAt: data.lastMessageAt };
+}
+
+/** The answer of `GET /assistant/conversations`, or null when it is not the shape the API sends. */
+export function conversationPageOf(data: unknown): ConversationPage | null {
+  if (!isRecord(data) || !Array.isArray(data.items)) return null;
+  const items: ConversationSummary[] = [];
+  for (const raw of (data.items as unknown[]).slice(0, 50)) {
+    const row = summaryOf(raw);
+    if (row !== null) items.push(row);
+  }
+  const cursor = data.nextCursor;
+  if (cursor !== null && (typeof cursor !== 'string' || !CURSOR.test(cursor))) return null;
+  return { items, nextCursor: cursor };
+}
+
+function storedMessageOf(data: unknown): StoredMessage | null {
+  if (!isRecord(data)) return null;
+  const position = whole(data.position, 1, 60);
+  if (position === null || (data.role !== 'user' && data.role !== 'assistant')) return null;
+  if (typeof data.text !== 'string') return null;
+  const pages: Extract<AssistantCard, { kind: 'page' }>[] = [];
+  let support = false;
+  let hadListings = false;
+  if (Array.isArray(data.cards)) {
+    for (const raw of data.cards as unknown[]) {
+      if (!isRecord(raw)) continue;
+      if (raw.kind === 'support') support = true;
+      else if (raw.kind === 'product' || raw.kind === 'seller') hadListings = true;
+      else if (raw.kind === 'page' && PAGES.includes(raw.page as SitePage)) {
+        // Only the page kind comes back; a category link needs an id, so it is not rebuilt.
+        if (raw.page !== 'category')
+          pages.push({ kind: 'page', page: raw.page as SitePage, categoryId: null });
+      }
+    }
+  }
+  return {
+    position,
+    role: data.role,
+    text: data.text.slice(0, TEXT_MAX),
+    pages,
+    support,
+    hadListings,
+  };
+}
+
+/** The answer of `GET /assistant/conversations/:id`, or null when it is not the shape the API sends. */
+export function storedConversationOf(data: unknown): StoredConversation | null {
+  const summary = summaryOf(data);
+  if (summary === null || !isRecord(data) || !Array.isArray(data.messages)) return null;
+  const messages: StoredMessage[] = [];
+  for (const raw of (data.messages as unknown[]).slice(0, MESSAGES_MAX)) {
+    const message = storedMessageOf(raw);
+    if (message === null) return null;
+    messages.push(message);
+  }
+  messages.sort((a, b) => a.position - b.position);
+  return { ...summary, messages };
+}
+
+/** What the history and feedback calls share: the headers, and how a refusal is read. */
+async function call<T>(
+  setup: AssistantSetup,
+  path: string,
+  init: {
+    readonly method: 'GET' | 'POST' | 'DELETE';
+    readonly body?: unknown;
+    readonly signal?: AbortSignal;
+  },
+  read: (data: unknown) => T | null,
+  fetcher: typeof fetch,
+  preview: string | null,
+): Promise<ApiResult<T>> {
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (init.body !== undefined) headers['Content-Type'] = 'application/json';
+  if (setup.csrfToken !== null && init.method !== 'GET') headers['X-CSRF-Token'] = setup.csrfToken;
+  if (preview !== null) headers[PREVIEW_HEADER] = preview;
+  try {
+    const response = await fetcher(`${setup.chatUrl}${path}`, {
+      method: init.method,
+      credentials: 'include',
+      cache: 'no-store',
+      headers,
+      ...(init.body === undefined ? {} : { body: JSON.stringify(init.body) }),
+      ...(init.signal === undefined ? {} : { signal: init.signal }),
+    });
+    if (!response.ok) {
+      let code: unknown;
+      try {
+        code = ((await response.json()) as { code?: unknown }).code;
+      } catch {
+        code = undefined;
+      }
+      return {
+        ok: false,
+        refusal: refusalOf(response.status, code, response.headers.get('Retry-After')),
+      };
+    }
+    if (response.status === 204) return { ok: true, value: read(null) as T };
+    const value = read(await response.json());
+    return value === null ? { ok: false, refusal: { kind: 'error' } } : { ok: true, value };
+  } catch {
+    return { ok: false, refusal: { kind: 'error' } };
+  }
+}
+
+/** One page of the signed-in buyer's own conversations, newest activity first. */
+export function listConversations(
+  setup: AssistantSetup,
+  cursor: string | null,
+  signal: AbortSignal,
+  fetcher: typeof fetch = fetch,
+  preview: string | null = null,
+): Promise<ApiResult<ConversationPage>> {
+  const query = new URLSearchParams({ limit: '20' });
+  if (cursor !== null) query.set('cursor', cursor);
+  return call(
+    setup,
+    `/conversations?${query.toString()}`,
+    { method: 'GET', signal },
+    conversationPageOf,
+    fetcher,
+    preview,
+  );
+}
+
+/** One of the buyer's own conversations with every stored message. */
+export function readConversation(
+  setup: AssistantSetup,
+  conversationId: string,
+  signal: AbortSignal,
+  fetcher: typeof fetch = fetch,
+  preview: string | null = null,
+): Promise<ApiResult<StoredConversation>> {
+  return call(
+    setup,
+    `/conversations/${encodeURIComponent(conversationId)}`,
+    { method: 'GET', signal },
+    storedConversationOf,
+    fetcher,
+    preview,
+  );
+}
+
+/** Deletes one of the buyer's own conversations (204). */
+export function deleteConversation(
+  setup: AssistantSetup,
+  conversationId: string,
+  fetcher: typeof fetch = fetch,
+  preview: string | null = null,
+): Promise<ApiResult<true>> {
+  return call(
+    setup,
+    `/conversations/${encodeURIComponent(conversationId)}`,
+    { method: 'DELETE' },
+    () => true as const,
+    fetcher,
+    preview,
+  );
+}
+
+/**
+ * A thumbs up or down on the assistant message at `position` (2 for the answer to the first buyer
+ * message, 4 for the second, and so on). Giving it again replaces the earlier one; `reason` goes
+ * only with `down`.
+ */
+export function sendFeedback(
+  setup: AssistantSetup,
+  conversationId: string,
+  position: number,
+  rating: FeedbackRating,
+  reason: FeedbackReason | null,
+  fetcher: typeof fetch = fetch,
+  preview: string | null = null,
+): Promise<ApiResult<true>> {
+  const body = rating === 'down' && reason !== null ? { rating, reason } : { rating };
+  return call(
+    setup,
+    `/conversations/${encodeURIComponent(conversationId)}/messages/${position}/feedback`,
+    { method: 'POST', body },
+    () => true as const,
+    fetcher,
+    preview,
+  );
 }

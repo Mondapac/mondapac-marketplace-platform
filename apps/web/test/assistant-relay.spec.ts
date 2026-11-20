@@ -67,9 +67,13 @@ describe('assistant routes of the buyer relay', () => {
     for (const [method, path] of [
       ['POST', ['assistant', 'storefront']],
       ['GET', ['assistant', 'conversations', CONVERSATION, 'messages']],
-      ['GET', ['assistant', 'conversations']],
-      ['GET', ['assistant', 'conversations', CONVERSATION]],
-      ['DELETE', ['assistant', 'conversations', CONVERSATION]],
+      ['POST', ['assistant', 'conversations']],
+      ['PUT', ['assistant', 'conversations', CONVERSATION]],
+      ['GET', ['assistant', 'conversations', CONVERSATION, 'feedback']],
+      ['POST', ['assistant', 'conversations', CONVERSATION, 'messages', '0', 'feedback']],
+      ['POST', ['assistant', 'conversations', CONVERSATION, 'messages', '061', 'feedback']],
+      ['POST', ['assistant', 'conversations', CONVERSATION, 'messages', 'x', 'feedback']],
+      ['DELETE', ['assistant', 'conversations']],
       ['POST', ['assistant', 'conversations', 'x-not-a-uuid', 'messages']],
       ['POST', ['assistant', 'conversations', `${CONVERSATION}/..`, 'messages']],
       ['POST', ['assistant', 'conversations', CONVERSATION, 'messages', 'extra']],
@@ -79,6 +83,57 @@ describe('assistant routes of the buyer relay', () => {
     ] as const) {
       expect(isSessionPathAllowed(method, path), `${method} ${path.join('/')}`).toBe(false);
     }
+  });
+
+  it('allows the history routes: the list, one conversation, its delete and a feedback post', () => {
+    expect(isSessionPathAllowed('GET', ['assistant', 'conversations'])).toBe(true);
+    expect(isSessionPathAllowed('GET', ['assistant', 'conversations', CONVERSATION])).toBe(true);
+    expect(isSessionPathAllowed('DELETE', ['assistant', 'conversations', CONVERSATION])).toBe(true);
+    for (const position of ['1', '2', '60']) {
+      expect(
+        isSessionPathAllowed('POST', [
+          'assistant',
+          'conversations',
+          CONVERSATION,
+          'messages',
+          position,
+          'feedback',
+        ]),
+      ).toBe(true);
+    }
+  });
+
+  it('passes only a well-shaped cursor and limit on the list, and logs no id', async () => {
+    const c = call('GET', 'assistant/conversations?cursor=abc_1-2&limit=20&visitor=x&evil=1');
+    await c.run();
+    expect(c.sent().url).toBe(
+      'http://localhost:3000/assistant/conversations?cursor=abc_1-2&limit=20',
+    );
+    const logged: Record<string, string | number>[] = [];
+    const feedback = new Request(
+      `${ORIGIN}/api/assistant/conversations/${CONVERSATION}/messages/2/feedback`,
+      {
+        method: 'POST',
+        headers: {
+          host: 'storefront.localhost:3003',
+          'x-mp-client-address': '203.0.113.9',
+          origin: ORIGIN,
+          'sec-fetch-site': 'same-origin',
+          'content-type': 'application/json',
+        },
+        body: '{"rating":"up"}',
+      },
+    );
+    const upstream = vi.fn(() => Promise.resolve(new Response('{}', { status: 500 })));
+    await relaySession(
+      CONFIG,
+      feedback,
+      ['assistant', 'conversations', CONVERSATION, 'messages', '2', 'feedback'],
+      upstream,
+      (line) => logged.push(line),
+    );
+    expect(JSON.stringify(logged)).toContain('assistant/conversations/:id/messages/:n/feedback');
+    expect(JSON.stringify(logged)).not.toContain(CONVERSATION);
   });
 
   it('refuses an assistant path that is not listed with a 404 and never calls the API', async () => {

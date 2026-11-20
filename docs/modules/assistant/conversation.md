@@ -234,7 +234,40 @@ appear (a conversation with retention `none` leaves its spend day only). The rou
 Each assistant message now stores `notices` (the fixed notice codes of the reply, at most 8) and
 `empty_search`, written with the message, to feed the unanswered rows.
 
-### Tables (Mojtaba's sign-off before merge)
+### History and feedback in the widget (stage 0, F2; `apps/web`)
+
+- **Relay.** Four more routes cross, each with the same cookie, same-origin and size rules as the
+  message POST: `GET assistant/conversations` (query `cursor` and `limit` only, each only when well
+  shaped), `GET` and `DELETE assistant/conversations/<uuid>`, and `POST
+  assistant/conversations/<uuid>/messages/<n>/feedback` (`n` is 1 to 60, no leading zero). Logs name
+  the route with `:id` and `:n`, never an id.
+- **Your conversations (signed-in buyers only).** A clock button in the panel header opens the
+  list (shown only to a signed-in customer, and only when chats are kept: `retentionDays` is not
+  0). Rows show the masked title the server made (a plain label when it is empty), the date,
+  the number of questions and "full" when the conversation reached its limit; 20 rows a page with
+  "Show more" (`nextCursor`). Opening a row reads the transcript and continues it with the same id;
+  the next answer's position is `2 x (turns + 1)`. A full conversation shows the "start a new chat"
+  banner and takes no more questions. Delete asks once, sends the CSRF token and removes the row; a
+  404 counts as deleted. Deleting the chat that is open starts a fresh id (the old one answers 404).
+  A row that answers 404 when opened is dropped with a note.
+- **Never an old price.** History comes back as text and card ids. The widget shows the stored
+  text, the page links (`cart`, `search`, ...; a category link needs an id and is not rebuilt) and the
+  support card, and says that products and prices are not saved. It does not re-read products.
+- **Thumbs.** Up or down on the last answer posts `{ rating }` (and `{ rating: "down", reason }`
+  when a reason chip is chosen: wrong, not found, something else); choosing again replaces the
+  earlier one (last write wins, B3). Guests rate too (the guest cookie is the owner). The
+  widget counts answered turns itself (the stream carries no position): a turn whose outcome is
+  unknown (network error, Stop) makes the count unknown; a signed-in buyer's count is read back
+  from the server, a guest's chat shows no recorded thumbs until a new chat (never a guess that
+  could rate another message). With `retentionDays` 0 nothing is sent (the server keeps no text), and
+  the "Thank you" line is not shown. A failed post says so.
+- **Preview.** The internal preview header goes on these calls too.
+- Screens: `design/buyer-assistant/f2-shots/` (history list, thumbs down with reasons; 375, 768,
+  1280; left-to-right and right-to-left; the storefront has no dark theme).
+- Follow-ups (not built): thumbs on older answers; showing the earlier rating of a reopened
+  conversation; re-reading a product when a stored card is opened.
+
+## Tables (Mojtaba's sign-off before merge)
 
 Migration `20261119110000_assistant_feedback`. `feedback`: PK (Market, conversation, position),
 FK to `messages` on the same three columns with `ON DELETE CASCADE`; CHECKs: rating `up|down`,
@@ -363,8 +396,9 @@ not sent to the model and, if the model asks for it anyway, the call is refused 
 
 - **Path.** The widget talks to the API through the buyer relay (`app/api/[...path]`, same
   origin, no CORS): `chatUrl` is `/api/assistant`. The relay allows only `GET assistant/storefront`
-  (query `visitor` and `lang`, each only when well shaped) and `POST
-  assistant/conversations/<uuid>/messages` (strict UUID). On these paths, and only these, the
+  (query `visitor` and `lang`, each only when well shaped), `POST
+  assistant/conversations/<uuid>/messages` (strict UUID) and, from F2, the four history and
+  feedback routes below. On these paths, and only these, the
   assistant guest cookie `__Host-assistant-guest-<MARKET>` and the session cross both ways (the
   guest-cart cookie does not), the `x-assistant-preview` header crosses when it has the token
   shape, and the wait is 30 s (the server gives up at 25 s). The answer is buffered, which is
@@ -388,7 +422,7 @@ not sent to the model and, if the model asks for it anyway, the call is refused 
   gate takes it from `location.hash`, keeps it in `sessionStorage` (`sf-assistant-preview`, this
   tab only) when it has the token shape, and removes it from the address with `history.replaceState`
   (path, query and any other fragment part kept). It is sent only as the `x-assistant-preview`
-  header of the storefront read and the message POST, and is dropped when the server answers
+  header of the storefront read, the message POST and the history and feedback calls of F2, and is dropped when the server answers
   `preview: false`. Never a query string, cookie, localStorage, log, analytics event or error text.
   The GA4 page view reports origin plus path and never the fragment.
 
