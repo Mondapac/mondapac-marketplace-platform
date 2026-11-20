@@ -148,9 +148,14 @@ describe('blog media picker', () => {
     await screen.findAllByRole('button', { name: /^Choose the image/u });
     call.mockResolvedValueOnce(page([item(2), item(3)], 2, false));
     fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
+    // The announcement is the last thing the load does (after the pictures and the focus move), so
+    // wait for it: the pictures alone show up one render earlier and the checks below would race.
     await waitFor(() =>
-      expect(screen.getAllByRole('button', { name: /^Choose the image/u })).toHaveLength(3),
+      expect(document.querySelector('[aria-live="polite"]')?.textContent).toBe(
+        'More images loaded.',
+      ),
     );
+    expect(screen.getAllByRole('button', { name: /^Choose the image/u })).toHaveLength(3);
     expect(call).toHaveBeenLastCalledWith('GET', 'blog/admin/media?page=2');
     expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
     // The button is gone: focus moved to the first new picture, and the load is announced.
