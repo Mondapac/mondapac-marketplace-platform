@@ -249,7 +249,7 @@ describe('AssistantSettingsPanel', () => {
     expect(screen.getByText('USD 2.35 of USD 10.00')).toBeTruthy();
     expect(screen.getByText('USD 61.50 of USD 200.00')).toBeTruthy();
     expect(screen.getByText('17')).toBeTruthy();
-    expect(screen.getByText('USD 0.0123 over the last 30 days (Fast tier)')).toBeTruthy();
+    expect(screen.getByText('USD 0.0123 over the last 30 days')).toBeTruthy();
     expect(screen.getByText(/Daily cap reached, /)).toBeTruthy();
   });
 

@@ -401,7 +401,7 @@ export function UnansweredList({
         actions: (
           <ActionMenu
             label={t('bulk.button')}
-            title={t('bulk.selected', { count: selectedCount })}
+            title={hasSelection ? t('bulk.selected', { count: selectedCount }) : t('bulk.none')}
             items={bulkItems}
             disabled={!hasSelection}
           />

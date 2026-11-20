@@ -77,6 +77,12 @@ const insightCalls = () =>
     .filter((path) => path.startsWith('assistant/admin/insights'));
 
 beforeEach(() => {
+  HTMLDialogElement.prototype.showModal = function showModal() {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function close() {
+    this.removeAttribute('open');
+  };
   call.mockReset();
   window.localStorage.clear();
 });
@@ -205,5 +211,109 @@ describe('AssistantInsights', () => {
         'assistant/admin/insights?from=2026-11-14&to=2026-11-20&page=1&pageSize=100',
       ),
     );
+  });
+
+  it('keeps the first groups and says so when the second page fails', async () => {
+    const big = {
+      ...answer({}, ROWS.slice(0, 2)),
+      unanswered: { total: 3, page: 1, pageSize: 2, truncated: false, rows: ROWS.slice(0, 2) },
+    };
+    let n = 0;
+    call.mockImplementation((_m, path) => {
+      if (path.startsWith('lists/')) {
+        return Promise.resolve({ ok: false, failure: { status: 400, code: 'x' } } as never);
+      }
+      n += 1;
+      return Promise.resolve(
+        n === 1
+          ? ({ ok: true, status: 200, body: big } as never)
+          : ({ ok: false, failure: { status: 503, code: 'unavailable' } } as never),
+      );
+    });
+    wrap();
+    expect(await screen.findByText('halal kangaroo mince')).toBeTruthy();
+    expect(screen.getByText(/Only the first part of the unanswered questions/)).toBeTruthy();
+  });
+
+  it('keeps the figures on show when a refresh fails, and asks the Market day again', async () => {
+    serve();
+    wrap();
+    await screen.findByText('halal kangaroo mince');
+    serve('fail');
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh' }));
+    expect(await screen.findByText(/couldn't be refreshed/)).toBeTruthy();
+    expect(screen.getByText('halal kangaroo mince')).toBeTruthy();
+    // Refresh reads without dates, so a tab left open past midnight moves on.
+    expect(insightCalls().at(-1)).toBe('assistant/admin/insights?page=1&pageSize=100');
+  });
+
+  it('pages the list on the client, 25 at a time', async () => {
+    const many = Array.from({ length: 60 }, (_, i) =>
+      group(`question number ${i}`, 100 - i, { 'no-results': 1 }),
+    );
+    serve(answer({}, many));
+    wrap();
+    await screen.findByText('question number 0');
+    expect(screen.queryByText('question number 25')).toBeNull();
+    expect(screen.getByText('1-25 of 60')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: /^(Page )?2$/ }));
+    expect(await screen.findByText('question number 25')).toBeTruthy();
+    expect(screen.queryByText('question number 0')).toBeNull();
+  });
+
+  it('exports the selected questions as a CSV that stays text', async () => {
+    serve();
+    const saved: Blob[] = [];
+    const url = vi.spyOn(URL, 'createObjectURL').mockImplementation((blob) => {
+      saved.push(blob as Blob);
+      return 'blob:x';
+    });
+    vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined);
+    wrap();
+    await screen.findByText('halal kangaroo mince');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select all questions on this page' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    const menu = await screen.findByRole('menu', { name: 'Bulk action' });
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Export…' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(saved).toHaveLength(1));
+    const text = await saved[0]!.text();
+    expect(text).toContain('halal kangaroo mince,9,');
+    expect(text).toContain(`"<img src=x onerror=""alert(1)""> =HYPERLINK`);
+    url.mockRestore();
+  });
+
+  it('offers saved filters once the lists module knows the list', async () => {
+    call.mockImplementation((_m, path) =>
+      Promise.resolve(
+        path.startsWith('lists/admin/saved-filters')
+          ? ({
+              ok: true,
+              status: 200,
+              body: {
+                items: [
+                  {
+                    id: 's1',
+                    listKey: LIST_KEY,
+                    name: 'Thumbs this week',
+                    visibility: 'me',
+                    payload: { v: 1, view: 'thumbs-down' },
+                    ownedByMe: true,
+                    canManage: true,
+                    createdAt: '',
+                    updatedAt: '',
+                  },
+                ],
+                canShare: false,
+              },
+            } as never)
+          : ({ ok: true, status: 200, body: answer() } as never),
+      ),
+    );
+    wrap();
+    fireEvent.click(await screen.findByRole('button', { name: 'Thumbs this week' }));
+    await waitFor(() => expect(screen.queryByText('halal kangaroo mince')).toBeNull());
+    expect((await screen.findAllByText(EVIL)).length).toBeGreaterThan(0);
   });
 });

@@ -48,10 +48,13 @@ export function matches(row: UnansweredRow, query: Query): boolean {
   return words === '' || fold(row.query).includes(words);
 }
 
+/** One fixed locale, so the order does not depend on the machine. */
+const COLLATOR = new Intl.Collator('en', { sensitivity: 'base', numeric: true });
+
 const compare: Readonly<Record<Sort, (a: UnansweredRow, b: UnansweredRow) => number>> = {
   count: (a, b) => a.count - b.count,
   last: (a, b) => Date.parse(a.lastAt) - Date.parse(b.lastAt),
-  query: (a, b) => a.query.localeCompare(b.query),
+  query: (a, b) => COLLATOR.compare(a.query, b.query),
 };
 
 /** The rows that match, in the chosen order; ties keep the route's order (most asked, newest). */

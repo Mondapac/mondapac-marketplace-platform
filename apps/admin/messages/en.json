@@ -3472,8 +3472,8 @@
         "conversations-today": "Conversations today",
         "last-auto-off": "Last automatic switch-off",
         "spend-of": "{spent} of {cap}",
-        "cost-per-conversation": "Average cost per conversation",
-        "cost-per-conversation-value": "{amount} over the last 30 days ({tier} tier)",
+        "cost-per-conversation": "Average cost per conversation (all tiers)",
+        "cost-per-conversation-value": "{amount} over the last 30 days",
         "never-auto-off": "Never switched off by a cap",
         "auto-off-value": "{cap, select, daily {Daily cap} monthly {Monthly cap} other {A cap}} reached, {when}"
       },
@@ -13901,7 +13901,9 @@
     "loading": "Loading insights…",
     "refresh": "Refresh",
     "error": {
-      "unavailable": "The insights couldn't be loaded."
+      "unavailable": "The insights couldn't be loaded.",
+      "partial": "Only the first part of the unanswered questions could be loaded. Refresh to try again.",
+      "refresh": "The insights couldn't be refreshed. What you see is from the last successful read."
     },
     "range": {
       "label": "Days to show",
@@ -13926,7 +13928,8 @@
         "day": "Day",
         "conversations": "Conversations",
         "spend": "Spend"
-      }
+      },
+      "peak": "Peak: {count} a day"
     },
     "feedback": {
       "title": "How buyers rate the answers",
@@ -14027,7 +14030,8 @@
       "bulk": {
         "button": "Bulk action",
         "selected": "{count, plural, one {# question selected} other {# questions selected}}",
-        "export": "Export…"
+        "export": "Export…",
+        "none": "Select questions to export them"
       },
       "actions": {
         "header": "Actions",

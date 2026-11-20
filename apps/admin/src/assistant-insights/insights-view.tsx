@@ -20,7 +20,15 @@ import { UnansweredList } from './unanswered-list.tsx';
 type Load =
   | { readonly kind: 'loading' }
   | { readonly kind: 'failed' }
-  | { readonly kind: 'ready'; readonly answer: Insights; readonly rows: readonly UnansweredRow[] };
+  | {
+      readonly kind: 'ready';
+      readonly answer: Insights;
+      readonly rows: readonly UnansweredRow[];
+      /** Another read is running: the old figures stay on show, dimmed. */
+      readonly busy: boolean;
+      /** The last read failed or stopped short; what is shown is from an earlier or partial read. */
+      readonly problem: 'refresh' | 'partial' | null;
+    };
 
 /**
  * Settings > Smart assistant > Insights: how many conversations and what they cost per day, how
@@ -51,7 +59,10 @@ export function AssistantInsights({
 
   const read = useCallback(async (asked: Range) => {
     const ticket = ++latest.current;
-    setLoad({ kind: 'loading' });
+    // A later read keeps the figures and the list (with its selection) on show, dimmed.
+    setLoad((current) =>
+      current.kind === 'ready' ? { ...current, busy: true } : { kind: 'loading' },
+    );
     const first = await callApi<Insights>(
       'GET',
       today.current === null
@@ -67,7 +78,11 @@ export function AssistantInsights({
         window.location.assign('/session-ended');
         return;
       }
-      setLoad({ kind: 'failed' });
+      setLoad((current) =>
+        current.kind === 'ready'
+          ? { ...current, busy: false, problem: 'refresh' }
+          : { kind: 'failed' },
+      );
       return;
     }
     // The first read without dates tells the Market's own "today"; a range other than the default
@@ -81,6 +96,7 @@ export function AssistantInsights({
     }
     let answer = first.body;
     let rows = answer.unanswered.rows;
+    let problem: 'partial' | null = null;
     // The route keeps 200 groups: a second page of 100 holds the rest.
     if (hasMoreGroups(answer)) {
       const more = await callApi<Insights>(
@@ -88,14 +104,15 @@ export function AssistantInsights({
         `${INSIGHTS_PATH}?${rangeQuery(asked, today.current, answer.unanswered.page + 1)}`,
       );
       if (ticket !== latest.current) return;
-      if (!more.ok) {
-        setLoad({ kind: 'failed' });
-        return;
+      if (more.ok) {
+        rows = [...rows, ...more.body.unanswered.rows];
+      } else {
+        // The first hundred groups are real: show them and say the rest is missing.
+        problem = 'partial';
       }
-      rows = [...rows, ...more.body.unanswered.rows];
       answer = { ...answer, unanswered: { ...answer.unanswered, rows } };
     }
-    setLoad({ kind: 'ready', answer, rows });
+    setLoad({ kind: 'ready', answer, rows, problem, busy: false });
   }, []);
 
   useEffect(() => {
@@ -108,8 +125,13 @@ export function AssistantInsights({
     number(value, { style: 'currency', currency: 'USD', maximumFractionDigits: value < 1 ? 4 : 2 });
   const percent = (value: number) => number(value, { style: 'percent', maximumFractionDigits: 0 });
 
+  // Refresh also asks the Market's day again, so a tab left open past midnight moves on.
+  const refresh = () => {
+    today.current = null;
+    void read(range);
+  };
   const ranges = (
-    <div role="group" aria-label={t('range.label')} className="flex flex-wrap gap-2">
+    <div role="group" aria-label={t('range.label')} className="flex flex-wrap items-center gap-2">
       {RANGES.map((value) => (
         <button
           key={value}
@@ -125,6 +147,9 @@ export function AssistantInsights({
           {t('range.days', { count: Number(value) })}
         </button>
       ))}
+      <Button variant="secondary" onClick={refresh}>
+        {t('refresh')}
+      </Button>
     </div>
   );
 
@@ -136,7 +161,7 @@ export function AssistantInsights({
           className="flex flex-col items-start gap-3 rounded-lg border border-line bg-surface p-6"
           message={t('error.unavailable')}
           retryLabel={tl('retry')}
-          onRetry={() => void read(range)}
+          onRetry={refresh}
         />
       </div>
     );
@@ -159,7 +184,7 @@ export function AssistantInsights({
     );
   }
 
-  const { answer, rows } = load;
+  const { answer, rows, busy, problem } = load;
   const average = averageCostUsd(answer.totals);
   const feedbackTotal = answer.feedback.up + answer.feedback.down;
   const peak = Math.max(1, ...answer.days.map((day) => day.conversations));
@@ -171,7 +196,12 @@ export function AssistantInsights({
   const toDay = answer.to;
 
   return (
-    <div className="flex flex-col gap-6">
+    <div className={`flex flex-col gap-6 ${busy ? 'opacity-60' : ''}`} aria-busy={busy}>
+      {problem === null ? null : (
+        <Banner tone="attention">
+          {problem === 'partial' ? t('error.partial') : t('error.refresh')}
+        </Banner>
+      )}
       <div className="flex flex-col gap-2">
         {ranges}
         <p className="text-sm text-fg-muted">
@@ -227,6 +257,11 @@ export function AssistantInsights({
                 />
               ))}
             </div>
+            <p className="flex justify-between gap-3 text-sm text-fg-muted">
+              <span>{dayLabel(answer.days[0]?.day ?? fromDay)}</span>
+              <span>{t('daily.peak', { count: number(peak) })}</span>
+              <span>{dayLabel(answer.days.at(-1)?.day ?? toDay)}</span>
+            </p>
             <details className="text-sm">
               <summary className="cursor-pointer font-medium">{t('daily.table-toggle')}</summary>
               <div className="mt-2 overflow-x-auto">
@@ -302,7 +337,7 @@ export function AssistantInsights({
         </h2>
         <UnansweredList
           rows={rows}
-          loading={false}
+          loading={busy}
           truncated={answer.unanswered.truncated}
           paging={paging}
           zone={zone}
@@ -312,9 +347,6 @@ export function AssistantInsights({
           fromDay={fromDay}
           toDay={toDay}
         />
-        <Button variant="secondary" className="self-start" onClick={() => void read(range)}>
-          {t('refresh')}
-        </Button>
       </section>
     </div>
   );

@@ -701,7 +701,6 @@ function StatusCard({
           ? muted(t(`${P}.status.not-measured`))
           : t(`${P}.status.cost-per-conversation-value`, {
               amount: usdPrecise(averageCostUsd),
-              tier: t(`${P}.model.${settings.modelTier}`),
             }),
     },
     {
