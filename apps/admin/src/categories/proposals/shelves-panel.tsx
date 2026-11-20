@@ -7,6 +7,7 @@ import {
   Dialog,
   EmptyState,
   LoadError,
+  Menu,
   Select,
   TextField,
   toast,
@@ -14,7 +15,7 @@ import {
   type BadgeTone,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../../api/client.ts';
 import { languageName } from '../../attributes/types.ts';
 import { directionOf } from '../tree-model.ts';
@@ -156,20 +157,23 @@ export function ShelvesPanel({
                   ))}
                 </ul>
                 {shelf.status === 'active' && canPromote ? (
-                  <div className="mt-3 flex flex-wrap gap-3">
-                    <Button
-                      aria-label={t('promote-for', { name })}
-                      onClick={() => setDialog({ kind: 'promote', shelf })}
-                    >
-                      {t('promote')}
-                    </Button>
-                    <Button
-                      variant="secondary"
-                      aria-label={t('merge-for', { name })}
-                      onClick={() => setDialog({ kind: 'merge', shelf })}
-                    >
-                      {t('merge')}
-                    </Button>
+                  <div className="mt-3">
+                    <Menu
+                      label={t('actions-for', { name })}
+                      items={[
+                        {
+                          id: 'promote',
+                          label: t('promote'),
+                          onSelect: () => setDialog({ kind: 'promote', shelf }),
+                        },
+                        {
+                          id: 'merge',
+                          label: t('merge'),
+                          tone: 'critical',
+                          onSelect: () => setDialog({ kind: 'merge', shelf }),
+                        },
+                      ]}
+                    />
                   </div>
                 ) : null}
               </li>
@@ -266,20 +270,27 @@ function PromoteDialog({
     if (answer.ok) onDone(answer.body);
   }
 
+  const cancelButton = useRef<HTMLButtonElement>(null);
   return (
     <Dialog
       open
+      initialFocus={cancelButton}
       title={t('title', { name })}
       onClose={onClose}
       actions={
         <>
-          <Button variant="secondary" disabled={write.pending} onClick={onClose}>
+          <Button ref={cancelButton} variant="secondary" disabled={write.pending} onClick={onClose}>
             {t('cancel')}
           </Button>
           {write.problem?.reload === true ? (
             <Button onClick={onReload}>{t('reload')}</Button>
           ) : (
-            <Button loading={write.pending} disabled={slugBad} onClick={() => void submit()}>
+            <Button
+              variant="destructive-solid"
+              loading={write.pending}
+              disabled={slugBad}
+              onClick={() => void submit()}
+            >
               {t('confirm')}
             </Button>
           )}
@@ -336,13 +347,16 @@ function MergeDialog({
   const write = useWrite(csrfToken);
   const name = headline(shelf.texts, tree.defaultLocale);
   const [target, setTarget] = useState('');
+  // Merging cannot be undone, so the person types the shelf's name first (confirmation level 3).
+  const [typed, setTyped] = useState('');
+  const typedOk = name.trim() !== '' && typed.trim() === name.trim();
   const options = useMemo(
     () => mergeTargets(tree.categories, tree.defaultLocale),
     [tree.categories, tree.defaultLocale],
   );
 
   async function submit() {
-    if (target === '') return;
+    if (target === '' || !typedOk) return;
     const answer = await write.run<ShelfMerged>(`${API_SHELVES}/${shelf.id}/merge`, {
       version: shelf.version,
       categoryId: target,
@@ -350,20 +364,27 @@ function MergeDialog({
     if (answer.ok) onDone(answer.body);
   }
 
+  const cancelButton = useRef<HTMLButtonElement>(null);
   return (
     <Dialog
       open
+      initialFocus={cancelButton}
       title={t('title', { name })}
       onClose={onClose}
       actions={
         <>
-          <Button variant="secondary" disabled={write.pending} onClick={onClose}>
+          <Button ref={cancelButton} variant="secondary" disabled={write.pending} onClick={onClose}>
             {t('cancel')}
           </Button>
           {write.problem?.reload === true ? (
             <Button onClick={onReload}>{t('reload')}</Button>
           ) : (
-            <Button loading={write.pending} disabled={target === ''} onClick={() => void submit()}>
+            <Button
+              variant="destructive-solid"
+              loading={write.pending}
+              disabled={target === '' || !typedOk}
+              onClick={() => void submit()}
+            >
               {t('confirm')}
             </Button>
           )}
@@ -391,6 +412,16 @@ function MergeDialog({
             write.clear();
             setTarget(event.target.value);
           }}
+        />
+        <TextField
+          name="confirm-name"
+          label={t('type-label')}
+          help={<span className="font-medium text-fg">{name}</span>}
+          value={typed}
+          autoComplete="off"
+          spellCheck={false}
+          disabled={write.pending}
+          onChange={(event) => setTyped(event.target.value)}
         />
       </div>
     </Dialog>

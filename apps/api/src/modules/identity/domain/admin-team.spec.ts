@@ -417,10 +417,10 @@ describe.each(['AU', 'ZZ'])('slice 8a-2 and 8b domain in market %s', (code) => {
       const revoked = dispatched();
       revoked.revoke(LATER);
       for (const invitation of [dispatched(), issued(), Invitation.restore(revoked.state)]) {
-        const { state, expiresAt, createdAt } = invitation.state;
+        const { state, expiresAt, createdAt, heldForApproval } = invitation.state;
         for (const now of at) {
           expect(invitationStatusAt({ state, expiresAt }, now)).toBe(invitation.statusAt(now));
-          expect(invitationReissuableAt({ state, createdAt }, now, LIFETIME)).toBe(
+          expect(invitationReissuableAt({ state, createdAt, heldForApproval }, now, LIFETIME)).toBe(
             invitation.reissuableAt(now, LIFETIME),
           );
         }

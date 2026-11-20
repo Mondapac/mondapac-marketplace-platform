@@ -2,9 +2,12 @@
 
 import { Button, Select, TextAreaField, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
+import { ImageChooser } from './image-chooser.tsx';
 import {
   emptyBlock,
+  emptyImageBlock,
   move,
+  savedIndexOf,
   TEXT_BLOCK_TYPES,
   type EditBlock,
   type TextBlockType,
@@ -14,8 +17,6 @@ import { LIMITS } from './types.ts';
 /** The first paragraph or so of a kept block, for its read-only card. */
 function keptSummary(block: Extract<EditBlock, { type: 'kept' }>['block']): string {
   switch (block.type) {
-    case 'image':
-      return block.imageId;
     case 'product_cards':
       return String(block.productIds.length);
     case 'seller_card':
@@ -26,27 +27,43 @@ function keptSummary(block: Extract<EditBlock, { type: 'kept' }>['block']): stri
 }
 
 /**
- * The body of a post as a list of blocks: text blocks are edited in place, the others are kept as
- * they are. Each block moves up and down and can be removed; a new block goes at the end.
+ * The body of a post as a list of blocks: text and image blocks are edited in place, the others
+ * are kept as they are. Each block moves up and down and can be removed; a new block goes at the end.
  */
 export function BlockEditor({
   blocks,
   onChange,
   disabled,
   reasonAt,
+  canUpload,
+  csrfToken,
 }: {
   readonly blocks: readonly EditBlock[];
   readonly onChange: (next: readonly EditBlock[]) => void;
   readonly disabled: boolean;
   /** The API's reason for a refused path like `body.2.text`, if any. */
   readonly reasonAt: (path: string) => string | undefined;
+  /** The session holds `blog.media.edit`: the picker offers Upload. */
+  readonly canUpload: boolean;
+  readonly csrfToken: string;
 }) {
   const t = useTranslations('blog.editor');
   const set = (index: number, block: EditBlock) =>
     onChange(blocks.map((entry, i) => (i === index ? block : entry)));
+  /** The API names a block by its place in the saved body, which leaves blank blocks out. */
+  const pathOf = (index: number): string | null => {
+    const saved = savedIndexOf(blocks, index);
+    return saved === null ? null : `content.body[${saved}]`;
+  };
   const errorAt = (index: number): string | undefined => {
-    const reason = reasonAt(`content.body.${index}`);
-    return reason === undefined ? undefined : t('block.invalid');
+    const path = pathOf(index);
+    return path === null || reasonAt(path) === undefined ? undefined : t('block.invalid');
+  };
+  const imageErrorAt = (index: number): string | undefined => {
+    const path = pathOf(index);
+    return path !== null && reasonAt(`${path}.imageId`) === 'not-found'
+      ? t('block.image-not-found')
+      : undefined;
   };
 
   return (
@@ -196,6 +213,43 @@ export function BlockEditor({
                   />
                 </>
               ) : null}
+              {block.type === 'image' ? (
+                <>
+                  <ImageChooser
+                    imageId={block.imageId}
+                    onChange={(imageId) => set(index, { ...block, imageId })}
+                    disabled={disabled}
+                    canUpload={canUpload}
+                    csrfToken={csrfToken}
+                    error={imageErrorAt(index)}
+                    name={name}
+                    altEmpty={block.alt.trim() === ''}
+                    focusAlt={() =>
+                      document
+                        .querySelector<HTMLInputElement>(`[data-alt-for="${block.key}"] input`)
+                        ?.focus()
+                    }
+                  />
+                  <div data-alt-for={block.key}>
+                    <TextField
+                      label={t('block.image-alt')}
+                      help={t('block.image-alt-help')}
+                      value={block.alt}
+                      maxLength={LIMITS.imageAlt}
+                      disabled={disabled}
+                      onChange={(event) => set(index, { ...block, alt: event.target.value })}
+                    />
+                  </div>
+                  <TextField
+                    label={t('block.image-caption')}
+                    optionalLabel={t('optional')}
+                    value={block.caption}
+                    maxLength={LIMITS.imageCaption}
+                    disabled={disabled}
+                    onChange={(event) => set(index, { ...block, caption: event.target.value })}
+                  />
+                </>
+              ) : null}
               {block.type === 'kept' ? (
                 <p className="text-fg-muted">
                   {t(`block.kept.${block.block.type}`, { value: keptSummary(block.block) })}
@@ -217,6 +271,13 @@ export function BlockEditor({
             {t(`block.type.${type}`)}
           </Button>
         ))}
+        <Button
+          variant="secondary"
+          disabled={disabled || blocks.length >= LIMITS.blocks}
+          onClick={() => onChange([...blocks, emptyImageBlock()])}
+        >
+          {t('block.type.image')}
+        </Button>
       </div>
     </div>
   );

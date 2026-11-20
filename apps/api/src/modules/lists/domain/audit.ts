@@ -24,6 +24,7 @@ export const LISTS_AUDIT_LIST_KEYS = [
   'admin.certification.review-queue',
   'admin.sellers.health-queue',
   'admin.sellers.list',
+  'seller.reviews.list',
   'admin.commission-payouts.payouts',
   'admin.commission-payouts.disputes',
   'admin.payments.connected-accounts',

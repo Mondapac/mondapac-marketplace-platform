@@ -13,6 +13,8 @@ export interface PendingAdminInvitation {
   readonly roleId: Id<'Role'>;
   readonly invitedByAccountId: Id<'Account'> | null;
   readonly expiresAt: Temporal.Instant | null;
+  /** Waits for another admin's approval: never re-sent before it (owner decision of 18 Nov 2026). */
+  readonly heldForApproval: boolean;
   readonly createdAt: Temporal.Instant;
 }
 

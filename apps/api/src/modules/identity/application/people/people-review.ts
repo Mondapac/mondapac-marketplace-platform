@@ -20,6 +20,9 @@ import type {
 // custom platform role waits for another admin's approval (`proposeChange`), since a delete
 // cannot be undone. Revoking an invitation only narrows access and is not reviewed.
 //
+// Owner decision of 18 Nov 2026, 14:06Z: an admin invitation to a sensitive role waits for
+// another admin's approval too (held, nothing sent); invitations to other roles stay as above.
+//
 // Every opening passes risk `high`, whatever the area's policy says, so the reviewer's step-up is
 // spent before a revert writes. A revert never widens access (Hassan, PR #912 and #913): see
 // people-reverters.ts.
@@ -48,6 +51,15 @@ export const ADMIN_INVITATION_SUBJECT_KIND = 'identity.admin-invitation';
  * `{ action: 'delete' }`.
  */
 export const PLATFORM_ROLE_DELETION_SUBJECT_KIND = 'identity.platform-role-deletion';
+
+/**
+ * An admin invitation to a sensitive role (the Platform Administrator, or a role with a protected
+ * permission), which waits for another admin's approval (owner decision of 18 Nov 2026, 14:06Z);
+ * subject = the held invitation's id, values before `{ roleId, roleVersion }` (the role as it
+ * stood when asked), after `{ action: 'invite', roleId }`. Never the invited address: it stays on
+ * the held invitation row, as on any pending one.
+ */
+export const SENSITIVE_ADMIN_INVITATION_SUBJECT_KIND = 'identity.admin-invitation-sensitive';
 
 /** The values before of a create (nothing existed). */
 export const NOTHING_BEFORE: ChangeReviewValues = Object.freeze({ exists: false });
@@ -118,8 +130,9 @@ export async function proposePeopleAction(
   proposer: SystemActionProposer,
   context: CallContext,
   action: {
-    readonly subjectKind: typeof PLATFORM_ROLE_DELETION_SUBJECT_KIND;
-    readonly subjectRef: Id<'Role'>;
+    readonly subjectKind:
+      typeof PLATFORM_ROLE_DELETION_SUBJECT_KIND | typeof SENSITIVE_ADMIN_INVITATION_SUBJECT_KIND;
+    readonly subjectRef: Id<'Role'> | Id<'Invitation'>;
     readonly before: ChangeReviewValues;
     readonly after: ChangeReviewValues;
     readonly note: unknown;

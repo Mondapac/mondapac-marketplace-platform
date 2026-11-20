@@ -157,7 +157,46 @@ export interface SellerCustomersSummary {
     readonly month: string;
     readonly newBuyers: number;
     readonly newFollowers: number;
+    /** Joined through the seller's invite link that month and still active. */
+    readonly newExclusive: number;
   }[];
+}
+
+const isCount = (value: unknown): value is number =>
+  typeof value === 'number' && Number.isInteger(value) && value >= 0;
+const isObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+/** Reads the summary response strictly: null when any field is missing or of the wrong type. */
+export function parseSellerCustomersSummary(value: unknown): SellerCustomersSummary | null {
+  if (!isObject(value) || !isObject(value.counts) || !Array.isArray(value.months)) return null;
+  if (typeof value.zone !== 'string') return null;
+  const counts = value.counts;
+  const parsedCounts = {} as Record<SellerView, number>;
+  for (const view of SELLER_VIEWS) {
+    const count = counts[view];
+    if (!isCount(count)) return null;
+    parsedCounts[view] = count;
+  }
+  const months: SellerCustomersSummary['months'][number][] = [];
+  for (const m of value.months as unknown[]) {
+    if (
+      !isObject(m) ||
+      typeof m.month !== 'string' ||
+      !isCount(m.newBuyers) ||
+      !isCount(m.newFollowers) ||
+      !isCount(m.newExclusive)
+    ) {
+      return null;
+    }
+    months.push({
+      month: m.month,
+      newBuyers: m.newBuyers,
+      newFollowers: m.newFollowers,
+      newExclusive: m.newExclusive,
+    });
+  }
+  return { counts: parsedCounts, zone: value.zone, months };
 }
 
 export const SELLER_OPTIONAL_COLUMNS = ['first-order', 'followed'] as const;
