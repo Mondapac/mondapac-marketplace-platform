@@ -560,12 +560,76 @@ describe('seller orders saved filters', () => {
     );
   });
 
+  it('manages filters: lists the own filters and deletes one only after asking', async () => {
+    let items = [saved(), saved({ id: '0190a000-0000-7000-8000-0000000000ab', name: 'Delivered' })];
+    call.mockImplementation(((method: string, path: string) => {
+      if (path.startsWith(SAVED_PATH) && method === 'DELETE') {
+        items = items.slice(1);
+        return Promise.resolve({ ok: true, status: 200, body: { id: 'x' } });
+      }
+      if (path.startsWith(SAVED_PATH)) return Promise.resolve(savedAnswer(items));
+      return Promise.resolve(ok(pageOf([row()])));
+    }) as never);
+    mount(pageOf([row()]), { csrfToken: 'csrf-2' });
+    await screen.findByRole('button', { name: 'Delivered' });
+    fireEvent.click(screen.getByRole('button', { name: 'Manage filters' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Manage filters' });
+    expect(within(dialog).getByRole('button', { name: 'Edit Old shipped' })).toBeTruthy();
+    expect(within(dialog).getByRole('button', { name: 'Edit Delivered' })).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete Old shipped' }));
+    // Asking comes first: nothing is deleted until the seller confirms.
+    expect(call.mock.calls.some(([method]) => method === 'DELETE')).toBe(false);
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete filter' }));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Old shipped' })).toBeNull());
+    expect(call).toHaveBeenCalledWith(
+      'DELETE',
+      expect.stringContaining(SAVED_PATH),
+      undefined,
+      'csrf-2',
+    );
+  });
+
   it('offers neither Save filter nor Manage filters when the filters cannot load', async () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: /^Shipped/ }));
     await waitFor(() => expect(paramsOf(lastUrl())['status']).toBe('shipped'));
     expect(screen.queryByRole('button', { name: 'Save filter…' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Manage filters' })).toBeNull();
+  });
+});
+
+describe('seller orders page past the end', () => {
+  const asked = () =>
+    call.mock.calls
+      .filter(([, path]) => path.startsWith(ORDERS_PATH))
+      .map(([, path]) => paramsOf(String(path))['page']);
+
+  it('goes back to the last page that has rows when the page asked for is empty', async () => {
+    serve((url) => {
+      const page = Number(paramsOf(url)['page']);
+      return pageOf(page >= 3 ? [] : [row()], {
+        total: page === 1 ? 100 : 30,
+        paging: 'pages',
+        page,
+      });
+    });
+    mount(pageOf([row()], { total: 100, paging: 'pages' }), { paging: 'pages' });
+    fireEvent.click(screen.getByRole('button', { name: 'Page 4' }));
+    await waitFor(() => expect(asked()).toEqual(['4', '2']));
+    expect(await screen.findByRole('table')).toBeTruthy();
+    expect(screen.queryByText(/no orders/i)).toBeNull();
+  });
+
+  it('steps back one page at a time in Previous and next mode', async () => {
+    serve((url) => {
+      const page = Number(paramsOf(url)['page']);
+      return pageOf(page >= 3 ? [] : [row()], { page, hasNext: page < 3 });
+    });
+    mount(pageOf([row()], { hasNext: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(asked()).toEqual(['2']));
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(asked()).toEqual(['2', '3', '2']));
   });
 });
 

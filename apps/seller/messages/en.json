@@ -2672,6 +2672,11 @@
   },
   "orders": {
     "title": "Orders",
+    "days": {
+      "range": "{from} to {to}",
+      "from": "from {day}",
+      "until": "until {day}"
+    },
     "loading": "Loading orders…",
     "intro": "Paid orders for your store, newest first. Open an order and mark it ready when it is packed. MondaPac arranges the delivery.",
     "not-found": {

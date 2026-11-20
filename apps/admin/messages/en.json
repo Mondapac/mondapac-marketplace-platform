@@ -5320,6 +5320,11 @@
   },
   "orders": {
     "title": "Orders",
+    "days": {
+      "range": "{from} to {to}",
+      "from": "from {day}",
+      "until": "until {day}"
+    },
     "page-title": "Orders",
     "intro": "The Market's orders. Open one to see its payment, delivery and notes.",
     "zone-note": "Times and days are in {zone}.",
