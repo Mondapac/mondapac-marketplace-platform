@@ -199,7 +199,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/category-tree/export',
     // The business activities (catalog; query: `status`, `search`, `afterId`, `limit`).
     'catalog/admin/business-activities',
-    // The product tags (catalog topics; query: `status`, `group`, `search`, `afterId`, `limit`).
+    // The product tags (catalog topics; query: `status`, `group`, `q`, `search`, `afterId`, `limit`,
+    // `page`, `pageSize`, `paging`, `sort`, `direction`).
     'catalog/admin/topics',
     // The attributes (catalog; query: `search`, `type`, `status`, `usedIn`, `missing`, `afterId`,
     // `limit`) and the feature sets (attribute families), read only (attributes package A1).
@@ -1495,7 +1496,19 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sort',
     'direction',
   ],
-  'catalog/admin/topics': ['status', 'group', 'search', 'afterId', 'limit'],
+  'catalog/admin/topics': [
+    'status',
+    'group',
+    'search',
+    'afterId',
+    'limit',
+    'q',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
   'catalog/admin/variant-requests': [
     'limit',
@@ -2350,6 +2363,11 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     group: /^(occasion|cuisine|use)$/,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^(slug|status|group|created|updated)$/,
+    direction: /^(asc|desc)$/,
   },
   'catalog/admin/reports/products-missing-details': {
     sellerId: UUID,

@@ -10939,46 +10939,20 @@
   },
   "tags": {
     "title": "Tags",
-    "intro": "Shopping themes that group products across categories, such as Ramadan or BBQ. Sellers pick from this list.",
     "new": "New tag",
-    "search": "Search by name, synonym or address",
-    "search-label": "Search tags",
-    "status-filter": "Status",
-    "group-filter": "Group",
-    "loading": "Loading tags",
-    "load-error": "The tags could not be loaded. Check your connection and try again.",
-    "retry": "Try again",
-    "more": "Load more",
-    "more-error": "More tags could not be loaded. Try again.",
     "stale": "Someone else changed that tag. The list is up to date now; nothing was saved.",
     "no-access": "Your role cannot see tags.",
     "back-home": "Back to the dashboard",
-    "empty": "No tags yet. Create the first one with New tag.",
-    "empty-reader": "No tags yet.",
-    "empty-filtered": "No tag matches these filters.",
     "not-set": "Not set",
     "and-more": "and {count} more",
-    "col": {
-      "name": "Name",
-      "group": "Group",
-      "synonyms": "Synonyms",
-      "status": "Status",
-      "actions": "Actions"
-    },
     "status": {
-      "all": "All",
       "active": "Active",
       "archived": "Archived"
     },
     "group": {
-      "all": "All",
       "occasion": "Occasion",
       "cuisine": "Cuisine",
       "use": "Use"
-    },
-    "action": {
-      "edit": "Edit",
-      "edit-name": "Edit {name}"
     },
     "done": {
       "created": "{name} was created.",
@@ -11142,6 +11116,88 @@
         "throttled": "Too many requests. Wait a moment and try again.",
         "unavailable": "Could not reach the server. Try again.",
         "unknown": "Something went wrong. Try again."
+      }
+    },
+    "list": {
+      "intro": "Shopping themes that group products across categories, such as Ramadan or BBQ. Sellers pick from this list.",
+      "tabs": "Tag views",
+      "tab": {
+        "all": "All",
+        "active": "Active",
+        "archived": "Archived"
+      },
+      "search": {
+        "label": "Search tags",
+        "placeholder": "Name, synonym or address"
+      },
+      "filter": {
+        "title": "Filter tags",
+        "group": "Group"
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "slug": "Address",
+          "group": "Group",
+          "status": "Status",
+          "created": "Date added",
+          "updated": "Last updated"
+        },
+        "az": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        }
+      },
+      "sorted": "Sorted by {field}, {order}",
+      "col": {
+        "name": "Name",
+        "group": "Group",
+        "synonyms": "Synonyms",
+        "status": "Status"
+      },
+      "chip-search": "Search: {text}",
+      "loading": "Loading tags",
+      "match": "{count, plural, one {# tag matches} other {# tags match}}",
+      "range": "{from}–{to} of {total}",
+      "too-many": "More than {limit} tags match. Add a search to see the rest.",
+      "no-access": "Your role cannot see tags.",
+      "error": {
+        "unavailable": "The tags could not be loaded. Check your connection and try again.",
+        "refused": "The search cannot be used. Change it and try again."
+      },
+      "empty": {
+        "title": "No tags yet",
+        "body": "Create the first one with New tag.",
+        "no-match": "No tags match",
+        "no-match-help": "Change the search or filters, or clear them."
+      },
+      "select": {
+        "page": "Select all tags on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# tag selected} other {# tags selected}}",
+        "all": "{count, plural, one {The # matching tag is selected} other {All # matching tags are selected}}",
+        "all-open": "All matching tags are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}",
+        "edit": "Edit…"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# tag selected} other {# tags selected}}",
+        "all-open": "All matching tags selected"
       }
     }
   },
