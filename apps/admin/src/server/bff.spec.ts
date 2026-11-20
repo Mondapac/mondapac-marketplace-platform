@@ -3047,9 +3047,25 @@ describe('relay of the wallet and step-up routes', () => {
       'wallet/admin/credit-requests/export?format=pdf&columns=fingerprint&ids=x',
       readHeaders,
     );
-    // A strict export (Hassan S1): a malformed value refuses the file instead of widening it.
+    // A malformed key refuses the file instead of widening it to the whole Market.
     expect(badFile.response.status).toBe(400);
     expect(badFile.upstream).not.toHaveBeenCalled();
+    const tooMany = await run(
+      'GET',
+      `wallet/admin/credit-requests/export?format=csv&ids=${Array.from({ length: 201 }, () => id).join(',')}`,
+      readHeaders,
+    );
+    expect(tooMany.response.status).toBe(400);
+    expect(tooMany.upstream).not.toHaveBeenCalled();
+    for (const bad of ['q=ada', 'from=yesterday']) {
+      const refused = await run(
+        'GET',
+        `wallet/admin/credit-requests/export?format=csv&${bad}`,
+        readHeaders,
+      );
+      expect(refused.response.status).toBe(400);
+      expect(refused.upstream).not.toHaveBeenCalled();
+    }
   });
 
   it('passes no query on the customer summary or the settings', async () => {
