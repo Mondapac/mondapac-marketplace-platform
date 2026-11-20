@@ -73,6 +73,8 @@ describe('assistant routes of the buyer relay', () => {
       ['POST', ['assistant', 'conversations', CONVERSATION, 'messages', '0', 'feedback']],
       ['POST', ['assistant', 'conversations', CONVERSATION, 'messages', '061', 'feedback']],
       ['POST', ['assistant', 'conversations', CONVERSATION, 'messages', 'x', 'feedback']],
+      ['POST', ['assistant', 'conversations', CONVERSATION, 'messages', '61', 'feedback']],
+      ['POST', ['assistant', 'conversations', CONVERSATION, 'messages', '99', 'feedback']],
       ['DELETE', ['assistant', 'conversations']],
       ['POST', ['assistant', 'conversations', 'x-not-a-uuid', 'messages']],
       ['POST', ['assistant', 'conversations', `${CONVERSATION}/..`, 'messages']],
@@ -89,7 +91,7 @@ describe('assistant routes of the buyer relay', () => {
     expect(isSessionPathAllowed('GET', ['assistant', 'conversations'])).toBe(true);
     expect(isSessionPathAllowed('GET', ['assistant', 'conversations', CONVERSATION])).toBe(true);
     expect(isSessionPathAllowed('DELETE', ['assistant', 'conversations', CONVERSATION])).toBe(true);
-    for (const position of ['1', '2', '60']) {
+    for (const position of ['1', '2', '9', '10', '59', '60']) {
       expect(
         isSessionPathAllowed('POST', [
           'assistant',

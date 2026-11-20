@@ -1537,7 +1537,7 @@
     "history-empty": "You have no saved conversations yet.",
     "history-untitled": "Conversation",
     "history-turns": "{count, plural, one {# question} other {# questions}}",
-    "history-full": "full: start a new chat to ask more",
+    "history-full": "Full. Start a new chat to ask more.",
     "history-more": "Show more",
     "history-delete": "Delete conversation: {title}",
     "history-confirm": "Delete this conversation for good?",
@@ -1547,7 +1547,9 @@
     "history-gone": "That conversation is no longer available.",
     "history-error": "I could not load your conversations just now. Please try again.",
     "history-sign-in": "Please log in again to see your conversations.",
-    "history-listings": "Products and prices are not saved. Ask again to see them with today's prices."
+    "history-listings": "Products and prices are not saved. Ask again to see them with today's prices.",
+    "history-current": "Open now",
+    "thanks-noted": "Thanks, noted."
   },
   "coming-soon": {
     "message": "We are still building this page. In the meantime, the home page and the product range are ready.",

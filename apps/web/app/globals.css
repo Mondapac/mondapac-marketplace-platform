@@ -9581,7 +9581,7 @@ button.login {
 .aschip {
   display: inline-flex;
   align-items: center;
-  min-height: 40px;
+  min-height: 44px;
   padding: 0 12px;
   border-radius: var(--sf-radius-pill);
   border: 1.5px solid var(--sf-teal);
@@ -9716,7 +9716,7 @@ button.login {
   align-items: center;
   gap: 4px 12px;
 }
-.ashh h3 {
+.ashh .ashtitle {
   margin: 0;
   font-size: calc(16px * var(--cfs));
   font-weight: 800;

@@ -254,6 +254,10 @@ export function AssistantWidget({
   const turns = useRef(0);
   const turnsKnown = useRef(true);
   const historyAbort = useRef<AbortController | null>(null);
+  /** The page the list asked for last, so Try again repeats that one. */
+  const listCursor = useRef<string | null>(null);
+  /** Rows deleted in this panel, so a page that was already on its way never brings one back. */
+  const deletedRows = useRef(new Set<string>());
   const misses = useRef(0);
   const abort = useRef<AbortController | null>(null);
   const panel = useRef<HTMLElement>(null);
@@ -331,26 +335,12 @@ export function AssistantWidget({
 
   /**
    * A turn whose outcome is unknown (the network failed, or the buyer pressed Stop) may or may not
-   * be stored, so the position of the next answer is unknown too. A customer's count is read back
-   * from the server; a guest's chat shows no thumbs until it is a new chat. Never a guess.
+   * be stored, now or a moment later (the server finishes an aborted turn), so the position of the
+   * next answer is unknown too. This chat records no more thumbs; opening it again from the list
+   * reads its real count. Never a guess that could rate another message.
    */
-  const uncertain = (convo: string) => {
+  const uncertain = () => {
     turnsKnown.current = false;
-    if (customer === null) return;
-    const started = generation.current;
-    void api
-      .read(setup, convo, new AbortController().signal, undefined, previewToken)
-      .then((read) => {
-        if (generation.current !== started || conversation.current !== convo) return;
-        if (read.ok) {
-          turns.current = read.value.turns;
-          turnsKnown.current = true;
-        } else if (read.refusal.kind === 'lost') {
-          turns.current = 0;
-          turnsKnown.current = true;
-        }
-      })
-      .catch(() => undefined);
   };
 
   const settle = (result: SendResult, message: string) => {
@@ -401,7 +391,7 @@ export function AssistantWidget({
         turnsKnown.current = true;
         break;
       case 'error':
-        uncertain(convo);
+        uncertain();
         break;
     }
     misses.current += 1;
@@ -447,7 +437,7 @@ export function AssistantWidget({
     setBusy(false);
     setSlow(false);
     if (controller.signal.aborted) {
-      uncertain(conversation.current);
+      uncertain();
       push({ id: nextId++, role: 'assistant', kind: 'stopped' });
       return;
     }
@@ -512,6 +502,7 @@ export function AssistantWidget({
 
   const loadHistory = (cursor: string | null) => {
     historyAbort.current?.abort();
+    listCursor.current = cursor;
     const controller = new AbortController();
     historyAbort.current = controller;
     setHistory((now) =>
@@ -526,7 +517,9 @@ export function AssistantWidget({
             state: 'ready',
             items: [
               ...(cursor === null ? [] : now.items),
-              ...result.value.items.filter((item) => !known.has(item.id)),
+              ...result.value.items.filter(
+                (item) => !known.has(item.id) && !deletedRows.current.has(item.id),
+              ),
             ],
             next: result.value.nextCursor,
           };
@@ -565,8 +558,23 @@ export function AssistantWidget({
     const el = panel.current;
     if (mode === 'history')
       el?.querySelector<HTMLElement>('[data-as=hback]')?.focus({ preventScroll: true });
-    else if (!sheet) box.current?.focus({ preventScroll: true });
+    else box.current?.focus({ preventScroll: true });
   }, [mode]);
+  // The confirmation takes focus; Cancel gives it back to the row's delete button.
+  useEffect(() => {
+    if (confirming === null) return;
+    panel.current?.querySelector<HTMLElement>('[data-as=hconfirm]')?.focus({ preventScroll: true });
+  }, [confirming]);
+  const focusLater = (selector: string) =>
+    window.setTimeout(
+      () => panel.current?.querySelector<HTMLElement>(selector)?.focus({ preventScroll: true }),
+      0,
+    );
+  const cancelConfirm = (rowId: string) => {
+    setConfirming(null);
+    focusLater(`[data-del="${rowId}"]`);
+  };
+  const focusBack = () => focusLater('[data-as=hback]');
 
   /** The stored messages as widget entries: text and links only, answers paired with their position. */
   const entriesOf = (stored: StoredConversation): Entry[] => {
@@ -648,6 +656,8 @@ export function AssistantWidget({
       return;
     }
     setNotice('history-deleted');
+    focusBack();
+    deletedRows.current.add(item.id);
     setHistory((now) => ({ ...now, items: now.items.filter((row) => row.id !== item.id) }));
     // The chat that is open was deleted: its id is gone for good (POST answers 404), start fresh.
     if (conversation.current === item.id) {
@@ -655,6 +665,7 @@ export function AssistantWidget({
       abort.current?.abort();
       abort.current = null;
       setBusy(false);
+      setSlow(false);
       conversation.current = newConversationId();
       turns.current = 0;
       turnsKnown.current = true;
@@ -1009,7 +1020,9 @@ export function AssistantWidget({
                 {rating.failed
                   ? t('feedback-failed')
                   : rating.value === 'down'
-                    ? t('sorry')
+                    ? rating.reason !== null && entry.position !== null && setup.retentionDays !== 0
+                      ? t('thanks-noted')
+                      : t('sorry')
                     : entry.position !== null && setup.retentionDays !== 0
                       ? t('thanks')
                       : null}
@@ -1103,7 +1116,7 @@ export function AssistantWidget({
           <Icon name="chevl" />
           {t('history-back')}
         </button>
-        <h3>{t('history-title')}</h3>
+        <h2 className="ashtitle">{t('history-title')}</h2>
       </div>
       <p className="asnote">{t('history-kept', { days })}</p>
       {notice !== null ? (
@@ -1116,6 +1129,15 @@ export function AssistantWidget({
           <Icon name="warn" />
           <span>{t(history.why)}</span>
         </div>
+      ) : null}
+      {history.state === 'error' && history.why === 'history-error' ? (
+        <button
+          className="btn small ghost"
+          type="button"
+          onClick={() => loadHistory(listCursor.current)}
+        >
+          {t('retry')}
+        </button>
       ) : null}
       {history.state === 'loading' && history.items.length === 0 ? (
         <div className="asnote" role="status">
@@ -1136,7 +1158,11 @@ export function AssistantWidget({
             const title = item.title === '' ? t('history-untitled') : item.title;
             const when = format.dateTime(new Date(item.lastMessageAt), { dateStyle: 'medium' });
             return (
-              <li key={item.id} data-current={conversation.current === item.id}>
+              <li
+                key={item.id}
+                data-current={conversation.current === item.id}
+                aria-current={conversation.current === item.id ? 'true' : undefined}
+              >
                 <button
                   className="ashopen"
                   type="button"
@@ -1148,11 +1174,13 @@ export function AssistantWidget({
                   <small>
                     {when} · {t('history-turns', { count: item.turns })}
                     {item.full ? ` · ${t('history-full')}` : ''}
+                    {conversation.current === item.id ? ` · ${t('history-current')}` : ''}
                   </small>
                 </button>
                 <button
                   className="ashdel"
                   type="button"
+                  data-del={item.id}
                   aria-label={t('history-delete', { title })}
                   aria-expanded={confirming === item.id}
                   onClick={() => setConfirming(confirming === item.id ? null : item.id)}
@@ -1165,6 +1193,7 @@ export function AssistantWidget({
                     <button
                       className="btn small"
                       type="button"
+                      data-as="hconfirm"
                       onClick={() => void removeConversation(item)}
                     >
                       {t('history-delete-yes')}
@@ -1172,7 +1201,7 @@ export function AssistantWidget({
                     <button
                       className="btn small ghost"
                       type="button"
-                      onClick={() => setConfirming(null)}
+                      onClick={() => cancelConfirm(item.id)}
                     >
                       {t('cart-cancel')}
                     </button>
@@ -1250,9 +1279,8 @@ export function AssistantWidget({
               className="asx"
               type="button"
               data-as="history"
-              aria-label={t('history-open')}
-              title={t('history-open')}
-              aria-pressed={mode === 'history'}
+              aria-label={mode === 'history' ? t('history-back') : t('history-open')}
+              title={mode === 'history' ? t('history-back') : t('history-open')}
               onClick={() => (mode === 'history' ? backToChat() : showHistory())}
             >
               <Icon name="clock" />

@@ -110,8 +110,8 @@ const SIGNS_IN: ReadonlySet<string> = new Set([
   'identity/customer/confirm-email',
 ]);
 
-/** A message position of an assistant conversation (1 to 60): one or two digits, no leading zero. */
-const MESSAGE_POSITION = /^[1-9][0-9]?$/;
+/** A message position of an assistant conversation (1 to 60): 1 to 60, no leading zero. */
+const MESSAGE_POSITION = /^([1-9]|[1-5][0-9]|60)$/;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

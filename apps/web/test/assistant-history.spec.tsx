@@ -256,6 +256,106 @@ describe('feedback on answers', () => {
   });
 });
 
+describe('positions after the unusual turns', () => {
+  it('records no thumbs after Stop, even for a signed-in buyer, until the chat is opened again', async () => {
+    const api = stubs();
+    const send = vi.fn<typeof sendMessage>(
+      (_setup, _id, _text, _visitor, signal) =>
+        new Promise((_resolve, reject) =>
+          signal.addEventListener('abort', () => reject(new Error('aborted'))),
+        ),
+    );
+    renderWidget(send, api, { signedIn: true });
+    fireEvent.click(launcher());
+    await say('first');
+    await click('Stop');
+    send.mockImplementation(() => Promise.resolve(ok('Later.')));
+    await say('again');
+    await click('Good answer');
+    expect(api.feedback).not.toHaveBeenCalled();
+    expect(api.read).not.toHaveBeenCalled();
+    // Opening the stored chat reads its real count.
+    await click('Your conversations');
+    await act(async () => {
+      fireEvent.click(await screen.findByText('Halal chicken'));
+      await Promise.resolve();
+    });
+    await say('and now?');
+    await click('Good answer');
+    expect(api.feedback.mock.calls[0]![2]).toBe(6);
+  });
+
+  it('starts again at 2 when the server lost the conversation', async () => {
+    const api = stubs();
+    const results: SendResult[] = [
+      ok('One.'),
+      { ok: false, refusal: { kind: 'lost' } },
+      ok('Two.'),
+    ];
+    renderWidget(() => Promise.resolve(results.shift()!), api);
+    fireEvent.click(launcher());
+    await say('a');
+    await say('b');
+    await click('Try again');
+    await click('Good answer');
+    expect(api.feedback.mock.calls[0]![2]).toBe(2);
+  });
+
+  it('rates the 30th answer as position 60 and the next as none', async () => {
+    const api = stubs({
+      read: vi.fn(() =>
+        Promise.resolve({
+          ok: true as const,
+          value: { ...summary(A, 'Long', 29), messages: [] },
+        }),
+      ),
+    });
+    renderWidget(() => Promise.resolve(ok('Last.')), api, { signedIn: true });
+    fireEvent.click(launcher());
+    await click('Your conversations');
+    await act(async () => {
+      fireEvent.click(await screen.findByText('Halal chicken'));
+      await Promise.resolve();
+    });
+    await say('thirtieth');
+    await click('Good answer');
+    expect(api.feedback.mock.calls[0]![2]).toBe(60);
+  });
+
+  it('drops the answer of a chat that was deleted while it was waiting', async () => {
+    const api = stubs();
+    let answer: (result: SendResult) => void = () => undefined;
+    renderWidget(() => new Promise((resolve) => (answer = resolve)), api, { signedIn: true });
+    fireEvent.click(launcher());
+    await click('Your conversations');
+    await act(async () => {
+      fireEvent.click(await screen.findByText('Halal chicken'));
+      await Promise.resolve();
+    });
+    await say('slow one');
+    await click('Your conversations');
+    fireEvent.click(
+      await screen.findByRole('button', { name: 'Delete conversation: Halal chicken' }),
+    );
+    await click('Delete');
+    await act(async () => {
+      answer(ok('Too late.'));
+      await Promise.resolve();
+    });
+    expect(screen.queryByText('Too late.')).toBeNull();
+  });
+
+  it('says thanks after a reason is chosen', async () => {
+    const api = stubs();
+    renderWidget(() => Promise.resolve(ok('One.')), api);
+    fireEvent.click(launcher());
+    await say('first');
+    await click('Bad answer');
+    await click('Something else');
+    expect(screen.getByText(messages.assistant['thanks-noted'])).toBeTruthy();
+  });
+});
+
 describe('history of a signed-in buyer', () => {
   it('shows no history button to a guest', () => {
     renderWidget(() => Promise.resolve(ok('x')), stubs());
@@ -363,10 +463,48 @@ describe('history of a signed-in buyer', () => {
       await screen.findByRole('button', { name: 'Delete conversation: Halal chicken' }),
     );
     await click('Delete');
-    await click('Back to the chat');
+    fireEvent.click(screen.getAllByRole('button', { name: 'Back to the chat' })[0]!);
     expect(screen.queryByText('Try the thighs.')).toBeNull();
     await say('hello');
     expect(send.mock.calls[0]![1]).not.toBe(A);
+  });
+
+  it('marks the open conversation in the list and offers Try again when the list fails', async () => {
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, refusal: { kind: 'error' } })
+      .mockResolvedValueOnce({ ok: true, value: { items: [summary(A, 'One')], nextCursor: null } });
+    renderWidget(() => Promise.resolve(ok('x')), stubs({ list }), { signedIn: true });
+    fireEvent.click(launcher());
+    await click('Your conversations');
+    await screen.findByRole('alert');
+    await click('Try again');
+    expect(await screen.findByText('One')).toBeTruthy();
+    expect(list).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not bring back a row deleted while a page was loading', async () => {
+    let page2: (value: unknown) => void = () => undefined;
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        value: { items: [summary(A, 'One'), summary(B, 'Two')], nextCursor: 'n1' },
+      })
+      .mockImplementationOnce(() => new Promise((resolve) => (page2 = resolve)));
+    renderWidget(() => Promise.resolve(ok('x')), stubs({ list }), { signedIn: true });
+    fireEvent.click(launcher());
+    await click('Your conversations');
+    await screen.findByText('One');
+    await click('Show more');
+    // Show more is on its way; Two is deleted meanwhile.
+    fireEvent.click(screen.getByRole('button', { name: 'Delete conversation: Two' }));
+    await click('Delete');
+    await act(async () => {
+      page2({ ok: true, value: { items: [summary(B, 'Two')], nextCursor: null } });
+      await Promise.resolve();
+    });
+    expect(screen.queryByText('Two')).toBeNull();
   });
 
   it('says when the list or a conversation cannot be read', async () => {
