@@ -9,6 +9,8 @@ import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sess
 import { DeleteConversation } from '../src/modules/assistant/application/use-cases/delete-conversation.use-case';
 import { ListConversations } from '../src/modules/assistant/application/use-cases/list-conversations.use-case';
 import { SendGuestMessage } from '../src/modules/assistant/application/use-cases/send-guest-message.use-case';
+import { SubmitFeedback } from '../src/modules/assistant/application/use-cases/submit-feedback.use-case';
+import { SubmitGuestFeedback } from '../src/modules/assistant/application/use-cases/submit-guest-feedback.use-case';
 import { SendMessage } from '../src/modules/assistant/application/use-cases/send-message.use-case';
 import { ViewConversation } from '../src/modules/assistant/application/use-cases/view-conversation.use-case';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
@@ -75,6 +77,10 @@ describe.each(TEST_MARKETS)('the assistant conversation over HTTP in market %s',
           .useValue(stub('account'))
           .overrideProvider(SendGuestMessage)
           .useValue(stub('guest'))
+          .overrideProvider(SubmitFeedback)
+          .useValue(stub('feedback-account'))
+          .overrideProvider(SubmitGuestFeedback)
+          .useValue(stub('feedback-guest'))
           .overrideProvider(ListConversations)
           .useValue(stub('list'))
           .overrideProvider(ViewConversation)
@@ -579,6 +585,97 @@ describe.each(TEST_MARKETS)('the assistant conversation over HTTP in market %s',
       expect(calls).toEqual([
         { name: 'delete', actor: 'authenticated', input: { conversationId: CONVERSATION } },
       ]);
+    });
+  });
+
+  describe('feedback', () => {
+    const FEEDBACK = `/assistant/conversations/${CONVERSATION}/messages/2/feedback`;
+
+    it('passes a guest thumbs with its cookie token, the ids from the path, and answers no-store JSON', async () => {
+      await boot();
+      next = ok({ rating: 'down', reason: 'wrong' });
+
+      const res = await http()
+        .post(FEEDBACK)
+        .set({ 'x-market-id': code, cookie: `__Host-assistant-guest-${code}=${TOKEN}` })
+        .send({ rating: 'down', reason: 'wrong' });
+
+      expect(res.status).toBe(200);
+      expect(res.headers['cache-control']).toBe('no-store');
+      expect(res.body).toEqual({ rating: 'down', reason: 'wrong' });
+      expect(setCookies(res)).toEqual([]);
+      expect(calls).toEqual([
+        {
+          name: 'feedback-guest',
+          actor: 'anonymous',
+          input: {
+            conversationId: CONVERSATION,
+            messageId: '2',
+            rating: 'down',
+            reason: 'wrong',
+            token: TOKEN,
+          },
+        },
+      ]);
+    });
+
+    it('serves a signed-in customer from the session with CSRF, never from the body', async () => {
+      await boot();
+      next = ok({ rating: 'up', reason: null });
+      const session = customerSession();
+      const headers = { 'x-market-id': code, cookie: session.cookie };
+
+      expect((await http().post(FEEDBACK).set(headers).send({ rating: 'up' })).status).toBe(403);
+      const sent = await http()
+        .post(FEEDBACK)
+        .set({ ...headers, 'x-csrf-token': session.csrf })
+        .send({ rating: 'up' });
+
+      expect(sent.status).toBe(200);
+      expect(calls).toEqual([
+        {
+          name: 'feedback-account',
+          actor: 'authenticated',
+          input: {
+            conversationId: CONVERSATION,
+            messageId: '2',
+            rating: 'up',
+            reason: undefined,
+          },
+        },
+      ]);
+    });
+
+    it('refuses unknown fields, an account id in the body, and a non-JSON body', async () => {
+      await boot();
+      const extra = await http()
+        .post(FEEDBACK)
+        .set({ 'x-market-id': code })
+        .send({ rating: 'up', accountId: ACCOUNT });
+      const form = await http()
+        .post(FEEDBACK)
+        .set({ 'x-market-id': code, 'content-type': 'application/x-www-form-urlencoded' })
+        .send('rating=up');
+      expect(extra.status).toBe(400);
+      expect(form.status).toBe(415);
+      expect(calls).toEqual([]);
+    });
+
+    it.each([
+      ['validation.failed', 400],
+      ['assistant.off', 403],
+      ['assistant.conversation-not-found', 404],
+      ['assistant.message-not-found', 404],
+    ])('answers %s as plain JSON with status %i', async (failure, status) => {
+      await boot();
+      next = err(
+        failure === 'validation.failed'
+          ? { code: failure, fields: [{ path: 'rating', code: 'format' }] }
+          : { code: failure },
+      );
+      const res = await http().post(FEEDBACK).set({ 'x-market-id': code }).send({ rating: 'up' });
+      expect(res.status).toBe(status);
+      expect((res.body as { code: string }).code).toBe(failure);
     });
   });
 });

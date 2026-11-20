@@ -367,3 +367,11 @@ journal when nothing is left. It is allowed while the wallet is active, paused o
 idempotency key replays. Migration `20261117150000_wallet_clawback` widens the kind and lot checks,
 indexes lots by journal, and teaches the lot ledger and status fences the new kind; `down.sql`
 refuses while clawback journals exist.
+
+## Saved filters (super list phase 4, PR10)
+
+The admin Credit requests list (`admin.wallet.credit-requests`, key `wallet.credit.view`) has
+saved filters through `lists` (`application/saved-filters/list-definitions.ts`). `requestedBy=me`
+is saved as `me`, so it means whoever opens the filter. Sharing one needs the new unprotected key
+`wallet.saved-filter.share` (with the protected view key); no role is seeded with it. See
+docs/modules/lists/notes.md.

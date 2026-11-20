@@ -4,7 +4,8 @@
 export const REQUESTS_VIEW_PERMISSION = 'certification.issuer.view';
 export const REQUESTS_ANSWER_PERMISSION = 'certification.issuer.edit';
 export const API_REQUESTS = 'certification/admin/issuer-requests';
-export const PAGE_SIZE = 25;
+export const API_REQUESTS_LIST = `${API_REQUESTS}/list`;
+export const API_REQUESTS_EXPORT = `${API_REQUESTS}/export`;
 
 export interface RequestRow {
   readonly issuerRequestId: string;
@@ -17,10 +18,30 @@ export interface RequestRow {
   readonly createdAt: string;
 }
 
+/** The answer of the plain request read (the Certificates tabs ask it for the open count). */
 export interface RequestPage {
   readonly items: readonly RequestRow[];
   readonly nextAfterId: string | null;
   readonly total: number;
+}
+
+/** A row of the super list (GET certification/admin/issuer-requests/list), with its actions. */
+export interface ListRow extends RequestRow {
+  /** What this admin may do with the row: `open` always, `answer` with the edit key (server-computed). */
+  readonly actions: readonly string[];
+}
+
+/** The answer of the super list. `total` is null with the Market's Previous and next paging. */
+export interface ListPage {
+  readonly items: readonly ListRow[];
+  readonly total: number | null;
+  readonly page: number;
+  readonly pageSize: number;
+  readonly paging: 'pages' | 'prev-next';
+  readonly hasNext: boolean;
+  readonly counts: { readonly all: number };
+  /** More requests are open than the 500 the list reads: the newest are not listed. */
+  readonly truncated: boolean;
 }
 
 export type RequestState = 'open' | 'issuer-added' | 'not-accepted';
@@ -35,6 +56,7 @@ export interface RequestDetail {
   /** The seller's text, decrypted for this read; null when it is no longer available. */
   readonly typedIssuerName: string | null;
   readonly documents: readonly {
+    readonly documentId?: string;
     readonly position?: number;
     readonly mediaType?: string;
     readonly byteSize?: number;

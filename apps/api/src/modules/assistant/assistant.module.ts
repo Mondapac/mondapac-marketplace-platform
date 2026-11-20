@@ -22,6 +22,8 @@ import { ASSISTANT_RUNTIME } from './application/ports/assistant-runtime';
 import { ASSISTANT_SETTINGS_REPOSITORY } from './application/ports/assistant-settings.repository';
 import { ASSISTANT_TOOLS } from './application/ports/assistant-tools';
 import { CONVERSATION_REPOSITORY } from './application/ports/conversation.repository';
+import { FEEDBACK_REPOSITORY } from './application/ports/feedback.repository';
+import { INSIGHTS_REPOSITORY } from './application/ports/insights.repository';
 import { GUEST_TOKENS } from './application/ports/guest-tokens';
 import { IssuePreviewToken } from './application/use-cases/issue-preview-token.use-case';
 import { MARKET_CALENDAR } from './application/ports/market-calendar';
@@ -34,6 +36,9 @@ import { ListConversations } from './application/use-cases/list-conversations.us
 import { PurgeConversations } from './application/use-cases/purge-conversations.use-case';
 import { SendGuestMessage } from './application/use-cases/send-guest-message.use-case';
 import { SendMessage } from './application/use-cases/send-message.use-case';
+import { SubmitFeedback } from './application/use-cases/submit-feedback.use-case';
+import { SubmitGuestFeedback } from './application/use-cases/submit-guest-feedback.use-case';
+import { ViewAssistantInsights } from './application/use-cases/view-assistant-insights.use-case';
 import { SetAssistantSettings } from './application/use-cases/set-assistant-settings.use-case';
 import { ViewAssistantSettingsHistory } from './application/use-cases/view-assistant-settings-history.use-case';
 import { ViewAssistantSettings } from './application/use-cases/view-assistant-settings.use-case';
@@ -46,6 +51,7 @@ import { ASSISTANT_AUDIT_ACTIONS } from './domain/audit';
 import { ASSISTANT_EVENTS } from './domain/events';
 import { assistantProviders } from './infrastructure/assistant-providers';
 import { AdminAssistantSettingsController } from './presentation/admin-assistant-settings.controller';
+import { AdminAssistantInsightsController } from './presentation/admin-assistant-insights.controller';
 import { AdminPreviewTokenController } from './presentation/admin-preview-token.controller';
 import { ConversationController } from './presentation/conversation.controller';
 import { purgeConversationsJob } from './presentation/jobs/purge-conversations.job';
@@ -61,6 +67,8 @@ const PORTS: readonly [keyof AssistantDependencies, InjectionToken][] = [
   ['clock', CLOCK],
   ['conversations', CONVERSATION_REPOSITORY],
   ['spend', SPEND_REPOSITORY],
+  ['feedback', FEEDBACK_REPOSITORY],
+  ['insights', INSIGHTS_REPOSITORY],
   ['tools', ASSISTANT_TOOLS],
   ['limits', MESSAGE_LIMITS],
   ['guestTokens', GUEST_TOKENS],
@@ -109,6 +117,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   ],
   controllers: [
     AdminAssistantSettingsController,
+    AdminAssistantInsightsController,
     AdminPreviewTokenController,
     StorefrontAssistantController,
     ConversationController,
@@ -131,6 +140,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       IssuePreviewToken,
       SendMessage,
       SendGuestMessage,
+      SubmitFeedback,
+      SubmitGuestFeedback,
+      ViewAssistantInsights,
       ListConversations,
       ViewConversation,
       DeleteConversation,

@@ -289,6 +289,8 @@ describe('Follow button', () => {
       expect(
         within(dialog).getByRole('link', { name: 'Shop Green Grocer' }).getAttribute('href'),
       ).toBe('/s/green-grocer');
+      // The dialog's keys are bound in an effect after it shows; focus moving in proves they are.
+      await waitFor(() => expect(dialog.contains(document.activeElement)).toBe(true));
       fireEvent.keyDown(document, { key: 'Escape' });
       await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
       expect(document.activeElement).toBe(screen.getByRole('button', { name: /Following/ }));

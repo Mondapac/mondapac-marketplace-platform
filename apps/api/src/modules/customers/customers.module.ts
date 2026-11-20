@@ -217,6 +217,8 @@ import { SellerCustomersList } from './application/use-cases/seller-customers-li
 import { SyncSellerCustomers } from './application/use-cases/sync-seller-customers.use-case';
 import { AdminSellerCustomersController } from './presentation/admin-seller-customers.controller';
 import { SellerCustomersController } from './presentation/seller-customers.controller';
+import { ListsModule, registerLists } from '../lists';
+import { CUSTOMERS_LISTS } from './application/saved-filters/list-definitions';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: CustomersDependencies) => U;
 
@@ -602,6 +604,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * customer's read of it.
  */
 @Module({
+  imports: [ListsModule],
   controllers: [
     AddressBookController,
     AccountDeletionController,
@@ -633,6 +636,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerAuditActions('customers', CUSTOMERS_AUDIT_ACTIONS),
     registerEvents('customers', CUSTOMERS_EVENTS),
     registerPermissions('customers', CUSTOMERS_PERMISSIONS),
+    registerLists('customers', CUSTOMERS_LISTS),
     registerStepUpActions('customers', CUSTOMERS_STEP_UP_ACTIONS),
     ...customersProviders,
     ...[

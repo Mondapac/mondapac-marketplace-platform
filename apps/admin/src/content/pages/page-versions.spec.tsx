@@ -81,17 +81,17 @@ describe('the Versions tab', () => {
 
   it('offers Restore for the live and earlier versions but not the draft', () => {
     mount();
-    expect(screen.getByRole('button', { name: 'Restore version 1' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Restore version 2' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Restore version 3' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Actions for version 1' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Actions for version 2' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Actions for version 3' })).toBeNull();
   });
 
   it('offers no Restore without the edit key or on an archived page', () => {
     mount(page({ versions }), false);
-    expect(screen.queryByRole('button', { name: /Restore version/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Actions for version/ })).toBeNull();
     cleanup();
     mount(page({ versions, status: 'archived' }));
-    expect(screen.queryByRole('button', { name: /Restore version/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Actions for version/ })).toBeNull();
   });
 
   it('says so when no version was saved', () => {
@@ -102,7 +102,8 @@ describe('the Versions tab', () => {
   it('asks first, then copies the version into the draft and reads the page again', async () => {
     call.mockResolvedValue({ ok: true as const, status: 200, body: page({ versions }) });
     mount();
-    fireEvent.click(screen.getByRole('button', { name: 'Restore version 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for version 1' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Restore…' }));
     expect(
       screen.getByText(/replaces the current draft, including any unpublished changes/),
     ).toBeTruthy();
@@ -122,7 +123,8 @@ describe('the Versions tab', () => {
   it('words a version that is gone', async () => {
     call.mockResolvedValue(refused('storefront.version-not-found', 404));
     mount();
-    fireEvent.click(screen.getByRole('button', { name: 'Restore version 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for version 1' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Restore…' }));
     const dialog = screen.getByRole('dialog', { hidden: true });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Restore to draft', hidden: true }));
     await screen.findByText('This version no longer exists. Reload the page.');

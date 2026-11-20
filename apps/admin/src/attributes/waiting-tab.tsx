@@ -7,6 +7,7 @@ import {
   Dialog,
   EmptyState,
   LoadError,
+  Menu,
   toast,
   DetailSkeleton,
 } from '@mondapac/ui';
@@ -167,33 +168,36 @@ export function WaitingTab({
                     <p className="text-sm text-fg-muted">{t('same-admin-note')}</p>
                   ) : null}
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    variant="secondary"
-                    aria-label={t('open-named', { name })}
-                    onClick={() => onOpenAttribute(request.attribute.id)}
-                  >
-                    {t('open-attribute')}
-                  </Button>
-                  {request.allowedActions.confirm.allowed &&
-                  (request.kind === 'archive' ? canRestructure : canEdit) ? (
-                    <Button
-                      aria-label={t('confirm-named', { name })}
-                      onClick={() => setPending({ kind: 'confirm', request })}
-                    >
-                      {t('confirm')}
-                    </Button>
-                  ) : null}
-                  {request.allowedActions.cancel.allowed && canEdit ? (
-                    <Button
-                      variant="destructive"
-                      aria-label={t('withdraw-named', { name })}
-                      onClick={() => setPending({ kind: 'withdraw', request })}
-                    >
-                      {t('withdraw')}
-                    </Button>
-                  ) : null}
-                </div>
+                <Menu
+                  label={t('actions-for', { name })}
+                  items={[
+                    {
+                      id: 'open',
+                      label: t('open-attribute'),
+                      onSelect: () => onOpenAttribute(request.attribute.id),
+                    },
+                    ...(request.allowedActions.confirm.allowed &&
+                    (request.kind === 'archive' ? canRestructure : canEdit)
+                      ? [
+                          {
+                            id: 'confirm',
+                            label: t('confirm-item'),
+                            onSelect: () => setPending({ kind: 'confirm', request }),
+                          },
+                        ]
+                      : []),
+                    ...(request.allowedActions.cancel.allowed && canEdit
+                      ? [
+                          {
+                            id: 'withdraw',
+                            label: t('withdraw-item'),
+                            tone: 'critical' as const,
+                            onSelect: () => setPending({ kind: 'withdraw', request }),
+                          },
+                        ]
+                      : []),
+                  ]}
+                />
               </li>
             );
           })}
@@ -250,6 +254,7 @@ function DecisionDialog({
   const t = useTranslations('attributes.waiting');
   const te = useTranslations('attributes.editor');
   const call = useAttributeCall(csrfToken);
+  const cancelButton = useRef<HTMLButtonElement>(null);
   const action = kind === 'confirm' ? 'confirm' : 'cancel';
   // The words of an archive request differ from those of turning Material off.
   const words = request.kind === 'archive' ? `${kind}-archive` : kind;
@@ -268,18 +273,19 @@ function DecisionDialog({
   return (
     <Dialog
       open
+      initialFocus={cancelButton}
       title={t(`${words}-title`, { name })}
       onClose={onClose}
       actions={
         <>
-          <Button variant="secondary" disabled={call.pending} onClick={onClose}>
+          <Button ref={cancelButton} variant="secondary" disabled={call.pending} onClick={onClose}>
             {t('cancel')}
           </Button>
           {problem?.reload === true ? (
             <Button onClick={onReload}>{t('reload')}</Button>
           ) : (
             <Button
-              variant={kind === 'withdraw' ? 'destructive-solid' : 'primary'}
+              variant="destructive-solid"
               loading={call.pending}
               disabled={call.pending}
               onClick={() => void decide()}

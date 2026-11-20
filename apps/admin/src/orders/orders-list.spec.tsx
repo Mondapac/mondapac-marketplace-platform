@@ -837,6 +837,57 @@ describe('order list saved filters', () => {
   });
 });
 
+describe('order list page past the end', () => {
+  it('goes back to the last page that has rows when the page asked for is empty', async () => {
+    // Page 4 exists in the footer of the first answer; by the time it is asked for, rows were removed.
+    serve((url) => {
+      const page = Number(paramsOf(url)['page']);
+      return pageOf(page >= 3 ? [] : [row()], {
+        total: page === 1 ? 100 : 30,
+        paging: 'pages',
+        page,
+      });
+    });
+    mount({ paging: 'pages' });
+    await screen.findByRole('table');
+    fireEvent.click(screen.getByRole('button', { name: 'Page 4' }));
+    await waitFor(() => expect(paramsOf(lastUrl())['page']).toBe('2'));
+    expect(await screen.findByRole('table')).toBeTruthy();
+    expect(screen.queryByText('No orders yet')).toBeNull();
+    const asked = call.mock.calls
+      .filter(([, path]) => path.startsWith('ordering/admin/orders'))
+      .map(([, path]) => paramsOf(String(path))['page']);
+    expect(asked).toEqual(['1', '4', '2']);
+  });
+
+  it('steps back one page at a time in Previous and next mode', async () => {
+    serve((url) => {
+      const page = Number(paramsOf(url)['page']);
+      return pageOf(page >= 3 ? [] : [row()], { page, hasNext: page === 1 || page === 2 });
+    });
+    mount();
+    await screen.findByRole('table');
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(paramsOf(lastUrl())['page']).toBe('2'));
+    fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    await waitFor(() => expect(paramsOf(lastUrl())['page']).toBe('2'));
+    const asked = call.mock.calls
+      .filter(([, path]) => path.startsWith('ordering/admin/orders'))
+      .map(([, path]) => paramsOf(String(path))['page']);
+    expect(asked).toEqual(['1', '2', '3', '2']);
+    expect(await screen.findByRole('table')).toBeTruthy();
+  });
+
+  it('shows the empty state, and does not loop, when page 1 itself is empty', async () => {
+    serve(() => pageOf([]));
+    mount();
+    await screen.findByText('No orders yet');
+    expect(
+      call.mock.calls.filter(([, path]) => path.startsWith('ordering/admin/orders')),
+    ).toHaveLength(1);
+  });
+});
+
 describe('order list query and saved documents', () => {
   const NOW = new Date('2026-11-16T20:30:00.000Z');
   const context = { paging: 'pages' as const, zone: 'UTC', now: NOW };

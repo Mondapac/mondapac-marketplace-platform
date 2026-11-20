@@ -10,7 +10,14 @@ import type {
   RecordFailure,
 } from '../contracts/recorder';
 import {
+  CHANGE_IMPACT_LABELS,
+  IMPACT_TIMEOUT_MS,
+  impactItem,
   MAX_DESCRIBE_REFS,
+  MAX_IMPACT_ITEMS,
+  type ChangeImpact,
+  type ChangeImpactItem,
+  type ChangeImpactLabel,
   type RevertRequest,
 } from '../../../platform/change-review/change-review';
 import { SYSTEM_REQUESTS_DECIDE_HIGH_STEP_UP } from '../contracts/step-up';
@@ -45,6 +52,7 @@ import {
   type Viewer,
 } from '../domain/request';
 import type { ActivityRecord } from './ports/request.repository';
+import type { ImpactCacheKey } from './impact-cache';
 import { REVIEW_KEYS } from './review-keys';
 import type { SystemRequestsDependencies } from './system-requests-dependencies';
 
@@ -471,6 +479,12 @@ export interface RequestView extends Omit<SystemRequest, 'before' | 'after'> {
 
 export interface RequestDetailView extends RequestView {
   readonly activity: readonly ActivityView[];
+  /**
+   * How many records the change touches, from the owning module's `impact` (detail only): null
+   * when the kind has none, the request is decided, the viewer may not see its values, or the
+   * count failed or timed out.
+   */
+  readonly impact: ChangeImpact | null;
 }
 
 /**
@@ -661,7 +675,124 @@ export async function viewRequest(
   );
   if (!read.ok) return read;
   const named = await withLabels(deps, context, [read.value.view], read.value.activity);
-  return ok({ ...named.views[0]!, activity: named.activity });
+  const impact = await impactOf(deps, context, read.value.view);
+  return ok({ ...named.views[0]!, activity: named.activity, impact });
+}
+
+const isImpactLabel = (value: unknown): value is ChangeImpactLabel =>
+  typeof value === 'string' && (CHANGE_IMPACT_LABELS as readonly string[]).includes(value);
+
+/** The owning module's answer as shown: known labels, whole counts, capped; null when none. */
+function cleanImpact(answer: unknown): ChangeImpact | null {
+  if (typeof answer !== 'object' || answer === null) return null;
+  const items: unknown = (answer as { readonly items?: unknown }).items;
+  if (!Array.isArray(items)) return null;
+  const shown: ChangeImpactItem[] = [];
+  for (const item of items as readonly unknown[]) {
+    if (shown.length === MAX_IMPACT_ITEMS) break;
+    if (typeof item !== 'object' || item === null) continue;
+    const { label, count, atLeast } = item as Record<string, unknown>;
+    if (!isImpactLabel(label) || shown.some((entry) => entry.label === label)) continue;
+    if (typeof count !== 'number' || !Number.isSafeInteger(count) || count < 0) continue;
+    if (typeof atLeast !== 'boolean') continue;
+    shown.push(impactItem(label, count, atLeast));
+  }
+  return shown.length === 0 ? null : { items: shown };
+}
+
+/**
+ * Settles with `fallback` once `ms` have passed, unless `work` settles first; `onTimeout` runs
+ * then (it aborts the hook's signal).
+ */
+async function within<T>(
+  work: Promise<T>,
+  ms: number,
+  fallback: T,
+  onTimeout: () => void,
+): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<T>((resolve) => {
+    timer = setTimeout(() => {
+      onTimeout();
+      resolve(fallback);
+    }, ms);
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+const TIMED_OUT = Symbol('timed-out');
+
+/**
+ * The impact of an open request whose values the viewer sees (the author or a reviewer of its
+ * area: counts never go further than the values do), from the owning module's optional `impact`,
+ * outside any unit, with the viewer's context (the request was found in its Market). A kind
+ * without the hook, a throw, a timeout ({@link IMPACT_TIMEOUT_MS}) or a malformed answer is null:
+ * it never fails the page.
+ */
+export async function impactOf(
+  deps: SystemRequestsDependencies,
+  context: CallContext,
+  view: RequestView,
+  timeoutMs: number = IMPACT_TIMEOUT_MS,
+): Promise<ChangeImpact | null> {
+  if (view.status !== 'open' || view.before === null || view.after === null) return null;
+  const hooks = deps.reverters.find(view.subjectKind)?.hooks;
+  if (typeof hooks?.impact !== 'function') return null;
+  const viewerId = signedInAdmin(context);
+  if (viewerId === null) return null;
+  const key: ImpactCacheKey = {
+    marketId: context.market.marketId,
+    requestId: view.id,
+    status: view.status,
+    supersededBy: view.supersededBy,
+    viewerId,
+  };
+  const kept = deps.impactCache.get(key, deps.clock.now());
+  if (kept !== undefined) return kept;
+  const request: RevertRequest = {
+    requestId: view.id,
+    subjectRef: view.subjectRef,
+    before: view.before,
+    after: view.after,
+  };
+  const abort = new AbortController();
+  try {
+    const answer = await within<unknown>(
+      Promise.resolve().then(() => hooks.impact!(context, request, abort.signal)),
+      timeoutMs,
+      TIMED_OUT,
+      () => abort.abort(),
+    );
+    if (answer === TIMED_OUT) {
+      logger.warn({
+        msg: 'system-requests.impact-unavailable',
+        subjectKind: view.subjectKind,
+        error: 'timeout',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      return null;
+    }
+    const impact = cleanImpact(answer);
+    // Only an answer given in time is kept: a timeout or a failure asks again next time.
+    deps.impactCache.set(key, impact, deps.clock.now());
+    return impact;
+  } catch (error) {
+    // The kind and the kind of failure only: never a ref or a value.
+    logger.warn({
+      msg: 'system-requests.impact-unavailable',
+      subjectKind: view.subjectKind,
+      error: error instanceof Error ? error.name : 'unknown',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

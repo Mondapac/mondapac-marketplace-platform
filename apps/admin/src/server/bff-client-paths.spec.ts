@@ -23,18 +23,28 @@ const files = [
   ...readdirSync(path.join(src, 'wallet'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'wallet', name)),
+  // The Credit requests list's own folder: its approve and reject dialogs call the API.
+  ...readdirSync(path.join(src, 'wallet', 'list'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'wallet', 'list', name)),
   ...readdirSync(path.join(src, 'disputes'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'disputes', name)),
   ...readdirSync(path.join(src, 'reviews'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'reviews', name)),
+  ...readdirSync(path.join(src, 'reviews', 'moderation-list'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'reviews', 'moderation-list', name)),
   ...readdirSync(path.join(src, 'payouts'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'payouts', name)),
   ...readdirSync(path.join(src, 'account-deletion'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'account-deletion', name)),
+  ...readdirSync(path.join(src, 'account-deletion', 'list'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'account-deletion', 'list', name)),
   ...readdirSync(path.join(src, 'orders'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'orders', name)),
@@ -104,7 +114,7 @@ describe('every path the wallet, dispute, review moderation, account deletion, s
         'POST wallet/admin/credit-requests/:id/approve',
         'POST wallet/admin/credit-requests/:id/reject',
         'GET commission-payouts/admin/disputes',
-        'GET reviews/admin/moderation',
+        'GET reviews/admin/moderation/list',
         'GET reviews/admin/moderation/:id',
         'POST reviews/admin/moderation/:id/publish',
         'POST reviews/admin/moderation/:id/hide',

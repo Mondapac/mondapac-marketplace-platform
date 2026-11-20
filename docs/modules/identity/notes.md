@@ -122,6 +122,14 @@ hooked since 18 Nov, see the next section).
 - **Wiring.** identity imports no module (ADR-0018 decision 4), so it reaches the recorder and the
   reverter registry through the port `platform/change-review/change-review.ts`, which
   system-requests implements and re-exports from its contracts.
+- **Impact count** (19 Nov 2026): the reverter of `identity.platform-role` and the applier of
+  `identity.platform-role-deletion` answer `impact` with the admins holding the role who can sign
+  in (`RoleAssignmentRepository.countActiveHolders`, a count stopped at 10,001, in a read-only
+  unit), only when the viewer holds `identity.admin-account.view` (checked through the
+  authorisation port before any unit) and the viewer's own `ListPlatformRoles` lists the role; a
+  count, never who. It returns null without reading once System requests' abort signal fired.
+  The people reverters' dependencies gained `unitOfWork`, and `PeopleLabelReads` the
+  `authorisation` port, for it.
 
 ## Creations and the role delete in System requests (2026-11-18)
 

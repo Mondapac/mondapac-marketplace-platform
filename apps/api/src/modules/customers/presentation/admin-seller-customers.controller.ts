@@ -57,8 +57,10 @@ export class AdminSellerCustomersController {
   @ApiOperation({
     summary: 'The counts and monthly trend of a seller’s customers',
     description:
-      'Needs customers.customers.view. `counts` (all, buyers, followers) and, for the last 12 ' +
-      'months in the Market’s zone (`zone`), new buyers (first order) and new followers.',
+      'Needs customers.customers.view. `counts` (all, buyers, followers, and referred: the ' +
+      'seller’s exclusive customers, whose attribution is active) and, for the last 12 months in ' +
+      'the Market’s zone (`zone`), new buyers (first order), new followers and new exclusive ' +
+      'customers (`newExclusive`: joined through the invite link that month, attribution active).',
   })
   @ApiOkResponse({ type: Object })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })

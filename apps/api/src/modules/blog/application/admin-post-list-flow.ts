@@ -50,7 +50,7 @@ import type { PostListRow } from './ports/blog.repository';
 // its own use case, which checks its key, the lifecycle and the two-step rules again. No body,
 // excerpt or author text is read: ids, the title, the slug, states and times.
 
-type FieldError = { path: string; code: string };
+export type FieldError = { path: string; code: string };
 
 export interface AdminPostListDependencies {
   readonly unitOfWork: UnitOfWork;
@@ -156,7 +156,7 @@ type Paging =
   | { readonly kind: 'prev-next'; readonly after: PostListCursor | null; readonly limit: number };
 
 /** The query of the list: strings as the route receives them; every key is optional. */
-type Query = Readonly<Record<string, unknown>>;
+export type Query = Readonly<Record<string, unknown>>;
 
 const LIST_KEYS = new Set([
   'view',
@@ -183,8 +183,8 @@ const whole = (value: unknown, min: number, max: number): number | null => {
   return n >= min && n <= max ? n : null;
 };
 
-/** The selector keys (view and filters) shared by the list and the export. */
-function parseSelector(q: Query, fields: FieldError[]): PostListFilter {
+/** The selector keys (view and filters) shared by the list, the export and the saved filters. */
+export function parsePostSelector(q: Query, fields: FieldError[]): PostListFilter {
   const oneOf = <T extends string>(path: string, value: unknown, list: readonly T[]): T | null => {
     if (value === undefined || value === '') return null;
     if (list.includes(value as T)) return value as T;
@@ -301,7 +301,7 @@ function parse(
   const fields: FieldError[] = [];
   const q = query ?? {};
   if (!closedQuery(q, LIST_KEYS, fields)) return err({ code: 'validation.failed', fields });
-  const filter = parseSelector(q, fields);
+  const filter = parsePostSelector(q, fields);
   const prevNext = q.cursor !== undefined || q.limit !== undefined;
   let paging: Paging;
   let sort = NEWEST;
@@ -550,7 +550,7 @@ export async function exportAdminPosts(
     if (wanted.some((id) => !known.has(id))) return err({ code: 'blog.post-not-found' });
     ids = wanted;
   } else {
-    const filter = parseSelector(q, fields);
+    const filter = parsePostSelector(q, fields);
     const sort = parseSort(q, fields);
     if (fields.length > 0) return err({ code: 'validation.failed', fields });
     const picked = await deps.unitOfWork.run<

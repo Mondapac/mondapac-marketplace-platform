@@ -105,6 +105,7 @@ export function PagedSuperList<Row>({
   heading,
   dialogs,
   refreshKey = 0,
+  onAnswer,
 }: {
   readonly config: PagedListConfig<Row>;
   /** The Market's "List paging" setting; Previous and next when it could not be read. */
@@ -121,6 +122,8 @@ export function PagedSuperList<Row>({
   readonly dialogs?: React.ReactNode;
   /** Changes when the page changed rows (a decision was made): the list is read again. */
   readonly refreshKey?: number;
+  /** Each good answer, whole (a list route may carry more than the contract, such as locales). */
+  readonly onAnswer?: (answer: PagedAnswer<Row>) => void;
 }) {
   const t = useTranslations(config.ns);
   const ts = useTranslations('sales-lists');
@@ -144,6 +147,8 @@ export function PagedSuperList<Row>({
   const [dialog, setDialog] = useState<'export' | null>(null);
   const [exporting, setExporting] = useState(false);
   const latest = useRef(0);
+  const onAnswerRef = useRef(onAnswer);
+  onAnswerRef.current = onAnswer;
   const storageKey = prefsKey('admin', marketId, accountId, `${config.ns}-columns`);
   const listTop = useRef<HTMLDivElement>(null);
   const focusList = useRef(false);
@@ -178,6 +183,7 @@ export function PagedSuperList<Row>({
         return;
       }
       setAnswer(result.body);
+      onAnswerRef.current?.(result.body);
     },
     [config, paging],
   );

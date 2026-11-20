@@ -88,6 +88,8 @@ import { publishDueJob } from './presentation/jobs/publish-due.job';
 import { PublicBlogController } from './presentation/public-blog.controller';
 import { SellerBlogController } from './presentation/seller-blog.controller';
 import { sellerBlogAccessSubscriptions } from './presentation/subscribers/seller-blog-access.subscriptions';
+import { ListsModule, registerLists } from '../lists';
+import { BLOG_LISTS } from './application/saved-filters/list-definitions';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: BlogDependencies) => U;
 
@@ -163,7 +165,7 @@ function postListUseCaseProvider<U>(type: PostListUseCaseClass<U>): FactoryProvi
  * cover and image blocks name pictures of the blog's own media library, uploaded by admins.
  */
 @Module({
-  imports: [CatalogModule, CertificationModule, SellersModule],
+  imports: [CatalogModule, CertificationModule, ListsModule, SellersModule],
   controllers: [
     AdminBlogController,
     AdminBlogTaxonomyController,
@@ -177,6 +179,7 @@ function postListUseCaseProvider<U>(type: PostListUseCaseClass<U>): FactoryProvi
     registerAuditActions('blog', BLOG_AUDIT_ACTIONS),
     registerEvents('blog', BLOG_EVENTS),
     registerPermissions('blog', BLOG_PERMISSIONS),
+    registerLists('blog', BLOG_LISTS),
     registerStepUpActions('blog', BLOG_STEP_UP_ACTIONS),
     ...blogProviders,
     ...[

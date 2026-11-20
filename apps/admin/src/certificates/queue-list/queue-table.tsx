@@ -68,7 +68,7 @@ export function QueueTable({
         <>
           <a
             className="font-medium wrap-anywhere text-link underline"
-            href={`/sellers/${row.sellerId}`}
+            href={`/sellers/${encodeURIComponent(row.sellerId)}`}
             title={row.sellerId}
           >
             {row.storeName ?? t('seller-fallback')}

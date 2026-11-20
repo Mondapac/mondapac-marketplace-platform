@@ -269,7 +269,7 @@ describe.each(TEST_MARKETS)('catalogue structure requests in market %s (database
   const now = clock.now().toString();
 
   /** A published PLATFORM product whose published revision names `categoryId` (as the move spec). */
-  async function publishedProductIn(categoryId: string): Promise<void> {
+  async function publishedProductIn(categoryId: string): Promise<string> {
     const familyId = ids.next<'AttributeFamily'>();
     const familyRevisionId = ids.next<'AttributeFamilyRevision'>();
     await insert('attribute_families', {
@@ -371,6 +371,36 @@ describe.each(TEST_MARKETS)('catalogue structure requests in market %s (database
          WHERE market_id = $1 AND id = $2`,
       [market.marketId, productId, revisionId],
     );
+    return productId;
+  }
+
+  /** A published Offer of a new seller on `productId`, listed or not. */
+  async function offerOn(productId: string, listed: boolean): Promise<void> {
+    await insert('offers', {
+      id: ids.next<'Offer'>(),
+      ...rowBase(),
+      seller_id: ids.next<'Seller'>(),
+      product_id: productId,
+      seller_sku: `SKU-${slugOf()}`,
+      condition_code: 'new',
+      description: '{}',
+      handling: 'SEALED_ORIGINAL',
+      attestation_recorded_at: null,
+      attestation_account_id: null,
+      status: 'published',
+      off_sale_type_not_allowed: false,
+      off_sale_product_retired: false,
+      off_sale_product_not_listed: !listed,
+      off_sale_product_paused: false,
+      off_sale_tag_suspended: false,
+      off_sale_description_claim_text: false,
+      listed,
+      submitted_at: now,
+      first_published_at: now,
+      deleted_at: null,
+      version: 1,
+      created_at: now,
+    });
   }
 
   it('reviews a create after: the request is open, and its reject discards the category', async () => {
@@ -698,6 +728,73 @@ describe.each(TEST_MARKETS)('catalogue structure requests in market %s (database
         [market.marketId, source],
       );
     }
+  });
+
+  it("counts a category request's impact on the real reads: its subtree's products and Offers, in its Market only", async () => {
+    // Department > group > leaf: one product on the group, two on the leaf (one with two Offers).
+    const department = await newCategory();
+    const child = async (parentId: string, name: string) => {
+      const created = await atTreeVersion((treeVersion) =>
+        new CategoryCreate(gate, deps).execute(admin('structure-db-create'), {
+          parentId,
+          slug: slugOf(),
+          texts: { [english]: { name: `${name} ${slugOf()}` } },
+          treeVersion,
+          note: `A ${name.toLowerCase()}`,
+        }),
+      );
+      if (!created.ok) throw new Error(created.error.code);
+      return created.value.category.id;
+    };
+    const group = await child(department.category.id, 'Group');
+    const leaf = await child(group, 'Leaf');
+    await publishedProductIn(group);
+    const offered = await publishedProductIn(leaf);
+    await publishedProductIn(leaf);
+    await offerOn(offered, true);
+    await offerOn(offered, false);
+    const reviewer = admin('structure-db-impact');
+    const ask = (subjectRef: string) => ({
+      requestId: ids.next<'SystemRequest'>(),
+      subjectRef,
+      before: {},
+      after: {},
+    });
+    const restructure = new CategoryActionApplier(deps, ['merge', 'archive']);
+    expect(await restructure.impact(reviewer, ask(department.category.id))).toEqual({
+      items: [
+        { label: 'products', count: 3, atLeast: false },
+        { label: 'offers', count: 2, atLeast: false },
+        { label: 'offers-with-active-tag', count: 0, atLeast: false },
+        { label: 'subcategories', count: 2, atLeast: false },
+      ],
+    });
+    expect(await restructure.impact(reviewer, ask(leaf))).toEqual({
+      items: [
+        { label: 'products', count: 2, atLeast: false },
+        { label: 'offers', count: 2, atLeast: false },
+        { label: 'offers-with-active-tag', count: 0, atLeast: false },
+        { label: 'subcategories', count: 0, atLeast: false },
+      ],
+    });
+    // A products move takes the products that name the category itself.
+    expect(await new ProductsMoveApplier(deps).impact(reviewer, ask(group))).toEqual({
+      items: [{ label: 'products', count: 1, atLeast: false }],
+    });
+    // The other Market's reads never find this Market's category.
+    const elsewhere = marketOf(TEST_MARKETS.find((other) => other !== code)!);
+    const foreign = testCallContext(
+      elsewhere,
+      testAuthenticatedActor(elsewhere, {
+        population: 'admin',
+        accountId: ids.next<'Account'>(),
+        sessionId: ids.next<'Session'>(),
+        sellerId: null,
+      }),
+      'structure-db-impact-elsewhere',
+    );
+    expect(await restructure.impact(foreign, ask(leaf))).toBeNull();
+    expect(await new ProductsMoveApplier(deps).impact(foreign, ask(group))).toBeNull();
   });
 
   it('reviews a reorder after, and its reject puts the two siblings back', async () => {

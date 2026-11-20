@@ -8,22 +8,20 @@ import {
   Card,
   DataList,
   toast,
-  type BadgeTone,
   type DataListRow,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
-import { known } from '../sellers/format.ts';
 import { shortInstantInZone } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
 import { formatMinor } from '../wallet/money.ts';
+import { BucketBadge } from './bucket-badge.tsx';
 import { DecisionDialog, type DecisionTarget } from './decision-dialog.tsx';
 import { EvidenceDueText } from './evidence-due.tsx';
 import { reasonText } from './evidence.ts';
 import { MoneyStateBadge } from './money-state-badge.tsx';
 import {
-  BUCKETS,
   REASON_CODES,
   STRIPE_DASHBOARD_DISPUTES,
   type DisputeDetail,
@@ -31,13 +29,6 @@ import {
   type DisputeSellerOrder,
 } from './types.ts';
 
-const BUCKET_TONE: Readonly<Record<string, BadgeTone>> = {
-  'needs-response': 'attention',
-  'decision-needed': 'critical',
-  'under-review': 'neutral',
-  won: 'success',
-  closed: 'neutral',
-};
 const TIMELINE_KINDS = [
   'opened',
   'funds-withdrawn',
@@ -177,9 +168,7 @@ export function DisputeDetailView({
         >
           {t('detail.title', { id: shortId(detail.orderId) })}
         </h1>
-        <Badge tone={BUCKET_TONE[detail.bucket] ?? 'neutral'}>
-          {t(`filter.${known(detail.bucket, BUCKETS)}` as 'filter.closed')}
-        </Badge>
+        <BucketBadge bucket={detail.bucket} />
       </div>
       {detail.needsReview ? (
         <Banner tone="attention">
