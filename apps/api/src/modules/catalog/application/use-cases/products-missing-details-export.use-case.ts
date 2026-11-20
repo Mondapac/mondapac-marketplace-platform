@@ -193,6 +193,7 @@ export class ProductsMissingDetailsExport extends UseCase<
 }
 
 async function* csvChunks(table: readonly (readonly Cell[])[]): AsyncGenerator<string> {
+  await Promise.resolve();
   for (let start = 0; start < table.length; start += CHUNK) {
     const text = table
       .slice(start, start + CHUNK)
