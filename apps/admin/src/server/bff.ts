@@ -199,7 +199,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/category-tree/export',
     // The business activities (catalog; query: `status`, `search`, `afterId`, `limit`).
     'catalog/admin/business-activities',
-    // The product tags (catalog topics; query: `status`, `group`, `search`, `afterId`, `limit`).
+    // The product tags (catalog topics; query: `status`, `group`, `q`, `search`, `afterId`, `limit`,
+    // `page`, `pageSize`, `paging`, `sort`, `direction`).
     'catalog/admin/topics',
     // The attributes (catalog; query: `search`, `type`, `status`, `usedIn`, `missing`, `afterId`,
     // `limit`) and the feature sets (attribute families), read only (attributes package A1).
@@ -423,6 +424,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     // Review one seller certificate (certification): record a check or the scope, then decide.
     'certification/admin/seller-certificates/:id/checks',
     'certification/admin/seller-certificates/:id/scope',
+    // The reviewer's confirmation with the issuer (certification), on the submission read.
+    'certification/admin/seller-certificates/:id/issuer-confirmation',
     'certification/admin/seller-certificates/:id/approve',
     'certification/admin/seller-certificates/:id/request-changes',
     'certification/admin/seller-certificates/:id/decline',
@@ -1495,7 +1498,19 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'sort',
     'direction',
   ],
-  'catalog/admin/topics': ['status', 'group', 'search', 'afterId', 'limit'],
+  'catalog/admin/topics': [
+    'status',
+    'group',
+    'search',
+    'afterId',
+    'limit',
+    'q',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/attributes': ['search', 'type', 'status', 'usedIn', 'missing', 'afterId', 'limit'],
   'catalog/admin/variant-requests': [
     'limit',
@@ -2099,7 +2114,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   },
   'certification/admin/issuer-requests/export': {
     format: /^(csv|xlsx)$/,
-    columns: /^(request-id|seller-id|documents)(,(request-id|seller-id|documents)){0,2}$/,
+    // Empty is valid: no optional column shown, so the file has its fixed columns only.
+    columns: /^$|^(request-id|seller-id|documents)(,(request-id|seller-id|documents)){0,2}$/,
     ids: UUID_LIST_200,
     view: /^all$/,
     type: /^[a-z0-9][a-z0-9_-]{0,63}$/,
@@ -2350,6 +2366,11 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     group: /^(occasion|cuisine|use)$/,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^(slug|status|group|created|updated)$/,
+    direction: /^(asc|desc)$/,
   },
   'catalog/admin/reports/products-missing-details': {
     sellerId: UUID,
@@ -2536,7 +2557,10 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
  * Query keys that narrow a read to one owner: a malformed value is refused (400), never dropped,
  * so a read meant for one customer can never come back as the whole Market's.
  */
-const SCOPE_KEYS: ReadonlySet<string> = new Set(['ordering/admin/orders:accountId']);
+const SCOPE_KEYS: ReadonlySet<string> = new Set([
+  'ordering/admin/orders:accountId',
+  'customers/admin/deletion-requests:q',
+]);
 
 /** Whether the request names a scope key whose value has the wrong shape. */
 function badScope(method: string, target: string, requestUrl: string): boolean {
@@ -2559,6 +2583,7 @@ function badScope(method: string, target: string, requestUrl: string): boolean {
 const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
   'payments/admin/connected-accounts/export',
   'security/admin/alerts/export',
+  'certification/admin/issuer-requests/export',
   'certification/admin/seller-certificates/export',
   'reviews/admin/moderation/export',
   // Super list phase 4 exports (Hassan S1): a bad `ids` or filter refuses, never widens the file.

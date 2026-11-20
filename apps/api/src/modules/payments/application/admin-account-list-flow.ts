@@ -90,7 +90,7 @@ export interface AccountListPage {
   readonly searchCapped: boolean;
 }
 
-type Fields = { path: string; code: string }[];
+export type Fields = { path: string; code: string }[];
 
 export type AccountListFailure =
   | AccessDenied
@@ -165,13 +165,14 @@ function instant(fields: Fields, path: string, value: unknown): Temporal.Instant
   return null;
 }
 
-interface Selector {
+export interface AccountSelector {
   readonly filter: AccountListFilter;
   /** A store-name search still to resolve through sellers. */
   readonly search: string | null;
 }
 
-function selectorOf(fields: Fields, input: Input, now: Temporal.Instant): Selector {
+/** The selector keys (filters and search) shared by the list, the export and the saved filters. */
+export function selectorOf(fields: Fields, input: Input, now: Temporal.Instant): AccountSelector {
   const status = oneOf(fields, 'status', input.status, ACCOUNT_STATUSES);
   const readyWord = oneOf(fields, 'ready', input.ready, ['yes', 'no'] as const);
   const requirements = oneOf(
@@ -229,7 +230,7 @@ function unknownKey(input: Input, known: ReadonlySet<string>): string | null {
 async function resolveSearch(
   deps: AdminAccountListDependencies,
   context: CallContext,
-  selector: Selector,
+  selector: AccountSelector,
 ): Promise<Result<{ filter: AccountListFilter; capped: boolean }, AccountListFailure>> {
   if (selector.search === null) return ok({ filter: selector.filter, capped: false });
   try {

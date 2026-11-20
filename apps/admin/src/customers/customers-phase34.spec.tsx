@@ -499,7 +499,7 @@ describe('review fixes', () => {
     render(wrap(<AttributionsList {...listProps} permissionKeys={[VIEW]} />));
     await screen.findAllByText('Sara Ahmadi');
     fireEvent.click(screen.getByRole('button', { name: /Filter/ }));
-    expect(await screen.findByText('UTC days', { exact: false })).toBeTruthy();
+    expect(await screen.findByText('Days are in your panel time zone.')).toBeTruthy();
     expect(screen.queryByLabelText('Search stores')).toBeNull();
     expect(call.mock.calls.some((args) => args[1] === 'sellers/admin/list')).toBe(false);
   });

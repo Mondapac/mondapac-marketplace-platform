@@ -88,6 +88,8 @@ describe.each(TEST_MARKETS)('the admin Payouts list in market %s (database)', (c
     fields: {
       readonly amount?: bigint;
       readonly at?: Temporal.Instant;
+      /** The payout day; the creation instant `at` when absent. */
+      readonly slot?: Temporal.Instant;
       readonly mode?: 'AUTO' | 'MANUAL';
       readonly to?: readonly Payout['state'][];
       readonly target?: MarketContext;
@@ -105,7 +107,7 @@ describe.each(TEST_MARKETS)('the admin Payouts list in market %s (database)', (c
       approvalMode: fields.mode ?? 'AUTO',
       firstPayout: false,
       minimum: 1n,
-      slotAt: at,
+      slotAt: fields.slot ?? at,
       now: at,
     });
     await write(target, () =>
@@ -267,6 +269,52 @@ describe.each(TEST_MARKETS)('the admin Payouts list in market %s (database)', (c
     expect(await value(market, () => reader.count(market, shown))).toBe(3);
     const own = await value(market, () => reader.countByState(market, s));
     expect(own).toMatchObject({ voided: 1, paid: 2, instructing: 1 });
+  });
+
+  it("filters, sorts and walks one seller's payouts on the payout day (the Earnings list)", async () => {
+    const s = seller();
+    const done = ['instructed', 'paid'] as const;
+    // Created before and paid after `late`, and the other way round; `tie` shares early's slot.
+    const early = await payoutOf(s, {
+      at: T0.add({ hours: 80 }),
+      slot: T0.add({ hours: 83 }),
+      to: done,
+    });
+    const late = await payoutOf(s, {
+      at: T0.add({ hours: 81 }),
+      slot: T0.add({ hours: 79 }),
+      to: done,
+    });
+    const tie = await payoutOf(s, { at: T0.add({ hours: 84 }), slot: T0.add({ hours: 83 }) });
+    const mine = { ...NO_FILTER, sellerId: s };
+    const bySlot: PayoutSort = { key: 'slot', direction: 'desc' };
+    const tied = [early, tie].sort((x, y) => (x.id < y.id ? 1 : -1)).map((p) => p.id);
+    const all = await value(market, () => reader.page(market, mine, bySlot, 0, 10));
+    expect(all.map((p) => p.id)).toEqual([...tied, late.id]);
+    // The window compares the payout day: created inside it, paid outside, is left out.
+    const window = {
+      ...mine,
+      dateOn: 'slot' as const,
+      from: T0.add({ hours: 80 }),
+      to: T0.add({ hours: 84 }),
+    };
+    const inWindow = await value(market, () => reader.page(market, window, bySlot, 0, 10));
+    expect(inWindow.map((p) => p.id)).toEqual(tied);
+    expect(await value(market, () => reader.count(market, window))).toBe(2);
+    const created = { ...window, dateOn: 'created' as const };
+    expect(await value(market, () => reader.count(market, created))).toBe(2);
+    expect(
+      (await value(market, () => reader.page(market, created, NEWEST, 0, 10))).map((p) => p.id),
+    ).toEqual([late.id, early.id]);
+    // The slot cursor walks the tie in id order, then the earlier payout day.
+    const first = all[0]!;
+    const rest = await value(market, () =>
+      reader.page(market, mine, bySlot, 0, 5, { slotAt: first.slotAt, payoutId: first.id }),
+    );
+    expect(rest.map((p) => p.id)).toEqual([tied[1]!, late.id]);
+    expect(
+      (await value(market, () => reader.idsPage(market, window, bySlot, 10))).map(String),
+    ).toEqual(tied);
   });
 
   it('counts the Market per state, at least the payouts of this file', async () => {

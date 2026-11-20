@@ -1,7 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { NO_VARIANT_FIELDS, type VariantRow } from './draft-content.ts';
 import type { FormField } from './types.ts';
-import { activeOptionsOf, axesOf, combinationsOf, nearLimit, rowOf } from './variant-grid.ts';
+import {
+  activeOptionsOf,
+  axesOf,
+  combinationsOf,
+  nearLimit,
+  previewLabels,
+  rowOf,
+} from './variant-grid.ts';
 
 const select = (code: string, codes: string[], isVariantOption = true): FormField => ({
   code,
@@ -23,7 +30,7 @@ const row = (key: string, options: Record<string, string>): VariantRow => ({
   key,
   state: 'proposed',
   options,
-  labels: {},
+  variantCode: null,
   ...NO_VARIANT_FIELDS,
 });
 
@@ -76,5 +83,41 @@ describe('variant grid logic', () => {
     expect(nearLimit(90, 100)).toBe(true);
     expect(nearLimit(99, 100)).toBe(true);
     expect(nearLimit(100, 100)).toBe(false);
+  });
+});
+
+describe('variant label preview', () => {
+  const sized = [
+    select('size', ['s', 'l']),
+    {
+      ...select('colour', ['red']),
+      options: [{ code: 'red', labels: { en: 'Red' } }],
+    },
+  ];
+  // The first axis has English and French names, the second only English.
+  const fields: FormField[] = [
+    { ...sized[0]!, options: [{ code: 'l', labels: { en: 'Large', fr: 'Grand' } }] },
+    sized[1]!,
+  ];
+
+  it('joins the option labels of the axes in order, per language', () => {
+    expect(previewLabels(fields, ['size', 'colour'], { size: 'l', colour: 'red' }, ['en'])).toEqual(
+      { en: 'Large · Red' },
+    );
+    expect(previewLabels(fields, ['size'], { size: 'l' }, ['en', 'fr'])).toEqual({
+      en: 'Large',
+      fr: 'Grand',
+    });
+  });
+
+  it('gives no label in a language where any option has no name, nothing borrowed', () => {
+    expect(
+      previewLabels(fields, ['size', 'colour'], { size: 'l', colour: 'red' }, ['en', 'fr']),
+    ).toEqual({ en: 'Large · Red', fr: null });
+  });
+
+  it('gives none without axes or for an option that is not chosen', () => {
+    expect(previewLabels(fields, [], {}, ['en'])).toEqual({ en: null });
+    expect(previewLabels(fields, ['size'], {}, ['en'])).toEqual({ en: null });
   });
 });
