@@ -48,7 +48,9 @@ export function editorProblemOf(failure: ApiFailure): EditorProblem {
   };
 }
 
-/** The first refused path that starts with `path`, as its reason code. */
+/** The first refused path that is `path` or lies under it (`.key` or `[index]`), as its reason code. */
 export function reasonFor(problem: EditorProblem | null, path: string): string | undefined {
-  return problem?.fields.find((f) => f.path === path || f.path.startsWith(`${path}.`))?.code;
+  return problem?.fields.find(
+    (f) => f.path === path || f.path.startsWith(`${path}.`) || f.path.startsWith(`${path}[`),
+  )?.code;
 }

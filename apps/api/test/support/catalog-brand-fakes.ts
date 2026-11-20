@@ -201,17 +201,9 @@ export class MemoryBrands implements BrandRepository, BrandReader {
   // --- BrandReader
 
   list(_market: MarketContext, query: BrandListQuery): Promise<BrandListPage> {
-    const search = query.search?.toLowerCase() ?? null;
-    const sorted = [...this.brands.values()]
-      .filter((row) => query.status === null || row.status === query.status)
-      .filter(
-        (row) =>
-          search === null ||
-          row.name.toLowerCase().includes(search) ||
-          row.slug.includes(search) ||
-          this.#aliasesOf(row.id).some((alias) => alias.toLowerCase().includes(search)),
-      )
-      .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id));
+    const sorted = this.#matching(query).sort(
+      (a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id),
+    );
     const start =
       query.afterId === null ? 0 : sorted.findIndex((row) => row.id === query.afterId) + 1;
     const items = sorted.slice(start, start + query.limit);
@@ -223,6 +215,17 @@ export class MemoryBrands implements BrandRepository, BrandReader {
     const search = filter.search?.toLowerCase() ?? null;
     return [...this.brands.values()]
       .filter((row) => filter.status === null || row.status === filter.status)
+      .filter((row) => filter.originCountry === null || row.originCountry === filter.originCountry)
+      .filter(
+        (row) =>
+          filter.createdFrom === null ||
+          Temporal.Instant.compare(row.createdAt, filter.createdFrom) >= 0,
+      )
+      .filter(
+        (row) =>
+          filter.createdTo === null ||
+          Temporal.Instant.compare(row.createdAt, filter.createdTo) < 0,
+      )
       .filter(
         (row) =>
           search === null ||
@@ -250,6 +253,18 @@ export class MemoryBrands implements BrandRepository, BrandReader {
 
   count(_market: MarketContext, filter: BrandPageFilter): Promise<number> {
     return Promise.resolve(this.#matching(filter).length);
+  }
+
+  byIds(_market: MarketContext, ids: readonly Id<'Brand'>[]): Promise<readonly BrandState[]> {
+    // Reversed on purpose: the port promises no order, so the use case must re-order the rows.
+    return Promise.resolve(
+      ids
+        .flatMap((id) => {
+          const state = this.brands.get(id);
+          return state === undefined ? [] : [state];
+        })
+        .reverse(),
+    );
   }
 
   detail(market: MarketContext, id: Id<'Brand'>): Promise<BrandDetailRecord | null> {
@@ -345,6 +360,7 @@ export function brandState(
     proposedBySellerId: null,
     approvedBy: null,
     mergedIntoId: null,
+    archiveReason: null,
     createdAt: at,
     updatedAt: at,
     version: 1,

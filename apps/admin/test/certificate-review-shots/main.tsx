@@ -2,8 +2,8 @@ import { NextIntlClientProvider } from 'next-intl';
 import { createRoot } from 'react-dom/client';
 import messages from '../../messages/en.json';
 import '../../app/globals.css';
-import { CertificateQueue } from '../../src/certificates/queue.tsx';
 import { ReviewView } from '../../src/certificates/review/review-view.tsx';
+import { QueueDemo } from '../certificate-queue-shots/demo.tsx';
 import type { ReviewPage } from '../../src/certificates/review/types.ts';
 
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
@@ -72,7 +72,7 @@ const names = new Map([['halal', 'Halal']]);
 function Body() {
   if (view === 'queue') {
     return (
-      <CertificateQueue
+      <QueueDemo
         rows={[
           {
             certificateId: id(1),
@@ -85,11 +85,10 @@ function Body() {
             storeName: 'Logan Road Grocer',
             issuerName: 'Halal Certification Authority',
             submittedAt: '2026-11-09T01:00:00Z',
+            actions: ['open', 'decide'],
           },
         ]}
         typeNames={names}
-        morePages={false}
-        canReview
       />
     );
   }

@@ -49,6 +49,8 @@ const order = (n: number, fulfilment: SellerOrderView['fulfilment']): SellerOrde
   paidAt: '2026-10-14T01:00:00.000Z',
   subtotal: money('4000'),
   shipping: money('590'),
+  discount: money('0'),
+  shippingDiscount: money('0'),
   total: money('4590'),
   fulfilment,
   carrier: null,
@@ -106,6 +108,7 @@ const full: SellerDashboardData = {
       refundedCommission: '0',
       disputeDebits: '0',
       disputeReinstated: '0',
+      sellerCashback: '0',
       balance: '123450',
     },
     entries: [
@@ -230,6 +233,34 @@ describe('seller dashboard', () => {
     expect(card.textContent).toContain('50+');
     expect(card.textContent).toContain('Among your latest 50 paid orders');
   });
+
+  it.each(['AUD', 'JPY'])(
+    'labels a seller cashback ledger row in %s instead of calling it Other',
+    (currency) => {
+      const base = full.ledger;
+      if (base?.kind !== 'ok') throw new Error('fixture');
+      const data: SellerDashboardData = {
+        ...full,
+        ledger: ok({
+          ...base.value,
+          currency,
+          entries: [
+            {
+              entryId: ID(72),
+              orderId: ID(1),
+              kind: 'cashback-seller',
+              direction: 'debit',
+              amount: '500',
+              occurredAt: '2026-10-14T01:00:00.000Z',
+            },
+          ],
+        }),
+      };
+      render(wrap(<SellerDashboard data={data} permissionKeys={KEYS} />));
+      expect(screen.getByText('Cashback to exclusive customers')).toBeTruthy();
+      expect(screen.queryByText('Other')).toBeNull();
+    },
+  );
 
   it('formats money with the Market locale, not a fixed one', () => {
     render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />, 'de-DE'));

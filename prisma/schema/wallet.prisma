@@ -42,7 +42,7 @@ model WalletJournal {
   id              String   @id @db.Uuid
   marketId        String   @map("market_id") @db.VarChar(8)
   tenantId        String   @map("tenant_id")
-  /// grant-promo, grant-refund, hold, capture, release, expire or reverse (CHECK).
+  /// grant-promo, grant-refund, hold, capture, release, expire, clawback or reverse (CHECK).
   kind            String
   idempotencyKey  String   @map("idempotency_key")
   fingerprint     String
@@ -58,15 +58,16 @@ model WalletJournal {
   /// foreign key by design: the journal is written before its hold row. Consistency is kept by
   /// the CHECK and the commit-time checks (check_hold_settled, books, lot ledger).
   holdId          String?  @map("hold_id") @db.Uuid
-  /// The lot an expire journal expires; null for every other kind (CHECK). No foreign key, like
-  /// holdId; the lot ledger check at commit requires a lot of the journal's wallet.
+  /// The lot an expire journal expires or a clawback journal takes back from; null for every
+  /// other kind (CHECK). No foreign key, like holdId; the lot ledger check at commit requires a
+  /// promo lot of the journal's wallet.
   lotId           String?  @map("lot_id") @db.Uuid
   result          Json
   createdAt       DateTime @map("created_at") @db.Timestamptz(6)
 
   wallet              WalletAccount?             @relation(fields: [marketId, walletAccountId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
   postings            WalletPosting[]
-  lots                WalletLot[]
+  lot                 WalletLot?
   adminCreditRequests WalletAdminCreditRequest[]
 
   @@unique([marketId, id])
@@ -129,6 +130,8 @@ model WalletLot {
   holdLots WalletHoldLot[]
 
   @@unique([marketId, id])
+  /// The lot a grant journal made (a clawback finds it by the grant): one per grant.
+  @@unique([marketId, journalId])
   @@index([marketId, walletAccountId, remainingMinor])
   /// Partial (source = 'promo' AND remaining_minor > 0) in the migration: the due promo lots.
   @@index([marketId, expiresAt, id])

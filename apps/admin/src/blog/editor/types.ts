@@ -21,6 +21,8 @@ export const LIMITS = {
   quoteBy: 120,
   tip: 600,
   tipTitle: 60,
+  imageAlt: 200,
+  imageCaption: 200,
 } as const;
 
 /** A block of the body as the API stores it. */
@@ -107,4 +109,21 @@ export interface Finding {
 export interface ChecksBody {
   readonly versionNo: number;
   readonly findings: readonly Finding[];
+}
+
+/** One picture of the blog media library (apps/api blog module, media routes). */
+export interface MediaItem {
+  readonly id: string;
+  readonly width: number;
+  readonly height: number;
+  readonly createdAt: string;
+  readonly uploadedBy: string | null;
+}
+
+/** The library pages by number, newest first; `hasMore` says whether another page follows. */
+export interface MediaPage {
+  readonly items: readonly MediaItem[];
+  readonly page: number;
+  readonly pageSize: number;
+  readonly hasMore: boolean;
 }

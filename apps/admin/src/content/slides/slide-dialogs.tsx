@@ -2,7 +2,7 @@
 
 import { Banner, Button, Dialog } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePositionLabel } from './slide-labels.tsx';
 import type { Finding } from './slide-commands.ts';
 import type { CommandProblem } from './use-slide-command.ts';
@@ -43,8 +43,6 @@ export function CommandProblemView({ problem }: { readonly problem: CommandProbl
 
 /** The commands that only need a yes: each has its own words under `content.slides.dialog.<kind>`. */
 export type ConfirmKind = Extract<SlideCommand, 'pause' | 'resume' | 'archive' | 'restore'>;
-
-const DESTRUCTIVE: ReadonlySet<ConfirmKind> = new Set(['archive']);
 
 /**
  * Pause, resume, archive and restore, each behind one confirmation. The panel shows the control
@@ -100,9 +98,11 @@ export function SlideConfirmDialog({
     if (detail !== null) onDone(detail);
   }
 
+  const cancelButton = useRef<HTMLButtonElement>(null);
   return (
     <Dialog
       open={open}
+      initialFocus={cancelButton}
       title={t(`${kind}.title`, values)}
       onClose={close}
       actions={
@@ -110,11 +110,16 @@ export function SlideConfirmDialog({
           <Button onClick={close}>{t('close')}</Button>
         ) : (
           <>
-            <Button variant="secondary" onClick={close} disabled={command.pending}>
+            <Button
+              ref={cancelButton}
+              variant="secondary"
+              onClick={close}
+              disabled={command.pending}
+            >
               {t('cancel')}
             </Button>
             <Button
-              variant={DESTRUCTIVE.has(kind) ? 'destructive' : 'primary'}
+              variant="destructive-solid"
               loading={command.pending}
               onClick={() => void confirm()}
             >

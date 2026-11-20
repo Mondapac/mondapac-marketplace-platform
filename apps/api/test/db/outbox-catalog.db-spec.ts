@@ -13,6 +13,12 @@ import { testDatabaseUrl } from './test-database';
  * PostgreSQL prints it. A migration that adds, drops or changes one changes this list.
  */
 const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
+  // Buyer assistant insights (B3): the admin reads assistant replies by Market and time, and the
+  // flagged ones (unavailable, tool-failed, empty search) through their own small index.
+  'assistant.messages_market_id_created_at_idx':
+    "CREATE INDEX messages_market_id_created_at_idx ON assistant.messages USING btree (market_id, created_at) WHERE ((role)::text = 'assistant'::text)",
+  'assistant.messages_market_id_created_at_unanswered_idx':
+    "CREATE INDEX messages_market_id_created_at_unanswered_idx ON assistant.messages USING btree (market_id, created_at) WHERE (((role)::text = 'assistant'::text) AND (empty_search OR (notices && ARRAY['unavailable'::character varying(32), 'tool-failed'::character varying(32)])))",
   // Lists (B0-2): one column choice per account and list, in an admin and a store form.
   'lists.column_preferences_owner_list_key':
     'CREATE UNIQUE INDEX column_preferences_owner_list_key ON lists.column_preferences USING btree (market_id, owner_account_id, list_key) WHERE (seller_id IS NULL)',
@@ -123,17 +129,6 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // docs/design/data/catalog.md 2.4 (variants V5): a variant SKU is unique per seller.
   'catalog.offer_sell_units_market_id_seller_id_variant_sku_key':
     'CREATE UNIQUE INDEX offer_sell_units_market_id_seller_id_variant_sku_key ON catalog.offer_sell_units USING btree (market_id, seller_id, variant_sku) WHERE (variant_sku IS NOT NULL)',
-  // docs/design/data/catalog.md 3.28: a filter name is unique per owner, and a shared filter name
-  // per list among the filters shared with everyone; each in an admin form (no store) and a seller
-  // form (per store).
-  'catalog.saved_filters_owner_name_key':
-    'CREATE UNIQUE INDEX saved_filters_owner_name_key ON catalog.saved_filters USING btree (market_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NULL)',
-  'catalog.saved_filters_shared_name_key':
-    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON catalog.saved_filters USING btree (market_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NULL))",
-  'catalog.saved_filters_seller_owner_name_key':
-    'CREATE UNIQUE INDEX saved_filters_seller_owner_name_key ON catalog.saved_filters USING btree (market_id, seller_id, list_key, owner_account_id, lower(name)) WHERE (seller_id IS NOT NULL)',
-  'catalog.saved_filters_seller_shared_name_key':
-    "CREATE UNIQUE INDEX saved_filters_seller_shared_name_key ON catalog.saved_filters USING btree (market_id, seller_id, list_key, lower(name)) WHERE ((visibility = 'everyone'::text) AND (seller_id IS NOT NULL))",
   // Categories package C5a (Move products): one queued or running move per source category, the
   // runner's claim order, and the moved items whose seller notice is still open.
   'catalog.category_product_move_jobs_market_id_source_open_key':
@@ -241,6 +236,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX dispute_decisions_first_key ON commission_payouts.dispute_decisions USING btree (market_id, dispute_id, seller_order_id) WHERE (supersedes IS NULL)',
   'commission_payouts.dispute_decisions_reversal_key':
     'CREATE UNIQUE INDEX dispute_decisions_reversal_key ON commission_payouts.dispute_decisions USING btree (market_id, supersedes) WHERE (supersedes IS NOT NULL)',
+  // Customers 4b follow-up: the seller's savings by month read only the rows with a saving.
+  'commission_payouts.ledger_entries_market_id_seller_id_occurred_at_saving_idx':
+    'CREATE INDEX ledger_entries_market_id_seller_id_occurred_at_saving_idx ON commission_payouts.ledger_entries USING btree (market_id, seller_id, occurred_at) WHERE (saved_amount IS NOT NULL)',
   'commission_payouts.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON commission_payouts.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'commission_payouts.payout_holds_active_seller_idx':
@@ -315,9 +313,6 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // least-failed first.
   'ordering.seller_orders_unrecorded_ledger_idx':
     "CREATE INDEX seller_orders_unrecorded_ledger_idx ON ordering.seller_orders USING btree (market_id, ledger_attempts, order_id) WHERE (ledger_state = 'pending'::text)",
-  // Order lists: the saved filters shared with everyone keep one name per list.
-  'ordering.saved_filters_shared_name_key':
-    "CREATE UNIQUE INDEX saved_filters_shared_name_key ON ordering.saved_filters USING btree (market_id, list_key, lower(name)) WHERE (visibility = 'everyone'::text)",
   // Seller health: the nightly feed reads the seller's orders marked ready in a few days.
   'ordering.seller_orders_seller_ready_at_idx':
     'CREATE INDEX seller_orders_seller_ready_at_idx ON ordering.seller_orders USING btree (market_id, seller_id, ready_at) WHERE (ready_at IS NOT NULL)',

@@ -1,6 +1,7 @@
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
-import type { SystemRequestRecorder } from '../../system-requests';
+import type { AuthorisationCheck } from '../../../platform/authz';
+import type { SystemActionProposer, SystemRequestRecorder } from '../../system-requests';
 import type { ChangeTrail } from '../../../platform/audit/change-trail';
 import type { SecurityEvents } from '../../../platform/security-events/security-events';
 import type { OutboxWriter } from '../../../platform/events/outbox-writer';
@@ -45,4 +46,18 @@ export interface ShippingDependencies {
   readonly securityEvents: SecurityEvents;
   /** "Last changed by" and the history of the admin settings pages, from this module's audit rows. */
   readonly trail: ChangeTrail;
+}
+
+/** What the create of a fleet-selection model needs on top: it may wait for approval. */
+export interface FleetModelCreateDependencies extends ShippingDependencies {
+  /** Files the create for a second admin's approval (Admin Inbox › System requests). */
+  readonly proposer: SystemActionProposer;
+}
+
+/**
+ * What the appliers of area delivery are built from: the approving admin's keys are checked
+ * through the authorisation port, before the approval's unit opens.
+ */
+export interface ShippingApplierDependencies extends ShippingDependencies {
+  readonly authorisation: AuthorisationCheck;
 }

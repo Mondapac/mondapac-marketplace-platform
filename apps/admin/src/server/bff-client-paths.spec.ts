@@ -29,6 +29,9 @@ const files = [
   ...readdirSync(path.join(src, 'reviews'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'reviews', name)),
+  ...readdirSync(path.join(src, 'reviews', 'moderation-list'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'reviews', 'moderation-list', name)),
   ...readdirSync(path.join(src, 'payouts'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'payouts', name)),
@@ -104,7 +107,7 @@ describe('every path the wallet, dispute, review moderation, account deletion, s
         'POST wallet/admin/credit-requests/:id/approve',
         'POST wallet/admin/credit-requests/:id/reject',
         'GET commission-payouts/admin/disputes',
-        'GET reviews/admin/moderation',
+        'GET reviews/admin/moderation/list',
         'GET reviews/admin/moderation/:id',
         'POST reviews/admin/moderation/:id/publish',
         'POST reviews/admin/moderation/:id/hide',
@@ -147,6 +150,12 @@ describe('every path the wallet, dispute, review moderation, account deletion, s
         'GET settings/admin/market-settings',
         'PUT settings/admin/market-settings',
         'POST customers/admin/list',
+        'GET customers/admin/sellers/:id/customers/summary',
+        'POST customers/admin/sellers/:id/customers/list',
+        'POST customers/admin/seller-attributions/list',
+        'POST customers/admin/seller-attributions/list/ids',
+        'POST customers/admin/seller-attributions/decide',
+        'POST sellers/admin/list',
         'GET customers/admin/saved-filters',
         'POST customers/admin/saved-filters',
         'PUT customers/admin/saved-filters/:id',

@@ -1,7 +1,8 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
-import type { Id } from '@mondapac/shared-kernel';
+import { Temporal } from '@mondapac/shared-kernel';
+import type { CallContext, Id } from '@mondapac/shared-kernel';
 import { testAuthenticatedActor, testCallContext } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
 import { ListPlatformRoles } from '../../src/modules/identity/application/use-cases/list-platform-roles.use-case';
@@ -16,6 +17,8 @@ import { EditSellerRole } from '../../src/modules/identity/application/use-cases
 import { ok } from '@mondapac/shared-kernel';
 import { realPermissionRegistry } from '../support/permission-registry';
 import { PrismaRoleRepository } from '../../src/modules/identity/infrastructure/sellers/prisma-seller-team.repository';
+import { ApproveSystemRequest } from '../../src/modules/system-requests/application/use-cases/approve-system-request.use-case';
+import { STEP_UP_CONSUMER } from '../../src/platform/authz';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import { withRoleLimit } from '../support/role-limits';
 import { createTestApp } from '../support/test-app';
@@ -34,7 +37,10 @@ import { testDatabaseUrl } from './test-database';
 // and Prisma ports, in serializable units. The rows, key rows, events and audit rows they leave
 // (the name only in `roles`, never in an event or an audit row), the unique name indexes as
 // the backstop, the role foreign key that keeps a held role, the key reconciliation of an edit
-// (a stored key the registry dropped goes with the edit), and the seller isolation.
+// (a stored key the registry dropped goes with the edit), and the seller isolation. Area people is
+// reviewed by default: a platform create and edit carry a note, and a platform delete waits for a
+// second Platform Administrator's approval (owner decision of 18 Nov 2026; the reviewer's step-up
+// proof is stubbed, its spend is system-requests' own test).
 
 const CREATED = '2026-10-09T00:00:00Z';
 const PASSWORD_HASH = '$argon2id$v=19$m=65536,t=3,p=1$c2FsdHNhbHRzYWx0c2FsdA$dGFn';
@@ -54,7 +60,18 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
   beforeAll(async () => {
     ({ app } = await createTestApp({
       env: { DATABASE_URL: testDatabaseUrl() },
-      override: (builder) => withRoleLimit(builder, 1000),
+      override: (builder) =>
+        withRoleLimit(builder, 1000)
+          .overrideProvider(STEP_UP_CONSUMER)
+          .useValue({
+            consume: (context: CallContext) =>
+              Promise.resolve(
+                ok({
+                  sessionId: (context.actor as { sessionId: Id<'Session'> }).sessionId,
+                  verifiedAt: Temporal.Now.instant(),
+                }),
+              ),
+          }),
     }));
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
@@ -145,6 +162,17 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
       }),
       `db-editor-${randomUUID()}`,
     );
+  /** A second Platform Administrator approves the delete a platform role waits on. */
+  async function approveDelete(requestId: Id<'SystemRequest'>): Promise<Id<'Account'>> {
+    const checker = await account(
+      'admin',
+      await seededRole('platform-administrator', 'platform'),
+      null,
+    );
+    const approved = await app.get(ApproveSystemRequest).execute(asAdmin(checker), { requestId });
+    if (!approved.ok) throw new Error(JSON.stringify(approved.error));
+    return checker;
+  }
   const asSeller = (accountId: Id<'Account'>, sellerId: Id<'Seller'>) =>
     testCallContext(
       market,
@@ -177,6 +205,7 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
     const created = await app.get(CreatePlatformRole).execute(asAdmin(root), {
       name: `  ${name}  `,
       permissionKeys: ['identity.platform-role.view', 'identity.admin-account.invite'],
+      note: 'New role',
     });
     if (!created.ok) throw new Error(created.error.code);
     const roleId = created.value.roleId;
@@ -247,8 +276,12 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
     ).rejects.toBeInstanceOf(StaleAggregateError);
     const removed = await app
       .get(DeletePlatformRole)
-      .execute(asAdmin(root), { roleId, expectedVersion: 2 });
-    expect(removed).toEqual({ ok: true, value: { code: 'role.deleted', roleId } });
+      .execute(asAdmin(root), { roleId, expectedVersion: 2, note: 'No longer used' });
+    // The delete waits for a second admin's approval: nothing is deleted yet.
+    if (!removed.ok || removed.value.request === null) throw new Error('no request filed');
+    expect(removed.value.code).toBe('role.delete-requested');
+    expect(await keysOf(roleId)).toHaveLength(2);
+    const checker = await approveDelete(removed.value.request.id);
     expect(await keysOf(roleId)).toEqual([]);
 
     const outbox = await sql.query<{ type: string; payload: unknown }>(
@@ -268,7 +301,7 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
     );
     expect(audits.rows).toEqual([
       { action: 'identity.role.created', actor_id: root },
-      { action: 'identity.role.deleted', actor_id: root },
+      { action: 'identity.role.deletion-approved', actor_id: checker },
       { action: 'identity.role.updated', actor_id: root },
     ]);
     // R5: the name is in `roles` and nowhere else.
@@ -289,12 +322,12 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
     const name = `Taken ${unique()}`;
     const first = await app
       .get(CreatePlatformRole)
-      .execute(asAdmin(root), { name, permissionKeys: [] });
+      .execute(asAdmin(root), { name, permissionKeys: [], note: 'New role' });
     if (!first.ok) throw new Error(first.error.code);
 
     const clash = await app
       .get(CreatePlatformRole)
-      .execute(asAdmin(root), { name: name.toUpperCase(), permissionKeys: [] });
+      .execute(asAdmin(root), { name: name.toUpperCase(), permissionKeys: [], note: 'New role' });
     expect(clash).toEqual({ ok: false, error: { code: 'role.name-taken' } });
 
     // The partial unique index is the backstop when a writer skips the check.
@@ -445,7 +478,7 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
     );
     const made = await app
       .get(CreatePlatformRole)
-      .execute(asAdmin(root), { name: `Race ${unique()}`, permissionKeys: [] });
+      .execute(asAdmin(root), { name: `Race ${unique()}`, permissionKeys: [], note: 'New role' });
     if (!made.ok) throw new Error(made.error.code);
     const roleId = made.value.roleId;
     const sets = [['identity.seller-access.view'], ['identity.customer-account.view']];
@@ -495,6 +528,7 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
     const made = await app.get(CreatePlatformRole).execute(asAdmin(root), {
       name: `Doomed ${unique()}`,
       permissionKeys: ['identity.seller-access.view'],
+      note: 'New role',
     });
     if (!made.ok) throw new Error(made.error.code);
     const roleId = made.value.roleId;
@@ -507,7 +541,9 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
         permissionKeys: ['identity.customer-account.view'],
         note: 'Narrow it',
       }),
-      app.get(DeletePlatformRole).execute(asAdmin(root), { roleId, expectedVersion: 1 }),
+      app
+        .get(DeletePlatformRole)
+        .execute(asAdmin(root), { roleId, expectedVersion: 1, note: 'Remove it' }),
     ]);
 
     for (const result of settled) {
@@ -522,7 +558,11 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
       roleId,
     ]);
     const keys = await keysOf(roleId);
-    const deleted = settled[1].status === 'fulfilled' && settled[1].value.ok;
+    // A platform delete only files its request here (people is reviewed): the role stays.
+    const deleted =
+      settled[1].status === 'fulfilled' &&
+      settled[1].value.ok &&
+      settled[1].value.value.code === 'role.deleted';
     if (deleted) expect([row.rowCount, keys]).toEqual([0, []]);
     else {
       expect(row.rowCount).toBe(1);
@@ -538,7 +578,7 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
     );
     const made = await app
       .get(CreatePlatformRole)
-      .execute(asAdmin(root), { name: `Old ${unique()}`, permissionKeys: [] });
+      .execute(asAdmin(root), { name: `Old ${unique()}`, permissionKeys: [], note: 'New role' });
     if (!made.ok) throw new Error(made.error.code);
     const roles = new PrismaRoleRepository(db.service);
     const read = await db.unitOfWork.run(market, async () =>
@@ -583,7 +623,7 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
 
       const made = await app
         .get(create)
-        .execute(context, { name: `Long ${unique()}`, permissionKeys: keys });
+        .execute(context, { name: `Long ${unique()}`, permissionKeys: keys, note: 'Long' });
       if (!made.ok) throw new Error(JSON.stringify(made.error));
       const roleId = made.value.roleId;
       // Everything out again: the `removedKeys` side is as large as the `addedKeys` side was.
@@ -594,9 +634,17 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
         permissionKeys: [],
         note: 'Empty it',
       });
-      const gone = await app.get(remove).execute(context, { roleId, expectedVersion: 2 });
+      const gone = await app
+        .get(remove)
+        .execute(context, { roleId, expectedVersion: 2, note: 'Remove it' });
 
       expect([emptied.ok, gone.ok]).toEqual([true, true]);
+      // A platform delete waits for a second admin's approval (people is reviewed).
+      const waiting =
+        gone.ok && 'request' in gone.value && gone.value.request !== null
+          ? gone.value.request
+          : null;
+      if (scope === 'platform') await approveDelete(waiting!.id);
       const audits = await sql.query<{ action: string }>(
         `SELECT action FROM platform.audit_log WHERE market_id = $1 AND target_id = $2
          ORDER BY action`,
@@ -604,7 +652,7 @@ describe.each(TEST_MARKETS)('the role editor in market %s (database, slice 10)',
       );
       expect(audits.rows.map((r) => r.action)).toEqual([
         'identity.role.created',
-        'identity.role.deleted',
+        scope === 'platform' ? 'identity.role.deletion-approved' : 'identity.role.deleted',
         'identity.role.updated',
       ]);
     },

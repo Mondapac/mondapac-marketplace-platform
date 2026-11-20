@@ -2,6 +2,7 @@ import { Badge, CARD_TABLE } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { shortInstantInZone } from '../../shared/format.ts';
 import { PageStatusBadge } from './page-labels.tsx';
+import { PageRowActions } from './page-row-actions.tsx';
 import {
   isKnownEditLevel,
   isKnownTemplate,
@@ -31,12 +32,13 @@ export function PagesTable({
       <table className={`${CARD_TABLE.table} lg:min-w-240 lg:table-fixed`}>
         <caption className="sr-only">{t('caption')}</caption>
         <colgroup className="max-lg:hidden">
-          <col className="w-[24%]" />
-          <col className="w-[16%]" />
-          <col className="w-[16%]" />
-          <col className="w-[12%]" />
-          <col className="w-[16%]" />
-          <col className="w-[16%]" />
+          <col className="w-[22%]" />
+          <col className="w-[15%]" />
+          <col className="w-[15%]" />
+          <col className="w-[11%]" />
+          <col className="w-[15%]" />
+          <col className="w-[14%]" />
+          <col className="w-20" />
         </colgroup>
         <thead className={CARD_TABLE.head}>
           <tr>
@@ -57,6 +59,9 @@ export function PagesTable({
             </th>
             <th scope="col" className="px-4 py-3 font-medium">
               {t('col.published')}
+            </th>
+            <th scope="col" className={CARD_TABLE.actionsHead}>
+              {t('col.actions')}
             </th>
           </tr>
         </thead>
@@ -106,6 +111,9 @@ export function PagesTable({
                   ) : (
                     shortInstantInZone(page.publishedAt, locale, zone)
                   )}
+                </td>
+                <td className={CARD_TABLE.actions}>
+                  {ref === null ? null : <PageRowActions href={pagePath(ref)} title={page.title} />}
                 </td>
               </tr>
             );

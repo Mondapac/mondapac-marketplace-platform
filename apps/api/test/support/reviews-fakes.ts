@@ -34,6 +34,15 @@ import type { SellerAffinity } from '../../src/modules/reviews/application/ports
 import type { SellerOverlapSource } from '../../src/modules/reviews/application/ports/seller-overlap';
 import type { OverlapAnswers } from '../../src/modules/reviews/domain/seller-overlap';
 import type { QueueTab } from '../../src/modules/reviews/domain/moderation';
+import {
+  compareModeration,
+  EMPTY_MODERATION_FILTER,
+  moderationMatches,
+  type MODERATION_LIST_VIEWS,
+  type ModerationFilter,
+  type ModerationSort,
+  type ModerationSubject,
+} from '../../src/modules/reviews/domain/moderation-list';
 import { isPublic } from '../../src/modules/reviews/domain/rules';
 import {
   compareSellerReviews,
@@ -494,6 +503,76 @@ export class MemoryReviews implements ReviewRepository {
           ...new Set(this.signals.filter((s) => s.subjectId === review.id).map((s) => s.code)),
         ],
       })),
+    );
+  }
+  private moderationSubjects(): { row: QueueRow; subject: ModerationSubject }[] {
+    return [...this.productReviews.values()].map((review) => {
+      const reasons = this.reports
+        .filter((r) => r.reviewId === review.id && r.status === 'open')
+        .map((r) => r.reasonCode);
+      return {
+        row: {
+          review,
+          openReports: reasons.length,
+          signalCodes: [
+            ...new Set(this.signals.filter((s) => s.subjectId === review.id).map((s) => s.code)),
+          ],
+        },
+        subject: {
+          id: review.id,
+          productId: review.productId,
+          offerId: review.offerId,
+          sellerId: review.sellerId,
+          rating: review.rating,
+          title: review.title,
+          body: review.body,
+          status: review.status,
+          createdAt: review.createdAt,
+          openReportReasons: reasons,
+        },
+      };
+    });
+  }
+  queryModerationList(
+    _m: MarketContext,
+    filter: ModerationFilter,
+    sort: ModerationSort,
+    offset: number,
+    limit: number,
+  ) {
+    return Promise.resolve(
+      this.moderationSubjects()
+        .filter((x) => moderationMatches(x.subject, filter))
+        .sort((a, b) => compareModeration(a.subject, b.subject, sort))
+        .slice(offset, offset + limit)
+        .map((x) => x.row),
+    );
+  }
+  countModerationListWhere(_m: MarketContext, filter: ModerationFilter) {
+    return Promise.resolve(
+      this.moderationSubjects().filter((x) => moderationMatches(x.subject, filter)).length,
+    );
+  }
+  moderationViewCounts() {
+    const all = this.moderationSubjects();
+    const count = (view: (typeof MODERATION_LIST_VIEWS)[number]) =>
+      all.filter((x) => moderationMatches(x.subject, { ...EMPTY_MODERATION_FILTER, view })).length;
+    return Promise.resolve({
+      all: count('all'),
+      held: count('held'),
+      reported: count('reported'),
+      actioned: count('actioned'),
+    });
+  }
+  findModerationRowsByIds(_m: MarketContext, reviewIds: readonly Id<'ProductReview'>[]) {
+    return Promise.resolve(
+      this.moderationSubjects()
+        .filter(
+          (x) =>
+            reviewIds.includes(x.row.review.id) &&
+            moderationMatches(x.subject, EMPTY_MODERATION_FILTER),
+        )
+        .map((x) => x.row),
     );
   }
   countModerationQueue() {

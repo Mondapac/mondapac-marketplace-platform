@@ -41,6 +41,8 @@ export interface LineRows {
   readonly sale: bigint;
   readonly commission: bigint;
   readonly commissionBase: bigint;
+  /** The commission row's saving (a line lowered for an exclusive customer); null: none. */
+  readonly saved?: bigint | null;
 }
 
 export interface LineReversal {
@@ -48,6 +50,8 @@ export interface LineReversal {
   readonly commission: bigint;
   /** The part of the commission base reversed (never below the commission reversed). */
   readonly base: bigint;
+  /** The part of the saving given back; absent when the row has none. */
+  readonly saved?: bigint;
 }
 
 /**
@@ -67,10 +71,12 @@ export function reverseLine(
   const total = BigInt(lineQuantity);
   const commission = reversalDelta(rows.commission, before, after, total);
   const base = reversalDelta(rows.commissionBase, before, after, total);
+  const saved = rows.saved ?? null;
   return {
     sale: reversalDelta(rows.sale, before, after, total),
     commission,
     base: base < commission ? commission : base,
+    ...(saved === null ? {} : { saved: reversalDelta(saved, before, after, total) }),
   };
 }
 

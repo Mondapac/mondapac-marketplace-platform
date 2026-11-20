@@ -13,6 +13,8 @@ export interface PendingAdminInvitation {
   readonly roleId: Id<'Role'>;
   readonly invitedByAccountId: Id<'Account'> | null;
   readonly expiresAt: Temporal.Instant | null;
+  /** Waits for another admin's approval: never re-sent before it (owner decision of 18 Nov 2026). */
+  readonly heldForApproval: boolean;
   readonly createdAt: Temporal.Instant;
 }
 
@@ -112,7 +114,8 @@ export interface InvitationRepository {
 
   /**
    * The hourly purge (data design 9): pending invitations whose expiry is before `now`, decided
-   * ones whose decision is before `decidedBefore`, and (Ali 2026-10-08) pending invitations never
+   * ones whose decision is before `decidedBefore` (never an accepted admin invitation: the people
+   * review of an invitation reaches the account it created through it, Hassan M1 on PR #1058), and (Ali 2026-10-08) pending invitations never
    * dispatched (no token) created before the cut-off given for their kind, which is `now` minus
    * that kind's lifetime. A kind with no cut-off is left alone. Answers how many were deleted.
    */

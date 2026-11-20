@@ -44,7 +44,7 @@ import { OrdersTable } from './orders-table.tsx';
 import { FILTERS, type AdminOrderPage, type OrderCounts, type StatusFilter } from './types.ts';
 
 /** Rows that can be ticked one by one; "Select all matching" has no such limit. */
-const SELECTION_MAX = 200;
+const SELECTION_MAX = 100;
 const OPEN_ENDED = Number.MAX_SAFE_INTEGER;
 
 type Failure = 'refused' | 'search-unavailable' | 'unavailable';
@@ -115,6 +115,11 @@ export function OrdersList({
   const t = useTranslations('orders');
   const ts = useTranslations('sales-lists');
   const tl = useTranslations('load');
+  const daysWords = {
+    range: (from: string, to: string) => t('days.range', { from, to }),
+    from: (day: string) => t('days.from', { day }),
+    until: (day: string) => t('days.until', { day }),
+  };
   const locale = useLocale();
   const {
     query,
@@ -343,7 +348,7 @@ export function OrdersList({
               key: 'days',
               label: ts('chip', {
                 field: t('filter.name.placed'),
-                value: daysLabel(query.days),
+                value: daysLabel(query.days, daysWords),
               }),
               onRemove: () => change({ days: null }),
             },
@@ -475,6 +480,7 @@ export function OrdersList({
               }
               return params.toString();
             }}
+            columns={shownColumns}
             nameSearch={routeSearch(query.q).kind === 'search'}
             empty={answer !== null && shown.length === 0}
           />

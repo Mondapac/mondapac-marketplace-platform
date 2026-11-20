@@ -120,6 +120,7 @@ const ENTRY_FIELDS = [
   'permissionKeys',
   'roleId',
   'seedCode',
+  'sensitive',
   'version',
 ];
 
@@ -295,6 +296,7 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
       assign: new AssignAdminRole(gate, common),
       invite: new InviteAdmin(gate, {
         ...common,
+        proposer: new RecordingReview(),
         throttles: fakes.throttleRepository,
         keys,
         invitations: fakes.invitationRepository,
@@ -340,6 +342,8 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
       // The system role confers every key of its scope (R3).
       permissionCount: permissions.keysOf('platform').size,
       grantable: true,
+      // Owner decision of 18 Nov 2026: an invitation to it waits for approval.
+      sensitive: true,
     });
     expect(byId(items, roleOf('viewer'))).toMatchObject({
       roleId: roleOf('viewer'),
@@ -347,6 +351,8 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
       seedCode: 'viewer',
       permissionCount: 35,
       grantable: true,
+      // A default role never lists a protected key (R11).
+      sensitive: false,
     });
     expect(byId(items, roleOf('viewer')).name).toBeNull();
     expect(byId(items, roleOf('viewer')).permissionKeys).toHaveLength(35);

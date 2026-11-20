@@ -45,7 +45,11 @@ export default async function RolesPageRoute() {
         }
       >
         {result.kind === 'ok' ? (
-          <RolesTable roles={result.body.items} members={members} />
+          <RolesTable
+            roles={result.body.items}
+            members={members}
+            canDuplicate={gate.session.permissionKeys.includes(CREATE_PERMISSION)}
+          />
         ) : (
           <LoadError
             title={t('settings.load-error.title', { page: title })}

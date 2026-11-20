@@ -116,6 +116,11 @@ export function SellerOrders({
   const t = useTranslations('orders');
   const ts = useTranslations('orders.list');
   const tl = useTranslations('load');
+  const daysWords = {
+    range: (from: string, to: string) => t('days.range', { from, to }),
+    from: (day: string) => t('days.from', { day }),
+    until: (day: string) => t('days.until', { day }),
+  };
   const locale = useLocale();
   // The seller's own working zone (UTC when it could not be read): the table's times and the
   // days of the date filters are both on this clock (ADR-0005).
@@ -316,7 +321,7 @@ export function SellerOrders({
         : [
             {
               key: 'days',
-              label: ts('chip', { field: t('col.paid'), value: daysLabel(query.days) }),
+              label: ts('chip', { field: t('col.paid'), value: daysLabel(query.days, daysWords) }),
               onRemove: () => change({ days: null }),
             },
           ]
@@ -471,6 +476,8 @@ export function SellerOrders({
                 }
                 return params.toString();
               }}
+              columns={columns}
+              zone={zone}
               searching={routeSearch(query.q).kind === 'q'}
               empty={answer !== null && shown.length === 0}
               selection={{

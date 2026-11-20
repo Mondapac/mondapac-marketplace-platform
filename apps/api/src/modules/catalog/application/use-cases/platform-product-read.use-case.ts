@@ -52,7 +52,6 @@ export interface PlatformProductReadOutput {
   readonly createdAt: string;
   /** What the product form is drawn from: the Market's tax categories, the family's fields and the categories. */
   readonly form: ProductForm & {
-    readonly taxCategoryCodes: readonly string[];
     readonly taxCategories: readonly TaxCategoryOption[];
   };
   readonly locales: { readonly default: string; readonly supported: readonly string[] };
@@ -120,11 +119,9 @@ export class PlatformProductRead extends UseCase<
 
     let maxVariants: number;
     let maxAxes: number;
-    let taxCategoryCodes: readonly string[];
     let taxCategories: readonly TaxCategoryOption[];
     let locales: { default: string; supported: readonly string[] };
     try {
-      taxCategoryCodes = deps.policy.taxCategoryCodes(market);
       taxCategories = deps.policy.taxCategories(market).map((category) => ({ ...category }));
       maxVariants = deps.policy.maxVariantsPerProduct(market);
       maxAxes = deps.policy.maxVariantAttributes(market);
@@ -208,7 +205,7 @@ export class PlatformProductRead extends UseCase<
       pendingSubmittedAt: isoOf(state.pendingSubmittedAt),
       lastChangedAt: state.lastChangedAt.toString(),
       createdAt: state.createdAt.toString(),
-      form: { ...form, taxCategoryCodes, taxCategories },
+      form: { ...form, taxCategories },
       locales,
       workingCopy:
         copy === null

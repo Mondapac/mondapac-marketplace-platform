@@ -59,6 +59,7 @@ export const RISKS = ['low', 'medium', 'high'] as const;
 export type Risk = (typeof RISKS)[number];
 export const STATUSES = ['open', 'approved', 'reverted'] as const;
 export type Status = (typeof STATUSES)[number];
+export type RequestMode = 'review' | 'approval';
 export type Decision = 'approved' | 'rejected' | 'withdrawn';
 export type RowAction = 'open' | 'copy-link' | 'approve' | 'reject' | 'withdraw';
 
@@ -88,6 +89,12 @@ export interface SystemRequest {
   readonly subjectLabel?: string | null;
   readonly risk: Risk;
   readonly status: Status;
+  /**
+   * review: the change is live and reviewed after (a reject puts the value back). approval: the
+   * action (delete, merge, import) is not applied yet; approving applies it, reject and withdraw
+   * change nothing.
+   */
+  readonly mode: RequestMode;
   readonly before: Readonly<Record<string, unknown>> | null;
   readonly after: Readonly<Record<string, unknown>> | null;
   readonly note: string;
@@ -425,6 +432,10 @@ export function humanKind(kind: string): string {
   const words = part.replace(/-/g, ' ');
   return words.charAt(0).toUpperCase() + words.slice(1);
 }
+
+/** True when the request holds an action that waits for approval (nothing applied yet). */
+export const isApproval = (request: { readonly mode?: RequestMode }): boolean =>
+  request.mode === 'approval';
 
 /** The message key of a subject kind's title ("commission-payouts.commission-rate" -> "commission-payouts--commission-rate"). */
 export const kindKey = (kind: string): string => kind.replace('.', '--');

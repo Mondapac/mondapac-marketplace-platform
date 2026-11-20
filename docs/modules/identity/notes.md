@@ -82,7 +82,8 @@ SERIALIZABLE (HF5 (a)), not by this lock.
 ## People changes in Admin Inbox › System requests (2026-11-15)
 
 Area `people` (on by default, high risk). Revertible changes only; creating, deleting, inviting
-and revoking are out (owner decision of 15 Nov 2026).
+and revoking were out (owner decision of 15 Nov 2026; creating, inviting and the role delete are
+hooked since 18 Nov, see the next section).
 
 - **Hooked writes.** `EditPlatformRole` (kind `identity.platform-role`, subject = role id, values
   `{name, permissionKeys}`), `AssignAdminRole` (`identity.admin-roles`, subject = admin account id,
@@ -121,3 +122,82 @@ and revoking are out (owner decision of 15 Nov 2026).
 - **Wiring.** identity imports no module (ADR-0018 decision 4), so it reaches the recorder and the
   reverter registry through the port `platform/change-review/change-review.ts`, which
   system-requests implements and re-exports from its contracts.
+
+## Creations and the role delete in System requests (2026-11-18)
+
+Owner decision of 18 Nov 2026 ("mixed"): a create goes live at once and is reviewed after; a
+delete waits for another admin's approval. Area `people`, always high risk.
+
+- **Create a custom platform role** (`CreatePlatformRole`, kind `identity.platform-role-creation`,
+  subject = role id, values `{exists: false}` before and `{exists: true, name, permissionKeys}`
+  after): the review opens in the creation's serializable unit with the body's `note`; a missing
+  note keeps nothing. A reject or withdraw deletes the role only while it confers exactly the keys
+  it was created with (a rename alone does not matter) and nobody holds it: held is
+  `not-permitted`, other keys `changed-since`, already deleted `gone`. Audited
+  `identity.role.creation-reverted` (removed keys, `requestId`), event `role-deleted.v1`.
+- **Invite an admin** (`InviteAdmin`, kind `identity.admin-invitation`, subject = invitation id,
+  values `{exists: false}` / `{exists: true, roleId}`; never the address): the review opens in the
+  invitation's unit (the mail counters roll back with a refused note). A reject or withdraw, under
+  the acceptance's invitation lock: still pending (expired or not) it is revoked
+  (`identity.invitation.reverted`, `requestId`); accepted, the account it created is disabled,
+  every session revoked and every challenge voided, as the enabling's revert does
+  (`identity.account-status.reverted`), never the last Platform Administrator who can sign in;
+  revoked meanwhile or an account no longer active is `changed-since`; purged (only a pending one
+  past its expiry, or a revoked one) is `gone`. The purge keeps accepted admin invitations (Hassan
+  M1 on PR #1058): the row is the only link from the request to the account it created, it holds
+  ids only (the address is cleared at acceptance), and there is one per admin ever invited.
+  Accepted seller-side invitations are still purged 30 days after acceptance. The invitee (the account that accepted it, or the account of the invited
+  address) may not decide it (`isInterested`).
+- **Delete a custom platform role** (`DeletePlatformRole`, kind `identity.platform-role-deletion`,
+  approval mode): every check of the delete runs first (reach, version, grant, `role.in-use`),
+  then the unit files the proposal with `{name, permissionKeys, version}` and the `note` and writes
+  nothing else: `role.delete-requested` with `request`, HTTP 202. One waits per role (409
+  `system-requests.already-pending`, `details.pendingNumber`). The applier is registered with
+  `identity.platform-role.delete` (system-requests checks the approver holds it); its `check`
+  (read-only unit) and its `apply` (in the approval's serializable unit) re-read the approver
+  (active, verified, the key, can edit the role, R1 and R11), and `apply` deletes only a role still
+  at the asked name, keys and version (`changed-since`) and held by nobody (`not-permitted`),
+  audited `identity.role.deletion-approved` as the approver with `requestId`.
+- **Invite an admin with a sensitive role** (owner decision of 18 Nov 2026, 14:06Z; kind
+  `identity.admin-invitation-sensitive`, approval mode). Sensitive is the existing R3/R11
+  predicate, `GrantPolicy.needsSystemRole`: the role is the system role (the Platform
+  Administrator) or confers a protected key, i.e. giving it needs the system role (the same rule
+  `canGrant` applies; `roleIsSensitive` in `roles/granting.ts`, `sensitive` on the role catalogue).
+  Every check of the invite runs first (actor, reach, grant, `account.exists`, the mail counters,
+  one pending invitation per address); then the unit files the proposal with values `{roleId,
+  roleVersion}` / `{action: 'invite', roleId}` and the `note`, and stores the invitation **held**
+  (`invitations.held_for_approval`): pending, with the address as every pending invitation keeps
+  it, but without `identity.invitation-issued.v1`, so the mail handler never sends it and no token
+  exists. Audited `identity.invitation.proposed` with `requestId`; `invitation.proposed`, HTTP 202.
+  The domain refuses to dispatch, re-send or accept a held invitation, and the mail handler skips
+  one; the team list shows it `awaiting-approval` with re-send denied. The address stays out of
+  the request's values, the audit rows and the logs. **Approval** (applier registered with
+  `InviteAdmin`'s `allOf` keys; `check` in a read-only unit, `apply` in the approval's serializable
+  unit, under the acceptance's invitation lock): the approver is an active, verified admin with
+  the invite key who could give the role now (`roleGrantVerdict`: R1, R3, R11), the invitation is
+  still held for the same role (`changed-since` once revoked or replaced), the role is at the
+  asked version (`changed-since`; deleted is `gone`), the inviter could still issue it and the
+  address has no admin account yet (`not-permitted`). Then it is released (the issue event at the
+  next version, so the mail and its token follow) and audited `identity.invitation.approved` as
+  the approver with `requestId`. The mail counters are spent when it is asked for (one mail per
+  approval). **Reject or withdraw** send nothing; the held row stays pending until the inviter
+  revokes it ("Cancel invitation" on the team list, allowed on a held row; it frees the address at
+  once) or, as a never-sent invitation, it passes its kind's lifetime (then a new invitation
+  replaces it and the hourly purge deletes it). Releasing it lazily when a new invitation meets a
+  held row whose proposal is closed (Hassan, PR #1081) needs a way to read that proposal: the
+  platform port offers none (`openReview`, `areaPolicy`, `proposeChange` only), system-requests
+  publishes no decision event, and identity imports no module, so it is a documented limit until
+  the port gains a proposal read or a decision event. An approval later than that lifetime answers
+  `gone`: invite again. The invitee (the admin account of the address, if one exists) may not
+  decide it. Where people is off, the invitation is issued at once as any other.
+- **Where people is off** the three routes behave as before (`request: null`, the delete at once).
+- **Not reviewed:** revoking an invitation (it only narrows access), re-sending one, the first-admin
+  routine (system actor), the seller role editor.
+- **Labels.** A created or deleted role shows its name (to an admin who may list roles); an
+  invitation shows the display name of the admin who accepted it, a pending one shows none.
+- **Panel.** The role editor asks for a note on create and in the delete dialog where people is
+  reviewed, and on 202 says "Sent for approval (SR-n)" and keeps the role; the invite dialog asks
+  for a note (from the team list's `review`) and announces the request. For a sensitive role
+  (`sensitive` of the role catalogue) where people is reviewed, the invite dialog says another
+  admin must approve it and nothing is sent until then, its button reads "Send for approval", and
+  the 202 announces "Sent for approval (SR-n)" only; the team list shows "Awaiting approval".

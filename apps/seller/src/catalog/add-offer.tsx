@@ -26,7 +26,6 @@ export function blankProduct(options: ProductOptions): ProductView {
     createdAt: '',
     pendingSubmittedAt: null,
     form: {
-      taxCategoryCodes: options.taxCategoryCodes,
       taxCategories: options.taxCategories,
       units: [],
       fields: [],

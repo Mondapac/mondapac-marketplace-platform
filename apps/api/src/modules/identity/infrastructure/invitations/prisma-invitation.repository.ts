@@ -46,6 +46,7 @@ const SELECTED = {
   invitedByAccountId: true,
   tokenHash: true,
   expiresAt: true,
+  heldForApproval: true,
   state: true,
   decidedAt: true,
   acceptedAccountId: true,
@@ -65,6 +66,7 @@ interface SelectedRow {
   readonly invitedByAccountId: string | null;
   readonly tokenHash: Uint8Array | null;
   readonly expiresAt: Date | null;
+  readonly heldForApproval: boolean;
   readonly state: string;
   readonly decidedAt: Date | null;
   readonly acceptedAccountId: string | null;
@@ -170,6 +172,7 @@ export class PrismaInvitationRepository implements InvitationRepository {
         roleId: true,
         invitedByAccountId: true,
         expiresAt: true,
+        heldForApproval: true,
         createdAt: true,
       },
       orderBy: { id: 'asc' },
@@ -183,6 +186,7 @@ export class PrismaInvitationRepository implements InvitationRepository {
       roleId: row.roleId as Id<'Role'>,
       invitedByAccountId: row.invitedByAccountId as Id<'Account'> | null,
       expiresAt: toOptionalInstant(row.expiresAt),
+      heldForApproval: row.heldForApproval,
       createdAt: toInstant(row.createdAt),
     }));
   }
@@ -209,6 +213,7 @@ export class PrismaInvitationRepository implements InvitationRepository {
         roleId: true,
         invitedByAccountId: true,
         expiresAt: true,
+        heldForApproval: true,
         createdAt: true,
       },
       orderBy: { id: 'asc' },
@@ -222,6 +227,7 @@ export class PrismaInvitationRepository implements InvitationRepository {
       roleId: row.roleId as Id<'Role'>,
       invitedByAccountId: row.invitedByAccountId as Id<'Account'> | null,
       expiresAt: toOptionalInstant(row.expiresAt),
+      heldForApproval: row.heldForApproval,
       createdAt: toInstant(row.createdAt),
     }));
   }
@@ -292,7 +298,16 @@ export class PrismaInvitationRepository implements InvitationRepository {
         marketId: market.marketId,
         OR: [
           { state: 'pending', expiresAt: { lt: toDate(now) } },
-          { state: { in: ['accepted', 'revoked'] }, decidedAt: { lt: toDate(decidedBefore) } },
+          { state: 'revoked', decidedAt: { lt: toDate(decidedBefore) } },
+          // An accepted admin invitation is kept (Hassan M1 on PR #1058): it is the only link from
+          // an invitation's System request to the account it created, so a reject can still
+          // disable that admin. It holds ids only (the address went with the acceptance), and
+          // there is one per admin ever invited.
+          {
+            state: 'accepted',
+            kind: { not: 'admin' },
+            decidedAt: { lt: toDate(decidedBefore) },
+          },
           ...undispatched,
         ],
       },
@@ -309,6 +324,7 @@ function columns(state: InvitationState) {
     displayName: state.displayName,
     tokenHash: state.tokenHash === null ? null : Uint8Array.from(state.tokenHash),
     expiresAt: toOptionalDate(state.expiresAt),
+    heldForApproval: state.heldForApproval,
     state: state.state,
     decidedAt: toOptionalDate(state.decidedAt),
     acceptedAccountId: state.acceptedAccountId,
@@ -340,6 +356,7 @@ function restore(row: SelectedRow): Invitation {
     invitedByAccountId: row.invitedByAccountId as Id<'Account'> | null,
     tokenHash: row.tokenHash === null ? null : Uint8Array.from(row.tokenHash),
     expiresAt: toOptionalInstant(row.expiresAt),
+    heldForApproval: row.heldForApproval,
     state: row.state as InvitationStateCode,
     decidedAt: toOptionalInstant(row.decidedAt),
     acceptedAccountId: row.acceptedAccountId as Id<'Account'> | null,

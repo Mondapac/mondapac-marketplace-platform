@@ -258,96 +258,83 @@ describe('slides list', () => {
   });
 });
 
-describe('row action by permission', () => {
-  const action = (name: string) => {
-    const row = rowOf(name);
-    return within(row).getAllByRole('link').at(-1)!;
-  };
+const openMenu = (name: string) =>
+  fireEvent.click(within(rowOf(name)).getByRole('button', { name: `Actions for ${name}` }));
+/** The items of a row's Actions menu, read and closed again. */
+const itemsOf = (name: string) => {
+  openMenu(name);
+  const labels = screen.getAllByRole('menuitem').map((item) => item.textContent);
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+  return labels;
+};
+const choose = (name: string, item: string) => {
+  openMenu(name);
+  fireEvent.click(screen.getByRole('menuitem', { name: item }));
+};
 
-  it('links to the editor: Edit for an editor, no Pause or Resume buttons', async () => {
+describe('row Actions menu by permission', () => {
+  it('has no button or link beside the row but the name: Edit for an editor, nothing to pause', async () => {
     mount();
     await screen.findByRole('table');
-    expect(action('Storm delivery delays').textContent).toContain('Edit');
-    expect(action('Storm delivery delays').getAttribute('href')).toBe(`/content/slides/${A}`);
-    expect(screen.queryByRole('button', { name: /pause|resume/i })).toBeNull();
+    expect(itemsOf('Storm delivery delays')).toEqual(['Edit']);
+    expect(within(rowOf('Storm delivery delays')).queryAllByRole('link')).toHaveLength(1);
+    choose('Storm delivery delays', 'Edit');
+    expect(router.push).toHaveBeenCalledWith(`/content/slides/${A}`);
   });
 
   it('says View when the reader may not edit', async () => {
     mount([SLIDE_READ_PERMISSION]);
     await screen.findByRole('table');
-    expect(action('Storm delivery delays').textContent).toContain('View');
-    expect(action('Fresh lamb, 15% off').textContent).toContain('View');
+    expect(itemsOf('Storm delivery delays')).toEqual(['View']);
+    expect(itemsOf('Fresh lamb, 15% off')).toEqual(['View']);
   });
 
-  it('says Review on a slide waiting for approval only for someone who can approve', async () => {
+  it('offers Review… on a slide waiting for approval only for someone who can approve', async () => {
     mount([SLIDE_READ_PERMISSION, SLIDE_EDIT_PERMISSION]);
     await screen.findByRole('table');
-    expect(action('Fresh lamb, 15% off').textContent).toContain('Edit');
+    expect(itemsOf('Fresh lamb, 15% off')).toEqual(['Edit']);
     cleanup();
     mount([SLIDE_READ_PERMISSION, SLIDE_EDIT_PERMISSION, SLIDE_PUBLISH_PERMISSION]);
     await screen.findByRole('table');
-    expect(action('Fresh lamb, 15% off').textContent).toContain('Review');
-    expect(action('Storm delivery delays').textContent).toContain('Edit');
+    expect(itemsOf('Fresh lamb, 15% off')).toEqual(['Review…', 'Edit']);
+    expect(itemsOf('Storm delivery delays')).toEqual(['Edit']);
   });
 });
 
-describe('Pause and Resume… as the row action, by key', () => {
+describe('Pause… and Resume… in the Actions menu, by key', () => {
   const READ = SLIDE_READ_PERMISSION;
-  const buttonIn = (name: string) => within(rowOf(name)).queryAllByRole('button')[0] ?? null;
-  const labelsOf = () =>
-    Object.fromEntries(
-      [
-        'Storm delivery delays',
-        'Diwali sweets week',
-        'Fresh lamb, 15% off',
-        'Black Friday teaser',
-        'New minimum order rule',
-      ].map((name) => {
-        const row = rowOf(name);
-        const last = [...within(row).queryAllByRole('button'), ...within(row).getAllByRole('link')]
-          .at(-1)
-          ?.textContent?.trim();
-        return [name, last];
-      }),
-    );
 
-  it('storefront.slide.pause: Pause on live and scheduled rows only', async () => {
+  it('storefront.slide.pause: Pause… on live and scheduled rows only', async () => {
     mount([READ, SLIDE_PAUSE_PERMISSION]);
     await screen.findByRole('table');
-    expect(buttonIn('Storm delivery delays')?.textContent).toContain('Pause');
-    expect(buttonIn('Diwali sweets week')?.textContent).toContain('Pause');
-    expect(buttonIn('Fresh lamb, 15% off')).toBeNull();
-    expect(buttonIn('Black Friday teaser')).toBeNull();
-    expect(buttonIn('New minimum order rule')).toBeNull();
-    expect(screen.queryByRole('button', { name: /resume/i })).toBeNull();
+    expect(itemsOf('Storm delivery delays')).toEqual(['Pause…', 'View']);
+    expect(itemsOf('Diwali sweets week')).toEqual(['Pause…', 'View']);
+    expect(itemsOf('Fresh lamb, 15% off')).toEqual(['View']);
+    expect(itemsOf('Black Friday teaser')).toEqual(['View']);
+    expect(itemsOf('New minimum order rule')).toEqual(['View']);
   });
 
-  it('without storefront.slide.pause: no Pause button, whatever else the admin holds', async () => {
+  it('without storefront.slide.pause: no Pause…, whatever else the admin holds', async () => {
     mount([READ, SLIDE_EDIT_PERMISSION, SLIDE_PUBLISH_PERMISSION]);
     await screen.findByRole('table');
-    expect(screen.queryByRole('button', { name: /pause/i })).toBeNull();
-    expect(labelsOf()['Storm delivery delays']).toContain('Edit');
+    expect(itemsOf('Storm delivery delays')).toEqual(['Edit']);
   });
 
-  it('storefront.slide.publish: Resume… on a paused row and Review on a waiting one', async () => {
+  it('storefront.slide.publish: Resume… on a paused row and Review… on a waiting one', async () => {
     mount([READ, SLIDE_PUBLISH_PERMISSION]);
     await screen.findByRole('table');
-    expect(buttonIn('New minimum order rule')?.textContent).toContain('Resume…');
-    expect(labelsOf()['Fresh lamb, 15% off']).toContain('Review');
-    expect(
-      within(rowOf('Fresh lamb, 15% off'))
-        .getByRole('link', { name: /Review/ })
-        .getAttribute('href'),
-    ).toBe(`/content/slides/${C}?review=1`);
-    expect(screen.queryByRole('button', { name: /pause/i })).toBeNull();
+    expect(itemsOf('New minimum order rule')).toEqual(['Resume…', 'View']);
+    expect(itemsOf('Fresh lamb, 15% off')).toEqual(['Review…', 'View']);
+    choose('Fresh lamb, 15% off', 'Review…');
+    expect(router.push).toHaveBeenCalledWith(`/content/slides/${C}?review=1`);
+    expect(itemsOf('Storm delivery delays')).toEqual(['View']);
   });
 
   it('without storefront.slide.publish: no Resume…, the row falls back to Edit', async () => {
     mount([READ, SLIDE_EDIT_PERMISSION, SLIDE_PAUSE_PERMISSION]);
     await screen.findByRole('table');
-    expect(screen.queryByRole('button', { name: /resume/i })).toBeNull();
-    expect(labelsOf()['New minimum order rule']).toContain('Edit');
-    expect(labelsOf()['Fresh lamb, 15% off']).toContain('Edit');
+    expect(itemsOf('New minimum order rule')).toEqual(['Edit']);
+    expect(itemsOf('Fresh lamb, 15% off')).toEqual(['Edit']);
   });
 
   it('puts a confirmation dialog only in the rows of a holder of the key', async () => {
@@ -364,7 +351,7 @@ describe('Pause and Resume… as the row action, by key', () => {
   it('asks before pausing, pauses with the token and shows the row paused', async () => {
     mount([READ, SLIDE_PAUSE_PERMISSION]);
     await screen.findByRole('table');
-    fireEvent.click(buttonIn('Storm delivery delays')!);
+    choose('Storm delivery delays', 'Pause…');
     const dialog = screen.getByRole('dialog', { name: 'Pause “Storm delivery delays”?' });
     expect(within(dialog).getByText(/within a minute, on every position/)).toBeTruthy();
     expect(within(dialog).getByText(/needs a platform admin’s approval/)).toBeTruthy();
@@ -392,7 +379,7 @@ describe('Pause and Resume… as the row action, by key', () => {
   it('resumes after a confirmation', async () => {
     mount([READ, SLIDE_PUBLISH_PERMISSION]);
     await screen.findByRole('table');
-    fireEvent.click(buttonIn('New minimum order rule')!);
+    choose('New minimum order rule', 'Resume…');
     call.mockResolvedValueOnce({
       ok: true,
       status: 200,
@@ -413,7 +400,7 @@ describe('Pause and Resume… as the row action, by key', () => {
   it('keeps the row and says why when a resume is refused because a position is full', async () => {
     mount([READ, SLIDE_PUBLISH_PERMISSION]);
     await screen.findByRole('table');
-    fireEvent.click(buttonIn('New minimum order rule')!);
+    choose('New minimum order rule', 'Resume…');
     call.mockResolvedValueOnce({
       ok: false,
       failure: {
@@ -432,10 +419,10 @@ describe('Pause and Resume… as the row action, by key', () => {
   it('does nothing on Cancel or Escape', async () => {
     mount([READ, SLIDE_PAUSE_PERMISSION]);
     await screen.findByRole('table');
-    fireEvent.click(buttonIn('Storm delivery delays')!);
+    choose('Storm delivery delays', 'Pause…');
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(document.querySelectorAll('dialog[open]')).toHaveLength(0);
-    fireEvent.click(buttonIn('Storm delivery delays')!);
+    choose('Storm delivery delays', 'Pause…');
     fireEvent(screen.getByRole('dialog'), new Event('cancel', { cancelable: true }));
     expect(document.querySelectorAll('dialog[open]')).toHaveLength(0);
     expect(call).toHaveBeenCalledTimes(1);
@@ -444,7 +431,7 @@ describe('Pause and Resume… as the row action, by key', () => {
   it('reads the list again when the slide changed meanwhile', async () => {
     mount([READ, SLIDE_PAUSE_PERMISSION]);
     await screen.findByRole('table');
-    fireEvent.click(buttonIn('Storm delivery delays')!);
+    choose('Storm delivery delays', 'Pause…');
     call.mockResolvedValueOnce({
       ok: false,
       failure: { status: 409, code: 'storefront.slide-not-live' },

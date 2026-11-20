@@ -19,6 +19,24 @@ export interface SellerCashbackLedger {
       readonly creditedAt: Temporal.Instant;
     },
   ): Promise<boolean>;
+
+  /**
+   * Credits back to the seller what a refund took back of its cashback (customers phase 4c-2).
+   * Idempotent per clawback; `false` when the ledger refused or could not be reached (retried).
+   */
+  recordReturn(
+    context: CallContext,
+    returned: {
+      readonly clawbackId: Id<'CreditClawback'>;
+      readonly creditId: Id<'PromotionCredit'>;
+      readonly orderId: Id<'Order'>;
+      readonly sellerOrderId: Id<'SellerOrder'>;
+      readonly sellerId: Id<'Seller'>;
+      readonly amount: bigint;
+      readonly currency: string;
+      readonly returnedAt: Temporal.Instant;
+    },
+  ): Promise<boolean>;
 }
 
 export const SELLER_CASHBACK_LEDGER = Symbol('PROMOTIONS_SELLER_CASHBACK_LEDGER');

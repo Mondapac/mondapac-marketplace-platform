@@ -72,6 +72,7 @@ export class DeliveredSellerOrderFactsQuery extends UseCase<
         // What refunds (not failed) gave back of the goods: each refund's gross less its tax,
         // less its shipping part (gross less tax).
         let refundedGoods = 0n;
+        let succeededRefundedGoods = 0n;
         const refunds = await this.deps.refunds.listOfSellerOrder(
           context.market,
           sellerOrder.id,
@@ -81,10 +82,14 @@ export class DeliveredSellerOrderFactsQuery extends UseCase<
           if (refund.state === 'failed') continue;
           const shipping =
             refund.shipping === null ? 0n : refund.shipping.gross - refund.shipping.tax;
-          refundedGoods += refund.gross - refund.tax - shipping;
+          const given = refund.gross - refund.tax - shipping;
+          refundedGoods += given;
+          if (refund.state === 'succeeded') succeededRefundedGoods += given;
         }
         if (refundedGoods < 0n) refundedGoods = 0n;
         if (refundedGoods > goods) refundedGoods = goods;
+        if (succeededRefundedGoods < 0n) succeededRefundedGoods = 0n;
+        if (succeededRefundedGoods > refundedGoods) succeededRefundedGoods = refundedGoods;
         return ok({
           orderId: order.id,
           sellerOrderId: sellerOrder.id,
@@ -93,6 +98,7 @@ export class DeliveredSellerOrderFactsQuery extends UseCase<
           currency: order.total.currency,
           goods,
           refundedGoods,
+          succeededRefundedGoods,
           exclusiveSeller,
           placedAt: order.createdAt,
           deliveredAt: sellerOrder.deliveredAt,

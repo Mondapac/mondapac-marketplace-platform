@@ -41,6 +41,7 @@ import type {
   DeliveryWish,
   Money,
 } from '../storefront/types.ts';
+import { clearInvite } from '../invite/invite-cookie.ts';
 import { PALETTE_COOKIE, TEXT_SIZE_COOKIE, savePreference } from '../preferences/preferences.ts';
 import { checkReachable, reachable } from './connection.ts';
 
@@ -96,6 +97,11 @@ interface StoreState {
    * at once in the header, the drawer and the cart page. A no-op on sample data.
    */
   readonly refreshCart: () => Promise<void>;
+  /**
+   * True once the cart on screen is the real one: always on sample data, from the first render when
+   * the server read the cart, otherwise after the browser's first read answered.
+   */
+  readonly cartReady: boolean;
   readonly discount: AppliedDiscount | null;
   readonly setDiscount: (discount: AppliedDiscount | null) => void;
   /** Checkout notes to sellers, by seller id. */
@@ -216,6 +222,7 @@ export function StoreProvider({
   const [unavailable, setUnavailable] = useState<readonly UnavailableLine[]>(
     initialLiveCart?.unavailable ?? [],
   );
+  const [cartReady, setCartReady] = useState(!live || initialLiveCart !== null);
   const [cartOpen, setCartOpen] = useState(false);
   const [customer, setCustomer] = useState<CheckoutCustomer | null>(initialCustomer);
   const [sessionReady, setSessionReady] = useState(!live);
@@ -279,6 +286,7 @@ export function StoreProvider({
     setCart(next.cart);
     setSource({ ...next.source, items: { ...savedItems.current, ...next.source.items } });
     setUnavailable(next.unavailable);
+    setCartReady(true);
   }, []);
   const readCart = useCallback(async () => {
     const read = await api.readCart();
@@ -495,6 +503,9 @@ export function StoreProvider({
       setSaved([]);
       void readCart();
     }
+    // A store invite kept for this browser's sign-up must not carry over to the next person who
+    // signs in on it (a shared computer).
+    clearInvite();
     setCustomer(null);
     return true;
   }, [live, readCart]);
@@ -516,6 +527,7 @@ export function StoreProvider({
       moveToCart,
       removeSaved,
       refreshCart,
+      cartReady,
       discount,
       setDiscount,
       notes,
@@ -572,6 +584,7 @@ export function StoreProvider({
       moveToCart,
       removeSaved,
       refreshCart,
+      cartReady,
       discount,
       notes,
       setNote,

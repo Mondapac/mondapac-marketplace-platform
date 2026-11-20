@@ -17,6 +17,13 @@ const id = (n: number) => `0190a000-0000-7000-8000-0000000000${n.toString(16).pa
 const assign = vi.fn();
 
 beforeEach(() => {
+  // jsdom has no modal <dialog>.
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
   vi.clearAllMocks();
   Object.defineProperty(window, 'location', { value: { assign }, writable: true });
 });
@@ -163,13 +170,17 @@ describe('Suggest a category', () => {
     expect(screen.getByText('Closed: permission removed')).toBeTruthy();
     expect(screen.getByText('Rejected: too broad for a shelf.')).toBeTruthy();
     // Only the waiting one can be withdrawn.
-    expect(screen.getAllByRole('button', { name: 'Withdraw' })).toHaveLength(1);
+    expect(screen.getAllByRole('button', { name: /^Actions for/ })).toHaveLength(1);
   });
 
   it('withdraws a waiting proposal with its version', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: {} });
     view({ proposals: [proposal({ id: id(1), version: 3 })] });
-    fireEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Actions for/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Withdraw…' }));
+    // A dialog names the suggestion first; nothing is sent until it is confirmed.
+    expect(call).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', { name: 'Withdraw suggestion' }));
     await waitFor(() =>
       expect(call).toHaveBeenCalledWith(
         'POST',
@@ -180,10 +191,21 @@ describe('Suggest a category', () => {
     );
   });
 
+  it('sends nothing when the seller keeps the suggestion', () => {
+    view({ proposals: [proposal({})] });
+    fireEvent.click(screen.getByRole('button', { name: /^Actions for/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Withdraw…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Keep suggestion' }));
+    expect(call).not.toHaveBeenCalled();
+    expect(document.querySelectorAll('dialog[open]')).toHaveLength(0);
+  });
+
   it('says so when a withdraw is stale', async () => {
     call.mockResolvedValue({ ok: false, failure: { status: 409, code: 'conflict.stale' } });
     view({ proposals: [proposal({})] });
-    fireEvent.click(screen.getByRole('button', { name: 'Withdraw' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Actions for/ }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Withdraw…' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Withdraw suggestion' }));
     expect((await screen.findByRole('alert')).textContent).toMatch(/changed since/);
   });
 

@@ -30,7 +30,11 @@ import type {
   MissingDetailsEmailRecord,
   MissingDetailsEmailStore,
 } from '../ports/missing-details-email.store';
-import { GAP_SCAN_MAX, ProductsMissingDetailsList } from './products-missing-details-list.use-case';
+import {
+  GAP_PAGE_SCAN_MAX,
+  GAP_SCAN_MAX,
+  ProductsMissingDetailsList,
+} from './products-missing-details-list.use-case';
 
 // The report "Products missing required details" in memory (attributes plan, package A4, decision
 // ت۷), on both Market fixtures: the access rule and population, the closed query, the required
@@ -224,6 +228,12 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
         nextAfterId: null,
         scanned: 2,
         unreadableFeatureSets: [],
+        complete: true,
+        hasNext: false,
+        page: 1,
+        pageSize: 50,
+        paging: 'pages',
+        total: 1,
       },
     });
     expect(units).toEqual([{ readOnly: true }]);
@@ -348,7 +358,7 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
     reader.rows = Array.from({ length: GAP_SCAN_MAX + 5 }, (_, i) =>
       product(i + 1, { attributeValues: complete }),
     );
-    const first = await useCase().execute(context(), {});
+    const first = await useCase().execute(context(), { limit: 50 });
     expect(first.ok && first.value.items).toEqual([]);
     expect(first.ok && first.value.scanned).toBe(GAP_SCAN_MAX);
     const cursor = first.ok ? first.value.nextAfterId : null;
@@ -405,6 +415,115 @@ describe.each(['AU', 'ZZ'] as const)('products missing required details in marke
       error: { code: 'validation.failed', fields: [{ path }] },
     });
     expect(reader.calls).toEqual([]);
+  });
+
+  it('pages by number with a total, and sorts by code, name, family or missing count', async () => {
+    reader.rows = [1, 2, 3, 4, 5].map((n) => product(n));
+    const p2 = await useCase().execute(context(), { page: 2, pageSize: 2 });
+    expect(p2.ok && p2.value.items.map((i) => i.productCode)).toEqual(['P3', 'P4']);
+    expect(p2.ok && p2.value).toMatchObject({
+      page: 2,
+      pageSize: 2,
+      paging: 'pages',
+      total: 5,
+      hasNext: true,
+      nextAfterId: null,
+      complete: true,
+    });
+    const desc = await useCase().execute(context(), {
+      sort: 'code',
+      direction: 'desc',
+      pageSize: 2,
+    });
+    expect(desc.ok && desc.value.items.map((i) => i.productCode)).toEqual(['P5', 'P4']);
+    const byMissing = await useCase().execute(context(), { sort: 'missing' });
+    expect(byMissing.ok && byMissing.value.items.length).toBe(5);
+    for (const sort of ['name', 'family']) {
+      const r = await useCase().execute(context(), { sort });
+      expect(r.ok && r.value.items.length).toBe(5);
+    }
+  });
+
+  it('searches the code and name with q and counts only the matches', async () => {
+    reader.rows = [1, 2, 3].map((n) => product(n));
+    const r = await useCase().execute(context(), { q: 'product 2' });
+    expect(r.ok && r.value.items.map((i) => i.productCode)).toEqual(['P2']);
+    expect(r.ok && r.value.total).toBe(1);
+  });
+
+  it('gives no total in prev-next mode and refuses a bad sort', async () => {
+    reader.rows = [1, 2, 3].map((n) => product(n));
+    const r = await useCase().execute(context(), { paging: 'prev-next', pageSize: 2 });
+    expect(r.ok && r.value).toMatchObject({ paging: 'prev-next', total: null, hasNext: true });
+    expect(await useCase().execute(context(), { sort: 'nope' })).toMatchObject({
+      ok: false,
+      error: { code: 'validation.failed' },
+    });
+  });
+
+  it('refuses a cursor mixed with page keys', async () => {
+    expect(await useCase().execute(context(), { afterId: ID(0x1001), page: 2 })).toMatchObject({
+      ok: false,
+      error: { code: 'validation.failed' },
+    });
+  });
+
+  it('sorts by missing count, name and family with a code tie-break, and a null name sorts first', async () => {
+    schemas['other'] = schemaOf([
+      field('size', { required: true }),
+      field('colour', { required: true }),
+      field('weight', { required: true }),
+    ]);
+    reader.rows = [
+      product(1, { name: 'beta' }),
+      product(2, { name: 'Alpha', primaryCategoryId: 'cat:other', revisionFamilyCode: 'other' }),
+      product(3, { name: null }),
+      product(4, { name: 'beta' }),
+    ];
+    const codes = async (input: Record<string, unknown>) => {
+      const r = await useCase().execute(context(), input);
+      return r.ok ? r.value.items.map((i) => i.productCode) : [];
+    };
+    expect(await codes({ sort: 'missing' })).toEqual(['P2', 'P1', 'P3', 'P4']);
+    expect(await codes({ sort: 'missing', direction: 'asc' })).toEqual(['P1', 'P3', 'P4', 'P2']);
+    expect(await codes({ sort: 'name' })).toEqual(['P3', 'P2', 'P1', 'P4']);
+    expect(await codes({ sort: 'name', direction: 'desc' })).toEqual(['P1', 'P4', 'P2', 'P3']);
+    expect(await codes({ sort: 'family' })).toEqual(['P2', 'P1', 'P3', 'P4']);
+  });
+
+  it('answers a page past the end and an empty Market with a total', async () => {
+    reader.rows = [1, 2].map((n) => product(n));
+    const past = await useCase().execute(context(), { page: 3, pageSize: 2 });
+    expect(past.ok && past.value).toMatchObject({ items: [], hasNext: false, total: 2, page: 3 });
+    reader.rows = [];
+    const empty = await useCase().execute(context(), {});
+    expect(empty.ok && empty.value).toMatchObject({ items: [], total: 0, complete: true });
+  });
+
+  it('treats q as plain text', async () => {
+    reader.rows = [
+      product(1, { name: '100%_off' }),
+      product(2, { name: 'a.b' }),
+      product(3, { name: '(x' }),
+    ];
+    for (const [q, code] of [
+      ['%_', 'P1'],
+      ['a.b', 'P2'],
+      ['(x', 'P3'],
+      ['.*', null],
+    ] as const) {
+      const r = await useCase().execute(context(), { q });
+      expect(r.ok && r.value.items.map((i) => i.productCode)).toEqual(code === null ? [] : [code]);
+    }
+  });
+
+  it('reads a Market of exactly the page cap as complete, and flags one past it', async () => {
+    reader.rows = Array.from({ length: GAP_PAGE_SCAN_MAX }, (_, i) => product(i + 1));
+    const exact = await useCase().execute(context(), { pageSize: 1 });
+    expect(exact.ok && exact.value).toMatchObject({ complete: true, total: GAP_PAGE_SCAN_MAX });
+    reader.rows = Array.from({ length: GAP_PAGE_SCAN_MAX + 1 }, (_, i) => product(i + 1));
+    const over = await useCase().execute(context(), { pageSize: 1 });
+    expect(over.ok && over.value).toMatchObject({ complete: false, total: GAP_PAGE_SCAN_MAX });
   });
 
   it('refuses without the permission, outside the admin population, and when the unit is down', async () => {
