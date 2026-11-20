@@ -21,7 +21,19 @@ export const SECURITY_RESPOND = definePermission('security', {
   protected: false,
 });
 
+/**
+ * Share a saved filter of the alert list with every admin who can see the security centre. A
+ * private filter needs no key beyond the view key; sharing is its own protected key so a filter
+ * that frames what the on-call sees is not shared by whoever can only read alerts.
+ */
+export const SECURITY_ALERTS_SAVED_FILTER_SHARE = definePermission('security', {
+  key: 'security.alerts-saved-filter.share',
+  scope: 'platform',
+  protected: true,
+});
+
 export const SECURITY_PERMISSIONS = declarePermissions('security', [
+  SECURITY_ALERTS_SAVED_FILTER_SHARE,
   SECURITY_RESPOND,
   SECURITY_VIEW,
 ]);

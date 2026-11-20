@@ -10,12 +10,14 @@ import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { SECURITY_EVENT_FEED } from '../../platform/security-events/security-event-feed';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { IdentityModule } from '../identity';
+import { ListsModule, registerLists } from '../lists';
 import { ADMIN_NAMES } from './application/ports/admin-names';
 import { ALERT_MESSENGER } from './application/ports/alert-messenger';
 import { ON_CALL_ROSTER } from './application/ports/on-call-roster';
 import { SECURITY_ALERT_REPOSITORY } from './application/ports/security-alert.repository';
 import { ALERT_ROW_KEYS, type AlertListDependencies } from './application/alert-list-flow';
 import type { SecurityDependencies } from './application/security-dependencies';
+import { SECURITY_ALERT_LISTS } from './application/alert-saved-filter-list';
 import { AlertRespondProbe } from './application/use-cases/alert-respond-probe.use-case';
 import { AcknowledgeSecurityAlert } from './application/use-cases/acknowledge-security-alert.use-case';
 import { DeliverSecurityAlerts } from './application/use-cases/deliver-security-alerts.use-case';
@@ -113,13 +115,14 @@ function alertListUseCaseProvider<U>(type: AlertListUseCaseClass<U>): FactoryPro
  * The events are read through the platform's feed, bound into this module alone.
  */
 @Module({
-  imports: [IdentityModule],
+  imports: [IdentityModule, ListsModule],
   controllers: [AdminSecurityController],
   providers: [
     PersistenceModule.auditWriterFor('security'),
     PersistenceModule.securityEventFeedFor('security'),
     registerAuditActions('security', SECURITY_AUDIT_ACTIONS),
     registerPermissions('security', SECURITY_PERMISSIONS),
+    registerLists('security', SECURITY_ALERT_LISTS),
     ...securityProviders,
     { provide: SHEET_WRITER, useFactory: (): SheetWriter => new ExceljsSheetWriter() },
     ...[

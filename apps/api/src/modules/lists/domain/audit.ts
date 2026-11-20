@@ -47,6 +47,7 @@ export const LISTS_AUDIT_LIST_KEYS = [
   'seller.catalog.topic-suggestions',
   'seller.commission-payouts.payouts',
   'admin.reviews.moderation',
+  'admin.security.alerts',
 ] as const;
 export type ListsAuditListKey = (typeof LISTS_AUDIT_LIST_KEYS)[number];
 
