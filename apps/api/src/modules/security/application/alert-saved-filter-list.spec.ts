@@ -121,7 +121,7 @@ describe('Alert list saved filters', () => {
     expect(parseAlertFilterPayload({ v: 1, view: 'all', filters: { minEvents: '5' } })).toEqual(
       failure('payload.filters.minEvents', 'type'),
     );
-    for (const minEvents of [0, 1.5, 1_000_001]) {
+    for (const minEvents of [0, 1.5, 1_000_000_000]) {
       expect(parseAlertFilterPayload({ v: 1, view: 'all', filters: { minEvents } })).toEqual(
         failure('payload.filters.minEvents', 'value'),
       );

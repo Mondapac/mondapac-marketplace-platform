@@ -35,8 +35,8 @@ export const ALERT_DATE_PRESETS = [
 ] as const;
 export type AlertDatePreset = (typeof ALERT_DATE_PRESETS)[number];
 
-/** A saved minimum event count stays within what a rule can ever count in a window. */
-export const ALERT_MIN_EVENTS_MAX = 1_000_000;
+/** The same bound as the list's own `minEvents` (nine digits), so a filter that runs can be saved. */
+export const ALERT_MIN_EVENTS_MAX = 999_999_999;
 
 /** The closed document of a saved filter, in its canonical form (an unset part is left out). */
 export interface AlertFilterPayload {

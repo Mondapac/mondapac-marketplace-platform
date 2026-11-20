@@ -17,6 +17,7 @@ import { ON_CALL_ROSTER } from './application/ports/on-call-roster';
 import { SECURITY_ALERT_REPOSITORY } from './application/ports/security-alert.repository';
 import { ALERT_ROW_KEYS, type AlertListDependencies } from './application/alert-list-flow';
 import type { SecurityDependencies } from './application/security-dependencies';
+import { SECURITY_ALERT_LISTS } from './application/alert-saved-filter-list';
 import { AlertRespondProbe } from './application/use-cases/alert-respond-probe.use-case';
 import { AcknowledgeSecurityAlert } from './application/use-cases/acknowledge-security-alert.use-case';
 import { DeliverSecurityAlerts } from './application/use-cases/deliver-security-alerts.use-case';
@@ -30,7 +31,6 @@ import { ViewOnCall } from './application/use-cases/view-on-call.use-case';
 import { ViewSecurityAlert } from './application/use-cases/view-security-alert.use-case';
 import { ViewSecuritySummary } from './application/use-cases/view-security-summary.use-case';
 import { SECURITY_AUDIT_ACTIONS, SECURITY_PERMISSIONS } from './contracts';
-import { SECURITY_ALERT_LISTS } from './application/alert-saved-filter-list';
 import { securityProviders } from './infrastructure/security-providers';
 import {
   deliverAlertsJob,
