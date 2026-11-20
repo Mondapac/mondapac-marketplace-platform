@@ -149,3 +149,12 @@ customer: it needs that credit's `cashback-seller` row for the same seller and o
 returns together never exceed it. The anchor's `disputeLost` also counts any dispute decision on the
 seller order (Hassan L-6), so a chargeback the platform bore still cancels the cashback. Migration
 `20261117150001_ledger_seller_cashback_return`; `down.sql` refuses while such rows exist.
+
+## Saved filters (super list phase 4, PR10)
+
+The admin Payouts list (`admin.commission-payouts.payouts`, key `commission-payouts.payout.view`)
+and the admin Disputes list (`admin.commission-payouts.disputes`, key
+`commission-payouts.dispute.view`) have saved filters through `lists`
+(`application/saved-filters/list-definitions.ts`). Sharing one with every admin needs the new
+unprotected key `commission-payouts.saved-filter.share`; no role is seeded with it. The seller
+Payouts list (33) joins when `lists` has the seller routes. See docs/modules/lists/notes.md.

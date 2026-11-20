@@ -52,10 +52,21 @@ export const WALLET_CREDIT_APPROVE = definePermission('wallet', {
   protected: true,
 });
 
+/**
+ * Share a saved filter of the Credit requests list with every admin of the Market (and manage one
+ * that somebody else shared). Unprotected; also needs `wallet.credit.view`.
+ */
+export const WALLET_SAVED_FILTER_SHARE = definePermission('wallet', {
+  key: 'wallet.saved-filter.share',
+  scope: 'platform',
+  protected: false,
+});
+
 export const WALLET_PERMISSIONS = declarePermissions('wallet', [
   WALLET_CREDIT_APPROVE,
   WALLET_CREDIT_ISSUE,
   WALLET_CREDIT_VIEW,
   WALLET_SETTINGS_MANAGE,
   WALLET_SETTINGS_VIEW,
+  WALLET_SAVED_FILTER_SHARE,
 ]);
