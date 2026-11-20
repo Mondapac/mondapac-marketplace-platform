@@ -8,8 +8,8 @@ import type { AdminSession } from '../../../src/server/session.ts';
 import ReviewQueuePage from './page.tsx';
 import OfferReviewsPage from '../offer-reviews/page.tsx';
 
-// The review queue page: the view gate (no API read without catalog.product.view), the states of
-// the queue read, the tab counts from `totals`, and the old Offer reviews address.
+// The review queue page: the view gate (no list without catalog.product.view), the list paging
+// setting, the tab the URL names, and the old Offer reviews address.
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -23,33 +23,28 @@ vi.mock('next-intl/server', () => ({
   getTranslations: () => Promise.resolve(createTranslator({ locale: 'en-AU', messages })),
 }));
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
+vi.mock('next/headers', () => ({
+  headers: () => Promise.resolve(new Headers({ host: 'admin.localhost' })),
+}));
 vi.mock('../../../src/server/server-fetch.ts', () => ({ serverGet: mocks.get }));
+vi.mock('../../../src/server/bff.ts', () => ({ panelHostFor: () => ({ marketId: 'AU' }) }));
+vi.mock('../../../src/server/config.ts', () => ({ panelConfig: () => ({}) }));
 vi.mock('../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
 vi.mock('../../../src/server/admin-shell.tsx', () => ({
   AdminShell: ({ children }: { readonly children: ReactNode }) => <main>{children}</main>,
 }));
-vi.mock('../../../src/catalog/revision-queue.tsx', () => ({
-  RevisionFilters: () => <p>revision filters</p>,
-  RevisionQueueTable: ({ rows }: { readonly rows: readonly unknown[] }) => (
-    <p>{`${rows.length} revision rows`}</p>
+vi.mock('../../../src/catalog/review-queue-view.tsx', () => ({
+  ReviewQueueView: (props: Readonly<Record<string, string>>) => (
+    <p
+      data-testid="view"
+      {...Object.fromEntries(Object.entries(props).map(([k, v]) => [`data-${k}`, v]))}
+    >
+      view
+    </p>
   ),
-  SellerChip: () => null,
-  QueueEmpty: ({ morePages }: { readonly morePages: boolean }) => (
-    <p>{morePages ? 'empty page' : 'empty queue'}</p>
-  ),
-}));
-vi.mock('../../../src/catalog/review-queue.tsx', () => ({
-  ReviewQueue: ({
-    rows,
-    canDecide,
-  }: {
-    readonly rows: readonly unknown[];
-    readonly canDecide: boolean;
-  }) => <p data-can-decide={String(canDecide)}>{`${rows.length} offer cards`}</p>,
 }));
 
 const VIEW = 'catalog.product.view';
-const DECIDE = 'catalog.product.approve';
 const session = (permissionKeys: string[]): AdminSession => ({
   accountId: 'a',
   roleId: 'r',
@@ -66,77 +61,48 @@ const session = (permissionKeys: string[]): AdminSession => ({
 const search = (values: Record<string, string> = {}) => ({
   searchParams: Promise.resolve(values),
 });
-const page = (items: unknown[], nextAfterId: string | null = null) => ({
-  kind: 'ok',
-  body: {
-    items,
-    nextAfterId,
-    total: items.length,
-    totals: { 'product-revision': 12, 'offer-first-publication': 3 },
-  },
-});
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.session.mockResolvedValue({ kind: 'ok', session: session([VIEW, DECIDE]) });
-  mocks.get.mockResolvedValue(page([{ kind: 'product-revision', sellerId: 's' }]));
+  mocks.session.mockResolvedValue({ kind: 'ok', session: session([VIEW]) });
+  mocks.get.mockResolvedValue({ kind: 'ok', body: { listPaging: 'pages' } });
 });
 afterEach(cleanup);
 
 describe('review queue page', () => {
-  it('reads the revisions kind and shows both tab counts from totals', async () => {
+  it('opens the revisions list with the Market, the account and the paging setting', async () => {
     render(await ReviewQueuePage(search()));
-    expect(mocks.get).toHaveBeenCalledWith(
-      'catalog/admin/review-queue?kind=product-revision&limit=25',
-    );
     expect(screen.getByRole('heading', { level: 1, name: 'Catalogue requests' })).toBeTruthy();
-    const revisions = screen.getByRole('link', { name: 'Product revisions (12)' });
-    expect(revisions.getAttribute('aria-current')).toBe('page');
-    expect(screen.getByRole('link', { name: 'Offers (3)' }).getAttribute('href')).toBe(
-      '/review?type=offer',
-    );
-    expect(screen.getByText('revision filters')).toBeTruthy();
-    expect(screen.getByText('1 revision rows')).toBeTruthy();
+    const view = screen.getByTestId('view');
+    expect(view.getAttribute('data-tab')).toBe('revision');
+    expect(view.getAttribute('data-paging')).toBe('pages');
+    expect(view.getAttribute('data-marketid')).toBe('AU');
+    expect(view.getAttribute('data-accountid')).toBe('a');
+    expect(view.getAttribute('data-csrftoken')).toBe('c');
+    expect(mocks.get).toHaveBeenCalledWith('settings/admin/list-paging');
   });
 
-  it('shows the Offers tab with the decide permission passed on', async () => {
-    mocks.get.mockResolvedValue(page([{ kind: 'offer-first-publication', sellerId: 's' }]));
-    render(await ReviewQueuePage(search({ type: 'offer', change: 'new' })));
-    expect(mocks.get).toHaveBeenCalledWith(
-      'catalog/admin/review-queue?kind=offer-first-publication&limit=25',
-    );
-    expect(screen.getByText('1 offer cards').getAttribute('data-can-decide')).toBe('true');
-    expect(screen.queryByText('revision filters')).toBeNull();
+  it('opens the Offers list for ?type=offer, and Previous and next when paging is unreadable', async () => {
+    mocks.get.mockResolvedValue({ kind: 'unavailable' });
+    render(await ReviewQueuePage(search({ type: 'offer' })));
+    const view = screen.getByTestId('view');
+    expect(view.getAttribute('data-tab')).toBe('offer');
+    expect(view.getAttribute('data-paging')).toBe('prev-next');
   });
 
-  it('links the next page with the filters kept, and says an empty page is not an empty queue', async () => {
-    const next = '1730000000000_0190a000-0000-7000-8000-0000000000e9';
-    mocks.get.mockResolvedValue(page([], next));
-    render(await ReviewQueuePage(search({ change: 'update' })));
-    expect(screen.getByText('empty page')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Next page' }).getAttribute('href')).toBe(
-      `/review?change=update&after=${next}`,
-    );
-  });
-
-  it('reads nothing without catalog.product.view, and still has a heading and a way back', async () => {
+  it('shows no list without catalog.product.view, and still has a heading and a way back', async () => {
     mocks.session.mockResolvedValue({ kind: 'ok', session: session([]) });
     render(await ReviewQueuePage(search()));
     expect(mocks.get).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('view')).toBeNull();
     expect(screen.getByText(messages.catalog.queue['no-access'])).toBeTruthy();
     expect(screen.getByRole('link', { name: messages.catalog.review['back-home'] })).toBeTruthy();
   });
 
-  it('treats a refused read as no access, an unavailable one as an error, and a signed-out one as ended', async () => {
-    mocks.get.mockResolvedValueOnce({ kind: 'forbidden' });
+  it('shows an error when the session cannot be read', async () => {
+    mocks.session.mockResolvedValue({ kind: 'unavailable' });
     render(await ReviewQueuePage(search()));
-    expect(screen.getByText(messages.catalog.queue['no-access'])).toBeTruthy();
-    cleanup();
-    mocks.get.mockResolvedValueOnce({ kind: 'unavailable' });
-    render(await ReviewQueuePage(search()));
-    expect(screen.getByText(messages.catalog.queue.unavailable)).toBeTruthy();
-    mocks.get.mockResolvedValueOnce({ kind: 'signed-out' });
-    await expect(ReviewQueuePage(search())).rejects.toThrow('redirect:/session-ended');
+    expect(screen.getByText(messages.identity.error.unknown)).toBeTruthy();
   });
 
   it('sends the old Offer reviews address to the Offers tab', () => {

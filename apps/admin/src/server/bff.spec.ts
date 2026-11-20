@@ -3044,6 +3044,50 @@ describe('relay of the wallet and step-up routes', () => {
     expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/topics');
   });
 
+  it('passes the review queue list keys in their shapes, and drops the rest', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/review-queue?kind=product-revision&sellerId=${id}&firstPublication=false&hasImages=true&page=2&pageSize=25&paging=pages&sort=submitted&direction=desc&q=oil&x=1`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/review-queue?kind=product-revision&sellerId=${id}&firstPublication=false&hasImages=true&page=2&pageSize=25&paging=pages&sort=submitted&direction=desc`,
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/review-queue?kind=offers&sellerId=nope&hasImages=false&page=0&sort=name&direction=up',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/review-queue');
+  });
+
+  it('passes the review queue export keys in their shapes, and never the sort or direction', async () => {
+    const { upstream } = await run(
+      'GET',
+      `catalog/admin/review-queue/export?format=xlsx&kind=offer-first-publication&sellerId=${id}&firstPublication=true&hasImages=true&sort=submitted&direction=desc&q=oil`,
+      readHeaders,
+    );
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/admin/review-queue/export?format=xlsx&kind=offer-first-publication&sellerId=${id}&firstPublication=true&hasImages=true`,
+    );
+    const bad = await run(
+      'GET',
+      'catalog/admin/review-queue/export?format=pdf&kind=offers&sellerId=nope&hasImages=false',
+      readHeaders,
+    );
+    expect(bad.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/review-queue/export',
+    );
+    const more = await run(
+      'GET',
+      'catalog/admin/review-queue/export?format=csv&kind=&sellerId=&firstPublication=false&page=1&pageSize=25&paging=pages',
+      readHeaders,
+    );
+    expect(more.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/review-queue/export?format=csv&firstPublication=false',
+    );
+  });
+
   it('passes only the action of the category impact read, in its shape, and no query on the tree', async () => {
     const { upstream } = await run(
       'GET',
