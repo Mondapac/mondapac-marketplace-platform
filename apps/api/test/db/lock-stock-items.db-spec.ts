@@ -31,6 +31,29 @@ const T0 = Temporal.Instant.from('2026-10-08T10:00:00Z');
 const at = (seconds: number): string => T0.add({ seconds }).toString();
 const NAME = 'inventory.lock-stock-items';
 
+/**
+ * Sent by a connection that holds a row lock in an open transaction: waits on the server until
+ * another session has waited at least 500 ms for one of its locks (or 10 s have passed), then
+ * commits. A unit that gives up sooner (a short lockTimeoutMs) does not end the wait.
+ */
+const RELEASE_AFTER_A_WAIT_OF_500_MS = `
+  DO $$
+  DECLARE
+    deadline timestamptz := clock_timestamp() + interval '10 seconds';
+  BEGIN
+    WHILE clock_timestamp() < deadline AND NOT EXISTS (
+      SELECT 1 FROM pg_stat_activity AS waiting
+       WHERE pg_backend_pid() = ANY (pg_blocking_pids(waiting.pid))
+         AND clock_timestamp() - waiting.query_start >= interval '500 milliseconds'
+    ) LOOP
+      PERFORM pg_sleep(0.01);
+      -- pg_stat_activity is read once per transaction unless the snapshot is cleared.
+      PERFORM pg_stat_clear_snapshot();
+    END LOOP;
+  END $$;
+  COMMIT;
+`;
+
 describe.each(TEST_MARKETS)('inventory.lock-stock-items in market %s (database)', (code) => {
   const market = marketOf(code);
   const otherCode = otherMarketOf(code);
@@ -242,33 +265,40 @@ describe.each(TEST_MARKETS)('inventory.lock-stock-items in market %s (database)'
     it('applies the timeout to the unit that asks for it, and a later unit without it is not affected', async () => {
       const { items } = await newItems(1);
       const wanted = [items[0]!.id];
-      const holding = gate();
-      const locked = gate();
-      const holder = db.unitOfWork.run(market, async () => {
-        await lock(market, wanted);
-        locked.open();
-        await holding.opened;
-        return ok(null);
-      });
-      await locked.opened;
+      // The holder is a plain connection, and PostgreSQL itself ends its transaction once a unit
+      // has waited 500 ms for the row. The later unit has only the role's 3 s lock_timeout: a
+      // holder released from this process (a timer, then COMMIT) could be held up past that by a
+      // pause of this Jest worker on a busy CI runner, and the unit would end with 55P03 for a
+      // reason that is not the option under test.
+      const holderSql = new Client({ connectionString: testDatabaseUrl() });
+      await holderSql.connect();
+      try {
+        await holderSql.query('BEGIN');
+        await holderSql.query(
+          'SELECT id FROM inventory.stock_items WHERE id = $1 FOR NO KEY UPDATE',
+          wanted,
+        );
+        const holder = holderSql.query(RELEASE_AFTER_A_WAIT_OF_500_MS);
 
-      const short = await timed(
-        db.unitOfWork.run(market, async () => ok(await lock(market, wanted)), {
-          lockTimeoutMs: 150,
-        }),
-      );
-      // The same pooled connection serves the next unit: `SET LOCAL` ended with the first.
-      const release = setTimeout(() => holding.open(), 700);
-      const patient = await timed(
-        db.unitOfWork.run(market, async () => ok(await lock(market, wanted))),
-      );
-      clearTimeout(release);
-      await holder;
+        const short = await timed(
+          db.unitOfWork.run(market, async () => ok(await lock(market, wanted)), {
+            lockTimeoutMs: 150,
+          }),
+        );
+        // The same pooled connection serves the next unit: `SET LOCAL` ended with the first.
+        const patient = await timed(
+          db.unitOfWork.run(market, async () => ok(await lock(market, wanted))),
+        );
+        await holder;
 
-      expect(short.error).toEqual(new TransactionConflictError('55P03'));
-      expect(short.ms).toBeLessThan(1500);
-      expect(patient.error).toBeUndefined();
-      expect(patient.ms).toBeGreaterThanOrEqual(500);
+        expect(short.error).toEqual(new TransactionConflictError('55P03'));
+        expect(short.ms).toBeLessThan(1500);
+        expect(patient.error).toBeUndefined();
+        expect(patient.ms).toBeGreaterThanOrEqual(500);
+      } finally {
+        await holderSql.query('ROLLBACK').catch(() => undefined);
+        await holderSql.end();
+      }
     });
 
     it('does not block the foreign-key checks of a ledger row on a locked item (FOR NO KEY UPDATE)', async () => {
