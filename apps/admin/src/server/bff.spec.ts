@@ -3108,6 +3108,14 @@ describe('relay of the wallet and step-up routes', () => {
     expect(file.upstream.mock.calls[0]?.[0]).toBe(
       `http://api.test/commission-payouts/admin/disputes/export?format=xlsx&columns=reason%2Cseller-ids&ids=${id}&view=closed`,
     );
+    // A malformed narrowing key of the export refuses the file instead of widening it.
+    const wide = await run(
+      'GET',
+      'commission-payouts/admin/disputes/export?format=csv&sellerId=nope',
+      readHeaders,
+    );
+    expect(wide.response.status).toBe(400);
+    expect(wide.upstream).not.toHaveBeenCalled();
   });
 
   it('passes the held-price super list query and its export in shape, dropping the rest', async () => {
