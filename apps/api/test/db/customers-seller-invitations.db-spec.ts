@@ -2,7 +2,7 @@ import { ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock } from '@mondapac/shared-kernel/testing';
 import { Client } from 'pg';
-import type { AttributionSelector } from '../../src/modules/customers/application/ports/seller-invitations.repository';
+import type { ZonedAttributionSelector } from '../../src/modules/customers/application/ports/seller-invitations.repository';
 import type {
   InviteLink,
   SellerAttribution,
@@ -33,7 +33,7 @@ const UNIQUE = '23505';
 const FOREIGN_KEY = '23503';
 const ids = new UuidV7IdGenerator(new FixedClock(T0));
 
-const ALL: AttributionSelector = {
+const ALL: ZonedAttributionSelector = {
   view: 'all',
   emailPrefix: null,
   sellerId: null,
@@ -42,6 +42,7 @@ const ALL: AttributionSelector = {
   flag: null,
   attributedFrom: null,
   attributedTo: null,
+  dayZone: 'UTC',
 };
 
 let tokenCount = 0;
@@ -351,9 +352,30 @@ describe.each(TEST_MARKETS)(
           active: 0,
           rejected: 0,
         });
+        // The admin's monthly trend: active attributions per window, rejected ones left out.
+        const windows = [
+          { from: T0.subtract({ hours: 24 }), to: T0 },
+          { from: T0, to: T0.add({ hours: 48 }) },
+        ];
+        expect(
+          await inUnit(market, () =>
+            attributions.activeCountsOfSellerBetween(market, shop, windows),
+          ),
+        ).toEqual([0, 1]);
+        expect(
+          await inUnit(market, () =>
+            attributions.activeCountsOfSellerBetween(market, rival, [
+              { from: T0, to: T0.add({ hours: 1 }) },
+              { from: T0.add({ hours: 1 }), to: T0.add({ hours: 2 }) },
+            ]),
+          ),
+        ).toEqual([0, 1]);
+        expect(
+          await inUnit(other, () => attributions.activeCountsOfSellerBetween(other, shop, windows)),
+        ).toEqual([0, 0]);
 
         const mine = { ...ALL, emailPrefix: prefix };
-        const accounts = (selector: AttributionSelector, direction: 'asc' | 'desc' = 'desc') =>
+        const accounts = (selector: ZonedAttributionSelector, direction: 'asc' | 'desc' = 'desc') =>
           inUnit(market, () =>
             attributions.page(market, selector, direction, { offset: 0, limit: 10 }),
           ).then((rows) => rows.map((row) => row.accountId));
@@ -367,6 +389,14 @@ describe.each(TEST_MARKETS)(
         expect(await accounts({ ...mine, rejectReason: 'seller-team' })).toEqual([staff]);
         expect(await accounts({ ...mine, attributedFrom: '2026-11-18' })).toEqual([staff]);
         expect(await accounts({ ...mine, attributedTo: '2026-11-17' })).toEqual([bob, alice]);
+        // The days are cut in the query's zone: 04:00 and 05:00 UTC on the 17th are the 16th in
+        // Los Angeles, and staff's 05:00 UTC on the 18th is the 17th there.
+        const pacific = { ...mine, dayZone: 'America/Los_Angeles' };
+        expect(await accounts({ ...pacific, attributedTo: '2026-11-16' })).toEqual([bob, alice]);
+        expect(await accounts({ ...pacific, attributedFrom: '2026-11-17' })).toEqual([staff]);
+        expect(
+          await accounts({ ...pacific, attributedFrom: '2026-11-17', attributedTo: '2026-11-17' }),
+        ).toEqual([staff]);
         expect(await inUnit(market, () => attributions.count(market, mine))).toBe(3);
         expect(await inUnit(market, () => attributions.accountIds(market, mine, 2))).toEqual([
           staff,

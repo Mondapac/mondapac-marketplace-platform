@@ -152,28 +152,43 @@ export function ActionMenu({
     run();
   };
 
+  // A disabled button takes neither hover nor focus, so its reason would never reach a keyboard or
+  // screen-reader user: the button sits in a focusable wrapper that carries the hint as its title
+  // and its accessible description.
+  const explained = disabled === true && hint !== undefined;
+  const hintId = `${menuId}-hint`;
   return (
     <div className="inline-block">
-      <button
-        ref={trigger}
-        type="button"
-        aria-haspopup="menu"
-        aria-expanded={open}
-        aria-controls={open ? menuId : undefined}
-        disabled={disabled}
-        title={hint}
-        onClick={() => setOpen((value) => !value)}
-        onKeyDown={(event) => {
-          if (event.key === 'ArrowDown' && !open && !disabled) {
-            event.preventDefault();
-            setOpen(true);
-          }
-        }}
-        className="inline-flex h-(--mp-size-control) items-center justify-center gap-2 rounded-md border border-line-control bg-surface px-4 font-medium text-fg hover:bg-muted disabled:cursor-not-allowed disabled:text-fg-muted disabled:hover:bg-surface"
+      <span
+        className="inline-block rounded-md focus-visible:outline-2 focus-visible:outline-focus"
+        {...(explained ? { tabIndex: 0, title: hint, 'aria-describedby': hintId } : {})}
       >
-        {label}
-        <Icon name="chevron-down" className="text-icon" />
-      </button>
+        <button
+          ref={trigger}
+          type="button"
+          aria-haspopup="menu"
+          aria-expanded={open}
+          aria-controls={open ? menuId : undefined}
+          disabled={disabled}
+          title={explained ? undefined : hint}
+          onClick={() => setOpen((value) => !value)}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowDown' && !open && !disabled) {
+              event.preventDefault();
+              setOpen(true);
+            }
+          }}
+          className="inline-flex h-(--mp-size-control) items-center justify-center gap-2 rounded-md border border-line-control bg-surface px-4 font-medium text-fg hover:bg-muted disabled:cursor-not-allowed disabled:text-fg-muted disabled:hover:bg-surface"
+        >
+          {label}
+          <Icon name="chevron-down" className="text-icon" />
+        </button>
+        {explained ? (
+          <span id={hintId} className="sr-only">
+            {hint}
+          </span>
+        ) : null}
+      </span>
       {open
         ? createPortal(
             <div

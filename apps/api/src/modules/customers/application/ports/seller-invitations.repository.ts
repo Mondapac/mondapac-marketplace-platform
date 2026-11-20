@@ -48,9 +48,17 @@ export interface AttributionSelector {
   readonly status: AttributionStatus | null;
   readonly rejectReason: AttributionRejectReason | null;
   readonly flag: AttributionFlag | null;
-  /** `YYYY-MM-DD` (UTC days), inclusive. */
+  /** `YYYY-MM-DD`, inclusive, read in the zone of the query (see {@link ZonedAttributionSelector}). */
   readonly attributedFrom: string | null;
   readonly attributedTo: string | null;
+}
+
+/**
+ * A selector with the IANA zone its days are read in (ADR-0005): the calling admin's own panel
+ * zone, else the Market's (`AdminDayZone`). Never UTC by default.
+ */
+export interface ZonedAttributionSelector extends AttributionSelector {
+  readonly dayZone: string;
 }
 
 export const ATTRIBUTION_VIEWS = ['suspicious', 'all', 'active', 'rejected'] as const;
@@ -89,6 +97,16 @@ export interface SellerAttributionRepository {
     since: Temporal.Instant,
   ): Promise<number>;
 
+  /**
+   * The seller's active attributions recorded in each window `[from, to)` (the admin's monthly
+   * trend of new exclusive customers); a window with none is 0. Rejected ones are not counted.
+   */
+  activeCountsOfSellerBetween(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ): Promise<readonly number[]>;
+
   /** The seller's attributions by status (every link of the seller). */
   countsOfSeller(
     market: MarketContext,
@@ -98,12 +116,12 @@ export interface SellerAttributionRepository {
   /** One page of the admin list by attribution instant (the account as tie-break). */
   page(
     market: MarketContext,
-    selector: AttributionSelector,
+    selector: ZonedAttributionSelector,
     direction: 'asc' | 'desc',
     window: { readonly offset: number; readonly limit: number },
   ): Promise<readonly AttributionListRecord[]>;
 
-  count(market: MarketContext, selector: AttributionSelector): Promise<number>;
+  count(market: MarketContext, selector: ZonedAttributionSelector): Promise<number>;
 
   /** The size of every view (ignoring the search and filters). */
   viewCounts(market: MarketContext): Promise<Readonly<Record<AttributionView, number>>>;
@@ -111,7 +129,7 @@ export interface SellerAttributionRepository {
   /** The accounts the selector matches, newest first, at most `limit`. */
   accountIds(
     market: MarketContext,
-    selector: AttributionSelector,
+    selector: ZonedAttributionSelector,
     limit: number,
   ): Promise<readonly Id<'Account'>[]>;
 

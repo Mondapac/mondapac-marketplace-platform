@@ -145,8 +145,9 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
     and feature-set edits (a slug change and an image carry redirect and storage effects a revert
     cannot undo cleanly). Imports run unreviewed.
 
-- **shipping** (area delivery, medium risk by default, on by default): only changes that can be
-  put back are reviewed; creating, deleting, merging, moving and importing are not.
+- **shipping** (area delivery, medium risk by default, on by default): changes that can be put
+  back are reviewed after; creating a fleet-selection model waits for approval (below); deleting,
+  merging, moving and importing are not reviewed.
   - `shipping.delivery-settings` (subject `delivery-settings`): the save of the Market's delivery
     settings (`PUT /shipping/admin/delivery-settings`). Values: the saved set without its version
     (`enabled` per method, `sameDayCutoffMinutes`, `scheduledDaysAhead`, `scheduledWindowMinutes`,
@@ -169,6 +170,23 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
     `changed-since`.
   - Every write takes `note` in the body (closed key list) and answers `request: {id, number} |
     null`; the page reads carry `review: {reviewed, risk}` so the panel asks for a note.
+  - Wait for approval (applier, owner decision of 18 Nov 2026, "mixed"):
+    `shipping.fleet-selection-model-create` (key `shipping.fleet-selection.manage`, the create
+    route's key): a model has no delete, so its create cannot be undone by a reviewer.
+    `POST /shipping/admin/fleet-selection/models` takes `note`; where the Market reviews delivery
+    it checks the input and that no model of the Market has the name (any case), then files the
+    proposal and answers HTTP 202 `{request: {id, number}}` with nothing written in shipping; 409
+    `system-requests.already-pending` (`details.pendingNumber`) while a proposal of the same name
+    waits. Subject = the name as the Market compares it (NFC, trimmed, lower case), spelled
+    `name:<a-z0-9- kept, any other character as _<hex code point>.>`, or `name-sha256:<hex>` when
+    that is over 128 characters (a long name in another script). `before` = `{exists: false}`,
+    `after` = `{action: 'create', name, rule}`. The applier's `check` asks the authorisation port
+    that the approver holds the key (outside the unit) and that the values still validate (fail
+    closed: `not-permitted`); `apply` creates the model as the approver through the route's
+    in-unit function, audits `shipping.fleet-model.created` with `requestId` (null for a create
+    done at once), and answers `changed-since` when a model took the name meanwhile and `gone`
+    for values that are not a proposed model of the subject. The fleets page asks for the note
+    and shows "Send for approval" on the create form from the page's `review`.
 - Every money opening passes risk `high`, whatever the area's policy says, so the reviewer's
   step-up is spent before a revert writes.
 - **certification** (area certification, the area's risk): kind `certification.type-revision`
@@ -199,6 +217,18 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
   lacks (or the Platform Administrator role) or enable an admin is `not-permitted`; a narrowing
   revert keeps the last Platform Administrator (else `not-permitted`). Audited as
   `identity.role.reverted`, `identity.account-role.reverted`, `identity.account-status.reverted`.
+  Since 18 Nov ("mixed"): `POST identity/admin/roles` (kind `identity.platform-role-creation`,
+  values `{exists: false}` / `{exists: true, name, permissionKeys}`; a reject deletes the role only
+  while nobody holds it and its keys are unchanged) and `POST identity/admin/invitations` (kind
+  `identity.admin-invitation`, subject = invitation id, values `{exists: false}` /
+  `{exists: true, roleId}`, never the address; a reject revokes it while pending, or disables the
+  admin who accepted it and ends their sessions) take `note`, are reviewed after and answer
+  `request`. `DELETE identity/admin/roles/:roleId` waits for approval (kind
+  `identity.platform-role-deletion`, applier key `identity.platform-role.delete`): `note` in the
+  body, 202 `{code: 'role.delete-requested', roleId, request}`, 409
+  `system-requests.already-pending`; the approval deletes the role only while unchanged (name,
+  keys, version) and unheld. Revoking an invitation is not reviewed. Details: identity notes,
+  "Creations and the role delete in System requests".
 
 ### Known limits (follow-ups)
 
@@ -250,10 +280,21 @@ unit, so a reverter can keep a counted guard (identity's last Platform Administr
   takes the account's credential lock and the request's row in the opposite order. Postgres
   breaks it (40P01) and the unit of work's bounded retry runs the loser again, so nobody sees an
   error; under sustained contention the retries can run out and the call fails (to be repeated).
-- Inviting or creating an admin, and creating a platform role, are not reviewed (owner decision):
-  they are the cheapest way around the people review (create a wide role and invite into it
-  instead of widening an existing one). A follow-up to review them, or to require an approved
-  request before the new admin's first sign-in, is tracked.
+- Creating a platform role and inviting an admin are reviewed after since 18 Nov, so they go
+  live at once: an invitee can accept and sign in before the review, and a reject then disables
+  the account. Holding the first sign-in until the invitation's request is approved is a
+  follow-up. A created role that someone was given meanwhile cannot be deleted by a reject
+  (`not-permitted`): reject the role assignment first. The hourly purge never deletes an accepted
+  admin invitation (Hassan M1 on PR #1058), so a reject still reaches the admin it created however
+  late it comes; an invitation that is `gone` is one that was never accepted and has expired.
+- An admin invitation to a sensitive role (the Platform Administrator, or a role with a protected
+  key) waits for approval since 18 Nov 14:06Z (`identity.admin-invitation-sensitive`): identity
+  holds the invitation, address included, and sends nothing until the approval. A reject or
+  withdraw asks identity nothing, so the held row stays pending (still blocking a new invitation
+  to that address) until the inviter revokes it or it passes the admin invitation lifetime, after
+  which it is replaced or purged; an approval after that lifetime answers `gone`. Identity cannot
+  release it on its own when the proposal closes: the port has no proposal read and no decision
+  event (follow-up, Hassan on PR #1081).
 
 ## Actions that wait for approval (approval mode)
 
@@ -292,8 +333,10 @@ a merge or an import cannot be undone cleanly, so it waits for another admin's a
 - Migration `20261118100000_system_requests_approval_mode`: `requests.mode` (no update grant), the
   CHECK and partial unique index above, activity kind `proposed`. Its `down.sql` refuses to run
   while any proposal exists.
-- Which actions use it, per module, and their panel pages: catalog (see "Hooked areas"); the
-  other modules are follow-up PRs (plan in the project files,
+- Which actions use it, per module, and their panel pages: catalog and shipping (the create of
+  a fleet-selection model on the delivery fleets page; see "Hooked areas"); area people: the
+  custom platform role delete, and an admin invitation to a sensitive role (identity notes,
+  2026-11-18); the other modules are follow-up PRs (plan in the project files,
   `handoffs/system-requests/deferred-hooks-plan.md`).
 
 ## Supersession and locks

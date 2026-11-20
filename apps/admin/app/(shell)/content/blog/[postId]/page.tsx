@@ -4,6 +4,7 @@ import { getTranslations } from 'next-intl/server';
 import { PostEditor } from '../../../../../src/blog/editor/post-editor.tsx';
 import {
   BLOG_EDIT_PERMISSION,
+  BLOG_MEDIA_EDIT_PERMISSION,
   BLOG_READ_PERMISSION,
   BLOG_REVIEW_PERMISSION,
 } from '../../../../../src/blog/types.ts';
@@ -43,6 +44,7 @@ export default async function BlogPostPage({
         postId={postId}
         canEdit={permissionKeys.includes(BLOG_EDIT_PERMISSION)}
         canReview={permissionKeys.includes(BLOG_REVIEW_PERMISSION)}
+        canUploadMedia={permissionKeys.includes(BLOG_MEDIA_EDIT_PERMISSION)}
         csrfToken={csrfToken}
         zone={displayZone(marketTimezone)}
       />

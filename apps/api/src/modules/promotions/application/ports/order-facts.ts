@@ -17,6 +17,11 @@ export interface DeliveredSellerOrderFacts {
    * refunds gave back, before shipping and tax.
    */
   readonly goodsPaid: Money;
+  /**
+   * The same goods counting only refunds that succeeded (a pending refund may still fail): what a
+   * refund's clawback counts, so it never takes back for goods not yet given back (Hassan L-9).
+   */
+  readonly goodsKeptSettled: Money;
   /** Whether the seller was the customer's exclusive seller at checkout (frozen on its lines). */
   readonly exclusiveSeller: boolean;
   readonly placedAt: Temporal.Instant;

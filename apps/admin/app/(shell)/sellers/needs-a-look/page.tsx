@@ -1,15 +1,13 @@
 import { LoadError } from '@mondapac/ui';
-import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
+import { headers } from 'next/headers';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
+import { panelHostFor } from '../../../../src/server/bff.ts';
+import { panelConfig } from '../../../../src/server/config.ts';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
 import { HealthQueue } from '../../../../src/sellers/health-queue.tsx';
-import {
-  HEALTH_QUEUE_PATH,
-  SELLER_VIEW_PERMISSION,
-  type HealthQueueRead,
-} from '../../../../src/sellers/health-types.ts';
+import { SELLER_VIEW_PERMISSION } from '../../../../src/sellers/health-types.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -40,23 +38,17 @@ export default async function SellersNeedingALookPage() {
       </div>
     );
   } else {
-    const read = await serverGet<HealthQueueRead>(HEALTH_QUEUE_PATH);
-    if (read.kind === 'signed-out') redirect('/session-ended');
-    body =
-      read.kind === 'ok' ? (
-        <>
-          {/* An empty queue is a page-size empty state, whose title is the h1. */}
-          {read.body.items.length === 0 ? null : (
-            <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
-          )}
-          <HealthQueue queue={read.body} />
-        </>
-      ) : (
-        <>
-          <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
-          <LoadError message={t('sellers.health-queue.unavailable')} retryLabel={t('load.retry')} />
-        </>
-      );
+    // List paging (settings): page numbers only when the Market says so; a value that cannot be
+    // read means Previous and next.
+    const mode = await serverGet<{ readonly listPaging: string }>('settings/admin/list-paging');
+    const paging = mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
+    const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
+    body = (
+      <>
+        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+        <HealthQueue paging={paging} accountId={gate.session.accountId} marketId={marketId} />
+      </>
+    );
   }
   return (
     <AdminShell session={gate.session} activeId="sellers" title={title}>

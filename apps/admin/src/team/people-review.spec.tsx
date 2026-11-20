@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { toast, Toaster } from '@mondapac/ui';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -12,6 +12,7 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 import { callApi } from '../api/client.ts';
 import { RoleEditor } from '../roles/role-editor.tsx';
 import type { RoleCatalogue, RoleRecord } from '../roles/types.ts';
+import { InviteAdminDialog } from './role-dialog.tsx';
 import { RowActions, type RowTarget } from './row-actions.tsx';
 import type { PlatformRole } from './types.ts';
 
@@ -132,7 +133,7 @@ describe('change role in a reviewed Market', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText('Sent for review as SR-42')).toBeTruthy();
+    expect(await screen.findByText('Sent for review (SR-42)')).toBeTruthy();
     expect(screen.getByText(/role is changed/)).toBeTruthy();
   });
 
@@ -177,7 +178,7 @@ describe('reactivate and deactivate in a reviewed Market', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText('Sent for review as SR-42')).toBeTruthy();
+    expect(await screen.findByText('Sent for review (SR-42)')).toBeTruthy();
     expect(screen.getByText(/is active again/)).toBeTruthy();
   });
 
@@ -281,9 +282,123 @@ describe('role editor in a reviewed Market', () => {
     expect(call.mock.calls[0]?.[2]).not.toHaveProperty('note');
   });
 
-  it('does not ask for a note when creating a role', () => {
+  it('asks for a note when creating a role, sends it trimmed and announces the review on the new page', async () => {
+    const flash = vi.spyOn(toast, 'flash').mockReturnValue(undefined);
+    call.mockResolvedValue({
+      ok: true,
+      status: 201,
+      body: { code: 'role.created', roleId: ID, request },
+    });
     mount(true, false);
+    fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Support' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create role' }));
+    expect(call).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Write a note for the reviewers/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(NOTE_FIELD), { target: { value: ' For support ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create role' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        'identity/admin/roles',
+        { name: 'Support', permissionKeys: [], note: 'For support' },
+        'csrf-1',
+      ),
+    );
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/settings/roles/${ID}`));
+    expect(flash).toHaveBeenCalledWith('info', 'Sent for review (SR-42)');
+    flash.mockRestore();
+  });
+
+  it('creates with no note where the area is not reviewed', async () => {
+    call.mockResolvedValue({ ok: true, status: 201, body: { code: 'role.created', roleId: ID } });
+    mount(false, false);
     expect(screen.queryByLabelText(NOTE_FIELD)).toBeNull();
+    fireEvent.change(screen.getByLabelText('Role name'), { target: { value: 'Support' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create role' }));
+    await waitFor(() => expect(call).toHaveBeenCalled());
+    expect(call.mock.calls[0]?.[2]).not.toHaveProperty('note');
+  });
+
+  const askDelete = () => {
+    fireEvent.click(screen.getByRole('button', { name: 'Delete role' }));
+  };
+  /** The dialog's confirm: "Send for approval" where reviewed, "Delete role" otherwise. */
+  const confirmDelete = () =>
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', {
+        name: /^(Send for approval|Delete role)$/,
+      }),
+    );
+
+  it('a delete asks for a note, and on 202 says it was sent for approval and keeps the role', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 202,
+      body: { code: 'role.delete-requested', roleId: ID, request },
+    });
+    mount(true);
+    askDelete();
+    const dialog = within(screen.getByRole('dialog'));
+    // Nothing is deleted until a second admin approves: the dialog says so and asks for approval.
+    expect(
+      dialog.getByText(/Nothing is deleted yet: another admin must approve this/),
+    ).toBeTruthy();
+    expect(dialog.queryByText(/can't be undone/)).toBeNull();
+    expect(dialog.getByRole('button', { name: 'Send for approval' })).toBeTruthy();
+    expect(dialog.queryByRole('button', { name: 'Delete role' })).toBeNull();
+    confirmDelete();
+    expect(call).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Write a note for the reviewers/)).toBeTruthy();
+    const deleteNote = within(screen.getByRole('dialog')).getByLabelText(NOTE_FIELD);
+    fireEvent.change(deleteNote, { target: { value: ' Not used ' } });
+    confirmDelete();
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'DELETE',
+        `identity/admin/roles/${ID}`,
+        { expectedVersion: 2, note: 'Not used' },
+        'csrf-1',
+      ),
+    );
+    expect(await screen.findByText('Sent for approval (SR-42)')).toBeTruthy();
+    expect(router.push).not.toHaveBeenCalled();
+    expect(router.refresh).toHaveBeenCalled();
+  });
+
+  it('says which request a delete already waits on (409)', async () => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: {
+        status: 409,
+        code: 'system-requests.already-pending',
+        details: { pendingNumber: 7 },
+      },
+    });
+    mount(true);
+    askDelete();
+    fireEvent.change(within(screen.getByRole('dialog')).getByLabelText(NOTE_FIELD), {
+      target: { value: 'Again' },
+    });
+    confirmDelete();
+    expect(await screen.findByText('This is already waiting for approval (SR-7).')).toBeTruthy();
+    expect(router.push).not.toHaveBeenCalled();
+  });
+
+  it('deletes at once, with no note, where the area is not reviewed', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { code: 'role.deleted', roleId: ID, request: null },
+    });
+    mount(false);
+    askDelete();
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.queryByLabelText(NOTE_FIELD)).toBeNull();
+    expect(dialog.getByText(/This can't be undone/)).toBeTruthy();
+    expect(dialog.queryByRole('button', { name: 'Send for approval' })).toBeNull();
+    confirmDelete();
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith('/settings/roles'));
+    expect(call.mock.calls[0]?.[2]).toEqual({ expectedVersion: 2 });
   });
 
   it('requires the note, then sends it trimmed and announces the request', async () => {
@@ -307,7 +422,7 @@ describe('role editor in a reviewed Market', () => {
         'csrf-1',
       ),
     );
-    expect(await screen.findByText('Sent for review as SR-42')).toBeTruthy();
+    expect(await screen.findByText('Sent for review (SR-42)')).toBeTruthy();
     expect(screen.getByText(/Saved\./)).toBeTruthy();
   });
 
@@ -325,5 +440,160 @@ describe('role editor in a reviewed Market', () => {
     fireEvent.change(screen.getByLabelText(NOTE_FIELD), { target: { value: 'Because' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findAllByText(/The note was refused/)).not.toHaveLength(0);
+  });
+});
+
+describe('invite an admin in a reviewed Market', () => {
+  const dialog = (reviewed: boolean) =>
+    wrap(
+      <InviteAdminDialog
+        open
+        onClose={() => undefined}
+        roles={roles}
+        csrfToken="csrf-1"
+        reviewed={reviewed}
+      />,
+    );
+  const fill = () => {
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@example.com' } });
+    fireEvent.change(screen.getByLabelText('Role'), { target: { value: 'r-finance' } });
+  };
+
+  it('requires the note, then sends it trimmed and announces the request', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 201,
+      body: { code: 'invitation.issued', invitationId: ID, request },
+    });
+    dialog(true);
+    fill();
+    fireEvent.click(screen.getByRole('button', { name: 'Send invitation' }));
+    expect(call).not.toHaveBeenCalled();
+    expect(await screen.findByText(/Write a note for the reviewers/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(NOTE_FIELD), { target: { value: ' Joins support ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send invitation' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        'identity/admin/invitations',
+        { email: 'new@example.com', roleId: 'r-finance', note: 'Joins support' },
+        'csrf-1',
+      ),
+    );
+    expect(await screen.findByText('Sent for review (SR-42)')).toBeTruthy();
+  });
+
+  it('shows a 400 on the note inline', async () => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: { status: 400, code: 'validation.failed', details: { fields: [{ path: 'note' }] } },
+    } as never);
+    dialog(true);
+    fill();
+    fireEvent.change(screen.getByLabelText(NOTE_FIELD), { target: { value: 'Because' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send invitation' }));
+    expect(await screen.findAllByText(/The note was refused/)).not.toHaveLength(0);
+  });
+
+  it('has no note field and sends none where the Market does not review', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 201,
+      body: { code: 'invitation.issued', invitationId: ID, request: null },
+    });
+    dialog(false);
+    expect(screen.queryByLabelText(NOTE_FIELD)).toBeNull();
+    fill();
+    fireEvent.click(screen.getByRole('button', { name: 'Send invitation' }));
+    await waitFor(() => expect(call).toHaveBeenCalled());
+    expect(call.mock.calls[0]?.[2]).toEqual({ email: 'new@example.com', roleId: 'r-finance' });
+  });
+});
+
+describe('invite with a sensitive role: it waits for approval (owner decision of 18 Nov 2026)', () => {
+  const withSensitive: PlatformRole[] = [
+    ...roles,
+    {
+      roleId: 'r-admin',
+      kind: 'system',
+      seedCode: 'platform-administrator',
+      permissionCount: 90,
+      grantable: true,
+      sensitive: true,
+    },
+  ];
+  const APPROVAL_TEXT = /another admin must approve the invitation/;
+  const dialog = (reviewed: boolean) =>
+    wrap(
+      <InviteAdminDialog
+        open
+        onClose={() => undefined}
+        roles={withSensitive}
+        csrfToken="csrf-1"
+        reviewed={reviewed}
+      />,
+    );
+  const fill = (roleId: string) => {
+    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'new@example.com' } });
+    fireEvent.change(screen.getByLabelText('Role'), { target: { value: roleId } });
+  };
+
+  it('says it waits for approval, asks "Send for approval", and on 202 announces the request only', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 202,
+      body: { code: 'invitation.proposed', invitationId: ID, request },
+    });
+    dialog(true);
+    fill('r-admin');
+    expect(screen.getByText(APPROVAL_TEXT)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Send invitation' })).toBeNull();
+    fireEvent.change(screen.getByLabelText(NOTE_FIELD), {
+      target: { value: ' Second administrator ' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        'identity/admin/invitations',
+        { email: 'new@example.com', roleId: 'r-admin', note: 'Second administrator' },
+        'csrf-1',
+      ),
+    );
+    expect(await screen.findByText('Sent for approval (SR-42)')).toBeTruthy();
+    // Nothing was sent: no "Invitation sent" toast, no review toast.
+    expect(screen.queryByText(/Invitation sent to/)).toBeNull();
+    expect(screen.queryByText(/Sent for review/)).toBeNull();
+  });
+
+  it('keeps "Send invitation" and no approval text for a role that is not sensitive', () => {
+    dialog(true);
+    fill('r-finance');
+    expect(screen.queryByText(APPROVAL_TEXT)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Send invitation' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Send for approval' })).toBeNull();
+  });
+
+  it('invites at once where the Market does not review people, even for a sensitive role', () => {
+    dialog(false);
+    fill('r-admin');
+    expect(screen.queryByText(APPROVAL_TEXT)).toBeNull();
+    expect(screen.getByRole('button', { name: 'Send invitation' })).toBeTruthy();
+  });
+
+  it('says which request it already waits on (409)', async () => {
+    call.mockResolvedValue({
+      ok: false,
+      failure: {
+        status: 409,
+        code: 'system-requests.already-pending',
+        details: { pendingNumber: 7 },
+      },
+    } as never);
+    dialog(true);
+    fill('r-admin');
+    fireEvent.change(screen.getByLabelText(NOTE_FIELD), { target: { value: 'Again' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send for approval' }));
+    expect(await screen.findByText('This is already waiting for approval (SR-7).')).toBeTruthy();
   });
 });

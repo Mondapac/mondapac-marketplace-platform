@@ -263,6 +263,53 @@ describe.each(TEST_MARKETS)('catalog attribute suggestions in market %s (databas
         store.listOfSeller(other, lister, { status: null, afterId: null, limit: 10 }),
       ),
     ).toEqual([]);
+
+    // The numbered read: sort, search (a wildcard as typed), counts, and the other Market.
+    const numbered = (
+      sort: 'created' | 'status' | 'label',
+      direction: 'asc' | 'desc',
+      text: string | null = null,
+      status: 'open' | 'rejected' | null = null,
+      offset = 0,
+      limit = 10,
+    ) =>
+      read(market, () =>
+        store.pageOfSeller(market, lister, { status, text, sort, direction, offset, limit }),
+      );
+    expect((await numbered('created', 'desc')).map((row) => row.state.id)).toEqual([
+      third,
+      second,
+      first,
+    ]);
+    expect((await numbered('created', 'asc', null, null, 1, 1)).map((row) => row.state.id)).toEqual(
+      [second],
+    );
+    expect((await numbered('label', 'asc')).map((row) => row.state.id)).toEqual([
+      first,
+      second,
+      third,
+    ]);
+    expect((await numbered('label', 'desc')).map((row) => row.state.id)).toEqual([
+      third,
+      second,
+      first,
+    ]);
+    expect((await numbered('status', 'asc')).map((row) => row.state.id)).toEqual([
+      third,
+      first,
+      second,
+    ]);
+    expect((await numbered('created', 'desc', 'SEC')).map((row) => row.state.id)).toEqual([second]);
+    expect(await numbered('created', 'desc', '%')).toEqual([]);
+    expect(await numbered('created', 'desc', '_')).toEqual([]);
+    const count = (text: string | null, status: 'open' | 'rejected' | null = null) =>
+      read(market, () => store.countOfSeller(market, lister, { status, text }));
+    expect(await count(null)).toBe(3);
+    expect(await count(null, 'open')).toBe(2);
+    expect(await count('s')).toBe(2);
+    expect(
+      await read(other, () => store.countOfSeller(other, lister, { status: null, text: null })),
+    ).toBe(0);
   });
 
   it('serves due notices and moves a notice only out of pending', async () => {

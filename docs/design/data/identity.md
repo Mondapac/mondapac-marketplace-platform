@@ -566,6 +566,7 @@ timestamptz(6) NOT NULL`, the credential's `changed_at` at issue, which the clos
 | `seller_id` | `uuid` | yes | FK to `seller_access`, RESTRICT. CHECK `(kind = 'admin') = (seller_id IS NULL)` |
 | `invited_by_account_id` | `uuid` | yes | C4; NULL for the first-admin routine, whose acceptance is refused once the Market has an active Platform Administrator (HF5 (b), 3.9) |
 | `token_hash`, `expires_at` | `bytea`, `timestamptz(6)` | yes | Set together at dispatch (CHECK); a re-send replaces both. Lifetime 7 days, `admin` 72 hours (HF15) |
+| `held_for_approval` | `boolean` | no | Default `false`. An admin invitation to a sensitive role (the Platform Administrator, or a role with a protected key) waiting for another admin's approval in System requests: no issue event, never dispatched or re-sent until the approval releases it (owner decision of 18 Nov 2026). CHECK `invitations_held_for_approval_check`: `NOT held_for_approval OR (state = 'pending' AND kind = 'admin' AND token_hash IS NULL)`. Migration `20261118140600_identity_invitation_held_for_approval`; its `down.sql` refuses while a row is held. A held row is purged as any never-dispatched one, once older than its kind's lifetime |
 | `state` | `text` | no | CHECK `pending`, `accepted`, `revoked`. `expired` is not stored: it is `pending` past `expires_at`, decided at read time |
 | `decided_at`, `accepted_account_id` | `timestamptz(6)`, `uuid` | yes | CHECK `(state = 'pending') = (decided_at IS NULL)`; CHECK `(state = 'accepted') = (accepted_account_id IS NOT NULL)` |
 | `version`, `created_at` | | no | C5 |
@@ -885,7 +886,7 @@ measured; at these row counts every table is far below the point where partition
 | `sign_in_records` | 10³ to 10⁴ a day, so at most about 10⁶ at 90 days | Daily-slice deletes. Revisit at 5 × 10⁷ rows: monthly range partitions on `occurred_at`, dropped whole |
 | `sign_in_throttles` | One row per key and window: hundreds normally; under attack one per address or IPv6 /64 tried, for 48 hours | Hourly purge; an index `(market_id, window_started_at)` once it passes 10⁶ rows |
 | `sign_in_challenges` | Hundreds, short-lived | Hourly purge |
-| `one_time_links`, `invitations` | At most four per account; open invitations | Hourly purge of consumed, expired and decided rows, and of never-dispatched invitations older than their kind's lifetime |
+| `one_time_links`, `invitations` | At most four per account; open invitations | Hourly purge of consumed, expired and decided rows (except accepted `admin` invitations, kept for the people review), and of never-dispatched invitations older than their kind's lifetime |
 | `outbox` | A few events per account plus admin actions: 10⁵ to 10⁶ a year | Kept (P 6.5); pruning or partitioning is decided at 10⁶ rows |
 | `event_delivery`, `inbox` | The mail-causing events times their subscribers | The platform prune job, before the first deployed environment (P 7) |
 | `subject_keys` | Accounts plus sellers plus one tombstone per purged sign-up | None in Phase 2 (A7; revisited before the first deployed environment); sign-up is rate-limited per origin |
@@ -893,7 +894,7 @@ measured; at these row counts every table is far below the point where partition
 
 | Job (PN4) | Per hosted Market, each statement with `market_id` at the top level |
 |---|---|
-| `identity.purge-expired`, hourly, slice 2 | Sessions past absolute expiry plus 30 days; throttle rows whose window started more than 48 hours ago and that are not blocked; sign-in records past 90 days. From slice 3: links consumed or expired for a day. From slice 7: expired challenges; pending invitations past `expires_at`; decided invitations older than 30 days. From slice 7b, which passes the per-kind lifetimes from Market config: pending invitations never dispatched (`token_hash IS NULL`) whose `created_at` is older than the lifetime of their kind (7 days, `admin` 72 hours; Ali 2026-10-08) |
+| `identity.purge-expired`, hourly, slice 2 | Sessions past absolute expiry plus 30 days; throttle rows whose window started more than 48 hours ago and that are not blocked; sign-in records past 90 days. From slice 3: links consumed or expired for a day. From slice 7: expired challenges; pending invitations past `expires_at`; decided invitations older than 30 days, except accepted `admin` invitations, which are kept (ids only, the address cleared at acceptance; the people review of an invitation reaches the admin it created through them, Hassan M1 on PR #1058, 2026-11-18). From slice 7b, which passes the per-kind lifetimes from Market config: pending invitations never dispatched (`token_hash IS NULL`) whose `created_at` is older than the lifetime of their kind (7 days, `admin` 72 hours; Ali 2026-10-08) |
 | `identity.purge-unverified-accounts`, daily, slice 3 | Accounts of the partial index of 3.3 whose latest sign-up is older than 7 days: destroy the key, delete the account, one `serializable` unit per account (C11); from slice 5 also its assignment, membership and the `seller_access` whose `registered_at` is NULL |
 
 Both delete only what is already invalid and are safe to run twice and at once. Autovacuum

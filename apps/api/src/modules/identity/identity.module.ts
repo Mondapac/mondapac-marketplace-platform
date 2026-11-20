@@ -21,8 +21,11 @@ import {
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import {
+  registerSystemChangeApplier,
   registerSystemChangeReverter,
+  SYSTEM_ACTION_PROPOSER,
   SYSTEM_REQUEST_RECORDER,
+  type SystemChangeApplier,
   type SystemChangeReverter,
 } from '../../platform/change-review/change-review';
 import { CLOCK } from '../../platform/clock/clock.module';
@@ -118,11 +121,25 @@ import { CreatePlatformRole } from './application/use-cases/create-platform-role
 import { DeletePlatformRole } from './application/use-cases/delete-platform-role.use-case';
 import { EditPlatformRole } from './application/use-cases/edit-platform-role.use-case';
 import {
+  ADMIN_INVITATION_SUBJECT_KIND,
   ADMIN_ROLES_SUBJECT_KIND,
   ADMIN_STATUS_SUBJECT_KIND,
   PEOPLE_REVIEW_AREA,
+  PLATFORM_ROLE_CREATION_SUBJECT_KIND,
+  PLATFORM_ROLE_DELETION_SUBJECT_KIND,
+  SENSITIVE_ADMIN_INVITATION_SUBJECT_KIND,
   PLATFORM_ROLE_SUBJECT_KIND,
 } from './application/people/people-review';
+import {
+  AdminInvitationReverter,
+  PlatformRoleCreationReverter,
+  PlatformRoleDeletionApplier,
+  type PeopleCreationDependencies,
+} from './application/people/people-creations';
+import {
+  INVITE_ADMIN_KEYS,
+  SensitiveAdminInvitationApplier,
+} from './application/people/people-invitations';
 import {
   AdminRolesReverter,
   AdminStatusReverter,
@@ -243,7 +260,7 @@ import { ChangeActorLabels } from './application/use-cases/change-actor-labels.u
 import { TeamMemberLabels } from './application/use-cases/team-member-labels.use-case';
 import { TeamMembershipOf } from './application/use-cases/team-membership-of.use-case';
 import { IDENTITY_FACADE } from './contracts/identity.facade';
-import { IDENTITY_PERMISSIONS } from './contracts/permissions';
+import { IDENTITY_PERMISSIONS, PLATFORM_ROLE_DELETE } from './contracts/permissions';
 import { SELLER_ACCESS_CONTRACT } from './contracts/seller-access.contract';
 import { IDENTITY_AUDIT_ACTIONS } from './domain/audit';
 import { IDENTITY_EVENTS } from './domain/events';
@@ -351,6 +368,7 @@ const PORT = {
   externalIdentities: EXTERNAL_IDENTITY_REPOSITORY,
   emailChanges: EMAIL_CHANGE_STORE,
   review: SYSTEM_REQUEST_RECORDER,
+  proposer: SYSTEM_ACTION_PROPOSER,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -446,6 +464,58 @@ function peopleReverter(
         ),
     },
     registerSystemChangeReverter('identity', subjectKind, PEOPLE_REVIEW_AREA, token),
+  ];
+}
+
+/** The ports of the people creation reverters and the delete applier (owner decision 18 Nov). */
+const PEOPLE_CREATION_PORTS = {
+  ...PEOPLE_REVERTER_PORTS,
+  unitOfWork: true,
+  invitations: true,
+  grants: true,
+  policy: true,
+} as const satisfies { readonly [K in keyof PeopleCreationDependencies]-?: true };
+
+/**
+ * A creation reverter or the delete applier of area people, registered with System requests in
+ * the area people (an applier for an action that waits for approval).
+ */
+function peopleCreationHook(
+  subjectKind: string,
+  mode: 'review' | { readonly approvalKeys: readonly string[] },
+  type: new (
+    deps: PeopleCreationDependencies,
+    labels: PeopleLabelReads,
+  ) => SystemChangeReverter | SystemChangeApplier,
+): Provider[] {
+  const token = Symbol(`IDENTITY_${mode === 'review' ? 'REVERTER' : 'APPLIER'}:${subjectKind}`);
+  // An applier names the key its action needs: System requests checks the approving admin holds it.
+  const names = Object.keys(PEOPLE_CREATION_PORTS) as PortName[];
+  return [
+    {
+      provide: token,
+      inject: [ChangeActorLabels, ListPlatformRoles, ...names.map((name) => PORT[name])],
+      useFactory: (
+        adminNames: ChangeActorLabels,
+        platformRoles: ListPlatformRoles,
+        ...values: unknown[]
+      ) =>
+        new type(
+          Object.fromEntries(
+            names.map((name, index) => [name, values[index]]),
+          ) as unknown as PeopleCreationDependencies,
+          { adminNames, platformRoles },
+        ),
+    },
+    mode === 'review'
+      ? registerSystemChangeReverter('identity', subjectKind, PEOPLE_REVIEW_AREA, token)
+      : registerSystemChangeApplier(
+          'identity',
+          subjectKind,
+          PEOPLE_REVIEW_AREA,
+          mode.approvalKeys,
+          token,
+        ),
   ];
 }
 
@@ -1577,7 +1647,21 @@ function useCaseProvider<D, U>(
       audit: true,
       clock: true,
     }),
-    roleEditorProvider(CreatePlatformRole),
+    useCaseProvider(CreatePlatformRole, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      assignments: true,
+      grants: true,
+      effectiveKeys: true,
+      permissions: true,
+      policy: true,
+      outbox: true,
+      audit: true,
+      review: true,
+      clock: true,
+      ids: true,
+    }),
     useCaseProvider(EditPlatformRole, {
       unitOfWork: true,
       accounts: true,
@@ -1593,7 +1677,21 @@ function useCaseProvider<D, U>(
       clock: true,
       ids: true,
     }),
-    roleEditorProvider(DeletePlatformRole),
+    useCaseProvider(DeletePlatformRole, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      assignments: true,
+      grants: true,
+      effectiveKeys: true,
+      permissions: true,
+      policy: true,
+      outbox: true,
+      audit: true,
+      proposer: true,
+      clock: true,
+      ids: true,
+    }),
     roleEditorProvider(CreateSellerRole),
     roleEditorProvider(EditSellerRole),
     roleEditorProvider(DeleteSellerRole),
@@ -1611,6 +1709,8 @@ function useCaseProvider<D, U>(
       clock: true,
     }),
     useCaseProvider(InviteAdmin, {
+      review: true,
+      proposer: true,
       unitOfWork: true,
       accounts: true,
       roles: true,
@@ -1681,6 +1781,23 @@ function useCaseProvider<D, U>(
     ...peopleReverter(PLATFORM_ROLE_SUBJECT_KIND, PlatformRoleReverter),
     ...peopleReverter(ADMIN_ROLES_SUBJECT_KIND, AdminRolesReverter),
     ...peopleReverter(ADMIN_STATUS_SUBJECT_KIND, AdminStatusReverter),
+    ...peopleCreationHook(
+      PLATFORM_ROLE_CREATION_SUBJECT_KIND,
+      'review',
+      PlatformRoleCreationReverter,
+    ),
+    ...peopleCreationHook(ADMIN_INVITATION_SUBJECT_KIND, 'review', AdminInvitationReverter),
+    ...peopleCreationHook(
+      PLATFORM_ROLE_DELETION_SUBJECT_KIND,
+      { approvalKeys: [PLATFORM_ROLE_DELETE.key] },
+      PlatformRoleDeletionApplier,
+    ),
+    // Owner decision of 18 Nov 2026, 14:06Z: with every key of InviteAdmin's rule (`allOf`).
+    ...peopleCreationHook(
+      SENSITIVE_ADMIN_INVITATION_SUBJECT_KIND,
+      { approvalKeys: INVITE_ADMIN_KEYS },
+      SensitiveAdminInvitationApplier,
+    ),
     useCaseProvider(DisableCustomerAccount, {
       unitOfWork: true,
       accounts: true,

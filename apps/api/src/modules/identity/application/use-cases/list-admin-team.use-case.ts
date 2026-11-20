@@ -100,8 +100,12 @@ export interface AdminTeamInvitationRow {
   readonly role: AdminTeamRole | null;
   /** Null for the first-admin invitation. */
   readonly invitedByAccountId: Id<'Account'> | null;
-  /** `expired`: past the expiry of its last mail; it can be re-sent within its lifetime. */
-  readonly status: 'pending' | 'expired';
+  /**
+   * `expired`: past the expiry of its last mail; it can be re-sent within its lifetime.
+   * `awaiting-approval`: an invitation to a sensitive role that waits for another admin's approval
+   * in Admin Inbox › System requests; nothing is sent until then (owner decision of 18 Nov 2026).
+   */
+  readonly status: 'pending' | 'expired' | 'awaiting-approval';
   readonly createdAt: Temporal.Instant;
   /** Null until its mail is sent (and right after a re-send). */
   readonly expiresAt: Temporal.Instant | null;
@@ -443,7 +447,11 @@ class RowBuilder {
       email: invitation.email,
       role: this.shown(role),
       invitedByAccountId: invitation.invitedByAccountId,
-      status: invitationStatusAt(invitation, this.now) === 'expired' ? 'expired' : 'pending',
+      status: invitation.heldForApproval
+        ? 'awaiting-approval'
+        : invitationStatusAt(invitation, this.now) === 'expired'
+          ? 'expired'
+          : 'pending',
       createdAt: invitation.createdAt,
       expiresAt: invitation.expiresAt,
       actions: {

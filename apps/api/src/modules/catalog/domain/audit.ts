@@ -709,13 +709,16 @@ export const BrandApprovedAudit = defineAuditAction({
   after: { status: auditField.enumOf(['active'] as const), proposedBySeller: auditField.boolean() },
 });
 
-/** An admin archived a brand; it keeps its row, slug and aliases. */
+/**
+ * An admin archived a brand; it keeps its row, slug and aliases. Whether a reason was given, never
+ * its text (the text is on the brand row).
+ */
 export const BrandArchivedAudit = defineAuditAction({
   action: 'catalog.brand.archived',
   targetType: CATALOG_BRAND_TARGET,
   actors: ['authenticated'],
   before: { status: brandStatus },
-  after: { status: auditField.enumOf(['archived'] as const) },
+  after: { status: auditField.enumOf(['archived'] as const), reasonGiven: auditField.boolean() },
 });
 
 /**
