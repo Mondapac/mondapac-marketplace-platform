@@ -750,6 +750,7 @@ export function EditForm({
                     maxAxes={maxAxes}
                     review={product.sensitiveFields.includes('axis-added')}
                     defaultLocale={defaultLocale}
+                    locales={locales}
                     max={product.maxVariants}
                     productId={product.productId}
                     galleryIds={imageIds}
