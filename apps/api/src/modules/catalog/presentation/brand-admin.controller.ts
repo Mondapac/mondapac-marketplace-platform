@@ -1,4 +1,5 @@
 import {
+  applyDecorators,
   Body,
   Controller,
   Get,
@@ -24,6 +25,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiPayloadTooLargeResponse,
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
@@ -43,12 +45,20 @@ import { BrandApprove } from '../application/use-cases/brand-approve.use-case';
 import { BrandArchive } from '../application/use-cases/brand-archive.use-case';
 import { BrandCreate } from '../application/use-cases/brand-create.use-case';
 import { BrandEdit } from '../application/use-cases/brand-edit.use-case';
+import {
+  BRAND_EXPORT_COLUMNS,
+  BRAND_EXPORT_MAX_IDS,
+  BRAND_EXPORT_MAX_ROWS,
+  BrandExport,
+  EXPORT_FORMATS,
+} from '../application/use-cases/brand-export.use-case';
 import { BrandGet } from '../application/use-cases/brand-get.use-case';
 import { BrandList } from '../application/use-cases/brand-list.use-case';
 import { BrandMerge } from '../application/use-cases/brand-merge.use-case';
 import { BrandMergeQueueDismiss } from '../application/use-cases/brand-merge-queue-dismiss.use-case';
 import { BrandMergeQueueList } from '../application/use-cases/brand-merge-queue-list.use-case';
 import {
+  BrandArchiveRequest,
   BrandCreateRequest,
   BrandDetailBody,
   BrandEditRequest,
@@ -63,6 +73,7 @@ import {
 } from './brand.dto';
 import { closedBody, numericQuery, pageQuery, refusalWith, type Refusal } from './http-answers';
 import { ApiErrorBody } from './platform-product.dto';
+import { writeChunks } from './write-chunks';
 
 /**
  * The HTTP status of each refusal of the admin brand routes (catalog brand package). A malformed
@@ -83,10 +94,12 @@ export const BRAND_ADMIN_STATUS: Readonly<Record<string, number>> = Object.freez
   'brand.not-draft': 409,
   'brand.archived': 409,
   'brand.already-archived': 409,
+  'brand.archive-reason-invalid': 400,
   'brand.merge-target-not-active': 409,
   'brand.merge-source-archived': 409,
   'conflict.stale': 409,
   'brand.merge-into-itself': 422,
+  'batch.too-large': 413,
   'access.unavailable': 503,
 });
 
@@ -96,6 +109,36 @@ const refusal = (error: Refusal, response: Response, context?: CallContext): Htt
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const UNAUTHORIZED = 'session.invalid (the cookie is cleared) or access.unauthenticated';
 const BRAND_PARAM = { name: 'brandId', description: 'The brand. A UUID v7.' };
+/** The filter query parameters the list and the export share. */
+const FILTER_QUERIES = [
+  { name: 'status', required: false, enum: ['draft', 'active', 'archived'] },
+  {
+    name: 'originCountry',
+    required: false,
+    description: 'ISO 3166-1 alpha-2 code, two uppercase letters; exact match.',
+  },
+  {
+    name: 'createdFrom',
+    required: false,
+    description: 'ISO 8601 instant with an offset or Z; brands created at or after it (inclusive).',
+    example: '2026-11-01T00:00:00+10:00',
+  },
+  {
+    name: 'createdTo',
+    required: false,
+    description:
+      'ISO 8601 instant with an offset or Z; brands created before it (exclusive). Must be ' +
+      'after createdFrom.',
+    example: '2026-12-01T00:00:00+10:00',
+  },
+] as const;
+const FILTER_TEXT =
+  '`status` and `originCountry` (ISO 3166-1 alpha-2, uppercase, exact) filter; `createdFrom` ' +
+  '(inclusive) and `createdTo` (exclusive) are ISO 8601 instants with an offset; an unknown ' +
+  'status, a malformed country or instant, or a range that ends at or before it starts is 400 ' +
+  'validation.failed.';
+const filterQueries = (): MethodDecorator & ClassDecorator =>
+  applyDecorators(...FILTER_QUERIES.map((query) => ApiQuery({ ...query })));
 const CONTENT_KEYS = [
   'slug',
   'summary',
@@ -107,9 +150,9 @@ const CONTENT_KEYS = [
 
 /**
  * Brand administration over HTTP (catalog brand package): list, read, create, edit, archive and
- * approve brands, merge brands, and settle the merge queue. Every route reads the admin session of
- * the request's Market (`@ReadsSession`), so a write needs the CSRF token and the admin panel's
- * origin; JSON only, closed bodies. Thin adapters: each route calls one use case through its gate,
+ * approve brands, merge brands, settle the merge queue, and export the list as a file. Every route
+ * reads the admin session of the request's Market (`@ReadsSession`), so a write needs the CSRF
+ * token and the admin panel's origin; JSON only, closed bodies. Thin adapters: each route calls one use case through its gate,
  * which checks `catalog.brand.read` (reads) or `catalog.brand.edit` (writes), and maps the answer
  * to the error format `{ statusCode, code, details? }`. Every route logs its outcome code with the
  * correlation id; never a body or a text.
@@ -122,6 +165,7 @@ export class BrandAdminController {
 
   constructor(
     private readonly listBrands: BrandList,
+    private readonly exportBrands: BrandExport,
     private readonly getBrand: BrandGet,
     private readonly createBrand: BrandCreate,
     private readonly editBrand: BrandEdit,
@@ -142,10 +186,12 @@ export class BrandAdminController {
       'Previous and Next (`paging=prev-next`, no total), sorted by `sort` (name, status, created, ' +
       'updated) and `direction`; or, as the older panel does, keyset-paged by name: send ' +
       '`nextAfterId` of the previous page as `afterId` (`afterId`/`limit` do not mix with the page ' +
-      'keys). `status` filters; `q` (older name `search`) matches the name, the slug or an alias. ' +
+      'keys). ' +
+      FILTER_TEXT +
+      ' `q` (older name `search`) matches the name, the slug or an alias. ' +
       '`pageSize` and `limit` are 1 to 100. Each row names the `actions` the caller may run.',
   })
-  @ApiQuery({ name: 'status', required: false, enum: ['draft', 'active', 'archived'] })
+  @filterQueries()
   @ApiQuery({ name: 'q', required: false })
   @ApiQuery({ name: 'search', required: false, deprecated: true, description: 'Older name of q.' })
   @ApiQuery({ name: 'sort', required: false, enum: ['name', 'status', 'created', 'updated'] })
@@ -231,6 +277,75 @@ export class BrandAdminController {
       outcome = result.ok ? { ...result.value } : refusal(result.error, response, context);
     }
     return this.settle('catalog.brand-merge-queue-dismiss', context, outcome);
+  }
+
+  @Get('export')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Export the brands of the list as a file',
+    description:
+      'Needs catalog.brand.read. `format` is csv (the default) or xlsx, with the same columns and ' +
+      'header row: Brand, Slug, Status, Origin country, Last changed, then the optional ' +
+      '`columns` (comma-separated, in the order given). The brands are `ids` (comma-separated, at ' +
+      `most ${BRAND_EXPORT_MAX_IDS}, in the order given; an unknown id is brand.not-found) or ` +
+      'every brand the list filter matches (`status`, `originCountry`, `createdFrom`, ' +
+      '`createdTo`, `q` or its older name `search`, `sort`, `direction`; read as the list reads ' +
+      `them), at most ${BRAND_EXPORT_MAX_ROWS}; more is batch.too-large with ` +
+      '`details.total`. The file streams as an attachment. CSV: a text cell that starts with = + - @ ' +
+      'is written with a leading quote. XLSX: every cell is a string value, never a formula.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: EXPORT_FORMATS })
+  @ApiQuery({
+    name: 'columns',
+    required: false,
+    description: `Any of: ${BRAND_EXPORT_COLUMNS.join(', ')}.`,
+  })
+  @ApiQuery({ name: 'ids', required: false, description: 'Comma-separated brand ids.' })
+  @filterQueries()
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'search', required: false, deprecated: true, description: 'Older name of q.' })
+  @ApiQuery({ name: 'sort', required: false, enum: ['name', 'status', 'created', 'updated'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiOkResponse({
+    description:
+      'text/csv; charset=utf-8 (brands-<date>.csv) or ' +
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet (brands-<date>.xlsx), as an attachment',
+  })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'brand.not-found' })
+  @ApiPayloadTooLargeResponse({ type: ApiErrorBody, description: 'batch.too-large' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async download(
+    @Call() context: CallContext,
+    @Res() response: Response,
+    @Query() query: Record<string, unknown>,
+  ): Promise<void> {
+    const result = await this.exportBrands.execute(context, { ...query });
+    if (!result.ok) {
+      const error = refusal(result.error, response, context);
+      this.#logExport(context, (error.getResponse() as { code: string }).code, error.getStatus());
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      const finished = await writeChunks(response, chunks);
+      this.#logExport(context, finished ? 'ok' : 'client-gone', 200);
+    } catch {
+      // The status line is gone: end the connection, so the client sees a failed download.
+      this.#logExport(context, 'stream-failed', 500);
+      response.destroy();
+    }
   }
 
   @Get(':brandId')
@@ -351,11 +466,12 @@ export class BrandAdminController {
     summary: 'Archive a brand',
     description:
       'Needs catalog.brand.edit. A draft or active brand becomes archived: its public page stops ' +
-      'answering; products keep their brand. This also turns down a seller proposal.',
+      'answering; products keep their brand. This also turns down a seller proposal. An ' +
+      "optional reason is kept on the brand for the proposing seller's notice.",
   })
   @ApiParam(BRAND_PARAM)
   @ApiHeader(CSRF)
-  @ApiBody({ type: BrandVersionRequest })
+  @ApiBody({ type: BrandArchiveRequest })
   @ApiOkResponse({ type: BrandWrapBody })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -374,11 +490,15 @@ export class BrandAdminController {
     @Param('brandId') brandId: string,
     @Body() body: unknown,
   ): Promise<BrandWrapBody> {
-    const input = closedBody(request, body, ['version']);
+    const input = closedBody(request, body, ['version'], ['reason']);
     let outcome: BrandWrapBody | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
-      const result = await this.archiveBrand.execute(context, { brandId, version: input.version });
+      const result = await this.archiveBrand.execute(context, {
+        brandId,
+        version: input.version,
+        ...(input.reason === undefined ? {} : { reason: input.reason }),
+      });
       outcome = result.ok
         ? (JSON.parse(JSON.stringify(result.value)) as BrandWrapBody)
         : refusal(result.error, response, context);
@@ -470,6 +590,15 @@ export class BrandAdminController {
         : refusal(result.error, response, context);
     }
     return this.settle('catalog.brand-merge', context, outcome);
+  }
+
+  #logExport(context: CallContext, outcome: string, status: number): void {
+    this.#logger[status >= 500 ? 'warn' : 'log']({
+      msg: 'catalog.brand-export',
+      outcome,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
   }
 
   private settle<T extends object>(

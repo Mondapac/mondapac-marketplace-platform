@@ -272,6 +272,7 @@
       "status": "enumOf(draft|active|archived)"
     },
     "after": {
+      "reasonGiven": "boolean",
       "status": "enumOf(archived)"
     }
   },
@@ -2127,6 +2128,18 @@
     }
   },
   {
+    "action": "identity.invitation.approved",
+    "targetType": "identity.invitation",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(seller-owner|staff|admin)",
+      "requestId": "id",
+      "roleId": "id"
+    }
+  },
+  {
     "action": "identity.invitation.issued",
     "targetType": "identity.invitation",
     "targetId": "id",
@@ -2134,6 +2147,18 @@
     "before": null,
     "after": {
       "kind": "enumOf(seller-owner|staff|admin)",
+      "roleId": "id"
+    }
+  },
+  {
+    "action": "identity.invitation.proposed",
+    "targetType": "identity.invitation",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "kind": "enumOf(seller-owner|staff|admin)",
+      "requestId": "id",
       "roleId": "id"
     }
   },
@@ -2470,7 +2495,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|seller.reviews.list)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -2482,7 +2507,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|seller.reviews.list)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -2496,7 +2521,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|seller.reviews.list)",
       "visibility": "enumOf(me|everyone)"
     }
   },

@@ -163,9 +163,11 @@ export class SendInvitationMail extends UseCase<
     input: SendInvitationMailInput,
   ): InvitationMailSkipped | null {
     if (invitation === null) return 'invitation.gone';
+    // A held invitation (waiting for approval) is never mailed: no token exists before it.
     if (
       invitation.state.version !== input.aggregateVersion ||
-      invitation.state.state !== 'pending'
+      invitation.state.state !== 'pending' ||
+      invitation.state.heldForApproval
     ) {
       return 'invitation.superseded';
     }

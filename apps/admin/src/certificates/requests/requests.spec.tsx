@@ -329,11 +329,13 @@ describe('issuer request relay', () => {
     return upstream.mock.calls.length;
   };
 
-  it('relays the answer only, not the page read, the documents, or a bad id', async () => {
+  it('relays the answer and one file read, not the page read, or a bad id', async () => {
     const base = 'certification/admin/issuer-requests';
     expect(await send('POST', `${base}/${ID}/answer`)).toBe(1);
     expect(await send('GET', `${base}/${ID}`)).toBe(0);
-    expect(await send('GET', `${base}/${ID}/documents/${ISSUER}`)).toBe(0);
+    expect(await send('GET', `${base}/${ID}/documents/${ISSUER}`)).toBe(1);
+    expect(await send('POST', `${base}/${ID}/documents/${ISSUER}`)).toBe(0);
+    expect(await send('GET', `${base}/${ID}/documents/not-an-id`)).toBe(0);
     expect(await send('POST', `${base}/not-an-id/answer`)).toBe(0);
   });
 });

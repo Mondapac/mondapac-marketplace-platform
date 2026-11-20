@@ -1,4 +1,4 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { BrandState, BrandStatus } from '../../domain/brand';
 
 /** A brand with its aliases and the number of this Market's products that point at it. */
@@ -9,10 +9,8 @@ export interface BrandDetailRecord {
   readonly productCount: number;
 }
 
-export interface BrandListQuery {
-  readonly status: BrandStatus | null;
-  /** Matches the name, the slug or an alias; case-insensitive. */
-  readonly search: string | null;
+/** The cursor read, filtered as a page read is. */
+export interface BrandListQuery extends BrandPageFilter {
   readonly afterId: Id<'Brand'> | null;
   readonly limit: number;
 }
@@ -23,7 +21,14 @@ export type BrandSort = (typeof BRAND_SORTS)[number];
 /** The filter shared by a page read and its count. */
 export interface BrandPageFilter {
   readonly status: BrandStatus | null;
+  /** Matches the name, the slug or an alias; case-insensitive. */
   readonly search: string | null;
+  /** ISO 3166-1 alpha-2, uppercase; exact match. */
+  readonly originCountry: string | null;
+  /** Created at or after (inclusive). */
+  readonly createdFrom: Temporal.Instant | null;
+  /** Created before (exclusive). */
+  readonly createdTo: Temporal.Instant | null;
 }
 
 /** One page of the numbered read: `offset` rows are skipped; ties end on the id. */
@@ -67,6 +72,12 @@ export interface BrandReader {
 
   /** The brands matching the filter, over all pages. */
   count(market: MarketContext, filter: BrandPageFilter): Promise<number>;
+
+  /**
+   * The brands with these ids, any status, in no particular order; an unknown id is left out.
+   * It returns every status, draft seller proposals included, so it must not back a seller-facing read.
+   */
+  byIds(market: MarketContext, ids: readonly Id<'Brand'>[]): Promise<readonly BrandState[]>;
 
   detail(market: MarketContext, id: Id<'Brand'>): Promise<BrandDetailRecord | null>;
 

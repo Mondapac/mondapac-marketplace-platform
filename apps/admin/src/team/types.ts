@@ -32,7 +32,8 @@ export interface InvitationRow {
   readonly email: string;
   readonly role: TeamRole | null;
   readonly invitedByAccountId: string | null;
-  readonly status: 'pending' | 'expired';
+  /** `awaiting-approval`: a sensitive role's invitation, not sent until another admin approves. */
+  readonly status: 'pending' | 'expired' | 'awaiting-approval';
   readonly createdAt: string;
   readonly expiresAt: string | null;
   readonly actions: { readonly resend: ActionHint; readonly revoke: ActionHint };
@@ -60,4 +61,9 @@ export interface PlatformRole {
   readonly seedCode: string | null;
   readonly permissionCount: number;
   readonly grantable: boolean;
+  /**
+   * The Platform Administrator or a role with a protected permission: where people is reviewed,
+   * an invitation to it waits for another admin's approval. Absent from an older API: false.
+   */
+  readonly sensitive?: boolean;
 }

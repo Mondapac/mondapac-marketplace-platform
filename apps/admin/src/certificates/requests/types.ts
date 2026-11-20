@@ -18,6 +18,13 @@ export interface RequestRow {
   readonly createdAt: string;
 }
 
+/** The answer of the plain request read (the Certificates tabs ask it for the open count). */
+export interface RequestPage {
+  readonly items: readonly RequestRow[];
+  readonly nextAfterId: string | null;
+  readonly total: number;
+}
+
 /** A row of the super list (GET certification/admin/issuer-requests/list), with its actions. */
 export interface ListRow extends RequestRow {
   /** What this admin may do with the row: `open` always, `answer` with the edit key (server-computed). */
@@ -49,6 +56,7 @@ export interface RequestDetail {
   /** The seller's text, decrypted for this read; null when it is no longer available. */
   readonly typedIssuerName: string | null;
   readonly documents: readonly {
+    readonly documentId?: string;
     readonly position?: number;
     readonly mediaType?: string;
     readonly byteSize?: number;

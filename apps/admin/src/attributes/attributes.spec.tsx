@@ -22,6 +22,12 @@ import type {
   Tab,
 } from './types.ts';
 
+/** Opens a row's Actions menu and picks an item. */
+async function pickAction(menuName: string, item: string) {
+  fireEvent.click(await screen.findByRole('button', { name: menuName }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: item }));
+}
+
 const call = vi.mocked(callApi);
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
 
@@ -1290,24 +1296,31 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     const rows = await within(list).findAllByRole('listitem');
     expect(rows).toHaveLength(2);
     expect(within(rows[0]!).getByText('Attribute 1')).toBeTruthy();
-    expect(within(rows[0]!).queryByRole('button', { name: /^Withdraw/ })).toBeNull();
     expect(within(rows[1]!).getByText('Your request')).toBeTruthy();
-    expect(within(rows[1]!).queryByRole('button', { name: /^Confirm/ })).toBeNull();
+    // Another admin's request can be confirmed, not withdrawn; your own can be withdrawn, not confirmed.
+    fireEvent.click(within(rows[0]!).getByRole('button', { name: 'Actions for Attribute 1' }));
+    expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual([
+      'Open attribute',
+      'Confirm…',
+    ]);
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+    fireEvent.click(within(rows[1]!).getByRole('button', { name: 'Actions for Attribute 2' }));
+    expect(screen.getAllByRole('menuitem').map((i) => i.textContent)).toEqual([
+      'Open attribute',
+      'Withdraw…',
+    ]);
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
 
-    fireEvent.click(
-      within(rows[0]!).getByRole('button', { name: 'Confirm request for Attribute 1' }),
-    );
+    await pickAction('Actions for Attribute 1', 'Confirm…');
     const confirm = await screen.findByRole('dialog', {
       name: 'Turn off Material for Attribute 1?',
     });
     fireEvent.click(within(confirm).getByRole('button', { name: 'Confirm' }));
     await expectToast('Material turned off.');
 
-    const left = await within(list).findAllByRole('listitem');
+    await within(list).findAllByRole('listitem');
     await waitFor(() => expect(within(list).getAllByRole('listitem')).toHaveLength(1));
-    fireEvent.click(
-      within(left.at(-1)!).getByRole('button', { name: 'Withdraw request for Attribute 2' }),
-    );
+    await pickAction('Actions for Attribute 2', 'Withdraw…');
     const withdraw = await screen.findByRole('dialog', {
       name: 'Withdraw your request for Attribute 2?',
     });
@@ -1337,13 +1350,13 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
       ),
     });
     mount({ canEdit: true, initialTab: 'waiting' });
-    fireEvent.click(await screen.findByRole('button', { name: 'Confirm request for Attribute 1' }));
+    await pickAction('Actions for Attribute 1', 'Confirm…');
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
     expect(await within(dialog).findByText(/This request expired/)).toBeTruthy();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Reload' }));
     await waitFor(() => expect(calls('catalog/admin/attribute-relaxations')).toHaveLength(2));
-    fireEvent.click(await screen.findByRole('button', { name: 'Open Attribute 1' }));
+    await pickAction('Actions for Attribute 1', 'Open attribute');
     expect(await screen.findByRole('region', { name: 'Attribute details' })).toBeTruthy();
     expect(window.location.search).toBe(`?id=${id(1)}`);
   });
@@ -1418,9 +1431,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
         ),
       });
       mount({ canEdit: true, initialTab: 'waiting' });
-      fireEvent.click(
-        await screen.findByRole('button', { name: 'Confirm request for Attribute 1' }),
-      );
+      await pickAction('Actions for Attribute 1', 'Confirm…');
       const dialog = await screen.findByRole('dialog');
       fireEvent.click(within(dialog).getByRole('button', { name: 'Confirm' }));
       await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));

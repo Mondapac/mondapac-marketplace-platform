@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
+import type { BrandPageFilter } from '../../src/modules/catalog/application/ports/brand.reader';
 import { Client } from 'pg';
 import { Brand, brandNameKey } from '../../src/modules/catalog/domain/brand';
 import { PrismaBrandAssigner } from '../../src/modules/catalog/infrastructure/prisma-brand.assigner';
@@ -23,6 +24,8 @@ import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 // case) and asserts on those rows only, never on the table as a whole.
 
 const T0 = Temporal.Instant.from('2026-10-28T00:00:00Z');
+/** No country or creation filter. */
+const ANY = { originCountry: null, createdFrom: null, createdTo: null } as const;
 const T1 = Temporal.Instant.from('2026-10-28T01:00:00Z');
 let sequence = 0;
 const uuid7 = (): string =>
@@ -233,6 +236,16 @@ describe.each(TEST_MARKETS)('catalog brands in market %s (database integration)'
       expect(await insert({ origin_country: 'au' })).toBe('23514');
       expect(await insert({ status: 'draft', approved_by: uuid7() })).toBe('23514');
       expect(await insert({ logo_image_id: uuid7() })).toBe('23514');
+      // An archive reason: only on an archived brand, trimmed, 1 to 500 characters, no control.
+      expect(await insert({ archive_reason: 'Duplicate' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: '' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: ' padded ' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'a\nb' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'a\u0085b' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'a\u2028b' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'a\u007fb' })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'x'.repeat(501) })).toBe('23514');
+      expect(await insert({ status: 'archived', archive_reason: 'x'.repeat(500) })).toBeNull();
       expect(await insert({})).toBeNull();
     });
 
@@ -296,6 +309,35 @@ describe.each(TEST_MARKETS)('catalog brands in market %s (database integration)'
         StaleAggregateError,
       );
     });
+
+    it('stores the archive reason with the archive and reads it back', async () => {
+      const added = await addBrand(newBrand(letters(tag())));
+      const brand = (await inUnit(() => repository.findById(market, added.state.id)))!;
+      const archived = brand.archive({ now: T1, reason: ' Not a real brand. ' });
+      if (!archived.ok) throw new Error(archived.error.code);
+      expect(await inUnit(() => repository.save(market, archived.value))).toBeNull();
+      const stored = (await inUnit(() => repository.findById(market, brand.state.id)))!;
+      expect(stored.state).toMatchObject({
+        status: 'archived',
+        archiveReason: 'Not a real brand.',
+      });
+    });
+
+    it.each([
+      ['a zero-width non-joiner (U+200C)', 'می\u200Cخواهم'],
+      ['an interlinear annotation anchor (U+FFF9)', 'Note \uFFF9 here'],
+    ])(
+      'stores an archive reason with %s: the CHECK refuses only what the app refuses',
+      async (_label, reason) => {
+        const added = await addBrand(newBrand(letters(tag())));
+        const brand = (await inUnit(() => repository.findById(market, added.state.id)))!;
+        const archived = brand.archive({ now: T1, reason });
+        if (!archived.ok) throw new Error(archived.error.code);
+        expect(await inUnit(() => repository.save(market, archived.value))).toBeNull();
+        const stored = (await inUnit(() => repository.findById(market, brand.state.id)))!;
+        expect(stored.state.archiveReason).toBe(reason);
+      },
+    );
 
     it('counts the open proposals of a seller, and finds near-duplicates by key and alias', async () => {
       const unique = letters(tag());
@@ -464,12 +506,13 @@ describe.each(TEST_MARKETS)('catalog brands in market %s (database integration)'
         );
       }
       const first = await inUnit(() =>
-        reader.list(market, { status: 'active', search: unique, afterId: null, limit: 2 }),
+        reader.list(market, { ...ANY, status: 'active', search: unique, afterId: null, limit: 2 }),
       );
       expect(first.items.map((state) => state.name)).toEqual([`Zz${unique} a`, `Zz${unique} b`]);
       expect(first.nextAfterId).toBe(first.items[1]!.id);
       const second = await inUnit(() =>
         reader.list(market, {
+          ...ANY,
           status: 'active',
           search: unique.toUpperCase(),
           afterId: first.nextAfterId,
@@ -479,11 +522,11 @@ describe.each(TEST_MARKETS)('catalog brands in market %s (database integration)'
       expect(second.items.map((state) => state.name)).toEqual([`Zz${unique} c`]);
       expect(second.nextAfterId).toBeNull();
       const drafts = await inUnit(() =>
-        reader.list(market, { status: 'draft', search: unique, afterId: null, limit: 5 }),
+        reader.list(market, { ...ANY, status: 'draft', search: unique, afterId: null, limit: 5 }),
       );
       expect(drafts.items).toEqual([]);
       // The numbered read: sorted both ways, offset, count, and a wildcard matched as typed.
-      const filter = { status: 'active', search: unique } as const;
+      const filter = { ...ANY, status: 'active', search: unique } as const;
       expect(await inUnit(() => reader.count(market, filter))).toBe(3);
       const asc = await inUnit(() =>
         reader.page(market, { ...filter, sort: 'name', direction: 'asc', offset: 1, limit: 5 }),
@@ -497,7 +540,58 @@ describe.each(TEST_MARKETS)('catalog brands in market %s (database integration)'
         reader.page(market, { ...filter, sort: 'created', direction: 'asc', offset: 0, limit: 5 }),
       );
       expect(byCreated).toHaveLength(3);
-      expect(await inUnit(() => reader.count(market, { status: null, search: '%' }))).toBe(0);
+      expect(await inUnit(() => reader.count(market, { ...ANY, status: null, search: '%' }))).toBe(
+        0,
+      );
+    });
+
+    it('filters by origin country (exact) and creation time (from inclusive, to exclusive)', async () => {
+      const unique = letters(tag());
+      const made: Brand[] = [];
+      for (const suffix of ['a', 'b', 'c']) {
+        made.push(
+          await addBrand(newBrand(`${unique}${suffix}`, { name: `Yy${unique} ${suffix}` })),
+        );
+      }
+      const [a, b, c] = made.map((brand) => brand.state.id);
+      // a: AU at T0; b: NZ one hour later; c: no country two hours later.
+      // The application role may not write these columns (the owner sets up the fixture rows).
+      await owner.query(
+        "UPDATE catalog.brands SET origin_country = 'NZ', created_at = $2 WHERE id = $1",
+        [b, T0.add({ hours: 1 }).toString()],
+      );
+      await owner.query(
+        'UPDATE catalog.brands SET origin_country = NULL, created_at = $2 WHERE id = $1',
+        [c, T0.add({ hours: 2 }).toString()],
+      );
+      const base = { ...ANY, status: null, search: unique };
+      const names = async (filter: BrandPageFilter) =>
+        (
+          await inUnit(() =>
+            reader.page(market, {
+              ...filter,
+              sort: 'name',
+              direction: 'asc',
+              offset: 0,
+              limit: 10,
+            }),
+          )
+        ).map((state) => state.id);
+      expect(await names({ ...base, originCountry: 'NZ' })).toEqual([b]);
+      expect(await inUnit(() => reader.count(market, { ...base, originCountry: 'AU' }))).toBe(1);
+      expect(await names({ ...base, createdFrom: T0.add({ hours: 1 }) })).toEqual([b, c]);
+      expect(await names({ ...base, createdTo: T0.add({ hours: 1 }) })).toEqual([a]);
+      expect(await names({ ...base, createdFrom: T0, createdTo: T0.add({ hours: 2 }) })).toEqual([
+        a,
+        b,
+      ]);
+      // A sub-millisecond bound stays exact against millisecond rows.
+      expect(await names({ ...base, createdFrom: T0.add({ nanoseconds: 1 }) })).toEqual([b, c]);
+      expect(await names({ ...base, createdTo: T0.add({ nanoseconds: 1 }) })).toEqual([a]);
+      const cursor = await inUnit(() =>
+        reader.list(market, { ...base, originCountry: 'AU', afterId: null, limit: 5 }),
+      );
+      expect(cursor.items.map((state) => state.id)).toEqual([a]);
     });
 
     it('knows whether a seller has an ownBrand product in this Market only', async () => {
