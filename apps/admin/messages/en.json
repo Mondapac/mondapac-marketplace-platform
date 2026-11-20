@@ -1734,7 +1734,20 @@
       "confirmation": {
         "title": "Issuer confirmation",
         "none": "No confirmation recorded.",
-        "done": "Confirmed with the issuer on {date}."
+        "done": "Confirmed with the issuer on {date}.",
+        "help": "Record that you confirmed this certificate with {issuer}. Choose one of the channels the issuer has registered. Plain text only.",
+        "channel": "Channel used",
+        "channel-placeholder": "Choose a channel",
+        "date": "Date of the confirmation",
+        "reference": "Issuer reference",
+        "reference-help": "The reference the issuer gave for this confirmation. It is stored encrypted.",
+        "confirms": "The issuer confirmed",
+        "confirms-number": "The certificate number is genuine",
+        "confirms-holder": "The holder is the seller's business",
+        "both-required": "Tick both. Without both, the confirmation is not recorded.",
+        "required": "This is required.",
+        "save": "Record confirmation",
+        "saved": "Confirmation recorded."
       },
       "duplicates": {
         "title": "Possible duplicates",
@@ -1814,6 +1827,8 @@
         "csrf": "Your session needs a refresh. Reload the page.",
         "unavailable": "The service is not available. Try again.",
         "unknown": "Something went wrong. Nothing was recorded.",
+        "confirmation-exists": "This submission already has a confirmation. Reload the page.",
+        "confirmation-no-issuer": "This submission has no issuer in the registry, so there is no one to confirm with.",
         "zone": "The seller's time zone isn't set yet. Ask the seller to finish their address.",
         "type-inactive": "This certificate type is no longer in use.",
         "revoked": "This certificate is already revoked. Reload the page.",
