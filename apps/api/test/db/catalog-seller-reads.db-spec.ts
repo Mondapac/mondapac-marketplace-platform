@@ -61,6 +61,14 @@ const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TE
 let sequence = 0;
 // Own ids: catalog-own-product-submit.db-spec.ts submits products for the b001 seller in a parallel worker
 // of the same database, and this file lists every product of its seller.
+/**
+ * A text-search tag no other row of the shared database can contain. The search matches the SKU,
+ * the product code and the product name case-insensitively, and the product codes of these tests
+ * are `X` plus twelve random hex digits: a plain hex tag is sometimes a substring of another
+ * test's code and adds a row to the answer. `zq` is not a hex digit pair, so it cannot be.
+ */
+const searchTag = () => `zq${randomUUID().replaceAll('-', '').slice(0, 8)}`;
+
 const SELLER = '01990000-0000-7000-8000-00000000c5a1' as Id<'Seller'>;
 const OTHER = '01990000-0000-7000-8000-00000000c5a2' as Id<'Seller'>;
 // The list-mode test owns this seller, so the rows it counts are its own alone.
@@ -1075,7 +1083,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       replacePending: false,
     });
     if (!published.ok) throw new Error(published.error.code);
-    const tag = randomUUID().slice(0, 6);
+    const tag = searchTag();
     // A seller holds one open Offer per product: the second Offer stands on another product.
     const other = await draftedProduct('PLATFORM', SELLER, 'Saffron Powder');
     const publishedOther = await submit.execute(adminContext(), {
@@ -1155,7 +1163,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
   });
 
   it('pages the Offer list exactly across ties, searches by product code and hides delete on own products', async () => {
-    const tag = randomUUID().slice(0, 6);
+    const tag = searchTag();
     const made: Offer[] = [];
     // 27 Offers of one status tie on every sort key but the id: page 2 holds the last two.
     for (let n = 0; n < 27; n += 1) {
@@ -1215,7 +1223,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
   });
 
   it('exports the seller’s Offers: selector, selected ids, columns, XLSX, and refuses what does not fit', async () => {
-    const tag = randomUUID().slice(0, 6);
+    const tag = searchTag();
     const names = ['Export Alpha', 'Export Beta', 'Export Gamma'];
     const made: Offer[] = [];
     for (const [n, name] of names.entries()) {
@@ -1305,7 +1313,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
   });
 
   it('writes user text into an Offers export as text, and streams more than one chunk in order', async () => {
-    const tag = randomUUID().slice(0, 6);
+    const tag = searchTag();
     const sku = (n: number) => `=${tag}-${String(n).padStart(3, '0')}`;
     const made: Offer[] = [];
     // 105 Offers: the second chunk (after 100) is read after the answer; a SKU may start with "=".
