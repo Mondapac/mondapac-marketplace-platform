@@ -1526,6 +1526,12 @@
         "remove-dialog": "Remove this variant?",
         "remove-body": "{count, plural, one {This variant may have prices and stock. Removing it ends them. Adding it again later starts from empty.} other {These variants may have prices and stock. Removing them ends them. Adding them again later starts from empty.}}",
         "remove-confirm": "Remove",
+        "step-labels": "Variant codes and labels",
+        "labels-help": "Each variant gets a code, and a label in every language built from its option names. You do not type them. A language shows no label until every option has a name in it.",
+        "labels-caption": "Variant codes and the labels built for each language",
+        "labels-code": "Code",
+        "labels-code-new": "Assigned when you save",
+        "labels-missing": "No label yet",
         "step-details": "4. Barcode, shipping and photos for each variant",
         "details-help": "All optional. Shipping left empty uses the product's own values. Photos come from the product's photos above.",
         "details-none": "Tick a combination first.",
@@ -3610,7 +3616,8 @@
       "loading": "Loading reviews",
       "error": {
         "unavailable": "We couldn’t load your reviews. Try again.",
-        "refused": "This search can't be run. Change the text or the filters, or clear them."
+        "refused": "This search can't be run. Change the text or the filters, or clear them.",
+        "off": "Customer reviews are not switched on at the moment."
       },
       "chip": "{field} is {value}",
       "chip-search": "Search: {text}",

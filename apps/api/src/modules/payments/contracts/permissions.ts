@@ -36,9 +36,21 @@ export const PAYMENTS_CUSTOMER_PAYMENT_VIEW = definePermission('payments', {
   protected: false,
 });
 
+/**
+ * Share a saved filter of the Seller accounts (connected accounts) list with every admin of the
+ * Market (and manage one that somebody else shared). Unprotected; also needs
+ * `payments.connected-account.view`.
+ */
+export const PAYMENTS_SAVED_FILTER_SHARE = definePermission('payments', {
+  key: 'payments.saved-filter.share',
+  scope: 'platform',
+  protected: false,
+});
+
 export const PAYMENTS_PERMISSIONS = declarePermissions('payments', [
   PAYMENTS_CONNECTED_ACCOUNT_VIEW,
   PAYMENTS_CUSTOMER_PAYMENT_VIEW,
   PAYMENTS_PAYOUT_ACCOUNT_MANAGE,
   PAYMENTS_PAYOUT_ACCOUNT_VIEW,
+  PAYMENTS_SAVED_FILTER_SHARE,
 ]);

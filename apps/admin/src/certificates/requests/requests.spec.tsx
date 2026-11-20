@@ -11,22 +11,11 @@ vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
 import { callApi } from '../../api/client.ts';
 import { requestProblemOf } from './errors.ts';
 import { RequestView } from './request-view.tsx';
-import { RequestsTable } from './requests-table.tsx';
-import type { RequestDetail, RequestRow } from './types.ts';
+import type { RequestDetail } from './types.ts';
 
 const call = vi.mocked(callApi);
 const ID = '0190a000-0000-7000-8000-0000000000e1';
 const ISSUER = '0190a000-0000-7000-8000-0000000000c1';
-const row = (over: Partial<RequestRow> = {}): RequestRow => ({
-  issuerRequestId: ID,
-  version: 2,
-  typeCode: 'halal',
-  sellerId: '0190a000-0000-7000-8000-00000000abcd',
-  storeName: 'Logan Road Grocer',
-  documentCount: 2,
-  createdAt: '2026-11-09T01:00:00.000Z',
-  ...over,
-});
 const detail = (over: Partial<RequestDetail> = {}): RequestDetail => ({
   issuerRequestId: ID,
   version: 2,
@@ -42,7 +31,6 @@ const detail = (over: Partial<RequestDetail> = {}): RequestDetail => ({
   reasons: [{ code: 'not-an-issuer', label: 'This is not a certificate issuer.' }],
   ...over,
 });
-const names = new Map([['halal', 'Halal']]);
 const wrap = (node: React.ReactNode) =>
   render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
@@ -58,36 +46,6 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
-});
-
-describe('issuer requests queue', () => {
-  it('has one link per row, a plain fallback for a seller not approved, and no typed text', () => {
-    wrap(
-      <RequestsTable
-        rows={[row(), row({ issuerRequestId: ISSUER, storeName: null })]}
-        typeNames={names}
-        morePages={false}
-      />,
-    );
-    expect(screen.getAllByRole('link')).toHaveLength(2);
-    expect(screen.getByRole('link', { name: 'Logan Road Grocer' }).getAttribute('href')).toBe(
-      `/certificates/issuer-requests/${ID}`,
-    );
-    expect(screen.getByText('Not yet approved').closest('a')).toBeNull();
-    expect(
-      screen.getByRole('link', { name: 'Open request from Not yet approved, seller 0000ABCD' }),
-    ).toBeTruthy();
-    expect(screen.getAllByText('Halal')).toHaveLength(2);
-    expect(screen.getByText('Waiting since (UTC)')).toBeTruthy();
-  });
-
-  it('says when there is nothing, and when only this page is empty', () => {
-    wrap(<RequestsTable rows={[]} typeNames={names} morePages={false} />);
-    expect(screen.getByText('No issuer requests are open.')).toBeTruthy();
-    cleanup();
-    wrap(<RequestsTable rows={[]} typeNames={names} morePages />);
-    expect(screen.getByText(/Nothing on this page/)).toBeTruthy();
-  });
 });
 
 describe('issuer request page', () => {

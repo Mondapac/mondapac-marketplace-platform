@@ -33,8 +33,8 @@ export interface VariantRow {
   readonly state: 'proposed' | 'published' | 'new';
   /** Option field code to option code. */
   readonly options: Readonly<Record<string, string>>;
-  /** Locale to label. */
-  readonly labels: Readonly<Record<string, string>>;
+  /** `{productCode}-{nn}`, read-only; null for a variant added in this session (V2). */
+  readonly variantCode: string | null;
   /** V4 fields as typed: GTIN, shipping weight and box, and the gallery photos it picked. */
   readonly gtin: string;
   readonly weightGrams: string;
@@ -224,7 +224,11 @@ export function attributeValuesWith(
 /** The rows of the variants editor: every live variant, with what the saved draft says about it. */
 export function variantRowsOf(
   content: Readonly<Record<string, unknown>> | undefined,
-  variants: readonly { readonly variantId: string; readonly state: string }[],
+  variants: readonly {
+    readonly variantId: string;
+    readonly state: string;
+    readonly variantCode?: string;
+  }[],
 ): VariantRow[] {
   const stored = content?.['variants'];
   const entries = Array.isArray(stored) ? stored.filter(isObject) : [];
@@ -233,13 +237,12 @@ export function variantRowsOf(
     .map((variant) => {
       const entry = entries.find((item) => item['variantId'] === variant.variantId);
       const options = entry?.['optionValues'];
-      const labels = entry?.['labels'];
       return {
         variantId: variant.variantId,
         key: variant.variantId,
         state: variant.state === 'proposed' ? 'proposed' : 'published',
         options: isStringMap(options) ? options : {},
-        labels: isStringMap(labels) ? labels : {},
+        variantCode: variant.variantCode ?? null,
         ...fieldsOf(entry),
       };
     });
@@ -268,11 +271,6 @@ export function variantsWith(rows: readonly VariantRow[]): Record<string, unknow
     const options = Object.fromEntries(
       Object.entries(row.options).filter(([, code]) => code !== ''),
     );
-    const labels = Object.fromEntries(
-      Object.entries(row.labels)
-        .map(([locale, label]) => [locale, label.trim()] as const)
-        .filter(([, label]) => label !== ''),
-    );
     const sizes = Object.fromEntries(
       SIZE_KEYS.filter((key) => row[key].trim() !== '').map(
         (key) => [DRAFT_KEY[key], Number(row[key].trim())] as const,
@@ -281,7 +279,6 @@ export function variantsWith(rows: readonly VariantRow[]): Record<string, unknow
     return {
       variantId: row.variantId ?? row.key,
       ...(Object.keys(options).length > 0 ? { optionValues: options } : {}),
-      ...(Object.keys(labels).length > 0 ? { labels } : {}),
       ...(row.gtin.trim() !== '' ? { gtin: row.gtin.trim() } : {}),
       ...sizes,
       ...(row.imageIds.length > 0 ? { imageIds: [...row.imageIds] } : {}),

@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, Dialog, toast } from '@mondapac/ui';
+import { Banner, Button, Dialog, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -35,6 +35,8 @@ export function ConfirmDialog({
   const errors = useTranslations('tax.error');
   const [problem, setProblem] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
+  // Deleting cannot be undone, so the person types the strategy's name first (confirmation level 3).
+  const [typed, setTyped] = useState('');
   const inFlight = useRef(false);
   const scope =
     action.kind === 'activate'
@@ -44,6 +46,8 @@ export function ConfirmDialog({
         : 'built-in-dialog';
   const name = action.kind === 'built-in' ? '' : action.strategy.name;
   const rate = percentOf(builtInRateBps);
+  const cancelButton = useRef<HTMLButtonElement>(null);
+  const typedOk = action.kind !== 'delete' || (name.trim() !== '' && typed.trim() === name.trim());
 
   async function confirm() {
     if (inFlight.current) return;
@@ -91,19 +95,27 @@ export function ConfirmDialog({
   return (
     <Dialog
       open
+      initialFocus={cancelButton}
       title={t(`${scope}.title`, { name })}
       onClose={() => {
         if (!pending) onClose();
       }}
       actions={
         <>
-          <Button variant="secondary" className="min-h-12" onClick={onClose} disabled={pending}>
+          <Button
+            ref={cancelButton}
+            variant="secondary"
+            className="min-h-12"
+            onClick={onClose}
+            disabled={pending}
+          >
             {t('cancel')}
           </Button>
           <Button
-            variant={action.kind === 'delete' ? 'destructive-solid' : 'primary'}
+            variant="destructive-solid"
             className="min-h-12"
             loading={pending}
+            disabled={!typedOk && !pending}
             onClick={() => void confirm()}
           >
             {t(`${scope}.confirm`)}
@@ -113,6 +125,17 @@ export function ConfirmDialog({
     >
       <div className="flex flex-col gap-3">
         <p className="text-sm text-fg">{t(`${scope}.body`, { rate })}</p>
+        {action.kind === 'delete' ? (
+          <TextField
+            label={t('delete-dialog.type-label')}
+            help={<span className="font-medium text-fg">{name}</span>}
+            value={typed}
+            autoComplete="off"
+            spellCheck={false}
+            disabled={pending}
+            onChange={(event) => setTyped(event.target.value)}
+          />
+        ) : null}
         {problem === null ? null : <Banner tone="critical">{problem}</Banner>}
       </div>
     </Dialog>

@@ -172,10 +172,21 @@ describe('draft content helpers', () => {
         key: 'v1',
         state: 'published',
         options: { size: 'large' },
-        labels: { 'en-AU': 'L' },
+        variantCode: null,
         ...NO_VARIANT_FIELDS,
       },
     ]);
+  });
+
+  it('reads the variant code and never sends a label (variants V2)', () => {
+    const rows = variantRowsOf(
+      {
+        variants: [{ variantId: 'v1', optionValues: { size: 'large' }, labels: { 'en-AU': 'L' } }],
+      },
+      [{ variantId: 'v1', state: 'published', variantCode: 'P-000001-01' }],
+    );
+    expect(rows[0]?.variantCode).toBe('P-000001-01');
+    expect(variantsWith(rows)).toEqual([{ variantId: 'v1', optionValues: { size: 'large' } }]);
   });
 
   it('reads and writes the V4 fields of a variant, leaving empty ones out', () => {

@@ -2,10 +2,6 @@
 
 export const VIEW_PERMISSION = 'commission-payouts.payout.view';
 export const APPROVE_PERMISSION = 'commission-payouts.payout.approve';
-export const PAGE_SIZE = 25;
-/** The most the API returns on a page; the tab counts read one page of this size. */
-export const COUNT_PAGE_SIZE = 100;
-
 export const PAYOUT_STATES = [
   'pending',
   'awaiting-approval',
@@ -19,21 +15,6 @@ export const PAYOUT_STATES = [
   'settled-by-netting',
 ] as const;
 export type PayoutState = (typeof PAYOUT_STATES)[number];
-
-/**
- * The list tabs and the API states each one reads. The API filters by one state, so "Sending" is
- * three reads merged. A voided payout never happened and a payout settled by netting sent no
- * transfer; neither has a tab.
- */
-export const TABS = ['awaiting-approval', 'sending', 'paid', 'failed', 'not-sent'] as const;
-export type Tab = (typeof TABS)[number];
-export const TAB_STATES: Readonly<Record<Tab, readonly PayoutState[]>> = {
-  'awaiting-approval': ['awaiting-approval'],
-  sending: ['approved', 'instructing', 'instructed'],
-  paid: ['paid'],
-  failed: ['failed'],
-  'not-sent': ['not-sent'],
-};
 
 export interface PayoutMoney {
   /** Minor units, as a string. */

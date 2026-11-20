@@ -2,6 +2,7 @@ import { ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import type {
   ApplyOutcome,
+  ChangeImpact,
   RevertOutcome,
   RevertRequest,
   SystemChangeApplier,
@@ -32,6 +33,7 @@ import {
   holdsRole,
   idOf,
   labelsOrNone,
+  roleHolderImpact,
   sameList,
   type PeopleLabelReads,
   type PeopleReverterDependencies,
@@ -386,5 +388,14 @@ export class PlatformRoleDeletionApplier implements SystemChangeApplier {
   /** The role's name, for a viewer who may list the platform roles (else none). */
   describe(context: CallContext, subjectRefs: readonly string[]) {
     return describeRoles(this.labels, context, 'identity.platform-role-deletion', subjectRefs);
+  }
+
+  /** The admins who hold the role (a held role is not deleted: the approval answers so). */
+  impact(
+    context: CallContext,
+    request: RevertRequest,
+    signal?: AbortSignal,
+  ): Promise<ChangeImpact | null> {
+    return roleHolderImpact(this.deps, this.labels, context, request.subjectRef, signal);
   }
 }

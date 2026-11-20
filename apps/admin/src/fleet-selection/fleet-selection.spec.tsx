@@ -380,7 +380,8 @@ describe('the fleet selection page', () => {
   it('puts focus on the edited model after it is saved', async () => {
     call.mockResolvedValueOnce(ok({})).mockResolvedValueOnce(ok(selection()));
     mount(selection());
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Cheapest first' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Cheapest first' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit…' }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Cheapest first' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
     await expectToast(/^Model saved\./);
@@ -431,7 +432,8 @@ describe('the fleet selection page', () => {
     );
     mount(selection());
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Cheapest first' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Cheapest first' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit…' }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Mine' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
 
@@ -505,7 +507,8 @@ describe('the review changes', () => {
     call.mockResolvedValueOnce(ok({})).mockResolvedValueOnce(ok(selection()));
     mount(selection({ active: { instant: MODEL, same_day: null, scheduled: null } }));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Cheapest first' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Cheapest first' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit…' }));
     expect(screen.getByText(/This model is active for Instant/)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
     expect(call).not.toHaveBeenCalled();
@@ -589,7 +592,8 @@ describe('the review changes', () => {
       .mockResolvedValueOnce(refused(409, 'shipping.fleet-model-conflict'))
       .mockResolvedValueOnce(ok(selection()));
     mount(selection());
-    fireEvent.click(screen.getByRole('button', { name: 'Edit Cheapest first' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Cheapest first' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Edit…' }));
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Mine' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save model' }));
 
