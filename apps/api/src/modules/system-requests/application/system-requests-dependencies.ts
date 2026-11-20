@@ -2,6 +2,7 @@ import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import type { AuthorisationCheck, StepUpProofConsumer } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
+import type { ImpactCache } from './impact-cache';
 import type { AdminNames } from './ports/admin-names';
 import type { PolicyRepository } from './ports/policy.repository';
 import type { RequestRepository } from './ports/request.repository';
@@ -23,4 +24,6 @@ export interface SystemRequestsDependencies {
   readonly adminNames: AdminNames;
   readonly ids: IdGenerator;
   readonly clock: Clock;
+  /** The request detail's impact answers, kept 30 s in this process. */
+  readonly impactCache: ImpactCache;
 }

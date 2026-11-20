@@ -12965,6 +12965,24 @@
       "note": "Why this change was made",
       "note-approval": "Why this action was requested"
     },
+    "impact": {
+      "title": "Impact",
+      "hint": "How many records this change touches, counted when you opened this request.",
+      "at-least": "at least {text}",
+      "item": {
+        "products": "{count, plural, one {# product} other {# products}}",
+        "drafts": "{count, plural, one {# product draft} other {# product drafts}}",
+        "offers": "{count, plural, one {# offer} other {# offers}}",
+        "offers-with-active-tag": "{count, plural, one {# offer with an active certification} other {# offers with an active certification}}",
+        "subcategories": "{count, plural, one {# subcategory} other {# subcategories}}",
+        "categories": "{count, plural, one {# category} other {# categories}}",
+        "filters": "{count, plural, one {# category filter} other {# category filters}}",
+        "feature-sets": "{count, plural, one {# feature set} other {# feature sets}}",
+        "variant-products": "{count, plural, one {# product with live variants} other {# products with live variants}}",
+        "admins": "{count, plural, one {# admin} other {# admins}}",
+        "sellers": "{count, plural, one {# seller} other {# sellers}}"
+      }
+    },
     "banner": {
       "live": "This change is already live. Approve to keep it, or reject to put the previous value back.",
       "superseded": "A later request changed this again, so this one can no longer be reverted. You can still approve it.",
