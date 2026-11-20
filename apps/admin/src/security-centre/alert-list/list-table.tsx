@@ -64,7 +64,7 @@ export function AlertTable({
       cell: (row) => (
         <>
           <a
-            className="font-medium text-link underline lg:max-w-md"
+            className="font-medium text-link underline"
             href={`/security/alerts/${encodeURIComponent(row.id)}`}
           >
             {row.title}
@@ -83,7 +83,7 @@ export function AlertTable({
       id: 'key',
       header: t('col.key'),
       cell: (row) => (
-        <span className="break-all">
+        <span className="wrap-anywhere">
           <span className="text-fg-muted">{tc(`key.${row.keyType}`)}: </span>
           <span className="font-mono">{row.keyLabel}</span>
         </span>

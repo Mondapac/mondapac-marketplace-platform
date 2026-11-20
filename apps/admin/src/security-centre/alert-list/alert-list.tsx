@@ -188,6 +188,7 @@ export function AlertList({
       if (ticket !== latest.current) return;
       setLoading(false);
       if (!result.ok) {
+        focusList.current = false;
         const { status, code, details } = result.failure;
         if (status === 401) {
           window.location.assign('/session-ended');
@@ -406,7 +407,13 @@ export function AlertList({
         onSelectAll={selection.selectAllMatching}
         onClear={selection.clear}
       />
-      <div ref={listTop} tabIndex={-1} className="outline-none">
+      <div
+        ref={listTop}
+        tabIndex={-1}
+        role="region"
+        aria-label={t('title')}
+        className="outline-none"
+      >
         <AlertTable
           rows={shown}
           columns={columns}
@@ -468,6 +475,7 @@ export function AlertList({
       search={{
         label: t('search.label'),
         placeholder: t('search.placeholder'),
+        help: t('search.help'),
         value: draft,
         maxLength: SEARCH_MAX,
         onChange: setDraft,

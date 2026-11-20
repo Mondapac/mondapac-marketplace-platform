@@ -14838,7 +14838,8 @@
       },
       "search": {
         "label": "Search",
-        "placeholder": "Find alerts by the exact key: an account ID, an IP address, or an event ID"
+        "placeholder": "Search by account ID, IP or event ID",
+        "help": "Finds alerts whose key is exactly what you type: an account ID, an IP address, the Market code or an event ID. Part of a key finds nothing."
       },
       "chip-search": "Key is {text}",
       "filter": {
