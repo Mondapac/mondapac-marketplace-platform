@@ -1,6 +1,11 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
-import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import {
+  UseCase,
+  type AccessDeclaration,
+  type AccessDenied,
+  type UseCaseGate,
+} from '../../../../platform/authz';
 import { XLSX_CONTENT_TYPE, type SheetWriter } from '../../../../platform/list-export/sheet-writer';
 import { CATALOG_PRODUCT_VIEW } from '../../contracts/permissions';
 import { invalid, type ValidationFailure } from '../own-reads/own-reads.shared';
@@ -45,10 +50,7 @@ export interface ReviewQueueExportOutput {
 }
 
 export type ReviewQueueExportFailure =
-  | { readonly code: 'access.denied' }
-  | { readonly code: 'access.unavailable' }
-  | { readonly code: 'batch.too-large'; readonly max: number }
-  | ValidationFailure;
+  AccessDenied | { readonly code: 'batch.too-large'; readonly max: number } | ValidationFailure;
 
 type Cell = string | number;
 
@@ -158,6 +160,7 @@ function rowOf(row: ReviewQueueRow): Cell[] {
 }
 
 async function* csvChunks(table: readonly (readonly Cell[])[]): AsyncGenerator<string> {
+  await Promise.resolve();
   for (let start = 0; start < table.length; start += CHUNK) {
     const text = table
       .slice(start, start + CHUNK)

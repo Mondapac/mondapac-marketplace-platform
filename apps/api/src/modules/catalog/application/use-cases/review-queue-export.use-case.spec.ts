@@ -48,22 +48,21 @@ const revision = (n: number, over: Partial<ReviewQueueRow> = {}): ReviewQueueRow
     actions: [],
     ...over,
   }) as ReviewQueueRow;
-const offerRow = (n: number): ReviewQueueRow =>
-  ({
-    kind: 'offer-first-publication',
-    offerId: ID(0x300 + n),
-    version: 4,
-    sellerId: ID(0x2000),
-    storeName: null,
-    productId: ID(0x100 + n),
-    product: { productCode: `P${n}`, typeCode: 'simple', name: '=cmd' },
-    sellerSku: `SKU-${n}`,
-    conditionCode: 'new',
-    description: {},
-    handling: null,
-    submittedAt: SENT.toString(),
-    actions: [],
-  }) as ReviewQueueRow;
+const offerRow = (n: number): ReviewQueueRow => ({
+  kind: 'offer-first-publication',
+  offerId: ID(0x300 + n),
+  version: 4,
+  sellerId: ID(0x2000),
+  storeName: null,
+  productId: ID(0x100 + n),
+  product: { productCode: `P${n}`, typeCode: 'simple', name: '=cmd' },
+  sellerSku: `SKU-${n}`,
+  conditionCode: 'new',
+  description: {},
+  handling: null,
+  submittedAt: SENT.toString(),
+  actions: [],
+});
 
 describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) => {
   const market: MarketContext = testMarketContext(code, 'default');
@@ -112,8 +111,8 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
   } as unknown as ReviewQueueList;
   const sheetWriter: SheetWriter = {
     async *xlsx(name, rows) {
-      yield `sheet:${name}\n`;
-      for await (const row of rows) yield `${row.join('|')}\n`;
+      yield new TextEncoder().encode(`sheet:${name}\n`);
+      for await (const row of rows) yield new TextEncoder().encode(`${row.join('|')}\n`);
     },
   };
   const useCase = () =>
