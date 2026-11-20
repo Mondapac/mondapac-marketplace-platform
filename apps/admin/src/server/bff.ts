@@ -2533,6 +2533,7 @@ function badScope(method: string, target: string, requestUrl: string): boolean {
 const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
   'payments/admin/connected-accounts/export',
   'security/admin/alerts/export',
+  'certification/admin/seller-certificates/export',
   'reviews/admin/moderation/export',
 ]);
 

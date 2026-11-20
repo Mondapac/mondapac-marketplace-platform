@@ -1248,6 +1248,7 @@
     "queue": {
       "title": "Certificates waiting for a decision",
       "no-access": "You don't have access to certificates.",
+      "no-access-body": "Viewing the certificate queue needs the certificate view permission. Ask an administrator who can grant it.",
       "back-home": "Back to dashboard",
       "unavailable": "Certificates could not be loaded.",
       "more": "Next page",
