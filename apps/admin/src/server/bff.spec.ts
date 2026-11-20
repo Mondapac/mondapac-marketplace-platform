@@ -680,6 +680,35 @@ describe('relay allowlist for seller decisions', () => {
     expect((await call('PUT', `${path}/extra`)).status).toBe(404);
   });
 
+  it('relays the assistant insights read on its exact path, with only its own query keys', async () => {
+    const path = 'assistant/admin/insights';
+    const fetchImpl = vi.fn<typeof fetch>(() => Promise.resolve(new Response('{}')));
+    const upstream = () => {
+      const target = fetchImpl.mock.calls.at(-1)?.[0];
+      return target instanceof Request ? target.url : String(target);
+    };
+    const ask = (query: string) =>
+      relay(
+        config,
+        new Request(`http://admin.localhost:3002/api/${path}${query}`, { headers: sameOrigin }),
+        path.split('/'),
+        fetchImpl,
+      );
+    expect((await ask('?from=2026-11-01&to=2026-11-20&page=2&pageSize=100')).status).toBe(200);
+    expect(upstream()).toContain('from=2026-11-01&to=2026-11-20&page=2&pageSize=100');
+    // A key the route does not take, and a value of the wrong shape, are dropped.
+    expect((await ask('?secret=1')).status).toBe(200);
+    expect(upstream()).not.toContain('secret');
+    expect((await ask('?from=yesterday')).status).toBe(200);
+    expect(upstream()).not.toContain('yesterday');
+    expect((await call('POST', path)).status).toBe(404);
+    expect((await call('PUT', path)).status).toBe(404);
+    const extra = new Request(`http://admin.localhost:3002/api/${path}/extra`, {
+      headers: sameOrigin,
+    });
+    expect((await relay(config, extra, [...path.split('/'), 'extra'], fetchImpl)).status).toBe(404);
+  });
+
   it('relays the own display name (PUT) and password change (POST) on their exact paths only', async () => {
     const name = 'identity/admin/profile/display-name';
     expect((await call('PUT', name)).status).toBe(200);
@@ -2771,6 +2800,12 @@ describe('relay of the wallet and step-up routes', () => {
     );
   });
 
+  it('refuses a malformed id search of the deletion request list instead of reading every request', async () => {
+    const refused = await run('GET', 'customers/admin/deletion-requests?q=ada', readHeaders);
+    expect(refused.response.status).toBe(400);
+    expect(refused.upstream).not.toHaveBeenCalled();
+  });
+
   it('passes the Account deletion requests super list query and its export only in the shapes the API takes', async () => {
     const listed = await run(
       'GET',
@@ -2782,7 +2817,7 @@ describe('relay of the wallet and step-up routes', () => {
     );
     const dropped = await run(
       'GET',
-      'customers/admin/deletion-requests?view=open&requestedBy=seller&q=someone@example.com&sort=account&pageSize=500&from=2026-11-01',
+      'customers/admin/deletion-requests?view=open&requestedBy=seller&sort=account&pageSize=500&from=2026-11-01',
       readHeaders,
     );
     expect(dropped.upstream.mock.calls[0]?.[0]).toBe(
@@ -2806,6 +2841,30 @@ describe('relay of the wallet and step-up routes', () => {
     expect(chosen.upstream.mock.calls[0]?.[0]).toBe(
       `http://api.test/customers/admin/deletion-requests/export?ids=${many.replaceAll(',', '%2C')}`,
     );
+    // A malformed key refuses the file instead of widening it to the whole Market.
+    const badFile = await run(
+      'GET',
+      'customers/admin/deletion-requests/export?format=pdf&columns=ticket&ids=x',
+      readHeaders,
+    );
+    expect(badFile.response.status).toBe(400);
+    expect(badFile.upstream).not.toHaveBeenCalled();
+    const tooMany = await run(
+      'GET',
+      `customers/admin/deletion-requests/export?format=csv&ids=${Array.from({ length: 201 }, () => id).join(',')}`,
+      readHeaders,
+    );
+    expect(tooMany.response.status).toBe(400);
+    expect(tooMany.upstream).not.toHaveBeenCalled();
+    for (const bad of ['q=ada', 'from=yesterday', 'view=open', 'requestedBy=seller']) {
+      const refused = await run(
+        'GET',
+        `customers/admin/deletion-requests/export?format=csv&${bad}`,
+        readHeaders,
+      );
+      expect(refused.response.status).toBe(400);
+      expect(refused.upstream).not.toHaveBeenCalled();
+    }
   });
 
   it('passes only status, search, afterId and limit of the brand list, each in its shape', async () => {
@@ -3047,9 +3106,25 @@ describe('relay of the wallet and step-up routes', () => {
       'wallet/admin/credit-requests/export?format=pdf&columns=fingerprint&ids=x',
       readHeaders,
     );
-    // A strict export (Hassan S1): a malformed value refuses the file instead of widening it.
+    // A malformed key refuses the file instead of widening it to the whole Market.
     expect(badFile.response.status).toBe(400);
     expect(badFile.upstream).not.toHaveBeenCalled();
+    const tooMany = await run(
+      'GET',
+      `wallet/admin/credit-requests/export?format=csv&ids=${Array.from({ length: 201 }, () => id).join(',')}`,
+      readHeaders,
+    );
+    expect(tooMany.response.status).toBe(400);
+    expect(tooMany.upstream).not.toHaveBeenCalled();
+    for (const bad of ['q=ada', 'from=yesterday']) {
+      const refused = await run(
+        'GET',
+        `wallet/admin/credit-requests/export?format=csv&${bad}`,
+        readHeaders,
+      );
+      expect(refused.response.status).toBe(400);
+      expect(refused.upstream).not.toHaveBeenCalled();
+    }
   });
 
   it('passes no query on the customer summary or the settings', async () => {
@@ -3108,6 +3183,14 @@ describe('relay of the wallet and step-up routes', () => {
     expect(file.upstream.mock.calls[0]?.[0]).toBe(
       `http://api.test/commission-payouts/admin/disputes/export?format=xlsx&columns=reason%2Cseller-ids&ids=${id}&view=closed`,
     );
+    // A malformed narrowing key of the export refuses the file instead of widening it.
+    const wide = await run(
+      'GET',
+      'commission-payouts/admin/disputes/export?format=csv&sellerId=nope',
+      readHeaders,
+    );
+    expect(wide.response.status).toBe(400);
+    expect(wide.upstream).not.toHaveBeenCalled();
   });
 
   it('passes the held-price super list query and its export in shape, dropping the rest', async () => {

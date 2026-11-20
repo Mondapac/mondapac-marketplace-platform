@@ -3554,10 +3554,15 @@
         "model": "Configured model",
         "spend-today": "Spend today",
         "spend-month": "Spend this month",
-        "not-measured": "Recorded once buyers can chat",
+        "not-measured": "Recorded once buyers have chatted",
         "not-configured": "The assistant is switched on, but buyers do not see it yet: the server is missing the model API key or a model for the chosen tier. See the rows below.",
         "conversations-today": "Conversations today",
-        "last-auto-off": "Last automatic switch-off"
+        "last-auto-off": "Last automatic switch-off",
+        "spend-of": "{spent} of {cap}",
+        "cost-per-conversation": "Average cost per conversation (all tiers)",
+        "cost-per-conversation-value": "{amount} over the last 30 days",
+        "never-auto-off": "Never switched off by a cap",
+        "auto-off-value": "{cap, select, daily {Daily cap} monthly {Monthly cap} other {A cap}} reached, {when}"
       },
       "summary": {
         "title": "Settings in force"
@@ -3597,7 +3602,7 @@
         "balanced": "Balanced",
         "none": "Not configured",
         "configured": "{tier}: {model}",
-        "help": "A tier without a model on the server cannot be chosen. The cost per conversation is shown once buyers can chat."
+        "help": "A tier without a model on the server cannot be chosen. The average cost per conversation is in the Status card once buyers have chatted."
       },
       "language": {
         "label": "Reply language",
@@ -3631,7 +3636,8 @@
         "daily-help": "From {min, number} to {max, number}, and no more than the monthly cap.",
         "monthly": "Monthly cap",
         "monthly-help": "From {min, number} to {max, number}.",
-        "amount": "{amount, number, ::currency/USD}"
+        "amount": "{amount, number, ::currency/USD}",
+        "amount-precise": "{amount, number, ::currency/USD .00##}"
       },
       "retention": {
         "label": "Keep conversations",
@@ -3667,7 +3673,14 @@
         "unknown": "Something went wrong. Try again."
       },
       "not-configured-option": "{option} (not configured on the server)",
-      "version-defaults": "Built-in defaults, never saved"
+      "version-defaults": "Built-in defaults, never saved",
+      "tabs": {
+        "label": "Smart assistant pages",
+        "settings": "Settings",
+        "insights": "Insights"
+      },
+      "insights-title": "Smart assistant insights",
+      "insights-intro": "How buyers use the shopping assistant, what it costs, how they rate its answers, and the questions it could not answer."
     },
     "view-only": {
       "title": "View only",
@@ -7898,7 +7911,6 @@
   },
   "account-deletion": {
     "cancel": "Cancel",
-    "retry": "Try again",
     "reason": {
       "label": "Reason",
       "help-history": "Plain text, one line, up to 500 characters. Kept in the change history.",
@@ -7954,42 +7966,14 @@
       }
     },
     "requests": {
-      "title": "Pending deletion requests",
+      "title": "Account deletion requests",
       "back": "Account deletion",
       "permission-view": "View account deletion requests",
-      "caption": "Accounts waiting to be deleted, earliest first",
-      "loading": "Loading the requests",
-      "load-failed": "Couldn't load the list.",
-      "load-more": "Load more",
-      "loaded-more": "{count} more requests loaded",
-      "more-failed": "Couldn't load more requests. Try again.",
-      "col": {
-        "account": "Account",
-        "requested-by": "Requested by",
-        "requested": "Requested",
-        "deletes-on": "Deletes on",
-        "status": "Status",
-        "actions": "Actions"
-      },
-      "by": {
-        "customer": "Buyer",
-        "admin": "Admin"
-      },
-      "status": {
-        "waiting": "Waiting",
-        "in-progress": "In progress"
-      },
-      "empty": {
-        "title": "No pending requests",
-        "body": "Accounts waiting to be deleted appear here."
-      },
-      "cancel": "Cancel request",
-      "cancel-aria": "Cancel the deletion request of account {account}",
-      "cancelled": "Deletion request cancelled. The account is kept."
+      "cancel": "Cancel request"
     },
     "cancel-request": {
       "title": "Cancel this deletion request?",
-      "body": "The account is kept. The buyer is not told (email is not available yet).",
+      "body": "The account is kept. The buyer won't be notified.",
       "keep": "Keep request",
       "confirm": "Cancel request"
     },
@@ -8037,6 +8021,147 @@
       "check-failed": "Couldn't check this account. Try again.",
       "unavailable": "The service is not available right now. Try again in a few minutes.",
       "unknown": "Something went wrong. Try again."
+    },
+    "list": {
+      "intro": "Requests to delete a buyer account. A waiting request can be cancelled until the deletion starts.",
+      "views-label": "Deletion request views",
+      "zone-note": "Dates are shown in {zone}.",
+      "loading": "Loading the requests",
+      "no-access": "You do not have access to this list.",
+      "view": {
+        "pending": "Waiting",
+        "executing": "In progress",
+        "cancelled": "Cancelled",
+        "completed": "Deleted",
+        "all": "All"
+      },
+      "col": {
+        "account": "Account",
+        "status": "Status",
+        "requested": "Requested",
+        "deletes-on": "Deletes on",
+        "requested-by": "Requested by",
+        "cancelled": "Cancelled on",
+        "cancel-reason": "Cancelled because",
+        "completed": "Deleted on",
+        "actions": "Actions"
+      },
+      "caption": "Account deletion requests",
+      "row-name": "request for account {account}",
+      "none": "None",
+      "status": {
+        "pending": "Waiting",
+        "executing": "In progress",
+        "cancelled": "Cancelled",
+        "completed": "Deleted"
+      },
+      "by": {
+        "customer": "Buyer",
+        "admin": "Admin"
+      },
+      "cancel-reason": {
+        "customer": "Buyer cancelled",
+        "sign-in": "Buyer signed in",
+        "admin": "Admin cancelled"
+      },
+      "search": {
+        "label": "Search",
+        "placeholder": "Request ID or account ID",
+        "help": "A full request ID or buyer account ID.",
+        "not-id": "That is not an ID. Type a full request ID or buyer account ID."
+      },
+      "chip-id": "Request or account ID is {text}",
+      "filter": {
+        "title": "Filter deletion requests",
+        "name": {
+          "requestedBy": "Requested by",
+          "cancelReason": "Cancelled because",
+          "requested": "Requested",
+          "deletes": "Deletes on"
+        },
+        "by": {
+          "customer": "Buyer",
+          "admin": "Admin"
+        },
+        "cancel-reason": {
+          "customer": "Buyer cancelled",
+          "sign-in": "Buyer signed in",
+          "admin": "Admin cancelled"
+        },
+        "deletes": {
+          "24h": "Within 24 hours",
+          "7d": "Within 7 days",
+          "30d": "Within 30 days"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "scheduled": "Deletes on",
+          "requested": "Requested",
+          "cancelled": "Cancelled on",
+          "completed": "Deleted on"
+        },
+        "scheduled": {
+          "first": "Earliest first",
+          "second": "Latest first"
+        },
+        "requested": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "cancelled": {
+          "first": "Most recent first",
+          "second": "Least recent first"
+        },
+        "completed": {
+          "first": "Most recent first",
+          "second": "Least recent first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# request matches} other {# requests match}}",
+      "range": "{from}–{to} of {total} requests",
+      "error": {
+        "unavailable": "The deletion requests could not be loaded.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      },
+      "empty": {
+        "pending": "No accounts are waiting to be deleted.",
+        "executing": "No accounts are being deleted right now.",
+        "cancelled": "No requests have been cancelled.",
+        "completed": "No accounts have been deleted yet.",
+        "all": "No deletion requests yet.",
+        "no-match": "No deletion requests match",
+        "no-match-help": "Try other filters or clear them."
+      },
+      "select": {
+        "page": "Select all requests on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# request selected} other {# requests selected}}",
+        "all": "{count, plural, one {The # matching request is selected} other {All # matching requests are selected}}",
+        "all-open": "All matching requests are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# request selected} other {# requests selected}}",
+        "all-open": "All matching requests selected"
+      },
+      "actions": {
+        "for": "Actions for {name}",
+        "cancel": "Cancel request…"
+      },
+      "notice": {
+        "cancelled": "Deletion request cancelled. The account is kept."
+      },
+      "erased": "Account erased"
     }
   },
   "route": {
@@ -8195,7 +8320,8 @@
       "review-held": "A <strong>review</strong> is held for moderation",
       "review-reported": "A seller reported a <strong>review</strong>",
       "seller-refund-limit-reached": "{limit, select, count {A seller reached the <strong>refund count cap</strong>} amount {A seller reached the <strong>refund amount cap</strong>} unset {A seller tried to refund with <strong>no refund cap set</strong>} other {A seller reached a <strong>refund cap</strong>}}",
-      "system-request-overdue": "<strong>SR-{number}</strong> has waited {ageDays, plural, one {# day} other {# days}} for review"
+      "system-request-overdue": "<strong>SR-{number}</strong> has waited {ageDays, plural, one {# day} other {# days}} for review",
+      "assistant-spend-cap-reached": "{cap, select, daily {The shopping assistant reached its <strong>daily spend cap</strong> and is switched off until tomorrow} monthly {The shopping assistant reached its <strong>monthly spend cap</strong> and is switched off until next month} other {The shopping assistant reached a <strong>spend cap</strong> and is switched off}}"
     },
     "category": {
       "certificates": "Certificates",
@@ -8206,7 +8332,8 @@
       "reviews": "Reviews",
       "refunds": "Refunds",
       "other": "Other",
-      "system-requests": "System requests"
+      "system-requests": "System requests",
+      "assistant": "Smart assistant"
     },
     "empty": {
       "unread": {
@@ -8625,35 +8752,36 @@
       "time": "Time",
       "open-approvals": "Open approvals"
     },
-    "queue": {
+    "list": {
       "title": "Credit approvals",
       "intro": "Credit above an admin's limit waits here for a second admin to approve or reject it.",
-      "tabs": "Credit request lists",
-      "tab": {
+      "views-label": "Credit request views",
+      "zone-note": "Dates are shown in {zone}.",
+      "view": {
         "pending": "Pending",
         "decided": "Decided",
-        "granted": "Granted at once"
-      },
-      "caption": {
-        "pending": "Credit requests waiting for a decision",
-        "decided": "Decided credit requests",
-        "granted": "Credit issued at once"
-      },
-      "empty": {
-        "pending": "No credit requests are waiting.",
-        "decided": "No decided requests yet.",
-        "granted": "No credit has been issued yet."
+        "granted": "Granted at once",
+        "all": "All"
       },
       "col": {
         "customer": "Customer",
         "amount": "Amount",
-        "reason": "Reason",
         "status": "Status",
-        "requested-by": "Requested by",
         "requested": "Requested",
+        "reason": "Reason",
+        "requested-by": "Requested by",
         "until": "Expires or decided",
+        "approval-reason": "Why it needed approval",
+        "decided-by": "Decided by",
+        "decision-reason": "Decision reason",
+        "note": "Note",
+        "journal": "Journal reference",
         "actions": "Actions"
       },
+      "caption": "Credit requests",
+      "row-name": "request for customer {customer}, {amount}",
+      "none": "None",
+      "you": "You",
       "status": {
         "granted": "Granted",
         "pending": "Pending",
@@ -8661,17 +8789,111 @@
         "rejected": "Rejected",
         "expired": "Expired"
       },
-      "you": "You",
-      "approve": "Approve",
-      "reject": "Reject",
-      "details": "Details",
-      "detail": {
-        "note": "Note",
-        "approval-reason": "Why it needed approval",
-        "decision-reason": "Decision reason",
-        "decided-by": "Decided by",
-        "journal": "Journal reference",
-        "none": "None"
+      "search": {
+        "label": "Search",
+        "placeholder": "Request ID or customer ID",
+        "help": "A full request ID or customer account ID.",
+        "not-id": "That is not an ID. Type a full request ID or customer account ID."
+      },
+      "chip-id": "Request or customer ID is {text}",
+      "filter": {
+        "title": "Filter credit requests",
+        "name": {
+          "status": "Status",
+          "reason": "Reason",
+          "approvalReason": "Why it needed approval",
+          "requestedBy": "Requested by",
+          "requested": "Requested"
+        },
+        "status": {
+          "granted": "Granted",
+          "pending": "Pending",
+          "approved": "Approved",
+          "rejected": "Rejected",
+          "expired": "Expired"
+        },
+        "by": {
+          "me": "Me"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "requested": "Requested",
+          "amount": "Amount",
+          "expires": "Expires",
+          "decided": "Decided"
+        },
+        "requested": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "amount": {
+          "first": "Largest first",
+          "second": "Smallest first"
+        },
+        "expires": {
+          "first": "Nearest expiry first",
+          "second": "Latest expiry first"
+        },
+        "decided": {
+          "first": "Most recent first",
+          "second": "Least recent first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# request matches} other {# requests match}}",
+      "range": "{from}–{to} of {total} requests",
+      "error": {
+        "unavailable": "The credit requests could not be loaded.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      },
+      "empty": {
+        "pending": "No credit requests are waiting.",
+        "decided": "No decided requests yet.",
+        "granted": "No credit has been issued yet.",
+        "all": "No credit requests yet.",
+        "no-match": "No credit requests match",
+        "no-match-help": "Try other filters or clear them."
+      },
+      "select": {
+        "page": "Select all requests on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# request selected} other {# requests selected}}",
+        "all": "{count, plural, one {The # matching request is selected} other {All # matching requests are selected}}",
+        "all-open": "All matching requests are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# request selected} other {# requests selected}}",
+        "all-open": "All matching requests selected"
+      },
+      "actions": {
+        "for": "Actions for {name}",
+        "open": "Details…",
+        "approve": "Approve…",
+        "reject": "Reject…"
+      },
+      "approve": {
+        "title": "Approve {amount} for customer {customer}?",
+        "body": "{amount} will be added to customer {customer}'s wallet now. You cannot undo this.",
+        "type-to-confirm": "Type the request ID {id} to confirm",
+        "step-up-note": "Approving adds the credit to the customer's wallet. Next, you will be asked for your two-step code.",
+        "confirm": "Approve credit"
+      },
+      "reject": {
+        "title": "Reject {amount} for customer {customer}?",
+        "body": "No credit will be added. Your reason is recorded with the decision.",
+        "reason": "Reason",
+        "reason-placeholder": "Choose a reason",
+        "confirm": "Reject request"
       },
       "reject-reason": {
         "not-justified": "Not justified",
@@ -8680,23 +8902,21 @@
         "wrong-customer": "Wrong customer",
         "policy": "Against policy"
       },
-      "loaded-more": "{count, plural, one {# more request loaded} other {# more requests loaded}}",
-      "load-more": "Load more",
-      "approve-dialog": {
-        "title": "Approve this credit?",
-        "body": "{amount} will be added to customer {customer}'s wallet now. You cannot undo this."
-      },
-      "reject-dialog": {
-        "title": "Reject this request?",
-        "reason": "Reason",
-        "reason-placeholder": "Choose a reason",
-        "action": "Reject request"
+      "details": {
+        "title": "Credit request",
+        "title-named": "Credit request {id}",
+        "close": "Close",
+        "note": "Note",
+        "approval-reason": "Why it needed approval",
+        "decided-by": "Decided by",
+        "decided": "Decided",
+        "decision-reason": "Decision reason",
+        "journal": "Journal reference"
       },
       "notice": {
         "approved": "Credit approved. {amount} was added.",
         "rejected": "Request rejected. No credit was issued."
-      },
-      "load-more-failed": "We could not load more requests. Try again."
+      }
     },
     "error": {
       "cannot-turn-off-with-history": "The wallet cannot go back to Off because credit has already been issued. Choose Paused instead.",
@@ -8743,32 +8963,16 @@
     "zone-note": "Dates are shown in {zone}.",
     "footnote": "An inquiry does not move money. Only that order's seller share is held while a dispute is open.",
     "loading": "Loading disputes",
-    "more": "Show more",
     "error": {
       "unavailable": "The disputes could not be loaded. Try again."
-    },
-    "empty": {
-      "needs-response": "No disputes need a response",
-      "decision-needed": "No disputes need a decision",
-      "under-review": "No disputes are under review",
-      "won": "No disputes won yet",
-      "closed": "No closed disputes"
-    },
-    "col": {
-      "case": "Case",
-      "sellers": "Sellers",
-      "reason": "Reason",
-      "money": "Money",
-      "evidence": "Evidence due",
-      "amount": "Amount"
     },
     "case-ref": "Order {id}",
     "sellers-none": "-",
     "unnamed": "Seller {id}",
     "money": {
       "withdrawn": "Taken by bank",
-      "inquiry": "Inquiry only",
-      "reinstated": "Returned to us"
+      "inquiry": "Inquiry, no money taken",
+      "reinstated": "Returned by bank"
     },
     "evidence": {
       "none": "-",
@@ -8880,6 +9084,139 @@
         "not-found": "This case or seller order no longer exists.",
         "unknown": "The decision could not be saved. Try again."
       }
+    },
+    "list": {
+      "zone-note": "Dates are shown in {zone}.",
+      "view": {
+        "all": "All",
+        "needs-response": "Needs response",
+        "decision-needed": "Decision needed",
+        "under-review": "Under review",
+        "won": "Won",
+        "closed": "Closed"
+      },
+      "col": {
+        "case": "Order",
+        "stage": "Stage",
+        "sellers": "Sellers",
+        "amount": "Amount",
+        "opened": "Opened",
+        "money": "Money",
+        "reason": "Reason",
+        "evidence-due": "Evidence due",
+        "stripe-status": "Stripe status",
+        "updated": "Last updated",
+        "seller-ids": "Seller IDs",
+        "actions": "Actions"
+      },
+      "row-name": "case {id} of {sellers}",
+      "search": {
+        "label": "Search",
+        "placeholder": "Store name, dispute ID or order ID",
+        "help": "A store name (2 characters or more), or a full dispute or order ID.",
+        "too-short": "Type at least {min} characters, or a full dispute or order ID."
+      },
+      "chip-id": "Dispute or order ID is {text}",
+      "chip-store": "Store contains \"{text}\"",
+      "chip-seller": "Seller is {name}",
+      "search-capped": "The search matched too many stores, so not every case of them is listed. Type more of the store name.",
+      "filter": {
+        "title": "Filter disputes",
+        "name": {
+          "status": "Stripe status",
+          "money": "Money",
+          "evidenceDue": "Evidence due",
+          "opened": "Opened"
+        },
+        "status": {
+          "warning_needs_response": "Inquiry: needs response",
+          "warning_under_review": "Inquiry: under review",
+          "warning_closed": "Inquiry: closed",
+          "needs_response": "Needs response",
+          "under_review": "Under review",
+          "won": "Won",
+          "lost": "Lost",
+          "prevented": "Prevented before a dispute"
+        },
+        "money": {
+          "withdrawn": "Taken by bank",
+          "inquiry": "Inquiry, no money taken",
+          "reinstated": "Returned by bank",
+          "none": "Not moved"
+        },
+        "due": {
+          "overdue": "Overdue",
+          "next-24-hours": "Within 24 hours",
+          "next-3-days": "Within 3 days",
+          "next-7-days": "Within 7 days"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "opened": "Opened",
+          "amount": "Amount",
+          "evidence-due": "Evidence due",
+          "updated": "Last updated"
+        },
+        "opened": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "amount": {
+          "first": "Largest first",
+          "second": "Smallest first"
+        },
+        "evidence-due": {
+          "first": "Nearest deadline first",
+          "second": "Latest deadline first"
+        },
+        "updated": {
+          "first": "Most recent first",
+          "second": "Least recent first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# case matches} other {# cases match}}",
+      "range": "{from}–{to} of {total} cases",
+      "error": {
+        "unavailable": "The disputes could not be loaded.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      },
+      "empty": {
+        "all": "No disputes yet",
+        "needs-response": "No disputes need a response",
+        "decision-needed": "No disputes need a decision",
+        "under-review": "No disputes are under review",
+        "won": "No disputes won yet",
+        "closed": "No closed disputes",
+        "no-match": "No disputes match",
+        "no-match-help": "Try other filters or clear them."
+      },
+      "select": {
+        "page": "Select all cases on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# case selected} other {# cases selected}}",
+        "all": "{count, plural, one {The # matching case is selected} other {All # matching cases are selected}}",
+        "all-open": "All matching cases are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# case selected} other {# cases selected}}",
+        "all-open": "All matching cases selected"
+      },
+      "actions": {
+        "for": "Actions for {name}",
+        "open": "Open case",
+        "decide": "Record a decision"
+      }
     }
   },
   "payouts": {
@@ -8891,21 +9228,6 @@
     "not-found": "This payout does not exist, or it belongs to another market.",
     "back-home": "Back to the dashboard",
     "tabs": "Payouts by stage",
-    "tab": {
-      "awaiting-approval": "Awaiting approval",
-      "sending": "Sending",
-      "paid": "Paid",
-      "failed": "Failed",
-      "not-sent": "Not sent"
-    },
-    "tab-count": "{label} ({count})",
-    "empty": {
-      "awaiting-approval": "No payouts are waiting for approval",
-      "sending": "No payouts are being sent",
-      "paid": "No payouts have been paid yet",
-      "failed": "No payouts have failed",
-      "not-sent": "No payouts were stopped before sending"
-    },
     "today": {
       "line": "Transfers sent today: {total} of {level} alert level.",
       "over": "Above the alert level"
@@ -8913,21 +9235,8 @@
     "footnote": "Times are shown in {zone}. Amounts are what is transferred to the seller, after any amount kept against what the seller owes.",
     "zone-note": "Times are shown in {zone}.",
     "loading": "Loading payouts",
-    "retry": "Try again",
-    "more": "Show more",
-    "loaded-more": "{count, plural, one {# more payout loaded} other {# more payouts loaded}}",
     "error": {
-      "unavailable": "The payouts could not be loaded. Try again.",
-      "more": "More payouts could not be loaded. Try again."
-    },
-    "col": {
-      "payout": "Payout",
-      "seller": "Seller",
-      "amount": "Transfer",
-      "state": "State",
-      "why": "Approval",
-      "slot": "Planned for",
-      "actions": "Actions"
+      "unavailable": "The payouts could not be loaded. Try again."
     },
     "ref": "Payout {id}",
     "unnamed": "Seller {id}",
@@ -8949,8 +9258,6 @@
       "first-payout": "First payout",
       "terms": "Seller's terms"
     },
-    "review": "Review and approve",
-    "approve-for": "payout for {name}",
     "approve-action": "Approve {amount}",
     "approved-notice": "Approved {amount} for {seller}. The transfer is sent shortly.",
     "approved-notice-seller": "the seller",
@@ -9055,7 +9362,11 @@
         "throttled": "Too many attempts. Wait a moment and try again.",
         "unavailable": "The approval could not be sent. Try again.",
         "unknown": "The payout could not be approved. Try again."
-      }
+      },
+      "type-to-confirm": "Type {id} to confirm",
+      "step-up-note": "Approving sends money to the seller. Next, you will be asked for your two-step code.",
+      "title-named": "Approve payout {id} for {store}?",
+      "title-blocked": "Payout {id} for {store}"
     },
     "seller": {
       "terms": {
@@ -9220,6 +9531,142 @@
         }
       },
       "load-failed": "The payout terms and holds could not be loaded."
+    },
+    "list": {
+      "zone-note": "Times are shown in {zone}.",
+      "view": {
+        "all": "All",
+        "awaiting-approval": "Awaiting approval",
+        "sending": "Sending",
+        "paid": "Paid",
+        "failed": "Failed",
+        "not-sent": "Not sent"
+      },
+      "col": {
+        "payout": "Payout",
+        "state": "State",
+        "store": "Store",
+        "transfer": "Transfer",
+        "created": "Created",
+        "gross": "Seller orders taken",
+        "netted": "Kept against debt",
+        "approval-mode": "Approval mode",
+        "approval-reason": "Approval",
+        "slot": "Planned for",
+        "state-changed": "Last changed",
+        "outcome": "Outcome",
+        "seller-id": "Seller ID",
+        "actions": "Actions"
+      },
+      "no-outcome": "None",
+      "row-name": "payout {id} of {store}",
+      "search": {
+        "label": "Search",
+        "placeholder": "Store name or payout ID",
+        "help": "A store name (2 characters or more), or a full payout ID.",
+        "too-short": "Type at least {min} characters, or a full payout ID."
+      },
+      "chip-id": "Payout ID is {text}",
+      "chip-store": "Store contains \"{text}\"",
+      "chip-seller": "Seller is {name}",
+      "search-capped": "The search matched too many stores, so not every payout of them is listed. Type more of the store name.",
+      "filter": {
+        "title": "Filter payouts",
+        "name": {
+          "approvalMode": "Approval mode",
+          "created": "Created"
+        },
+        "mode": {
+          "AUTO": "Automatic",
+          "MANUAL": "By an admin"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "created": "Created",
+          "amount": "Transfer",
+          "state-changed": "Last changed",
+          "slot": "Planned for"
+        },
+        "created": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "amount": {
+          "first": "Largest first",
+          "second": "Smallest first"
+        },
+        "state-changed": {
+          "first": "Most recent first",
+          "second": "Least recent first"
+        },
+        "slot": {
+          "first": "Latest first",
+          "second": "Earliest first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# payout matches} other {# payouts match}}",
+      "range": "{from}–{to} of {total} payouts",
+      "error": {
+        "unavailable": "The payouts could not be loaded.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      },
+      "empty": {
+        "all": "No payouts yet",
+        "awaiting-approval": "No payouts are waiting for approval",
+        "sending": "No payouts are being sent",
+        "paid": "No payouts have been paid yet",
+        "failed": "No payouts have failed",
+        "not-sent": "No payouts were stopped before sending",
+        "no-match": "No payouts match",
+        "no-match-help": "Try other filters or clear them."
+      },
+      "select": {
+        "page": "Select all payouts on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# payout selected} other {# payouts selected}}",
+        "all": "{count, plural, one {The # matching payout is selected} other {All # matching payouts are selected}}",
+        "all-open": "All matching payouts are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# payout selected} other {# payouts selected}}",
+        "all-open": "All matching payouts selected"
+      },
+      "actions": {
+        "for": "Actions for {name}",
+        "open": "Open",
+        "approve": "Approve…",
+        "place-hold": "Hold payouts…",
+        "release-hold": "Release hold…"
+      },
+      "hold": {
+        "type-to-confirm": "Type {id} to confirm",
+        "step-up-note": "A hold changes when the seller is paid. Next, you will be asked for your two-step code.",
+        "place": {
+          "title": "Hold all payouts of {store}?",
+          "body": "All payouts of {store} stop until the hold is released, including payout {id}. The seller sees only that it is on hold.",
+          "scope": "From this list a hold covers the whole seller. To hold one seller order, open the seller's page.",
+          "confirm": "Place hold",
+          "done": "Hold placed. The seller's payouts stop until it is released."
+        },
+        "release": {
+          "title": "Release the hold on {store}?",
+          "body": "The admin hold on {store} ends. Payout {id} and the seller's other payouts can be sent at their next planned time.",
+          "confirm": "Release hold",
+          "done": "Hold released."
+        },
+        "release-step-up-note": "Releasing a hold changes when the seller is paid. Next, you will be asked for your two-step code."
+      }
     }
   },
   "security": {
@@ -14141,6 +14588,166 @@
         "title": "No credit notes yet",
         "body": "One is issued for each completed refund."
       }
+    }
+  },
+  "assistant-insights": {
+    "loading": "Loading insights…",
+    "refresh": "Refresh",
+    "error": {
+      "unavailable": "The insights couldn't be loaded.",
+      "partial": "Only the first part of the unanswered questions could be loaded. Refresh to try again.",
+      "refresh": "The insights couldn't be refreshed. What you see is from the last successful read."
+    },
+    "range": {
+      "label": "Days to show",
+      "days": "{count, plural, one {Last # day} other {Last # days}}",
+      "note": "{from} to {to}, in the Market's days."
+    },
+    "summary": {
+      "title": "Summary",
+      "conversations": "Conversations",
+      "spend": "Spend",
+      "average": "Average cost per conversation",
+      "handoffs": "Support hand-offs",
+      "none": "No conversations yet"
+    },
+    "daily": {
+      "title": "Conversations per day",
+      "empty": "No conversations in these days yet.",
+      "chart-label": "Conversations per day over {days} days, {total} in all.",
+      "bar": "{day}: {count, plural, one {# conversation} other {# conversations}}, {spend}",
+      "table-toggle": "Show as a table",
+      "col": {
+        "day": "Day",
+        "conversations": "Conversations",
+        "spend": "Spend"
+      },
+      "peak": "Peak: {count} a day"
+    },
+    "feedback": {
+      "title": "How buyers rate the answers",
+      "empty": "No thumbs up or down in these days yet.",
+      "share": "{share} thumbs up ({up} up, {down} down).",
+      "reason": "{reason}: {count}",
+      "reasons": {
+        "wrong": "Wrong",
+        "not-found": "Not found",
+        "other": "Other reason"
+      }
+    },
+    "list": {
+      "title": "Questions the assistant could not answer",
+      "intro": "Questions grouped by their wording, most asked first: the assistant was unavailable or a tool failed, a product search found nothing, or the buyer gave a thumbs down. Buyer text is shown masked, as it was stored.",
+      "truncated": "More than 1,000 flagged turns exist in these days: only the newest 1,000 are grouped.",
+      "views": "Views",
+      "view": {
+        "all": "All",
+        "thumbs-down": "Thumbs down",
+        "no-results": "Nothing found",
+        "failed": "Failed"
+      },
+      "reason": {
+        "unavailable": "Unavailable",
+        "tool-failed": "Tool failed",
+        "no-results": "Nothing found",
+        "thumbs-down": "Thumbs down"
+      },
+      "reason-count": "{reason}: {count}",
+      "row-name": "the question “{text}”",
+      "col": {
+        "query": "Question",
+        "count": "Times asked",
+        "reasons": "Why unanswered",
+        "last": "Last asked",
+        "unavailable": "Unavailable",
+        "tool-failed": "Tool failed",
+        "no-results": "Nothing found",
+        "thumbs-down": "Thumbs down"
+      },
+      "search": {
+        "label": "Search",
+        "placeholder": "Search the question text"
+      },
+      "chip-search": "Search is {text}",
+      "filter": {
+        "title": "Filter questions",
+        "at-least": "{count, plural, one {At least # time} other {At least # times}}",
+        "name": {
+          "reason": "Reason",
+          "minCount": "Times asked"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "count": "Times asked",
+          "last": "Last asked",
+          "query": "Question"
+        },
+        "count": {
+          "first": "Most asked first",
+          "second": "Least asked first"
+        },
+        "last": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "query": {
+          "first": "A to Z",
+          "second": "Z to A"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# question matches} other {# questions match}}",
+      "range": "{from}-{to} of {total}",
+      "empty": {
+        "all": "No unanswered questions in these days.",
+        "thumbs-down": "No answer got a thumbs down.",
+        "no-results": "No search came back empty.",
+        "failed": "No turn failed.",
+        "no-match": "No questions match",
+        "no-match-help": "Try other filters or clear them."
+      },
+      "select": {
+        "page": "Select all questions on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# question selected} other {# questions selected}}",
+        "all": "{count, plural, one {The # matching question is selected} other {All # matching questions are selected}}",
+        "select-all": "Select all {count, number} matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# question selected} other {# questions selected}}",
+        "export": "Export…",
+        "none": "Select questions to export them"
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}",
+        "copy": "Copy question",
+        "copied": "Question copied.",
+        "copy-failed": "The question couldn't be copied."
+      },
+      "export": {
+        "title": "Export questions",
+        "body": "The file holds the selected questions as shown here: the masked text, how often it was asked, the count by reason and when it was last asked.",
+        "legend": "File format",
+        "csv": "CSV",
+        "csv-help": "Opens in any spreadsheet or text tool.",
+        "xlsx": "XLSX",
+        "xlsx-help": "Opens in Excel and similar tools.",
+        "confirm": "Export",
+        "cancel": "Cancel",
+        "sheet": "Unanswered questions",
+        "done": "The file was saved.",
+        "unavailable": "The file couldn't be made."
+      },
+      "loading": "Loading questions…"
     }
   }
 }

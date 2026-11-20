@@ -23,6 +23,10 @@ const files = [
   ...readdirSync(path.join(src, 'wallet'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'wallet', name)),
+  // The Credit requests list's own folder: its approve and reject dialogs call the API.
+  ...readdirSync(path.join(src, 'wallet', 'list'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'wallet', 'list', name)),
   ...readdirSync(path.join(src, 'disputes'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'disputes', name)),
@@ -38,6 +42,9 @@ const files = [
   ...readdirSync(path.join(src, 'account-deletion'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'account-deletion', name)),
+  ...readdirSync(path.join(src, 'account-deletion', 'list'))
+    .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
+    .map((name) => path.join(src, 'account-deletion', 'list', name)),
   ...readdirSync(path.join(src, 'orders'))
     .filter((name) => /\.tsx?$/.test(name) && !name.includes('.spec.'))
     .map((name) => path.join(src, 'orders', name)),
