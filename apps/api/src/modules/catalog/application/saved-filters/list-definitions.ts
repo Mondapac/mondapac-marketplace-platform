@@ -5,6 +5,7 @@ import {
   CATALOG_PRODUCT_VIEW,
   CATALOG_SAVED_FILTER_SHARE,
 } from '../../contracts/permissions';
+import { CATALOG_PHASE2_LISTS } from './catalog-list-definitions';
 import { SAVED_FILTER_LISTS } from './saved-filter-lists';
 import { SELLER_SAVED_FILTER_LISTS } from './seller-saved-filter-lists';
 
@@ -64,4 +65,5 @@ export const CATALOG_LISTS: readonly ListDefinition[] =
           columns: SELLER_PRODUCT_COLUMNS,
           parsePayload: (raw) => OWN_PRODUCTS.parsePayload(raw),
         },
+        ...CATALOG_PHASE2_LISTS,
       ];
