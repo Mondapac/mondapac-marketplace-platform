@@ -54,6 +54,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'ordering/admin/documents/export',
     // The Market's buyer assistant settings, read again after another admin saved first.
     'assistant/admin/settings',
+    // How the buyer assistant is doing (assistant, Insights tab), read-only (query: `from`, `to`,
+    // `page`, `pageSize`; see QUERY_KEYS).
+    'assistant/admin/insights',
     // The Market's support email, read again after another admin saved first.
     'notifications/admin/support-contact',
     // The topbar bell (in-app notifications package 3): the list (query: `show`, `before`) and
@@ -874,6 +877,8 @@ const GENERIC_LIST_KEY =
 const SYSTEM_REQUESTS_EXPORT = 'system-requests/admin/requests/export';
 
 const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
+  // The assistant insights: the day range and the page of the unanswered questions.
+  'assistant/admin/insights': ['from', 'to', 'page', 'pageSize'],
   // The System requests queue: the view, search, filters, sort and either page numbers or a
   // cursor (the API validates every value as well).
   'system-requests/admin/requests': [
@@ -1617,6 +1622,12 @@ const ACCOUNT_LIST_SHAPES: Readonly<Record<string, RegExp>> = {
   direction: /^(asc|desc)$/,
 };
 const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> = {
+  'assistant/admin/insights': {
+    from: /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/,
+    to: /^[0-9]{4}-[0-9]{2}-[0-9]{2}$/,
+    page: /^[1-9][0-9]{0,2}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+  },
   'system-requests/admin/requests': {
     view: /^(needs-my-review|all-open|mine|approved|reverted|overdue|all)$/,
     q: /^.{1,100}$/,
