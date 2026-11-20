@@ -441,6 +441,35 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'catalog/seller/offers/export:offerIds': 3700,
 };
 
+/**
+ * Exports whose query is checked strictly: a known key whose value is out of shape or too long
+ * refuses the request (400), instead of being dropped. Dropping a filter of an export would send
+ * a wider file than the one asked for, and dropping `ids` would send every payout.
+ */
+const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
+  'commission-payouts/seller/payouts/export',
+]);
+
+/** The first known key of a strict target whose value cannot cross, or null. */
+function strictQueryRefusal(
+  method: string,
+  path: readonly string[],
+  requestUrl: string,
+): string | null {
+  const target = path.join('/');
+  if (method !== 'GET' || !STRICT_QUERY_TARGETS.has(target)) return null;
+  const source = new URL(requestUrl).searchParams;
+  for (const [key, shape] of Object.entries(QUERY_KEYS[target] ?? {})) {
+    const value = source.get(key);
+    if (value === null) continue;
+    // A repeated key refuses too: the file must match the request exactly.
+    if (source.getAll(key).length > 1) return key;
+    const max = QUERY_VALUE_MAX_FOR[`${target}:${key}`] ?? QUERY_VALUE_MAX;
+    if (value.length > max || (shape !== null && !shape.test(value))) return key;
+  }
+  return null;
+}
+
 /** The allowed keys of the request's query, capped in length; everything else is dropped. */
 function upstreamQuery(method: string, path: readonly string[], requestUrl: string): string {
   const keys =
@@ -648,6 +677,17 @@ export async function relay(
     const read = await readCapped(request, limit);
     if (read === null) return jsonError(413, 'request.too-large');
     body = read;
+  }
+  const refused = strictQueryRefusal(request.method, path, request.url);
+  if (refused !== null) {
+    return new Response(
+      JSON.stringify({
+        statusCode: 400,
+        code: 'validation.failed',
+        details: { fields: [{ path: refused, code: 'format' }] },
+      }),
+      { status: 400, headers: { 'content-type': 'application/json', 'cache-control': 'no-store' } },
+    );
   }
   let outgoing: Headers;
   try {

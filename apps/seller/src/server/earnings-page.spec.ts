@@ -24,7 +24,14 @@ import { loadEarningsPage } from './earnings-page.ts';
 const LEDGER = { sellerId: 's', currency: 'JPY', totals: {}, entries: [], nextCursor: null };
 const NEXT = { slotAt: null, zone: null, estimatedAmount: null, blockReason: 'below-minimum' };
 const HOLDS = { holds: [{ sellerOrderId: 'o', reason: 'holding-period' }] };
-const HISTORY = { payouts: [], nextCursor: null };
+const HISTORY = {
+  payouts: [],
+  counts: {},
+  total: null,
+  page: null,
+  pageSize: 25,
+  nextCursor: null,
+};
 
 const session = (permissionKeys: string[]) => ({
   kind: 'signed-in' as const,
@@ -35,7 +42,7 @@ const reads = (over: Record<string, unknown> = {}) => {
     'commission-payouts/seller/ledger?limit=20': { kind: 'ok', body: LEDGER },
     'commission-payouts/seller/payouts/next': { kind: 'ok', body: NEXT },
     'commission-payouts/seller/payout-holds': { kind: 'ok', body: HOLDS },
-    'commission-payouts/seller/payouts?limit=20': { kind: 'ok', body: HISTORY },
+    'commission-payouts/seller/payouts?limit=25': { kind: 'ok', body: HISTORY },
     ...over,
   };
   mocks.serverGet.mockImplementation((path: string) => {
@@ -63,6 +70,7 @@ describe('loadEarningsPage', () => {
       next: NEXT,
       holds: HOLDS.holds,
       history: HISTORY,
+      paging: 'prev-next',
       canOpenAccount: true,
     });
   });
@@ -70,7 +78,7 @@ describe('loadEarningsPage', () => {
   it.each([
     ['next', 'commission-payouts/seller/payouts/next'],
     ['holds', 'commission-payouts/seller/payout-holds'],
-    ['history', 'commission-payouts/seller/payouts?limit=20'],
+    ['history', 'commission-payouts/seller/payouts?limit=25'],
   ] as const)('leaves the rest working when the %s read fails', async (section, path) => {
     reads({ [path]: { kind: 'unavailable' } });
     const page = await loadEarningsPage();
@@ -87,6 +95,21 @@ describe('loadEarningsPage', () => {
     expect(await loadEarningsPage()).toEqual({ kind: 'unavailable' });
     reads({ 'commission-payouts/seller/ledger?limit=20': { kind: 'signed-out' } });
     await expect(loadEarningsPage()).rejects.toThrow('REDIRECT:/session-ended');
+  });
+
+  it('reads the first payout page by the Market List paging setting', async () => {
+    reads();
+    await loadEarningsPage();
+    const asked = (path: string) => mocks.serverGet.mock.calls.some(([called]) => called === path);
+    // Not readable: Previous and next, latest payout day first on the API cursor.
+    expect(asked('commission-payouts/seller/payouts?limit=25')).toBe(true);
+    mocks.serverGet.mockClear();
+    reads({ 'settings/seller/list-paging': { kind: 'ok', body: { listPaging: 'pages' } } });
+    const page = await loadEarningsPage();
+    expect(
+      asked('commission-payouts/seller/payouts?sort=slot&direction=desc&page=1&pageSize=25'),
+    ).toBe(true);
+    expect(page.kind === 'ok' && page.payouts.paging).toBe('pages');
   });
 
   it('offers the payout account link only with the account permission', async () => {

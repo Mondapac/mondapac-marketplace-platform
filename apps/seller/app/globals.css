@@ -1,1 +1,8 @@
 @import '@mondapac/ui/styles.css';
+
+/* A card line of a super list whose value is empty ("-") is left out on a phone. */
+@media (max-width: 1023.98px) {
+  td:has(> [data-empty-line]) {
+    display: none;
+  }
+}
