@@ -125,6 +125,34 @@ const pageOf = (locales: MarketLocales): AttributePage => ({
   truncated: false,
 });
 
+/** Confirmation level 3: the red button waits until the attribute's code is typed. */
+function typeCode(dialog: HTMLElement) {
+  fireEvent.change(within(dialog).getByRole('textbox', { name: 'Type pack-type to confirm' }), {
+    target: { value: 'pack-type' },
+  });
+}
+
+/** Opens the detail's More menu. */
+async function openMore() {
+  fireEvent.click(await screen.findByRole('button', { name: 'More' }));
+}
+/** Picks a change from the More menu (its items end in an ellipsis: each opens a dialog). */
+async function pick(name: string) {
+  await openMore();
+  fireEvent.click(await screen.findByRole('menuitem', { name: `${name}…` }));
+}
+/** Whether the More menu offers a change; the menu is closed again after. */
+async function menuHas(name: string): Promise<boolean> {
+  const more = await screen
+    .findByRole('button', { name: 'More' }, { timeout: 400 })
+    .catch(() => null);
+  if (more === null) return false;
+  fireEvent.click(more);
+  const has = screen.queryByRole('menuitem', { name: `${name}…` }) !== null;
+  fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+  return has;
+}
+
 function mount(canRestructure: boolean) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
@@ -169,12 +197,12 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
     base();
     mount(false);
     await screen.findByRole('heading', { name: 'Pack type' });
-    expect(screen.queryByRole('button', { name: 'Merge values' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
+    expect(await menuHas('Merge values')).toBe(false);
+    expect(await menuHas('Archive')).toBe(false);
     cleanup();
     mount(true);
-    await screen.findByRole('button', { name: 'Merge values' });
-    expect(screen.getByRole('button', { name: 'Archive' })).toBeTruthy();
+    expect(await menuHas('Merge values')).toBe(true);
+    expect(await menuHas('Archive')).toBe(true);
   });
 
   it('shows the impact, then merges the chosen values with the version it showed', async () => {
@@ -184,7 +212,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       }),
     });
     mount(true);
-    fireEvent.click(await screen.findByRole('button', { name: 'Merge values' }));
+    await pick('Merge values');
     const dialog = await screen.findByRole('dialog');
     await within(dialog).findByText('Published products');
     // Once the impact is shown it is a description list: no list (not even the hidden loading
@@ -213,6 +241,24 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
     ]);
   });
 
+  it('keeps the red button of an archive off until the code is typed', async () => {
+    base();
+    mount(true);
+    await pick('Archive');
+    const dialog = await screen.findByRole('dialog');
+    await within(dialog).findByText('Published products');
+    const confirm = within(dialog).getByRole<HTMLButtonElement>('button', {
+      name: 'Archive attribute',
+    });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Type pack-type to confirm' }), {
+      target: { value: 'pack-typ' },
+    });
+    expect(confirm.disabled).toBe(true);
+    typeCode(dialog);
+    expect(confirm.disabled).toBe(false);
+  });
+
   describe('where the Market reviews area catalogue (system requests)', () => {
     const reviewed = (extra: Record<string, Handler> = {}) =>
       base({
@@ -230,7 +276,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
     it('asks for a note before an archive waits for approval, and leaves the attribute as it is', async () => {
       reviewed({ [`POST catalog/admin/attributes/${id(1)}/archive`]: proposal });
       mount(true);
-      fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+      await pick('Archive');
       const dialog = await screen.findByRole('dialog');
       await within(dialog).findByText('Published products');
       // It only files a request: the wording says so, and promises nothing final.
@@ -264,7 +310,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
     it('sends the note with a merge of values', async () => {
       reviewed({ [`POST catalog/admin/attributes/${id(1)}/merge-values`]: proposal });
       mount(true);
-      fireEvent.click(await screen.findByRole('button', { name: 'Merge values' }));
+      await pick('Merge values');
       const dialog = await screen.findByRole('dialog');
       await within(dialog).findByText('Published products');
       fireEvent.change(within(dialog).getByLabelText('Merge this value'), {
@@ -303,7 +349,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
         ),
       });
       mount(true);
-      fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+      await pick('Archive');
       const dialog = await screen.findByRole('dialog');
       await within(dialog).findByText('Published products');
       fireEvent.change(within(dialog).getByLabelText('Note for reviewers'), {
@@ -323,7 +369,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       ),
     });
     mount(true);
-    fireEvent.click(await screen.findByRole('button', { name: 'Merge values' }));
+    await pick('Merge values');
     const dialog = await screen.findByRole('dialog');
     await within(dialog).findByText('At least 10000');
   });
@@ -335,9 +381,10 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       }),
     });
     mount(true);
-    fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+    await pick('Archive');
     const dialog = await screen.findByRole('dialog');
     await within(dialog).findByText('Published products');
+    typeCode(dialog);
     expect(within(dialog).getByText(/It cannot be brought back/)).toBeTruthy();
     expect(within(dialog).queryByText(/Nothing changes until/)).toBeNull();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Archive attribute' }));
@@ -360,7 +407,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       ),
     });
     mount(true);
-    fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+    await pick('Archive');
     const dialog = await screen.findByRole('dialog');
     await within(dialog).findByText(/still in an active feature set/);
     expect(within(dialog).getByText('Feature sets: grocery-sauces')).toBeTruthy();
@@ -382,7 +429,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       }),
     });
     mount(true);
-    fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+    await pick('Archive');
     const dialog = await screen.findByRole('dialog');
     await within(dialog).findByText('Published products');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Send request' }));
@@ -399,9 +446,10 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       ]),
     });
     mount(true);
-    fireEvent.click(await screen.findByRole('button', { name: 'Archive' }));
+    await pick('Archive');
     const dialog = await screen.findByRole('dialog');
     await within(dialog).findByText('Published products');
+    typeCode(dialog);
     fireEvent.click(within(dialog).getByRole('button', { name: 'Archive attribute' }));
     await waitFor(() =>
       expect(within(dialog).getAllByText(/still in an active feature set/).length).toBeGreaterThan(
@@ -589,15 +637,15 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       base();
       mount(false);
       await screen.findByRole('heading', { name: 'Pack type' });
-      expect(screen.queryByRole('button', { name: 'Merge into attribute' })).toBeNull();
+      expect(await menuHas('Merge into attribute')).toBe(false);
       cleanup();
       mount(true);
-      expect(await screen.findByRole('button', { name: 'Merge into attribute' })).toBeTruthy();
+      expect(await menuHas('Merge into attribute')).toBe(true);
       cleanup();
       base({ [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, { material: true })) });
       mount(true);
-      await screen.findByRole('button', { name: 'Archive' });
-      expect(screen.queryByRole('button', { name: 'Merge into attribute' })).toBeNull();
+      expect(await menuHas('Archive')).toBe(true);
+      expect(await menuHas('Merge into attribute')).toBe(false);
     });
 
     it('maps every value, then merges with both versions it read', async () => {
@@ -613,7 +661,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
         }),
       });
       mount(true);
-      fireEvent.click(await screen.findByRole('button', { name: 'Merge into attribute' }));
+      await pick('Merge into attribute');
       const dialog = await screen.findByRole('dialog');
       const confirm = within(dialog).getByRole('button', { name: 'Merge attributes' });
       await within(dialog).findByText('Published products');
@@ -631,6 +679,9 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       fireEvent.change(within(dialog).getByLabelText('JAR goes to'), {
         target: { value: 'bottle' },
       });
+      // Everything is mapped, but the red button still waits for the typed code.
+      expect((confirm as HTMLButtonElement).disabled).toBe(true);
+      typeCode(dialog);
       expect((confirm as HTMLButtonElement).disabled).toBe(false);
       fireEvent.click(confirm);
       await expectToast('Attribute merged.');
@@ -654,7 +705,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
         ),
       });
       mount(true);
-      fireEvent.click(await screen.findByRole('button', { name: 'Merge into attribute' }));
+      await pick('Merge into attribute');
       const dialog = await screen.findByRole('dialog');
       await within(dialog).findByText('Published products');
       expect(
@@ -674,7 +725,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
     it('says when there is no other attribute of the type', async () => {
       base();
       mount(true);
-      fireEvent.click(await screen.findByRole('button', { name: 'Merge into attribute' }));
+      await pick('Merge into attribute');
       const dialog = await screen.findByRole('dialog');
       await within(dialog).findByText('No other active attribute of this type to merge into.');
     });
@@ -686,7 +737,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
         ]),
       });
       mount(true);
-      fireEvent.click(await screen.findByRole('button', { name: 'Merge into attribute' }));
+      await pick('Merge into attribute');
       const dialog = await screen.findByRole('dialog');
       await within(dialog).findByText('Published products');
       fireEvent.change(await within(dialog).findByLabelText('Merge into'), {
@@ -695,6 +746,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       await within(dialog).findByLabelText('TIN goes to');
       fireEvent.change(within(dialog).getByLabelText('CAN goes to'), { target: { value: 'tin' } });
       fireEvent.change(within(dialog).getByLabelText('JAR goes to'), { target: { value: 'tin' } });
+      typeCode(dialog);
       fireEvent.click(within(dialog).getByRole('button', { name: 'Merge attributes' }));
       await within(dialog).findByText(
         'It is still in an active feature set. Remove it from those feature sets first.',
@@ -707,10 +759,10 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
       base();
       mount(false);
       await screen.findByRole('heading', { name: 'Pack type' });
-      expect(screen.queryByRole('button', { name: 'Convert type' })).toBeNull();
+      expect(await menuHas('Convert type')).toBe(false);
       cleanup();
       mount(true);
-      expect(await screen.findByRole('button', { name: 'Convert type' })).toBeTruthy();
+      expect(await menuHas('Convert type')).toBe(true);
       for (const over of [
         { material: true },
         { isVariantOption: true },
@@ -719,8 +771,8 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
         cleanup();
         base({ [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, over)) });
         mount(true);
-        await screen.findByRole('button', { name: 'Archive' });
-        expect(screen.queryByRole('button', { name: 'Convert type' })).toBeNull();
+        expect(await menuHas('Archive')).toBe(true);
+        expect(await menuHas('Convert type')).toBe(false);
       }
       cleanup();
       base({
@@ -729,7 +781,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
         ),
       });
       mount(true);
-      expect(await screen.findByRole('button', { name: 'Convert type' })).toBeTruthy();
+      expect(await menuHas('Convert type')).toBe(true);
     });
 
     it('shows the impact, then converts with the version it showed', async () => {
@@ -739,10 +791,11 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
         }),
       });
       mount(true);
-      fireEvent.click(await screen.findByRole('button', { name: 'Convert type' }));
+      await pick('Convert type');
       const dialog = await screen.findByRole('dialog');
       await within(dialog).findByText('Published products');
       expect(within(dialog).getByText(/read as a list of one/)).toBeTruthy();
+      typeCode(dialog);
       fireEvent.click(within(dialog).getByRole('button', { name: 'Convert type' }));
       await expectToast('Type converted.');
       expect(writes()[0]).toEqual([
@@ -756,7 +809,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
     it('puts the first focus on Cancel, names both types and warns it cannot be undone', async () => {
       base();
       mount(true);
-      fireEvent.click(await screen.findByRole('button', { name: 'Convert type' }));
+      await pick('Convert type');
       const dialog = await screen.findByRole('dialog');
       await within(dialog).findByText('Published products');
       expect(document.activeElement).toBe(within(dialog).getByRole('button', { name: 'Cancel' }));
@@ -769,9 +822,10 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
         [`POST catalog/admin/attributes/${id(1)}/convert`]: refuse(409, 'attribute.stale'),
       });
       mount(true);
-      fireEvent.click(await screen.findByRole('button', { name: 'Convert type' }));
+      await pick('Convert type');
       const dialog = await screen.findByRole('dialog');
       await within(dialog).findByText('Published products');
+      typeCode(dialog);
       fireEvent.click(within(dialog).getByRole('button', { name: 'Convert type' }));
       expect(await within(dialog).findByRole('button', { name: 'Reload' })).toBeTruthy();
     });
@@ -786,9 +840,10 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
         }),
       });
       mount(true);
-      fireEvent.click(await screen.findByRole('button', { name: 'Convert type' }));
+      await pick('Convert type');
       const dialog = await screen.findByRole('dialog');
       await within(dialog).findByText('Published products');
+      typeCode(dialog);
       fireEvent.click(within(dialog).getByRole('button', { name: 'Convert type' }));
       await expectToast('Type converted.');
       expect(writes()[0]?.[2]).toEqual({ version: 4, to: 'decimal' });
@@ -802,9 +857,10 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
         ),
       });
       mount(true);
-      fireEvent.click(await screen.findByRole('button', { name: 'Convert type' }));
+      await pick('Convert type');
       const dialog = await screen.findByRole('dialog');
       await within(dialog).findByText('Published products');
+      typeCode(dialog);
       fireEvent.click(within(dialog).getByRole('button', { name: 'Convert type' }));
       await within(dialog).findByText(
         'Other attributes were merged into this one, so its type has to stay as it is.',
