@@ -8,6 +8,7 @@ import {
   Dialog,
   FormActionBar,
   IconButton,
+  Menu,
   Select,
   Switch,
   TextField,
@@ -16,7 +17,7 @@ import {
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { callApi } from '../../api/client.ts';
 import { formatInstantInZone } from '../../shared/format.ts';
 import type { PageDetail } from '../pages/page-types.ts';
@@ -100,6 +101,7 @@ export function NavigationEditor({
   const router = useRouter();
   const problemText = useProblemText();
   const command = usePageCommand(csrfToken);
+  const cancelButton = useRef<HTMLButtonElement>(null);
   const [page, setPage] = useState(initial);
   const [baseline, setBaseline] = useState<NavDraft>(() => draftOf(initial));
   const [draft, setDraft] = useState<NavDraft>(baseline);
@@ -377,17 +379,21 @@ export function NavigationEditor({
                   </span>
                 </span>
                 {canEdit && version.state !== 'draft' ? (
-                  <Button
-                    variant="secondary"
-                    aria-label={t('restore-label', { n: version.versionNo })}
-                    disabled={command.pending || dirty}
-                    onClick={() => {
-                      command.reset();
-                      setDialog({ restore: version });
-                    }}
-                  >
-                    {t('restore')}
-                  </Button>
+                  <Menu
+                    label={t('actions-for', { n: version.versionNo })}
+                    items={[
+                      {
+                        id: 'restore',
+                        label: t('restore'),
+                        disabled: command.pending || dirty,
+                        ...(dirty ? { reason: t('restore-save-first') } : {}),
+                        onSelect: () => {
+                          command.reset();
+                          setDialog({ restore: version });
+                        },
+                      },
+                    ]}
+                  />
                 ) : null}
               </li>
             ))}
@@ -397,6 +403,7 @@ export function NavigationEditor({
       {dialog === null ? null : (
         <Dialog
           open
+          initialFocus={cancelButton}
           title={
             dialog === 'approve'
               ? t('approve-title')
@@ -405,7 +412,7 @@ export function NavigationEditor({
           onClose={close}
           actions={
             <>
-              <Button variant="secondary" onClick={close}>
+              <Button ref={cancelButton} variant="secondary" onClick={close}>
                 {t('cancel')}
               </Button>
               {stale ? (
@@ -419,6 +426,7 @@ export function NavigationEditor({
                 </Button>
               ) : (
                 <Button
+                  variant={dialog === 'approve' ? 'primary' : 'destructive-solid'}
                   loading={command.pending}
                   onClick={() =>
                     void (dialog === 'approve'
