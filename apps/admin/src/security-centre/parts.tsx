@@ -3,7 +3,13 @@
 import { Badge, type BadgeTone } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
-import type { AlertState, Severity } from './types.ts';
+import {
+  minutesBetween,
+  S1_RESPONSE_MS,
+  type AlertState,
+  type AlertSummary,
+  type Severity,
+} from './types.ts';
 
 const SEVERITY_TONE: Record<Severity, BadgeTone> = {
   s1: 'critical',
@@ -80,4 +86,52 @@ export function usePoll(tick: () => void, ms: number): void {
       document.removeEventListener('visibilitychange', onVisibility);
     };
   }, [ms]);
+}
+
+/** What is happening about an alert now: the S1 clock, who acknowledged, or where it goes. */
+export function ResponseText({
+  alert,
+  now,
+  noRoster,
+}: {
+  readonly alert: AlertSummary;
+  readonly now: number;
+  readonly noRoster: boolean;
+}) {
+  const t = useTranslations('security-centre');
+  if (alert.state === 'acknowledged') {
+    return (
+      <span>
+        {alert.acknowledgedByName === null
+          ? t('response.acknowledged')
+          : t('response.acknowledged-by', { name: alert.acknowledgedByName })}
+      </span>
+    );
+  }
+  if (alert.state === 'resolved')
+    return <span className="text-fg-muted">{t('state.resolved')}</span>;
+  if (noRoster && (alert.severity === 's1' || alert.severity === 's2')) {
+    return <span className="font-medium text-critical-fg">{t('response.not-sent')}</span>;
+  }
+  if (alert.severity === 's1') {
+    const open = minutesBetween(alert.openedAt, now);
+    const left = Math.ceil((Date.parse(alert.openedAt) + S1_RESPONSE_MS - now) / 60_000);
+    return left > 0 ? (
+      <span className="font-medium tabular-nums">
+        {t('response.s1-left', { minutes: open, left })}
+      </span>
+    ) : (
+      <span className="font-medium tabular-nums text-critical-fg">
+        {t('response.s1-overdue', { minutes: -left })}
+      </span>
+    );
+  }
+  if (alert.severity === 's2') {
+    return (
+      <span className="text-fg-muted">
+        {alert.nextNotifyAt === null ? t('response.s2-sent') : t('response.s2')}
+      </span>
+    );
+  }
+  return <span className="text-fg-muted">{t(`response.${alert.severity}`)}</span>;
 }

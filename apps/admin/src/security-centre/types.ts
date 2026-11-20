@@ -8,7 +8,6 @@ export const RESPOND_PERMISSION = 'security.alerts.respond';
 /** F4: the alerts page reads again every 30 s, the top-bar badge every 60 s, while visible. */
 export const PAGE_POLL_MS = 30_000;
 export const BADGE_POLL_MS = 60_000;
-export const PAGE_SIZE = 50;
 /** The rules run every minute; past this the page says they have stopped. */
 export const RULES_STALE_MS = 5 * 60_000;
 /** Plan section 4: an s1 alert is answered within 15 minutes. */
@@ -20,8 +19,6 @@ export const NOTE_MAX = 1000;
 
 export const SEVERITIES = ['s1', 's2', 's3', 's4'] as const;
 export type Severity = (typeof SEVERITIES)[number];
-export const STATE_FILTERS = ['live', 'open', 'acknowledged', 'resolved', 'all'] as const;
-export type StateFilter = (typeof STATE_FILTERS)[number];
 export type AlertState = 'open' | 'acknowledged' | 'resolved';
 export type KeyType = 'account' | 'ip' | 'market' | 'event';
 export const RESOLUTIONS = ['contained', 'false-positive', 'duplicate', 'accepted-risk'] as const;
@@ -46,11 +43,6 @@ export interface AlertSummary {
   readonly resolvedAt: string | null;
   readonly nextNotifyAt: string | null;
   readonly version: number;
-}
-
-export interface AlertPage {
-  readonly alerts: readonly AlertSummary[];
-  readonly next: string | null;
 }
 
 export interface AlertDelivery {
@@ -101,13 +93,6 @@ export interface OnCall {
   readonly incidentCommander: Person | null;
   readonly securityOwner: Person | null;
   readonly channels: Readonly<Record<Severity, readonly Channel[]>>;
-}
-
-/** The API's state filter for a page filter. */
-export function stateQuery(filter: StateFilter): string {
-  if (filter === 'live') return 'open,acknowledged';
-  if (filter === 'all') return '';
-  return filter;
 }
 
 /** Whether the rules have not finished a run for a while (or never). */

@@ -7,15 +7,17 @@ import messages from '../../messages/en.json';
 import { expectToast, toastsOf } from '../../test/toast-spy.ts';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+}));
 
-import { callApi, type ApiResult } from '../api/client.ts';
+import { callApi } from '../api/client.ts';
 import { AlertDetailView } from './alert-detail.tsx';
-import { AlertsList, mergeRefresh } from './alerts-list.tsx';
+import { AlertsList } from './alerts-list.tsx';
 import { CriticalAlertsBadge } from './critical-badge.tsx';
 import {
   noteLength,
   rulesStale,
-  stateQuery,
   zoneLabel,
   type AlertDetail,
   type AlertSummary,
@@ -89,28 +91,11 @@ const poll = () => {
 };
 
 describe('security centre helpers', () => {
-  it('maps the page filter to the API state filter', () => {
-    expect(stateQuery('live')).toBe('open,acknowledged');
-    expect(stateQuery('all')).toBe('');
-    expect(stateQuery('resolved')).toBe('resolved');
-  });
-
   it('calls the rules stale when they never ran or ran over five minutes ago', () => {
     const now = Date.parse('2026-11-15T05:00:00Z');
     expect(rulesStale(null, now)).toBe(true);
     expect(rulesStale('2026-11-15T04:54:00Z', now)).toBe(true);
     expect(rulesStale('2026-11-15T04:58:00Z', now)).toBe(false);
-  });
-
-  it('merges a refresh in the API order and keeps rows loaded with Load more', () => {
-    const many = Array.from({ length: 52 }, (_, n) => row({ id: `id-${String(n)}` }));
-    const fresh = [row({ id: 'new-s1', severity: 's1' }), ...many.slice(0, 49)];
-    const merged = mergeRefresh(many, fresh);
-    expect(merged[0]?.id).toBe('new-s1');
-    expect(merged.map((alert) => alert.id).slice(-2)).toEqual(['id-50', 'id-51']);
-    expect(new Set(merged.map((alert) => alert.id)).size).toBe(merged.length);
-    // A first-page row that left the page (resolved elsewhere) leaves the list.
-    expect(merged.some((alert) => alert.id === 'id-49')).toBe(false);
   });
 
   it('names a zone as people say it, keeping its id', () => {
@@ -124,116 +109,71 @@ describe('security centre helpers', () => {
   });
 });
 
-describe('AlertsList', () => {
-  const answer = (alerts: AlertSummary[], configured = true) =>
+describe('AlertsList (the counts and banners above the list)', () => {
+  const answer = (over: { configured?: boolean; onCall?: Summary['onCall']; s1?: number } = {}) =>
     call.mockImplementation((_method, path) => {
-      if (path === 'security/admin/summary') return Promise.resolve(ok(summary()));
-      if (path === 'security/admin/on-call') return Promise.resolve(ok({ configured }));
-      return Promise.resolve(ok({ alerts, next: null }));
+      if (path === 'security/admin/summary') {
+        return Promise.resolve(
+          ok({
+            ...summary(over.s1 ?? 0),
+            onCall: over.onCall === undefined ? summary().onCall : over.onCall,
+          }),
+        );
+      }
+      if (path === 'security/admin/on-call') {
+        return Promise.resolve(ok({ configured: over.configured ?? true }));
+      }
+      if (path.startsWith('security/admin/alerts/list?view=open&severity=s1')) {
+        return Promise.resolve(ok({ items: [{ openedAt: NOW }] }));
+      }
+      return Promise.resolve(
+        ok({
+          items: [{ ...row(), actions: ['open'] }],
+          total: 1,
+          page: 1,
+          pageSize: 25,
+          paging: 'pages',
+          hasNext: false,
+          counts: { all: 1, open: 1, acknowledged: 0, critical: 0, resolved: 0 },
+        }),
+      );
     });
+  const mountList = () =>
+    render(wrap(<AlertsList zone="UTC" paging="pages" accountId="acc-1" marketId="AU" />));
 
-  it('asks for live alerts first and links each row to its own page', async () => {
-    answer([row()]);
-    render(wrap(<AlertsList zone="UTC" />));
-    const link = await screen.findByRole('link', { name: 'Many failed sign-ins for one account' });
-    expect(link.getAttribute('href')).toBe(`/security/alerts/${ID}`);
-    expect(call).toHaveBeenCalledWith(
-      'GET',
-      expect.stringMatching(/^security\/admin\/alerts\?.*state=open%2Cacknowledged/),
-    );
+  it('shows the alerts under the live counts, and the S1 clock from the oldest open one', async () => {
+    answer({ s1: 1 });
+    mountList();
+    expect(
+      await screen.findByRole('link', { name: 'Many failed sign-ins for one account' }),
+    ).toBeTruthy();
+    expect(await screen.findByText(/^Oldest open 0 min/)).toBeTruthy();
   });
 
   it('says alerts are not sent when there is no roster', async () => {
-    answer([row()], false);
-    render(wrap(<AlertsList zone="UTC" />));
+    answer({ configured: false });
+    mountList();
     expect(
       await screen.findByText('No on-call roster is set up. Alerts are not being sent.'),
     ).toBeTruthy();
     expect(screen.getAllByText('Not sent (no roster)').length).toBeGreaterThan(0);
   });
 
-  it('shows a load error when the first read fails', async () => {
-    call.mockImplementation((_method, path) =>
-      Promise.resolve(path.startsWith('security/admin/alerts') ? fail(503) : ok(summary())),
-    );
-    render(wrap(<AlertsList zone="UTC" />));
-    expect(await screen.findByText(/^Couldn't load alerts\./)).toBeTruthy();
-  });
-});
-
-describe('AlertsList refresh', () => {
-  const pages: (() => ApiResult<unknown>)[] = [];
-  beforeEach(() => {
-    pages.length = 0;
-    call.mockImplementation((_method, path) => {
-      if (path === 'security/admin/summary') return Promise.resolve(ok(summary()));
-      if (path === 'security/admin/on-call') return Promise.resolve(ok({ configured: true }));
-      return Promise.resolve((pages.shift() ?? (() => fail(503)))());
-    });
-  });
-
-  it('keeps the last list and says the refresh failed', async () => {
-    pages.push(
-      () => ok({ alerts: [row()], next: null }),
-      () => fail(503),
-    );
-    render(wrap(<AlertsList zone="UTC" />));
-    await screen.findByRole('link', { name: 'Many failed sign-ins for one account' });
-    poll();
-    expect(await screen.findByText(/^Couldn't refresh\. Showing alerts as of/)).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Many failed sign-ins for one account' })).toBeTruthy();
-  });
-
-  it('never says "no live alerts" when no page has loaded', async () => {
-    pages.push(
-      () => fail(503),
-      () => fail(503),
-    );
-    render(wrap(<AlertsList zone="UTC" />));
-    await screen.findByText(/^Couldn't load alerts\./);
-    poll();
-    await waitFor(() => expect(pages.length).toBe(0));
-    expect(screen.getByText(/^Couldn't load alerts\./)).toBeTruthy();
-    expect(screen.queryByText('No live alerts')).toBeNull();
-  });
-
-  it('offers to clear filters when they hide everything, and marks a chosen filter', async () => {
-    pages.push(
-      () => ok({ alerts: [], next: null }),
-      () => ok({ alerts: [row()], next: null }),
-    );
-    render(wrap(<AlertsList zone="UTC" initialState="resolved" />));
-    fireEvent.click(await screen.findByRole('button', { name: 'Clear filters' }));
-    await screen.findByRole('link', { name: 'Many failed sign-ins for one account' });
-    expect(call).toHaveBeenCalledWith(
-      'GET',
-      'security/admin/alerts?limit=50&state=open%2Cacknowledged',
-    );
-    expect(window.location.search).toBe('');
-  });
-
   it('calls the on-call tile an alarm when nobody is on call', async () => {
-    call.mockImplementation((_method, path) => {
-      if (path === 'security/admin/summary')
-        return Promise.resolve(ok({ ...summary(), onCall: null }));
-      if (path === 'security/admin/on-call') return Promise.resolve(ok({ configured: false }));
-      return Promise.resolve(ok({ alerts: [], next: null }));
-    });
-    render(wrap(<AlertsList zone="UTC" />));
+    answer({ onCall: null, configured: false });
+    mountList();
     const nobody = await screen.findByText('Nobody');
     expect(nobody.parentElement?.className).toContain('bg-critical-bg');
   });
 
-  it('starts from the filters in the address', async () => {
-    pages.push(() => ok({ alerts: [], next: null }));
-    render(wrap(<AlertsList zone="UTC" initialState="resolved" initialSeverities={['s1']} />));
-    await waitFor(() =>
-      expect(call).toHaveBeenCalledWith(
-        'GET',
-        'security/admin/alerts?limit=50&state=resolved&severity=s1',
-      ),
-    );
-    expect(window.location.search).toBe('?state=resolved&severity=s1');
+  it('reads the counts again on the 30 s poll and keeps the last ones when it fails', async () => {
+    answer();
+    mountList();
+    await screen.findByText('Critical (S1)');
+    call.mockImplementation(() => Promise.resolve(fail(503)));
+    poll();
+    await waitFor(() => expect(call).toHaveBeenCalledWith('GET', 'security/admin/summary'));
+    expect(screen.getByText('Critical (S1)')).toBeTruthy();
   });
 });
 

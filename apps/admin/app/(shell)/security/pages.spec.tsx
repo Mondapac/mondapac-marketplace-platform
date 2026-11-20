@@ -26,6 +26,9 @@ vi.mock('next/navigation', () => ({
   },
 }));
 vi.mock('../../../src/server/server-fetch.ts', () => ({ serverGet: mocks.get }));
+vi.mock('next/headers', () => ({ headers: () => Promise.resolve(new Headers()) }));
+vi.mock('../../../src/server/config.ts', () => ({ panelConfig: () => ({}) }));
+vi.mock('../../../src/server/bff.ts', () => ({ panelHostFor: () => ({ marketId: 'AU' }) }));
 vi.mock('../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
 vi.mock('../../../src/security-centre/frame.tsx', () => ({
   SecurityFrame: ({
@@ -80,26 +83,45 @@ describe('security alerts page', () => {
     expect(mocks.list).not.toHaveBeenCalled();
   });
 
-  it('passes only known filters from the address, in the holder zone', async () => {
+  it('passes the view, the severity and the Market paging setting, in the holder zone', async () => {
+    mocks.get.mockResolvedValue({ kind: 'ok', body: { listPaging: 'pages' } });
     as('security.centre.view');
     render(
       await SecurityAlertsPage({
-        searchParams: Promise.resolve({ state: 'resolved', severity: 's1,s9,s3' }),
+        searchParams: Promise.resolve({ view: 'critical', severity: 's1' }),
       }),
     );
+    expect(mocks.get).toHaveBeenCalledWith('settings/admin/list-paging');
     expect(mocks.list.mock.calls[0]?.[0]).toEqual({
       zone: 'Pacific/Auckland',
-      initialState: 'resolved',
-      initialSeverities: ['s1', 's3'],
+      paging: 'pages',
+      accountId: 'a',
+      marketId: 'AU',
+      csrfToken: 'c',
+      initialView: 'critical',
+      initialSeverity: 's1',
     });
+  });
+
+  it('maps an older state link to the nearest view, ignores unknown values, and falls back to Previous and next', async () => {
+    mocks.get.mockResolvedValue({ kind: 'unavailable' });
+    as('security.centre.view');
+    render(
+      await SecurityAlertsPage({
+        searchParams: Promise.resolve({ state: 'live', severity: 's1,s3' }),
+      }),
+    );
+    expect(mocks.list.mock.calls[0]?.[0]).toMatchObject({
+      paging: 'prev-next',
+      initialView: 'open',
+    });
+    expect(mocks.list.mock.calls[0]?.[0]).not.toHaveProperty('initialSeverity');
     cleanup();
     vi.clearAllMocks();
+    mocks.get.mockResolvedValue({ kind: 'unavailable' });
     as('security.centre.view');
     render(await SecurityAlertsPage({ searchParams: Promise.resolve({ state: 'bogus' }) }));
-    expect(mocks.list.mock.calls[0]?.[0]).toMatchObject({
-      initialState: 'live',
-      initialSeverities: [],
-    });
+    expect(mocks.list.mock.calls[0]?.[0]).not.toHaveProperty('initialView');
   });
 });
 

@@ -123,8 +123,19 @@ window.fetch = ((input: string) => {
         ? view === 'noroster'
           ? { configured: false }
           : roster
-        : path === 'security/admin/alerts'
-          ? { alerts, next: id(4) }
+        : path === 'security/admin/alerts/list'
+          ? {
+              items: alerts.map((alert) => ({
+                ...alert,
+                actions: alert.state === 'open' ? ['open', 'acknowledge', 'resolve'] : ['open'],
+              })),
+              total: 42,
+              page: 1,
+              pageSize: 25,
+              paging: 'pages',
+              hasNext: true,
+              counts: { all: 42, open: 3, acknowledged: 1, critical: 2, resolved: 36 },
+            }
           : detail;
   return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
 }) as typeof fetch;
@@ -133,7 +144,8 @@ const frame = async () => {
   if (view === 'oncall') {
     return await OnCallView({ onCall: roster, locale: 'en-AU', now: new Date().toISOString() });
   }
-  if (view === 'list' || view === 'noroster') return <AlertsList zone="Australia/Brisbane" />;
+  if (view === 'list' || view === 'menu' || view === 'noroster')
+    return <AlertsList zone="Australia/Brisbane" paging="pages" accountId="acc-1" marketId="AU" />;
   return (
     <AlertDetailView
       initial={detail}

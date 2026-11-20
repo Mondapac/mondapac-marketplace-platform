@@ -32,7 +32,7 @@ const { chromium } = createRequire(import.meta.url)('playwright');
 const browser = await chromium.launch();
 for (const scheme of ['light', 'dark']) {
   for (const width of [1280, 768, 375]) {
-    for (const name of ['list', 'noroster', 'detail', 'resolve', 'oncall']) {
+    for (const name of ['list', 'menu', 'noroster', 'detail', 'resolve', 'oncall']) {
       const ctx = await browser.newContext({
         viewport: { width, height: 900 },
         colorScheme: scheme,
@@ -45,7 +45,20 @@ for (const scheme of ['light', 'dark']) {
         scheme,
       );
       await page.getByRole('link', { name: /critical alerts/ }).waitFor();
-      if (name === 'list' || name === 'noroster') await page.getByText('Load more').waitFor();
+      if (name === 'list' || name === 'menu' || name === 'noroster') {
+        await page.getByRole('searchbox').waitFor();
+        await page
+          .getByRole('link', { name: /Many failed|sign-ins|alert/i })
+          .first()
+          .waitFor();
+      }
+      if (name === 'menu') {
+        await page
+          .getByRole('button', { name: /^Actions for/ })
+          .first()
+          .click();
+        await page.getByRole('menu').waitFor();
+      }
       if (name === 'resolve') {
         await page.getByRole('button', { name: 'Resolve…' }).click();
         await page.getByRole('dialog').waitFor();
