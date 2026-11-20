@@ -1,5 +1,11 @@
 import type { CallContext, Id } from '@mondapac/shared-kernel';
-import type { RevertOutcome, RevertRequest, SystemChangeReverter } from '../../system-requests';
+import {
+  impactItem,
+  type ChangeImpact,
+  type RevertOutcome,
+  type RevertRequest,
+  type SystemChangeReverter,
+} from '../../system-requests';
 import { CommissionRateReverted, PayoutTermsReverted } from '../domain/audit';
 import { isRateBps } from '../domain/commission';
 import { parsePayoutTermsOverride, type PayoutTermsOverride } from '../domain/payout-terms';
@@ -46,6 +52,17 @@ async function storeLabels(
   return labels;
 }
 
+/**
+ * The impact of a seller's own rate or payout terms (the request's detail page): that one seller.
+ * No read: the subject is the seller, so the count is known; a ref that is not a seller id gives
+ * none.
+ */
+export function oneSellerImpact(subjectRef: string): Promise<ChangeImpact | null> {
+  return Promise.resolve(
+    sellerIdOf(subjectRef) === null ? null : { items: [impactItem('sellers', 1)] },
+  );
+}
+
 /** A stored rate value: null (the Market rate) or a rate an admin could set today. */
 const rateOf = (value: unknown): number | null | undefined =>
   value === null || isRateBps(value) ? value : undefined;
@@ -64,6 +81,11 @@ export class CommissionRateReverter implements SystemChangeReverter {
   /** The seller's store name. */
   describe(context: CallContext, subjectRefs: readonly string[]) {
     return storeLabels(this.names, context, subjectRefs);
+  }
+
+  /** One seller: a seller's own rate or terms touch only that seller. */
+  impact(_context: CallContext, request: RevertRequest): Promise<ChangeImpact | null> {
+    return oneSellerImpact(request.subjectRef);
   }
 
   async revert(context: CallContext, request: RevertRequest): Promise<RevertOutcome> {
@@ -118,6 +140,11 @@ export class PayoutTermsReverter implements SystemChangeReverter {
   /** The seller's store name. */
   describe(context: CallContext, subjectRefs: readonly string[]) {
     return storeLabels(this.names, context, subjectRefs);
+  }
+
+  /** One seller: a seller's own rate or terms touch only that seller. */
+  impact(_context: CallContext, request: RevertRequest): Promise<ChangeImpact | null> {
+    return oneSellerImpact(request.subjectRef);
   }
 
   async revert(context: CallContext, request: RevertRequest): Promise<RevertOutcome> {

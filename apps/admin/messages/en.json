@@ -2426,10 +2426,11 @@
         "action": {
           "edit": "Edit",
           "view": "View",
-          "review": "Review",
-          "pause": "Pause",
+          "review": "Review…",
+          "pause": "Pause…",
           "resume": "Resume…"
         },
+        "actions-for": "Actions for {name}",
         "done-paused": "Paused “{name}”. Buyers stop seeing it within a minute.",
         "done-resumed": "Resumed “{name}”. Buyers see it again within a minute.",
         "stale": "That slide changed while you were looking at it. The list is up to date again."
@@ -2769,8 +2770,8 @@
           "draft-pending": "Draft · waiting",
           "earlier": "Earlier"
         },
-        "restore": "Restore",
-        "restore-for": "version {version}",
+        "restore": "Restore…",
+        "actions-for": "Actions for version {version}",
         "done": "Version {from} was copied into the draft as version {to}. Buyers see it only after a platform admin approves."
       },
       "view": {
@@ -2874,11 +2875,14 @@
         "footnote": "Dates are shown in {zone}.",
         "system": "System page",
         "unpublished-changes": "Unpublished changes",
+        "actions-for": "Actions for {name}",
+        "open-page": "Open page",
         "never": "Never published",
         "col": {
           "page": "Page",
           "address": "Address",
           "template": "Template",
+          "actions": "Actions",
           "editing": "Editing",
           "status": "Status",
           "published": "Last published"
@@ -3213,8 +3217,8 @@
         "state-unknown": "Unknown",
         "saved-at": "Saved {when}",
         "published-on": "Published {when}",
-        "restore": "Restore",
-        "restore-label": "Restore version {n}",
+        "restore": "Restore…",
+        "actions-for": "Actions for version {n}",
         "restore-title": "Restore version {n}?",
         "restore-body": "This replaces the current draft, including any unpublished changes. Buyers see no change until you publish.",
         "restore-confirm": "Restore to draft",
@@ -10521,12 +10525,12 @@
       "edit-category": "Edit category",
       "add-tag": "Add tag",
       "edit": "Edit",
-      "delete": "Delete",
+      "delete": "Delete…",
       "delete-sure": "Delete {name}?",
-      "delete-named": "Delete {name}",
-      "delete-confirm-named": "Yes, delete {name}",
-      "edit-named": "Edit {name}",
-      "delete-confirm": "Yes, delete",
+      "delete-body": "This can't be undone. A category or tag that a post uses can't be deleted.",
+      "delete-type": "Type the name to confirm",
+      "actions-for": "Actions for {name}",
+      "delete-confirm": "Delete",
       "cancel": "Cancel",
       "save": "Save",
       "optional": "optional",
@@ -10935,46 +10939,20 @@
   },
   "tags": {
     "title": "Tags",
-    "intro": "Shopping themes that group products across categories, such as Ramadan or BBQ. Sellers pick from this list.",
     "new": "New tag",
-    "search": "Search by name, synonym or address",
-    "search-label": "Search tags",
-    "status-filter": "Status",
-    "group-filter": "Group",
-    "loading": "Loading tags",
-    "load-error": "The tags could not be loaded. Check your connection and try again.",
-    "retry": "Try again",
-    "more": "Load more",
-    "more-error": "More tags could not be loaded. Try again.",
     "stale": "Someone else changed that tag. The list is up to date now; nothing was saved.",
     "no-access": "Your role cannot see tags.",
     "back-home": "Back to the dashboard",
-    "empty": "No tags yet. Create the first one with New tag.",
-    "empty-reader": "No tags yet.",
-    "empty-filtered": "No tag matches these filters.",
     "not-set": "Not set",
     "and-more": "and {count} more",
-    "col": {
-      "name": "Name",
-      "group": "Group",
-      "synonyms": "Synonyms",
-      "status": "Status",
-      "actions": "Actions"
-    },
     "status": {
-      "all": "All",
       "active": "Active",
       "archived": "Archived"
     },
     "group": {
-      "all": "All",
       "occasion": "Occasion",
       "cuisine": "Cuisine",
       "use": "Use"
-    },
-    "action": {
-      "edit": "Edit",
-      "edit-name": "Edit {name}"
     },
     "done": {
       "created": "{name} was created.",
@@ -11138,6 +11116,88 @@
         "throttled": "Too many requests. Wait a moment and try again.",
         "unavailable": "Could not reach the server. Try again.",
         "unknown": "Something went wrong. Try again."
+      }
+    },
+    "list": {
+      "intro": "Shopping themes that group products across categories, such as Ramadan or BBQ. Sellers pick from this list.",
+      "tabs": "Tag views",
+      "tab": {
+        "all": "All",
+        "active": "Active",
+        "archived": "Archived"
+      },
+      "search": {
+        "label": "Search tags",
+        "placeholder": "Name, synonym or address"
+      },
+      "filter": {
+        "title": "Filter tags",
+        "group": "Group"
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "slug": "Address",
+          "group": "Group",
+          "status": "Status",
+          "created": "Date added",
+          "updated": "Last updated"
+        },
+        "az": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "date": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        }
+      },
+      "sorted": "Sorted by {field}, {order}",
+      "col": {
+        "name": "Name",
+        "group": "Group",
+        "synonyms": "Synonyms",
+        "status": "Status"
+      },
+      "chip-search": "Search: {text}",
+      "loading": "Loading tags",
+      "match": "{count, plural, one {# tag matches} other {# tags match}}",
+      "range": "{from}–{to} of {total}",
+      "too-many": "More than {limit} tags match. Add a search to see the rest.",
+      "no-access": "Your role cannot see tags.",
+      "error": {
+        "unavailable": "The tags could not be loaded. Check your connection and try again.",
+        "refused": "The search cannot be used. Change it and try again."
+      },
+      "empty": {
+        "title": "No tags yet",
+        "body": "Create the first one with New tag.",
+        "no-match": "No tags match",
+        "no-match-help": "Change the search or filters, or clear them."
+      },
+      "select": {
+        "page": "Select all tags on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# tag selected} other {# tags selected}}",
+        "all": "{count, plural, one {The # matching tag is selected} other {All # matching tags are selected}}",
+        "all-open": "All matching tags are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "actions": {
+        "header": "Actions",
+        "for": "Actions for {name}",
+        "edit": "Edit…"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# tag selected} other {# tags selected}}",
+        "all-open": "All matching tags selected"
       }
     }
   },
@@ -12063,9 +12123,10 @@
       "names": "Names",
       "actions": "Actions"
     },
+    "empty": "No service areas are configured for this Market.",
     "edited": "Edited",
-    "edit": "Edit names",
-    "edit-label": "Edit the names of {code}",
+    "edit": "Edit names…",
+    "actions-for": "Actions for {name}",
     "dialog": {
       "title": "Names of {code}",
       "language": "Language",
@@ -12904,6 +12965,24 @@
       "reason": "Reason",
       "note": "Why this change was made",
       "note-approval": "Why this action was requested"
+    },
+    "impact": {
+      "title": "Impact",
+      "hint": "How many records this change touches, counted when you opened this request.",
+      "at-least": "at least {text}",
+      "item": {
+        "products": "{count, plural, one {# product} other {# products}}",
+        "drafts": "{count, plural, one {# product draft} other {# product drafts}}",
+        "offers": "{count, plural, one {# offer} other {# offers}}",
+        "offers-with-active-tag": "{count, plural, one {# offer with an active certification} other {# offers with an active certification}}",
+        "subcategories": "{count, plural, one {# subcategory} other {# subcategories}}",
+        "categories": "{count, plural, one {# category} other {# categories}}",
+        "filters": "{count, plural, one {# category filter} other {# category filters}}",
+        "feature-sets": "{count, plural, one {# feature set} other {# feature sets}}",
+        "variant-products": "{count, plural, one {# product with live variants} other {# products with live variants}}",
+        "admins": "{count, plural, one {# admin} other {# admins}}",
+        "sellers": "{count, plural, one {# seller} other {# sellers}}"
+      }
     },
     "banner": {
       "live": "This change is already live. Approve to keep it, or reject to put the previous value back.",

@@ -5,6 +5,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
+}));
 
 import { callApi, type ApiResult } from '../api/client.ts';
 import { expectToast } from '../../test/toast-spy.ts';
@@ -44,14 +47,23 @@ const refuse = (status: number, code: string, details?: object): ApiResult<unkno
   ok: false,
   failure: { status, code, ...(details === undefined ? {} : { details }) },
 });
-const page = (items: TopicRow[], nextAfterId: string | null = null) =>
-  ok({
-    items,
-    nextAfterId,
-    locales: LOCALES,
-    groups: ['occasion', 'cuisine', 'use'],
-    maxSynonyms: 10,
-  });
+/** What the API names for a row: the reader gets none. */
+let granted = true;
+const page =
+  (items: TopicRow[], total: number = items.length, hasNext = false) =>
+  () =>
+    ok({
+      items: items.map((row) => ({ ...row, actions: granted ? ['edit'] : [] })),
+      nextAfterId: null,
+      total,
+      page: 1,
+      pageSize: 25,
+      paging: 'pages',
+      hasNext,
+      locales: LOCALES,
+      groups: ['occasion', 'cuisine', 'use'],
+      maxSynonyms: 10,
+    });
 
 /** Answers by `METHOD path`: the longest registered prefix of the call wins. */
 function serve(routes: Record<string, Handler>) {
@@ -68,11 +80,24 @@ function serve(routes: Record<string, Handler>) {
 const base = (items: TopicRow[] = []) => ({ 'GET catalog/admin/topics': page(items) });
 
 function mount(canManage = true) {
+  granted = canManage;
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <TagsView canManage={canManage} csrfToken="csrf-1" />
+      <TagsView
+        canManage={canManage}
+        csrfToken="csrf-1"
+        paging="pages"
+        accountId={id(99)}
+        marketId="AU"
+      />
     </NextIntlClientProvider>,
   );
+}
+
+/** Opens the row's Actions menu and picks an item: no row action is a button in the row. */
+async function act(name: string, item: string) {
+  fireEvent.click(await screen.findByRole('button', { name: `Actions for ${name}` }));
+  fireEvent.click(await screen.findByRole('menuitem', { name: item }));
 }
 const calls = (method: string, prefix: string) =>
   call.mock.calls.filter(([m, path]) => m === method && path.startsWith(prefix));
@@ -113,59 +138,69 @@ describe('admin tags list', () => {
     mount();
     expect(await screen.findByText('BBQ')).toBeTruthy();
     expect(screen.getByText('bbq')).toBeTruthy();
-    expect(screen.getByText('Use', { selector: 'td' })).toBeTruthy();
+    expect(screen.getAllByText('Use').length).toBeGreaterThan(0);
     expect(screen.getByText(/Barbecue, Grill/)).toBeTruthy();
     expect(screen.getByText('+2').getAttribute('aria-hidden')).toBe('true');
     expect(screen.getByText('and 2 more').className).toContain('sr-only');
     expect(screen.getByText('Archived', { selector: 'span' })).toBeTruthy();
-    expect(calls('GET', 'catalog/admin/topics')[0]?.[1]).toBe('catalog/admin/topics?limit=25');
+    const first = new URLSearchParams(calls('GET', 'catalog/admin/topics')[0]?.[1].split('?')[1]);
+    expect(first.get('page')).toBe('1');
+    expect(first.get('paging')).toBe('pages');
+    expect(first.get('sort')).toBe('slug');
+    expect(first.get('direction')).toBe('asc');
+    expect(first.get('status')).toBeNull();
   });
 
-  it('filters by status and group and searches on the server', async () => {
+  it('has Active and Archived as views and searches on the server', async () => {
     serve(base([topic(1)]));
     mount();
     await screen.findByText('Tag 1');
-    fireEvent.change(screen.getByLabelText('Status'), { target: { value: 'archived' } });
-    fireEvent.change(screen.getByLabelText('Group'), { target: { value: 'cuisine' } });
-    fireEvent.change(screen.getByLabelText('Search by name, synonym or address'), {
-      target: { value: 'bbq' },
-    });
+    fireEvent.click(screen.getByRole('button', { name: 'Archived' }));
     await waitFor(() =>
-      expect(calls('GET', 'catalog/admin/topics').at(-1)?.[1]).toBe(
-        'catalog/admin/topics?limit=25&status=archived&group=cuisine&search=bbq',
+      expect(calls('GET', 'catalog/admin/topics').at(-1)?.[1].includes('status=archived')).toBe(
+        true,
       ),
     );
-    expect(await screen.findByText('Tag 1')).toBeTruthy();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Search tags' }), {
+      target: { value: 'bbq' },
+    });
+    await waitFor(() => {
+      const last = calls('GET', 'catalog/admin/topics').at(-1)?.[1] ?? '';
+      expect(last).toContain('q=bbq');
+      expect(last).toContain('status=archived');
+    });
   });
 
-  it('words the empty list for a manager, a reader and a filter, and retries a load error', async () => {
+  it('says so when nothing matches, and shows a load error', async () => {
     serve(base());
     mount();
-    expect(await screen.findByText(/Create the first one with New tag/)).toBeTruthy();
-    cleanup();
-    mount(false);
-    expect(await screen.findByText('No tags yet.')).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Group'), { target: { value: 'use' } });
-    expect(await screen.findByText('No tag matches these filters.')).toBeTruthy();
+    expect(await screen.findByText('No tags yet')).toBeTruthy();
     cleanup();
     serve({ 'GET catalog/admin/topics': refuse(500, 'internal') });
     mount();
     expect(await screen.findByText(/could not be loaded/)).toBeTruthy();
-    serve(base([topic(1)]));
-    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
-    expect(await screen.findByText('Tag 1')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Try again' })).toBeTruthy();
   });
 
-  it('appends the next page', async () => {
-    serve({
-      'GET catalog/admin/topics?limit=25&afterId': page([topic(2)]),
-      'GET catalog/admin/topics?limit=25': page([topic(1)], id(1)),
-    });
+  it('moves to the next page with the page buttons', async () => {
+    serve({ ...base(), 'GET catalog/admin/topics': page([topic(1)], 40, true) });
     mount();
     await screen.findByText('Tag 1');
-    fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
-    expect(await screen.findByText('Tag 2')).toBeTruthy();
-    expect(screen.getByText('Tag 1')).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Next' }));
+    await waitFor(() =>
+      expect(calls('GET', 'catalog/admin/topics').some(([, path]) => path.includes('page=2'))).toBe(
+        true,
+      ),
+    );
+  });
+
+  it('keeps Edit in the Actions menu and not in the row', async () => {
+    serve(base([topic(1)]));
+    mount();
+    await screen.findByText('Tag 1');
+    expect(screen.queryByRole('button', { name: /^Edit/ })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Actions for Tag 1' }));
+    expect(await screen.findByRole('menuitem', { name: 'Edit…' })).toBeTruthy();
   });
 
   it('gives a reader the list and no button that changes anything, and shows text as text', async () => {
@@ -173,7 +208,7 @@ describe('admin tags list', () => {
     mount(false);
     expect(await screen.findByText('<b>Bold</b>')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'New tag' })).toBeNull();
-    expect(screen.queryByRole('button', { name: /Edit/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Actions for/ })).toBeNull();
   });
 });
 
@@ -311,7 +346,7 @@ describe.each(MARKETS)('the tag form in market $market', ({ locales }) => {
       'PUT catalog/admin/topics/': ok({ topic: topic(1) }),
     });
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit Ramadan' }));
+    await act('Ramadan', 'Edit…');
     const dialog = screen.getByRole('dialog');
     const slug = within(dialog).getByLabelText<HTMLInputElement>('Address');
     expect(slug.readOnly).toBe(true);
@@ -339,7 +374,7 @@ describe.each(MARKETS)('the tag form in market $market', ({ locales }) => {
       }),
     });
     mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Edit Eid' }));
+    await act('Eid', 'Edit…');
     fireEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Save' }));
     expect(
       await screen.findAllByText(

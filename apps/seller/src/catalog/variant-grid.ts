@@ -100,3 +100,33 @@ export function combinationTitle(
 export function nearLimit(count: number, max: number): boolean {
   return max > 0 && count >= Math.ceil(max * 0.9) && count < max;
 }
+
+/** Separates the option labels of a variant's axes in its label: `Large · Red`. */
+export const LABEL_SEPARATOR = ' · ';
+
+/**
+ * The label the server will build for a variant in each locale (variants V2): the option labels of
+ * its axes in order, joined by {@link LABEL_SEPARATOR}. A locale in which any option has no label
+ * has none (null), exactly as the server leaves it out. A preview only: the server builds the label.
+ */
+export function previewLabels(
+  fields: readonly FormField[],
+  axes: readonly string[],
+  options: Readonly<Record<string, string>>,
+  locales: readonly string[],
+): Record<string, string | null> {
+  const out: Record<string, string | null> = {};
+  for (const locale of locales) {
+    const parts: string[] = [];
+    for (const axis of axes) {
+      const field = fields.find((item) => item.code === axis);
+      const option = field?.options.find((item) => item.code === options[axis]);
+      const text = option?.labels[locale]?.trim();
+      if (text === undefined || text === '') break;
+      parts.push(text);
+    }
+    out[locale] =
+      axes.length > 0 && parts.length === axes.length ? parts.join(LABEL_SEPARATOR) : null;
+  }
+  return out;
+}
