@@ -414,3 +414,62 @@ describe('reviewProblemOf', () => {
     );
   });
 });
+
+describe('failures of a later load', () => {
+  const failWith = (status: number, code: string) => {
+    call.mockImplementation((_method: string, path: string) =>
+      Promise.resolve(
+        path.startsWith(SAVED_PATH)
+          ? savedFailure
+          : { ok: false as const, failure: { status, code } },
+      ),
+    );
+  };
+
+  it('says reviews are off after a 404 and offers no Try again', async () => {
+    mount();
+    failWith(404, 'reviews.not-found');
+    fireEvent.click(screen.getByRole('button', { name: /Unanswered/ }));
+    expect(
+      await screen.findByText('Customer reviews are not switched on at the moment.'),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(screen.queryByText('We couldn’t load your reviews. Try again.')).toBeNull();
+  });
+
+  it('says the search cannot run after a refused page and offers no Try again', async () => {
+    mount();
+    failWith(400, 'validation.failed');
+    fireEvent.click(screen.getByRole('button', { name: /Unanswered/ }));
+    expect(
+      await screen.findByText(
+        "This search can't be run. Change the text or the filters, or clear them.",
+      ),
+    ).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+
+  it('offers Try again after an outage and asks the same page again', async () => {
+    mount();
+    failWith(503, 'access.unavailable');
+    fireEvent.click(screen.getByRole('button', { name: /Unanswered/ }));
+    const retry = await screen.findByRole('button', { name: 'Try again' });
+    serve(() => pageOf([row()]));
+    fireEvent.click(retry);
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Try again' })).toBeNull());
+    expect(paramsOf(lastUrl()).view).toBe('unanswered');
+  });
+});
+
+describe('select all matching', () => {
+  it('offers it once the whole page is ticked and more rows match, then says all are selected', () => {
+    mount(pageOf([row(), row({ id: ID2, title: 'Second' })], { hasNext: true, total: 12 }), {
+      paging: 'pages',
+    });
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Not great' }));
+    expect(screen.queryByRole('button', { name: /Select all/ })).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Second' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Select all 12 matching' }));
+    expect(screen.getByText('All 12 matching reviews are selected')).toBeTruthy();
+  });
+});
