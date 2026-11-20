@@ -17,7 +17,7 @@ import {
   type ReviewQueueRow,
 } from './review-queue-list.use-case';
 
-/** Rows one export may hold: the pages the queue's page read reaches. */
+/** Rows one export may hold: the rows the queue's page read reaches (20 pages of 50). */
 export const REVIEW_QUEUE_EXPORT_MAX_ROWS = REVIEW_QUEUE_PAGE_MAX * REVIEW_QUEUE_MAX_PAGE;
 export const REVIEW_QUEUE_EXPORT_HEAD = [
   'kind',
@@ -33,7 +33,7 @@ export const REVIEW_QUEUE_EXPORT_HEAD = [
   'warnings',
   'submitted_at',
 ] as const;
-const KEYS = ['kind', 'sellerId', 'firstPublication', 'hasImages', 'direction', 'format'] as const;
+const KEYS = ['kind', 'sellerId', 'firstPublication', 'hasImages', 'format'] as const;
 const CHUNK = 500;
 
 export interface ReviewQueueExportDependencies {
@@ -56,8 +56,8 @@ type Cell = string | number;
 
 /**
  * `catalog.review-queue-export` (super list 13): the rows the Product review queue shows for the
- * same filters (`kind`, `sellerId`, `firstPublication`, `hasImages`) and order (`direction`), as
- * CSV (default) or XLSX. The rows are read through the queue's own use case, page by page, so the
+ * same filters (`kind`, `sellerId`, `firstPublication`, `hasImages`), oldest submit first, as
+ * CSV (default) or XLSX. The rows are read through the queue's own use case with its keyset cursor, so the
  * filter, the order and the access rule cannot drift from the list; a queue longer than
  * {@link REVIEW_QUEUE_EXPORT_MAX_ROWS} rows is refused whole as `batch.too-large`, never cut.
  * CSV text cells that a spreadsheet would run as a formula get a leading quote; XLSX cells are
@@ -94,21 +94,23 @@ export class ReviewQueueExport extends UseCase<
     const { format: _format, ...filters } = input;
     void _format;
 
+    // The queue's keyset read (`afterId`, `limit`): each call starts at the cursor of the last, so
+    // the cost stays that of one page and a row decided meanwhile cannot shift the rest.
     const rows: ReviewQueueRow[] = [];
-    for (let page = 1; page <= REVIEW_QUEUE_MAX_PAGE; page += 1) {
+    let afterId: string | null = null;
+    do {
       const read = await this.deps.reviewQueue.execute(context, {
         ...filters,
-        page,
-        pageSize: REVIEW_QUEUE_PAGE_MAX,
-        paging: 'prev-next',
+        limit: REVIEW_QUEUE_PAGE_MAX,
+        ...(afterId === null ? {} : { afterId }),
       });
       if (!read.ok) return read;
       rows.push(...read.value.items);
-      if (!read.value.hasNext) break;
-      if (page === REVIEW_QUEUE_MAX_PAGE) {
+      if (rows.length > REVIEW_QUEUE_EXPORT_MAX_ROWS) {
         return err({ code: 'batch.too-large', max: REVIEW_QUEUE_EXPORT_MAX_ROWS });
       }
-    }
+      afterId = read.value.nextAfterId;
+    } while (afterId !== null);
     const day = this.deps.clock.now().toString().slice(0, 10);
     const table: Cell[][] = [[...REVIEW_QUEUE_EXPORT_HEAD], ...rows.map(rowOf)];
     if (format === 'xlsx') {

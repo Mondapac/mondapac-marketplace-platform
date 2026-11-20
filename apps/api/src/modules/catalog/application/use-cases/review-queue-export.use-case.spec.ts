@@ -86,23 +86,24 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
         allow ? { allowed: true } : { allowed: false, denial: { code: 'access.denied' } },
       ),
   };
-  // The queue's use case, as the list answers it: the page asked, `hasNext` while rows remain.
+  // The queue's use case, as the list answers its keyset read: `afterId` is the index of the next
+  // row, `nextAfterId` the index after the rows given, null at the end.
   const reviewQueue = {
     execute: (_c: CallContext, input: Record<string, unknown>) => {
       calls.push(input);
       if (listFails) return Promise.resolve({ ok: false, error: { code: 'access.unavailable' } });
-      const page = input['page'] as number;
-      const size = input['pageSize'] as number;
-      const items = queue.slice((page - 1) * size, page * size);
+      const start = input['afterId'] === undefined ? 0 : Number(input['afterId']);
+      const size = input['limit'] as number;
+      const items = queue.slice(start, start + size);
       return Promise.resolve({
         ok: true,
         value: {
           items,
-          nextAfterId: null,
-          page,
+          nextAfterId: start + size < queue.length ? String(start + size) : null,
+          page: 1,
           pageSize: size,
           paging: 'prev-next',
-          hasNext: page * size < queue.length,
+          hasNext: start + size < queue.length,
           total: null,
           totals: { 'product-revision': 0, 'offer-first-publication': 0 },
         } satisfies ReviewQueueListOutput,
@@ -136,20 +137,12 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
     listFails = false;
   });
 
-  it('writes both kinds as CSV with a BOM, passing the filters and order to the list', async () => {
+  it('writes both kinds as CSV with a BOM, passing the filters to the keyset read of the list', async () => {
     queue = [revision(1), offerRow(2)];
-    const result = await useCase().execute(context(), { direction: 'desc', sellerId: ID(0x2000) });
+    const result = await useCase().execute(context(), { sellerId: ID(0x2000) });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(calls).toEqual([
-      {
-        direction: 'desc',
-        sellerId: ID(0x2000),
-        page: 1,
-        pageSize: REVIEW_QUEUE_PAGE_MAX,
-        paging: 'prev-next',
-      },
-    ]);
+    expect(calls).toEqual([{ sellerId: ID(0x2000), limit: REVIEW_QUEUE_PAGE_MAX }]);
     expect(result.value.filename).toBe('review-queue-2026-11-10.csv');
     const body = await text(result.value.chunks);
     expect(body.startsWith('﻿')).toBe(true);
@@ -161,7 +154,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
     ]);
   });
 
-  it('writes XLSX and reads every page of a long queue', async () => {
+  it('writes XLSX and follows the cursor over a long queue', async () => {
     queue = Array.from({ length: REVIEW_QUEUE_PAGE_MAX + 1 }, (_, n) => revision(n + 1));
     const result = await useCase().execute(context(), { format: 'xlsx' });
     expect(result.ok).toBe(true);
@@ -185,14 +178,14 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
     expect((await useCase().execute(context(), {})).ok).toBe(true);
   });
 
-  it('refuses a bad format, an unknown or page key, a seller caller and a denied gate, and passes list failures on', async () => {
+  it('refuses a bad format, an unknown, page or order key, a seller caller and a denied gate, and passes list failures on', async () => {
     queue = [revision(1)];
     const run = (input: Record<string, unknown>, ctx = context()) => useCase().execute(ctx, input);
     expect(await run({ format: 'pdf' })).toMatchObject({
       ok: false,
       error: { code: 'validation.failed' },
     });
-    expect(await run({ page: 2 })).toMatchObject({
+    expect(await run({ direction: 'desc' })).toMatchObject({
       ok: false,
       error: { code: 'validation.failed' },
     });

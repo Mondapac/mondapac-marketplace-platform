@@ -176,8 +176,7 @@ export class OfferReviewController {
     summary: 'Export the review queue as a file',
     description:
       'Needs catalog.product.view. The rows of the review queue for the same filters ' +
-      '(`kind`, `sellerId`, `firstPublication`, `hasImages`) in the same order (`direction`, ' +
-      'oldest submit first by default). `format` is csv (the default) or xlsx, with the same ' +
+      '(`kind`, `sellerId`, `firstPublication`, `hasImages`), oldest submit first. `format` is csv (the default) or xlsx, with the same ' +
       'columns: kind, product_code, product_name, seller_id, store_name, seller_sku, ' +
       'first_publication, reasons, required_checks, has_images, warnings, submitted_at. At most ' +
       '1,000 rows (the pages the list reaches); a longer queue is refused whole as ' +
@@ -185,7 +184,6 @@ export class OfferReviewController {
       '= + - @ is written with a leading quote. XLSX: every cell is a string value, never a formula.',
   })
   @ApiQuery({ name: 'format', required: false, enum: ['csv', 'xlsx'] })
-  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
   @ApiQuery({ name: 'kind', required: false, enum: REVIEW_QUEUE_KINDS })
   @ApiQuery({ name: 'sellerId', required: false })
   @ApiQuery({ name: 'firstPublication', required: false, enum: ['true', 'false'] })

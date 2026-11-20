@@ -402,7 +402,7 @@ describe('admin Offer review over HTTP (integration)', () => {
       waiting(code, 1);
       const session = sessionOf(code, VIEWER, 1);
 
-      const csv = await get(code, '/review-queue/export?direction=desc', session).buffer(true);
+      const csv = await get(code, '/review-queue/export', session).buffer(true);
       expect(csv.status).toBe(200);
       expect(csv.headers['content-type']).toContain('text/csv');
       expect(csv.headers['content-disposition']).toMatch(
@@ -424,6 +424,7 @@ describe('admin Offer review over HTTP (integration)', () => {
       expect(xlsx.headers['content-type']).toContain('spreadsheetml');
       expect((await get(code, '/review-queue/export?format=pdf', session)).status).toBe(400);
       expect((await get(code, '/review-queue/export?page=2', session)).status).toBe(400);
+      expect((await get(code, '/review-queue/export?direction=desc', session)).status).toBe(400);
       expect((await get(code, '/review-queue/export', null)).status).toBe(401);
       expect((await get(code, '/review-queue/export', sessionOf(code, NO_KEY, 3))).status).toBe(
         403,
