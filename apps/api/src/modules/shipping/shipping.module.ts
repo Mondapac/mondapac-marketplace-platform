@@ -19,8 +19,7 @@ import { SECURITY_EVENTS } from '../../platform/security-events/security-events'
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { SellersModule } from '../sellers';
 import {
-  registerSystemChangeApplier,
-  registerSystemChangeReverter,
+  createSystemChangeRegistrar,
   SYSTEM_ACTION_PROPOSER,
   SYSTEM_REQUEST_RECORDER,
 } from '../system-requests';
@@ -96,6 +95,9 @@ import { DeliveryAreaController } from './presentation/delivery-area.controller'
 import { ShippingFacadeImplementation } from './presentation/shipping.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: ShippingDependencies) => U;
+
+/** This module's own registrar for System requests (never exported from the barrel). */
+const SHIPPING_SYSTEM_CHANGES = createSystemChangeRegistrar('shipping');
 
 const PORTS: readonly [keyof ShippingDependencies, InjectionToken][] = [
   ['unitOfWork', UNIT_OF_WORK],
@@ -209,7 +211,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           inject: PORTS.map(([, port]) => port),
           useFactory: (...values: unknown[]) => new Reverter(dependenciesOf(values)),
         },
-        registerSystemChangeReverter('shipping', kind, DELIVERY_REVIEW_AREA, token),
+        SHIPPING_SYSTEM_CHANGES.reverter(kind, DELIVERY_REVIEW_AREA, token),
       ];
     }),
     // The create of a model waits for approval where the Market reviews area delivery.
@@ -222,8 +224,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           authorisation: values[PORTS.length],
         } as ShippingApplierDependencies),
     },
-    registerSystemChangeApplier(
-      'shipping',
+    SHIPPING_SYSTEM_CHANGES.applier(
       FLEET_MODEL_CREATE_SUBJECT_KIND,
       DELIVERY_REVIEW_AREA,
       SHIPPING_APPLIER_PERMISSIONS.get(FLEET_MODEL_CREATE_SUBJECT_KIND) ?? [],

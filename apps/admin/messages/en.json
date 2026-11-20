@@ -1639,6 +1639,14 @@
         "reject": "Reject",
         "withdraw": "Withdraw request",
         "second-admin": "You asked for this reactivation, so a different admin has to answer it.",
+        "expert": {
+          "title": "New expert approval",
+          "view": "View the new expert approval",
+          "confirmed-by": "Confirmed by",
+          "reference": "Reference",
+          "audited": "Viewing is recorded.",
+          "not-found": "This request has no new expert approval to show. Reload the page."
+        },
         "reload": "Reload",
         "no-actions": "Nothing can be done with this request from your account right now.",
         "cancel": "Cancel",
@@ -3387,8 +3395,8 @@
       "state-draft": "Draft",
       "state-published": "Live",
       "state-earlier": "Earlier",
-      "restore": "Restore",
-      "restore-label": "Restore version {n}",
+      "restore": "Restore…",
+      "actions-for": "Actions for version {n}",
       "restore-title": "Restore version {n}?",
       "restore-body": "This replaces the current draft, including any unsaved or unapproved changes. Buyers see no change until it is approved.",
       "restore-confirm": "Restore to draft",
@@ -9767,8 +9775,11 @@
       "filter": {
         "title": "Filter payouts",
         "name": {
+          "status": "State",
           "approvalMode": "Approval mode",
-          "created": "Created"
+          "created": "Created",
+          "minAmount": "Transfer at least",
+          "maxAmount": "Transfer at most"
         },
         "mode": {
           "AUTO": "Automatic",
@@ -11699,39 +11710,6 @@
         "cancel": "Cancel"
       }
     },
-    "intro": "Posts on the buyer site for this market. A published post stays live while a new version is in review.",
-    "tabs-label": "Post status",
-    "filter-label": "Filter posts",
-    "kind-filter": "Type",
-    "owner-filter": "Author",
-    "zone-note": "Times are shown in {zone}.",
-    "result-count": "{count, plural, one {# post shown} other {# posts shown}}",
-    "loading": "Loading posts",
-    "load-error": "The posts could not be loaded. Check your connection and try again.",
-    "retry": "Try again",
-    "more": "Load more",
-    "more-error": "More posts could not be loaded. Try again.",
-    "empty": "No posts yet. They will show here once the first one is written.",
-    "empty-filtered": "No posts match these filters.",
-    "featured": "Featured on the blog home",
-    "col": {
-      "post": "Post",
-      "kind": "Type",
-      "author": "Author",
-      "status": "Status",
-      "updated": "Updated"
-    },
-    "status": {
-      "all": "All",
-      "draft": "Drafts",
-      "in_review": "In review",
-      "changes_requested": "Changes requested",
-      "approved": "Approved",
-      "scheduled": "Scheduled",
-      "published": "Published",
-      "unpublished": "Unpublished",
-      "archived": "Archived"
-    },
     "state": {
       "draft": "Draft",
       "in_review": "In review",
@@ -11743,26 +11721,150 @@
       "archived": "Archived"
     },
     "kind": {
-      "all": "All",
       "product": "Product",
       "brand": "Brand",
       "event": "Event",
       "news": "News"
     },
-    "owner": {
-      "all": "All",
-      "platform": "Mondapac team",
-      "seller": "Seller"
-    },
-    "author": {
-      "platform": "Mondapac team",
-      "seller": "Seller"
-    },
-    "open-note": {
-      "draft": "New version being written",
-      "in_review": "New version in review",
-      "returned": "New version sent back for changes",
-      "approved": "New version approved"
+    "list": {
+      "intro": "Posts on the buyer site for this market. A published post stays live while a new version is in review.",
+      "views-label": "Post views",
+      "zone-note": "Dates are shown in {zone}.",
+      "loading": "Loading the posts",
+      "no-access": "You do not have access to this list.",
+      "view": {
+        "all": "All",
+        "draft": "Drafts",
+        "in_review": "In review",
+        "changes_requested": "Changes requested",
+        "approved": "Approved",
+        "scheduled": "Scheduled",
+        "published": "Published",
+        "unpublished": "Unpublished",
+        "archived": "Archived"
+      },
+      "col": {
+        "post": "Post",
+        "status": "Status",
+        "updated": "Updated on",
+        "kind": "Type",
+        "author": "Author",
+        "scheduled": "Goes live on",
+        "published": "Published on",
+        "actions": "Actions"
+      },
+      "caption": "Blog posts",
+      "none": "None",
+      "author": {
+        "platform": "Mondapac team",
+        "seller": "Seller"
+      },
+      "open-note": {
+        "draft": "New version being written",
+        "in_review": "New version in review",
+        "returned": "New version sent back for changes",
+        "approved": "New version approved"
+      },
+      "featured": "Featured on the blog home",
+      "search": {
+        "label": "Search",
+        "placeholder": "Title or web address",
+        "help": "Part of a post title or web address."
+      },
+      "chip-search": "Title or web address has {text}",
+      "filter": {
+        "title": "Filter posts",
+        "name": {
+          "kind": "Type",
+          "owner": "Author",
+          "featured": "Featured",
+          "updated": "Updated on"
+        },
+        "kind": {
+          "product": "Product",
+          "brand": "Brand",
+          "event": "Event",
+          "news": "News"
+        },
+        "owner": {
+          "platform": "Mondapac team",
+          "seller": "Seller"
+        },
+        "featured": {
+          "yes": "Featured",
+          "no": "Not featured"
+        }
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "created": "Created on",
+          "updated": "Updated on",
+          "published": "Published on",
+          "scheduled": "Goes live on"
+        },
+        "created": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "updated": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "published": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "scheduled": {
+          "first": "Soonest first",
+          "second": "Latest first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# post matches} other {# posts match}}",
+      "range": "{from}–{to} of {total} posts",
+      "error": {
+        "unavailable": "The posts could not be loaded.",
+        "refused": "This search can't be run. Change the text or the filters, or clear them."
+      },
+      "empty": {
+        "all": "No posts yet.",
+        "draft": "No posts are drafts.",
+        "in_review": "No posts are waiting for review.",
+        "changes_requested": "No posts have been sent back for changes.",
+        "approved": "No posts are approved and waiting to go live.",
+        "scheduled": "No posts are scheduled.",
+        "published": "No posts are live.",
+        "unpublished": "No posts are off the site.",
+        "archived": "No posts are archived.",
+        "no-match": "No posts match",
+        "no-match-help": "Try other words or filters, or clear them.",
+        "all-create": "No posts yet. Use New post to write the first one."
+      },
+      "select": {
+        "page": "Select all posts on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# post selected} other {# posts selected}}",
+        "all": "{count, plural, one {The # matching post is selected} other {All # matching posts are selected}}",
+        "all-open": "All matching posts are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# post selected} other {# posts selected}}",
+        "all-open": "All matching posts selected"
+      },
+      "actions": {
+        "for": "Actions for {name}",
+        "open": "Open",
+        "review": "Review and publish"
+      }
     }
   },
   "tags": {

@@ -1,9 +1,10 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
-import type {
-  RevertOutcome,
-  RevertRequest,
-  SystemChangeReverter,
+import {
+  createSystemChangeRegistrar,
+  type RevertOutcome,
+  type RevertRequest,
+  type SystemChangeReverter,
 } from '../../../platform/change-review/change-review';
 import { SYSTEM_REQUESTS_POLICY_CHANGE_STEP_UP } from '../contracts/step-up';
 import {
@@ -40,6 +41,8 @@ import type { SystemRequestsDependencies } from './system-requests-dependencies'
 /** The subject kinds of the review policy's own requests. */
 export const POLICY_AREA_KIND = 'system-requests.policy-area';
 export const DUE_DAYS_KIND = 'system-requests.review-due-days';
+/** System requests' own registrar (the review policy's kinds, area `review-policy`). */
+export const SYSTEM_REQUESTS_SYSTEM_CHANGES = createSystemChangeRegistrar('system-requests');
 /** The subject key of the review period (one per Market). */
 export const DUE_DAYS_KEY = 'market';
 

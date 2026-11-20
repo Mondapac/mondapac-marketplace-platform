@@ -407,6 +407,71 @@ describe('issuer lifecycle', () => {
     vi.unstubAllGlobals();
   });
 
+  const showProposal = () =>
+    wrap(
+      <IssuerDetailView
+        issuer={detail({ state: 'closed-to-new', pendingReactivation: proposal() })}
+        typeName="Halal"
+        canEdit
+        csrfToken="c"
+      />,
+    );
+
+  it('shows the new expert approval of the proposal only after View', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: {
+        issuerId: ID,
+        current: { confirmedBy: 'Old', reference: 'Old ref' },
+        pendingReactivation: {
+          proposalId: proposal().id,
+          expertApproval: { confirmedBy: 'Dr B', reference: 'Letter 9' },
+        },
+      },
+    });
+    showProposal();
+    expect(screen.queryByText('Letter 9')).toBeNull();
+    expect(call).not.toHaveBeenCalled();
+    open('View the new expert approval');
+    expect(await screen.findByText('Letter 9')).toBeTruthy();
+    expect(screen.getByText('Dr B')).toBeTruthy();
+    expect(screen.queryByText('Old ref')).toBeNull();
+    expect(call).toHaveBeenCalledWith(
+      'GET',
+      `certification/admin/issuers/${ID}/expert-reference`,
+      undefined,
+      'c',
+    );
+  });
+
+  it('says so when the read has no new approval for this proposal', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: {
+        issuerId: ID,
+        current: null,
+        pendingReactivation: {
+          proposalId: '0190a000-0000-7000-8000-0000000000ff',
+          expertApproval: { confirmedBy: 'Someone', reference: 'Other' },
+        },
+      },
+    });
+    showProposal();
+    open('View the new expert approval');
+    expect(await screen.findByText(/no new expert approval to show/)).toBeTruthy();
+    expect(screen.queryByText('Other')).toBeNull();
+  });
+
+  it('keeps a refused read on screen and offers View again', async () => {
+    fail(503, 'access.unavailable');
+    showProposal();
+    open('View the new expert approval');
+    expect(await screen.findByText(/The service is not available right now/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'View the new expert approval' })).toBeTruthy();
+  });
+
   it('shows the proposal and sends only the answers the API allows', async () => {
     call.mockResolvedValueOnce({ ok: true, status: 200, body: {} });
     vi.stubGlobal('location', { assign: vi.fn() });

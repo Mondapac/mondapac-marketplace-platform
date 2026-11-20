@@ -3,6 +3,8 @@ import { registerAuditActions } from '../../platform/audit/audit-action-catalogu
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { CHANGE_TRAIL } from '../../platform/audit/change-trail';
 import { changeTrailProvider, IdentityModule } from '../identity';
+import { ASSISTANT_LISTS } from './application/insights-saved-filter-list';
+import { ListsModule, registerLists } from '../lists';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
@@ -114,6 +116,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     IdentityModule,
     CartModule,
     SettingsModule,
+    ListsModule,
   ],
   controllers: [
     AdminAssistantSettingsController,
@@ -130,6 +133,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     changeTrailProvider(),
     registerAuditActions('assistant', ASSISTANT_AUDIT_ACTIONS),
     registerPermissions('assistant', ASSISTANT_PERMISSIONS),
+    // The insights list's saved filters, through the generic routes of `lists` (rule 14).
+    registerLists('assistant', ASSISTANT_LISTS),
     SubjectRateLimits,
     ...assistantProviders,
     ...[

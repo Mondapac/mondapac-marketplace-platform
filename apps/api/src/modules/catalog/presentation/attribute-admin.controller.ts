@@ -27,6 +27,7 @@ import {
   ApiOkResponse,
   ApiOperation,
   ApiParam,
+  ApiPayloadTooLargeResponse,
   ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
@@ -43,6 +44,8 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { MissingDetailsEmailSellers } from '../application/use-cases/missing-details-email-sellers.use-case';
 import { ProductsMissingDetailsList } from '../application/use-cases/products-missing-details-list.use-case';
+import { ProductsMissingDetailsExport } from '../application/use-cases/products-missing-details-export.use-case';
+import { writeChunks } from './write-chunks';
 import { CategoryAttributeLinksGet } from '../application/use-cases/category-attribute-links-get.use-case';
 import { CategoryAttributeLinksSet } from '../application/use-cases/category-attribute-links-set.use-case';
 import { AttributeAdminGet } from '../application/use-cases/attribute-admin-get.use-case';
@@ -150,6 +153,7 @@ export const ATTRIBUTE_ADMIN_STATUS: Readonly<Record<string, number>> = Object.f
   'attribute-definition.default-label-required': 422,
   'attribute-definition.active-option-required': 422,
   'access.unavailable': 503,
+  'batch.too-large': 413,
   'missing-details-email.unconfigured': 503,
   'claim-text.check-unavailable': 503,
 });
@@ -225,6 +229,7 @@ export class AttributeAdminController {
     private readonly setCategoryLinks: CategoryAttributeLinksSet,
     private readonly listMissingDetails: ProductsMissingDetailsList,
     private readonly emailMissingDetails: MissingDetailsEmailSellers,
+    private readonly exportMissingDetails: ProductsMissingDetailsExport,
   ) {}
 
   @Post('attributes')
@@ -705,6 +710,80 @@ export class AttributeAdminController {
       ? (JSON.parse(JSON.stringify(result.value)) as MissingDetailsListBody)
       : refusal(result.error, response, context);
     return this.settle('catalog.products-missing-details-list', context, outcome);
+  }
+
+  @Get('reports/products-missing-details/export')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Export the products missing required details as a file',
+    description:
+      `${NEEDS} The rows of the Missing details list for the same filter (\`sellerId\`, ` +
+      '`familyCode`, `q`) in the same order (`sort` code, name, family or missing, `direction`). ' +
+      '`format` is csv (the default) or xlsx, with the same columns: product_code, name, seller_id, ' +
+      'feature_set, missing_count, missing. It judges the published products up to 10,000; when the ' +
+      'Market is larger the file would be partial, so it is refused whole as batch.too-large. The ' +
+      'file is an attachment. CSV: a text cell that starts with = + - @ is written with a leading ' +
+      'quote. XLSX: every cell is a string value, never a formula.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: ['csv', 'xlsx'] })
+  @ApiQuery({ name: 'sellerId', required: false })
+  @ApiQuery({ name: 'familyCode', required: false })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({ name: 'sort', required: false, enum: ['code', 'name', 'family', 'missing'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiOkResponse({
+    description:
+      'text/csv; charset=utf-8 (products-missing-details-<date>.csv) or ' +
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet (.xlsx), as an attachment',
+  })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiPayloadTooLargeResponse({ type: ApiErrorBody, description: 'batch.too-large' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async missingDetailsExport(
+    @Call() context: CallContext,
+    @Res() response: Response,
+    @Query() query: Record<string, unknown>,
+  ): Promise<void> {
+    const result = await this.exportMissingDetails.execute(context, { ...query });
+    if (!result.ok) {
+      const error = refusal(result.error, response, context);
+      this.#logger.log({
+        msg: 'catalog.products-missing-details-export',
+        outcome: (error.getResponse() as { code: string }).code,
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      await writeChunks(response, chunks);
+      this.#logger.log({
+        msg: 'catalog.products-missing-details-export',
+        outcome: 'ok',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+    } catch {
+      this.#logger.warn({
+        msg: 'catalog.products-missing-details-export',
+        outcome: 'stream-failed',
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      response.destroy();
+    }
   }
 
   @Post('reports/products-missing-details/email-sellers')

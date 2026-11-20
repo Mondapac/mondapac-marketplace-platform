@@ -15,6 +15,12 @@ export interface ApprovedStoreFacts {
   readonly name: string;
   /** The ServiceArea code of the approved revision's operating address (clear). */
   readonly serviceAreaCode: string;
+  /**
+   * The clear postcode of the approved revision's operating address; null for a revision written
+   * before the column. The area is read from it live, so a newly defined area applies without
+   * rewriting the immutable revision.
+   */
+  readonly operatingPostcode: string | null;
   /** The approved revision's IANA zone; the "selling since" year is read in it. */
   readonly operatingTimezone: string;
   /** When the seller's first revision was approved. */

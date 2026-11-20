@@ -235,6 +235,7 @@ describe('admin attribute reads over HTTP (integration)', () => {
       'attribute-definition.default-name-required': 422,
       'attribute-definition.default-label-required': 422,
       'attribute-definition.active-option-required': 422,
+      'batch.too-large': 413,
       'access.unavailable': 503,
       'missing-details-email.unconfigured': 503,
       'claim-text.check-unavailable': 503,

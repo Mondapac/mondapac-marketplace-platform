@@ -34,8 +34,13 @@ import type { OverdueReminderDependencies } from './application/overdue-reminder
 import { SYSTEM_REQUESTS_LISTS } from './application/saved-filter-list';
 import { POLICY_REPOSITORY } from './application/ports/policy.repository';
 import { REQUEST_REPOSITORY } from './application/ports/request.repository';
-import { DUE_DAYS_KIND, POLICY_AREA_KIND, PolicyReverter } from './application/policy-flow';
-import { ReverterRegistry } from './application/reverter-registry';
+import {
+  DUE_DAYS_KIND,
+  POLICY_AREA_KIND,
+  PolicyReverter,
+  SYSTEM_REQUESTS_SYSTEM_CHANGES,
+} from './application/policy-flow';
+import { REVERTER_REGISTRY, ReverterRegistry } from './application/reverter-registry';
 import { SystemRequestRecorderImplementation } from './application/system-request-recorder';
 import { ImpactCache } from './application/impact-cache';
 import type { SystemRequestsDependencies } from './application/system-requests-dependencies';
@@ -73,8 +78,6 @@ type UseCaseClass<U> = new (gate: UseCaseGate, deps: SystemRequestsDependencies)
 const DEPENDENCIES = Symbol('SYSTEM_REQUESTS_DEPENDENCIES');
 const POLICY_AREA_REVERTER = Symbol('SYSTEM_REQUESTS_POLICY_AREA_REVERTER');
 const DUE_DAYS_REVERTER = Symbol('SYSTEM_REQUESTS_DUE_DAYS_REVERTER');
-/** The registry itself (lookup and seal), kept inside the module; others get its facade. */
-const REVERTER_REGISTRY = Symbol('SYSTEM_REQUESTS_REVERTER_REGISTRY');
 /** What the overdue reminder run needs (a smaller set than the admin use cases'). */
 const REMINDER_DEPENDENCIES = Symbol('SYSTEM_REQUESTS_REMINDER_DEPENDENCIES');
 /** The request detail's impact answers (one per process). */
@@ -232,8 +235,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       provide: Symbol('system-requests:reverter:own'),
       inject: [REVERTER_REGISTRY, POLICY_AREA_REVERTER, DUE_DAYS_REVERTER],
       useFactory: (registry: ReverterRegistry, area: PolicyReverter, dueDays: PolicyReverter) => {
-        registry.register('system-requests', POLICY_AREA_KIND, 'review-policy', area);
-        registry.register('system-requests', DUE_DAYS_KIND, 'review-policy', dueDays);
+        const own = SYSTEM_REQUESTS_SYSTEM_CHANGES;
+        registry.register(own, POLICY_AREA_KIND, 'review-policy', area);
+        registry.register(own, DUE_DAYS_KIND, 'review-policy', dueDays);
         return true;
       },
     },
