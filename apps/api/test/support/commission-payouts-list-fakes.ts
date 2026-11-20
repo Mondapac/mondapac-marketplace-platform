@@ -6,6 +6,7 @@ import type { StoreNameSearch } from '../../src/modules/commission-payouts/appli
 import type {
   PayoutListCursor,
   PayoutListFilter,
+  PayoutSlotCursor,
   PayoutSort,
   PayoutStateCounts,
 } from '../../src/modules/commission-payouts/domain/admin-payout-list';
@@ -25,12 +26,9 @@ function matches(payout: Payout, filter: PayoutListFilter): boolean {
   if (filter.sellerId !== null && payout.sellerId !== filter.sellerId) return false;
   if (filter.sellerIds !== null && !filter.sellerIds.includes(payout.sellerId)) return false;
   if (filter.approvalMode !== null && payout.approvalMode !== filter.approvalMode) return false;
-  if (filter.from !== null && Temporal.Instant.compare(payout.createdAt, filter.from) < 0) {
-    return false;
-  }
-  if (filter.to !== null && Temporal.Instant.compare(payout.createdAt, filter.to) >= 0) {
-    return false;
-  }
+  const dated = filter.dateOn === 'slot' ? payout.slotAt : payout.createdAt;
+  if (filter.from !== null && Temporal.Instant.compare(dated, filter.from) < 0) return false;
+  if (filter.to !== null && Temporal.Instant.compare(dated, filter.to) >= 0) return false;
   if (filter.minAmount !== null && payout.transfer < filter.minAmount) return false;
   if (filter.maxAmount !== null && payout.transfer > filter.maxAmount) return false;
   return true;
@@ -78,17 +76,19 @@ export class MemoryAdminPayoutList implements AdminPayoutListReader {
     sort: PayoutSort,
     offset: number,
     limit: number,
-    after: PayoutListCursor | null = null,
+    after: PayoutListCursor | PayoutSlotCursor | null = null,
   ) {
+    const before = (payout: Payout): boolean => {
+      if (after === null) return true;
+      const order =
+        'slotAt' in after
+          ? Temporal.Instant.compare(payout.slotAt, after.slotAt)
+          : Temporal.Instant.compare(payout.createdAt, after.createdAt);
+      return order < 0 || (order === 0 && payout.id < after.payoutId);
+    };
     const rows = this.#rows(market)
       .filter((payout) => matches(payout, filter))
-      .filter(
-        (payout) =>
-          after === null ||
-          Temporal.Instant.compare(payout.createdAt, after.createdAt) < 0 ||
-          (Temporal.Instant.compare(payout.createdAt, after.createdAt) === 0 &&
-            payout.id < after.payoutId),
-      )
+      .filter(before)
       .sort((a, b) => compare(a, b, sort));
     return Promise.resolve(rows.slice(offset, offset + limit));
   }
