@@ -23,7 +23,16 @@ import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { numberFormat } from '../shared/intl.ts';
+import { SalesSavedViews } from '../sales/sales-saved-views.tsx';
+import { useSavedFilters } from '../sales/sales-saved.ts';
 import { SelectionBar } from '../sales/selection-bar.tsx';
+import {
+  LIST_KEY,
+  payloadOf,
+  queryOf,
+  somethingToSave,
+  type SavedPayload,
+} from './health-queue-saved.ts';
 import { HealthQueueBulk } from './health-queue-bulk.tsx';
 import { HealthColumnsPanel, HealthFilterPanel, HealthSortPanel } from './health-queue-panels.tsx';
 import {
@@ -89,10 +98,12 @@ const withSearch = (current: Query, q: string): Query =>
  * is the admin's own and lives in this browser's storage.
  */
 export function HealthQueue({
+  csrfToken,
   paging,
   accountId,
   marketId,
 }: {
+  readonly csrfToken: string;
   /** The Market's "List paging" setting, Previous and next when it could not be read. */
   readonly paging: 'pages' | 'prev-next';
   readonly accountId: string;
@@ -110,7 +121,11 @@ export function HealthQueue({
     searchOf: searchText,
     withSearch,
   });
-  const { query } = list;
+  const { query, savedId, forgetSaved, openSaved } = list;
+  // Saved filters stay hidden until the lists route answers for LIST_KEY: `useSavedFilters` is null
+  // until then, and every control that needs it checks for null.
+  const { saved, reload: loadSaved } = useSavedFilters<SavedPayload>(LIST_KEY);
+  const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
   const shortSearch = list.draft.trim().length > 0 && list.draft.trim().length < SEARCH_MIN;
 
   const [answer, setAnswer] = useState<HealthQueuePage | null>(null);
@@ -129,6 +144,13 @@ export function HealthQueue({
   useEffect(() => {
     setColumns(cleanColumns(readIds(browserStorage(), storageKey)));
   }, [storageKey]);
+
+  // A saved tab that was deleted (here or by its owner) is no longer the one on show.
+  useEffect(() => {
+    if (savedId !== null && saved !== null && !saved.items.some((item) => item.id === savedId)) {
+      forgetSaved();
+    }
+  }, [saved, savedId, forgetSaved]);
 
   const load = useCallback(
     async (asked: Query) => {
@@ -251,6 +273,8 @@ export function HealthQueue({
     }),
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
   const filtered = chips.length > 0;
+  // "Save filter" is offered on a built-in view that shows something a saved filter can keep.
+  const canSave = saved !== null && savedId === null && somethingToSave(query);
 
   const optionalColumn = (id: OptionalColumn): SuperColumn<HealthQueueRow> => {
     switch (id) {
@@ -389,6 +413,15 @@ export function HealthQueue({
     `sort.${kind}.${query.direction === defaultDirection(query.sort) ? 'first' : 'second'}`,
   );
 
+  // What a saved filter holds, in words (the save dialog shows it). The search is not saved.
+  const summary = [
+    query.view === 'all' ? t('view.all') : t(`metric.${query.view}`),
+    ...chips.filter((chip) => chip.key !== 'search').map((chip) => chip.label),
+    ...(query.sort !== DEFAULT_QUERY.sort || query.direction !== defaultDirection(query.sort)
+      ? [ts('saved.summary-sort', { field: `${sortField}, ${sortOrder}` })]
+      : []),
+  ].join(' · ');
+
   const table = (
     <div className="flex flex-col gap-4">
       <SelectionBar
@@ -458,15 +491,25 @@ export function HealthQueue({
       }
       views={{
         label: t('views'),
-        activeId: query.view,
-        onSelect: (id) => list.openView(id),
-        items: VIEWS.map((view) => ({
-          id: view,
-          label: `${view === 'all' ? t('view.all') : t(`metric.${view}`)}${
-            counts === null ? '' : ` (${number(counts[view])})`
-          }`,
-        })),
-        manage: null,
+        activeId: savedId ?? query.view,
+        onSelect: (id) => {
+          const filter = saved?.items.find((item) => item.id === id);
+          if (filter === undefined) list.openView(id);
+          else openSaved(id, queryOf(filter.payload));
+        },
+        items: [
+          ...VIEWS.map((view) => ({
+            id: view,
+            label: `${view === 'all' ? t('view.all') : t(`metric.${view}`)}${
+              counts === null ? '' : ` (${number(counts[view])})`
+            }`,
+          })),
+          ...(saved?.items ?? []).map((item) => ({ id: item.id, label: item.name })),
+        ],
+        manage:
+          saved === null
+            ? null
+            : { label: ts('saved.manage-link'), onClick: () => setDialog('manage') },
       }}
       search={{
         label: t('search.label'),
@@ -509,10 +552,13 @@ export function HealthQueue({
       }}
       sortedLine={t('sorted', { field: sortField, order: sortOrder })}
       chips={
-        filtered || shortSearch
+        filtered || shortSearch || canSave
           ? {
               chips,
               ...(filtered ? { clearAll: { label: ts('clear-all'), onClick: clearAll } } : {}),
+              ...(canSave
+                ? { save: { label: ts('saved.save-link'), onClick: () => setDialog('save') } }
+                : {}),
               status: shortSearch
                 ? t('search.too-short', { min: SEARCH_MIN })
                 : total === null || failure !== null
@@ -538,6 +584,28 @@ export function HealthQueue({
       loadingLabel={t('loading')}
       slowLabel={tl('slow')}
       ready={answer !== null}
+      dialogs={
+        saved === null ? undefined : (
+          <SalesSavedViews
+            dialog={dialog}
+            onClose={() => setDialog(null)}
+            listKey={LIST_KEY}
+            payload={payloadOf(query)}
+            summary={summary}
+            saved={saved}
+            csrfToken={csrfToken}
+            idPrefix="health-queue"
+            onSaved={(filter) => {
+              void loadSaved().then((items) => {
+                // Only a filter that is in the reloaded list can be the tab on show.
+                if (items?.some((item) => item.id === filter.id) === true)
+                  openSaved(filter.id, queryOf(filter.payload));
+              });
+            }}
+            onChanged={() => void loadSaved()}
+          />
+        )
+      }
       table={table}
       pagination={
         answer !== null && answer.items.length > 0 && failure === null
