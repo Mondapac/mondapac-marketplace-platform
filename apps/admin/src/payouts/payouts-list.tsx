@@ -127,7 +127,7 @@ export function PayoutsList({
   readonly sellerId?: string | null;
   /**
    * The Market currency of the amount filters, when the page knows it; otherwise the currency of
-   * the rows on show is used. Without either, the amount filters are left out.
+   * the rows last read is used (kept when a filter leaves no rows). Without either, the amount filters are left out.
    */
   readonly currency?: string | null;
 }) {
@@ -152,7 +152,7 @@ export function PayoutsList({
   // The view counts of the last answer: they stay while a page loads or a read fails.
   // The currency of the rows last read: the amount steps are whole units of it.
   const [rowCurrency, setRowCurrency] = useState<string | null>(null);
-  const currency = rowCurrency ?? marketCurrency;
+  const currency = marketCurrency ?? rowCurrency;
   const currencyNow = useRef(currency);
   currencyNow.current = currency;
   const [counts, setCounts] = useState<ViewCounts | null>(null);

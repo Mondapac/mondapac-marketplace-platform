@@ -9236,7 +9236,7 @@
       "filter": {
         "title": "Filter payouts",
         "name": {
-          "status": "Status",
+          "status": "State",
           "approvalMode": "Approval mode",
           "created": "Created",
           "minAmount": "Transfer at least",

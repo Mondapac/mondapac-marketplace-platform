@@ -47,11 +47,16 @@ export function PayoutsFilterPanel({
         });
   const amounts = amountOptions(currency);
   const fields: ListFilterField[] = [
-    {
-      id: 'status',
-      label: t('filter.name.status'),
-      options: statusesOf(view).map((value) => ({ value, label: tp(`state.${value}`) })),
-    },
+    // A view that holds one state has nothing to choose: the field is left out.
+    ...(statusesOf(view).length < 2
+      ? []
+      : [
+          {
+            id: 'status',
+            label: t('filter.name.status'),
+            options: statusesOf(view).map((value) => ({ value, label: tp(`state.${value}`) })),
+          },
+        ]),
     {
       id: 'approvalMode',
       label: t('filter.name.approvalMode'),

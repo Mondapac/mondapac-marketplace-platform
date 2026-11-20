@@ -116,7 +116,7 @@ function mount(
     currency?: string | null;
     paging?: 'pages' | 'prev-next';
     sellerId?: string | null;
-    initialView?: 'all' | 'awaiting-approval' | 'failed';
+    initialView?: 'all' | 'awaiting-approval' | 'failed' | 'sending' | 'paid';
   } = {},
 ) {
   return render(
@@ -884,25 +884,29 @@ describe('Payouts list: Status and Amount filters', () => {
     await screen.findByRole('link', { name: 'Payout 000000A1' });
     await addFilter('status', 'instructed');
     await waitFor(() => expect(lastParams()['status']).toBe('instructed'));
-    const chip = screen.getByRole('button', { name: 'Remove filter Status is Sent' });
+    const chip = screen.getByRole('button', { name: 'Remove filter State is Sent' });
     fireEvent.click(chip);
     await waitFor(() => expect(lastParams()['status']).toBeUndefined());
   });
 
   it('offers only the states of the view, and drops a status the next view does not hold', async () => {
     serve(() => pageOf([row()]));
-    mount({ initialView: 'failed' });
+    mount({ initialView: 'sending' });
     await screen.findByRole('link', { name: 'Payout 000000A1' });
     fireEvent.click(screen.getByRole('button', { name: /^Filter/ }));
     const panel = await screen.findByRole('dialog', { name: 'Filter' });
     fireEvent.change(within(panel).getByLabelText('Field'), { target: { value: 'status' } });
-    expect(
-      within(within(panel).getByLabelText('Value'))
-        .getAllByRole('option')
-        .map((option) => option.textContent),
-    ).toContain('Failed');
     expect(within(panel).queryByRole('option', { name: 'Paid' })).toBeNull();
+    expect(within(panel).getByRole('option', { name: 'Sent' })).toBeTruthy();
     fireEvent.click(within(panel).getByRole('button', { name: 'Cancel' }));
+    cleanup();
+    // A view with one state has nothing to choose: the State field is not offered.
+    mount({ initialView: 'paid' });
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    fireEvent.click(screen.getByRole('button', { name: /^Filter/ }));
+    const single = await screen.findByRole('dialog', { name: 'Filter' });
+    fireEvent.change(within(single).getByLabelText('Field'), { target: { value: 'approvalMode' } });
+    expect(within(single).queryByRole('option', { name: 'State' })).toBeNull();
     expect(filtersForViewOf({ status: 'failed' }, 'paid')).toEqual({});
     expect(filtersForViewOf({ status: 'approved' }, 'sending')).toEqual({ status: 'approved' });
   });
@@ -983,6 +987,53 @@ describe('Payouts list: Status and Amount filters', () => {
     await waitFor(() => expect(lastParams()['minAmount']).toBe('500000'));
     await addFilter('maxAmount', '10');
     expect(await screen.findByText(/can.t be run/i)).toBeTruthy();
+  });
+
+  it('keeps the amount filters when a filter leaves no rows, and prefers the page currency', async () => {
+    serve((url) => (url.includes('status=paid') ? pageOf([]) : pageOf([row()])));
+    mount();
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    await addFilter('status', 'paid');
+    await waitFor(() => expect(lastParams()['status']).toBe('paid'));
+    await screen.findByText(/No payouts match|no payouts/i);
+    fireEvent.click(screen.getByRole('button', { name: /^Filter/ }));
+    const panel = await screen.findByRole('dialog', { name: 'Filter' });
+    fireEvent.click(within(panel).getByRole('button', { name: 'Add condition' }));
+    const fields = within(panel).getAllByLabelText('Field');
+    expect(
+      within(fields[fields.length - 1]!)
+        .getAllByRole('option')
+        .map((option) => option.textContent),
+    ).toContain('Transfer at least');
+    cleanup();
+    // The page currency wins over the rows' own.
+    serve(() => pageOf([row()]));
+    mount({ currency: 'JPY' });
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    await addFilter('minAmount', '100');
+    await waitFor(() => expect(lastParams()['minAmount']).toBe('100'));
+  });
+
+  it('drops the ticked rows when the state or an amount changes', async () => {
+    serve(() => pageOf([row()]));
+    mount();
+    await screen.findByRole('link', { name: 'Payout 000000A1' });
+    const tick = async () => {
+      fireEvent.click(screen.getByRole('checkbox', { name: `Select payout 000000A1 of ${STORE}` }));
+      expect(await screen.findByText('1 payout selected')).toBeTruthy();
+    };
+    const cleared = () => waitFor(() => expect(screen.queryByText('1 payout selected')).toBeNull());
+    await tick();
+    await addFilter('status', 'paid');
+    await cleared();
+    await tick();
+    await addFilter('minAmount', '50');
+    await cleared();
+    await tick();
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Remove filter Transfer at least is $50.00' }),
+    );
+    await cleared();
   });
 
   it('ignores an unknown status or amount', () => {
