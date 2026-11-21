@@ -57,6 +57,7 @@ export function BrandsList({
   paging,
   accountId,
   marketId,
+  csrfToken,
   onOpen,
   refreshKey,
   headerAction,
@@ -65,6 +66,8 @@ export function BrandsList({
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  /** For saving, renaming, moving and deleting saved filters. */
+  readonly csrfToken: string;
   readonly onOpen: (dialog: RowDialog) => void;
   readonly refreshKey: number;
   readonly headerAction: React.ReactNode;
@@ -239,6 +242,7 @@ export function BrandsList({
       columnDefs,
       rowActions,
       icon: 'package',
+      savedKey: 'admin.catalog.brands',
     }),
     [tl, columnDefs, rowActions],
   );
@@ -261,6 +265,7 @@ export function BrandsList({
       marketId={marketId}
       fields={fields}
       loadCounts={loadCounts}
+      csrfToken={csrfToken}
       refreshKey={refreshKey}
       heading={headerAction}
       dialogs={dialogs}
