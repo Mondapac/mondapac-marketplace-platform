@@ -1,13 +1,12 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { createTranslator, NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 import { sellerNav } from '../nav.ts';
 import { SuggestValueForm } from './suggest-value-form.tsx';
 import { productDraftName, suggestableFields } from './suggestion-fields.ts';
-import { SuggestionsTable } from './suggestions-table.tsx';
-import type { OwnSuggestion, ProductView } from './types.ts';
+import type { ProductView } from './types.ts';
 import { visibleNavItems } from '@mondapac/ui';
 
 vi.mock('next-intl/server', () => ({
@@ -22,20 +21,6 @@ import { callApi } from '../api/client.ts';
 
 const call = vi.mocked(callApi);
 const PRODUCT = '0190a000-0000-7000-8000-0000000000a1';
-const id = (n: number) => `0190a000-0000-7000-8000-0000000000${n.toString(16).padStart(2, '0')}`;
-
-const suggestion = (over: Partial<OwnSuggestion>): OwnSuggestion => ({
-  id: id(0xb1),
-  status: 'open',
-  label: 'Extra large',
-  createdAt: '2026-11-05T01:00:00.000Z',
-  decidedAt: null,
-  rejectReason: null,
-  attribute: { code: 'pack-size', names: { 'en-AU': 'Pack size' } },
-  value: null,
-  product: { id: PRODUCT, productCode: 'P00000001', name: 'Olive oil 1L' },
-  ...over,
-});
 
 const assign = vi.fn();
 beforeEach(() => {
@@ -43,90 +28,6 @@ beforeEach(() => {
   Object.defineProperty(window, 'location', { value: { assign }, writable: true });
 });
 afterEach(() => cleanup());
-
-describe('value suggestions table', () => {
-  it('shows each outcome in words, with the field and a link to the product', async () => {
-    render(
-      await SuggestionsTable({
-        defaultLocale: 'en-AU',
-        items: [
-          suggestion({ id: id(1) }),
-          suggestion({
-            id: id(2),
-            status: 'approved',
-            value: { code: 'xl', labels: { 'en-AU': 'XL' } },
-          }),
-          suggestion({
-            id: id(3),
-            status: 'mapped',
-            value: { code: 'large', labels: { 'en-AU': 'Large' } },
-          }),
-          suggestion({ id: id(4), status: 'rejected', rejectReason: 'Not a size we sell.' }),
-        ],
-      }),
-    );
-    const row = (n: number) => within(screen.getByTestId(`suggestion-${id(n)}`));
-    expect(row(1).getByText('Waiting')).toBeTruthy();
-    expect(row(1).getByText(/A reviewer will decide/)).toBeTruthy();
-    expect(row(1).getByText('Pack size')).toBeTruthy();
-    expect(row(1).getByRole('link', { name: 'Olive oil 1L' }).getAttribute('href')).toBe(
-      `/products/${PRODUCT}`,
-    );
-    expect(row(2).getByText('Added as “XL”. Pick it in the product form.')).toBeTruthy();
-    expect(row(3).getByText(/Matched to “Large”/)).toBeTruthy();
-    expect(row(4).getByText('Not added: Not a size we sell.')).toBeTruthy();
-  });
-
-  it('renders what a seller or reviewer typed as text, not markup', async () => {
-    const { container } = render(
-      await SuggestionsTable({
-        defaultLocale: 'en-AU',
-        items: [
-          suggestion({
-            label: '<b>Huge</b>',
-            status: 'rejected',
-            rejectReason: '<img src=x onerror=alert(1)>',
-          }),
-        ],
-      }),
-    );
-    expect(container.querySelector('b')).toBeNull();
-    expect(container.querySelector('img')).toBeNull();
-    expect(screen.getByText('<b>Huge</b>')).toBeTruthy();
-  });
-
-  it('names a product or field that is gone instead of linking to it', async () => {
-    render(
-      await SuggestionsTable({
-        defaultLocale: 'en-AU',
-        items: [
-          suggestion({ attribute: null, product: { id: PRODUCT, productCode: null, name: null } }),
-        ],
-      }),
-    );
-    expect(screen.getByText('Field no longer available')).toBeTruthy();
-    expect(screen.getByText('Product no longer available')).toBeTruthy();
-    expect(screen.queryByRole('link')).toBeNull();
-  });
-
-  it('shows an empty state with its action', async () => {
-    render(
-      await SuggestionsTable({
-        defaultLocale: 'en-AU',
-        items: [],
-        emptyAction: <a href="/value-suggestions/new">Suggest a value</a>,
-      }),
-    );
-    expect(screen.getByText('No suggestions yet')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Suggest a value' })).toBeTruthy();
-  });
-
-  it('says a status tab is empty without saying the seller has none at all', async () => {
-    render(await SuggestionsTable({ defaultLocale: 'en-AU', items: [], filtered: true }));
-    expect(screen.queryByText('No suggestions yet')).toBeNull();
-    expect(screen.getByText(messages.catalog.suggestions['empty-filtered'].title)).toBeTruthy();
-  });
-});
 
 describe('suggest a value form', () => {
   const fields = [

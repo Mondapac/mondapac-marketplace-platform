@@ -91,6 +91,8 @@ export interface PagedListConfig<Row> {
    * of this page are ticked, and runs on those rows (never on "all matching").
    */
   readonly bulk?: readonly PagedBulkAction<Row>[];
+  /** No row selection, no Bulk action menu and no row Actions (a seller's own read-only list). */
+  readonly readOnly?: boolean;
   readonly icon?: 'package' | 'search' | 'columns';
 }
 

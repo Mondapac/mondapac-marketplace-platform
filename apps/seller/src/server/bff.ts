@@ -80,6 +80,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // direction, page, pageSize). The keyset parameters (`afterId`, `limit`) are read by the
     // panel's server pages only and do not cross.
     'catalog/seller/products',
+    // The seller's own value and tag suggestions as super lists (query: status, q, sort,
+    // direction, page, pageSize, paging). The keyset parameters do not cross.
+    'catalog/seller/attribute-suggestions',
+    'catalog/seller/topic-suggestions',
     // The category choices of the product form (catalog, categories C5a): levels 3 and 4, no hidden node.
     'catalog/seller/products/category-picker',
     // The Products list as a file (CSV or XLSX): the list's selector plus format, columns and the
@@ -289,6 +293,24 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     status: null,
     from: null,
     to: null,
+  },
+  'catalog/seller/attribute-suggestions': {
+    status: /^(open|approved|mapped|rejected)$/,
+    q: null,
+    sort: /^(created|status|label)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[0-9]{1,5}$/,
+    pageSize: /^(25|50)$/,
+    paging: /^(pages|prev-next)$/,
+  },
+  'catalog/seller/topic-suggestions': {
+    status: /^(open|approved|mapped|rejected)$/,
+    q: null,
+    sort: /^(created|status|label)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[0-9]{1,5}$/,
+    pageSize: /^(25|50)$/,
+    paging: /^(pages|prev-next)$/,
   },
   'ordering/seller/orders/export': {
     format: /^(csv|xlsx)$/,

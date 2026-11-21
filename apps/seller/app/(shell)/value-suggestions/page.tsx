@@ -1,110 +1,51 @@
-import { Banner, LinkButton, Tabs } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
+import { headers } from 'next/headers';
+import { OwnValueSuggestionsList } from '../../../src/catalog/own-suggestion-lists.tsx';
+import { catalogGate } from '../../../src/server/catalog-page.ts';
 import { catalogStateFor } from '../../../src/catalog/catalog-states.tsx';
-import { SuggestionsTable } from '../../../src/catalog/suggestions-table.tsx';
-import {
-  EDIT_PERMISSION,
-  SUGGESTION_STATUSES,
-  type OwnSuggestionList,
-} from '../../../src/catalog/types.ts';
-import { afterIdParam, loadCatalogPage } from '../../../src/server/catalog-page.ts';
+import { panelHostFor } from '../../../src/server/bff.ts';
+import { panelConfig } from '../../../src/server/config.ts';
 import { SellerShell } from '../../../src/server/seller-shell.tsx';
+import { serverGet } from '../../../src/server/server-fetch.ts';
+import { EDIT_PERMISSION } from '../../../src/catalog/types.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations();
   return { title: t('catalog.suggestions.title') };
 }
 
-const FILTERS = ['all', ...SUGGESTION_STATUSES] as const;
-
-/** A status filter from the query string; anything else shows every status. */
-function statusParam(value: string | string[] | undefined): string | undefined {
-  return typeof value === 'string' && (SUGGESTION_STATUSES as readonly string[]).includes(value)
-    ? value
-    : undefined;
-}
-
+/**
+ * The seller's value suggestions: the list loads in the browser (it follows the address, which
+ * keeps the status tab, search, sort and page). The page reads the Market's "List paging"
+ * setting once; when that fails the list pages with Previous and next.
+ */
 export default async function ValueSuggestionsPage({
   searchParams,
 }: {
   readonly searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const query = await searchParams;
-  const after = afterIdParam(query.after);
-  const status = statusParam(query.status);
   const t = await getTranslations();
   const title = t('catalog.suggestions.title');
-  const params = new URLSearchParams();
-  if (status !== undefined) params.set('status', status);
-  if (after !== undefined) params.set('afterId', after);
-  const search = params.toString();
-  const page = await loadCatalogPage<OwnSuggestionList>(
-    `catalog/seller/attribute-suggestions${search === '' ? '' : `?${search}`}`,
+  const gate = await catalogGate();
+  if (gate.kind !== 'ok') return catalogStateFor(gate, 's_suggestions', title);
+  const { session } = gate;
+  const listPaging = await serverGet<{ readonly listPaging: string }>(
+    'settings/seller/list-paging',
   );
-  const state = await catalogStateFor(page, 's_suggestions', title);
-  if (state !== null || page.kind !== 'ok') return state;
-  const { body } = page;
-  const canSuggest = page.session.permissionKeys.includes(EDIT_PERMISSION);
-  const full = body.openCount >= body.maxOpen;
-  // Nothing sent yet: the empty state says it all, without a 0 counter and tabs over nothing.
-  const none = status === undefined && after === undefined && body.items.length === 0;
-  const newButton = canSuggest ? (
-    <LinkButton href="/value-suggestions/new">{t('catalog.suggestions.new.start')}</LinkButton>
-  ) : null;
-  const filterHref = (filter: string) =>
-    filter === 'all' ? '/value-suggestions' : `/value-suggestions?status=${filter}`;
-  const next =
-    body.nextAfterId === null
-      ? null
-      : `/value-suggestions?${new URLSearchParams({
-          ...(status === undefined ? {} : { status }),
-          after: body.nextAfterId,
-        }).toString()}`;
+  const paging =
+    listPaging.kind === 'ok' && listPaging.body.listPaging === 'pages' ? 'pages' : 'prev-next';
+  const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
   return (
-    <SellerShell session={page.session} activeId="s_suggestions" title={title}>
-      <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{title}</h1>
-        {/* An empty list carries the action in its empty state, so it is shown once. */}
-        {body.items.length > 0 && !full ? newButton : null}
-      </div>
-      <p className="mb-4 max-w-(--mp-size-form-max) text-sm text-fg-muted">
-        {t('catalog.suggestions.intro')}
-      </p>
-      <div className="mb-4 flex flex-col gap-3">
-        {query.sent === '1' ? (
-          <Banner tone="success">{t('catalog.suggestions.sent')}</Banner>
-        ) : null}
-        {none ? null : (
-          <p className="text-sm font-medium" data-testid="open-count">
-            {t('catalog.suggestions.waiting', { count: body.openCount, max: body.maxOpen })}
-          </p>
-        )}
-        {full ? <Banner tone="info">{t('catalog.suggestions.full')}</Banner> : null}
-      </div>
-      <div className={none ? 'hidden' : 'mb-4'}>
-        <Tabs
-          label={t('catalog.suggestions.filter')}
-          activeId={status ?? 'all'}
-          items={FILTERS.map((filter) => ({
-            id: filter,
-            label: t(`catalog.suggestions.filters.${filter}`),
-            href: filterHref(filter),
-          }))}
-        />
-      </div>
-      <SuggestionsTable
-        items={body.items}
-        defaultLocale={body.locales.default}
-        filtered={status !== undefined}
-        emptyAction={status === undefined ? newButton : null}
+    <SellerShell session={session} activeId="s_suggestions" title={title}>
+      <OwnValueSuggestionsList
+        paging={paging}
+        accountId={session.accountId}
+        marketId={marketId}
+        timeZone={session.timezone}
+        canSuggest={session.permissionKeys.includes(EDIT_PERMISSION)}
+        sent={query.sent === '1'}
       />
-      {next === null ? null : (
-        <p className="mt-4">
-          <a className="font-medium text-link underline" href={next}>
-            {t('catalog.next-page')}
-          </a>
-        </p>
-      )}
     </SellerShell>
   );
 }
