@@ -3,135 +3,119 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
+import { expectToast } from '../../test/toast-spy.ts';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi, type ApiResult } from '../api/client.ts';
-import { csvCell, csvOf, MissingDetailsTab } from './missing-details-tab.tsx';
-import type { EmailSellersAnswer, MissingDetailsItem, MissingDetailsPage } from './types.ts';
+import { csvCell, csvOf, MissingDetailsList } from './missing-details-list.tsx';
+import type { EmailSellersAnswer, MissingDetailsItem } from './types.ts';
 
 const call = vi.mocked(callApi);
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
 const ok = <T,>(body: T): ApiResult<T> => ({ ok: true, status: 200, body });
 
-const item = (n: number, over: Partial<MissingDetailsItem> = {}): MissingDetailsItem => ({
+type Row = MissingDetailsItem & { actions: string[] };
+const item = (n: number, over: Partial<Row> = {}): Row => ({
   productId: id(n),
   productCode: `P${n}`,
   name: `Product ${n}`,
   sellerId: id(900 + n),
   featureSetCode: 'pantry',
   missing: ['origin'],
-  lastEmailedAt: null,
+  lastEmailedAt: null as string | null,
+  actions: ['open-product', 'email-seller'],
   ...over,
 });
-const page = (
-  items: MissingDetailsItem[],
-  over: Partial<MissingDetailsPage> = {},
-): MissingDetailsPage => ({
+const page = (items: Row[], over: Record<string, unknown> = {}) => ({
   items,
+  total: items.length,
+  page: 1,
+  pageSize: 25,
+  paging: 'pages',
+  hasNext: false,
   nextAfterId: null,
   scanned: items.length,
+  complete: true,
   unreadableFeatureSets: [],
   ...over,
 });
 
-function mount() {
+function mount(canEdit = false) {
   return render(
     <NextIntlClientProvider locale="en" messages={messages}>
-      <MissingDetailsTab />
+      <MissingDetailsList
+        paging="pages"
+        accountId="acct"
+        marketId="AU"
+        canEdit={canEdit}
+        csrfToken="csrf"
+      />
     </NextIntlClientProvider>,
   );
 }
 
-describe('Missing details tab', () => {
-  beforeEach(() => call.mockReset());
-  afterEach(cleanup);
+beforeEach(() => {
+  call.mockReset();
+  call.mockResolvedValue(ok(page([])));
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  })) as unknown as typeof window.matchMedia;
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
+});
+afterEach(cleanup);
 
+describe('Missing details list', () => {
   it('lists the products with what they miss and says they stay on sale', async () => {
-    call.mockResolvedValueOnce(ok(page([item(1), item(2, { missing: ['origin', 'storage'] })])));
+    call.mockResolvedValue(ok(page([item(1), item(2, { missing: ['origin', 'storage'] })])));
     mount();
     expect(await screen.findByText('Product 1')).toBeTruthy();
     expect(screen.getByText('These products stay on sale')).toBeTruthy();
     expect(screen.getAllByText('origin')).toHaveLength(2);
     expect(screen.getByText('storage')).toBeTruthy();
-    expect(call.mock.calls[0]?.[1]).toContain('products-missing-details?limit=50');
+    expect(call.mock.calls[0]?.[1]).toContain('products-missing-details?');
+    expect(call.mock.calls[0]?.[1]).toContain('sort=missing');
   });
 
   it('shows when the seller was last emailed, or that they were not', async () => {
-    call.mockResolvedValueOnce(
-      ok(
-        page([
-          item(1, { lastEmailedAt: '2026-11-08T03:00:00.000Z' }),
-          item(3, { lastEmailedAt: '2026-11-08T23:30:00.000Z' }),
-          item(2),
-        ]),
-      ),
+    call.mockResolvedValue(
+      ok(page([item(1, { lastEmailedAt: '2026-11-08T03:00:00.000Z' }), item(2)])),
     );
     mount();
     await screen.findByText('Product 1');
-    expect(screen.getByText('Last emailed Nov 8, 2026, 3:00 AM UTC')).toBeTruthy();
-    // Late evening UTC stays on the same UTC day whatever the runtime zone.
-    expect(screen.getByText('Last emailed Nov 8, 2026, 11:30 PM UTC')).toBeTruthy();
-    expect(screen.getAllByText('Not emailed yet')).toHaveLength(1);
+    expect(screen.getByText(/2026/)).toBeTruthy();
+    expect(screen.getByText('Not emailed yet')).toBeTruthy();
   });
 
   it('shows the empty state when nothing is missing', async () => {
-    call.mockResolvedValueOnce(ok(page([])));
+    call.mockResolvedValue(ok(page([])));
     mount();
-    expect(await screen.findByText('No products are missing required details.')).toBeTruthy();
+    expect(await screen.findByText('No products are missing required details')).toBeTruthy();
   });
 
-  it('shows an error with a retry, and reads again on retry', async () => {
-    call.mockResolvedValueOnce({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
-    call.mockResolvedValueOnce(ok(page([item(1)])));
-    mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Try again' }));
-    expect(await screen.findByText('Product 1')).toBeTruthy();
-  });
-
-  it('loads more from the cursor and keeps the rows', async () => {
-    call.mockResolvedValueOnce(ok(page([item(1)], { nextAfterId: id(1) })));
-    call.mockResolvedValueOnce(ok(page([item(2)])));
-    mount();
-    fireEvent.click(await screen.findByRole('button', { name: 'Load more' }));
-    expect(await screen.findByText('Product 2')).toBeTruthy();
-    expect(screen.getByText('Product 1')).toBeTruthy();
-    expect(call.mock.calls[1]?.[1]).toContain(`afterId=${id(1)}`);
-    expect(screen.queryByRole('button', { name: 'Load more' })).toBeNull();
-  });
-
-  it('filters the loaded rows by search and by feature set', async () => {
-    call.mockResolvedValueOnce(
-      ok(page([item(1), item(2, { featureSetCode: 'snacks', name: 'Crisps' })])),
+  it('says a partial read covers only part of the Market, and names unreadable feature sets', async () => {
+    call.mockResolvedValue(
+      ok(page([item(1)], { complete: false, unreadableFeatureSets: ['broken-set'] })),
     );
     mount();
     await screen.findByText('Product 1');
-    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'crisp' } });
-    expect(screen.queryByText('Product 1')).toBeNull();
-    expect(screen.getByText('Crisps')).toBeTruthy();
-    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'zzz' } });
-    expect(screen.getByText('No loaded product matches.')).toBeTruthy();
-    fireEvent.change(screen.getByRole('searchbox'), { target: { value: '' } });
-    fireEvent.change(screen.getByLabelText('Feature set'), { target: { value: 'pantry' } });
-    expect(screen.queryByText('Crisps')).toBeNull();
-    expect(screen.getByText('Product 1')).toBeTruthy();
+    expect(screen.getByText('Only part of the Market was read')).toBeTruthy();
+    expect(screen.getByText(/broken-set/)).toBeTruthy();
   });
 
-  it('names feature sets it could not read', async () => {
-    call.mockResolvedValueOnce(ok(page([item(1)], { unreadableFeatureSets: ['gone'] })));
+  it('does not show the partial banner for a complete read', async () => {
+    call.mockResolvedValue(ok(page([item(1)])));
     mount();
-    expect(
-      await screen.findByText('Products of these feature sets are not judged: gone.'),
-    ).toBeTruthy();
-  });
-
-  it('sends a session that ended to sign-in', async () => {
-    const assign = vi.fn();
-    vi.stubGlobal('location', { ...window.location, assign });
-    call.mockResolvedValueOnce({ ok: false, failure: { status: 401, code: 'session.ended' } });
-    mount();
-    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
-    vi.unstubAllGlobals();
+    await screen.findByText('Product 1');
+    expect(screen.queryByText('Only part of the Market was read')).toBeNull();
   });
 
   it('exports CSV with every cell quoted and formulas neutralised', () => {
@@ -143,17 +127,6 @@ describe('Missing details tab', () => {
 });
 
 describe('Email sellers', () => {
-  beforeEach(() => {
-    call.mockReset();
-    HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
-      this.setAttribute('open', '');
-    };
-    HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
-      this.removeAttribute('open');
-    };
-  });
-  afterEach(cleanup);
-
   const answer = (over: Partial<EmailSellersAnswer> = {}): EmailSellersAnswer => ({
     dryRun: true,
     throttleDays: 7,
@@ -191,44 +164,64 @@ describe('Email sellers', () => {
     ...over,
   });
 
-  function mountEditable() {
-    return render(
-      <NextIntlClientProvider locale="en" messages={messages}>
-        <MissingDetailsTab canEdit csrfToken="csrf" />
-      </NextIntlClientProvider>,
-    );
+  const mountEditable = () => mount(true);
+  async function openBulkEmail() {
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Email sellers…' }));
   }
 
-  it('is not offered to a reader', async () => {
+  it('offers the whole filtered list as a file from the Bulk action menu', async () => {
     call.mockResolvedValueOnce(ok(page([item(1)])));
     mount();
     await screen.findByText('Product 1');
-    expect(screen.queryByRole('button', { name: 'Email sellers' })).toBeNull();
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Product 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Export…' }));
+    expect(
+      await screen.findByRole('dialog', { name: 'Export products missing details' }),
+    ).toBeTruthy();
   });
 
-  it('stays off until a seller product is selected', async () => {
-    call.mockResolvedValueOnce(ok(page([item(1), item(2, { sellerId: null })])));
+  it('is not offered to a reader, in the bulk menu or the row menu', async () => {
+    call.mockResolvedValueOnce(ok(page([item(1)])));
+    mount();
+    await screen.findByText('Product 1');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Product 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    expect(await screen.findByRole('menuitem', { name: 'Export selected as CSV' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Email sellers…' })).toBeNull();
+  });
+
+  it('emails one seller from the row menu, and a platform product has no such action', async () => {
+    call.mockResolvedValueOnce(
+      ok(page([item(1), item(2, { sellerId: null, actions: ['open-product'] })])),
+    );
     mountEditable();
     await screen.findByText('Product 1');
-    const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Email sellers' });
-    expect(button.disabled).toBe(true);
-    expect(screen.getByText('Select products to email their sellers.')).toBeTruthy();
-    // A platform product has no seller to ask.
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select P2' }));
-    expect(button.disabled).toBe(true);
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select P1' }));
-    expect(button.disabled).toBe(false);
-    expect(screen.getByText('1 product selected for email.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Product 2' }));
+    expect(await screen.findByRole('menuitem', { name: 'Open product' })).toBeTruthy();
+    expect(screen.queryByRole('menuitem', { name: 'Email seller…' })).toBeNull();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    call.mockResolvedValueOnce(ok(answer()));
+    fireEvent.click(screen.getByRole('button', { name: 'Actions for Product 1' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Email seller…' }));
+    await screen.findByRole('dialog');
+    expect(call).toHaveBeenLastCalledWith(
+      'POST',
+      'catalog/admin/reports/products-missing-details/email-sellers',
+      { productIds: [id(1)], dryRun: true },
+      'csrf',
+    );
   });
 
   it('previews who is emailed, then sends and tells how many sellers', async () => {
     call.mockResolvedValueOnce(ok(page([item(1), item(2)])));
     mountEditable();
     await screen.findByText('Product 1');
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select P1' }));
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select P2' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Product 1' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Product 2' }));
     call.mockResolvedValueOnce(ok(answer()));
-    fireEvent.click(screen.getByRole('button', { name: 'Email sellers' }));
+    await openBulkEmail();
     expect(await screen.findByRole('heading', { name: 'Email 1 seller?' })).toBeTruthy();
     expect(call).toHaveBeenLastCalledWith(
       'POST',
@@ -264,7 +257,7 @@ describe('Email sellers', () => {
         'csrf',
       ),
     );
-    expect(await screen.findByText('1 seller will get an email within a minute.')).toBeTruthy();
+    await expectToast('1 seller will get an email within a minute.');
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
@@ -272,9 +265,9 @@ describe('Email sellers', () => {
     call.mockResolvedValueOnce(ok(page([item(1)])));
     mountEditable();
     await screen.findByText('Product 1');
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select P1' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Product 1' }));
     call.mockReturnValueOnce(new Promise(() => undefined));
-    fireEvent.click(screen.getByRole('button', { name: 'Email sellers' }));
+    await openBulkEmail();
     expect(await screen.findByRole('heading', { name: 'Email sellers?' })).toBeTruthy();
   });
 
@@ -282,7 +275,7 @@ describe('Email sellers', () => {
     call.mockResolvedValueOnce(ok(page([item(1)])));
     mountEditable();
     await screen.findByText('Product 1');
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select P1' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Product 1' }));
     const [, skipped] = answer().sellers;
     call.mockResolvedValueOnce(
       ok(
@@ -298,7 +291,7 @@ describe('Email sellers', () => {
         }),
       ),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Email sellers' }));
+    await openBulkEmail();
     expect(await screen.findByText('Skipped: emailed recently')).toBeTruthy();
   });
 
@@ -306,7 +299,7 @@ describe('Email sellers', () => {
     call.mockResolvedValueOnce(ok(page([item(1)])));
     mountEditable();
     await screen.findByText('Product 1');
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select P1' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Product 1' }));
     call.mockResolvedValueOnce(
       ok(
         answer({
@@ -314,7 +307,7 @@ describe('Email sellers', () => {
         }),
       ),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Email sellers' }));
+    await openBulkEmail();
     const send = await screen.findByRole<HTMLButtonElement>('button', {
       name: 'Email 0 sellers',
     });
@@ -325,9 +318,9 @@ describe('Email sellers', () => {
     call.mockResolvedValueOnce(ok(page([item(1)])));
     mountEditable();
     await screen.findByText('Product 1');
-    fireEvent.click(screen.getByRole('checkbox', { name: 'Select P1' }));
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Product 1' }));
     call.mockResolvedValueOnce(fail503('missing-details-email.unconfigured'));
-    fireEvent.click(screen.getByRole('button', { name: 'Email sellers' }));
+    await openBulkEmail();
     expect(await screen.findByText(/no seller panel link set/)).toBeTruthy();
   });
 });

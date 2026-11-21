@@ -2763,6 +2763,7 @@ describe('relay of the wallet and step-up routes', () => {
     ['GET', 'catalog/admin/attribute-relaxations'],
     ['GET', 'catalog/admin/attribute-archive-requests'],
     ['GET', 'catalog/admin/reports/products-missing-details'],
+    ['GET', 'catalog/admin/reports/products-missing-details/export'],
     ['POST', 'catalog/admin/reports/products-missing-details/email-sellers'],
     ['POST', `catalog/admin/attributes/${id}/relaxation-requests`],
     ['POST', `catalog/admin/attribute-relaxations/${id}/confirm`],

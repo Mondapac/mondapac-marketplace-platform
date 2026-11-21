@@ -7,7 +7,7 @@ import type { ListPagingMode } from '../shared/paged-list/types.ts';
 import { AttributesList } from './attributes-list.tsx';
 import { ValueSuggestionsList } from './value-suggestions-list.tsx';
 import { FeatureSetsTab } from './feature-sets-tab.tsx';
-import { MissingDetailsTab } from './missing-details-tab.tsx';
+import { MissingDetailsList } from './missing-details-list.tsx';
 import { WaitingTab } from './waiting-tab.tsx';
 import { ATTRIBUTES_PATH, BRANDS_PATH, attributePath, type Tab } from './types.ts';
 
@@ -114,7 +114,13 @@ export function AttributesView({
         />
       ) : null}
       {tab === 'missing-details' ? (
-        <MissingDetailsTab canEdit={canEdit} csrfToken={csrfToken} />
+        <MissingDetailsList
+          paging={paging}
+          accountId={accountId}
+          marketId={marketId}
+          canEdit={canEdit}
+          csrfToken={csrfToken}
+        />
       ) : null}
       {tab === 'waiting' && canDecide ? (
         <section aria-labelledby="suggestions-heading" className="flex flex-col gap-4">
