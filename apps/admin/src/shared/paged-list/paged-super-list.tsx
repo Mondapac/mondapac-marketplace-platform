@@ -11,7 +11,12 @@ import { callApi } from '../../api/client.ts';
 
 export { pagedQueryString };
 
-const runtime = { useTranslations, useLocale, callApi } as unknown as PagedListRuntime;
+const runtime = {
+  useTranslations,
+  useLocale,
+  callApi,
+  savedFiltersPath: 'lists/admin/saved-filters',
+} as unknown as PagedListRuntime;
 
 /** The kit's paged super list with the admin's translations, locale and relay call. */
 export function PagedSuperList<Row>(

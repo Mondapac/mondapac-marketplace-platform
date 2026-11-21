@@ -27,6 +27,14 @@ import {
 } from '../index.ts';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { cleanColumnIds } from './columns.ts';
+import {
+  PagedSavedDialogs,
+  fits,
+  payloadOf,
+  queryOfPayload,
+  usePagedSavedFilters,
+  type SavedFilter,
+} from './saved.tsx';
 import { SelectionBar } from './selection-bar.tsx';
 import {
   DEFAULT_PAGED_QUERY,
@@ -91,7 +99,9 @@ export function pagedQueryString<Row>(
  * `selection.*`, `actions.{header,for}`, `bulk.{button,selected,all-open,export}` and
  * `export.*`. The layout, spacing, states and phone behaviour are the kit's.
  *
- * Saved filters join here once the list has its key in the shared registry (backend PR #918).
+ * Saved personal and shared filters (tabs after the built-in ones, "Save filter…", "Manage
+ * filters…") are on when the list names its `savedKey` and the page passes `csrfToken`; their words
+ * are the panel's `sales-lists.saved.*`.
  */
 export function PagedSuperList<Row>({
   config,
@@ -104,6 +114,7 @@ export function PagedSuperList<Row>({
   dialogs,
   refreshKey = 0,
   onAnswer,
+  csrfToken,
   runtime,
 }: {
   readonly config: PagedListConfig<Row>;
@@ -123,6 +134,8 @@ export function PagedSuperList<Row>({
   readonly refreshKey?: number;
   /** Each good answer, whole (a list route may carry more than the contract, such as locales). */
   readonly onAnswer?: (answer: PagedAnswer<Row>) => void;
+  /** The session's CSRF token: with the list's `savedKey` it turns saved filters on. */
+  readonly csrfToken?: string;
   /** The panel's translations, locale and relay call (the kit does not know the panel's i18n). */
   readonly runtime: PagedListRuntime;
 }) {
@@ -132,21 +145,43 @@ export function PagedSuperList<Row>({
   const tl = useTranslations('load');
   const locale = useLocale();
   const defaults = useMemo(() => DEFAULT_PAGED_QUERY(config), [config]);
-  const { query, draft, setDraft, change, goToPage, openView, reset } =
-    useSuperListQuery<PagedQuery>({
-      defaultQuery: defaults,
-      forView: (view) => ({ ...defaults, tab: view }),
-      withView: (current, view) => ({ ...current, tab: view, page: 1 }),
-      searchOf: (current) => current.q,
-      withSearch: (current, text) => ({ ...current, q: text }),
-    });
+  const {
+    query,
+    draft,
+    setDraft,
+    savedId,
+    change,
+    goToPage,
+    openView,
+    openSaved,
+    forgetSaved,
+    reset,
+  } = useSuperListQuery<PagedQuery>({
+    defaultQuery: defaults,
+    forView: (view) => ({ ...defaults, tab: view }),
+    withView: (current, view) => ({ ...current, tab: view, page: 1 }),
+    searchOf: (current) => current.q,
+    withSearch: (current, text) => ({ ...current, q: text }),
+  });
 
   const [answer, setAnswer] = useState<PagedAnswer<Row> | null>(null);
   const [counts, setCounts] = useState<Readonly<Record<string, number>> | null>(null);
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [columns, setColumns] = useState<readonly string[]>(config.defaultColumns);
-  const [dialog, setDialog] = useState<'export' | null>(null);
+  const [dialog, setDialog] = useState<'export' | 'save' | 'manage' | null>(null);
+  const savedOn = config.savedKey !== undefined && csrfToken !== undefined;
+  const { saved, reload: loadSaved } = usePagedSavedFilters(runtime, config.savedKey, savedOn);
+  const savedHere = useMemo(
+    () => saved?.items.filter((item) => fits(config, item)) ?? [],
+    [saved, config],
+  );
+  // A saved tab that was deleted (here or by its owner) is no longer the one on show.
+  useEffect(() => {
+    if (savedId !== null && saved !== null && !savedHere.some((item) => item.id === savedId)) {
+      forgetSaved();
+    }
+  }, [saved, savedHere, savedId, forgetSaved]);
   const [exporting, setExporting] = useState(false);
   const latest = useRef(0);
   const onAnswerRef = useRef(onAnswer);
@@ -281,6 +316,9 @@ export function PagedSuperList<Row>({
     }),
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
   const filtered = chips.length > 0 || query.tab !== config.tabs[0];
+  // "Save filter…" is offered on a built-in tab that shows something a saved filter can keep.
+  const sortChanged = query.sort !== defaults.sort || query.direction !== defaults.direction;
+  const canSave = saved !== null && savedId === null && (filtered || sortChanged);
 
   const total = failure === null && mode === 'pages' ? (answer?.total ?? null) : null;
 
@@ -380,6 +418,16 @@ export function PagedSuperList<Row>({
       ? []
       : [{ id: 'export', label: t('bulk.export'), onSelect: () => setDialog('export') }]),
   ];
+
+  const savedSummary = [
+    ...(query.tab === config.tabs[0] ? [] : [t(`tab.${query.tab}`)]),
+    ...chips.map((chip) => chip.label),
+    ...(sortChanged && sort !== undefined
+      ? [ts('saved.summary-sort', { field: t(`sort.field.${sort.id}`) })]
+      : []),
+  ].join(' · ');
+  const openSavedFilter = (filter: SavedFilter) =>
+    openSaved(filter.id, queryOfPayload(config, defaults, filter.payload));
 
   const empty = (
     <EmptyState
@@ -488,13 +536,23 @@ export function PagedSuperList<Row>({
       }}
       views={{
         label: t('tabs'),
-        activeId: query.tab,
-        onSelect: (id) => openView(id),
-        items: config.tabs.map((tab) => ({
-          id: tab,
-          label: `${t(`tab.${tab}`)}${counts === null || counts[tab] === undefined ? '' : ` (${number(counts[tab])})`}`,
-        })),
-        manage: null,
+        activeId: savedId ?? query.tab,
+        onSelect: (id) => {
+          const filter = savedHere.find((item) => item.id === id);
+          if (filter === undefined) openView(id);
+          else openSavedFilter(filter);
+        },
+        items: [
+          ...config.tabs.map((tab) => ({
+            id: tab,
+            label: `${t(`tab.${tab}`)}${counts === null || counts[tab] === undefined ? '' : ` (${number(counts[tab])})`}`,
+          })),
+          ...savedHere.map((item) => ({ id: item.id, label: item.name })),
+        ],
+        manage:
+          saved === null
+            ? null
+            : { label: ts('saved.manage-link'), onClick: () => setDialog('manage') },
       }}
       {...(config.search === undefined
         ? {}
@@ -600,10 +658,13 @@ export function PagedSuperList<Row>({
         ? { sortedLine: t('sorted', { field: t(`sort.field.${sort.id}`), order: sortOrder }) }
         : {})}
       chips={
-        filtered
+        filtered || canSave
           ? {
               chips,
-              clearAll: { label: ts('clear-all'), onClick: clearAll },
+              ...(filtered ? { clearAll: { label: ts('clear-all'), onClick: clearAll } } : {}),
+              ...(canSave
+                ? { save: { label: ts('saved.save-link'), onClick: () => setDialog('save') } }
+                : {}),
               status: total === null || failure !== null ? '' : t('match', { count: total }),
             }
           : null
@@ -668,6 +729,29 @@ export function PagedSuperList<Row>({
       dialogs={
         <>
           {dialogs}
+          {saved === null || config.savedKey === undefined || csrfToken === undefined ? null : (
+            <PagedSavedDialogs
+              runtime={runtime}
+              ts={ts}
+              dialog={dialog === 'save' || dialog === 'manage' ? dialog : null}
+              onClose={() => setDialog(null)}
+              listKey={config.savedKey}
+              payload={payloadOf(config, query)}
+              summary={savedSummary}
+              saved={saved}
+              items={savedHere}
+              csrfToken={csrfToken}
+              idPrefix={config.ns}
+              onSaved={(filter) => {
+                // The new filter is a tab at once: the list shows it.
+                void loadSaved().then((items) => {
+                  const kept = items?.find((item) => item.id === filter.id);
+                  if (kept !== undefined) openSavedFilter(kept);
+                });
+              }}
+              onChanged={() => void loadSaved()}
+            />
+          )}
           {config.exportEndpoint === undefined ? null : (
             <ExportDialog
               open={dialog === 'export'}
