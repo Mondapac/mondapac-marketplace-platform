@@ -103,6 +103,7 @@ function mount(canEdit = true) {
         paging="pages"
         accountId={id(99)}
         marketId="AU"
+        zone="Australia/Brisbane"
       />
     </NextIntlClientProvider>,
   );
@@ -141,6 +142,27 @@ describe('admin brands', () => {
     expect(first.get('paging')).toBe('pages');
     expect(first.get('sort')).toBe('name');
     expect(first.get('direction')).toBe('asc');
+  });
+
+  it('filters by when it was created, as instants on the list zone, and takes it off again', async () => {
+    serve(lists([brand(1, { name: 'Saffron & Co' })], []));
+    mount();
+    await screen.findByText('Saffron & Co');
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    fireEvent.change(await screen.findByLabelText('Field'), { target: { value: 'created' } });
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'last-7-days' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    const asked = () =>
+      calls('GET', 'catalog/admin/brands?').map(
+        ([, path]) => new URLSearchParams(path.split('?')[1]),
+      );
+    await waitFor(() => expect(asked().some((p) => p.has('createdFrom'))).toBe(true));
+    const range = asked().find((p) => p.has('createdFrom')) as URLSearchParams;
+    expect(range.get('createdFrom')).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(range.get('createdTo')).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+    expect(range.has('created')).toBe(false);
+    fireEvent.click(await screen.findByRole('button', { name: /Remove filter Created is/ }));
+    await waitFor(() => expect(asked().at(-1)?.has('createdFrom')).toBe(false));
   });
 
   it('filters by origin country, shows the chip and takes it off again', async () => {

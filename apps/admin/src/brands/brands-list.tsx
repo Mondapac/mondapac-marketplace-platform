@@ -11,6 +11,7 @@ import type {
   PagedFilterField,
   PagedListConfig,
 } from '../shared/paged-list/types.ts';
+import { presetRange, DATE_PRESETS } from '../sales/date-presets.ts';
 import { shortId } from '../shared/short-id.ts';
 import { When } from '../shared/when.tsx';
 import { COUNTRY_CODES } from './country-codes.ts';
@@ -57,7 +58,7 @@ export function BrandsList({
   paging,
   accountId,
   marketId,
-  csrfToken,
+  zone,
   onOpen,
   refreshKey,
   headerAction,
@@ -66,8 +67,8 @@ export function BrandsList({
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
-  /** For saving, renaming, moving and deleting saved filters. */
-  readonly csrfToken: string;
+  /** The IANA zone of the table's times and of the Created presets (ADR-0005). */
+  readonly zone: string;
   readonly onOpen: (dialog: RowDialog) => void;
   readonly refreshKey: number;
   readonly headerAction: React.ReactNode;
@@ -75,6 +76,7 @@ export function BrandsList({
 }) {
   const t = useTranslations('brands');
   const tl = useTranslations('brands.list');
+  const tp = useTranslations('sales-lists.date-preset');
 
   const rowActions = useCallback(
     (row: BrandListRow): readonly MenuItem[] => {
@@ -198,8 +200,23 @@ export function BrandsList({
           (a, b) => a.label.localeCompare(b.label, 'en'),
         ),
       },
+      {
+        id: 'created',
+        label: tl('filter.name.created'),
+        range: { from: 'createdFrom', to: 'createdTo' },
+        options: DATE_PRESETS.map((preset) => ({ value: preset, label: tp(preset) })),
+      },
     ];
-  }, [tl]);
+  }, [tl, tp]);
+
+  // A preset is read on the clock of the list's zone at each load (ADR-0005).
+  const dateRange = useCallback(
+    (preset: string) =>
+      DATE_PRESETS.some((each) => each === preset)
+        ? presetRange(preset as (typeof DATE_PRESETS)[number], zone, new Date())
+        : null,
+    [zone],
+  );
 
   const config: PagedListConfig<BrandListRow> = useMemo(
     () => ({
@@ -264,6 +281,7 @@ export function BrandsList({
       accountId={accountId}
       marketId={marketId}
       fields={fields}
+      dateRange={dateRange}
       loadCounts={loadCounts}
       csrfToken={csrfToken}
       refreshKey={refreshKey}

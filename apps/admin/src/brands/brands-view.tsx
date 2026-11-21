@@ -27,12 +27,15 @@ export function BrandsView({
   paging,
   accountId,
   marketId,
+  zone,
 }: {
   readonly canEdit: boolean;
   readonly csrfToken: string;
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  /** The IANA zone of the table's times and of the Created presets. */
+  readonly zone: string;
 }) {
   const t = useTranslations('brands');
   const tl = useTranslations('load');
@@ -125,7 +128,7 @@ export function BrandsView({
           paging={paging}
           accountId={accountId}
           marketId={marketId}
-          csrfToken={csrfToken}
+          zone={zone}
           refreshKey={refresh}
           onOpen={setDialog}
           headerAction={
