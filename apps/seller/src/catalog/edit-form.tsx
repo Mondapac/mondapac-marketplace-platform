@@ -479,7 +479,12 @@ export function EditForm({
         : t('catalog.edit.refused-field');
 
   return (
-    <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
+    <form
+      // A focused field must not hide under the sticky save bar or the phone bottom bar (WCAG 2.4.11).
+      className="flex flex-col gap-4 [&_:is(input,select,textarea,button,a)]:scroll-mb-[calc(var(--mp-size-bottom-bar)_+_8rem)] md:[&_:is(input,select,textarea,button,a)]:scroll-mb-32"
+      onSubmit={submit}
+      noValidate
+    >
       {guard.dialog}
       {adding ? (
         <BackLink href="/products" label={t('catalog.create.back')} />

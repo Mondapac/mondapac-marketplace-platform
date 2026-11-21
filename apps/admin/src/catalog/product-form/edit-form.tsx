@@ -653,7 +653,7 @@ export function EditForm({
   return (
     <form
       // A focused field must not hide under the sticky save bar at the bottom (WCAG 2.4.11).
-      className="flex flex-col gap-4 [&_:is(input,select,textarea,button,a)]:scroll-mb-24"
+      className="flex flex-col gap-4 [&_:is(input,select,textarea,button,a)]:scroll-mb-32"
       onSubmit={submit}
       noValidate
     >
