@@ -85,7 +85,12 @@ export function VariantsView({
         />
       ) : null}
       {tab === 'variants' ? (
-        <VariantsList paging={paging} accountId={accountId} marketId={marketId} />
+        <VariantsList
+          paging={paging}
+          accountId={accountId}
+          marketId={marketId}
+          csrfToken={csrfToken}
+        />
       ) : null}
       {tab === 'waiting' ? (
         <RequestsList
