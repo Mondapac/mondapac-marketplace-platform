@@ -68,10 +68,10 @@ describe.each(['AU', 'ZZ'] as const)('review queue submitted range in market %s'
         productLabels: () => Promise.resolve([]),
       } as never,
       policy: { locales: () => ({ default: 'en', supported: ['en'] }) } as never,
-      sellerNames: { storeNames: () => Promise.resolve(new Map()) } as never,
-      gtinRegistry: { duplicatesOf: () => Promise.resolve([]) } as never,
+      sellerNames: { storeNames: () => Promise.resolve(new Map()) },
+      gtinRegistry: { duplicatesOf: () => Promise.resolve([]) },
       productApproveProbe: { probe: () => Promise.resolve(false) } as never,
-    } as never);
+    });
 
   beforeEach(() => {
     offerFilters = [];
