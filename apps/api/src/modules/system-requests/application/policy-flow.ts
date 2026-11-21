@@ -32,7 +32,7 @@ import {
 import { REVIEW_KEYS } from './review-keys';
 import type { SystemRequestsDependencies } from './system-requests-dependencies';
 
-// The review policy (Settings › People › Review policy): per area, whether a change is reviewed
+// The review policy (Settings › Team & access › Approval rules): per area, whether a change is reviewed
 // and its default risk; and the review period after which an open request is overdue. A change to
 // the policy is itself reviewed, always as high risk, by the people reviewers (nobody turns review
 // off quietly), spends a fresh admin step-up proof, checks the version the admin saw, and is

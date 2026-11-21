@@ -9,6 +9,7 @@ const text: Record<string, string> = {
   'g.money': 'Money',
   'l.rules': 'Delivery rules',
   'l.wallet': 'Customer wallet',
+  'l.wallet-words': 'Store credit, Balance',
   's.cutoff': 'Order cut-off time',
   's.cutoff-words': 'deadline, hours',
 };
@@ -21,7 +22,16 @@ const visible = [
   },
   {
     group: { id: 'money', labelKey: 'g.money', icon: 'wallet' as const },
-    links: [{ link: { id: 'wallet', labelKey: 'l.wallet', href: '/settings/wallet' } }],
+    links: [
+      {
+        link: {
+          id: 'wallet',
+          labelKey: 'l.wallet',
+          keywordsKey: 'l.wallet-words',
+          href: '/settings/wallet',
+        },
+      },
+    ],
   },
 ];
 const groups = buildSettingsMenuGroups(
@@ -58,6 +68,11 @@ describe('settings menu data', () => {
     expect(groups[0]?.links[0]?.words).toEqual(['Order cut-off time', 'deadline', 'hours']);
   });
 
+  it('adds the page’s own words (a former name, synonyms) before its settings’ words', () => {
+    expect(groups[1]?.links[0]?.words).toEqual(['Store credit', 'Balance']);
+    expect(filterSettingsMenu(groups, 'store cred').map((g) => g.id)).toEqual(['money']);
+  });
+
   it('filters by link label, setting word or group name, and drops empty groups', () => {
     expect(filterSettingsMenu(groups, 'wallet').map((g) => g.id)).toEqual(['money']);
     expect(filterSettingsMenu(groups, 'DEADLINE').map((g) => g.id)).toEqual(['ops']);
@@ -68,6 +83,18 @@ describe('settings menu data', () => {
 });
 
 describe('Sidebar in settings mode', () => {
+  it('names each group by its heading, so a reader hears the group with its links', () => {
+    show(menu('rules'));
+    const nav = screen.getByRole('navigation', { name: 'Settings menu' });
+    const money = within(nav).getByRole('group', { name: 'Money' });
+    expect(within(money).getByRole('link', { name: 'Customer wallet' })).toBeTruthy();
+    expect(
+      within(nav)
+        .getAllByRole('group')
+        .map((g) => g.getAttribute('aria-labelledby')),
+    ).toEqual(['settings-menu-group-ops', 'settings-menu-group-money']);
+  });
+
   it('replaces the normal menu: Back to Dashboard first, then search, then the groups', () => {
     show(menu('rules'));
     const nav = screen.getByRole('navigation', { name: 'Settings menu' });

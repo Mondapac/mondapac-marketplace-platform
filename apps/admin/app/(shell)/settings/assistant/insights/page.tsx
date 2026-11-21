@@ -17,7 +17,7 @@ export async function generateMetadata() {
 }
 
 /**
- * Settings > Smart assistant > Insights: conversations, spend, ratings and the unanswered
+ * Settings > Shopping assistant > Insights: conversations, spend, ratings and the unanswered
  * questions of the buyer assistant (a super list). Needs `assistant.settings.view`.
  */
 export default async function AssistantInsightsPage() {

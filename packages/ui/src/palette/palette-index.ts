@@ -30,6 +30,8 @@ export interface PaletteSettingsPage {
   readonly view?: readonly string[] | undefined;
   readonly groupLabelKey: string;
   readonly groupIcon: IconName;
+  /** Message key of extra comma-separated search words (a former name, synonyms). */
+  readonly keywordsKey?: string | undefined;
   /**
    * The first crumb of its path ("Settings" for a page of the Settings hub). Absent for a page that
    * is not under a hub (the account pages): its path starts at the group.
@@ -126,6 +128,7 @@ export function buildPaletteEntries(sources: PaletteSources): readonly PaletteEn
       kind: 'page',
       label: label(page.labelKey),
       context: crumbs(page, label, false),
+      ...(page.keywordsKey === undefined ? {} : { keywords: label(page.keywordsKey) }),
       href: page.href,
       icon: page.groupIcon,
     });

@@ -65,7 +65,7 @@ describe('settings hub page', () => {
     ]);
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Settings');
     expect(screen.getByText(messages.settings.hub.description)).toBeTruthy();
-    expect(groups()).toEqual(['Marketplace', 'Delivery', 'Money', 'People & access']);
+    expect(groups()).toEqual(['General', 'Delivery', 'Money & tax', 'AI', 'Team & access']);
     expect(screen.getAllByRole('link')).toHaveLength(7);
     expect(screen.queryByText('View only')).toBeNull();
     expect(document.querySelector('main')?.getAttribute('data-active')).toBe('settings');

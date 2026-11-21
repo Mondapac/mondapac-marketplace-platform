@@ -83,9 +83,9 @@ describe('error mapping', () => {
 });
 
 describe('settings map entry', () => {
-  it('puts Account deletion in the Marketplace group, gated by its view and manage keys', () => {
+  it('puts Account deletion in the Privacy & data group, gated by its view and manage keys', () => {
     const found = settingsLink('account-deletion');
-    expect(found?.group.id).toBe('marketplace');
+    expect(found?.group.id).toBe('privacy');
     expect(found?.link).toMatchObject({
       href: '/settings/account-deletion',
       view: ['customers.account-deletion-settings.view'],

@@ -63,7 +63,7 @@ const DAYS_MIN = 1;
 const DAYS_MAX = 90;
 
 /**
- * Settings > People > Review policy: which areas are reviewed and at what risk, and how many days
+ * Settings > Team & access > Approval rules: which areas are reviewed and at what risk, and how many days
  * an open request waits before it is overdue. A change goes live at once and opens a high-risk
  * review request, so each one is saved with a note and a two-step code, one at a time. Without
  * the manage permission every control is read-only.

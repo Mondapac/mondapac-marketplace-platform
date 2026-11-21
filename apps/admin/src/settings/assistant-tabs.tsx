@@ -3,7 +3,7 @@
 import { Tabs } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 
-/** The two pages of Settings > Smart assistant: its settings and its insights. */
+/** The two pages of Settings > Shopping assistant: its settings and its insights. */
 export function AssistantTabs({ active }: { readonly active: 'settings' | 'insights' }) {
   const t = useTranslations('settings.assistant.tabs');
   return (

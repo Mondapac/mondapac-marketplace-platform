@@ -3611,28 +3611,40 @@
       "no-access-title": "You don't have access to settings",
       "no-access-body": "Your role doesn't include any settings page. Ask an admin who manages roles to add one.",
       "group": {
-        "marketplace": "Marketplace",
+        "general": "General",
         "delivery": "Delivery",
-        "money": "Money",
-        "people": "People & access"
+        "money": "Money & tax",
+        "marketing": "Marketing",
+        "ai": "AI",
+        "privacy": "Privacy & data",
+        "people": "Team & access"
       },
       "link": {
         "support": "Support contact",
         "service-areas": "Service areas",
-        "assistant": "Smart assistant",
+        "assistant": "Shopping assistant",
         "account-deletion": "Account deletion",
-        "ship-to-retention": "Delivery address retention",
+        "ship-to-retention": "Order address retention",
         "delivery": "Delivery rules",
         "fleets": "Delivery fleets",
         "wallet": "Customer wallet",
         "tax": "Tax",
-        "refund-limits": "Seller refund caps",
+        "refund-limits": "Seller refund limits",
         "admins": "Admins",
         "roles": "Roles & permissions",
-        "lists": "Lists",
-        "ai": "AI",
-        "promotions": "Promotions",
-        "review-policy": "Review policy"
+        "lists": "List paging",
+        "ai": "Write with AI",
+        "promotions": "Promotion rules",
+        "review-policy": "Approval rules"
+      },
+      "words": {
+        "assistant": "Smart assistant,chat,buyer assistant",
+        "ship-to-retention": "Delivery address retention,privacy,personal data",
+        "refund-limits": "Seller refund caps,refund cap",
+        "lists": "Lists,pagination,page numbers",
+        "ai": "AI,AI writing,product descriptions",
+        "promotions": "Promotions,discounts,free delivery,first order",
+        "review-policy": "Review policy,System requests,second admin,review"
       }
     },
     "sub": {
@@ -3645,11 +3657,11 @@
       "empty": "No settings match"
     },
     "assistant": {
-      "title": "Smart assistant",
-      "permission-view": "View smart assistant",
+      "title": "Shopping assistant",
+      "permission-view": "View shopping assistant",
       "intro": "Whether the shopping assistant is on, who sees it, what it answers and what it may spend.",
-      "no-access": "You don't have access to the smart assistant settings.",
-      "unavailable": "The smart assistant settings could not be loaded. Try again later.",
+      "no-access": "You don't have access to the shopping assistant settings.",
+      "unavailable": "The shopping assistant settings could not be loaded. Try again later.",
       "read-only": "Only the Platform Administrator can change these settings.",
       "optional": "optional",
       "unavailable-option": "{option} (not available yet)",
@@ -3781,18 +3793,18 @@
         "conflict": "Another admin saved changes first. Reload the page and try again.",
         "throttled": "Too many attempts. Wait a moment and try again.",
         "csrf": "Your session needs a refresh. Reload the page and try again.",
-        "denied": "Your role cannot change the smart assistant settings.",
+        "denied": "Your role cannot change the shopping assistant settings.",
         "unavailable": "The settings are not available right now. Try again shortly.",
         "unknown": "Something went wrong. Try again."
       },
       "not-configured-option": "{option} (not configured on the server)",
       "version-defaults": "Built-in defaults, never saved",
       "tabs": {
-        "label": "Smart assistant pages",
+        "label": "Shopping assistant pages",
         "settings": "Settings",
         "insights": "Insights"
       },
-      "insights-title": "Smart assistant insights",
+      "insights-title": "Shopping assistant insights",
       "insights-intro": "How buyers use the shopping assistant, what it costs, how they rate its answers, and the questions it could not answer."
     },
     "view-only": {
@@ -8749,7 +8761,7 @@
       "platform-import-finished": "A <strong>product import</strong> {outcome, select, stopped {stopped part way} other {finished}}",
       "review-held": "A <strong>review</strong> is held for moderation",
       "review-reported": "A seller reported a <strong>review</strong>",
-      "seller-refund-limit-reached": "{limit, select, count {A seller reached the <strong>refund count cap</strong>} amount {A seller reached the <strong>refund amount cap</strong>} unset {A seller tried to refund with <strong>no refund cap set</strong>} other {A seller reached a <strong>refund cap</strong>}}",
+      "seller-refund-limit-reached": "{limit, select, count {A seller reached the <strong>refund count limit</strong>} amount {A seller reached the <strong>refund amount limit</strong>} unset {A seller tried to refund with <strong>no refund limit set</strong>} other {A seller reached a <strong>refund limit</strong>}}",
       "system-request-overdue": "<strong>SR-{number}</strong> has waited {ageDays, plural, one {# day} other {# days}} for review",
       "assistant-spend-cap-reached": "{cap, select, daily {The shopping assistant reached its <strong>daily spend cap</strong> and is switched off until tomorrow} monthly {The shopping assistant reached its <strong>monthly spend cap</strong> and is switched off until next month} other {The shopping assistant reached a <strong>spend cap</strong> and is switched off}}"
     },
@@ -8763,7 +8775,7 @@
       "refunds": "Refunds",
       "other": "Other",
       "system-requests": "System requests",
-      "assistant": "Smart assistant"
+      "assistant": "Shopping assistant"
     },
     "empty": {
       "unread": {
@@ -8975,7 +8987,7 @@
       },
       "ordering": {
         "ship-to-retention": {
-          "change": "change delivery address retention"
+          "change": "change order address retention"
         }
       },
       "customers": {
@@ -13699,12 +13711,12 @@
     }
   },
   "ship-to-retention": {
-    "title": "Delivery address retention",
-    "permission-view": "Delivery address retention: view",
-    "unavailable": "The delivery address retention setting could not be loaded. Try again later.",
+    "title": "Order address retention",
+    "permission-view": "Order address retention: view",
+    "unavailable": "The order address retention setting could not be loaded. Try again later.",
     "section": "Delete delivery addresses",
     "intro": "Permanently deletes the delivery address, phone and buyer note of orders that were completed at least the chosen number of months ago: delivered, cancelled, refunded in full, or shipped but never delivered. Orders still waiting to ship are never touched.",
-    "read-only": "You can see this setting but not change it. Changing it needs the delivery address retention manage permission.",
+    "read-only": "You can see this setting but not change it. Changing it needs the order address retention manage permission.",
     "permanent": "Deletion is permanent. A deleted address cannot be restored and disappears from every view, including order pages and support tools. A daily job applies it to every order that qualifies.",
     "switch": "Delete delivery addresses",
     "state-on": "On",
@@ -13716,7 +13728,7 @@
     "save": "Save",
     "cancel": "Cancel",
     "reload": "Reload latest",
-    "saved": "Delivery address retention saved.",
+    "saved": "Order address retention saved.",
     "confirm": {
       "title": "Delete delivery addresses permanently?",
       "body": "From the next daily run, the delivery address, phone and buyer note of every order completed at least {months} months ago (delivered, cancelled, refunded in full, or shipped but never delivered) will be deleted for good. Orders still waiting to ship are never touched. This cannot be undone.",
@@ -13734,11 +13746,11 @@
     }
   },
   "refund-limits": {
-    "title": "Seller refund caps",
-    "permission-view": "Refund caps: view",
-    "unavailable": "The refund caps could not be loaded. Try again later.",
-    "read-only": "You can see the refund caps but not change them. Changing them needs the refund caps manage permission.",
-    "read-only-seller": "You can see this cap but not change it. Changing it needs the refund caps manage permission.",
+    "title": "Seller refund limits",
+    "permission-view": "Refund limits: view",
+    "unavailable": "The refund limits could not be loaded. Try again later.",
+    "read-only": "You can see the refund limits but not change them. Changing them needs the refund limits manage permission.",
+    "read-only-seller": "You can see this limit but not change it. Changing it needs the refund limits manage permission.",
     "cancel": "Cancel",
     "save": "Save",
     "field": {
@@ -13754,56 +13766,56 @@
       "amount-required": "Enter an amount.",
       "amount": "Enter an amount above zero, with no more decimals than the currency has.",
       "currency": "This Market's currency is not recognised, so an amount cannot be entered.",
-      "stale": "Another admin changed this cap first. The latest values are shown now; check them and save again.",
-      "not-found": "This seller has no cap of its own any more. The latest values are shown now.",
-      "invalid": "The cap was refused as invalid. Check the values and try again.",
+      "stale": "Another admin changed this limit first. The latest values are shown now; check them and save again.",
+      "not-found": "This seller has no limit of its own any more. The latest values are shown now.",
+      "invalid": "The limit was refused as invalid. Check the values and try again.",
       "throttled": "Too many attempts. Wait a moment and try again.",
       "csrf": "Your session changed. Reload the page and try again.",
-      "denied": "You do not have permission to change refund caps.",
-      "unavailable": "The refund caps could not be saved right now. Try again later.",
-      "unknown": "The refund caps could not be saved. Try again."
+      "denied": "You do not have permission to change refund limits.",
+      "unavailable": "The refund limits could not be saved right now. Try again later.",
+      "unknown": "The refund limits could not be saved. Try again."
     },
     "market": {
-      "section": "Market default cap",
-      "intro": "The most refunds a seller may start by marking items unavailable in any 24 hours, and the most money they may refund in that time. It applies to every seller without a cap of its own.",
+      "section": "Market default limit",
+      "intro": "The most refunds a seller may start by marking items unavailable in any 24 hours, and the most money they may refund in that time. It applies to every seller without a limit of its own.",
       "empty-title": "No default set",
-      "empty-body": "No default is set. Sellers cannot refund by marking items unavailable until a cap is set.",
-      "empty-view": "No default is set, so sellers cannot refund by marking items unavailable. An admin who can manage refund caps needs to set one.",
-      "set": "Set default cap",
-      "edit": "Edit default cap",
-      "set-title": "Set the default refund cap",
-      "edit-title": "Edit the default refund cap",
-      "dialog-intro": "Applies to every seller without a cap of its own, from the next refund.",
+      "empty-body": "No default is set. Sellers cannot refund by marking items unavailable until a limit is set.",
+      "empty-view": "No default is set, so sellers cannot refund by marking items unavailable. An admin who can manage refund limits needs to set one.",
+      "set": "Set default limit",
+      "edit": "Edit default limit",
+      "set-title": "Set the default refund limit",
+      "edit-title": "Edit the default refund limit",
+      "dialog-intro": "Applies to every seller without a limit of its own, from the next refund.",
       "version": "Version",
       "version-n": "Version {version}",
       "updated": "Updated {when}",
-      "saved": "Default refund cap saved."
+      "saved": "Default refund limit saved."
     },
     "seller": {
-      "title": "Refund cap",
-      "in-force": "Cap in force",
-      "source-own": "Seller's own cap",
+      "title": "Refund limit",
+      "in-force": "Limit in force",
+      "source-own": "Seller's own limit",
       "source-market": "Market default",
-      "source-none": "No cap set",
-      "updated": "Cap updated",
+      "source-none": "No limit set",
+      "updated": "Limit updated",
       "note": {
-        "own": "This seller's own cap applies instead of the Market default.",
-        "market": "This seller has no cap of its own, so the Market default applies.",
-        "none": "No cap is set for this seller or the Market, so this seller cannot refund by marking items unavailable."
+        "own": "This seller's own limit applies instead of the Market default.",
+        "market": "This seller has no limit of its own, so the Market default applies.",
+        "none": "No limit is set for this seller or the Market, so this seller cannot refund by marking items unavailable."
       },
       "market-is": "Market default: {count} refunds, {amount}, in 24 hours.",
-      "set": "Set own cap",
-      "edit": "Edit own cap",
-      "remove": "Remove own cap",
-      "set-title": "Set this seller's refund cap",
-      "edit-title": "Edit this seller's refund cap",
+      "set": "Set own limit",
+      "edit": "Edit own limit",
+      "remove": "Remove own limit",
+      "set-title": "Set this seller's refund limit",
+      "edit-title": "Edit this seller's refund limit",
       "dialog-intro": "Applies to this seller instead of the Market default, from the next refund.",
-      "remove-title": "Remove this seller's own cap?",
+      "remove-title": "Remove this seller's own limit?",
       "remove-body": "The Market default applies to this seller again. If no default is set, this seller cannot refund by marking items unavailable.",
-      "remove-yes": "Remove own cap",
+      "remove-yes": "Remove own limit",
       "done": {
-        "saved": "The seller's own cap is saved.",
-        "removed": "The seller's own cap is removed."
+        "saved": "The seller's own limit is saved.",
+        "removed": "The seller's own limit is removed."
       }
     }
   },
@@ -13928,12 +13940,12 @@
     }
   },
   "ai-settings": {
-    "title": "AI",
-    "permission-view": "AI settings: view",
+    "title": "Write with AI",
+    "permission-view": "Write with AI settings: view",
     "intro": "Turn AI features on or off for this Market and choose the model tier. Changes apply at once.",
     "section-review": "Review",
     "review-intro": "Changes here are reviewed. Write the note first, then change a setting; it is sent with that change.",
-    "load-failed": "Couldn't load the AI settings.",
+    "load-failed": "Couldn't load the Write with AI settings.",
     "read-only": "You can view these settings but not change them.",
     "section-writer": "Write with AI",
     "saved": "Saved.",
@@ -13973,7 +13985,7 @@
       "invalid": "This value isn't allowed.",
       "conflict": "Someone else changed this. The values were reloaded.",
       "denied": "You don't have permission to change this setting.",
-      "acting-as": "AI settings can't be changed while you are acting as a seller.",
+      "acting-as": "Write with AI settings can't be changed while you are acting as a seller.",
       "csrf": "Your session expired. Reload the page.",
       "throttled": "Too many attempts. Wait a moment and try again.",
       "unavailable": "The service isn't available right now. Try again.",
@@ -13981,7 +13993,7 @@
     }
   },
   "lists-settings": {
-    "title": "Lists",
+    "title": "List paging",
     "permission-view": "Market settings: view",
     "load-failed": "Couldn't load this setting.",
     "read-only": "You can view this setting but not change it.",
@@ -14369,12 +14381,12 @@
     }
   },
   "promotionsSettings": {
-    "title": "Promotions",
-    "permission-view": "View promotions settings",
+    "title": "Promotion rules",
+    "permission-view": "View promotion rules",
     "intro": "Whether discounts reach carts in this market, the first-order discount and the free-delivery threshold per zone.",
     "last-changed": "Switch last changed {when}",
     "optional": "optional",
-    "loading": "Loading promotions settings",
+    "loading": "Loading promotion rules",
     "load-failed": "The first-order and free-delivery settings could not be loaded.",
     "view-only-cards": "You can change the market switch. The first-order discount and the free-delivery thresholds need the promotions manage permission, so they are not shown.",
     "state": {
@@ -14382,7 +14394,7 @@
       "off": "Off"
     },
     "notice": {
-      "saved": "Promotions settings saved. They apply to orders placed from now on."
+      "saved": "Promotion rules saved. They apply to orders placed from now on."
     },
     "switch": {
       "title": "Promotions in this market",
@@ -14474,7 +14486,7 @@
       "certification": "Certification",
       "marketplace": "Marketplace",
       "content": "Content",
-      "review-policy": "Review policy"
+      "review-policy": "Approval rules"
     },
     "risk": {
       "low": "Low",
@@ -14844,21 +14856,21 @@
       "commission-payouts--payout-terms": "Payout terms",
       "wallet--market-status": "Wallet switch",
       "settings--market-setting": "Market setting",
-      "system-requests--policy-area": "Review policy",
+      "system-requests--policy-area": "Approval rules",
       "system-requests--review-due-days": "Review period"
     },
     "badge": {
       "label": "{waiting} waiting for you{overdue, plural, =0 {} other {, # overdue}}"
     },
     "policy": {
-      "title": "Review policy",
-      "permission-view": "View review policy",
+      "title": "Approval rules",
+      "permission-view": "View approval rules",
       "intro": "Decide which kinds of changes need another admin's review. Changes still go live at once; a reviewer approves them or puts the previous value back.",
       "always-reviewed": "Changes to this policy are always reviewed, at high risk, by the people reviewers.",
       "reviewer-key": "Reviewer permission:",
       "view-only": "You can view the policy but not change it.",
       "conflict": "Someone else changed this policy first. The latest values were loaded; check them and save again.",
-      "load-failed": "The review policy could not be loaded. Try again.",
+      "load-failed": "The approval rules could not be loaded. Try again.",
       "areas": {
         "title": "Areas",
         "description": "Switch review on or off for each area and set how risky its changes are."

@@ -84,7 +84,7 @@ describe('Settings → Promotions', () => {
   it('shows the switch, the first-order discount and the zones of an active market', async () => {
     serve();
     mount();
-    expect(screen.getByRole('heading', { name: 'Promotions', level: 1 })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Promotion rules', level: 1 })).toBeTruthy();
     expect(await screen.findByRole('heading', { name: 'First-order discount' })).toBeTruthy();
     expect(screen.getByLabelText<HTMLInputElement>('Amount off').value).toBe('8.00');
     expect(screen.getByLabelText<HTMLInputElement>('Minimum spend').value).toBe('30.00');
@@ -163,7 +163,7 @@ describe('Settings → Promotions', () => {
     );
     await waitFor(() => expect(bar()).toBeNull());
     expect(screen.getByLabelText<HTMLInputElement>('Amount off').value).toBe('9.50');
-    await expectToast('Promotions settings saved. They apply to orders placed from now on.');
+    await expectToast('Promotion rules saved. They apply to orders placed from now on.');
     // Nothing else was written.
     expect(call.mock.calls.filter(([method]) => method === 'PUT')).toHaveLength(1);
   });

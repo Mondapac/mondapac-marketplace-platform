@@ -36,11 +36,18 @@ import { SUPPORT_MANAGE_PERMISSION, SUPPORT_VIEW_PERMISSION } from './types.ts';
 // the settings sub-navigation and the sidebar's single Settings item all read it, so they can
 // never disagree; the search of a later package reads it too. Pages of a phase that has not shipped
 // are absent, not disabled. Filtering is presentation only: the server authorises every route.
+// Groups follow the settings navigation design (21 Nov 2026, option A): small task groups, most
+// used first, team and access last. A group holds at most five pages; a sixth splits the group.
 
 export interface SettingsLink {
   readonly id: string;
   /** Message key of the link's label (also its entry in the sub-navigation). */
   readonly labelKey: string;
+  /**
+   * Message key of extra comma-separated search words for the page itself, such as its former
+   * name ("Review policy" still finds "Approval rules").
+   */
+  readonly keywordsKey?: string;
   readonly href: string;
   /** The page shows with any one of these. */
   readonly view: readonly string[];
@@ -57,9 +64,9 @@ export interface SettingsGroup {
 
 export const settingsGroups: readonly SettingsGroup[] = [
   {
-    id: 'marketplace',
-    labelKey: 'settings.hub.group.marketplace',
-    icon: 'store',
+    id: 'general',
+    labelKey: 'settings.hub.group.general',
+    icon: 'sliders',
     links: [
       {
         id: 'support',
@@ -69,13 +76,6 @@ export const settingsGroups: readonly SettingsGroup[] = [
         manage: [SUPPORT_MANAGE_PERMISSION],
       },
       {
-        id: 'assistant',
-        labelKey: 'settings.hub.link.assistant',
-        href: '/settings/assistant',
-        view: [ASSISTANT_VIEW_PERMISSION],
-        manage: [ASSISTANT_MANAGE_PERMISSION],
-      },
-      {
         id: 'service-areas',
         labelKey: 'settings.hub.link.service-areas',
         href: '/settings/service-areas',
@@ -83,32 +83,12 @@ export const settingsGroups: readonly SettingsGroup[] = [
         manage: [AREAS_EDIT_PERMISSION],
       },
       {
-        id: 'account-deletion',
-        labelKey: 'settings.hub.link.account-deletion',
-        href: '/settings/account-deletion',
-        view: [DELETION_VIEW_PERMISSION],
-        manage: [DELETION_MANAGE_PERMISSION],
-      },
-      {
-        id: 'ship-to-retention',
-        labelKey: 'settings.hub.link.ship-to-retention',
-        href: '/settings/ship-to-retention',
-        view: [SHIP_TO_RETENTION_VIEW_PERMISSION],
-        manage: [SHIP_TO_RETENTION_MANAGE_PERMISSION],
-      },
-      {
         id: 'lists',
         labelKey: 'settings.hub.link.lists',
+        keywordsKey: 'settings.hub.words.lists',
         href: '/settings/lists',
         view: [LISTS_VIEW_PERMISSION],
         manage: [LISTS_MANAGE_PERMISSION],
-      },
-      {
-        id: 'ai',
-        labelKey: 'settings.hub.link.ai',
-        href: '/settings/ai',
-        view: [AI_VIEW_PERMISSION],
-        manage: [AI_MANAGE_PERMISSION],
       },
     ],
   },
@@ -139,13 +119,6 @@ export const settingsGroups: readonly SettingsGroup[] = [
     icon: 'wallet',
     links: [
       {
-        id: 'wallet',
-        labelKey: 'settings.hub.link.wallet',
-        href: '/settings/wallet',
-        view: [SETTINGS_VIEW],
-        manage: [SETTINGS_MANAGE],
-      },
-      {
         id: 'tax',
         labelKey: 'settings.hub.link.tax',
         href: '/settings/tax',
@@ -153,18 +126,79 @@ export const settingsGroups: readonly SettingsGroup[] = [
         manage: [TAX_MANAGE_PERMISSION],
       },
       {
+        id: 'wallet',
+        labelKey: 'settings.hub.link.wallet',
+        href: '/settings/wallet',
+        view: [SETTINGS_VIEW],
+        manage: [SETTINGS_MANAGE],
+      },
+      {
         id: 'refund-limits',
         labelKey: 'settings.hub.link.refund-limits',
+        keywordsKey: 'settings.hub.words.refund-limits',
         href: '/settings/refund-limits',
         view: [REFUND_LIMITS_VIEW_PERMISSION],
         manage: [REFUND_LIMITS_MANAGE_PERMISSION],
       },
+    ],
+  },
+  {
+    id: 'marketing',
+    labelKey: 'settings.hub.group.marketing',
+    icon: 'tag',
+    links: [
       {
         id: 'promotions',
         labelKey: 'settings.hub.link.promotions',
+        keywordsKey: 'settings.hub.words.promotions',
         href: '/settings/promotions',
         view: [PROMOTIONS_SETTINGS_VIEW],
         manage: [PROMOTIONS_SETTINGS_MANAGE],
+      },
+    ],
+  },
+  {
+    id: 'ai',
+    labelKey: 'settings.hub.group.ai',
+    icon: 'zap',
+    links: [
+      {
+        id: 'assistant',
+        labelKey: 'settings.hub.link.assistant',
+        keywordsKey: 'settings.hub.words.assistant',
+        href: '/settings/assistant',
+        view: [ASSISTANT_VIEW_PERMISSION],
+        manage: [ASSISTANT_MANAGE_PERMISSION],
+      },
+      {
+        id: 'ai',
+        labelKey: 'settings.hub.link.ai',
+        keywordsKey: 'settings.hub.words.ai',
+        href: '/settings/ai',
+        view: [AI_VIEW_PERMISSION],
+        manage: [AI_MANAGE_PERMISSION],
+      },
+    ],
+  },
+  {
+    id: 'privacy',
+    labelKey: 'settings.hub.group.privacy',
+    icon: 'shield-check',
+    links: [
+      {
+        id: 'account-deletion',
+        labelKey: 'settings.hub.link.account-deletion',
+        href: '/settings/account-deletion',
+        view: [DELETION_VIEW_PERMISSION],
+        manage: [DELETION_MANAGE_PERMISSION],
+      },
+      {
+        id: 'ship-to-retention',
+        labelKey: 'settings.hub.link.ship-to-retention',
+        keywordsKey: 'settings.hub.words.ship-to-retention',
+        href: '/settings/ship-to-retention',
+        view: [SHIP_TO_RETENTION_VIEW_PERMISSION],
+        manage: [SHIP_TO_RETENTION_MANAGE_PERMISSION],
       },
     ],
   },
@@ -199,6 +233,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'review-policy',
         labelKey: 'settings.hub.link.review-policy',
+        keywordsKey: 'settings.hub.words.review-policy',
         href: '/settings/review-policy',
         view: [POLICY_VIEW_PERMISSION],
         manage: [POLICY_MANAGE_PERMISSION],
