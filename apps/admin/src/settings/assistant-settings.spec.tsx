@@ -435,7 +435,7 @@ describe('AssistantSettingsPanel', () => {
     touch();
     save();
     expect(
-      await screen.findByText('Your role cannot change the smart assistant settings.'),
+      await screen.findByText('Your role cannot change the shopping assistant settings.'),
     ).toBeTruthy();
   });
 });

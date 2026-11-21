@@ -11,9 +11,8 @@ const ROW =
 /**
  * The sidebar inside /settings: "Back to Dashboard", a search field that filters the settings
  * links, then each group (a labelled group with its icon and name) with its links (the current
- * page marked). It sits
- * in the same column as the normal menu, so the rail and the phone drawer behave as before; on the
- * rail each group shows as its icon, linking to its first page.
+ * page marked). It sits in the same column as the normal menu, so the rail and the phone drawer
+ * behave as before; on the rail each group shows as its icon, linking to its first page.
  */
 export function SettingsSidebarNav({ menu }: { readonly menu: SettingsMenu }) {
   const [query, setQuery] = useState('');
@@ -72,7 +71,7 @@ export function SettingsSidebarNav({ menu }: { readonly menu: SettingsMenu }) {
             >
               <p
                 id={`settings-menu-group-${group.id}`}
-                className="flex items-center gap-2 px-3 pt-1 text-sm font-semibold text-fg-secondary group-data-[rail=true]/rail:sr-only"
+                className="flex items-center gap-2 px-3 pt-1 text-sm font-semibold text-fg-secondary group-data-[rail=true]/rail:hidden"
               >
                 <Icon name={group.icon} className="text-icon" />
                 <span className="min-w-0 break-words">{group.label}</span>

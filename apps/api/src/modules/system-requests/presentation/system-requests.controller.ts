@@ -108,7 +108,7 @@ function logRoute(logger: Logger, msg: string, context: CallContext, outcome: st
 }
 
 /**
- * Admin Inbox › System requests and Settings › People › Review policy (owner decisions of
+ * Admin Inbox › System requests and Settings › Team & access › Approval rules (owner decisions of
  * 15 Nov 2026). Thin adapters: the acting admin comes from the session. Every answer is
  * `Cache-Control: no-store`.
  */

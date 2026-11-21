@@ -163,7 +163,7 @@ describe('Settings → Promotions', () => {
     );
     await waitFor(() => expect(bar()).toBeNull());
     expect(screen.getByLabelText<HTMLInputElement>('Amount off').value).toBe('9.50');
-    await expectToast('Promotions settings saved. They apply to orders placed from now on.');
+    await expectToast('Promotion rules saved. They apply to orders placed from now on.');
     // Nothing else was written.
     expect(call.mock.calls.filter(([method]) => method === 'PUT')).toHaveLength(1);
   });

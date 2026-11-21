@@ -124,7 +124,7 @@ describe('ReviewPolicyPanel', () => {
     call.mockResolvedValue(refused(500, 'internal'));
     mount();
     expect(
-      await screen.findByText('The review policy could not be loaded. Try again.'),
+      await screen.findByText('The approval rules could not be loaded. Try again.'),
     ).toBeTruthy();
   });
 

@@ -109,7 +109,7 @@ describe('form helpers', () => {
     });
   });
 
-  it('starts the form from the cap in major units', () => {
+  it('starts the form from the limit in major units', () => {
     expect(formOf(limit(), 'AUD')).toEqual({ count: '5', amount: '500.00' });
     expect(formOf(null, 'AUD')).toEqual({ count: '', amount: '' });
   });
@@ -129,10 +129,10 @@ describe('Market default panel', () => {
     panel(limits());
     expect(
       screen.getByText(
-        'No default is set. Sellers cannot refund by marking items unavailable until a cap is set.',
+        'No default is set. Sellers cannot refund by marking items unavailable until a limit is set.',
       ),
     ).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Set default cap' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Set default limit' })).toBeTruthy();
   });
 
   it('shows the default in the Market currency with its version', () => {
@@ -140,7 +140,7 @@ describe('Market default panel', () => {
     expect(screen.getByText('5')).toBeTruthy();
     expect(screen.getByText('$500.00')).toBeTruthy();
     expect(screen.getByText('Version 2')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Edit default cap' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Edit default limit' })).toBeTruthy();
   });
 
   it('formats money in a currency other than AUD from the API', () => {
@@ -157,18 +157,18 @@ describe('Market default panel', () => {
 
   it('is read-only without the manage key: no button, and the empty state still shows', () => {
     panel(limits(), false);
-    expect(screen.queryByRole('button', { name: 'Set default cap' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Set default limit' })).toBeNull();
     expect(
       screen.getAllByText(/cannot refund by marking items unavailable/).length,
     ).toBeGreaterThan(0);
     cleanup();
     panel(limits({ marketDefault: limit(), inForce: 'market' }), false);
-    expect(screen.queryByRole('button', { name: 'Edit default cap' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edit default limit' })).toBeNull();
   });
 
   it('opens in a drawer and asks before Cancel throws away a typed value', () => {
     panel(limits({ marketDefault: limit(), inForce: 'market' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Edit default cap' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit default limit' }));
     fireEvent.change(screen.getByLabelText('Most refunds in 24 hours'), { target: { value: '9' } });
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     expect(screen.getByRole('dialog', { name: 'Discard your input?' })).toBeTruthy();
@@ -179,7 +179,7 @@ describe('Market default panel', () => {
 
   it('validates before sending, then saves minor units with the version seen', async () => {
     panel(limits({ marketDefault: limit(), inForce: 'market' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Edit default cap' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit default limit' }));
     fireEvent.change(screen.getByLabelText('Most refunds in 24 hours'), { target: { value: '0' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(call).not.toHaveBeenCalled();
@@ -201,14 +201,14 @@ describe('Market default panel', () => {
 
   it('on a stale 409 shows the message, reads the latest and sends its version next', async () => {
     panel(limits({ marketDefault: limit(), inForce: 'market' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Edit default cap' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit default limit' }));
     call.mockResolvedValueOnce(fail(409, 'conflict.retry'));
     call.mockResolvedValueOnce(
       ok(limits({ marketDefault: limit({ maxCount: 9, version: 3 }), inForce: 'market' })),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() =>
-      expect(screen.getByText(/Another admin changed this cap first/)).toBeTruthy(),
+      expect(screen.getByText(/Another admin changed this limit first/)).toBeTruthy(),
     );
     expect(call).toHaveBeenNthCalledWith(2, 'GET', 'ordering/admin/refund-limits');
     call.mockResolvedValueOnce(
@@ -223,7 +223,7 @@ describe('Market default panel', () => {
 describe('Market default first save', () => {
   it('sends expectedVersion 0 when no default exists yet', async () => {
     panel(limits());
-    fireEvent.click(screen.getByRole('button', { name: 'Set default cap' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Set default limit' }));
     fireEvent.change(screen.getByLabelText('Most refunds in 24 hours'), { target: { value: '4' } });
     fireEvent.change(screen.getByLabelText(/Most refunded in 24 hours \(AUD\)/), {
       target: { value: '100' },
@@ -243,36 +243,36 @@ describe('Market default first save', () => {
 });
 
 describe('seller card', () => {
-  it('shows the seller own cap, with the Market default noted', () => {
+  it('shows the seller own limit, with the Market default noted', () => {
     card(limits({ own: limit({ maxCount: 2 }), marketDefault: limit(), inForce: 'own' }));
-    expect(screen.getByText("Seller's own cap")).toBeTruthy();
+    expect(screen.getByText("Seller's own limit")).toBeTruthy();
     expect(screen.getByText(/Market default: 5 refunds/)).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Edit own cap' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Remove own cap' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Edit own limit' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Remove own limit' })).toBeTruthy();
   });
 
   it('shows the Market default in force with a set button only', () => {
     card(limits({ marketDefault: limit(), inForce: 'market' }));
     expect(screen.getAllByText('Market default').length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: 'Set own cap' })).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Remove own cap' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Set own limit' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Remove own limit' })).toBeNull();
   });
 
-  it('says no cap is set and that the seller cannot refund', () => {
+  it('says no limit is set and that the seller cannot refund', () => {
     card(limits());
-    expect(screen.getByText('No cap set')).toBeTruthy();
+    expect(screen.getByText('No limit set')).toBeTruthy();
     expect(screen.getByText(/this seller cannot refund by marking items unavailable/)).toBeTruthy();
   });
 
   it('is read-only for the view key', () => {
     card(limits({ own: limit(), inForce: 'own' }), false);
     expect(screen.queryByRole('button')).toBeNull();
-    expect(screen.getByText(/You can see this cap but not change it/)).toBeTruthy();
+    expect(screen.getByText(/You can see this limit but not change it/)).toBeTruthy();
   });
 
-  it('sets the own cap for the seller, from version 0', async () => {
+  it('sets the own limit for the seller, from version 0', async () => {
     card(limits({ marketDefault: limit(), inForce: 'market' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Set own cap' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Set own limit' }));
     fireEvent.change(screen.getByLabelText('Most refunds in 24 hours'), { target: { value: '3' } });
     fireEvent.change(screen.getByLabelText(/Most refunded in 24 hours \(AUD\)/), {
       target: { value: '120' },
@@ -283,7 +283,7 @@ describe('seller card', () => {
       ),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(screen.getByText("The seller's own cap is saved.")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("The seller's own limit is saved.")).toBeTruthy());
     expect(call).toHaveBeenCalledWith(
       'PUT',
       `ordering/admin/refund-limits/sellers/${SELLER}`,
@@ -292,31 +292,35 @@ describe('seller card', () => {
     );
   });
 
-  it('removes the own cap with the version seen and falls back to the default', async () => {
+  it('removes the own limit with the version seen and falls back to the default', async () => {
     card(limits({ own: limit({ version: 4 }), marketDefault: limit(), inForce: 'own' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Remove own cap' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove own limit' }));
     call.mockResolvedValueOnce(ok(limits({ marketDefault: limit(), inForce: 'market' })));
-    fireEvent.click(screen.getAllByRole('button', { name: 'Remove own cap' }).at(-1)!);
-    await waitFor(() => expect(screen.getByText("The seller's own cap is removed.")).toBeTruthy());
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove own limit' }).at(-1)!);
+    await waitFor(() =>
+      expect(screen.getByText("The seller's own limit is removed.")).toBeTruthy(),
+    );
     expect(call).toHaveBeenCalledWith(
       'DELETE',
       `ordering/admin/refund-limits/sellers/${SELLER}?expectedVersion=4`,
       undefined,
       'csrf',
     );
-    expect(screen.getByRole('button', { name: 'Set own cap' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Set own limit' })).toBeTruthy();
   });
 
   it('on a stale remove shows the message and reads the latest', async () => {
     card(limits({ own: limit(), marketDefault: limit(), inForce: 'own' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Remove own cap' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove own limit' }));
     call.mockResolvedValueOnce(fail(409, 'conflict.retry'));
     call.mockResolvedValueOnce(
       ok(limits({ own: limit({ version: 3 }), marketDefault: limit(), inForce: 'own' })),
     );
-    fireEvent.click(screen.getAllByRole('button', { name: 'Remove own cap' }).at(-1)!);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove own limit' }).at(-1)!);
     await waitFor(() =>
-      expect(screen.getAllByText(/Another admin changed this cap first/).length).toBeGreaterThan(0),
+      expect(screen.getAllByText(/Another admin changed this limit first/).length).toBeGreaterThan(
+        0,
+      ),
     );
     expect(call).toHaveBeenNthCalledWith(
       2,
@@ -325,15 +329,15 @@ describe('seller card', () => {
     );
   });
 
-  it('on a remove that finds no own cap shows the message and reads the latest', async () => {
+  it('on a remove that finds no own limit shows the message and reads the latest', async () => {
     card(limits({ own: limit(), marketDefault: limit(), inForce: 'own' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Remove own cap' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remove own limit' }));
     call.mockResolvedValueOnce(fail(404, 'ordering.refund-limit-not-found'));
     call.mockResolvedValueOnce(ok(limits({ marketDefault: limit(), inForce: 'market' })));
-    fireEvent.click(screen.getAllByRole('button', { name: 'Remove own cap' }).at(-1)!);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Remove own limit' }).at(-1)!);
     await waitFor(() =>
       expect(
-        screen.getAllByText(/This seller has no cap of its own any more/).length,
+        screen.getAllByText(/This seller has no limit of its own any more/).length,
       ).toBeGreaterThan(0),
     );
     expect(call).toHaveBeenNthCalledWith(
@@ -343,9 +347,9 @@ describe('seller card', () => {
     );
   });
 
-  it('edits the own cap with the version seen', async () => {
+  it('edits the own limit with the version seen', async () => {
     card(limits({ own: limit({ version: 4 }), marketDefault: limit(), inForce: 'own' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Edit own cap' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Edit own limit' }));
     fireEvent.change(screen.getByLabelText('Most refunds in 24 hours'), { target: { value: '7' } });
     call.mockResolvedValueOnce(
       ok(
@@ -353,7 +357,7 @@ describe('seller card', () => {
       ),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
-    await waitFor(() => expect(screen.getByText("The seller's own cap is saved.")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText("The seller's own limit is saved.")).toBeTruthy());
     expect(call).toHaveBeenCalledWith(
       'PUT',
       `ordering/admin/refund-limits/sellers/${SELLER}`,
@@ -363,11 +367,11 @@ describe('seller card', () => {
   });
 
   it.each([
-    ['set', limits({ marketDefault: limit(), inForce: 'market' }), 'Set own cap', 0],
+    ['set', limits({ marketDefault: limit(), inForce: 'market' }), 'Set own limit', 0],
     [
       'edit',
       limits({ own: limit({ version: 4 }), marketDefault: limit(), inForce: 'own' }),
-      'Edit own cap',
+      'Edit own limit',
       4,
     ],
   ] as const)(
@@ -387,7 +391,7 @@ describe('seller card', () => {
       );
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
       await waitFor(() =>
-        expect(screen.getByText(/Another admin changed this cap first/)).toBeTruthy(),
+        expect(screen.getByText(/Another admin changed this limit first/)).toBeTruthy(),
       );
       expect(call.mock.calls[0]?.[2]).toMatchObject({ expectedVersion: version });
       expect(call).toHaveBeenNthCalledWith(

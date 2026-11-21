@@ -38,12 +38,18 @@ describe('SettingsHub', () => {
       'wallet.settings.manage',
       'identity.admin-account.invite',
       'identity.platform-role.create',
+      'promotions.settings.view',
+      'promotions.settings.manage',
+      'customers.account-deletion-settings.view',
+      'customers.account-deletion-settings.manage',
     ]);
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'General',
       'Delivery',
       'Money & tax',
+      'Marketing',
       'AI',
+      'Privacy & data',
       'Team & access',
     ]);
     const links = screen.getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')]);
@@ -52,7 +58,9 @@ describe('SettingsHub', () => {
       ['Delivery rules', '/settings/delivery'],
       ['Delivery fleets', '/settings/fleets'],
       ['Customer wallet', '/settings/wallet'],
+      ['Promotion rules', '/settings/promotions'],
       ['Shopping assistant', '/settings/assistant'],
+      ['Account deletion', '/settings/account-deletion'],
       ['Admins', '/settings/admins'],
       ['Roles & permissions', '/settings/roles'],
     ]);

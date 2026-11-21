@@ -97,7 +97,7 @@ const AREA_LABELS: Readonly<Record<ReviewArea, string>> = Object.freeze({
   certification: 'Certification',
   marketplace: 'Marketplace',
   content: 'Content',
-  'review-policy': 'Review policy',
+  'review-policy': 'Approval rules',
 });
 const RISK_LABELS: Readonly<Record<Risk, string>> = Object.freeze({
   low: 'Low',

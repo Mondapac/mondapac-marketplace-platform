@@ -363,9 +363,9 @@ describe('AdminNotifications refund cap notice', () => {
       reached('0190a000-0000-7000-8000-000000000023', 'unset'),
     ]);
     for (const name of [
-      /A seller reached the refund count cap/,
-      /A seller reached the refund amount cap/,
-      /A seller tried to refund with no refund cap set/,
+      /A seller reached the refund count limit/,
+      /A seller reached the refund amount limit/,
+      /A seller tried to refund with no refund limit set/,
     ]) {
       const link = await screen.findByRole('link', { name });
       expect(link.getAttribute('href')).toBe(`/sellers/${SELLER}`);
@@ -375,7 +375,7 @@ describe('AdminNotifications refund cap notice', () => {
   it('builds no link when the seller id is not a UUID', async () => {
     await openWith([reached('0190a000-0000-7000-8000-000000000024', 'count', '../admin?x=1')]);
     const row = await screen.findByRole('button', {
-      name: /A seller reached the refund count cap/,
+      name: /A seller reached the refund count limit/,
     });
     expect(row.closest('a')).toBeNull();
     expect(screen.queryByRole('link')).toBeNull();

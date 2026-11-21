@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import messages from '../../messages/en.json';
 import { settingsGroups, settingsLink, settingsViewKeys, visibleSettings } from './settings-nav.ts';
 
 const shape = (keys: string[]) =>
@@ -37,6 +38,15 @@ describe('settings map', () => {
     ];
     for (const id of [...renamed, 'review-policy']) {
       expect(settingsLink(id)?.link.keywordsKey, id).toBe(`settings.hub.words.${id}`);
+    }
+    const words: Record<string, string> = messages.settings.hub.words;
+    expect(words['review-policy']).toContain('Review policy');
+    expect(words['assistant']).toContain('Smart assistant');
+    for (const group of settingsGroups) {
+      for (const link of group.links) {
+        if (link.keywordsKey === undefined) continue;
+        expect(words[link.keywordsKey.replace('settings.hub.words.', '')], link.id).toBeTruthy();
+      }
     }
   });
 

@@ -6,7 +6,7 @@
 export const RISKS = ['low', 'medium', 'high'] as const;
 export type Risk = (typeof RISKS)[number];
 
-/** The areas whose review an admin can turn on or off on the Review policy page. */
+/** The areas whose review an admin can turn on or off on the Approval rules page. */
 export const POLICY_AREAS = [
   'people',
   'money',
