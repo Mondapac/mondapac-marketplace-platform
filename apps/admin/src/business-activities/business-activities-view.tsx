@@ -50,6 +50,7 @@ export function BusinessActivitiesView({
         paging={paging}
         accountId={accountId}
         marketId={marketId}
+        csrfToken={csrfToken}
         locale={defaultLocale}
         onOpen={setDialog}
         onLocales={setLocales}
