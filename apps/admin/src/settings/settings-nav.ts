@@ -48,6 +48,8 @@ export interface SettingsLink {
    * name ("Review policy" still finds "Approval rules").
    */
   readonly keywordsKey?: string;
+  /** Message key of the one-line description under the link on the hub. */
+  readonly descriptionKey?: string;
   readonly href: string;
   /** The page shows with any one of these. */
   readonly view: readonly string[];
@@ -71,6 +73,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'support',
         labelKey: 'settings.hub.link.support',
+        descriptionKey: 'settings.hub.about.support',
         href: '/settings/support',
         view: [SUPPORT_VIEW_PERMISSION],
         manage: [SUPPORT_MANAGE_PERMISSION],
@@ -78,6 +81,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'service-areas',
         labelKey: 'settings.hub.link.service-areas',
+        descriptionKey: 'settings.hub.about.service-areas',
         href: '/settings/service-areas',
         view: [AREAS_VIEW_PERMISSION],
         manage: [AREAS_EDIT_PERMISSION],
@@ -85,6 +89,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'lists',
         labelKey: 'settings.hub.link.lists',
+        descriptionKey: 'settings.hub.about.lists',
         keywordsKey: 'settings.hub.words.lists',
         href: '/settings/lists',
         view: [LISTS_VIEW_PERMISSION],
@@ -100,6 +105,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'delivery',
         labelKey: 'settings.hub.link.delivery',
+        descriptionKey: 'settings.hub.about.delivery',
         href: '/settings/delivery',
         view: [DELIVERY_VIEW_PERMISSION],
         manage: [DELIVERY_MANAGE_PERMISSION],
@@ -107,6 +113,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'fleets',
         labelKey: 'settings.hub.link.fleets',
+        descriptionKey: 'settings.hub.about.fleets',
         href: '/settings/fleets',
         view: [FLEET_VIEW_PERMISSION],
         manage: [FLEET_MANAGE_PERMISSION],
@@ -121,6 +128,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'tax',
         labelKey: 'settings.hub.link.tax',
+        descriptionKey: 'settings.hub.about.tax',
         href: '/settings/tax',
         view: [TAX_VIEW_PERMISSION],
         manage: [TAX_MANAGE_PERMISSION],
@@ -128,6 +136,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'wallet',
         labelKey: 'settings.hub.link.wallet',
+        descriptionKey: 'settings.hub.about.wallet',
         href: '/settings/wallet',
         view: [SETTINGS_VIEW],
         manage: [SETTINGS_MANAGE],
@@ -135,6 +144,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'refund-limits',
         labelKey: 'settings.hub.link.refund-limits',
+        descriptionKey: 'settings.hub.about.refund-limits',
         keywordsKey: 'settings.hub.words.refund-limits',
         href: '/settings/refund-limits',
         view: [REFUND_LIMITS_VIEW_PERMISSION],
@@ -150,6 +160,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'promotions',
         labelKey: 'settings.hub.link.promotions',
+        descriptionKey: 'settings.hub.about.promotions',
         keywordsKey: 'settings.hub.words.promotions',
         href: '/settings/promotions',
         view: [PROMOTIONS_SETTINGS_VIEW],
@@ -165,6 +176,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'assistant',
         labelKey: 'settings.hub.link.assistant',
+        descriptionKey: 'settings.hub.about.assistant',
         keywordsKey: 'settings.hub.words.assistant',
         href: '/settings/assistant',
         view: [ASSISTANT_VIEW_PERMISSION],
@@ -173,6 +185,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'ai',
         labelKey: 'settings.hub.link.ai',
+        descriptionKey: 'settings.hub.about.ai',
         keywordsKey: 'settings.hub.words.ai',
         href: '/settings/ai',
         view: [AI_VIEW_PERMISSION],
@@ -188,6 +201,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'account-deletion',
         labelKey: 'settings.hub.link.account-deletion',
+        descriptionKey: 'settings.hub.about.account-deletion',
         href: '/settings/account-deletion',
         view: [DELETION_VIEW_PERMISSION],
         manage: [DELETION_MANAGE_PERMISSION],
@@ -195,6 +209,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'ship-to-retention',
         labelKey: 'settings.hub.link.ship-to-retention',
+        descriptionKey: 'settings.hub.about.ship-to-retention',
         keywordsKey: 'settings.hub.words.ship-to-retention',
         href: '/settings/ship-to-retention',
         view: [SHIP_TO_RETENTION_VIEW_PERMISSION],
@@ -210,6 +225,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'admins',
         labelKey: 'settings.hub.link.admins',
+        descriptionKey: 'settings.hub.about.admins',
         href: '/settings/admins',
         view: ['identity.admin-account.view'],
         manage: [
@@ -222,6 +238,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'roles',
         labelKey: 'settings.hub.link.roles',
+        descriptionKey: 'settings.hub.about.roles',
         href: '/settings/roles',
         view: ['identity.platform-role.view'],
         manage: [
@@ -233,6 +250,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
       {
         id: 'review-policy',
         labelKey: 'settings.hub.link.review-policy',
+        descriptionKey: 'settings.hub.about.review-policy',
         keywordsKey: 'settings.hub.words.review-policy',
         href: '/settings/review-policy',
         view: [POLICY_VIEW_PERMISSION],

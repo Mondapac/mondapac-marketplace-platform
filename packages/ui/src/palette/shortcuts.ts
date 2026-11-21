@@ -59,6 +59,8 @@ export interface KeyInfo {
 export type ShortcutAction =
   | { readonly kind: 'palette' }
   | { readonly kind: 'help' }
+  /** "/": the search field of the Settings menu, where the page shows one. */
+  | { readonly kind: 'settings-search' }
   | { readonly kind: 'chord'; readonly chord: Chord }
   | { readonly kind: 'none' };
 
@@ -88,6 +90,7 @@ export function interpretKey(
   if (isEditableTarget(context.target) || context.modalOpen) return none;
   if (context.singleKeys === false) return none;
   if (event.key === '?') return { action: { kind: 'help' }, state: IDLE_CHORD };
+  if (event.key === '/') return { action: { kind: 'settings-search' }, state: IDLE_CHORD };
   if (event.shiftKey || event.key.length !== 1) return none;
   const next = advanceChord(context.state, event.key, context.now, context.chords);
   return next.match === undefined

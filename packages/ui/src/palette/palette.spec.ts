@@ -397,6 +397,9 @@ describe('interpretKey', () => {
     });
     expect(interpretKey(key('?'), ctx(false)).action).toEqual({ kind: 'none' });
     expect(interpretKey(key('?'), ctx(true)).action).toEqual({ kind: 'help' });
+    // "/" searches the Settings menu, under the same switch (WCAG 2.1.4).
+    expect(interpretKey(key('/'), ctx(false)).action).toEqual({ kind: 'none' });
+    expect(interpretKey(key('/'), ctx(true)).action).toEqual({ kind: 'settings-search' });
     const armed = interpretKey(key('g'), ctx(false));
     expect(armed.state).toEqual(IDLE_CHORD);
     expect(interpretKey(key('s'), { ...ctx(false), state: armed.state }).action).toEqual({

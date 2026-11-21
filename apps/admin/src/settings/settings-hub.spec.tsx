@@ -21,6 +21,9 @@ function hub(keys: string[]) {
 }
 afterEach(cleanup);
 
+/** The link's label, without the one-line description under it. */
+const label = (a: Element) => a.querySelector('span > span')?.textContent;
+
 describe('SettingsHub', () => {
   it('draws a card per group with a link per page, for a holder of every key', () => {
     hub([
@@ -52,7 +55,7 @@ describe('SettingsHub', () => {
       'Privacy & data',
       'Team & access',
     ]);
-    const links = screen.getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')]);
+    const links = screen.getAllByRole('link').map((a) => [label(a), a.getAttribute('href')]);
     expect(links).toEqual([
       ['Support contact', '/settings/support'],
       ['Delivery rules', '/settings/delivery'],
@@ -72,7 +75,8 @@ describe('SettingsHub', () => {
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
       'Delivery',
     ]);
-    expect(screen.getAllByRole('link').map((a) => a.textContent)).toEqual(['Delivery rules']);
+    expect(screen.getAllByRole('link').map(label)).toEqual(['Delivery rules']);
+    expect(screen.getByText('Methods, same-day cut-off, scheduling and margin')).toBeTruthy();
   });
 
   it('puts a View only chip on a page the caller can see but not change', () => {
@@ -81,6 +85,14 @@ describe('SettingsHub', () => {
     expect(within(wallet).getByText('View only')).toBeTruthy();
     const roles = screen.getByRole('link', { name: /Roles & permissions/ });
     expect(within(roles).queryByText('View only')).toBeNull();
+  });
+
+  it('says in one line under each link what its page sets', () => {
+    hub(['wallet.settings.view', 'tax.strategy.view']);
+    const wallet = screen.getByRole('link', { name: /Customer wallet/ });
+    expect(within(wallet).getByText('Store credit for customers, on or off')).toBeTruthy();
+    const tax = screen.getByRole('link', { name: /Tax/ });
+    expect(within(tax).getByText('How the tax of an order line is worked out')).toBeTruthy();
   });
 
   it('names each group card by its heading', () => {

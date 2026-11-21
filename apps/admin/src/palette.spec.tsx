@@ -284,6 +284,23 @@ describe('PanelTools', () => {
     expect(navigate).toHaveBeenCalledWith('/orders');
   });
 
+  it('moves to the Settings menu search with /, only where that field is on screen', () => {
+    mount();
+    // No settings search on this page: "/" is left to the browser.
+    expect(fireEvent.keyDown(document.body, { key: '/' })).toBe(true);
+    cleanup();
+    mount();
+    const field = document.createElement('input');
+    field.setAttribute('data-settings-search', '');
+    document.body.append(field);
+    vi.spyOn(field, 'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
+    expect(fireEvent.keyDown(document.body, { key: '/' })).toBe(false);
+    expect(document.activeElement).toBe(field);
+    field.remove();
+    key(document.body, { key: '?', shiftKey: true });
+    expect(dialog()?.textContent).toContain('Search the Settings menu');
+  });
+
   it('ignores ? and G-chords while focus is in a field', () => {
     mount();
     const field = screen.getByLabelText('Notes');

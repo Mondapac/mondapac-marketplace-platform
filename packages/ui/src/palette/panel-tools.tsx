@@ -48,6 +48,8 @@ export interface PanelToolsLabels {
     readonly close: string;
     readonly openSearch: string;
     readonly showList: string;
+    /** "/": search the Settings menu (on a settings page). */
+    readonly settingsSearch: string;
     /** "then", between the two keys of a chord. */
     readonly then: string;
     /** The switch for the shortcuts made of one bare key, and its hint (WCAG 2.1.4). */
@@ -273,6 +275,14 @@ export function PanelTools({
       } else if (action.kind === 'help') {
         event.preventDefault();
         openHelp();
+      } else if (action.kind === 'settings-search') {
+        // Only where the Settings menu's search is on screen; elsewhere "/" stays the browser's.
+        const field = document.querySelector<HTMLInputElement>('[data-settings-search]');
+        if (field !== null && field.getClientRects().length > 0) {
+          event.preventDefault();
+          field.focus();
+          field.select();
+        }
       } else if (action.kind === 'chord') {
         const target = goShortcuts.find((shortcut) => shortcut.id === action.chord.id);
         if (target !== undefined) navigate(target.href);
@@ -375,6 +385,7 @@ function ShortcutsDialog({
       label: shortcut.label,
       keys: [shortcut.keys[0].toUpperCase(), labels.then, shortcut.keys[1].toUpperCase()],
     })),
+    { id: 'settings-search', label: labels.settingsSearch, keys: ['/'] },
     { id: 'help', label: labels.showList, keys: ['?'] },
   ];
   return (

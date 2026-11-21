@@ -45,6 +45,7 @@ export function SettingsSidebarNav({ menu }: { readonly menu: SettingsMenu }) {
             />
             <input
               type="search"
+              data-settings-search=""
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               onKeyDown={onKeyDown}
