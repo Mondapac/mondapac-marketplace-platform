@@ -10,10 +10,9 @@ vi.mock('next/navigation', () => ({ useRouter: () => router }));
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
-import { DisplayNameCard } from './display-name-card.tsx';
 import { nameProblemOf, passwordProblemOf, preferencesProblemOf } from './errors.ts';
 import { PasswordCard } from './password-card.tsx';
-import { PreferencesCard } from './preferences-card.tsx';
+import { ProfileEditor } from './profile-editor.tsx';
 import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
@@ -28,9 +27,29 @@ const NEW_PASSWORD = 'a long and easy sentence';
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
 
-describe('DisplayNameCard', () => {
-  const mount = () => render(wrap(<DisplayNameCard initial="Amina Rahman" csrfToken="csrf" />));
-  const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save name' }));
+const ZONES = ['UTC', 'Australia/Brisbane', 'Asia/Kuala_Lumpur'];
+const editor = (
+  name = 'Amina Rahman',
+  timezone: string | null = null,
+  locale: string | null = null,
+) =>
+  render(
+    wrap(
+      <ProfileEditor
+        name={name}
+        timezone={timezone}
+        locale={locale}
+        zones={ZONES}
+        csrfToken="csrf"
+      />,
+    ),
+  );
+const saveBar = () => screen.queryByRole('region', { name: 'Unsaved changes' });
+const saveAll = () => fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+describe('ProfileEditor: display name', () => {
+  const mount = () => editor();
+  const save = saveAll;
   const typeName = (value: string) =>
     fireEvent.change(screen.getByLabelText('Display name'), { target: { value } });
 
@@ -51,24 +70,27 @@ describe('DisplayNameCard', () => {
     );
     expect(screen.getByLabelText<HTMLInputElement>('Display name').value).toBe('Amina R.');
     expect(router.refresh).toHaveBeenCalledTimes(1);
+    expect(saveBar()).toBeNull();
   });
 
   it('says so when the name did not change, without refreshing', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: { changed: false } });
     mount();
+    typeName('Amina Rahman ');
     save();
     await expectToast('That is already your name.', 'info');
     expect(router.refresh).not.toHaveBeenCalled();
   });
 
-  it('refuses an empty or too long name before calling the API', () => {
+  it('refuses an empty or too long name before calling the API', async () => {
     mount();
     typeName('   ');
     save();
-    expect(screen.getByText('Enter a name of 1 to 100 characters.')).toBeTruthy();
+    expect(await screen.findByText('Enter a name of 1 to 100 characters.')).toBeTruthy();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Save changes' })).toBeTruthy());
     typeName('x'.repeat(101));
     save();
-    expect(screen.getByText('Enter a name of 1 to 100 characters.')).toBeTruthy();
+    expect(await screen.findByText('Enter a name of 1 to 100 characters.')).toBeTruthy();
     expect(call).not.toHaveBeenCalled();
   });
 
@@ -87,6 +109,73 @@ describe('DisplayNameCard', () => {
     const message = await screen.findByText(/Remove web addresses/);
     expect(screen.getByLabelText('Display name').getAttribute('aria-invalid')).toBe('true');
     expect(message).toBeTruthy();
+  });
+});
+
+describe('ProfileEditor: one save bar', () => {
+  const zone = () => screen.getByLabelText<HTMLSelectElement>('Time zone');
+
+  it('shows no bar until something changes, and counts each changed part', () => {
+    editor();
+    expect(saveBar()).toBeNull();
+    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Amina R.' } });
+    expect(saveBar()?.textContent).toContain('1 unsaved change');
+    fireEvent.change(zone(), { target: { value: 'UTC' } });
+    expect(saveBar()?.textContent).toContain('2 unsaved changes');
+  });
+
+  it('saves both parts in turn with one Save', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: { changed: true } });
+    editor();
+    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Amina R.' } });
+    fireEvent.change(zone(), { target: { value: 'UTC' } });
+    saveAll();
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    expect(call.mock.calls.map((c) => c[1])).toEqual([
+      'identity/admin/profile/display-name',
+      'identity/admin/profile/preferences',
+    ]);
+    await waitFor(() => expect(saveBar()).toBeNull());
+    expect(router.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a failed part dirty while the other part saves', async () => {
+    call
+      .mockResolvedValueOnce({ ok: false, failure: { status: 503, code: 'access.unavailable' } })
+      .mockResolvedValueOnce({ ok: true, status: 200, body: { changed: true } });
+    editor();
+    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Amina R.' } });
+    fireEvent.change(zone(), { target: { value: 'UTC' } });
+    saveAll();
+    await expectToast('Your settings were saved.');
+    await waitFor(() => expect(saveBar()?.textContent).toContain('1 unsaved change'));
+    expect(screen.getByLabelText<HTMLInputElement>('Display name').value).toBe('Amina R.');
+  });
+
+  it('Discard puts every part back', () => {
+    editor('Amina Rahman', 'UTC', 'en');
+    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'X' } });
+    fireEvent.change(zone(), { target: { value: '' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(screen.getByLabelText<HTMLInputElement>('Display name').value).toBe('Amina Rahman');
+    expect(zone().value).toBe('UTC');
+    expect(saveBar()).toBeNull();
+  });
+
+  it('asks before unload with changes, and leaves quietly on a signed-out answer', async () => {
+    const assign = vi.fn();
+    Object.defineProperty(window, 'location', { value: { assign }, writable: true });
+    call.mockResolvedValue({ ok: false, failure: { status: 401, code: 'session.invalid' } });
+    editor();
+    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Amina R.' } });
+    const asked = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(asked);
+    expect(asked.defaultPrevented).toBe(true);
+    saveAll();
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+    const quiet = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(quiet);
+    expect(quiet.defaultPrevented).toBe(false);
   });
 });
 
@@ -235,13 +324,10 @@ describe('problems of failed calls', () => {
   });
 });
 
-describe('PreferencesCard', () => {
-  const ZONES = ['UTC', 'Australia/Brisbane', 'Asia/Kuala_Lumpur'];
+describe('ProfileEditor: preferences', () => {
   const mount = (timezone: string | null = null, locale: string | null = null) =>
-    render(
-      wrap(<PreferencesCard timezone={timezone} locale={locale} zones={ZONES} csrfToken="csrf" />),
-    );
-  const save = () => fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    editor('Amina Rahman', timezone, locale);
+  const save = saveAll;
   const zone = () => screen.getByLabelText<HTMLSelectElement>('Time zone');
   const language = () => screen.getByLabelText<HTMLSelectElement>('Language');
 
@@ -305,6 +391,7 @@ describe('PreferencesCard', () => {
       },
     });
     mount();
+    fireEvent.change(zone(), { target: { value: 'UTC' } });
     save();
     expect(
       await screen.findByText(

@@ -1,9 +1,8 @@
 import { Badge, Card, DataList, EmailText, LoadError } from '@mondapac/ui';
 import { getLocale, getTranslations } from 'next-intl/server';
-import { DisplayNameCard } from '../../../../src/profile/display-name-card.tsx';
 import { PasswordCard } from '../../../../src/profile/password-card.tsx';
 import { PANEL_LANGUAGES } from '../../../../src/profile/languages.ts';
-import { PreferencesCard } from '../../../../src/profile/preferences-card.tsx';
+import { ProfileEditor } from '../../../../src/profile/profile-editor.tsx';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { panelConfig } from '../../../../src/server/config.ts';
 import { requireSession } from '../../../../src/server/session.ts';
@@ -75,8 +74,8 @@ export default async function ProfilePage() {
         />
       </Card>
       <div className="mt-6 flex flex-col gap-6">
-        <DisplayNameCard initial={session.displayName} csrfToken={session.csrfToken} />
-        <PreferencesCard
+        <ProfileEditor
+          name={session.displayName}
           timezone={session.timezone}
           locale={session.locale}
           zones={ZONES}
