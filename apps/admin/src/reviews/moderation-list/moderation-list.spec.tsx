@@ -635,6 +635,30 @@ describe('Review moderation list: saved filters', () => {
     expect(paramsOf(lastUrl())['sort']).toBe('submitted');
   });
 
+  it("keeps the built-in tabs' counts when a saved filter is open", async () => {
+    serve(
+      (url) =>
+        pageOf([row()], {
+          counts: url.includes('maxRating=2')
+            ? { all: 1, held: 0, reported: 1, actioned: 0 }
+            : COUNTS,
+        }),
+      () =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          body: { items: [item], canShare: false },
+        } as never),
+    );
+    mount();
+    await findRow();
+    fireEvent.click(await screen.findByRole('button', { name: 'Low reported' }));
+    await waitFor(() => expect(paramsOf(lastUrl())).toHaveProperty('maxRating', '2'));
+    expect(await screen.findByRole('button', { name: 'Held (4)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'All (9)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Reported (3)' })).toBeTruthy();
+  });
+
   it('offers Save filter… on a built-in tab that shows something to keep', async () => {
     serve(
       () => pageOf([row()]),

@@ -14,6 +14,7 @@ import {
   useRowSelection,
   useSuperListQuery,
   writeIds,
+  useBaseTabCounts,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -163,6 +164,19 @@ export function RequestsList({
   // checks for null.
   const { saved, reload: loadSaved } = useSavedFilters<SavedPayload>(LIST_KEY);
   const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
+  // A saved filter is a tab of its own: it does not narrow the counts of the built-in tab.
+  const tabCounts = useBaseTabCounts<ListPage['counts']>({
+    savedId,
+    live: answer?.counts ?? null,
+    load: async () => {
+      const request = queryString(
+        { ...DEFAULT_QUERY, sellerId },
+        { paging, zone, now: new Date() },
+      );
+      const result = await callApi<ListPage>('GET', `${API_REQUESTS_LIST}?${request}`);
+      return result.ok ? result.body.counts : null;
+    },
+  });
 
   useEffect(() => {
     setColumns(cleanColumns(readIds(browserStorage(), storageKey)));
@@ -336,7 +350,6 @@ export function RequestsList({
       : []),
   ].join(' · ');
 
-  const counts = answer?.counts ?? null;
   const rowActions = useRequestRowActions();
   const totalRows = failure === null && mode === 'pages' ? (answer?.total ?? null) : null;
 
@@ -426,7 +439,7 @@ export function RequestsList({
   return (
     <SuperList
       heading={{
-        subtitle: counts === null ? '' : t('total', { count: counts.all }),
+        subtitle: tabCounts === null ? '' : t('total', { count: tabCounts.all }),
         note: to('zone-note', { zone }),
         actions: (
           <RequestsBulk
@@ -452,7 +465,7 @@ export function RequestsList({
         items: [
           {
             id: 'all',
-            label: `${t('tab.all')}${counts === null ? '' : ` (${number(counts.all)})`}`,
+            label: `${t('tab.all')}${tabCounts === null ? '' : ` (${number(tabCounts.all)})`}`,
           },
           ...(saved?.items ?? []).map((item) => ({ id: item.id, label: item.name })),
         ],

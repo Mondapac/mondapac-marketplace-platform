@@ -629,6 +629,24 @@ describe('Needs a look list: saved filters', () => {
     },
   );
 
+  it("keeps the built-in tabs' counts when a saved filter is open", async () => {
+    serve(
+      (url) =>
+        pageOf([row(1)], {
+          counts: url.includes('maxScore=40')
+            ? { ...COUNTS, all: 1, 'late-ready': 1, reports: 0 }
+            : COUNTS,
+        }),
+      savedWith([item]),
+    );
+    mount();
+    await screen.findByText('Store 1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Late and weak' }));
+    await waitFor(() => expect(paramsOf(lastUrl())).toHaveProperty('maxScore', '40'));
+    expect(await screen.findByRole('button', { name: /^Orders ready late \(3\)$/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^All \(7\)$/ })).toBeTruthy();
+  });
+
   it('offers Save filter... on a built-in view that shows something to keep', async () => {
     serve(() => pageOf([row(1)]), savedWith([], true));
     mount();

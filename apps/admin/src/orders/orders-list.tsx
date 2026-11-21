@@ -10,6 +10,7 @@ import {
   readIds,
   useListLoading,
   useRowSelection,
+  useBaseTabCounts,
   useSuperListQuery,
   writeIds,
 } from '@mondapac/ui';
@@ -142,7 +143,7 @@ export function OrdersList({
 
   const [answer, setAnswer] = useState<AdminOrderPage | null>(null);
   // The tab counts of the last answer: they stay while a search fails or a page loads.
-  const [counts, setCounts] = useState<OrderCounts | null>(null);
+  const [liveCounts, setCounts] = useState<OrderCounts | null>(null);
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [hinted, setHinted] = useState(false);
@@ -232,6 +233,23 @@ export function OrdersList({
     },
     [paging, zone, customerAccountId],
   );
+
+  // A saved filter is a tab of its own: it does not narrow the counts of the built-in tabs.
+  const counts = useBaseTabCounts<OrderCounts>({
+    savedId,
+    live: liveCounts,
+    load: async () => {
+      const asText = queryString(DEFAULT_QUERY, { paging, zone, now: new Date() });
+      const request =
+        customerAccountId === undefined
+          ? asText
+          : [`accountId=${encodeURIComponent(customerAccountId)}`, asText]
+              .filter(Boolean)
+              .join('&');
+      const result = await callApi<AdminOrderPage>('GET', `ordering/admin/orders?${request}`);
+      return result.ok ? result.body.counts : null;
+    },
+  });
 
   // A query that is equal in content is not a new list: load again only when it changed.
   const queryNow = useRef(query);

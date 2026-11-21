@@ -8,6 +8,7 @@ import {
   listSkeletonRowCount,
   prefsKey,
   readIds,
+  useBaseTabCounts,
   useListLoading,
   useRowSelection,
   useSuperListQuery,
@@ -127,7 +128,7 @@ export function OffersList({
 
   // The page the server read opens the list: no first request for the same query.
   const [answer, setAnswer] = useState<OfferListPage | null>(initial);
-  const [counts, setCounts] = useState<OfferListCounts | null>(initial.counts);
+  const [liveCounts, setCounts] = useState<OfferListCounts | null>(initial.counts);
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [columns, setColumns] = useState<readonly OfferColumn[]>(DEFAULT_COLUMNS);
@@ -252,6 +253,18 @@ export function OffersList({
   }, [answer, loading, failure, mode, goToPage]);
 
   const number = (value: number) => numberFormat(locale, {}).format(value);
+  // A saved filter is a tab of its own: it does not narrow the counts of the built-in tabs.
+  const counts = useBaseTabCounts<OfferListCounts>({
+    savedId,
+    live: liveCounts,
+    load: async () => {
+      const result = await callApi<OfferListPage>(
+        'GET',
+        `catalog/seller/offers?${queryString({ ...DEFAULT_QUERY, pageSize: 1 }, paging)}`,
+      );
+      return result.ok ? result.body.counts : null;
+    },
+  });
   const refresh = useCallback(() => void load(queryNow.current), [load]);
   const rowActions = useOfferRowActions(csrfToken, permissionKeys, () => {
     // A deleted or submitted offer must not stay ticked: an export of it would be refused.

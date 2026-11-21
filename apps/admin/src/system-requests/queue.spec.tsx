@@ -725,6 +725,34 @@ describe('QueueList saved filters', () => {
     expect(lastList().get('sort')).toBe('applied');
   });
 
+  it("keeps the built-in views' counts when a saved filter is open", async () => {
+    serve([
+      stored(1, 'Urgent money', {
+        v: 1,
+        view: 'all-open',
+        filters: { area: ['money'], risk: ['high'], overdue: true },
+        sort: 'due',
+      }),
+    ]);
+    call.mockImplementation((_method, path) =>
+      Promise.resolve(
+        ok(
+          String(path).includes('area=money')
+            ? page([row(1)], { counts: counts({ 'needs-my-review': 0, approved: 0, all: 1 }) })
+            : page([row(1)]),
+        ),
+      ),
+    );
+    mount();
+    await screen.findByRole('link', { name: 'SR-1041' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Urgent money' }));
+    await waitFor(() => expect(lastList().get('area')).toBe('money'));
+    // The saved filter narrows its own list only; the other views still count their own rows.
+    expect(await screen.findByRole('button', { name: 'Needs my review (3)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Approved (7)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'All (15)' })).toBeTruthy();
+  });
+
   it('saves the view, filters and sort as the canonical payload, never the search', async () => {
     serve([]);
     call.mockResolvedValue(ok(page([row(1)])));

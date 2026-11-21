@@ -9,6 +9,7 @@ import {
   listSkeletonRowCount,
   prefsKey,
   readIds,
+  useBaseTabCounts,
   useListLoading,
   useRowSelection,
   useSuperListQuery,
@@ -116,7 +117,7 @@ export function ReviewsList({
 
   // The page the server read opens the list: no first request for the same query.
   const [answer, setAnswer] = useState<ReviewListPage | null>(initial);
-  const [counts, setCounts] = useState<ReviewListCounts | null>(initial.counts);
+  const [liveCounts, setCounts] = useState<ReviewListCounts | null>(initial.counts);
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [columns, setColumns] = useState<readonly ReviewColumn[]>(DEFAULT_COLUMNS);
@@ -241,6 +242,18 @@ export function ReviewsList({
   }, [answer, loading, failure, mode, goToPage]);
 
   const number = (value: number) => numberFormat(locale, {}).format(value);
+  // A saved filter is a tab of its own: it does not narrow the counts of the built-in tabs.
+  const counts = useBaseTabCounts<ReviewListCounts>({
+    savedId,
+    live: liveCounts,
+    load: async () => {
+      const result = await callApi<ReviewListPage>(
+        'GET',
+        `reviews/seller/list?${queryString({ ...DEFAULT_QUERY, pageSize: 1 }, paging)}`,
+      );
+      return result.ok ? result.body.counts : null;
+    },
+  });
   const refresh = useCallback(() => void load(queryNow.current), [load]);
   const rowActions = useReviewRowActions(csrfToken, () => {
     // A reply or report changes what the tab holds: ticked rows may be gone from it.

@@ -8,6 +8,7 @@ import {
   listSkeletonRowCount,
   prefsKey,
   readIds,
+  useBaseTabCounts,
   useListLoading,
   useRowSelection,
   useSuperListQuery,
@@ -147,7 +148,7 @@ export function SellerOrders({
 
   // The page the server read opens the list: no first request for the same query.
   const [answer, setAnswer] = useState<SellerOrderPage | null>(initial);
-  const [counts, setCounts] = useState<SellerOrderCounts | null>(initial.counts ?? null);
+  const [liveCounts, setCounts] = useState<SellerOrderCounts | null>(initial.counts ?? null);
   const [loading, setLoading] = useState(false);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [hinted, setHinted] = useState(false);
@@ -289,6 +290,16 @@ export function SellerOrders({
   }, [answer, loading, failure, mode, goToPage]);
 
   const number = (value: number) => numberFormat(locale, {}).format(value);
+  // A saved filter is a tab of its own: it does not narrow the counts of the built-in tabs.
+  const counts = useBaseTabCounts<SellerOrderCounts>({
+    savedId,
+    live: liveCounts,
+    load: async () => {
+      const request = queryString(DEFAULT_QUERY, { paging, zone, now: new Date() });
+      const result = await callApi<SellerOrderPage>('GET', `ordering/seller/orders?${request}`);
+      return result.ok ? (result.body.counts ?? null) : null;
+    },
+  });
   const draftRoute = routeSearch(draft);
   // The hint about the typed text waits for the box to lose focus or Enter, so it is not read out
   // at the first keystroke of every search.

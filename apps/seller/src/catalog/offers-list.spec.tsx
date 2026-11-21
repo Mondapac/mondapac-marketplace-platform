@@ -66,7 +66,8 @@ function serve(make: (url: string) => OfferListPage, savedBody: unknown = savedF
 }
 const lastUrl = (): string => {
   const calls = call.mock.calls.filter(
-    ([method, path]) => method === 'GET' && path.startsWith(LIST_PATH),
+    ([method, path]) =>
+      method === 'GET' && path.startsWith(LIST_PATH) && paramsOf(path)['pageSize'] !== '1',
   );
   return String(calls[calls.length - 1]?.[1]);
 };
@@ -514,6 +515,28 @@ describe('seller offers saved filters', () => {
     expect(screen.getByRole('button', { name: 'Live rice' }).getAttribute('aria-pressed')).toBe(
       'true',
     );
+  });
+
+  it("keeps the built-in tabs' counts when a saved filter is open", async () => {
+    // The API counts for the request's own search and filters, so a saved tab's answer is narrow.
+    const narrow = { draft: 0, pendingFirstPublish: 0, changesNeeded: 0, published: 4, all: 4 };
+    serve(
+      (url) => pageOf([row()], { counts: paramsOf(url)['q'] === 'rice' ? narrow : COUNTS }),
+      savedAnswer([saved()]),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Live rice' }));
+    await waitFor(() => expect(paramsOf(lastUrl())['q']).toBe('rice'));
+    await waitFor(() =>
+      expect(
+        call.mock.calls.some(
+          ([, path]) => path.startsWith(LIST_PATH) && paramsOf(path)['pageSize'] === '1',
+        ),
+      ).toBe(true),
+    );
+    expect(await screen.findByRole('button', { name: 'All (26)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Drafts (3)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Live (20)' })).toBeTruthy();
   });
 
   it('never carries the saved filter over to a built-in tab (john: a saved filter belongs to its own tab)', async () => {

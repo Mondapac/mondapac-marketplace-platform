@@ -703,6 +703,30 @@ describe('Sellers list: saved filter tabs', () => {
         body: path.startsWith(SAVED) ? { items, canShare } : {},
       } as never);
 
+  it("keeps the built-in tabs' counts when a saved filter is open", async () => {
+    serve(
+      (body) =>
+        body['kind'] === 'onboarding'
+          ? pageOf([row(1)], {
+              counts: {
+                awaitingReview: { onboarding: 1, identityChange: 0 },
+                incomplete: 0,
+                all: 1,
+              },
+              stateCounts: { changesNeeded: 0, notApproved: 0, approved: 1, suspended: 0 },
+            })
+          : pageOf([row(1)]),
+      savedWith([item('awaiting-review')]),
+    );
+    mount();
+    await screen.findByText('Store 1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Brisbane reviews' }));
+    await waitFor(() => expect(lastBody()).toMatchObject({ kind: 'onboarding' }));
+    expect(await screen.findByRole('button', { name: 'Awaiting review (3)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'All sellers (9)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Approved (7)' })).toBeTruthy();
+  });
+
   it('adds the saved filter as a tab and opens it with its view, filters and sort', async () => {
     serve(() => pageOf([row(1)]), savedWith([item('awaiting-review')]));
     mount();
