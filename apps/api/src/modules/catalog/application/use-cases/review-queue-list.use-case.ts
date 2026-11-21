@@ -346,7 +346,10 @@ export class ReviewQueueList extends UseCase<
     const after = cursor;
     const { kind, sellerId, firstPublication, hasImages, submittedFrom, submittedTo } =
       filter.value;
-    const submittedFilter = { submittedFrom, submittedTo };
+    const submittedFilter = {
+      ...(submittedFrom === null || submittedFrom === undefined ? {} : { submittedFrom }),
+      ...(submittedTo === null || submittedTo === undefined ? {} : { submittedTo }),
+    };
     const ranged = (submittedFrom ?? null) !== null || (submittedTo ?? null) !== null;
     const revisionOnly = firstPublication !== undefined || hasImages !== undefined;
     const withOffers = kind !== 'product-revision' && !revisionOnly;
