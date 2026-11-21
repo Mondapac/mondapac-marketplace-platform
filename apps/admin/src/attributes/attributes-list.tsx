@@ -11,8 +11,11 @@ import type {
   PagedListConfig,
 } from '../shared/paged-list/types.ts';
 import { AddAttributeDialog } from './add-attribute-dialog.tsx';
+import { AttributeRowDialog, type RowChange } from './attribute-row-dialog.tsx';
+import { CONVERSIONS } from './restructure-dialogs.tsx';
 import {
   API_ATTRIBUTES,
+  ATTRIBUTES_PATH,
   DATA_TYPES,
   attributePath,
   languageName,
@@ -44,12 +47,15 @@ export function AttributesList({
   accountId,
   marketId,
   canEdit,
+  canRestructure = false,
   csrfToken,
 }: {
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
   readonly canEdit: boolean;
+  /** `catalog.attribute.restructure`: merge, convert and archive. */
+  readonly canRestructure?: boolean;
   readonly csrfToken: string;
 }) {
   const t = useTranslations('attributes');
@@ -58,21 +64,70 @@ export function AttributesList({
     null,
   );
   const [adding, setAdding] = useState(false);
+  const [change, setChange] = useState<{ id: string; kind: RowChange } | null>(null);
   const [refresh, setRefresh] = useState(0);
   const locales = context?.locales ?? null;
   // The columns read the languages from a ref, so the list is not read again when they arrive.
   const localesRef = useRef(locales);
   localesRef.current = locales;
 
+  // The same changes as the attribute page's More menu, each with the same conditions. Items that
+  // open a dialog end in an ellipsis; the irreversible ones ask for the attribute's code.
   const rowActions = useCallback(
-    (row: AttributeRow): readonly MenuItem[] => [
-      {
-        id: 'open',
-        label: tl('actions.open'),
-        onSelect: () => window.location.assign(attributePath(row.id)),
-      },
-    ],
-    [tl],
+    (row: AttributeRow): readonly MenuItem[] => {
+      const items: MenuItem[] = [
+        {
+          id: 'open',
+          label: tl('actions.open'),
+          onSelect: () => window.location.assign(attributePath(row.id)),
+        },
+      ];
+      if (canEdit && row.status !== 'archived') {
+        items.push({
+          id: 'edit',
+          label: tl('actions.edit'),
+          onSelect: () => window.location.assign(`${attributePath(row.id)}?edit=1`),
+        });
+      }
+      const active = row.status === 'active';
+      if (canRestructure && active && !row.material) {
+        items.push({
+          id: 'merge-attribute',
+          label: tl('actions.merge-attribute'),
+          onSelect: () => setChange({ id: row.id, kind: 'merge-attribute' }),
+        });
+      }
+      if (
+        canRestructure &&
+        active &&
+        !row.material &&
+        !row.isVariantOption &&
+        CONVERSIONS[row.dataType] !== undefined
+      ) {
+        items.push({
+          id: 'convert',
+          label: tl('actions.convert'),
+          onSelect: () => setChange({ id: row.id, kind: 'convert' }),
+        });
+      }
+      if (canEdit && active && row.material) {
+        items.push({
+          id: 'relax',
+          label: tl('actions.relax'),
+          onSelect: () => setChange({ id: row.id, kind: 'relax' }),
+        });
+      }
+      if (canRestructure && active) {
+        items.push({
+          id: 'archive',
+          label: tl('actions.archive'),
+          tone: 'critical',
+          onSelect: () => setChange({ id: row.id, kind: 'archive' }),
+        });
+      }
+      return items;
+    },
+    [tl, canEdit, canRestructure],
   );
 
   const columnDefs = useCallback(
@@ -240,6 +295,16 @@ export function AttributesList({
           ) : null
         }
       />
+      {change === null ? null : (
+        <AttributeRowDialog
+          attributeId={change.id}
+          change={change.kind}
+          csrfToken={csrfToken}
+          onClose={() => setChange(null)}
+          onChanged={() => setRefresh((value) => value + 1)}
+          onOpenWaiting={() => window.location.assign(`${ATTRIBUTES_PATH}?tab=waiting`)}
+        />
+      )}
       {adding && context !== null ? (
         <AddAttributeDialog
           locales={context.locales}
