@@ -17,6 +17,7 @@ import {
   writeIds,
   type MenuItem,
   type SuperColumn,
+  useBaseTabCounts,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -147,6 +148,25 @@ export function SellersList({
   // The counts and areas of the last answer: they stay while a page loads or a request fails.
   const [counts, setCounts] = useState<SellerListCounts | null>(null);
   const [stateCounts, setStateCounts] = useState<SellerListStateCounts | null>(null);
+  // A saved filter is a tab of its own: it does not narrow the counts of the built-in tabs.
+  const tabCounts = useBaseTabCounts<{
+    readonly counts: SellerListCounts | null;
+    readonly stateCounts: SellerListStateCounts | null;
+  }>({
+    savedId: list.savedId,
+    live: { counts, stateCounts },
+    load: async () => {
+      const result = await callApi<SellerSuperPage>(
+        'POST',
+        SELLER_LIST_PATH,
+        listBody(DEFAULT_QUERY, paging),
+        csrfToken,
+      );
+      return result.ok
+        ? { counts: result.body.counts, stateCounts: result.body.stateCounts }
+        : null;
+    },
+  });
   const [areas, setAreas] = useState<SellerSuperPage['areas']>([]);
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<Failure | null>(null);
@@ -567,7 +587,7 @@ export function SellersList({
         // The state views need identity's access key: without it the answer carries no counts.
         items: [
           ...(stateKnown ? [...FILE_TABS, ...STATE_TABS] : FILE_TABS).map((view) => {
-            const count = countOf(counts, stateCounts, view);
+            const count = countOf(tabCounts?.counts ?? null, tabCounts?.stateCounts ?? null, view);
             return {
               id: view,
               label: `${t(`tab.${view}`)}${count === null ? '' : ` (${number(count)})`}`,

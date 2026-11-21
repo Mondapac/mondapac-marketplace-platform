@@ -546,6 +546,30 @@ describe('Alert list: saved filters', () => {
     updatedAt: '2026-11-01T00:00:00.000Z',
   };
 
+  it("keeps the built-in tabs' counts when a saved filter is open", async () => {
+    serve(
+      (url) =>
+        pageOf([row()], {
+          counts: url.includes('minEvents=5')
+            ? { all: 1, open: 0, acknowledged: 0, critical: 1, resolved: 0 }
+            : COUNTS,
+        }),
+      () =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          body: { items: [item], canShare: false },
+        } as never),
+    );
+    mount();
+    await findRow();
+    fireEvent.click(await screen.findByRole('button', { name: 'Critical IPs' }));
+    await waitFor(() => expect(paramsOf(lastUrl())).toHaveProperty('minEvents', '5'));
+    expect(await screen.findByRole('button', { name: /^Open \(4\)$/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^All \(9\)$/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^Resolved \(3\)$/ })).toBeTruthy();
+  });
+
   it('adds the saved filter as a tab, and a built-in tab opened from it does not carry it', async () => {
     serve(
       () => pageOf([row()]),

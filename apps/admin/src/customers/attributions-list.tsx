@@ -14,6 +14,7 @@ import {
   readIds,
   useListLoading,
   useRowSelection,
+  useBaseTabCounts,
   useSuperListQuery,
   writeIds,
   type MenuItem,
@@ -181,6 +182,25 @@ export function AttributionsList({
   useEffect(() => {
     void load(query);
   }, [load, query]);
+  // A saved filter is a tab of its own: it does not narrow the counts of the built-in tabs.
+  const counts = useBaseTabCounts<AttributionsPage['counts']>({
+    savedId: list.savedId,
+    live: answer?.counts ?? null,
+    load: async () => {
+      const result = await callApi<AttributionsPage>(
+        'POST',
+        'customers/admin/seller-attributions/list',
+        {
+          ...attributionSelectorOf(DEFAULT_ATTRIBUTION_QUERY),
+          direction: DEFAULT_ATTRIBUTION_QUERY.direction,
+          page: 1,
+          pageSize: 1,
+        },
+        csrfToken,
+      );
+      return result.ok ? result.body.counts : null;
+    },
+  });
   // The store a saved filter or the URL names is read once, for its chip.
   const filterSellerId = query.filters.sellerId;
   useEffect(() => {
@@ -204,7 +224,6 @@ export function AttributionsList({
   if (failure === 'denied') return <p className="text-fg-muted">{t('no-access')}</p>;
 
   const number = (value: number) => numberFormat(locale, {}).format(value);
-  const counts = answer?.counts ?? null;
   const total = answer?.paging?.total ?? 0;
   const filtered =
     attributionSearchOf(query.q) !== undefined || attributionFilterCount(query.filters) > 0;

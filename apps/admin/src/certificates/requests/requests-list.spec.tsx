@@ -705,6 +705,18 @@ describe('Issuer requests list: saved filters', () => {
     expect(screen.getByRole('button', { name: 'Manage filters' })).toBeTruthy();
   });
 
+  it("keeps the built-in tab's count when a saved filter is open", async () => {
+    serve(
+      (url) => pageOf([row()], { counts: { all: url.includes('type=kosher') ? 2 : 12 } }),
+      routes,
+    );
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(await screen.findByRole('button', { name: 'Kosher only' }));
+    await waitFor(() => expect(paramsOf(lastUrl())).toHaveProperty('type', 'kosher'));
+    expect(await screen.findByRole('button', { name: 'All (12)' })).toBeTruthy();
+  });
+
   it('offers Save filter on a built-in tab with a filter, and posts the closed document', async () => {
     const posted: unknown[] = [];
     HTMLDialogElement.prototype.showModal = function showModal() {

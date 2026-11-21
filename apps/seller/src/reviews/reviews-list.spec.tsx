@@ -73,7 +73,8 @@ function serve(make: (url: string) => ReviewListPage, savedBody: unknown = saved
 }
 const lastUrl = (): string => {
   const calls = call.mock.calls.filter(
-    ([method, path]) => method === 'GET' && path.startsWith(LIST_PATH),
+    ([method, path]) =>
+      method === 'GET' && path.startsWith(LIST_PATH) && paramsOf(path)['pageSize'] !== '1',
   );
   return String(calls[calls.length - 1]?.[1]);
 };
@@ -367,6 +368,22 @@ describe('saved filters', () => {
       expect(paramsOf(lastUrl())).toMatchObject({ view: 'all', sort: 'published' }),
     );
     expect(paramsOf(lastUrl()).maxRating).toBeUndefined();
+  });
+
+  it("keeps the built-in tabs' counts when a saved filter is open", async () => {
+    // The API counts for the request's own filters, so a saved tab's answer is narrow.
+    const narrow = { all: 2, unanswered: 2, answered: 0, low: 2 };
+    serve(
+      (url) => pageOf([row()], { counts: paramsOf(url)['maxRating'] === '2' ? narrow : COUNTS }),
+      ok(answer),
+    );
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Unanswered low stars' }));
+    await waitFor(() => expect(paramsOf(lastUrl())['maxRating']).toBe('2'));
+    expect(await screen.findByRole('button', { name: 'All (12)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Unanswered (5)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Answered (7)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Low stars (3)' })).toBeTruthy();
   });
 
   it('saves the current view on the generic routes with the closed document', async () => {

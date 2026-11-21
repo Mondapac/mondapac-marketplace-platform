@@ -591,6 +591,26 @@ describe('order list saved filters', () => {
     expect(screen.getByText('Placed is 2026-11-01 to 2026-11-05')).toBeTruthy();
   });
 
+  it("keeps the built-in tabs' counts when a saved filter is open", async () => {
+    // Like the API, the list route counts for the filters of the request.
+    serve(
+      (url) =>
+        pageOf([row()], {
+          counts: url.includes('paymentState=captured')
+            ? { pendingPayment: 0, confirmed: 1, cancelled: 0 }
+            : COUNTS,
+        }),
+      savedAnswer([saved()]),
+    );
+    mount({ paging: 'pages' });
+    expect(await screen.findByRole('button', { name: 'Cancelled (2)' })).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: 'Paid, captured' }));
+    await waitFor(() => expect(paramsOf(lastUrl())['paymentState']).toBe('captured'));
+    await waitFor(() => expect(call.mock.calls.length).toBeGreaterThan(3));
+    expect(await screen.findByRole('button', { name: 'Cancelled (2)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Paid (20)' })).toBeTruthy();
+  });
+
   it('never carries the saved filter over to a built-in tab (john: a saved filter belongs to its tab)', async () => {
     serve(() => pageOf([row()]), savedAnswer([saved()]));
     mount({ paging: 'pages' });
@@ -639,12 +659,13 @@ describe('order list saved filters', () => {
     );
     mount();
     await screen.findByRole('table');
-    const asked = call.mock.calls.filter(([, p]) => p.startsWith('ordering/admin/orders')).length;
     fireEvent.click(await screen.findByRole('button', { name: 'Paid, captured' }));
     expect(await screen.findByText('No orders match')).toBeTruthy();
-    expect(call.mock.calls.filter(([, p]) => p.startsWith('ordering/admin/orders')).length).toBe(
-      asked,
-    );
+    // Nothing is asked for the backwards range (only the unfiltered tab counts are read).
+    const asked = call.mock.calls
+      .map(([, p]) => String(p))
+      .filter((p) => p.startsWith('ordering/admin/orders'));
+    expect(asked.filter((p) => p.includes('from=') || p.includes('to='))).toEqual([]);
   });
 
   it('saves the current filters as a private filter and shows it as the open tab', async () => {

@@ -340,6 +340,47 @@ function routePage(answer: ApiResult<unknown> = ok(overview())) {
   });
 }
 
+describe('a saved filter on the Customers list', () => {
+  it("keeps the built-in tabs' counts when a saved filter is open", async () => {
+    const narrowed = { ...counts, all: 3, active: 1, inactive: 0, new: 0, 'never-ordered': 2 };
+    call.mockImplementation((_method, path, body) => {
+      if (path.startsWith('customers/admin/saved-filters')) {
+        return Promise.resolve(
+          ok({
+            items: [
+              {
+                id: '0190a000-0000-7000-8000-0000000000c1',
+                name: 'Sara people',
+                visibility: 'me',
+                payload: { v: 1, view: 'all', q: 'sara' },
+                ownedByMe: true,
+                canManage: true,
+              },
+            ],
+            canShare: false,
+            limits: { perOwner: 50, shared: 20 },
+          }),
+        );
+      }
+      if (path === 'customers/admin/list') {
+        // Like the API, the list route counts for the search of the request.
+        const searched = (body as { q?: string }).q !== undefined;
+        return Promise.resolve(ok({ ...page([row()], 3), counts: searched ? narrowed : counts }));
+      }
+      return Promise.resolve(refused(404, 'unknown'));
+    });
+    render(wrap(<CustomersList {...listProps} permissionKeys={[VIEW]} />));
+    expect(await screen.findByRole('button', { name: 'Active (40)' })).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: /^Sara people/ }));
+    await waitFor(() =>
+      expect(listBodies().some((b) => (b as { q?: string }).q === 'sara')).toBe(true),
+    );
+    await waitFor(() => expect(listBodies().length).toBeGreaterThan(2));
+    expect(await screen.findByRole('button', { name: 'Active (40)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'All (120)' })).toBeTruthy();
+  });
+});
+
 describe('the customer page', () => {
   it('shows the tabs an admin may open', () => {
     expect(tabsFor(new Set([VIEW]))).toEqual(['overview', 'money', 'security']);
