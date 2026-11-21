@@ -11,7 +11,7 @@ import {
   Select,
   TextAreaField,
   TextField,
-  UnsavedBar,
+  SaveBar,
   toast,
   useUnsavedChangesGuard,
   FormSkeleton,
@@ -652,8 +652,8 @@ export function EditForm({
 
   return (
     <form
-      // A focused field must not hide under the sticky unsaved bar (WCAG 2.4.11).
-      className="flex flex-col gap-4 [&_:is(input,select,textarea,button,a)]:scroll-mt-[calc(var(--mp-size-topbar)_+_6rem)]"
+      // A focused field must not hide under the sticky save bar at the bottom (WCAG 2.4.11).
+      className="flex flex-col gap-4 [&_:is(input,select,textarea,button,a)]:scroll-mb-32"
       onSubmit={submit}
       noValidate
     >
@@ -756,21 +756,6 @@ export function EditForm({
           <dd className="font-semibold">{product.offers.offerCount}</dd>
         </dl>
       </Dialog>
-      {dirty ? (
-        <UnsavedBar
-          region={t('bar.region')}
-          label={
-            refused.length > 0
-              ? t('bar.errors', { count: refused.length })
-              : t(published ? 'bar.unsaved-changes' : 'bar.unsaved-product')
-          }
-          error={refused.length > 0}
-          discardLabel={t('bar.discard')}
-          saveLabel={t(published ? 'bar.save-revision' : 'bar.save-draft')}
-          saving={pending}
-          onDiscard={discardChanges}
-        />
-      ) : null}
       <BackLink href="/catalog/products" label={t('back')} />
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-3">
@@ -1051,6 +1036,21 @@ export function EditForm({
           ) : null}
         </div>
       </div>
+      <SaveBar
+        count={dirty ? 1 : 0}
+        summary={t(published ? 'bar.unsaved-changes' : 'bar.unsaved-product')}
+        errorCount={refused.length}
+        errorsSummary={t('bar.errors', { count: refused.length })}
+        saving={pending}
+        labels={{
+          region: t('bar.region'),
+          discard: t('bar.discard'),
+          save: t(published ? 'bar.save-revision' : 'bar.save-draft'),
+          // The page keeps its own label while it saves; the button shows the spinner.
+          saving: t(published ? 'bar.save-revision' : 'bar.save-draft'),
+        }}
+        onDiscard={discardChanges}
+      />
     </form>
   );
 }

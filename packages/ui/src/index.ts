@@ -94,9 +94,14 @@ export { SearchField, type SearchFieldProps } from './form/search-field.tsx';
 export { TextAreaField, type TextAreaFieldProps } from './form/text-area-field.tsx';
 export { FileButton, type FileButtonProps } from './form/file-button.tsx';
 export { ImageSlot, type ImageSlotProps, type ImageSlotShape } from './form/image-slot.tsx';
-export { OtpField, type OtpFieldProps } from './form/otp-field.tsx';
+export {
+  OtpColumn,
+  OtpField,
+  otpRowWidth,
+  type OtpColumnProps,
+  type OtpFieldProps,
+} from './form/otp-field.tsx';
 export { Card, type CardProps } from './form/card.tsx';
-export { UnsavedBar, type UnsavedBarProps } from './form/unsaved-bar.tsx';
 export { Switch, type SwitchProps } from './form/switch.tsx';
 export { CheckboxRow, type CheckboxRowProps } from './form/checkbox-row.tsx';
 export { SelectBox, type SelectBoxProps } from './form/select-box.tsx';

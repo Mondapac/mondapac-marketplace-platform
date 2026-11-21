@@ -109,7 +109,7 @@ export function AppShell({
       {/* The column keeps its width; the panel inside widens over the page while peeking. */}
       <aside
         data-collapsed={collapsed}
-        className="relative z-20 hidden md:sticky md:top-0 md:block md:h-screen"
+        className="relative z-40 hidden md:sticky md:top-0 md:block md:h-screen"
       >
         {/* First in tab order, and outside the panel so pointing at it never opens the panel;
             while the panel is open it sits on the open edge and keeps it open. */}
@@ -161,7 +161,7 @@ export function AppShell({
       </aside>
       <div className="flex min-w-0 flex-col">
         {/* The top bar stays in view while the page scrolls, as the sidebar does. */}
-        <div className="sticky top-0 z-10 flex items-stretch border-b border-line bg-surface">
+        <div className="sticky top-0 z-30 flex items-stretch border-b border-line bg-surface">
           <button
             type="button"
             aria-label={labels.menu}

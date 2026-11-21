@@ -4,7 +4,7 @@ import { Banner, Button, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useRef, useState, type FormEvent } from 'react';
 import { FocusHeading } from './focus-heading.tsx';
 import { useFocusFirstInvalid } from './use-focus-first-invalid.ts';
 import { callApi, type ApiFailure } from '../api/client.ts';
@@ -203,6 +203,7 @@ function CodeStep({
   const t = useTranslations('identity');
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
+  const bodyId = useId();
   const throttle = useThrottle();
   const [backup, setBackup] = useState(false);
   const [code, setCode] = useState('');
@@ -260,10 +261,14 @@ function CodeStep({
       noValidate
       className="flex flex-col gap-5"
     >
-      <FocusHeading key={backup ? 'backup' : 'app'}>
+      {/* The code field takes focus on arrival, not the heading (owner request 2026-11-21); the
+          field is described by the step's instructions, so a screen reader still reads them. */}
+      <FocusHeading key={backup ? 'backup' : 'app'} takeFocus={false}>
         {t(backup ? 'two-step.title-backup' : 'two-step.title')}
       </FocusHeading>
-      <p className="text-fg-secondary">{t(backup ? 'two-step.body-backup' : 'two-step.body')}</p>
+      <p id={bodyId} className="text-fg-secondary">
+        {t(backup ? 'two-step.body-backup' : 'two-step.body')}
+      </p>
       {formError ? (
         <Banner tone="critical">{t(`error.${formError.key}`, formError.values)}</Banner>
       ) : null}
@@ -273,6 +278,8 @@ function CodeStep({
         name="code"
         autoComplete="one-time-code"
         inputMode={backup ? 'text' : 'numeric'}
+        autoFocus
+        describedBy={bodyId}
         value={code}
         onChange={(event) => setCode(event.target.value)}
         error={fieldErrors['code'] ? t(`error.${fieldErrors['code']}`) : undefined}

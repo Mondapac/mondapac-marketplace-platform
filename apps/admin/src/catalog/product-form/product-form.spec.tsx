@@ -820,14 +820,14 @@ describe('the edit form', () => {
         'Product text can\'t include certification words like "halal". Badges come from seller offers.',
       ),
     ).toBeTruthy();
-    expect(screen.getByText('1 field needs fixing')).toBeTruthy();
+    expect(screen.getByText(/1 field needs fixing/)).toBeTruthy();
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save draft' }).disabled).toBe(
       true,
     );
     expect(call).toHaveBeenCalledTimes(2);
     // Editing the title clears the error and puts the bar back to unsaved.
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: 'Certified rice' } });
-    expect(screen.queryByText('1 field needs fixing')).toBeNull();
+    expect(screen.queryByText(/1 field needs fixing/)).toBeNull();
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save draft' }).disabled).toBe(
       false,
     );

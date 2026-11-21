@@ -1,10 +1,10 @@
 'use client';
 
-import { Banner, Button, OtpField, TextField } from '@mondapac/ui';
+import { Banner, Button, OtpColumn, OtpField, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useId, useMemo, useRef, useState, type FormEvent } from 'react';
 import { callApi, type ApiFailure } from '../api/client.ts';
 import { FocusHeading } from './focus-heading.tsx';
 import { fieldErrorKeys, formErrorKey, type ErrorKey } from './messages-for-errors.ts';
@@ -182,6 +182,7 @@ function CodeStep({
   const t = useTranslations('identity');
   const router = useRouter();
   const formRef = useRef<HTMLFormElement>(null);
+  const bodyId = useId();
   const [backup, setBackup] = useState(false);
   const [code, setCode] = useState('');
   // A new key clears the six boxes and puts focus back in the first one.
@@ -243,51 +244,61 @@ function CodeStep({
       noValidate
       className="flex flex-col gap-5"
     >
-      <FocusHeading key={backup ? 'backup' : 'app'}>
+      {/* The first field takes focus on arrival, not the heading (owner request 2026-11-21); the
+          field is described by the step's instructions, so a screen reader still reads them. */}
+      <FocusHeading key={backup ? 'backup' : 'app'} takeFocus={false}>
         {t(backup ? 'two-step.title-backup' : 'two-step.title')}
       </FocusHeading>
-      <p className="text-fg-secondary">{t(backup ? 'two-step.body-backup' : 'two-step.body')}</p>
+      <p id={bodyId} className="text-fg-secondary">
+        {t(backup ? 'two-step.body-backup' : 'two-step.body')}
+      </p>
       {formError ? <ProblemBanner message={t(`error.${formError.key}`, formError.values)} /> : null}
-      {backup ? (
-        <TextField
-          label={t('two-step.label.backup-code')}
-          name="code"
-          autoComplete="one-time-code"
-          value={code}
-          onChange={(event) => setCode(event.target.value)}
-          error={fieldErrors['code'] ? t(`error.${fieldErrors['code']}`) : undefined}
-          dir="ltr"
-        />
-      ) : (
-        <OtpField
-          key={boxes}
-          label={t('two-step.label.code')}
-          digitLabel={(position, total) => t('two-step.label.digit', { position, total })}
-          name="code"
-          // On arrival the heading keeps focus (it announces the step); after a wrong code the first box does.
-          autoFocus={boxes > 0}
-          readOnly={pending}
-          error={fieldErrors['code'] ? t(`error.${fieldErrors['code']}`) : undefined}
-          onChange={setCode}
-          onComplete={(complete) => void verify(complete)}
-        />
-      )}
-      <Button type="submit" block loading={pending} disabled={throttle.blocked}>
-        {t('two-step.action.verify')}
-      </Button>
-      <button
-        type="button"
-        className="self-start text-sm text-link hover:underline"
-        onClick={() => {
-          setBackup(!backup);
-          setCode('');
-          setFormError(null);
-          setFieldErrors({});
-        }}
-      >
-        {t(backup ? 'two-step.action.use-app' : 'two-step.action.use-backup')}
-      </button>
-      <p className="text-sm text-fg-muted">{t('two-step.help.admin')}</p>
+      {/* The button and the links line up with the six boxes (one column as wide as the row). */}
+      <OtpColumn>
+        {backup ? (
+          <TextField
+            label={t('two-step.label.backup-code')}
+            name="code"
+            autoComplete="one-time-code"
+            autoFocus
+            describedBy={bodyId}
+            value={code}
+            onChange={(event) => setCode(event.target.value)}
+            error={fieldErrors['code'] ? t(`error.${fieldErrors['code']}`) : undefined}
+            dir="ltr"
+          />
+        ) : (
+          <OtpField
+            key={boxes}
+            label={t('two-step.label.code')}
+            digitLabel={(position, total) => t('two-step.label.digit', { position, total })}
+            name="code"
+            // On arrival and after a wrong code, the first box takes focus.
+            autoFocus
+            describedBy={bodyId}
+            readOnly={pending}
+            error={fieldErrors['code'] ? t(`error.${fieldErrors['code']}`) : undefined}
+            onChange={setCode}
+            onComplete={(complete) => void verify(complete)}
+          />
+        )}
+        <Button type="submit" block loading={pending} disabled={throttle.blocked}>
+          {t('two-step.action.verify')}
+        </Button>
+        <button
+          type="button"
+          className="self-start text-sm text-link hover:underline"
+          onClick={() => {
+            setBackup(!backup);
+            setCode('');
+            setFormError(null);
+            setFieldErrors({});
+          }}
+        >
+          {t(backup ? 'two-step.action.use-app' : 'two-step.action.use-backup')}
+        </button>
+        <p className="text-sm text-fg-muted">{t('two-step.help.admin')}</p>
+      </OtpColumn>
     </form>
   );
 }

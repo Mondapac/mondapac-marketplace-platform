@@ -8,7 +8,7 @@ import {
   DescriptionWriter,
   TextAreaField,
   TextField,
-  UnsavedBar,
+  SaveBar,
   toast,
   useUnsavedChangesGuard,
 } from '@mondapac/ui';
@@ -479,25 +479,13 @@ export function EditForm({
         : t('catalog.edit.refused-field');
 
   return (
-    <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
+    <form
+      // A focused field must not hide under the sticky save bar or the phone bottom bar (WCAG 2.4.11).
+      className="flex flex-col gap-4 [&_:is(input,select,textarea,button,a)]:scroll-mb-[calc(var(--mp-size-bottom-bar)_+_8rem)] md:[&_:is(input,select,textarea,button,a)]:scroll-mb-32"
+      onSubmit={submit}
+      noValidate
+    >
       {guard.dialog}
-      {dirty ? (
-        <UnsavedBar
-          region={t('catalog.edit.bar.region')}
-          label={
-            refused.length > 0
-              ? t('catalog.edit.bar.errors', { count: refused.length })
-              : t(adding ? 'catalog.add.unsaved' : 'catalog.edit.bar.unsaved')
-          }
-          error={refused.length > 0}
-          discardLabel={t('catalog.edit.bar.discard')}
-          saveLabel={t(
-            published ? 'catalog.edit.bar.save-revision' : 'catalog.edit.bar.save-draft',
-          )}
-          saving={pending}
-          onDiscard={discardChanges}
-        />
-      ) : null}
       {adding ? (
         <BackLink href="/products" label={t('catalog.create.back')} />
       ) : (
@@ -830,6 +818,22 @@ export function EditForm({
           </div>
         </div>
       </fieldset>
+      <SaveBar
+        count={dirty ? 1 : 0}
+        summary={t(adding ? 'catalog.add.unsaved' : 'catalog.edit.bar.unsaved')}
+        errorCount={refused.length}
+        errorsSummary={t('catalog.edit.bar.errors', { count: refused.length })}
+        saving={pending}
+        aboveBottomBar
+        labels={{
+          region: t('catalog.edit.bar.region'),
+          discard: t('catalog.edit.bar.discard'),
+          save: t(published ? 'catalog.edit.bar.save-revision' : 'catalog.edit.bar.save-draft'),
+          // The page keeps its own label while it saves; the button shows the spinner.
+          saving: t(published ? 'catalog.edit.bar.save-revision' : 'catalog.edit.bar.save-draft'),
+        }}
+        onDiscard={discardChanges}
+      />
     </form>
   );
 }
