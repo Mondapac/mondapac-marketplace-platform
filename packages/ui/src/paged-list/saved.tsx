@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from '../index.ts';
 import {
   ManageViewsDialog,
@@ -21,6 +21,7 @@ export const SAVED_LIMITS = { perOwner: 50, shared: 20 } as const;
 
 export interface SavedPayload {
   readonly v: 1;
+  readonly view?: string;
   readonly q?: string;
   readonly filters: Readonly<Record<string, string>>;
   readonly sort: string;
@@ -42,18 +43,32 @@ export interface SavedFiltersAnswer {
   readonly canShare: boolean;
 }
 
-type TabsOf<Row> = Pick<PagedListConfig<Row>, 'tabs' | 'tabParam' | 'tabParams'>;
+type TabsOf<Row> = Pick<PagedListConfig<Row>, 'tabs' | 'tabParam' | 'tabParams' | 'savedViews'>;
 
 /** The query parameters a built-in tab sets (the route's payload has no views). */
 export function tabFilters<Row>(config: TabsOf<Row>, tab: string): Record<string, string> {
+  const own = Object.entries(config.tabParams?.(tab) ?? {}).filter(
+    // A tab that sets no value for a parameter (a list's "all") leaves it out.
+    (entry): entry is [string, string] => typeof entry[1] === 'string',
+  );
   return {
-    ...(config.tabParams?.(tab) ?? {}),
+    ...Object.fromEntries(own),
     ...(tab !== config.tabs[0] && config.tabParam !== undefined ? { [config.tabParam]: tab } : {}),
   };
 }
 
 /** What a list holds now, as the document a saved filter keeps (paging and columns are not kept). */
 export function payloadOf<Row>(config: TabsOf<Row>, query: PagedQuery): SavedPayload {
+  if (config.savedViews === true) {
+    return {
+      v: 1,
+      view: query.tab,
+      ...(query.q === '' ? {} : { q: query.q }),
+      filters: query.filters,
+      sort: query.sort,
+      direction: query.direction,
+    };
+  }
   return {
     v: 1,
     ...(query.q === '' ? {} : { q: query.q }),
@@ -69,6 +84,21 @@ export function queryOfPayload<Row>(
   defaults: PagedQuery,
   payload: SavedPayload,
 ): PagedQuery {
+  if (config.savedViews === true) {
+    const view =
+      payload.view !== undefined && config.tabs.includes(payload.view)
+        ? payload.view
+        : defaults.tab;
+    return {
+      ...defaults,
+      tab: view,
+      q: payload.q ?? '',
+      filters: payload.filters,
+      sort: payload.sort,
+      direction: payload.direction,
+      page: 1,
+    };
+  }
   let best = config.tabs[0] ?? defaults.tab;
   let bestMatches = 0;
   let consumed: readonly string[] = [];
@@ -82,9 +112,13 @@ export function queryOfPayload<Row>(
       consumed = own.map(([name]) => name);
     }
   }
-  // Parameters every tab carries (a queue's fixed `kind`) belong to no tab: they are not filters.
-  const constant = config.tabs.length > 0 ? Object.keys(tabFilters(config, config.tabs[0]!)) : [];
-  const dropped = new Set([...consumed, ...constant.filter((name) => config.tabParam !== name)]);
+  // Parameters every tab carries with one value (a queue's fixed `kind`) belong to no tab: they are
+  // not filters.
+  const perTab = config.tabs.map((tab) => tabFilters(config, tab));
+  const constant = Object.keys(perTab[0] ?? {}).filter((name) =>
+    perTab.every((own) => own[name] === perTab[0]?.[name]),
+  );
+  const dropped = new Set([...consumed, ...constant]);
   const filters = Object.fromEntries(
     Object.entries(payload.filters).filter(([name]) => !dropped.has(name)),
   );
@@ -101,7 +135,23 @@ export function queryOfPayload<Row>(
 
 /** A saved filter that fits the list (several lists can share one key). */
 export const fits = <Row,>(config: PagedListConfig<Row>, filter: SavedFilter): boolean =>
-  config.savedFits === undefined || config.savedFits(filter.payload.filters);
+  config.savedFits === undefined || config.savedFits(filter.payload.filters, filter.payload);
+
+/**
+ * The ids of the person's own filters in their new order, as the order route wants them: all of
+ * them. Lists that share one key show only their own, so the others keep their places.
+ */
+export function wholeOrder(
+  all: readonly SavedFilter[],
+  shown: readonly SavedFilter[],
+  ids: readonly string[],
+): string[] {
+  const fitting = new Set(shown.map((item) => item.id));
+  const queue = [...ids];
+  return all
+    .filter((item) => item.ownedByMe)
+    .map((item) => (fitting.has(item.id) ? (queue.shift() ?? item.id) : item.id));
+}
 
 /** What a refused save, rename, delete or reorder says (one message per cause). */
 export function problemOf(failure: {
@@ -137,19 +187,28 @@ export function usePagedSavedFilters(
   const path = runtime.savedFiltersPath;
   const { callApi } = runtime;
   const [saved, setSaved] = useState<SavedFiltersAnswer | null>(null);
+  // Only the newest read counts: an older answer landing late never overwrites a newer one.
+  const latest = useRef(0);
   const reload = useCallback(async () => {
     if (!enabled || listKey === undefined || path === undefined) return null;
+    const ticket = ++latest.current;
     const result = await callApi<SavedFiltersAnswer>(
       'GET',
       `${path}?listKey=${encodeURIComponent(listKey)}`,
     );
+    if (ticket !== latest.current) return null;
     if (!result.ok || !Array.isArray(result.body?.items)) return null;
     const items: readonly SavedFilter[] = result.body.items;
     setSaved({ items, canShare: result.body.canShare === true });
     return items;
   }, [callApi, enabled, listKey, path]);
   useEffect(() => {
+    // Another list (or none) has other saved filters: nothing of the last one stays on show.
+    setSaved(null);
     void reload();
+    return () => {
+      latest.current += 1;
+    };
   }, [reload]);
   return { saved, reload };
 }
@@ -264,7 +323,7 @@ export function PagedSavedDialogs({
         onRename={async (id, name, visibility) => {
           const result = await callApi<SavedFilter>(
             'PUT',
-            `${path}/${id}`,
+            `${path}/${encodeURIComponent(id)}`,
             { listKey, name, visibility },
             csrfToken,
           );
@@ -277,7 +336,7 @@ export function PagedSavedDialogs({
           const name = items.find((item) => item.id === id)?.name ?? '';
           const result = await callApi<{ id: string }>(
             'DELETE',
-            `${path}/${id}?listKey=${encodeURIComponent(listKey)}`,
+            `${path}/${encodeURIComponent(id)}?listKey=${encodeURIComponent(listKey)}`,
             undefined,
             csrfToken,
           );
@@ -290,12 +349,7 @@ export function PagedSavedDialogs({
           return null;
         }}
         onReorder={async (ids, movedId) => {
-          // Lists that share one key show only their own filters: the others keep their places.
-          const fitting = new Set(items.map((item) => item.id));
-          const queue = [...ids];
-          const whole = saved.items
-            .filter((item) => item.ownedByMe)
-            .map((item) => (fitting.has(item.id) ? (queue.shift() ?? item.id) : item.id));
+          const whole = wholeOrder(saved.items, items, ids);
           const result = await callApi<{ ids: readonly string[] }>(
             'PUT',
             `${path}/order`,

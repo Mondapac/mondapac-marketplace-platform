@@ -36,6 +36,24 @@ export interface PagedFilterField {
   readonly id: string;
   readonly label: string;
   readonly options: readonly { readonly value: string; readonly label: string }[];
+  /**
+   * A date field: the options are presets ("Last 7 days"), the value kept in the filters is the
+   * preset id, and the list route is asked for the instants it means as these two query keys
+   * (`from` at or after, `to` before), read at each load by the list's `dateRange`.
+   */
+  readonly range?: { readonly from: string; readonly to: string };
+}
+
+/** The instants a date preset means: `from` at or after, `to` before (ISO 8601 with an offset). */
+export interface PagedInstantRange {
+  readonly from: string;
+  readonly to: string;
+}
+
+/** What turns a date field's preset id into instants; null when it cannot (the filter is left out). */
+export interface PagedDateRanges {
+  readonly fields: readonly PagedFilterField[];
+  readonly resolve: (preset: string) => PagedInstantRange | null;
 }
 
 export interface PagedBulkAction<Row> {
@@ -72,7 +90,7 @@ export interface PagedListConfig<Row> {
   /** The query parameter a tab other than the first sets to its id (for example `issue`). */
   readonly tabParam?: string;
   /** Query parameters of a tab when one id is not enough (`status=draft`); sent for every tab. */
-  readonly tabParams?: (tab: string) => Readonly<Record<string, string>>;
+  readonly tabParams?: (tab: string) => Readonly<Record<string, string | undefined>>;
   /** Absent when the route has no text search (the review queue). */
   readonly search?: {
     readonly max: number;
@@ -102,10 +120,20 @@ export interface PagedListConfig<Row> {
    */
   readonly savedKey?: string;
   /**
+   * The list's saved payload has a `view` (the registry list declares its views): the built-in tab
+   * is saved as `view` and its own query parameters stay out of `filters`. Default: no views, the
+   * tab is saved as the parameters it sets.
+   */
+  readonly savedViews?: boolean;
+  /**
    * Whether a saved filter belongs on this list when several lists share one key (the Product
    * review queue and the Revision queue are told apart by `kind`). Default: every one fits.
    */
-  readonly savedFits?: (filters: Readonly<Record<string, string>>) => boolean;
+  readonly savedFits?: (
+    filters: Readonly<Record<string, string>>,
+    /** The whole document (its `view` too, for a list with `savedViews`). */
+    payload: { readonly view?: string; readonly filters: Readonly<Record<string, string>> },
+  ) => boolean;
 }
 
 export const DEFAULT_PAGED_QUERY = (config: {
