@@ -5,17 +5,27 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 import { expectToast } from '../../test/toast-spy.ts';
 
-vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+const { inner, saved } = vi.hoisted(() => ({
+  inner: vi.fn<(method: string, path: string, ...rest: unknown[]) => Promise<unknown>>(),
+  saved: { items: [] as unknown[] },
+}));
+// Saved filters are served apart from the list's own calls the tests count and queue.
+vi.mock('../api/client.ts', () => ({
+  callApi: (method: string, path: string, ...rest: unknown[]) =>
+    path.startsWith('lists/admin/saved-filters')
+      ? Promise.resolve({ ok: true, status: 200, body: { items: saved.items, canShare: false } })
+      : inner(method, path, ...rest),
+}));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
 }));
 
-import { callApi, type ApiResult } from '../api/client.ts';
+import type { ApiResult } from '../api/client.ts';
 import { suggestionProblemOf } from './suggestion-errors.ts';
 import { SuggestionsView } from './suggestions-view.tsx';
 import type { Locales } from './types.ts';
 
-const call = vi.mocked(callApi);
+const call = inner;
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
 
 /** Two Markets: a test that only passes for AU is a bug. */
@@ -104,6 +114,7 @@ describe.each(MARKETS)('tag suggestions list ($name)', ({ locales }) => {
   beforeEach(() => {
     vi.clearAllMocks();
     call.mockReset();
+    saved.items = [];
   });
 
   it('shows the seller words as plain text with product, seller and the section tabs', async () => {
@@ -124,6 +135,29 @@ describe.each(MARKETS)('tag suggestions list ($name)', ({ locales }) => {
     expect(first.get('paging')).toBe('pages');
     expect(first.get('sort')).toBe('created');
     expect(first.get('direction')).toBe('asc');
+  });
+
+  it('opens a saved filter as a tab with its search and sort', async () => {
+    saved.items = [
+      {
+        id: id(62),
+        listKey: 'admin.catalog.tag-suggestions',
+        name: 'Gifts',
+        visibility: 'everyone',
+        payload: { v: 1, q: 'gift', filters: {}, sort: 'created', direction: 'desc' },
+        ownedByMe: false,
+        canManage: false,
+      },
+    ];
+    call.mockResolvedValue(ok(list(locales)));
+    mount();
+    await screen.findByText(LABEL);
+    fireEvent.click(await screen.findByRole('button', { name: 'Gifts' }));
+    await waitFor(() => {
+      const last = String(call.mock.calls.at(-1)?.[1]);
+      expect(last).toContain('q=gift');
+      expect(last).toContain('direction=desc');
+    });
   });
 
   it('names a suggestion without a product, and never says topic in the page text', async () => {
