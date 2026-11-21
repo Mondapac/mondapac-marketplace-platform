@@ -70,9 +70,18 @@ const view = (
 const click = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
 
 let assigned = '';
+let reloaded = false;
+/** Whether the page would ask before it unloads (the shared leave guard). */
+const asksBeforeUnload = () => {
+  const event = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+};
+
 beforeEach(() => {
   call.mockReset();
   assigned = '';
+  reloaded = false;
   HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
     this.setAttribute('open', '');
   };
@@ -89,6 +98,9 @@ beforeEach(() => {
     ...window.location,
     assign: (url: string) => {
       assigned = url;
+    },
+    reload: () => {
+      reloaded = true;
     },
   });
 });
@@ -119,11 +131,16 @@ describe('claim policy page', () => {
     expect(screen.queryByRole('button', { name: 'Review changes' })).toBeNull();
   });
 
-  it('asks for a change before it shows the confirmation', () => {
+  it('shows the save bar only after a change, and Discard puts the published rows back', () => {
     view();
-    click('Review changes');
-    expect(screen.getByText('Nothing has changed yet.')).toBeTruthy();
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Review changes' })).toBeNull();
+    click('Add a handling row');
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(within(bar).getByText(/1 unsaved change/)).toBeTruthy();
+    fireEvent.click(within(bar).getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.queryByLabelText('Handling type')).toBeNull();
     expect(call).not.toHaveBeenCalled();
   });
 
@@ -204,6 +221,7 @@ describe('claim policy page', () => {
     click('Add a category row');
     click('Review changes');
     expect(screen.getByText('Choose a category.')).toBeTruthy();
+    expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
     fireEvent.change(screen.getAllByLabelText('Platform category')[1]!, {
       target: { value: MEAT },
     });
@@ -291,6 +309,75 @@ describe('claim policy page', () => {
       within(screen.getByRole('dialog')).getByRole('button', { name: 'Save the change' }),
     );
     await screen.findByRole('button', { name: 'Reload the page' });
+  });
+
+  it('asks before the page unloads only while there are unsaved changes', () => {
+    view();
+    expect(asksBeforeUnload()).toBe(false);
+    fireEvent.change(screen.getAllByLabelText('Basis')[0]!, {
+      target: { value: 'NOT_APPLICABLE' },
+    });
+    expect(asksBeforeUnload()).toBe(true);
+    click('Discard');
+    expect(asksBeforeUnload()).toBe(false);
+  });
+
+  it('stays quiet once the save sends the browser on', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { outcome: 'published', typeId: TYPE, request: null },
+    });
+    view();
+    fireEvent.change(screen.getAllByLabelText('Basis')[0]!, {
+      target: { value: 'NOT_APPLICABLE' },
+    });
+    click('Review changes');
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Save the change' }),
+    );
+    await waitFor(() => expect(assigned).not.toBe(''));
+    expect(asksBeforeUnload()).toBe(false);
+  });
+
+  it('reloads without the leave prompt when the policy moved on meanwhile', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 409, code: 'conflict.stale' } });
+    view();
+    fireEvent.change(screen.getAllByLabelText('Basis')[0]!, {
+      target: { value: 'NOT_APPLICABLE' },
+    });
+    click('Review changes');
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Save the change' }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Reload the page' }));
+    expect(reloaded).toBe(true);
+    expect(asksBeforeUnload()).toBe(false);
+  });
+
+  it('counts a duplicate row as unsaved work and keeps Save off until it is fixed', () => {
+    view();
+    click('Add a category row');
+    fireEvent.change(screen.getAllByLabelText('Platform category')[1]!, {
+      target: { value: MEAT },
+    });
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(within(bar).getByText(/1 unsaved change/)).toBeTruthy();
+    click('Review changes');
+    expect(within(bar).getByText(/1 needs fixing/)).toBeTruthy();
+    expect(
+      within(bar).getByRole<HTMLButtonElement>('button', { name: 'Review changes' }).disabled,
+    ).toBe(true);
+  });
+
+  it('clears the reason with Discard', () => {
+    view();
+    click('Add a handling row');
+    fireEvent.change(screen.getByLabelText(/Reason for the change/), {
+      target: { value: 'why' },
+    });
+    click('Discard');
+    expect(screen.getByLabelText<HTMLTextAreaElement>(/Reason for the change/).value).toBe('');
   });
 });
 

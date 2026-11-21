@@ -2165,7 +2165,6 @@
         "heading": "Change {code}",
         "back": "Back to the type",
         "intro": "This saves a new revision. The check method cannot change. A change that makes a rule weaker, or removes a claim term or a language, waits for a second admin before it is published.",
-        "no-changes": "Nothing has changed yet.",
         "settings": "Settings",
         "mode-fixed": "cannot be changed",
         "auto-help": "Only for self-declared types. Turning this on needs a second admin.",
@@ -2177,7 +2176,6 @@
         "optional": "optional",
         "reason-help": "Up to {max} characters. A second admin sees it.",
         "review": "Review changes",
-        "cancel": "Cancel",
         "problem": {
           "icon": "Use lowercase letters, digits and hyphens, starting with a letter.",
           "name": "Enter a name of up to {nameMax} characters.",
@@ -2332,8 +2330,7 @@
           "reason": "Reason for the change",
           "optional": "optional",
           "reason-help": "Up to {max} characters. Shown to the admin who approves it.",
-          "review": "Review changes",
-          "no-changes": "Nothing has changed yet."
+          "review": "Review changes"
         },
         "problem": {
           "category": "Choose a category.",

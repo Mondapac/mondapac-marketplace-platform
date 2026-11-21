@@ -101,7 +101,7 @@ describe('ship-to retention panel', () => {
     expect(
       screen.getByLabelText<HTMLInputElement>('Months after the order is completed').disabled,
     ).toBe(true);
-    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
     expect(screen.getByText(/Version 2/)).toBeTruthy();
   });
 
@@ -110,7 +110,7 @@ describe('ship-to retention panel', () => {
     fireEvent.click(screen.getByRole('switch'));
     const months = screen.getByLabelText<HTMLInputElement>('Months after the order is completed');
     expect(months.value).toBe('24');
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(call).not.toHaveBeenCalled();
     const confirm = screen.getByRole('dialog', { name: 'Delete delivery addresses permanently?' });
     expect(within(confirm).getByText(/completed at least 24 months ago/)).toBeTruthy();
@@ -144,7 +144,7 @@ describe('ship-to retention panel', () => {
     call.mockResolvedValueOnce(
       ok(setting({ enabled: false, months: 12, version: 4, updatedAt: '2026-11-15T01:00:00Z' })),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(screen.getByText(/Version 4/)).toBeTruthy());
     expect(call).toHaveBeenCalledWith(
       'PUT',
@@ -162,18 +162,71 @@ describe('ship-to retention panel', () => {
     call.mockResolvedValueOnce(
       ok(setting({ enabled: true, months: 36, version: 2, updatedAt: '2026-11-15T01:00:00Z' })),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(screen.getByText(/Version 2/)).toBeTruthy());
 
     fireEvent.change(screen.getByLabelText('Months after the order is completed'), {
       target: { value: '6' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(call).toHaveBeenCalledTimes(1);
     expect(
       screen.getByRole('dialog', { name: 'Delete delivery addresses permanently?' }),
     ).toBeTruthy();
+  });
+
+  it('shows the save bar only with a change, counts the changes and discards them', () => {
+    panel(setting({ enabled: true, months: 24, version: 1, updatedAt: '2026-11-10T01:00:00Z' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Months after the order is completed'), {
+      target: { value: '30' },
+    });
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(within(bar).getByText(/1 unsaved change/)).toBeTruthy();
+    fireEvent.click(within(bar).getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(
+      screen.getByLabelText<HTMLInputElement>('Months after the order is completed').value,
+    ).toBe('24');
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('disables Save while the months need fixing, and enables it once they are fixed', () => {
+    panel(setting());
+    fireEvent.click(screen.getByRole('switch'));
+    const months = screen.getByLabelText('Months after the order is completed');
+    fireEvent.change(months, { target: { value: '0' } });
+    expect(screen.getByText(/2 unsaved changes/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
+      true,
+    );
+    fireEvent.change(months, { target: { value: '12' } });
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
+      false,
+    );
+  });
+
+  it('asks before the page unloads while a change is unsaved, and not once it is saved', async () => {
+    const asks = () => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    panel(setting({ enabled: true, months: 24, version: 1, updatedAt: '2026-11-10T01:00:00Z' }));
+    expect(asks()).toBe(false);
+    fireEvent.change(screen.getByLabelText('Months after the order is completed'), {
+      target: { value: '30' },
+    });
+    expect(asks()).toBe(true);
+    call.mockResolvedValueOnce(
+      ok(setting({ enabled: true, months: 30, version: 2, updatedAt: '2026-11-15T01:00:00Z' })),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(screen.getByText(/Version 2/)).toBeTruthy());
+    expect(asks()).toBe(false);
   });
 
   it.each(['0', '121', '1.5', ''])('refuses %j months before sending', (value) => {
@@ -182,7 +235,7 @@ describe('ship-to retention panel', () => {
     fireEvent.change(screen.getByLabelText('Months after the order is completed'), {
       target: { value },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(call).not.toHaveBeenCalled();
     expect(screen.getByText('Enter a whole number of months from 1 to 120.')).toBeTruthy();
   });
@@ -193,7 +246,7 @@ describe('ship-to retention panel', () => {
       target: { value: '30' },
     });
     call.mockResolvedValueOnce(refused(409, 'conflict.retry'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() =>
       expect(screen.getByText(/Another admin changed this setting first/)).toBeTruthy(),
     );

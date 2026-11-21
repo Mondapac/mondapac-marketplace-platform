@@ -5,12 +5,15 @@ import {
   Button,
   CheckboxRow,
   Dialog,
+  SaveBar,
   Select,
   TextAreaField,
   TextField,
+  useUnsavedChangesGuard,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
+import { flushSync } from 'react-dom';
 import {
   API_TYPES,
   REASON_MAX,
@@ -65,7 +68,10 @@ function draftOf(content: TypeContent): Draft {
     requiresDocument: content.requiresDocument === true,
     requiresExpiry: content.requiresExpiry === true,
     defaultBasis: content.defaultBasis ?? 'NOT_APPLICABLE',
-    autoApprove: content.autoApproveSelfDeclaration === true,
+    // Only a self-declared type shows the switch; any other type never auto-approves.
+    autoApprove:
+      content.verificationMode === 'SELF_DECLARATION' &&
+      content.autoApproveSelfDeclaration === true,
     icon: content.badgeIconKey ?? '',
     locales,
     reason: '',
@@ -214,6 +220,8 @@ export function TypeRevisionForm({
   const [draft, setDraft] = useState<Draft>(() => draftOf(published));
   const [shown, setShown] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  // Set once the revision is saved and the browser is sent on: the leave prompt stays quiet.
+  const [leaving, setLeaving] = useState(false);
   const cancel = useRef<HTMLButtonElement>(null);
   const selfDeclared = published.verificationMode === 'SELF_DECLARATION';
   const problems = problemsOf(draft, selfDeclared);
@@ -240,6 +248,23 @@ export function TypeRevisionForm({
           } as never,
         )
       : undefined;
+  const count = changes.length;
+  const errorCount = shown ? Object.keys(problems).length : 0;
+  // Leaving with edits that are not saved asks first (the dialog the settings pages use).
+  const guard = useUnsavedChangesGuard(
+    count > 0 && !leaving,
+    {
+      title: tr('settings.leave.title'),
+      message: (info) => tr('settings.leave.message', { count: info.count, page: info.page }),
+      stay: tr('settings.leave.stay'),
+      leave: tr('settings.leave.leave'),
+    },
+    { count, page: t('title') },
+  );
+  function discard() {
+    setDraft(draftOf(published));
+    setShown(false);
+  }
   const set = (patch: Partial<Draft>) => setDraft((current) => ({ ...current, ...patch }));
   const setLocale = (code: string, patch: Partial<LocaleDraft>) =>
     setDraft((current) => ({
@@ -263,6 +288,7 @@ export function TypeRevisionForm({
     });
     if (answer.ok) {
       const what = answer.body.outcome === 'published' ? 'revision-published' : 'revision-pending';
+      flushSync(() => setLeaving(true));
       window.location.assign(`/certificates/types/${type.typeId}?done=${what}`);
     }
   }
@@ -271,11 +297,6 @@ export function TypeRevisionForm({
   return (
     <form onSubmit={review} className="flex flex-col gap-6" noValidate>
       <p className="text-fg-muted">{t('intro')}</p>
-      {shown && changes.length === 0 && !failed ? (
-        <div role="status">
-          <Banner tone="info">{t('no-changes')}</Banner>
-        </div>
-      ) : null}
       <fieldset className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-4">
         <legend className="px-1 text-base font-semibold">{t('settings')}</legend>
         <p className="text-sm">
@@ -366,15 +387,21 @@ export function TypeRevisionForm({
         help={t('reason-help', { max: REASON_MAX })}
         error={error('reason', 'reason')}
       />
-      <div className="flex flex-wrap gap-3">
-        <Button type="submit">{t('review')}</Button>
-        <a
-          className="inline-flex items-center font-medium text-link underline"
-          href={`/certificates/types/${type.typeId}`}
-        >
-          {t('cancel')}
-        </a>
-      </div>
+      <SaveBar
+        count={count}
+        summary={tr('settings.bar.summary', { count })}
+        errorCount={errorCount}
+        errorsSummary={tr('settings.bar.errors', { count: errorCount })}
+        labels={{
+          region: tr('settings.bar.region'),
+          discard: tr('settings.bar.discard'),
+          // Save opens the confirmation that lists the changes; nothing is sent yet.
+          save: t('review'),
+          saving: t('review'),
+        }}
+        onDiscard={discard}
+      />
+      {guard.dialog}
       {confirming ? (
         <Dialog
           open
@@ -394,7 +421,15 @@ export function TypeRevisionForm({
                 {t('confirm.back')}
               </Button>
               {call.problem?.reload === true ? (
-                <Button type="button" autoFocus onClick={() => window.location.reload()}>
+                <Button
+                  type="button"
+                  autoFocus
+                  onClick={() => {
+                    // The draft is stale: reloading is the way out, so the leave prompt stays quiet.
+                    flushSync(() => setLeaving(true));
+                    window.location.reload();
+                  }}
+                >
                   {t('confirm.reload')}
                 </Button>
               ) : (

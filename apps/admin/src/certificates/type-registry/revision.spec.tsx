@@ -53,9 +53,18 @@ const form = (type = detail()) => wrap(<TypeRevisionForm type={type} csrfToken="
 const click = (name: string) => fireEvent.click(screen.getByRole('button', { name }));
 
 let assigned = '';
+let reloaded = false;
+/** Whether the page would ask before it unloads (the shared leave guard). */
+const asksBeforeUnload = () => {
+  const event = new Event('beforeunload', { cancelable: true });
+  window.dispatchEvent(event);
+  return event.defaultPrevented;
+};
+
 beforeEach(() => {
   call.mockReset();
   assigned = '';
+  reloaded = false;
   HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
     this.setAttribute('open', '');
   };
@@ -73,6 +82,9 @@ beforeEach(() => {
     assign: (url: string) => {
       assigned = url;
     },
+    reload: () => {
+      reloaded = true;
+    },
   });
 });
 afterEach(() => {
@@ -89,11 +101,17 @@ describe('type revision form', () => {
     expect(screen.queryByLabelText('Approve without a person')).toBeNull();
   });
 
-  it('asks for a change before it shows the confirmation', () => {
+  it('shows the save bar only after a change, and Discard puts the published values back', () => {
     form();
-    click('Review changes');
-    expect(screen.getByText('Nothing has changed yet.')).toBeTruthy();
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Review changes' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Halal food' } });
+    fireEvent.click(screen.getByLabelText('Needs an expiry date'));
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(within(bar).getByText(/2 unsaved changes/)).toBeTruthy();
+    fireEvent.click(within(bar).getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.getByLabelText<HTMLInputElement>('Name').value).toBe('Halal');
     expect(call).not.toHaveBeenCalled();
   });
 
@@ -172,6 +190,10 @@ describe('type revision form', () => {
     fireEvent.change(screen.getByLabelText('Icon'), { target: { value: 'Shield Check' } });
     fireEvent.change(screen.getByLabelText('Claim terms'), { target: { value: '' } });
     click('Review changes');
+    expect(screen.getByText(/3 need fixing/)).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Review changes' }).disabled).toBe(
+      true,
+    );
     expect(screen.getByText(/Enter a name/)).toBeTruthy();
     expect(screen.getByText(/lowercase letters, digits and hyphens, starting/)).toBeTruthy();
     expect(screen.getByText(/Add at least one claim term/)).toBeTruthy();
@@ -207,6 +229,63 @@ describe('type revision form', () => {
       within(screen.getByRole('dialog')).getByRole('button', { name: 'Save the change' }),
     );
     await screen.findByRole('button', { name: 'Reload the page' });
+  });
+
+  it('asks before the page unloads only while there are unsaved changes', () => {
+    form();
+    expect(asksBeforeUnload()).toBe(false);
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Halal food' } });
+    expect(asksBeforeUnload()).toBe(true);
+    click('Discard');
+    expect(asksBeforeUnload()).toBe(false);
+  });
+
+  it('stays quiet once the save sends the browser on', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { outcome: 'published', typeId: TYPE, revisionNo: 3 },
+    });
+    form();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Halal food' } });
+    click('Review changes');
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Save the change' }),
+    );
+    await waitFor(() => expect(assigned).not.toBe(''));
+    expect(asksBeforeUnload()).toBe(false);
+  });
+
+  it('reloads without the leave prompt when the type moved on meanwhile', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 409, code: 'conflict.stale' } });
+    form();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Halal food' } });
+    click('Review changes');
+    fireEvent.click(
+      within(screen.getByRole('dialog')).getByRole('button', { name: 'Save the change' }),
+    );
+    fireEvent.click(await screen.findByRole('button', { name: 'Reload the page' }));
+    expect(reloaded).toBe(true);
+    expect(asksBeforeUnload()).toBe(false);
+  });
+
+  it('clears the errors with Discard', () => {
+    form();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: '  ' } });
+    click('Review changes');
+    expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
+    click('Discard');
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Halal food' } });
+    expect(screen.queryByText(/needs fixing/)).toBeNull();
+    expect(screen.queryByText(/Enter a name/)).toBeNull();
+  });
+
+  it('is not blocked by an auto-approve flag on a type that is not self-declared', () => {
+    form(detail({ autoApproveSelfDeclaration: true }));
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Halal food' } });
+    click('Review changes');
+    expect(screen.queryByText(/needs fixing/)).toBeNull();
+    expect(screen.getByRole('dialog')).toBeTruthy();
   });
 });
 
