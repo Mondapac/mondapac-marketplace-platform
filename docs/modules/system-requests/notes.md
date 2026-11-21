@@ -567,3 +567,5 @@ The admin panel pages (queue, detail, review policy, menu badge) are built. Left
   outcome line repeated the facts, and the card number link, the unchanged-fields button and the view
   tabs were under 44 px. Remaining: the row checkbox hit area is 40 px (shared `SelectBox`), and the
   policy page Switch and "Awaiting review" link are 24 px tall (shared `Switch`).
+
+مواردی که به آینده موکول شده‌اند در فهرست متمرکز هم ثبت است: `docs/future-enhancements/` (بخش‌های زیرساخت، کاربران و دسترسی، پنل ادمین، محتوا و اعلان).

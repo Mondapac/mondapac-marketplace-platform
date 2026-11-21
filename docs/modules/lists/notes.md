@@ -121,3 +121,5 @@ true`), `sort`, `direction`. Search text and the deep-link subject are never sav
 ## Not here yet
 
 - The switch of the panels to the generic `/lists/*` routes.
+
+مواردی که به آینده موکول شده‌اند در فهرست متمرکز هم ثبت است: `docs/future-enhancements/` (بخش‌های زیرساخت، کاربران و دسترسی، پنل ادمین، محتوا و اعلان).
