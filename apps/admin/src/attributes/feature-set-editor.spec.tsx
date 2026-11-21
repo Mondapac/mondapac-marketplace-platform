@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, within, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -93,9 +93,7 @@ describe.each(MARKETS)('feature set editor in market $name', ({ locales }) => {
 
   it('saves a changed level with the version read', async () => {
     show();
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
-      true,
-    );
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
     fireEvent.change(screen.getByLabelText('Requirement for brand'), {
       target: { value: 'required' },
     });
@@ -156,6 +154,20 @@ describe.each(MARKETS)('feature set editor in market $name', ({ locales }) => {
     fireEvent.change(select, { target: { value: 'size' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add attribute' }));
     expect(screen.getByLabelText('Requirement for size')).toBeTruthy();
+  });
+
+  it('shows the save bar only with a change, and Discard puts the saved set back', () => {
+    show();
+    fireEvent.change(screen.getByLabelText('Requirement for brand'), {
+      target: { value: 'required' },
+    });
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    fireEvent.click(within(bar).getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.getByLabelText<HTMLSelectElement>('Requirement for brand').value).not.toBe(
+      'required',
+    );
+    expect(onCancel).not.toHaveBeenCalled();
   });
 
   it('will not save while a Material attribute is taken out', () => {

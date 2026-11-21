@@ -438,14 +438,30 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     spy.restore();
   });
 
+  it('shows the save bar only with a change, and Discard keeps the editor open with the saved text', async () => {
+    serve({ [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1)) });
+    mount({ canEdit: true, initialId: id(1), startEditing: true });
+    const element = await screen.findByRole('form', { name: 'Edit attribute' });
+    const form = within(element);
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    touchHelp(element);
+    const bar = within(screen.getByRole('region', { name: 'Unsaved changes' }));
+    fireEvent.click(bar.getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(
+      form.getAllByRole<HTMLInputElement>('textbox', { name: /^Help text in/ })[0]!.value,
+    ).not.toBe('Shown next to the field.');
+    expect(screen.getByRole('form', { name: 'Edit attribute' })).toBeTruthy();
+  });
+
   it('opens the editor at once on the attribute page for ?edit=1', async () => {
     serve({ [`GET catalog/admin/attributes/${id(1)}`]: ok(detail(locales, 1)) });
     mount({ canEdit: true, initialId: id(1), startEditing: true });
-    expect(await screen.findByRole('button', { name: 'Save' })).toBeTruthy();
+    expect(await screen.findByRole('form', { name: 'Edit attribute' })).toBeTruthy();
     cleanup();
     mount({ canEdit: false, initialId: id(1), startEditing: true });
     await screen.findByRole('heading', { name: 'Attribute 1' });
-    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
   });
 
   it('archives from the row after typing the code, and reads the list again', async () => {
@@ -1062,7 +1078,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
           .getAttribute('dir'),
       ).toBe('rtl');
     }
-    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Save changes' }));
     expect(
       await within(panel).findByText(/^This attribute changed since you opened it/),
     ).toBeTruthy();
@@ -1083,11 +1099,9 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     fireEvent.click(within(panel).getByRole('button', { name: 'Reload' }));
     await within(panel).findByRole('button', { name: 'Edit' });
     fireEvent.click(within(panel).getByRole('button', { name: 'Edit' }));
-    fireEvent.click(
-      within(within(panel).getByRole('form', { name: 'Edit attribute' })).getByRole('button', {
-        name: 'Save',
-      }),
-    );
+    const again = within(panel).getByRole('form', { name: 'Edit attribute' });
+    touchHelp(again);
+    fireEvent.click(within(again).getByRole('button', { name: 'Save changes' }));
     await expectToast('Attribute saved.');
     expect(writes('PUT')[1]?.body).toMatchObject({ version: 3 });
   });
@@ -1107,25 +1121,27 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
       const panel = await screen.findByRole('region', { name: 'Attribute details' });
       await within(panel).findByRole('heading', { name: 'Attribute 1' });
       fireEvent.click(within(panel).getByRole('button', { name: 'Edit' }));
-      return within(panel).getByRole('form', { name: 'Edit attribute' });
+      const form = within(panel).getByRole('form', { name: 'Edit attribute' });
+      touchHelp(form);
+      return form;
     };
 
     it('shows no note field and sends none when the save is not reviewed', async () => {
       const form = await open({ review: { reviewed: false, risk: 'low' } });
       expect(within(form).queryByLabelText('Note for reviewers')).toBeNull();
-      fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Save changes' }));
       await expectToast('Attribute saved.');
       expect('note' in (writes('PUT')[0]?.body as object)).toBe(false);
     });
 
     it('requires a trimmed note when reviewed, and says the change was sent for review', async () => {
       const form = await open({ review: { reviewed: true, risk: 'medium' } });
-      fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Save changes' }));
       expect(writes('PUT')).toHaveLength(0);
       fireEvent.change(within(form).getByLabelText('Note for reviewers'), {
         target: { value: '  Made it clearer  ' },
       });
-      fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Save changes' }));
       await expectToast('Sent for review (SR-31)', 'info');
       expect(writes('PUT')[0]?.body).toMatchObject({ note: 'Made it clearer' });
     });
@@ -1146,7 +1162,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
       fireEvent.change(within(form).getByLabelText('Note for reviewers'), {
         target: { value: 'Why' },
       });
-      fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+      fireEvent.click(within(form).getByRole('button', { name: 'Save changes' }));
       expect(await within(form).findByText(/The note was refused/)).toBeTruthy();
     });
   });
@@ -1170,7 +1186,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     const form = within(panel).getByRole('form', { name: 'Edit attribute' });
     expect(within(form).queryByRole('button', { name: 'Remove' })).toBeNull();
     fireEvent.click(within(form).getByRole('button', { name: 'Move value 2 up' }));
-    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Save changes' }));
     expect(await within(form).findByText(/^Use plain text only/)).toBeTruthy();
     const field = within(form).getAllByRole('textbox', { name: /^Value 1 in/ })[0]!;
     expect(field.getAttribute('aria-invalid')).toBe('true');
@@ -1268,7 +1284,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     fireEvent.change(within(form).getByRole('textbox', { name: /^Code of value 4/ }), {
       target: { value: 'medium' },
     });
-    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Save changes' }));
     await expectToast('Attribute saved.');
     const options = (writes('PUT')[0]?.body as { options: { code?: string }[] }).options;
     expect(options.map((o) => o.code)).toEqual(['mild', 'hot', 'value-1', 'medium']);
@@ -1293,7 +1309,8 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     const panel = await screen.findByRole('region', { name: 'Attribute details' });
     fireEvent.click(await within(panel).findByRole('button', { name: 'Edit' }));
     const form = within(panel).getByRole('form', { name: 'Edit attribute' });
-    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    touchHelp(form);
+    fireEvent.click(within(form).getByRole('button', { name: 'Save changes' }));
     await within(form).findByText(/^This text names a certification/);
     fireEvent.click(within(form).getByRole('button', { name: 'Move value 2 up' }));
     const first = within(form).getAllByRole('textbox', { name: /^Value 1 in/ })[0]!;
@@ -1316,7 +1333,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     const label = within(form).getAllByRole('textbox', { name: /^Value 2 in/ })[0]!;
     fireEvent.change(name, { target: { value: '' } });
     fireEvent.change(label, { target: { value: '' } });
-    fireEvent.click(within(form).getByRole('button', { name: 'Save' }));
+    fireEvent.click(within(form).getByRole('button', { name: 'Save changes' }));
     await waitFor(() => expect(document.activeElement).toBe(name));
     label.focus();
     fireEvent.change(label, { target: { value: 'H' } });
@@ -1683,6 +1700,12 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     }
   });
 });
+
+/** A change to the help text, so the save bar shows (it shows only with an unsaved change). */
+const touchHelp = (form: HTMLElement) =>
+  fireEvent.change(within(form).getAllByRole('textbox', { name: /^Help text in/ })[0]!, {
+    target: { value: 'Shown next to the field.' },
+  });
 
 describe('history change lines', () => {
   it('reads every field the API names, and keeps an unknown one by its name', () => {
