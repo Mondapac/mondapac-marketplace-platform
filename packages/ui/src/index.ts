@@ -434,6 +434,7 @@ export {
   type SuperListQuery,
   type SuperListQueryOptions,
 } from './list/use-super-list-query.ts';
+export { useBaseTabCounts } from './list/use-base-tab-counts.ts';
 export {
   FilterChipRow,
   type FilterChipRowChip,
