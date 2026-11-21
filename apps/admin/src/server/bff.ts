@@ -241,6 +241,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The report of published products missing a required detail (catalog, attributes A4;
     // query: `sellerId`, `familyCode`, `afterId`, `limit`).
     'catalog/admin/reports/products-missing-details',
+    'catalog/admin/reports/products-missing-details/export',
     // "Write with AI" (catalog, AIS-03): whether the writer is on for this admin, and the model
     // setup read by the Settings AI card (on/off kill switch, key set or not, model ids; never
     // the key). The AI settings (settings; keys settings.ai.view / settings.ai.manage).
@@ -1612,7 +1613,26 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/variants/issue-counts': ['typeCode'],
   'catalog/admin/variants/export': ['format', 'q', 'typeCode', 'issue'],
   'catalog/admin/brands/export': ['format', 'status', 'originCountry', 'q'],
-  'catalog/admin/reports/products-missing-details': ['sellerId', 'familyCode', 'afterId', 'limit'],
+  'catalog/admin/reports/products-missing-details/export': [
+    'format',
+    'sellerId',
+    'familyCode',
+    'q',
+    'sort',
+    'direction',
+  ],
+  'catalog/admin/reports/products-missing-details': [
+    'sellerId',
+    'familyCode',
+    'afterId',
+    'limit',
+    'q',
+    'sort',
+    'direction',
+    'page',
+    'pageSize',
+    'paging',
+  ],
   'ordering/admin/refund-limits': ['sellerId'],
 };
 /** Free text typed in a list's search box: 1 to 80 characters. */
@@ -2496,11 +2516,25 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sort: /^(slug|status|group|created|updated)$/,
     direction: /^(asc|desc)$/,
   },
+  'catalog/admin/reports/products-missing-details/export': {
+    format: /^(csv|xlsx)$/,
+    sellerId: UUID,
+    familyCode: /^[a-z][a-z0-9_-]{0,63}$/,
+    q: SEARCH_TEXT,
+    sort: /^(code|name|family|missing)$/,
+    direction: /^(asc|desc)$/,
+  },
   'catalog/admin/reports/products-missing-details': {
     sellerId: UUID,
     familyCode: /^[a-z][a-z0-9_-]{0,63}$/,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
+    q: SEARCH_TEXT,
+    sort: /^(code|name|family|missing)$/,
+    direction: /^(asc|desc)$/,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
   },
   'catalog/admin/attributes': {
     type: /^(text|long-text|integer|decimal|boolean|date|select|multi-select|measure)$/,
