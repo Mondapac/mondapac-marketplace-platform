@@ -5,13 +5,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 import { expectToast } from '../../test/toast-spy.ts';
 
-vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+const { inner, saved } = vi.hoisted(() => ({
+  inner: vi.fn(),
+  saved: { items: [] as unknown[] },
+}));
+// The saved filters of the list are not what these tests are about: there are none.
+vi.mock('../api/client.ts', () => ({
+  callApi: (method: string, path: string, ...rest: unknown[]) =>
+    path.startsWith('lists/admin/saved-filters')
+      ? Promise.resolve({ ok: true, status: 200, body: { items: saved.items, canShare: false } })
+      : (inner(method, path, ...rest) as Promise<unknown>),
+}));
 
-import { callApi, type ApiResult } from '../api/client.ts';
+import type { ApiResult } from '../api/client.ts';
 import { csvCell, csvOf, MissingDetailsList } from './missing-details-list.tsx';
 import type { EmailSellersAnswer, MissingDetailsItem } from './types.ts';
 
-const call = vi.mocked(callApi);
+const call = inner;
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
 const ok = <T,>(body: T): ApiResult<T> => ({ ok: true, status: 200, body });
 
@@ -56,6 +66,7 @@ function mount(canEdit = false) {
 }
 
 beforeEach(() => {
+  saved.items = [];
   call.mockReset();
   call.mockResolvedValue(ok(page([])));
   window.matchMedia = ((query: string) => ({
@@ -74,6 +85,34 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('Missing details list', () => {
+  it('opens a saved filter as a tab with its seller, family and sort', async () => {
+    saved.items = [
+      {
+        id: id(70),
+        listKey: 'admin.catalog.products-missing-details',
+        name: 'One seller',
+        visibility: 'everyone',
+        payload: {
+          v: 1,
+          filters: { sellerId: id(900), familyCode: 'grocery' },
+          sort: 'missing',
+          direction: 'desc',
+        },
+        ownedByMe: false,
+        canManage: false,
+      },
+    ];
+    call.mockResolvedValue(ok(page([item(1)])));
+    mount();
+    await screen.findByText('Product 1');
+    fireEvent.click(await screen.findByRole('button', { name: 'One seller' }));
+    await waitFor(() => {
+      const last = String(call.mock.calls.at(-1)?.[1]);
+      expect(last).toContain(`sellerId=${id(900)}`);
+      expect(last).toContain('familyCode=grocery');
+    });
+  });
+
   it('lists the products with what they miss and says they stay on sale', async () => {
     call.mockResolvedValue(ok(page([item(1), item(2, { missing: ['origin', 'storage'] })])));
     mount();
