@@ -1492,6 +1492,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/brands': [
     'status',
     'originCountry',
+    'createdFrom',
+    'createdTo',
     'search',
     'afterId',
     'limit',
@@ -1612,7 +1614,14 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   ],
   'catalog/admin/variants/issue-counts': ['typeCode'],
   'catalog/admin/variants/export': ['format', 'q', 'typeCode', 'issue'],
-  'catalog/admin/brands/export': ['format', 'status', 'originCountry', 'q'],
+  'catalog/admin/brands/export': [
+    'format',
+    'status',
+    'originCountry',
+    'createdFrom',
+    'createdTo',
+    'q',
+  ],
   'catalog/admin/reports/products-missing-details/export': [
     'format',
     'sellerId',
@@ -2328,6 +2337,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     format: /^(csv|xlsx)$/,
     status: /^(draft|active|archived)$/,
     originCountry: /^[A-Z]{2}$/,
+    createdFrom: ISO_INSTANT,
+    createdTo: ISO_INSTANT,
     // eslint-disable-next-line no-control-regex -- the control characters are what it refuses
     q: /^[^\u0000-\u001f\u007f]{1,100}$/u,
   },
@@ -2475,6 +2486,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'catalog/admin/brands': {
     status: /^(draft|active|archived)$/,
     originCountry: /^[A-Z]{2}$/,
+    createdFrom: ISO_INSTANT,
+    createdTo: ISO_INSTANT,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
     // The search text: no control characters (a newline would pass a plain `.`), up to 100.
