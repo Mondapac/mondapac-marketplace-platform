@@ -271,6 +271,7 @@ export function AttributeEditForm({
 
   function discard() {
     setForm(formOf(detail));
+    call.clear();
     setErrors({});
     setNote('');
     setNoteError(null);

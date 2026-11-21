@@ -188,6 +188,20 @@ describe.each(MARKETS)('feature set editor in market $name', ({ locales }) => {
     expect(screen.getByRole('button', { name: 'Remove group storage' })).toBeTruthy();
   });
 
+  it('adds the group on Enter in the new group field and does not save the set', () => {
+    show();
+    fireEvent.change(screen.getByLabelText('Requirement for brand'), {
+      target: { value: 'required' },
+    });
+    const input = screen.getByLabelText(/^New group name/);
+    fireEvent.change(input, { target: { value: 'Care' } });
+    // fireEvent returns false when the handler prevented the default (the form submit).
+    expect(fireEvent.keyDown(input, { key: 'Enter' })).toBe(false);
+    expect(screen.getByRole('button', { name: 'Remove group care' })).toBeTruthy();
+    expect(call.mock.calls.some(([method]) => method === 'PUT')).toBe(false);
+    expect(onSaved).not.toHaveBeenCalled();
+  });
+
   it('shows a stale save as a message and keeps the edit', async () => {
     call.mockImplementation((method) =>
       Promise.resolve(

@@ -128,6 +128,14 @@ export function FeatureSetEditor({
     { count: 1, page: t('title', { code: detail.code }) },
   );
 
+  function addNewGroup() {
+    const name = newGroup.trim();
+    if (name === '') return;
+    const code = slug(name, new Set(state.groups.map((group) => group.groupCode)));
+    setState(addGroup(state, code, { [locales.default]: name }));
+    setNewGroup('');
+  }
+
   function discard() {
     setState(initial);
     setNewGroup('');
@@ -357,17 +365,14 @@ export function FeatureSetEditor({
             label={t('new-group', { language: languageName(locales.default, locales.supported) })}
             value={newGroup}
             onChange={(event) => setNewGroup(event.target.value)}
-          />
-          <Button
-            variant="secondary"
-            disabled={newGroup.trim() === ''}
-            onClick={() => {
-              const name = newGroup.trim();
-              const code = slug(name, new Set(state.groups.map((group) => group.groupCode)));
-              setState(addGroup(state, code, { [locales.default]: name }));
-              setNewGroup('');
+            onKeyDown={(event) => {
+              // Enter here adds the group, as the button beside it does; it never saves the set.
+              if (event.key !== 'Enter') return;
+              event.preventDefault();
+              addNewGroup();
             }}
-          >
+          />
+          <Button variant="secondary" disabled={newGroup.trim() === ''} onClick={addNewGroup}>
             {t('add-group')}
           </Button>
         </div>
