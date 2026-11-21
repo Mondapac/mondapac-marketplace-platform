@@ -173,6 +173,9 @@ export function RevisionsList({
           }),
       })),
       icon: 'package',
+      // The Product review queue and the Revision queue are one registry list, told apart by kind.
+      savedKey: 'admin.catalog.review-queue',
+      savedFits: (filters) => filters['kind'] === 'product-revision',
     }),
     [t, tl, tb, columnDefs, rowActions],
   );
@@ -201,6 +204,7 @@ export function RevisionsList({
       accountId={accountId}
       marketId={marketId}
       fields={fields}
+      csrfToken={csrfToken}
       refreshKey={refresh}
       onAnswer={(answer: PagedAnswer<RevisionListRow>) =>
         onTotals((answer as unknown as QueuePage<unknown>).totals)
@@ -328,6 +332,8 @@ export function OffersList({
           }),
       })),
       icon: 'package',
+      savedKey: 'admin.catalog.review-queue',
+      savedFits: (filters) => filters['kind'] === 'offer-first-publication',
     }),
     [tl, tb, columnDefs, rowActions, nameOf],
   );
@@ -337,6 +343,7 @@ export function OffersList({
       paging={paging}
       accountId={accountId}
       marketId={marketId}
+      csrfToken={csrfToken}
       refreshKey={refresh}
       onAnswer={(answer: PagedAnswer<OfferListRow>) =>
         onTotals((answer as unknown as QueuePage<unknown>).totals)
