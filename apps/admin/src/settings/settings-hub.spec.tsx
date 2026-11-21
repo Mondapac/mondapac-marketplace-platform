@@ -76,7 +76,9 @@ describe('SettingsHub', () => {
       'Delivery',
     ]);
     expect(screen.getAllByRole('link').map(label)).toEqual(['Delivery rules']);
-    expect(screen.getByText('Methods, same-day cut-off, scheduling and margin')).toBeTruthy();
+    expect(
+      screen.getByText('Methods, same-day cut-off, scheduling and the markup on fleet quotes'),
+    ).toBeTruthy();
   });
 
   it('puts a View only chip on a page the caller can see but not change', () => {
@@ -88,11 +90,25 @@ describe('SettingsHub', () => {
   });
 
   it('says in one line under each link what its page sets', () => {
-    hub(['wallet.settings.view', 'tax.strategy.view']);
-    const wallet = screen.getByRole('link', { name: /Customer wallet/ });
-    expect(within(wallet).getByText('Store credit for customers, on or off')).toBeTruthy();
-    const tax = screen.getByRole('link', { name: /Tax/ });
-    expect(within(tax).getByText('How the tax of an order line is worked out')).toBeTruthy();
+    hub([
+      'wallet.settings.view',
+      'wallet.settings.manage',
+      'tax.strategy.view',
+      'tax.strategy.manage',
+    ]);
+    // The line describes the link; the link's name stays its label alone.
+    expect(
+      screen.getByRole('link', {
+        name: 'Customer wallet',
+        description: 'Store credit for customers, on or off',
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole('link', {
+        name: 'Tax',
+        description: 'How the tax of an order line is worked out',
+      }),
+    ).toBeTruthy();
   });
 
   it('names each group card by its heading', () => {

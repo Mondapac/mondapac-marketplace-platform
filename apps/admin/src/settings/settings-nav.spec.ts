@@ -50,6 +50,16 @@ describe('settings map', () => {
     }
   });
 
+  it('gives every page a one-line description that exists in the messages', () => {
+    const about: Record<string, string> = messages.settings.hub.about;
+    for (const group of settingsGroups) {
+      for (const link of group.links) {
+        expect(link.descriptionKey, link.id).toBe(`settings.hub.about.${link.id}`);
+        expect(about[link.id], link.id).toBeTruthy();
+      }
+    }
+  });
+
   it('uses unique link ids, and every page has a view key and a manage key', () => {
     const ids = settingsGroups.flatMap((group) => group.links.map((link) => link.id));
     expect(new Set(ids).size).toBe(ids.length);

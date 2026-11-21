@@ -62,12 +62,20 @@ export function SettingsHub({
               <li key={link.id} className="border-b border-line last:border-b-0">
                 <a
                   href={link.href}
+                  aria-describedby={
+                    link.descriptionKey === undefined ? undefined : `settings-about-${link.id}`
+                  }
                   className="flex min-h-12 flex-wrap items-center justify-between gap-x-3 gap-y-1 px-5 py-2 text-fg hover:bg-muted focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-focus"
                 >
                   <span className="flex min-w-0 flex-col">
                     <span className="break-words">{label(link.labelKey)}</span>
                     {link.descriptionKey === undefined ? null : (
-                      <span className="break-words text-sm text-fg-muted">
+                      // Outside the link's name (aria-hidden), read as its description instead.
+                      <span
+                        id={`settings-about-${link.id}`}
+                        aria-hidden="true"
+                        className="break-words text-sm text-fg-muted"
+                      >
                         {label(link.descriptionKey)}
                       </span>
                     )}

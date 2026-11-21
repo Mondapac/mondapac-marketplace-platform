@@ -385,7 +385,10 @@ function ShortcutsDialog({
       label: shortcut.label,
       keys: [shortcut.keys[0].toUpperCase(), labels.then, shortcut.keys[1].toUpperCase()],
     })),
-    { id: 'settings-search', label: labels.settingsSearch, keys: ['/'] },
+    // Listed only on a page that shows the Settings menu search, where "/" does something.
+    ...(open && document.querySelector('[data-settings-search]') !== null
+      ? [{ id: 'settings-search', label: labels.settingsSearch, keys: ['/'] }]
+      : []),
     { id: 'help', label: labels.showList, keys: ['?'] },
   ];
   return (

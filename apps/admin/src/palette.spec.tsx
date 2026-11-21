@@ -296,9 +296,14 @@ describe('PanelTools', () => {
     vi.spyOn(field, 'getClientRects').mockReturnValue([{}] as unknown as DOMRectList);
     expect(fireEvent.keyDown(document.body, { key: '/' })).toBe(false);
     expect(document.activeElement).toBe(field);
-    field.remove();
+    field.blur();
     key(document.body, { key: '?', shiftKey: true });
     expect(dialog()?.textContent).toContain('Search the Settings menu');
+    fireEvent.click(within(dialog()!).getByRole('button', { name: 'Close' }));
+    field.remove();
+    // Without the field the list leaves "/" out: it would do nothing.
+    key(document.body, { key: '?', shiftKey: true });
+    expect(dialog()?.textContent).not.toContain('Search the Settings menu');
   });
 
   it('ignores ? and G-chords while focus is in a field', () => {
