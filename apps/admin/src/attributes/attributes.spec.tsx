@@ -561,7 +561,7 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
     });
   });
 
-  it('opens a saved filter as a tab with its search and view, and offers Save filter on a changed view', async () => {
+  it('opens a saved filter as a tab with its search and view, and offers no second Save on it', async () => {
     const filter = {
       id: id(60),
       listKey: 'admin.catalog.attributes',
