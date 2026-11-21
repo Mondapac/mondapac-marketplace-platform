@@ -10,7 +10,7 @@ export const SETTINGS_PATH = 'customers/admin/account-deletion-settings';
 export const REQUESTS_PATH = 'customers/admin/deletion-requests';
 
 export const SETTINGS_HREF = '/settings/account-deletion';
-export const REQUESTS_HREF = '/settings/account-deletion/requests';
+export const REQUESTS_HREF = '/customers/deletion-requests';
 
 /** The API accepts 7 to 90; the screen offers these, plus the value in force if it is another. */
 export const WAITING_PERIOD_CHOICES = [7, 14, 30, 60, 90] as const;

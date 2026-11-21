@@ -12,6 +12,11 @@ export const settingsRedirects = [
   { source: '/wallet', destination: '/settings/wallet' },
   { source: '/team', destination: '/settings/admins' },
   { source: '/roles/:path*', destination: '/settings/roles/:path*' },
+  // Settings navigation design phase 2a: deletion requests moved under Customers.
+  {
+    source: '/settings/account-deletion/requests',
+    destination: '/customers/deletion-requests',
+  },
 ].map((redirect) => ({ ...redirect, permanent: true as const }));
 
 const config: NextConfig = {
