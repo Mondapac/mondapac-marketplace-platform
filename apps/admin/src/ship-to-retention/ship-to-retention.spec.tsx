@@ -209,6 +209,26 @@ describe('ship-to retention panel', () => {
     );
   });
 
+  it('asks before the page unloads while a change is unsaved, and not once it is saved', async () => {
+    const asks = () => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    panel(setting({ enabled: true, months: 24, version: 1, updatedAt: '2026-11-10T01:00:00Z' }));
+    expect(asks()).toBe(false);
+    fireEvent.change(screen.getByLabelText('Months after the order is completed'), {
+      target: { value: '30' },
+    });
+    expect(asks()).toBe(true);
+    call.mockResolvedValueOnce(
+      ok(setting({ enabled: true, months: 30, version: 2, updatedAt: '2026-11-15T01:00:00Z' })),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    await waitFor(() => expect(screen.getByText(/Version 2/)).toBeTruthy());
+    expect(asks()).toBe(false);
+  });
+
   it.each(['0', '121', '1.5', ''])('refuses %j months before sending', (value) => {
     panel(setting());
     fireEvent.click(screen.getByRole('switch'));

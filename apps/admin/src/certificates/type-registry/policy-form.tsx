@@ -366,7 +366,15 @@ export function PolicyForm({
                 {t('confirm.back')}
               </Button>
               {call.problem?.reload === true ? (
-                <Button type="button" autoFocus onClick={() => window.location.reload()}>
+                <Button
+                  type="button"
+                  autoFocus
+                  onClick={() => {
+                    // The draft is stale: reloading is the way out, so the leave prompt stays quiet.
+                    flushSync(() => setLeaving(true));
+                    window.location.reload();
+                  }}
+                >
                   {t('confirm.reload')}
                 </Button>
               ) : (
