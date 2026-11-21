@@ -187,6 +187,75 @@ describe('review queue lists', () => {
     );
   });
 
+  it.each([
+    ['offer', 'Olive oil'],
+    ['revision', 'Dates'],
+  ] as const)(
+    'filters the %s list by when it was submitted, as instants on the UTC day, and takes it off again',
+    async (tab, name) => {
+      call.mockResolvedValue(tab === 'offer' ? offerAnswer() : answer([revision()]));
+      mount(tab);
+      await screen.findByText(name);
+      fireEvent.click(await screen.findByRole('button', { name: 'Filter' }));
+      fireEvent.change(await screen.findByLabelText('Field'), { target: { value: 'submitted' } });
+      fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'today' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+      const asked = () =>
+        queueCalls().map(([, path]) => new URLSearchParams(String(path).split('?')[1]));
+      await waitFor(() => expect(asked().some((p) => p.has('submittedFrom'))).toBe(true));
+      // The queue shows UTC times, so Today is the UTC day: midnight to midnight, one day long.
+      const utcDay = (q: URLSearchParams) => {
+        expect(q.get('submittedFrom')).toMatch(/T00:00:00(\.000)?Z$/);
+        expect(q.get('submittedTo')).toMatch(/T00:00:00(\.000)?Z$/);
+        expect(
+          Date.parse(q.get('submittedTo') ?? '') - Date.parse(q.get('submittedFrom') ?? ''),
+        ).toBe(24 * 3600 * 1000);
+        expect(q.has('submitted')).toBe(false);
+      };
+      utcDay(asked().find((p) => p.has('submittedFrom')) as URLSearchParams);
+      fireEvent.click(await screen.findByRole('button', { name: /Remove filter Submitted is/ }));
+      await waitFor(() => expect(asked().at(-1)?.has('submittedFrom')).toBe(false));
+    },
+  );
+
+  it('exports with the submitted range as the same instants the list asked for', async () => {
+    call.mockResolvedValue(offerAnswer());
+    const fetchMock = vi.fn(() =>
+      Promise.resolve(
+        new Response('x', {
+          status: 200,
+          headers: { 'content-disposition': 'attachment; filename="offers-for-review.csv"' },
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+    Object.assign(URL, { createObjectURL: () => 'blob:x', revokeObjectURL: () => undefined });
+    mount('offer');
+    await screen.findByText('Olive oil');
+    fireEvent.click(await screen.findByRole('button', { name: 'Filter' }));
+    fireEvent.change(await screen.findByLabelText('Field'), { target: { value: 'submitted' } });
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'today' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    await waitFor(() =>
+      expect(queueCalls().some(([, path]) => String(path).includes('submittedFrom'))).toBe(true),
+    );
+    const row = (await screen.findByText('Olive oil')).closest('tr') as HTMLElement;
+    fireEvent.click(within(row).getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Export…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Export offers' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const url = String((fetchMock.mock.calls as unknown as string[][])[0]?.[0]);
+    expect(url.startsWith('/api/catalog/admin/review-queue/export?')).toBe(true);
+    const query = new URLSearchParams(url.split('?')[1]);
+    expect(query.get('kind')).toBe('offer-first-publication');
+    expect(query.get('submittedFrom')).toMatch(/T00:00:00(\.000)?Z$/);
+    expect(query.get('submittedTo')).toMatch(/T00:00:00(\.000)?Z$/);
+    expect(query.has('submitted')).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
   it('exports the current kind from the Bulk action menu, oldest first, with no sort sent', async () => {
     call.mockResolvedValue(offerAnswer());
     const fetchMock = vi.fn(() =>

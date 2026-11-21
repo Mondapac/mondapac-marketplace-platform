@@ -1268,6 +1268,47 @@ describe('relay of the created range on the activities and tags lists', () => {
   });
 });
 
+describe('relay of the review queue submitted range', () => {
+  const from = '2026-11-14T00:00:00+10:00';
+  const to = '2026-11-21T00:00:00+10:00';
+  const get = (target: string, query: string) =>
+    new Request(`http://admin.localhost:3002/api/${target}?${query}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+
+  it.each(['catalog/admin/review-queue', 'catalog/admin/review-queue/export'])(
+    'forwards submittedFrom and submittedTo of %s as instants and drops other text',
+    async (target) => {
+      const list = upstreamOk();
+      await relay(
+        config,
+        get(
+          target,
+          `kind=product-revision&submittedFrom=${encodeURIComponent(from)}&submittedTo=${encodeURIComponent(to)}&createdFrom=${encodeURIComponent(from)}`,
+        ),
+        target.split('/'),
+        list,
+      );
+      const asked = new URL(list.mock.calls[0]?.[0] as string).searchParams;
+      expect(asked.get('submittedFrom')).toBe(from);
+      expect(asked.get('submittedTo')).toBe(to);
+      // The queue's own range is the submitted one; the created pair is not a key of this list.
+      expect(asked.has('createdFrom')).toBe(false);
+      const refused = upstreamOk();
+      await relay(
+        config,
+        get(target, 'kind=offer-first-publication&submittedFrom=yesterday&submittedTo=2026-11-21'),
+        target.split('/'),
+        refused,
+      );
+      expect(refused.mock.calls[0]?.[0]).toBe(
+        `http://api.test/${target}?kind=offer-first-publication`,
+      );
+    },
+  );
+});
+
 describe('relay of the connected accounts list', () => {
   const get = (query: string, suffix = '') =>
     new Request(

@@ -4,6 +4,7 @@ import { Badge, toast, type MenuItem, type SuperColumn } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useMemo, useState } from 'react';
 import { PagedSuperList } from '../shared/paged-list/paged-super-list.tsx';
+import { useDateFilter } from '../shared/paged-list/use-date-filter.ts';
 import type {
   ListPagingMode,
   PagedAnswer,
@@ -32,6 +33,12 @@ const SORTS = (t: (key: string) => string) =>
       defaultDirection: 'asc' as const,
     },
   ] as const;
+
+/**
+ * The queue's times (Waiting since) are shown in UTC, so a Submitted preset reads its day on the UTC
+ * clock too: "Today" then keeps exactly the rows whose shown date is today's.
+ */
+const QUEUE_ZONE = 'UTC';
 
 /**
  * The pending product revisions as a super list (super list phase 2, list 14): oldest submitted
@@ -179,6 +186,12 @@ export function RevisionsList({
     }),
     [t, tl, tb, columnDefs, rowActions],
   );
+  const submitted = useDateFilter({
+    id: 'submitted',
+    label: tl('filter.name.submitted'),
+    range: { from: 'submittedFrom', to: 'submittedTo' },
+    zone: QUEUE_ZONE,
+  });
   const fields: readonly PagedFilterField[] = useMemo(
     () => [
       {
@@ -194,8 +207,9 @@ export function RevisionsList({
         label: t('filter.photos'),
         options: [{ value: 'true', label: t('filter.photos-with') }],
       },
+      submitted.field,
     ],
-    [t],
+    [t, submitted.field],
   );
   return (
     <PagedSuperList
@@ -204,6 +218,7 @@ export function RevisionsList({
       accountId={accountId}
       marketId={marketId}
       fields={fields}
+      dateRange={submitted.dateRange}
       csrfToken={csrfToken}
       refreshKey={refresh}
       onAnswer={(answer: PagedAnswer<RevisionListRow>) =>
@@ -337,12 +352,21 @@ export function OffersList({
     }),
     [tl, tb, columnDefs, rowActions, nameOf],
   );
+  const submitted = useDateFilter({
+    id: 'submitted',
+    label: tl('filter.name.submitted'),
+    range: { from: 'submittedFrom', to: 'submittedTo' },
+    zone: QUEUE_ZONE,
+  });
+  const fields = useMemo(() => [submitted.field], [submitted.field]);
   return (
     <PagedSuperList
       config={config}
       paging={paging}
       accountId={accountId}
       marketId={marketId}
+      fields={fields}
+      dateRange={submitted.dateRange}
       csrfToken={csrfToken}
       refreshKey={refresh}
       onAnswer={(answer: PagedAnswer<OfferListRow>) =>
