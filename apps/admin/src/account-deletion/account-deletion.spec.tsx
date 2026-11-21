@@ -448,7 +448,7 @@ describe('AccountDeletionSettingsPanel', () => {
     view({ state: 'ok', count: 0, more: false });
     expect(screen.getByText('No accounts are waiting to be deleted.')).toBeTruthy();
     expect(screen.getByRole('link', { name: 'View list' }).getAttribute('href')).toBe(
-      '/settings/account-deletion/requests',
+      '/customers/deletion-requests',
     );
     view({ state: 'ok', count: 1, more: false });
     expect(screen.getByText('1 account is waiting to be deleted.')).toBeTruthy();
@@ -626,7 +626,7 @@ describe('BuyerDeletion', () => {
       await screen.findByText(/A deletion request is already open for this account/)
     ).closest('[role="alert"]') as HTMLElement;
     expect(within(banner).getByRole('link').getAttribute('href')).toBe(
-      '/settings/account-deletion/requests',
+      '/customers/deletion-requests',
     );
   });
 

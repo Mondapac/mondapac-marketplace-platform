@@ -1,18 +1,15 @@
-import { BackLink, LoadError, NoAccess, SettingsTitle } from '@mondapac/ui';
+import { LoadError, NoAccess } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
-import { RequestsList } from '../../../../../src/account-deletion/requests-list.tsx';
-import { isView, type View } from '../../../../../src/account-deletion/list/requests-list-types.ts';
-import {
-  REQUESTS_VIEW_PERMISSION,
-  SETTINGS_HREF,
-} from '../../../../../src/account-deletion/types.ts';
-import { panelHostFor } from '../../../../../src/server/bff.ts';
-import { panelConfig } from '../../../../../src/server/config.ts';
-import { serverGet } from '../../../../../src/server/server-fetch.ts';
-import { requireSession } from '../../../../../src/server/session.ts';
-import { SettingsShell } from '../../../../../src/server/settings-shell.tsx';
-import { localZone } from '../../../../../src/shared/format.ts';
+import { RequestsList } from '../../../../src/account-deletion/requests-list.tsx';
+import { isView, type View } from '../../../../src/account-deletion/list/requests-list-types.ts';
+import { REQUESTS_VIEW_PERMISSION } from '../../../../src/account-deletion/types.ts';
+import { AdminShell } from '../../../../src/server/admin-shell.tsx';
+import { panelHostFor } from '../../../../src/server/bff.ts';
+import { panelConfig } from '../../../../src/server/config.ts';
+import { serverGet } from '../../../../src/server/server-fetch.ts';
+import { requireSession } from '../../../../src/server/session.ts';
+import { localZone } from '../../../../src/shared/format.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -23,7 +20,9 @@ const one = (value: string | readonly string[] | undefined): string | undefined 
   typeof value === 'string' ? value : undefined;
 
 /**
- * Account deletion requests (list 25): the Market's buyer deletion requests as a super list. A link
+ * Account deletion requests (list 25): the Market's buyer deletion requests as a super list, under
+ * Customers in the main menu (settings navigation design, phase 2a: daily work, not a setting; the
+ * old Settings address redirects here). A link
  * may open a view (`?view=`); the page reads the Market's List paging setting and hands the list
  * its zone, and the list reads its own rows. Cancelling stays with its own permission: the list
  * shows it in a row only when the API names it.
@@ -55,12 +54,8 @@ export default async function DeletionRequestsPage({
   const marketId =
     host === null ? '' : (panelHostFor(panelConfig(), host.get('host'))?.marketId ?? '');
   return (
-    // Nested: the breadcrumb is Settings / Marketplace / Account deletion, then this page.
-    <SettingsShell session={gate.session} linkId="account-deletion" title={title} nested>
-      <BackLink href={SETTINGS_HREF} label={t('account-deletion.requests.back')} />
-      <div className="mb-4">
-        <SettingsTitle>{title}</SettingsTitle>
-      </div>
+    <AdminShell session={gate.session} activeId="deletion-requests" title={title}>
+      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
       {allowed ? (
         <RequestsList
           // A link to another view is a fresh list.
@@ -80,10 +75,10 @@ export default async function DeletionRequestsPage({
             page: title,
             permission: t('account-deletion.requests.permission-view'),
           })}
-          backHref="/settings"
-          backLabel={t('settings.sub.back')}
+          backHref="/"
+          backLabel={t('settings.back-home')}
         />
       )}
-    </SettingsShell>
+    </AdminShell>
   );
 }

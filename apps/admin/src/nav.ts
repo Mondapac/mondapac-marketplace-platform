@@ -179,6 +179,16 @@ export const adminNav: NavConfig = {
       anyOf: ['customers.customers.view'],
     },
     {
+      // Settings navigation design phase 2a: buyer account deletion requests are daily work, so
+      // they sit under Customers (they were a page below Settings › Account deletion).
+      id: 'deletion-requests',
+      icon: 'trash',
+      labelKey: 'nav.deletion-requests',
+      href: '/customers/deletion-requests',
+      group: 'customers',
+      anyOf: ['customers.account-deletion-requests.view'],
+    },
+    {
       // Customers management phase 4a: customers who joined a seller by its invite link.
       id: 'customer-attributions',
       icon: 'shield-check',

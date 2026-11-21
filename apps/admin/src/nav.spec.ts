@@ -197,6 +197,7 @@ describe('admin nav: daily work only', () => {
       'sellers',
       'customers',
       'customer-groups',
+      'deletion-requests',
       'customer-attributions',
       'review-moderation',
       'payouts',

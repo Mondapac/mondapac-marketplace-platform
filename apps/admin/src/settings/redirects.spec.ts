@@ -26,6 +26,8 @@ describe('settings redirects', () => {
     expect(target('/team')).toBe('/settings/admins');
     expect(target('/roles')).toBe('/settings/roles');
     expect(target('/roles/new')).toBe('/settings/roles/new');
+    // Settings navigation phase 2a: the deletion requests list moved under Customers.
+    expect(target('/settings/account-deletion/requests')).toBe('/customers/deletion-requests');
     expect(target('/roles/0190a000-0000-7000-8000-0000000000a1')).toBe(
       '/settings/roles/0190a000-0000-7000-8000-0000000000a1',
     );
@@ -39,6 +41,7 @@ describe('settings redirects', () => {
       '/settings/support',
       '/settings/assistant',
       '/settings/roles',
+      '/settings/account-deletion',
       '/orders',
     ]) {
       expect(target(path), path).toBeUndefined();

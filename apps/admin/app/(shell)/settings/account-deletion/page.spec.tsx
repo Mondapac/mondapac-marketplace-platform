@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../../messages/en.json';
 import type { AdminSession } from '../../../../src/server/session.ts';
 import AccountDeletionPage from './page.tsx';
-import RequestsPage from './requests/page.tsx';
+import RequestsPage from '../../customers/deletion-requests/page.tsx';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -37,6 +37,15 @@ vi.mock('../../../../src/server/settings-shell.tsx', () => ({
       {children}
     </main>
   ),
+}));
+vi.mock('../../../../src/server/admin-shell.tsx', () => ({
+  AdminShell: ({
+    children,
+    activeId,
+  }: {
+    readonly children: ReactNode;
+    readonly activeId: string;
+  }) => <main data-active={activeId}>{children}</main>,
 }));
 vi.mock('../../../../src/account-deletion/settings-panel.tsx', () => ({
   AccountDeletionSettingsPanel: (props: unknown) => {
@@ -174,15 +183,12 @@ describe('deletion requests page', () => {
     expect(mocks.get).not.toHaveBeenCalled();
   });
 
-  it('is a nested sub-page of Account deletion, with a way back to it', async () => {
+  it('sits under Customers in the main menu, not in Settings', async () => {
     as(REQUESTS_VIEW);
     const { container } = render(await RequestsPage(search()));
     const main = container.querySelector('main');
-    expect(main?.getAttribute('data-link')).toBe('account-deletion');
-    expect(main?.getAttribute('data-nested')).toBe('yes');
-    expect(screen.getByRole('link', { name: 'Account deletion' }).getAttribute('href')).toBe(
-      '/settings/account-deletion',
-    );
+    expect(main?.getAttribute('data-active')).toBe('deletion-requests');
+    expect(main?.getAttribute('data-link')).toBeNull();
     expect(screen.getByRole('heading', { name: 'Account deletion requests' })).toBeTruthy();
   });
 

@@ -145,6 +145,7 @@
     "system-requests": "System requests",
     "security": "Security",
     "customer-groups": "Customer groups",
+    "deletion-requests": "Deletion requests",
     "customer-attributions": "Suspicious attributions"
   },
   "home": {
