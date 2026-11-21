@@ -301,7 +301,7 @@ describe('PanelTools', () => {
     expect(dialog()?.textContent).toContain('Search the Settings menu');
     fireEvent.click(within(dialog()!).getByRole('button', { name: 'Close' }));
     field.remove();
-    // Without the field the list leaves "/" out: it would do nothing.
+    // Without the field on screen the list leaves "/" out: it would do nothing.
     key(document.body, { key: '?', shiftKey: true });
     expect(dialog()?.textContent).not.toContain('Search the Settings menu');
   });

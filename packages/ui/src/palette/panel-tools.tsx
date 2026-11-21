@@ -278,7 +278,7 @@ export function PanelTools({
       } else if (action.kind === 'settings-search') {
         // Only where the Settings menu's search is on screen; elsewhere "/" stays the browser's.
         const field = document.querySelector<HTMLInputElement>('[data-settings-search]');
-        if (field !== null && field.getClientRects().length > 0) {
+        if (field !== null && settingsSearchShown()) {
           event.preventDefault();
           field.focus();
           field.select();
@@ -353,6 +353,12 @@ export function PanelTools({
   );
 }
 
+/** The Settings menu search is on screen (not on the rail, not in a closed drawer). */
+function settingsSearchShown(): boolean {
+  const field = document.querySelector('[data-settings-search]');
+  return field !== null && field.getClientRects().length > 0;
+}
+
 /** "⌘" on Apple platforms, "Ctrl" elsewhere; the first paint says Ctrl so both sides agree. */
 function useModifierLabel(): string {
   const [label, setLabel] = useState('Ctrl');
@@ -386,7 +392,7 @@ function ShortcutsDialog({
       keys: [shortcut.keys[0].toUpperCase(), labels.then, shortcut.keys[1].toUpperCase()],
     })),
     // Listed only on a page that shows the Settings menu search, where "/" does something.
-    ...(open && document.querySelector('[data-settings-search]') !== null
+    ...(open && settingsSearchShown()
       ? [{ id: 'settings-search', label: labels.settingsSearch, keys: ['/'] }]
       : []),
     { id: 'help', label: labels.showList, keys: ['?'] },
