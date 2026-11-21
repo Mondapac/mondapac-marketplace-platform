@@ -33,7 +33,10 @@ interface Draft {
   readonly onHand: number | null;
   readonly version: number | null;
   readonly text: string;
-  readonly error: string | null;
+  /** The message name under the field (`stock.levels.error.*`), or none. */
+  readonly problem: string | null;
+  /** For a stale write: the version the screen held then, so the reloaded level can be named. */
+  readonly staleAt: number | null;
 }
 
 const keyOf = (variantId: string, sourceId: string) => `${variantId}:${sourceId}`;
@@ -46,14 +49,15 @@ function draftsOf(view: StockLevelsView): Map<string, Draft> {
         onHand: cell.onHand,
         version: cell.version,
         text: String(cell.onHand),
-        error: null,
+        problem: null,
+        staleAt: null,
       });
     }
   }
   return drafts;
 }
 
-const EMPTY: Draft = { onHand: null, version: null, text: '', error: null };
+const EMPTY: Draft = { onHand: null, version: null, text: '', problem: null, staleAt: null };
 const isDirty = (draft: Draft) => draft.text.trim() !== String(draft.onHand ?? '');
 
 function Cell({
@@ -74,6 +78,14 @@ function Cell({
   const t = useTranslations();
   const label = t('stock.levels.on-hand');
   const help = t('stock.levels.held', { count: cell?.held ?? 0 });
+  const message =
+    draft.problem === null
+      ? undefined
+      : draft.problem !== 'stale'
+        ? t(`stock.levels.error.${draft.problem}`)
+        : draft.version !== draft.staleAt
+          ? t('stock.levels.error.stale-now', { onHand: draft.onHand ?? 0 })
+          : t('stock.levels.error.stale-loading');
   if (!editable) {
     return (
       <p className="flex flex-col gap-1">
@@ -94,7 +106,7 @@ function Cell({
       inputMode="numeric"
       help={help}
       value={draft.text}
-      error={draft.error ?? undefined}
+      error={message}
       onChange={(event) => onText(event.target.value)}
     />
   );
@@ -123,6 +135,11 @@ export function StockLevels({
   const [drafts, setDrafts] = useState(() => draftsOf(view));
   const [leaving, setLeaving] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
+  // Bumped after a refused run: focus moves once React has drawn the messages and unlocked the form.
+  const [focusTick, setFocusTick] = useState(0);
+  useEffect(() => {
+    if (focusTick > 0) focusFirstInvalid(formRef.current);
+  }, [focusTick]);
   // The latest drafts for a save running across several awaits.
   const latest = useRef(drafts);
   latest.current = drafts;
@@ -134,9 +151,14 @@ export function StockLevels({
       const next = new Map(current);
       for (const [key, fresh] of stored) {
         const was = current.get(key);
-        if (was === undefined || !isDirty(was))
-          next.set(key, { ...fresh, error: was?.error ?? null });
-        else next.set(key, { ...was, onHand: fresh.onHand, version: fresh.version });
+        // A level this screen saved after the refresh was asked for is newer: keep it.
+        if (was?.version != null && fresh.version !== null && fresh.version < was.version) continue;
+        if (was === undefined) next.set(key, fresh);
+        else {
+          const adopted = { ...was, onHand: fresh.onHand, version: fresh.version };
+          // A level that is clean once reloaded shows what is stored, without the old message.
+          next.set(key, isDirty(adopted) ? adopted : fresh);
+        }
       }
       return next;
     });
@@ -173,7 +195,8 @@ export function StockLevels({
         onHand: result.body.onHand,
         version: result.body.version,
         text: String(result.body.onHand),
-        error: null,
+        problem: null,
+        staleAt: null,
       });
       return 'saved';
     }
@@ -183,7 +206,7 @@ export function StockLevels({
       return 'stopped';
     }
     const problem = levelsProblemOf(result.failure);
-    update(key, { error: t(`stock.levels.error.${problem}`) });
+    update(key, { problem, staleAt: problem === 'stale' ? draft.version : null });
     // The level changed elsewhere: read it again; the cell takes the new version, the number stays.
     if (problem === 'stale') router.refresh();
     return 'failed';
@@ -215,10 +238,10 @@ export function StockLevels({
     for (const { key } of changed) {
       const wrong = onHandOf((drafts.get(key) ?? EMPTY).text) === null;
       if (wrong) ok = false;
-      update(key, { error: wrong ? t('stock.levels.error.invalid') : null });
+      update(key, { problem: wrong ? 'invalid' : null, staleAt: null });
     }
     if (!ok) {
-      setTimeout(() => focusFirstInvalid(formRef.current), 0);
+      setFocusTick((tick) => tick + 1);
       return;
     }
     const result = await saves.saveAll();
@@ -233,14 +256,14 @@ export function StockLevels({
     if (saved > 0) {
       toast.warning(t('stock.levels.partial', { saved, failed: result.failed.length }));
     } else toast.error(t('stock.levels.failed', { count: result.failed.length }));
-    setTimeout(() => focusFirstInvalid(formRef.current), 0);
+    setFocusTick((tick) => tick + 1);
   }
 
   function discard() {
     setDrafts((current) => {
       const next = new Map(current);
       for (const [key, draft] of current) {
-        next.set(key, { ...draft, text: String(draft.onHand ?? ''), error: null });
+        next.set(key, { ...draft, text: String(draft.onHand ?? ''), problem: null, staleAt: null });
       }
       return next;
     });
@@ -287,7 +310,7 @@ export function StockLevels({
                         cell={cell}
                         draft={drafts.get(key) ?? EMPTY}
                         editable={editable(cell)}
-                        onText={(text) => update(key, { text })}
+                        onText={(text) => update(key, { text, problem: null, staleAt: null })}
                       />
                     </li>
                   );
@@ -300,13 +323,13 @@ export function StockLevels({
       {canEdit ? (
         <SaveBar
           count={saves.count}
-          summary={t('stock.levels.summary', { count: saves.count })}
+          summary={t('settings.bar.summary', { count: saves.count })}
           saving={saves.saving}
           aboveBottomBar
           labels={{
             region: t('settings.bar.region'),
             discard: t('settings.bar.discard'),
-            save: t('stock.levels.save', { count: saves.count }),
+            save: t('settings.bar.save'),
             saving: t('settings.bar.saving'),
           }}
           onDiscard={discard}

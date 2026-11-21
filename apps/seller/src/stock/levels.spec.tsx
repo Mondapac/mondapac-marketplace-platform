@@ -45,7 +45,7 @@ const mount = (canEdit = true, v: StockLevelsView = view, s: SourceView[] = sour
     </NextIntlClientProvider>,
   );
 
-const pressSave = () => fireEvent.click(screen.getByRole('button', { name: /^Save \d+ levels?$/ }));
+const pressSave = () => fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 const bar = () => screen.queryByRole('region', { name: 'Unsaved changes' });
 
 beforeEach(() => {
@@ -84,7 +84,7 @@ describe('StockLevels', () => {
     expect(bar()).toBeNull();
     const input = screen.getByLabelText<HTMLInputElement>('Units in stock at Warehouse');
     fireEvent.change(input, { target: { value: '20' } });
-    expect(bar()?.textContent).toContain('1 level changed');
+    expect(bar()?.textContent).toContain('1 unsaved change');
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(input.value).toBe('12');
     expect(bar()).toBeNull();
@@ -119,7 +119,7 @@ describe('StockLevels', () => {
     fireEvent.change(screen.getByLabelText('Units in stock at Warehouse'), {
       target: { value: '20' },
     });
-    expect(bar()?.textContent).toContain('2 levels changed');
+    expect(bar()?.textContent).toContain('2 unsaved changes');
     pressSave();
     await expectToast('2 levels saved.');
     expect(call.mock.calls.map((c) => c[1])).toEqual([
@@ -144,7 +144,7 @@ describe('StockLevels', () => {
     pressSave();
     await expectToast(/1 level saved; 1 needs attention/, 'warning');
     expect(screen.getByText(/below the units held/)).toBeTruthy();
-    await waitFor(() => expect(bar()?.textContent).toContain('1 level changed'));
+    await waitFor(() => expect(bar()?.textContent).toContain('1 unsaved change'));
   });
 
   it('creates a level at a location with none yet (no expected version)', async () => {
@@ -212,6 +212,132 @@ describe('StockLevels', () => {
     const quiet = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(quiet);
     expect(quiet.defaultPrevented).toBe(false);
+  });
+
+  it('shows the stored number once a stale level is reloaded, and clears the message on typing', async () => {
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'conflict.stale' } });
+    const view0 = mount();
+    const input = screen.getByLabelText('Units in stock at Warehouse');
+    fireEvent.change(input, { target: { value: '7' } });
+    pressSave();
+    expect(await screen.findByText(/Loading the stored number/)).toBeTruthy();
+    view0.rerender(
+      <NextIntlClientProvider locale="en-AU" messages={messages}>
+        <StockLevels
+          offerId="o1"
+          view={{
+            offerId: 'o1',
+            variants: [
+              {
+                variantId: 'v1',
+                sources: [
+                  {
+                    variantId: 'v1',
+                    sourceId: 's1',
+                    onHand: 15,
+                    held: 2,
+                    version: 5,
+                    retired: false,
+                  },
+                ],
+              },
+            ],
+          }}
+          sources={sources}
+          canEdit
+          csrfToken="csrf"
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText(/It is now 15/)).toBeTruthy();
+    fireEvent.change(input, { target: { value: '8' } });
+    expect(screen.queryByText(/changed somewhere else/)).toBeNull();
+  });
+
+  it('keeps a level saved after the refresh was asked for when an older snapshot arrives', async () => {
+    call
+      .mockResolvedValueOnce({ ok: false, failure: { status: 409, code: 'conflict.stale' } })
+      .mockResolvedValueOnce(stored(9, 8));
+    const view0 = mount(true, two);
+    fireEvent.change(screen.getByLabelText('Units in stock at Warehouse'), {
+      target: { value: '1' },
+    });
+    fireEvent.change(screen.getByLabelText('Units in stock at Shop'), { target: { value: '9' } });
+    pressSave();
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(screen.getByLabelText<HTMLInputElement>('Units in stock at Shop').value).toBe('9'),
+    );
+    // The refresh answers with what was stored before the Shop save (version 7).
+    view0.rerender(
+      <NextIntlClientProvider locale="en-AU" messages={messages}>
+        <StockLevels offerId="o1" view={two} sources={sources} canEdit csrfToken="csrf" />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByLabelText<HTMLInputElement>('Units in stock at Shop').value).toBe('9');
+  });
+
+  it('marks every wrong number, sends nothing, and focuses the first', async () => {
+    mount(true, two);
+    fireEvent.change(screen.getByLabelText('Units in stock at Warehouse'), {
+      target: { value: 'x' },
+    });
+    fireEvent.change(screen.getByLabelText('Units in stock at Shop'), { target: { value: '-2' } });
+    pressSave();
+    await waitFor(() =>
+      expect(screen.getAllByText('Enter a whole number from 0 up.')).toHaveLength(2),
+    );
+    expect(call).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByLabelText('Units in stock at Warehouse')),
+    );
+  });
+
+  it('focuses the refused number after a partial save', async () => {
+    call.mockResolvedValueOnce(stored(20, 4)).mockResolvedValueOnce({
+      ok: false,
+      failure: { status: 422, code: 'inventory.stock.below-held' },
+    });
+    mount(true, two);
+    fireEvent.change(screen.getByLabelText('Units in stock at Warehouse'), {
+      target: { value: '20' },
+    });
+    fireEvent.change(screen.getByLabelText('Units in stock at Shop'), { target: { value: '0' } });
+    pressSave();
+    await expectToast(/1 level saved; 1 needs attention/, 'warning');
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByLabelText('Units in stock at Shop')),
+    );
+  });
+
+  it('sends nothing after a signed-out answer', async () => {
+    call.mockResolvedValue({ ok: false, failure: { status: 401, code: 'auth.required' } });
+    mount(true, two);
+    fireEvent.change(screen.getByLabelText('Units in stock at Warehouse'), {
+      target: { value: '3' },
+    });
+    fireEvent.change(screen.getByLabelText('Units in stock at Shop'), { target: { value: '5' } });
+    pressSave();
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a retired level as text, outside the count', () => {
+    mount(true, {
+      offerId: 'o1',
+      variants: [
+        {
+          variantId: 'v1',
+          sources: [
+            { variantId: 'v1', sourceId: 's1', onHand: 12, held: 2, version: 3, retired: true },
+          ],
+        },
+      ],
+    });
+    expect(screen.queryByLabelText('Units in stock at Warehouse')).toBeNull();
+    expect(screen.getByText('12')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Units in stock at Shop'), { target: { value: '1' } });
+    expect(bar()?.textContent).toContain('1 unsaved change');
   });
 
   it('is read only without the edit permission', () => {
