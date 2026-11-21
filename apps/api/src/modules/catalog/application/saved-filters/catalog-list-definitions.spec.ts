@@ -265,6 +265,37 @@ describe('the catalog phase 2 saved-filter lists', () => {
         ]);
       },
     );
+    it.each([
+      ['admin.catalog.business-activities', 'code'],
+      ['admin.catalog.tags', 'slug'],
+    ])('%s keeps the created range and the preset id, and refuses bad ones', (key, sort) => {
+      const list = byKey(key);
+      const base = { sort, direction: 'asc' };
+      const filters = {
+        created: 'last-7-days',
+        createdFrom: '2026-11-01T00:00:00+10:00',
+        createdTo: '2026-11-30T00:00:00Z',
+      };
+      const saved = list.parsePayload({ v: 1, filters, ...base });
+      expect(saved.ok && (saved.value as { filters: unknown }).filters).toEqual({
+        created: 'last-7-days',
+        createdFrom: '2026-10-31T14:00:00Z',
+        createdTo: '2026-11-30T00:00:00Z',
+      });
+      expect(fieldsOf(list, { v: 1, filters: { createdFrom: '2026-11-01' }, ...base })).toEqual([
+        { path: 'payload.filters.createdFrom', code: 'format' },
+      ]);
+      expect(fieldsOf(list, { v: 1, filters: { created: 'Last 7 Days' }, ...base })).toEqual([
+        { path: 'payload.filters.created', code: 'format' },
+      ]);
+      expect(
+        fieldsOf(list, {
+          v: 1,
+          filters: { createdFrom: '2026-12-01T00:00:00Z', createdTo: '2026-11-01T00:00:00Z' },
+          ...base,
+        }),
+      ).toEqual([{ path: 'payload.filters.createdTo', code: 'range' }]);
+    });
     it('keeps the status of an activity and refuses a bad one', () => {
       const list = byKey('admin.catalog.business-activities');
       expect(

@@ -76,9 +76,20 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
     },
   };
   let editKey = true;
-  const matching = (filter: { status: string | null; search: string | null }) =>
+  const matching = (filter: {
+    status: string | null;
+    search: string | null;
+    createdFrom?: Temporal.Instant | null;
+    createdTo?: Temporal.Instant | null;
+  }) =>
     [...rows.values()]
       .filter((r) => filter.status === null || r.status === filter.status)
+      .filter(
+        (r) =>
+          (filter.createdFrom == null ||
+            Temporal.Instant.compare(r.createdAt, filter.createdFrom) >= 0) &&
+          (filter.createdTo == null || Temporal.Instant.compare(r.createdAt, filter.createdTo) < 0),
+      )
       .filter(
         (r) =>
           filter.search === null ||
@@ -106,7 +117,7 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
       Promise.resolve(new Set(ids.filter((id) => rows.get(id)?.status === 'active'))),
     list: (_m, query: BusinessActivityListQuery) =>
       Promise.resolve({
-        items: [...rows.values()].filter((r) => query.status === null || r.status === query.status),
+        items: matching(query),
         nextAfterId: null,
       }),
   };
@@ -470,5 +481,31 @@ describe.each(FIXTURES)('business-activity use cases in market $code', ({ code, 
       ok: false,
       error: { code: 'validation.failed', fields: [{ path: 'limit', code: 'range' }] },
     });
+  });
+
+  it('filters by creation time: createdFrom inclusive, createdTo exclusive', async () => {
+    const { create, list } = build();
+    const a = await create.execute(admin, { names: { [main]: 'Grocery' } });
+    if (!a.ok) throw new Error('setup');
+    const made = a.value.activity.createdAt;
+    const codes = async (input: Record<string, unknown>) => {
+      const result = await list.execute(admin, input);
+      return result.ok ? result.value.items.map((i) => i.code) : result.error;
+    };
+    expect(await codes({ createdFrom: made, createdTo: '2999-01-01T00:00:00Z' })).toEqual([
+      'grocery',
+    ]);
+    expect(await codes({ createdTo: made })).toEqual([]);
+    expect(await codes({ createdFrom: '2999-01-01T00:00:00+10:00' })).toEqual([]);
+    expect(await codes({ createdFrom: '', createdTo: '' })).toEqual(['grocery']);
+    expect(await codes({ createdFrom: '2026-11-01' })).toEqual({
+      code: 'validation.failed',
+      fields: [{ path: 'createdFrom', code: 'format' }],
+    });
+    expect(
+      await codes({ createdFrom: '2026-11-02T00:00:00Z', createdTo: '2026-11-01T00:00:00Z' }),
+    ).toEqual({ code: 'validation.failed', fields: [{ path: 'createdTo', code: 'range' }] });
+    // The older cursor read takes the same filter.
+    expect(await codes({ limit: 5, createdFrom: '2999-01-01T00:00:00Z' })).toEqual([]);
   });
 });
