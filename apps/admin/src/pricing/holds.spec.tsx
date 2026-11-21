@@ -63,6 +63,58 @@ const fail = (status: number, code: string): ApiResult<never> => ({
   failure: { status, code },
 });
 
+const SAVED = 'lists/admin/saved-filters';
+interface SavedRow {
+  readonly id: string;
+  readonly name: string;
+  readonly visibility: 'me' | 'everyone';
+  readonly payload: unknown;
+}
+const savedRow = (
+  n: number,
+  name: string,
+  payload: unknown,
+): SavedRow & Record<string, unknown> => ({
+  id: id(500 + n),
+  listKey: 'admin.pricing.price-holds',
+  name,
+  visibility: 'everyone',
+  payload,
+  ownedByMe: false,
+  canManage: false,
+  createdAt: '2026-11-01T00:00:00.000Z',
+  updatedAt: '2026-11-01T00:00:00.000Z',
+});
+
+/**
+ * Answers the list route with `list`, a decision with `decision`, and the saved-filter routes with
+ * `saved` (none by default): the list also reads its saved filters when it mounts.
+ */
+function serve(
+  list: ApiResult<unknown>,
+  decision: ApiResult<unknown> = ok({}),
+  saved: readonly SavedRow[] = [],
+  canShare = false,
+) {
+  call.mockImplementation((method, url, body) => {
+    if (String(url).startsWith(SAVED)) {
+      if (method === 'GET') return Promise.resolve(ok({ items: saved, canShare }));
+      const asked = body as { name: string; visibility: 'me' | 'everyone'; payload: unknown };
+      return Promise.resolve(
+        ok({
+          ...savedRow(9, asked.name, asked.payload),
+          ...asked,
+          ownedByMe: true,
+          canManage: true,
+        }),
+      );
+    }
+    return Promise.resolve(method === 'POST' ? decision : list);
+  });
+}
+const listCalls = () =>
+  call.mock.calls.filter(([method, url]) => method === 'GET' && !String(url).startsWith(SAVED));
+
 function mount(m: (typeof MARKETS)[number]) {
   return render(
     <NextIntlClientProvider locale={m.locale} messages={messages}>
@@ -108,11 +160,11 @@ describe.each(MARKETS)('held prices list ($name)', (m) => {
   });
 
   it('asks for the oldest first, shows the record and keeps seller text inert', async () => {
-    call.mockResolvedValue(ok(page([row(m, { productName: '<b>Bold</b>' })])));
+    serve(ok(page([row(m, { productName: '<b>Bold</b>' })])));
     mount(m);
     expect(await screen.findByText('<b>Bold</b>')).toBeTruthy();
     expect(document.querySelector('b')).toBeNull();
-    const first = String(call.mock.calls[0]?.[1]);
+    const first = String(listCalls()[0]?.[1]);
     expect(first).toMatch(/^pricing\/admin\/price-holds\/list\?/);
     const q = new URLSearchParams(first.split('?')[1]);
     expect(q.get('sort')).toBe('submitted');
@@ -121,15 +173,13 @@ describe.each(MARKETS)('held prices list ($name)', (m) => {
   });
 
   it('keeps the row when names could not be read', async () => {
-    call.mockResolvedValue(
-      ok(page([row(m, { productName: null, variantLabel: null, storeName: null })])),
-    );
+    serve(ok(page([row(m, { productName: null, variantLabel: null, storeName: null })])));
     mount(m);
     expect(await screen.findByText(/Name unavailable \(0+2\)/)).toBeTruthy();
   });
 
   it('puts Approve and Reject in the Actions menu, not in the row', async () => {
-    call.mockResolvedValue(ok(page([row(m)])));
+    serve(ok(page([row(m)])));
     mount(m);
     await screen.findByText('Halal beef mince 500 g');
     expect(screen.queryByRole('button', { name: /^Approve/ })).toBeNull();
@@ -139,7 +189,7 @@ describe.each(MARKETS)('held prices list ($name)', (m) => {
   });
 
   it('offers no decision without the decide action', async () => {
-    call.mockResolvedValue(ok(page([row(m, { actions: ['open'] })])));
+    serve(ok(page([row(m, { actions: ['open'] })])));
     mount(m);
     await screen.findByText('Halal beef mince 500 g');
     await openMenu();
@@ -148,9 +198,7 @@ describe.each(MARKETS)('held prices list ($name)', (m) => {
   });
 
   it('approves after a confirmation and reloads the list', async () => {
-    call.mockImplementation((method) =>
-      Promise.resolve(method === 'POST' ? ok({}) : ok(page([row(m)]))),
-    );
+    serve(ok(page([row(m)])), ok({}));
     mount(m);
     await screen.findByText('Halal beef mince 500 g');
     await openMenu();
@@ -163,15 +211,11 @@ describe.each(MARKETS)('held prices list ($name)', (m) => {
       undefined,
       'csrf-1',
     );
-    await waitFor(() =>
-      expect(call.mock.calls.filter(([method]) => method === 'GET').length).toBeGreaterThan(1),
-    );
+    await waitFor(() => expect(listCalls().length).toBeGreaterThan(1));
   });
 
   it('rejects with a reason code and an optional note', async () => {
-    call.mockImplementation((method) =>
-      Promise.resolve(method === 'POST' ? ok({}) : ok(page([row(m)]))),
-    );
+    serve(ok(page([row(m)])), ok({}));
     mount(m);
     await screen.findByText('Halal beef mince 500 g');
     await openMenu();
@@ -193,11 +237,7 @@ describe.each(MARKETS)('held prices list ($name)', (m) => {
   });
 
   it('explains when the submitter tries to decide and keeps the dialog open', async () => {
-    call.mockImplementation((method) =>
-      Promise.resolve(
-        method === 'POST' ? fail(403, 'pricing.hold.own-submission') : ok(page([row(m)])),
-      ),
-    );
+    serve(ok(page([row(m)])), fail(403, 'pricing.hold.own-submission'));
     mount(m);
     await screen.findByText('Halal beef mince 500 g');
     await openMenu();
@@ -207,7 +247,7 @@ describe.each(MARKETS)('held prices list ($name)', (m) => {
   });
 
   it('shows the amount in the Market currency and sorts by price on request', async () => {
-    call.mockResolvedValue(ok(page([row(m)])));
+    serve(ok(page([row(m)])));
     mount(m);
     await screen.findByText('Halal beef mince 500 g');
     expect(
@@ -216,7 +256,7 @@ describe.each(MARKETS)('held prices list ($name)', (m) => {
   });
 
   it('shows the dates of a special price in the approve dialog', async () => {
-    call.mockResolvedValue(
+    serve(
       ok(
         page([
           row(m, {
@@ -234,35 +274,88 @@ describe.each(MARKETS)('held prices list ($name)', (m) => {
   });
 
   it('closes the dialog and reads again when the record is gone', async () => {
-    call.mockImplementation((method) =>
-      Promise.resolve(
-        method === 'POST' ? fail(409, 'pricing.hold.not-pending') : ok(page([row(m)])),
-      ),
-    );
+    serve(ok(page([row(m)])), fail(409, 'pricing.hold.not-pending'));
     mount(m);
     await screen.findByText('Halal beef mince 500 g');
     await openMenu();
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Approve…' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Approve price' }));
     await waitFor(() => expect(screen.queryByRole('button', { name: 'Approve price' })).toBeNull());
-    await waitFor(() =>
-      expect(call.mock.calls.filter(([method]) => method === 'GET').length).toBeGreaterThan(1),
-    );
+    await waitFor(() => expect(listCalls().length).toBeGreaterThan(1));
   });
 
   it('shows the empty state', async () => {
-    call.mockResolvedValue(ok(page([])));
+    serve(ok(page([])));
     mount(m);
     expect(await screen.findByText('No held prices are waiting for a decision.')).toBeTruthy();
   });
 
   it('asks for one view when its tab is picked', async () => {
-    call.mockResolvedValue(ok(page([row(m)])));
+    serve(ok(page([row(m)])));
     mount(m);
     await screen.findByText('Halal beef mince 500 g');
     fireEvent.click((await screen.findAllByText(/^Increases/))[0]!);
     await waitFor(() =>
       expect(call.mock.calls.some(([, url]) => String(url).includes('view=up'))).toBe(true),
+    );
+  });
+  it('reads its saved filters under its own list key', async () => {
+    serve(ok(page([row(m)])));
+    mount(m);
+    await screen.findByText('Halal beef mince 500 g');
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith('GET', `${SAVED}?listKey=admin.pricing.price-holds`),
+    );
+  });
+
+  it('opens a shared saved filter as a tab with its view, filters and sort', async () => {
+    serve(ok(page([row(m)])), ok({}), [
+      savedRow(1, 'Big special increases', {
+        v: 1,
+        view: 'up',
+        filters: { kind: 'special', minAmount: '5000' },
+        sort: 'amount',
+        direction: 'desc',
+      }),
+    ]);
+    mount(m);
+    await screen.findByText('Halal beef mince 500 g');
+    fireEvent.click((await screen.findAllByText('Big special increases'))[0]!);
+    await waitFor(() => {
+      const asked = listCalls().map(([, url]) => new URLSearchParams(String(url).split('?')[1]));
+      expect(
+        asked.some(
+          (q) =>
+            q.get('view') === 'up' &&
+            q.get('kind') === 'special' &&
+            q.get('minAmount') === '5000' &&
+            q.get('sort') === 'amount' &&
+            q.get('direction') === 'desc',
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it('saves the view on show as a filter of its own list, with the session token', async () => {
+    serve(ok(page([row(m)])));
+    mount(m);
+    await screen.findByText('Halal beef mince 500 g');
+    fireEvent.click((await screen.findAllByText(/^Increases/))[0]!);
+    fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Increases' } });
+    fireEvent.click(await screen.findByRole('button', { name: 'Save filter' }));
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        SAVED,
+        {
+          listKey: 'admin.pricing.price-holds',
+          name: 'Increases',
+          visibility: 'me',
+          payload: { v: 1, view: 'up', filters: {}, sort: 'submitted', direction: 'asc' },
+        },
+        'csrf-1',
+      ),
     );
   });
 });

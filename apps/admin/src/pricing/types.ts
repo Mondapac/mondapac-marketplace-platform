@@ -52,3 +52,6 @@ export interface PriceHoldListRow extends PriceHoldRow {
 }
 
 export type HoldCounts = Readonly<Record<(typeof HOLD_VIEWS)[number], number>>;
+
+/** The list's key in the shared saved-filter registry (`lists`). */
+export const HOLDS_SAVED_KEY = 'admin.pricing.price-holds';

@@ -14,6 +14,7 @@ import {
   API_HOLDS,
   API_HOLDS_EXPORT,
   HOLD_VIEWS,
+  HOLDS_SAVED_KEY,
   type HoldCounts,
   type PriceHoldListRow,
 } from './types.ts';
@@ -158,6 +159,10 @@ export function HoldsList({
       rowName: (row) => row.productName ?? shortId(row.offerId),
       tabs: [...HOLD_VIEWS],
       tabParam: 'view',
+      // Saved personal and shared filters (`lists`, backend #1185): the payload keeps the tab as
+      // its `view`, and kind, change and the other query keys as its filters.
+      savedKey: HOLDS_SAVED_KEY,
+      savedViews: true,
       sorts: [
         {
           id: 'submitted',
@@ -221,6 +226,7 @@ export function HoldsList({
       fields={fields}
       loadCounts={loadCounts}
       refreshKey={refresh}
+      csrfToken={csrfToken}
       dialogs={
         <HoldDecisionDialog
           row={open?.row ?? null}
