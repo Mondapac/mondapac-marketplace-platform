@@ -143,6 +143,7 @@ export function SuggestionsList({
         },
       })),
       icon: 'package',
+      savedKey: 'admin.catalog.tag-suggestions',
     }),
     [t, tl, columnDefs, rowActions],
   );
@@ -153,6 +154,7 @@ export function SuggestionsList({
       paging={paging}
       accountId={accountId}
       marketId={marketId}
+      csrfToken={csrfToken}
       refreshKey={refresh}
       onAnswer={(answer: PagedAnswer<SuggestionRow>) =>
         setLocale((answer as unknown as SuggestionList).locales.default)
