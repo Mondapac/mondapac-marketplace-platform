@@ -55,6 +55,10 @@ export interface ShelfActor {
 export interface PendingProposalsFilter {
   /** The proposal name as the comparison key holds it (see `normaliseShelfName`); null: all. */
   readonly nameKey: string | null;
+  /** Created at or after this instant (inclusive). */
+  readonly createdFrom?: Temporal.Instant | null;
+  /** Created before this instant (exclusive). */
+  readonly createdTo?: Temporal.Instant | null;
 }
 
 export interface PendingProposalsPage extends PendingProposalsFilter {

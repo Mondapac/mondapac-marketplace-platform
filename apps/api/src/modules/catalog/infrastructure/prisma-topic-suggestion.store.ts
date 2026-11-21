@@ -4,6 +4,7 @@ import type {
 } from '../application/ports/own-suggestion-page';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
+import { createdAtWhere } from '../../../platform/list-query';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import type {
@@ -58,6 +59,7 @@ const openWhere = (
 ): Prisma.CatalogTopicSuggestionWhereInput => ({
   marketId: market.marketId,
   status: 'open',
+  ...createdAtWhere(filter),
   ...(filter.text === null
     ? {}
     : { label: { contains: likeLiteral(filter.text), mode: 'insensitive' } }),
@@ -71,6 +73,7 @@ const ownWhere = (
   marketId: market.marketId,
   sellerId,
   ...(filter.status === null ? {} : { status: filter.status }),
+  ...createdAtWhere(filter),
   ...(filter.text === null
     ? {}
     : { label: { contains: likeLiteral(filter.text), mode: 'insensitive' as const } }),

@@ -398,6 +398,29 @@ describe.each(['AU', 'ZZ'] as const)('attribute suggestion use cases in market %
     });
   });
 
+  describe('attribute-suggestion.list created range', () => {
+    it('filters by createdFrom (inclusive) and createdTo (exclusive)', async () => {
+      await opened();
+      const all = await build().list.execute(context('admin'), {});
+      if (!all.ok) throw new Error(all.error.code);
+      const made = all.value.items[0]!.createdAt;
+      const count = async (input: Record<string, unknown>) => {
+        const answer = await build().list.execute(context('admin'), input);
+        return answer.ok ? answer.value.items.length : answer.error;
+      };
+      expect(await count({ createdFrom: made, createdTo: '2999-01-01T00:00:00Z' })).toBe(1);
+      expect(await count({ createdTo: made })).toBe(0);
+      expect(await count({ createdFrom: '2999-01-01T00:00:00+10:00' })).toBe(0);
+      expect(await count({ createdTo: '2026-11-01T00:00:00' })).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'createdTo', code: 'format' }],
+      });
+      expect(
+        await count({ createdFrom: '2026-11-02T00:00:00Z', createdTo: '2026-11-01T00:00:00Z' }),
+      ).toEqual({ code: 'validation.failed', fields: [{ path: 'createdTo', code: 'range' }] });
+    });
+  });
+
   describe('attribute-suggestion.list', () => {
     it('lists open suggestions with their attribute and active values, for admins only', async () => {
       const first = await opened();

@@ -3,6 +3,7 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import {
+  parseNamedInstantRange,
   listPage,
   pageWindow,
   parseListQuery,
@@ -136,6 +137,8 @@ export class TopicSuggestionList extends UseCase<
     }
     const body = closedInput(input ?? {}, [
       'q',
+      'createdFrom',
+      'createdTo',
       'sort',
       'direction',
       'page',
@@ -144,6 +147,8 @@ export class TopicSuggestionList extends UseCase<
       'limit',
     ]);
     if (!body.ok) return body;
+    const created = parseNamedInstantRange(body.value, 'createdFrom', 'createdTo');
+    if (!created.ok) return created;
     const absent = (value: unknown) => value === undefined || value === null || value === '';
     let text: string | null = null;
     const rawText = body.value['q'];
@@ -189,7 +194,7 @@ export class TopicSuggestionList extends UseCase<
     const read = await this.deps.unitOfWork.run(
       market,
       async () => {
-        const filter = { text };
+        const filter = { text, createdFrom: created.value.from, createdTo: created.value.to };
         const total =
           paged.value.paging === 'pages'
             ? await this.deps.topicSuggestions.countOpen(market, filter)

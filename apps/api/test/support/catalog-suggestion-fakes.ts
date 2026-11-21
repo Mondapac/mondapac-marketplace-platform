@@ -1,4 +1,5 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import { inCreatedRange, type CreatedRange } from './created-range';
 import type { AttributeValueSuggestionStore } from '../../src/modules/catalog/application/ports/attribute-value-suggestion.store';
 import type {
   AttributeValueSuggestion,
@@ -91,22 +92,28 @@ export class MemoryAttributeValueSuggestionStore implements AttributeValueSugges
     );
   }
 
-  #open(market: MarketContext, text: string | null) {
+  #open(market: MarketContext, filter: { text: string | null } & CreatedRange) {
     return [...this.rows.values()].filter(
       (row) =>
         row.state.marketId === market.marketId &&
         row.state.status === 'open' &&
-        (text === null || row.state.label.toLowerCase().includes(text.toLowerCase())),
+        inCreatedRange(row.state.createdAt, filter) &&
+        (filter.text === null || row.state.label.toLowerCase().includes(filter.text.toLowerCase())),
     );
   }
 
   pageOpen(
     market: MarketContext,
-    page: { text: string | null; direction: 'asc' | 'desc'; offset: number; limit: number },
+    page: {
+      text: string | null;
+      direction: 'asc' | 'desc';
+      offset: number;
+      limit: number;
+    } & CreatedRange,
   ) {
     const sign = page.direction === 'asc' ? 1 : -1;
     return Promise.resolve(
-      this.#open(market, page.text)
+      this.#open(market, page)
         .sort(
           (a, b) =>
             sign * (a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds),
@@ -115,8 +122,8 @@ export class MemoryAttributeValueSuggestionStore implements AttributeValueSugges
     );
   }
 
-  countOpen(market: MarketContext, filter: { text: string | null }) {
-    return Promise.resolve(this.#open(market, filter.text).length);
+  countOpen(market: MarketContext, filter: { text: string | null } & CreatedRange) {
+    return Promise.resolve(this.#open(market, filter).length);
   }
 
   listOfProduct(market: MarketContext, productId: Id<'Product'>, limit: number) {
@@ -133,13 +140,14 @@ export class MemoryAttributeValueSuggestionStore implements AttributeValueSugges
   #own(
     market: MarketContext,
     sellerId: Id<'Seller'>,
-    filter: { status: SuggestionStatus | null; text: string | null },
+    filter: { status: SuggestionStatus | null; text: string | null } & CreatedRange,
   ) {
     return [...this.rows.values()].filter(
       ({ state }) =>
         state.marketId === market.marketId &&
         state.sellerId === sellerId &&
         (filter.status === null || state.status === filter.status) &&
+        inCreatedRange(state.createdAt, filter) &&
         (filter.text === null || state.label.toLowerCase().includes(filter.text.toLowerCase())),
     );
   }
@@ -150,6 +158,8 @@ export class MemoryAttributeValueSuggestionStore implements AttributeValueSugges
     page: {
       status: SuggestionStatus | null;
       text: string | null;
+      createdFrom?: Temporal.Instant | null;
+      createdTo?: Temporal.Instant | null;
       sort: 'created' | 'status' | 'label';
       direction: 'asc' | 'desc';
       offset: number;
@@ -185,7 +195,7 @@ export class MemoryAttributeValueSuggestionStore implements AttributeValueSugges
   countOfSeller(
     market: MarketContext,
     sellerId: Id<'Seller'>,
-    filter: { status: SuggestionStatus | null; text: string | null },
+    filter: { status: SuggestionStatus | null; text: string | null } & CreatedRange,
   ) {
     return Promise.resolve(this.#own(market, sellerId, filter).length);
   }
@@ -303,22 +313,28 @@ export class MemoryTopicSuggestionStore implements TopicSuggestionStore {
     );
   }
 
-  #open(market: MarketContext, text: string | null) {
+  #open(market: MarketContext, filter: { text: string | null } & CreatedRange) {
     return [...this.rows.values()].filter(
       ({ state }) =>
         state.marketId === market.marketId &&
         state.status === 'open' &&
-        (text === null || state.label.toLowerCase().includes(text.toLowerCase())),
+        inCreatedRange(state.createdAt, filter) &&
+        (filter.text === null || state.label.toLowerCase().includes(filter.text.toLowerCase())),
     );
   }
 
   pageOpen(
     market: MarketContext,
-    page: { text: string | null; direction: 'asc' | 'desc'; offset: number; limit: number },
+    page: {
+      text: string | null;
+      direction: 'asc' | 'desc';
+      offset: number;
+      limit: number;
+    } & CreatedRange,
   ) {
     const sign = page.direction === 'asc' ? 1 : -1;
     return Promise.resolve(
-      this.#open(market, page.text)
+      this.#open(market, page)
         .sort(
           (a, b) =>
             sign * (a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds),
@@ -327,8 +343,8 @@ export class MemoryTopicSuggestionStore implements TopicSuggestionStore {
     );
   }
 
-  countOpen(market: MarketContext, filter: { text: string | null }) {
-    return Promise.resolve(this.#open(market, filter.text).length);
+  countOpen(market: MarketContext, filter: { text: string | null } & CreatedRange) {
+    return Promise.resolve(this.#open(market, filter).length);
   }
 
   listOfProduct(market: MarketContext, productId: Id<'Product'>, limit: number) {
@@ -342,13 +358,14 @@ export class MemoryTopicSuggestionStore implements TopicSuggestionStore {
   #own(
     market: MarketContext,
     sellerId: Id<'Seller'>,
-    filter: { status: TopicSuggestionStatus | null; text: string | null },
+    filter: { status: TopicSuggestionStatus | null; text: string | null } & CreatedRange,
   ) {
     return [...this.rows.values()].filter(
       ({ state }) =>
         state.marketId === market.marketId &&
         state.sellerId === sellerId &&
         (filter.status === null || state.status === filter.status) &&
+        inCreatedRange(state.createdAt, filter) &&
         (filter.text === null || state.label.toLowerCase().includes(filter.text.toLowerCase())),
     );
   }
@@ -359,6 +376,8 @@ export class MemoryTopicSuggestionStore implements TopicSuggestionStore {
     page: {
       status: TopicSuggestionStatus | null;
       text: string | null;
+      createdFrom?: Temporal.Instant | null;
+      createdTo?: Temporal.Instant | null;
       sort: 'created' | 'status' | 'label';
       direction: 'asc' | 'desc';
       offset: number;
@@ -394,7 +413,7 @@ export class MemoryTopicSuggestionStore implements TopicSuggestionStore {
   countOfSeller(
     market: MarketContext,
     sellerId: Id<'Seller'>,
-    filter: { status: TopicSuggestionStatus | null; text: string | null },
+    filter: { status: TopicSuggestionStatus | null; text: string | null } & CreatedRange,
   ) {
     return Promise.resolve(this.#own(market, sellerId, filter).length);
   }
