@@ -12522,7 +12522,10 @@
           "placeholder": "The seller’s words"
         },
         "filter": {
-          "title": "Filter suggestions"
+          "title": "Filter suggestions",
+          "name": {
+            "created": "Requested"
+          }
         },
         "sort": {
           "by": "Sort by",
@@ -13535,7 +13538,10 @@
           "placeholder": "Seller's words"
         },
         "filter": {
-          "title": "Filter suggestions"
+          "title": "Filter suggestions",
+          "name": {
+            "created": "Asked"
+          }
         },
         "sort": {
           "by": "Sort by",

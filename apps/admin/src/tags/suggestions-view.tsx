@@ -16,11 +16,14 @@ export function SuggestionsView({
   paging,
   accountId,
   marketId,
+  zone,
 }: {
   readonly csrfToken: string;
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  /** The IANA zone of the table's times and of the Requested presets. */
+  readonly zone: string;
 }) {
   const t = useTranslations('tags.suggestions');
   return (
@@ -38,6 +41,7 @@ export function SuggestionsView({
         paging={paging}
         accountId={accountId}
         marketId={marketId}
+        zone={zone}
         csrfToken={csrfToken}
       />
     </div>

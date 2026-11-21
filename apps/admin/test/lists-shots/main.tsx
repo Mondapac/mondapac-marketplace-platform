@@ -175,7 +175,7 @@ const view =
   list === 'activities' ? (
     <BusinessActivitiesView canEdit csrfToken="tok" {...zoned} />
   ) : list === 'suggestions' ? (
-    <SuggestionsView csrfToken="tok" {...where} />
+    <SuggestionsView csrfToken="tok" {...zoned} />
   ) : list === 'proposals' ? (
     <ProposalsTab csrfToken="tok" canPromote {...zoned} />
   ) : (

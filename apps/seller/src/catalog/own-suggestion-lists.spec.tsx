@@ -180,6 +180,33 @@ describe('value suggestions list', () => {
     });
   });
 
+  it('filters by when it was sent, as instants on the seller zone, and takes it off again', async () => {
+    serve([value({ id: id(1), label: 'Open one' })]);
+    mount(<OwnValueSuggestionsList {...props} timeZone="Australia/Brisbane" />);
+    await screen.findByText('Open one');
+    fireEvent.click(await screen.findByRole('button', { name: 'Filter' }));
+    fireEvent.change(await screen.findByLabelText('Field'), { target: { value: 'created' } });
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'today' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    const asked = () =>
+      call.mock.calls
+        .map(([, path]) => String(path))
+        .filter((path) => path.startsWith('catalog/seller/attribute-suggestions?'))
+        .map((path) => new URLSearchParams(path.split('?')[1]));
+    await waitFor(() => expect(asked().some((p) => p.has('createdFrom'))).toBe(true));
+    const range = asked().find((p) => p.has('createdFrom')) as URLSearchParams;
+    // Midnight on the Brisbane clock (UTC+10, no daylight saving) is 14:00 UTC, and Today is one
+    // day long: never the UTC day.
+    expect(range.get('createdFrom')).toMatch(/T14:00:00(\.000)?Z$/);
+    expect(range.get('createdTo')).toMatch(/T14:00:00(\.000)?Z$/);
+    expect(
+      Date.parse(range.get('createdTo') ?? '') - Date.parse(range.get('createdFrom') ?? ''),
+    ).toBe(24 * 3600 * 1000);
+    expect(range.has('created')).toBe(false);
+    fireEvent.click(await screen.findByRole('button', { name: /Remove filter Sent is/ }));
+    await waitFor(() => expect(asked().at(-1)?.has('createdFrom')).toBe(false));
+  });
+
   it('shows each outcome in words, with the field and a link to the product', async () => {
     serve([
       value({ id: id(1), label: 'Open one' }),
@@ -306,6 +333,33 @@ describe.each(MARKETS)('tag suggestions list in market $code', ({ locale, names 
     expect(rowOf('Four').getByText('Rejected: Too vague.')).toBeTruthy();
     expect(rowOf('Four').queryByText(/Approving does not/)).toBeNull();
     expect(call.mock.calls[0]?.[1]).toContain('catalog/seller/topic-suggestions?');
+  });
+
+  it('filters by when it was sent, as instants on the seller zone, and takes it off again', async () => {
+    serve([tag({ id: id(1), label: 'Open one' })]);
+    mount(<OwnTagSuggestionsList {...props} timeZone="Australia/Brisbane" />);
+    await screen.findByText('Open one');
+    fireEvent.click(await screen.findByRole('button', { name: 'Filter' }));
+    fireEvent.change(await screen.findByLabelText('Field'), { target: { value: 'created' } });
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'today' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    const asked = () =>
+      call.mock.calls
+        .map(([, path]) => String(path))
+        .filter((path) => path.startsWith('catalog/seller/topic-suggestions?'))
+        .map((path) => new URLSearchParams(path.split('?')[1]));
+    await waitFor(() => expect(asked().some((p) => p.has('createdFrom'))).toBe(true));
+    const range = asked().find((p) => p.has('createdFrom')) as URLSearchParams;
+    // Midnight on the Brisbane clock (UTC+10, no daylight saving) is 14:00 UTC, and Today is one
+    // day long: never the UTC day.
+    expect(range.get('createdFrom')).toMatch(/T14:00:00(\.000)?Z$/);
+    expect(range.get('createdTo')).toMatch(/T14:00:00(\.000)?Z$/);
+    expect(
+      Date.parse(range.get('createdTo') ?? '') - Date.parse(range.get('createdFrom') ?? ''),
+    ).toBe(24 * 3600 * 1000);
+    expect(range.has('created')).toBe(false);
+    fireEvent.click(await screen.findByRole('button', { name: /Remove filter Sent is/ }));
+    await waitFor(() => expect(asked().at(-1)?.has('createdFrom')).toBe(false));
   });
 
   it('says a retired tag can no longer be added, with no product link', async () => {

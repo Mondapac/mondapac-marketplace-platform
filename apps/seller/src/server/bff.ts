@@ -296,6 +296,8 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   },
   'catalog/seller/attribute-suggestions': {
     status: /^(open|approved|mapped|rejected)$/,
+    createdFrom: ISO_INSTANT,
+    createdTo: ISO_INSTANT,
     q: null,
     sort: /^(created|status|label)$/,
     direction: /^(asc|desc)$/,
@@ -305,6 +307,8 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
   },
   'catalog/seller/topic-suggestions': {
     status: /^(open|approved|mapped|rejected)$/,
+    createdFrom: ISO_INSTANT,
+    createdTo: ISO_INSTANT,
     q: null,
     sort: /^(created|status|label)$/,
     direction: /^(asc|desc)$/,

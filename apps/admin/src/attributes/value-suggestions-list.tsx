@@ -4,6 +4,7 @@ import { Banner, type MenuItem, type SuperColumn } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { PagedSuperList } from '../shared/paged-list/paged-super-list.tsx';
+import { useDateFilter } from '../shared/paged-list/use-date-filter.ts';
 import type { ListPagingMode, PagedAnswer, PagedListConfig } from '../shared/paged-list/types.ts';
 import { When } from '../shared/when.tsx';
 import { ValueSuggestionDialog, type ValueDecision } from './value-suggestion-dialog.tsx';
@@ -24,11 +25,14 @@ export function ValueSuggestionsList({
   paging,
   accountId,
   marketId,
+  zone,
   csrfToken,
 }: {
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  /** The IANA zone of the table's times and of the Requested presets (ADR-0005). */
+  readonly zone: string;
   readonly csrfToken: string;
 }) {
   const t = useTranslations('attributes.suggestions');
@@ -42,6 +46,13 @@ export function ValueSuggestionsList({
   > | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const created = useDateFilter({
+    id: 'created',
+    label: tl('filter.name.created'),
+    range: { from: 'createdFrom', to: 'createdTo' },
+    zone,
+  });
+  const fields = useMemo(() => [created.field], [created.field]);
   const defaultLocale = context?.locales.default ?? 'en';
   // The columns read the language from a ref, so the list is not read again when it arrives.
   const localeRef = useRef('en');
@@ -156,6 +167,8 @@ export function ValueSuggestionsList({
         paging={paging}
         accountId={accountId}
         marketId={marketId}
+        fields={fields}
+        dateRange={created.dateRange}
         csrfToken={csrfToken}
         refreshKey={refresh}
         onAnswer={(answer: PagedAnswer<ValueSuggestionRow>) => {

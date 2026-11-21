@@ -500,6 +500,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
           paging="pages"
           accountId="a"
           marketId="AU"
+          zone="Australia/Brisbane"
         />
       </NextIntlClientProvider>,
     );
@@ -531,6 +532,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
           paging="pages"
           accountId="a"
           marketId="AU"
+          zone="Australia/Brisbane"
         />
       </NextIntlClientProvider>
     );
@@ -572,6 +574,7 @@ describe.each(MARKETS)('attribute restructure in the panel ($name)', ({ locales 
           paging="pages"
           accountId="a"
           marketId="AU"
+          zone="Australia/Brisbane"
         />
       </NextIntlClientProvider>,
     );

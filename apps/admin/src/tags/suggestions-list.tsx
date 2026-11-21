@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useMemo, useState } from 'react';
 import { BulkDecideDialog } from '../shared/paged-list/bulk-decide-dialog.tsx';
 import { PagedSuperList } from '../shared/paged-list/paged-super-list.tsx';
+import { useDateFilter } from '../shared/paged-list/use-date-filter.ts';
 import type { ListPagingMode, PagedAnswer, PagedListConfig } from '../shared/paged-list/types.ts';
 import { When } from '../shared/when.tsx';
 import { SuggestionDialog, type Decision } from './suggestion-dialog.tsx';
@@ -35,11 +36,14 @@ export function SuggestionsList({
   paging,
   accountId,
   marketId,
+  zone,
   csrfToken,
 }: {
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  /** The IANA zone of the table's times and of the Requested presets (ADR-0005). */
+  readonly zone: string;
   readonly csrfToken: string;
 }) {
   const t = useTranslations('tags.suggestions');
@@ -148,12 +152,22 @@ export function SuggestionsList({
     [t, tl, columnDefs, rowActions],
   );
 
+  const created = useDateFilter({
+    id: 'created',
+    label: tl('filter.name.created'),
+    range: { from: 'createdFrom', to: 'createdTo' },
+    zone,
+  });
+  const fields = useMemo(() => [created.field], [created.field]);
+
   return (
     <PagedSuperList
       config={config}
       paging={paging}
       accountId={accountId}
       marketId={marketId}
+      fields={fields}
+      dateRange={created.dateRange}
       csrfToken={csrfToken}
       refreshKey={refresh}
       onAnswer={(answer: PagedAnswer<SuggestionRow>) =>
