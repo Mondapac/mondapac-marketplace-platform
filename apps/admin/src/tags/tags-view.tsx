@@ -19,12 +19,15 @@ export function TagsView({
   paging,
   accountId,
   marketId,
+  zone,
 }: {
   readonly canManage: boolean;
   readonly csrfToken: string;
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  /** The IANA zone of the table's times and of the Created presets. */
+  readonly zone: string;
 }) {
   const t = useTranslations('tags');
   const [locales, setLocales] = useState<Locales | null>(null);
@@ -49,6 +52,7 @@ export function TagsView({
         paging={paging}
         accountId={accountId}
         marketId={marketId}
+        zone={zone}
         csrfToken={csrfToken}
         locale={locales?.default ?? 'en'}
         onOpen={setDialog}

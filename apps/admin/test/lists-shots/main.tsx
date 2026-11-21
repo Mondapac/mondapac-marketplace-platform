@@ -170,15 +170,16 @@ window.fetch = ((input: string) => {
 }) as typeof fetch;
 
 const where = { paging: 'pages', accountId: id(99), marketId: 'AU' } as const;
+const zoned = { ...where, zone: 'Australia/Brisbane' } as const;
 const view =
   list === 'activities' ? (
-    <BusinessActivitiesView canEdit csrfToken="tok" {...where} />
+    <BusinessActivitiesView canEdit csrfToken="tok" {...zoned} />
   ) : list === 'suggestions' ? (
     <SuggestionsView csrfToken="tok" {...where} />
   ) : list === 'proposals' ? (
     <ProposalsTab csrfToken="tok" canPromote {...where} />
   ) : (
-    <TagsView canManage csrfToken="tok" {...where} />
+    <TagsView canManage csrfToken="tok" {...zoned} />
   );
 const title =
   list === 'activities'

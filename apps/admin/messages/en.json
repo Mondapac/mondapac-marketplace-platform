@@ -11686,7 +11686,10 @@
         "placeholder": "Name, code or description"
       },
       "filter": {
-        "title": "Filter activities"
+        "title": "Filter activities",
+        "name": {
+          "created": "Created"
+        }
       },
       "sort": {
         "by": "Sort by",
@@ -12607,7 +12610,10 @@
       },
       "filter": {
         "title": "Filter tags",
-        "group": "Group"
+        "group": "Group",
+        "name": {
+          "created": "Created"
+        }
       },
       "sort": {
         "by": "Sort by",

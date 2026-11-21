@@ -4,6 +4,7 @@ import { Badge, type MenuItem, type SuperColumn } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useMemo } from 'react';
 import { PagedSuperList } from '../shared/paged-list/paged-super-list.tsx';
+import { useDateFilter } from '../shared/paged-list/use-date-filter.ts';
 import type {
   ListPagingMode,
   PagedAnswer,
@@ -39,6 +40,7 @@ export function ActivitiesList({
   paging,
   accountId,
   marketId,
+  zone,
   csrfToken,
   locale,
   onOpen,
@@ -52,6 +54,8 @@ export function ActivitiesList({
   readonly marketId: string;
   /** For saving, renaming, moving and deleting saved filters. */
   readonly csrfToken: string;
+  /** The IANA zone of the table's times and of the Created presets (ADR-0005). */
+  readonly zone: string;
   /** The Market's default locale (names are shown in it), once the first answer told it. */
   readonly locale: string;
   readonly onOpen: (dialog: ActivityDialog) => void;
@@ -169,7 +173,13 @@ export function ActivitiesList({
     }),
     [tl, columnDefs, rowActions, nameOf],
   );
-  const fields: readonly PagedFilterField[] = [];
+  const created = useDateFilter({
+    id: 'created',
+    label: tl('filter.name.created'),
+    range: { from: 'createdFrom', to: 'createdTo' },
+    zone,
+  });
+  const fields: readonly PagedFilterField[] = [created.field];
 
   return (
     <PagedSuperList
@@ -178,6 +188,7 @@ export function ActivitiesList({
       accountId={accountId}
       marketId={marketId}
       fields={fields}
+      dateRange={created.dateRange}
       csrfToken={csrfToken}
       refreshKey={refreshKey}
       heading={headerAction}

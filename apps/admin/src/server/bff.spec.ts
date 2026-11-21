@@ -1229,6 +1229,41 @@ describe('relay of the brands list', () => {
   });
 });
 
+describe('relay of the created range on the activities and tags lists', () => {
+  const from = '2026-11-14T00:00:00+10:00';
+  const to = '2026-11-21T00:00:00+10:00';
+  const get = (target: string, query: string) =>
+    new Request(`http://admin.localhost:3002/api/${target}?${query}`, {
+      method: 'GET',
+      headers: { host: 'admin.localhost:3002' },
+    });
+
+  it.each(['business-activities', 'topics'])(
+    'forwards createdFrom and createdTo of %s as instants and drops other text',
+    async (name) => {
+      const target = `catalog/admin/${name}`;
+      const list = upstreamOk();
+      await relay(
+        config,
+        get(target, `createdFrom=${encodeURIComponent(from)}&createdTo=${encodeURIComponent(to)}`),
+        target.split('/'),
+        list,
+      );
+      const asked = new URL(list.mock.calls[0]?.[0] as string).searchParams;
+      expect(asked.get('createdFrom')).toBe(from);
+      expect(asked.get('createdTo')).toBe(to);
+      const refused = upstreamOk();
+      await relay(
+        config,
+        get(target, 'createdFrom=yesterday&createdTo=2026-11-21'),
+        target.split('/'),
+        refused,
+      );
+      expect(refused.mock.calls[0]?.[0]).toBe(`http://api.test/${target}`);
+    },
+  );
+});
+
 describe('relay of the connected accounts list', () => {
   const get = (query: string, suffix = '') =>
     new Request(

@@ -4,6 +4,7 @@ import { Badge, type MenuItem, type SuperColumn } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useMemo } from 'react';
 import { PagedSuperList } from '../shared/paged-list/paged-super-list.tsx';
+import { useDateFilter } from '../shared/paged-list/use-date-filter.ts';
 import type {
   ListPagingMode,
   PagedAnswer,
@@ -39,6 +40,7 @@ export function TagsList({
   paging,
   accountId,
   marketId,
+  zone,
   csrfToken,
   locale,
   onOpen,
@@ -50,6 +52,8 @@ export function TagsList({
   readonly paging: ListPagingMode;
   /** For saving, renaming, moving and deleting saved filters. */
   readonly csrfToken: string;
+  /** The IANA zone of the table's times and of the Created presets (ADR-0005). */
+  readonly zone: string;
   readonly accountId: string;
   readonly marketId: string;
   /** The Market's default locale (names are shown in it), once the first answer told it. */
@@ -179,6 +183,12 @@ export function TagsList({
     }),
     [tl, columnDefs, rowActions, nameOf],
   );
+  const created = useDateFilter({
+    id: 'created',
+    label: tl('filter.name.created'),
+    range: { from: 'createdFrom', to: 'createdTo' },
+    zone,
+  });
   const fields: readonly PagedFilterField[] = useMemo(
     () => [
       {
@@ -186,8 +196,9 @@ export function TagsList({
         label: tl('filter.group'),
         options: TOPIC_GROUPS.map((value) => ({ value, label: t(`group.${value}`) })),
       },
+      created.field,
     ],
-    [t, tl],
+    [t, tl, created.field],
   );
 
   return (
@@ -197,6 +208,7 @@ export function TagsList({
       accountId={accountId}
       marketId={marketId}
       fields={fields}
+      dateRange={created.dateRange}
       csrfToken={csrfToken}
       refreshKey={refreshKey}
       heading={headerAction}
