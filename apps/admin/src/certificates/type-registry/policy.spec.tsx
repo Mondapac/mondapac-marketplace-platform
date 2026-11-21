@@ -119,11 +119,16 @@ describe('claim policy page', () => {
     expect(screen.queryByRole('button', { name: 'Review changes' })).toBeNull();
   });
 
-  it('asks for a change before it shows the confirmation', () => {
+  it('shows the save bar only after a change, and Discard puts the published rows back', () => {
     view();
-    click('Review changes');
-    expect(screen.getByText('Nothing has changed yet.')).toBeTruthy();
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Review changes' })).toBeNull();
+    click('Add a handling row');
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(within(bar).getByText(/1 unsaved change/)).toBeTruthy();
+    fireEvent.click(within(bar).getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.queryByLabelText('Handling type')).toBeNull();
     expect(call).not.toHaveBeenCalled();
   });
 
@@ -204,6 +209,7 @@ describe('claim policy page', () => {
     click('Add a category row');
     click('Review changes');
     expect(screen.getByText('Choose a category.')).toBeTruthy();
+    expect(screen.getByText(/1 needs fixing/)).toBeTruthy();
     fireEvent.change(screen.getAllByLabelText('Platform category')[1]!, {
       target: { value: MEAT },
     });

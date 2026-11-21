@@ -89,11 +89,17 @@ describe('type revision form', () => {
     expect(screen.queryByLabelText('Approve without a person')).toBeNull();
   });
 
-  it('asks for a change before it shows the confirmation', () => {
+  it('shows the save bar only after a change, and Discard puts the published values back', () => {
     form();
-    click('Review changes');
-    expect(screen.getByText('Nothing has changed yet.')).toBeTruthy();
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Review changes' })).toBeNull();
+    fireEvent.change(screen.getByLabelText('Name'), { target: { value: 'Halal food' } });
+    fireEvent.click(screen.getByLabelText('Needs an expiry date'));
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(within(bar).getByText(/2 unsaved changes/)).toBeTruthy();
+    fireEvent.click(within(bar).getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.getByLabelText<HTMLInputElement>('Name').value).toBe('Halal');
     expect(call).not.toHaveBeenCalled();
   });
 
@@ -172,6 +178,10 @@ describe('type revision form', () => {
     fireEvent.change(screen.getByLabelText('Icon'), { target: { value: 'Shield Check' } });
     fireEvent.change(screen.getByLabelText('Claim terms'), { target: { value: '' } });
     click('Review changes');
+    expect(screen.getByText(/3 need fixing/)).toBeTruthy();
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Review changes' }).disabled).toBe(
+      true,
+    );
     expect(screen.getByText(/Enter a name/)).toBeTruthy();
     expect(screen.getByText(/lowercase letters, digits and hyphens, starting/)).toBeTruthy();
     expect(screen.getByText(/Add at least one claim term/)).toBeTruthy();

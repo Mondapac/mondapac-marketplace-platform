@@ -5,6 +5,7 @@ import {
   Banner,
   Button,
   Dialog,
+  SaveBar,
   SettingsPage,
   SettingsSection,
   Switch,
@@ -41,6 +42,7 @@ export function ShipToRetentionPanel({
   readonly zone: string;
 }) {
   const t = useTranslations('ship-to-retention');
+  const tr = useTranslations();
   const locale = useLocale();
   const guarded = useGuardedCall();
   const [saved, setSaved] = useState(initial);
@@ -60,7 +62,15 @@ export function ShipToRetentionPanel({
 
   const parsed = monthsOf(months);
   const effectiveMonths = enabled ? (parsed ?? saved.months) : saved.months;
-  const dirty = enabled !== saved.enabled || (enabled && parsed !== saved.months);
+  const switchChanged = enabled !== saved.enabled;
+  const monthsChanged = enabled && parsed !== saved.months;
+  const count = canManage ? Number(switchChanged) + Number(monthsChanged) : 0;
+  const dirty = count > 0;
+
+  function discard() {
+    adopt(saved);
+    setProblem(null);
+  }
 
   function adopt(next: ShipToRetention) {
     setSaved(next);
@@ -115,8 +125,63 @@ export function ShipToRetentionPanel({
     } else if (fresh.failure.status === 401) window.location.assign('/session-ended');
   }
 
+  const confirmDialog = canManage ? (
+    <Dialog
+      open={confirming}
+      title={t('confirm.title')}
+      onClose={() => setConfirming(false)}
+      actions={
+        <>
+          <Button
+            variant="secondary"
+            className="min-h-12"
+            onClick={() => setConfirming(false)}
+            disabled={pending}
+          >
+            {t('cancel')}
+          </Button>
+          <Button className="min-h-12" onClick={() => void save()} loading={pending}>
+            {t('confirm.yes')}
+          </Button>
+        </>
+      }
+    >
+      <p className="text-sm">{t('confirm.body', { months: effectiveMonths })}</p>
+    </Dialog>
+  ) : null;
+
   return (
-    <SettingsPage title={t('title')}>
+    <SettingsPage
+      title={t('title')}
+      onSubmit={canManage ? submit : undefined}
+      dirty={dirty}
+      dirtyCount={count}
+      leave={{
+        title: tr('settings.leave.title'),
+        message: (info) => tr('settings.leave.message', { count: info.count, page: info.page }),
+        stay: tr('settings.leave.stay'),
+        leave: tr('settings.leave.leave'),
+      }}
+      saveBar={
+        canManage ? (
+          <SaveBar
+            count={count}
+            summary={tr('settings.bar.summary', { count })}
+            errorCount={monthsError && enabled && parsed === null ? 1 : 0}
+            errorsSummary={tr('settings.bar.errors', { count: 1 })}
+            saving={pending}
+            labels={{
+              region: tr('settings.bar.region'),
+              discard: tr('settings.bar.discard'),
+              save: tr('settings.bar.save'),
+              saving: tr('settings.bar.saving'),
+            }}
+            onDiscard={discard}
+          />
+        ) : null
+      }
+      overlay={confirmDialog}
+    >
       <SettingsSection title={t('section')} description={canManage ? t('intro') : t('read-only')}>
         <div className="flex flex-col gap-4 p-5">
           <Banner tone="attention">{t('permanent')}</Banner>
@@ -171,39 +236,8 @@ export function ShipToRetentionPanel({
                   when: formatInstantInZone(saved.updatedAt, locale, zone),
                 })}
           </p>
-          {canManage ? (
-            <div>
-              <Button className="min-h-12" onClick={submit} disabled={!dirty} loading={pending}>
-                {t('save')}
-              </Button>
-            </div>
-          ) : null}
         </div>
       </SettingsSection>
-      {canManage ? (
-        <Dialog
-          open={confirming}
-          title={t('confirm.title')}
-          onClose={() => setConfirming(false)}
-          actions={
-            <>
-              <Button
-                variant="secondary"
-                className="min-h-12"
-                onClick={() => setConfirming(false)}
-                disabled={pending}
-              >
-                {t('cancel')}
-              </Button>
-              <Button className="min-h-12" onClick={() => void save()} loading={pending}>
-                {t('confirm.yes')}
-              </Button>
-            </>
-          }
-        >
-          <p className="text-sm">{t('confirm.body', { months: effectiveMonths })}</p>
-        </Dialog>
-      ) : null}
     </SettingsPage>
   );
 }

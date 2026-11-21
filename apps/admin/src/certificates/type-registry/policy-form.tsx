@@ -1,8 +1,17 @@
 'use client';
 
-import { Banner, Button, Dialog, Select, TextAreaField } from '@mondapac/ui';
+import {
+  Banner,
+  Button,
+  Dialog,
+  SaveBar,
+  Select,
+  TextAreaField,
+  useUnsavedChangesGuard,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
+import { flushSync } from 'react-dom';
 import { REVIEW_NOTE_MAX, ReviewNoteField, trimmedNote } from '../../shared/review-note.tsx';
 import {
   API_POLICIES,
@@ -132,6 +141,8 @@ export function PolicyForm({
   const [note, setNote] = useState('');
   const [shown, setShown] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  // Set once the policy is saved and the browser is sent on: the leave prompt stays quiet.
+  const [leaving, setLeaving] = useState(false);
 
   const names = new Map(categories.map((category) => [`row:${category.id}`, category.name]));
   const nameOf = (path: string) =>
@@ -159,6 +170,28 @@ export function PolicyForm({
   const sentNote = trimmedNote(note);
   const noteMissing = reviewed && sentNote === null;
   const failed = problems.size > 0 || reasonTooLong || noteMissing;
+  // A second row for the same category changes nothing by itself, but it is still unsaved work
+  // (and a problem to fix), so the bar counts it.
+  const count = Math.max(changes.length, rows.length !== published.length ? 1 : 0);
+  const errorCount = shown ? problems.size + Number(reasonTooLong) + Number(noteMissing) : 0;
+  // Leaving with rows that are not saved asks first (the dialog the settings pages use).
+  const guard = useUnsavedChangesGuard(
+    count > 0 && !leaving,
+    {
+      title: tr('settings.leave.title'),
+      message: (info) => tr('settings.leave.message', { count: info.count, page: info.page }),
+      stay: tr('settings.leave.stay'),
+      leave: tr('settings.leave.leave'),
+    },
+    { count, page: t('title') },
+  );
+
+  function discard() {
+    setRows(draftOf(published));
+    setReason('');
+    setNote('');
+    setShown(false);
+  }
 
   const patch = (id: number, change: Partial<RowDraft>) =>
     setRows((current) => current.map((row) => (row.id === id ? { ...row, ...change } : row)));
@@ -195,6 +228,7 @@ export function PolicyForm({
     if (answer.ok) {
       const what = answer.body.outcome === 'published' ? 'published' : 'pending';
       const request = answer.body.request === null ? '' : `&sr=${answer.body.request.number}`;
+      flushSync(() => setLeaving(true));
       window.location.assign(`/certificates/types/${typeId}/policy?done=${what}${request}`);
     }
   }
@@ -202,11 +236,6 @@ export function PolicyForm({
   return (
     <form onSubmit={review} className="flex flex-col gap-4" noValidate>
       <p className="text-fg-muted">{t('form.intro')}</p>
-      {shown && changes.length === 0 && !failed ? (
-        <div role="status">
-          <Banner tone="info">{t('form.no-changes')}</Banner>
-        </div>
-      ) : null}
       {rows.length === 0 ? <p className="text-fg-muted">{t('form.no-rows')}</p> : null}
       <ul className="flex flex-col gap-3">
         {rows.map((row, index) => {
@@ -303,9 +332,21 @@ export function PolicyForm({
           error={shown && noteMissing ? 'required' : undefined}
         />
       ) : null}
-      <div className="flex flex-wrap gap-3">
-        <Button type="submit">{t('form.review')}</Button>
-      </div>
+      <SaveBar
+        count={count}
+        summary={tr('settings.bar.summary', { count })}
+        errorCount={errorCount}
+        errorsSummary={tr('settings.bar.errors', { count: errorCount })}
+        labels={{
+          region: tr('settings.bar.region'),
+          discard: tr('settings.bar.discard'),
+          // Save opens the confirmation that lists the changes; nothing is sent yet.
+          save: t('form.review'),
+          saving: t('form.review'),
+        }}
+        onDiscard={discard}
+      />
+      {guard.dialog}
       {confirming ? (
         <Dialog
           open
