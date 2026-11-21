@@ -170,6 +170,7 @@ export function ProposalsList({
         { id: 'reject', label: t('bulk.reject'), run: bulkRun('reject') },
       ],
       icon: 'package',
+      savedKey: 'admin.catalog.category-proposals',
     }),
     [t, tl, nameOf, columnDefs, rowActions],
   );
@@ -181,6 +182,7 @@ export function ProposalsList({
       paging={paging}
       accountId={accountId}
       marketId={marketId}
+      csrfToken={csrfToken}
       refreshKey={refresh}
       dialogs={
         <>
