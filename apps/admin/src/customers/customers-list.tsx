@@ -15,6 +15,7 @@ import {
   useRowSelection,
   listSkeletonRowCount,
   useListLoading,
+  useBaseTabCounts,
   useSuperListQuery,
   writeIds,
   type MenuItem,
@@ -238,6 +239,28 @@ export function CustomersList({
     void load(query);
   }, [load, query]);
 
+  // A saved filter is a tab of its own: it does not narrow the counts of the built-in tabs.
+  const counts = useBaseTabCounts<CustomersPage['counts']>({
+    savedId: list.savedId,
+    live: answer?.counts ?? null,
+    load: async () => {
+      const base = scoped(DEFAULT_QUERY);
+      const result = await callApi<CustomersPage>(
+        'POST',
+        'customers/admin/list',
+        {
+          ...selectorOf(base),
+          sort: base.sort,
+          direction: base.direction,
+          page: 1,
+          pageSize: 1,
+        },
+        csrfToken,
+      );
+      return result.ok ? result.body.counts : null;
+    },
+  });
+
   // A new tab, search, filter or sort is another list: the selection does not follow it.
   const selectionKey = JSON.stringify([
     query.view,
@@ -266,7 +289,6 @@ export function CustomersList({
     row.orderCount === 0 || row.currency === null
       ? '—'
       : formatMinor(row.spentMinor, row.currency, locale);
-  const counts = answer?.counts ?? null;
   const total = answer?.paging?.total ?? 0;
   // A search shorter than the minimum is not applied, so it neither filters nor can be saved.
   const orderNumber = orderNumberOf(query.orderNumber);

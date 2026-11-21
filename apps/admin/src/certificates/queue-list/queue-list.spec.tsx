@@ -883,6 +883,29 @@ describe('Certificate queue: saved filters', () => {
     expect(paramsOf(lastUrl())['sort']).toBe('queue');
   });
 
+  it("keeps the built-in tabs' counts when a saved filter is open", async () => {
+    serve(
+      (url) =>
+        pageOf([row()], {
+          counts: url.includes('type=kosher')
+            ? { all: 1, initial: 0, resubmission: 0, renewal: 1 }
+            : COUNTS,
+        }),
+      (_method, path) =>
+        Promise.resolve({
+          ok: true,
+          status: 200,
+          body: path.startsWith(SAVED) ? { items: [item], canShare: false } : {},
+        } as never),
+    );
+    mount();
+    await screen.findByText(STORE);
+    fireEvent.click(await screen.findByRole('button', { name: 'Kosher renewals' }));
+    await waitFor(() => expect(paramsOf(lastUrl())).toHaveProperty('type', 'kosher'));
+    expect(await screen.findByRole('button', { name: 'New (4)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Renewal (2)' })).toBeTruthy();
+  });
+
   it('offers Save filter... on a built-in tab that shows something to keep', async () => {
     serve(
       () => pageOf([row()]),

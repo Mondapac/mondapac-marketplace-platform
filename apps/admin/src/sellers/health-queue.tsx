@@ -17,6 +17,7 @@ import {
   writeIds,
   type MenuItem,
   type SuperColumn,
+  useBaseTabCounts,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -131,6 +132,18 @@ export function HealthQueue({
   const [answer, setAnswer] = useState<HealthQueuePage | null>(null);
   // The view counts of the last answer: they stay while a page loads or a request fails.
   const [counts, setCounts] = useState<HealthQueuePage['counts'] | null>(null);
+  // A saved filter is a tab of its own: it does not narrow the counts of the built-in tabs.
+  const tabCounts = useBaseTabCounts<HealthQueuePage['counts']>({
+    savedId,
+    live: counts,
+    load: async () => {
+      const result = await callApi<HealthQueuePage>(
+        'GET',
+        `${HEALTH_QUEUE_LIST_PATH}?${queryString(DEFAULT_QUERY, paging)}`,
+      );
+      return result.ok ? result.body.counts : null;
+    },
+  });
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [columns, setColumns] = useState<readonly OptionalColumn[]>(DEFAULT_COLUMNS);
@@ -359,14 +372,14 @@ export function HealthQueue({
       title={
         filtered
           ? t('empty.no-match')
-          : counts !== null && counts.all > 0
+          : tabCounts !== null && tabCounts.all > 0
             ? t(`empty.view.${query.view}`)
             : t('empty.title')
       }
       body={
         filtered
           ? t('empty.no-match-help')
-          : counts !== null && counts.all > 0
+          : tabCounts !== null && tabCounts.all > 0
             ? undefined
             : t('empty.body')
       }
@@ -501,7 +514,7 @@ export function HealthQueue({
           ...VIEWS.map((view) => ({
             id: view,
             label: `${view === 'all' ? t('view.all') : t(`metric.${view}`)}${
-              counts === null ? '' : ` (${number(counts[view])})`
+              tabCounts === null ? '' : ` (${number(tabCounts[view])})`
             }`,
           })),
           ...(saved?.items ?? []).map((item) => ({ id: item.id, label: item.name })),

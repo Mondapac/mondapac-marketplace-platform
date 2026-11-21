@@ -17,6 +17,7 @@ import {
   NoAccess,
   Popover,
   PrevNext,
+  useBaseTabCounts,
   SearchField,
   browserStorage,
   listSkeletonRowCount,
@@ -133,6 +134,18 @@ export function QueueList({
   const { saved, reload: loadSaved } = useSavedFilters<SavedPayload>(LIST_KEY);
   const [savedId, setSavedId] = useState<string | null>(null);
   const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
+  // A saved filter is a tab of its own: it does not narrow the counts of the built-in tabs.
+  const tabCounts = useBaseTabCounts<RequestPage['counts']>({
+    savedId,
+    live: answer?.counts ?? null,
+    load: async () => {
+      const result = await callApi<RequestPage>(
+        'GET',
+        `${BASE}/requests?${queryString(DEFAULT_QUERY, zone, paging, null)}`,
+      );
+      return result.ok ? result.body.counts : null;
+    },
+  });
   const latest = useRef(0);
   const known = useRef(new Map<string, SystemRequest>());
   // True until the first answer when nothing says which view to open: Needs my review, or All
@@ -496,7 +509,7 @@ export function QueueList({
         items={[
           ...VIEWS.map((view) => ({
             id: view,
-            label: `${t(`view.${view}`)}${counts === null ? '' : ` (${countText(counts[view], number)})`}`,
+            label: `${t(`view.${view}`)}${tabCounts === null ? '' : ` (${countText(tabCounts[view], number)})`}`,
             ...(view === 'overdue' ? { tone: 'critical' as const } : {}),
           })),
           ...(saved?.items ?? []).map((item) => ({ id: item.id, label: item.name })),

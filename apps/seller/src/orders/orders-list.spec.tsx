@@ -96,6 +96,28 @@ const lastUrl = (): string => {
   const calls = call.mock.calls.filter(([, path]) => path.startsWith(ORDERS_PATH));
   return String(calls[calls.length - 1]?.[1]);
 };
+/**
+ * The last list call that is not the default read the list makes for the built-in tabs' counts
+ * while a saved tab is open (that read is the same URL as the first page).
+ */
+const lastTabUrl = (): string => {
+  const calls = call.mock.calls.filter(
+    ([, path]) => path.startsWith(ORDERS_PATH) && !isDefaultRead(path),
+  );
+  return String(calls[calls.length - 1]?.[1]);
+};
+const isDefaultRead = (path: string): boolean => {
+  const rest = Object.fromEntries(Object.entries(paramsOf(path)).filter(([k]) => k !== 'paging'));
+  return (
+    JSON.stringify(Object.entries(rest).sort()) ===
+    JSON.stringify([
+      ['direction', 'desc'],
+      ['page', '1'],
+      ['pageSize', '25'],
+      ['sort', 'paid'],
+    ])
+  );
+};
 const paramsOf = (url: string) => Object.fromEntries(new URL(`http://x/${url}`).searchParams);
 const mount = (
   initial: SellerOrderPage = pageOf([row()]),
@@ -468,7 +490,7 @@ describe('seller orders saved filters', () => {
     mount(pageOf([row()], { total: 1, paging: 'pages' }), { paging: 'pages' });
     fireEvent.click(await screen.findByRole('button', { name: 'Old shipped' }));
     await waitFor(() =>
-      expect(paramsOf(lastUrl())).toMatchObject({
+      expect(paramsOf(lastTabUrl())).toMatchObject({
         status: 'shipped',
         from: '2026-10-01T00:00:00.000Z',
         to: '2026-10-06T00:00:00.000Z',
@@ -482,14 +504,30 @@ describe('seller orders saved filters', () => {
     expect(screen.getByText('Paid is 2026-10-01 to 2026-10-05')).toBeTruthy();
   });
 
+  it("keeps the built-in tabs' counts when a saved filter is open", async () => {
+    // The API counts for the request's own filters, so a saved tab's answer is narrow.
+    const narrow = { toShip: 0, shipped: 1, delivered: 0 };
+    serve(
+      (url) => pageOf([row()], { counts: paramsOf(url)['from'] === undefined ? COUNTS : narrow }),
+      savedAnswer([saved()]),
+    );
+    mount(pageOf([row()], { total: 1, paging: 'pages' }), { paging: 'pages' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Old shipped' }));
+    await waitFor(() => expect(paramsOf(lastTabUrl())['from']).toBeDefined());
+    expect(await screen.findByRole('button', { name: 'All (25)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'To ship (3)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Shipped (20)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Delivered (2)' })).toBeTruthy();
+  });
+
   it('never carries a saved filter over to a built-in tab (john: a saved filter belongs to its own tab)', async () => {
     serve(() => pageOf([row()]), savedAnswer([saved()]));
     mount(pageOf([row()], { total: 1, paging: 'pages' }), { paging: 'pages' });
     fireEvent.click(await screen.findByRole('button', { name: 'Old shipped' }));
-    await waitFor(() => expect(paramsOf(lastUrl())['direction']).toBe('asc'));
+    await waitFor(() => expect(paramsOf(lastTabUrl())['direction']).toBe('asc'));
     fireEvent.click(screen.getByRole('button', { name: /^Delivered/ }));
-    await waitFor(() => expect(paramsOf(lastUrl())['status']).toBe('delivered'));
-    expect(paramsOf(lastUrl())).toEqual({
+    await waitFor(() => expect(paramsOf(lastTabUrl())['status']).toBe('delivered'));
+    expect(paramsOf(lastTabUrl())).toEqual({
       status: 'delivered',
       page: '1',
       pageSize: '25',
@@ -529,7 +567,10 @@ describe('seller orders saved filters', () => {
     mount();
     fireEvent.click(await screen.findByRole('button', { name: 'Old shipped' }));
     expect(await screen.findByText('No orders match')).toBeTruthy();
-    expect(call.mock.calls.filter(([, p]) => p.startsWith(ORDERS_PATH))).toHaveLength(0);
+    // Only the default read for the built-in tabs' counts goes out; the backwards range never does.
+    expect(
+      call.mock.calls.filter(([, p]) => p.startsWith(ORDERS_PATH) && !isDefaultRead(p)),
+    ).toHaveLength(0);
   });
 
   it('saves the current tab and sort as a private filter and shows it as the open tab', async () => {
@@ -595,7 +636,7 @@ describe('seller orders saved filters', () => {
   it('offers neither Save filter nor Manage filters when the filters cannot load', async () => {
     mount();
     fireEvent.click(screen.getByRole('button', { name: /^Shipped/ }));
-    await waitFor(() => expect(paramsOf(lastUrl())['status']).toBe('shipped'));
+    await waitFor(() => expect(paramsOf(lastTabUrl())['status']).toBe('shipped'));
     expect(screen.queryByRole('button', { name: 'Save filter…' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Manage filters' })).toBeNull();
   });

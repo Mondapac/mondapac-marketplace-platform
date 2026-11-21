@@ -13,6 +13,7 @@ import {
   useRowSelection,
   useSuperListQuery,
   writeIds,
+  useBaseTabCounts,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -147,6 +148,16 @@ export function AlertList({
   const [answer, setAnswer] = useState<AlertListPage | null>(null);
   // The view counts of the last answer: they stay while a page loads or a read fails.
   const [counts, setCounts] = useState<AlertCounts | null>(null);
+  // A saved filter is a tab of its own: it does not narrow the counts of the built-in tabs.
+  const tabCounts = useBaseTabCounts<AlertCounts>({
+    savedId,
+    live: counts,
+    load: async () => {
+      const request = queryString(DEFAULT_QUERY, { paging, zone, now: new Date() });
+      const result = await callApi<AlertListPage>('GET', `security/admin/alerts/list?${request}`);
+      return result.ok ? result.body.counts : null;
+    },
+  });
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<Failure | null>(null);
   const router = useRouter();
@@ -463,7 +474,7 @@ export function AlertList({
         items: [
           ...VIEWS.map((view) => ({
             id: view,
-            label: `${t(`view.${view}`)}${counts === null ? '' : ` (${number(counts[view])})`}`,
+            label: `${t(`view.${view}`)}${tabCounts === null ? '' : ` (${number(tabCounts[view])})`}`,
           })),
           ...(saved?.items ?? []).map((item) => ({ id: item.id, label: item.name })),
         ],

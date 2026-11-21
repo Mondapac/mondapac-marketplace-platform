@@ -35,6 +35,9 @@ interface Case {
   /** The sort field to choose in the Sort panel (radio name) and the sort id it saves. */
   readonly sortChoice: { readonly radio: string; readonly id: string };
   readonly otherTab: { readonly button: RegExp; readonly id: string };
+  /** The count the other tab shows in the unfiltered list, and a request part only the saved filter sends. */
+  readonly otherTabCount: number;
+  readonly narrowedBy: string;
   /** A saved document, and the query parameters opening it must send. */
   readonly open: { readonly payload: object; readonly sends: Record<string, string> };
 }
@@ -56,6 +59,8 @@ const CASES: readonly Case[] = [
     element: (paging) => <ShipmentsList paging={paging} {...COMMON} />,
     sortChoice: { radio: 'Total', id: 'total' },
     otherTab: { button: /^Shipped/, id: 'shipped' },
+    otherTabCount: 3,
+    narrowedBy: 'deliveryMethod=pickup',
     open: {
       payload: {
         v: 1,
@@ -80,6 +85,8 @@ const CASES: readonly Case[] = [
     element: (paging) => <RefundsList paging={paging} {...COMMON} />,
     sortChoice: { radio: 'Amount', id: 'amount' },
     otherTab: { button: /^Refused by Stripe/, id: 'failed' },
+    otherTabCount: 2,
+    narrowedBy: 'reason=damaged',
     open: {
       payload: {
         v: 1,
@@ -104,6 +111,8 @@ const CASES: readonly Case[] = [
     element: (paging) => <InvoicesList paging={paging} {...COMMON} />,
     sortChoice: { radio: 'Amount', id: 'amount' },
     otherTab: { button: /^Credit notes/, id: 'credit-note' },
+    otherTabCount: 2,
+    narrowedBy: 'from=',
     open: {
       payload: {
         v: 1,
@@ -156,7 +165,14 @@ function serve(
 ) {
   const state = { items };
   call.mockImplementation((method: string, path: string, body?: unknown) => {
-    if (!path.startsWith(SAVED)) return ok(c.page);
+    if (!path.startsWith(SAVED)) {
+      // Like the API, the list route counts for the filters of the request.
+      if (!path.includes(c.narrowedBy)) return ok(c.page);
+      const counts = Object.fromEntries(
+        Object.keys((c.page as { counts: object }).counts).map((k) => [k, 0]),
+      );
+      return ok({ ...c.page, counts });
+    }
     if (options.savedFails !== undefined) return fail(options.savedFails, 'access.denied');
     if (method === 'GET') {
       return ok({ listKey: c.key, items: state.items, canShare: options.canShare ?? false });
@@ -241,6 +257,22 @@ describe.each(CASES)('$name saved filters', (c) => {
     expect(tabs.indexOf(mine)).toBe(tabs.length - 2);
     expect(tabs[tabs.length - 1]?.textContent).toBe('Shared by Sam');
     expect(screen.getByRole('button', { name: 'Manage filters' })).toBeTruthy();
+  });
+
+  it("keeps the built-in tabs' counts when a saved filter is open", async () => {
+    serve(c, [stored(c.key, { name: 'Mine', payload: c.open.payload })]);
+    mount(c);
+    const other = await screen.findByRole('button', { name: c.otherTab.button });
+    await waitFor(() => expect(other.textContent).toContain(`(${c.otherTabCount})`));
+    fireEvent.click(await screen.findByRole('button', { name: 'Mine' }));
+    await waitFor(() => expect(listUrls(c).some((url) => url.includes(c.narrowedBy))).toBe(true));
+    // The saved filter narrows its own list only; the other tabs still count the whole list.
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: c.otherTab.button }).textContent).toContain(
+        `(${c.otherTabCount})`,
+      ),
+    );
+    expect(screen.getByRole('button', { name: 'Mine' }).getAttribute('aria-pressed')).toBe('true');
   });
 
   it('opens a saved tab with its tab, filters and sort', async () => {

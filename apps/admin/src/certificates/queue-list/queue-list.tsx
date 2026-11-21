@@ -14,6 +14,7 @@ import {
   useRowSelection,
   useSuperListQuery,
   writeIds,
+  useBaseTabCounts,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
@@ -136,6 +137,22 @@ export function QueueList({
   const [answer, setAnswer] = useState<QueueListPage | null>(null);
   // The view counts of the last answer: they stay while a page loads or a read fails.
   const [counts, setCounts] = useState<QueueCounts | null>(null);
+  // A saved filter is a tab of its own: it does not narrow the counts of the built-in tabs.
+  const tabCounts = useBaseTabCounts<QueueCounts>({
+    savedId,
+    live: counts,
+    load: async () => {
+      const request = queryString(
+        { ...DEFAULT_QUERY, sellerId },
+        { paging, zone, now: new Date() },
+      );
+      const result = await callApi<QueueListPage>(
+        'GET',
+        `certification/admin/seller-certificates/list?${request}`,
+      );
+      return result.ok ? result.body.counts : null;
+    },
+  });
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<Failure | null>(null);
   const [hinted, setHinted] = useState(false);
@@ -438,7 +455,7 @@ export function QueueList({
         items: [
           ...VIEWS.map((view) => ({
             id: view,
-            label: `${t(`view.${view}`)}${counts === null ? '' : ` (${number(counts[view])})`}`,
+            label: `${t(`view.${view}`)}${tabCounts === null ? '' : ` (${number(tabCounts[view])})`}`,
           })),
           ...(saved?.items ?? []).map((item) => ({ id: item.id, label: item.name })),
         ],

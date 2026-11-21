@@ -402,6 +402,58 @@ describe('the Store followed filter of the Customers list', () => {
   });
 });
 
+describe('a saved filter on the attributions list', () => {
+  it("keeps the built-in tabs' counts when a saved filter is open", async () => {
+    call.mockImplementation((_m, path, body) => {
+      if (path === 'customers/admin/seller-attributions/list') {
+        const searched = (body as { q?: string }).q !== undefined;
+        return Promise.resolve(
+          ok({
+            ...attributionsPage([attribution()]),
+            counts: searched
+              ? { suspicious: 0, all: 1, active: 1, rejected: 0 }
+              : { suspicious: 2, all: 5, active: 3, rejected: 2 },
+          }),
+        );
+      }
+      if (path.startsWith('customers/admin/saved-filters') && _m === 'GET') {
+        return Promise.resolve(
+          ok({
+            items: [
+              {
+                id: '0190a000-0000-7000-8000-0000000000c2',
+                name: 'Sara only',
+                visibility: 'me',
+                payload: { v: 1, view: 'all', q: 'sara@' },
+                ownedByMe: true,
+                canManage: true,
+              },
+            ],
+            canShare: false,
+            limits: { perOwner: 50, shared: 20 },
+          }),
+        );
+      }
+      return Promise.resolve(ok({ items: [], next: null }));
+    });
+    render(wrap(<AttributionsList {...listProps} permissionKeys={[VIEW]} />));
+    expect(await screen.findByRole('button', { name: /Suspicious \(2\)/ })).toBeTruthy();
+    fireEvent.click(await screen.findByRole('button', { name: /^Sara only/ }));
+    await waitFor(() =>
+      expect(
+        bodiesTo('customers/admin/seller-attributions/list').some(
+          (b) => (b as { q?: string }).q === 'sara@',
+        ),
+      ).toBe(true),
+    );
+    await waitFor(() =>
+      expect(bodiesTo('customers/admin/seller-attributions/list').length).toBeGreaterThan(2),
+    );
+    expect(await screen.findByRole('button', { name: /Suspicious \(2\)/ })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /Rejected \(2\)/ })).toBeTruthy();
+  });
+});
+
 describe('review fixes', () => {
   const savedAnswer = (canShare: boolean) =>
     ok({ items: [], canShare, limits: { perOwner: 50, shared: 20 } });
