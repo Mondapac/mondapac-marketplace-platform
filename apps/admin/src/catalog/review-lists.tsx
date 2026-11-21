@@ -35,6 +35,12 @@ const SORTS = (t: (key: string) => string) =>
   ] as const;
 
 /**
+ * The queue's times (Waiting since) are shown in UTC, so a Submitted preset reads its day on the UTC
+ * clock too: "Today" then keeps exactly the rows whose shown date is today's.
+ */
+const QUEUE_ZONE = 'UTC';
+
+/**
  * The pending product revisions as a super list (super list phase 2, list 14): oldest submitted
  * first, filtered by change (new or update) and photos, with page numbers or Previous and next.
  * The decision itself needs the named checks, so a row's Actions menu opens its version review.
@@ -43,15 +49,12 @@ export function RevisionsList({
   paging,
   accountId,
   marketId,
-  zone,
   csrfToken,
   onTotals,
 }: {
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
-  /** The IANA zone of the table's times and of the Submitted presets (ADR-0005). */
-  readonly zone: string;
   readonly csrfToken: string;
   readonly onTotals: (totals: Totals) => void;
 }) {
@@ -187,7 +190,7 @@ export function RevisionsList({
     id: 'submitted',
     label: tl('filter.name.submitted'),
     range: { from: 'submittedFrom', to: 'submittedTo' },
-    zone,
+    zone: QUEUE_ZONE,
   });
   const fields: readonly PagedFilterField[] = useMemo(
     () => [
@@ -243,15 +246,12 @@ export function OffersList({
   paging,
   accountId,
   marketId,
-  zone,
   csrfToken,
   onTotals,
 }: {
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
-  /** The IANA zone of the table's times and of the Submitted presets (ADR-0005). */
-  readonly zone: string;
   readonly csrfToken: string;
   readonly onTotals: (totals: Totals) => void;
 }) {
@@ -356,7 +356,7 @@ export function OffersList({
     id: 'submitted',
     label: tl('filter.name.submitted'),
     range: { from: 'submittedFrom', to: 'submittedTo' },
-    zone,
+    zone: QUEUE_ZONE,
   });
   const fields = useMemo(() => [submitted.field], [submitted.field]);
   return (
