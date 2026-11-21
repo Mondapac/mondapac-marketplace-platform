@@ -235,12 +235,14 @@ export {
   DashboardLoading,
   DistributionCardSkeleton,
   StatCardSkeleton,
-  activitySkeletonColumns,
   type ActivityCardSkeletonProps,
-  type ActivitySkeletonColumn,
   type DistributionCardSkeletonProps,
   type StatCardSkeletonProps,
 } from './dashboard/dashboard-loading.tsx';
+export {
+  activitySkeletonColumns,
+  type ActivitySkeletonColumn,
+} from './dashboard/activity-skeleton-columns.ts';
 export { DashboardSlot, type DashboardSource } from './dashboard/dashboard-slot.tsx';
 export {
   DashboardCard,
