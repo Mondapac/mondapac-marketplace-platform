@@ -63,7 +63,14 @@ createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
     <main className="mx-auto max-w-7xl p-4 md:p-6">
       <h1 className="text-2xl font-semibold">{messages.brands.title}</h1>
-      <BrandsView canEdit csrfToken="tok" paging="pages" accountId={id(99)} marketId="AU" />
+      <BrandsView
+        canEdit
+        csrfToken="tok"
+        paging="pages"
+        accountId={id(99)}
+        marketId="AU"
+        zone="Australia/Brisbane"
+      />
     </main>
   </NextIntlClientProvider>,
 );

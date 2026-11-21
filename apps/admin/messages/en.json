@@ -11254,7 +11254,8 @@
       "filter": {
         "title": "Filter brands",
         "name": {
-          "originCountry": "Origin country"
+          "originCountry": "Origin country",
+          "created": "Created"
         }
       },
       "sort": {
