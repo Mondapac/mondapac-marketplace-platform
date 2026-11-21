@@ -201,6 +201,149 @@ describe('review queue lists', () => {
     vi.unstubAllGlobals();
   });
 
+  const bulkAnswer = (
+    action: string,
+    results: unknown[],
+    counts = { done: 1, skipped: 0, failed: 0 },
+  ) => ({ ok: true, status: 200, body: { action, counts, results } }) as never;
+  const bulkWrites = () => call.mock.calls.filter(([m]) => m === 'POST');
+
+  it('approves the ticked Offers together and sends their ids and versions', async () => {
+    call.mockImplementation((method: string) =>
+      Promise.resolve(
+        method === 'POST' ? bulkAnswer('approve', [{ id: ID, outcome: 'done' }]) : offerAnswer(),
+      ),
+    );
+    mount('offer');
+    const tr = (await screen.findByText('Olive oil')).closest('tr') as HTMLElement;
+    fireEvent.click(within(tr).getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Approve ticked…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Approve 1 offer?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve 1 offer' }));
+    expect(await within(dialog).findByText('1 row decided, 0 skipped.')).toBeTruthy();
+    expect(bulkWrites()).toEqual([
+      [
+        'POST',
+        'catalog/admin/review-queue/bulk-decide',
+        { action: 'approve', items: [{ id: ID, version: 3 }], kind: 'offer' },
+        'csrf-1',
+      ],
+    ]);
+  });
+
+  it('sends the ticked revisions back with one reason, naming each revision', async () => {
+    call.mockImplementation((method: string) =>
+      Promise.resolve(
+        method === 'POST'
+          ? bulkAnswer('request-changes', [{ id: revision().productId, outcome: 'done' }])
+          : answer([revision()]),
+      ),
+    );
+    mount('revision');
+    const tr = (await screen.findByText('Dates')).closest('tr') as HTMLElement;
+    fireEvent.click(within(tr).getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Send back ticked…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Send back 1 product revision?' });
+    const confirm = within(dialog).getByRole<HTMLButtonElement>('button', {
+      name: 'Send back 1 product revision',
+    });
+    expect(confirm.disabled).toBe(true);
+    fireEvent.change(within(dialog).getByRole('combobox', { name: /Reason/ }), {
+      target: { value: 'photos' },
+    });
+    expect(confirm.disabled).toBe(false);
+    fireEvent.click(confirm);
+    await within(dialog).findByText('1 row decided, 0 skipped.');
+    expect(bulkWrites()[0]).toEqual([
+      'POST',
+      'catalog/admin/review-queue/bulk-decide',
+      {
+        action: 'request-changes',
+        items: [{ id: revision().productId, revisionId: revision().revisionId, version: 5 }],
+        kind: 'revision',
+        reasonCode: 'photos',
+      },
+      'csrf-1',
+    ]);
+  });
+
+  it('tells which revisions need manual checks when a bulk approval skips them', async () => {
+    call.mockImplementation((method: string) =>
+      Promise.resolve(
+        method === 'POST'
+          ? bulkAnswer(
+              'approve',
+              [{ id: revision().productId, outcome: 'skipped', reason: 'review.checks-missing' }],
+              { done: 0, skipped: 1, failed: 0 },
+            )
+          : answer([revision()]),
+      ),
+    );
+    mount('revision');
+    const tr = (await screen.findByText('Dates')).closest('tr') as HTMLElement;
+    fireEvent.click(within(tr).getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Approve ticked…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Approve 1 product revision?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve 1 product revision' }));
+    expect(
+      await within(dialog).findByText(/1 revision needs manual checks, so it was not approved/),
+    ).toBeTruthy();
+    expect(bulkWrites()[0]?.[2]).toEqual({
+      action: 'approve',
+      items: [{ id: revision().productId, revisionId: revision().revisionId, version: 5 }],
+      kind: 'revision',
+    });
+  });
+
+  it('sends the ticked Offers back with one of the Offer reasons', async () => {
+    call.mockImplementation((method: string) =>
+      Promise.resolve(
+        method === 'POST'
+          ? bulkAnswer('request-changes', [{ id: ID, outcome: 'done' }])
+          : offerAnswer(),
+      ),
+    );
+    mount('offer');
+    const tr = (await screen.findByText('Olive oil')).closest('tr') as HTMLElement;
+    fireEvent.click(within(tr).getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Send back ticked…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Send back 1 offer?' });
+    fireEvent.change(within(dialog).getByRole('combobox', { name: /Reason/ }), {
+      target: { value: 'handling-unclear' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Send back 1 offer' }));
+    await within(dialog).findByText('1 row decided, 0 skipped.');
+    expect(bulkWrites()[0]?.[2]).toEqual({
+      action: 'request-changes',
+      items: [{ id: ID, version: 3 }],
+      kind: 'offer',
+      reasonCode: 'handling-unclear',
+    });
+  });
+
+  it('keeps the dialog open and says nothing was decided when the bulk call is refused', async () => {
+    call.mockImplementation(((method: string) =>
+      Promise.resolve(
+        method === 'POST'
+          ? { ok: false, failure: { status: 413, code: 'batch.too-large' } }
+          : offerAnswer(),
+      )) as never);
+    mount('offer');
+    const tr = (await screen.findByText('Olive oil')).closest('tr') as HTMLElement;
+    fireEvent.click(within(tr).getByRole('checkbox'));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Approve ticked…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Approve 1 offer?' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Approve 1 offer' }));
+    expect(await within(dialog).findByText('At most 50 rows can be decided at once.')).toBeTruthy();
+    expect(screen.getByRole('dialog', { name: 'Approve 1 offer?' })).toBeTruthy();
+    expect(bulkWrites()).toHaveLength(1);
+  });
+
   it('shows the empty state of an empty queue', async () => {
     call.mockResolvedValue(answer([]));
     mount('offer');

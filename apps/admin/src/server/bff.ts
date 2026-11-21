@@ -599,6 +599,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'catalog/admin/variant-requests/bulk-decide',
     'catalog/admin/topic-suggestions/bulk-decide',
     'catalog/admin/category-proposals/bulk-decide',
+    'catalog/admin/review-queue/bulk-decide',
     'catalog/admin/variant-requests/:id/approve',
     'catalog/admin/variant-requests/:id/map',
     'catalog/admin/variant-requests/:id/decline',

@@ -46,6 +46,7 @@ export function ReviewQueueView({
           paging={paging}
           accountId={accountId}
           marketId={marketId}
+          csrfToken={csrfToken}
           onTotals={setTotals}
         />
       ) : (
