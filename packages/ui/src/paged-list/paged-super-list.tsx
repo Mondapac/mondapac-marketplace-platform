@@ -547,7 +547,11 @@ export function PagedSuperList<Row>({
             id: tab,
             label: `${t(`tab.${tab}`)}${counts === null || counts[tab] === undefined ? '' : ` (${number(counts[tab])})`}`,
           })),
-          ...savedHere.map((item) => ({ id: item.id, label: item.name })),
+          // The saved filter on show carries the live total; the registry keeps no count for the rest.
+          ...savedHere.map((item) => ({
+            id: item.id,
+            label: `${item.name}${item.id === savedId && total !== null ? ` (${number(total)})` : ''}`,
+          })),
         ],
         manage:
           saved === null
