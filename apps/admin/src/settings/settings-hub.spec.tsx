@@ -40,18 +40,19 @@ describe('SettingsHub', () => {
       'identity.platform-role.create',
     ]);
     expect(screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent)).toEqual([
-      'Marketplace',
+      'General',
       'Delivery',
-      'Money',
-      'People & access',
+      'Money & tax',
+      'AI',
+      'Team & access',
     ]);
     const links = screen.getAllByRole('link').map((a) => [a.textContent, a.getAttribute('href')]);
     expect(links).toEqual([
       ['Support contact', '/settings/support'],
-      ['Smart assistant', '/settings/assistant'],
       ['Delivery rules', '/settings/delivery'],
       ['Delivery fleets', '/settings/fleets'],
       ['Customer wallet', '/settings/wallet'],
+      ['Shopping assistant', '/settings/assistant'],
       ['Admins', '/settings/admins'],
       ['Roles & permissions', '/settings/roles'],
     ]);
@@ -76,6 +77,6 @@ describe('SettingsHub', () => {
 
   it('names each group card by its heading', () => {
     hub(['wallet.settings.view']);
-    expect(screen.getByRole('region', { name: 'Money' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Money & tax' })).toBeTruthy();
   });
 });

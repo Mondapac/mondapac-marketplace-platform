@@ -18,7 +18,7 @@ import { LimitDialog, readLimits } from './limit-dialog.tsx';
 import { REFUND_LIMITS_PATH, type RefundLimits } from './types.ts';
 
 /**
- * Settings › Seller refund caps: the Market default cap on the refunds a seller starts by marking
+ * Settings › Seller refund limits: the Market default cap on the refunds a seller starts by marking
  * units unavailable. With no cap set at all every such seller refund is refused (fail-closed), and
  * the empty state says so. Without the manage key the page is read-only and shows no action.
  */

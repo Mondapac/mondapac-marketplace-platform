@@ -31,7 +31,7 @@ type Load =
     };
 
 /**
- * Settings > Smart assistant > Insights: how many conversations and what they cost per day, how
+ * Settings > Shopping assistant > Insights: how many conversations and what they cost per day, how
  * buyers rated the answers, support hand-offs, and the questions the assistant could not answer
  * as a super list. The day range is the page's own control (it changes what is read), not a
  * filter of the list. The Market's calendar day comes from the first answer.

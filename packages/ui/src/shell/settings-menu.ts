@@ -32,14 +32,20 @@ export interface SettingsMenu {
 interface VisibleGroup {
   readonly group: { readonly id: string; readonly labelKey: string; readonly icon: IconName };
   readonly links: readonly {
-    readonly link: { readonly id: string; readonly labelKey: string; readonly href: string };
+    readonly link: {
+      readonly id: string;
+      readonly labelKey: string;
+      readonly href: string;
+      /** Extra comma-separated search words for the page itself (a former name, synonyms). */
+      readonly keywordsKey?: string;
+    };
   }[];
 }
 
 /**
  * The groups of the Settings menu from the app's already-filtered settings map: a user without a
  * page's view key never gets its link. A setting's label (and its extra words) is searchable
- * under the page it lives on.
+ * under the page it lives on, and so are the page's own extra words.
  */
 export function buildSettingsMenuGroups(
   visible: readonly VisibleGroup[],
@@ -54,12 +60,15 @@ export function buildSettingsMenuGroups(
       id: link.id,
       href: link.href,
       label: label(link.labelKey),
-      words: specs
-        .filter((spec) => spec.pageId === link.id)
-        .flatMap((spec) => [
-          label(spec.labelKey),
-          ...(spec.keywordsKey === undefined ? [] : label(spec.keywordsKey).split(',')),
-        ])
+      words: [
+        ...(link.keywordsKey === undefined ? [] : label(link.keywordsKey).split(',')),
+        ...specs
+          .filter((spec) => spec.pageId === link.id)
+          .flatMap((spec) => [
+            label(spec.labelKey),
+            ...(spec.keywordsKey === undefined ? [] : label(spec.keywordsKey).split(',')),
+          ]),
+      ]
         .map((word) => word.trim())
         .filter((word) => word !== ''),
     })),

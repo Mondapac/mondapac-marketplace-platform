@@ -84,7 +84,7 @@ describe('Settings → Promotions', () => {
   it('shows the switch, the first-order discount and the zones of an active market', async () => {
     serve();
     mount();
-    expect(screen.getByRole('heading', { name: 'Promotions', level: 1 })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Promotion rules', level: 1 })).toBeTruthy();
     expect(await screen.findByRole('heading', { name: 'First-order discount' })).toBeTruthy();
     expect(screen.getByLabelText<HTMLInputElement>('Amount off').value).toBe('8.00');
     expect(screen.getByLabelText<HTMLInputElement>('Minimum spend').value).toBe('30.00');

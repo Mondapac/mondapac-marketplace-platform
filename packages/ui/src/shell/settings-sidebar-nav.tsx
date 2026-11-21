@@ -10,7 +10,8 @@ const ROW =
 
 /**
  * The sidebar inside /settings: "Back to Dashboard", a search field that filters the settings
- * links, then the groups as uppercase labels with their links (the current page marked). It sits
+ * links, then each group (a labelled group with its icon and name) with its links (the current
+ * page marked). It sits
  * in the same column as the normal menu, so the rail and the phone drawer behave as before; on the
  * rail each group shows as its icon, linking to its first page.
  */
@@ -31,7 +32,7 @@ export function SettingsSidebarNav({ menu }: { readonly menu: SettingsMenu }) {
 
   return (
     <nav aria-label={menu.navLabel} className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto overflow-x-hidden p-3">
+      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden p-3">
         <a href={menu.backHref} className={`${ROW} text-sm font-medium text-link hover:bg-muted`}>
           <Icon name="chevron-left" className="rtl:rotate-180" />
           <span className={`min-w-0 truncate ${RAIL_HIDDEN}`}>{menu.backLabel}</span>
@@ -63,9 +64,18 @@ export function SettingsSidebarNav({ menu }: { readonly menu: SettingsMenu }) {
         {shown.map((group) => {
           const holdsActive = group.links.some((link) => link.id === menu.activeId);
           return (
-            <div key={group.id} className="flex flex-col gap-1">
-              <p className="px-3 text-xs font-semibold uppercase tracking-wide text-fg-muted group-data-[rail=true]/rail:hidden">
-                {group.label}
+            <div
+              key={group.id}
+              role="group"
+              aria-labelledby={`settings-menu-group-${group.id}`}
+              className="flex flex-col gap-1"
+            >
+              <p
+                id={`settings-menu-group-${group.id}`}
+                className="flex items-center gap-2 px-3 pt-1 text-sm font-semibold text-fg-secondary group-data-[rail=true]/rail:sr-only"
+              >
+                <Icon name={group.icon} className="text-icon" />
+                <span className="min-w-0 break-words">{group.label}</span>
               </p>
               {/* Rail: the group is its icon, linking to its first page; the links wait for the peek. */}
               <a

@@ -195,8 +195,8 @@ describe('PanelTools', () => {
     const options = within(dialog()!).getAllByRole('option');
     // Settings first, then pages, each with the path it lives under.
     expect(options.map((o) => o.textContent)).toEqual([
-      'Support email addressSettings / Marketplace / Support contact',
-      'Support contactSettings / Marketplace',
+      'Support email addressSettings / General / Support contact',
+      'Support contactSettings / General',
     ]);
     expect(within(dialog()!).getByRole('status').textContent).toBe('2 results');
     // The count is also on screen, under the field.
@@ -234,7 +234,7 @@ describe('PanelTools', () => {
       within(group)
         .getAllByRole('option')
         .map((option) => option.textContent);
-    expect(rows(groups[0]!)).toEqual(['OrdersSales', 'Support contactSettings / Marketplace']);
+    expect(rows(groups[0]!)).toEqual(['OrdersSales', 'Support contactSettings / General']);
     // A pinned page is not listed again under Recent.
     expect(rows(groups[1]!)).toEqual(['SellersSellers']);
     expect(rows(groups[2]!)).toEqual([

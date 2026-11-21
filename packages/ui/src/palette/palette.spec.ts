@@ -121,6 +121,21 @@ describe('buildPaletteEntries', () => {
     expect(entries.find((entry) => entry.id === 'page:home')?.keywords).toBeUndefined();
   });
 
+  it("carries a settings page's search words, so a former name still finds it", () => {
+    const base = sources(['sup.view']);
+    const entries = buildPaletteEntries({
+      ...base,
+      settingsPages: base.settingsPages.map((page) =>
+        page.id === 'support' ? { ...page, keywordsKey: 'page.support-words' } : page,
+      ),
+      label: (key) => (key === 'page.support-words' ? 'Help desk, Contact us' : (text[key] ?? key)),
+    });
+    expect(entries.find((entry) => entry.id === 'page:settings/support')?.keywords).toBe(
+      'Help desk, Contact us',
+    );
+    expect(ids(searchPalette(entries, 'help desk'))).toEqual(['page:settings/support']);
+  });
+
   it('builds the path of a page and of a setting from the root, the group and the page', () => {
     const entries = buildPaletteEntries({
       ...sources(['del.view']),

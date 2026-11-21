@@ -43,6 +43,7 @@ const settingsPages: readonly PaletteSettingsPage[] = [
     group.links.map((link) => ({
       id: link.id,
       labelKey: link.labelKey,
+      keywordsKey: link.keywordsKey,
       href: link.href,
       view: link.view,
       groupLabelKey: group.labelKey,

@@ -93,7 +93,7 @@ describe('ReviewPolicyPanel', () => {
   it('lists every area with its switch, who changed it and the open request', async () => {
     route();
     mount();
-    expect(await screen.findByRole('heading', { name: 'Review policy' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Approval rules' })).toBeTruthy();
     expect((await screen.findAllByRole('switch')).length).toBe(POLICY_AREAS.length);
     expect(screen.getByText(/by Sara K\./)).toBeTruthy();
     expect(await screen.findByText('Awaiting review SR-55')).toBeTruthy();
@@ -103,14 +103,14 @@ describe('ReviewPolicyPanel', () => {
   it('asks for the open requests only when the admin may see requests', async () => {
     route();
     mount({ canSeeRequests: false });
-    await screen.findByRole('heading', { name: 'Review policy' });
+    await screen.findByRole('heading', { name: 'Approval rules' });
     expect(call.mock.calls.every(([, path]) => String(path).includes('review-policy'))).toBe(true);
   });
 
   it('is read-only without the manage permission', async () => {
     route();
     mount({ canManage: false });
-    await screen.findByRole('heading', { name: 'Review policy' });
+    await screen.findByRole('heading', { name: 'Approval rules' });
     expect(screen.getByText('You can view the policy but not change it.')).toBeTruthy();
     for (const box of screen.getAllByRole('switch')) {
       expect(box.hasAttribute('disabled') || box.getAttribute('aria-disabled') === 'true').toBe(
@@ -136,7 +136,7 @@ describe('ReviewPolicyPanel', () => {
       }),
     );
     mount();
-    await screen.findByRole('heading', { name: 'Review policy' });
+    await screen.findByRole('heading', { name: 'Approval rules' });
     fireEvent.click(screen.getByRole('switch', { name: 'Review changes in Delivery' }));
     const dialog = await openDialog();
     expect(within(dialog).getByText(/Delivery: review turned off/)).toBeTruthy();
@@ -162,7 +162,7 @@ describe('ReviewPolicyPanel', () => {
   it('says nothing changed when the server opens no request', async () => {
     route(ok({ value: area('people', { risk: 'high', version: 1 }), request: null }));
     mount();
-    await screen.findByRole('heading', { name: 'Review policy' });
+    await screen.findByRole('heading', { name: 'Approval rules' });
     fireEvent.change(screen.getByLabelText('Risk for People'), { target: { value: 'high' } });
     const dialog = await openDialog();
     fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Tighten' } });
@@ -173,7 +173,7 @@ describe('ReviewPolicyPanel', () => {
   it('shows the latest values and a notice when someone saved first', async () => {
     route(refused(409, 'system-requests.policy-conflict'));
     mount();
-    await screen.findByRole('heading', { name: 'Review policy' });
+    await screen.findByRole('heading', { name: 'Approval rules' });
     fireEvent.click(screen.getByRole('switch', { name: 'Review changes in Content' }));
     const dialog = await openDialog();
     fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Because' } });
@@ -194,7 +194,7 @@ describe('ReviewPolicyPanel', () => {
       }),
     );
     mount();
-    await screen.findByRole('heading', { name: 'Review policy' });
+    await screen.findByRole('heading', { name: 'Approval rules' });
     const field = screen.getByLabelText('Days before an open request is overdue');
     fireEvent.change(field, { target: { value: '120' } });
     expect(await screen.findByText('Enter 1 to 90.')).toBeTruthy();

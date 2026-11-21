@@ -95,7 +95,7 @@ describe('SettingsShell', () => {
     expect(crumbs.map((c) => [c.textContent, c.getAttribute('data-href')])).toEqual([
       ['Dashboard', '/'],
       ['Settings', '/settings'],
-      ['People & access', ''],
+      ['Team & access', ''],
       ['Roles & permissions', '/settings/roles'],
     ]);
   });

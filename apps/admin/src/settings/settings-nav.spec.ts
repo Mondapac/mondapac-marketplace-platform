@@ -11,26 +11,33 @@ describe('settings map', () => {
   it('lists the groups and pages that exist today, in design order', () => {
     expect(settingsGroups.map((group) => [group.id, group.links.map((link) => link.href)])).toEqual(
       [
-        [
-          'marketplace',
-          [
-            '/settings/support',
-            '/settings/assistant',
-            '/settings/service-areas',
-            '/settings/account-deletion',
-            '/settings/ship-to-retention',
-            '/settings/lists',
-            '/settings/ai',
-          ],
-        ],
+        ['general', ['/settings/support', '/settings/service-areas', '/settings/lists']],
         ['delivery', ['/settings/delivery', '/settings/fleets']],
-        [
-          'money',
-          ['/settings/wallet', '/settings/tax', '/settings/refund-limits', '/settings/promotions'],
-        ],
+        ['money', ['/settings/tax', '/settings/wallet', '/settings/refund-limits']],
+        ['marketing', ['/settings/promotions']],
+        ['ai', ['/settings/assistant', '/settings/ai']],
+        ['privacy', ['/settings/account-deletion', '/settings/ship-to-retention']],
         ['people', ['/settings/admins', '/settings/roles', '/settings/review-policy']],
       ],
     );
+  });
+
+  it('keeps every group to at most five pages (a sixth splits the group)', () => {
+    for (const group of settingsGroups) expect(group.links.length, group.id).toBeLessThanOrEqual(5);
+  });
+
+  it('gives each renamed page its former name as a search word', () => {
+    const renamed = [
+      'assistant',
+      'ship-to-retention',
+      'refund-limits',
+      'lists',
+      'ai',
+      'promotions',
+    ];
+    for (const id of [...renamed, 'review-policy']) {
+      expect(settingsLink(id)?.link.keywordsKey, id).toBe(`settings.hub.words.${id}`);
+    }
   });
 
   it('uses unique link ids, and every page has a view key and a manage key', () => {
@@ -77,20 +84,12 @@ describe('visibleSettings', () => {
       group.links.flatMap((link) => [...link.view, ...link.manage]),
     );
     expect(shape(all)).toEqual([
-      [
-        'marketplace',
-        [
-          'support',
-          'assistant',
-          'service-areas',
-          'account-deletion',
-          'ship-to-retention',
-          'lists',
-          'ai',
-        ],
-      ],
+      ['general', ['support', 'service-areas', 'lists']],
       ['delivery', ['delivery', 'fleets']],
-      ['money', ['wallet', 'tax', 'refund-limits', 'promotions']],
+      ['money', ['tax', 'wallet', 'refund-limits']],
+      ['marketing', ['promotions']],
+      ['ai', ['assistant', 'ai']],
+      ['privacy', ['account-deletion', 'ship-to-retention']],
       ['people', ['admins', 'roles', 'review-policy']],
     ]);
   });
@@ -119,7 +118,10 @@ describe('visibleSettings', () => {
         'assistant.settings.view',
         'assistant.settings.manage',
       ]),
-    ).toEqual([['marketplace', ['support:view-only', 'assistant']]]);
+    ).toEqual([
+      ['general', ['support:view-only']],
+      ['ai', ['assistant']],
+    ]);
   });
 
   it('does not show a page for its manage key alone', () => {
