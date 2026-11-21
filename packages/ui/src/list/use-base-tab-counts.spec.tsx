@@ -35,12 +35,13 @@ describe('useBaseTabCounts', () => {
   });
 
   it('drops an answer that arrives after the saved filter closed', async () => {
+    const initial: { savedId: string | null } = { savedId: 'a' };
     let resolve: (value: Counts) => void = () => {};
     const load = vi.fn(() => new Promise<Counts>((r) => (resolve = r)));
     const { result, rerender } = renderHook(
       ({ savedId }: { savedId: string | null }) =>
         useBaseTabCounts<Counts>({ savedId, live: { all: 5 }, load }),
-      { initialProps: { savedId: 'a' as string | null } },
+      { initialProps: initial },
     );
     rerender({ savedId: null });
     await act(() => {
