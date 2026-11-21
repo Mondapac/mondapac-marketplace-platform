@@ -39,6 +39,7 @@ export function ActivitiesList({
   paging,
   accountId,
   marketId,
+  csrfToken,
   locale,
   onOpen,
   onLocales,
@@ -49,6 +50,8 @@ export function ActivitiesList({
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  /** For saving, renaming, moving and deleting saved filters. */
+  readonly csrfToken: string;
   /** The Market's default locale (names are shown in it), once the first answer told it. */
   readonly locale: string;
   readonly onOpen: (dialog: ActivityDialog) => void;
@@ -162,6 +165,7 @@ export function ActivitiesList({
       columnDefs,
       rowActions,
       icon: 'package',
+      savedKey: 'admin.catalog.business-activities',
     }),
     [tl, columnDefs, rowActions, nameOf],
   );
@@ -174,6 +178,7 @@ export function ActivitiesList({
       accountId={accountId}
       marketId={marketId}
       fields={fields}
+      csrfToken={csrfToken}
       refreshKey={refreshKey}
       heading={headerAction}
       dialogs={dialogs}

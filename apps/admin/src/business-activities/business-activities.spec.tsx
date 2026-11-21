@@ -81,6 +81,10 @@ function serve(routes: Record<string, Handler>) {
       .filter((route) => key.startsWith(route))
       .sort((a, b) => b.length - a.length)[0];
     const handler = hit === undefined ? undefined : routes[hit];
+    // No saved filters unless a test serves some.
+    if (handler === undefined && key.startsWith('GET lists/admin/saved-filters')) {
+      return Promise.resolve(ok({ items: [], canShare: false }) as never);
+    }
     if (handler === undefined) throw new Error(`unexpected call ${key}`);
     return Promise.resolve((typeof handler === 'function' ? handler(body) : handler) as never);
   });
@@ -175,7 +179,42 @@ describe('admin business activities', () => {
     await waitFor(() => {
       const last = calls('GET', 'catalog/admin/business-activities').at(-1)?.[1] ?? '';
       expect(last).toContain('q=gro');
+      expect(last).toContain('sort=code');
       expect(last).toContain('status=inactive');
+    });
+  });
+
+  it('opens a saved filter as a tab with its view, search and sort', async () => {
+    serve({
+      ...base([activity(1)]),
+      'GET lists/admin/saved-filters?listKey=admin.catalog.business-activities': ok({
+        items: [
+          {
+            id: '0190a000-0000-7000-8000-000000000064',
+            listKey: 'admin.catalog.business-activities',
+            name: 'Retired groceries',
+            visibility: 'everyone',
+            payload: {
+              v: 1,
+              q: 'gro',
+              filters: { status: 'inactive' },
+              sort: 'code',
+              direction: 'asc',
+            },
+            ownedByMe: false,
+            canManage: false,
+          },
+        ],
+        canShare: false,
+      }),
+    });
+    mount();
+    await screen.findByText('Activity 1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Retired groceries' }));
+    await waitFor(() => {
+      const last = calls('GET', 'catalog/admin/business-activities').at(-1)?.[1] ?? '';
+      expect(last).toContain('status=inactive');
+      expect(last).toContain('q=gro');
     });
   });
 
