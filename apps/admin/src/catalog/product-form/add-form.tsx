@@ -60,7 +60,7 @@ export function ProductAdd({
   const t = useTranslations('catalog.productForm');
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>({ kind: 'loading' });
-  // Bumped to start the form over (Discard on the unsaved bar).
+  // Bumped to start the form over (Discard on the save bar).
   const [generation, setGeneration] = useState(0);
 
   const load = useCallback(async () => {
