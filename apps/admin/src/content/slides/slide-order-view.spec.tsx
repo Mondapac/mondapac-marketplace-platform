@@ -340,9 +340,11 @@ describe('saving', () => {
     await waitFor(() => expect(puts()).toHaveLength(1));
   });
 
-  it('shows the note about going live at once', async () => {
+  it('shows the note about going live at once with the save bar', async () => {
     mount([four()]);
     await screen.findByRole('heading', { name: 'Home · top' });
+    expect(screen.queryByText(/^Order changes go live at once/)).toBeNull();
+    fireEvent.click(button('Move Spring fruit boxes up'));
     expect(
       screen.getByText(
         'Order changes go live at once for slides already approved. Buyers see the new order within a minute; the change is recorded in the history.',

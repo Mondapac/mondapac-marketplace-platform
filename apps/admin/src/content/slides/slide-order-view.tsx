@@ -220,54 +220,55 @@ export function SlideOrderView({
               ) : null}
             </Banner>
           )}
-          <SlideOrderCard
-            title={title}
-            maxActive={load.view.maxActive}
-            autoplay={definition?.autoplay ?? false}
-            scopeNote={
-              place.scope === 'all' || place.scopeId === null
-                ? null
-                : t('heading-scope', {
-                    scope: scopeText(`scope.${place.scope}`),
-                    id: place.scopeId,
-                  })
-            }
-            entries={entries}
-            overLimit={flags}
-            canEdit={canEdit}
-            zone={zone}
-            locale={locale}
-            focus={focus}
-            onMove={moveSlide}
-            footer={
-              <>
-                <p className="mb-3 text-xs text-fg-muted">{t('footnote', { zone })}</p>
-                {/* Announces a move for screen readers; the save result is a toast. */}
-                <span role="status" aria-live="polite" className="sr-only">
-                  {message}
-                </span>
-                {canEdit ? (
-                  <form
-                    noValidate
-                    className="flex flex-col gap-3"
-                    onSubmit={(event) => {
-                      event.preventDefault();
-                      void save();
-                    }}
-                  >
-                    <FormSaveBar
-                      dirty={dirty}
-                      saving={pending}
-                      saveLabel={t('save')}
-                      note={t('note')}
-                      onDiscard={discard}
-                    />
-                  </form>
-                ) : null}
-                {leaveGuard}
-              </>
-            }
-          />
+          {/* The form holds the whole card so the save bar stays at the bottom of the screen. */}
+          <form
+            noValidate
+            className="flex flex-col gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (canEdit) void save();
+            }}
+          >
+            <SlideOrderCard
+              title={title}
+              maxActive={load.view.maxActive}
+              autoplay={definition?.autoplay ?? false}
+              scopeNote={
+                place.scope === 'all' || place.scopeId === null
+                  ? null
+                  : t('heading-scope', {
+                      scope: scopeText(`scope.${place.scope}`),
+                      id: place.scopeId,
+                    })
+              }
+              entries={entries}
+              overLimit={flags}
+              canEdit={canEdit}
+              zone={zone}
+              locale={locale}
+              focus={focus}
+              onMove={moveSlide}
+              footer={
+                <>
+                  <p className="m-0 text-xs text-fg-muted">{t('footnote', { zone })}</p>
+                  {/* Announces a move for screen readers; the save result is a toast. */}
+                  <span role="status" aria-live="polite" className="sr-only">
+                    {message}
+                  </span>
+                  {leaveGuard}
+                </>
+              }
+            />
+            {canEdit ? (
+              <FormSaveBar
+                dirty={dirty}
+                saving={pending}
+                saveLabel={t('save')}
+                note={t('note')}
+                onDiscard={discard}
+              />
+            ) : null}
+          </form>
         </>
       ) : null}
     </div>

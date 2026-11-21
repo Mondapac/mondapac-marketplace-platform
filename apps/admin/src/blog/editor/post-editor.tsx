@@ -510,6 +510,8 @@ export function PostEditor({
             saving={busy === 'save'}
             saveLabel={t('save')}
             onDiscard={() => {
+              // Discarding during a submit or a check would change the draft under it.
+              if (busy !== null) return;
               if (saved !== null) setDraft(saved);
               setProblem(null);
               setAttempted(false);
