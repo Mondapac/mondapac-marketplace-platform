@@ -161,6 +161,7 @@ Until the ADR "Market settings editable by an admin" exists, the values are conf
 | `pricing.cost.view` | seller | **no** | See Cost. Default: Seller Owner only (Q11). Not protected, because the identity Phase 2 narrowing makes protected seller keys ungrantable (ID 5.4 R11), and Q11 lets the Seller Owner grant it to other roles |
 | `pricing.price-hold.view` | platform | no | See the review queue and a held record with its anchor |
 | `pricing.price-hold.decide` | platform | **yes** (H4) | Approve or reject a held record. Protected because approving a hold has money impact; in admin scope the Platform Administrator can still grant it |
+| `pricing.price-hold-saved-filter.share` | platform | **yes** | Share a saved filter of the admin price-hold list (list 19, `admin.pricing.price-holds`) with everyone, or change or delete a shared one. A private saved filter needs only `pricing.price-hold.view`. Protected because a shared filter frames which held prices every reviewer sees first |
 | `pricing.price-history.view` | platform | no | Read price history (brief s2); the list arrives with VER-09 (P1, 14) |
 
 There is no admin key for Cost: no admin path reads Cost (brief s5: not in the queue, not in history).
@@ -187,7 +188,7 @@ There is no admin key for Cost: no admin path reads Cost (brief s5: not in the q
 ### 5.3 Default roles (decided by the owner 2026-10-07 as proposed; Q5)
 Identity's design leaves each module to say which default roles receive its keys (ID 5.6, R10).
 - **Seller side:** Store Manager and Catalogue and Stock get `pricing.price.view` and `pricing.price.edit`. No default role gets `pricing.cost.view`; the Seller Owner holds it by definition (Q11).
-- **Admin side:** Catalogue Moderator gets `pricing.price-hold.view`, `.decide` (protected, H4; granted by the Platform Administrator) and `pricing.price-history.view`. Viewer gets the unprotected view keys.
+- **Admin side:** Catalogue Moderator gets `pricing.price-hold.view`, `.decide` (protected, H4; granted by the Platform Administrator) and `pricing.price-history.view`. Viewer gets the unprotected view keys. No default role gets `pricing.price-hold-saved-filter.share` (protected); the Platform Administrator grants it in admin scope.
 
 ### 5.4 Acting-as (Login as Seller, SEL-08)
 SEL-08 is not built; `actingAs` is reserved on `ActorContext` (ID 4 row 6). `pricing` adds nothing to the context. When SEL-08 lands:
