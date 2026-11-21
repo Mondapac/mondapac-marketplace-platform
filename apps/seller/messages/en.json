@@ -5215,7 +5215,7 @@
         "name": "Name",
         "who": "Who can use it",
         "submit": "Save filter",
-        "everyone-help": "Everyone: everyone in your store who can see this list gets it as a tab.",
+        "everyone-help": "Everyone: everyone in your store who can open this list gets it as a tab.",
         "own-only": "Saved for you only. Your role can’t share filters."
       },
       "visibility": {
