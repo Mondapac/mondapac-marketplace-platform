@@ -353,6 +353,65 @@ describe.each(MARKETS)('admin Variants page ($name)', ({ locales }) => {
     await waitFor(() => expect(variantCalls().at(-1)?.get('typeCode')).toBeNull());
   });
 
+  it('opens a saved filter as a tab and saves the current view as a new one', async () => {
+    const saved = {
+      id: id(50),
+      listKey: 'admin.catalog.variants',
+      name: 'Pack sizes without GTIN',
+      visibility: 'me',
+      payload: {
+        v: 1,
+        filters: { typeCode: 'pack-size', issue: 'missing-gtin' },
+        sort: 'code',
+        direction: 'asc',
+      },
+      ownedByMe: true,
+      canManage: true,
+    };
+    route(locales, {
+      'GET lists/admin/saved-filters': ok({ items: [saved], canShare: false }),
+      'POST lists/admin/saved-filters': ok({ ...saved, id: id(51), name: 'Mine' }),
+    });
+    mount({ tab: 'variants', id: null });
+    await screen.findByText('MP-004127-02');
+    fireEvent.click(await screen.findByRole('button', { name: 'Pack sizes without GTIN' }));
+    await waitFor(() => {
+      const last = variantCalls().at(-1);
+      expect(last?.get('typeCode')).toBe('pack-size');
+      expect(last?.get('issue')).toBe('missing-gtin');
+      expect(last?.get('sort')).toBe('code');
+    });
+    // A built-in tab after a saved one starts clean.
+    fireEvent.click(await screen.findByRole('button', { name: /^All/ }));
+    await waitFor(() => expect(variantCalls().at(-1)?.get('typeCode')).toBeNull());
+
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    fireEvent.change(await screen.findByLabelText('Field'), { target: { value: 'typeCode' } });
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'pack-size' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    fireEvent.click(await screen.findByRole('button', { name: /Save filter/ }));
+    fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Mine' } });
+    fireEvent.click(screen.getAllByRole('button', { name: 'Save filter' }).at(-1) as HTMLElement);
+    await waitFor(() =>
+      expect(call).toHaveBeenCalledWith(
+        'POST',
+        'lists/admin/saved-filters',
+        {
+          listKey: 'admin.catalog.variants',
+          name: 'Mine',
+          visibility: 'me',
+          payload: {
+            v: 1,
+            filters: { typeCode: 'pack-size' },
+            sort: 'newest',
+            direction: 'desc',
+          },
+        },
+        'csrf-1',
+      ),
+    );
+  });
+
   it('searches after a pause and starts again at page one', async () => {
     route(locales);
     mount({ tab: 'variants', id: null });

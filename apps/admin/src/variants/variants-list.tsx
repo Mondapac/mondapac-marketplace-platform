@@ -70,10 +70,13 @@ export function VariantsList({
   paging,
   accountId,
   marketId,
+  csrfToken,
 }: {
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  /** For saving, renaming, moving and deleting saved filters. */
+  readonly csrfToken: string;
 }) {
   const t = useTranslations('variants.list');
   const [types, setTypes] = useState<readonly VariantTypeSummary[]>([]);
@@ -193,6 +196,7 @@ export function VariantsList({
       columnDefs,
       rowActions,
       icon: 'columns',
+      savedKey: 'admin.catalog.variants',
     }),
     [t, columnDefs, rowActions],
   );
@@ -216,6 +220,7 @@ export function VariantsList({
       marketId={marketId}
       fields={fields}
       loadCounts={loadCounts}
+      csrfToken={csrfToken}
     />
   );
 }
