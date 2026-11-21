@@ -83,9 +83,17 @@ describe.each(FIXTURES)('topic use cases in market $code', ({ code, locales }) =
     status: string | null;
     group: string | null;
     search: string | null;
+    createdFrom?: Temporal.Instant | null;
+    createdTo?: Temporal.Instant | null;
   }) =>
     [...rows.values()]
       .filter((r) => filter.status === null || r.status === filter.status)
+      .filter(
+        (r) =>
+          (filter.createdFrom == null ||
+            Temporal.Instant.compare(r.createdAt, filter.createdFrom) >= 0) &&
+          (filter.createdTo == null || Temporal.Instant.compare(r.createdAt, filter.createdTo) < 0),
+      )
       .filter((r) => filter.group === null || r.group === filter.group)
       .filter(
         (r) =>
@@ -116,7 +124,7 @@ describe.each(FIXTURES)('topic use cases in market $code', ({ code, locales }) =
     list: (_m, query) => {
       lastQuery = query;
       return Promise.resolve({
-        items: [...rows.values()].filter((r) => query.status === null || r.status === query.status),
+        items: matching(query),
         nextAfterId: null,
       });
     },
@@ -603,6 +611,8 @@ describe.each(FIXTURES)('topic use cases in market $code', ({ code, locales }) =
       status: null,
       group: 'use',
       search: 'bb',
+      createdFrom: null,
+      createdTo: null,
       afterId: null,
       limit: 5,
     });
@@ -637,5 +647,28 @@ describe.each(FIXTURES)('topic use cases in market $code', ({ code, locales }) =
         error: { code: 'validation.failed', fields: [{ path, code: problem }] },
       });
     }
+  });
+
+  it('filters by creation time: createdFrom inclusive, createdTo exclusive', async () => {
+    const { create, list } = build();
+    const a = await create.execute(admin, { group: 'use', names: { [main]: 'BBQ' } });
+    if (!a.ok) throw new Error('setup');
+    const made = a.value.topic.createdAt;
+    const slugs = async (input: Record<string, unknown>) => {
+      const result = await list.execute(admin, input);
+      return result.ok ? result.value.items.map((i) => i.slug) : result.error;
+    };
+    expect(await slugs({ createdFrom: made, createdTo: '2999-01-01T00:00:00Z' })).toEqual(['bbq']);
+    expect(await slugs({ createdTo: made })).toEqual([]);
+    expect(await slugs({ createdFrom: '2999-01-01T00:00:00+10:00', group: 'use' })).toEqual([]);
+    expect(await slugs({ createdFrom: '', createdTo: '' })).toEqual(['bbq']);
+    expect(await slugs({ createdTo: 'yesterday' })).toEqual({
+      code: 'validation.failed',
+      fields: [{ path: 'createdTo', code: 'format' }],
+    });
+    expect(
+      await slugs({ createdFrom: '2026-11-02T00:00:00Z', createdTo: '2026-11-01T00:00:00Z' }),
+    ).toEqual({ code: 'validation.failed', fields: [{ path: 'createdTo', code: 'range' }] });
+    expect(await slugs({ limit: 5, createdFrom: '2999-01-01T00:00:00Z' })).toEqual([]);
   });
 });

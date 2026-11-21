@@ -246,6 +246,36 @@ describe.each(TEST_MARKETS)('catalog topics in market %s (database integration)'
     // The numbered read: sorted both ways, offset, count, and a wildcard matched as typed.
     const filter = { status: null, group: null, search: unique } as const;
     expect(await inUnit(() => reader.count(market, filter))).toBe(3);
+
+    // The created range: `createdFrom` inclusive and `createdTo` exclusive, on every read.
+    const created = (from: Temporal.Instant | null, to: Temporal.Instant | null) => ({
+      ...filter,
+      createdFrom: from,
+      createdTo: to,
+    });
+    expect(await inUnit(() => reader.count(market, created(T0, null)))).toBe(3);
+    expect(await inUnit(() => reader.count(market, created(null, T0)))).toBe(0);
+    expect(await inUnit(() => reader.count(market, created(T0, T1)))).toBe(3);
+    expect(await inUnit(() => reader.count(market, created(T1, null)))).toBe(0);
+    expect(
+      await inUnit(() =>
+        reader.page(market, {
+          ...created(T0.add({ nanoseconds: 1 }), null),
+          sort: 'slug',
+          direction: 'asc',
+          offset: 0,
+          limit: 5,
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      (await inUnit(() => reader.list(market, { ...created(T0, T1), afterId: null, limit: 10 })))
+        .items,
+    ).toHaveLength(3);
+    expect(
+      (await inUnit(() => reader.list(market, { ...created(T1, null), afterId: null, limit: 10 })))
+        .items,
+    ).toEqual([]);
     const desc = await inUnit(() =>
       reader.page(market, { ...filter, sort: 'slug', direction: 'desc', offset: 1, limit: 5 }),
     );

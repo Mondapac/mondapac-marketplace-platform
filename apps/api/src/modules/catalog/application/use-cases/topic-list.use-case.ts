@@ -5,6 +5,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import {
   heldKeys,
   listPage,
+  parseNamedInstantRange,
   pageWindow,
   rowActions,
   type ListPagingMode,
@@ -48,6 +49,10 @@ export interface TopicListInput {
   /** The search text; `search` is the older name of it. */
   readonly q?: unknown;
   readonly search?: unknown;
+  /** Created at or after this ISO 8601 instant (inclusive). */
+  readonly createdFrom?: unknown;
+  /** Created before this ISO 8601 instant (exclusive). */
+  readonly createdTo?: unknown;
   readonly afterId?: unknown;
   readonly limit?: unknown;
   readonly sort?: unknown;
@@ -142,6 +147,8 @@ export class TopicList extends UseCase<TopicListInput, TopicListOutput, TopicLis
     if (adminAccountOf(context) === null) return err({ code: 'access.denied' });
     const body = closedInput(input, [
       'status',
+      'createdFrom',
+      'createdTo',
       'group',
       'q',
       'search',
@@ -166,6 +173,8 @@ export class TopicList extends UseCase<TopicListInput, TopicListOutput, TopicLis
       if (!parsed.ok) return parsed;
       group = parsed.value;
     }
+    const created = parseNamedInstantRange(body.value, 'createdFrom', 'createdTo');
+    if (!created.ok) return created;
     const read = readCatalogListInput(body.value, {
       sorts: TOPIC_SORTS,
       defaultSort: 'slug',
@@ -180,7 +189,13 @@ export class TopicList extends UseCase<TopicListInput, TopicListOutput, TopicLis
     });
     if (!read.ok) return read;
     const { market } = context;
-    const filter = { status, group, search: read.value.q };
+    const filter = {
+      status,
+      group,
+      search: read.value.q,
+      createdFrom: created.value.from,
+      createdTo: created.value.to,
+    };
     const reader = this.deps.topicReader;
     const unit = await this.deps.unitOfWork.run(
       market,

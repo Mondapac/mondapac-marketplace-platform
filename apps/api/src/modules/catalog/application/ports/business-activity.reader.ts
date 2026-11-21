@@ -1,10 +1,14 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { BusinessActivityState, BusinessActivityStatus } from '../../domain/business-activity';
 
 export interface BusinessActivityListQuery {
   readonly status: BusinessActivityStatus | null;
   /** Matches a name in any locale or the code; case-insensitive. */
   readonly search: string | null;
+  /** Created at or after this instant (inclusive). */
+  readonly createdFrom?: Temporal.Instant | null;
+  /** Created before this instant (exclusive). */
+  readonly createdTo?: Temporal.Instant | null;
   readonly afterId: Id<'BusinessActivity'> | null;
   readonly limit: number;
 }
@@ -16,6 +20,10 @@ export type ActivitySort = (typeof ACTIVITY_SORTS)[number];
 export interface BusinessActivityPageFilter {
   readonly status: BusinessActivityStatus | null;
   readonly search: string | null;
+  /** Created at or after this instant (inclusive). */
+  readonly createdFrom?: Temporal.Instant | null;
+  /** Created before this instant (exclusive). */
+  readonly createdTo?: Temporal.Instant | null;
 }
 
 /** One page of the numbered read: `offset` rows are skipped; ties end on the id. */
