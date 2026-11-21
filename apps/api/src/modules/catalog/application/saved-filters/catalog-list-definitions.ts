@@ -100,11 +100,15 @@ function dateFilterOf(
 const CREATED_KEYS = ['createdFrom', 'createdTo', 'created'] as const;
 const CREATED = { from: 'createdFrom', to: 'createdTo', preset: 'created' } as const;
 
-/** A list whose only filter is its search text. */
-function searchOnly(max: number): (query: Query) => Read {
+/** A list whose filters are its search text and the created range. */
+function searchAndCreated(max: number): (query: Query) => Read {
   return (query) => {
     const { text, refusal } = textOf(query, max);
-    return refusal ?? { fields: [], canonical: canonicalQuery({ q: text }) };
+    const date = dateFilterOf(query, CREATED);
+    return (
+      refusal ??
+      date.refusal ?? { fields: [], canonical: canonicalQuery({ q: text, ...date.canonical }) }
+    );
   };
 }
 
@@ -133,9 +137,9 @@ const VARIANT_REQUESTS: ListDefinition = {
   shareKey: CATALOG_SAVED_FILTER_SHARE.key,
   parsePayload: savedListPayloadParser({
     views: null,
-    filterKeys: [],
+    filterKeys: CREATED_KEYS,
     sorts: VARIANT_REQUEST_SORTS,
-    read: searchOnly(100),
+    read: searchAndCreated(100),
   }),
 };
 
@@ -224,9 +228,9 @@ const ATTRIBUTE_SUGGESTIONS: ListDefinition = {
   shareKey: CATALOG_SAVED_FILTER_SHARE.key,
   parsePayload: savedListPayloadParser({
     views: null,
-    filterKeys: [],
+    filterKeys: CREATED_KEYS,
     sorts: SUGGESTION_SORTS,
-    read: searchOnly(100),
+    read: searchAndCreated(100),
   }),
 };
 
@@ -325,9 +329,9 @@ const TAG_SUGGESTIONS: ListDefinition = {
   shareKey: CATALOG_SAVED_FILTER_SHARE.key,
   parsePayload: savedListPayloadParser({
     views: null,
-    filterKeys: [],
+    filterKeys: CREATED_KEYS,
     sorts: TOPIC_SUGGESTION_SORTS,
-    read: searchOnly(100),
+    read: searchAndCreated(100),
   }),
 };
 
@@ -338,9 +342,9 @@ const CATEGORY_PROPOSALS: ListDefinition = {
   shareKey: CATALOG_SAVED_FILTER_SHARE.key,
   parsePayload: savedListPayloadParser({
     views: null,
-    filterKeys: [],
+    filterKeys: CREATED_KEYS,
     sorts: PROPOSAL_SORTS,
-    read: searchOnly(120),
+    read: searchAndCreated(120),
   }),
 };
 
@@ -393,7 +397,7 @@ const ownSuggestionList = (listKey: string): ListDefinition => ({
   shareKey: CATALOG_OWN_SAVED_FILTER_SHARE.key,
   parsePayload: savedListPayloadParser({
     views: null,
-    filterKeys: ['status'],
+    filterKeys: ['status', ...CREATED_KEYS],
     sorts: OWN_SUGGESTION_SORTS,
     read(query) {
       const status = query['status'];
@@ -401,8 +405,13 @@ const ownSuggestionList = (listKey: string): ListDefinition => ({
         return refused('status', 'enum');
       }
       const { text, refusal } = textOf(query, 100);
+      const date = dateFilterOf(query, CREATED);
       return (
-        refusal ?? { fields: [], canonical: canonicalQuery({ q: text, status: status ?? null }) }
+        refusal ??
+        date.refusal ?? {
+          fields: [],
+          canonical: canonicalQuery({ q: text, status: status ?? null, ...date.canonical }),
+        }
       );
     },
   }),

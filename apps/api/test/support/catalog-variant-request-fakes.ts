@@ -1,3 +1,4 @@
+import { inCreatedRange, type CreatedRange } from './created-range';
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { VariantRequestStore } from '../../src/modules/catalog/application/ports/variant-request.store';
 import type {
@@ -93,25 +94,31 @@ export class MemoryVariantRequestStore implements VariantRequestStore {
   /** Product codes by product id, for the search of the admin list. */
   readonly productCodes = new Map<string, string>();
 
-  #open(market: MarketContext, productCode: string | null) {
+  #open(market: MarketContext, filter: { productCode: string | null } & CreatedRange) {
     return [...this.rows.values()].filter(
       (row) =>
         row.state.marketId === market.marketId &&
         row.state.status === 'open' &&
-        (productCode === null ||
+        inCreatedRange(row.state.createdAt, filter) &&
+        (filter.productCode === null ||
           (this.productCodes.get(row.state.productId) ?? '')
             .toLowerCase()
-            .includes(productCode.toLowerCase())),
+            .includes(filter.productCode.toLowerCase())),
     );
   }
 
   pageOpen(
     market: MarketContext,
-    page: { productCode: string | null; direction: 'asc' | 'desc'; offset: number; limit: number },
+    page: {
+      productCode: string | null;
+      direction: 'asc' | 'desc';
+      offset: number;
+      limit: number;
+    } & CreatedRange,
   ) {
     const sign = page.direction === 'asc' ? 1 : -1;
     return Promise.resolve(
-      this.#open(market, page.productCode)
+      this.#open(market, page)
         .sort(
           (a, b) =>
             sign * (a.state.createdAt.epochMilliseconds - b.state.createdAt.epochMilliseconds),
@@ -120,8 +127,8 @@ export class MemoryVariantRequestStore implements VariantRequestStore {
     );
   }
 
-  countOpen(market: MarketContext, filter: { productCode: string | null }) {
-    return Promise.resolve(this.#open(market, filter.productCode).length);
+  countOpen(market: MarketContext, filter: { productCode: string | null } & CreatedRange) {
+    return Promise.resolve(this.#open(market, filter).length);
   }
 
   listOfSeller(

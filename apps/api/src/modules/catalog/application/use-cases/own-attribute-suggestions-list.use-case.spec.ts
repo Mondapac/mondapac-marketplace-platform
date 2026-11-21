@@ -221,6 +221,37 @@ describe.each(['AU', 'ZZ'] as const)('own attribute suggestions list in market %
     expect(rejected.value.openCount).toBe(3);
   });
 
+  it('filters by the created range: createdFrom inclusive, createdTo exclusive', async () => {
+    for (let n = 1; n <= 5; n += 1) row(n, 'open');
+    const ids = async (input: Record<string, unknown>) => {
+      const answer = await build().execute(context(), input);
+      return answer.ok ? answer.value.items.map((item) => item.id) : answer.error;
+    };
+    expect(
+      await ids({
+        createdFrom: T0.add({ seconds: 2 }).toString(),
+        createdTo: T0.add({ seconds: 4 }).toString(),
+      }),
+    ).toEqual([3, 2].map(suggestionId));
+    expect(await ids({ createdFrom: '2026-11-05T11:00:03+10:00' })).toEqual(
+      [5, 4, 3].map(suggestionId),
+    );
+    expect(await ids({ createdTo: T0.toString() })).toEqual([]);
+    expect(await ids({ createdFrom: '', createdTo: '' })).toHaveLength(5);
+    expect(await ids({ createdFrom: '2026-11-05' })).toEqual({
+      code: 'validation.failed',
+      fields: [{ path: 'createdFrom', code: 'format' }],
+    });
+    expect(
+      await ids({ createdFrom: T0.toString(), createdTo: T0.subtract({ hours: 1 }).toString() }),
+    ).toEqual({ code: 'validation.failed', fields: [{ path: 'createdTo', code: 'range' }] });
+    // The older cursor read has no range; a range with it is refused, not dropped.
+    expect(await ids({ limit: 2, createdFrom: T0.toString() })).toEqual({
+      code: 'validation.failed',
+      fields: [{ path: 'createdFrom', code: 'conflict' }],
+    });
+  });
+
   it('never names a product that is not the seller’s, and keeps a row whose attribute is gone', async () => {
     row(1, 'open', { productId: FOREIGN_PRODUCT });
     row(2, 'open', { definitionId: GONE_DEFINITION, productId: PRODUCT });

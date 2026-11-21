@@ -113,3 +113,23 @@ export function instantRangeWhere(range: InstantRange): { gte?: Date; lt?: Date 
   if (range.to !== null) where.lt = instantBoundDate(range.to);
   return where;
 }
+
+/** What a created-date filter carries: both ends optional, as the stores' filters declare them. */
+export interface CreatedRangeFilter {
+  readonly createdFrom?: Temporal.Instant | null;
+  readonly createdTo?: Temporal.Instant | null;
+}
+
+/**
+ * The `createdAt` condition of a store's `where` for a filter that carries `createdFrom` and
+ * `createdTo`: spread it into the `where`; it is empty when the filter has no range.
+ */
+export function createdAtWhere(filter: CreatedRangeFilter): {
+  createdAt?: { gte?: Date; lt?: Date };
+} {
+  const created = instantRangeWhere({
+    from: filter.createdFrom ?? null,
+    to: filter.createdTo ?? null,
+  });
+  return created === undefined ? {} : { createdAt: created };
+}

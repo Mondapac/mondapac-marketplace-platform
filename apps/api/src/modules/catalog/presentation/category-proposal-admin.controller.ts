@@ -134,6 +134,18 @@ export class CategoryProposalAdminController {
       'keys). `pageSize` and `limit` are 1 to 50 (default 25). Each row names its `actions`.',
   })
   @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({
+    name: 'createdFrom',
+    required: false,
+    description:
+      'ISO 8601 instant with an offset or Z; proposals created at or after it (inclusive). Not with the older `afterId`/`limit` read.',
+  })
+  @ApiQuery({
+    name: 'createdTo',
+    required: false,
+    description:
+      'ISO 8601 instant with an offset or Z; proposals created before it (exclusive), after createdFrom. Not with the older `afterId`/`limit` read.',
+  })
   @ApiQuery({ name: 'sort', required: false, enum: ['created'] })
   @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
   @ApiQuery({ name: 'page', required: false })

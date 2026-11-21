@@ -209,6 +209,26 @@ describe.each(TEST_MARKETS)('catalog attribute suggestions in market %s (databas
     );
     expect(byText.map((row) => row.state.id)).toContain(suggestion.state.id);
     expect(await read(market, () => store.countOpen(market, { text: '%' }))).toBe(0);
+    // The created range: `createdFrom` inclusive, `createdTo` exclusive, on the page and the count.
+    const madeAt = suggestion.state.createdAt;
+    const inRange = (createdFrom: Temporal.Instant | null, createdTo: Temporal.Instant | null) =>
+      read(market, () => store.pageOpen(market, { ...all, createdFrom, createdTo }));
+    expect((await inRange(madeAt, null)).map((row) => row.state.id)).toContain(suggestion.state.id);
+    expect((await inRange(null, madeAt)).map((row) => row.state.id)).not.toContain(
+      suggestion.state.id,
+    );
+    expect(
+      (await inRange(madeAt.add({ milliseconds: 1 }), null)).map((row) => row.state.id),
+    ).not.toContain(suggestion.state.id);
+    expect(
+      await read(market, () =>
+        store.countOpen(market, {
+          text: null,
+          createdFrom: madeAt.add({ hours: 24 }),
+          createdTo: null,
+        }),
+      ),
+    ).toBe(0);
     const newest = await read(market, () =>
       store.pageOpen(market, { ...all, direction: 'desc', limit: 1 }),
     );
@@ -307,6 +327,28 @@ describe.each(TEST_MARKETS)('catalog attribute suggestions in market %s (databas
     expect(await count(null)).toBe(3);
     expect(await count(null, 'open')).toBe(2);
     expect(await count('s')).toBe(2);
+    // The created range on the seller's own list: `createdFrom` inclusive, `createdTo` exclusive.
+    const soon = Temporal.Now.instant().add({ hours: 1 });
+    const within = (createdFrom: Temporal.Instant | null, createdTo: Temporal.Instant | null) =>
+      read(market, () =>
+        store.countOfSeller(market, lister, { status: null, text: null, createdFrom, createdTo }),
+      );
+    expect(await within(soon, null)).toBe(0);
+    expect(await within(null, soon)).toBe(3);
+    expect(await within(null, soon.subtract({ hours: 2 }))).toBe(0);
+    const pageIn = await read(market, () =>
+      store.pageOfSeller(market, lister, {
+        status: null,
+        text: null,
+        createdFrom: null,
+        createdTo: soon,
+        sort: 'created',
+        direction: 'asc',
+        offset: 0,
+        limit: 10,
+      }),
+    );
+    expect(pageIn).toHaveLength(3);
     expect(
       await read(other, () => store.countOfSeller(other, lister, { status: null, text: null })),
     ).toBe(0);
