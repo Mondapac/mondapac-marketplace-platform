@@ -31,13 +31,22 @@ vi.mock('next/navigation', async () => {
       ),
   };
 });
-vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+const { inner, saved } = vi.hoisted(() => ({
+  inner: vi.fn<(method: string, path: string, ...rest: unknown[]) => Promise<unknown>>(),
+  saved: { items: [] as unknown[] },
+}));
+// Saved filters are served apart from the list's own reads.
+vi.mock('../api/client.ts', () => ({
+  callApi: (method: string, path: string, ...rest: unknown[]) =>
+    path.startsWith('lists/seller/saved-filters')
+      ? Promise.resolve({ ok: true, status: 200, body: { items: saved.items, canShare: true } })
+      : inner(method, path, ...rest),
+}));
 
-import { callApi } from '../api/client.ts';
 import { OwnTagSuggestionsList, OwnValueSuggestionsList } from './own-suggestion-lists.tsx';
 import type { OwnSuggestion, OwnTopicSuggestion } from './types.ts';
 
-const call = vi.mocked(callApi);
+const call = inner;
 const PRODUCT = '0190a000-0000-7000-8000-0000000000a1';
 const id = (n: number) => `0190a000-0000-7000-8000-0000000000${n.toString(16).padStart(2, '0')}`;
 
@@ -98,6 +107,7 @@ const props = {
   paging: 'pages' as const,
   accountId: 'acct',
   marketId: 'AU',
+  csrfToken: 'csrf-1',
   timeZone: 'UTC',
   canSuggest: true,
   sent: false,
@@ -116,6 +126,7 @@ const rowOf = (label: string) => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  saved.items = [];
   nav.state.search = new URLSearchParams();
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -130,6 +141,36 @@ beforeEach(() => {
 afterEach(() => cleanup());
 
 describe('value suggestions list', () => {
+  it('opens a saved filter of the store as a tab with its status and search', async () => {
+    saved.items = [
+      {
+        id: id(0xc1),
+        listKey: 'seller.catalog.attribute-suggestions',
+        name: 'Turned down',
+        visibility: 'everyone',
+        payload: {
+          v: 1,
+          q: 'xl',
+          filters: { status: 'rejected' },
+          sort: 'created',
+          direction: 'desc',
+        },
+        ownedByMe: false,
+        canManage: false,
+      },
+    ];
+    serve([value({ id: id(1), label: 'Open one' })]);
+    mount(<OwnValueSuggestionsList {...props} />);
+    await screen.findByText('Open one');
+    fireEvent.click(await screen.findByRole('button', { name: 'Turned down' }));
+    await waitFor(() => {
+      const last = String(call.mock.calls.at(-1)?.[1]);
+      expect(last).toContain('catalog/seller/attribute-suggestions?');
+      expect(last).toContain('status=rejected');
+      expect(last).toContain('q=xl');
+    });
+  });
+
   it('shows each outcome in words, with the field and a link to the product', async () => {
     serve([
       value({ id: id(1), label: 'Open one' }),
