@@ -1159,6 +1159,41 @@ describe('relay of the brands list', () => {
     expect(refused.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/brands?status=active');
   });
 
+  it('forwards the created range as instants, on the list and the export, and drops other text', async () => {
+    const from = '2026-11-14T00:00:00+10:00';
+    const to = '2026-11-21T00:00:00+10:00';
+    const list = upstreamOk();
+    await relay(
+      config,
+      get(
+        `?status=active&createdFrom=${encodeURIComponent(from)}&createdTo=${encodeURIComponent(to)}`,
+      ),
+      path,
+      list,
+    );
+    expect(new URL(list.mock.calls[0]?.[0] as string).searchParams.get('createdFrom')).toBe(from);
+    expect(new URL(list.mock.calls[0]?.[0] as string).searchParams.get('createdTo')).toBe(to);
+    const file = upstreamOk();
+    await relay(
+      config,
+      new Request(
+        `http://admin.localhost:3002/api/catalog/admin/brands/export?format=csv&createdFrom=${encodeURIComponent(from)}`,
+        { method: 'GET', headers: { host: 'admin.localhost:3002' } },
+      ),
+      [...path, 'export'],
+      file,
+    );
+    expect(new URL(file.mock.calls[0]?.[0] as string).searchParams.get('createdFrom')).toBe(from);
+    const refused = upstreamOk();
+    await relay(
+      config,
+      get('?status=active&createdFrom=yesterday&createdTo=2026-11-21'),
+      path,
+      refused,
+    );
+    expect(refused.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/brands?status=active');
+  });
+
   it('refuses an origin country that is not two capital letters, on the list and the export', async () => {
     for (const bad of ['nz', 'NZL', 'N', 'N%0A']) {
       const list = upstreamOk();

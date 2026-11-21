@@ -36,6 +36,24 @@ export interface PagedFilterField {
   readonly id: string;
   readonly label: string;
   readonly options: readonly { readonly value: string; readonly label: string }[];
+  /**
+   * A date field: the options are presets ("Last 7 days"), the value kept in the filters is the
+   * preset id, and the list route is asked for the instants it means as these two query keys
+   * (`from` at or after, `to` before), read at each load by the list's `dateRange`.
+   */
+  readonly range?: { readonly from: string; readonly to: string };
+}
+
+/** The instants a date preset means: `from` at or after, `to` before (ISO 8601 with an offset). */
+export interface PagedInstantRange {
+  readonly from: string;
+  readonly to: string;
+}
+
+/** What turns a date field's preset id into instants; null when it cannot (the filter is left out). */
+export interface PagedDateRanges {
+  readonly fields: readonly PagedFilterField[];
+  readonly resolve: (preset: string) => PagedInstantRange | null;
 }
 
 export interface PagedBulkAction<Row> {
