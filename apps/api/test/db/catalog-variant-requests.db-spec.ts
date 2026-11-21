@@ -307,6 +307,7 @@ describe.each(TEST_MARKETS)('catalog variant requests in market %s (database)', 
       store.pageOpen(market, { ...mine, direction: 'asc', offset: 1, limit: 5 }),
     );
     // The created range: `createdFrom` inclusive, `createdTo` exclusive, on the page and the count.
+    // The second row was written a minute ahead of now; the first at or before now: 30 s ahead splits them.
     const middle = new Date(Date.now() + 30_000).toISOString();
     const from = Temporal.Instant.from(middle);
     expect(await read(market, () => store.countOpen(market, { ...mine, createdFrom: from }))).toBe(
