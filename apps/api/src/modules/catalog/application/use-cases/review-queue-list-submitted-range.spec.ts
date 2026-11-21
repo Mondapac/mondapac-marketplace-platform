@@ -112,9 +112,8 @@ describe.each(['AU', 'ZZ'] as const)('review queue submitted range in market %s'
     });
     expect(one.ok).toBe(true);
     expect(offerFilters).toEqual([]);
-    expect(revisionFilters[0]).toMatchObject({
+    expect(revisionFilters[0]).toEqual({
       submittedFrom: Temporal.Instant.from('2026-11-01T00:00:00Z'),
-      submittedTo: null,
     });
     const none = await build().execute(context(), { submittedFrom: '', submittedTo: null });
     expect(none.ok).toBe(true);
