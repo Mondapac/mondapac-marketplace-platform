@@ -179,6 +179,7 @@ describe('admin business activities', () => {
     await waitFor(() => {
       const last = calls('GET', 'catalog/admin/business-activities').at(-1)?.[1] ?? '';
       expect(last).toContain('q=gro');
+      expect(last).toContain('sort=code');
       expect(last).toContain('status=inactive');
     });
   });
@@ -197,7 +198,7 @@ describe('admin business activities', () => {
               v: 1,
               q: 'gro',
               filters: { status: 'inactive' },
-              sort: 'name',
+              sort: 'code',
               direction: 'asc',
             },
             ownedByMe: false,
