@@ -2,7 +2,7 @@
 
 import { Badge, Button, toast, type MenuItem, type SuperColumn } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { PagedSuperList } from '../shared/paged-list/paged-super-list.tsx';
 import type {
   ListPagingMode,
@@ -60,6 +60,9 @@ export function AttributesList({
   const [adding, setAdding] = useState(false);
   const [refresh, setRefresh] = useState(0);
   const locales = context?.locales ?? null;
+  // The columns read the languages from a ref, so the list is not read again when they arrive.
+  const localesRef = useRef(locales);
+  localesRef.current = locales;
 
   const rowActions = useCallback(
     (row: AttributeRow): readonly MenuItem[] => [
@@ -84,9 +87,14 @@ export function AttributesList({
               <div className="min-w-0">
                 <p className="flex flex-wrap items-center gap-2">
                   <a className="font-semibold wrap-anywhere text-fg" href={attributePath(row.id)}>
-                    {locales === null
+                    {localesRef.current === null
                       ? row.code
-                      : textIn(row.names, locales.default, locales.default, row.code)}
+                      : textIn(
+                          row.names,
+                          localesRef.current.default,
+                          localesRef.current.default,
+                          row.code,
+                        )}
                   </a>
                   {row.material ? <Badge tone="attention">{t('badge.material')}</Badge> : null}
                   {row.isVariantOption ? <Badge tone="info">{t('badge.variant')}</Badge> : null}
@@ -115,13 +123,15 @@ export function AttributesList({
             id,
             header,
             cell: (row) =>
-              row.missingLocales.length === 0 || locales === null ? (
+              row.missingLocales.length === 0 || localesRef.current === null ? (
                 <span className="text-fg-muted">{t('row.all-languages')}</span>
               ) : (
                 <span className="flex flex-wrap gap-1">
                   {row.missingLocales.map((locale) => (
                     <Badge key={locale} tone="attention">
-                      {t('row.missing', { languages: languageName(locale, locales.supported) })}
+                      {t('row.missing', {
+                        languages: languageName(locale, localesRef.current?.supported ?? [locale]),
+                      })}
                     </Badge>
                   ))}
                 </span>
@@ -129,7 +139,7 @@ export function AttributesList({
           };
       }
     },
-    [t, locales],
+    [t],
   );
 
   const config: PagedListConfig<AttributeRow> = useMemo(
@@ -138,7 +148,9 @@ export function AttributesList({
       endpoint: API_ATTRIBUTES,
       rowId: (row) => row.id,
       rowName: (row) =>
-        locales === null ? row.code : textIn(row.names, locales.default, locales.default, row.code),
+        localesRef.current === null
+          ? row.code
+          : textIn(row.names, localesRef.current.default, localesRef.current.default, row.code),
       tabs: LIST_TABS,
       tabParam: 'status',
       search: { max: 100, param: 'search' },
@@ -172,7 +184,7 @@ export function AttributesList({
       rowActions,
       icon: 'package',
     }),
-    [tl, columnDefs, rowActions, locales],
+    [tl, columnDefs, rowActions],
   );
 
   const fields: readonly PagedFilterField[] = useMemo(() => {

@@ -5,9 +5,9 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 import type { ListPagingMode } from '../shared/paged-list/types.ts';
 import { AttributesList } from './attributes-list.tsx';
+import { ValueSuggestionsList } from './value-suggestions-list.tsx';
 import { FeatureSetsTab } from './feature-sets-tab.tsx';
 import { MissingDetailsTab } from './missing-details-tab.tsx';
-import { SuggestionsTab } from './suggestions-tab.tsx';
 import { WaitingTab } from './waiting-tab.tsx';
 import { ATTRIBUTES_PATH, BRANDS_PATH, attributePath, type Tab } from './types.ts';
 
@@ -115,7 +115,19 @@ export function AttributesView({
       {tab === 'missing-details' ? (
         <MissingDetailsTab canEdit={canEdit} csrfToken={csrfToken} />
       ) : null}
-      {tab === 'waiting' && canDecide ? <SuggestionsTab csrfToken={csrfToken} /> : null}
+      {tab === 'waiting' && canDecide ? (
+        <section aria-labelledby="suggestions-heading" className="flex flex-col gap-4">
+          <h2 id="suggestions-heading" className="text-lg font-semibold text-fg">
+            {t('suggestions.title')}
+          </h2>
+          <ValueSuggestionsList
+            paging={paging}
+            accountId={accountId}
+            marketId={marketId}
+            csrfToken={csrfToken}
+          />
+        </section>
+      ) : null}
     </div>
   );
 }

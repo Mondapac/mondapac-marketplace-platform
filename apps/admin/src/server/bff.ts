@@ -1569,6 +1569,15 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'firstPublication',
     'hasImages',
   ],
+  'catalog/admin/attribute-suggestions': [
+    'limit',
+    'q',
+    'page',
+    'pageSize',
+    'paging',
+    'sort',
+    'direction',
+  ],
   'catalog/admin/topic-suggestions': [
     'limit',
     'q',
@@ -2254,6 +2263,14 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sellerId: UUID,
     firstPublication: /^(true|false)$/,
     hasImages: /^true$/,
+  },
+  'catalog/admin/attribute-suggestions': {
+    limit: /^([1-9][0-9]?|100)$/,
+    page: /^[1-9][0-9]{0,3}$/,
+    pageSize: /^([1-9][0-9]?|100)$/,
+    paging: /^(pages|prev-next)$/,
+    sort: /^created$/,
+    direction: /^(asc|desc)$/,
   },
   'catalog/admin/topic-suggestions': {
     limit: /^([1-9][0-9]?|100)$/,
