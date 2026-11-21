@@ -49,6 +49,7 @@ export function TagsView({
         paging={paging}
         accountId={accountId}
         marketId={marketId}
+        csrfToken={csrfToken}
         locale={locales?.default ?? 'en'}
         onOpen={setDialog}
         onAnswered={(answer) => {

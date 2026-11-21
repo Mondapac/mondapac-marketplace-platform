@@ -73,6 +73,10 @@ function serve(routes: Record<string, Handler>) {
       .filter((route) => key.startsWith(route))
       .sort((a, b) => b.length - a.length)[0];
     const handler = hit === undefined ? undefined : routes[hit];
+    // No saved filters unless a test serves some.
+    if (handler === undefined && key.startsWith('GET lists/admin/saved-filters')) {
+      return Promise.resolve(ok({ items: [], canShare: false }) as never);
+    }
     if (handler === undefined) throw new Error(`unexpected call ${key}`);
     return Promise.resolve((typeof handler === 'function' ? handler(body) : handler) as never);
   });
@@ -168,6 +172,42 @@ describe('admin tags list', () => {
       const last = calls('GET', 'catalog/admin/topics').at(-1)?.[1] ?? '';
       expect(last).toContain('q=bbq');
       expect(last).toContain('status=archived');
+    });
+  });
+
+  it('opens a saved filter as a tab with its view, group, search and sort', async () => {
+    serve({
+      ...base([topic(1)]),
+      'GET lists/admin/saved-filters?listKey=admin.catalog.tags': ok({
+        items: [
+          {
+            id: id(90),
+            listKey: 'admin.catalog.tags',
+            name: 'Old occasions',
+            visibility: 'everyone',
+            payload: {
+              v: 1,
+              q: 'eid',
+              filters: { status: 'archived', group: 'occasion' },
+              sort: 'slug',
+              direction: 'asc',
+            },
+            ownedByMe: false,
+            canManage: false,
+          },
+        ],
+        canShare: false,
+      }),
+    });
+    mount();
+    await screen.findByText('Tag 1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Old occasions' }));
+    await waitFor(() => {
+      const last = calls('GET', 'catalog/admin/topics').at(-1)?.[1] ?? '';
+      expect(last).toContain('status=archived');
+      expect(last).toContain('group=occasion');
+      expect(last).toContain('q=eid');
+      expect(last).toContain('sort=slug');
     });
   });
 
