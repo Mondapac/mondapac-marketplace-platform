@@ -49,10 +49,23 @@ export const PRICING_PRICE_HOLD_DECIDE = definePermission('pricing', {
   protected: true,
 });
 
+/**
+ * Share a saved filter of the admin price-hold list (list 19) with every admin who can see the
+ * queue, or change or delete one that is shared. A private filter needs only the view key.
+ * Protected, like the decide key: a shared filter frames which held prices every reviewer sees
+ * first, so no default role lists it and the Platform Administrator grants it in admin scope.
+ */
+export const PRICING_PRICE_HOLD_SAVED_FILTER_SHARE = definePermission('pricing', {
+  key: 'pricing.price-hold-saved-filter.share',
+  scope: 'platform',
+  protected: true,
+});
+
 export const PRICING_PERMISSIONS = declarePermissions('pricing', [
   PRICING_PRICE_VIEW,
   PRICING_PRICE_EDIT,
   PRICING_COST_VIEW,
   PRICING_PRICE_HOLD_VIEW,
   PRICING_PRICE_HOLD_DECIDE,
+  PRICING_PRICE_HOLD_SAVED_FILTER_SHARE,
 ]);

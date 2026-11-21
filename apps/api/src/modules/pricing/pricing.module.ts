@@ -17,6 +17,7 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CatalogModule } from '../catalog';
+import { ListsModule, registerLists } from '../lists';
 import { SellersModule } from '../sellers';
 import { HELD_UNIT_LABELS, SELLER_STORE_NAMES } from './application/ports/held-labels';
 import { OFFER_SELL_UNITS_SOURCE } from './application/ports/offer-sell-units';
@@ -28,6 +29,7 @@ import { WRITE_REFUSAL_THROTTLE_REPOSITORY } from './application/ports/write-ref
 import { ApprovePriceHold } from './application/use-cases/approve-price-hold.use-case';
 import type { AdminHoldListDependencies } from './application/admin-hold-list-flow';
 import { HOLD_ROW_KEYS } from './application/admin-hold-list-flow';
+import { PRICING_LISTS } from './application/saved-filters/list-definitions';
 import { ExportPriceHolds } from './application/use-cases/export-price-holds.use-case';
 import { ListPriceHolds } from './application/use-cases/list-price-holds.use-case';
 import { PriceHoldDecideProbe } from './application/use-cases/price-hold-decide-probe.use-case';
@@ -159,7 +161,7 @@ function holdListUseCaseProvider<U>(type: HoldListUseCaseClass<U>): FactoryProvi
  * write answers `pricing.offer-not-found`.
  */
 @Module({
-  imports: [CatalogModule, SellersModule],
+  imports: [CatalogModule, SellersModule, ListsModule],
   controllers: [
     SellerRegularPriceController,
     SellerSpecialPriceController,
@@ -174,6 +176,7 @@ function holdListUseCaseProvider<U>(type: HoldListUseCaseClass<U>): FactoryProvi
     // Pushes its catalogue into the permission registry (identity slice 8a-1, PF 6.1).
     registerPermissions('pricing', PRICING_PERMISSIONS),
     registerStepUpActions('pricing', PRICING_STEP_UP_ACTIONS),
+    registerLists('pricing', PRICING_LISTS),
     ...pricingProviders,
     useCaseProvider(SetRegularPrice, {
       unitOfWork: true,
