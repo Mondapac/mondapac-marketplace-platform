@@ -43,7 +43,9 @@ import {
   type ListPagingMode,
   type PagedListRuntime,
   type PagedAnswer,
+  type PagedDateRanges,
   type PagedFilterField,
+  type PagedInstantRange,
   type PagedListConfig,
   type PagedQuery,
 } from './types.ts';
@@ -67,6 +69,7 @@ export function pagedQueryString<Row>(
   config: Pick<PagedListConfig<Row>, 'tabs' | 'tabParam' | 'tabParams' | 'search'>,
   query: PagedQuery,
   paging: ListPagingMode,
+  dates?: PagedDateRanges,
 ): string {
   const params = new URLSearchParams();
   for (const [name, value] of Object.entries(config.tabParams?.(query.tab) ?? {})) {
@@ -77,7 +80,19 @@ export function pagedQueryString<Row>(
     params.set(config.tabParam, query.tab);
   }
   if (query.q !== '') params.set(config.search?.param ?? 'q', query.q);
-  for (const [name, value] of Object.entries(query.filters)) params.set(name, value);
+  for (const [name, value] of Object.entries(query.filters)) {
+    const range = dates?.fields.find((field) => field.id === name)?.range;
+    if (range === undefined) {
+      params.set(name, value);
+      continue;
+    }
+    // A date preset is read on each load: "Last 7 days" keeps meaning the last seven days.
+    const instants = dates?.resolve(value) ?? null;
+    if (instants !== null) {
+      params.set(range.from, instants.from);
+      params.set(range.to, instants.to);
+    }
+  }
   params.set('page', String(query.page));
   params.set('pageSize', String(PAGE_SIZE));
   params.set('paging', paging);
@@ -116,6 +131,7 @@ export function PagedSuperList<Row>({
   refreshKey = 0,
   onAnswer,
   csrfToken,
+  dateRange,
   runtime,
 }: {
   readonly config: PagedListConfig<Row>;
@@ -137,6 +153,11 @@ export function PagedSuperList<Row>({
   readonly onAnswer?: (answer: PagedAnswer<Row>) => void;
   /** The session's CSRF token: with the list's `savedKey` it turns saved filters on. */
   readonly csrfToken?: string;
+  /**
+   * Turns the preset a date field holds into instants, on the clock of the list's zone (ADR-0005);
+   * needed when `fields` has a field with `range`.
+   */
+  readonly dateRange?: (preset: string) => PagedInstantRange | null;
   /** The panel's translations, locale and relay call (the kit does not know the panel's i18n). */
   readonly runtime: PagedListRuntime;
 }) {
@@ -187,6 +208,8 @@ export function PagedSuperList<Row>({
   const latest = useRef(0);
   const onAnswerRef = useRef(onAnswer);
   onAnswerRef.current = onAnswer;
+  const datesRef = useRef<PagedDateRanges>({ fields, resolve: () => null });
+  datesRef.current = { fields, resolve: dateRange ?? (() => null) };
   const storageKey = prefsKey('admin', marketId, accountId, `${config.ns}-columns`);
   const listTop = useRef<HTMLDivElement>(null);
   const focusList = useRef(false);
@@ -208,7 +231,7 @@ export function PagedSuperList<Row>({
       setFailure(null);
       const result = await callApi<PagedAnswer<Row>>(
         'GET',
-        `${config.endpoint}?${pagedQueryString(config, asked, paging)}`,
+        `${config.endpoint}?${pagedQueryString(config, asked, paging, datesRef.current)}`,
       );
       if (ticket !== latest.current) return;
       setLoading(false);
@@ -327,7 +350,7 @@ export function PagedSuperList<Row>({
   async function exportFile(format: ExportFormat) {
     if (config.exportEndpoint === undefined) return;
     setExporting(true);
-    const params = new URLSearchParams(pagedQueryString(config, query, paging));
+    const params = new URLSearchParams(pagedQueryString(config, query, paging, datesRef.current));
     const dropped = [
       'page',
       'pageSize',
