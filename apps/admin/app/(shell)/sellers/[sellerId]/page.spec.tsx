@@ -72,6 +72,10 @@ vi.mock('../../../../src/sellers/blog-access-card.tsx', async (importOriginal) =
   ),
 }));
 vi.mock('../../../../src/commission/rate-card.tsx', () => ({ CommissionRateCard: () => <div /> }));
+// The save bar's form is a client part: here it only passes its cards through.
+vi.mock('../../../../src/sellers/seller-edit-form.tsx', () => ({
+  SellerEditForm: ({ children }: { children: ReactNode }) => <>{children}</>,
+}));
 vi.mock('../../../../src/commission/ledger-card.tsx', () => ({
   LedgerCard: ({
     paging,

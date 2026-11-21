@@ -57,6 +57,7 @@ import {
   type PayoutTerms,
 } from '../../../../src/payouts/seller-types.ts';
 import { SellerActivitiesCard } from '../../../../src/sellers/seller-activities-card.tsx';
+import { SellerEditForm } from '../../../../src/sellers/seller-edit-form.tsx';
 import {
   ACTIVITIES_MANAGE_PERMISSION,
   ACTIVITIES_VIEW_PERMISSION,
@@ -321,39 +322,46 @@ export default async function SellerReviewPage({
             zone={displayZone(gate.session.timezone)}
           />
         )}
-        {activities === null ? null : (
-          <SellerActivitiesCard
-            sellerId={sellerId}
-            initial={activities.seller}
-            activities={activities.options}
-            canEdit={
-              permissionKeys.includes(ACTIVITIES_MANAGE_PERMISSION) && activities.options.length > 0
-            }
-            editNote={
-              permissionKeys.includes(ACTIVITIES_MANAGE_PERMISSION) &&
-              activities.options.length === 0
-            }
-            csrfToken={csrfToken}
-          />
-        )}
-        {commission.kind === 'hidden' && methods === null ? null : (
-          <div className="grid gap-6 lg:grid-cols-2">
-            {methods === null ? null : (
-              <SellerMethodsCard
-                initial={methods}
-                canManage={permissionKeys.includes(DELIVERY_MANAGE_PERMISSION)}
-                csrfToken={csrfToken}
-              />
-            )}
-            {commission.kind === 'ok' ? (
-              <CommissionRateCard
-                initial={commission.rate}
-                canEdit={permissionKeys.includes(RATE_EDIT_PERMISSION)}
-                csrfToken={csrfToken}
-              />
-            ) : null}
-          </div>
-        )}
+        {/* One save bar for the editable parts; each saves through its own API, in turn. */}
+        <SellerEditForm
+          order={['activities', 'delivery-methods', 'commission-rate']}
+          page={t('sellers.review.title')}
+        >
+          {activities === null ? null : (
+            <SellerActivitiesCard
+              sellerId={sellerId}
+              initial={activities.seller}
+              activities={activities.options}
+              canEdit={
+                permissionKeys.includes(ACTIVITIES_MANAGE_PERMISSION) &&
+                activities.options.length > 0
+              }
+              editNote={
+                permissionKeys.includes(ACTIVITIES_MANAGE_PERMISSION) &&
+                activities.options.length === 0
+              }
+              csrfToken={csrfToken}
+            />
+          )}
+          {commission.kind === 'hidden' && methods === null ? null : (
+            <div className="grid gap-6 lg:grid-cols-2">
+              {methods === null ? null : (
+                <SellerMethodsCard
+                  initial={methods}
+                  canManage={permissionKeys.includes(DELIVERY_MANAGE_PERMISSION)}
+                  csrfToken={csrfToken}
+                />
+              )}
+              {commission.kind === 'ok' ? (
+                <CommissionRateCard
+                  initial={commission.rate}
+                  canEdit={permissionKeys.includes(RATE_EDIT_PERMISSION)}
+                  csrfToken={csrfToken}
+                />
+              ) : null}
+            </div>
+          )}
+        </SellerEditForm>
         {terms === null && !canViewHolds ? null : (
           // Stacked, not side by side: the holds table needs the full width to stay unscrolled.
           <div className="flex flex-col gap-6">

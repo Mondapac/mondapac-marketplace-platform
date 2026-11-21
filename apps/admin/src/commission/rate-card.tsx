@@ -1,8 +1,19 @@
 'use client';
 
-import { ActionRow, Badge, Banner, Button, Card, Dialog, TextField, toast } from '@mondapac/ui';
+import {
+  ActionRow,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  Dialog,
+  TextField,
+  toast,
+  type SectionResult,
+} from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState } from 'react';
+import { useSellerSection } from '../sellers/seller-edit-form.tsx';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import {
   isNoteFailure,
@@ -13,7 +24,11 @@ import {
 import { commissionProblemOf } from './errors.ts';
 import { bpsOf, MAX_RATE_BPS, percentInput, percentOf, type CommissionRate } from './types.ts';
 
-/** A seller's commission rate: the rate in force, its source, a percent field and a reset. */
+/**
+ * A seller's commission rate: the rate in force, its source, a percent field and a reset. A new
+ * rate is one part of the seller page's save bar (`SellerEditForm`); the reset to the Market rate
+ * stays its own action, with its own confirm.
+ */
 export function CommissionRateCard({
   initial,
   canEdit,
@@ -50,22 +65,21 @@ export function CommissionRateCard({
     else setProblem(commissionProblemOf(failure));
   }
 
-  async function save(event: FormEvent) {
-    event.preventDefault();
-    if (busy.current) return;
-    const bps = bpsOf(text);
+  const dirty = canEdit && text.trim() !== percentInput(rate.rateBps);
+
+  function check(): boolean {
     setProblem(null);
-    if (bps === null) {
-      setInvalid(true);
-      return;
-    }
-    setInvalid(false);
+    const bps = bpsOf(text);
+    setInvalid(bps === null);
+    const noteOk = trimmedNote(note) !== null;
+    setNoteError(noteOk ? null : 'required');
+    return bps !== null && noteOk;
+  }
+
+  async function save(): Promise<SectionResult> {
+    const bps = bpsOf(text);
     const sent = trimmedNote(note);
-    if (sent === null) {
-      setNoteError('required');
-      return;
-    }
-    setNoteError(null);
+    if (bps === null || sent === null) return 'failed';
     busy.current = true;
     setPending('save');
     const result = await guarded<CommissionRate>(
@@ -79,13 +93,36 @@ export function CommissionRateCard({
     if (result.ok) {
       adopt(result.body);
       setNote('');
-      toast.success(t('saved-done'));
       sentForReview(result.body);
-    } else if (!isStepUpCancelled(result)) {
-      if (isNoteFailure(result.failure)) setNoteError('rejected');
-      else fail(result.failure);
+      return 'saved';
     }
+    if (isStepUpCancelled(result)) return 'stopped';
+    if (result.failure.status === 401) return section.signedOut();
+    if (isNoteFailure(result.failure)) setNoteError('rejected');
+    else setProblem(commissionProblemOf(result.failure));
+    return 'failed';
   }
+
+  const section = useSellerSection('commission-rate', {
+    dirty,
+    title: t('title'),
+    lines: [
+      t('confirm-line', {
+        from: percentOf(rate.rateBps, locale),
+        to: bpsOf(text) === null ? text.trim() : percentOf(bpsOf(text) ?? 0, locale),
+      }),
+    ],
+    check,
+    save,
+    savedMessage: () => t('saved-done'),
+    discard: () => {
+      setText(percentInput(rate.rateBps));
+      setNote('');
+      setNoteError(null);
+      setInvalid(false);
+      setProblem(null);
+    },
+  });
 
   async function reset() {
     if (busy.current) return;
@@ -147,7 +184,7 @@ export function CommissionRateCard({
         ) : null}
         {problem === null ? null : <Banner tone="critical">{t(`error.${problem}`)}</Banner>}
         {canEdit ? (
-          <form className="flex flex-col gap-3" onSubmit={(e) => void save(e)} noValidate>
+          <div className="flex flex-col gap-3">
             <TextField
               name="rate"
               label={t('field')}
@@ -165,14 +202,12 @@ export function CommissionRateCard({
               }}
               error={confirming ? undefined : (noteError ?? undefined)}
             />
-            <ActionRow>
-              <Button type="submit" loading={pending === 'save'} disabled={pending === 'reset'}>
-                {t('save')}
-              </Button>
-              {rate.source === 'seller' ? (
+            {rate.source === 'seller' ? (
+              <ActionRow>
                 <Button
                   variant="secondary"
-                  disabled={pending !== null}
+                  // A typed rate is saved or discarded first: the reset is a separate action.
+                  disabled={pending !== null || dirty || section.saving}
                   onClick={() => {
                     setResetNote('');
                     setNoteError(null);
@@ -181,9 +216,9 @@ export function CommissionRateCard({
                 >
                   {t('reset')}
                 </Button>
-              ) : null}
-            </ActionRow>
-          </form>
+              </ActionRow>
+            ) : null}
+          </div>
         ) : null}
       </div>
       <Dialog

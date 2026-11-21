@@ -11,6 +11,7 @@ import { callApi } from '../api/client.ts';
 import { STEP_UP_CANCELLED } from '../step-up/step-up.tsx';
 import { commissionProblemOf } from './errors.ts';
 import { CommissionRateCard } from './rate-card.tsx';
+import { SellerEditForm } from '../sellers/seller-edit-form.tsx';
 import { bpsOf, percentOf, type CommissionRate } from './types.ts';
 import { expectToast } from '../../test/toast-spy.ts';
 
@@ -45,7 +46,20 @@ const typeNote = (scope: { getByLabelText: (text: RegExp) => HTMLElement }, text
   fireEvent.change(scope.getByLabelText(NOTE), { target: { value: text } });
 
 const mountRate = (initial: CommissionRate, canEdit = true) =>
-  render(wrap(<CommissionRateCard initial={initial} canEdit={canEdit} csrfToken="csrf" />));
+  render(
+    wrap(
+      <SellerEditForm order={['commission-rate']} page="Seller">
+        <CommissionRateCard initial={initial} canEdit={canEdit} csrfToken="csrf" />
+      </SellerEditForm>,
+    ),
+  );
+
+/** Save on the page's bar; `saveAll` also confirms the one change. */
+const pressSave = () => fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+async function saveAll() {
+  pressSave();
+  fireEvent.click(await screen.findByRole('button', { name: 'Save 1 part' }));
+}
 
 describe('CommissionRateCard', () => {
   it('shows the Market rate as a percent with its source', () => {
@@ -74,7 +88,7 @@ describe('CommissionRateCard', () => {
     mountRate(rate(1500, 'market'));
     fireEvent.change(screen.getByLabelText(/Commission rate/), { target: { value: '12.75' } });
     typeNote(screen);
-    fireEvent.click(screen.getByRole('button', { name: 'Save rate' }));
+    await saveAll();
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call).toHaveBeenCalledWith('PUT', RATE, { rateBps: 1275, note: 'Fee review' }, 'csrf');
     await expectToast(/Rate saved/);
@@ -86,7 +100,7 @@ describe('CommissionRateCard', () => {
     mountRate(rate(1500));
     fireEvent.change(screen.getByLabelText(/Commission rate/), { target: { value: '12' } });
     fireEvent.change(screen.getByLabelText(NOTE), { target: { value: '   ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save rate' }));
+    pressSave();
     expect(screen.getByText(/Write a note for the reviewers/)).toBeTruthy();
     expect(call).not.toHaveBeenCalled();
     expect(screen.getByText('3 / 500')).toBeTruthy();
@@ -101,7 +115,7 @@ describe('CommissionRateCard', () => {
     mountRate(rate(1500));
     fireEvent.change(screen.getByLabelText(/Commission rate/), { target: { value: '12' } });
     typeNote(screen);
-    fireEvent.click(screen.getByRole('button', { name: 'Save rate' }));
+    await saveAll();
     await expectToast('Sent for review (SR-42)', 'info');
   });
 
@@ -117,7 +131,7 @@ describe('CommissionRateCard', () => {
     mountRate(rate(1500));
     fireEvent.change(screen.getByLabelText(/Commission rate/), { target: { value: '12' } });
     typeNote(screen);
-    fireEvent.click(screen.getByRole('button', { name: 'Save rate' }));
+    await saveAll();
     expect(await screen.findByText(/The note was refused/)).toBeTruthy();
     expect(screen.queryByText(/That rate was refused/)).toBeNull();
   });
@@ -126,7 +140,7 @@ describe('CommissionRateCard', () => {
     mountRate(rate(1500));
     for (const bad of ['', 'abc', '-1', '12.345', '30.01', '31']) {
       fireEvent.change(screen.getByLabelText(/Commission rate/), { target: { value: bad } });
-      fireEvent.click(screen.getByRole('button', { name: 'Save rate' }));
+      pressSave();
       expect(screen.getByText(/Enter a percentage between 0 and 30/)).toBeTruthy();
     }
     expect(call).not.toHaveBeenCalled();
@@ -181,8 +195,13 @@ describe('CommissionRateCard', () => {
     mountRate(rate(1250));
     fireEvent.change(screen.getByLabelText(/Commission rate/), { target: { value: '11' } });
     typeNote(screen);
-    fireEvent.click(screen.getByRole('button', { name: 'Save rate' }));
+    await saveAll();
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    // The typed rate stays a draft; the reset is open again once it is discarded.
+    expect(
+      screen.getByRole<HTMLButtonElement>('button', { name: 'Reset to Market rate' }).disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     fireEvent.click(screen.getByRole('button', { name: 'Reset to Market rate' }));
     typeNote(within(screen.getByRole('dialog')));
     fireEvent.click(screen.getByRole('button', { name: 'Yes, reset' }));
@@ -196,8 +215,9 @@ describe('CommissionRateCard', () => {
   it('shows a refusal in words', async () => {
     call.mockResolvedValue({ ok: false, failure: { status: 403, code: 'access.denied' } });
     mountRate(rate(1500));
+    fireEvent.change(screen.getByLabelText(/Commission rate/), { target: { value: '12' } });
     typeNote(screen);
-    fireEvent.click(screen.getByRole('button', { name: 'Save rate' }));
+    await saveAll();
     expect(await screen.findByText('Your role cannot change commission rates.')).toBeTruthy();
   });
 });

@@ -10,6 +10,7 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 import { callApi } from '../api/client.ts';
 import { DeliverySettingsPanel } from './delivery-settings-panel.tsx';
 import { SellerMethodsCard } from './seller-methods-card.tsx';
+import { SellerEditForm } from '../sellers/seller-edit-form.tsx';
 import type { DeliverySettings, SellerMethods } from './types.ts';
 import { expectToast } from '../../test/toast-spy.ts';
 
@@ -120,9 +121,14 @@ describe('the Market delivery rules where a change is reviewed', () => {
 
 describe('the seller delivery methods where a change is reviewed', () => {
   const mount = (initial: SellerMethods) =>
-    render(wrap(<SellerMethodsCard initial={initial} canManage csrfToken="csrf" />));
-  const press = () =>
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery methods' }));
+    render(
+      wrap(
+        <SellerEditForm order={['delivery-methods']} page="Seller">
+          <SellerMethodsCard initial={initial} canManage csrfToken="csrf" />
+        </SellerEditForm>,
+      ),
+    );
+  const press = () => fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
 
   it('asks for no note and sends none when not reviewed', async () => {
     call.mockResolvedValue(ok(methods({ supported: ['pickup', 'same_day', 'scheduled'] })));
@@ -130,7 +136,7 @@ describe('the seller delivery methods where a change is reviewed', () => {
     expect(screen.queryByLabelText('Note for reviewers')).toBeNull();
     fireEvent.click(screen.getByLabelText('Instant delivery'));
     press();
-    pressInDialog('Confirm and save');
+    pressInDialog('Save 1 part');
     await expectToast(/Delivery methods saved/);
     expect(call.mock.calls[0]?.[2]).toEqual({ supported: ['pickup', 'same_day', 'scheduled'] });
   });
@@ -149,7 +155,7 @@ describe('the seller delivery methods where a change is reviewed', () => {
       }),
     );
     press();
-    pressInDialog('Confirm and save');
+    pressInDialog('Save 1 part');
     await expectToast('Sent for review (SR-8)', 'info');
     expect(call.mock.calls[0]?.[2]).toEqual({
       supported: ['pickup', 'same_day', 'scheduled'],
@@ -163,7 +169,7 @@ describe('the seller delivery methods where a change is reviewed', () => {
     fireEvent.click(screen.getByLabelText('Instant delivery'));
     type('x');
     press();
-    pressInDialog('Confirm and save');
+    pressInDialog('Save 1 part');
     expect(await screen.findByText(/The note was refused/)).toBeTruthy();
   });
 });
