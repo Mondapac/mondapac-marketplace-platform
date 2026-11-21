@@ -50,10 +50,23 @@ export interface PendingRevisionRow {
  * absent key does not filter. `hasImages` is the row's own: the pending revision lists a photo, in
  * any state (a taken-down photo counts, as on the row).
  */
+/** What narrows the Offers of the review queue: one seller, and when they were submitted. */
+export interface OfferQueueFilter {
+  readonly sellerId?: Id<'Seller'>;
+  /** Submitted at or after this instant (inclusive). */
+  readonly submittedFrom?: Temporal.Instant | null;
+  /** Submitted before this instant (exclusive). */
+  readonly submittedTo?: Temporal.Instant | null;
+}
+
 export interface RevisionQueueFilter {
   readonly sellerId?: Id<'Seller'>;
   readonly firstPublication?: boolean;
   readonly hasImages?: boolean;
+  /** Submitted at or after this instant (inclusive). */
+  readonly submittedFrom?: Temporal.Instant | null;
+  /** Submitted before this instant (exclusive). */
+  readonly submittedTo?: Temporal.Instant | null;
 }
 
 /** One field of a product family as the product form shows it: names and option labels per locale. */
@@ -303,10 +316,7 @@ export interface OwnCatalogReader {
    * How many Offers of the Market wait for their first publication (the review queue), of one
    * seller when `filter.sellerId` is given.
    */
-  pendingReviewCount(
-    market: MarketContext,
-    filter?: { readonly sellerId?: Id<'Seller'> },
-  ): Promise<number>;
+  pendingReviewCount(market: MarketContext, filter?: OfferQueueFilter): Promise<number>;
 
   /** How many SELLER products hold a pending revision (the review queue) that `filter` keeps. */
   pendingRevisionCount(market: MarketContext, filter?: RevisionQueueFilter): Promise<number>;

@@ -323,6 +323,30 @@ describe('the catalog phase 2 saved-filter lists', () => {
         { path: 'payload.filters.created', code: 'format' },
       ]);
     });
+    it('admin.catalog.review-queue keeps the submitted range and the preset id, and refuses bad ones', () => {
+      const list = byKey('admin.catalog.review-queue');
+      const base = { sort: 'submitted', direction: 'asc' };
+      const saved = list.parsePayload({
+        v: 1,
+        filters: {
+          kind: 'offer-first-publication',
+          submitted: 'last-7-days',
+          submittedTo: '2026-11-08T00:00:00+10:00',
+        },
+        ...base,
+      });
+      expect(saved.ok && (saved.value as { filters: unknown }).filters).toEqual({
+        kind: 'offer-first-publication',
+        submitted: 'last-7-days',
+        submittedTo: '2026-11-07T14:00:00Z',
+      });
+      expect(fieldsOf(list, { v: 1, filters: { submittedFrom: '2026-11-08' }, ...base })).toEqual([
+        { path: 'payload.filters.submittedFrom', code: 'format' },
+      ]);
+      expect(fieldsOf(list, { v: 1, filters: { submitted: 'Last 7' }, ...base })).toEqual([
+        { path: 'payload.filters.submitted', code: 'format' },
+      ]);
+    });
     it('keeps the status of an activity and refuses a bad one', () => {
       const list = byKey('admin.catalog.business-activities');
       expect(

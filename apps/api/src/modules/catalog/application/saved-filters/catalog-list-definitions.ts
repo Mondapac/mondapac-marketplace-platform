@@ -97,6 +97,8 @@ function dateFilterOf(
   };
 }
 
+const SUBMITTED_KEYS = ['submittedFrom', 'submittedTo', 'submitted'] as const;
+const SUBMITTED = { from: 'submittedFrom', to: 'submittedTo', preset: 'submitted' } as const;
 const CREATED_KEYS = ['createdFrom', 'createdTo', 'created'] as const;
 const CREATED = { from: 'createdFrom', to: 'createdTo', preset: 'created' } as const;
 
@@ -357,7 +359,7 @@ const REVIEW_QUEUE: ListDefinition = {
   shareKey: CATALOG_SAVED_FILTER_SHARE.key,
   parsePayload: savedListPayloadParser({
     views: null,
-    filterKeys: ['kind', 'sellerId', 'firstPublication', 'hasImages'],
+    filterKeys: ['kind', 'sellerId', 'firstPublication', 'hasImages', ...SUBMITTED_KEYS],
     sorts: REVIEW_QUEUE_SORTS,
     read(query) {
       const kind = query['kind'];
@@ -373,9 +375,12 @@ const REVIEW_QUEUE: ListDefinition = {
         // These are revision fields: asked of first publications they are refused, as the list does.
         if (kind === 'offer-first-publication') return refused(key, 'not-allowed');
       }
+      const date = dateFilterOf(query, SUBMITTED);
+      if (date.refusal !== null) return date.refusal;
       return {
         fields: [],
         canonical: canonicalQuery({
+          ...date.canonical,
           kind: kind ?? null,
           sellerId: sellerId === undefined ? null : sellerId.toLowerCase(),
           firstPublication: query['firstPublication'] ?? null,
