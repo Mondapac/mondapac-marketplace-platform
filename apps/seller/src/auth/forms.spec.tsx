@@ -33,6 +33,24 @@ function fillSignIn(email: string, password: string) {
 }
 
 describe('SignInForm second step', () => {
+  it('puts focus in the code field on arrival, described by the step instructions', async () => {
+    call.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      body: { code: 'second-factor-required', challengeToken: 'chal' },
+    });
+    render(wrap(<SignInForm notice={null} />));
+    fillSignIn('a@example.com', 'right password');
+    await screen.findByText('Enter your 6-digit code');
+    const field = screen.getByLabelText('6-digit code');
+    await waitFor(() => expect(document.activeElement).toBe(field));
+    // The heading's effect must not take focus back after the field got it.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.activeElement).toBe(field);
+    const first = (field.getAttribute('aria-describedby') ?? '').split(' ')[0] ?? '';
+    expect(document.getElementById(first)?.textContent).toContain('authenticator app');
+  });
+
   it('asks for the code after the password and signs in with it', async () => {
     call
       .mockResolvedValueOnce({

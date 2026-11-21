@@ -22,6 +22,8 @@ export interface TextFieldProps extends Omit<
   /** Password fields get a show/hide toggle; these are its labels. */
   readonly showLabel?: string;
   readonly hideLabel?: string;
+  /** Id of text outside the field that describes it (a step's instructions); read before help. */
+  readonly describedBy?: string;
 }
 
 /** A labelled input with help and error text wired through aria-describedby (WCAG 2.2 AA). */
@@ -35,6 +37,7 @@ export function TextField({
   status,
   optionalLabel,
   headAction,
+  describedBy: describedByOutside,
   type = 'text',
   className,
   ...rest
@@ -45,7 +48,12 @@ export function TextField({
   const statusId = `${id}-status`;
   const [revealed, setRevealed] = useState(false);
   const isPassword = type === 'password' && showLabel !== undefined && hideLabel !== undefined;
-  const describedBy = [help ? helpId : null, status ? statusId : null, error ? errorId : null]
+  const describedBy = [
+    describedByOutside ?? null,
+    help ? helpId : null,
+    status ? statusId : null,
+    error ? errorId : null,
+  ]
     .filter(Boolean)
     .join(' ');
   return (

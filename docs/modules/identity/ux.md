@@ -622,7 +622,11 @@ The 2.2 criteria that shape these screens: 2.4.11 (focus not obscured), 2.5.8 (t
   form shows (1.4.4, 1.4.10).
 - **Focus order.** Auth: error summary when present, fields in visual order, show/hide button after
   its field, primary action, secondary links, footer. When the step changes without a page load (A1
-  to A7, the steps of A8) focus moves to the new H1 and the document title changes. In the shell:
+  to A7, the steps of A8) focus moves to the new H1 and the document title changes. Exception
+  (owner request 2026-11-21): on the code step (A7, both panels) focus goes to the first code box
+  (or the backup-code field), and the field is described by the step's instructions, so a screen
+  reader still reads them. The Verify button and the links under it sit in a column as wide as
+  the row of code boxes (`OtpColumn`). In the shell:
   skip link, sidebar, top bar, content (kickoff section 11).
 - **Errors.** The summary is `role="alert"` and takes focus. Field errors use `aria-describedby` and
   `aria-invalid` and are not announced on each keystroke. "Sent again", "Copied" and banners such as
