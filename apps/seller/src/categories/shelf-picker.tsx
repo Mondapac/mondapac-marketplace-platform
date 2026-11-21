@@ -129,6 +129,7 @@ export function ShelfPicker({
         onDiscard={() => {
           setChoice(savedChoice);
           setError(null);
+          setSaved(null);
         }}
       />
       {dirty ? guard.dialog : null}

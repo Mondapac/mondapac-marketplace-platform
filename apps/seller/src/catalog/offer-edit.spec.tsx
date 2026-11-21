@@ -90,6 +90,10 @@ describe('OfferEditForm', () => {
     fireEvent.change(screen.getByLabelText(/Your SKU/), { target: { value: 'OIL-2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save offer' }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+    // The redirect leaves quietly: the leave prompt is off.
+    const quiet = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(quiet);
+    expect(quiet.defaultPrevented).toBe(false);
   });
   it('shows the save bar only after a change, and Discard puts the saved values back', () => {
     mount();

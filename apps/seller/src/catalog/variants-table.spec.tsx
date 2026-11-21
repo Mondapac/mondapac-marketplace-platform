@@ -212,6 +212,27 @@ describe('VariantsTable', () => {
     expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
+  it('shows the bar for an invalid price, and Save then marks the cell and sends nothing', () => {
+    mount();
+    fireEvent.change(priceBox('Small'), { target: { value: 'abc' } });
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    fireEvent.click(within(bar).getByRole('button', { name: 'Save 1 change' }));
+    expect(call).not.toHaveBeenCalled();
+    expect(priceBox('Small').getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('saves the table when Enter is pressed in a price cell', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { status: 'accepted', seriesVersion: 4, recordId: 'r', effectiveFrom: null },
+    });
+    mount();
+    fireEvent.change(priceBox('Small'), { target: { value: '12.00' } });
+    fireEvent.submit(priceBox('Small').closest('form')!);
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+  });
+
   it('asks before the page unloads while drafts are unsaved', () => {
     mount();
     const quiet = new Event('beforeunload', { cancelable: true });
