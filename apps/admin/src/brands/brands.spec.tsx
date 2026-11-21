@@ -59,8 +59,12 @@ function serve(routes: Record<string, Handler>) {
       .filter((route) => key.startsWith(route))
       .sort((a, b) => b.length - a.length)[0];
     const handler = hit === undefined ? undefined : routes[hit];
-    // No saved filters unless a test serves some.
-    if (handler === undefined && key.startsWith('GET lists/admin/saved-filters')) {
+    // No saved filters unless a test serves some, and only for this list's own key: a read of
+    // any other key is an unexpected call, so a wrong key fails the test.
+    if (
+      handler === undefined &&
+      key === 'GET lists/admin/saved-filters?listKey=admin.catalog.brands'
+    ) {
       return Promise.resolve(ok({ items: [], canShare: false }) as never);
     }
     if (handler === undefined) throw new Error(`unexpected call ${key}`);
@@ -218,6 +222,7 @@ describe('admin brands', () => {
         .at(-1);
       expect(last?.get('status')).toBe('draft');
       expect(last?.get('originCountry')).toBe('NZ');
+      expect(last?.get('sort')).toBe('name');
       expect(last?.get('direction')).toBe('desc');
     });
   });

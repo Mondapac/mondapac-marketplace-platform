@@ -13,7 +13,12 @@ const { inner, saved } = vi.hoisted(() => ({
 vi.mock('../api/client.ts', () => ({
   callApi: (method: string, path: string, ...rest: unknown[]) =>
     path.startsWith('lists/admin/saved-filters')
-      ? Promise.resolve({ ok: true, status: 200, body: { items: saved.items, canShare: false } })
+      ? Promise.resolve(
+          method === 'GET' &&
+            path !== 'lists/admin/saved-filters?listKey=admin.catalog.products-missing-details'
+            ? { ok: false, failure: { status: 404, code: 'not-found' } }
+            : { ok: true, status: 200, body: { items: saved.items, canShare: false } },
+        )
       : (inner(method, path, ...rest) as Promise<unknown>),
 }));
 
@@ -110,6 +115,8 @@ describe('Missing details list', () => {
       const last = String(call.mock.calls.at(-1)?.[1]);
       expect(last).toContain(`sellerId=${id(900)}`);
       expect(last).toContain('familyCode=grocery');
+      expect(last).toContain('sort=missing');
+      expect(last).toContain('direction=desc');
     });
   });
 
