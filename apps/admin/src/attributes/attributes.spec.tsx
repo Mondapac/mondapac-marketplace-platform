@@ -221,6 +221,10 @@ function serve(routes: Record<string, Handler>) {
       .filter((route) => key.startsWith(route))
       .sort((a, b) => b.length - a.length)[0];
     const handler = hit === undefined ? undefined : routes[hit];
+    // No saved filters unless a test serves some.
+    if (handler === undefined && key.startsWith('GET lists/admin/saved-filters')) {
+      return Promise.resolve(ok({ items: [], canShare: false }) as never);
+    }
     if (handler === undefined) throw new Error(`unexpected call ${key}`);
     return Promise.resolve((typeof handler === 'function' ? handler() : handler) as never);
   });
@@ -555,6 +559,41 @@ describe.each(MARKETS)('admin attributes ($name)', ({ locales }) => {
       expect(last).toContain('search=Spicy');
       expect(last).not.toContain('q=');
     });
+  });
+
+  it('opens a saved filter as a tab with its search and view, and offers Save filter on a changed view', async () => {
+    const filter = {
+      id: id(60),
+      listKey: 'admin.catalog.attributes',
+      name: 'Old spicy',
+      visibility: 'me',
+      payload: {
+        v: 1,
+        q: 'Spicy',
+        filters: { status: 'archived' },
+        sort: 'name',
+        direction: 'asc',
+      },
+      ownedByMe: true,
+      canManage: true,
+    };
+    serve({
+      'GET catalog/admin/attributes?': ok(page(locales, [row(locales, 1)])),
+      'GET lists/admin/saved-filters?listKey=admin.catalog.attributes': ok({
+        items: [filter],
+        canShare: true,
+      }),
+    });
+    mount();
+    await screen.findByRole('link', { name: 'Attribute 1' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Old spicy' }));
+    await waitFor(() => {
+      const last = calls('catalog/admin/attributes?').at(-1) ?? '';
+      expect(last).toContain('status=archived');
+      expect(last).toContain('search=Spicy');
+      expect(last).toContain('sort=name');
+    });
+    expect(screen.queryByRole('button', { name: /Save filter/ })).toBeNull();
   });
 
   it('says so when there are none, and shows a retry on a failed list', async () => {

@@ -238,6 +238,7 @@ export function AttributesList({
       columnDefs,
       rowActions,
       icon: 'package',
+      savedKey: 'admin.catalog.attributes',
     }),
     [tl, columnDefs, rowActions],
   );
@@ -280,6 +281,7 @@ export function AttributesList({
         accountId={accountId}
         marketId={marketId}
         fields={fields}
+        csrfToken={csrfToken}
         refreshKey={refresh}
         onAnswer={(answer: PagedAnswer<AttributeRow>) => {
           const { locales: next, units, featureSets } = answer as Answer;
