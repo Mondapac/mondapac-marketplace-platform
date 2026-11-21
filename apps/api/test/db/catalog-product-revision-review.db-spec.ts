@@ -602,6 +602,43 @@ describe.each(TEST_MARKETS)(
       ).toEqual([]);
     });
 
+    it('keeps the queue rows submitted in the range: submittedFrom inclusive, submittedTo exclusive', async () => {
+      const { productId } = await submitted();
+      const page = { after: null, limit: 500 };
+      const rows = await inUnit(() => reader.listPendingRevisions(market, page, 'en'), true);
+      const mine = rows.find((row) => row.productId === productId);
+      if (mine === undefined) throw new Error('setup');
+      const at = mine.submittedAt;
+      const has = async (filter: Parameters<typeof reader.listPendingRevisions>[3]) => {
+        const found = await inUnit(
+          () => reader.listPendingRevisions(market, page, 'en', filter),
+          true,
+        );
+        const count = await inUnit(() => reader.pendingRevisionCount(market, filter), true);
+        expect(count).toBeGreaterThanOrEqual(found.length);
+        return found.some((row) => row.productId === productId);
+      };
+      expect(await has({ submittedFrom: at })).toBe(true);
+      expect(await has({ submittedTo: at })).toBe(false);
+      expect(await has({ submittedFrom: at, submittedTo: at.add({ milliseconds: 1 }) })).toBe(true);
+      expect(await has({ submittedFrom: at.add({ milliseconds: 1 }) })).toBe(false);
+      expect(await has({ submittedTo: at.add({ hours: 1 }), sellerId: SELLER })).toBe(true);
+      // The same window on the Offers waiting for their first publication.
+      const future = at.add({ hours: 24 * 365 });
+      expect(
+        await inUnit(() => reader.pendingReviewCount(market, { submittedFrom: future }), true),
+      ).toBe(0);
+      expect(
+        await inUnit(
+          () => offerStore.listPendingReview(market, page, { submittedFrom: future }),
+          true,
+        ),
+      ).toEqual([]);
+      expect(
+        await inUnit(() => reader.pendingReviewCount(market, { submittedTo: future }), true),
+      ).toBe(await inUnit(() => reader.pendingReviewCount(market), true));
+    });
+
     it('reads a revision for review with its history: decided ones carry the outcome and code', async () => {
       const { productId, revisionId, version } = await submitted();
       await requestChanges.execute(adminContext(), {

@@ -7,6 +7,7 @@ import {
   listQueryInvalid,
   pageWindow,
   parseListQuery,
+  parseNamedInstantRange,
   rowActions,
   type ListPagingMode,
   type PermissionProbe,
@@ -52,6 +53,10 @@ export interface ReviewQueueListInput {
   readonly firstPublication?: unknown;
   /** Product revisions only: the pending revision has a photo (true) or none (false). */
   readonly hasImages?: unknown;
+  /** Submitted at or after this ISO 8601 instant (inclusive); both kinds of row. */
+  readonly submittedFrom?: unknown;
+  /** Submitted before this ISO 8601 instant (exclusive); both kinds of row. */
+  readonly submittedTo?: unknown;
 }
 
 /** The two kinds of row in the queue. */
@@ -181,9 +186,18 @@ interface QueueFilter {
   readonly sellerId?: Id<'Seller'>;
   readonly firstPublication?: boolean;
   readonly hasImages?: boolean;
+  readonly submittedFrom?: Temporal.Instant | null;
+  readonly submittedTo?: Temporal.Instant | null;
 }
 
-const FILTER_KEYS = ['kind', 'sellerId', 'firstPublication', 'hasImages'] as const;
+const FILTER_KEYS = [
+  'kind',
+  'sellerId',
+  'firstPublication',
+  'hasImages',
+  'submittedFrom',
+  'submittedTo',
+] as const;
 
 /**
  * The filters of the queue. `firstPublication` and `hasImages` are product revision fields: given,
@@ -212,10 +226,14 @@ function parseFilter(record: Record<string, unknown>): Result<QueueFilter, Valid
     if (kind === 'offer-first-publication') return invalid(key, 'not-allowed');
     flags[key] = value;
   }
+  const submitted = parseNamedInstantRange(record, 'submittedFrom', 'submittedTo');
+  if (!submitted.ok) return submitted;
   return ok({
     kind: (kind as ReviewQueueKind | undefined) ?? null,
     ...(sellerId === undefined ? {} : { sellerId }),
     ...flags,
+    submittedFrom: submitted.value.from,
+    submittedTo: submitted.value.to,
   });
 }
 
@@ -326,11 +344,14 @@ export class ReviewQueueList extends UseCase<
       descending = paged.value.direction === 'desc';
     }
     const after = cursor;
-    const { kind, sellerId, firstPublication, hasImages } = filter.value;
+    const { kind, sellerId, firstPublication, hasImages, submittedFrom, submittedTo } =
+      filter.value;
+    const submittedFilter = { submittedFrom, submittedTo };
+    const ranged = (submittedFrom ?? null) !== null || (submittedTo ?? null) !== null;
     const revisionOnly = firstPublication !== undefined || hasImages !== undefined;
     const withOffers = kind !== 'product-revision' && !revisionOnly;
     const withRevisions = kind !== 'offer-first-publication';
-    const offerFilter = sellerId === undefined ? {} : { sellerId };
+    const offerFilter = { ...(sellerId === undefined ? {} : { sellerId }), ...submittedFilter };
     const revisionFilter = {
       ...offerFilter,
       ...(firstPublication === undefined ? {} : { firstPublication }),
@@ -351,7 +372,7 @@ export class ReviewQueueList extends UseCase<
           'product-revision': await this.deps.ownReader.pendingRevisionCount(market),
           'offer-first-publication': await this.deps.ownReader.pendingReviewCount(market),
         };
-        const filtered = sellerId !== undefined || revisionOnly;
+        const filtered = sellerId !== undefined || revisionOnly || ranged;
         const offerTotal = withOffers
           ? filtered
             ? await this.deps.ownReader.pendingReviewCount(market, offerFilter)

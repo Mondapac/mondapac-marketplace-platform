@@ -154,6 +154,26 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
     ]);
   });
 
+  it('passes the submitted range to every keyset read, and refuses a bad instant before any read', async () => {
+    queue = [revision(1)];
+    const range = {
+      submittedFrom: '2026-11-01T00:00:00+10:00',
+      submittedTo: '2026-12-01T00:00:00+10:00',
+    };
+    const result = await useCase().execute(context(), { ...range, kind: 'product-revision' });
+    expect(result.ok).toBe(true);
+    expect(calls).toEqual([{ ...range, kind: 'product-revision', limit: REVIEW_QUEUE_PAGE_MAX }]);
+    calls = [];
+    // The list names the failing key; the file route passes its refusal on as it is.
+    expect(await useCase().execute(context(), { submittedFrom: 'x', format: 'csv' })).toMatchObject(
+      { ok: true },
+    );
+    expect(await useCase().execute(context(), { submittedAfter: range.submittedFrom })).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'submittedAfter', code: 'unknown' }] },
+    });
+  });
+
   it('writes XLSX and follows the cursor over a long queue', async () => {
     queue = Array.from({ length: REVIEW_QUEUE_PAGE_MAX + 1 }, (_, n) => revision(n + 1));
     const result = await useCase().execute(context(), { format: 'xlsx' });

@@ -133,3 +133,17 @@ export function createdAtWhere(filter: CreatedRangeFilter): {
   });
   return created === undefined ? {} : { createdAt: created };
 }
+
+/**
+ * The condition of a named timestamp column for a range (`from` inclusive, `to` exclusive), to
+ * spread into a `where`; empty when the range filters nothing.
+ */
+export function instantRangeOn<K extends string>(
+  column: K,
+  range: InstantRange,
+): { [P in K]?: { gte?: Date; lt?: Date } } {
+  const where = instantRangeWhere(range);
+  return (where === undefined ? {} : { [column]: where }) as {
+    [P in K]?: { gte?: Date; lt?: Date };
+  };
+}
