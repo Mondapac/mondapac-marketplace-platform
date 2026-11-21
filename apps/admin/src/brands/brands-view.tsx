@@ -125,6 +125,7 @@ export function BrandsView({
           paging={paging}
           accountId={accountId}
           marketId={marketId}
+          csrfToken={csrfToken}
           refreshKey={refresh}
           onOpen={setDialog}
           headerAction={
