@@ -1518,6 +1518,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   ],
   'catalog/admin/business-activities': [
     'status',
+    'createdFrom',
+    'createdTo',
     'search',
     'afterId',
     'limit',
@@ -1531,6 +1533,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/topics': [
     'status',
     'group',
+    'createdFrom',
+    'createdTo',
     'search',
     'afterId',
     'limit',
@@ -2510,6 +2514,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   },
   'catalog/admin/business-activities': {
     status: /^(active|inactive)$/,
+    createdFrom: ISO_INSTANT,
+    createdTo: ISO_INSTANT,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
     page: /^[1-9][0-9]{0,3}$/,
@@ -2521,6 +2527,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'catalog/admin/topics': {
     status: /^(active|archived)$/,
     group: /^(occasion|cuisine|use)$/,
+    createdFrom: ISO_INSTANT,
+    createdTo: ISO_INSTANT,
     limit: /^[0-9]{1,3}$/,
     afterId: UUID,
     page: /^[1-9][0-9]{0,3}$/,

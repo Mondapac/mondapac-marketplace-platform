@@ -97,6 +97,7 @@ function mount(canManage = true) {
         paging="pages"
         accountId={id(99)}
         marketId="AU"
+        zone="Australia/Brisbane"
       />
     </NextIntlClientProvider>,
   );
@@ -177,6 +178,32 @@ describe('admin tags list', () => {
       expect(last).toContain('q=bbq');
       expect(last).toContain('status=archived');
     });
+  });
+
+  it('filters by when it was created, as instants on the Brisbane day, and takes it off again', async () => {
+    serve(base([topic(1)]));
+    mount();
+    await screen.findByText('Tag 1');
+    fireEvent.click(await screen.findByRole('button', { name: 'Filter' }));
+    fireEvent.change(await screen.findByLabelText('Field'), { target: { value: 'created' } });
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'today' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    const asked = () =>
+      calls('GET', 'catalog/admin/topics?').map(
+        ([, path]) => new URLSearchParams(path.split('?')[1]),
+      );
+    await waitFor(() => expect(asked().some((p) => p.has('createdFrom'))).toBe(true));
+    const range = asked().find((p) => p.has('createdFrom')) as URLSearchParams;
+    // Midnight on the Brisbane clock (UTC+10, no daylight saving) is 14:00 UTC, and Today is one
+    // day long: never the UTC day.
+    expect(range.get('createdFrom')).toMatch(/T14:00:00(\.000)?Z$/);
+    expect(range.get('createdTo')).toMatch(/T14:00:00(\.000)?Z$/);
+    expect(
+      Date.parse(range.get('createdTo') ?? '') - Date.parse(range.get('createdFrom') ?? ''),
+    ).toBe(24 * 3600 * 1000);
+    expect(range.has('created')).toBe(false);
+    fireEvent.click(await screen.findByRole('button', { name: /Remove filter Created is/ }));
+    await waitFor(() => expect(asked().at(-1)?.has('createdFrom')).toBe(false));
   });
 
   it('opens a saved filter as a tab with its view, group, search and sort', async () => {
