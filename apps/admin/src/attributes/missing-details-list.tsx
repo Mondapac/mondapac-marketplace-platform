@@ -218,6 +218,7 @@ export function MissingDetailsList({
         },
       ],
       icon: 'package',
+      savedKey: 'admin.catalog.products-missing-details',
     }),
     [tl, columnDefs, rowActions, canEdit],
   );
@@ -242,6 +243,7 @@ export function MissingDetailsList({
         paging={paging}
         accountId={accountId}
         marketId={marketId}
+        csrfToken={csrfToken}
         refreshKey={refresh}
         onAnswer={(answer: PagedAnswer<MissingDetailsRow>) => {
           const whole = answer as unknown as Partial<Extras>;
