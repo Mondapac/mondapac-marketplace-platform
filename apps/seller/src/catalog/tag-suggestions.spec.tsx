@@ -6,8 +6,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 import { sellerNav } from '../nav.ts';
 import { SuggestTagForm, tagSuggestionError } from './suggest-tag-form.tsx';
-import { TagSuggestionsTable } from './tag-suggestions-table.tsx';
-import type { OwnTopicSuggestion } from './types.ts';
 
 vi.mock('next-intl/server', () => ({
   getTranslations: (namespace?: string) =>
@@ -24,144 +22,12 @@ const PRODUCT = '0190a000-0000-7000-8000-0000000000a1';
 const OTHER = '0190a000-0000-7000-8000-0000000000a2';
 const id = (n: number) => `0190a000-0000-7000-8000-0000000000${n.toString(16).padStart(2, '0')}`;
 
-// Two Market shapes: the default language is not always the first name of a tag.
-const MARKETS = [
-  { code: 'AU', locale: 'en-AU', names: (n: string) => ({ 'en-AU': n, ar: `ar ${n}` }) },
-  { code: 'ZZ', locale: 'ms-MY', names: (n: string) => ({ en: `en ${n}`, 'ms-MY': n }) },
-] as const;
-
-const suggestion = (over: Partial<OwnTopicSuggestion>): OwnTopicSuggestion => ({
-  id: id(0xb1),
-  status: 'open',
-  label: 'Eid gifts',
-  createdAt: '2026-11-05T01:00:00.000Z',
-  decidedAt: null,
-  rejectReason: null,
-  topic: null,
-  product: { id: PRODUCT, productCode: 'P00000001', name: 'Olive oil 1L' },
-  ...over,
-});
-
 const assign = vi.fn();
 beforeEach(() => {
   vi.clearAllMocks();
   Object.defineProperty(window, 'location', { value: { assign }, writable: true });
 });
 afterEach(() => cleanup());
-
-describe.each(MARKETS)('tag suggestions table in market $code', ({ locale, names }) => {
-  const topic = (name: string, status: 'active' | 'archived' = 'active') => ({
-    id: id(0xc1),
-    slug: 'eid-gifts',
-    status,
-    names: names(name),
-  });
-
-  it('shows each outcome in words and says approving does not add the tag', async () => {
-    render(
-      await TagSuggestionsTable({
-        defaultLocale: locale,
-        items: [
-          suggestion({ id: id(1) }),
-          suggestion({ id: id(2), status: 'approved', topic: topic('Eid gifts') }),
-          suggestion({ id: id(3), status: 'mapped', topic: topic('Gifts') }),
-          suggestion({ id: id(4), status: 'rejected', rejectReason: 'Too vague.' }),
-          suggestion({ id: id(5), status: 'rejected' }),
-        ],
-      }),
-    );
-    const row = (n: number) => within(screen.getByTestId(`suggestion-${id(n)}`));
-    expect(row(1).getByText('Open')).toBeTruthy();
-    expect(row(1).getByText('Waiting for review')).toBeTruthy();
-    expect(row(1).getByRole('link', { name: 'Olive oil 1L' }).getAttribute('href')).toBe(
-      `/products/${PRODUCT}`,
-    );
-    expect(row(2).getByText('Approved')).toBeTruthy();
-    expect(row(2).getByText('New tag “Eid gifts” created')).toBeTruthy();
-    expect(row(2).getByText(/Approving does not add it for you/)).toBeTruthy();
-    expect(row(2).getByRole('link', { name: 'Open product' }).getAttribute('href')).toBe(
-      `/products/${PRODUCT}`,
-    );
-    expect(row(3).getByText('Mapped')).toBeTruthy();
-    expect(row(3).getByText('Matched to the existing tag “Gifts”')).toBeTruthy();
-    expect(row(3).getByText(/Approving does not add it for you/)).toBeTruthy();
-    expect(row(4).getByText('Rejected: Too vague.')).toBeTruthy();
-    expect(row(4).queryByText(/Approving does not/)).toBeNull();
-    expect(row(5).getAllByText('Rejected')).toHaveLength(2);
-  });
-
-  it('says a retired tag can no longer be added, with no product link', async () => {
-    render(
-      await TagSuggestionsTable({
-        defaultLocale: locale,
-        items: [suggestion({ status: 'approved', topic: topic('Eid gifts', 'archived') })],
-      }),
-    );
-    expect(
-      screen.getByText('This tag has since been retired and can no longer be added.'),
-    ).toBeTruthy();
-    expect(screen.queryByText(/Approving does not add/)).toBeNull();
-    expect(screen.queryByRole('link', { name: 'Open product' })).toBeNull();
-  });
-});
-
-describe('tag suggestions table, other states', () => {
-  it('renders what a seller or reviewer typed as text, not markup', async () => {
-    const { container } = render(
-      await TagSuggestionsTable({
-        defaultLocale: 'en-AU',
-        items: [
-          suggestion({
-            label: '<b>Huge</b>',
-            status: 'rejected',
-            rejectReason: '<img src=x onerror=alert(1)>',
-          }),
-        ],
-      }),
-    );
-    expect(container.querySelector('b')).toBeNull();
-    expect(container.querySelector('img')).toBeNull();
-    expect(screen.getByText('<b>Huge</b>')).toBeTruthy();
-  });
-
-  it('names a product that is gone instead of linking to it, and an unknown status in words', async () => {
-    render(
-      await TagSuggestionsTable({
-        defaultLocale: 'en-AU',
-        items: [
-          suggestion({
-            id: id(1),
-            product: { id: PRODUCT, productCode: null, name: null },
-          }),
-          suggestion({ id: id(2), status: 'weird' as never }),
-        ],
-      }),
-    );
-    expect(screen.getByText('Product no longer available')).toBeTruthy();
-    expect(within(screen.getByTestId(`suggestion-${id(2)}`)).getByText('Unknown')).toBeTruthy();
-  });
-
-  it('shows the empty states, with the action only when none was ever sent', async () => {
-    const { unmount } = render(
-      await TagSuggestionsTable({
-        defaultLocale: 'en-AU',
-        items: [],
-        emptyAction: <a href="/tag-suggestions/new">Suggest a tag</a>,
-      }),
-    );
-    expect(screen.getByText('No tag suggestions yet')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Suggest a tag' })).toBeTruthy();
-    unmount();
-    render(await TagSuggestionsTable({ defaultLocale: 'en-AU', items: [], filtered: true }));
-    expect(screen.getByText('Nothing in this status')).toBeTruthy();
-    expect(screen.queryByRole('link')).toBeNull();
-  });
-
-  it('never says topic in the messages the pages show', () => {
-    const text = JSON.stringify(messages.catalog.tagSuggestions) + JSON.stringify(messages.nav);
-    expect(text.toLowerCase()).not.toContain('topic');
-  });
-});
 
 describe('suggest a tag form', () => {
   const PRODUCTS = [

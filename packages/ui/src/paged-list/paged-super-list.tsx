@@ -426,20 +426,28 @@ export function PagedSuperList<Row>({
           rowId={config.rowId}
           rowName={config.rowName}
           columns={defs}
-          selection={{
-            state: selection,
-            labels: {
-              page: t('select.page'),
-              pageShort: t('select.page-short'),
-              row: (name) => t('select.row', { name }),
-            },
-          }}
-          actions={{
-            header: t('actions.header'),
-            label: (name) => t('actions.for', { name }),
-            // Rows kept after a failed refresh belong to another list than the query: no actions.
-            items: failure === null ? config.rowActions : () => [],
-          }}
+          {...(config.readOnly === true
+            ? {}
+            : {
+                selection: {
+                  state: selection,
+                  labels: {
+                    page: t('select.page'),
+                    pageShort: t('select.page-short'),
+                    row: (name: string) => t('select.row', { name }),
+                  },
+                },
+              })}
+          {...(config.readOnly === true
+            ? {}
+            : {
+                actions: {
+                  header: t('actions.header'),
+                  label: (name: string) => t('actions.for', { name }),
+                  // Rows kept after a failed refresh belong to another list than the query: no actions.
+                  items: failure === null ? config.rowActions : () => [],
+                },
+              })}
           empty={empty}
           {...(skeleton ? { skeletonRows: listSkeletonRowCount(PAGE_SIZE) } : {})}
           minWidthClass={
@@ -457,16 +465,18 @@ export function PagedSuperList<Row>({
         actions: (
           <>
             {heading}
-            <ActionMenu
-              label={t('bulk.button')}
-              title={
-                selection.allMatching && total === null
-                  ? t('bulk.all-open')
-                  : t('bulk.selected', { count: selectedCount })
-              }
-              items={bulkItems}
-              disabled={bulkItems.length === 0 || !hasSelection}
-            />
+            {config.readOnly === true ? null : (
+              <ActionMenu
+                label={t('bulk.button')}
+                title={
+                  selection.allMatching && total === null
+                    ? t('bulk.all-open')
+                    : t('bulk.selected', { count: selectedCount })
+                }
+                items={bulkItems}
+                disabled={bulkItems.length === 0 || !hasSelection}
+              />
+            )}
           </>
         ),
       }}
