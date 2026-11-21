@@ -5,13 +5,23 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 import { expectToast } from '../../test/toast-spy.ts';
 
-vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+const { inner, saved } = vi.hoisted(() => ({
+  inner: vi.fn<(method: string, path: string, ...rest: unknown[]) => Promise<unknown>>(),
+  saved: { items: [] as unknown[] },
+}));
+// Saved filters are served apart from the list's own calls the tests count and queue.
+vi.mock('../api/client.ts', () => ({
+  callApi: (method: string, path: string, ...rest: unknown[]) =>
+    path.startsWith('lists/admin/saved-filters')
+      ? Promise.resolve({ ok: true, status: 200, body: { items: saved.items, canShare: false } })
+      : inner(method, path, ...rest),
+}));
 
-import { callApi, type ApiResult } from '../api/client.ts';
+import type { ApiResult } from '../api/client.ts';
 import { ValueSuggestionsList } from './value-suggestions-list.tsx';
 import type { MarketLocales } from './types.ts';
 
-const call = vi.mocked(callApi);
+const call = inner;
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
 
 /** Two Markets: a test that only passes for AU is a bug. */
@@ -95,6 +105,7 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
   beforeEach(() => {
     vi.clearAllMocks();
     call.mockReset();
+    saved.items = [];
     HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
       this.setAttribute('open', '');
     };
@@ -123,6 +134,29 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
     expect(screen.getByRole('link', { name: 'Flavour' }).getAttribute('href')).toBe(
       `/catalog/attributes/${id(7)}`,
     );
+  });
+
+  it('opens a saved filter as a tab with its search and sort', async () => {
+    saved.items = [
+      {
+        id: id(61),
+        listKey: 'admin.catalog.attribute-suggestions',
+        name: 'Honey ones',
+        visibility: 'me',
+        payload: { v: 1, q: 'honey', filters: {}, sort: 'created', direction: 'desc' },
+        ownedByMe: true,
+        canManage: true,
+      },
+    ];
+    call.mockResolvedValue(ok(list(locales, required)));
+    mount();
+    await screen.findByText(`“${LABEL}”`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Honey ones' }));
+    await waitFor(() => {
+      const last = String(call.mock.calls.at(-1)?.[1]);
+      expect(last).toContain('q=honey');
+      expect(last).toContain('direction=desc');
+    });
   });
 
   it('keeps every decision in the Actions menu, and only those the API names', async () => {

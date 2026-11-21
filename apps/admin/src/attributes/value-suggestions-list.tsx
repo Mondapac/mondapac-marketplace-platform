@@ -139,6 +139,7 @@ export function ValueSuggestionsList({
       columnDefs,
       rowActions,
       icon: 'package',
+      savedKey: 'admin.catalog.attribute-suggestions',
     }),
     [tl, columnDefs, rowActions],
   );
@@ -155,6 +156,7 @@ export function ValueSuggestionsList({
         paging={paging}
         accountId={accountId}
         marketId={marketId}
+        csrfToken={csrfToken}
         refreshKey={refresh}
         onAnswer={(answer: PagedAnswer<ValueSuggestionRow>) => {
           const { requiredLocales, locales } = answer as unknown as SuggestionList;
