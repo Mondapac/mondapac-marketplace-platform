@@ -40,7 +40,7 @@ describe('useBaseTabCounts', () => {
     const { result, rerender } = renderHook(
       ({ savedId }: { savedId: string | null }) =>
         useBaseTabCounts<Counts>({ savedId, live: { all: 5 }, load }),
-      { initialProps: { savedId: 'a' } },
+      { initialProps: { savedId: 'a' as string | null } },
     );
     rerender({ savedId: null });
     await act(() => {
