@@ -70,7 +70,8 @@ export function pagedQueryString<Row>(
 ): string {
   const params = new URLSearchParams();
   for (const [name, value] of Object.entries(config.tabParams?.(query.tab) ?? {})) {
-    params.set(name, value);
+    // A tab that sets no value for a parameter (a list's "all") leaves it out.
+    if (value !== undefined) params.set(name, value);
   }
   if (query.tab !== config.tabs[0] && config.tabParam !== undefined) {
     params.set(config.tabParam, query.tab);
@@ -233,7 +234,8 @@ export function PagedSuperList<Row>({
   }, [load, queryKey, refreshKey]);
 
   // The tab counts follow the filters (not the tab, search or page).
-  const filtersKey = JSON.stringify(query.filters);
+  // A saved filter's own filters are not the built-in tabs': their counts stay on the clean list.
+  const filtersKey = JSON.stringify(savedId === null ? query.filters : {});
   useEffect(() => {
     if (loadCounts === undefined) return;
     let current = true;
@@ -751,6 +753,7 @@ export function PagedSuperList<Row>({
                 void loadSaved().then((items) => {
                   const kept = items?.find((item) => item.id === filter.id);
                   if (kept !== undefined) openSavedFilter(kept);
+                  else toast.error(ts('saved.error.unavailable'));
                 });
               }}
               onChanged={() => void loadSaved()}

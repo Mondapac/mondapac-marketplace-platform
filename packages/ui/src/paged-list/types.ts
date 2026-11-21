@@ -72,7 +72,7 @@ export interface PagedListConfig<Row> {
   /** The query parameter a tab other than the first sets to its id (for example `issue`). */
   readonly tabParam?: string;
   /** Query parameters of a tab when one id is not enough (`status=draft`); sent for every tab. */
-  readonly tabParams?: (tab: string) => Readonly<Record<string, string>>;
+  readonly tabParams?: (tab: string) => Readonly<Record<string, string | undefined>>;
   /** Absent when the route has no text search (the review queue). */
   readonly search?: {
     readonly max: number;
@@ -111,7 +111,11 @@ export interface PagedListConfig<Row> {
    * Whether a saved filter belongs on this list when several lists share one key (the Product
    * review queue and the Revision queue are told apart by `kind`). Default: every one fits.
    */
-  readonly savedFits?: (filters: Readonly<Record<string, string>>) => boolean;
+  readonly savedFits?: (
+    filters: Readonly<Record<string, string>>,
+    /** The whole document (its `view` too, for a list with `savedViews`). */
+    payload: { readonly view?: string; readonly filters: Readonly<Record<string, string>> },
+  ) => boolean;
 }
 
 export const DEFAULT_PAGED_QUERY = (config: {
