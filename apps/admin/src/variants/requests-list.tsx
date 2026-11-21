@@ -148,6 +148,7 @@ export function RequestsList({
         },
       })),
       icon: 'columns',
+      savedKey: 'admin.catalog.variant-requests',
     }),
     [t, columnDefs, rowActions],
   );
@@ -158,6 +159,7 @@ export function RequestsList({
       paging={paging}
       accountId={accountId}
       marketId={marketId}
+      csrfToken={csrfToken}
       refreshKey={refresh}
       dialogs={
         <>

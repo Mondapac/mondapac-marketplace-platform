@@ -9,15 +9,25 @@ const push = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push, replace: vi.fn(), refresh: vi.fn() }),
 }));
-vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+const { inner, saved } = vi.hoisted(() => ({
+  inner: vi.fn<(method: string, path: string, ...rest: unknown[]) => Promise<unknown>>(),
+  saved: { items: [] as unknown[] },
+}));
+// Saved filters are served apart from the list's own calls the tests count and queue.
+vi.mock('../api/client.ts', () => ({
+  callApi: (method: string, path: string, ...rest: unknown[]) =>
+    path.startsWith('lists/admin/saved-filters')
+      ? Promise.resolve({ ok: true, status: 200, body: { items: saved.items, canShare: false } })
+      : inner(method, path, ...rest),
+}));
 
-import { callApi, type ApiResult } from '../api/client.ts';
+import type { ApiResult } from '../api/client.ts';
 import type { PagedAnswer } from '../shared/paged-list/types.ts';
 import { BY_CODE } from './request-errors.ts';
 import { RequestsList } from './requests-list.tsx';
 import type { RequestItem } from './types.ts';
 
-const call = vi.mocked(callApi);
+const call = inner;
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
 
 /** Two Markets: a test that only passes for AU is a bug. */
@@ -103,6 +113,7 @@ describe.each(MARKETS)('size requests queue ($name)', (m) => {
       this.removeAttribute('open');
     };
     call.mockReset();
+    saved.items = [];
   });
 
   it('shows what was asked for, named by the catalogue, and the seller name as plain text', async () => {
@@ -117,6 +128,30 @@ describe.each(MARKETS)('size requests queue ($name)', (m) => {
     expect(first.get('paging')).toBe('pages');
     expect(first.get('sort')).toBe('created');
     expect(first.get('direction')).toBe('asc');
+  });
+
+  it('opens a saved filter as a tab with its search and sort', async () => {
+    saved.items = [
+      {
+        id: id(60),
+        listKey: 'admin.catalog.variant-requests',
+        name: 'Newest bakery',
+        visibility: 'everyone',
+        payload: { v: 1, q: 'bakery', filters: {}, sort: 'created', direction: 'desc' },
+        ownedByMe: false,
+        canManage: false,
+      },
+    ];
+    call.mockResolvedValue(ok(list(m, [item(m)])));
+    mount();
+    await screen.findByText(`${m.size}: ${m.xl}`);
+    fireEvent.click(await screen.findByRole('button', { name: 'Newest bakery' }));
+    await waitFor(() => {
+      const last = String(call.mock.calls.at(-1)?.[1]);
+      expect(last).toContain('catalog/admin/variant-requests?');
+      expect(last).toContain('direction=desc');
+      expect(last).toContain('q=bakery');
+    });
   });
 
   it('has no button in the row: every action is in the Actions menu', async () => {
