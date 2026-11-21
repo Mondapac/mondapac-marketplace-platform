@@ -90,7 +90,7 @@ export interface PagedListConfig<Row> {
   /** The query parameter a tab other than the first sets to its id (for example `issue`). */
   readonly tabParam?: string;
   /** Query parameters of a tab when one id is not enough (`status=draft`); sent for every tab. */
-  readonly tabParams?: (tab: string) => Readonly<Record<string, string>>;
+  readonly tabParams?: (tab: string) => Readonly<Record<string, string | undefined>>;
   /** Absent when the route has no text search (the review queue). */
   readonly search?: {
     readonly max: number;
@@ -112,6 +112,28 @@ export interface PagedListConfig<Row> {
   /** No row selection, no Bulk action menu and no row Actions (a seller's own read-only list). */
   readonly readOnly?: boolean;
   readonly icon?: 'package' | 'search' | 'columns';
+  /**
+   * The list's key in the shared saved-filter registry (`lists`): present, the list has saved
+   * personal and shared filters as tabs after the built-in ones (it also needs `csrfToken` and the
+   * runtime's `savedFiltersPath`). A saved filter holds the search, the filters (the built-in tab's
+   * own query parameters included, as the route's payload has no views) and the sort.
+   */
+  readonly savedKey?: string;
+  /**
+   * The list's saved payload has a `view` (the registry list declares its views): the built-in tab
+   * is saved as `view` and its own query parameters stay out of `filters`. Default: no views, the
+   * tab is saved as the parameters it sets.
+   */
+  readonly savedViews?: boolean;
+  /**
+   * Whether a saved filter belongs on this list when several lists share one key (the Product
+   * review queue and the Revision queue are told apart by `kind`). Default: every one fits.
+   */
+  readonly savedFits?: (
+    filters: Readonly<Record<string, string>>,
+    /** The whole document (its `view` too, for a list with `savedViews`). */
+    payload: { readonly view?: string; readonly filters: Readonly<Record<string, string>> },
+  ) => boolean;
 }
 
 export const DEFAULT_PAGED_QUERY = (config: {
@@ -139,9 +161,13 @@ export interface PagedTranslator {
 export interface PagedListRuntime {
   readonly useTranslations: (namespace: string) => PagedTranslator;
   readonly useLocale: () => string;
+  /** The generic saved-filter routes of the panel's population (`lists/admin/saved-filters`). */
+  readonly savedFiltersPath?: string;
   readonly callApi: <T>(
-    method: 'GET',
+    method: 'GET' | 'POST' | 'PUT' | 'DELETE',
     path: string,
+    body?: unknown,
+    csrfToken?: string,
   ) => Promise<
     | { readonly ok: true; readonly status: number; readonly body: T }
     | {
