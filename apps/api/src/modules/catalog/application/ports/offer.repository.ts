@@ -1,5 +1,6 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { Offer } from '../../domain/offer';
+import type { OfferQueueFilter } from './own-catalog.reader';
 
 /** Why a new Offer could not be stored: the two partial uniques of data design 3.13. */
 export type OfferAddRefusal = 'offer.exists-for-product' | 'offer.sku-taken';
@@ -45,7 +46,7 @@ export interface OfferRepository {
       readonly after: { readonly submittedAt: Temporal.Instant; readonly id: string } | null;
       readonly limit: number;
     },
-    filter?: { readonly sellerId?: Id<'Seller'> },
+    filter?: OfferQueueFilter,
   ): Promise<readonly Offer[]>;
 
   /** The Offer in this Market, or null: another Market's id is not found. */
