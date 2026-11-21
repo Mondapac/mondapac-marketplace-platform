@@ -1,5 +1,6 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, MeasureSettings } from '@mondapac/shared-kernel';
+import { instantRangeOn } from '../../../platform/list-query';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { Prisma } from '../../../generated/prisma/client';
 import type {
@@ -20,6 +21,7 @@ import type {
   ProductFormCategory,
   ProductFormField,
   ProductLabel,
+  OfferQueueFilter,
   RevisionQueueFilter,
 } from '../application/ports/own-catalog.reader';
 import type { FamilyGroup } from '../domain/attribute-family';
@@ -231,12 +233,21 @@ const draftContentOf = (row: ListedProduct): unknown => row.workingCopy?.content
  * owner), a first publication (never published) or an update, a pending revision with or without a
  * photo. The `pendingRevision` relation is the product's own pointer (same product, same Market).
  */
+/** The submit-time range of a queue filter on one column. */
+function submittedWhere<K extends string>(column: K, filter: OfferQueueFilter) {
+  return instantRangeOn(column, {
+    from: filter.submittedFrom ?? null,
+    to: filter.submittedTo ?? null,
+  });
+}
+
 function pendingRevisionsWhere(market: MarketContext, filter: RevisionQueueFilter) {
   return {
     marketId: market.marketId,
     scope: 'SELLER',
     pendingRevisionId: { not: null },
     ...(filter.sellerId === undefined ? {} : { ownerSellerId: filter.sellerId }),
+    ...submittedWhere('pendingSubmittedAt', filter),
     ...(filter.firstPublication === undefined
       ? {}
       : { publishedRevisionId: filter.firstPublication ? null : { not: null } }),
@@ -679,15 +690,13 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
     };
   }
 
-  async pendingReviewCount(
-    market: MarketContext,
-    filter: { readonly sellerId?: Id<'Seller'> } = {},
-  ): Promise<number> {
+  async pendingReviewCount(market: MarketContext, filter: OfferQueueFilter = {}): Promise<number> {
     return this.prisma.tx(market).catalogOffer.count({
       where: {
         marketId: market.marketId,
         status: 'pending-first-publish',
         ...(filter.sellerId === undefined ? {} : { sellerId: filter.sellerId }),
+        ...submittedWhere('submittedAt', filter),
       },
     });
   }

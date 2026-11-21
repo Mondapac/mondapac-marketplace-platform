@@ -2,12 +2,14 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, IdGenerator, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import { Prisma } from '../../../generated/prisma/client';
+import { instantRangeOn } from '../../../platform/list-query';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   OfferActor,
   OfferAddRefusal,
   OfferRepository,
 } from '../application/ports/offer.repository';
+import type { OfferQueueFilter } from '../application/ports/own-catalog.reader';
 import type { OwnOfferFinder } from '../application/ports/own-offer-finder';
 import {
   Offer,
@@ -399,13 +401,17 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
       readonly after: { readonly submittedAt: Temporal.Instant; readonly id: string } | null;
       readonly limit: number;
     },
-    filter: { readonly sellerId?: Id<'Seller'> } = {},
+    filter: OfferQueueFilter = {},
   ): Promise<readonly Offer[]> {
     const tx = this.prisma.tx(market);
     const where = {
       marketId: market.marketId,
       status: 'pending-first-publish',
       ...(filter.sellerId === undefined ? {} : { sellerId: filter.sellerId }),
+      ...instantRangeOn('submittedAt', {
+        from: filter.submittedFrom ?? null,
+        to: filter.submittedTo ?? null,
+      }),
     } as const;
     const cursor = page.after;
     const after =

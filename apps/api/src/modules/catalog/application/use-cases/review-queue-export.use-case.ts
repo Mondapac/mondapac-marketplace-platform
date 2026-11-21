@@ -33,7 +33,15 @@ export const REVIEW_QUEUE_EXPORT_HEAD = [
   'warnings',
   'submitted_at',
 ] as const;
-const KEYS = ['kind', 'sellerId', 'firstPublication', 'hasImages', 'format'] as const;
+const KEYS = [
+  'kind',
+  'sellerId',
+  'firstPublication',
+  'hasImages',
+  'submittedFrom',
+  'submittedTo',
+  'format',
+] as const;
 const CHUNK = 500;
 
 export interface ReviewQueueExportDependencies {
@@ -56,7 +64,8 @@ type Cell = string | number;
 
 /**
  * `catalog.review-queue-export` (super list 13): the rows the Product review queue shows for the
- * same filters (`kind`, `sellerId`, `firstPublication`, `hasImages`), oldest submit first, as
+ * same filters (`kind`, `sellerId`, `firstPublication`, `hasImages`, `submittedFrom`,
+ * `submittedTo`), oldest submit first, as
  * CSV (default) or XLSX. The rows are read through the queue's own use case with its keyset cursor, so the
  * filter, the order and the access rule cannot drift from the list; a queue longer than
  * {@link REVIEW_QUEUE_EXPORT_MAX_ROWS} rows is refused whole as `batch.too-large`, never cut.
