@@ -42,6 +42,7 @@ export default async function TagSuggestionsPage({
         paging={paging}
         accountId={session.accountId}
         marketId={marketId}
+        csrfToken={session.csrfToken}
         timeZone={session.timezone}
         canSuggest={session.permissionKeys.includes(EDIT_PERMISSION)}
         sent={query.sent === '1'}

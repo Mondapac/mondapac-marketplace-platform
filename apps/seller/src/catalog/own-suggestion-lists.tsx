@@ -38,6 +38,8 @@ interface Context {
 interface Kind<Row> {
   readonly ns: 'catalog.suggestions' | 'catalog.tagSuggestions';
   readonly endpoint: string;
+  /** The list's key in the shared saved-filter registry. */
+  readonly savedKey: string;
   readonly newHref: string;
   /** The columns after the label, in order. */
   readonly columns: readonly string[];
@@ -72,6 +74,7 @@ function StatusBadge({ status, t }: { readonly status: string; readonly t: Trans
 const VALUE_KIND: Kind<OwnSuggestion> = {
   ns: 'catalog.suggestions',
   endpoint: 'catalog/seller/attribute-suggestions',
+  savedKey: 'seller.catalog.attribute-suggestions',
   newHref: '/value-suggestions/new',
   columns: ['field', 'product', 'status', 'outcome', 'sent'],
   counterKey: 'waiting',
@@ -109,6 +112,7 @@ const VALUE_KIND: Kind<OwnSuggestion> = {
 const TAG_KIND: Kind<OwnTopicSuggestion> = {
   ns: 'catalog.tagSuggestions',
   endpoint: 'catalog/seller/topic-suggestions',
+  savedKey: 'seller.catalog.topic-suggestions',
   newHref: '/tag-suggestions/new',
   columns: ['product', 'status', 'outcome', 'sent'],
   counterKey: 'used',
@@ -163,6 +167,8 @@ interface Props {
   readonly paging: 'pages' | 'prev-next';
   readonly accountId: string;
   readonly marketId: string;
+  /** For saving, renaming, moving and deleting saved filters. */
+  readonly csrfToken: string;
   readonly timeZone: string | null;
   readonly canSuggest: boolean;
   /** The "Suggestion sent" banner of the page after a send. */
@@ -174,6 +180,7 @@ function OwnSuggestionsList<Row extends { readonly id: string; readonly label: s
   paging,
   accountId,
   marketId,
+  csrfToken,
   timeZone,
   canSuggest,
   sent,
@@ -244,6 +251,7 @@ function OwnSuggestionsList<Row extends { readonly id: string; readonly label: s
       rowActions: () => [],
       readOnly: true,
       icon: 'package',
+      savedKey: kind.savedKey,
     }),
     [kind, tl, columnDefs],
   );
@@ -293,6 +301,7 @@ function OwnSuggestionsList<Row extends { readonly id: string; readonly label: s
         paging={paging}
         accountId={accountId}
         marketId={marketId}
+        csrfToken={csrfToken}
         onAnswer={onAnswer}
       />
     </div>
