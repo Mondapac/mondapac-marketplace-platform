@@ -134,7 +134,7 @@ const productCalls = () =>
   call.mock.calls
     .map((entry) => entry[1])
     // The one-row read of the built-in tab counts is not a list read.
-    .filter((path) => path.startsWith('catalog/admin/products') && !path.includes('pageSize=1'));
+    .filter((path) => path.startsWith('catalog/admin/products') && !/pageSize=1(&|$)/.test(path));
 
 function mount() {
   return render(

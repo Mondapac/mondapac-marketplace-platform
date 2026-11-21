@@ -48,6 +48,26 @@ describe('useBaseTabCounts', () => {
       resolve({ all: 99 });
       return Promise.resolve();
     });
+    // The late answer is dropped: once the built-in tab's own counts arrive, those are shown.
+    rerender({ savedId: null });
     expect(result.current).toEqual({ all: 5 });
+  });
+
+  it('does not show the saved tab narrowed counts after the saved tab closed', async () => {
+    const narrowed: Counts = { all: 2 };
+    const first: { savedId: string | null; live: Counts } = { savedId: 'oil', live: narrowed };
+    const load = vi.fn().mockResolvedValue({ all: 14 });
+    const { result, rerender } = renderHook(
+      ({ savedId, live }: { savedId: string | null; live: Counts }) =>
+        useBaseTabCounts<Counts>({ savedId, live, load }),
+      { initialProps: first },
+    );
+    await waitFor(() => expect(result.current).toEqual({ all: 14 }));
+    // A built-in tab opens; its answer has not come yet, so `live` is still the narrowed one.
+    rerender({ savedId: null, live: narrowed });
+    expect(result.current).toEqual({ all: 14 });
+    // The new tab's answer arrives.
+    rerender({ savedId: null, live: { all: 14 } });
+    expect(result.current).toEqual({ all: 14 });
   });
 });
