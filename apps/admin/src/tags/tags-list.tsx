@@ -39,6 +39,7 @@ export function TagsList({
   paging,
   accountId,
   marketId,
+  csrfToken,
   locale,
   onOpen,
   onAnswered,
@@ -47,6 +48,8 @@ export function TagsList({
   dialogs,
 }: {
   readonly paging: ListPagingMode;
+  /** For saving, renaming, moving and deleting saved filters. */
+  readonly csrfToken: string;
   readonly accountId: string;
   readonly marketId: string;
   /** The Market's default locale (names are shown in it), once the first answer told it. */
@@ -172,6 +175,7 @@ export function TagsList({
       columnDefs,
       rowActions,
       icon: 'package',
+      savedKey: 'admin.catalog.tags',
     }),
     [tl, columnDefs, rowActions, nameOf],
   );
@@ -193,6 +197,7 @@ export function TagsList({
       accountId={accountId}
       marketId={marketId}
       fields={fields}
+      csrfToken={csrfToken}
       refreshKey={refreshKey}
       heading={headerAction}
       dialogs={dialogs}
