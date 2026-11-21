@@ -1507,6 +1507,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   // The category tree, narrowed to the categories of one feature set (categories, A4).
   'catalog/admin/categories': ['featureSetId'],
   'catalog/admin/category-proposals': [
+    'createdFrom',
+    'createdTo',
     'afterId',
     'limit',
     'q',
@@ -1596,6 +1598,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'direction',
   ],
   'catalog/admin/variant-requests': [
+    'createdFrom',
+    'createdTo',
     'limit',
     'q',
     'page',
@@ -2315,6 +2319,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     direction: /^(asc|desc)$/,
   },
   'catalog/admin/variant-requests': {
+    createdFrom: ISO_INSTANT,
+    createdTo: ISO_INSTANT,
     limit: /^([1-9][0-9]?|100)$/,
     page: /^[1-9][0-9]{0,3}$/,
     pageSize: /^([1-9][0-9]?|100)$/,
@@ -2479,6 +2485,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   },
   'catalog/admin/categories': { featureSetId: UUID },
   'catalog/admin/category-proposals': {
+    createdFrom: ISO_INSTANT,
+    createdTo: ISO_INSTANT,
     afterId: UUID,
     limit: /^[0-9]{1,2}$/,
     page: /^[1-9][0-9]{0,3}$/,

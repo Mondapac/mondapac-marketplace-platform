@@ -6,6 +6,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { languageName } from '../../attributes/types.ts';
 import { BulkDecideDialog, type BulkRow } from '../../shared/paged-list/bulk-decide-dialog.tsx';
 import { PagedSuperList } from '../../shared/paged-list/paged-super-list.tsx';
+import { useDateFilter } from '../../shared/paged-list/use-date-filter.ts';
 import type { ListPagingMode, PagedListConfig } from '../../shared/paged-list/types.ts';
 import { When } from '../../shared/when.tsx';
 import { directionOf } from '../tree-model.ts';
@@ -29,6 +30,7 @@ export function ProposalsList({
   paging,
   accountId,
   marketId,
+  zone,
   csrfToken,
   tree,
   onShelves,
@@ -36,6 +38,8 @@ export function ProposalsList({
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  /** The IANA zone of the table's times and of the Requested presets (ADR-0005). */
+  readonly zone: string;
   readonly csrfToken: string;
   readonly tree: TreeBody;
   readonly onShelves: (sellerId: string, storeName: string | null) => void;
@@ -175,6 +179,13 @@ export function ProposalsList({
     [t, tl, nameOf, columnDefs, rowActions],
   );
   const rows: readonly BulkRow[] = bulk?.rows ?? [];
+  const created = useDateFilter({
+    id: 'created',
+    label: tl('filter.name.created'),
+    range: { from: 'createdFrom', to: 'createdTo' },
+    zone,
+  });
+  const fields = useMemo(() => [created.field], [created.field]);
 
   return (
     <PagedSuperList
@@ -182,6 +193,8 @@ export function ProposalsList({
       paging={paging}
       accountId={accountId}
       marketId={marketId}
+      fields={fields}
+      dateRange={created.dateRange}
       csrfToken={csrfToken}
       refreshKey={refresh}
       dialogs={

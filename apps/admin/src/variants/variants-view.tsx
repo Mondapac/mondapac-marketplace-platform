@@ -26,6 +26,7 @@ export function VariantsView({
   paging,
   accountId,
   marketId,
+  zone,
 }: {
   readonly canEdit: boolean;
   readonly canOpenAttributes: boolean;
@@ -38,6 +39,8 @@ export function VariantsView({
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  /** The IANA zone of the table's times and of the Requested presets. */
+  readonly zone: string;
 }) {
   const t = useTranslations('variants');
   // A link to the Waiting for you tab opens the first tab for an admin who may not answer.
@@ -97,6 +100,7 @@ export function VariantsView({
           paging={paging}
           accountId={accountId}
           marketId={marketId}
+          zone={zone}
           csrfToken={csrfToken}
         />
       ) : null}

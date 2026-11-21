@@ -177,7 +177,7 @@ const view =
   ) : list === 'suggestions' ? (
     <SuggestionsView csrfToken="tok" {...where} />
   ) : list === 'proposals' ? (
-    <ProposalsTab csrfToken="tok" canPromote {...where} />
+    <ProposalsTab csrfToken="tok" canPromote {...zoned} />
   ) : (
     <TagsView canManage csrfToken="tok" {...zoned} />
   );

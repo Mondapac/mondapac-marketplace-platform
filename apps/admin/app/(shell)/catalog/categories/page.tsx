@@ -17,6 +17,7 @@ import { panelHostFor } from '../../../../src/server/bff.ts';
 import { panelConfig } from '../../../../src/server/config.ts';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
+import { localZone } from '../../../../src/shared/format.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -49,6 +50,7 @@ export default async function CategoriesPage() {
           paging={paging}
           accountId={gate.session.accountId}
           marketId={marketId}
+          zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
         />
       ) : (
         <>

@@ -27,6 +27,7 @@ export function ProposalsTab({
   paging,
   accountId,
   marketId,
+  zone,
   initialSellerId = null,
 }: {
   readonly csrfToken: string;
@@ -34,6 +35,8 @@ export function ProposalsTab({
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  /** The IANA zone of the table's times and of the Requested presets. */
+  readonly zone: string;
   readonly initialSellerId?: string | null;
 }) {
   const t = useTranslations('categories.proposals');
@@ -83,6 +86,7 @@ export function ProposalsTab({
         paging={paging}
         accountId={accountId}
         marketId={marketId}
+        zone={zone}
         csrfToken={csrfToken}
         tree={tree}
         onShelves={(id, name) => setShelfOf({ id, name })}

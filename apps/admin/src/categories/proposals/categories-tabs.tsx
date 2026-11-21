@@ -23,6 +23,7 @@ export function CategoriesTabs({
   paging,
   accountId,
   marketId,
+  zone,
   ...tree
 }: {
   readonly canDecide: boolean;
@@ -31,6 +32,8 @@ export function CategoriesTabs({
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  /** The IANA zone of the table's times and of the Requested presets. */
+  readonly zone: string;
   readonly canEdit: boolean;
   readonly canRestructure?: boolean;
   readonly canImport?: boolean;
@@ -73,6 +76,7 @@ export function CategoriesTabs({
           paging={paging}
           accountId={accountId}
           marketId={marketId}
+          zone={zone}
           initialSellerId={seller}
         />
       ) : null}
