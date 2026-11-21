@@ -1,5 +1,6 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { Prisma } from '../../../generated/prisma/client';
+import { instantRangeWhere } from '../../../platform/list-query';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   BusinessActivityListPage,
@@ -17,6 +18,11 @@ function activityFilters(
 ): Prisma.CatalogBusinessActivityWhereInput[] {
   const filters: Prisma.CatalogBusinessActivityWhereInput[] = [];
   if (filter.status !== null) filters.push({ status: filter.status });
+  const created = instantRangeWhere({
+    from: filter.createdFrom ?? null,
+    to: filter.createdTo ?? null,
+  });
+  if (created !== undefined) filters.push({ createdAt: created });
   if (filter.search !== null) {
     const typed = likeLiteral(filter.search);
     filters.push({

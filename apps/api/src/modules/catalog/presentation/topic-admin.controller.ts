@@ -102,12 +102,23 @@ export class TopicAdminController {
       'Previous and Next (`paging=prev-next`), sorted by `sort` (slug, status, group, created, ' +
       'updated) and `direction`; or, as the older panel and the pickers do, keyset-paged by slug: ' +
       'send `nextAfterId` of the previous page as `afterId` (`afterId`/`limit` do not mix with the ' +
-      'page keys). `status` and `group` filter; `q` (older name `search`) matches a name or ' +
+      'page keys). `status` and `group` filter; `createdFrom` (inclusive) and `createdTo` (exclusive), ISO 8601 instants with an offset, filter by creation time; `q` (older name `search`) matches a name or ' +
       'synonym in any locale or the slug. `pageSize` and `limit` are 1 to 100. Each row names the ' +
       '`actions` the caller may run.',
   })
   @ApiQuery({ name: 'status', required: false, enum: ['active', 'archived'] })
   @ApiQuery({ name: 'group', required: false, enum: ['occasion', 'cuisine', 'use'] })
+  @ApiQuery({
+    name: 'createdFrom',
+    required: false,
+    description: 'ISO 8601 instant with an offset or Z; tags created at or after it (inclusive).',
+  })
+  @ApiQuery({
+    name: 'createdTo',
+    required: false,
+    description:
+      'ISO 8601 instant with an offset or Z; tags created before it (exclusive), after createdFrom.',
+  })
   @ApiQuery({ name: 'q', required: false })
   @ApiQuery({ name: 'search', required: false, deprecated: true, description: 'Older name of q.' })
   @ApiQuery({
