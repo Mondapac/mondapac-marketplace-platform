@@ -4,6 +4,7 @@ import { Badge, toast, type MenuItem, type SuperColumn } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useMemo, useState } from 'react';
 import { PagedSuperList } from '../shared/paged-list/paged-super-list.tsx';
+import { useDateFilter } from '../shared/paged-list/use-date-filter.ts';
 import type {
   ListPagingMode,
   PagedAnswer,
@@ -42,12 +43,15 @@ export function RevisionsList({
   paging,
   accountId,
   marketId,
+  zone,
   csrfToken,
   onTotals,
 }: {
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  /** The IANA zone of the table's times and of the Submitted presets (ADR-0005). */
+  readonly zone: string;
   readonly csrfToken: string;
   readonly onTotals: (totals: Totals) => void;
 }) {
@@ -179,6 +183,12 @@ export function RevisionsList({
     }),
     [t, tl, tb, columnDefs, rowActions],
   );
+  const submitted = useDateFilter({
+    id: 'submitted',
+    label: tl('filter.name.submitted'),
+    range: { from: 'submittedFrom', to: 'submittedTo' },
+    zone,
+  });
   const fields: readonly PagedFilterField[] = useMemo(
     () => [
       {
@@ -194,8 +204,9 @@ export function RevisionsList({
         label: t('filter.photos'),
         options: [{ value: 'true', label: t('filter.photos-with') }],
       },
+      submitted.field,
     ],
-    [t],
+    [t, submitted.field],
   );
   return (
     <PagedSuperList
@@ -204,6 +215,7 @@ export function RevisionsList({
       accountId={accountId}
       marketId={marketId}
       fields={fields}
+      dateRange={submitted.dateRange}
       csrfToken={csrfToken}
       refreshKey={refresh}
       onAnswer={(answer: PagedAnswer<RevisionListRow>) =>
@@ -231,12 +243,15 @@ export function OffersList({
   paging,
   accountId,
   marketId,
+  zone,
   csrfToken,
   onTotals,
 }: {
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  /** The IANA zone of the table's times and of the Submitted presets (ADR-0005). */
+  readonly zone: string;
   readonly csrfToken: string;
   readonly onTotals: (totals: Totals) => void;
 }) {
@@ -337,12 +352,21 @@ export function OffersList({
     }),
     [tl, tb, columnDefs, rowActions, nameOf],
   );
+  const submitted = useDateFilter({
+    id: 'submitted',
+    label: tl('filter.name.submitted'),
+    range: { from: 'submittedFrom', to: 'submittedTo' },
+    zone,
+  });
+  const fields = useMemo(() => [submitted.field], [submitted.field]);
   return (
     <PagedSuperList
       config={config}
       paging={paging}
       accountId={accountId}
       marketId={marketId}
+      fields={fields}
+      dateRange={submitted.dateRange}
       csrfToken={csrfToken}
       refreshKey={refresh}
       onAnswer={(answer: PagedAnswer<OfferListRow>) =>

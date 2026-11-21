@@ -9,6 +9,7 @@ import { requireSession } from '../../../src/server/session.ts';
 import { parseQueueTab } from '../../../src/catalog/review-queue-params.ts';
 import { ReviewQueueView } from '../../../src/catalog/review-queue-view.tsx';
 import { VIEW_PERMISSION } from '../../../src/catalog/types.ts';
+import { localZone } from '../../../src/shared/format.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -62,6 +63,7 @@ export default async function ReviewQueuePage({
       paging={paging}
       accountId={gate.session.accountId}
       marketId={marketId}
+      zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
       csrfToken={gate.session.csrfToken}
     />,
   );

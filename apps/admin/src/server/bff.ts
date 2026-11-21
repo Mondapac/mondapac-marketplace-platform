@@ -1563,6 +1563,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   ],
   'catalog/admin/review-queue': [
     'kind',
+    'submittedFrom',
+    'submittedTo',
     'sellerId',
     'firstPublication',
     'hasImages',
@@ -1575,6 +1577,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/review-queue/export': [
     'format',
     'kind',
+    'submittedFrom',
+    'submittedTo',
     'sellerId',
     'firstPublication',
     'hasImages',
@@ -2290,6 +2294,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   },
   'catalog/admin/review-queue': {
     kind: /^(offer-first-publication|product-revision)$/,
+    submittedFrom: ISO_INSTANT,
+    submittedTo: ISO_INSTANT,
     sellerId: UUID,
     firstPublication: /^(true|false)$/,
     hasImages: /^true$/,
@@ -2302,6 +2308,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'catalog/admin/review-queue/export': {
     format: /^(csv|xlsx)$/,
     kind: /^(offer-first-publication|product-revision)$/,
+    submittedFrom: ISO_INSTANT,
+    submittedTo: ISO_INSTANT,
     sellerId: UUID,
     firstPublication: /^(true|false)$/,
     hasImages: /^true$/,

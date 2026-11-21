@@ -5473,7 +5473,10 @@
           "revision": "Product revisions"
         },
         "filter": {
-          "title": "Filter revisions"
+          "title": "Filter revisions",
+          "name": {
+            "submitted": "Submitted"
+          }
         },
         "sort": {
           "by": "Sort by",
@@ -5559,7 +5562,10 @@
           "offer": "Offers"
         },
         "filter": {
-          "title": "Filter offers"
+          "title": "Filter offers",
+          "name": {
+            "submitted": "Submitted"
+          }
         },
         "sort": {
           "by": "Sort by",
