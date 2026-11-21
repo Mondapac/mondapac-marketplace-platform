@@ -120,6 +120,19 @@ const PHASE4_SHARE_ONLY_ROLE = id<'Role'>(0xc0f8);
 /** The phase 4 lists (PR10): each with its view key and a document its list accepts. */
 const PHASE4_LISTS = [
   {
+    // Phase 3 list 19, checked with the generic phase 4 cases: its share key is pricing's own.
+    listKey: 'admin.pricing.price-holds',
+    viewKey: 'pricing.price-hold.view',
+    shareKey: 'pricing.price-hold-saved-filter.share',
+    payload: {
+      v: 1,
+      view: 'up',
+      filters: { kind: 'special', minAmount: '500' },
+      sort: 'amount',
+      direction: 'desc',
+    },
+  },
+  {
     listKey: 'admin.commission-payouts.payouts',
     viewKey: 'commission-payouts.payout.view',
     shareKey: 'commission-payouts.saved-filter.share',

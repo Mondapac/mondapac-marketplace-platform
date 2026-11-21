@@ -73,7 +73,8 @@ export const HOLD_EXPORT_MAX_IDS = 200;
 /** Rows read per chunk while an export streams. */
 const EXPORT_CHUNK = 500;
 
-const SELECTOR_KEYS = [
+/** The selector keys of the list's query (paging and sort aside). */
+export const HOLD_SELECTOR_KEYS = [
   'view',
   'kind',
   'change',
@@ -85,7 +86,7 @@ const SELECTOR_KEYS = [
   'maxAmount',
 ] as const;
 const LIST_KEYS = new Set<string>([
-  ...SELECTOR_KEYS,
+  ...HOLD_SELECTOR_KEYS,
   'sort',
   'direction',
   'page',
@@ -93,7 +94,7 @@ const LIST_KEYS = new Set<string>([
   'paging',
 ]);
 const EXPORT_KEYS = new Set<string>([
-  ...SELECTOR_KEYS,
+  ...HOLD_SELECTOR_KEYS,
   'sort',
   'direction',
   'format',
@@ -122,11 +123,16 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const absent = (value: unknown): boolean => value === undefined || value === null || value === '';
 
-interface Selector {
+export interface HoldSelector {
   readonly filter: HoldListFilter;
 }
 
-function parseSelector(record: HoldListInput): Result<Selector, ListQueryFailure> {
+/**
+ * Reads the selector keys of the list (view, kind, change, q, sellerId, from, to, minAmount,
+ * maxAmount). The list, its export and its saved filters read them here alone, so a saved filter
+ * holds exactly what the list accepts.
+ */
+export function parseHoldSelector(record: HoldListInput): Result<HoldSelector, ListQueryFailure> {
   let view: HoldListView = 'all';
   if (!absent(record['view'])) {
     const found = HOLD_LIST_VIEWS.find((candidate) => candidate === record['view']);
@@ -220,7 +226,7 @@ export async function listAdminHolds(
   if ((query.value.page - 1) * query.value.pageSize >= MAX_PAGED_ROWS) {
     return listQueryInvalid('page', 'range');
   }
-  const selector = parseSelector(record);
+  const selector = parseHoldSelector(record);
   if (!selector.ok) return selector;
   const { filter } = selector.value;
   const sort: HoldSort = { key: query.value.sort, direction: query.value.direction };
@@ -364,7 +370,7 @@ export async function exportAdminHolds(
   } else {
     const query = parseListQuery(record, SPEC);
     if (!query.ok) return query;
-    const selector = parseSelector(record);
+    const selector = parseHoldSelector(record);
     if (!selector.ok) return selector;
     const { filter } = selector.value;
     const sort: HoldSort = { key: query.value.sort, direction: query.value.direction };
