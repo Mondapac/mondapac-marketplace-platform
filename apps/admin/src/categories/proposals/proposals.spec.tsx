@@ -1,15 +1,25 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/en.json';
 
-vi.mock('../../api/client.ts', () => ({ callApi: vi.fn() }));
+const { inner, saved } = vi.hoisted(() => ({
+  inner: vi.fn<(method: string, path: string, ...rest: unknown[]) => Promise<unknown>>(),
+  saved: { items: [] as unknown[] },
+}));
+// Saved filters are served apart from the list's own calls the tests count and queue.
+vi.mock('../../api/client.ts', () => ({
+  callApi: (method: string, path: string, ...rest: unknown[]) =>
+    path.startsWith('lists/admin/saved-filters')
+      ? Promise.resolve({ ok: true, status: 200, body: { items: saved.items, canShare: false } })
+      : inner(method, path, ...rest),
+}));
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }),
 }));
 
-import { callApi, type ApiResult } from '../../api/client.ts';
+import type { ApiResult } from '../../api/client.ts';
 import { expectToast } from '../../../test/toast-spy.ts';
 import type { CategoryRow, TreeBody } from '../types.ts';
 import { CategoriesTabs } from './categories-tabs.tsx';
@@ -17,7 +27,7 @@ import { mergeTargets, pathText, problemOf, suggestSlug } from './model.ts';
 import { ProposalsTab } from './proposals-tab.tsx';
 import type { Proposal, Shelf } from './types.ts';
 
-const call = vi.mocked(callApi);
+const call = inner;
 const id = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
 const ok = <T,>(body: T): ApiResult<T> => ({ ok: true, status: 200, body });
 const fail = (status: number, code: string): ApiResult<never> => ({
@@ -96,6 +106,7 @@ let writeAnswer: (path: string) => ApiResult<unknown> = () =>
   ok({ status: 'approved', version: 4 });
 
 beforeEach(() => {
+  saved.items = [];
   queue = [proposal(1), proposal(2)];
   shelves = [shelf(1), shelf(2, { status: 'merged' })];
   writes = [];
@@ -196,6 +207,31 @@ describe('Category proposals list', () => {
     expect(first.get('page')).toBe('1');
     expect(first.get('sort')).toBe('created');
     expect(first.get('direction')).toBe('asc');
+  });
+
+  it('opens a saved filter as a tab with its search and sort', async () => {
+    saved.items = [
+      {
+        id: '0190a000-0000-7000-8000-000000000063',
+        listKey: 'admin.catalog.category-proposals',
+        name: 'Saffron only',
+        visibility: 'me',
+        payload: { v: 1, q: 'saffron', filters: {}, sort: 'created', direction: 'desc' },
+        ownedByMe: true,
+        canManage: true,
+      },
+    ];
+    tab();
+    await screen.findByRole('list', { name: 'Names of the proposal Saffron 1' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Saffron only' }));
+    await waitFor(() => {
+      const last = call.mock.calls
+        .map(([, path]) => String(path))
+        .filter((path) => path.startsWith('catalog/admin/category-proposals?'))
+        .at(-1);
+      expect(last).toContain('q=saffron');
+      expect(last).toContain('direction=desc');
+    });
   });
 
   it('shows an empty state and a failed load', async () => {
