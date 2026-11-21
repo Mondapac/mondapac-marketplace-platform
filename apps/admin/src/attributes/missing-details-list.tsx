@@ -165,6 +165,7 @@ export function MissingDetailsList({
       endpoint: API_MISSING_DETAILS,
       exportEndpoint: `${API_MISSING_DETAILS}/export`,
       exportName: 'products-missing-details',
+      exportKeepsSort: true,
       rowId: (row) => row.productId,
       rowName: (row) => row.name ?? row.productCode,
       tabs: ['all'],
@@ -211,7 +212,7 @@ export function MissingDetailsList({
             ]
           : []),
         {
-          id: 'export',
+          id: 'export-selected',
           label: tl('bulk.export-selected'),
           run: (rows: readonly MissingDetailsRow[]) => downloadCsv(rows),
         },

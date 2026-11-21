@@ -12737,7 +12737,7 @@
         },
         "partial": {
           "title": "Only part of the Market was read",
-          "body": "The report reads the first 10,000 published products. The total and the order cover those products only; search to narrow it down."
+          "body": "The report reads the first 10,000 published products. The total and the order cover those products only; search to narrow it down. Export is available once the search matches 10,000 or fewer."
         },
         "export": {
           "title": "Export products missing details",
@@ -12751,7 +12751,7 @@
           "cancel": "Cancel",
           "pending": "Preparing the file",
           "done": "File downloaded",
-          "too-large": "More than {max} products are in scope, so the file would be partial. Narrow the filter and export again.",
+          "too-large": "More than {max} products match, so the file can't be made. Narrow the search or filters and export again.",
           "unavailable": "The file could not be made. Try again in a moment."
         }
       }

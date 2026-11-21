@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -180,6 +180,33 @@ describe('Email sellers', () => {
     expect(
       await screen.findByRole('dialog', { name: 'Export products missing details' }),
     ).toBeTruthy();
+  });
+
+  it('asks for the file in the list order and without paging', async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue(
+        new Response('a', { status: 200, headers: { 'Content-Type': 'text/csv' } }),
+      );
+    vi.stubGlobal('fetch', fetchMock);
+    URL.createObjectURL = vi.fn(() => 'blob:x');
+    URL.revokeObjectURL = vi.fn();
+    call.mockResolvedValueOnce(ok(page([item(1)])));
+    mount();
+    await screen.findByText('Product 1');
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Select Product 1' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Export…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Export products missing details' });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Export' }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    const url = new URL(String(fetchMock.mock.calls[0]?.[0]), 'http://x');
+    expect(url.pathname).toBe('/api/catalog/admin/reports/products-missing-details/export');
+    expect(url.searchParams.get('format')).toBe('csv');
+    expect(url.searchParams.get('sort')).toBe('missing');
+    expect(url.searchParams.get('direction')).toBe('desc');
+    for (const key of ['page', 'pageSize', 'paging']) expect(url.searchParams.has(key)).toBe(false);
+    vi.unstubAllGlobals();
   });
 
   it('is not offered to a reader, in the bulk menu or the row menu', async () => {

@@ -63,6 +63,8 @@ export interface PagedListConfig<Row> {
   /** The export route and the file name stem; absent when the list has no export yet. */
   readonly exportEndpoint?: string;
   readonly exportName?: string;
+  /** The export route takes `sort` and `direction` and writes the file in the list's order. */
+  readonly exportKeepsSort?: boolean;
   readonly rowId: (row: Row) => string;
   readonly rowName: (row: Row) => string;
   /** Built-in tabs, the first is "all". */

@@ -288,7 +288,13 @@ export function PagedSuperList<Row>({
     if (config.exportEndpoint === undefined) return;
     setExporting(true);
     const params = new URLSearchParams(pagedQueryString(config, query, paging));
-    for (const key of ['page', 'pageSize', 'paging', 'sort', 'direction']) params.delete(key);
+    const dropped = [
+      'page',
+      'pageSize',
+      'paging',
+      ...(config.exportKeepsSort === true ? [] : ['sort', 'direction']),
+    ];
+    for (const key of dropped) params.delete(key);
     params.set('format', format);
     const work = (async () => {
       let response: Response;
