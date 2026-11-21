@@ -147,7 +147,7 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
     );
   });
 
-  it('filters by when it was requested, as instants on the Brisbane day, and takes it off again', async () => {
+  it('filters by when it was asked, as instants on the Brisbane day, and takes it off again', async () => {
     call.mockResolvedValue(ok(list(locales, required)));
     mount();
     expect(await screen.findByText(`“${LABEL}”`)).toBeTruthy();
@@ -170,7 +170,7 @@ describe.each(MARKETS)('value suggestions queue ($name)', ({ locales, required }
       Date.parse(range.get('createdTo') ?? '') - Date.parse(range.get('createdFrom') ?? ''),
     ).toBe(24 * 3600 * 1000);
     expect(range.has('created')).toBe(false);
-    fireEvent.click(await screen.findByRole('button', { name: /Remove filter Requested is/ }));
+    fireEvent.click(await screen.findByRole('button', { name: /Remove filter Asked is/ }));
     await waitFor(() => expect(asked().at(-1)?.has('createdFrom')).toBe(false));
   });
 
