@@ -2823,7 +2823,7 @@
       "variant": "Variant {number}",
       "on-hand-for": "Units in stock at {location}",
       "held": "{count, plural, one {# unit held in checkouts} other {# units held in checkouts}}",
-      "save": "Save",
+      "save": "{count, plural, =0 {Save levels} one {Save # level} other {Save # levels}}",
       "saved": "Saved.",
       "no-locations": "Add a stock location before you set stock levels.",
       "no-variants": "This offer has no variants yet.",
@@ -2840,7 +2840,11 @@
         "not-ready": "Stock isn't ready yet. Try again in a moment.",
         "not-found": "This offer or location was not found. Reload the page."
       },
-      "on-hand": "Units in stock"
+      "on-hand": "Units in stock",
+      "summary": "{count, plural, one {# level changed} other {# levels changed}}",
+      "saved-many": "{count, plural, one {# level saved.} other {# levels saved.}}",
+      "partial": "{saved, plural, one {# level saved} other {# levels saved}}; {failed, plural, one {# needs attention} other {# need attention}}. The message is under the number.",
+      "failed": "{count, plural, one {Nothing was saved. The message is under the number.} other {Nothing was saved. The messages are under the numbers.}}"
     },
     "no-access": {
       "title": "You don't have access to this page",
