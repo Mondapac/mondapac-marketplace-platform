@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { act, cleanup, renderHook } from '@testing-library/react';
+import { createRoot } from 'react-dom/client';
 import { afterEach, describe, expect, it } from 'vitest';
 import { useRowSelection } from './use-row-selection.ts';
 
@@ -74,5 +75,42 @@ describe('useRowSelection', () => {
     act(() => result.current.selectAllMatching());
     act(() => result.current.clear());
     expect(result.current.allMatching).toBe(false);
+  });
+
+  it('keeps a row ticked when the click lands before the first effects have run', async () => {
+    // A list that mounts when its data arrives (outside act) has its mount effects still pending
+    // when a test, or a fast user on a loaded machine, ticks a row. The tick must survive them.
+    const flag = globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean };
+    const before = flag.IS_REACT_ACT_ENVIRONMENT;
+    flag.IS_REACT_ACT_ENVIRONMENT = false;
+    function Probe() {
+      const selection = useRowSelection(ids(2), 5, 'a');
+      return (
+        <button type="button" onClick={() => selection.toggleRow('id-0')}>
+          {selection.selected.size}
+        </button>
+      );
+    }
+    const host = document.createElement('div');
+    document.body.append(host);
+    const root = createRoot(host);
+    try {
+      // Resolves in the microtask after the commit, before the scheduler runs passive effects.
+      await new Promise<void>((resolve) => {
+        const watch = new MutationObserver(() => {
+          watch.disconnect();
+          resolve();
+        });
+        watch.observe(host, { childList: true, subtree: true });
+        root.render(<Probe />);
+      });
+      host.querySelector('button')!.click();
+      await new Promise((resolve) => setTimeout(resolve, 50));
+      expect(host.querySelector('button')!.textContent).toBe('1');
+    } finally {
+      root.unmount();
+      host.remove();
+      flag.IS_REACT_ACT_ENVIRONMENT = before;
+    }
   });
 });
