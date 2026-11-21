@@ -80,6 +80,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
   let queue: ReviewQueueRow[];
   let calls: Record<string, unknown>[];
   let listFails: boolean;
+  let listRefusal: { code: string; fields: { path: string; code: string }[] } | null;
   const check: AuthorisationCheck = {
     check: () =>
       Promise.resolve(
@@ -91,6 +92,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
   const reviewQueue = {
     execute: (_c: CallContext, input: Record<string, unknown>) => {
       calls.push(input);
+      if (listRefusal !== null) return Promise.resolve({ ok: false, error: listRefusal });
       if (listFails) return Promise.resolve({ ok: false, error: { code: 'access.unavailable' } });
       const start = input['afterId'] === undefined ? 0 : Number(input['afterId']);
       const size = input['limit'] as number;
@@ -135,6 +137,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
     queue = [];
     calls = [];
     listFails = false;
+    listRefusal = null;
   });
 
   it('writes both kinds as CSV with a BOM, passing the filters to the keyset read of the list', async () => {
@@ -154,7 +157,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
     ]);
   });
 
-  it('passes the submitted range to every keyset read, and refuses a bad instant before any read', async () => {
+  it('passes the submitted range to every keyset read of the list', async () => {
     queue = [revision(1)];
     const range = {
       submittedFrom: '2026-11-01T00:00:00+10:00',
@@ -163,14 +166,20 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
     const result = await useCase().execute(context(), { ...range, kind: 'product-revision' });
     expect(result.ok).toBe(true);
     expect(calls).toEqual([{ ...range, kind: 'product-revision', limit: REVIEW_QUEUE_PAGE_MAX }]);
-    calls = [];
-    // The list names the failing key; the file route passes its refusal on as it is.
-    expect(await useCase().execute(context(), { submittedFrom: 'x', format: 'csv' })).toMatchObject(
-      { ok: true },
-    );
-    expect(await useCase().execute(context(), { submittedAfter: range.submittedFrom })).toEqual({
+  });
+
+  it('refuses a key that is not a filter of the queue, and hands a refusal of the list on', async () => {
+    expect(await useCase().execute(context(), { submittedAfter: '2026-11-01T00:00:00Z' })).toEqual({
       ok: false,
       error: { code: 'validation.failed', fields: [{ path: 'submittedAfter', code: 'unknown' }] },
+    });
+    listRefusal = {
+      code: 'validation.failed',
+      fields: [{ path: 'submittedFrom', code: 'format' }],
+    };
+    expect(await useCase().execute(context(), { submittedFrom: 'x' })).toEqual({
+      ok: false,
+      error: listRefusal,
     });
   });
 

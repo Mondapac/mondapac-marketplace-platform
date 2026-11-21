@@ -55,11 +55,11 @@ describe.each(['AU', 'ZZ'] as const)('review queue submitted range in market %s'
       ownReader: {
         pendingReviewCount: (_m: MarketContext, filter?: unknown) => {
           offerCounts.push(filter);
-          return Promise.resolve(1);
+          return Promise.resolve(filter === undefined ? 7 : 1);
         },
         pendingRevisionCount: (_m: MarketContext, filter?: unknown) => {
           revisionCounts.push(filter);
-          return Promise.resolve(1);
+          return Promise.resolve(filter === undefined ? 5 : 1);
         },
         listPendingRevisions: (_m: MarketContext, _p: unknown, _l: string, filter: unknown) => {
           revisionFilters.push(filter);
@@ -96,6 +96,12 @@ describe.each(['AU', 'ZZ'] as const)('review queue submitted range in market %s'
     expect(revisionCounts.at(-1)).toMatchObject(window);
     expect(offerFilters[0]).toMatchObject(window);
     expect(revisionFilters[0]).toMatchObject(window);
+    // `total` follows the range; the tab counts `totals` stay the whole queue's.
+    expect(result.ok && result.value.total).toBe(2);
+    expect(result.ok && result.value.totals).toEqual({
+      'product-revision': 5,
+      'offer-first-publication': 7,
+    });
   });
 
   it('keeps one kind to its window, and leaves an empty value as no filter', async () => {

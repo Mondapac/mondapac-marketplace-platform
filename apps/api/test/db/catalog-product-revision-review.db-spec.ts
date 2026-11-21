@@ -615,7 +615,7 @@ describe.each(TEST_MARKETS)(
           true,
         );
         const count = await inUnit(() => reader.pendingRevisionCount(market, filter), true);
-        expect(count).toBeGreaterThanOrEqual(found.length);
+        expect(count).toBe(found.length);
         return found.some((row) => row.productId === productId);
       };
       expect(await has({ submittedFrom: at })).toBe(true);
