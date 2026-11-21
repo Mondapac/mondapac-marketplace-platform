@@ -1,4 +1,4 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { TopicGroup, TopicState, TopicStatus } from '../../domain/topic';
 
 export interface TopicListQuery {
@@ -6,6 +6,10 @@ export interface TopicListQuery {
   readonly group: TopicGroup | null;
   /** Matches a name or synonym in any locale, or the slug; case-insensitive. */
   readonly search: string | null;
+  /** Created at or after this instant (inclusive). */
+  readonly createdFrom?: Temporal.Instant | null;
+  /** Created before this instant (exclusive). */
+  readonly createdTo?: Temporal.Instant | null;
   readonly afterId: Id<'Topic'> | null;
   readonly limit: number;
 }
@@ -18,6 +22,10 @@ export interface TopicPageFilter {
   readonly status: TopicStatus | null;
   readonly group: TopicGroup | null;
   readonly search: string | null;
+  /** Created at or after this instant (inclusive). */
+  readonly createdFrom?: Temporal.Instant | null;
+  /** Created before this instant (exclusive). */
+  readonly createdTo?: Temporal.Instant | null;
 }
 
 /** One page of the numbered read: `offset` rows are skipped; ties end on the id. */
