@@ -682,6 +682,27 @@ describe.each(['AU', 'ZZ'] as const)('seller category use cases in market %s', (
       ).toEqual(err({ code: 'category-proposal.not-pending' }));
     });
 
+    it('filters the waiting proposals by the created range', async () => {
+      await proposeOk('Spices');
+      await proposeOk('Teas', 2, OTHER_SELLER);
+      const names = async (input: Record<string, unknown>) => {
+        const answer = await build().queue.execute(adminContext(), input);
+        return answer.ok ? answer.value.items.length : answer.error;
+      };
+      expect(await names({ createdFrom: '2000-01-01T00:00:00Z' })).toBe(2);
+      expect(await names({ createdFrom: '2999-01-01T00:00:00+10:00' })).toBe(0);
+      expect(await names({ createdTo: '2000-01-01T00:00:00Z' })).toBe(0);
+      expect(await names({ createdFrom: '2000-01-01', page: 1 })).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'createdFrom', code: 'format' }],
+      });
+      // The older cursor read has no range; a range with it is refused, not dropped.
+      expect(await names({ limit: 1, createdFrom: '2000-01-01T00:00:00Z' })).toEqual({
+        code: 'validation.failed',
+        fields: [{ path: 'createdFrom', code: 'conflict' }],
+      });
+    });
+
     it('lists the waiting proposals oldest first with the store names it can find', async () => {
       await proposeOk('Spices');
       await proposeOk('Teas', 2, OTHER_SELLER);

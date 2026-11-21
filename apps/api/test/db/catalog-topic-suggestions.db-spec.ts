@@ -195,6 +195,26 @@ describe.each(TEST_MARKETS)('catalog topic suggestions in market %s (database)',
     expect(await read(market, () => store.countOpen(market, { text: '_' }))).toBe(
       suggestion.state.label.includes('_') ? 1 : 0,
     );
+    // The created range: `createdFrom` inclusive, `createdTo` exclusive, on the page and the count.
+    const madeAt = suggestion.state.createdAt;
+    const inRange = (createdFrom: Temporal.Instant | null, createdTo: Temporal.Instant | null) =>
+      read(market, () => store.pageOpen(market, { ...all, createdFrom, createdTo }));
+    expect((await inRange(madeAt, null)).map((row) => row.state.id)).toContain(suggestion.state.id);
+    expect((await inRange(null, madeAt)).map((row) => row.state.id)).not.toContain(
+      suggestion.state.id,
+    );
+    expect(
+      (await inRange(madeAt.add({ milliseconds: 1 }), null)).map((row) => row.state.id),
+    ).not.toContain(suggestion.state.id);
+    expect(
+      await read(market, () =>
+        store.countOpen(market, {
+          text: null,
+          createdFrom: madeAt.add({ hours: 24 }),
+          createdTo: null,
+        }),
+      ),
+    ).toBe(0);
     const newest = await read(market, () =>
       store.pageOpen(market, { ...all, direction: 'desc', limit: 1 }),
     );

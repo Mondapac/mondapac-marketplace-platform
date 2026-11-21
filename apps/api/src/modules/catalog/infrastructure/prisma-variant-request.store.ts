@@ -1,5 +1,6 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
+import { createdAtWhere } from '../../../platform/list-query';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import type { Prisma } from '../../../generated/prisma/client';
@@ -58,6 +59,7 @@ const openWhere = (
 ): Prisma.CatalogVariantRequestWhereInput => ({
   marketId: market.marketId,
   status: 'open',
+  ...createdAtWhere(filter),
   ...(filter.productCode === null
     ? {}
     : {

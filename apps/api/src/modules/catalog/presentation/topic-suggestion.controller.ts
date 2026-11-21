@@ -113,6 +113,18 @@ export class TopicSuggestionController {
       'seller’s text is plain text: show it as text, never as markup.',
   })
   @ApiQuery({ name: 'q', required: false })
+  @ApiQuery({
+    name: 'createdFrom',
+    required: false,
+    description:
+      'ISO 8601 instant with an offset or Z; suggestions created at or after it (inclusive).',
+  })
+  @ApiQuery({
+    name: 'createdTo',
+    required: false,
+    description:
+      'ISO 8601 instant with an offset or Z; suggestions created before it (exclusive), after createdFrom.',
+  })
   @ApiQuery({ name: 'sort', required: false, enum: ['created'] })
   @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
   @ApiQuery({ name: 'page', required: false })

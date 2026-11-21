@@ -237,6 +237,28 @@ describe.each(TEST_MARKETS)('catalog seller category store in market %s (databas
     );
     expect(after.map((view) => view.id)).toContain(two.id);
     expect(after.map((view) => view.id)).not.toContain(one.id);
+    // The created range: `createdFrom` inclusive, `createdTo` exclusive, on the page and the count.
+    const window = (createdFrom: Temporal.Instant | null, createdTo: Temporal.Instant | null) => ({
+      nameKey: null,
+      createdFrom,
+      createdTo,
+    });
+    const idsIn = async (range: ReturnType<typeof window>) =>
+      (
+        await run(market, () =>
+          store.pagePending(market, { ...range, direction: 'asc', offset: 0, limit: 1000 }),
+        )
+      ).map((view) => view.id);
+    const later = at.add({ seconds: 1 });
+    const fromLater = await idsIn(window(later, null));
+    expect(fromLater).toContain(two.id);
+    expect(fromLater).not.toContain(one.id);
+    const untilLater = await idsIn(window(null, later));
+    expect(untilLater).toContain(one.id);
+    expect(untilLater).not.toContain(two.id);
+    expect(
+      await run(market, () => store.countPending(market, window(at, later.add({ seconds: 1 })))),
+    ).toBe(2);
     expect(await run(market, () => store.findProposal(market, foreign.id))).toBeNull();
   });
 

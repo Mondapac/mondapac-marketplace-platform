@@ -15,6 +15,10 @@ import type {
 export interface OpenSuggestionsFilter {
   /** A fragment of the seller's text; null: all. */
   readonly text: string | null;
+  /** Created at or after this instant (inclusive). */
+  readonly createdFrom?: Temporal.Instant | null;
+  /** Created before this instant (exclusive). */
+  readonly createdTo?: Temporal.Instant | null;
 }
 
 export interface OpenSuggestionsPage extends OpenSuggestionsFilter {

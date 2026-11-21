@@ -12,6 +12,10 @@ import type { TopicSuggestion, SuggestionStatus } from '../../domain/topic-sugge
 export interface OpenTopicSuggestionsFilter {
   /** A fragment of the seller's text; null: all. */
   readonly text: string | null;
+  /** Created at or after this instant (inclusive). */
+  readonly createdFrom?: Temporal.Instant | null;
+  /** Created before this instant (exclusive). */
+  readonly createdTo?: Temporal.Instant | null;
 }
 
 export interface OpenTopicSuggestionsPage extends OpenTopicSuggestionsFilter {

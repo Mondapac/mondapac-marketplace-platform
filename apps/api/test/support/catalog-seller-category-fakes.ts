@@ -1,3 +1,4 @@
+import { inCreatedRange, type CreatedRange } from './created-range';
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type {
   NewCategoryProposal,
@@ -169,10 +170,11 @@ export class MemorySellerCategoryStore implements SellerCategoryStore {
     return cancelled;
   }
 
-  #pending(filter: { nameKey: string | null }) {
+  #pending(filter: { nameKey: string | null } & CreatedRange) {
     return [...this.proposals.values()]
       .map((stored) => stored.view)
       .filter((view) => view.status === 'pending')
+      .filter((view) => inCreatedRange(view.createdAt, filter))
       .filter(
         (view) =>
           filter.nameKey === null ||
@@ -182,7 +184,12 @@ export class MemorySellerCategoryStore implements SellerCategoryStore {
 
   pagePending(
     _m: MarketContext,
-    page: { nameKey: string | null; direction: 'asc' | 'desc'; offset: number; limit: number },
+    page: {
+      nameKey: string | null;
+      direction: 'asc' | 'desc';
+      offset: number;
+      limit: number;
+    } & CreatedRange,
   ) {
     const sign = page.direction === 'asc' ? 1 : -1;
     const sorted = this.#pending(page).sort(
@@ -191,7 +198,7 @@ export class MemorySellerCategoryStore implements SellerCategoryStore {
     return Promise.resolve(sorted.slice(page.offset, page.offset + page.limit));
   }
 
-  countPending(_m: MarketContext, filter: { nameKey: string | null }) {
+  countPending(_m: MarketContext, filter: { nameKey: string | null } & CreatedRange) {
     return Promise.resolve(this.#pending(filter).length);
   }
 

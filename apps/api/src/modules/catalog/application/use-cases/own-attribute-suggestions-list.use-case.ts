@@ -22,6 +22,10 @@ export interface OwnAttributeSuggestionsListInput {
   readonly status?: unknown;
   readonly q?: unknown;
   readonly search?: unknown;
+  /** Created at or after this ISO 8601 instant (inclusive). */
+  readonly createdFrom?: unknown;
+  /** Created before this ISO 8601 instant (exclusive). */
+  readonly createdTo?: unknown;
   readonly sort?: unknown;
   readonly direction?: unknown;
   readonly page?: unknown;
@@ -139,7 +143,7 @@ export class OwnAttributeSuggestionsList extends UseCase<
       return parsed !== null && parsed.ok ? parsed.value : null;
     });
     if (!query.ok) return query;
-    const { status, read: listRead } = query.value;
+    const { status, created, read: listRead } = query.value;
     const { market } = context;
     let locales: { default: string; supported: readonly string[] };
     try {
@@ -174,7 +178,7 @@ export class OwnAttributeSuggestionsList extends UseCase<
         } else {
           const paged = listRead.paged;
           const window = pageWindow(paged);
-          const filter = { status, text: q };
+          const filter = { status, text: q, createdFrom: created.from, createdTo: created.to };
           if (paged.paging === 'pages')
             total = await suggestions.countOfSeller(market, sellerId, filter);
           rows =
