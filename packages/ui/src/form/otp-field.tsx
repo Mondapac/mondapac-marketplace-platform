@@ -7,7 +7,34 @@ import {
   type ClipboardEvent,
   type ChangeEvent,
   type KeyboardEvent,
+  type ReactNode,
 } from 'react';
+
+/**
+ * The widest the row of boxes gets: `length` boxes of 3rem (`max-w-12`) with 0.5rem gaps (`gap-2`).
+ * Keep in step with the box and gap classes below.
+ */
+export function otpRowWidth(length = 6): string {
+  return `${length * 3 + (length - 1) * 0.5}rem`;
+}
+
+export interface OtpColumnProps {
+  /** Number of boxes in the `OtpField` inside, so the column matches its row. */
+  readonly length?: number;
+  readonly children: ReactNode;
+}
+
+/**
+ * A column exactly as wide as an `OtpField` row: the field, the submit button and the links under
+ * it line up with the boxes. Below that width (phones) it fills its parent and the boxes shrink.
+ */
+export function OtpColumn({ length = 6, children }: OtpColumnProps) {
+  return (
+    <div className="flex w-full flex-col gap-5" style={{ maxWidth: otpRowWidth(length) }}>
+      {children}
+    </div>
+  );
+}
 
 export interface OtpFieldProps {
   /** The group label, shown above the boxes. */
@@ -23,6 +50,8 @@ export interface OtpFieldProps {
   readonly readOnly?: boolean;
   /** Focus the first box on mount. Remount the field (a new `key`) to clear it and refocus. */
   readonly autoFocus?: boolean;
+  /** Id of text that explains the step (the instructions), added to the group's description. */
+  readonly describedBy?: string;
   /** Every change, as the digits typed so far (gaps removed). */
   readonly onChange?: (code: string) => void;
   /** Called once when the last box is filled and the code is complete. */
@@ -38,6 +67,7 @@ export function OtpField({
   error,
   readOnly = false,
   autoFocus = false,
+  describedBy,
   onChange,
   onComplete,
 }: OtpFieldProps) {
@@ -128,7 +158,9 @@ export function OtpField({
     <div
       role="group"
       aria-labelledby={`${id}-label`}
-      aria-describedby={error ? errorId : undefined}
+      aria-describedby={
+        [describedBy, error ? errorId : null].filter(Boolean).join(' ') || undefined
+      }
       className="flex flex-col gap-1.5"
     >
       <span id={`${id}-label`} className="text-sm font-medium text-fg">

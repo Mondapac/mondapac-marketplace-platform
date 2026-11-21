@@ -187,15 +187,47 @@ describe('admin sign-in', () => {
       });
       render(wrap(<SignInFlow notice={null} />));
       signIn();
-      const heading = await screen.findByText('Enter your 6-digit code');
-      // The new step's heading takes focus in an effect; wait for it so a later focus move is
-      // not overtaken by that effect.
-      await waitFor(() => expect(document.activeElement).toBe(heading));
+      await screen.findByText('Enter your 6-digit code');
+      // The first box takes focus on arrival (owner request 2026-11-21).
+      await waitFor(() => expect(document.activeElement).toBe(box(1)));
     }
     const box = (position: number) =>
       screen.getByLabelText<HTMLInputElement>(`Digit ${position} of 6`);
     const secondFactorCalls = () =>
       call.mock.calls.filter(([, path]) => path === 'identity/admin/second-factor');
+
+    it('puts focus in the first box on arrival and keeps it there, not on the heading', async () => {
+      await toCodeStep();
+      // The heading's effect must not take focus back after the box got it.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(document.activeElement).toBe(box(1));
+      expect(document.activeElement).not.toBe(screen.getByText('Enter your 6-digit code'));
+    });
+
+    it('describes the boxes with the step instructions', async () => {
+      await toCodeStep();
+      const group = screen.getByRole('group', { name: '6-digit code' });
+      const first = (group.getAttribute('aria-describedby') ?? '').split(' ')[0] ?? '';
+      expect(document.getElementById(first)?.textContent).toContain('authenticator app');
+    });
+
+    it('lines up the Verify button and the links with the row of boxes', async () => {
+      await toCodeStep();
+      const column = screen.getByRole('button', { name: 'Verify' }).parentElement as HTMLElement;
+      expect(column.style.maxWidth).toBe('20.5rem');
+      expect(column.contains(screen.getByRole('group', { name: '6-digit code' }))).toBe(true);
+      expect(
+        column.contains(screen.getByRole('button', { name: 'Use a backup code instead' })),
+      ).toBe(true);
+    });
+
+    it('moves focus to the backup code field when switching to it', async () => {
+      await toCodeStep();
+      fireEvent.click(screen.getByRole('button', { name: 'Use a backup code instead' }));
+      await waitFor(() =>
+        expect(document.activeElement).toBe(screen.getByLabelText('Backup code')),
+      );
+    });
 
     it('labels the group and every box', async () => {
       await toCodeStep();
