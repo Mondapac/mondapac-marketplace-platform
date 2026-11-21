@@ -59,6 +59,7 @@ export function BrandsList({
   accountId,
   marketId,
   zone,
+  csrfToken,
   onOpen,
   refreshKey,
   headerAction,
@@ -69,6 +70,8 @@ export function BrandsList({
   readonly marketId: string;
   /** The IANA zone of the table's times and of the Created presets (ADR-0005). */
   readonly zone: string;
+  /** For saving, renaming, moving and deleting saved filters. */
+  readonly csrfToken: string;
   readonly onOpen: (dialog: RowDialog) => void;
   readonly refreshKey: number;
   readonly headerAction: React.ReactNode;
@@ -259,6 +262,7 @@ export function BrandsList({
       columnDefs,
       rowActions,
       icon: 'package',
+      savedKey: 'admin.catalog.brands',
     }),
     [tl, columnDefs, rowActions],
   );
@@ -282,6 +286,7 @@ export function BrandsList({
       fields={fields}
       dateRange={dateRange}
       loadCounts={loadCounts}
+      csrfToken={csrfToken}
       refreshKey={refreshKey}
       heading={headerAction}
       dialogs={dialogs}

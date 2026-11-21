@@ -129,6 +129,7 @@ export function BrandsView({
           accountId={accountId}
           marketId={marketId}
           zone={zone}
+          csrfToken={csrfToken}
           refreshKey={refresh}
           onOpen={setDialog}
           headerAction={

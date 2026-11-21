@@ -59,6 +59,10 @@ function serve(routes: Record<string, Handler>) {
       .filter((route) => key.startsWith(route))
       .sort((a, b) => b.length - a.length)[0];
     const handler = hit === undefined ? undefined : routes[hit];
+    // No saved filters unless a test serves some.
+    if (handler === undefined && key.startsWith('GET lists/admin/saved-filters')) {
+      return Promise.resolve(ok({ items: [], canShare: false }) as never);
+    }
     if (handler === undefined) throw new Error(`unexpected call ${key}`);
     return Promise.resolve((typeof handler === 'function' ? handler(body) : handler) as never);
   });
@@ -178,6 +182,44 @@ describe('admin brands', () => {
     await waitFor(() => expect(asked().some((p) => p.get('originCountry') === 'NZ')).toBe(true));
     fireEvent.click(await screen.findByRole('button', { name: /Remove filter Origin country is/ }));
     await waitFor(() => expect(asked().at(-1)?.get('originCountry')).toBeNull());
+  });
+
+  it('opens a saved filter as a tab: the Proposed view, an origin country and the sort', async () => {
+    serve({
+      ...lists([brand(1, { name: 'Saffron & Co' })], [brand(2, { status: 'draft' })]),
+      'GET lists/admin/saved-filters?listKey=admin.catalog.brands': ok({
+        items: [
+          {
+            id: id(80),
+            listKey: 'admin.catalog.brands',
+            name: 'NZ proposals',
+            visibility: 'me',
+            payload: {
+              v: 1,
+              filters: { status: 'draft', originCountry: 'NZ' },
+              sort: 'name',
+              direction: 'desc',
+            },
+            ownedByMe: true,
+            canManage: true,
+          },
+        ],
+        canShare: false,
+      }),
+    });
+    mount();
+    await screen.findByText('Saffron & Co');
+    fireEvent.click(await screen.findByRole('button', { name: 'NZ proposals' }));
+    await waitFor(() => {
+      // The tab count reads the list too (without the filters): look at the list's own call.
+      const last = calls('GET', 'catalog/admin/brands?')
+        .map(([, path]) => new URLSearchParams(path.split('?')[1]))
+        .filter((params) => params.get('pageSize') === '25')
+        .at(-1);
+      expect(last?.get('status')).toBe('draft');
+      expect(last?.get('originCountry')).toBe('NZ');
+      expect(last?.get('direction')).toBe('desc');
+    });
   });
 
   it('shows a dash that screen readers read as "Not set" for an empty origin', async () => {
