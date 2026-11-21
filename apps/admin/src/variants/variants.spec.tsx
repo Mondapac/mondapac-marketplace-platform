@@ -110,6 +110,13 @@ function route(locales: readonly string[], overrides: Record<string, ApiResult<u
   const { summary, detail, page } = fixtures(locales);
   call.mockImplementation((method, path) => {
     const key = `${method} ${path.split('?')[0]}`;
+    // Saved filters are answered for this list's own key only; another key is not found.
+    if (
+      key === 'GET lists/admin/saved-filters' &&
+      path !== 'lists/admin/saved-filters?listKey=admin.catalog.variants'
+    ) {
+      return Promise.resolve(fail(404, 'not-found') as never);
+    }
     if (overrides[key] !== undefined) return Promise.resolve(overrides[key] as never);
     if (key === 'GET catalog/admin/variant-types')
       return Promise.resolve(ok({ items: [summary] }) as never);

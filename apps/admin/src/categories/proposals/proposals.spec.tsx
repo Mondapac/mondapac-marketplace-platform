@@ -8,11 +8,16 @@ const { inner, saved } = vi.hoisted(() => ({
   inner: vi.fn<(method: string, path: string, ...rest: unknown[]) => Promise<unknown>>(),
   saved: { items: [] as unknown[] },
 }));
-// Saved filters are served apart from the list's own calls the tests count and queue.
+// Only this list's own key is answered; any other key is not found. Saved filters are served apart from the list's own calls the tests count and queue.
 vi.mock('../../api/client.ts', () => ({
   callApi: (method: string, path: string, ...rest: unknown[]) =>
     path.startsWith('lists/admin/saved-filters')
-      ? Promise.resolve({ ok: true, status: 200, body: { items: saved.items, canShare: false } })
+      ? Promise.resolve(
+          method === 'GET' &&
+            path !== 'lists/admin/saved-filters?listKey=admin.catalog.category-proposals'
+            ? { ok: false, failure: { status: 404, code: 'not-found' } }
+            : { ok: true, status: 200, body: { items: saved.items, canShare: false } },
+        )
       : inner(method, path, ...rest),
 }));
 vi.mock('next/navigation', () => ({
@@ -230,6 +235,7 @@ describe('Category proposals list', () => {
         .filter((path) => path.startsWith('catalog/admin/category-proposals?'))
         .at(-1);
       expect(last).toContain('q=saffron');
+      expect(last).toContain('sort=created');
       expect(last).toContain('direction=desc');
     });
   });

@@ -10,11 +10,16 @@ const { inner, saved } = vi.hoisted(() => ({
   inner: vi.fn<(method: string, path: string, ...rest: unknown[]) => Promise<unknown>>(),
   saved: { items: [] as unknown[] },
 }));
-// Saved filters are served apart from the queue's own calls the tests count.
+// Only this list's own key is answered; any other key is not found. Saved filters are served apart from the queue's own calls the tests count.
 vi.mock('../api/client.ts', () => ({
   callApi: (method: string, path: string, ...rest: unknown[]) =>
     path.startsWith('lists/admin/saved-filters')
-      ? Promise.resolve({ ok: true, status: 200, body: { items: saved.items, canShare: false } })
+      ? Promise.resolve(
+          method === 'GET' &&
+            path !== 'lists/admin/saved-filters?listKey=admin.catalog.review-queue'
+            ? { ok: false, failure: { status: 404, code: 'not-found' } }
+            : { ok: true, status: 200, body: { items: saved.items, canShare: false } },
+        )
       : inner(method, path, ...rest),
 }));
 
@@ -162,6 +167,8 @@ describe('review queue lists', () => {
       const query = new URLSearchParams(queueCalls().at(-1)![1].split('?')[1]);
       expect(query.get('kind')).toBe('product-revision');
       expect(query.get('firstPublication')).toBe('true');
+      expect(query.get('sort')).toBe('submitted');
+      expect(query.get('direction')).toBe('asc');
     });
   });
 

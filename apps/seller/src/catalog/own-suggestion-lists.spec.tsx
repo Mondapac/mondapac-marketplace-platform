@@ -33,13 +33,18 @@ vi.mock('next/navigation', async () => {
 });
 const { inner, saved } = vi.hoisted(() => ({
   inner: vi.fn<(method: string, path: string, ...rest: unknown[]) => Promise<unknown>>(),
-  saved: { items: [] as unknown[] },
+  saved: { items: [] as unknown[], key: '' },
 }));
-// Saved filters are served apart from the list's own reads.
+// Saved filters are served apart from the list's own reads. Only the key a test sets is answered;
+// a read of any other list key is not found, so a wrong key is caught.
 vi.mock('../api/client.ts', () => ({
   callApi: (method: string, path: string, ...rest: unknown[]) =>
     path.startsWith('lists/seller/saved-filters')
-      ? Promise.resolve({ ok: true, status: 200, body: { items: saved.items, canShare: true } })
+      ? Promise.resolve(
+          method === 'GET' && path !== `lists/seller/saved-filters?listKey=${saved.key}`
+            ? { ok: false, failure: { status: 404, code: 'not-found' } }
+            : { ok: true, status: 200, body: { items: saved.items, canShare: true } },
+        )
       : inner(method, path, ...rest),
 }));
 
@@ -127,6 +132,7 @@ const rowOf = (label: string) => {
 beforeEach(() => {
   vi.clearAllMocks();
   saved.items = [];
+  saved.key = '';
   nav.state.search = new URLSearchParams();
   Object.defineProperty(window, 'matchMedia', {
     writable: true,
@@ -142,6 +148,7 @@ afterEach(() => cleanup());
 
 describe('value suggestions list', () => {
   it('opens a saved filter of the store as a tab with its status and search', async () => {
+    saved.key = 'seller.catalog.attribute-suggestions';
     saved.items = [
       {
         id: id(0xc1),
@@ -168,6 +175,8 @@ describe('value suggestions list', () => {
       expect(last).toContain('catalog/seller/attribute-suggestions?');
       expect(last).toContain('status=rejected');
       expect(last).toContain('q=xl');
+      expect(last).toContain('sort=created');
+      expect(last).toContain('direction=desc');
     });
   });
 
@@ -310,6 +319,39 @@ describe.each(MARKETS)('tag suggestions list in market $code', ({ locale, names 
 });
 
 describe('tag suggestions list, other states', () => {
+  it('opens a saved filter of the store as a tab with its status and search', async () => {
+    saved.key = 'seller.catalog.topic-suggestions';
+    saved.items = [
+      {
+        id: id(0xc2),
+        listKey: 'seller.catalog.topic-suggestions',
+        name: 'Turned down',
+        visibility: 'everyone',
+        payload: {
+          v: 1,
+          q: 'eid',
+          filters: { status: 'rejected' },
+          sort: 'created',
+          direction: 'desc',
+        },
+        ownedByMe: false,
+        canManage: false,
+      },
+    ];
+    serve([tag({ id: id(1), label: 'Open one' })]);
+    mount(<OwnTagSuggestionsList {...props} />);
+    await screen.findByText('Open one');
+    fireEvent.click(await screen.findByRole('button', { name: 'Turned down' }));
+    await waitFor(() => {
+      const last = String(call.mock.calls.at(-1)?.[1]);
+      expect(last).toContain('catalog/seller/topic-suggestions?');
+      expect(last).toContain('status=rejected');
+      expect(last).toContain('q=eid');
+      expect(last).toContain('sort=created');
+      expect(last).toContain('direction=desc');
+    });
+  });
+
   it('keeps the button, disabled, when the limit is reached', async () => {
     serve([tag({})], 'en-AU', { openCount: 5, maxOpen: 5 });
     mount(<OwnTagSuggestionsList {...props} />);

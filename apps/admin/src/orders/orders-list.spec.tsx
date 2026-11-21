@@ -661,11 +661,28 @@ describe('order list saved filters', () => {
     await screen.findByRole('table');
     fireEvent.click(await screen.findByRole('button', { name: 'Paid, captured' }));
     expect(await screen.findByText('No orders match')).toBeTruthy();
-    // Nothing is asked for the backwards range (only the unfiltered tab counts are read).
+    // Nothing is asked for the backwards range: the only list reads are the default read (the
+    // first load and the base counts of the built-in tabs), with no filter, search or range.
     const asked = call.mock.calls
       .map(([, p]) => String(p))
       .filter((p) => p.startsWith('ordering/admin/orders'));
-    expect(asked.filter((p) => p.includes('from=') || p.includes('to='))).toEqual([]);
+    const withoutPaging = (url: string) =>
+      Object.entries(paramsOf(url))
+        .filter(([key]) => key !== 'paging')
+        .sort();
+    expect(asked.length).toBeGreaterThan(0);
+    expect(withoutPaging(asked[0] ?? '')).toEqual([
+      ['direction', 'desc'],
+      ['page', '1'],
+      ['pageSize', '25'],
+      ['sort', 'created'],
+    ]);
+    expect(
+      asked.filter(
+        (url) =>
+          JSON.stringify(withoutPaging(url)) !== JSON.stringify(withoutPaging(asked[0] ?? '')),
+      ),
+    ).toEqual([]);
   });
 
   it('saves the current filters as a private filter and shows it as the open tab', async () => {
