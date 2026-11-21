@@ -2,9 +2,7 @@
 
 import {
   Banner,
-  Button,
   Card,
-  FormActionBar,
   Select,
   TextAreaField,
   TextField,
@@ -13,6 +11,7 @@ import {
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { FormSaveBar } from '../../shared/form-save-bar.tsx';
 import { callApi } from '../../api/client.ts';
 import { shortInstantInZone } from '../../shared/format.ts';
 import { instantToLocal, localToInstant } from '../slides/zone-time.ts';
@@ -382,22 +381,17 @@ export function PageSettings({
             <p className="text-sm text-fg-muted">{t('seo-elsewhere')}</p>
           </fieldset>
           {readOnly ? null : (
-            <FormActionBar status={<span className="block">{t('draft-note')}</span>}>
-              <Button
-                variant="secondary"
-                disabled={!dirty || command.pending}
-                onClick={() => {
-                  setForm(baseline);
-                  setErrors({});
-                  setSummary(null);
-                }}
-              >
-                {t('discard')}
-              </Button>
-              <Button type="submit" loading={command.pending} disabled={!dirty}>
-                {t('save-draft')}
-              </Button>
-            </FormActionBar>
+            <FormSaveBar
+              dirty={dirty}
+              saving={command.pending}
+              saveLabel={t('save-draft')}
+              note={t('draft-note')}
+              onDiscard={() => {
+                setForm(baseline);
+                setErrors({});
+                setSummary(null);
+              }}
+            />
           )}
         </form>
         <aside aria-label={t('now')} className="min-w-0">

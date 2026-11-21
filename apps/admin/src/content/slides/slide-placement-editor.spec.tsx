@@ -205,7 +205,7 @@ describe('saving', () => {
       ],
     });
     await expectToast('Saved to draft as version 3.');
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Discard' }).disabled).toBe(true);
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
   });
 
   it('names the zone, and says the end is required and at most 90 days after the start', () => {
@@ -335,7 +335,7 @@ describe('saving', () => {
 
   it('puts the form back as saved on Discard', () => {
     mount();
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Discard' }).disabled).toBe(true);
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
     fireEvent.click(within(position('Home · between shelves')).getByRole('checkbox'));
     fireEvent.change(screen.getByLabelText('Ends'), { target: { value: '2026-11-05T10:00' } });
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
@@ -366,6 +366,7 @@ describe('page frame and permission gates', () => {
 
   it('edits and saves with the edit permission', () => {
     mount();
+    fireEvent.click(within(position('Home · between shelves')).getByRole('checkbox'));
     expect(screen.getByRole('button', { name: 'Save to draft' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Discard' })).toBeTruthy();
     expect(

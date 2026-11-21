@@ -6,7 +6,6 @@ import {
   Button,
   Card,
   Dialog,
-  FormActionBar,
   IconButton,
   Menu,
   Select,
@@ -18,6 +17,7 @@ import {
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState } from 'react';
+import { FormSaveBar } from '../../shared/form-save-bar.tsx';
 import { callApi } from '../../api/client.ts';
 import { formatInstantInZone } from '../../shared/format.ts';
 import type { PageDetail } from '../pages/page-types.ts';
@@ -320,28 +320,19 @@ export function NavigationEditor({
           />
         ))}
         {canEdit ? (
-          <FormActionBar status={<span className="block">{t('draft-note')}</span>}>
-            <Button
-              variant="secondary"
-              disabled={!dirty || command.pending}
-              onClick={() => {
-                setDraft(baseline);
-                setErrors({});
-                setSummary(null);
-                command.reset();
-              }}
-            >
-              {t('discard')}
-            </Button>
-            {/* Approve and restore run from their dialog: only the dialog's button spins then. */}
-            <Button
-              type="submit"
-              loading={command.pending && dialog === null}
-              disabled={!dirty || (command.pending && dialog !== null)}
-            >
-              {t('save-draft')}
-            </Button>
-          </FormActionBar>
+          <FormSaveBar
+            dirty={dirty}
+            // Approve and restore run from their dialog: only the dialog's button spins then.
+            saving={command.pending && dialog === null}
+            saveLabel={t('save-draft')}
+            note={t('draft-note')}
+            onDiscard={() => {
+              setDraft(baseline);
+              setErrors({});
+              setSummary(null);
+              command.reset();
+            }}
+          />
         ) : null}
       </form>
       <Card title={t('versions')}>

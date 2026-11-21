@@ -83,13 +83,15 @@ describe('the Settings tab of a landing page', () => {
 
   it('has nothing to save until something changes, and discards back to the start', () => {
     mount();
-    const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Save to draft' });
-    expect(button.matches(':disabled')).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Save to draft' })).toBeNull();
     fireEvent.change(field('Page title'), { target: { value: 'Eid' } });
-    expect(button.disabled).toBe(false);
-    fireEvent.click(screen.getByRole('button', { name: 'Discard changes' }));
+    const bar = within(screen.getByRole('region', { name: 'Unsaved changes' }));
+    expect(bar.getByRole<HTMLButtonElement>('button', { name: 'Save to draft' }).disabled).toBe(
+      false,
+    );
+    fireEvent.click(bar.getByRole('button', { name: 'Discard' }));
     expect((field('Page title') as HTMLInputElement).value).toBe('Ramadan specials');
-    expect(button.matches(':disabled')).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Save to draft' })).toBeNull();
   });
 
   it('saves all the settings to the draft, with the window as instants of the Market zone', async () => {
@@ -130,9 +132,7 @@ describe('the Settings tab of a landing page', () => {
     ]);
     await expectToast('Settings saved to the draft.', 'success');
     // The form now shows the saved draft as its clean state, and says it waits for publishing.
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save to draft' }).disabled).toBe(
-      true,
-    );
+    expect(screen.queryByRole('button', { name: 'Save to draft' })).toBeNull();
     expect(screen.getByText(/wait for publishing/)).toBeTruthy();
   });
 

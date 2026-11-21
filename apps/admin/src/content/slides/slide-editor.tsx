@@ -1,18 +1,10 @@
 'use client';
 
-import {
-  Banner,
-  Button,
-  CheckboxRow,
-  FormActionBar,
-  Select,
-  TextAreaField,
-  TextField,
-  toast,
-} from '@mondapac/ui';
+import { Banner, CheckboxRow, Select, TextAreaField, TextField, toast } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
+import { FormSaveBar, useEditorLeaveGuard } from '../../shared/form-save-bar.tsx';
 import { callApi } from '../../api/client.ts';
 import { shortInstantInZone } from '../../shared/format.ts';
 import {
@@ -129,6 +121,7 @@ export function SlideEditor({
   const editable = canEdit && !archived;
   const creating = detail === null;
   const dirty = !sameForm(form, baseline);
+  const leaveGuard = useEditorLeaveGuard(dirty && canEdit, t('form'));
   const tone = (detail === null ? null : currentVersion(detail)?.content?.textTone) ?? 'light';
 
   // After a refused save the first marked field takes focus, so the reason is read at once.
@@ -432,17 +425,16 @@ export function SlideEditor({
             </p>
           )}
           {editable ? (
-            <div className="sticky bottom-0 z-10 -mx-4 bg-page px-4 pb-4 sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0">
-              <FormActionBar status={<span className="block">{t('approval-note')}</span>}>
-                <Button variant="secondary" disabled={!dirty || pending} onClick={discard}>
-                  {t('discard')}
-                </Button>
-                <Button type="submit" loading={pending}>
-                  {t('save')}
-                </Button>
-              </FormActionBar>
-            </div>
+            <FormSaveBar
+              dirty={dirty}
+              saving={pending}
+              saveLabel={t('save')}
+              note={t('approval-note')}
+              {...(creating ? { emptySummary: t('bar-new') } : {})}
+              onDiscard={discard}
+            />
           ) : null}
+          {leaveGuard}
         </form>
         <div className="min-w-0 xl:sticky xl:top-20">
           <SlidePreview form={form} tone={tone} />

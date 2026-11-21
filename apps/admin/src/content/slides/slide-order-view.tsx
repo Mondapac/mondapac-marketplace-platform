@@ -4,7 +4,6 @@ import {
   Banner,
   Button,
   EmptyState,
-  FormActionBar,
   LinkButton,
   LoadError,
   toast,
@@ -13,6 +12,7 @@ import {
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { FormSaveBar, useEditorLeaveGuard } from '../../shared/form-save-bar.tsx';
 import { callApi } from '../../api/client.ts';
 import { usePositionLabel } from './slide-labels.tsx';
 import { SlideOrderCard, type FocusRequest } from './slide-order-card.tsx';
@@ -104,6 +104,7 @@ export function SlideOrderView({
   }, [fetchOrder]);
 
   const dirty = !sameOrder(entries, baseline);
+  const leaveGuard = useEditorLeaveGuard(dirty && canEdit, t('page-title'));
 
   function moveSlide(index: number, direction: Direction) {
     const moved = entries[index];
@@ -241,26 +242,29 @@ export function SlideOrderView({
             footer={
               <>
                 <p className="mb-3 text-xs text-fg-muted">{t('footnote', { zone })}</p>
+                {/* Announces a move for screen readers; the save result is a toast. */}
+                <span role="status" aria-live="polite" className="sr-only">
+                  {message}
+                </span>
                 {canEdit ? (
-                  <FormActionBar
-                    status={
-                      <>
-                        {/* Announces a move for screen readers; the save result is a toast. */}
-                        <span role="status" aria-live="polite" className="block">
-                          {message}
-                        </span>
-                        <span className="block">{t('note')}</span>
-                      </>
-                    }
+                  <form
+                    noValidate
+                    className="flex flex-col gap-3"
+                    onSubmit={(event) => {
+                      event.preventDefault();
+                      void save();
+                    }}
                   >
-                    <Button variant="secondary" disabled={!dirty || pending} onClick={discard}>
-                      {t('discard')}
-                    </Button>
-                    <Button disabled={!dirty} loading={pending} onClick={() => void save()}>
-                      {t('save')}
-                    </Button>
-                  </FormActionBar>
+                    <FormSaveBar
+                      dirty={dirty}
+                      saving={pending}
+                      saveLabel={t('save')}
+                      note={t('note')}
+                      onDiscard={discard}
+                    />
+                  </form>
                 ) : null}
+                {leaveGuard}
               </>
             }
           />

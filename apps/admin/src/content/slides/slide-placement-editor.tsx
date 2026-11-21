@@ -1,19 +1,10 @@
 'use client';
 
-import {
-  Badge,
-  Banner,
-  Button,
-  CheckboxRow,
-  FormActionBar,
-  Icon,
-  Select,
-  TextField,
-  toast,
-} from '@mondapac/ui';
+import { Badge, Banner, CheckboxRow, Icon, Select, TextField, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { FormSaveBar, useEditorLeaveGuard } from '../../shared/form-save-bar.tsx';
 import { callApi } from '../../api/client.ts';
 import { SlideEditorHeader } from './slide-editor-header.tsx';
 import { positionMessageKey, usePositionLabel } from './slide-labels.tsx';
@@ -94,6 +85,7 @@ export function SlidePlacementEditor({
   const archived = detail.status === 'archived';
   const editable = canEdit && !archived;
   const dirty = !samePlacementForm(form, baseline);
+  const leaveGuard = useEditorLeaveGuard(dirty && canEdit, t('form'));
 
   // The live slides, for "n of max live". Without them the rows still work; the API checks the
   // places again when the slide is approved.
@@ -347,17 +339,15 @@ export function SlidePlacementEditor({
             </Banner>
           )}
           {editable ? (
-            <div className="sticky bottom-0 z-10 -mx-4 bg-page px-4 pb-4 sm:static sm:mx-0 sm:bg-transparent sm:px-0 sm:pb-0">
-              <FormActionBar status={<span className="block">{t('approval-note')}</span>}>
-                <Button variant="secondary" disabled={!dirty || pending} onClick={discard}>
-                  {t('discard')}
-                </Button>
-                <Button type="submit" loading={pending}>
-                  {t('save')}
-                </Button>
-              </FormActionBar>
-            </div>
+            <FormSaveBar
+              dirty={dirty}
+              saving={pending}
+              saveLabel={t('save')}
+              note={t('approval-note')}
+              onDiscard={discard}
+            />
           ) : null}
+          {leaveGuard}
         </div>
       </form>
     </div>
