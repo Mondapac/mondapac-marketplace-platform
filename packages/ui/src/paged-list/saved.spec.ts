@@ -60,6 +60,16 @@ describe('saved filters of a paged list', () => {
     expect(opened.page).toBe(1);
   });
 
+  it('leaves out a parameter a tab sets no value for', () => {
+    const list = {
+      ...base,
+      tabs: ['all', 'draft'],
+      tabParams: (tab: string) => ({ status: tab === 'draft' ? 'draft' : undefined }),
+    } as never;
+    expect(tabFilters(list, 'all')).toEqual({});
+    expect(tabFilters(list, 'draft')).toEqual({ status: 'draft' });
+  });
+
   it('says one message per refusal', () => {
     expect(problemOf({ status: 409, code: 'saved-filter.name-taken' })).toBe('name-taken');
     expect(problemOf({ status: 409, code: 'saved-filter.limit-reached' })).toBe('limit');

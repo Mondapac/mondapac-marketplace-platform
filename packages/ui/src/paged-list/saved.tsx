@@ -46,8 +46,12 @@ type TabsOf<Row> = Pick<PagedListConfig<Row>, 'tabs' | 'tabParam' | 'tabParams'>
 
 /** The query parameters a built-in tab sets (the route's payload has no views). */
 export function tabFilters<Row>(config: TabsOf<Row>, tab: string): Record<string, string> {
+  const own = Object.entries(config.tabParams?.(tab) ?? {}).filter(
+    // A tab that sets no value for a parameter (a list's "all") leaves it out.
+    (entry): entry is [string, string] => typeof entry[1] === 'string',
+  );
   return {
-    ...(config.tabParams?.(tab) ?? {}),
+    ...Object.fromEntries(own),
     ...(tab !== config.tabs[0] && config.tabParam !== undefined ? { [config.tabParam]: tab } : {}),
   };
 }
