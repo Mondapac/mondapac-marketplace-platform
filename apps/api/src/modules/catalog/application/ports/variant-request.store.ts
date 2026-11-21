@@ -11,6 +11,10 @@ import type { VariantRequest, VariantRequestStatus } from '../../domain/variant-
 export interface OpenRequestsFilter {
   /** A fragment of the product code; null: all. */
   readonly productCode: string | null;
+  /** Created at or after this instant (inclusive). */
+  readonly createdFrom?: Temporal.Instant | null;
+  /** Created before this instant (exclusive). */
+  readonly createdTo?: Temporal.Instant | null;
 }
 
 export interface OpenRequestsPage extends OpenRequestsFilter {

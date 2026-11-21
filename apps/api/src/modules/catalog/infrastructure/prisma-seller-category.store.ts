@@ -1,6 +1,7 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, IdGenerator, MarketContext } from '@mondapac/shared-kernel';
 import type { Prisma } from '../../../generated/prisma/client';
+import { createdAtWhere } from '../../../platform/list-query';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   NewCategoryProposal,
@@ -89,6 +90,7 @@ const pendingWhere = (
 ): Prisma.CatalogCategoryProposalWhereInput => ({
   marketId: market.marketId,
   status: 'pending',
+  ...createdAtWhere(filter),
   ...(filter.nameKey === null ? {} : { normalisedName: { contains: likeLiteral(filter.nameKey) } }),
 });
 

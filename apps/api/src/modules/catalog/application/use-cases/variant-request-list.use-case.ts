@@ -3,6 +3,7 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import {
+  parseNamedInstantRange,
   heldKeys,
   listPage,
   pageWindow,
@@ -172,6 +173,8 @@ export class VariantRequestList extends UseCase<
     }
     const body = closedInput(input ?? {}, [
       'q',
+      'createdFrom',
+      'createdTo',
       'sort',
       'direction',
       'page',
@@ -180,6 +183,8 @@ export class VariantRequestList extends UseCase<
       'limit',
     ]);
     if (!body.ok) return body;
+    const created = parseNamedInstantRange(body.value, 'createdFrom', 'createdTo');
+    if (!created.ok) return created;
     let text: string | null = null;
     const rawText = body.value['q'];
     if (rawText !== undefined && rawText !== null && rawText !== '') {
@@ -224,7 +229,11 @@ export class VariantRequestList extends UseCase<
     const read = await this.deps.unitOfWork.run(
       market,
       async () => {
-        const filter = { productCode: text };
+        const filter = {
+          productCode: text,
+          createdFrom: created.value.from,
+          createdTo: created.value.to,
+        };
         const total =
           paged.value.paging === 'pages'
             ? await this.deps.variantRequests.countOpen(market, filter)

@@ -185,6 +185,18 @@ export class OwnAttributeSuggestionsController {
     description:
       'Search in the label (contains), up to 120 characters; `search` is an older alias.',
   })
+  @ApiQuery({
+    name: 'createdFrom',
+    required: false,
+    description:
+      'ISO 8601 instant with an offset or Z; suggestions created at or after it (inclusive). Not with the older `afterId`/`limit` read.',
+  })
+  @ApiQuery({
+    name: 'createdTo',
+    required: false,
+    description:
+      'ISO 8601 instant with an offset or Z; suggestions created before it (exclusive), after createdFrom. Not with the older `afterId`/`limit` read.',
+  })
   @ApiQuery({ name: 'sort', required: false, enum: ['created', 'status', 'label'] })
   @ApiQuery({
     name: 'direction',
