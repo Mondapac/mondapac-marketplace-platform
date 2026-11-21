@@ -12,6 +12,7 @@ import {
   readIds,
   useListLoading,
   useRowSelection,
+  useBaseTabCounts,
   useSuperListQuery,
   writeIds,
 } from '@mondapac/ui';
@@ -51,6 +52,7 @@ import {
   type ListPagingMode,
   type OptionalColumn,
   type ProductsPage,
+  type ViewCounts,
   type Query,
   type View,
 } from './products-types.ts';
@@ -248,7 +250,18 @@ export function ProductsList({
   const limits = saved?.limits ?? { perOwner: 50, shared: 20 };
 
   const number = (value: number) => numberFormat(locale, {}).format(value);
-  const counts = answer?.counts ?? null;
+  // A saved filter is a tab of its own: it does not narrow the counts of the built-in tabs.
+  const counts = useBaseTabCounts<ViewCounts>({
+    savedId,
+    live: answer?.counts ?? null,
+    load: async () => {
+      const result = await callApi<ProductsPage>(
+        'GET',
+        `catalog/admin/products?${queryString({ ...DEFAULT_QUERY, pageSize: 1 })}`,
+      );
+      return result.ok ? result.body.counts : null;
+    },
+  });
   const filtered = query.q !== '' || filterCount(query.filters) > 0;
   const chipLabel = (field: (typeof FILTER_FIELDS)[number]): string | null => {
     const value = query.filters[field];

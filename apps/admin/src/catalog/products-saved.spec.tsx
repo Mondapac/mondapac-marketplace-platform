@@ -38,12 +38,16 @@ const row = (over: Partial<ProductRow> = {}): ProductRow => ({
   createdAt: '2026-10-01T01:00:00.000Z',
   ...over,
 });
-const page = (total = 1): ProductsPage => ({
+// Like the API: the counts follow the search and filters of the request, so a narrowed request
+// answers narrowed counts.
+const page = (total = 1, narrowed = false): ProductsPage => ({
   items: [row()],
   total,
   page: 1,
   pageSize: 25,
-  counts: { active: 1148, all: 1284, inactive: 136 },
+  counts: narrowed
+    ? { active: 12, all: 12, inactive: 0 }
+    : { active: 1148, all: 1284, inactive: 136 },
 });
 
 const filter = (over: Partial<SavedFilter> & Pick<SavedFilter, 'id' | 'name'>): SavedFilter => ({
@@ -122,14 +126,15 @@ function serve() {
       writes.push({ method, path, body, csrf });
       return Promise.resolve(writeReply(method, path, body));
     }
-    const total = path.includes('q=lamb') ? 12 : 1284;
-    return Promise.resolve({ ok: true, status: 200, body: page(total) });
+    const narrowed = path.includes('q=lamb');
+    return Promise.resolve({ ok: true, status: 200, body: page(narrowed ? 12 : 1284, narrowed) });
   }) as never);
 }
 const productCalls = () =>
   call.mock.calls
     .map((entry) => entry[1])
-    .filter((path) => path.startsWith('catalog/admin/products'));
+    // The one-row read of the built-in tab counts is not a list read.
+    .filter((path) => path.startsWith('catalog/admin/products') && !path.includes('pageSize=1'));
 
 function mount() {
   return render(
@@ -182,6 +187,16 @@ describe('saved views of the product list', () => {
     expect(names.slice(0, 3)).toEqual(['Active (1,148)', 'All (1,284)', 'Inactive (136)']);
     expect(names.slice(3)).toEqual(['Paused lamb (12)', 'Needs review (136)', 'Team picks']);
     expect(screen.getByRole('button', { name: 'Manage filters' })).toBeTruthy();
+  });
+
+  it("keeps the built-in tabs' counts when a saved filter is open", async () => {
+    mount();
+    fireEvent.click(await screen.findByRole('button', { name: 'Paused lamb (12)' }));
+    await waitFor(() => expect(productCalls().at(-1)).toContain('q=lamb'));
+    // The saved filter narrows its own list only; the other tabs still count their own states.
+    expect(await screen.findByRole('button', { name: 'Active (1,148)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'All (1,284)' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Inactive (136)' })).toBeTruthy();
   });
 
   it('applies the saved view when its tab is picked and leaves it when the page changes', async () => {
