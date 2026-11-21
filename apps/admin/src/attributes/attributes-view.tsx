@@ -30,6 +30,7 @@ export function AttributesView({
   paging,
   accountId,
   marketId,
+  zone,
 }: {
   readonly canEdit: boolean;
   /** `catalog.attribute.restructure`: merge values, archive and confirm an archive request. */
@@ -43,6 +44,8 @@ export function AttributesView({
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  /** The IANA zone of the table's times and of the Requested presets. */
+  readonly zone: string;
 }) {
   const t = useTranslations('attributes');
   const [tab, setTab] = useState<Tab>(initialTab);
@@ -131,6 +134,7 @@ export function AttributesView({
             paging={paging}
             accountId={accountId}
             marketId={marketId}
+            zone={zone}
             csrfToken={csrfToken}
           />
         </section>

@@ -1580,6 +1580,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'hasImages',
   ],
   'catalog/admin/attribute-suggestions': [
+    'createdFrom',
+    'createdTo',
     'limit',
     'q',
     'page',
@@ -1589,6 +1591,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'direction',
   ],
   'catalog/admin/topic-suggestions': [
+    'createdFrom',
+    'createdTo',
     'limit',
     'q',
     'page',
@@ -2303,6 +2307,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     hasImages: /^true$/,
   },
   'catalog/admin/attribute-suggestions': {
+    createdFrom: ISO_INSTANT,
+    createdTo: ISO_INSTANT,
     limit: /^([1-9][0-9]?|100)$/,
     page: /^[1-9][0-9]{0,3}$/,
     pageSize: /^([1-9][0-9]?|100)$/,
@@ -2311,6 +2317,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     direction: /^(asc|desc)$/,
   },
   'catalog/admin/topic-suggestions': {
+    createdFrom: ISO_INSTANT,
+    createdTo: ISO_INSTANT,
     limit: /^([1-9][0-9]?|100)$/,
     page: /^[1-9][0-9]{0,3}$/,
     pageSize: /^([1-9][0-9]?|100)$/,

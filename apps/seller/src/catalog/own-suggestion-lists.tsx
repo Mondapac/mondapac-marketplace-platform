@@ -7,12 +7,14 @@ import {
   LinkButton,
   type BadgeTone,
   type PagedAnswer,
+  type PagedFilterField,
   type PagedListConfig,
   type SuperColumn,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { PagedSuperList } from '../shared/paged-super-list.tsx';
+import { DATE_PRESETS, isDatePreset, presetRange } from '../orders/date-presets.ts';
 import { pickLabel } from './draft-content.ts';
 import { formatInstant, known } from './format.ts';
 import { SUGGESTION_STATUSES, type OwnSuggestion, type OwnTopicSuggestion } from './types.ts';
@@ -188,6 +190,7 @@ function OwnSuggestionsList<Row extends { readonly id: string; readonly label: s
   const t = useTranslations(kind.ns) as unknown as Translate;
   const tl = useTranslations(`${kind.ns}.list`) as unknown as Translate;
   const locale = useLocale();
+  const tp = useTranslations('sales-lists.date-preset');
   const [counts, setCounts] = useState<{ open: number; max: number } | null>(null);
   const [seen, setSeen] = useState(false);
   // The default locale rides in a ref: a state would change the config and read the list again.
@@ -256,6 +259,25 @@ function OwnSuggestionsList<Row extends { readonly id: string; readonly label: s
     [kind, tl, columnDefs],
   );
 
+  // The Sent presets read the day on the clock of the zone the table shows: the seller's own, or
+  // UTC while it could not be read (the table says so, ADR-0005).
+  const zone = timeZone ?? 'UTC';
+  const fields: readonly PagedFilterField[] = useMemo(
+    () => [
+      {
+        id: 'created',
+        label: tl('filter.name.created'),
+        range: { from: 'createdFrom', to: 'createdTo' },
+        options: DATE_PRESETS.map((preset) => ({ value: preset, label: tp(preset) })),
+      },
+    ],
+    [tl, tp],
+  );
+  const dateRange = useCallback(
+    (preset: string) => (isDatePreset(preset) ? presetRange(preset, zone, new Date()) : null),
+    [zone],
+  );
+
   const onAnswer = useCallback((answer: PagedAnswer<Row>) => {
     const whole = answer as unknown as {
       readonly openCount: number;
@@ -301,6 +323,8 @@ function OwnSuggestionsList<Row extends { readonly id: string; readonly label: s
         paging={paging}
         accountId={accountId}
         marketId={marketId}
+        fields={fields}
+        dateRange={dateRange}
         csrfToken={csrfToken}
         onAnswer={onAnswer}
       />

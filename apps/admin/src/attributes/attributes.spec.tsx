@@ -299,6 +299,7 @@ function mount(
           paging="pages"
           accountId="a"
           marketId="AU"
+          zone="Australia/Brisbane"
         />
       )}
     </NextIntlClientProvider>,

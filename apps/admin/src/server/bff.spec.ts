@@ -1238,30 +1238,34 @@ describe('relay of the created range on the activities and tags lists', () => {
       headers: { host: 'admin.localhost:3002' },
     });
 
-  it.each(['business-activities', 'topics', 'category-proposals', 'variant-requests'])(
-    'forwards createdFrom and createdTo of %s as instants and drops other text',
-    async (name) => {
-      const target = `catalog/admin/${name}`;
-      const list = upstreamOk();
-      await relay(
-        config,
-        get(target, `createdFrom=${encodeURIComponent(from)}&createdTo=${encodeURIComponent(to)}`),
-        target.split('/'),
-        list,
-      );
-      const asked = new URL(list.mock.calls[0]?.[0] as string).searchParams;
-      expect(asked.get('createdFrom')).toBe(from);
-      expect(asked.get('createdTo')).toBe(to);
-      const refused = upstreamOk();
-      await relay(
-        config,
-        get(target, 'createdFrom=yesterday&createdTo=2026-11-21'),
-        target.split('/'),
-        refused,
-      );
-      expect(refused.mock.calls[0]?.[0]).toBe(`http://api.test/${target}`);
-    },
-  );
+  it.each([
+    'business-activities',
+    'topics',
+    'category-proposals',
+    'variant-requests',
+    'attribute-suggestions',
+    'topic-suggestions',
+  ])('forwards createdFrom and createdTo of %s as instants and drops other text', async (name) => {
+    const target = `catalog/admin/${name}`;
+    const list = upstreamOk();
+    await relay(
+      config,
+      get(target, `createdFrom=${encodeURIComponent(from)}&createdTo=${encodeURIComponent(to)}`),
+      target.split('/'),
+      list,
+    );
+    const asked = new URL(list.mock.calls[0]?.[0] as string).searchParams;
+    expect(asked.get('createdFrom')).toBe(from);
+    expect(asked.get('createdTo')).toBe(to);
+    const refused = upstreamOk();
+    await relay(
+      config,
+      get(target, 'createdFrom=yesterday&createdTo=2026-11-21'),
+      target.split('/'),
+      refused,
+    );
+    expect(refused.mock.calls[0]?.[0]).toBe(`http://api.test/${target}`);
+  });
 });
 
 describe('relay of the connected accounts list', () => {

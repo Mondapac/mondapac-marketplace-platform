@@ -2038,7 +2038,10 @@
           "placeholder": "Words of your suggestion"
         },
         "filter": {
-          "title": "Filter suggestions"
+          "title": "Filter suggestions",
+          "name": {
+            "created": "Sent"
+          }
         },
         "sort": {
           "by": "Sort by",
@@ -2209,7 +2212,10 @@
           "placeholder": "Words of your tag suggestion"
         },
         "filter": {
-          "title": "Filter tag suggestions"
+          "title": "Filter tag suggestions",
+          "name": {
+            "created": "Sent"
+          }
         },
         "sort": {
           "by": "Sort by",

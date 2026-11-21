@@ -1512,6 +1512,35 @@ describe('relay allowlist for the seller reviews', () => {
     }
   });
 
+  it.each(['attribute-suggestions', 'topic-suggestions'])(
+    'forwards the sent range of %s as instants, and drops other text',
+    async (name) => {
+      const target = ['catalog', 'seller', name];
+      const from = '2026-11-14T00:00:00+10:00';
+      const to = '2026-11-21T00:00:00+10:00';
+      const request = (q: string) =>
+        new Request(`http://seller.localhost:3001/api/catalog/seller/${name}${q}`, {
+          method: 'GET',
+          headers: { host: 'seller.localhost:3001' },
+        });
+      const list = upstreamOk();
+      await relay(
+        config,
+        request(
+          `?status=open&createdFrom=${encodeURIComponent(from)}&createdTo=${encodeURIComponent(to)}`,
+        ),
+        target,
+        list,
+      );
+      const sent = new URL(list.mock.calls[0]?.[0] as string).searchParams;
+      expect(sent.get('createdFrom')).toBe(from);
+      expect(sent.get('createdTo')).toBe(to);
+      const refused = upstreamOk();
+      await relay(config, request('?createdFrom=yesterday&createdTo=2026-11-21'), target, refused);
+      expect(refused.mock.calls[0]?.[0]).toBe(`http://api.test/catalog/seller/${name}`);
+    },
+  );
+
   it("relays only the seller's own value suggestion write", async () => {
     const upstream = upstreamOk();
     const path = ['catalog', 'seller', 'products', ID, 'attribute-suggestions'];
