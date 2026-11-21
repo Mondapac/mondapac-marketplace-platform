@@ -8,7 +8,7 @@ import {
   DescriptionWriter,
   TextAreaField,
   TextField,
-  UnsavedBar,
+  SaveBar,
   toast,
   useUnsavedChangesGuard,
 } from '@mondapac/ui';
@@ -481,23 +481,6 @@ export function EditForm({
   return (
     <form className="flex flex-col gap-4" onSubmit={submit} noValidate>
       {guard.dialog}
-      {dirty ? (
-        <UnsavedBar
-          region={t('catalog.edit.bar.region')}
-          label={
-            refused.length > 0
-              ? t('catalog.edit.bar.errors', { count: refused.length })
-              : t(adding ? 'catalog.add.unsaved' : 'catalog.edit.bar.unsaved')
-          }
-          error={refused.length > 0}
-          discardLabel={t('catalog.edit.bar.discard')}
-          saveLabel={t(
-            published ? 'catalog.edit.bar.save-revision' : 'catalog.edit.bar.save-draft',
-          )}
-          saving={pending}
-          onDiscard={discardChanges}
-        />
-      ) : null}
       {adding ? (
         <BackLink href="/products" label={t('catalog.create.back')} />
       ) : (
@@ -830,6 +813,22 @@ export function EditForm({
           </div>
         </div>
       </fieldset>
+      <SaveBar
+        count={dirty ? 1 : 0}
+        summary={t(adding ? 'catalog.add.unsaved' : 'catalog.edit.bar.unsaved')}
+        errorCount={refused.length}
+        errorsSummary={t('catalog.edit.bar.errors', { count: refused.length })}
+        saving={pending}
+        aboveBottomBar
+        labels={{
+          region: t('catalog.edit.bar.region'),
+          discard: t('catalog.edit.bar.discard'),
+          save: t(published ? 'catalog.edit.bar.save-revision' : 'catalog.edit.bar.save-draft'),
+          // The page keeps its own label while it saves; the button shows the spinner.
+          saving: t(published ? 'catalog.edit.bar.save-revision' : 'catalog.edit.bar.save-draft'),
+        }}
+        onDiscard={discardChanges}
+      />
     </form>
   );
 }

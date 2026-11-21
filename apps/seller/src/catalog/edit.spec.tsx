@@ -275,7 +275,7 @@ describe('EditForm', () => {
         'Product text can\'t include certification words like "halal". Badges come from seller offers.',
       ),
     ).toBeTruthy();
-    expect(screen.getByText('1 field needs fixing')).toBeTruthy();
+    expect(screen.getByText(/1 field needs fixing/)).toBeTruthy();
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save draft' }).disabled).toBe(
       true,
     );
