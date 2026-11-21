@@ -189,7 +189,7 @@ describe('admin tags list', () => {
               v: 1,
               q: 'eid',
               filters: { status: 'archived', group: 'occasion' },
-              sort: 'name',
+              sort: 'slug',
               direction: 'asc',
             },
             ownedByMe: false,
@@ -207,6 +207,7 @@ describe('admin tags list', () => {
       expect(last).toContain('status=archived');
       expect(last).toContain('group=occasion');
       expect(last).toContain('q=eid');
+      expect(last).toContain('sort=slug');
     });
   });
 
