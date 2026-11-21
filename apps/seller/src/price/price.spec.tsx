@@ -14,6 +14,7 @@ import { formatMinor, inputOf, minorOf } from './money.ts';
 import { OfferPrices } from './offer-prices.tsx';
 import { formatInZone, instantOfZoned } from './zone-time.ts';
 import type { OfferPricesView } from './types.ts';
+import { STEP_UP_CANCELLED } from '../step-up/step-up.tsx';
 import { expectToast } from '../../test/toast-spy.ts';
 
 const call = vi.mocked(callApi);
@@ -55,9 +56,19 @@ const mount = (canEdit = true, v: OfferPricesView = view, zone?: string) =>
     </NextIntlClientProvider>,
   );
 
+const assign = vi.fn();
+const pressSave = () => fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+const bar = () => screen.queryByRole('region', { name: 'Unsaved changes' });
+
 beforeEach(() => {
   vi.clearAllMocks();
-  Object.defineProperty(window, 'location', { value: { assign: vi.fn() }, writable: true });
+  Object.defineProperty(window, 'location', { value: { assign }, writable: true });
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
 });
 afterEach(cleanup);
 
@@ -98,7 +109,7 @@ describe('OfferPrices', () => {
     mount();
     const [first] = screen.getAllByLabelText('Price (AUD, GST included)');
     fireEvent.change(first as HTMLElement, { target: { value: '45.50' } });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Save price' })[0] as HTMLElement);
+    pressSave();
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call).toHaveBeenCalledWith(
       'PUT',
@@ -119,7 +130,7 @@ describe('OfferPrices', () => {
     mount();
     const fields = screen.getAllByLabelText('Price (AUD, GST included)');
     fireEvent.change(fields[1] as HTMLElement, { target: { value: '5' } });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Save price' })[1] as HTMLElement);
+    pressSave();
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call.mock.calls[0]?.[3]).toBe('csrf');
     expect(call.mock.calls[0]?.[2]).toEqual({
@@ -133,7 +144,7 @@ describe('OfferPrices', () => {
     mount();
     const [first] = screen.getAllByLabelText('Price (AUD, GST included)');
     fireEvent.change(first as HTMLElement, { target: { value: '1.999' } });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Save price' })[0] as HTMLElement);
+    pressSave();
     expect(call).not.toHaveBeenCalled();
     expect(screen.getByText(/Enter a price above zero/)).toBeTruthy();
   });
@@ -146,12 +157,13 @@ describe('OfferPrices', () => {
     mount();
     const [first] = screen.getAllByLabelText('Price (AUD, GST included)');
     fireEvent.change(first as HTMLElement, { target: { value: '30' } });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Save price' })[0] as HTMLElement);
+    pressSave();
     await waitFor(() => expect(refresh).toHaveBeenCalled());
     expect(screen.getByText(/The price changed somewhere else/)).toBeTruthy();
     cleanup();
     mount(false);
-    expect(screen.queryByRole('button', { name: 'Save price' })).toBeNull();
+    expect(screen.queryByRole('textbox')).toBeNull();
+    expect(bar()).toBeNull();
   });
 
   it('maps API codes to message keys', () => {
@@ -179,7 +191,7 @@ describe('OfferPrices', () => {
     fireEvent.change(screen.getByLabelText('Ends (Australia/Sydney)'), {
       target: { value: '2026-11-01T10:30' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save special price' }));
+    pressSave();
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call).toHaveBeenCalledWith(
       'PUT',
@@ -202,9 +214,132 @@ describe('OfferPrices', () => {
     fireEvent.change(screen.getAllByLabelText('Price (AUD, GST included)')[0] as HTMLElement, {
       target: { value: '30' },
     });
-    fireEvent.click(screen.getAllByRole('button', { name: 'Save price' })[0] as HTMLElement);
+    pressSave();
     await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
     expect(call.mock.calls[1]?.[2]).toMatchObject({ expectedVersion: 4 });
+  });
+
+  it('shows no bar until a price changes, and Discard puts it back', () => {
+    mount();
+    expect(bar()).toBeNull();
+    const [first] = screen.getAllByLabelText<HTMLInputElement>('Price (AUD, GST included)');
+    fireEvent.change(first as HTMLElement, { target: { value: '25' } });
+    expect(bar()?.textContent).toContain('1 unsaved change');
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(first?.value).toBe('19.99');
+    expect(bar()).toBeNull();
+  });
+
+  it('saves the regular price, then the special with the version the first save returned', async () => {
+    call
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: { status: 'accepted', seriesVersion: 4, recordId: 'r', effectiveFrom: 'x' },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: { status: 'accepted', seriesVersion: 5 },
+      });
+    mount();
+    fireEvent.change(screen.getByLabelText('Special price (AUD, GST included)'), {
+      target: { value: '9.50' },
+    });
+    fireEvent.change(screen.getByLabelText('Ends (UTC)'), {
+      target: { value: '2026-11-01T10:30' },
+    });
+    fireEvent.change(screen.getAllByLabelText('Price (AUD, GST included)')[0] as HTMLElement, {
+      target: { value: '25' },
+    });
+    expect(bar()?.textContent).toContain('2 unsaved changes');
+    pressSave();
+    await expectToast('2 prices saved.');
+    expect(call.mock.calls.map((c) => c[1])).toEqual([
+      'pricing/seller/offers/o1/variants/v1/regular-price',
+      'pricing/seller/offers/o1/variants/v1/special-price',
+    ]);
+    expect(call.mock.calls[1]?.[2]).toMatchObject({ expectedVersion: 4 });
+    await waitFor(() => expect(bar()).toBeNull());
+  });
+
+  it('says some changes wait for review when one of several is held', async () => {
+    call
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: { status: 'pending-review', seriesVersion: 4, recordId: 'r', effectiveFrom: null },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: { status: 'accepted', seriesVersion: 1, recordId: 'r', effectiveFrom: 'x' },
+      });
+    mount();
+    const fields = screen.getAllByLabelText('Price (AUD, GST included)');
+    fireEvent.change(fields[0] as HTMLElement, { target: { value: '45' } });
+    fireEvent.change(fields[1] as HTMLElement, { target: { value: '5' } });
+    pressSave();
+    await expectToast(/2 prices saved\. Some changes wait for review/, 'info');
+  });
+
+  it('checks every changed price first and sends nothing while one is wrong', async () => {
+    mount();
+    const fields = screen.getAllByLabelText('Price (AUD, GST included)');
+    fireEvent.change(fields[0] as HTMLElement, { target: { value: '25' } });
+    fireEvent.change(fields[1] as HTMLElement, { target: { value: 'abc' } });
+    pressSave();
+    expect(screen.getByText(/Enter a price above zero/)).toBeTruthy();
+    expect(call).not.toHaveBeenCalled();
+    await waitFor(() => expect(document.activeElement).toBe(fields[1]));
+  });
+
+  it('keeps a refused price while the next one saves', async () => {
+    call
+      .mockResolvedValueOnce({
+        ok: false,
+        failure: { status: 422, code: 'pricing.regular-not-above-special' },
+      } as never)
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: { status: 'accepted', seriesVersion: 1, recordId: 'r', effectiveFrom: 'x' },
+      });
+    mount();
+    const fields = screen.getAllByLabelText('Price (AUD, GST included)');
+    fireEvent.change(fields[0] as HTMLElement, { target: { value: '10' } });
+    fireEvent.change(fields[1] as HTMLElement, { target: { value: '5' } });
+    pressSave();
+    await expectToast(/1 price saved; 1 needs attention/, 'warning');
+    await waitFor(() => expect(bar()?.textContent).toContain('1 unsaved change'));
+    await waitFor(() => expect(document.activeElement).toBe(fields[0]));
+  });
+
+  it('stops at a closed code dialog and sends nothing after it', async () => {
+    call.mockResolvedValueOnce({ ok: false, failure: { status: 0, code: STEP_UP_CANCELLED } });
+    mount();
+    const fields = screen.getAllByLabelText('Price (AUD, GST included)');
+    fireEvent.change(fields[0] as HTMLElement, { target: { value: '25' } });
+    fireEvent.change(fields[1] as HTMLElement, { target: { value: '5' } });
+    pressSave();
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(bar()?.textContent).toContain('2 unsaved changes'));
+    expect(call).toHaveBeenCalledTimes(1);
+  });
+
+  it('locks the fields while prices are sent, and leaves quietly when signed out', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    call.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)) as never);
+    mount();
+    const fields = screen.getAllByLabelText('Price (AUD, GST included)');
+    fireEvent.change(fields[0] as HTMLElement, { target: { value: '25' } });
+    pressSave();
+    await waitFor(() => expect((fields[1] as HTMLElement).matches(':disabled')).toBe(true));
+    answer({ ok: false, failure: { status: 401, code: 'auth.required' } });
+    await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+    const quiet = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(quiet);
+    expect(quiet.defaultPrevented).toBe(false);
   });
 
   it('reads datetime-local text as a wall-clock time in a zone', () => {
@@ -262,7 +397,7 @@ describe('OfferPrices', () => {
     fireEvent.change(screen.getByLabelText('Ends (UTC)'), {
       target: { value: '2026-11-01T10:30' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save special price' }));
+    pressSave();
     expect(await screen.findByText(/must be below the regular price/)).toBeTruthy();
   });
 
@@ -284,7 +419,7 @@ describe('OfferPrices', () => {
     };
     mount(false, held);
     expect(screen.getByText(/special price of \$5\.00/)).toBeTruthy();
-    expect(screen.queryByRole('button', { name: 'Save special price' })).toBeNull();
+    expect(screen.queryByLabelText('Special price (AUD, GST included)')).toBeNull();
     expect(priceProblemOf({ status: 409, code: 'pricing.regular-not-above-special' })).toBe(
       'regular-not-above',
     );

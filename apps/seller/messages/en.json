@@ -3369,7 +3369,6 @@
     },
     "retired": "This variant no longer takes prices.",
     "field": "Price ({currency}, GST included)",
-    "save": "Save price",
     "saved": {
       "accepted": "Saved. The new price is in force.",
       "pending-review": "Saved. The change is large, so it waits for review.",
@@ -3405,7 +3404,6 @@
       "start": "Starts ({zone})",
       "start-help": "Leave empty to start now. Times are in your time zone, {zone}.",
       "end": "Ends ({zone})",
-      "save": "Save special price",
       "end-now": "End special now",
       "cancel": "Cancel pending special",
       "saved": {
@@ -3416,6 +3414,13 @@
       "error": {
         "date": "Enter the end date and time, and a valid start if you set one."
       }
+    },
+    "bar": {
+      "saved": "{count, plural, one {# price saved.} other {# prices saved.}}",
+      "saved-news": "{count, plural, one {# price saved.} other {# prices saved.}} Some changes wait for review; each variant shows what is pending.",
+      "partial": "{saved, plural, one {# price saved} other {# prices saved}}; {failed, plural, one {# needs attention} other {# need attention}}. The message is under the field.",
+      "failed": "{count, plural, one {Nothing was saved. The message is under the field.} other {Nothing was saved. The messages are under the fields.}}",
+      "stopped": "{saved, plural, one {# price saved} other {# prices saved}} before the code was cancelled. The rest are still unsaved."
     }
   },
   "load": {

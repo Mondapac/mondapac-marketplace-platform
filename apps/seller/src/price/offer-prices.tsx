@@ -1,9 +1,10 @@
 'use client';
 
-import { Banner, Button, Card, FieldAction, TextField, toast } from '@mondapac/ui';
+import { Banner, Card, TextField, type SectionResult } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { PriceBarForm, usePricePart } from './price-bar.tsx';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { priceProblemOf } from './errors.ts';
 import { formatMinor, inputOf, minorOf } from './money.ts';
@@ -32,51 +33,68 @@ function VariantRow({
   const locale = useLocale();
   const router = useRouter();
   const callGuarded = useGuardedCall();
-  const [version, setVersion] = useState(variant.seriesVersion);
-  const [text, setText] = useState(
-    variant.inForce === null ? '' : inputOf(variant.inForce.amount, currency),
-  );
-  const [pending, setPending] = useState(false);
+  const [version, setVersionState] = useState(variant.seriesVersion);
+  // The version a save in a run reads: a regular price saved first moves it for the special.
+  const versionRef = useRef(variant.seriesVersion);
+  const setVersion = (next: number | null) => {
+    versionRef.current = next;
+    setVersionState(next);
+  };
+  const initialText = variant.inForce === null ? '' : inputOf(variant.inForce.amount, currency);
+  const [text, setText] = useState(initialText);
+  // The text last sent and taken: a price waiting for review stays typed, but is not a new change.
+  const [savedText, setSavedText] = useState(initialText);
   const [error, setError] = useState<string | null>(null);
   // A page refresh brings the version the server holds now; the typed text and message stay.
   useEffect(() => setVersion(variant.seriesVersion), [variant.seriesVersion]);
   const readOnly = !canEdit || variant.retired;
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
-    if (pending) return;
+  function check(): boolean {
+    const ok = minorOf(text, currency) !== null;
+    setError(ok ? null : t('price.error.invalid'));
+    return ok;
+  }
+
+  async function save(): Promise<SectionResult> {
     const amount = minorOf(text, currency);
-    if (amount === null) {
-      setError(t('price.error.invalid'));
-      return;
-    }
-    setPending(true);
+    if (amount === null) return 'failed';
     setError(null);
+    const sent = text;
     const result = await callGuarded<PriceWritten>(
       'PUT',
       `pricing/seller/offers/${offerId}/variants/${variant.variantId}/regular-price`,
-      { amount, currency, expectedVersion: version },
+      { amount, currency, expectedVersion: versionRef.current },
       csrfToken,
     );
-    setPending(false);
-    if (isStepUpCancelled(result)) return;
+    if (isStepUpCancelled(result)) return 'stopped';
     if (!result.ok) {
-      if (result.failure.status === 401) window.location.assign('/session-ended');
-      else {
-        const problem = priceProblemOf(result.failure);
-        setError(t(`price.error.${problem}`));
-        // The price changed elsewhere: read it again; the page shows the new version.
-        if (problem === 'stale') router.refresh();
-      }
-      return;
+      if (result.failure.status === 401) return part.signedOut();
+      const problem = priceProblemOf(result.failure);
+      setError(t(`price.error.${problem}`));
+      // The price changed elsewhere: read it again; the page shows the new version.
+      if (problem === 'stale') router.refresh();
+      return 'failed';
     }
     setVersion(result.body.seriesVersion);
-    const message = t(`price.saved.${result.body.status}`);
+    setSavedText(sent);
     // A price that waits for review, or did not change, is news rather than a done deal.
-    if (result.body.status === 'accepted') toast.success(message);
-    else toast.info(message);
+    part.note({
+      message: t(`price.saved.${result.body.status}`),
+      tone: result.body.status === 'accepted' ? 'success' : 'info',
+    });
     router.refresh();
+    return 'saved';
   }
+
+  const part = usePricePart(`${variant.variantId}:regular`, {
+    dirty: !readOnly && text.trim() !== savedText.trim(),
+    check,
+    save,
+    discard: () => {
+      setText(savedText);
+      setError(null);
+    },
+  });
 
   return (
     <Card title={t('price.variant', { number })}>
@@ -103,32 +121,17 @@ function VariantRow({
         ) : null}
         {variant.retired ? <p className="text-fg-muted">{t('price.retired')}</p> : null}
         {readOnly ? null : (
-          <form className="flex flex-col gap-1" onSubmit={(event) => void submit(event)} noValidate>
-            <div className="flex flex-wrap items-start gap-2">
-              <div className="min-w-0 basis-full sm:flex-1 sm:basis-0">
-                <TextField
-                  name={`price-${variant.variantId}`}
-                  label={t('price.field', { currency })}
-                  inputMode="decimal"
-                  value={text}
-                  error={error ?? undefined}
-                  onChange={(event) => {
-                    setText(event.target.value);
-                  }}
-                />
-              </div>
-              <FieldAction>
-                <Button
-                  type="submit"
-                  variant="secondary"
-                  loading={pending}
-                  disabled={pending || text.trim() === ''}
-                >
-                  {t('price.save')}
-                </Button>
-              </FieldAction>
-            </div>
-          </form>
+          <TextField
+            name={`price-${variant.variantId}`}
+            label={t('price.field', { currency })}
+            inputMode="decimal"
+            value={text}
+            error={error ?? undefined}
+            onChange={(event) => {
+              setText(event.target.value);
+              setError(null);
+            }}
+          />
         )}
         {variant.seriesVersion === null && variant.special === null ? null : (
           <SpecialPrice
@@ -139,6 +142,7 @@ function VariantRow({
             csrfToken={csrfToken}
             zone={zone}
             version={version}
+            versionRef={versionRef}
             onVersion={setVersion}
           />
         )}
@@ -147,7 +151,10 @@ function VariantRow({
   );
 }
 
-/** Regular prices of one offer: a section per variant with the price in force, a held one and a form. */
+/**
+ * Prices of one offer: a section per variant with the price in force, a held one, the regular
+ * price field and the special price. Every changed price is saved by the page's one save bar.
+ */
 export function OfferPrices({
   offerId,
   view,
@@ -166,8 +173,13 @@ export function OfferPrices({
   if (view.variants.length === 0) {
     return <p className="text-fg-muted">{t('price.no-variants')}</p>;
   }
+  // Per variant, the regular price first: the special must stay below the price it saves.
+  const order = view.variants.flatMap((variant) => [
+    `${variant.variantId}:regular`,
+    `${variant.variantId}:special`,
+  ]);
   return (
-    <div className="flex flex-col gap-4">
+    <PriceBarForm order={order} page={t('price.title')} enabled={canEdit}>
       {view.variants.map((variant, index) => (
         <VariantRow
           key={variant.variantId}
@@ -180,6 +192,6 @@ export function OfferPrices({
           zone={zone}
         />
       ))}
-    </div>
+    </PriceBarForm>
   );
 }
