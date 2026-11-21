@@ -61,8 +61,10 @@ export function ProfileEditor({
   const [prefsProblem, setPrefsProblem] = useState<Problem | null>(null);
   const [leaving, setLeaving] = useState(false);
   const formRef = useRef<HTMLFormElement>(null);
-  // A part the server really changed: the page then reloads what the server shows.
-  const changed = useRef(false);
+  // What the server said of each part saved in this run: changed, or already so.
+  const outcome = useRef<{ name?: boolean; prefs?: boolean }>({});
+  const nameAlert = useRef<HTMLDivElement>(null);
+  const prefsAlert = useRef<HTMLDivElement>(null);
 
   const nameDirty = name !== savedName;
   const prefsDirty = zone !== savedPrefs.zone || language !== savedPrefs.language;
@@ -89,9 +91,7 @@ export function ProfileEditor({
     if (result.ok) {
       setName(trimmed);
       setSavedName(trimmed);
-      if (result.body.changed) changed.current = true;
-      if (result.body.changed) toast.success(t('name-saved'));
-      else toast.info(t('name-same'));
+      outcome.current.name = result.body.changed;
       return 'saved';
     }
     if (result.failure.status === 401) return signedOut();
@@ -109,9 +109,7 @@ export function ProfileEditor({
     );
     if (result.ok) {
       setSavedPrefs({ zone, language });
-      if (result.body.changed) changed.current = true;
-      if (result.body.changed) toast.success(t('prefs-saved'));
-      else toast.info(t('prefs-same'));
+      outcome.current.prefs = result.body.changed;
       return 'saved';
     }
     if (result.failure.status === 401) return signedOut();
@@ -136,15 +134,31 @@ export function ProfileEditor({
   );
 
   async function submit() {
-    changed.current = false;
+    outcome.current = {};
     const run = await sections.saveAll();
     if (run === null || run.stopped) return;
+    const { name: nameChanged, prefs: prefsChanged } = outcome.current;
+    // One message for the run: both parts saved, or the one that was.
+    if (nameChanged !== undefined && prefsChanged !== undefined) {
+      toast.success(t('profile-saved'));
+    } else if (nameChanged !== undefined) {
+      if (nameChanged) toast.success(t('name-saved'));
+      else toast.info(t('name-same'));
+    } else if (prefsChanged !== undefined) {
+      if (prefsChanged) toast.success(t('prefs-saved'));
+      else toast.info(t('prefs-same'));
+    }
     // The details card and the account menu read these on the server.
-    if (changed.current) router.refresh();
+    if (nameChanged === true || prefsChanged === true) router.refresh();
     if (run.failed.length > 0) {
-      queueMicrotask(() =>
-        formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]')?.focus(),
-      );
+      // After the refusal renders: the wrong field, or the failed part's message.
+      setTimeout(() => {
+        const field = formRef.current?.querySelector<HTMLElement>('[aria-invalid="true"]');
+        const alert = run.failed.includes('name') ? nameAlert.current : prefsAlert.current;
+        const target = field ?? alert;
+        target?.scrollIntoView?.({ block: 'nearest' });
+        target?.focus();
+      }, 0);
     }
   }
 
@@ -170,7 +184,9 @@ export function ProfileEditor({
       <Card title={t('name-title')}>
         <div className="flex flex-col gap-4 sm:max-w-md">
           {nameProblem === null || nameProblem.field !== null ? null : (
-            <Banner tone="critical">{t(`error.${nameProblem.key}`, nameProblem.values)}</Banner>
+            <div ref={nameAlert} tabIndex={-1} className="outline-none">
+              <Banner tone="critical">{t(`error.${nameProblem.key}`, nameProblem.values)}</Banner>
+            </div>
           )}
           <TextField
             name="displayName"
@@ -189,7 +205,9 @@ export function ProfileEditor({
         <div className="flex flex-col gap-4 sm:max-w-md">
           <p className="text-sm text-fg-muted">{t('prefs-intro-admin')}</p>
           {prefsProblem === null ? null : (
-            <Banner tone="critical">{t(`error.${prefsProblem.key}`, prefsProblem.values)}</Banner>
+            <div ref={prefsAlert} tabIndex={-1} className="outline-none">
+              <Banner tone="critical">{t(`error.${prefsProblem.key}`, prefsProblem.values)}</Banner>
+            </div>
           )}
           <Select
             name="timezone"

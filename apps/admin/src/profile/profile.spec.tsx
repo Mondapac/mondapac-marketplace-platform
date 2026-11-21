@@ -136,7 +136,22 @@ describe('ProfileEditor: one save bar', () => {
       'identity/admin/profile/preferences',
     ]);
     await waitFor(() => expect(saveBar()).toBeNull());
+    await expectToast('Your profile was saved.');
     expect(router.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('moves focus to the message of a part that failed without a field error', async () => {
+    call
+      .mockResolvedValueOnce({ ok: true, status: 200, body: { changed: true } })
+      .mockResolvedValueOnce({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
+    editor();
+    fireEvent.change(screen.getByLabelText('Display name'), { target: { value: 'Amina R.' } });
+    fireEvent.change(zone(), { target: { value: 'UTC' } });
+    saveAll();
+    await expectToast('Your name was updated.');
+    const alert = await screen.findByRole('alert');
+    await waitFor(() => expect(document.activeElement).toBe(alert.parentElement));
+    expect(saveBar()?.textContent).toContain('1 unsaved change');
   });
 
   it('keeps a failed part dirty while the other part saves', async () => {
