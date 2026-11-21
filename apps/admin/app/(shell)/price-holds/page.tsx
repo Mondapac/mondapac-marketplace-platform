@@ -1,28 +1,20 @@
 import { LoadError } from '@mondapac/ui';
-import { redirect } from 'next/navigation';
+import { headers } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
+import { panelHostFor } from '../../../src/server/bff.ts';
+import { panelConfig } from '../../../src/server/config.ts';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { serverGet } from '../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../src/server/session.ts';
-import { HoldsQueue } from '../../../src/pricing/holds-queue.tsx';
-import {
-  DECIDE_PERMISSION,
-  PAGE_SIZE,
-  VIEW_PERMISSION,
-  type PriceHoldPage,
-} from '../../../src/pricing/types.ts';
+import { HoldsList } from '../../../src/pricing/holds-list.tsx';
+import { VIEW_PERMISSION } from '../../../src/pricing/types.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations();
   return { title: t('pricing.holds.title') };
 }
 
-export default async function PriceHoldsPage({
-  searchParams,
-}: {
-  readonly searchParams: Promise<{ readonly after?: string | readonly string[] }>;
-}) {
-  const { after } = await searchParams;
+export default async function PriceHoldsPage() {
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
@@ -56,29 +48,16 @@ export default async function PriceHoldsPage({
   if (!gate.session.permissionKeys.includes(VIEW_PERMISSION)) {
     return shell(message('no-access'));
   }
-  const query = new URLSearchParams({ limit: String(PAGE_SIZE) });
-  if (typeof after === 'string' && after !== '') query.set('after', after);
-  const result = await serverGet<PriceHoldPage>(`pricing/admin/price-holds?${query.toString()}`);
-  if (result.kind === 'signed-out') redirect('/session-ended');
-  if (result.kind === 'forbidden') return shell(message('no-access'));
-  if (result.kind !== 'ok') return shell(message('unavailable'));
+  // List paging (settings): page numbers only when the Market says so; unreadable means Previous and next.
+  const mode = await serverGet<{ readonly listPaging: string }>('settings/admin/list-paging');
+  const paging = mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
+  const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
   return shell(
-    <div className="flex flex-col gap-4">
-      <HoldsQueue
-        rows={result.body.items}
-        canDecide={gate.session.permissionKeys.includes(DECIDE_PERMISSION)}
-        csrfToken={gate.session.csrfToken}
-      />
-      {result.body.next === null ? null : (
-        <p>
-          <a
-            className="font-medium text-link underline"
-            href={`/price-holds?after=${encodeURIComponent(result.body.next)}`}
-          >
-            {t('pricing.holds.more')}
-          </a>
-        </p>
-      )}
-    </div>,
+    <HoldsList
+      paging={paging}
+      accountId={gate.session.accountId}
+      marketId={marketId}
+      csrfToken={gate.session.csrfToken}
+    />,
   );
 }
