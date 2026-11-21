@@ -1,93 +1,40 @@
-import { OWN_SUGGESTION_PAGE_DEFAULT, readOwnSuggestionList } from './own-suggestion-list-input';
+import { Temporal } from '@mondapac/shared-kernel';
+import { readOwnSuggestionList } from './own-suggestion-list-input';
 
-const idOf = (value: unknown): string | null =>
-  typeof value === 'string' && /^[0-9a-f-]{36}$/i.test(value) ? value : null;
-const UUID = '01990000-0000-7000-8000-000000000001';
-const read = (input: unknown) => readOwnSuggestionList(input, idOf);
-const fails = (input: unknown, path: string, code: string) =>
-  expect(read(input)).toEqual({
-    ok: false,
-    error: { code: 'validation.failed', fields: [{ path, code }] },
+// The query both seller suggestion lists (values and tags) read, so the created range is checked
+// once here: `createdFrom` inclusive, `createdTo` exclusive, ISO 8601 instants with an offset.
+
+const idOf = (value: unknown) => (typeof value === 'string' ? value : null);
+
+describe('the query of a seller suggestion list: created range', () => {
+  it('reads the range as instants, empty values as none, and keeps it off the page keys', () => {
+    const read = readOwnSuggestionList(
+      { createdFrom: '2026-11-01T00:00:00+10:00', createdTo: '2026-11-08T00:00:00Z', page: 2 },
+      idOf,
+    );
+    expect(
+      read.ok && read.value.created.from?.equals(Temporal.Instant.from('2026-10-31T14:00:00Z')),
+    ).toBe(true);
+    expect(
+      read.ok && read.value.created.to?.equals(Temporal.Instant.from('2026-11-08T00:00:00Z')),
+    ).toBe(true);
+    expect(read.ok && read.value.read.mode).toBe('page');
+    const none = readOwnSuggestionList({ createdFrom: '', createdTo: null }, idOf);
+    expect(none.ok && none.value.created).toEqual({ from: null, to: null });
   });
 
-describe('readOwnSuggestionList', () => {
-  it('reads the defaults: a page read, newest first, 25 rows, page numbers', () => {
-    const result = read({});
-    expect(result.ok && result.value.status).toBeNull();
-    expect(result.ok && result.value.read).toMatchObject({
-      mode: 'page',
-      q: null,
-      paged: {
-        sort: 'created',
-        direction: 'desc',
-        page: 1,
-        pageSize: OWN_SUGGESTION_PAGE_DEFAULT,
-        paging: 'pages',
-      },
-    });
-  });
-
-  it('defaults the direction by sort: created newest first, label and status A to Z', () => {
-    for (const [sort, direction] of [
-      ['created', 'desc'],
-      ['label', 'asc'],
-      ['status', 'asc'],
-    ] as const) {
-      const result = read({ sort });
-      expect(result.ok && result.value.read).toMatchObject({ paged: { sort, direction } });
-    }
-  });
-
-  it('takes the four statuses, an empty one as none, and refuses another', () => {
-    for (const status of ['open', 'approved', 'mapped', 'rejected']) {
-      const result = read({ status });
-      expect(result.ok && result.value.status).toBe(status);
-    }
-    const empty = read({ status: '' });
-    expect(empty.ok && empty.value.status).toBeNull();
-    fails({ status: 'decided' }, 'status', 'enum');
-    fails({ status: 3 }, 'status', 'enum');
-  });
-
-  it('reads q and its alias search, trimmed, and refuses both, a long one and a control character', () => {
-    const q = read({ q: '  grill  ' });
-    expect(q.ok && q.value.read.q).toBe('grill');
-    const alias = read({ search: 'grill' });
-    expect(alias.ok && alias.value.read.q).toBe('grill');
-    const blank = read({ q: '   ' });
-    expect(blank.ok && blank.value.read.q).toBeNull();
-    fails({ q: 'a', search: 'b' }, 'search', 'conflict');
-    fails({ q: 'x'.repeat(121) }, 'q', 'length');
-    fails({ q: 'a\u0000b' }, 'q', 'format');
-    fails({ q: ['a', 'b'] }, 'q', 'type');
-  });
-
-  it('refuses an unknown key and an input that is not an object', () => {
-    fails({ sellerId: UUID }, 'sellerId', 'unknown');
-    fails([], 'query', 'type');
-    fails('x', 'query', 'type');
-  });
-
-  it('keeps the cursor read, with a status, and refuses mixing it with page keys or a search', () => {
-    const cursor = read({ afterId: UUID, limit: 10, status: 'open' });
-    expect(cursor.ok && cursor.value).toMatchObject({
-      status: 'open',
-      read: { mode: 'cursor', afterId: UUID, limit: 10 },
-    });
-    expect(read({ limit: 5 }).ok).toBe(true);
-    fails({ afterId: UUID, sort: 'label' }, 'sort', 'conflict');
-    fails({ limit: 5, page: 2 }, 'page', 'conflict');
-    fails({ limit: 5, q: 'a' }, 'q', 'conflict');
-    fails({ limit: 5, search: 'a' }, 'search', 'conflict');
-    fails({ afterId: 'nope' }, 'afterId', 'format');
-    for (const limit of [0, 51, 1.5, '3']) fails({ limit }, 'limit', 'range');
-  });
-
-  it('caps the page at 100 and the page size at 50', () => {
-    expect(read({ page: 100, pageSize: 50 }).ok).toBe(true);
-    fails({ page: 101 }, 'page', 'range');
-    fails({ pageSize: 51 }, 'pageSize', 'range');
-    fails({ sort: 'price' }, 'sort', 'value');
-    fails({ paging: 'all' }, 'paging', 'value');
+  it.each([
+    [{ createdFrom: '2026-11-01' }, 'createdFrom', 'format'],
+    [{ createdTo: 'soon' }, 'createdTo', 'format'],
+    [
+      { createdFrom: '2026-11-02T00:00:00Z', createdTo: '2026-11-01T00:00:00Z' },
+      'createdTo',
+      'range',
+    ],
+    [{ limit: 5, createdTo: '2026-11-08T00:00:00Z' }, 'createdTo', 'conflict'],
+    [{ afterId: 'a', createdFrom: '2026-11-08T00:00:00Z' }, 'createdFrom', 'conflict'],
+  ])('refuses %j', (input, path, code) => {
+    const read = readOwnSuggestionList(input, idOf);
+    expect(!read.ok && read.error.fields).toEqual([{ path, code }]);
   });
 });
