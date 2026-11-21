@@ -620,6 +620,10 @@ describe('the seller card after a conflict', () => {
       `shipping/admin/sellers/${SELLER}/delivery-methods`,
     );
     expect(screen.getByLabelText<HTMLInputElement>('Same-day delivery').checked).toBe(false);
+    // The reloaded draft is what is stored, so nothing is left unsaved.
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull(),
+    );
   });
 });
 

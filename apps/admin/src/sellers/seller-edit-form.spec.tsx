@@ -38,6 +38,7 @@ function Part({
       if (result === 'saved') setSaved(text);
       return result;
     },
+    needsCode: name !== 'c',
     savedMessage: () => `${name} saved alone`,
     discard: () => setText(saved),
   });
@@ -94,7 +95,7 @@ describe('SellerEditForm', () => {
     expect(bar()).toBeNull();
     type('c', 'three');
     type('a', 'one');
-    expect(bar()?.textContent).toContain('2 unsaved changes');
+    expect(bar()?.textContent).toContain('2 parts with unsaved changes');
     pressSave();
     const dialog = within(confirmDialog());
     const items = dialog.getAllByText(/^Part /).map((node) => node.textContent);
@@ -153,7 +154,7 @@ describe('SellerEditForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save 2 parts', hidden: true }));
     await expectToast(/1 part saved; 1 needs attention/, 'warning');
     expect(calls).toEqual(['a', 'b']);
-    await waitFor(() => expect(bar()?.textContent).toContain('1 unsaved change'));
+    await waitFor(() => expect(bar()?.textContent).toContain('1 part with unsaved changes'));
   });
 
   it('stops at a cancelled code and sends nothing after it', async () => {
@@ -170,7 +171,73 @@ describe('SellerEditForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save 3 parts', hidden: true }));
     await expectToast(/1 part saved before the code was cancelled/, 'info');
     expect(calls).toEqual(['a', 'b']);
-    await waitFor(() => expect(bar()?.textContent).toContain('2 unsaved changes'));
+    await waitFor(() => expect(bar()?.textContent).toContain('2 parts with unsaved changes'));
+  });
+
+  it('says nothing was saved when every part fails, and focuses the first message', async () => {
+    mount([
+      { name: 'a', answer: () => Promise.resolve('failed'), calls: [] },
+      { name: 'b', answer: () => Promise.resolve('failed'), calls: [] },
+    ]);
+    type('a', 'x');
+    type('b', 'y');
+    pressSave();
+    fireEvent.click(screen.getByRole('button', { name: 'Save 2 parts', hidden: true }));
+    await expectToast(/Nothing was saved/, 'error');
+    // The parts here mark nothing invalid, so focus falls back to nothing and the page stays put.
+    expect(bar()?.textContent).toContain('2 parts with unsaved changes');
+  });
+
+  it('locks every field while the parts are sent', async () => {
+    let finish: (result: SectionResult) => void = () => undefined;
+    const slow = () =>
+      new Promise<SectionResult>((resolve) => {
+        finish = resolve;
+      });
+    mount([
+      { name: 'a', answer: slow, calls: [] },
+      { name: 'b', answer: ok, calls: [] },
+    ]);
+    type('a', 'x');
+    type('b', 'y');
+    pressSave();
+    fireEvent.click(screen.getByRole('button', { name: 'Save 2 parts', hidden: true }));
+    await waitFor(() => expect(screen.getByLabelText('b').matches(':disabled')).toBe(true));
+    finish('saved');
+    await waitFor(() => expect(screen.getByLabelText('b').matches(':disabled')).toBe(false));
+  });
+
+  it('mentions codes only when a listed part may ask for one', () => {
+    mount([{ name: 'c', answer: ok, calls: [] }]);
+    type('c', 'z');
+    pressSave();
+    expect(within(confirmDialog()).queryByText(/two-step code/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep editing', hidden: true }));
+    cleanup();
+    mount([{ name: 'a', answer: ok, calls: [] }]);
+    type('a', 'x');
+    pressSave();
+    expect(within(confirmDialog()).getByText(/two-step code/)).toBeTruthy();
+  });
+
+  it('drops a removed part from the count', () => {
+    const view = mount([
+      { name: 'a', answer: ok, calls: [] },
+      { name: 'b', answer: ok, calls: [] },
+    ]);
+    type('a', 'x');
+    type('b', 'y');
+    expect(bar()?.textContent).toContain('2 parts with unsaved changes');
+    view.rerender(
+      <NextIntlClientProvider locale="en-AU" messages={messages}>
+        <SellerEditForm order={['a', 'b', 'c']} page="Seller">
+          {[{ name: 'a', answer: ok, calls: [] }].map((part) => (
+            <Part key={part.name} {...part} />
+          ))}
+        </SellerEditForm>
+      </NextIntlClientProvider>,
+    );
+    expect(bar()?.textContent).toContain('1 part with unsaved changes');
   });
 
   it('Discard puts every part back', () => {

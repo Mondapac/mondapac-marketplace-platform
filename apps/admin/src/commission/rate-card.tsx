@@ -12,7 +12,7 @@ import {
   type SectionResult,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useRef, useState } from 'react';
+import { useId, useRef, useState } from 'react';
 import { useSellerSection } from '../sellers/seller-edit-form.tsx';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import {
@@ -50,6 +50,7 @@ export function CommissionRateCard({
   const [resetNote, setResetNote] = useState('');
   const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
   const busy = useRef(false);
+  const resetHintId = useId();
   const sentForReview = useSentForReview();
   // Setting or removing the rate needs a fresh two-step code: the shared dialog asks for it.
   const guarded = useGuardedCall();
@@ -112,6 +113,7 @@ export function CommissionRateCard({
         to: bpsOf(text) === null ? text.trim() : percentOf(bpsOf(text) ?? 0, locale),
       }),
     ],
+    needsCode: true,
     check,
     save,
     savedMessage: () => t('saved-done'),
@@ -204,10 +206,12 @@ export function CommissionRateCard({
             />
             {rate.source === 'seller' ? (
               <ActionRow>
+                {/* A typed rate is saved or discarded first: the reset is a separate action. */}
                 <Button
                   variant="secondary"
-                  // A typed rate is saved or discarded first: the reset is a separate action.
-                  disabled={pending !== null || dirty || section.saving}
+                  disabled={pending !== null || section.saving}
+                  softDisabled={dirty}
+                  aria-describedby={dirty ? resetHintId : undefined}
                   onClick={() => {
                     setResetNote('');
                     setNoteError(null);
@@ -216,6 +220,11 @@ export function CommissionRateCard({
                 >
                   {t('reset')}
                 </Button>
+                {dirty ? (
+                  <p id={resetHintId} className="text-sm text-fg-muted">
+                    {t('reset-hint')}
+                  </p>
+                ) : null}
               </ActionRow>
             ) : null}
           </div>

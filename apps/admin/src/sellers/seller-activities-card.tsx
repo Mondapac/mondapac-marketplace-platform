@@ -100,7 +100,9 @@ export function SellerActivitiesCard({
 
   const extraIds = (mainId: string | undefined) =>
     extras.map((e) => e.value).filter((id) => id !== mainId);
+  // Dropping an inactive activity at Edit is a change too: saving removes it, and the confirm shows it.
   const dirty =
+    canEdit &&
     editing &&
     (main?.value !== (current.mainActivityId ?? undefined) ||
       extraIds(main?.value).join() !== current.extraActivityIds.join() ||
@@ -152,6 +154,15 @@ export function SellerActivitiesCard({
     return 'failed';
   }
 
+  /** One confirm line: old to new, or the value unchanged. */
+  function line(label: string, was: readonly string[], now: readonly string[]): string {
+    const show = (names: readonly string[]) =>
+      names.length === 0 ? t('confirm-none') : names.join(', ');
+    return was.join() === now.join()
+      ? t('confirm-same', { label, value: show(now) })
+      : t('confirm-change', { label, from: show(was), to: show(now) });
+  }
+
   function close() {
     setErrors({});
     setProblem(null);
@@ -161,20 +172,20 @@ export function SellerActivitiesCard({
   const section = useSellerSection('activities', {
     dirty,
     title: t('title'),
-    lines:
-      main === null
-        ? []
-        : [
-            `${t('main')}: ${main.label}`,
-            ...(extraIds(main.value).length === 0
-              ? []
-              : [
-                  `${t('extra')}: ${extras
-                    .filter((e) => e.value !== main.value)
-                    .map((e) => e.label)
-                    .join(', ')}`,
-                ]),
-          ],
+    lines: [
+      line(
+        t('main'),
+        current.mainActivityId === null ? [] : [nameOf(current.mainActivityId)],
+        main === null ? [] : [main.label],
+      ),
+      line(
+        t('extra'),
+        current.extraActivityIds.map(nameOf),
+        extras.filter((e) => e.value !== main?.value).map((e) => e.label),
+      ),
+      ...(reason.trim() === '' ? [] : [t('confirm-reason', { reason: reason.trim() })]),
+    ],
+    needsCode: true,
     check,
     save,
     savedMessage: () => (changed.current ? t('saved') : t('unchanged')),

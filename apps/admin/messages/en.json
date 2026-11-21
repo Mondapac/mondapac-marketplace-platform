@@ -1105,7 +1105,11 @@
         "unavailable": "The service is not available. Try again in a moment.",
         "unknown": "The change could not be saved."
       },
-      "names-unavailable": "Activities can't be changed here because the activity names could not be loaded. Reload the page, or ask for the catalog activity read permission."
+      "names-unavailable": "Activities can't be changed here because the activity names could not be loaded. Reload the page, or ask for the catalog activity read permission.",
+      "confirm-change": "{label}: {from} to {to}",
+      "confirm-same": "{label}: {value} (unchanged)",
+      "confirm-reason": "Reason: {reason}",
+      "confirm-none": "none"
     },
     "health-queue": {
       "title": "Sellers that need a look",
@@ -1345,7 +1349,9 @@
       },
       "saved": "{count, plural, one {# part saved.} other {# parts saved.}}",
       "partial": "{saved, plural, one {# part saved} other {# parts saved}}; {failed, plural, one {# needs attention} other {# need attention}}. Its message is on its card.",
-      "stopped": "{saved, plural, one {# part saved} other {# parts saved}} before the code was cancelled. The rest are still unsaved."
+      "stopped": "{saved, plural, one {# part saved} other {# parts saved}} before the code was cancelled. The rest are still unsaved.",
+      "summary": "{count, plural, one {# part with unsaved changes} other {# parts with unsaved changes}}",
+      "failed": "{count, plural, one {Nothing was saved. The message is on the part.} other {Nothing was saved. The messages are on each part.}}"
     }
   },
   "certificates": {
@@ -4149,7 +4155,8 @@
         }
       },
       "col": {}
-    }
+    },
+    "reset-hint": "Save or discard the typed rate first."
   },
   "catalog": {
     "review": {

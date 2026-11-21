@@ -198,9 +198,10 @@ describe('CommissionRateCard', () => {
     await saveAll();
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     // The typed rate stays a draft; the reset is open again once it is discarded.
-    expect(
-      screen.getByRole<HTMLButtonElement>('button', { name: 'Reset to Market rate' }).disabled,
-    ).toBe(true);
+    const held = screen.getByRole('button', { name: 'Reset to Market rate' });
+    expect(held.getAttribute('aria-disabled')).toBe('true');
+    expect(held.getAttribute('aria-describedby')).toBeTruthy();
+    expect(screen.getByText('Save or discard the typed rate first.')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     fireEvent.click(screen.getByRole('button', { name: 'Reset to Market rate' }));
     typeNote(within(screen.getByRole('dialog')));

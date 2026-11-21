@@ -38,6 +38,8 @@ export interface SellerSection {
   readonly check: () => boolean;
   /** Sends the part. It shows its own refusal; `stopped` ends the run (code cancelled, signed out). */
   readonly save: () => Promise<SectionResult>;
+  /** Saving may ask for a two-step code: the confirm then says each part asks for its own. */
+  readonly needsCode: boolean;
   /** The part's own saved message, used when it is the only part saved. */
   readonly savedMessage: () => string;
   readonly discard: () => void;
@@ -108,6 +110,7 @@ export function SellerEditForm({
   const [dirtyKeys, setDirtyKeys] = useState<ReadonlySet<string>>(new Set());
   const [confirming, setConfirming] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  const formRef = useRef<HTMLFormElement>(null);
 
   const dirtyInOrder = order.filter((key) => dirtyKeys.has(key));
   const saves = useSectionSaves(
@@ -182,9 +185,12 @@ export function SellerEditForm({
       const only = parts.find((part) => part.key === result.saved[0]);
       if (saved === 1 && only !== undefined) toast.success(only.section.savedMessage());
       else if (saved > 1) toast.success(t('saved', { count: saved }));
-    } else if (saved > 0) {
-      toast.warning(t('partial', { saved, failed: result.failed.length }));
+      return;
     }
+    if (saved > 0) toast.warning(t('partial', { saved, failed: result.failed.length }));
+    else toast.error(t('failed', { count: result.failed.length }));
+    // After the failed parts render their messages: take the admin to the first one.
+    setTimeout(() => focusFirstProblem(formRef.current), 0);
   }
 
   function discard() {
@@ -196,6 +202,7 @@ export function SellerEditForm({
     <SellerEditContext.Provider value={registry}>
       <SavingContext.Provider value={saves.saving}>
         <form
+          ref={formRef}
           noValidate
           className="flex flex-col gap-6"
           onSubmit={(event) => {
@@ -203,16 +210,22 @@ export function SellerEditForm({
             submit();
           }}
         >
-          {children}
+          {/* Nothing can change while the parts are sent, so each part sends what the confirm listed. */}
+          <fieldset
+            disabled={saves.saving}
+            className="m-0 flex min-w-0 flex-col gap-6 border-0 p-0"
+          >
+            {children}
+          </fieldset>
           <SaveBar
             count={saves.count}
-            summary={tr('settings.bar.summary', { count: saves.count })}
+            summary={t('summary', { count: saves.count })}
             saving={saves.saving}
             labels={{
               region: tr('settings.bar.region'),
               discard: tr('settings.bar.discard'),
               save: tr('settings.bar.save'),
-              saving: tr('settings.bar.save'),
+              saving: tr('settings.bar.saving'),
             }}
             onDiscard={discard}
           />
@@ -244,11 +257,23 @@ export function SellerEditForm({
               </li>
             ))}
           </ul>
-          <p className="mt-3 text-sm text-fg-muted">{t('confirm.codes')}</p>
+          {parts.some(({ section }) => section.needsCode) ? (
+            <p className="mt-3 text-sm text-fg-muted">{t('confirm.codes')}</p>
+          ) : null}
         </Dialog>
       </SavingContext.Provider>
     </SellerEditContext.Provider>
   );
+}
+
+/** Focuses the first field marked invalid, else the first critical message, inside the form. */
+function focusFirstProblem(form: HTMLFormElement | null) {
+  const target = form?.querySelector<HTMLElement>('[aria-invalid="true"], [role="alert"]');
+  if (target === null || target === undefined) return;
+  if (target.tabIndex < 0 && !target.hasAttribute('tabindex'))
+    target.setAttribute('tabindex', '-1');
+  target.focus();
+  target.scrollIntoView?.({ block: 'center' });
 }
 
 function withKey(keys: ReadonlySet<string>, key: string): ReadonlySet<string> {

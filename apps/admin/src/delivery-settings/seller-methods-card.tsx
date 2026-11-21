@@ -108,6 +108,7 @@ export function SellerMethodsCard({
       const method = t(`deliverySettings.method.${change.method}`);
       return `${t(`${P}.confirm.line.${change.key}`, { method })} ${t(`${P}.confirm.seller.${change.key}`, { method })}`;
     }),
+    needsCode: false,
     check,
     save,
     savedMessage: () => t(`${P}.saved`),
