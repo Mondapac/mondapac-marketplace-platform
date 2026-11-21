@@ -108,9 +108,8 @@ describe('VariantsTable SKU and Selling', () => {
   it('sends one PUT with only the changed units, trimmed, and nothing for an unchanged save', async () => {
     call.mockResolvedValue({ ok: true, status: 200, body: { changedVariantIds: ['v1', 'v3'] } });
     mount();
-    expect(screen.getByRole('button', { name: 'Save changes' }).hasAttribute('disabled')).toBe(
-      true,
-    );
+    // Nothing changed yet: no save bar.
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
     fireEvent.change(skuBox('Small'), { target: { value: '  SM-1 ' } });
     fireEvent.click(sell('Huge'));
     fireEvent.click(save(2));

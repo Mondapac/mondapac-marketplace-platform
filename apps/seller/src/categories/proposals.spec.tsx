@@ -262,6 +262,23 @@ describe('shelf picker', () => {
     );
   });
 
+  it('shows the save bar for a new choice only, and Discard clears it', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: { version: 5 } });
+    picker();
+    const bar = () => screen.queryByRole('region', { name: 'Unsaved changes' });
+    expect(bar()).toBeNull();
+    const shelf = screen.getByLabelText<HTMLSelectElement>('Shelf');
+    fireEvent.change(shelf, { target: { value: id(20) } });
+    fireEvent.click(within(bar()!).getByRole('button', { name: 'Discard' }));
+    expect(shelf.value).toBe('');
+    expect(bar()).toBeNull();
+    fireEvent.change(shelf, { target: { value: id(20) } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save shelf' }));
+    await screen.findByText('The Offer is on the shelf.');
+    // The saved shelf is not a change any more.
+    expect(bar()).toBeNull();
+  });
+
   it('explains a stale write', async () => {
     call.mockResolvedValue({ ok: false, failure: { status: 409, code: 'conflict.stale' } });
     picker();
