@@ -14751,25 +14751,6 @@
       "call": "Call",
       "team-chat": "Team chat"
     },
-    "filters": {
-      "state": "State",
-      "severity": "Severity",
-      "live": "Live",
-      "open": "Open",
-      "acknowledged": "Acknowledged",
-      "resolved": "Resolved",
-      "all": "All",
-      "clear": "Clear filters"
-    },
-    "col": {
-      "alert": "Alert",
-      "severity": "Severity",
-      "state": "State",
-      "key": "Key",
-      "events": "Events",
-      "opened": "Opened",
-      "response": "Response"
-    },
     "response": {
       "acknowledged-by": "Acknowledged by {name}",
       "acknowledged": "Acknowledged",
@@ -14783,18 +14764,7 @@
       "not-sent": "Not sent (no roster)"
     },
     "events-count": "{count, plural, one {# event} other {# events}}",
-    "list-foot": "{count, plural, one {# alert} other {# alerts}} · by severity, then newest",
-    "masked-note": "IP addresses are masked in the list. Open an alert to see it in full.",
-    "load-more": "Load more",
-    "empty": {
-      "live-title": "No live alerts",
-      "live": "The rules ran {when} and found nothing.",
-      "filtered-title": "No alerts match these filters",
-      "filtered": "Change the state or severity filters to see more."
-    },
     "error": {
-      "alerts-title": "Couldn't load alerts",
-      "alerts": "The server did not answer. Alert emails are sent by the server whether or not this page loads.",
       "on-call-title": "Couldn't load the on-call view"
     },
     "ago": {
@@ -14924,8 +14894,139 @@
       "empty": "The roster is a file on the server. It names who is on call each week, the escalation order, the incident commander and the security owner. Until it is there, no alert is sent. Ask DevOps to add it."
     },
     "loading": "Loading alerts",
-    "announce": "New critical alert: {title}",
-    "retrying": "Trying again in 30 seconds."
+    "retrying": "Trying again in 30 seconds.",
+    "list": {
+      "title": "Security alerts",
+      "intro": "IP addresses are masked in the list; open an alert to see one in full.",
+      "no-access": "You do not have access to security alerts.",
+      "back-home": "Back to the dashboard",
+      "views": "Alert views",
+      "view": {
+        "all": "All",
+        "open": "Open",
+        "acknowledged": "Acknowledged",
+        "critical": "Critical (live S1)",
+        "resolved": "Resolved"
+      },
+      "not-yet": "Not yet",
+      "refresh-failed": "Couldn't refresh. Showing alerts as of {time}.",
+      "retrying": "Trying again in 30 seconds.",
+      "col": {
+        "alert": "Alert",
+        "severity": "Severity",
+        "key": "Key",
+        "events": "Events",
+        "opened": "Opened",
+        "state": "State",
+        "response": "Response",
+        "actions": "Actions",
+        "alert-id": "Alert ID",
+        "first-event": "First event",
+        "last-event": "Last event",
+        "acknowledged": "Acknowledged",
+        "resolved": "Resolved"
+      },
+      "search": {
+        "label": "Search",
+        "placeholder": "Search by account ID, IP or event ID",
+        "help": "Finds alerts whose key is exactly what you type: an account ID, an IP address, the Market code or an event ID. Part of a key finds nothing."
+      },
+      "chip-search": "Key is {text}",
+      "filter": {
+        "title": "Filter alerts",
+        "events": "{count, plural, one {# event} other {# events}}",
+        "name": {
+          "severity": "Severity",
+          "rule": "Rule",
+          "keyType": "Key type",
+          "opened": "Opened",
+          "minEvents": "Events at least"
+        }
+      },
+      "rule": {
+        "admin-sign-in-after-failures": "Admin signed in after repeated failed attempts",
+        "payout-account-changes-burst": "Several seller payout accounts changed within an hour",
+        "sign-in-failures-account": "Many failed sign-ins on one account",
+        "sign-in-failures-ip": "Many failed sign-ins from one address",
+        "admin-second-factor-failures": "Repeated wrong admin second-factor codes",
+        "second-factor-locked": "A second factor was locked after too many wrong codes",
+        "admin-role-changes-burst": "Many admin role assignments within an hour",
+        "money-movement-alert": "A payment, payout or dispute needs a person",
+        "retired-category-relaxing-policy": "A relaxing certification policy was found on a retired category",
+        "admin-bulk-pii-reveal": "An admin revealed a lot of customer personal data within an hour",
+        "webhook-signature-failures": "Webhooks with bad signatures from one address",
+        "sign-in-throttled-burst": "Many sign-in attempts hit the rate limit",
+        "payout-live-check-failures": "The live check before payouts keeps failing",
+        "sign-in-failures-daily": "Failed sign-ins across the Market in a day"
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "severity": "Severity",
+          "opened": "Opened",
+          "events": "Events",
+          "last-event": "Last event"
+        },
+        "severity": {
+          "first": "Critical first",
+          "second": "Low first"
+        },
+        "opened": {
+          "first": "Newest first",
+          "second": "Oldest first"
+        },
+        "events": {
+          "first": "Most events first",
+          "second": "Fewest events first"
+        },
+        "last-event": {
+          "first": "Most recent first",
+          "second": "Least recent first"
+        }
+      },
+      "sorted": "Sorted by {field}: {order}",
+      "match": "{count, plural, one {# alert matches} other {# alerts match}}",
+      "range": "{from}-{to} of {total}",
+      "loading": "Loading alerts…",
+      "error": {
+        "unavailable": "The alerts couldn't be loaded. The server did not answer. Alert emails are sent by the server whether or not this page loads.",
+        "refused": "This search can't be run. Change the key or the filters, or clear them."
+      },
+      "empty": {
+        "all": "No alerts yet. The rules found nothing.",
+        "open": "No open alerts.",
+        "acknowledged": "No acknowledged alerts waiting to be resolved.",
+        "critical": "No live critical alerts.",
+        "resolved": "No alert has been resolved.",
+        "no-match": "No alerts match",
+        "no-match-help": "Try other filters or clear them."
+      },
+      "select": {
+        "page": "Select all alerts on this page",
+        "page-short": "Select all on this page",
+        "row": "Select {name}"
+      },
+      "selection": {
+        "selected": "{count, plural, one {# alert selected} other {# alerts selected}}",
+        "all": "{count, plural, one {The # matching alert is selected} other {All # matching alerts are selected}}",
+        "all-open": "All matching alerts are selected",
+        "select-all": "Select all {count, number} matching",
+        "select-all-open": "Select all matching",
+        "clear": "Clear selection"
+      },
+      "bulk": {
+        "button": "Bulk action",
+        "selected": "{count, plural, one {# alert selected} other {# alerts selected}}",
+        "all-open": "All matching alerts selected"
+      },
+      "actions": {
+        "for": "Actions for {name}",
+        "open": "Open",
+        "acknowledge": "Acknowledge…",
+        "resolve": "Resolve…"
+      }
+    }
   },
   "sales-lists": {
     "chip": "{field} is {value}",

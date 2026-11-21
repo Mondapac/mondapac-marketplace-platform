@@ -5,8 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { formatInstantInZone } from '../shared/format.ts';
-import { ResponseText } from './alerts-list.tsx';
-import { SeverityBadge, StateBadge, useAgo, useNow, usePoll } from './parts.tsx';
+import { ResponseText, SeverityBadge, StateBadge, useAgo, useNow, usePoll } from './parts.tsx';
 import {
   minutesBetween,
   NOTE_MAX,
