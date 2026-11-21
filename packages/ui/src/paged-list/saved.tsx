@@ -21,6 +21,7 @@ export const SAVED_LIMITS = { perOwner: 50, shared: 20 } as const;
 
 export interface SavedPayload {
   readonly v: 1;
+  readonly view?: string;
   readonly q?: string;
   readonly filters: Readonly<Record<string, string>>;
   readonly sort: string;
@@ -42,7 +43,7 @@ export interface SavedFiltersAnswer {
   readonly canShare: boolean;
 }
 
-type TabsOf<Row> = Pick<PagedListConfig<Row>, 'tabs' | 'tabParam' | 'tabParams'>;
+type TabsOf<Row> = Pick<PagedListConfig<Row>, 'tabs' | 'tabParam' | 'tabParams' | 'savedViews'>;
 
 /** The query parameters a built-in tab sets (the route's payload has no views). */
 export function tabFilters<Row>(config: TabsOf<Row>, tab: string): Record<string, string> {
@@ -58,6 +59,16 @@ export function tabFilters<Row>(config: TabsOf<Row>, tab: string): Record<string
 
 /** What a list holds now, as the document a saved filter keeps (paging and columns are not kept). */
 export function payloadOf<Row>(config: TabsOf<Row>, query: PagedQuery): SavedPayload {
+  if (config.savedViews === true) {
+    return {
+      v: 1,
+      view: query.tab,
+      ...(query.q === '' ? {} : { q: query.q }),
+      filters: query.filters,
+      sort: query.sort,
+      direction: query.direction,
+    };
+  }
   return {
     v: 1,
     ...(query.q === '' ? {} : { q: query.q }),
@@ -73,6 +84,21 @@ export function queryOfPayload<Row>(
   defaults: PagedQuery,
   payload: SavedPayload,
 ): PagedQuery {
+  if (config.savedViews === true) {
+    const view =
+      payload.view !== undefined && config.tabs.includes(payload.view)
+        ? payload.view
+        : defaults.tab;
+    return {
+      ...defaults,
+      tab: view,
+      q: payload.q ?? '',
+      filters: payload.filters,
+      sort: payload.sort,
+      direction: payload.direction,
+      page: 1,
+    };
+  }
   let best = config.tabs[0] ?? defaults.tab;
   let bestMatches = 0;
   let consumed: readonly string[] = [];

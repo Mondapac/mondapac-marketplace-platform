@@ -70,6 +70,22 @@ describe('saved filters of a paged list', () => {
     expect(tabFilters(list, 'draft')).toEqual({ status: 'draft' });
   });
 
+  it('saves the tab as the payload view when the list declares views', () => {
+    const list = { ...byParam, savedViews: true };
+    const defaults = DEFAULT_PAGED_QUERY(list);
+    const query = { ...defaults, tab: 'open', filters: { type: 'a' } };
+    const payload = payloadOf(list, query);
+    expect(payload).toEqual({
+      v: 1,
+      view: 'open',
+      filters: { type: 'a' },
+      sort: 'name',
+      direction: 'asc',
+    });
+    expect(queryOfPayload(list, defaults, payload)).toEqual({ ...query, page: 1 });
+    expect(queryOfPayload(list, defaults, { ...payload, view: 'nope' }).tab).toBe('all');
+  });
+
   it('says one message per refusal', () => {
     expect(problemOf({ status: 409, code: 'saved-filter.name-taken' })).toBe('name-taken');
     expect(problemOf({ status: 409, code: 'saved-filter.limit-reached' })).toBe('limit');

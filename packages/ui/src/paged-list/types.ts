@@ -102,6 +102,12 @@ export interface PagedListConfig<Row> {
    */
   readonly savedKey?: string;
   /**
+   * The list's saved payload has a `view` (the registry list declares its views): the built-in tab
+   * is saved as `view` and its own query parameters stay out of `filters`. Default: no views, the
+   * tab is saved as the parameters it sets.
+   */
+  readonly savedViews?: boolean;
+  /**
    * Whether a saved filter belongs on this list when several lists share one key (the Product
    * review queue and the Revision queue are told apart by `kind`). Default: every one fits.
    */
