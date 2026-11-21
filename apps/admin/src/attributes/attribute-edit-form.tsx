@@ -10,9 +10,11 @@ import {
   TextAreaField,
   TextField,
   type SearchSelectOption,
+  SaveBar,
+  useUnsavedChangesGuard,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
-import { useEffect, useRef, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useFocusFirstInvalid } from '../auth/use-focus-first-invalid.ts';
 import {
   HELP_MAX,
@@ -71,6 +73,7 @@ export function AttributeEditForm({
   readonly initialErrors?: FieldErrors;
 }) {
   const t = useTranslations('attributes.editor');
+  const tr = useTranslations();
   const selectLabels = useSelectLabels();
   const { locales, dataType } = detail;
   const [form, setForm] = useState<EditorForm>(() => formOf(detail));
@@ -252,6 +255,27 @@ export function AttributeEditForm({
     formRef.current?.querySelector<HTMLElement>('[data-form-problem]')?.focus();
   }, [problem]);
   const hasErrors = Object.keys(errors).length > 0;
+  const saved = useMemo(() => JSON.stringify(formOf(detail)), [detail]);
+  const dirty = JSON.stringify(form) !== saved;
+  // Leaving with an unsaved attribute asks first (the dialog the settings pages use).
+  const guard = useUnsavedChangesGuard(
+    dirty,
+    {
+      title: tr('settings.leave.title'),
+      message: (info) => tr('settings.leave.message', { count: info.count, page: info.page }),
+      stay: tr('settings.leave.stay'),
+      leave: tr('settings.leave.leave'),
+    },
+    { count: 1, page: t('label') },
+  );
+
+  function discard() {
+    setForm(formOf(detail));
+    call.clear();
+    setErrors({});
+    setNote('');
+    setNoteError(null);
+  }
 
   return (
     <form
@@ -603,13 +627,25 @@ export function AttributeEditForm({
       ) : null}
 
       <div className="flex flex-wrap gap-2">
-        <Button type="submit" loading={call.pending} disabled={call.pending}>
-          {t('save')}
-        </Button>
         <Button variant="secondary" disabled={call.pending} onClick={onCancel}>
           {t('cancel')}
         </Button>
       </div>
+      <SaveBar
+        count={dirty ? 1 : 0}
+        summary={tr('settings.bar.unsaved')}
+        // Not every refusal clears while the admin types (a value code, a measure setting), so
+        // Save stays on: each attempt checks the form again and shows what needs fixing.
+        saving={call.pending}
+        labels={{
+          region: tr('settings.bar.region'),
+          discard: tr('settings.bar.discard'),
+          save: tr('settings.bar.save'),
+          saving: tr('settings.bar.saving'),
+        }}
+        onDiscard={discard}
+      />
+      {guard.dialog}
     </form>
   );
 }

@@ -7,8 +7,10 @@ import {
   CheckboxRow,
   EmptyState,
   LoadError,
+  SaveBar,
   Select,
   DetailSkeleton,
+  useUnsavedChangesGuard,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -210,6 +212,7 @@ function LinksEditor({
   readonly onSaved: () => void;
 }) {
   const t = useTranslations('categories.links');
+  const tr = useTranslations();
   const [own, setOwn] = useState(body.own?.featureSetId != null);
   const [featureSetId, setFeatureSetId] = useState(body.own?.featureSetId ?? '');
   const [inheritFilters, setInheritFilters] = useState((body.own?.filters.length ?? 0) === 0);
@@ -252,6 +255,36 @@ function LinksEditor({
   );
   const sent = inheritFilters ? [] : filters;
   const tightens = (own ? featureSetId : '') !== (body.own?.featureSetId ?? '');
+  const savedFilters = body.own?.filters ?? [];
+  const filtersChanged =
+    sent.length !== savedFilters.length || sent.some((code, i) => code !== savedFilters[i]);
+  // The feature set and the filters are the two things this editor changes.
+  const count = Number(tightens) + Number(filtersChanged);
+  const errorCount =
+    Number(failure === 'need-feature-set' && own && featureSetId === '') +
+    Number(noteError === 'required' && trimmedNote(note) === null);
+  // Leaving with links that are not saved asks first (the dialog the settings pages use).
+  const guard = useUnsavedChangesGuard(
+    count > 0,
+    {
+      title: tr('settings.leave.title'),
+      message: (info) => tr('settings.leave.message', { count: info.count, page: info.page }),
+      stay: tr('settings.leave.stay'),
+      leave: tr('settings.leave.leave'),
+    },
+    { count, page: t('editor') },
+  );
+
+  function discard() {
+    setOwn(body.own?.featureSetId != null);
+    setFeatureSetId(body.own?.featureSetId ?? '');
+    setInheritFilters((body.own?.filters.length ?? 0) === 0);
+    setFilters(body.own?.filters ?? []);
+    setPick('');
+    setNote('');
+    setNoteError(null);
+    setFailure(null);
+  }
 
   async function save() {
     if (busy.current) return;
@@ -299,118 +332,139 @@ function LinksEditor({
   }
 
   return (
-    <section aria-label={t('editor')} className="flex flex-col gap-4">
-      {failure === null ? null : <Banner tone="critical">{t(`error.${failure}`)}</Banner>}
-      {listFailed ? <Banner tone="critical">{t('error.attributes-unavailable')}</Banner> : null}
-      <fieldset className="flex flex-col gap-2">
-        <legend className="font-semibold text-fg">{t('feature-set')}</legend>
-        <label className="flex items-center gap-2">
-          <input type="radio" name="fs-mode" checked={!own} onChange={() => setOwn(false)} />
-          {t('inherit')}
-        </label>
-        <label className="flex items-center gap-2">
-          <input type="radio" name="fs-mode" checked={own} onChange={() => setOwn(true)} />
-          {t('use-own')}
-        </label>
-        {own ? (
-          <Select
-            label={t('feature-set-select')}
-            placeholder={t('choose')}
-            value={featureSetId}
-            onChange={(event) => setFeatureSetId(event.target.value)}
-            options={sets.map((row) => ({ value: row.id, label: row.code }))}
+    <section aria-label={t('editor')}>
+      <form
+        className="flex flex-col gap-4"
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          void save();
+        }}
+      >
+        {failure === null ? null : <Banner tone="critical">{t(`error.${failure}`)}</Banner>}
+        {listFailed ? <Banner tone="critical">{t('error.attributes-unavailable')}</Banner> : null}
+        <fieldset className="flex flex-col gap-2">
+          <legend className="font-semibold text-fg">{t('feature-set')}</legend>
+          <label className="flex items-center gap-2">
+            <input type="radio" name="fs-mode" checked={!own} onChange={() => setOwn(false)} />
+            {t('inherit')}
+          </label>
+          <label className="flex items-center gap-2">
+            <input type="radio" name="fs-mode" checked={own} onChange={() => setOwn(true)} />
+            {t('use-own')}
+          </label>
+          {own ? (
+            <Select
+              label={t('feature-set-select')}
+              placeholder={t('choose')}
+              value={featureSetId}
+              onChange={(event) => setFeatureSetId(event.target.value)}
+              options={sets.map((row) => ({ value: row.id, label: row.code }))}
+            />
+          ) : null}
+        </fieldset>
+        {tightens ? (
+          <Banner tone="info" title={t('impact.title')}>
+            {t('impact.body')}
+          </Banner>
+        ) : null}
+        <section aria-label={t('filters')} className="flex flex-col gap-2">
+          <h3 className="font-semibold text-fg">{t('filters')}</h3>
+          <CheckboxRow
+            label={t('inherit-filters')}
+            checked={inheritFilters}
+            onChange={(event) => setInheritFilters(event.target.checked)}
+          />
+          {inheritFilters ? null : (
+            <>
+              <ol className="divide-y divide-line rounded-md border border-line">
+                {filters.map((code, index) => (
+                  <li key={code} className="flex flex-wrap items-center gap-2 px-4 py-2">
+                    <span className="text-fg-muted">{index + 1}.</span>
+                    <span className="flex-1 font-medium wrap-anywhere text-fg">
+                      {nameOf(byCode.get(code)?.names, code, defaultLocale)} ({code})
+                    </span>
+                    <Button
+                      variant="secondary"
+                      disabled={index === 0}
+                      onClick={() => setFilters(shifted(filters, index, -1))}
+                    >
+                      {t('up', { filter: code })}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      disabled={index === filters.length - 1}
+                      onClick={() => setFilters(shifted(filters, index, 1))}
+                    >
+                      {t('down', { filter: code })}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      onClick={() => setFilters(filters.filter((entry) => entry !== code))}
+                    >
+                      {t('remove', { filter: code })}
+                    </Button>
+                  </li>
+                ))}
+              </ol>
+              <div className="flex flex-wrap items-end gap-2">
+                <Select
+                  label={t('add-filter')}
+                  placeholder={t('choose')}
+                  value={pick}
+                  onChange={(event) => setPick(event.target.value)}
+                  options={addable.map((item) => ({
+                    value: item.code,
+                    label: `${nameOf(item.names, item.code, defaultLocale)} (${item.code})`,
+                  }))}
+                />
+                <Button
+                  variant="secondary"
+                  disabled={pick === ''}
+                  onClick={() => {
+                    setFilters([...filters, pick]);
+                    setPick('');
+                  }}
+                >
+                  {t('add')}
+                </Button>
+              </div>
+            </>
+          )}
+          <p className="text-sm text-fg-muted">{t('noindex')}</p>
+        </section>
+        {reviewed ? (
+          <ReviewNoteField
+            value={note}
+            onChange={(next) => {
+              setNote(next);
+              setNoteError(null);
+            }}
+            error={noteError ?? undefined}
+            disabled={pending}
           />
         ) : null}
-      </fieldset>
-      {tightens ? (
-        <Banner tone="info" title={t('impact.title')}>
-          {t('impact.body')}
-        </Banner>
-      ) : null}
-      <section aria-label={t('filters')} className="flex flex-col gap-2">
-        <h3 className="font-semibold text-fg">{t('filters')}</h3>
-        <CheckboxRow
-          label={t('inherit-filters')}
-          checked={inheritFilters}
-          onChange={(event) => setInheritFilters(event.target.checked)}
-        />
-        {inheritFilters ? null : (
-          <>
-            <ol className="divide-y divide-line rounded-md border border-line">
-              {filters.map((code, index) => (
-                <li key={code} className="flex flex-wrap items-center gap-2 px-4 py-2">
-                  <span className="text-fg-muted">{index + 1}.</span>
-                  <span className="flex-1 font-medium wrap-anywhere text-fg">
-                    {nameOf(byCode.get(code)?.names, code, defaultLocale)} ({code})
-                  </span>
-                  <Button
-                    variant="secondary"
-                    disabled={index === 0}
-                    onClick={() => setFilters(shifted(filters, index, -1))}
-                  >
-                    {t('up', { filter: code })}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    disabled={index === filters.length - 1}
-                    onClick={() => setFilters(shifted(filters, index, 1))}
-                  >
-                    {t('down', { filter: code })}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => setFilters(filters.filter((entry) => entry !== code))}
-                  >
-                    {t('remove', { filter: code })}
-                  </Button>
-                </li>
-              ))}
-            </ol>
-            <div className="flex flex-wrap items-end gap-2">
-              <Select
-                label={t('add-filter')}
-                placeholder={t('choose')}
-                value={pick}
-                onChange={(event) => setPick(event.target.value)}
-                options={addable.map((item) => ({
-                  value: item.code,
-                  label: `${nameOf(item.names, item.code, defaultLocale)} (${item.code})`,
-                }))}
-              />
-              <Button
-                variant="secondary"
-                disabled={pick === ''}
-                onClick={() => {
-                  setFilters([...filters, pick]);
-                  setPick('');
-                }}
-              >
-                {t('add')}
-              </Button>
-            </div>
-          </>
-        )}
-        <p className="text-sm text-fg-muted">{t('noindex')}</p>
-      </section>
-      {reviewed ? (
-        <ReviewNoteField
-          value={note}
-          onChange={(next) => {
-            setNote(next);
-            setNoteError(null);
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" disabled={pending} onClick={onCancel}>
+            {t('cancel')}
+          </Button>
+        </div>
+        <SaveBar
+          count={count}
+          summary={tr('settings.bar.summary', { count })}
+          errorCount={errorCount}
+          errorsSummary={tr('settings.bar.errors', { count: errorCount })}
+          saving={pending}
+          labels={{
+            region: tr('settings.bar.region'),
+            discard: tr('settings.bar.discard'),
+            save: tr('settings.bar.save'),
+            saving: tr('settings.bar.saving'),
           }}
-          error={noteError ?? undefined}
-          disabled={pending}
+          onDiscard={discard}
         />
-      ) : null}
-      <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" disabled={pending} onClick={onCancel}>
-          {t('cancel')}
-        </Button>
-        <Button loading={pending} onClick={() => void save()}>
-          {t('save')}
-        </Button>
-      </div>
+      </form>
+      {guard.dialog}
     </section>
   );
 }

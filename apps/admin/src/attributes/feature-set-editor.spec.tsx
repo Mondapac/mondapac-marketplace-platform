@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, within, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -93,9 +93,7 @@ describe.each(MARKETS)('feature set editor in market $name', ({ locales }) => {
 
   it('saves a changed level with the version read', async () => {
     show();
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Save changes' }).disabled).toBe(
-      true,
-    );
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
     fireEvent.change(screen.getByLabelText('Requirement for brand'), {
       target: { value: 'required' },
     });
@@ -158,6 +156,20 @@ describe.each(MARKETS)('feature set editor in market $name', ({ locales }) => {
     expect(screen.getByLabelText('Requirement for size')).toBeTruthy();
   });
 
+  it('shows the save bar only with a change, and Discard puts the saved set back', () => {
+    show();
+    fireEvent.change(screen.getByLabelText('Requirement for brand'), {
+      target: { value: 'required' },
+    });
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    fireEvent.click(within(bar).getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.getByLabelText<HTMLSelectElement>('Requirement for brand').value).not.toBe(
+      'required',
+    );
+    expect(onCancel).not.toHaveBeenCalled();
+  });
+
   it('will not save while a Material attribute is taken out', () => {
     show();
     fireEvent.click(screen.getByRole('button', { name: 'Remove origin' }));
@@ -174,6 +186,20 @@ describe.each(MARKETS)('feature set editor in market $name', ({ locales }) => {
     fireEvent.change(screen.getByLabelText(/^New group name/), { target: { value: 'Storage' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add group' }));
     expect(screen.getByRole('button', { name: 'Remove group storage' })).toBeTruthy();
+  });
+
+  it('adds the group on Enter in the new group field and does not save the set', () => {
+    show();
+    fireEvent.change(screen.getByLabelText('Requirement for brand'), {
+      target: { value: 'required' },
+    });
+    const input = screen.getByLabelText(/^New group name/);
+    fireEvent.change(input, { target: { value: 'Care' } });
+    // fireEvent returns false when the handler prevented the default (the form submit).
+    expect(fireEvent.keyDown(input, { key: 'Enter' })).toBe(false);
+    expect(screen.getByRole('button', { name: 'Remove group care' })).toBeTruthy();
+    expect(call.mock.calls.some(([method]) => method === 'PUT')).toBe(false);
+    expect(onSaved).not.toHaveBeenCalled();
   });
 
   it('shows a stale save as a message and keeps the edit', async () => {

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -204,6 +204,21 @@ describe.each([
     expect(await screen.findByText(/We could not load the attributes to choose from/)).toBeTruthy();
   });
 
+  it('shows the save bar only with a change, and Discard puts the saved links back', async () => {
+    show();
+    fireEvent.click(await screen.findByRole('button', { name: 'Edit attribute links' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    fireEvent.click(screen.getByLabelText('Use its own feature set'));
+    fireEvent.change(await screen.findByLabelText('Feature set', { selector: 'select' }), {
+      target: { value: 'fs2' },
+    });
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(within(bar).getByText(/1 unsaved change/)).toBeTruthy();
+    fireEvent.click(within(bar).getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.queryByLabelText('Feature set', { selector: 'select' })).toBeNull();
+  });
+
   it('shows a stale save as a message', async () => {
     show();
     fireEvent.click(await screen.findByRole('button', { name: 'Edit attribute links' }));
@@ -214,6 +229,9 @@ describe.each([
           : { ok: true, status: 200, body: lists.sets },
       ),
     );
+    fireEvent.click(screen.getByLabelText('Inherit filters from the parent'));
+    fireEvent.change(await screen.findByLabelText('Add a filter'), { target: { value: 'size' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Add filter' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByText(/Someone else changed these links/)).toBeTruthy();
   });

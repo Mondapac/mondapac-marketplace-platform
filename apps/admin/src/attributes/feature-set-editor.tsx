@@ -1,6 +1,15 @@
 'use client';
 
-import { Badge, Banner, Button, EmptyState, Select, TextField } from '@mondapac/ui';
+import {
+  Badge,
+  Banner,
+  Button,
+  EmptyState,
+  SaveBar,
+  Select,
+  TextField,
+  useUnsavedChangesGuard,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -73,6 +82,7 @@ export function FeatureSetEditor({
 }) {
   const t = useTranslations('attributes.feature-sets.editor');
   const ta = useTranslations('attributes');
+  const tr = useTranslations();
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
   const { locales } = detail;
@@ -105,6 +115,33 @@ export function FeatureSetEditor({
   const language = languageName(locale, locales.supported);
   const defaultName = state.names[locales.default] ?? '';
   const missingNames = locales.supported.filter((tag) => (state.names[tag] ?? '').trim() === '');
+
+  // Leaving with an unsaved set asks first (the dialog the settings pages use).
+  const guard = useUnsavedChangesGuard(
+    dirty,
+    {
+      title: tr('settings.leave.title'),
+      message: (info) => tr('settings.leave.message', { count: info.count, page: info.page }),
+      stay: tr('settings.leave.stay'),
+      leave: tr('settings.leave.leave'),
+    },
+    { count: 1, page: t('title', { code: detail.code }) },
+  );
+
+  function addNewGroup() {
+    const name = newGroup.trim();
+    if (name === '') return;
+    const code = slug(name, new Set(state.groups.map((group) => group.groupCode)));
+    setState(addGroup(state, code, { [locales.default]: name }));
+    setNewGroup('');
+  }
+
+  function discard() {
+    setState(initial);
+    setNewGroup('');
+    setAdding({});
+    setFailure(null);
+  }
 
   const nameOf = (code: string, names: Parameters<typeof textIn>[0]) =>
     textIn(names, locales.default, locales.default, code);
@@ -145,215 +182,235 @@ export function FeatureSetEditor({
       <h2 tabIndex={-1} className="text-lg font-semibold wrap-anywhere text-fg">
         {t('title', { code: detail.code })}
       </h2>
-      {failure !== null ? <Banner tone="critical">{t(`error.${failure}`)}</Banner> : null}
-      {listFailed ? <Banner tone="critical">{t('error.attributes-unavailable')}</Banner> : null}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Select
-          label={t('language')}
-          value={locale}
-          onChange={(event) => setLocale(event.target.value)}
-          options={locales.supported.map((tag) => ({
-            value: tag,
-            label: languageName(tag, locales.supported),
-          }))}
-        />
-        <div className="flex flex-col gap-1">
-          <TextField
-            name="feature-set-name"
-            label={t('name', { language })}
-            lang={locale}
-            dir={directionOf(locale)}
-            value={state.names[locale] ?? ''}
-            onChange={(event) =>
-              setState({ ...state, names: { ...state.names, [locale]: event.target.value } })
-            }
+      <form
+        className="flex min-w-0 flex-col gap-4"
+        noValidate
+        onSubmit={(event) => {
+          event.preventDefault();
+          void save();
+        }}
+      >
+        {failure !== null ? <Banner tone="critical">{t(`error.${failure}`)}</Banner> : null}
+        {listFailed ? <Banner tone="critical">{t('error.attributes-unavailable')}</Banner> : null}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Select
+            label={t('language')}
+            value={locale}
+            onChange={(event) => setLocale(event.target.value)}
+            options={locales.supported.map((tag) => ({
+              value: tag,
+              label: languageName(tag, locales.supported),
+            }))}
           />
-          {missingNames.length > 0 ? (
-            <span>
-              <Badge tone="attention">
-                {t('missing', {
-                  languages: missingNames
-                    .map((tag) => languageName(tag, locales.supported))
-                    .join(', '),
-                })}
-              </Badge>
-            </span>
-          ) : null}
+          <div className="flex flex-col gap-1">
+            <TextField
+              name="feature-set-name"
+              label={t('name', { language })}
+              lang={locale}
+              dir={directionOf(locale)}
+              value={state.names[locale] ?? ''}
+              onChange={(event) =>
+                setState({ ...state, names: { ...state.names, [locale]: event.target.value } })
+              }
+            />
+            {missingNames.length > 0 ? (
+              <span>
+                <Badge tone="attention">
+                  {t('missing', {
+                    languages: missingNames
+                      .map((tag) => languageName(tag, locales.supported))
+                      .join(', '),
+                  })}
+                </Badge>
+              </span>
+            ) : null}
+          </div>
         </div>
-      </div>
-      {state.groups.length === 0 ? (
-        <EmptyState size="compact" icon="columns" title={t('no-groups')} />
-      ) : null}
-      {state.groups.map((group, g) => {
-        const pick = adding[g] ?? '';
-        return (
-          <section
-            key={group.groupCode}
-            aria-label={ta('feature-sets.group', { group: group.groupCode })}
-            className="flex flex-col gap-2 rounded-md border border-line p-3"
-          >
-            <div className="flex flex-wrap items-end justify-between gap-2">
-              <div className="min-w-0 flex-1">
-                <TextField
-                  name={`group-${group.groupCode}`}
-                  label={t('group-name', { group: group.groupCode, language })}
-                  lang={locale}
-                  dir={directionOf(locale)}
-                  value={group.names[locale] ?? ''}
-                  onChange={(event) =>
-                    setState(
-                      renameGroup(state, g, { ...group.names, [locale]: event.target.value }),
-                    )
-                  }
-                />
-              </div>
-              {isCore(group) ? (
-                <Badge tone="neutral">{t('core')}</Badge>
-              ) : (
-                <span className="flex gap-2">
-                  <Button
-                    variant="secondary"
-                    disabled={g <= 1}
-                    onClick={() => setState(moveGroup(state, g, -1))}
-                  >
-                    {t('group-up', { group: group.groupCode })}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    disabled={g === state.groups.length - 1}
-                    onClick={() => setState(moveGroup(state, g, 1))}
-                  >
-                    {t('group-down', { group: group.groupCode })}
-                  </Button>
-                  <Button variant="secondary" onClick={() => setState(removeGroup(state, g))}>
-                    {t('group-remove', { group: group.groupCode })}
-                  </Button>
-                </span>
-              )}
-            </div>
-            <ul className="divide-y divide-line rounded-md border border-line">
-              {group.entries.map((entry, e) => (
-                <li key={entry.code} className="flex flex-wrap items-end gap-2 px-3 py-2">
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <span className="font-medium wrap-anywhere text-fg">
-                      {nameOf(entry.code, entry.names)}
-                    </span>
-                    <span className="text-sm text-fg-muted">{entry.code}</span>
-                  </span>
-                  {entry.isVariantOption ? <Badge tone="info">{ta('badge.variant')}</Badge> : null}
-                  {entry.material ? <Badge tone="attention">{ta('badge.material')}</Badge> : null}
-                  <Select
-                    label={t('level-of', { attribute: entry.code })}
-                    value={entry.level}
+        {state.groups.length === 0 ? (
+          <EmptyState size="compact" icon="columns" title={t('no-groups')} />
+        ) : null}
+        {state.groups.map((group, g) => {
+          const pick = adding[g] ?? '';
+          return (
+            <section
+              key={group.groupCode}
+              aria-label={ta('feature-sets.group', { group: group.groupCode })}
+              className="flex flex-col gap-2 rounded-md border border-line p-3"
+            >
+              <div className="flex flex-wrap items-end justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <TextField
+                    name={`group-${group.groupCode}`}
+                    label={t('group-name', { group: group.groupCode, language })}
+                    lang={locale}
+                    dir={directionOf(locale)}
+                    value={group.names[locale] ?? ''}
                     onChange={(event) =>
-                      setState(setLevel(state, g, e, event.target.value as RequirementLevel))
+                      setState(
+                        renameGroup(state, g, { ...group.names, [locale]: event.target.value }),
+                      )
                     }
-                    options={LEVELS.map((level) => ({ value: level, label: t(`level.${level}`) }))}
                   />
-                  <Button
-                    variant="secondary"
-                    disabled={e === 0}
-                    onClick={() => setState(moveEntry(state, g, e, -1))}
-                  >
-                    {t('entry-up', { attribute: entry.code })}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    disabled={e === group.entries.length - 1}
-                    onClick={() => setState(moveEntry(state, g, e, 1))}
-                  >
-                    {t('entry-down', { attribute: entry.code })}
-                  </Button>
-                  <Button variant="secondary" onClick={() => setState(removeEntry(state, g, e))}>
-                    {t('entry-remove', { attribute: entry.code })}
-                  </Button>
-                </li>
-              ))}
-            </ul>
-            <div className="flex flex-wrap items-end gap-2">
-              <Select
-                label={t('add-attribute-to', { group: group.groupCode })}
-                placeholder={t('choose')}
-                value={pick}
-                onChange={(event) => setAdding({ ...adding, [g]: event.target.value })}
-                options={candidates
-                  .filter((item) => !held.has(item.code))
-                  .map((item) => ({
-                    value: item.code,
-                    label: `${nameOf(item.code, item.names)} (${item.code})`,
-                  }))}
-              />
-              <Button
-                variant="secondary"
-                disabled={pick === ''}
-                onClick={() => {
-                  const item = candidates.find((candidate) => candidate.code === pick);
-                  if (item === undefined) return;
-                  setState(
-                    addEntry(state, g, {
-                      code: item.code,
-                      attributeId: item.id,
-                      level: 'optional',
-                      names: item.names,
-                      dataType: item.dataType,
-                      isVariantOption: item.isVariantOption,
-                      material: item.material,
-                    }),
-                  );
-                  setAdding({ ...adding, [g]: '' });
-                }}
-              >
-                {t('add-attribute')}
-              </Button>
-            </div>
-          </section>
-        );
-      })}
-      <div className="flex flex-wrap items-end gap-2">
-        <TextField
-          name="new-group"
-          label={t('new-group', { language: languageName(locales.default, locales.supported) })}
-          value={newGroup}
-          onChange={(event) => setNewGroup(event.target.value)}
-        />
-        <Button
-          variant="secondary"
-          disabled={newGroup.trim() === ''}
-          onClick={() => {
-            const name = newGroup.trim();
-            const code = slug(name, new Set(state.groups.map((group) => group.groupCode)));
-            setState(addGroup(state, code, { [locales.default]: name }));
-            setNewGroup('');
+                </div>
+                {isCore(group) ? (
+                  <Badge tone="neutral">{t('core')}</Badge>
+                ) : (
+                  <span className="flex gap-2">
+                    <Button
+                      variant="secondary"
+                      disabled={g <= 1}
+                      onClick={() => setState(moveGroup(state, g, -1))}
+                    >
+                      {t('group-up', { group: group.groupCode })}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      disabled={g === state.groups.length - 1}
+                      onClick={() => setState(moveGroup(state, g, 1))}
+                    >
+                      {t('group-down', { group: group.groupCode })}
+                    </Button>
+                    <Button variant="secondary" onClick={() => setState(removeGroup(state, g))}>
+                      {t('group-remove', { group: group.groupCode })}
+                    </Button>
+                  </span>
+                )}
+              </div>
+              <ul className="divide-y divide-line rounded-md border border-line">
+                {group.entries.map((entry, e) => (
+                  <li key={entry.code} className="flex flex-wrap items-end gap-2 px-3 py-2">
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <span className="font-medium wrap-anywhere text-fg">
+                        {nameOf(entry.code, entry.names)}
+                      </span>
+                      <span className="text-sm text-fg-muted">{entry.code}</span>
+                    </span>
+                    {entry.isVariantOption ? (
+                      <Badge tone="info">{ta('badge.variant')}</Badge>
+                    ) : null}
+                    {entry.material ? <Badge tone="attention">{ta('badge.material')}</Badge> : null}
+                    <Select
+                      label={t('level-of', { attribute: entry.code })}
+                      value={entry.level}
+                      onChange={(event) =>
+                        setState(setLevel(state, g, e, event.target.value as RequirementLevel))
+                      }
+                      options={LEVELS.map((level) => ({
+                        value: level,
+                        label: t(`level.${level}`),
+                      }))}
+                    />
+                    <Button
+                      variant="secondary"
+                      disabled={e === 0}
+                      onClick={() => setState(moveEntry(state, g, e, -1))}
+                    >
+                      {t('entry-up', { attribute: entry.code })}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      disabled={e === group.entries.length - 1}
+                      onClick={() => setState(moveEntry(state, g, e, 1))}
+                    >
+                      {t('entry-down', { attribute: entry.code })}
+                    </Button>
+                    <Button variant="secondary" onClick={() => setState(removeEntry(state, g, e))}>
+                      {t('entry-remove', { attribute: entry.code })}
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex flex-wrap items-end gap-2">
+                <Select
+                  label={t('add-attribute-to', { group: group.groupCode })}
+                  placeholder={t('choose')}
+                  value={pick}
+                  onChange={(event) => setAdding({ ...adding, [g]: event.target.value })}
+                  options={candidates
+                    .filter((item) => !held.has(item.code))
+                    .map((item) => ({
+                      value: item.code,
+                      label: `${nameOf(item.code, item.names)} (${item.code})`,
+                    }))}
+                />
+                <Button
+                  variant="secondary"
+                  disabled={pick === ''}
+                  onClick={() => {
+                    const item = candidates.find((candidate) => candidate.code === pick);
+                    if (item === undefined) return;
+                    setState(
+                      addEntry(state, g, {
+                        code: item.code,
+                        attributeId: item.id,
+                        level: 'optional',
+                        names: item.names,
+                        dataType: item.dataType,
+                        isVariantOption: item.isVariantOption,
+                        material: item.material,
+                      }),
+                    );
+                    setAdding({ ...adding, [g]: '' });
+                  }}
+                >
+                  {t('add-attribute')}
+                </Button>
+              </div>
+            </section>
+          );
+        })}
+        <div className="flex flex-wrap items-end gap-2">
+          <TextField
+            name="new-group"
+            label={t('new-group', { language: languageName(locales.default, locales.supported) })}
+            value={newGroup}
+            onChange={(event) => setNewGroup(event.target.value)}
+            onKeyDown={(event) => {
+              // Enter here adds the group, as the button beside it does; it never saves the set.
+              if (event.key !== 'Enter') return;
+              event.preventDefault();
+              addNewGroup();
+            }}
+          />
+          <Button variant="secondary" disabled={newGroup.trim() === ''} onClick={addNewGroup}>
+            {t('add-group')}
+          </Button>
+        </div>
+        {tight.length > 0 ? (
+          <Banner tone="info" title={t('impact.title')}>
+            {t('impact.body', { count: detail.productCount, attributes: tight.join(', ') })}
+          </Banner>
+        ) : null}
+        {material.length > 0 ? (
+          <Banner tone="attention" title={t('material.title')}>
+            {t('material.body', { attributes: material.join(', ') })}
+          </Banner>
+        ) : null}
+        <div className="flex flex-wrap gap-2">
+          <Button variant="secondary" onClick={() => setPreviewing(true)}>
+            {t('preview.open')}
+          </Button>
+          <Button variant="secondary" disabled={pending} onClick={onCancel}>
+            {t('cancel')}
+          </Button>
+        </div>
+        <SaveBar
+          count={dirty ? 1 : 0}
+          summary={tr('settings.bar.unsaved')}
+          // A removed attribute that products already use blocks the save (the banner above says why).
+          errorCount={material.length}
+          errorsSummary={tr('settings.bar.errors', { count: material.length })}
+          saving={pending}
+          labels={{
+            region: tr('settings.bar.region'),
+            discard: tr('settings.bar.discard'),
+            save: tr('settings.bar.save'),
+            saving: tr('settings.bar.saving'),
           }}
-        >
-          {t('add-group')}
-        </Button>
-      </div>
-      {tight.length > 0 ? (
-        <Banner tone="info" title={t('impact.title')}>
-          {t('impact.body', { count: detail.productCount, attributes: tight.join(', ') })}
-        </Banner>
-      ) : null}
-      {material.length > 0 ? (
-        <Banner tone="attention" title={t('material.title')}>
-          {t('material.body', { attributes: material.join(', ') })}
-        </Banner>
-      ) : null}
-      <div className="flex flex-wrap gap-2">
-        <Button variant="secondary" onClick={() => setPreviewing(true)}>
-          {t('preview.open')}
-        </Button>
-        <Button variant="secondary" disabled={pending} onClick={onCancel}>
-          {t('cancel')}
-        </Button>
-        <Button
-          loading={pending}
-          disabled={!dirty || material.length > 0}
-          onClick={() => void save()}
-        >
-          {t('save')}
-        </Button>
-      </div>
+          onDiscard={discard}
+        />
+      </form>
+      {guard.dialog}
       <SellerFormPreview
         open={previewing}
         onClose={() => setPreviewing(false)}
