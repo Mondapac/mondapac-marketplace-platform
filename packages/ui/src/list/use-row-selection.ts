@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 export interface RowSelectionState {
   readonly selected: ReadonlySet<string>;
@@ -28,10 +28,14 @@ export function useRowSelection(
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [allMatching, setAllMatching] = useState(false);
 
-  useEffect(() => {
+  // Reset while rendering, not in an effect: a passive effect that runs late (a list that mounts
+  // when its data arrives, on a loaded machine) would wipe a row ticked in the meantime.
+  const [seenKey, setSeenKey] = useState(resetKey);
+  if (seenKey !== resetKey) {
+    setSeenKey(resetKey);
     setSelected(new Set());
     setAllMatching(false);
-  }, [resetKey]);
+  }
 
   const toggleRow = useCallback(
     (id: string) => {

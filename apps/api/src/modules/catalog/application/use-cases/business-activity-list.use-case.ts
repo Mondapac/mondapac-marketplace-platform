@@ -5,6 +5,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import {
   heldKeys,
   listPage,
+  parseNamedInstantRange,
   pageWindow,
   rowActions,
   type ListPagingMode,
@@ -56,6 +57,10 @@ export interface BusinessActivityListInput {
   /** The search text; `search` is the older name of it. */
   readonly q?: unknown;
   readonly search?: unknown;
+  /** Created at or after this ISO 8601 instant (inclusive). */
+  readonly createdFrom?: unknown;
+  /** Created before this ISO 8601 instant (exclusive). */
+  readonly createdTo?: unknown;
   readonly afterId?: unknown;
   readonly limit?: unknown;
   readonly sort?: unknown;
@@ -151,6 +156,8 @@ export class BusinessActivityList extends UseCase<
     if (adminAccountOf(context) === null) return err({ code: 'access.denied' });
     const body = closedInput(input, [
       'status',
+      'createdFrom',
+      'createdTo',
       'q',
       'search',
       'afterId',
@@ -168,6 +175,8 @@ export class BusinessActivityList extends UseCase<
       if (!parsed.ok) return parsed;
       status = parsed.value;
     }
+    const created = parseNamedInstantRange(body.value, 'createdFrom', 'createdTo');
+    if (!created.ok) return created;
     const read = readCatalogListInput(body.value, {
       sorts: ACTIVITY_SORTS,
       defaultSort: 'code',
@@ -182,7 +191,12 @@ export class BusinessActivityList extends UseCase<
     });
     if (!read.ok) return read;
     const { market } = context;
-    const filter = { status, search: read.value.q };
+    const filter = {
+      status,
+      search: read.value.q,
+      createdFrom: created.value.from,
+      createdTo: created.value.to,
+    };
     const reader = this.deps.activityReader;
     const unit = await this.deps.unitOfWork.run(
       market,

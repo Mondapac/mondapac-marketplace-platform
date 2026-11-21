@@ -112,11 +112,23 @@ export class BusinessActivityAdminController {
       'total) or Previous and Next (`paging=prev-next`), sorted by `sort` (code, status, created, ' +
       'updated) and `direction`; or, as the older panel and the pickers do, keyset-paged by code: ' +
       'send `nextAfterId` of the previous page as `afterId` (`afterId`/`limit` do not mix with the ' +
-      'page keys). `status` filters; `q` (older name `search`) matches a name in any locale or ' +
+      'page keys). `status` filters; `createdFrom` (inclusive) and `createdTo` (exclusive), ISO 8601 instants with an offset, filter by creation time; `q` (older name `search`) matches a name in any locale or ' +
       'the code. `pageSize` and `limit` are 1 to 100. Each row names the `actions` the caller ' +
       'may run.',
   })
   @ApiQuery({ name: 'status', required: false, enum: ['active', 'inactive'] })
+  @ApiQuery({
+    name: 'createdFrom',
+    required: false,
+    description:
+      'ISO 8601 instant with an offset or Z; activities created at or after it (inclusive).',
+  })
+  @ApiQuery({
+    name: 'createdTo',
+    required: false,
+    description:
+      'ISO 8601 instant with an offset or Z; activities created before it (exclusive), after createdFrom.',
+  })
   @ApiQuery({ name: 'q', required: false })
   @ApiQuery({ name: 'search', required: false, deprecated: true, description: 'Older name of q.' })
   @ApiQuery({ name: 'sort', required: false, enum: ['code', 'status', 'created', 'updated'] })

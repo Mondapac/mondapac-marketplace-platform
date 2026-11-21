@@ -1,5 +1,11 @@
 import { Temporal } from '@mondapac/shared-kernel';
-import { parseClosedValues, parseInstantRange } from './instant-range';
+import {
+  instantBoundDate,
+  instantRangeWhere,
+  parseClosedValues,
+  parseInstantRange,
+  parseNamedInstantRange,
+} from './instant-range';
 
 describe('the instant range of a list filter', () => {
   it('reads ISO instants with an offset, from inclusive and to exclusive', () => {
@@ -36,5 +42,33 @@ describe('the instant range of a list filter', () => {
     expect(parseClosedValues([], allowed, 'filters.x').ok).toBe(false);
     expect(parseClosedValues(['c'], allowed, 'filters.x').ok).toBe(false);
     expect(parseClosedValues('a', allowed, 'filters.x').ok).toBe(false);
+  });
+});
+
+describe('the named instant range of a list filter', () => {
+  it('names the failing key and keeps from inclusive, to exclusive', () => {
+    const bad = parseNamedInstantRange({ createdFrom: '2026-11-01' }, 'createdFrom', 'createdTo');
+    expect(!bad.ok && bad.error.fields).toEqual([{ path: 'createdFrom', code: 'format' }]);
+    const backwards = parseNamedInstantRange(
+      { submittedFrom: '2026-11-02T00:00:00Z', submittedTo: '2026-11-01T00:00:00Z' },
+      'submittedFrom',
+      'submittedTo',
+    );
+    expect(!backwards.ok && backwards.error.fields).toEqual([
+      { path: 'submittedTo', code: 'range' },
+    ]);
+    const ok = parseNamedInstantRange(
+      { createdFrom: '2026-11-01T00:00:00+10:00', createdTo: '' },
+      'createdFrom',
+      'createdTo',
+    );
+    expect(ok.ok && instantRangeWhere(ok.value)).toEqual({ gte: new Date('2026-10-31T14:00:00Z') });
+    expect(instantRangeWhere({ from: null, to: null })).toBeUndefined();
+  });
+
+  it('rounds a sub-millisecond bound up to the millisecond', () => {
+    expect(instantBoundDate(Temporal.Instant.from('2026-11-01T00:00:00.0005Z')).toISOString()).toBe(
+      '2026-11-01T00:00:00.001Z',
+    );
   });
 });

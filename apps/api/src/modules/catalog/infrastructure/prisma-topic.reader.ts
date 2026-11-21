@@ -1,5 +1,6 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { Prisma } from '../../../generated/prisma/client';
+import { instantRangeWhere } from '../../../platform/list-query';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type {
   TopicBrief,
@@ -19,6 +20,11 @@ function topicFilters(filter: TopicPageFilter): Prisma.CatalogTopicWhereInput[] 
   const filters: Prisma.CatalogTopicWhereInput[] = [];
   if (filter.status !== null) filters.push({ status: filter.status });
   if (filter.group !== null) filters.push({ group: filter.group });
+  const created = instantRangeWhere({
+    from: filter.createdFrom ?? null,
+    to: filter.createdTo ?? null,
+  });
+  if (created !== undefined) filters.push({ createdAt: created });
   if (filter.search !== null) {
     const key = normaliseTopicTerm(filter.search);
     const typed = literal(filter.search);

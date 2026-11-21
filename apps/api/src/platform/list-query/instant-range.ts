@@ -68,3 +68,48 @@ export function parseClosedValues<T extends string>(
   }
   return ok([...picked]);
 }
+
+/**
+ * Reads a date range filter that lives under two named keys of a closed record, for example
+ * `createdFrom` and `createdTo`: the same rules as {@link parseInstantRange}, with a failure
+ * naming those keys instead of `from` and `to`.
+ */
+export function parseNamedInstantRange(
+  record: Readonly<Record<string, unknown>>,
+  fromKey: string,
+  toKey: string,
+): Result<InstantRange, ListQueryFailure> {
+  const range = parseInstantRange({ from: record[fromKey], to: record[toKey] }, '');
+  if (range.ok) return range;
+  return {
+    ok: false,
+    error: {
+      code: 'validation.failed',
+      fields: range.error.fields.map((field) => ({
+        path: field.path === 'from' ? fromKey : toKey,
+        code: field.code,
+      })),
+    },
+  };
+}
+
+/**
+ * The instant as a `Date`, rounded up to the millisecond: rows written by the application have
+ * millisecond precision, so `>= ceil(from)` and `< ceil(to)` keep a sub-millisecond bound exact.
+ */
+export function instantBoundDate(instant: Temporal.Instant): Date {
+  const ms = instant.epochMilliseconds;
+  return new Date(instant.epochNanoseconds % 1_000_000n === 0n ? ms : ms + 1);
+}
+
+/**
+ * The Prisma comparison of a timestamp column for a range (`from` inclusive, `to` exclusive), or
+ * undefined when the range filters nothing.
+ */
+export function instantRangeWhere(range: InstantRange): { gte?: Date; lt?: Date } | undefined {
+  if (range.from === null && range.to === null) return undefined;
+  const where: { gte?: Date; lt?: Date } = {};
+  if (range.from !== null) where.gte = instantBoundDate(range.from);
+  if (range.to !== null) where.lt = instantBoundDate(range.to);
+  return where;
+}

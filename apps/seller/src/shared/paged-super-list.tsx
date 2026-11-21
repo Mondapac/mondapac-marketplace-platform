@@ -5,7 +5,12 @@ import { useLocale, useTranslations } from 'next-intl';
 import type { ComponentProps } from 'react';
 import { callApi } from '../api/client.ts';
 
-const runtime = { useTranslations, useLocale, callApi } as unknown as PagedListRuntime;
+const runtime = {
+  useTranslations,
+  useLocale,
+  callApi,
+  savedFiltersPath: 'lists/seller/saved-filters',
+} as unknown as PagedListRuntime;
 
 /** The kit's paged super list with the seller panel's translations, locale and relay call. */
 export function PagedSuperList<Row>(

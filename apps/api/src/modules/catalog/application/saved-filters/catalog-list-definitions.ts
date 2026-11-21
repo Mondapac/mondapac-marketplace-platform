@@ -4,6 +4,7 @@ import {
   type ListDefinition,
   type ListQueryField,
 } from '../../../lists';
+import { parseNamedInstantRange } from '../../../../platform/list-query';
 import {
   CATALOG_ATTRIBUTE_SUGGESTION_DECIDE,
   CATALOG_ATTRIBUTE_VIEW,
@@ -65,6 +66,39 @@ function textOf(query: Query, max: number): { text: string | null; refusal: Read
   if ([...trimmed].length > max) return { text: null, refusal: refused('q', 'length') };
   return { text: trimmed === '' ? null : trimmed, refusal: null };
 }
+
+const PRESET = /^[a-z][a-z0-9-]{0,31}$/;
+
+/**
+ * The date filter of a list in a saved filter: the instants the list reads (`<from>` inclusive,
+ * `<to>` exclusive), and `preset`, the id of the panel's date preset (for example `last-7-days`).
+ * The panel stores the preset id so a saved "Last 7 days" keeps moving, and turns it into instants
+ * on each load; the server keeps the id as an opaque token and never resolves it.
+ */
+function dateFilterOf(
+  query: Query,
+  keys: { readonly from: string; readonly to: string; readonly preset: string },
+): { refusal: Read | null; canonical: Record<string, { toString(): string } | null> } {
+  const range = parseNamedInstantRange(query, keys.from, keys.to);
+  if (!range.ok) {
+    return { refusal: { fields: range.error.fields, canonical: {} }, canonical: {} };
+  }
+  const preset = query[keys.preset];
+  if (preset !== undefined && !PRESET.test(preset)) {
+    return { refusal: refused(keys.preset, 'format'), canonical: {} };
+  }
+  return {
+    refusal: null,
+    canonical: {
+      [keys.from]: range.value.from,
+      [keys.to]: range.value.to,
+      [keys.preset]: preset ?? null,
+    },
+  };
+}
+
+const CREATED_KEYS = ['createdFrom', 'createdTo', 'created'] as const;
+const CREATED = { from: 'createdFrom', to: 'createdTo', preset: 'created' } as const;
 
 /** A list whose only filter is its search text. */
 function searchOnly(max: number): (query: Query) => Read {
@@ -227,7 +261,7 @@ const BUSINESS_ACTIVITIES: ListDefinition = {
   shareKey: CATALOG_SAVED_FILTER_SHARE.key,
   parsePayload: savedListPayloadParser({
     views: null,
-    filterKeys: ['status'],
+    filterKeys: ['status', ...CREATED_KEYS],
     sorts: ACTIVITY_SORTS,
     read(query) {
       let status: string | null = null;
@@ -237,7 +271,14 @@ const BUSINESS_ACTIVITIES: ListDefinition = {
         status = parsed.value;
       }
       const { text, refusal } = textOf(query, 120);
-      return refusal ?? { fields: [], canonical: canonicalQuery({ q: text, status }) };
+      const date = dateFilterOf(query, CREATED);
+      return (
+        refusal ??
+        date.refusal ?? {
+          fields: [],
+          canonical: canonicalQuery({ q: text, status, ...date.canonical }),
+        }
+      );
     },
   }),
 };
@@ -249,7 +290,7 @@ const TAGS: ListDefinition = {
   shareKey: CATALOG_SAVED_FILTER_SHARE.key,
   parsePayload: savedListPayloadParser({
     views: null,
-    filterKeys: ['status', 'group'],
+    filterKeys: ['status', 'group', ...CREATED_KEYS],
     sorts: TOPIC_SORTS,
     read(query) {
       let status: string | null = null;
@@ -265,7 +306,14 @@ const TAGS: ListDefinition = {
         group = parsed.value;
       }
       const { text, refusal } = textOf(query, 120);
-      return refusal ?? { fields: [], canonical: canonicalQuery({ q: text, status, group }) };
+      const date = dateFilterOf(query, CREATED);
+      return (
+        refusal ??
+        date.refusal ?? {
+          fields: [],
+          canonical: canonicalQuery({ q: text, status, group, ...date.canonical }),
+        }
+      );
     },
   }),
 };
