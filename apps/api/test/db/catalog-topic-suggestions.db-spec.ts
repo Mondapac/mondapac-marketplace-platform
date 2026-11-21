@@ -306,6 +306,28 @@ describe.each(TEST_MARKETS)('catalog topic suggestions in market %s (database)',
     expect(await count(null)).toBe(3);
     expect(await count(null, 'open')).toBe(2);
     expect(await count('s')).toBe(2);
+    // The created range on the seller's own list: `createdFrom` inclusive, `createdTo` exclusive.
+    const soon = Temporal.Now.instant().add({ hours: 1 });
+    const within = (createdFrom: Temporal.Instant | null, createdTo: Temporal.Instant | null) =>
+      read(market, () =>
+        store.countOfSeller(market, lister, { status: null, text: null, createdFrom, createdTo }),
+      );
+    expect(await within(soon, null)).toBe(0);
+    expect(await within(null, soon)).toBe(3);
+    expect(await within(null, soon.subtract({ hours: 2 }))).toBe(0);
+    const pageIn = await read(market, () =>
+      store.pageOfSeller(market, lister, {
+        status: null,
+        text: null,
+        createdFrom: null,
+        createdTo: soon,
+        sort: 'created',
+        direction: 'asc',
+        offset: 0,
+        limit: 10,
+      }),
+    );
+    expect(pageIn).toHaveLength(3);
     expect(
       await read(other, () => store.countOfSeller(other, lister, { status: null, text: null })),
     ).toBe(0);
