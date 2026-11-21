@@ -20,10 +20,13 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 /** One attribute (super list phase 2, list 5): its details, values, uses and history. */
 export default async function AttributePage({
   params,
+  searchParams,
 }: {
   readonly params: Promise<{ readonly attributeId: string }>;
+  readonly searchParams?: Promise<{ readonly edit?: string | readonly string[] }>;
 }) {
   const { attributeId } = await params;
+  const startEditing = (await searchParams)?.edit === '1';
   if (!UUID.test(attributeId)) notFound();
   const gate = await requireSession();
   const t = await getTranslations();
@@ -41,6 +44,7 @@ export default async function AttributePage({
           canEdit={permissionKeys.includes(EDIT_PERMISSION)}
           canRestructure={permissionKeys.includes(RESTRUCTURE_PERMISSION)}
           csrfToken={csrfToken}
+          startEditing={startEditing}
         />
       ) : (
         <>
