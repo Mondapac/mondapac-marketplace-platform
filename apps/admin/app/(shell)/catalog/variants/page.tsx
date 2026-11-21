@@ -6,6 +6,7 @@ import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { headers } from 'next/headers';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../../src/server/session.ts';
+import { localZone } from '../../../../src/shared/format.ts';
 import {
   ATTRIBUTE_EDIT_PERMISSION,
   ATTRIBUTE_VIEW_PERMISSION,
@@ -75,6 +76,7 @@ export default async function VariantsPage({
           paging={paging}
           accountId={gate.session.accountId}
           marketId={marketId}
+          zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
         />
       ) : (
         <>

@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useMemo, useState } from 'react';
 import { BulkDecideDialog } from '../shared/paged-list/bulk-decide-dialog.tsx';
 import { PagedSuperList } from '../shared/paged-list/paged-super-list.tsx';
+import { useDateFilter } from '../shared/paged-list/use-date-filter.ts';
 import type { ListPagingMode, PagedListConfig } from '../shared/paged-list/types.ts';
 import { When } from '../shared/when.tsx';
 import { RequestDecisionDialog, type Decision } from './request-decision-dialog.tsx';
@@ -23,14 +24,18 @@ export function RequestsList({
   paging,
   accountId,
   marketId,
+  zone,
   csrfToken,
 }: {
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
+  /** The IANA zone of the table's times and of the Requested presets (ADR-0005). */
+  readonly zone: string;
   readonly csrfToken: string;
 }) {
   const t = useTranslations('variants.requests');
+  const tl = useTranslations('variants.requests.list');
   const [open, setOpen] = useState<{ item: RequestItem; decision: Decision } | null>(null);
   const [bulk, setBulk] = useState<{
     action: 'approve' | 'decline';
@@ -152,6 +157,13 @@ export function RequestsList({
     }),
     [t, columnDefs, rowActions],
   );
+  const created = useDateFilter({
+    id: 'created',
+    label: tl('filter.name.created'),
+    range: { from: 'createdFrom', to: 'createdTo' },
+    zone,
+  });
+  const fields = useMemo(() => [created.field], [created.field]);
 
   return (
     <PagedSuperList
@@ -159,6 +171,8 @@ export function RequestsList({
       paging={paging}
       accountId={accountId}
       marketId={marketId}
+      fields={fields}
+      dateRange={created.dateRange}
       csrfToken={csrfToken}
       refreshKey={refresh}
       dialogs={

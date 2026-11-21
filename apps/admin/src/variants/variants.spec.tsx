@@ -162,6 +162,7 @@ function mount(
         paging={props.paging ?? 'pages'}
         accountId={id(99)}
         marketId="AU"
+        zone="Australia/Brisbane"
       />
     </NextIntlClientProvider>,
   );

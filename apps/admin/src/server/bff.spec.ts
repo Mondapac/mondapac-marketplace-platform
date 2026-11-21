@@ -1238,7 +1238,7 @@ describe('relay of the created range on the activities and tags lists', () => {
       headers: { host: 'admin.localhost:3002' },
     });
 
-  it.each(['business-activities', 'topics'])(
+  it.each(['business-activities', 'topics', 'category-proposals', 'variant-requests'])(
     'forwards createdFrom and createdTo of %s as instants and drops other text',
     async (name) => {
       const target = `catalog/admin/${name}`;

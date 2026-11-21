@@ -11007,7 +11007,10 @@
           "placeholder": "The proposed name"
         },
         "filter": {
-          "title": "Filter proposals"
+          "title": "Filter proposals",
+          "name": {
+            "created": "Requested"
+          }
         },
         "sort": {
           "by": "Sort by",
@@ -14068,6 +14071,12 @@
         "search": {
           "label": "Search size requests",
           "placeholder": "Product code"
+        },
+        "filter": {
+          "title": "Filter size requests",
+          "name": {
+            "created": "Requested"
+          }
         },
         "sort": {
           "by": "Sort by",

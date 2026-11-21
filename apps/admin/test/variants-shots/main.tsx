@@ -194,6 +194,7 @@ createRoot(document.getElementById('root')!).render(
         paging="pages"
         accountId={id(99)}
         marketId="AU"
+        zone="Australia/Brisbane"
       />
     </main>
   </NextIntlClientProvider>,
