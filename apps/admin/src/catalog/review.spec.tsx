@@ -6,15 +6,24 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 import { adminNav } from '../nav.ts';
 
-vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
+const { inner, saved } = vi.hoisted(() => ({
+  inner: vi.fn<(method: string, path: string, ...rest: unknown[]) => Promise<unknown>>(),
+  saved: { items: [] as unknown[] },
+}));
+// Saved filters are served apart from the queue's own calls the tests count.
+vi.mock('../api/client.ts', () => ({
+  callApi: (method: string, path: string, ...rest: unknown[]) =>
+    path.startsWith('lists/admin/saved-filters')
+      ? Promise.resolve({ ok: true, status: 200, body: { items: saved.items, canShare: false } })
+      : inner(method, path, ...rest),
+}));
 
-import { callApi } from '../api/client.ts';
 import { reviewProblemOf } from './review-errors.ts';
 import { ReviewQueueView } from './review-queue-view.tsx';
 import { offerRowsOf, type ReviewRow, type RevisionRow } from './types.ts';
 import { expectToast } from '../../test/toast-spy.ts';
 
-const call = vi.mocked(callApi);
+const call = inner;
 const ID = '0190a000-0000-7000-8000-0000000000c1';
 const assign = vi.fn();
 const row = (over: Partial<ReviewRow> = {}): ReviewRow => ({
@@ -97,6 +106,7 @@ const queueCalls = () =>
 
 beforeEach(() => {
   vi.clearAllMocks();
+  saved.items = [];
   Object.defineProperty(window, 'location', { value: { assign }, writable: true });
   HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
     this.setAttribute('open', '');
@@ -128,6 +138,31 @@ describe('review queue lists', () => {
       'page',
     );
     expect(screen.queryByRole('searchbox')).toBeNull();
+  });
+
+  it('shows only the saved filters of its own kind, and opens one with its filters', async () => {
+    const filter = (n: number, name: string, kind: string, extra = {}) => ({
+      id: `0190a000-0000-7000-8000-00000000010${n}`,
+      listKey: 'admin.catalog.review-queue',
+      name,
+      visibility: 'me',
+      payload: { v: 1, filters: { kind, ...extra }, sort: 'submitted', direction: 'asc' },
+      ownedByMe: true,
+      canManage: true,
+    });
+    saved.items = [
+      filter(1, 'New products', 'product-revision', { firstPublication: 'true' }),
+      filter(2, 'Offers of one seller', 'offer-first-publication'),
+    ];
+    call.mockResolvedValue(answer([revision()]));
+    mount('revision');
+    fireEvent.click(await screen.findByRole('button', { name: 'New products' }));
+    expect(screen.queryByRole('button', { name: 'Offers of one seller' })).toBeNull();
+    await waitFor(() => {
+      const query = new URLSearchParams(queueCalls().at(-1)![1].split('?')[1]);
+      expect(query.get('kind')).toBe('product-revision');
+      expect(query.get('firstPublication')).toBe('true');
+    });
   });
 
   it('lists the revisions with the change and photo filters, and opens a review from the menu', async () => {
@@ -326,12 +361,13 @@ describe('review queue lists', () => {
   });
 
   it('keeps the dialog open and says nothing was decided when the bulk call is refused', async () => {
-    call.mockImplementation(((method: string) =>
+    call.mockImplementation((method: string) =>
       Promise.resolve(
         method === 'POST'
           ? { ok: false, failure: { status: 413, code: 'batch.too-large' } }
           : offerAnswer(),
-      )) as never);
+      ),
+    );
     mount('offer');
     const tr = (await screen.findByText('Olive oil')).closest('tr') as HTMLElement;
     fireEvent.click(within(tr).getByRole('checkbox'));
