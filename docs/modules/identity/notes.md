@@ -201,6 +201,17 @@ delete waits for another admin's approval. Area `people`, always high risk.
 - **Where people is off** the three routes behave as before (`request: null`, the delete at once).
 - **Not reviewed:** revoking an invitation (it only narrows access), re-sending one, the first-admin
   routine (system actor), the seller role editor.
+- **Second admin (owner decision 22 Nov 2026).** Where people is reviewed, a Market with one admin
+  could never add a second one: the invitation waits for another admin's approval and the author
+  never approves their own. The operator command `identity-admin second-admin --market <id> --email
+  <address>` (`IssueSecondAdminInvitation`, rule `system`, after the operator line) closes that gap
+  once: only while the Market has exactly one admin account, active and an active holder of the
+  Platform Administrator role, and no pending admin invitation at all (expired included), in one
+  SERIALIZABLE unit. It issues a Platform Administrator invitation with that admin as inviter, so
+  acceptance re-checks a live inviter like a panel invitation and never takes the first-admin path
+  (Hassan L3). Not filed as a System request: the operator is the second pair of eyes. Audited
+  `identity.invitation.issued` as `SYSTEM`; the address is never logged. Once the second admin
+  exists the command answers `second-admin.not-bootstrap`.
 - **Labels.** A created or deleted role shows its name (to an admin who may list roles); an
   invitation shows the display name of the admin who accepted it, a pending one shows none.
 - **Panel.** The role editor asks for a note on create and in the delete dialog where people is

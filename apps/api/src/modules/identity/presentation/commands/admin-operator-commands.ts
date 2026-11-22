@@ -1,5 +1,6 @@
 import type { OperatorCommand } from '../../../../platform/operator/operator-command';
 import { IssueFirstAdminInvitation } from '../../application/use-cases/issue-first-admin-invitation.use-case';
+import { IssueSecondAdminInvitation } from '../../application/use-cases/issue-second-admin-invitation.use-case';
 import { ResetAdminSecondFactor } from '../../application/use-cases/reset-admin-second-factor.use-case';
 
 /**
@@ -29,6 +30,22 @@ export const IDENTITY_OPERATOR_COMMANDS: readonly OperatorCommand[] = Object.fre
     },
   },
   {
+    // Owner decision 22 Nov 2026: the bootstrap of a Market's second admin, once.
+    name: 'second-admin',
+    flags: ['email'],
+    async run(app, context, values) {
+      const result = await app
+        .get(IssueSecondAdminInvitation)
+        .execute(context, { email: values.email! });
+      return result.ok
+        ? {
+            done: true,
+            body: { outcome: result.value.code, invitationId: result.value.invitationId },
+          }
+        : { done: false, body: { outcome: result.error.code } };
+    },
+  },
+  {
     name: 'reset-admin-second-factor',
     flags: ['email'],
     async run(app, context, values) {
@@ -50,4 +67,4 @@ export const IDENTITY_OPERATOR_COMMANDS: readonly OperatorCommand[] = Object.fre
 ]);
 
 export const IDENTITY_OPERATOR_USAGE =
-  'usage: identity-admin <first-admin|reset-admin-second-factor> --market <id> --email <address>';
+  'usage: identity-admin <first-admin|second-admin|reset-admin-second-factor> --market <id> --email <address>';

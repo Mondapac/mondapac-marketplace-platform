@@ -496,6 +496,7 @@
   { "name": "identity.erase-customer-account", "rule": "system" },
   { "name": "identity.find-access-decisions-by-basis", "rule": "system" },
   { "name": "identity.issue-first-admin-invitation", "rule": "system" },
+  { "name": "identity.issue-second-admin-invitation", "rule": "system" },
   {
     "name": "identity.link-sign-in-provider",
     "rule": "own-resources",

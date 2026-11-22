@@ -177,6 +177,7 @@ import { CompleteSellerSignIn } from './application/use-cases/complete-seller-si
 import { ConfirmSecondFactorEnrolment } from './application/use-cases/confirm-second-factor-enrolment.use-case';
 import { ConfirmSellerSecondFactorEnrolment } from './application/use-cases/confirm-seller-second-factor-enrolment.use-case';
 import { IssueFirstAdminInvitation } from './application/use-cases/issue-first-admin-invitation.use-case';
+import { IssueSecondAdminInvitation } from './application/use-cases/issue-second-admin-invitation.use-case';
 import { ResetAdminSecondFactor } from './application/use-cases/reset-admin-second-factor.use-case';
 import { CompleteSecondFactorReplacement } from './application/use-cases/complete-second-factor-replacement.use-case';
 import { RegenerateRecoveryCodes } from './application/use-cases/regenerate-recovery-codes.use-case';
@@ -1500,6 +1501,18 @@ function useCaseProvider<D, U>(
       unitOfWork: true,
       accounts: true,
       roles: true,
+      invitations: true,
+      outbox: true,
+      audit: true,
+      policy: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(IssueSecondAdminInvitation, {
+      unitOfWork: true,
+      accounts: true,
+      roles: true,
+      assignments: true,
       invitations: true,
       outbox: true,
       audit: true,
