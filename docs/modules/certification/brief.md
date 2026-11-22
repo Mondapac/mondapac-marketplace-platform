@@ -601,3 +601,14 @@ from `ux.md`:
   `NOT_APPLICABLE` were missing).
 - Not yet built: reading older revisions' rows (the history lists number, date and whether a
   reason exists, as the API returns them).
+
+### Change log: add a new certificate type from admin (FE-091, 2026-11-22)
+
+Scope added: a type can be proposed from the admin panel and goes live only when a second admin
+with `certification.type.edit` approves it (H1 two-person rule, as for relaxations). Until then,
+and after a reject or withdraw, the type has no effect anywhere: not matched in product text, not
+offered to sellers, not in the type list (the explicit exception to Hassan #142 that every type is
+read). New wording rules apply to every type revision (document required for a third-party type,
+no issuer registry for a self-declaration, badge artwork from a checked-in list, forbidden words,
+claim-term stop-list). Details and deviations: `notes.md`, section "Add a new certificate type from
+the admin panel". Security review (Hassan) needed: CERT-* enforcement path.
