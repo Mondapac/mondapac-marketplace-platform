@@ -41,7 +41,9 @@ node scripts/ops-data/index.mjs              # --market AU (default), --only adm
 `config/catalog-seed/` the moment it starts on an empty database; the loader builds the catalog
 through the admin API instead. Roles, permissions and certification types still seed: they are
 part of the software. The API refuses the setting unless `NODE_ENV` is explicitly `development`
-or `test`.
+or `test`. Switching the jobs back on for a database the loader already filled mixes the
+starter tree into the admin-built one: reset the database instead. A switched-off job still runs
+when started by hand (`runJobOnce`).
 
 The loader's state (the data version, finished packs, the admin's authenticator secret) is in
 `.local/ops-data/<MARKET>.json`. `DATA_VERSION` in `index.mjs` is the scenario's version: a

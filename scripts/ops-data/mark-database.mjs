@@ -41,7 +41,7 @@ try {
     } catch (error) {
       if (error.code === '42501') {
         console.error(
-          `The migration role may not set ${DB_MARKER_SETTING} yet: run \`pnpm db:bootstrap\` once ` +
+          `The migration role may not set ${DB_MARKER_SETTING} yet, or does not own this database: run \`pnpm db:bootstrap\` once ` +
             '(it grants that one parameter on development clusters), then run this again.',
         );
         process.exit(1);

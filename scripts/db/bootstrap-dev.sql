@@ -10,6 +10,7 @@
 -- The passwords are local-only defaults, never secrets. The file refuses to run against a
 -- cluster that is not on this machine. It converges: running it again is safe.
 -- Production does not use this file (10.7, Phase 7).
+-- Needs PostgreSQL 15 or later (GRANT SET ON PARAMETER); Compose and CI use postgres:17.
 
 \set ON_ERROR_STOP on
 
