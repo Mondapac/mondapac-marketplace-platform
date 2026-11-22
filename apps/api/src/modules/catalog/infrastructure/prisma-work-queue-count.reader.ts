@@ -24,7 +24,11 @@ function answer(count: number, overdue: number, oldest: Date | null): WorkQueueC
  * pending first publication on (market_id, submitted_at, id), the products with a pending revision
  * on (market_id, pending_submitted_at, id), the pending category proposals on (market_id,
  * created_at, id). The brand merge queue is shared by every Market (brands are platform-wide): its
- * open groups are grouped by key on (status, group_key), as the queue's list reads them.
+ * open groups are grouped by key on (status, group_key), as the queue's list reads them (the list
+ * pages them; the count takes every open group).
+ *
+ * On the CAT-52 shelf-isolation allow-list for its count of `catalog.category_proposals` only (a
+ * count and the earliest `created_at`): any other shelf identifier here needs a security review.
  */
 export class PrismaCatalogWorkQueueCountReader implements CatalogWorkQueueCountReader {
   constructor(private readonly prisma: PrismaService) {}

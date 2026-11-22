@@ -14,7 +14,8 @@ const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMillis
  * seller_id)), entered when created, as the "Awaiting review" tab sorts them. The health queue is
  * the store's own `unhealthy` read over the same days as the queue's list (the newest snapshot of
  * each seller unhealthy in the last {@link SELLER_LIST_HEALTH_DAYS} UTC days, up to the queue's
- * bound), so the dashboard and the list never disagree.
+ * bound, `UNHEALTHY_QUEUE_MAX`), so the dashboard and the list never disagree. Past that bound
+ * the count is the bound (the list says it is truncated; a count has no such mark yet).
  */
 export class PrismaSellersWorkQueueCountReader implements SellersWorkQueueCountReader {
   constructor(
@@ -44,11 +45,7 @@ export class PrismaSellersWorkQueueCountReader implements SellersWorkQueueCountR
     };
   }
 
-  async unhealthySellers(
-    market: MarketContext,
-    now: Temporal.Instant,
-    _staleBefore: Temporal.Instant,
-  ): Promise<WorkQueueCount> {
+  async unhealthySellers(market: MarketContext, now: Temporal.Instant): Promise<WorkQueueCount> {
     // The same window as the queue's list (readHealthQueue): the newest local date on Earth is at
     // most one day ahead of UTC.
     const today = now.toZonedDateTimeISO('UTC').toPlainDate();

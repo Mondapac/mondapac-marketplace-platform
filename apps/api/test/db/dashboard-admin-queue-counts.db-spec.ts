@@ -40,7 +40,7 @@ describe.each(TEST_MARKETS)('dashboard admin queue counts in market %s (database
       'catalog.categoryProposals': (stale) => catalog.categoryProposals(market, NOW, stale),
       'pricing.priceHolds': (stale) => pricing.priceHolds(market, NOW, stale),
       'sellers.applications': (stale) => sellers.applications(market, NOW, stale),
-      'sellers.unhealthySellers': (stale) => sellers.unhealthySellers(market, NOW, stale),
+      'sellers.unhealthySellers': () => sellers.unhealthySellers(market, NOW),
     };
   });
   afterAll(() => db.close());

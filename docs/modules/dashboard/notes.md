@@ -52,3 +52,10 @@ promise for instant and same-day orders once shipped (today only their ready-by 
   and the earliest `created_at`, never a name or a shelf.
 - There is no attribute-proposal queue in catalog yet, so the design's "category and attribute
   proposals" row counts category proposals only.
+- Known limits (Sajad, QA; Hassan, security): the health-queue count stops at the queue's bound
+  (`UNHEALTHY_QUEUE_MAX`, 200) as its list does, with no "200+" mark yet; the brand-merge count takes
+  every open group while its list pages them. A failed count logs its error class
+  (`work-queue.count-failed`), never the message.
+- The readers' statement specs pin each where clause (status, scope, Market, age column, strict
+  `lt`), so a count that drops its Market filter fails there; the database spec runs them on
+  PostgreSQL.
