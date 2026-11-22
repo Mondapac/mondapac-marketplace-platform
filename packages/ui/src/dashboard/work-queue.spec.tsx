@@ -113,7 +113,14 @@ describe('ordering and grouping', () => {
       ok('q.b', 'review', 3, 0, ago(100)),
       { key: 'q.c', level: 'review', status: 'error' },
     ]);
-    expect(foldRows(rows)).toEqual({ count: 5, oldestAt: ago(100), failed: true });
+    expect(foldRows(rows)).toEqual({ count: 5, overdue: 0, oldestAt: ago(100), failed: true });
+    // Never 0 for queues none of which could be read.
+    expect(foldRows(rows.slice(2))).toEqual({
+      count: null,
+      overdue: 0,
+      oldestAt: null,
+      failed: true,
+    });
   });
 });
 
@@ -131,10 +138,29 @@ describe('status', () => {
     expect(workQueueStatus(one(ok('disputes.due', 'critical', 1, 1, ago(30))), NOW)).toEqual({
       kind: 'overdue',
       minutes: 30,
+      all: true,
+      deadline: true,
+    });
+    // A deadline that is not known is not "overdue" unless the API counts overdue items.
+    expect(workQueueStatus(one(ok('disputes.due', 'critical', 2, 0, null)), NOW)).toEqual({
+      kind: 'waiting',
+    });
+    expect(workQueueStatus(one(ok('disputes.due', 'critical', 2, 1, null)), NOW)).toEqual({
+      kind: 'overdue',
+      minutes: null,
+      all: false,
+      deadline: true,
     });
     expect(workQueueStatus(one(ok('q.a', 'today', 3, 1, ago(120))), NOW)).toEqual({
       kind: 'overdue',
       minutes: 120,
+      all: false,
+      deadline: false,
+    });
+    // An item dated after the count (clock skew) is 0 minutes old, never negative.
+    expect(workQueueStatus(one(ok('q.a', 'today', 3, 0, ago(-5))), NOW)).toEqual({
+      kind: 'oldest',
+      minutes: 0,
     });
     expect(workQueueStatus(one(ok('q.a', 'today', 3, 0, ago(120))), NOW)).toEqual({
       kind: 'oldest',
@@ -150,7 +176,9 @@ describe('status', () => {
   it('gives a neutral tone to a queue in its normal state', () => {
     expect(workQueueTone({ kind: 'oldest', minutes: 5 })).toBe('neutral');
     expect(workQueueTone({ kind: 'due-in', minutes: 5 })).toBe('attention');
-    expect(workQueueTone({ kind: 'overdue', minutes: 5 })).toBe('critical');
+    expect(workQueueTone({ kind: 'overdue', minutes: 5, all: true, deadline: false })).toBe(
+      'critical',
+    );
     expect(workQueueTone({ kind: 'error' })).toBe('critical');
   });
 
@@ -168,21 +196,25 @@ const labels: WorkQueueCardLabels = {
   scope: 'Most urgent first',
   group: (level, shown, total) =>
     level === 'today' && shown < total ? `Today · top ${shown} of ${total}` : `${level} · ${total}`,
-  count: (count, overdue) => (overdue > 0 ? `${count} · ${overdue} overdue` : String(count)),
+  count: (count, overdue) =>
+    overdue > 0 && overdue < count ? `${count} · ${overdue} overdue` : String(count),
   status: (status, age) =>
     status.kind === 'error'
       ? "Couldn't load"
       : status.kind === 'incident'
         ? 'Incident'
         : status.kind === 'overdue'
-          ? `Overdue${age === null ? '' : ` ${age}`}`
+          ? status.all
+            ? `Overdue${age === null ? '' : ` ${age}`}`
+            : `Oldest ${age}`
           : status.kind === 'due-in'
             ? `Due in ${age}`
             : status.kind === 'oldest'
               ? `Oldest ${age}`
               : '',
   todayMore: (queues) => `${queues} more queues`,
-  reviewLine: (names, more) => `${names.join(', ')}${more > 0 ? ` and ${more} more` : ''}`,
+  reviewLine: (names, more) =>
+    more > 0 ? `${names.join(', ')} and ${more} more` : names.join(' and '),
   oldest: (age) => `Oldest ${age}`,
   clear: (queues) => `${queues} queues all clear`,
   allClear: 'All clear: nothing needs action.',
@@ -220,7 +252,7 @@ describe('WorkQueueCard', () => {
     const late = region.getByRole('link', { name: 'Orders past their delivery promise' });
     expect(late.getAttribute('href')).toBe('/shipments');
     expect(late.closest('li')?.textContent).toContain('11 · 4 overdue');
-    expect(late.closest('li')?.textContent).toContain('Overdue 2d');
+    expect(late.closest('li')?.textContent).toContain('Oldest 2d');
     expect(region.getByRole('link', { name: 'Open work queue' }).getAttribute('href')).toBe(
       '/work-queue',
     );
@@ -250,6 +282,21 @@ describe('WorkQueueCard', () => {
     expect(review.getAttribute('href')).toBe('/work-queue?view=review');
     expect(review.closest('li')?.textContent).toContain('9');
     expect(review.closest('li')?.textContent).toContain('Oldest 6d');
+  });
+
+  it('keeps the overdue signal of folded queues, and never shows 0 for failed ones', () => {
+    card(
+      rowsOf([
+        ...[1, 2, 3, 4, 5, 6].map((n) => ok(`q.t${n}`, 'today', 4, 2, ago(n * 60))),
+        { key: 'q.r1', level: 'review', status: 'error' },
+        { key: 'q.r2', level: 'review', status: 'error' },
+      ]),
+    );
+    const more = screen.getByRole('link', { name: '1 more queues' }).closest('li') as HTMLElement;
+    expect(more.textContent).toContain('4 · 2 overdue');
+    expect(more.querySelector('.bg-critical-fg')).not.toBeNull();
+    const review = screen.getByRole('link', { name: 'q.r1 and q.r2' }).closest('li') as HTMLElement;
+    expect(review.textContent).toBe("q.r1 and q.r2Some couldn't load");
   });
 
   it('sums up the empty queues, and says All clear when nothing needs action', () => {

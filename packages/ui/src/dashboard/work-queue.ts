@@ -145,7 +145,16 @@ export type WorkQueueStatus =
   | { readonly kind: 'clear' }
   | { readonly kind: 'incident' }
   | { readonly kind: 'fix' }
-  | { readonly kind: 'overdue'; readonly minutes: number | null }
+  /**
+   * Items are past their limit. `minutes`: the age of the oldest item, or for a deadline how long
+   * ago it passed (null when unknown). `all`: every item is overdue. `deadline`: a passed deadline.
+   */
+  | {
+      readonly kind: 'overdue';
+      readonly minutes: number | null;
+      readonly all: boolean;
+      readonly deadline: boolean;
+    }
   | { readonly kind: 'due-in'; readonly minutes: number }
   | { readonly kind: 'oldest'; readonly minutes: number }
   | { readonly kind: 'waiting' };
@@ -161,12 +170,19 @@ export function workQueueStatus(row: WorkQueueRow, now: number): WorkQueueStatus
   const known = Number.isFinite(at);
   if (row.signal === 'incident') return { kind: 'incident' };
   if (row.signal === 'fix') return { kind: 'fix' };
+  const all = state.overdue === state.count;
   if (row.signal === 'deadline') {
     if (known && at > now) return { kind: 'due-in', minutes: Math.ceil((at - now) / MINUTE_MS) };
-    return { kind: 'overdue', minutes: known ? Math.floor((now - at) / MINUTE_MS) : null };
+    if (known) {
+      return { kind: 'overdue', minutes: Math.floor((now - at) / MINUTE_MS), all, deadline: true };
+    }
+    // No deadline known: only the API's overdue count says whether one has passed.
+    return state.overdue > 0
+      ? { kind: 'overdue', minutes: null, all, deadline: true }
+      : { kind: 'waiting' };
   }
   const age = known ? Math.max(0, Math.floor((now - at) / MINUTE_MS)) : null;
-  if (state.overdue > 0) return { kind: 'overdue', minutes: age };
+  if (state.overdue > 0) return { kind: 'overdue', minutes: age, all, deadline: false };
   return age === null ? { kind: 'waiting' } : { kind: 'oldest', minutes: age };
 }
 
@@ -225,13 +241,19 @@ export function groupWorkQueue(rows: readonly WorkQueueRow[], todayLimit = 5): W
   };
 }
 
-/** The sum and the oldest item of folded rows; `failed` when one of them could not be read. */
+/**
+ * The sums and the oldest item of folded rows; `failed` when one of them could not be read, and
+ * `count` null when none could (a folded line never says 0 for queues it could not count).
+ */
 export function foldRows(rows: readonly WorkQueueRow[]): {
-  readonly count: number;
+  readonly count: number | null;
+  readonly overdue: number;
   readonly oldestAt: string | null;
   readonly failed: boolean;
 } {
   let count = 0;
+  let overdue = 0;
+  let read = 0;
   let oldest: string | null = null;
   let failed = false;
   for (const row of rows) {
@@ -239,8 +261,10 @@ export function foldRows(rows: readonly WorkQueueRow[]): {
       failed = true;
       continue;
     }
+    read += 1;
     count += row.state.count;
+    overdue += row.state.overdue;
     if (time(row.state.oldestAt) < time(oldest)) oldest = row.state.oldestAt;
   }
-  return { count, oldestAt: oldest, failed };
+  return { count: read === 0 ? null : count, overdue, oldestAt: oldest, failed };
 }

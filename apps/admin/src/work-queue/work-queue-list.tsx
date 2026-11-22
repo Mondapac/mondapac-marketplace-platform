@@ -61,12 +61,6 @@ const TONE: Record<ReturnType<typeof workQueueTone>, BadgeTone> = {
   neutral: 'neutral',
 };
 
-const LEVEL_TONE: Record<WorkQueueRow['level'], BadgeTone> = {
-  critical: 'critical',
-  today: 'attention',
-  review: 'neutral',
-};
-
 const forView = (view: string): Query => ({ ...DEFAULT_QUERY, view: view as View });
 const withView = (current: Query, view: string): Query => ({ ...current, view: view as View });
 const searchText = (current: Query): string => current.q;
@@ -139,7 +133,8 @@ export function WorkQueueList({
           id,
           header: columnName(id),
           corner: true,
-          cell: (row) => <Badge tone={LEVEL_TONE[row.level]}>{levelText(row.level)}</Badge>,
+          // Neutral: colour on a row is kept for its status (Reza, UI/UX).
+          cell: (row) => <Badge tone="neutral">{levelText(row.level)}</Badge>,
         };
       case 'count':
         return {
@@ -161,7 +156,14 @@ export function WorkQueueList({
           header: columnName(id),
           cell: (row) => {
             const at = oldestOf(row);
-            return at === null ? '-' : <time dateTime={at}>{shortInstant(at, locale)}</time>;
+            if (at === null) return '-';
+            const when = shortInstant(at, locale);
+            // A dispute's time is its nearest response deadline, not when it came in.
+            return (
+              <time dateTime={at}>
+                {row.signal === 'deadline' ? t('due', { time: when }) : when}
+              </time>
+            );
           },
         };
       case 'status':
@@ -170,8 +172,11 @@ export function WorkQueueList({
           header: columnName(id),
           cell: (row) => {
             const text = statusOf(row);
+            const kind = workQueueStatus(row, now).kind;
             return text === '' ? (
-              <span className="text-fg-muted">{t('no-status')}</span>
+              <span className="text-fg-muted">
+                {kind === 'clear' ? t('state.clear') : t('no-status')}
+              </span>
             ) : (
               <Badge tone={TONE[workQueueTone(workQueueStatus(row, now))]}>{text}</Badge>
             );
@@ -246,16 +251,23 @@ export function WorkQueueList({
         t('col.count'),
         t('col.overdue'),
         t('col.oldest'),
+        t('col.due'),
         t('col.status'),
       ];
-      const lines: Cell[][] = shown.map((row) => [
-        row.label,
-        levelText(row.level),
-        row.state.kind === 'ok' ? row.state.count : '',
-        row.state.kind === 'ok' ? row.state.overdue : '',
-        oldestOf(row) ?? '',
-        statusOf(row),
-      ]);
+      const lines: Cell[][] = shown.map((row) => {
+        const deadline = row.signal === 'deadline';
+        const status = workQueueStatus(row, now).kind;
+        return [
+          row.label,
+          levelText(row.level),
+          row.state.kind === 'ok' ? row.state.count : '',
+          row.state.kind === 'ok' ? row.state.overdue : '',
+          deadline ? '' : (oldestOf(row) ?? ''),
+          deadline ? (oldestOf(row) ?? '') : '',
+          statusOf(row) ||
+            (status === 'clear' ? t('state.clear') : status === 'waiting' ? t('no-status') : ''),
+        ];
+      });
       const day = new Date(now).toISOString().slice(0, 10);
       const bytes = format === 'xlsx' ? toXlsx(t('title'), header, lines) : toCsv(header, lines);
       saveFile(

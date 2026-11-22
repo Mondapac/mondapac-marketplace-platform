@@ -1,12 +1,19 @@
 // The query of the full work-queue page: one row per queue, read once by the page (at most about
 // twenty rows), so the views, search, filters and sort run in the browser on those rows.
 
-import { needsAction, workQueueStatus, type WorkQueueLevel, type WorkQueueRow } from '@mondapac/ui';
+import {
+  WORK_QUEUE_LEVELS,
+  byUrgency,
+  needsAction,
+  workQueueStatus,
+  type WorkQueueLevel,
+  type WorkQueueRow,
+} from '@mondapac/ui';
 
 export const VIEWS = ['needs-action', 'all', 'critical', 'today', 'review'] as const;
 export type View = (typeof VIEWS)[number];
 
-export const SORTS = ['age', 'overdue', 'count', 'name'] as const;
+export const SORTS = ['urgency', 'age', 'overdue', 'count', 'name'] as const;
 export type Sort = (typeof SORTS)[number];
 export type Direction = 'asc' | 'desc';
 
@@ -32,12 +39,16 @@ export interface Query {
   readonly page: number;
 }
 
-/** Oldest first: the design's order of the full page (design section 6). */
+/**
+ * Most urgent first, the card's order (Sajad, QA: a dispute's `oldestAt` is a deadline, so an
+ * age order alone would put the most urgent row last). "Waiting since" sorts by age (design
+ * section 6).
+ */
 export const DEFAULT_QUERY: Query = {
   view: 'needs-action',
   q: '',
   filters: {},
-  sort: 'age',
+  sort: 'urgency',
   direction: 'asc',
   page: 1,
 };
@@ -45,9 +56,9 @@ export const DEFAULT_QUERY: Query = {
 export const isView = (value: unknown): value is View =>
   typeof value === 'string' && (VIEWS as readonly string[]).includes(value);
 
-/** Age: oldest first; counts: most first; name: A to Z. */
+/** Urgency: most urgent first; age: oldest first; counts: most first; name: A to Z. */
 export const defaultDirection = (sort: Sort): Direction =>
-  sort === 'age' || sort === 'name' ? 'asc' : 'desc';
+  sort === 'urgency' || sort === 'age' || sort === 'name' ? 'asc' : 'desc';
 
 export function cleanColumns(
   value: readonly string[] | null | undefined,
@@ -74,8 +85,10 @@ export function inView(row: WorkQueueRow, view: View): boolean {
   return row.level === (view satisfies WorkQueueLevel);
 }
 
+/** When the oldest item came in; a deadline is not an age, so a deadline row has none. */
 const oldest = (row: WorkQueueRow): number => {
   if (row.state.kind !== 'ok' || row.state.oldestAt === null) return Number.NaN;
+  if (row.signal === 'deadline') return Number.NaN;
   return Date.parse(row.state.oldestAt);
 };
 
@@ -97,6 +110,13 @@ export function applyQuery(
       (q === '' || row.label.toLocaleLowerCase(locale).includes(q)) &&
       (state === undefined || stateOf(row, now) === state),
   );
+  if (query.sort === 'urgency') {
+    // Level first (critical, today, review), then the card's order within the level.
+    const ordered = WORK_QUEUE_LEVELS.flatMap((level) =>
+      byUrgency(kept.filter((row) => row.level === level)),
+    );
+    return query.direction === 'asc' ? ordered : ordered.reverse();
+  }
   const sign = query.direction === 'asc' ? 1 : -1;
   const value = (row: WorkQueueRow): number => {
     if (query.sort === 'age') return oldest(row);

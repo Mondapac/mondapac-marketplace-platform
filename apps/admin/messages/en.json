@@ -244,7 +244,8 @@
       "incident": "Incident",
       "fix": "Needs a fix",
       "overdue": "Overdue",
-      "overdue-age": "Overdue · oldest {age}",
+      "overdue-age": "Overdue {age}",
+      "overdue-by": "Overdue by {age}",
       "due-in": "Due in {age}",
       "oldest": "Oldest {age}"
     },
@@ -329,6 +330,7 @@
         "by": "Sort by",
         "order": "Order",
         "field": {
+          "urgency": "Most urgent",
           "age": "Waiting since",
           "overdue": "Overdue items",
           "count": "Items",
@@ -349,6 +351,10 @@
         "name": {
           "first": "A to Z",
           "second": "Z to A"
+        },
+        "urgency": {
+          "first": "Most urgent first",
+          "second": "Least urgent first"
         }
       },
       "sorted": "Sorted by {field}, {order}",
@@ -360,7 +366,8 @@
         "overdue": "Overdue",
         "oldest": "Waiting since",
         "status": "Status",
-        "actions": "Actions"
+        "actions": "Actions",
+        "due": "Due"
       },
       "no-status": "On time",
       "no-list": "No list for these items yet",
@@ -381,7 +388,7 @@
       "export": {
         "button": "Export",
         "title": "Export the work queue",
-        "body": "The file holds the {count, plural, one {# queue} other {# queues}} on show, with the columns of this page.",
+        "body": "The file holds the {count, plural, one {# queue} other {# queues}} on show, with every column.",
         "legend": "File format",
         "csv": "CSV",
         "csv-help": "Plain text, opens in any spreadsheet.",
@@ -389,7 +396,8 @@
         "xlsx-help": "A workbook with one sheet.",
         "confirm": "Export",
         "cancel": "Cancel"
-      }
+      },
+      "due": "Due {time}"
     }
   },
   "showcase": {

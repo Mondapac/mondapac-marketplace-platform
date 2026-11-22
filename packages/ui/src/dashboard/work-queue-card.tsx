@@ -159,10 +159,11 @@ function FoldedLine({
       : labels.oldest(shortAge(Math.max(0, Math.floor((now - at) / 60_000)), locale));
   return (
     <Line
-      tone={folded.failed ? 'critical' : 'neutral'}
+      // Overdue items in a folded line keep their signal (Reza, Sajad).
+      tone={folded.failed || folded.overdue > 0 ? 'critical' : 'neutral'}
       label={label}
       href={href}
-      count={labels.count(folded.count, 0)}
+      count={folded.count === null ? null : labels.count(folded.count, folded.overdue)}
       status={status}
     />
   );
@@ -174,16 +175,20 @@ function FoldedLine({
  */
 function Group({
   heading,
-  open,
+  fixed = false,
+  open = true,
   children,
 }: {
   readonly heading: string;
-  readonly open: boolean;
+  /** Always open, without a toggle (the critical group). */
+  readonly fixed?: boolean;
+  /** Whether a foldable group starts open (desktop) or folded (phone). */
+  readonly open?: boolean;
   readonly children: ReactNode;
 }) {
   const list = <ul className="divide-y divide-line">{children}</ul>;
   const title = 'text-xs font-semibold uppercase tracking-wide text-fg-secondary';
-  if (open) {
+  if (fixed) {
     return (
       <div className="flex flex-col gap-1">
         <h3 className={title}>{heading}</h3>
@@ -192,8 +197,8 @@ function Group({
     );
   }
   return (
-    <details className="group flex flex-col gap-1">
-      <summary className={`flex cursor-pointer items-center gap-1 ${title}`}>
+    <details open={open} className="group flex flex-col gap-1">
+      <summary className={`flex min-h-12 cursor-pointer items-center gap-1 ${title}`}>
         <span className="text-icon group-open:rotate-180">
           <Icon name="chevron-down" />
         </span>
@@ -238,7 +243,7 @@ export function WorkQueueCard({
       <div className="flex flex-col gap-4">
         {groups.critical.length === 0 ? null : (
           <Group
-            open
+            fixed
             heading={labels.group('critical', groups.critical.length, groups.critical.length)}
           >
             {groups.critical.map(line)}

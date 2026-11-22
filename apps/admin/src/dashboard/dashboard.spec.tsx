@@ -233,7 +233,7 @@ describe('admin dashboard', () => {
     const applications = card.getByRole('link', { name: 'Seller applications' });
     expect(applications.getAttribute('href')).toBe('/sellers?tab=awaiting-review');
     expect(applications.closest('li')?.textContent).toContain('17 · 5 overdue');
-    expect(applications.closest('li')?.textContent).toContain('Overdue · oldest 3d');
+    expect(applications.closest('li')?.textContent).toContain('Oldest 3d');
     expect(
       card.getByRole('link', { name: 'Held prices to decide' }).closest('li')?.textContent,
     ).toContain('Oldest 9h');

@@ -31,7 +31,11 @@ export function useStatusText(): (status: WorkQueueStatus, age: string | null) =
       case 'fix':
         return t('fix');
       case 'overdue':
-        return age === null ? t('overdue') : t('overdue-age', { age });
+        // The count already says how many are overdue when only some are (Reza): the status
+        // then gives the age, in the critical tone.
+        if (age === null) return t('overdue');
+        if (status.deadline) return t('overdue-by', { age });
+        return status.all ? t('overdue-age', { age }) : t('oldest', { age });
       case 'due-in':
         return t('due-in', { age: age ?? '' });
       case 'oldest':
@@ -60,7 +64,9 @@ export function useCardLabels(): WorkQueueCardLabels {
         ? t('group.today-top', { shown, total })
         : t(`group.${level}`, { count: total }),
     count: (count: number, overdue: number) =>
-      overdue > 0 ? t('count-overdue', { count, overdue }) : t('count', { count }),
+      overdue > 0 && overdue < count
+        ? t('count-overdue', { count, overdue })
+        : t('count', { count }),
     status: (value: WorkQueueStatus, age: string | null) => status(value, age),
     todayMore: (count: number) => t('today-more', { count }),
     reviewLine: (names: readonly string[], more: number) =>
