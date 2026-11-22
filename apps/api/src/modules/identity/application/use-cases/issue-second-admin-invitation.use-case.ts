@@ -73,13 +73,17 @@ export interface IssueSecondAdminInvitationDependencies {
  * - the Market has no pending admin invitation at all, expired ones included
  *   (`invitation.already-pending`), so the routine never issues two: once one is accepted the
  *   Market has two admins and the routine is closed for good.
+ *   A panel invitation the one admin sends at the same instant runs at the default isolation
+ *   and may still commit beside this one (Hassan, PR #1230 finding 1); it is then held for
+ *   another admin's approval like any panel invitation, so maker-checker still holds.
  * Then an `admin` invitation for the Platform Administrator role is issued with the one admin as
  * its inviter, so its acceptance re-checks a live inviter who may still grant the role (slice
  * 8b, `inviterStillStands`) like any panel invitation, and never takes the first-admin path
  * (an invitation without an inviter; Hassan L3: never a second first admin). It is not filed as
  * a System request: the operator, who already holds the server, is the second pair of eyes. The
  * unit records `identity.invitation-issued.v1` (the mail handler mints the token and dispatches
- * it) and writes `identity.invitation.issued` as `SYSTEM`. The address is never logged or audited.
+ * it) and writes `identity.invitation.issued` as `SYSTEM` with `via: operator.second-admin`, so
+ * the trail shows the named inviter did not act. The address is never logged or audited.
  */
 export class IssueSecondAdminInvitation extends UseCase<
   IssueSecondAdminInvitationInput,
@@ -126,8 +130,9 @@ export class IssueSecondAdminInvitation extends UseCase<
           if (admins.length > 1 || sole!.status !== 'active') {
             return err({ code: 'second-admin.not-bootstrap' });
           }
-          // With one admin account, an active holder of the role is that account.
-          if (!(await this.deps.assignments.hasActiveHolder(market, role.state.id))) {
+          // The one admin must itself hold the role now (Hassan, PR #1230 finding 3).
+          const holders = await this.deps.assignments.activeHoldersOf(market, role.state.id);
+          if (!holders.includes(sole!.id)) {
             return err({ code: 'second-admin.not-bootstrap' });
           }
           if ((await this.deps.invitations.pendingAdminInvitations(market, null, 1)).length > 0) {
@@ -148,7 +153,7 @@ export class IssueSecondAdminInvitation extends UseCase<
           await this.deps.audit.record(
             context,
             InvitationIssuedAudit.entry(invitation.state.id, {
-              after: { kind: 'admin', roleId: role.state.id },
+              after: { kind: 'admin', roleId: role.state.id, via: 'operator.second-admin' },
             }),
           );
           return ok({ code: 'invitation.issued', invitationId: invitation.state.id });

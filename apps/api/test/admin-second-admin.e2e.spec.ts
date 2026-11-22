@@ -165,6 +165,50 @@ describe.each(TEST_MARKETS)('the second-admin routine in market %s', (code) => {
     });
   });
 
+  it('stays closed while any admin invitation is pending: expired or held for approval too', async () => {
+    await firstAdmin();
+    await expect(second()).resolves.toMatchObject({ ok: true });
+    const [issued] = invitationsTo(SECOND);
+
+    // Past its lifetime it is still pending until revoked (revoking is not reviewed).
+    clock.advance(Temporal.Duration.from({ hours: 30 * 24 }));
+    await expect(second('third.admin@ops.example')).resolves.toEqual({
+      ok: false,
+      error: { code: 'invitation.already-pending' },
+    });
+    // A panel invitation held for another admin's approval blocks it as well.
+    fakes.invitations.set(issued!.id, { ...issued!, heldForApproval: true });
+    await expect(second('third.admin@ops.example')).resolves.toEqual({
+      ok: false,
+      error: { code: 'invitation.already-pending' },
+    });
+  });
+
+  it('refuses when the one admin no longer holds the Platform Administrator role', async () => {
+    await firstAdmin();
+    const first = [...fakes.accounts.values()].find((a) => a.population === 'admin')!;
+    for (const [id, assignment] of fakes.assignments) {
+      if (assignment.accountId === first.id) fakes.assignments.delete(id);
+    }
+    await expect(second()).resolves.toEqual({
+      ok: false,
+      error: { code: 'second-admin.not-bootstrap' },
+    });
+  });
+
+  it('refuses the acceptance once the named inviter is disabled after the issue', async () => {
+    await firstAdmin();
+    await expect(second()).resolves.toMatchObject({ ok: true });
+    const token = await mailed();
+    const first = [...fakes.accounts.values()].find((a) => a.population === 'admin')!;
+    fakes.accounts.set(first.id, { ...first, status: 'disabled' });
+    await expect(accept(token, 'Second Admin')).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'invitation.rejected' },
+    });
+    expect([...fakes.accounts.values()].filter((a) => a.population === 'admin')).toHaveLength(1);
+  });
+
   it('is a system routine only', async () => {
     await firstAdmin();
     await expect(

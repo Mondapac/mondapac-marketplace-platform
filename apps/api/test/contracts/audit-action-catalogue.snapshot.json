@@ -2147,7 +2147,8 @@
     "before": null,
     "after": {
       "kind": "enumOf(seller-owner|staff|admin)",
-      "roleId": "id"
+      "roleId": "id",
+      "via": "optional(enumOf(operator.second-admin))"
     }
   },
   {
