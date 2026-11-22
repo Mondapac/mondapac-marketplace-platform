@@ -5,6 +5,7 @@ import { Offer } from '../../src/modules/catalog/domain/offer';
 import { Product } from '../../src/modules/catalog/domain/product';
 import { simpleProductType } from '../../src/modules/catalog/domain/product-types/simple';
 import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/prisma-offer.repository';
+import { PrismaOwnCatalogReader } from '../../src/modules/catalog/infrastructure/prisma-own-catalog.reader';
 import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
 import { TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
@@ -30,6 +31,7 @@ describe.each(TEST_MARKETS)(
     let owner: Client;
     let products: PrismaProductRepository;
     let offers: PrismaOfferRepository;
+    let reader: PrismaOwnCatalogReader;
     const sellerId = uuid7() as Id<'Seller'>;
     const seller = { kind: 'seller' as const, accountId: uuid7() as Id<'Account'> };
     const admin = { kind: 'admin' as const, accountId: uuid7() as Id<'Account'> };
@@ -40,6 +42,7 @@ describe.each(TEST_MARKETS)(
       await owner.connect();
       products = new PrismaProductRepository(persistence.service);
       offers = new PrismaOfferRepository(persistence.service, ids);
+      reader = new PrismaOwnCatalogReader(persistence.service);
     });
     afterAll(async () => {
       await owner.end();
@@ -248,6 +251,51 @@ describe.each(TEST_MARKETS)(
       const order = page.value.map((o) => o.state.id).filter((x) => x === b || x === c);
       expect(order).toEqual([b, c]);
       expect(page.value.map((o) => o.state.id)).not.toContain(a);
+    });
+
+    it('keeps the waiting Offers the search text matches: product code or store, as typed', async () => {
+      const id = await submitted(T0.add({ minutes: 40 }));
+      const { rows } = await owner.query(
+        `SELECT p.product_code FROM catalog.offers o
+           JOIN catalog.products p ON p.market_id = o.market_id AND p.id = o.product_id
+          WHERE o.market_id = $1 AND o.id = $2`,
+        [code, id],
+      );
+      const productCode = (rows[0] as { product_code: string }).product_code;
+      const other = uuid7() as Id<'Seller'>;
+      const has = async (
+        text: string,
+        sellerIds: Id<'Seller'>[] = [],
+        sellerFilter?: Id<'Seller'>,
+      ) => {
+        const filter = {
+          search: { text, locale: 'en', sellerIds },
+          ...(sellerFilter === undefined ? {} : { sellerId: sellerFilter }),
+        };
+        const read = await persistence.unitOfWork.run(
+          market,
+          async () => ({
+            ok: true as const,
+            value: {
+              list: await offers.listPendingReview(market, { after: null, limit: 500 }, filter),
+              count: await reader.pendingReviewCount(market, filter),
+            },
+          }),
+          { readOnly: true },
+        );
+        if (!read.ok) throw new Error('list failed');
+        expect(read.value.count).toBe(read.value.list.length);
+        return read.value.list.some((offer) => offer.state.id === id);
+      };
+
+      expect(await has(productCode.slice(1, 9).toLowerCase())).toBe(true);
+      expect(await has(productCode.slice(1, 9).toLowerCase(), [], other)).toBe(false);
+      expect(await has(`${productCode.slice(0, 2)}%`)).toBe(false);
+      expect(await has(`${productCode.slice(0, 1)}_${productCode.slice(2, 6)}`)).toBe(false);
+      // The product is not published: it has no name an Offer row shows, so a name never matches.
+      expect(await has('Fresh dates')).toBe(false);
+      expect(await has('no such text here', [sellerId])).toBe(true);
+      expect(await has('no such text here', [other])).toBe(false);
     });
 
     it('lists the waiting Offers oldest submit first in keyset pages, and nothing else', async () => {

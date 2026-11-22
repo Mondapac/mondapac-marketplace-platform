@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
@@ -17,9 +18,10 @@ import { CATALOG_PRODUCT_APPROVE, CATALOG_PRODUCT_VIEW } from '../../contracts/p
 import type { OfferHandling } from '../../domain/offer';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { OfferRepository } from '../ports/offer.repository';
-import type { OwnCatalogReader } from '../ports/own-catalog.reader';
+import type { OwnCatalogReader, QueueTextSearch } from '../ports/own-catalog.reader';
 import type { VariantGtinRegistry } from '../ports/variant-gtin.registry';
 import type { SellerNamesReader } from '../ports/seller-names.reader';
+import type { StoreNameSearch } from '../ports/store-name-search';
 import { requiredChecksOf } from '../revisions/review-checks';
 import { invalid, parsePage, isoOf, type ValidationFailure } from '../own-reads/own-reads.shared';
 
@@ -28,6 +30,9 @@ export const REVIEW_QUEUE_PAGE_DEFAULT = 25;
 export const REVIEW_QUEUE_PAGE_MAX = 50;
 /** Page numbers stop at 1,000 rows: the queue is a work list, and the merge of two sources is in memory. */
 export const REVIEW_QUEUE_MAX_PAGE = 20;
+/** The search text `q`, after trimming, in code points. */
+export const REVIEW_QUEUE_SEARCH_MIN_LENGTH = 2;
+export const REVIEW_QUEUE_SEARCH_MAX_LENGTH = 100;
 /** The most rows read from each source for one descending page. */
 const DESC_MAX_ROWS = 1000;
 
@@ -57,6 +62,11 @@ export interface ReviewQueueListInput {
   readonly submittedFrom?: unknown;
   /** Submitted before this ISO 8601 instant (exclusive); both kinds of row. */
   readonly submittedTo?: unknown;
+  /**
+   * Search text, 2 to 100 characters after trimming: rows whose product name, product code or
+   * seller store name contains it (any case); both kinds of row.
+   */
+  readonly q?: unknown;
 }
 
 /** The two kinds of row in the queue. */
@@ -147,6 +157,7 @@ export interface ReviewQueueListDependencies {
   readonly ownReader: OwnCatalogReader;
   readonly policy: CatalogMarketPolicy;
   readonly sellerNames: SellerNamesReader;
+  readonly storeSearch: StoreNameSearch;
   readonly gtinRegistry: VariantGtinRegistry;
   readonly productApproveProbe: PermissionProbe;
 }
@@ -188,6 +199,8 @@ interface QueueFilter {
   readonly hasImages?: boolean;
   readonly submittedFrom?: Temporal.Instant | null;
   readonly submittedTo?: Temporal.Instant | null;
+  /** The trimmed search text; absent for none. */
+  readonly text?: string;
 }
 
 const FILTER_KEYS = [
@@ -197,7 +210,29 @@ const FILTER_KEYS = [
   'hasImages',
   'submittedFrom',
   'submittedTo',
+  'q',
 ] as const;
+
+const logger = new Logger('ReviewQueueList');
+
+/**
+ * The search text `q`: absent (`undefined`, `null` or `''`) for none, else a string that holds 2 to
+ * 100 code points once trimmed and no control character. The text is matched as typed: the
+ * repository escapes the LIKE wildcards.
+ */
+export function parseQueueSearch(value: unknown): Result<string | null, ValidationFailure> {
+  if (value === undefined || value === null || value === '') return ok(null);
+  if (typeof value !== 'string') return invalid('q', 'type');
+  // Control characters are never part of a name, a code or a store name (format characters such as
+  // the zero-width non-joiner are, so only `Cc` is refused).
+  if (/\p{Cc}/u.test(value)) return invalid('q', 'format');
+  const text = value.trim();
+  const length = [...text].length;
+  if (length < REVIEW_QUEUE_SEARCH_MIN_LENGTH || length > REVIEW_QUEUE_SEARCH_MAX_LENGTH) {
+    return invalid('q', 'length');
+  }
+  return ok(text);
+}
 
 /**
  * The filters of the queue. `firstPublication` and `hasImages` are product revision fields: given,
@@ -228,12 +263,15 @@ function parseFilter(record: Record<string, unknown>): Result<QueueFilter, Valid
   }
   const submitted = parseNamedInstantRange(record, 'submittedFrom', 'submittedTo');
   if (!submitted.ok) return submitted;
+  const text = parseQueueSearch(record['q']);
+  if (!text.ok) return text;
   return ok({
     kind: (kind as ReviewQueueKind | undefined) ?? null,
     ...(sellerId === undefined ? {} : { sellerId }),
     ...flags,
     submittedFrom: submitted.value.from,
     submittedTo: submitted.value.to,
+    ...(text.value === null ? {} : { text: text.value }),
   });
 }
 
@@ -259,9 +297,13 @@ function parseCursor(value: unknown): Result<Position | null, ValidationFailure>
  * (`sellerSummaries`; absent when `sellers` cannot say) and the label of its product; a product
  * revision row also carries what changed and the checks an approval must confirm. Rule: the key
  * `catalog.product.view` and the admin population. `afterId` is the opaque `nextAfterId` of the
- * previous page; the filters (`kind`, `sellerId`, and for revisions `firstPublication` and
- * `hasImages`) keep the same order, so a cursor stays valid under the same filters. `total` counts
- * what the filters keep, `totals` the whole queue per kind. One read-only unit (ADR-0025); the store-name call follows it.
+ * previous page; the filters (`kind`, `sellerId`, `submittedFrom`, `submittedTo`, `q`, and for
+ * revisions `firstPublication` and `hasImages`) keep the same order, so a cursor stays valid under
+ * the same filters. `q` keeps the rows whose product code, product name (the one the row shows) or
+ * store name contains the text; the store names are matched by `sellers` before the read unit, and a
+ * failed match fails the read (`access.unavailable`) rather than drop the store matches. `total`
+ * counts what the filters keep, `totals` the whole queue per kind. One read-only unit (ADR-0025);
+ * the store-name call follows it.
  */
 export class ReviewQueueList extends UseCase<
   ReviewQueueListInput,
@@ -344,7 +386,7 @@ export class ReviewQueueList extends UseCase<
       descending = paged.value.direction === 'desc';
     }
     const after = cursor;
-    const { kind, sellerId, firstPublication, hasImages, submittedFrom, submittedTo } =
+    const { kind, sellerId, firstPublication, hasImages, submittedFrom, submittedTo, text } =
       filter.value;
     const submittedFilter = {
       ...(submittedFrom === null || submittedFrom === undefined ? {} : { submittedFrom }),
@@ -354,18 +396,37 @@ export class ReviewQueueList extends UseCase<
     const revisionOnly = firstPublication !== undefined || hasImages !== undefined;
     const withOffers = kind !== 'product-revision' && !revisionOnly;
     const withRevisions = kind !== 'offer-first-publication';
-    const offerFilter = { ...(sellerId === undefined ? {} : { sellerId }), ...submittedFilter };
-    const revisionFilter = {
-      ...offerFilter,
-      ...(firstPublication === undefined ? {} : { firstPublication }),
-      ...(hasImages === undefined ? {} : { hasImages }),
-    };
     let locale: string;
     try {
       locale = this.deps.policy.locales(market).default;
     } catch {
       return err({ code: 'access.unavailable' });
     }
+    let search: QueueTextSearch | undefined;
+    if (text !== undefined) {
+      try {
+        const stores = await this.deps.storeSearch.sellersMatching(context, text);
+        search = { text, locale, sellerIds: stores.sellerIds };
+      } catch {
+        // Never log the text or the error (it may carry the text).
+        logger.warn({
+          msg: 'catalog.review-queue-list.store-search-failed',
+          marketId: market.marketId,
+          correlationId: context.correlationId,
+        });
+        return err({ code: 'access.unavailable' });
+      }
+    }
+    const offerFilter = {
+      ...(sellerId === undefined ? {} : { sellerId }),
+      ...submittedFilter,
+      ...(search === undefined ? {} : { search }),
+    };
+    const revisionFilter = {
+      ...offerFilter,
+      ...(firstPublication === undefined ? {} : { firstPublication }),
+      ...(hasImages === undefined ? {} : { hasImages }),
+    };
     const pagesMode = paged !== null && paged.value.paging === 'pages';
     const pageSize = paged === null ? limit : paged.value.pageSize;
     const read = await this.deps.unitOfWork.run(
@@ -375,7 +436,7 @@ export class ReviewQueueList extends UseCase<
           'product-revision': await this.deps.ownReader.pendingRevisionCount(market),
           'offer-first-publication': await this.deps.ownReader.pendingReviewCount(market),
         };
-        const filtered = sellerId !== undefined || revisionOnly || ranged;
+        const filtered = sellerId !== undefined || revisionOnly || ranged || search !== undefined;
         const offerTotal = withOffers
           ? filtered
             ? await this.deps.ownReader.pendingReviewCount(market, offerFilter)

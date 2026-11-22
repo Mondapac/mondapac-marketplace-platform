@@ -602,6 +602,48 @@ describe.each(TEST_MARKETS)(
       ).toEqual([]);
     });
 
+    it('keeps the queue rows the search text matches: code, pending name or store, as typed', async () => {
+      const { productId } = await submitted();
+      const { rows: codes } = await app.query(
+        `SELECT product_code FROM catalog.products WHERE market_id = $1 AND id = $2`,
+        [market.marketId, productId],
+      );
+      const productCode = (codes[0] as { product_code: string }).product_code;
+      const OTHER = uuid7() as Id<'Seller'>;
+      const page = { after: null, limit: 500 };
+      const has = async (filter: Parameters<typeof reader.listPendingRevisions>[3]) => {
+        const rows = await inUnit(
+          () => reader.listPendingRevisions(market, page, 'en', filter),
+          true,
+        );
+        const count = await inUnit(() => reader.pendingRevisionCount(market, filter), true);
+        expect(count).toBeGreaterThanOrEqual(rows.length);
+        return rows.some((row) => row.productId === productId);
+      };
+      const search = (text: string, sellerIds: Id<'Seller'>[] = [], locale = 'en') => ({
+        search: { text, locale, sellerIds },
+      });
+
+      // The product code, in any case and in part.
+      expect(await has(search(productCode.slice(2, 10).toLowerCase()))).toBe(true);
+      // The pending revision's name in the locale, in any case.
+      expect(await has(search('dAtE'))).toBe(true);
+      expect(await has(search('dAtE', [], 'xx'))).toBe(false);
+      // Wildcards are matched as typed: `%` and `_` are not "any".
+      expect(await has(search('D%s'))).toBe(false);
+      expect(await has(search('D_tes'))).toBe(false);
+      expect(await has(search('Dat\\'))).toBe(false);
+      // A store match keeps the seller's rows whatever their text.
+      expect(await has(search('no such text here', [SELLER]))).toBe(true);
+      expect(await has(search('no such text here', [OTHER]))).toBe(false);
+      // It composes with the other filters.
+      expect(await has({ ...search('dates'), sellerId: OTHER })).toBe(false);
+      expect(await has({ ...search('dates'), sellerId: SELLER, firstPublication: true })).toBe(
+        true,
+      );
+      expect(await has({ ...search('dates'), firstPublication: false })).toBe(false);
+    });
+
     it('keeps the queue rows submitted in the range: submittedFrom inclusive, submittedTo exclusive', async () => {
       const { productId } = await submitted();
       const page = { after: null, limit: 500 };

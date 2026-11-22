@@ -168,6 +168,27 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
     expect(calls).toEqual([{ ...range, kind: 'product-revision', limit: REVIEW_QUEUE_PAGE_MAX }]);
   });
 
+  it('passes the search text q to every keyset read of the list, with the other filters', async () => {
+    queue = Array.from({ length: REVIEW_QUEUE_PAGE_MAX + 1 }, (_, n) => revision(n + 1));
+    const result = await useCase().execute(context(), { q: 'dates', kind: 'product-revision' });
+    expect(result.ok).toBe(true);
+    expect(calls).toEqual([
+      { q: 'dates', kind: 'product-revision', limit: REVIEW_QUEUE_PAGE_MAX },
+      {
+        q: 'dates',
+        kind: 'product-revision',
+        limit: REVIEW_QUEUE_PAGE_MAX,
+        afterId: String(REVIEW_QUEUE_PAGE_MAX),
+      },
+    ]);
+    // A text the list refuses is handed on as the list's refusal.
+    listRefusal = { code: 'validation.failed', fields: [{ path: 'q', code: 'length' }] };
+    expect(await useCase().execute(context(), { q: 'x' })).toEqual({
+      ok: false,
+      error: listRefusal,
+    });
+  });
+
   it('refuses a key that is not a filter of the queue, and hands a refusal of the list on', async () => {
     expect(await useCase().execute(context(), { submittedAfter: '2026-11-01T00:00:00Z' })).toEqual({
       ok: false,

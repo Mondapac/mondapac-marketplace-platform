@@ -119,8 +119,10 @@ export class OfferReviewController {
       'page as `afterId`, with the same filters. `limit` is 1 to 50 (default 25). `kind` keeps ' +
       'one kind; `sellerId` one seller; `firstPublication` and `hasImages` keep product ' +
       'revisions only (refused with kind=offer-first-publication); `submittedFrom` (inclusive) and ' +
-      '`submittedTo` (exclusive) keep the rows submitted in that window. `total` counts what the ' +
-      'filters keep; `totals` is the whole queue per kind.',
+      '`submittedTo` (exclusive) keep the rows submitted in that window; `q` keeps the rows whose ' +
+      'product name, product code or seller store name contains the text (any case; both kinds). ' +
+      'Every filter composes with the others. `total` counts what the filters keep; `totals` is ' +
+      'the whole queue per kind, whatever the filters.',
   })
   @ApiQuery({
     name: 'afterId',
@@ -166,6 +168,15 @@ export class OfferReviewController {
     description:
       'ISO 8601 instant with an offset or Z; rows submitted before it (exclusive), after submittedFrom.',
   })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    description:
+      'Search text, 2 to 100 characters after trimming (else validation.failed, field q): keeps ' +
+      'the rows whose product name (the one the row shows, in the Market default locale), ' +
+      'product code or seller public store name contains it, case-insensitively; % and _ are ' +
+      'matched as typed. Both kinds of row.',
+  })
   @ApiOkResponse({ type: ReviewQueueListDto })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -189,7 +200,8 @@ export class OfferReviewController {
     summary: 'Export the review queue as a file',
     description:
       'Needs catalog.product.view. The rows of the review queue for the same filters ' +
-      '(`kind`, `sellerId`, `firstPublication`, `hasImages`, `submittedFrom`, `submittedTo`), oldest submit first. `format` is csv (the default) or xlsx, with the same ' +
+      '(`kind`, `sellerId`, `firstPublication`, `hasImages`, `submittedFrom`, `submittedTo` and ' +
+      'the search text `q`), oldest submit first. `format` is csv (the default) or xlsx, with the same ' +
       'columns: kind, product_code, product_name, seller_id, store_name, seller_sku, ' +
       'first_publication, reasons, required_checks, has_images, warnings, submitted_at. At most ' +
       '1,000 rows (the pages the list reaches); a longer queue is refused whole as ' +
@@ -212,6 +224,15 @@ export class OfferReviewController {
     required: false,
     description:
       'ISO 8601 instant with an offset or Z; rows submitted before it (exclusive), after submittedFrom.',
+  })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    description:
+      'Search text, 2 to 100 characters after trimming (else validation.failed, field q): keeps ' +
+      'the rows whose product name (the one the row shows, in the Market default locale), ' +
+      'product code or seller public store name contains it, case-insensitively; % and _ are ' +
+      'matched as typed. Both kinds of row.',
   })
   @ApiOkResponse({
     description:

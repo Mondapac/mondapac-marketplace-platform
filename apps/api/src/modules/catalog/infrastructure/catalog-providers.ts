@@ -136,6 +136,8 @@ import {
 } from '../application/ports/seller-names.reader';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { SellersSellerNamesReader } from './sellers-seller-names.reader';
+import { STORE_NAME_SEARCH, type StoreNameSearch } from '../application/ports/store-name-search';
+import { SellersStoreNameSearch } from './sellers-store-name-search';
 import { SellersAllowedProductTypesReader } from './sellers-allowed-product-types.reader';
 import { SellersSellerEligibilityReader } from './sellers-seller-eligibility.reader';
 import { PrismaOfferRepository } from './prisma-offer.repository';
@@ -738,6 +740,11 @@ export const catalogProviders: readonly Provider[] = [
     inject: [SELLERS_FACADE],
     useFactory: (sellers: SellersFacade): SellerNamesReader =>
       new SellersSellerNamesReader(sellers),
+  },
+  {
+    provide: STORE_NAME_SEARCH,
+    inject: [SELLERS_FACADE],
+    useFactory: (sellers: SellersFacade): StoreNameSearch => new SellersStoreNameSearch(sellers),
   },
   {
     provide: ALLOWED_PRODUCT_TYPES_READER,

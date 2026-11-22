@@ -139,3 +139,21 @@ items `{ id: offerId, version }`; results are keyed by `id`. Each row runs the s
 the caller. A bulk approve passes no ticked check, so a revision whose review needs checks comes
 back `skipped` with `review.checks-missing` (owner decision 20 Nov 2026). Offers and revisions are
 separate calls because their reason codes differ.
+
+## Search of the review queue (list 13)
+
+`GET /catalog/admin/review-queue` and its `/export` take `q`: text, 2 to 100 characters once
+trimmed (`''` is no search; shorter, longer, a non-string or a control character is
+`validation.failed` on `q`). It keeps the rows of both kinds whose product code, product name or
+seller public store name contains the text, in any case; `%`, `_` and `\` are matched as typed. The
+name is the one the row shows, in the Market's default locale: the pending revision's for a product
+revision, the published one for an Offer (an Offer on an unpublished product has no name to match).
+Store names are owned by `sellers`: catalog asks `sellers.searchStoreNames` (through the
+`StoreNameSearch` port) before the read unit, and the matched seller ids join the condition. That
+method answers at most 200 sellers and accepts at most 80 characters, so a longer text matches
+products only; a failed store search fails the read (`access.unavailable`, 503) rather than show
+the queue without the store matches. `q` composes with every other filter and with `total`;
+`totals` stay the whole queue per kind. Saved filters keep `q` under the same rule. No index was
+added: the queue rows come from the partial queue indexes (`pending-first-publish` Offers, products
+with a pending revision), and the text is checked per queue row through the product and revision
+text keys.
