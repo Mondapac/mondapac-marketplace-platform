@@ -7,6 +7,7 @@ import type { OfferView } from '../catalog/types.ts';
 import type { SellerOrderView } from '../orders/types.ts';
 import type { SellerSession } from '../server/session.ts';
 import { SellerDashboard } from './dashboard.tsx';
+import type { WorkQueueAnswer } from '../work-queue/queues.ts';
 import type { SellerDashboardData, Widget } from './types.ts';
 
 const mocks = vi.hoisted(() => ({
@@ -23,7 +24,8 @@ import { startSellerDashboard } from './load.ts';
 /** Every read of the dashboard, awaited. */
 async function loadSellerDashboard(session: SellerSession): Promise<SellerDashboardData> {
   const sources = startSellerDashboard(session);
-  const [orders, offers, ledger, payout, sourcesView, lowStock] = await Promise.all([
+  const [tasks, orders, offers, ledger, payout, sourcesView, lowStock] = await Promise.all([
+    sources.tasks,
     sources.orders,
     sources.offers,
     sources.ledger,
@@ -31,7 +33,7 @@ async function loadSellerDashboard(session: SellerSession): Promise<SellerDashbo
     sources.sources,
     sources.lowStock,
   ]);
-  return { orders, offers, ledger, payout, sources: sourcesView, lowStock };
+  return { tasks, orders, offers, ledger, payout, sources: sourcesView, lowStock };
 }
 
 const wrap = (node: React.ReactNode, locale = 'en-AU') => (
@@ -82,7 +84,80 @@ const offer = (n: number, status: string): OfferView => ({
   version: 1,
 });
 
+const NOW = '2026-11-22T03:00:00.000Z';
+const hoursAgo = (h: number) => new Date(Date.parse(NOW) - h * 3_600_000).toISOString();
+const tasks: WorkQueueAnswer = {
+  panel: 'seller',
+  generatedAt: NOW,
+  queues: [
+    {
+      key: 'ordering.late-orders',
+      level: 'critical',
+      status: 'ok',
+      count: 2,
+      overdue: 1,
+      oldestAt: hoursAgo(2),
+      countedAt: NOW,
+    },
+    {
+      key: 'commission-payouts.dispute-reply-needed',
+      level: 'critical',
+      status: 'ok',
+      count: 1,
+      overdue: 0,
+      oldestAt: hoursAgo(-20),
+      countedAt: NOW,
+    },
+    {
+      key: 'payments.payouts-blocked',
+      level: 'critical',
+      status: 'ok',
+      count: 1,
+      overdue: 0,
+      oldestAt: hoursAgo(30),
+      countedAt: NOW,
+    },
+    {
+      key: 'ordering.to-ship-today',
+      level: 'today',
+      status: 'ok',
+      count: 9,
+      overdue: 0,
+      oldestAt: hoursAgo(3),
+      countedAt: NOW,
+    },
+    { key: 'ordering.pickups-uncollected', level: 'today', status: 'error' },
+    {
+      key: 'commission-payouts.payout-holds',
+      level: 'today',
+      status: 'ok',
+      count: 0,
+      overdue: 0,
+      oldestAt: null,
+      countedAt: NOW,
+    },
+    {
+      key: 'reviews.unanswered',
+      level: 'review',
+      status: 'ok',
+      count: 4,
+      overdue: 0,
+      oldestAt: hoursAgo(50),
+      countedAt: NOW,
+    },
+    {
+      key: 'inventory.published-out-of-stock',
+      level: 'today',
+      status: 'ok',
+      count: 3,
+      overdue: 0,
+      oldestAt: null,
+      countedAt: NOW,
+    },
+  ],
+};
 const full: SellerDashboardData = {
+  tasks: ok(tasks),
   orders: ok({
     sellerOrders: [order(1, 'to-ship'), order(2, 'to-ship'), order(3, 'shipped')],
     nextCursor: null,
@@ -184,6 +259,7 @@ const full: SellerDashboardData = {
   }),
 };
 const none: SellerDashboardData = {
+  tasks: null,
   orders: null,
   offers: null,
   ledger: null,
@@ -205,6 +281,35 @@ const KEYS = [
 afterEach(cleanup);
 
 describe('seller dashboard', () => {
+  it("shows today's tasks first, each in words and linked to where it is done", () => {
+    render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />));
+    const card = within(screen.getByRole('region', { name: "Today's tasks" }));
+    const late = card.getByRole('link', { name: 'Orders past their delivery promise' });
+    expect(late.getAttribute('href')).toBe('/orders');
+    expect(late.closest('li')?.textContent).toContain('2 · 1 overdue');
+    expect(card.getByText('Due in 20h')).toBeTruthy();
+    const payouts = card.getByRole('link', { name: 'Payouts paused or not set up' });
+    expect(payouts.getAttribute('href')).toBe('/accounting/payout-account');
+    expect(payouts.closest('li')?.textContent).toContain('Fix payout details');
+    expect(card.getByText('Pickups ready, not collected').closest('li')?.textContent).toContain(
+      "Couldn't load",
+    );
+    expect(card.getByRole('link', { name: 'Reviews to answer' }).getAttribute('href')).toBe(
+      '/reviews',
+    );
+    // A task the panel does not know yet is left out; an empty one is summed up.
+    expect(card.queryByText(/out of stock/)).toBeNull();
+    expect(card.getByText('1 task is all clear')).toBeTruthy();
+  });
+
+  it("says today's tasks could not be loaded in their card", () => {
+    render(
+      wrap(<SellerDashboard data={{ ...full, tasks: { kind: 'error' } }} permissionKeys={KEYS} />),
+    );
+    const card = within(screen.getByRole('region', { name: "Today's tasks" }));
+    expect(card.getByText('This could not be loaded. Reload the page to try again.')).toBeTruthy();
+  });
+
   it('counts what needs attention and says what each figure covers', () => {
     render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />));
     const stats = within(screen.getByRole('list', { name: 'Needs attention' }));
@@ -229,7 +334,7 @@ describe('seller dashboard', () => {
       }),
     };
     render(wrap(<SellerDashboard data={more} permissionKeys={KEYS} />));
-    const card = screen.getByRole('link', { name: /Orders to ship/ });
+    const card = screen.getByRole('link', { name: /Orders to ship(?! today)/ });
     expect(card.textContent).toContain('50+');
     expect(card.textContent).toContain('Among your latest 50 paid orders');
   });
@@ -327,7 +432,7 @@ describe('seller dashboard', () => {
     };
     render(wrap(<SellerDashboard data={partly} permissionKeys={KEYS} />));
     expect(screen.getAllByText(/This could not be loaded/).length).toBe(4);
-    expect(screen.queryByRole('link', { name: /Orders to ship/ })).toBeNull();
+    expect(screen.queryByRole('link', { name: /Orders to ship(?! today)/ })).toBeNull();
     expect(screen.getByRole('link', { name: /Offers needing changes/ })).toBeTruthy();
   });
 
@@ -433,6 +538,7 @@ describe('seller dashboard while it streams', () => {
         wrap(
           <SellerDashboard
             data={{
+              tasks: null,
               orders: Promise.resolve(null),
               offers: Promise.resolve(null),
               ledger: null,
@@ -469,11 +575,36 @@ describe('startSellerDashboard', () => {
     expect(mocks.get.mock.calls.map((call) => call[0] as string).sort()).toEqual([
       'catalog/seller/offers?limit=50',
       'commission-payouts/seller/ledger?limit=5',
+      'dashboard/seller/tasks',
       'inventory/seller/low-stock?limit=50',
       'inventory/seller/sources',
       'ordering/seller/orders?limit=50',
       'payments/seller/payout-account',
     ]);
+  });
+
+  it('reads the tasks only with a key of one task, and drops an answer with none it knows', async () => {
+    mocks.get.mockImplementation((path: string) =>
+      Promise.resolve({
+        kind: 'ok',
+        body:
+          path === 'dashboard/seller/tasks'
+            ? {
+                panel: 'seller',
+                generatedAt: NOW,
+                queues: [
+                  { key: 'future.task', level: 'today', status: 'ok', count: 1, overdue: 0 },
+                ],
+              }
+            : {},
+      }),
+    );
+    const only = await loadSellerDashboard(session(['identity.team-member.view']));
+    expect(only.tasks).toBeNull();
+    expect(mocks.get).not.toHaveBeenCalled();
+    const unknown = await loadSellerDashboard(session(['reviews.seller.view']));
+    expect(mocks.get).toHaveBeenCalledWith('dashboard/seller/tasks');
+    expect(unknown.tasks).toBeNull();
   });
 
   it('keeps going when one read fails', async () => {

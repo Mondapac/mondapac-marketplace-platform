@@ -119,15 +119,15 @@ never from input. A customer or an admin acting as themselves is `access.denied`
 that carries the acting-as marker (Login as Seller, SEL-08) is allowed, as the seller reads are.
 Counts are cached per seller and access state, except the live queues.
 
-| Key | Level | Key needed | Definition |
-|---|---|---|---|
-| `ordering.late-orders` | critical, live | `ordering.seller-order.view` | The admin late-delivery rule for this seller only. Overdue: past the promise by more than 1 hour. |
-| `commission-payouts.dispute-reply-needed` | critical, live | `commission-payouts.earnings.view` | Cases in `needs-response` whose dispute holds one of the seller's orders (active dispute holds). Overdue: deadline passed; `oldestAt`: nearest deadline. |
-| `payments.payouts-blocked` | critical | `payments.payout-account.view` | 0 or 1: the seller's account is `restricted` or `payouts_enabled` is false (onboarding not finished counts too). No account: 0. Overdue 0; `oldestAt`: the account's last update. |
-| `ordering.to-ship-today` | today | `ordering.seller-order.view` | Paid, `to-ship`, not marked ready, not refunded in full; ready-by from now to the end of the seller's local day, or a scheduled window that starts that day and has not ended. Never late (no double count). Overdue 0; `oldestAt`: earliest payment. |
-| `ordering.pickups-uncollected` | today | `ordering.seller-order.view` | Pickup orders marked ready, not collected. Overdue: ready since before 48 hours; `oldestAt`: earliest ready time. |
-| `commission-payouts.payout-holds` | today | `commission-payouts.earnings.view` | The seller's active payout holds (dispute holds included). Overdue: placed before 48 hours. |
-| `reviews.unanswered` | review | `reviews.seller.view` | The Reviews list's `unanswered` view: published reviews without a published reply of the shop. Overdue: published before 7 days. |
+| Key                                       | Level          | Key needed                         | Definition                                                                                                                                                                                                                                            |
+| ----------------------------------------- | -------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ordering.late-orders`                    | critical, live | `ordering.seller-order.view`       | The admin late-delivery rule for this seller only. Overdue: past the promise by more than 1 hour.                                                                                                                                                     |
+| `commission-payouts.dispute-reply-needed` | critical, live | `commission-payouts.earnings.view` | Cases in `needs-response` whose dispute holds one of the seller's orders (active dispute holds). Overdue: deadline passed; `oldestAt`: nearest deadline.                                                                                              |
+| `payments.payouts-blocked`                | critical       | `payments.payout-account.view`     | 0 or 1: the seller's account is `restricted` or `payouts_enabled` is false (onboarding not finished counts too). No account: 0. Overdue 0; `oldestAt`: the account's last update.                                                                     |
+| `ordering.to-ship-today`                  | today          | `ordering.seller-order.view`       | Paid, `to-ship`, not marked ready, not refunded in full; ready-by from now to the end of the seller's local day, or a scheduled window that starts that day and has not ended. Never late (no double count). Overdue 0; `oldestAt`: earliest payment. |
+| `ordering.pickups-uncollected`            | today          | `ordering.seller-order.view`       | Pickup orders marked ready, not collected. Overdue: ready since before 48 hours; `oldestAt`: earliest ready time.                                                                                                                                     |
+| `commission-payouts.payout-holds`         | today          | `commission-payouts.earnings.view` | The seller's active payout holds (dispute holds included). Overdue: placed before 48 hours.                                                                                                                                                           |
+| `reviews.unanswered`                      | review         | `reviews.seller.view`              | The Reviews list's `unanswered` view: published reviews without a published reply of the shop. Overdue: published before 7 days.                                                                                                                      |
 
 - The seller's day is the seller's approved operating zone (sellers `operatingZones`, read before
   the unit); before the seller has an approved file it falls back to the Market's zone.
@@ -178,3 +178,17 @@ Counts are cached per seller and access state, except the live queues.
   rows), so there is no footer. `?view=` opens a view (the card's folded lines use it).
 - Not yet: deep links that open each list oldest first (FE-120), lists for three queues that
   have none (FE-121; failed webhooks is FE-110), refresh without a reload (FE-122).
+
+## Phase 2: action centre UI (PR 8, seller)
+
+- The seller dashboard opens with "Today's tasks" (the same `WorkQueueCard`; words and pages in
+  `apps/seller/src/work-queue/queues.ts`): every urgent task, today's tasks, the review task, and
+  "All clear" for empty ones. There is no full page: the seller has seven tasks at most, and each
+  row links to the page where it is done (orders, earnings, payout account, reviews).
+- "Payouts paused or not set up" counts an account whose setup is not finished as well as a
+  restricted one, so its words name both; its status is "Fix payout details".
+- A dispute's hold is counted in both "Disputes waiting for your reply" and "Payouts on hold,
+  disputes included"; the hold row says so.
+- The "Needs attention" figures stay until the seller KPI strip (phase 6) replaces them.
+- Deferred: "Published but out of stock" (FE-113), the folded low-stock, changes-requested and
+  certificate tasks (FE-114).
