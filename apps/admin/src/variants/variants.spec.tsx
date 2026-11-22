@@ -217,19 +217,19 @@ describe.each(MARKETS)('admin Variants page ($name)', ({ locales }) => {
         'You can view variants. Ask a Platform Administrator to change them.',
       ),
     ).toBeTruthy();
-    await screen.findByRole('region', { name: 'Variant type details' });
-    expect(screen.queryByRole('button', { name: 'Save' })).toBeNull();
+    await screen.findByRole('form', { name: 'Variant type details' });
+    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
     expect(screen.getByRole<HTMLInputElement>('radio', { name: /Swatches/ }).disabled).toBe(true);
   });
 
   it('saves the whole settings with the version read, swatches only for Swatches', async () => {
     route(locales);
     mount();
-    await screen.findByRole('region', { name: 'Variant type details' });
+    await screen.findByRole('form', { name: 'Variant type details' });
     fireEvent.click(screen.getByRole('radio', { name: /Swatches/ }));
     fireEvent.change(screen.getByLabelText('Colour for 250 g'), { target: { value: GREEN } });
     fireEvent.change(screen.getByLabelText('Option order'), { target: { value: 'by-size' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() =>
       expect(call).toHaveBeenCalledWith(
         'PUT',
@@ -246,13 +246,66 @@ describe.each(MARKETS)('admin Variants page ($name)', ({ locales }) => {
     );
   });
 
+  it('counts the changes in the save bar and discards them all', async () => {
+    route(locales);
+    mount();
+    await screen.findByRole('form', { name: 'Variant type details' });
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: /Swatches/ }));
+    fireEvent.change(screen.getByLabelText('Colour for 250 g'), { target: { value: GREEN } });
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(within(bar).getByText('2 unsaved changes')).toBeTruthy();
+    // A swatch is not a change once the style no longer uses swatches.
+    fireEvent.click(screen.getByRole('radio', { name: /Dropdown/ }));
+    expect(within(bar).getByText('1 unsaved change')).toBeTruthy();
+    fireEvent.click(within(bar).getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(call.mock.calls.some(([method]) => method === 'PUT')).toBe(false);
+  });
+
+  it('sends one save for two quick submits, and no change for help of spaces alone', async () => {
+    route(locales);
+    mount();
+    const form = await screen.findByRole('form', { name: 'Variant type details' });
+    const help = screen.getAllByLabelText(/Help for sellers/)[0]!;
+    fireEvent.change(help, { target: { value: '   ' } });
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    fireEvent.click(screen.getByRole('radio', { name: /Dropdown/ }));
+    // Enter in a field submits the form; a second one while the first runs is dropped.
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    await waitFor(() =>
+      expect(call.mock.calls.filter(([method]) => method === 'PUT')).toHaveLength(1),
+    );
+  });
+
+  it('leaves for the session-ended page on a 401 without the leave prompt', async () => {
+    const assign = vi.fn();
+    const original = window.location;
+    Object.defineProperty(window, 'location', { value: { assign }, configurable: true });
+    try {
+      route(locales, {
+        [`PUT catalog/admin/variant-types/${TYPE}/settings`]: fail(401, 'session.expired'),
+      });
+      mount();
+      await screen.findByRole('form', { name: 'Variant type details' });
+      fireEvent.click(screen.getByRole('radio', { name: /Dropdown/ }));
+      fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+      await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+      expect(screen.queryByText('Leave without saving?')).toBeNull();
+      expect(screen.queryByRole('region', { name: 'Unsaved changes' })).not.toBeNull();
+    } finally {
+      Object.defineProperty(window, 'location', { value: original, configurable: true });
+    }
+  });
+
   it('refuses a colour that is not #RRGGBB before sending', async () => {
     route(locales);
     mount();
-    await screen.findByRole('region', { name: 'Variant type details' });
+    await screen.findByRole('form', { name: 'Variant type details' });
     fireEvent.click(screen.getByRole('radio', { name: /Swatches/ }));
     fireEvent.change(screen.getByLabelText('Colour for 250 g'), { target: { value: 'red' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(await screen.findByText(messages.variants.types.swatch.format)).toBeTruthy();
     expect(call.mock.calls.some(([method]) => method === 'PUT')).toBe(false);
   });
@@ -260,11 +313,11 @@ describe.each(MARKETS)('admin Variants page ($name)', ({ locales }) => {
   it('ignores a bad colour once another display style is chosen', async () => {
     route(locales);
     mount();
-    await screen.findByRole('region', { name: 'Variant type details' });
+    await screen.findByRole('form', { name: 'Variant type details' });
     fireEvent.click(screen.getByRole('radio', { name: /Swatches/ }));
     fireEvent.change(screen.getByLabelText('Colour for 250 g'), { target: { value: 'red' } });
     fireEvent.click(screen.getByRole('radio', { name: /Dropdown/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     await waitFor(() =>
       expect(call).toHaveBeenCalledWith(
         'PUT',
@@ -280,9 +333,9 @@ describe.each(MARKETS)('admin Variants page ($name)', ({ locales }) => {
       [`PUT catalog/admin/variant-types/${TYPE}/settings`]: fail(409, 'variant-type.stale'),
     });
     mount();
-    await screen.findByRole('region', { name: 'Variant type details' });
+    await screen.findByRole('form', { name: 'Variant type details' });
     fireEvent.click(screen.getByRole('radio', { name: /Dropdown/ }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(
       await screen.findByText(
         'Someone else changed this variant type. Reload it and make your change again.',

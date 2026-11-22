@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -138,7 +138,7 @@ describe('SettingsForm', () => {
     expect(screen.queryByRole('button', { name: 'Review change' })).toBeNull();
   });
 
-  it('puts the change in a danger zone at the end, with its own button, not a save bar', async () => {
+  it('puts the change in a danger zone at the end, sent from the save bar', async () => {
     call.mockResolvedValue(ok(settings({ status: 'active', updatedAt: '2026-10-01T00:00:00Z' })));
     mount();
     await screen.findByText(/Changed/);
@@ -147,27 +147,53 @@ describe('SettingsForm', () => {
     const zone = screen.getByRole('heading', { name: 'Danger zone' }).closest('section')!;
     expect(zone.getAttribute('data-variant')).toBe('danger');
     expect(zone.contains(screen.getByLabelText('New state'))).toBe(true);
-    expect(zone.contains(screen.getByRole('button', { name: 'Review change' }))).toBe(true);
+    expect(screen.queryByRole('button', { name: 'Review change' })).toBeNull();
     choose('paused');
-    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    const bar = screen.getByRole('region', { name: 'Unsaved changes' });
+    expect(within(bar).getByText('1 unsaved change')).toBeTruthy();
+    expect(within(bar).getByRole('button', { name: 'Review change' })).toBeTruthy();
+    expect(zone.contains(within(bar).getByRole('button', { name: 'Review change' }))).toBe(false);
   });
 
-  it('keeps Review off until the state differs and a required reason is chosen', async () => {
+  it('shows the bar once the state differs, asks for a required reason, and discards', async () => {
     call.mockResolvedValue(
       ok(settings({ status: 'active', updatedAt: '2026-10-01T00:00:00.000Z' })),
     );
     mount();
     await screen.findByText('Changed 1 Oct 2026, 12:00 am UTC');
-    const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Review change' });
-    expect(button.disabled).toBe(true);
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
     expect(screen.getByRole('option', { name: 'Active (current)' })).toBeTruthy();
     choose('paused');
     expect(screen.getByLabelText('Reason')).toBeTruthy();
+    review();
+    // No confirm without a reason: the field says what is missing and Review waits for it.
+    expect(await screen.findByText('Choose a reason for this state.')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByLabelText('Reason'));
+    const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Review change' });
     expect(button.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'maintenance' } });
     expect(button.disabled).toBe(false);
     choose('off');
     expect(screen.queryByLabelText('Reason')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.getByLabelText<HTMLSelectElement>('New state').value).toBe('active');
+    expect(call.mock.calls.some(([method]) => method === 'PUT')).toBe(false);
+  });
+
+  it('only reviews on a form submit: an off switch opens its confirm and sends nothing', async () => {
+    call.mockResolvedValue(
+      ok(settings({ status: 'active', updatedAt: '2026-10-01T00:00:00.000Z' })),
+    );
+    mount();
+    await screen.findByText(/Changed/);
+    choose('off');
+    note();
+    // Enter in a field submits the page form; that is Review, never the change itself.
+    fireEvent.submit(screen.getByLabelText('Note for reviewers').closest('form')!);
+    expect(await confirmDialog('Turn the wallet off?')).toBeTruthy();
+    expect(call.mock.calls.some(([method]) => method === 'PUT')).toBe(false);
   });
 
   it('confirms a pause with its reason, then sends it and shows the new state', async () => {
@@ -209,6 +235,7 @@ describe('SettingsForm', () => {
     choose('active');
     review();
     expect(screen.getByText(/Write a note for the reviewers/)).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByLabelText('Note for reviewers'));
     expect(call).toHaveBeenCalledTimes(1);
     note('Open it');
     expect(screen.getByText('7 / 500')).toBeTruthy();
@@ -265,6 +292,10 @@ describe('SettingsForm', () => {
     review();
     expect(await screen.findByText(/The note was refused/)).toBeTruthy();
     expect(screen.queryByText('Choose a reason for this state.')).toBeNull();
+    // A refusal from the server does not lock Review: the same note can be sent again.
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Review change' }).disabled).toBe(
+      false,
+    );
   });
 
   it('has a confirm for frozen and off with their own words', async () => {

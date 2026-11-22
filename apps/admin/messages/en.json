@@ -9107,7 +9107,7 @@
       "state": "State",
       "last-change": "Last change",
       "danger": {
-        "description": "Changing the state affects every customer in this Market. Each change asks you to confirm it, then for a code from your authenticator app."
+        "description": "Changing the state affects every customer in this Market. Choose a state, then use Review change in the bar below. A pause, freeze or turning off asks you to confirm it; every change then asks for a code from your authenticator app."
       },
       "current": "Current state",
       "never-changed": "Never changed",
@@ -14261,8 +14261,6 @@
         "placeholder": "#RRGGBB"
       },
       "save": {
-        "label": "Save",
-        "discard": "Discard changes",
         "done": "Variant type saved",
         "failed": "Not saved",
         "stale": "Someone else changed this variant type. Reload it and make your change again.",

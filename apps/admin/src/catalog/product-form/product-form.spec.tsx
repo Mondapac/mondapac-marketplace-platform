@@ -249,6 +249,7 @@ describe('the add page', () => {
       </NextIntlClientProvider>,
     );
   const saveDraft = () => fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+  const clickSaving = () => fireEvent.click(screen.getByRole('button', { name: 'Saving…' }));
   const type = (title: string) =>
     fireEvent.change(screen.getByLabelText('Title'), { target: { value: title } });
   const pick = (value: string) =>
@@ -428,8 +429,9 @@ describe('the add page', () => {
       () => new Promise((resolve) => (release = resolve as typeof release)),
     );
     saveDraft();
-    saveDraft();
-    saveDraft();
+    // While it saves the bar says so, like every save bar; more clicks do nothing.
+    clickSaving();
+    clickSaving();
     expect(call).toHaveBeenCalledTimes(2);
     release(fail(422, 'product.type-not-offered'));
     expect(await screen.findByText("This Market doesn't offer that product type.")).toBeTruthy();
@@ -504,8 +506,9 @@ describe('the add page', () => {
     );
     call.mockResolvedValueOnce(saved);
     saveDraft();
-    saveDraft();
-    saveDraft();
+    // While it saves the bar says so, like every save bar; more clicks do nothing.
+    clickSaving();
+    clickSaving();
     expect(call).toHaveBeenCalledTimes(2);
     release(created);
     await waitFor(() => expect(replace).toHaveBeenCalledTimes(1));

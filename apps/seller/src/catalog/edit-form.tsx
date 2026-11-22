@@ -829,8 +829,8 @@ export function EditForm({
           region: t('catalog.edit.bar.region'),
           discard: t('catalog.edit.bar.discard'),
           save: t(published ? 'catalog.edit.bar.save-revision' : 'catalog.edit.bar.save-draft'),
-          // The page keeps its own label while it saves; the button shows the spinner.
-          saving: t(published ? 'catalog.edit.bar.save-revision' : 'catalog.edit.bar.save-draft'),
+          // Every bar says "Saving…" while it saves, as the settings pages do.
+          saving: t('settings.bar.saving'),
         }}
         onDiscard={discardChanges}
       />
