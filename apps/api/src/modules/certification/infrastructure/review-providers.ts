@@ -1,4 +1,9 @@
 import type { FactoryProvider, Provider } from '@nestjs/common';
+import { PrismaCertificationWorkQueueCountReader } from './prisma-work-queue-count.reader';
+import {
+  CERTIFICATION_WORK_QUEUE_COUNT_READER,
+  type CertificationWorkQueueCountReader,
+} from '../application/ports/work-queue-count.reader';
 import type { Clock, IdGenerator } from '@mondapac/shared-kernel';
 import { AUDIT_WRITER, type AuditWriter } from '../../../platform/audit/audit-writer';
 import { USE_CASE_GATE, type UseCaseGate } from '../../../platform/authz';
@@ -104,6 +109,12 @@ const reviewUseCaseProviders: readonly FactoryProvider[] = reviewUseCases.map(
  * use cases and the decision mail.
  */
 export const reviewProviders: readonly Provider[] = [
+  {
+    provide: CERTIFICATION_WORK_QUEUE_COUNT_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CertificationWorkQueueCountReader =>
+      new PrismaCertificationWorkQueueCountReader(prisma),
+  },
   {
     provide: CERTIFICATE_REVIEW_REPOSITORY,
     inject: [PrismaService],

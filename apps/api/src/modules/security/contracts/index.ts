@@ -7,3 +7,7 @@ export {
   SECURITY_RESPOND,
   SECURITY_VIEW,
 } from './permissions';
+export {
+  SECURITY_WORK_QUEUE_FACADE,
+  type SecurityWorkQueueFacade,
+} from './security-work-queue.facade';

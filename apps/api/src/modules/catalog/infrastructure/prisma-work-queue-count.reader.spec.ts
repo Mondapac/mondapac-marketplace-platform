@@ -40,6 +40,7 @@ describe.each(TEST_MARKETS)('catalog work-queue count statements in market %s', 
   const prisma = {
     tx: () => ({
       catalogOffer: delegate('offer'),
+      catalogOfferTag: delegate('tag'),
       catalogProduct: delegate('product'),
       catalogBrandMergeCandidate: delegate('brandMerge'),
       catalogCategoryProposal: delegate('proposal'),
@@ -51,6 +52,30 @@ describe.each(TEST_MARKETS)('catalog work-queue count statements in market %s', 
     calls = [];
     total = 3;
     overdueCount = 1;
+  });
+
+  it('counts the active tags of every type past their validity end, each one overdue', async () => {
+    min = { validUntil: OLDEST };
+    expect(await reader.claimsWithoutCertificate(market, NOW)).toEqual({
+      count: 3,
+      overdue: 3,
+      oldestAt: Temporal.Instant.from(OLDEST.toISOString()),
+    });
+    expect(calls).toEqual([
+      {
+        model: 'tag',
+        op: 'aggregate',
+        args: {
+          where: {
+            marketId: market.marketId,
+            status: 'active',
+            validUntil: { lt: new Date(NOW.epochMilliseconds) },
+          },
+          _count: { _all: true },
+          _min: { validUntil: true },
+        },
+      },
+    ]);
   });
 
   it('counts the Offers pending first publication, by submission', async () => {

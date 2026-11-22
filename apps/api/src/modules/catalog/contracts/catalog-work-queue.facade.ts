@@ -11,6 +11,12 @@ import type {
  * case), platform admins only. Not exposed over HTTP; the dashboard module composes them.
  */
 export interface CatalogWorkQueueFacade {
+  /** Offer certification tags still active after their certificate expired (an incident). */
+  claimsWithoutCertificate(
+    context: CallContext,
+    query: WorkQueueCountQuery,
+  ): Promise<Result<WorkQueueCount, AccessDenied>>;
+
   /** The Offers waiting for their first-publication review. */
   pendingOffers(
     context: CallContext,

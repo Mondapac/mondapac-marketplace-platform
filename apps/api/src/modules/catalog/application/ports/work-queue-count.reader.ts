@@ -9,6 +9,18 @@ export const CATALOG_WORK_QUEUE_COUNT_READER = Symbol('CATALOG_WORK_QUEUE_COUNT_
  * `staleBefore`; `oldestAt` is when the longest-waiting item entered the queue.
  */
 export interface CatalogWorkQueueCountReader {
+  /**
+   * The Offer certification tags of every type still `active` after their certificate's
+   * `valid_until` (before `now`): the badge shows while its certificate has expired. Every one is
+   * overdue (an incident); `oldestAt` is the earliest validity end passed. `rechecking`,
+   * `suspended`, `pending-publish` and `removed` tags show no badge and are not counted.
+   */
+  claimsWithoutCertificate(
+    market: MarketContext,
+    now: Temporal.Instant,
+    staleBefore: Temporal.Instant,
+  ): Promise<WorkQueueCount>;
+
   /** The Offers waiting for their first-publication review (today queue). Overdue: submitted before the age limit. */
   pendingOffers(
     market: MarketContext,

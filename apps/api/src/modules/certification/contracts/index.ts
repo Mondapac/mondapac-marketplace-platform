@@ -23,7 +23,9 @@ export {
 export {
   CERTIFICATION_OWN_CERTIFICATE_VIEW,
   CERTIFICATION_PERMISSIONS,
+  CERTIFICATION_PRODUCT_CERTIFICATE_VIEW,
   CERTIFICATION_SELLER_CERTIFICATE_REVIEW,
+  CERTIFICATION_SELLER_CERTIFICATE_VIEW,
 } from './permissions';
 export { CERTIFICATION_AUDIT_ACTIONS } from '../domain/audit';
 export {
@@ -62,3 +64,7 @@ export {
   MAX_CATALOG_REFERENCE_IDS,
   type CatalogReferences,
 } from './catalog-references';
+export {
+  CERTIFICATION_WORK_QUEUE_FACADE,
+  type CertificationWorkQueueFacade,
+} from './certification-work-queue.facade';

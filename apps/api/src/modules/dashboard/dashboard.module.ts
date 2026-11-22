@@ -10,6 +10,13 @@ import {
   CatalogModule,
   type CatalogWorkQueueFacade,
 } from '../catalog';
+import {
+  CERTIFICATION_PRODUCT_CERTIFICATE_VIEW,
+  CERTIFICATION_SELLER_CERTIFICATE_VIEW,
+  CERTIFICATION_WORK_QUEUE_FACADE,
+  CertificationModule,
+  type CertificationWorkQueueFacade,
+} from '../certification';
 import { IDENTITY_FACADE, IdentityModule, type IdentityFacade } from '../identity';
 import {
   ORDERING_ORDER_VIEW,
@@ -23,6 +30,12 @@ import {
   PricingModule,
   type PricingWorkQueueFacade,
 } from '../pricing';
+import {
+  SECURITY_VIEW,
+  SECURITY_WORK_QUEUE_FACADE,
+  SecurityModule,
+  type SecurityWorkQueueFacade,
+} from '../security';
 import {
   SELLERS_SELLER_VIEW,
   SELLERS_WORK_QUEUE_FACADE,
@@ -47,6 +60,8 @@ export interface WorkQueueOwners {
   readonly catalog: CatalogWorkQueueFacade;
   readonly pricing: PricingWorkQueueFacade;
   readonly sellers: SellersWorkQueueFacade;
+  readonly security: SecurityWorkQueueFacade;
+  readonly certification: CertificationWorkQueueFacade;
 }
 
 /**
@@ -56,8 +71,24 @@ export interface WorkQueueOwners {
  * commission-payouts).
  */
 export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSource[] {
-  const { ordering, catalog, pricing, sellers } = owners;
+  const { ordering, catalog, pricing, sellers, security, certification } = owners;
   return [
+    {
+      key: 'catalog.claims-without-certificate',
+      panel: 'admin',
+      level: 'critical',
+      requires: [CATALOG_PRODUCT_VIEW.key],
+      live: true,
+      count: (context, query) => catalog.claimsWithoutCertificate(context, query),
+    },
+    {
+      key: 'security.open-alerts',
+      panel: 'admin',
+      level: 'critical',
+      requires: [SECURITY_VIEW.key],
+      live: true,
+      count: (context, query) => security.openAlerts(context, query),
+    },
     {
       key: 'ordering.late-deliveries',
       panel: 'admin',
@@ -130,6 +161,22 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
       live: false,
       count: (context, query) => catalog.categoryProposals(context, query),
     },
+    {
+      key: 'certification.seller-certificates',
+      panel: 'admin',
+      level: 'review',
+      requires: [CERTIFICATION_SELLER_CERTIFICATE_VIEW.key],
+      live: false,
+      count: (context, query) => certification.sellerCertificates(context, query),
+    },
+    {
+      key: 'certification.product-certificates',
+      panel: 'admin',
+      level: 'review',
+      requires: [CERTIFICATION_PRODUCT_CERTIFICATE_VIEW.key],
+      live: false,
+      count: (context, query) => certification.productCertificates(context, query),
+    },
   ];
 }
 
@@ -139,7 +186,15 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
  * unchanged, and no module imports it (dependency-cruiser `nothing-imports-dashboard`).
  */
 @Module({
-  imports: [IdentityModule, OrderingModule, CatalogModule, PricingModule, SellersModule],
+  imports: [
+    IdentityModule,
+    OrderingModule,
+    CatalogModule,
+    PricingModule,
+    SellersModule,
+    SecurityModule,
+    CertificationModule,
+  ],
   controllers: [AdminDashboardController],
   providers: [
     {
@@ -154,14 +209,25 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
         CATALOG_WORK_QUEUE_FACADE,
         PRICING_WORK_QUEUE_FACADE,
         SELLERS_WORK_QUEUE_FACADE,
+        SECURITY_WORK_QUEUE_FACADE,
+        CERTIFICATION_WORK_QUEUE_FACADE,
       ],
       useFactory: (
         ordering: OrderingWorkQueueFacade,
         catalog: CatalogWorkQueueFacade,
         pricing: PricingWorkQueueFacade,
         sellers: SellersWorkQueueFacade,
+        security: SecurityWorkQueueFacade,
+        certification: CertificationWorkQueueFacade,
       ) => {
-        const sources = workQueueSources({ ordering, catalog, pricing, sellers });
+        const sources = workQueueSources({
+          ordering,
+          catalog,
+          pricing,
+          sellers,
+          security,
+          certification,
+        });
         checkWorkQueueSources(sources);
         return sources;
       },

@@ -1,4 +1,12 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
+import { CountOpenSecurityAlerts } from './application/use-cases/count-open-security-alerts.use-case';
+import {
+  SECURITY_WORK_QUEUE_COUNT_READER,
+  type SecurityWorkQueueCountReader,
+} from './application/ports/work-queue-count.reader';
+import { SecurityWorkQueueFacadeImplementation } from './presentation/security-work-queue.facade';
+import { SECURITY_WORK_QUEUE_FACADE } from './contracts/security-work-queue.facade';
+import type { UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
@@ -118,6 +126,21 @@ function alertListUseCaseProvider<U>(type: AlertListUseCaseClass<U>): FactoryPro
   imports: [IdentityModule, ListsModule],
   controllers: [AdminSecurityController],
   providers: [
+    ...[CountOpenSecurityAlerts].map((type) => ({
+      provide: type,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, SECURITY_WORK_QUEUE_COUNT_READER],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        counts: SecurityWorkQueueCountReader,
+      ) => new type(gate, { unitOfWork, counts }),
+    })),
+    {
+      provide: SECURITY_WORK_QUEUE_FACADE,
+      inject: [CountOpenSecurityAlerts],
+      useFactory: (openAlerts: CountOpenSecurityAlerts) =>
+        new SecurityWorkQueueFacadeImplementation(openAlerts),
+    },
     PersistenceModule.auditWriterFor('security'),
     PersistenceModule.securityEventFeedFor('security'),
     registerAuditActions('security', SECURITY_AUDIT_ACTIONS),
@@ -153,5 +176,6 @@ function alertListUseCaseProvider<U>(type: AlertListUseCaseClass<U>): FactoryPro
       ) => [evaluateRulesJob(evaluate), deliverAlertsJob(deliver), sendDigestsJob(send)],
     ),
   ],
+  exports: [SECURITY_WORK_QUEUE_FACADE],
 })
 export class SecurityModule {}

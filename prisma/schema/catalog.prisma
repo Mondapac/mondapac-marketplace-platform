@@ -1139,7 +1139,8 @@ model CatalogProductRevisionImage {
 /// A certification tag of an Offer with its claim copy (catalog design 5.3, 5.4; data design 3.15).
 /// The copy restricts only (ADR-0028 d3): `active` needs a fresh allowed decision. A removed tag
 /// keeps its row and re-adding the type is a new row. The CHECKs, the open-tag partial unique, the
-/// `change_seq` trigger, the deferred history-present trigger and the grants are hand-written.
+/// `change_seq` trigger, the deferred history-present trigger and the grants are hand-written, as is
+/// the partial index (market_id, valid_until) WHERE status = 'active' (dashboard incident count).
 model CatalogOfferTag {
   id                    String                   @id @db.Uuid
   marketId              String                   @map("market_id") @db.VarChar(8)

@@ -6,8 +6,13 @@ import {
   CATALOG_CATEGORY_PROPOSAL_DECIDE,
   CATALOG_PRODUCT_VIEW,
 } from '../catalog';
+import {
+  CERTIFICATION_PRODUCT_CERTIFICATE_VIEW,
+  CERTIFICATION_SELLER_CERTIFICATE_VIEW,
+} from '../certification';
 import { ORDERING_ORDER_VIEW } from '../ordering';
 import { PRICING_PRICE_HOLD_VIEW } from '../pricing';
+import { SECURITY_VIEW } from '../security';
 import { SELLERS_SELLER_VIEW } from '../sellers';
 import { checkWorkQueueSources } from './application/work-queue-source';
 import { workQueueSources, type WorkQueueOwners } from './dashboard.module';
@@ -31,6 +36,7 @@ describe('the bound work-queue sources', () => {
       pendingRefunds: record('ordering.pendingRefunds'),
     },
     catalog: {
+      claimsWithoutCertificate: record('catalog.claimsWithoutCertificate'),
       pendingOffers: record('catalog.pendingOffers'),
       pendingRevisions: record('catalog.pendingRevisions'),
       brandMerges: record('catalog.brandMerges'),
@@ -40,6 +46,11 @@ describe('the bound work-queue sources', () => {
     sellers: {
       applications: record('sellers.applications'),
       unhealthySellers: record('sellers.unhealthySellers'),
+    },
+    security: { openAlerts: record('security.openAlerts') },
+    certification: {
+      sellerCertificates: record('certification.sellerCertificates'),
+      productCertificates: record('certification.productCertificates'),
     },
   };
   const sources = workQueueSources(owners);
@@ -58,6 +69,20 @@ describe('the bound work-queue sources', () => {
         live,
       })),
     ).toEqual([
+      {
+        key: 'catalog.claims-without-certificate',
+        panel: 'admin',
+        level: 'critical',
+        requires: [CATALOG_PRODUCT_VIEW.key],
+        live: true,
+      },
+      {
+        key: 'security.open-alerts',
+        panel: 'admin',
+        level: 'critical',
+        requires: [SECURITY_VIEW.key],
+        live: true,
+      },
       {
         key: 'ordering.late-deliveries',
         panel: 'admin',
@@ -121,6 +146,20 @@ describe('the bound work-queue sources', () => {
         requires: [CATALOG_CATEGORY_PROPOSAL_DECIDE.key],
         live: false,
       },
+      {
+        key: 'certification.seller-certificates',
+        panel: 'admin',
+        level: 'review',
+        requires: [CERTIFICATION_SELLER_CERTIFICATE_VIEW.key],
+        live: false,
+      },
+      {
+        key: 'certification.product-certificates',
+        panel: 'admin',
+        level: 'review',
+        requires: [CERTIFICATION_PRODUCT_CERTIFICATE_VIEW.key],
+        live: false,
+      },
     ]);
   });
 
@@ -130,6 +169,8 @@ describe('the bound work-queue sources', () => {
     const query = { now: NOW, staleBefore: NOW, signal: new AbortController().signal };
     for (const source of sources) expect(await source.count(context, query)).toEqual(ok(COUNT));
     expect(calls.map((c) => c.method)).toEqual([
+      'catalog.claimsWithoutCertificate',
+      'security.openAlerts',
       'ordering.lateDeliveries',
       'ordering.pendingRefunds',
       'sellers.applications',
@@ -139,6 +180,8 @@ describe('the bound work-queue sources', () => {
       'sellers.unhealthySellers',
       'catalog.brandMerges',
       'catalog.categoryProposals',
+      'certification.sellerCertificates',
+      'certification.productCertificates',
     ]);
     expect(calls.every((c) => c.context === context && c.query === query)).toBe(true);
   });

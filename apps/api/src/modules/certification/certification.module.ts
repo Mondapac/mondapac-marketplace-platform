@@ -1,4 +1,12 @@
 import { Module, type FactoryProvider } from '@nestjs/common';
+import { CountSellerCertificateReviews } from './application/use-cases/count-seller-certificate-reviews.use-case';
+import { CountProductCertificateReviews } from './application/use-cases/count-product-certificate-reviews.use-case';
+import {
+  CERTIFICATION_WORK_QUEUE_COUNT_READER,
+  type CertificationWorkQueueCountReader,
+} from './application/ports/work-queue-count.reader';
+import { CertificationWorkQueueFacadeImplementation } from './presentation/certification-work-queue.facade';
+import { CERTIFICATION_WORK_QUEUE_FACADE } from './contracts/certification-work-queue.facade';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { registerPermissions } from '../../platform/authz';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
@@ -177,6 +185,23 @@ const validTypesUseCases = [SellerValidCertificateTypes, SellerValidCertificateT
     AdminProductCertificateController,
   ],
   providers: [
+    ...[CountSellerCertificateReviews, CountProductCertificateReviews].map((type) => ({
+      provide: type,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, CERTIFICATION_WORK_QUEUE_COUNT_READER],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        counts: CertificationWorkQueueCountReader,
+      ) => new type(gate, { unitOfWork, counts }),
+    })),
+    {
+      provide: CERTIFICATION_WORK_QUEUE_FACADE,
+      inject: [CountSellerCertificateReviews, CountProductCertificateReviews],
+      useFactory: (
+        sellerCertificates: CountSellerCertificateReviews,
+        productCertificates: CountProductCertificateReviews,
+      ) => new CertificationWorkQueueFacadeImplementation(sellerCertificates, productCertificates),
+    },
     PersistenceModule.outboxWriterFor('certification'),
     registerEvents('certification', CERTIFICATION_EVENTS),
     registerPermissions('certification', CERTIFICATION_PERMISSIONS),
@@ -345,6 +370,6 @@ const validTypesUseCases = [SellerValidCertificateTypes, SellerValidCertificateT
         }),
     },
   ],
-  exports: [CERTIFICATION_FACADE],
+  exports: [CERTIFICATION_WORK_QUEUE_FACADE, CERTIFICATION_FACADE],
 })
 export class CertificationModule {}
