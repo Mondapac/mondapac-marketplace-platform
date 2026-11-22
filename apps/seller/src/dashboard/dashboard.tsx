@@ -789,11 +789,16 @@ function allRefused(data: SellerDashboardSources): DashboardSource<boolean> {
 export function SellerDashboard({
   data,
   permissionKeys,
+  kpis,
 }: {
   readonly data: SellerDashboardSources;
   readonly permissionKeys: readonly string[];
+  /** The KPI section (phase 6), shown below the attention figures; absent without the orders key. */
+  readonly kpis?: ReactNode;
 }) {
   const t = useTranslations('dashboard');
+  // `kpis` exists only with the orders key, the key `data.orders` is read with, so the checks below
+  // on `data` alone stay right while it does.
   const keys = new Set(permissionKeys);
   const nothing =
     Object.values(data).every((widget) => widget === null) &&
@@ -817,6 +822,7 @@ export function SellerDashboard({
       <Notices data={data} />
       <TodaysTasks source={data.tasks} />
       <Attention data={data} />
+      {kpis ?? null}
       <Orders data={data} />
       <LowStock data={data} />
       <Offers data={data} />

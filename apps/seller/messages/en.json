@@ -235,6 +235,73 @@
       "stock-locations": "Stock locations",
       "payout-account": "Payout account",
       "invite-team": "Invite a team member"
+    },
+    "kpi": {
+      "title": "Sales and performance",
+      "strip": "Sales figures",
+      "period": {
+        "label": "Period",
+        "today": "Today",
+        "7d": "7 days",
+        "30d": "30 days",
+        "month": "This month"
+      },
+      "compared": {
+        "today": "vs yesterday",
+        "7d": "vs previous 7 days",
+        "30d": "vs previous 30 days",
+        "month": "vs same days last month"
+      },
+      "scope": {
+        "today": "Today",
+        "7d": "Last 7 days",
+        "30d": "Last 30 days",
+        "month": "This month so far",
+        "on-time": "Shipped orders only"
+      },
+      "card": {
+        "sales": "Sales (incl. GST)",
+        "orders": "Paid orders",
+        "aov": "Average order value",
+        "refunded": "Refunded (incl. GST)",
+        "refund-rate": "Refund rate",
+        "on-time": "Shipped on time",
+        "units": "Units sold",
+        "cancelled": "Cancelled orders"
+      },
+      "chart": {
+        "title": "Sales trend (incl. GST)",
+        "alt": "Sales including GST, {period}, against the previous period",
+        "series": "This period",
+        "compare": "Previous period",
+        "table": "View as table",
+        "chart": "View as chart",
+        "date": "Day",
+        "empty": "No paid orders in this period or the one before.",
+        "zone": "Market time ({zone})",
+        "updated": "updated {time}"
+      },
+      "categories": {
+        "title": "Top categories",
+        "scope": "By sales after refunds, this period",
+        "empty": "No sales in this period.",
+        "other": "Other categories",
+        "detail": "{orders, plural, one {# order} other {# orders}} · {units, plural, one {# unit} other {# units}}",
+        "numbered": "Category {n}"
+      },
+      "health": {
+        "title": "Store health",
+        "action": "View performance",
+        "none": "No health score yet.",
+        "new": "Your score appears after your first orders.",
+        "orders": "{count, plural, one {# order} other {# orders}} scored",
+        "band": {
+          "healthy": "Healthy",
+          "at-risk": "At risk",
+          "unhealthy": "Unhealthy"
+        },
+        "out-of": "/ 100"
+      }
     }
   },
   "tasks": {
