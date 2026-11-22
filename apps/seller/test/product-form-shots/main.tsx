@@ -2,7 +2,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { createRoot } from 'react-dom/client';
 import messages from '../../messages/en.json';
 import '../../app/globals.css';
-import { blankProduct } from '../../src/catalog/add-offer.tsx';
+import { blankProduct } from '../../src/catalog/blank-product.ts';
 import { EditForm } from '../../src/catalog/edit-form.tsx';
 import type { ProductOptions, ProductView } from '../../src/catalog/types.ts';
 

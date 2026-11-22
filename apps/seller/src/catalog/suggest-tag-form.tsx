@@ -4,9 +4,7 @@ import { Banner, Button, LinkButton, Select, TextField } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
-
-export const TAG_LABEL_MIN = 2;
-export const TAG_LABEL_MAX = 40;
+import { TAG_LABEL_MAX, TAG_LABEL_MIN } from './tag-label-limits.ts';
 
 /** Where a refused tag suggestion is told: at the field, or in the banner at the top. */
 export interface TagSuggestionError {

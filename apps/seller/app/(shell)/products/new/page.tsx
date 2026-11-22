@@ -1,6 +1,6 @@
 import { getTranslations } from 'next-intl/server';
 import { catalogStateFor } from '../../../../src/catalog/catalog-states.tsx';
-import { blankProduct } from '../../../../src/catalog/add-offer.tsx';
+import { blankProduct } from '../../../../src/catalog/blank-product.ts';
 import { EditForm } from '../../../../src/catalog/edit-form.tsx';
 import { EDIT_PERMISSION, type ProductOptions } from '../../../../src/catalog/types.ts';
 import { loadCatalogPage } from '../../../../src/server/catalog-page.ts';

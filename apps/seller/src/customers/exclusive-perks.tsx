@@ -19,7 +19,7 @@ import { callApi } from '../api/client.ts';
 import { formatInstant } from '../catalog/format.ts';
 import { formatMinor, inputOf, minorOf } from '../price/money.ts';
 import { instantOfZoned, resolveZone } from '../price/zone-time.ts';
-import { CommissionCard, EARNINGS_VIEW_PERMISSION } from './exclusive-commission.tsx';
+import { CommissionCard } from './exclusive-commission.tsx';
 import { CashbackCard } from './exclusive-cashback.tsx';
 import {
   PROMOTIONS_BASE_PATH,
@@ -30,9 +30,6 @@ import {
 } from './perks-shared.ts';
 
 export { displayStatus, problemOf, type OwnPromotion };
-
-export const PROMOTION_VIEW_PERMISSION = 'promotions.promotion.view';
-export const PROMOTION_MANAGE_PERMISSION = 'promotions.promotion.manage';
 
 const LIST_PATH = 'promotions/seller/promotions?type=CUSTOMER_GROUP&limit=100';
 const BASE_PATH = PROMOTIONS_BASE_PATH;
@@ -232,18 +229,6 @@ type Load =
  * shown as given. The cashback card is in exclusive-cashback.tsx (same patterns, type CASHBACK); each
  * card hides alone on a 403. The commission card (read only) is in exclusive-commission.tsx.
  */
-/** Which perks cards a seller may see, from the permission keys of the session. */
-export function perkAccessOf(permissionKeys: readonly string[]): {
-  readonly showPromotions: boolean;
-  readonly showCommission: boolean;
-} {
-  return {
-    showPromotions: [PROMOTION_VIEW_PERMISSION, PROMOTION_MANAGE_PERMISSION].some((key) =>
-      permissionKeys.includes(key),
-    ),
-    showCommission: permissionKeys.includes(EARNINGS_VIEW_PERMISSION),
-  };
-}
 
 export function ExclusivePerks({
   canManage,
