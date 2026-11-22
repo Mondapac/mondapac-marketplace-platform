@@ -2,6 +2,7 @@ import { Logger } from '@nestjs/common';
 import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, MarketContext, Result } from '@mondapac/shared-kernel';
 import type { EventDelivery } from '../../../platform/events/event-delivery';
+import { reduceDatabaseError } from '../../../platform/persistence/database-error';
 import { TransactionConflictError } from '../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { FactRecorder } from './fact-recorder';
@@ -147,14 +148,31 @@ export interface WrittenPage {
   readonly transientFacts: number;
 }
 
+/** Prisma's codes for a value the database refuses whenever it is written (Mojtaba, PR 12). */
+const REFUSING_PRISMA_CODES = new Set(['P2000', 'P2003', 'P2004', 'P2011']);
+
 /**
- * Whether a write failure is the recorder refusing the fact itself (another currency, goods that
- * do not add up, a changed identity): writing it again gives the same answer.
+ * Whether a write failure is the fact itself being refused, so that writing it again gives the
+ * same answer: the recorder refusing it (another currency, goods that do not add up, a changed
+ * identity), or the database refusing a value (SQLSTATE class 22, data exception, or 23,
+ * integrity violation). A timeout, a lost connection or a conflict is not: it may pass.
  */
-const isRefusal = (error: unknown): boolean =>
-  error instanceof ReportingFactConflict ||
-  error instanceof RangeError ||
-  error instanceof TypeError;
+export function isFactRefusal(error: unknown): boolean {
+  if (
+    error instanceof ReportingFactConflict ||
+    error instanceof RangeError ||
+    error instanceof TypeError
+  ) {
+    return true;
+  }
+  const database = reduceDatabaseError(error);
+  if (database === undefined) return false;
+  if (database.prismaCode !== undefined && REFUSING_PRISMA_CODES.has(database.prismaCode)) {
+    return true;
+  }
+  const sqlState = database.sqlState ?? '';
+  return sqlState.startsWith('22') || sqlState.startsWith('23');
+}
 
 /** One page of refs of `kind`, as the request that reads their facts. */
 async function readPage(
@@ -224,7 +242,7 @@ export async function writePage(
         return {
           written: false,
           error: error instanceof Error ? error.name : 'unknown',
-          refused: isRefusal(error),
+          refused: isFactRefusal(error),
         };
       }
     }

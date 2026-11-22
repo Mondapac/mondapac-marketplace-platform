@@ -10,7 +10,9 @@ import { UNKNOWN_CATEGORY } from '../domain/facts';
 import { refundSource, sellerOrderSource } from './facade-report-sources';
 import type { FactRecorder } from '../application/fact-recorder';
 import type { ReportSources, SellerOrderSource } from '../application/ports/report-sources';
+import { TransactionConflictError } from '../../../platform/unit-of-work/errors';
 import {
+  isFactRefusal,
   recordFromEvent,
   reconcileWindowAt,
   type ReportFactsDependencies,
@@ -145,5 +147,26 @@ describe.each(TEST_MARKETS)('reporting event worker in market %s', (code) => {
 
   it('reconciles the last seven days', () => {
     expect(reconcileWindowAt(T0)).toEqual({ from: T0.subtract({ hours: 168 }), to: T0 });
+  });
+});
+
+describe('reporting write failures', () => {
+  const prismaError = (code: string, sqlState?: string) =>
+    Object.assign(new Error('masked'), {
+      name: 'PrismaClientKnownRequestError',
+      code,
+      meta:
+        sqlState === undefined ? {} : { driverAdapterError: { cause: { originalCode: sqlState } } },
+    });
+
+  it('counts a value the database refuses as a refusal, and a passing failure as not', () => {
+    expect(isFactRefusal(prismaError('P2010', '23514'))).toBe(true); // a CHECK
+    expect(isFactRefusal(prismaError('P2010', '22001'))).toBe(true); // too long
+    expect(isFactRefusal(prismaError('P2003'))).toBe(true);
+    expect(isFactRefusal(new RangeError('another currency'))).toBe(true);
+    expect(isFactRefusal(prismaError('P2010', '57014'))).toBe(false); // statement timeout
+    expect(isFactRefusal(prismaError('P1017'))).toBe(false); // connection closed
+    expect(isFactRefusal(new TransactionConflictError('40001'))).toBe(false);
+    expect(isFactRefusal(new Error('connection lost'))).toBe(false);
   });
 });
