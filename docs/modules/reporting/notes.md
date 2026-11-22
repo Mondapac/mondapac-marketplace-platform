@@ -111,3 +111,6 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
   `refunds (market_id, seller_order_id)` for the check below (Mojtaba, PR 10b finding 1).
 - `putSellerOrder` also refuses a seller order whose refund, recorded before it, names another
   seller, order or currency (Hassan, PR 9 re-review).
+- Rule to revisit: if ordering ever clears an instant (a shipment undone, for example), reporting
+  keeps the stored one until `keepKnownInstants` learns that case. Amounts are not merged: ordering
+  does not change goods or shipping after payment (Hassan, PR 10b re-review).
