@@ -8,7 +8,11 @@ import type { WorkQueueCount } from '../../../../platform/work-queue/work-queue-
  */
 export const FAILED_PAYMENT_WINDOW_HOURS = 24;
 
-/** The cancellations that mean the buyer's payment failed (the card, or the provider). */
+/**
+ * The cancellations that mean the buyer's payment failed (the card, or the provider). The partial
+ * index `orders_market_id_cancelled_at_failed_payment_idx` names the same list: change both together,
+ * or the count falls back to a scan of every order.
+ */
 export const FAILED_PAYMENT_REASONS = ['payment-failed', 'provider-failed'] as const;
 
 export const WORK_QUEUE_COUNT_READER = Symbol('ORDERING_WORK_QUEUE_COUNT_READER');

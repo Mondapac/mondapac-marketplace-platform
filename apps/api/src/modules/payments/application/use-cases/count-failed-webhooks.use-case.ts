@@ -17,7 +17,7 @@ import { PAYMENTS_CUSTOMER_PAYMENT_VIEW } from '../../contracts/permissions';
 import type { PaymentsWorkQueueCountReader } from '../ports/work-queue-count.reader';
 
 /**
- * `payments.count-failed-webhooks` (dashboards upgrade, phase 1): The Stripe events not applied: waiting since before the age limit (stuck or retrying), or given up within the last 7 days (today queue). Overdue: every one. Ids only.
+ * `payments.count-failed-webhooks` (dashboards upgrade, phase 1): The Stripe events not applied: waiting since before the age limit (stuck or retrying), or given up within the last 7 days (today queue). Overdue: received before the age limit. Ids only.
  * Rule: the key `payments.customer-payment.view`, platform admins only. One read-only unit.
  */
 export class CountFailedWebhooks extends UseCase<

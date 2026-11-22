@@ -104,3 +104,8 @@ Definitions by Hadi (product owner), 22 Nov 2026. Each count is scoped to the ca
 - Two new partial indexes, each built CONCURRENTLY in its own migration: the cancellations for a
   failed payment on (market_id, cancelled_at), and the given-up Stripe events on
   (market_id, received_at).
+- Growth (Mojtaba, DB): the failed-payout count reads every failed payout of the Market and checks
+  the 7-day window on each row. Add a partial index on (market_id, state_changed_at) WHERE
+  state = 'failed' once a Market holds about 10,000 failed payouts. The restricted-account and
+  due-dispute counts read every row of their Market's state or bucket; revisit at about 50,000
+  sellers, or if the `needs-response` bucket stops being small.

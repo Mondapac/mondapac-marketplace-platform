@@ -16,7 +16,9 @@ const toInstant = (date: Date | null, count: number): Temporal.Instant | null =>
  * {@link CommissionPayoutsWorkQueueCountReader} over Prisma: one aggregate and one count per
  * queue, ids and times only (no amount).
  * - Failed payouts: state `failed` (the admin Payouts list's `failed` bucket) that failed within
- *   the window, on (market_id, state, created_at, id).
+ *   the window. (market_id, state, created_at, id) finds the failed payouts; the window on
+ *   `state_changed_at` is checked on each row, so the read grows with every failed payout the
+ *   Market has had (a partial index on state_changed_at WHERE state = 'failed' is the next step).
  * - Payout holds: every active hold (`released_at IS NULL`, the partial
  *   `payout_holds_active_seller_idx`), since it was placed.
  * - Disputes due: the cases in the `needs-response` bucket whose response is due before

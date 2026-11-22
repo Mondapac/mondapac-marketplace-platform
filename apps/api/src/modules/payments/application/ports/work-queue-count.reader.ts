@@ -15,7 +15,7 @@ export const PAYMENTS_WORK_QUEUE_COUNT_READER = Symbol('PAYMENTS_WORK_QUEUE_COUN
  * `staleBefore`; `oldestAt` is when the longest-waiting item entered the queue.
  */
 export interface PaymentsWorkQueueCountReader {
-  /** The Stripe events not applied: waiting since before the age limit (stuck or retrying), or given up within the last 7 days (today queue). Overdue: every one. Ids only. */
+  /** The Stripe events not applied: waiting since before the age limit (stuck or retrying), or given up within the last 7 days (today queue). Overdue: received before the age limit. Ids only. */
   failedWebhooks(
     market: MarketContext,
     now: Temporal.Instant,
