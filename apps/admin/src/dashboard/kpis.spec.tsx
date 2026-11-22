@@ -216,6 +216,35 @@ describe('the KPI formats', () => {
     expect(within(flow).getByText(/Cancelled 1 \(33\.3% of paid\) · Refunds 2/)).toBeTruthy();
   });
 
+  it('shows counts only in the order flow, in order, with the link', () => {
+    strip(answer({ operations }), ['ordering.order.view']);
+    const flow = screen.getByRole('region', { name: 'Order flow' });
+    const steps = within(flow)
+      .getAllByRole('listitem')
+      .map((li) => li.textContent);
+    expect(steps).toEqual(['Paid3', 'Shipped4', 'Delivered2']);
+    expect(flow.textContent).not.toMatch(/%\s*$|\d+%(?! of paid)/);
+    expect(within(flow).getByRole('link', { name: 'View orders' }).getAttribute('href')).toBe(
+      '/orders',
+    );
+  });
+
+  it('says so in the order flow card when no order was paid', () => {
+    const none = {
+      ...operations,
+      kpis: { ...operations.kpis, current: { ...operations.kpis.current, ordersPaid: 0 } },
+    };
+    strip(answer({ operations: none }), ['ordering.order.view']);
+    expect(screen.getByText('No paid orders in this period yet.')).toBeTruthy();
+  });
+
+  it('shows an error in place of the order flow when the orders read failed', () => {
+    strip(answer({ operations: { status: 'error' } }), ['ordering.order.view']);
+    expect(
+      within(screen.getByRole('region', { name: 'Order flow' })).getByRole('alert'),
+    ).toBeTruthy();
+  });
+
   it('leaves the order flow out without the orders section', () => {
     strip(answer({ finance }), ['commission-payouts.settlement.view']);
     expect(screen.queryByRole('region', { name: 'Order flow' })).toBeNull();

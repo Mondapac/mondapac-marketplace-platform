@@ -275,6 +275,7 @@ function OrderFlow({
         <div className="flex flex-col gap-4">
           <Funnel
             label={t('flow.title')}
+            showShare={false}
             steps={[
               {
                 id: 'paid',
@@ -319,6 +320,7 @@ function Strip({
   readonly keys: ReadonlySet<string>;
 }) {
   const t = useTranslations('dashboard.kpis');
+  const tErr = useTranslations('dashboard');
   const options: PeriodOption[] = KPI_PERIODS.map((id) => ({
     id,
     label: t(`period.${PERIOD_KEY[id]}`),
@@ -379,6 +381,10 @@ function Strip({
       ) : null}
       {value?.operations?.status === 'ok' ? (
         <OrderFlow operations={value.operations} value={value} />
+      ) : value?.operations?.status === 'error' ? (
+        <DashboardCard id="dash-order-flow" title={t('flow.title')} error={tErr('error.card')}>
+          {null}
+        </DashboardCard>
       ) : null}
     </section>
   );

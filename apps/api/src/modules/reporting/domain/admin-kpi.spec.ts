@@ -103,6 +103,23 @@ describe('operationsOf', () => {
   });
 });
 
+describe('ordersDelivered', () => {
+  it('is summed over the days, zero for an empty day, and compared like the other counts', () => {
+    const before = operationsOf([row('2026-11-21', { ordersDelivered: 10 })]);
+    const now = operationsOf([
+      row('2026-11-22', { ordersDelivered: 12 }),
+      row('2026-11-23', { ordersDelivered: 8 }),
+    ]);
+    expect(now.ordersDelivered).toBe(20);
+    expect(operationsOf([row('2026-11-22')]).ordersDelivered).toBe(0);
+    expect(operationsDeltas(now, before).ordersDelivered).toEqual({
+      value: 10000,
+      direction: 'up',
+      state: 'ok',
+    });
+  });
+});
+
 describe('deltas', () => {
   it('compares rates by points and says n/a when a period has no rate', () => {
     expect(rateDelta(350, 200, true)).toEqual({ value: 150, direction: 'up', state: 'ok' });
