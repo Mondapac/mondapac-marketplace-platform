@@ -219,10 +219,19 @@ describe.each(TEST_MARKETS)('dashboard seller tasks in market %s (database)', (c
     }); // marked ready: done
     await sellerOrder(seller, NOW.subtract({ hours: 1 }), { prep: null }); // no promise
     await sellerOrder(ids.next<'Seller'>(), first, { prep: 180 }); // another seller
+    // The edges of the day: a window starting exactly at the day start is today's; a ready-by
+    // exactly at the day end is tomorrow's, one a millisecond before it is today's (the oldest).
+    await sellerOrder(seller, NOW.subtract({ hours: 1 }), {
+      method: 'scheduled',
+      window: { start: dayStart, end: NOW.add({ hours: 1 }) },
+    }); // counted
+    await sellerOrder(seller, dayEnd.subtract({ hours: 48 }), { prep: 2880 }); // not counted
+    const edge = dayEnd.subtract({ hours: 48 }).subtract(MS);
+    await sellerOrder(seller, edge, { prep: 2880 }); // counted, paid first
 
     expect(
       await read(() => ordering.sellerToShipToday(market, seller, NOW, dayStart, dayEnd, live)),
-    ).toEqual({ count: 3, overdue: 0, oldestAt: first });
+    ).toEqual({ count: 5, overdue: 0, oldestAt: edge });
   });
 
   it('counts the ready pickups not collected, overdue by their ready time', async () => {

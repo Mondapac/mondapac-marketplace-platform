@@ -193,4 +193,25 @@ describe.each(TEST_MARKETS)('ordering seller tasks in market %s', (code) => {
     );
     expect(reads).toHaveLength(0);
   });
+
+  it("counts on the seller's day, not the Market's, when their offsets differ", async () => {
+    const marketZone = markets.get(market.marketId).timezone;
+    const offset = (zone: string) => NOW.toZonedDateTimeISO(zone).offsetNanoseconds;
+    expect(offset(marketZone)).not.toBe(offset(ZONE));
+    const inZone = (zone: string) =>
+      new CountSellerToShipToday(gate, {
+        unitOfWork,
+        counts,
+        zones: { zoneOf: () => Promise.resolve(zone) },
+      });
+    await inZone(ZONE).execute(actor('seller'), query());
+    await inZone(marketZone).execute(actor('seller'), query());
+    const [sellerDay, marketDay] = reads.map((read) => read.args as Temporal.Instant[]);
+    const marketLocal = localDayOf(NOW, marketZone);
+    expect(sellerDay).toEqual([NOW, DAY.start, DAY.end]);
+    expect(marketDay).toEqual([NOW, marketLocal.start, marketLocal.end]);
+    // Auckland's day ends at 11:00 UTC; the Market's (Brisbane or Tokyo) ends hours later.
+    expect(DAY.end.toString()).toBe('2026-11-22T11:00:00Z');
+    expect(Temporal.Instant.compare(marketLocal.end, DAY.end)).toBe(1);
+  });
 });

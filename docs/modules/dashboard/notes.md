@@ -142,3 +142,9 @@ Counts are cached per seller and access state, except the live queues.
   Inventory's availability signals carry no publication state.
 - Deferred: low stock, changes requested on an Offer, certificate expiring, a delivery-by promise
   for shipped instant and same-day orders (FE-095), and the thresholds as Market settings (FE-109).
+- Growth (Mojtaba, DB): the unanswered-review count of a seller with many reviews anti-joins
+  `review_replies`, which has no index leading on `seller_id` (the Reviews list's own query shape);
+  revisit near 1 million replies with a partial index (market_id, seller_id, review_id) WHERE
+  status = 'published'. The scheduled counts of a large seller read the Market-wide window index
+  and filter by seller; the next step, if measured, is a partial index (market_id, seller_id,
+  delivery_window_end) of the open scheduled orders.
