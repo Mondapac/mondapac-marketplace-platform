@@ -51,7 +51,6 @@ export async function AdminShell({
   activeId,
   title,
   trail,
-  pinInPage = false,
   settingsLinkId,
   children,
 }: {
@@ -60,10 +59,6 @@ export async function AdminShell({
   readonly title: string;
   /** The breadcrumb above the page when it is not the one the active menu item gives. */
   readonly trail?: readonly Crumb[];
-  /**
-   * The page draws the pin star beside its own title (settings pages), so the top bar has none.
-   */
-  readonly pinInPage?: boolean;
   /** Id of the settings page being shown (the sidebar is the Settings menu under /settings). */
   readonly settingsLinkId?: string;
   readonly children: ReactNode;
@@ -134,7 +129,7 @@ export async function AdminShell({
                 trail={trail ?? navTrail(items, activeId, title, (key) => t(key), adminNav.groups)}
                 trailLabel={t('nav.breadcrumb')}
                 phoneTitle={<PageTitle fallback={title} />}
-                titleAction={pinInPage ? undefined : <PinButton />}
+                titleAction={<PinButton />}
                 actions={
                   <>
                     <ShortcutsButton />

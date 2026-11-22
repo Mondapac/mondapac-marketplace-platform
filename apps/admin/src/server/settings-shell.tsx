@@ -42,7 +42,6 @@ export async function SettingsShell({
       activeId="settings"
       title={title}
       trail={trail}
-      pinInPage
       settingsLinkId={linkId}
     >
       <div className="mb-2 md:hidden">

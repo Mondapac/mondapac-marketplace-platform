@@ -22,7 +22,7 @@ export interface SettingsPageProps {
     /** An ISO instant: the text becomes a `<time>` for assistive technology. */
     readonly dateTime?: string;
   };
-  /** Buttons at the end of the header (help). The pin star sits beside the title, not here. */
+  /** Buttons at the end of the header (help). The pin star is in the top bar, not here. */
   readonly actions?: ReactNode;
   /** A read-only, conflict or error-summary `Banner` above the sections. */
   readonly banner?: ReactNode;
