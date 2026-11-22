@@ -1,8 +1,10 @@
-import { Controller, Get, HttpException, Logger, Res } from '@nestjs/common';
+import { Controller, Get, HttpException, Logger, Query, Res } from '@nestjs/common';
 import {
   ApiForbiddenResponse,
   ApiOkResponse,
+  ApiBadRequestResponse,
   ApiOperation,
+  ApiQuery,
   ApiServiceUnavailableResponse,
   ApiTags,
   ApiUnauthorizedResponse,
@@ -15,8 +17,10 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { isPeriodId } from '../../reporting';
+import { ViewAdminKpis } from '../application/use-cases/view-admin-kpis.use-case';
 import { ViewAdminWorkQueue } from '../application/use-cases/view-admin-work-queue.use-case';
-import { WorkQueueBody, workQueueBody } from './dashboard.dto';
+import { AdminKpisBody, adminKpisBody, WorkQueueBody, workQueueBody } from './dashboard.dto';
 
 const ERROR = { type: Object };
 
@@ -38,7 +42,10 @@ export function dashboardRefusal(error: AccessDenied): HttpException {
 export class AdminDashboardController {
   readonly #logger = new Logger('AdminDashboardController');
 
-  constructor(private readonly workQueue: ViewAdminWorkQueue) {}
+  constructor(
+    private readonly workQueue: ViewAdminWorkQueue,
+    private readonly kpis: ViewAdminKpis,
+  ) {}
 
   @Get('work-queue')
   @ApiOperation({
@@ -69,5 +76,53 @@ export class AdminDashboardController {
     });
     if (!result.ok) throw dashboardRefusal(result.error);
     return workQueueBody(result.value);
+  }
+
+  @Get('kpis')
+  @ApiOperation({
+    summary: "The admin's marketplace KPIs for a period, against the period before it",
+    description:
+      'Two sections, each asked only when the admin holds its key: `operations` (orders, cancel ' +
+      'rate, on-time shipping, refund count; key `ordering.order.view`) and `finance` (GMV with ' +
+      'and without GST, refunded goods, net sales, average order; key ' +
+      '`commission-payouts.settlement.view`). A section the admin holds no key for is null. One ' +
+      'that fails or takes over 1.5 s is `status: error` and the other still answers. Days are ' +
+      "the Market's days, never UTC. Only a platform admin acting as themselves.",
+  })
+  @ApiQuery({ name: 'period', required: false, enum: ['today', '7d', '30d', 'month'] })
+  @ApiOkResponse({ type: AdminKpisBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async getKpis(
+    @Call() context: CallContext,
+    @Query() query: Record<string, unknown>,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<AdminKpisBody> {
+    response.setHeader('Cache-Control', 'no-store');
+    const { period = '7d', ...rest } = query;
+    if (!isPeriodId(period) || Object.keys(rest).length > 0) {
+      const fields = [
+        ...(isPeriodId(period) ? [] : [{ path: 'period', code: 'enum' }]),
+        ...Object.keys(rest)
+          .sort()
+          .slice(0, 10)
+          .map((key) => ({ path: key.slice(0, 64), code: 'unknown-field' })),
+      ];
+      throw new HttpException(
+        { statusCode: 400, code: 'validation.failed', details: { fields } },
+        400,
+      );
+    }
+    const result = await this.kpis.execute(context, { period });
+    this.#logger.log({
+      msg: 'dashboard.admin-kpis',
+      outcome: result.ok ? 'ok' : result.error.code,
+      period,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    if (!result.ok) throw dashboardRefusal(result.error);
+    return adminKpisBody(result.value);
   }
 }

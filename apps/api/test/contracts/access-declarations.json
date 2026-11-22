@@ -404,6 +404,11 @@
     "whenSellerNotApproved": "deny"
   },
   {
+    "name": "dashboard.view-admin-kpis",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
+  {
     "name": "dashboard.view-admin-work-queue",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"

@@ -66,11 +66,17 @@ import {
   SellersModule,
   type SellersWorkQueueFacade,
 } from '../sellers';
+import { REPORTING_KPI_FACADE, ReportingModule, type ReportingKpiFacade } from '../reporting';
 import { VIEWER_PERMISSIONS, type ViewerPermissions } from './application/ports/viewer-permissions';
 import {
   ViewAdminWorkQueue,
   type DashboardDependencies,
 } from './application/use-cases/view-admin-work-queue.use-case';
+import {
+  KPI_TIMEOUT_MS,
+  ViewAdminKpis,
+  type AdminKpisDependencies,
+} from './application/use-cases/view-admin-kpis.use-case';
 import { ViewSellerTasks } from './application/use-cases/view-seller-tasks.use-case';
 import { WorkQueueCache } from './application/work-queue-cache';
 import { WORK_QUEUE_TIMEOUT_MS } from './application/work-queue-flow';
@@ -341,6 +347,7 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
     PaymentsModule,
     CommissionPayoutsModule,
     ReviewsModule,
+    ReportingModule,
   ],
   controllers: [AdminDashboardController, SellerDashboardController],
   providers: [
@@ -386,6 +393,19 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
         });
         checkWorkQueueSources(sources);
         return sources;
+      },
+    },
+    {
+      provide: ViewAdminKpis,
+      inject: [USE_CASE_GATE, VIEWER_PERMISSIONS, REPORTING_KPI_FACADE, CLOCK],
+      useFactory: (
+        gate: UseCaseGate,
+        viewer: ViewerPermissions,
+        reporting: ReportingKpiFacade,
+        clock: Clock,
+      ) => {
+        const deps: AdminKpisDependencies = { viewer, reporting, clock, timeoutMs: KPI_TIMEOUT_MS };
+        return new ViewAdminKpis(gate, deps);
       },
     },
     { provide: WorkQueueCache, useFactory: () => new WorkQueueCache() },
