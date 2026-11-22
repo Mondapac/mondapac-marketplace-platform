@@ -1,4 +1,5 @@
 import 'server-only';
+import { workQueueRows } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { VIEW_PERMISSION as OFFERS_VIEW } from '../catalog/types.ts';
 import { VIEW_PERMISSION as ACCOUNTS_VIEW } from '../payments/types.ts';
@@ -17,6 +18,12 @@ import {
 import type { ReviewPage } from '../catalog/types.ts';
 import type { ConnectedAccountPage } from '../payments/types.ts';
 import type { PriceHoldPage } from '../pricing/types.ts';
+import {
+  adminQueue,
+  mayHaveWorkQueue,
+  WORK_QUEUE_PATH,
+  type WorkQueueAnswer,
+} from '../work-queue/queues.ts';
 
 /**
  * One widget: not asked for without its key (null), else a read that answers on its own. Hidden
@@ -26,10 +33,11 @@ import type { PriceHoldPage } from '../pricing/types.ts';
 function widget<T>(
   allowed: boolean,
   read: () => Promise<ServerGet<T>>,
+  shown: (value: T) => boolean = () => true,
 ): Promise<Widget<T> | null> | null {
   if (!allowed) return null;
   const answer = read().then((answer): Widget<T> | null => {
-    if (answer.kind === 'ok') return { kind: 'ok', value: answer.body };
+    if (answer.kind === 'ok') return shown(answer.body) ? { kind: 'ok', value: answer.body } : null;
     if (answer.kind === 'signed-out') redirect('/session-ended');
     if (answer.kind === 'forbidden') return null;
     return { kind: 'error' };
@@ -47,6 +55,16 @@ function widget<T>(
 export function startAdminDashboard(session: AdminSession): AdminDashboardSources {
   const keys = new Set(session.permissionKeys);
   return {
+    // No key of its own: asked when the session holds a key of one queue, and absent when the API
+    // shows the admin no queue the panel knows.
+    workQueue: widget<WorkQueueAnswer>(
+      mayHaveWorkQueue(session.permissionKeys),
+      () => serverGet<WorkQueueAnswer>(WORK_QUEUE_PATH),
+      (answer) =>
+        workQueueRows(answer, (key) =>
+          adminQueue(key) === null ? null : { label: key, href: null, signal: 'age' },
+        ).length > 0,
+    ),
     sellers: widget<SellerListPage>(keys.has(SELLERS_VIEW), () =>
       serverGet<SellerListPage>('sellers/admin/list', {
         post: {
@@ -56,7 +74,7 @@ export function startAdminDashboard(session: AdminSession): AdminDashboardSource
       }),
     ),
     holds: widget<PriceHoldPage>(keys.has(HOLDS_VIEW), () =>
-      serverGet<PriceHoldPage>(`pricing/admin/price-holds?limit=${COUNT_LIMIT}`),
+      serverGet<PriceHoldPage>(`pricing/admin/price-holds?limit=${RECENT}`),
     ),
     offers: widget<ReviewPage>(keys.has(OFFERS_VIEW), () =>
       serverGet<ReviewPage>(`catalog/admin/review-queue?limit=${COUNT_LIMIT}`),

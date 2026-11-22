@@ -167,26 +167,7 @@
     "scope": {
       "oldest": "Oldest {count} waiting",
       "newest": "Newest {count}",
-      "latest": "Latest {count}",
-      "whole-queue": "The whole queue",
-      "first-page": "First {count} only; more are waiting",
-      "all-restricted": "All restricted accounts"
-    },
-    "attention": {
-      "title": "Needs attention",
-      "sellers": {
-        "label": "Sellers awaiting review",
-        "scope": "New applications and change requests, all of them"
-      },
-      "holds": {
-        "label": "Held prices to decide"
-      },
-      "offers": {
-        "label": "Offers to review"
-      },
-      "accounts": {
-        "label": "Payout accounts needing action"
-      }
+      "latest": "Latest {count}"
     },
     "applications": {
       "title": "Seller applications",
@@ -239,6 +220,184 @@
       "create-role": "Create a role",
       "without-owner": "Sellers without an owner",
       "find-customer": "Find a customer"
+    }
+  },
+  "work-queue": {
+    "title": "Needs action",
+    "scope": "Most urgent first · counts can be up to a minute old",
+    "open": "Open work queue ({count, number})",
+    "level": {
+      "critical": "Critical",
+      "today": "Today",
+      "review": "Review"
+    },
+    "group": {
+      "critical": "Critical · {count, plural, one {# queue} other {# queues}}",
+      "today": "Today · {count, plural, one {# queue} other {# queues}}",
+      "today-top": "Today · top {shown, number} of {total, plural, one {# queue} other {# queues}}",
+      "review": "Review queues"
+    },
+    "count": "{count, number}",
+    "count-overdue": "{count, number} · {overdue, number} overdue",
+    "status": {
+      "error": "Couldn't load",
+      "incident": "Incident",
+      "fix": "Needs a fix",
+      "overdue": "Overdue",
+      "overdue-age": "Overdue {age}",
+      "overdue-by": "Overdue by {age}",
+      "due-in": "Due in {age}",
+      "oldest": "Oldest {age}"
+    },
+    "today-more": "{count, plural, one {# more queue} other {# more queues}}",
+    "review-line": "{first} and {second}",
+    "review-line-more": "{first}, {second} and {more, number} more",
+    "clear": "{count, plural, one {# queue is} other {# queues are}} all clear",
+    "all-clear": "All clear: nothing needs action right now.",
+    "some-failed": "Some couldn't load",
+    "queue": {
+      "catalog": {
+        "claims-without-certificate": "Certified listings without a valid certificate",
+        "pending-offers": "Offers awaiting review",
+        "pending-revisions": "Product versions awaiting review",
+        "brand-merges": "Brand merge groups",
+        "category-proposals": "Category proposals"
+      },
+      "security": {
+        "open-alerts": "Security alerts open"
+      },
+      "commission-payouts": {
+        "disputes-due": "Disputes with a reply due within 24 hours",
+        "failed-payouts": "Failed payouts (last 7 days)",
+        "payout-holds": "Active payout holds"
+      },
+      "ordering": {
+        "late-deliveries": "Orders past their delivery promise",
+        "failed-payments": "Failed customer payments (last 24 hours)",
+        "pending-refunds": "Refunds pending"
+      },
+      "payments": {
+        "failed-webhooks": "Payment events not applied",
+        "restricted-accounts": "Payout accounts restricted"
+      },
+      "sellers": {
+        "applications": "Seller applications",
+        "health-queue": "Sellers needing a look"
+      },
+      "pricing": {
+        "price-holds": "Held prices to decide"
+      },
+      "certification": {
+        "seller-certificates": "Seller certificates to review",
+        "product-certificates": "Product certificates to review"
+      }
+    },
+    "page": {
+      "title": "Work queue",
+      "back": "Back to the dashboard",
+      "intro": "Every queue you can work on, with how many items wait and for how long. Open a queue to work on its items.",
+      "note": "Counted at {time}. Counts can be up to a minute old; reload the page for new ones.",
+      "error": "The work queue could not be loaded. Try again. If it keeps happening, tell support.",
+      "no-access": {
+        "title": "You can't see the work queue",
+        "body": "Your role has no access to any of its queues."
+      },
+      "loading": "Loading the work queue",
+      "views": "Views",
+      "view": {
+        "needs-action": "Needs action",
+        "all": "All queues",
+        "critical": "Critical",
+        "today": "Today",
+        "review": "Review"
+      },
+      "search": {
+        "label": "Search queues",
+        "placeholder": "Search by queue name"
+      },
+      "chip-search": "Name has “{text}”",
+      "filter": {
+        "title": "Filter queues",
+        "state": "State"
+      },
+      "state": {
+        "overdue": "Overdue or incident",
+        "waiting": "Waiting, on time",
+        "clear": "All clear",
+        "error": "Couldn't load"
+      },
+      "sort": {
+        "by": "Sort by",
+        "order": "Order",
+        "field": {
+          "urgency": "Most urgent",
+          "age": "Waiting since",
+          "overdue": "Overdue items",
+          "count": "Items",
+          "name": "Queue name"
+        },
+        "age": {
+          "first": "Oldest first",
+          "second": "Newest first"
+        },
+        "overdue": {
+          "first": "Most first",
+          "second": "Fewest first"
+        },
+        "count": {
+          "first": "Most first",
+          "second": "Fewest first"
+        },
+        "name": {
+          "first": "A to Z",
+          "second": "Z to A"
+        },
+        "urgency": {
+          "first": "Most urgent first",
+          "second": "Least urgent first"
+        }
+      },
+      "sorted": "Sorted by {field}, {order}",
+      "match": "{count, plural, one {# queue matches} other {# queues match}}",
+      "col": {
+        "queue": "Queue",
+        "level": "Level",
+        "count": "Items",
+        "overdue": "Overdue",
+        "oldest": "Waiting since",
+        "status": "Status",
+        "actions": "Actions",
+        "due": "Due"
+      },
+      "no-status": "On time",
+      "no-list": "No list for these items yet",
+      "row": {
+        "open": "Open the list",
+        "menu": "Actions for {name}"
+      },
+      "empty": {
+        "no-match": "No queue matches.",
+        "view": {
+          "needs-action": "All clear: nothing needs action right now.",
+          "all": "You have no queues to work on.",
+          "critical": "No critical queue has work in it.",
+          "today": "No queue for today has work in it.",
+          "review": "No review queue has work in it."
+        }
+      },
+      "export": {
+        "button": "Export",
+        "title": "Export the work queue",
+        "body": "The file holds the {count, plural, one {# queue} other {# queues}} on show, with every column.",
+        "legend": "File format",
+        "csv": "CSV",
+        "csv-help": "Plain text, opens in any spreadsheet.",
+        "xlsx": "Excel (XLSX)",
+        "xlsx-help": "A workbook with one sheet.",
+        "confirm": "Export",
+        "cancel": "Cancel"
+      },
+      "due": "Due {time}"
     }
   },
   "showcase": {
