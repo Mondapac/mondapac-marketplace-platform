@@ -112,3 +112,14 @@ describe('settings navigation', () => {
     expect(hub).not.toContain('grid-cols-3');
   });
 });
+
+describe('products page title', () => {
+  it('shows the page title, not a screen-reader-only h1', () => {
+    const page = readFileSync(
+      join(__dirname, '..', 'app/(shell)/catalog/products/page.tsx'),
+      'utf8',
+    );
+    expect(page).toContain('<h1 className="mb-4 text-2xl font-semibold">{title}</h1>');
+    expect(page).not.toContain('sr-only');
+  });
+});
