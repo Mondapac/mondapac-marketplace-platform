@@ -2663,6 +2663,12 @@
       "list": {
         "title": "Held prices",
         "intro": "Prices waiting for a decision, oldest first. Approve or reject each one from its Actions menu.",
+        "search": {
+          "label": "Search held prices",
+          "placeholder": "Record ID or Offer ID",
+          "invalid": "Enter a full record ID or Offer ID."
+        },
+        "chip-search": "ID is {text}",
         "tabs": "Held price views",
         "tab": {
           "all": "All held prices",
