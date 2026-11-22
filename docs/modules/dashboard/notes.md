@@ -243,3 +243,12 @@ number of days of the previous month, cut at its end).
 - Deferred: "Published but out of stock" (FE-113), the folded low-stock, changes-requested and
   certificate tasks (FE-114), the ready-by time of today's orders (FE-123), the Reviews page
   opening on "Unanswered" from the task (FE-124).
+
+
+## Admin KPIs (phase 5)
+
+`GET dashboard/admin/kpis` composes reporting's `REPORTING_KPI_FACADE` (operations and finance, one
+section each), asked only behind `ordering.order.view` and `commission-payouts.settlement.view`,
+each with a 1.5 s limit and its own `error` state. `Cache-Control: no-store`; nothing is cached in
+the dashboard. The numbers and their definitions are in `docs/modules/reporting/notes.md`.
+Dashboard imports `ReportingModule` through its index only (`nothing-imports-dashboard` still holds).
