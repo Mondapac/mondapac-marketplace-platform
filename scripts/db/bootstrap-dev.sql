@@ -10,7 +10,6 @@
 -- The passwords are local-only defaults, never secrets. The file refuses to run against a
 -- cluster that is not on this machine. It converges: running it again is safe.
 -- Production does not use this file (10.7, Phase 7).
--- Needs PostgreSQL 15 or later (GRANT SET ON PARAMETER); Compose and CI use postgres:17.
 
 \set ON_ERROR_STOP on
 
@@ -64,10 +63,6 @@ ALTER ROLE mondapac_api SET idle_in_transaction_session_timeout = '60s';
 ALTER ROLE mondapac_migrator LOGIN NOSUPERUSER CREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS
   PASSWORD 'mondapac_migrator';
 GRANT pg_signal_backend TO mondapac_migrator;
--- The operational test marker (scripts/ops-data/mark-database.mjs): the migration role may write
--- ALTER DATABASE ... SET mondapac.env, a placeholder setting only a superuser could set otherwise.
--- No migration and no table: a production database never carries it (development and CI only).
-GRANT SET ON PARAMETER mondapac.env TO mondapac_migrator;
 
 -- The database: owned by the migration role; PUBLIC loses CONNECT and TEMPORARY (10.5 gap 5).
 DO $database$

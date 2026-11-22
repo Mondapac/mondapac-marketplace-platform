@@ -59,11 +59,10 @@ The loader runs only when all of these hold; there is no flag that switches any 
    `127.0.0.1`, `::1`, `*.localhost`), with no host smuggled in through a query parameter.
 3. The database carries the operational test marker in its own database-level settings:
    `ALTER DATABASE <db> SET mondapac.env = 'ops-test'`, written by `mark-database.mjs` as the
-   migration role (the database owner). No migration and no table, so a production database
-   never has it, and the loader reads it from `pg_db_role_setting`, not from a session setting
-   any client could change. `scripts/db/bootstrap-dev.sql` grants the migration role the right to
-   set this one parameter (development and CI clusters only); on an older Compose volume run
-   `pnpm db:bootstrap` once.
+   cluster superuser (through the Compose `postgres` container, or `OPS_SUPERUSER_DATABASE_URL`
+   when that is set and local). No migration, no table and no parameter grant to an application
+   role (design platform.md 10.5), so a production database never has it, and the loader reads
+   it from `pg_db_role_setting`, not from a session setting any client could change.
 4. A Stripe key, when set, is a test-mode key (`sk_test_` or `rk_test_`); a live key is refused.
 
 All sample addresses use the reserved `.example` domain and mail reaches only Mailpit.
