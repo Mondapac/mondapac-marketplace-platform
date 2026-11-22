@@ -39,6 +39,7 @@ export function panelToolsLabels(text: (key: string) => string): PanelToolsLabel
       close: text('palette.shortcuts.close'),
       openSearch: text('palette.shortcuts.open-search'),
       showList: text('palette.shortcuts.show-list'),
+      settingsSearch: text('palette.shortcuts.settings-search'),
       then: text('palette.shortcuts.then'),
       singleKey: text('palette.shortcuts.single-key'),
       singleKeyHint: text('palette.shortcuts.single-key-hint'),

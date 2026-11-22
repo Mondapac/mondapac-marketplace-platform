@@ -84,7 +84,7 @@ describe('settings hub page', () => {
     expect(
       within(region)
         .getAllByRole('link')
-        .map((a) => a.textContent),
+        .map((a) => a.querySelector('span > span')?.textContent),
     ).toEqual(['Delivery rules', 'Delivery fleets']);
   });
 
