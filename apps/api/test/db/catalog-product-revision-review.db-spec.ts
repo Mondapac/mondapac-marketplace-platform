@@ -20,6 +20,7 @@ import { OwnOfferAddTag } from '../../src/modules/catalog/application/use-cases/
 import { ProductRevisionAdminRead } from '../../src/modules/catalog/application/use-cases/revision-review-read.use-case';
 import { ProductRevisionApprove } from '../../src/modules/catalog/application/use-cases/product-revision-approve.use-case';
 import { ProductRevisionRequestChanges } from '../../src/modules/catalog/application/use-cases/product-revision-request-changes.use-case';
+import { Offer } from '../../src/modules/catalog/domain/offer';
 import { Product } from '../../src/modules/catalog/domain/product';
 import { simpleProductType } from '../../src/modules/catalog/domain/product-types/simple';
 import { CertificationClaimTextMatcher } from '../../src/modules/catalog/infrastructure/certification-claim-text-matcher';
@@ -310,12 +311,12 @@ describe.each(TEST_MARKETS)(
       );
     }
 
-    async function draftedProduct(): Promise<Product> {
+    async function draftedProduct(name = 'Dates', sellerId = SELLER): Promise<Product> {
       const created = Product.create({
         id: uuid7() as Id<'Product'>,
         marketId: market.marketId,
         scope: 'SELLER',
-        sellerId: SELLER,
+        sellerId,
         handler: simpleProductType,
         familyCode: 'default',
         productCode: `X${randomUUID().replaceAll('-', '').slice(0, 12).toUpperCase()}`,
@@ -324,18 +325,18 @@ describe.each(TEST_MARKETS)(
       });
       if (!created.ok) throw new Error(created.error.code);
       await inUnit(() => products.add(market, created.value));
-      await saveCopy(created.value.state.id, 'Dates', null);
+      await saveCopy(created.value.state.id, name, null);
       return created.value;
     }
 
-    const sellerContext = () =>
+    const sellerContext = (sellerId = SELLER) =>
       testCallContext(
         market,
         testAuthenticatedActor(market, {
           population: 'seller',
           accountId: uuid7() as Id<'Account'>,
           sessionId: uuid7() as Id<'Session'>,
-          sellerId: SELLER,
+          sellerId,
         }),
       );
     const ADMIN = uuid7() as Id<'Account'>;
@@ -351,10 +352,13 @@ describe.each(TEST_MARKETS)(
       );
 
     /** A product with a pending first revision, ready for a decision. */
-    async function submitted() {
-      const product = await draftedProduct();
+    async function submitted(name = 'Dates', sellerId = SELLER) {
+      const product = await draftedProduct(name, sellerId);
       const productId = product.state.id;
-      const result = await submit.execute(sellerContext(), { productId, replacePending: false });
+      const result = await submit.execute(sellerContext(sellerId), {
+        productId,
+        replacePending: false,
+      });
       if (!result.ok) throw new Error(result.error.code);
       const stored = await inUnit(() => products.findById(market, productId), true);
       return {
@@ -600,6 +604,155 @@ describe.each(TEST_MARKETS)(
       expect(
         await inUnit(() => offerStore.listPendingReview(market, page, { sellerId: OTHER }), true),
       ).toEqual([]);
+    });
+
+    // The search tests use a token of their own in the name and a seller of their own, so rows that
+    // other specs write to the same database at the same time cannot match.
+    const token = () => `Qz${uuid7().replaceAll('-', '').slice(-10)}`;
+    const searchOf = (text: string, sellerIds: Id<'Seller'>[] = [], locale = 'en') => ({
+      search: { text, locale, sellerIds },
+    });
+    const productCodeOf = async (productId: string) => {
+      const { rows } = await app.query(
+        `SELECT product_code FROM catalog.products WHERE market_id = $1 AND id = $2`,
+        [market.marketId, productId],
+      );
+      return (rows[0] as { product_code: string }).product_code;
+    };
+    const otherMarket = marketOf(code === 'AU' ? 'ZZ' : 'AU');
+    const inOtherUnit = <T>(work: () => Promise<T>): Promise<T> =>
+      persistence.unitOfWork
+        .run(otherMarket, async () => ({ ok: true as const, value: await work() }), {
+          readOnly: true,
+        })
+        .then((result) => {
+          if (!result.ok) throw new Error('unit failed');
+          return result.value;
+        });
+
+    it('keeps the queue rows the search text matches: code, pending name or store, as typed', async () => {
+      const name = `Dates ${token()}`;
+      const seller = uuid7() as Id<'Seller'>;
+      const { productId } = await submitted(name, seller);
+      const productCode = await productCodeOf(productId);
+      const OTHER = uuid7() as Id<'Seller'>;
+      const page = { after: null, limit: 500 };
+      const found = async (filter: Parameters<typeof reader.listPendingRevisions>[3]) => {
+        const rows = await inUnit(
+          () => reader.listPendingRevisions(market, page, 'en', filter),
+          true,
+        );
+        const count = await inUnit(() => reader.pendingRevisionCount(market, filter), true);
+        expect(count).toBe(rows.length);
+        return rows.map((row) => row.productId);
+      };
+      const tokenText = name.slice(6);
+
+      // The product code, in any case and in part.
+      expect(await found(searchOf(productCode.slice(2, 13).toLowerCase()))).toEqual([productId]);
+      // The pending revision's name in the locale, in any case.
+      expect(await found(searchOf(tokenText.toUpperCase()))).toEqual([productId]);
+      expect(await found(searchOf(tokenText, [], 'xx'))).toEqual([]);
+      // Wildcards are matched as typed: `%` and `_` are not "any".
+      expect(await found(searchOf(`${tokenText.slice(0, 3)}%`))).toEqual([]);
+      expect(await found(searchOf(`${tokenText.slice(0, 2)}_${tokenText.slice(3)}`))).toEqual([]);
+      expect(await found(searchOf(`${tokenText}\\`))).toEqual([]);
+      // A store match keeps the seller's rows whatever their text.
+      expect(await found(searchOf('no such text here', [seller]))).toEqual([productId]);
+      expect(await found(searchOf('no such text here', [OTHER]))).toEqual([]);
+      // It composes with the other filters.
+      expect(await found({ ...searchOf(tokenText), sellerId: OTHER })).toEqual([]);
+      expect(
+        await found({ ...searchOf(tokenText), sellerId: seller, firstPublication: true }),
+      ).toEqual([productId]);
+      expect(await found({ ...searchOf(tokenText), firstPublication: false })).toEqual([]);
+      // The other Market never answers this Market's row, though the text and the store match.
+      const filter = searchOf(tokenText, [seller]);
+      expect(
+        await inOtherUnit(() => reader.listPendingRevisions(otherMarket, page, 'en', filter)),
+      ).toEqual([]);
+      expect(await inOtherUnit(() => reader.pendingRevisionCount(otherMarket, filter))).toBe(0);
+    });
+
+    it('pages through the search by keyset: page 2 holds only matching rows, none twice', async () => {
+      const text = token();
+      const first = await submitted(`Dates ${text} one`);
+      await submitted(`Dates ${token()} not this one`);
+      const second = await submitted(`Dates ${text} two`);
+      const third = await submitted(`Dates ${text} three`);
+      const filter = searchOf(text);
+      const read = (after: { submittedAt: Temporal.Instant; id: string } | null) =>
+        inUnit(() => reader.listPendingRevisions(market, { after, limit: 1 }, 'en', filter), true);
+
+      const seen: string[] = [];
+      let after: { submittedAt: Temporal.Instant; id: string } | null = null;
+      for (let pageNo = 0; pageNo < 4; pageNo += 1) {
+        const rows = await read(after);
+        if (rows.length === 0) break;
+        expect(rows).toHaveLength(1);
+        seen.push(rows[0]!.productId);
+        after = { submittedAt: rows[0]!.submittedAt, id: rows[0]!.productId };
+      }
+      expect(seen).toEqual([first.productId, second.productId, third.productId]);
+      expect(await inUnit(() => reader.pendingRevisionCount(market, filter), true)).toBe(3);
+    });
+
+    it('keeps a waiting Offer by the published name of its product, in this Market only', async () => {
+      const name = `Dates ${token()}`;
+      const seller = uuid7() as Id<'Seller'>;
+      const { productId, revisionId, version } = await submitted(name, seller);
+      const approved = await approve.execute(adminContext(), {
+        productId,
+        revisionId,
+        version,
+        checksConfirmed: ALL_CHECKS,
+      });
+      expect(approved).toEqual({ ok: true, value: {} });
+      const created = Offer.create({
+        id: uuid7() as Id<'Offer'>,
+        marketId: market.marketId,
+        sellerId: seller,
+        productId,
+        sellerSku: `Q-${uuid7().slice(-12)}`,
+        conditionCode: 'new',
+        description: { en: 'Soft dates' },
+        now: T0,
+      });
+      if (!created.ok) throw new Error(created.error.code);
+      const offer = created.value;
+      const sellerActor = { kind: 'seller' as const, accountId: uuid7() as Id<'Account'> };
+      await inUnit(() => offerStore.add(market, offer, sellerActor));
+      const load = async () => {
+        const found = await inUnit(() => offerStore.findById(market, offer.state.id), true);
+        if (found === null) throw new Error('setup');
+        return found;
+      };
+      const handled = await load();
+      expect(handled.setHandling({ handling: 'SEALED_ORIGINAL', now: T0 }).ok).toBe(true);
+      await inUnit(() => offerStore.save(market, handled, sellerActor));
+      const waiting = await load();
+      expect(waiting.submit({ approvalRequired: true, now: T1 }).ok).toBe(true);
+      await inUnit(() => offerStore.save(market, waiting, sellerActor));
+
+      const page = { after: null, limit: 500 };
+      const offersFor = async (filter: Parameters<typeof offerStore.listPendingReview>[2]) => {
+        const rows = await inUnit(() => offerStore.listPendingReview(market, page, filter), true);
+        const count = await inUnit(() => reader.pendingReviewCount(market, filter), true);
+        expect(count).toBe(rows.length);
+        return rows.map((row) => row.state.id);
+      };
+      const tokenText = name.slice(6);
+      expect(await offersFor(searchOf(tokenText.toLowerCase()))).toEqual([offer.state.id]);
+      expect(await offersFor(searchOf(tokenText, [], 'xx'))).toEqual([]);
+      expect(await offersFor(searchOf(`${tokenText.slice(0, 2)}_${tokenText.slice(3)}`))).toEqual(
+        [],
+      );
+      // The other Market never answers this Market's Offer, though the text and the store match.
+      const filter = searchOf(tokenText, [seller]);
+      expect(
+        await inOtherUnit(() => offerStore.listPendingReview(otherMarket, page, filter)),
+      ).toEqual([]);
+      expect(await inOtherUnit(() => reader.pendingReviewCount(otherMarket, filter))).toBe(0);
     });
 
     it('keeps the queue rows submitted in the range: submittedFrom inclusive, submittedTo exclusive', async () => {

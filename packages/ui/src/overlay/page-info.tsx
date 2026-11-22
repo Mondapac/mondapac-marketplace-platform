@@ -4,8 +4,8 @@ import { useId } from 'react';
 import { Popover } from './popover.tsx';
 
 export interface PageInfoProps {
-  /** The page's name; the button is announced as "About <page>". */
-  readonly page: string;
+  /** The page's name; the button is announced as "About <page>" ("About this page" when left out, for a list whose title is in the top bar). */
+  readonly page?: string;
   /** The page's static intro: its purpose or rule. Warnings, banners and live counts stay on the page. */
   readonly children: string;
   /** `sm` 288 px (default) or `md` 340 px for a long text. */
@@ -28,7 +28,7 @@ export function PageInfo({ page, children, width = 'sm' }: PageInfoProps) {
       <Popover
         variant="icon"
         icon="info"
-        label={`About ${page}`}
+        label={page === undefined ? 'About this page' : `About ${page}`}
         width={width}
         describedBy={textId}
       >

@@ -11,6 +11,7 @@ import type {
 } from '../application/ports/offer.repository';
 import type { OfferQueueFilter } from '../application/ports/own-catalog.reader';
 import type { OwnOfferFinder } from '../application/ports/own-offer-finder';
+import { offerQueueSearchWhere } from './review-queue-search';
 import {
   Offer,
   OFF_SALE_CAUSES,
@@ -412,6 +413,7 @@ export class PrismaOfferRepository implements OfferRepository, OwnOfferFinder {
         from: filter.submittedFrom ?? null,
         to: filter.submittedTo ?? null,
       }),
+      ...(filter.search === undefined ? {} : { AND: [offerQueueSearchWhere(filter.search)] }),
     } as const;
     const cursor = page.after;
     const after =

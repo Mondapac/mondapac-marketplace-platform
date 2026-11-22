@@ -1,13 +1,14 @@
 'use client';
 
 import type { FormEvent, ReactNode } from 'react';
+import { PageInfo } from '../overlay/page-info.tsx';
 import { SettingsTitle } from './settings-title.tsx';
 import { useUnsavedChangesGuard, type LeaveLabels } from './unsaved-changes-guard.tsx';
 
 export interface SettingsPageProps {
   /** The page's h1. */
   readonly title: string;
-  /** One sentence under the title. */
+  /** One sentence about the page; shown in the info icon (ⓘ) beside the title, not under it. */
   readonly description?: string;
   /** "Last changed by Sara K. · 2 days ago": the caller writes the text. */
   readonly lastChanged?: {
@@ -75,10 +76,10 @@ export function SettingsPage({
     <div className="flex flex-col gap-4">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <SettingsTitle>{title}</SettingsTitle>
-          {description ? (
-            <p className="mt-1 max-w-prose text-sm text-fg-muted">{description}</p>
-          ) : null}
+          <div className="flex min-w-0 items-center gap-2">
+            <SettingsTitle>{title}</SettingsTitle>
+            {description ? <PageInfo page={title}>{description}</PageInfo> : null}
+          </div>
           {lastChanged ? (
             <p className="mt-1 text-xs text-fg-muted" data-testid="last-changed">
               {lastChanged.dateTime ? (

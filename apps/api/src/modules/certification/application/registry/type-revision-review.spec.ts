@@ -371,6 +371,37 @@ describe.each(['AU', 'ZZ'] as const)('type revision reviews in market %s', (code
     expect(published(r)).toBe(before);
   });
 
+  it('is not permitted while a reactivation of the type waits for a second admin', async () => {
+    const r = rig();
+    await unwrap(
+      r.save.execute(r.admin(), {
+        typeId: r.typeId,
+        version: 1,
+        content: contentOf({}, 'Qorvane Seal'),
+        note: 'Rename',
+      }),
+    );
+    const pending = await r.registry.unitOfWork.run(market, async () =>
+      ok(
+        await r.registry.addProposal(market, {
+          id: r.ids.next<'RelaxationProposal'>(),
+          subject: 'type-reactivation',
+          subjectId: r.typeId,
+          basedOnRevisionId: published(r),
+          proposedRevisionId: null,
+          proposedExpertReferenceCiphertext: null,
+          proposerAccountId: r.ids.next<'Account'>(),
+          changeReasonCiphertext: null,
+          proposedAt: T0,
+        }),
+      ),
+    );
+    expect(pending).toEqual({ ok: true, value: null });
+    const before = published(r);
+    expect(await r.revert(requestOf(r))).toBe('not-permitted');
+    expect(published(r)).toBe(before);
+  });
+
   describe('a type revert goes through only for an edit of names, descriptions or the badge icon', () => {
     // The least strict content a type can hold, so every setting can be tightened by a save that
     // is published at once (a tightening relaxes nothing, so it opens a request).

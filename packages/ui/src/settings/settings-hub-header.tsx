@@ -2,10 +2,11 @@
 
 import { Button } from '../form/button.tsx';
 import { Icon } from '../icon/icon.tsx';
+import { PageInfo } from '../overlay/page-info.tsx';
 import { usePanelTools } from '../palette/panel-tools.tsx';
 
 /**
- * The hub's title row: the page title and one sentence on the start side, a secondary Search
+ * The hub's title row: the page title with its info icon (the one sentence) on the start side, a secondary Search
  * button on the end side that opens the same search (the palette) as the top bar and Ctrl or
  * Cmd+K. Without the panel tools around it, the button is left out.
  */
@@ -20,8 +21,10 @@ export function SettingsHubHeader({
   return (
     <header className="flex flex-wrap items-start justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="text-2xl font-semibold text-fg">{title}</h1>
-        <p className="mt-1 max-w-prose text-sm text-fg-muted">{description}</p>
+        <div className="flex min-w-0 items-center gap-2">
+          <h1 className="min-w-0 break-words text-2xl font-semibold text-fg">{title}</h1>
+          <PageInfo page={title}>{description}</PageInfo>
+        </div>
       </div>
       {tools === null ? null : (
         <Button
