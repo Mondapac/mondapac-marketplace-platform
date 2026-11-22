@@ -4,7 +4,9 @@ import { parseId, uuidV7 } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import { testCallContext } from '@mondapac/shared-kernel/testing';
 import { CategoryTreeQuery } from '../../src/modules/catalog/application/use-cases/category-tree.use-case';
+import { CategoryTreeSystemQuery } from '../../src/modules/catalog/application/use-cases/category-tree-system.use-case';
 import { PublishedStoreSlugs } from '../../src/modules/sellers/application/use-cases/published-store-slugs.use-case';
+import { PublishedStoreSlugsSystem } from '../../src/modules/sellers/application/use-cases/published-store-slugs-system.use-case';
 import {
   CATEGORY_TREE_SOURCE,
   type CategoryTreeSource,
@@ -68,6 +70,18 @@ describe.each(TEST_MARKETS)(
       });
       expect(
         await app.get(PublishedStoreSlugs).execute(context, { sellerIds: [id<'Seller'>()] }),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+    });
+
+    it('the system twins refuse a request caller (rule `system`, Hassan L-1 on #1240)', async () => {
+      const context = anonymous();
+
+      expect(await app.get(CategoryTreeSystemQuery).execute(context, {})).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect(
+        await app.get(PublishedStoreSlugsSystem).execute(context, { sellerIds: [id<'Seller'>()] }),
       ).toEqual({ ok: false, error: { code: 'access.denied' } });
     });
 
