@@ -13,6 +13,7 @@ export const FORBIDDEN_TYPE_TEXT_WORDS: readonly string[] = Object.freeze([
   'guarantee',
   'guarantees',
   'guaranteed',
+  'guaranteeing',
   'fatwa',
   'ruling',
   'rulings',
@@ -22,15 +23,21 @@ export const FORBIDDEN_TYPE_TEXT_WORDS: readonly string[] = Object.freeze([
   'allergies',
   'allergen',
   'allergens',
+  'health',
   'healthy',
+  'healthier',
   'certified by mondapac',
   'mondapac certified',
+  'approved by mondapac',
+  'mondapac approved',
+  'mondapac verified',
 ]);
 
 /**
  * Claim terms too common to be a certification claim (design 5): a type whose term is one of these
  * would block ordinary product text across the Market once active. A whole term equal to one of
- * them is refused; a phrase that contains one ("certified organic") is fine.
+ * them is refused, and so is a term made only of them ("fresh food", "natural products"); a phrase
+ * with one other word ("certified organic") is fine.
  */
 export const CLAIM_TERM_STOP_LIST: readonly string[] = Object.freeze([
   'the',

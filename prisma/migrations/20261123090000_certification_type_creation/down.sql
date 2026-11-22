@@ -2,6 +2,8 @@
 -- the triggers and their functions, then the CHECKs back to their earlier lists. The narrowed
 -- CHECKs fail while a proposed, rejected or withdrawn type or a type-creation proposal exists:
 -- such data has to be resolved by hand before a rollback (it is never deleted for you).
+SET lock_timeout = '5s';
+
 DROP TRIGGER "certification_types_insert_open" ON "certification"."certification_types";
 DROP FUNCTION "certification"."certification_types_guard_insert"();
 DROP TRIGGER "certification_types_status_lifecycle" ON "certification"."certification_types";

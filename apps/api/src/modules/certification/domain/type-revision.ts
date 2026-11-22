@@ -1,5 +1,5 @@
 import { err, ok, type Result } from '@mondapac/shared-kernel';
-import { compactForm, normaliseClaimText, tokenise } from './claim-text-matcher';
+import { collapseRuns, compactForm, normaliseClaimText, tokenise } from './claim-text-matcher';
 import type { CertificationTypeCode } from './claim-types';
 import { CLAIM_TERM_STOP_LIST, FORBIDDEN_TYPE_TEXT_WORDS } from './type-wording-data';
 
@@ -61,11 +61,36 @@ function wordForms(text: string): string[] {
 }
 
 const FORBIDDEN_FORMS: readonly (readonly string[])[] = FORBIDDEN_TYPE_TEXT_WORDS.map(wordForms);
+/** Each phrase with its separators removed and its runs folded: `guarantee` is `guarante`. */
+const FORBIDDEN_COMPACT: readonly string[] = FORBIDDEN_FORMS.map((words) =>
+  collapseRuns(words.join('')),
+).filter((form) => form.length > 0);
 const STOP_FORMS: ReadonlySet<string> = new Set(
-  CLAIM_TERM_STOP_LIST.map((word) => wordForms(word).join(' ')),
+  CLAIM_TERM_STOP_LIST.flatMap((word) => wordForms(word)),
 );
 
-/** True when the text holds a forbidden word or phrase as whole words (design 5). */
+/**
+ * True when a run of whole words of the text, joined and with its runs folded, is a forbidden
+ * phrase compacted the same way: `guaran-tee`, `g.u.a.r.a.n.t.e.e` and `guaaaranteed` are caught,
+ * and the match never starts or ends inside a word, so `secure` never matches `cure`.
+ */
+function hasCompactedForbiddenRun(tokens: readonly string[]): boolean {
+  for (let start = 0; start < tokens.length; start++) {
+    let joined = '';
+    for (let end = start; end < tokens.length; end++) {
+      joined += tokens[end];
+      const folded = collapseRuns(joined);
+      if (FORBIDDEN_COMPACT.includes(folded)) return true;
+      if (FORBIDDEN_COMPACT.every((form) => folded.length > form.length)) break;
+    }
+  }
+  return false;
+}
+
+/**
+ * True when the text holds a forbidden word or phrase (design 5): as whole words, or as a run of
+ * whole words that reads as one once separators are removed and stretched letters folded.
+ */
 export function hasForbiddenTypeWord(text: string): boolean {
   let tokens: string[];
   try {
@@ -73,17 +98,23 @@ export function hasForbiddenTypeWord(text: string): boolean {
   } catch {
     return true; // fails closed: a text the matcher cannot read is refused
   }
-  return FORBIDDEN_FORMS.some(
-    (phrase) =>
-      phrase.length > 0 &&
-      tokens.some((_, start) => phrase.every((word, i) => tokens[start + i] === word)),
+  return (
+    FORBIDDEN_FORMS.some(
+      (phrase) =>
+        phrase.length > 0 &&
+        tokens.some((_, start) => phrase.every((word, i) => tokens[start + i] === word)),
+    ) || hasCompactedForbiddenRun(tokens)
   );
 }
 
-/** True when the whole term is one of the common words of the stop-list (design 5). */
+/**
+ * True when every word of the term is a common word of the stop-list (design 5): `fresh` and
+ * `fresh food` are refused, `certified organic` is not.
+ */
 export function isTooCommonClaimTerm(term: string): boolean {
   try {
-    return STOP_FORMS.has(wordForms(term).join(' '));
+    const words = wordForms(term);
+    return words.length > 0 && words.every((word) => STOP_FORMS.has(word));
   } catch {
     return false; // an unreadable term is `type.claim-term-unmatchable` already
   }

@@ -136,10 +136,15 @@ export class MemoryRegistry implements CertificationRegistryRepository {
     return rest as StoredIssuer;
   }
 
-  listTypes(market: MarketContext): Promise<readonly TypeListRow[]> {
+  listTypes(
+    market: MarketContext,
+    options: { readonly includeClosed: boolean },
+  ): Promise<readonly TypeListRow[]> {
+    const closedOf = (t: { status: string }) => t.status === 'rejected' || t.status === 'withdrawn';
     const rows = [...this.state.types.values()]
       .filter((t) => t.marketId === market.marketId)
-      .sort((a, b) => a.code.localeCompare(b.code))
+      .filter((t) => options.includeClosed || !closedOf(t))
+      .sort((a, b) => Number(closedOf(a)) - Number(closedOf(b)) || a.code.localeCompare(b.code))
       .map((t): TypeListRow => {
         const revision = this.state.revisions.get(t.publishedRevisionId)!;
         return {

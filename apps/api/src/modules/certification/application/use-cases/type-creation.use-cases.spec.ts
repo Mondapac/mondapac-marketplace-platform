@@ -391,9 +391,10 @@ describe.each(['AU', 'ZZ'] as const)('a new certification type in market %s', (c
     const visible = await unwrap(r.list.execute(r.admin(), {}));
     expect(visible.items.map((i) => i.code)).toEqual(['qorvane']);
     const all = await unwrap(r.list.execute(r.admin(), { closed: true }));
+    // Open types first, then closed ones, each by code.
     expect(all.items.map((i) => [i.code, i.status])).toEqual([
-      ['brelith', 'withdrawn'],
       ['qorvane', 'active'],
+      ['brelith', 'withdrawn'],
       ['wyndrel', 'rejected'],
     ]);
     expect(await refusal(r.list.execute(r.admin(), { closed: 'yes' }))).toMatchObject({

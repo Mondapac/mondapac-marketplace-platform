@@ -64,7 +64,8 @@ const logger = new Logger('CertificationTypeCreate');
  * follows the type code pattern, is never a seed code of the Market (`type.code-reserved`) and is
  * never reused, whatever the status of the type that holds it (`type.code-taken`, 409). The
  * content passes `validateTypeRevision` against the Market's locales as a first revision. Audit
- * `certification.type.proposed` (ids and numbers only), `relaxation-proposed.v1`. Not reviewed in
+ * `certification.type.proposed` (ids and numbers only); no event (`relaxation-proposed.v1` does not
+ * name a type creation, see PROPOSAL_SUBJECTS). Not reviewed in
  * System requests: the second admin is the check. Rule: key `certification.type.edit`
  * (protected), the admin population, not acting-as.
  */

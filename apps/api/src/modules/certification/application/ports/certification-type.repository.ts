@@ -16,7 +16,8 @@ export interface NewSeededType {
  * here updates or deletes a type or a revision.
  */
 export interface CertificationTypeRepository {
-  existsByCode(market: MarketContext, code: string): Promise<boolean>;
+  /** The status of the Market's type with this code, whatever it is, or null when none has it. */
+  statusByCode(market: MarketContext, code: string): Promise<string | null>;
   /** Inserts the type, its first revision, texts and claim terms, then points at the revision. */
   addSeeded(market: MarketContext, type: NewSeededType): Promise<void>;
 }

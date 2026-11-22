@@ -75,9 +75,13 @@ Rules for every type revision, new or edited (`validateTypeRevision`; the seeds 
 fixtures pass them): a `THIRD_PARTY_DOCUMENT` type needs a document; a `SELF_DECLARATION` type has
 no issuer registry; the badge names a key of `config/certification-badge-artwork/keys.json`
 (`text` shows the type's name); names and descriptions carry no forbidden word (guarantee, fatwa,
-ruling, cure, allergy, healthy, "MondaPac certified" and similar; `domain/type-wording-data.ts`,
-owned by Hassan); no claim term is on the stop-list of common words (food, fresh, natural, quality,
-certified and similar).
+ruling, cure, allergy, health, "MondaPac certified" and similar; `domain/type-wording-data.ts`,
+owned by Hassan), also split, dotted or stretched (`guaran-tee`, `g.u.a.r.a.n.t.e.e`,
+`guaaaranteed`: a run of whole words is joined and its repeated letters folded); no claim term is
+made only of words on the stop-list of common words (food, fresh, natural, quality, certified and
+similar), so `fresh food` is refused and `certified organic` is not. The admin type list reads open
+types first and closed ones only on request, so closed proposals never push an open type off its
+bound. A seed code held by a type that is not live is a seed fault (`type.seed-code-not-live`).
 
 Database (migration `20261123090000_certification_type_creation`): `status` adds `proposed`,
 `rejected` and `withdrawn`; `subject_kind` adds `type-creation`. Two triggers keep the lifecycle:
@@ -97,7 +101,9 @@ Deviations:
   contract, and the event has no consumer yet. The mail consumer takes a v2 that adds
   `type-creation`.
 - Approval publishes only `certification-type-activated.v1`, not also a revision event: the outbox
-  holds one event per aggregate version.
+  holds one event per aggregate version. A future re-scan consumer (FE-145) must also subscribe to
+  `certification-type-activated.v1`: for a type that was never live, activation is the only signal
+  that its claim terms are new.
 - The audit rows (`certification.type.proposed`, `.proposal-revised`, `.created`) carry ids, the
   revision number and whether a reason was given, not the code (there is no free-text audit field
   kind).

@@ -69,7 +69,7 @@ export class TypesList extends UseCase<TypesListInput, TypesListOutput, TypesLis
       .run<TypesListOutput, TypesListFailure>(
         market,
         async () => {
-          const rows = await deps.registry.listTypes(market);
+          const rows = await deps.registry.listTypes(market, { includeClosed: closed });
           return ok({
             items: rows
               .filter((row) => closed || !isClosedTypeStatus(row.type.status))

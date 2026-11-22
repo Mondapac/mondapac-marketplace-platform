@@ -31,6 +31,10 @@ import type {
   VerificationMode,
 } from '../domain/type-revision';
 
+/** The bound of the type list (a Market has a handful of types). */
+const LIST_TYPES_LIMIT = 200;
+const CLOSED_TYPE_STATUSES = ['rejected', 'withdrawn'] as const;
+
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
@@ -172,21 +176,35 @@ const TYPE_CODE_KEY = 'certification_types_market_id_code_key';
 export class PrismaCertificationRegistryRepository implements CertificationRegistryRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listTypes(market: MarketContext): Promise<readonly TypeListRow[]> {
+  async listTypes(
+    market: MarketContext,
+    options: { readonly includeClosed: boolean },
+  ): Promise<readonly TypeListRow[]> {
     const tx = this.prisma.tx(market);
     // A type gets its first revision in the unit that creates it; one not yet published is not
-    // listed (it never commits so, but a list must not fail on it).
-    const rows = await tx.certificationType.findMany({
-      where: { marketId: market.marketId, publishedRevisionId: { not: null } },
-      select: {
-        ...TYPE_SELECT,
-        publishedRevision: {
-          select: { revisionNo: true, texts: { select: { locale: true, name: true } } },
+    // listed (it never commits so, but a list must not fail on it). Open types are read first and
+    // closed ones fill what is left of the bound, so closed proposals never hide an open type.
+    const page = (closed: boolean, take: number) =>
+      tx.certificationType.findMany({
+        where: {
+          marketId: market.marketId,
+          publishedRevisionId: { not: null },
+          status: closed ? { in: [...CLOSED_TYPE_STATUSES] } : { notIn: [...CLOSED_TYPE_STATUSES] },
         },
-      },
-      orderBy: { code: 'asc' },
-      take: 200,
-    });
+        select: {
+          ...TYPE_SELECT,
+          publishedRevision: {
+            select: { revisionNo: true, texts: { select: { locale: true, name: true } } },
+          },
+        },
+        orderBy: { code: 'asc' },
+        take,
+      });
+    const open = await page(false, LIST_TYPES_LIMIT);
+    const rows =
+      options.includeClosed && open.length < LIST_TYPES_LIMIT
+        ? [...open, ...(await page(true, LIST_TYPES_LIMIT - open.length))]
+        : open;
     const pending = await tx.certificationRelaxationProposal.findMany({
       where: {
         marketId: market.marketId,

@@ -518,6 +518,17 @@ describe('validateTypeRevision, the new-type rules (FE-091, design 5)', () => {
       ['Halal', 'A healthy choice.'],
       ['Gu4rantee', 'The seller holds a certificate.'],
       ['Halal', 'Certified by MondaPac.'],
+      // Split, dotted and stretched spellings read as the plain word (Hassan).
+      ['Halal', 'Guaran-tee of the council.'],
+      ['Halal', 'A g.u.a.r.a.n.t.e.e for you.'],
+      ['Halal', 'Guaaaranteed halal.'],
+      ['Halal', 'Guaranteeing halal.'],
+      ['Halal', 'Good for your health.'],
+      ['Halal', 'A healthier choice.'],
+      ['Halal', 'Approved by MondaPac.'],
+      ['Halal', 'MondaPac verified.'],
+      ['Halal', 'MondaPac approved.'],
+      ['Halal', 'Mondapac-certified.'],
     ] as const) {
       expect([description, codes(withText(name, description))]).toEqual([
         description,
@@ -526,9 +537,11 @@ describe('validateTypeRevision, the new-type rules (FE-091, design 5)', () => {
     }
     // Whole words only: "secure" holds "cure", "rule" is not "ruling".
     expect(codes(withText('Halal', 'Kept secure under the rule of the certifier.'))).toEqual([]);
+    // A compacted run starts and ends on whole words: "procured" and "overruling" hold nothing.
+    expect(codes(withText('Halal', 'Procured from an overruling supplier.'))).toEqual([]);
   });
 
-  it('refuses a claim term too common to be a claim, but not a phrase that holds one', () => {
+  it('refuses a claim term made only of common words, but not a phrase with another word', () => {
     const withTerms = (terms: string[]) =>
       base({
         locales: {
@@ -539,6 +552,11 @@ describe('validateTypeRevision, the new-type rules (FE-091, design 5)', () => {
     expect(codes(withTerms(['organic', 'Natural']))).toEqual(['type.claim-term-too-common']);
     expect(codes(withTerms(['organic', 'CERTIFIED']))).toEqual(['type.claim-term-too-common']);
     expect(codes(withTerms(['organic', 'certified organic']))).toEqual([]);
+    // A term made only of common words is refused too (Hassan).
+    expect(codes(withTerms(['organic', 'fresh food']))).toEqual(['type.claim-term-too-common']);
+    expect(codes(withTerms(['organic', 'Natural Products']))).toEqual([
+      'type.claim-term-too-common',
+    ]);
   });
 
   it('passes the checked-in seeds of both Markets (run against the seed first)', () => {

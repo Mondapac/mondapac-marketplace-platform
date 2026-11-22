@@ -127,8 +127,15 @@ export interface IssuerStateWrite {
 }
 
 export interface CertificationRegistryRepository {
-  /** Every type of the Market whatever its status, by code (a Market has a handful). */
-  listTypes(market: MarketContext): Promise<readonly TypeListRow[]>;
+  /**
+   * The types of the Market by code (a Market has a handful): live and proposed ones, then, only
+   * with `includeClosed`, rejected and withdrawn ones after them, so closed proposals never push an
+   * open type off the bounded list.
+   */
+  listTypes(
+    market: MarketContext,
+    options: { readonly includeClosed: boolean },
+  ): Promise<readonly TypeListRow[]>;
   /**
    * A live type (`active` or `inactive`), or null. A proposed, rejected or withdrawn type is null
    * here, so every path outside the new-type proposal treats it as unknown (FE-091; fail closed).

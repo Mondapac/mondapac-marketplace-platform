@@ -263,7 +263,7 @@ describe.each(TEST_MARKETS)('certification registry in market %s (database)', (c
       publishedRevisionId: next,
       version: 2,
     });
-    const rows = await read(() => registry.listTypes(market));
+    const rows = await read(() => registry.listTypes(market, { includeClosed: false }));
     expect(rows.find((r) => r.type.id === typeId)).toMatchObject({
       publishedRevisionNo: 2,
       names: Object.fromEntries(locales.map((l) => [l, 'Qorvane'])),
@@ -620,7 +620,8 @@ describe.each(TEST_MARKETS)('certification registry in market %s (database)', (c
           subject: 'type-creation',
           subjectId: typeId,
           basedOnRevisionId: revisionId,
-          proposedRevisionId: revisionId,
+          // A creation names its revision in based_on_revision_id; the CHECK wants NULL here.
+          proposedRevisionId: null,
           proposedExpertReferenceCiphertext: null,
           proposerAccountId: uuid7() as Id<'Account'>,
           changeReasonCiphertext: null,
@@ -638,6 +639,157 @@ describe.each(TEST_MARKETS)('certification registry in market %s (database)', (c
       status: 'active',
       version: 2,
     });
+  });
+
+  it('revises a proposed type by its proposer and closes it rejected or withdrawn (FE-091)', async () => {
+    const proposer = uuid7() as Id<'Account'>;
+    const creationOf = (
+      id: Id<'RelaxationProposal'>,
+      typeId: Id<'CertificationType'>,
+      basedOn: Id<'CertificationTypeRevision'>,
+    ) => ({
+      id,
+      subject: 'type-creation' as const,
+      subjectId: typeId,
+      basedOnRevisionId: basedOn,
+      proposedRevisionId: null,
+      proposedExpertReferenceCiphertext: null,
+      proposerAccountId: proposer,
+      changeReasonCiphertext: null,
+      proposedAt: T0,
+    });
+    /** A proposed type with revision 1 and its pending creation proposal, as `type-create` writes. */
+    const proposedType = async () => {
+      const typeId = uuid7() as Id<'CertificationType'>;
+      const revisionId = uuid7() as Id<'CertificationTypeRevision'>;
+      const proposalId = uuid7() as Id<'RelaxationProposal'>;
+      await inUnit(async () => {
+        const refused = await registry.createType(market, {
+          typeId,
+          code: `p${typeId.slice(-12)}`,
+          revision: {
+            id: revisionId,
+            content: contentOf(),
+            authorAccountId: proposer,
+            changeReasonCiphertext: null,
+            createdAt: T0,
+          },
+        });
+        expect(refused).toBeNull();
+        expect(
+          await registry.addProposal(market, creationOf(proposalId, typeId, revisionId)),
+        ).toBeNull();
+      });
+      return { typeId, revisionId, proposalId };
+    };
+
+    // The proposer's edit, as `type-save-revision` writes it: lock, revision 2, pointer, the old
+    // proposal superseded (no decider), then a new pending one under the partial unique index.
+    const { typeId, proposalId: first } = await proposedType();
+    const revised = uuid7() as Id<'CertificationTypeRevision'>;
+    const second = uuid7() as Id<'RelaxationProposal'>;
+    await inUnit(async () => {
+      await registry.lockType(market, typeId, 1);
+      const no = await registry.addRevision(market, {
+        id: revised,
+        typeId,
+        content: contentOf({ badgeIconKey: 'text' }),
+        authorAccountId: proposer,
+        changeReasonCiphertext: null,
+        createdAt: T1,
+      });
+      expect(no).toBe(2);
+      await registry.publishRevision(market, typeId, revised, 1);
+      await registry.closeProposal(market, {
+        id: first,
+        expectedVersion: 1,
+        state: 'superseded',
+        decidedByAccountId: null,
+        decidedAt: T1,
+      });
+      expect(await registry.addProposal(market, creationOf(second, typeId, revised))).toBeNull();
+    });
+    expect(await read(() => registry.proposal(market, first))).toMatchObject({
+      state: 'superseded',
+      decidedByAccountId: null,
+      decidedAt: T1,
+      version: 2,
+    });
+    expect(
+      await read(() => registry.pendingProposal(market, 'type-creation', typeId)),
+    ).toMatchObject({ id: second, basedOnRevisionId: revised, version: 1 });
+    expect(await read(() => registry.typeOfAnyStatus(market, typeId))).toMatchObject({
+      status: 'proposed',
+      publishedRevisionId: revised,
+      version: 2,
+    });
+    // One pending creation per type.
+    expect(
+      await inUnit(() =>
+        registry.addProposal(
+          market,
+          creationOf(uuid7() as Id<'RelaxationProposal'>, typeId, revised),
+        ),
+      ),
+    ).toBe('review.proposal-pending');
+
+    // Rejected by another admin, as `close-proposal` writes it: status, then the proposal.
+    const rejecter = uuid7() as Id<'Account'>;
+    await inUnit(async () => {
+      await registry.setTypeStatus(market, typeId, 'rejected', 2);
+      await registry.closeProposal(market, {
+        id: second,
+        expectedVersion: 1,
+        state: 'rejected',
+        decidedByAccountId: rejecter,
+        decidedAt: T2,
+      });
+    });
+    expect(await read(() => registry.typeOfAnyStatus(market, typeId))).toMatchObject({
+      status: 'rejected',
+      version: 3,
+    });
+    expect(await read(() => registry.type(market, typeId))).toBeNull();
+    expect(await read(() => registry.proposal(market, second))).toMatchObject({
+      state: 'rejected',
+      decidedByAccountId: rejecter,
+    });
+    expect(await read(() => registry.pendingProposal(market, 'type-creation', typeId))).toBeNull();
+    // Frozen: a rejected type never becomes live.
+    await expect(
+      inUnit(() => registry.setTypeStatus(market, typeId, 'active', 3)),
+    ).rejects.toThrow();
+
+    // Withdrawn by its proposer.
+    const withdrawn = await proposedType();
+    await inUnit(async () => {
+      await registry.setTypeStatus(market, withdrawn.typeId, 'withdrawn', 1);
+      await registry.closeProposal(market, {
+        id: withdrawn.proposalId,
+        expectedVersion: 1,
+        state: 'withdrawn',
+        decidedByAccountId: proposer,
+        decidedAt: T2,
+      });
+    });
+    expect(await read(() => registry.typeOfAnyStatus(market, withdrawn.typeId))).toMatchObject({
+      status: 'withdrawn',
+    });
+    expect(await read(() => registry.proposal(market, withdrawn.proposalId))).toMatchObject({
+      state: 'withdrawn',
+      decidedByAccountId: proposer,
+    });
+
+    // Closed types leave the default list and come after the open ones on request.
+    const listed = (includeClosed: boolean) =>
+      read(() => registry.listTypes(market, { includeClosed })).then((rows) =>
+        rows.map((r) => r.type.id),
+      );
+    expect(await listed(false)).not.toContain(typeId);
+    const all = await listed(true);
+    expect(all).toEqual(expect.arrayContaining([typeId, withdrawn.typeId]));
+    const open = await listed(false);
+    expect(all.slice(0, open.length)).toEqual(open);
   });
 
   it('keeps the type status lifecycle in the database (FE-091)', async () => {

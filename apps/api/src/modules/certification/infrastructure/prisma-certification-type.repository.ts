@@ -14,12 +14,12 @@ import type {
 export class PrismaCertificationTypeRepository implements CertificationTypeRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  async existsByCode(market: MarketContext, code: string): Promise<boolean> {
+  async statusByCode(market: MarketContext, code: string): Promise<string | null> {
     const row = await this.prisma.tx(market).certificationType.findFirst({
       where: { marketId: market.marketId, code },
-      select: { id: true },
+      select: { status: true },
     });
-    return row !== null;
+    return row?.status ?? null;
   }
 
   async addSeeded(market: MarketContext, input: NewSeededType): Promise<void> {
