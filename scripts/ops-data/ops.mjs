@@ -258,8 +258,8 @@ async function main() {
           'The operational test data uses this same database. To switch to it, run',
           '  scripts\\ops-local.bat reset',
           'which DELETES everything in it and builds the operational test data (it asks you to type YES first).',
-          'To keep a copy of the current data first:',
-          `  docker compose exec -T postgres pg_dump -U postgres -d ${name} -Fc > ${name}-before-ops.dump`,
+          'To keep a copy of the current data first (in cmd; PowerShell would corrupt the file):',
+          `  docker compose exec -T postgres pg_dump -U postgres -d ${name} -Fc > .local\\${name}-before-ops.dump`,
         ].join('\n'),
       );
       process.exit(3);
