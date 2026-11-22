@@ -1,12 +1,15 @@
 import type { ReactNode } from 'react';
 import { Icon, type IconName } from '../icon/icon.tsx';
+import { Sparkline } from './sparkline.tsx';
+import { StatDelta, type StatDeltaProps } from './stat-delta.tsx';
 
-export type StatTone = 'neutral' | 'attention' | 'critical';
+export type StatTone = 'neutral' | 'attention' | 'critical' | 'info';
 
 const TONE: Record<StatTone, string> = {
   neutral: 'text-fg',
   attention: 'text-attention-fg',
   critical: 'text-critical-fg',
+  info: 'text-info-fg',
 };
 
 /**
@@ -44,6 +47,10 @@ export interface StatCardProps {
   readonly tone?: StatTone;
   /** Shown instead of the figure when it could not be read; the card then does not link. */
   readonly error?: string;
+  /** The change against the previous period. Its colour says better or worse, not up or down. */
+  readonly delta?: StatDeltaProps;
+  /** A small trend of the figure (values in time order); decoration, the figure is the text. */
+  readonly sparkline?: readonly number[];
 }
 
 /**
@@ -59,6 +66,8 @@ export function StatCard({
   href,
   tone = 'neutral',
   error,
+  delta,
+  sparkline,
 }: StatCardProps) {
   const body = (
     <>
@@ -69,12 +78,16 @@ export function StatCard({
         <span className="min-w-0 break-words sm:min-h-10">{label}</span>
       </span>
       {error === undefined ? (
-        <span className={`text-2xl font-semibold sm:text-3xl ${TONE[tone]}`}>{value}</span>
+        <span className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
+          <span className={`text-2xl font-semibold sm:text-3xl ${TONE[tone]}`}>{value}</span>
+          {sparkline === undefined ? null : <Sparkline values={sparkline} />}
+        </span>
       ) : (
         <span role="alert" className="text-sm text-critical-fg">
           {error}
         </span>
       )}
+      {delta === undefined || error !== undefined ? null : <StatDelta {...delta} />}
       <span className="text-xs text-fg-muted">{scope}</span>
     </>
   );

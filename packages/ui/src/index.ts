@@ -244,10 +244,12 @@ export {
 export { ActivityTable, formatCount, type ActivityColumn } from './dashboard/activity-table.tsx';
 export {
   ActivityCardSkeleton,
+  ChartCardSkeleton,
   DashboardLoading,
   DistributionCardSkeleton,
   StatCardSkeleton,
   type ActivityCardSkeletonProps,
+  type ChartCardSkeletonProps,
   type DistributionCardSkeletonProps,
   type StatCardSkeletonProps,
 } from './dashboard/dashboard-loading.tsx';
@@ -266,6 +268,26 @@ export {
   type StatCardProps,
   type StatTone,
 } from './dashboard/dashboard.tsx';
+export { Sparkline } from './dashboard/sparkline.tsx';
+export { StatDelta, type StatDeltaProps } from './dashboard/stat-delta.tsx';
+export {
+  LineAreaChart,
+  type ChartPoint,
+  type LineAreaChartProps,
+} from './dashboard/line-chart.tsx';
+export { BarList, Funnel, type BarListItem, type FunnelStep } from './dashboard/bar-list.tsx';
+export {
+  PeriodSelector,
+  type PeriodOption,
+  type PeriodSelectorProps,
+} from './dashboard/period-selector.tsx';
+export {
+  ChartEmpty,
+  ChartError,
+  ChartSkeleton,
+  type ChartStateProps,
+} from './dashboard/chart-states.tsx';
+export { compactNumber, labelIndexes, niceTicks } from './dashboard/chart-scale.ts';
 export { Dialog, type DialogProps } from './overlay/dialog.tsx';
 export { SidePanel, type SidePanelProps } from './overlay/side-panel.tsx';
 export { Menu, type MenuItem, type MenuProps } from './overlay/menu.tsx';

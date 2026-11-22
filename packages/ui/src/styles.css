@@ -53,6 +53,16 @@
   --color-critical-border: var(--mp-color-status-critical-border);
   --color-info-border: var(--mp-color-border-info);
   --color-info-banner: var(--mp-color-bg-info-banner);
+  --color-chart-series: var(--mp-color-chart-series-1);
+  --color-chart-series-soft: var(--mp-color-chart-series-1-soft);
+  --color-chart-split: var(--mp-color-chart-split-2);
+  --color-chart-compare: var(--mp-color-chart-compare);
+  --color-chart-grid: var(--mp-color-chart-grid);
+  --color-chart-axis: var(--mp-color-chart-axis);
+  --color-chart-track: var(--mp-color-chart-meter-track);
+  --color-chart-tooltip: var(--mp-color-chart-tooltip-bg);
+  --color-chart-tooltip-fg: var(--mp-color-chart-tooltip-fg);
+  --color-chart-tooltip-muted: var(--mp-color-chart-tooltip-muted);
 }
 
 @source './';
