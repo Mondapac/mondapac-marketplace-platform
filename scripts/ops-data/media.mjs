@@ -60,3 +60,25 @@ export function placeholder(name) {
     'base64',
   );
 }
+
+/**
+ * A 1600 x 600 slide picture: a placeholder photo on the right of a soft band of its own colours.
+ * The slide's text carries the message, so the picture is decorative.
+ */
+export async function banner(name) {
+  const photo = await sharp(resolve(ROOT, 'apps/web/public/placeholders', `${name}.jpg`))
+    .resize(600, 600, { fit: 'cover' })
+    .toBuffer();
+  const { dominant } = await sharp(photo).stats();
+  const tint = `rgb(${dominant.r},${dominant.g},${dominant.b})`;
+  const band =
+    `<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="600">` +
+    `<defs><linearGradient id="g" x1="0" x2="1"><stop offset="0" stop-color="#ffffff"/>` +
+    `<stop offset="1" stop-color="${tint}"/></linearGradient></defs>` +
+    `<rect width="1600" height="600" fill="url(#g)"/></svg>`;
+  const picture = await sharp(Buffer.from(band))
+    .composite([{ input: photo, left: 1000, top: 0 }])
+    .jpeg({ quality: 85 })
+    .toBuffer();
+  return picture.toString('base64');
+}
