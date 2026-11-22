@@ -127,10 +127,13 @@ model ReportingDailySellerSales {
   ordersShipped       Int      @map("orders_shipped")
   ordersShippedOnTime Int      @map("orders_shipped_on_time")
   ordersDelivered     Int      @map("orders_delivered")
-  /// Refunds that succeeded on the day (whatever the day of their order), as positive totals.
-  refunds             Int
-  refundAmount        BigInt   @map("refund_amount")
-  refundTaxAmount     BigInt   @map("refund_tax_amount")
+  /// Refunds that succeeded on the day (whatever the day of their order), as NEGATIVE amounts, like
+  /// the sales entries: goods and shipping apart, so net GMV is `goods_amount + refund_goods_amount`.
+  refunds                 Int
+  refundGoodsAmount       BigInt   @map("refund_goods_amount")
+  refundGoodsTaxAmount    BigInt   @map("refund_goods_tax_amount")
+  refundShippingAmount    BigInt   @map("refund_shipping_amount")
+  refundShippingTaxAmount BigInt   @map("refund_shipping_tax_amount")
   refreshedAt         DateTime @map("refreshed_at") @db.Timestamptz(6)
 
   @@id([marketId, marketDay, sellerId, currency])
@@ -161,6 +164,7 @@ model ReportingDailyCategorySales {
 
   @@id([marketId, marketDay, sellerId, categoryId, currency])
   @@index([marketId, marketDay, categoryId])
+  @@index([marketId, sellerId, marketDay])
   @@map("daily_category_sales")
   @@schema("reporting")
 }

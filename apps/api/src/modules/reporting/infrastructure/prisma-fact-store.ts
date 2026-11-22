@@ -1,7 +1,11 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { Temporal } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type { FactStore, SellerOrderDays } from '../application/ports/fact-store';
+import {
+  ReportingFactConflict,
+  type FactStore,
+  type SellerOrderDays,
+} from '../application/ports/fact-store';
 import {
   parseMarketDay,
   type MarketDay,
@@ -42,7 +46,9 @@ export class PrismaFactStore implements FactStore {
     const previous = await client.reportingSellerOrder.findFirst({
       where: key,
       select: {
+        orderId: true,
         sellerId: true,
+        currency: true,
         paidDay: true,
         cancelledDay: true,
         shippedDay: true,
@@ -81,6 +87,15 @@ export class PrismaFactStore implements FactStore {
       });
       return [];
     }
+    // The keys, seller, order and currency of a fact never change (Hassan F1): a fact that says
+    // otherwise is a bug upstream, refused before anything moves to another seller.
+    if (
+      previous.orderId !== fact.orderId ||
+      previous.sellerId !== fact.sellerId ||
+      previous.currency !== fact.currency
+    ) {
+      throw new ReportingFactConflict('seller-order', fact.sellerOrderId);
+    }
     await client.reportingSellerOrder.updateMany({ where: key, data: measures });
     const sellerId = previous.sellerId as Id<'Seller'>;
     return [previous.paidDay, previous.cancelledDay, previous.shippedDay, previous.deliveredDay]
@@ -98,8 +113,27 @@ export class PrismaFactStore implements FactStore {
     const key = { marketId: market.marketId, refundId: fact.refundId };
     const previous = await client.reportingRefund.findFirst({
       where: key,
-      select: { sellerId: true, refundDay: true },
+      select: {
+        orderId: true,
+        sellerOrderId: true,
+        sellerId: true,
+        currency: true,
+        refundDay: true,
+      },
     });
+    // A refund belongs to the seller order reporting knows, when it knows it (Hassan F1).
+    const sellerOrder = await client.reportingSellerOrder.findFirst({
+      where: { marketId: market.marketId, sellerOrderId: fact.sellerOrderId },
+      select: { orderId: true, sellerId: true, currency: true },
+    });
+    if (
+      sellerOrder !== null &&
+      (sellerOrder.orderId !== fact.orderId ||
+        sellerOrder.sellerId !== fact.sellerId ||
+        sellerOrder.currency !== fact.currency)
+    ) {
+      throw new ReportingFactConflict('refund', fact.refundId);
+    }
     const at = toDate(this.now());
     const measures = {
       amount: fact.total.amount,
@@ -124,6 +158,14 @@ export class PrismaFactStore implements FactStore {
         },
       });
       return [];
+    }
+    if (
+      previous.orderId !== fact.orderId ||
+      previous.sellerOrderId !== fact.sellerOrderId ||
+      previous.sellerId !== fact.sellerId ||
+      previous.currency !== fact.currency
+    ) {
+      throw new ReportingFactConflict('refund', fact.refundId);
     }
     await client.reportingRefund.updateMany({ where: key, data: measures });
     return [
@@ -190,7 +232,13 @@ export class PrismaFactStore implements FactStore {
       client.reportingRefund.findMany({
         where: { ...scope, refundDay: day },
         orderBy: { refundId: 'asc' },
-        select: { currency: true, amount: true, taxAmount: true },
+        select: {
+          currency: true,
+          amount: true,
+          taxAmount: true,
+          shippingAmount: true,
+          shippingTaxAmount: true,
+        },
       }),
       client.reportingSalesEntry.findMany({
         where: { ...scope, marketDay: day },
@@ -217,6 +265,8 @@ export class PrismaFactStore implements FactStore {
         currency: row.currency,
         amount: row.amount,
         tax: row.taxAmount,
+        shippingAmount: row.shippingAmount,
+        shippingTax: row.shippingTaxAmount,
       })),
       entries: entries.map((row) => ({
         kind: row.kind as SalesEntryKind,

@@ -32,10 +32,13 @@ export interface DaySellerOrder {
   readonly deliveredOnDay: boolean;
 }
 
+/** A refund of the day, with its positive totals as stored. */
 export interface DayRefund {
   readonly currency: string;
   readonly amount: bigint;
   readonly tax: bigint;
+  readonly shippingAmount: bigint;
+  readonly shippingTax: bigint;
 }
 
 /** Every fact of one seller on one Market day, as the store loads it. */
@@ -59,8 +62,11 @@ export interface SellerDayTotals {
   readonly ordersShippedOnTime: number;
   readonly ordersDelivered: number;
   readonly refunds: number;
-  readonly refundAmount: bigint;
-  readonly refundTax: bigint;
+  /** Negative, goods and shipping apart (net GMV is `goodsAmount + refundGoodsAmount`). */
+  readonly refundGoodsAmount: bigint;
+  readonly refundGoodsTax: bigint;
+  readonly refundShippingAmount: bigint;
+  readonly refundShippingTax: bigint;
 }
 
 /** A row of `reporting.daily_category_sales`, without its key and refresh time. */
@@ -95,14 +101,17 @@ const emptySellerTotals = (currency: string): SellerDayTotals => ({
   ordersShippedOnTime: 0,
   ordersDelivered: 0,
   refunds: 0,
-  refundAmount: 0n,
-  refundTax: 0n,
+  refundGoodsAmount: 0n,
+  refundGoodsTax: 0n,
+  refundShippingAmount: 0n,
+  refundShippingTax: 0n,
 });
 
 /**
  * The rollup of one seller's day, from its facts. A seller order counts on each day one of its
  * instants falls on (paid, cancelled, shipped, delivered); its goods and shipping count on its
- * paid day only. A refund counts on its own day. A currency or a category with no fact gets no
+ * paid day only. A refund counts on its own day, as negative amounts (goods and shipping apart),
+ * the same sign as the refund sales entries and the category rollup. A currency or a category with no fact gets no
  * row, so a fact that moved to another day leaves nothing behind.
  */
 export function rollUpSellerDay(facts: SellerDayFacts): SellerDayRollup {
@@ -140,8 +149,10 @@ export function rollUpSellerDay(facts: SellerDayFacts): SellerDayRollup {
     touch(refund.currency, (row) => ({
       ...row,
       refunds: row.refunds + 1,
-      refundAmount: row.refundAmount + refund.amount,
-      refundTax: row.refundTax + refund.tax,
+      refundGoodsAmount: row.refundGoodsAmount - (refund.amount - refund.shippingAmount),
+      refundGoodsTax: row.refundGoodsTax - (refund.tax - refund.shippingTax),
+      refundShippingAmount: row.refundShippingAmount - refund.shippingAmount,
+      refundShippingTax: row.refundShippingTax - refund.shippingTax,
     }));
   }
 

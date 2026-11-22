@@ -2,7 +2,12 @@ import { ok, parseId, Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import { FactRecorder } from '../../src/modules/reporting/application/fact-recorder';
-import type { RefundFact, SellerOrderFact } from '../../src/modules/reporting/domain/facts';
+import { ReportingFactConflict } from '../../src/modules/reporting/application/ports/fact-store';
+import {
+  UNKNOWN_CATEGORY,
+  type RefundFact,
+  type SellerOrderFact,
+} from '../../src/modules/reporting/domain/facts';
 import { PrismaFactStore } from '../../src/modules/reporting/infrastructure/prisma-fact-store';
 import { PrismaRollupStore } from '../../src/modules/reporting/infrastructure/prisma-rollup-store';
 import { TEST_MARKETS } from '../support/test-config';
@@ -52,7 +57,10 @@ describe.each(TEST_MARKETS)('reporting facts and rollups in market %s (database)
     recorder = new FactRecorder({
       facts: new PrismaFactStore(db.service, now),
       rollups: new PrismaRollupStore(db.service, now),
-      zone: { zoneOf: (target: MarketContext) => ZONES[target.marketId] as string },
+      zone: {
+        zoneOf: (target: MarketContext) => ZONES[target.marketId] as string,
+        currencyOf: (target: MarketContext) => CURRENCIES[target.marketId] as string,
+      },
     });
   });
   afterAll(async () => {
@@ -75,11 +83,12 @@ describe.each(TEST_MARKETS)('reporting facts and rollups in market %s (database)
         orders_shipped: number;
         orders_shipped_on_time: number;
         refunds: number;
-        refund_amount: string;
+        refund_goods_amount: string;
+        refund_shipping_amount: string;
       }>(
         `SELECT market_id, to_char(market_day, 'YYYY-MM-DD') AS day, currency, orders_paid,
                 goods_amount, goods_tax_amount, orders_shipped, orders_shipped_on_time, refunds,
-                refund_amount
+                refund_goods_amount, refund_shipping_amount
            FROM reporting.daily_seller_sales WHERE seller_id = $1 ORDER BY market_day`,
         [sellerId],
       )
@@ -118,6 +127,10 @@ describe.each(TEST_MARKETS)('reporting facts and rollups in market %s (database)
     deliveredAt: null,
     ...overrides,
   });
+
+  const allGoods = (order: SellerOrderFact) => [
+    { categoryId: UNKNOWN_CATEGORY, goods: order.goods, units: order.units },
+  ];
 
   it('records a paid seller order on its Market day, with its goods by category', async () => {
     const sellerId = idOf<'Seller'>();
@@ -208,11 +221,12 @@ describe.each(TEST_MARKETS)('reporting facts and rollups in market %s (database)
         row.orders_paid,
         row.goods_amount,
         row.refunds,
-        row.refund_amount,
+        row.refund_goods_amount,
+        row.refund_shipping_amount,
       ]),
     ).toEqual([
-      ['2026-11-22', 1, '2200', 0, '0'],
-      ['2026-11-26', 0, '0', 1, '1650'],
+      ['2026-11-22', 1, '2200', 0, '0', '0'],
+      ['2026-11-26', 0, '0', 1, '-1100', '-550'],
     ]);
     expect(
       (await categoryDays(sellerId)).map((row) => [
@@ -229,7 +243,8 @@ describe.each(TEST_MARKETS)('reporting facts and rollups in market %s (database)
 
   it('keeps every row in its Market', async () => {
     const sellerId = idOf<'Seller'>();
-    await within(market, () => recorder.recordSellerOrder(market, sellerOrder(sellerId), []));
+    const order = sellerOrder(sellerId);
+    await within(market, () => recorder.recordSellerOrder(market, order, allGoods(order)));
     const seen = await within(other, () =>
       db.service
         .tx(other)
@@ -254,7 +269,7 @@ describe.each(TEST_MARKETS)('reporting facts and rollups in market %s (database)
   it('lets the application role rewrite the measures of a fact but never its keys', async () => {
     const sellerId = idOf<'Seller'>();
     const order = sellerOrder(sellerId);
-    await within(market, () => recorder.recordSellerOrder(market, order, []));
+    await within(market, () => recorder.recordSellerOrder(market, order, allGoods(order)));
     await expect(
       app.query(`UPDATE reporting.seller_orders SET seller_id = $1 WHERE seller_order_id = $2`, [
         idOf(),
@@ -266,5 +281,40 @@ describe.each(TEST_MARKETS)('reporting facts and rollups in market %s (database)
         order.sellerOrderId,
       ]),
     ).rejects.toMatchObject({ code: DENIED });
+  });
+
+  it('refuses a fact that names another seller or currency, and goods that do not add up', async () => {
+    const sellerId = idOf<'Seller'>();
+    const order = sellerOrder(sellerId);
+    await within(market, () => recorder.recordSellerOrder(market, order, allGoods(order)));
+
+    const moved = { ...order, sellerId: idOf<'Seller'>() };
+    await expect(
+      within(market, () => recorder.recordSellerOrder(market, moved, allGoods(moved))),
+    ).rejects.toThrow(ReportingFactConflict);
+    const refund: RefundFact = {
+      refundId: idOf<'Refund'>(),
+      orderId: order.orderId,
+      sellerOrderId: order.sellerOrderId,
+      sellerId: idOf<'Seller'>(),
+      currency,
+      total: { amount: 1100n, tax: 100n },
+      shipping: { amount: 0n, tax: 0n },
+      refundedAt: at('2026-11-26T01:00:00Z'),
+    };
+    const refundGoods = [{ categoryId: UNKNOWN_CATEGORY, goods: refund.total, units: 1 }];
+    await expect(
+      within(market, () => recorder.recordRefund(market, refund, refundGoods)),
+    ).rejects.toThrow(ReportingFactConflict);
+    await expect(
+      within(market, () => recorder.recordSellerOrder(market, { ...order, currency: 'NZD' }, [])),
+    ).rejects.toThrow(RangeError);
+    await expect(
+      within(market, () => recorder.recordSellerOrder(market, order, [])),
+    ).rejects.toThrow(RangeError);
+
+    // Nothing moved: the first seller still holds its day.
+    expect((await sellerDays(sellerId)).map((row) => row.orders_paid)).toEqual([1]);
+    expect(await sellerDays(moved.sellerId)).toEqual([]);
   });
 });

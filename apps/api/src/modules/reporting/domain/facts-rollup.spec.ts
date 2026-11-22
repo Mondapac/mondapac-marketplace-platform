@@ -152,7 +152,9 @@ describe('rollUpSellerDay', () => {
         dayOrder({ sellerOrderId: 'so-2', shippedOnDay: true, shippedOnTime: false }),
         dayOrder({ sellerOrderId: 'so-3', deliveredOnDay: true, cancelledOnDay: true }),
       ],
-      refunds: [{ currency: 'AUD', amount: 550n, tax: 50n }],
+      refunds: [
+        { currency: 'AUD', amount: 550n, tax: 50n, shippingAmount: 110n, shippingTax: 10n },
+      ],
       entries: [],
     });
     expect(rollup.seller).toEqual([
@@ -167,8 +169,10 @@ describe('rollUpSellerDay', () => {
         ordersCancelled: 1,
         ordersDelivered: 1,
         refunds: 1,
-        refundAmount: 550n,
-        refundTax: 50n,
+        refundGoodsAmount: -440n,
+        refundGoodsTax: -40n,
+        refundShippingAmount: -110n,
+        refundShippingTax: -10n,
       }),
     ]);
   });

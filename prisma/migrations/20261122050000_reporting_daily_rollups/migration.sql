@@ -97,8 +97,10 @@ CREATE TABLE "reporting"."daily_seller_sales" (
     "orders_shipped_on_time" INTEGER NOT NULL,
     "orders_delivered" INTEGER NOT NULL,
     "refunds" INTEGER NOT NULL,
-    "refund_amount" BIGINT NOT NULL,
-    "refund_tax_amount" BIGINT NOT NULL,
+    "refund_goods_amount" BIGINT NOT NULL,
+    "refund_goods_tax_amount" BIGINT NOT NULL,
+    "refund_shipping_amount" BIGINT NOT NULL,
+    "refund_shipping_tax_amount" BIGINT NOT NULL,
     "refreshed_at" TIMESTAMPTZ(6) NOT NULL,
 
     CONSTRAINT "daily_seller_sales_pkey" PRIMARY KEY ("market_id","market_day","seller_id","currency")
@@ -159,6 +161,9 @@ CREATE INDEX "daily_seller_sales_market_id_seller_id_market_day_idx" ON "reporti
 -- CreateIndex
 CREATE INDEX "daily_category_sales_market_id_market_day_category_id_idx" ON "reporting"."daily_category_sales"("market_id", "market_day", "category_id");
 
+-- CreateIndex
+CREATE INDEX "daily_category_sales_market_id_seller_id_market_day_idx" ON "reporting"."daily_category_sales"("market_id", "seller_id", "market_day");
+
 
 
 -- Hand-written.
@@ -179,6 +184,10 @@ ALTER TABLE "reporting"."seller_orders"
     ("shipped_at" IS NULL) = ("shipped_day" IS NULL)),
   ADD CONSTRAINT "seller_orders_delivered_day_check" CHECK (
     ("delivered_at" IS NULL) = ("delivered_day" IS NULL)),
+  -- Whether it shipped on time is known only once it shipped, or once the promise passed unshipped
+  -- (false); "true" needs a shipment.
+  ADD CONSTRAINT "seller_orders_shipped_on_time_check" CHECK (
+    "shipped_on_time" IS NOT TRUE OR "shipped_at" IS NOT NULL),
   ADD CONSTRAINT "seller_orders_updated_check" CHECK ("updated_at" >= "recorded_at");
 
 ALTER TABLE "reporting"."refunds"
@@ -189,7 +198,9 @@ ALTER TABLE "reporting"."refunds"
   ADD CONSTRAINT "refunds_amount_check" CHECK (
     "amount" >= 0 AND "tax_amount" BETWEEN 0 AND "amount"
     AND "shipping_amount" BETWEEN 0 AND "amount"
-    AND "shipping_tax_amount" BETWEEN 0 AND LEAST("shipping_amount", "tax_amount")),
+    AND "shipping_tax_amount" BETWEEN 0 AND LEAST("shipping_amount", "tax_amount")
+    -- The goods part (whole less shipping) keeps its tax inside it.
+    AND "tax_amount" - "shipping_tax_amount" <= "amount" - "shipping_amount"),
   ADD CONSTRAINT "refunds_updated_check" CHECK ("updated_at" >= "recorded_at");
 
 ALTER TABLE "reporting"."sales_entries"
@@ -216,8 +227,12 @@ ALTER TABLE "reporting"."daily_seller_sales"
     AND "refunds" >= 0),
   ADD CONSTRAINT "daily_seller_sales_amounts_check" CHECK (
     "goods_amount" >= 0 AND "goods_tax_amount" BETWEEN 0 AND "goods_amount"
-    AND "shipping_amount" >= 0 AND "shipping_tax_amount" BETWEEN 0 AND "shipping_amount"
-    AND "refund_amount" >= 0 AND "refund_tax_amount" BETWEEN 0 AND "refund_amount");
+    AND "shipping_amount" >= 0 AND "shipping_tax_amount" BETWEEN 0 AND "shipping_amount"),
+  -- Refunds are negative, like the refund sales entries, the tax inside the amount.
+  ADD CONSTRAINT "daily_seller_sales_refund_check" CHECK (
+    "refund_goods_amount" <= 0 AND "refund_goods_tax_amount" BETWEEN "refund_goods_amount" AND 0
+    AND "refund_shipping_amount" <= 0
+    AND "refund_shipping_tax_amount" BETWEEN "refund_shipping_amount" AND 0);
 
 ALTER TABLE "reporting"."daily_category_sales"
   ADD CONSTRAINT "daily_category_sales_market_id_check" CHECK ("market_id" ~ '^[A-Z][A-Z0-9_]{1,7}$'),
@@ -237,8 +252,8 @@ ALTER TABLE "reporting"."inbox"
 
 -- Grants. The facts are written again from the owners' facades (the key, the order, the seller,
 -- the currency and the first record time never change); a refund's or a seller order's sales
--- entries are replaced as a whole (delete and insert). A rollup row is rewritten, or removed when
--- no fact of its day is left. The inbox is insert-only.
+-- entries are replaced as a whole (delete and insert), and so is a seller day of the rollups. The
+-- inbox is insert-only.
 GRANT USAGE ON SCHEMA "reporting" TO "mondapac_app";
 GRANT SELECT, INSERT, UPDATE ("goods_amount", "goods_tax_amount", "units", "shipping_amount",
   "shipping_tax_amount", "paid_at", "paid_day", "cancelled_at", "cancelled_day", "shipped_at",
@@ -248,12 +263,6 @@ GRANT SELECT, INSERT, UPDATE ("amount", "tax_amount", "shipping_amount", "shippi
   "refunded_at", "refund_day", "updated_at")
   ON TABLE "reporting"."refunds" TO "mondapac_app";
 GRANT SELECT, INSERT, DELETE ON TABLE "reporting"."sales_entries" TO "mondapac_app";
-GRANT SELECT, INSERT, UPDATE ("orders_paid", "goods_amount", "goods_tax_amount", "units",
-  "shipping_amount", "shipping_tax_amount", "orders_cancelled", "orders_shipped",
-  "orders_shipped_on_time", "orders_delivered", "refunds", "refund_amount", "refund_tax_amount",
-  "refreshed_at"), DELETE
-  ON TABLE "reporting"."daily_seller_sales" TO "mondapac_app";
-GRANT SELECT, INSERT, UPDATE ("orders", "sales_amount", "sales_tax_amount", "sales_units",
-  "refund_amount", "refund_tax_amount", "refund_units", "refreshed_at"), DELETE
-  ON TABLE "reporting"."daily_category_sales" TO "mondapac_app";
+GRANT SELECT, INSERT, DELETE ON TABLE "reporting"."daily_seller_sales" TO "mondapac_app";
+GRANT SELECT, INSERT, DELETE ON TABLE "reporting"."daily_category_sales" TO "mondapac_app";
 GRANT SELECT, INSERT ON TABLE "reporting"."inbox" TO "mondapac_app";

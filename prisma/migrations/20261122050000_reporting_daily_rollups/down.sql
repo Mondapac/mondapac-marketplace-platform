@@ -3,14 +3,8 @@
 SET lock_timeout = '5s';
 
 REVOKE SELECT, INSERT ON TABLE "reporting"."inbox" FROM "mondapac_app";
-REVOKE SELECT, INSERT, UPDATE ("orders", "sales_amount", "sales_tax_amount", "sales_units",
-  "refund_amount", "refund_tax_amount", "refund_units", "refreshed_at"), DELETE
-  ON TABLE "reporting"."daily_category_sales" FROM "mondapac_app";
-REVOKE SELECT, INSERT, UPDATE ("orders_paid", "goods_amount", "goods_tax_amount", "units",
-  "shipping_amount", "shipping_tax_amount", "orders_cancelled", "orders_shipped",
-  "orders_shipped_on_time", "orders_delivered", "refunds", "refund_amount", "refund_tax_amount",
-  "refreshed_at"), DELETE
-  ON TABLE "reporting"."daily_seller_sales" FROM "mondapac_app";
+REVOKE SELECT, INSERT, DELETE ON TABLE "reporting"."daily_category_sales" FROM "mondapac_app";
+REVOKE SELECT, INSERT, DELETE ON TABLE "reporting"."daily_seller_sales" FROM "mondapac_app";
 REVOKE SELECT, INSERT, DELETE ON TABLE "reporting"."sales_entries" FROM "mondapac_app";
 REVOKE SELECT, INSERT, UPDATE ("amount", "tax_amount", "shipping_amount", "shipping_tax_amount",
   "refunded_at", "refund_day", "updated_at")

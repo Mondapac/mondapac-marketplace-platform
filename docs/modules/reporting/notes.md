@@ -27,12 +27,23 @@ is `handoffs/dashboards-upgrade/phase-plan.md` there.
 - `refunds`: one per succeeded refund, positive totals (goods and shipping, with tax).
 - `sales_entries`: goods per category of a sale (positive) or of a refund (negative). The nil UUID
   is the category of goods whose category could not be read.
-- `daily_seller_sales`: one row per Market day, seller and currency.
+- `daily_seller_sales`: one row per Market day, seller and currency. Refunds there are NEGATIVE,
+  like the refund sales entries and `daily_category_sales`, with goods and shipping apart: net GMV
+  of a range is `sum(goods_amount + refund_goods_amount)`, without tax
+  `sum(goods_amount - goods_tax_amount + refund_goods_amount - refund_goods_tax_amount)`.
 - `daily_category_sales`: one row per Market day, seller, category and currency.
 - `inbox`: the worker's idempotency (P 6.4).
 
 The application role may rewrite a fact's measures but never its keys, seller, order or currency;
-sales entries and rollup rows are replaced as a whole (delete and insert).
+sales entries and rollup rows are replaced as a whole (delete and insert), so the rollups have no
+UPDATE grant. A fact that names another order, seller or currency than the stored one, or a refund
+whose seller or currency differs from its seller order's, throws `ReportingFactConflict` (Hassan).
+Every fact is in the Market's default currency, and its goods by category add up to its goods.
+
+Concurrency (Mojtaba): callers run `FactRecorder` in a SERIALIZABLE unit; two events of one seller
+day then conflict with a 40001 the platform retries, instead of one missing the other's fact.
+Seller days are rebuilt in a fixed order (day, then seller). Growth and retention:
+`docs/design/data/reporting.md`.
 
 ## Code
 

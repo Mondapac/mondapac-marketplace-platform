@@ -46,8 +46,10 @@ export class PrismaRollupStore implements RollupStore {
           ordersShippedOnTime: row.ordersShippedOnTime,
           ordersDelivered: row.ordersDelivered,
           refunds: row.refunds,
-          refundAmount: row.refundAmount,
-          refundTaxAmount: row.refundTax,
+          refundGoodsAmount: row.refundGoodsAmount,
+          refundGoodsTaxAmount: row.refundGoodsTax,
+          refundShippingAmount: row.refundShippingAmount,
+          refundShippingTaxAmount: row.refundShippingTax,
           refreshedAt,
         })),
       });

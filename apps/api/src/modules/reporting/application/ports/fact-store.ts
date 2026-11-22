@@ -46,3 +46,18 @@ export interface SellerOrderDays {
 }
 
 export const FACT_STORE = Symbol('reporting.FactStore');
+
+/**
+ * Thrown when a fact names another order, seller or currency than the one stored under its key:
+ * a bug upstream. It fails the unit, so nothing is written and the delivery is retried, then
+ * dead-lettered with an alert.
+ */
+export class ReportingFactConflict extends Error {
+  constructor(
+    readonly kind: 'seller-order' | 'refund',
+    readonly id: string,
+  ) {
+    super(`reporting: the ${kind} ${id} conflicts with the stored fact`);
+    this.name = 'ReportingFactConflict';
+  }
+}

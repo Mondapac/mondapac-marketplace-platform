@@ -912,7 +912,7 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'promotions.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Reporting (dashboards upgrade phase 3): facts written again from the owners' facades (the
     // keys and the first record time stay), sales entries replaced as a whole, rollups rewritten or
-    // removed when their day has no fact left; the inbox is insert-only.
+    // a seller day of the rollups replaced as a whole; the inbox is insert-only.
     'reporting.seller_orders': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
@@ -946,38 +946,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       ],
     },
     'reporting.sales_entries': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
-    'reporting.daily_seller_sales': {
-      table: ['DELETE', 'INSERT', 'SELECT'],
-      columnUpdate: [
-        'goods_amount',
-        'goods_tax_amount',
-        'orders_cancelled',
-        'orders_delivered',
-        'orders_paid',
-        'orders_shipped',
-        'orders_shipped_on_time',
-        'refreshed_at',
-        'refund_amount',
-        'refund_tax_amount',
-        'refunds',
-        'shipping_amount',
-        'shipping_tax_amount',
-        'units',
-      ],
-    },
-    'reporting.daily_category_sales': {
-      table: ['DELETE', 'INSERT', 'SELECT'],
-      columnUpdate: [
-        'orders',
-        'refreshed_at',
-        'refund_amount',
-        'refund_tax_amount',
-        'refund_units',
-        'sales_amount',
-        'sales_tax_amount',
-        'sales_units',
-      ],
-    },
+    'reporting.daily_seller_sales': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'reporting.daily_category_sales': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'reporting.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'promotions.co_funding_opt_ins': {
       table: ['INSERT', 'SELECT'],
