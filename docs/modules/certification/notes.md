@@ -46,6 +46,5 @@ Fixed before "add a new type" (FE-091; new-type design section 5):
 - `type-save-revision` refuses `review.proposal-pending` while a `type-reactivation` proposal of
   the type is pending (publish-now and relaxing saves alike). The proposer withdraws it, or a
   second admin decides it, before the type is edited.
-- A System requests revert can still publish a revision while a reactivation is pending (the
-  reverter checks only a pending relaxation); the approval check above then refuses the stale
-  approval, so the admin asks again.
+- A System requests revert of a type is `not-permitted` while a reactivation of the type is
+  pending, as it already was during a pending relaxation.
