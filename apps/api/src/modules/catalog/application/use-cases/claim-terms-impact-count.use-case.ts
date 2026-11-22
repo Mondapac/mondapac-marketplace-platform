@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
+import type { CallContext, Clock, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CERTIFICATION_TYPE_EDIT } from '../../../certification';
@@ -174,7 +174,7 @@ export class ClaimTermsImpactCount extends UseCase<
           scanned += row.texts.length;
           rows.push(row);
         }
-        const counted = await this.#countRows(context, candidate.value, rows);
+        const counted = await this.#countRows(context, candidate.value, rows, deadline);
         if (!counted.ok) return counted;
         counts[kind] += counted.value.matched;
         if (counted.value.truncated) complete = false;
@@ -203,6 +203,7 @@ export class ClaimTermsImpactCount extends UseCase<
     context: CallContext,
     candidate: CandidateTerms,
     rows: readonly ImpactTextRow[],
+    deadline: Temporal.Instant,
   ): Promise<Result<{ matched: number; truncated: boolean }, ClaimTermsImpactCountFailure>> {
     const flat: { rowIndex: number; locale: string; text: string }[] = [];
     let truncated = false;
@@ -214,6 +215,11 @@ export class ClaimTermsImpactCount extends UseCase<
     });
     const hit = new Set<number>();
     for (let from = 0; from < flat.length; from += MAX_MATCH_TEXTS) {
+      // The time bound holds between calls too: a page of many locales is many calls.
+      if (this.deps.clock.now().epochMilliseconds >= deadline.epochMilliseconds) {
+        truncated = true;
+        break;
+      }
       const batch = flat.slice(from, from + MAX_MATCH_TEXTS);
       const answer = await this.#match(
         context,

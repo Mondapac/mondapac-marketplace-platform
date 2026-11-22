@@ -231,8 +231,9 @@ describe.each(['AU', 'ZZ'] as const)('claim-terms impact count in market %s', (c
     });
     const r = await useCase.execute(admin(), { body });
     expect(r.ok && r.value.complete).toBe(false);
-    expect(pages.length).toBe(3); // 4 s a page: the third page ends at 12 s
-    expect(r.ok && r.value.products).toBe(IMPACT_COUNT_PAGE_ROWS * 3);
+    expect(pages.length).toBe(3); // 4 s a page: the third page is read at 12 s
+    // The third page is past the deadline before its first matcher call, so it is not counted.
+    expect(r.ok && r.value.products).toBe(IMPACT_COUNT_PAGE_ROWS * 2);
   });
 
   it('is unavailable, never zero, when the matcher cannot answer (first call or later)', async () => {

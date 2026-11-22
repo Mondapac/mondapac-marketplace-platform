@@ -27,7 +27,14 @@ export class PrismaClaimTextImpactReader implements ClaimTextImpactReader {
     let count: number;
     if (query.kind === 'product') {
       const products = await tx.catalogProduct.findMany({
-        where: { marketId: market.marketId, publishedRevisionId: { not: null }, ...after },
+        where: {
+          marketId: market.marketId,
+          // Live products only: a withdrawn, retired or matched product keeps its pointer but
+          // its text is checked again before it is published again.
+          status: 'published',
+          publishedRevisionId: { not: null },
+          ...after,
+        },
         orderBy: { id: 'asc' },
         take: query.limit,
         select: {
