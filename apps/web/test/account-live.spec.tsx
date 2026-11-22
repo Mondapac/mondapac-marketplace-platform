@@ -7,6 +7,7 @@ import messages from '../messages/en.json';
 import { AccountArea } from '../src/account/account-area.tsx';
 import { AccountAddresses } from '../src/account/addresses.tsx';
 import { forgetCsrfToken } from '../src/account/customer-api.ts';
+import { AccountLists } from '../src/account/lists.tsx';
 import { AccountSettings } from '../src/account/settings.tsx';
 import { Header } from '../src/shell/header.tsx';
 import { StoreProvider } from '../src/shell/store-context.tsx';
@@ -137,6 +138,22 @@ describe('sample mode', () => {
     fireEvent.click(within(screen.getByRole('banner')).getByRole('button', { name: 'Log out' }));
     await screen.findByRole('heading', { level: 1, name: 'Log in' });
     expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('what the sample account never shows live', () => {
+  it('says email choices are not available instead of showing toggles', async () => {
+    signedIn();
+    renderLive(<AccountSettings palette="B" textSize="auto" />);
+    expect(await within(main()).findByText('Email choices are not available yet.')).toBeTruthy();
+    expect(within(main()).queryByText('Offers and news')).toBeNull();
+  });
+
+  it('shows no sample list and no create button on the lists page', async () => {
+    signedIn();
+    renderLive(<AccountLists />);
+    expect(await within(main()).findByText(/Named lists are not available yet/)).toBeTruthy();
+    expect(within(main()).queryByRole('button', { name: 'Create a list' })).toBeNull();
   });
 });
 

@@ -372,13 +372,17 @@ const EMAILS: readonly {
 
 function EmailsCard() {
   const t = useTranslations('account.settings');
-  const { emails, setEmail } = useAccount();
+  const { emails, setEmail, source } = useAccount();
   return (
     <section className="ac-card" aria-labelledby="settings-emails">
       <h2 id="settings-emails">{t('emails')}</h2>
       <div>
         <Toggle title={t('email-order')} body={t('email-order-body')} on locked />
-        {EMAILS.map((e) => (
+        {source.live ? (
+          // No email-choices API yet: no toggle that would only change this tab.
+          <p className="ac-note">{t('emails-unavailable')}</p>
+        ) : null}
+        {(source.live ? [] : EMAILS).map((e) => (
           <Toggle
             key={e.key}
             title={t(`email-${e.name}`)}

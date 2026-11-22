@@ -40,17 +40,25 @@ export async function productIsMissing(
 }
 
 /**
- * Whether `/s/<slug>` is a store with no page: unknown, and not a closed store either (a closed
- * store keeps its own 200 page). The same rules as `loadSeller` and `loadClosedStore`.
+ * Whether `/s/<slug>` is a store with no page: unknown, and (without the API only) not a closed
+ * store either (a closed store keeps its own 200 page). The same rules as `loadSeller` and
+ * `loadClosedStore`.
  */
-export async function storeIsMissing(slug: string, read: MissRead): Promise<boolean> {
-  if (slug.length > 50 || !STORE_SLUG.test(slug)) return sampleClosedStore(slug) === undefined;
+export async function storeIsMissing(
+  slug: string,
+  read: MissRead,
+  apiOn: boolean,
+): Promise<boolean> {
+  // Only the sample (no API) has closed stores; with the API on an unknown slug is the 404 page.
+  if (slug.length > 50 || !STORE_SLUG.test(slug)) {
+    return apiOn ? true : sampleClosedStore(slug) === undefined;
+  }
   const answer = await read(`sellers/stores/${encodeURIComponent(slug)}`, keepStoreAnswer);
   if (answer.kind === 'off') {
     return sampleSeller(slug) === undefined && sampleClosedStore(slug) === undefined;
   }
   // Only the store module's own answer means "no such store"; a bare 404 is a missing route.
-  const none =
-    answer.kind === 'failed' && answer.status === 404 && answer.code === 'sellers.store-not-found';
-  return none && sampleClosedStore(slug) === undefined;
+  return (
+    answer.kind === 'failed' && answer.status === 404 && answer.code === 'sellers.store-not-found'
+  );
 }

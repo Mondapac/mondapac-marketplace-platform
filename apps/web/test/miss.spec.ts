@@ -98,6 +98,13 @@ describe('a store path with no page', () => {
     expect(rewrittenTo(response)).toBe('http://shop.example/missing/s/no-such-store');
   });
 
+  it('treats the slug of a sample closed store as unknown: the sample never reaches a live page', async () => {
+    answers.set('sellers/stores/west-end-grocer', noStore);
+    expect(rewrittenTo(await proxy(request('/s/west-end-grocer')))).toBe(
+      'http://shop.example/missing/s/west-end-grocer',
+    );
+  });
+
   it('leaves a bare 404 (a missing route) and a store that exists to the page', async () => {
     answers.set('sellers/stores/a-store', gone);
     expect(rewrittenTo(await proxy(request('/s/a-store')))).toBeNull();

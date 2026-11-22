@@ -140,7 +140,7 @@ export function SummaryTotals({
  */
 export function DiscountBox({ startOpen = false }: { readonly startOpen?: boolean }) {
   const t = useTranslations('cart');
-  const { cartSource, discount, setDiscount } = useStore();
+  const { cartSource, discount, setDiscount, live } = useStore();
   const [open, setOpen] = useState(startOpen);
   const [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -151,6 +151,9 @@ export function DiscountBox({ startOpen = false }: { readonly startOpen?: boolea
     if (open && opened.current) input.current?.focus();
   }, [open]);
 
+  // Discount codes have no backend yet: with the API on there is no code box (the preview keeps
+  // it, checked against the sample list).
+  if (live) return null;
   if (discount)
     return (
       <div className="dcb">
