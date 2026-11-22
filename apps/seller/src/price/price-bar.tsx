@@ -30,10 +30,10 @@ export interface PricePart {
   readonly discard: () => void;
 }
 
-/** What a saved part says: in force now (`success`), or news such as waiting for review (`info`). */
+/** What a saved part says: in force now, already the current price, or waiting for review. */
 export interface SavedNote {
   readonly message: string;
-  readonly tone: 'success' | 'info';
+  readonly kind: 'success' | 'unchanged' | 'review';
 }
 
 interface Registry {
@@ -41,6 +41,8 @@ interface Registry {
   readonly unregister: (key: string) => void;
   readonly markDirty: (key: string, dirty: boolean) => void;
   readonly note: (key: string, note: SavedNote) => void;
+  /** A part's own action (End special now) is running: Save waits and the fields lock. */
+  readonly busy: (key: string, on: boolean) => void;
   readonly signedOut: () => SectionResult;
 }
 
@@ -50,9 +52,10 @@ const ALONE: Registry = {
   unregister: () => undefined,
   markDirty: () => undefined,
   note: (_key, note) => {
-    if (note.tone === 'success') toast.success(note.message);
+    if (note.kind === 'success') toast.success(note.message);
     else toast.info(note.message);
   },
+  busy: () => undefined,
   signedOut: () => {
     window.location.assign('/session-ended');
     return 'stopped';
@@ -68,6 +71,9 @@ export function usePricePart(
   part: PricePart,
 ): {
   readonly saving: boolean;
+  /** This part's own action is running (set with `setBusy`). */
+  readonly busy: boolean;
+  readonly setBusy: (on: boolean) => void;
   readonly note: (note: SavedNote) => void;
   readonly signedOut: () => SectionResult;
 } {
@@ -80,7 +86,17 @@ export function usePricePart(
   useEffect(() => {
     registry.markDirty(key, part.dirty);
   }, [registry, key, part.dirty]);
-  return { saving, note: (note) => registry.note(key, note), signedOut: registry.signedOut };
+  const [busy, setBusyState] = useState(false);
+  return {
+    saving,
+    busy,
+    setBusy: (on) => {
+      setBusyState(on);
+      registry.busy(key, on);
+    },
+    note: (note) => registry.note(key, note),
+    signedOut: registry.signedOut,
+  };
 }
 
 /**
@@ -107,6 +123,8 @@ export function PriceBarForm({
   const notes = useRef(new Map<string, SavedNote>());
   const formRef = useRef<HTMLFormElement>(null);
   const [dirtyKeys, setDirtyKeys] = useState<ReadonlySet<string>>(new Set());
+  const [busyKeys, setBusyKeys] = useState<ReadonlySet<string>>(new Set());
+  const busyNow = useRef(0);
   const [leaving, setLeaving] = useState(false);
   // Bumped after a refused run: focus moves once React has drawn the messages and unlocked the form.
   const [focusTick, setFocusTick] = useState(0);
@@ -139,6 +157,10 @@ export function PriceBarForm({
       note: (key, note) => {
         notes.current.set(key, note);
       },
+      busy: (key, on) => {
+        busyNow.current += on ? 1 : -1;
+        setBusyKeys((keys) => (on ? new Set([...keys, key]) : without(keys, key)));
+      },
       signedOut: () => {
         flushSync(() => setLeaving(true));
         window.location.assign('/session-ended');
@@ -160,7 +182,7 @@ export function PriceBarForm({
   );
 
   async function submit() {
-    if (saves.saving || dirtyInOrder.length === 0) return;
+    if (saves.saving || busyNow.current > 0 || dirtyInOrder.length === 0) return;
     // Every part shows its errors at once; nothing is sent while one is wrong.
     const ok = dirtyInOrder.map((key) => parts.current.get(key)?.check() ?? false).every(Boolean);
     if (!ok) {
@@ -181,12 +203,18 @@ export function PriceBarForm({
     }
     if (result.failed.length === 0) {
       const only = said[0];
+      const same = said.filter((note) => note.kind === 'unchanged').length;
+      const changed = saved - same;
       if (saved === 1 && only !== undefined) {
-        if (only.tone === 'success') toast.success(only.message);
+        if (only.kind === 'success') toast.success(only.message);
         else toast.info(only.message);
-      } else if (said.every((note) => note.tone === 'success')) {
-        toast.success(t('price.bar.saved', { count: saved }));
-      } else toast.info(t('price.bar.saved-news', { count: saved }));
+      } else if (said.some((note) => note.kind === 'review')) {
+        toast.info(t('price.bar.saved-review', { count: changed }));
+      } else if (changed === 0) {
+        toast.info(t('price.bar.all-same'));
+      } else if (same > 0) {
+        toast.success(t('price.bar.saved-same', { count: changed, same }));
+      } else toast.success(t('price.bar.saved', { count: saved }));
       return;
     }
     if (saved > 0) toast.warning(t('price.bar.partial', { saved, failed: result.failed.length }));
@@ -212,7 +240,7 @@ export function PriceBarForm({
         >
           {/* Nothing changes while the prices are sent, so each sends what was on screen at Save. */}
           <fieldset
-            disabled={saves.saving}
+            disabled={saves.saving || busyKeys.size > 0}
             className="m-0 flex min-w-0 flex-col gap-4 border-0 p-0"
           >
             {children}
@@ -232,8 +260,8 @@ export function PriceBarForm({
               onDiscard={discard}
             />
           ) : null}
+          {saves.count > 0 ? guard.dialog : null}
         </form>
-        {saves.count > 0 ? guard.dialog : null}
       </SavingContext.Provider>
     </PriceBarContext.Provider>
   );

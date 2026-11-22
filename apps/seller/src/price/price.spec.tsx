@@ -342,6 +342,118 @@ describe('OfferPrices', () => {
     expect(quiet.defaultPrevented).toBe(false);
   });
 
+  it('leaves a held price unsaved-free, so the bar and the leave prompt go', async () => {
+    call.mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { status: 'pending-review', seriesVersion: 4, recordId: 'r', effectiveFrom: null },
+    });
+    mount();
+    const [first] = screen.getAllByLabelText<HTMLInputElement>('Price (AUD, GST included)');
+    fireEvent.change(first as HTMLElement, { target: { value: '45' } });
+    pressSave();
+    await expectToast(/waits for review/, 'info');
+    await waitFor(() => expect(bar()).toBeNull());
+    expect(first?.value).toBe('45');
+    const quiet = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(quiet);
+    expect(quiet.defaultPrevented).toBe(false);
+  });
+
+  it('does not count an amount written another way as a change', () => {
+    mount();
+    const [first] = screen.getAllByLabelText('Price (AUD, GST included)');
+    fireEvent.change(first as HTMLElement, { target: { value: '19.990' } });
+    fireEvent.change(first as HTMLElement, { target: { value: '19.99' } });
+    expect(bar()).toBeNull();
+  });
+
+  it('says when saved prices were already current, not that they wait for review', async () => {
+    call
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: { status: 'unchanged', seriesVersion: 3, recordId: null, effectiveFrom: null },
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: { status: 'accepted', seriesVersion: 1, recordId: 'r', effectiveFrom: 'x' },
+      });
+    mount();
+    const fields = screen.getAllByLabelText('Price (AUD, GST included)');
+    fireEvent.change(fields[0] as HTMLElement, { target: { value: '20' } });
+    fireEvent.change(fields[1] as HTMLElement, { target: { value: '5' } });
+    pressSave();
+    await expectToast('1 price saved. 1 was already the current price.');
+  });
+
+  it('says how many saved before a closed code dialog', async () => {
+    call
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: { status: 'accepted', seriesVersion: 4, recordId: 'r', effectiveFrom: 'x' },
+      })
+      .mockResolvedValueOnce({ ok: false, failure: { status: 0, code: STEP_UP_CANCELLED } });
+    mount();
+    const fields = screen.getAllByLabelText('Price (AUD, GST included)');
+    fireEvent.change(fields[0] as HTMLElement, { target: { value: '25' } });
+    fireEvent.change(fields[1] as HTMLElement, { target: { value: '5' } });
+    pressSave();
+    await expectToast(/1 price saved before the code was cancelled/, 'info');
+  });
+
+  it('shows no field and no bar for a retired variant, and says its special ends on its own', () => {
+    mount(true, {
+      ...view,
+      variants: [{ ...(view.variants[0] as OfferPricesView['variants'][number]), retired: true }],
+    });
+    expect(screen.queryByLabelText('Price (AUD, GST included)')).toBeNull();
+    expect(screen.queryByRole('button', { name: /^End special now/ })).toBeNull();
+    expect(screen.getByText(/ends on its own date/)).toBeTruthy();
+    expect(bar()).toBeNull();
+  });
+
+  it('puts a special amount refusal on the amount and a missing end on the end', () => {
+    mount();
+    fireEvent.change(screen.getByLabelText('Special price (AUD, GST included)'), {
+      target: { value: 'x' },
+    });
+    pressSave();
+    expect(screen.getByText(/Enter a price above zero/)).toBeTruthy();
+    expect(screen.getByText('Enter the end date and time.')).toBeTruthy();
+    expect(call).not.toHaveBeenCalled();
+  });
+
+  it('Discard empties the special fields', () => {
+    mount();
+    const amount = screen.getByLabelText<HTMLInputElement>('Special price (AUD, GST included)');
+    const end = screen.getByLabelText<HTMLInputElement>('Ends (UTC)');
+    fireEvent.change(amount, { target: { value: '9' } });
+    fireEvent.change(end, { target: { value: '2026-11-01T10:30' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(amount.value).toBe('');
+    expect(end.value).toBe('');
+    expect(bar()).toBeNull();
+  });
+
+  it('holds Save while End special now runs, and shows its refusal above the fields', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    call.mockReturnValueOnce(new Promise((resolve) => (answer = resolve)) as never);
+    mount();
+    const [first] = screen.getAllByLabelText('Price (AUD, GST included)');
+    fireEvent.change(first as HTMLElement, { target: { value: '25' } });
+    fireEvent.click(screen.getByRole('button', { name: /^End special now/ }));
+    await waitFor(() => expect((first as HTMLElement).matches(':disabled')).toBe(true));
+    pressSave();
+    expect(call).toHaveBeenCalledTimes(1);
+    answer({ ok: false, failure: { status: 403, code: 'access.denied' } });
+    const message = await screen.findByRole('alert');
+    expect(message.textContent).toBeTruthy();
+    await waitFor(() => expect((first as HTMLElement).matches(':disabled')).toBe(false));
+  });
+
   it('reads datetime-local text as a wall-clock time in a zone', () => {
     expect(instantOfZoned('2026-11-01T10:30', 'UTC')).toBe('2026-11-01T10:30:00Z');
     expect(instantOfZoned('2026-11-01T10:30', 'Australia/Sydney')).toBe('2026-10-31T23:30:00Z');
@@ -378,7 +490,7 @@ describe('OfferPrices', () => {
       body: { seriesVersion: 4, endedRecordId: 'r', cancelledRecordId: null },
     });
     mount();
-    fireEvent.click(screen.getByRole('button', { name: 'End special now' }));
+    fireEvent.click(screen.getByRole('button', { name: /^End special now/ }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call).toHaveBeenCalledWith(
       'POST',

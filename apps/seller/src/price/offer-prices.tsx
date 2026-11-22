@@ -12,6 +12,19 @@ import { FALLBACK_ZONE, formatInZone } from './zone-time.ts';
 import { SpecialPrice } from './special-price.tsx';
 import type { OfferPricesView, PriceWritten, VariantPrice } from './types.ts';
 
+const KIND = {
+  accepted: 'success',
+  'pending-review': 'review',
+  unchanged: 'unchanged',
+} as const;
+
+/** The same price: equal amounts when both read, else the same text ("10" is "10.00"). */
+function samePrice(a: string, b: string, currency: string): boolean {
+  const x = minorOf(a, currency);
+  const y = minorOf(b, currency);
+  return x !== null && y !== null ? x === y : a.trim() === b.trim();
+}
+
 function VariantRow({
   offerId,
   number,
@@ -80,14 +93,14 @@ function VariantRow({
     // A price that waits for review, or did not change, is news rather than a done deal.
     part.note({
       message: t(`price.saved.${result.body.status}`),
-      tone: result.body.status === 'accepted' ? 'success' : 'info',
+      kind: KIND[result.body.status],
     });
     router.refresh();
     return 'saved';
   }
 
   const part = usePricePart(`${variant.variantId}:regular`, {
-    dirty: !readOnly && text.trim() !== savedText.trim(),
+    dirty: !readOnly && !samePrice(text, savedText, currency),
     check,
     save,
     discard: () => {
@@ -124,6 +137,8 @@ function VariantRow({
           <TextField
             name={`price-${variant.variantId}`}
             label={t('price.field', { currency })}
+            // Every variant has the same field: the name read out carries the variant.
+            aria-label={`${t('price.field', { currency })}, ${t('price.variant', { number })}`}
             inputMode="decimal"
             value={text}
             error={error ?? undefined}
@@ -141,6 +156,7 @@ function VariantRow({
             canEdit={!readOnly}
             csrfToken={csrfToken}
             zone={zone}
+            number={number}
             version={version}
             versionRef={versionRef}
             onVersion={setVersion}

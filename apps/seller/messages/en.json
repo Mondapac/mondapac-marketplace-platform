@@ -3412,15 +3412,20 @@
       },
       "withdrawn": "The special price was ended.",
       "error": {
-        "date": "Enter the end date and time, and a valid start if you set one."
-      }
+        "start": "Enter a valid start, or leave it empty to start now.",
+        "end": "Enter the end date and time."
+      },
+      "new": "Set a new special",
+      "retired-note": "This variant no longer takes prices, so this special ends on its own date."
     },
     "bar": {
       "saved": "{count, plural, one {# price saved.} other {# prices saved.}}",
-      "saved-news": "{count, plural, one {# price saved.} other {# prices saved.}} Some changes wait for review; each variant shows what is pending.",
-      "partial": "{saved, plural, one {# price saved} other {# prices saved}}; {failed, plural, one {# needs attention} other {# need attention}}. The message is under the field.",
+      "partial": "{saved, plural, one {# price saved} other {# prices saved}}; {failed, plural, one {# needs attention. The message is under the field.} other {# need attention. The messages are under the fields.}}",
       "failed": "{count, plural, one {Nothing was saved. The message is under the field.} other {Nothing was saved. The messages are under the fields.}}",
-      "stopped": "{saved, plural, one {# price saved} other {# prices saved}} before the code was cancelled. The rest are still unsaved."
+      "stopped": "{saved, plural, one {# price saved} other {# prices saved}} before the code was cancelled. The rest are still unsaved.",
+      "saved-review": "{count, plural, one {# price saved.} other {# prices saved.}} Some changes wait for review; each variant shows what is pending.",
+      "saved-same": "{count, plural, one {# price saved.} other {# prices saved.}} {same, plural, one {# was already the current price.} other {# were already the current prices.}}",
+      "all-same": "These are already the current prices."
     }
   },
   "load": {
