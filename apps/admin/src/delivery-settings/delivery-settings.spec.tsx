@@ -21,6 +21,7 @@ import {
   priceOf,
 } from './form.ts';
 import { SellerMethodsCard } from './seller-methods-card.tsx';
+import { SellerEditForm } from '../sellers/seller-edit-form.tsx';
 import type { DeliverySettings, SellerMethods } from './types.ts';
 import { expectToast } from '../../test/toast-spy.ts';
 
@@ -528,7 +529,13 @@ const methods = (patch: Partial<SellerMethods> = {}): SellerMethods => ({
   ...patch,
 });
 const mountSeller = (initial: SellerMethods, canManage = true) =>
-  render(wrap(<SellerMethodsCard initial={initial} canManage={canManage} csrfToken="csrf" />));
+  render(
+    wrap(
+      <SellerEditForm order={['delivery-methods']} page="Seller">
+        <SellerMethodsCard initial={initial} canManage={canManage} csrfToken="csrf" />
+      </SellerEditForm>,
+    ),
+  );
 
 describe('the seller delivery methods card', () => {
   it('ticks what the seller supports and marks a method the Market has off', () => {
@@ -554,7 +561,7 @@ describe('the seller delivery methods card', () => {
   it('is read-only without the manage permission', () => {
     mountSeller(methods(), false);
 
-    expect(screen.queryByRole('button', { name: 'Save delivery methods' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Save changes' })).toBeNull();
     expect(screen.getByLabelText<HTMLInputElement>('Instant delivery').disabled).toBe(true);
   });
 
@@ -563,12 +570,15 @@ describe('the seller delivery methods card', () => {
     mountSeller(methods());
 
     fireEvent.click(screen.getByLabelText('Instant delivery'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery methods' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
     expect(call).not.toHaveBeenCalled();
-    expect(flat(screen.getByRole('dialog', { hidden: true }).textContent)).toContain(
-      'The seller can’t receive Instant delivery orders.',
-    );
-    pressInDialog('Confirm and save');
+    expect(
+      flat(
+        screen.getByRole('dialog', { name: 'Save changes to this seller?', hidden: true })
+          .textContent,
+      ),
+    ).toContain('The seller can’t receive Instant delivery orders.');
+    pressInDialog('Save 1 part');
 
     await expectToast(/Delivery methods saved/);
     expect(call).toHaveBeenCalledWith(
@@ -584,8 +594,8 @@ describe('the seller delivery methods card', () => {
     mountSeller(methods({ supported: ['instant'] }));
 
     fireEvent.click(screen.getByLabelText('Instant delivery'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery methods' }));
-    pressInDialog('Confirm and save');
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    pressInDialog('Save 1 part');
 
     await waitFor(() => expect(screen.getByText('We could not find this seller.')).toBeTruthy());
     expect(call.mock.calls[0]?.[2]).toEqual({ supported: [] });
@@ -600,8 +610,8 @@ describe('the seller card after a conflict', () => {
     mountSeller(methods());
 
     fireEvent.click(screen.getByLabelText('Instant delivery'));
-    fireEvent.click(screen.getByRole('button', { name: 'Save delivery methods' }));
-    pressInDialog('Confirm and save');
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+    pressInDialog('Save 1 part');
 
     await waitFor(() => expect(screen.getByText(/Someone changed this first/)).toBeTruthy());
     expect(call).toHaveBeenNthCalledWith(
@@ -610,6 +620,10 @@ describe('the seller card after a conflict', () => {
       `shipping/admin/sellers/${SELLER}/delivery-methods`,
     );
     expect(screen.getByLabelText<HTMLInputElement>('Same-day delivery').checked).toBe(false);
+    // The reloaded draft is what is stored, so nothing is left unsaved.
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull(),
+    );
   });
 });
 

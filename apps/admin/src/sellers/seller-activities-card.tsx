@@ -8,14 +8,15 @@ import {
   Card,
   SearchSelect,
   TextField,
-  toast,
   type SearchSelectOption,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useRef, useState, type FormEvent } from 'react';
+import { useRef, useState } from 'react';
+import type { SectionResult } from '@mondapac/ui';
 import type { ApiFailure } from '../api/client.ts';
 import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { formatInstant } from '../shared/format.ts';
+import { useSellerSection } from './seller-edit-form.tsx';
 import {
   EXTRA_MAX,
   REASON_MAX,
@@ -44,6 +45,7 @@ function problemOf(failure: ApiFailure): string {
  * The business activities of one seller: the main one and up to nine more, with the last change
  * and its reason. An admin with the manage key replaces the whole set with a reason; the call
  * needs a fresh two-step code, which the shared dialog asks for. The server checks every rule.
+ * The edit is one part of the seller page's save bar (`SellerEditForm`).
  */
 export function SellerActivitiesCard({
   sellerId,
@@ -70,9 +72,8 @@ export function SellerActivitiesCard({
   const [reason, setReason] = useState('');
   const [errors, setErrors] = useState<{ main?: string; reason?: string }>({});
   const [problem, setProblem] = useState<string | null>(null);
-  const [pending, setPending] = useState(false);
-  const busy = useRef(false);
   const guarded = useGuardedCall();
+  const changed = useRef(false);
 
   const nameOf = (id: string): string =>
     activities.find((a) => a.id === id)?.name ?? t('unknown-activity');
@@ -97,21 +98,31 @@ export function SellerActivitiesCard({
     setEditing(true);
   }
 
-  async function save(event: FormEvent) {
-    event.preventDefault();
-    if (busy.current) return;
+  const extraIds = (mainId: string | undefined) =>
+    extras.map((e) => e.value).filter((id) => id !== mainId);
+  // Dropping an inactive activity at Edit is a change too: saving removes it, and the confirm shows it.
+  const dirty =
+    canEdit &&
+    editing &&
+    (main?.value !== (current.mainActivityId ?? undefined) ||
+      extraIds(main?.value).join() !== current.extraActivityIds.join() ||
+      reason.trim() !== '');
+
+  function check(): boolean {
     const next: { main?: string; reason?: string } = {};
     if (main === null) next.main = t('error.main-required');
-    const trimmed = reason.trim();
-    if (trimmed === '') next.reason = t('error.reason-required');
+    if (reason.trim() === '') next.reason = t('error.reason-required');
     setErrors(next);
     setProblem(null);
-    if (main === null || trimmed === '') return;
-    busy.current = true;
-    setPending(true);
+    return next.main === undefined && next.reason === undefined;
+  }
+
+  async function save(): Promise<SectionResult> {
+    if (main === null || reason.trim() === '') return 'failed';
+    const trimmed = reason.trim();
     const body = {
       mainActivityId: main.value,
-      extraActivityIds: extras.map((e) => e.value).filter((id) => id !== main.value),
+      extraActivityIds: extraIds(main.value),
       reason: trimmed,
     };
     const result = await guarded<SellerActivitiesChange>(
@@ -120,9 +131,8 @@ export function SellerActivitiesCard({
       body,
       csrfToken,
     );
-    busy.current = false;
-    setPending(false);
     if (result.ok) {
+      changed.current = result.body.changed;
       setCurrent({
         mainActivityId: result.body.mainActivityId,
         extraActivityIds: result.body.extraActivityIds,
@@ -136,13 +146,51 @@ export function SellerActivitiesCard({
           : current.lastChange,
       });
       setEditing(false);
-      toast.success(result.body.changed ? t('saved') : t('unchanged'));
-      return;
+      return 'saved';
     }
-    if (isStepUpCancelled(result)) return;
-    if (result.failure.status === 401) window.location.assign('/session-ended');
-    else setProblem(problemOf(result.failure));
+    if (isStepUpCancelled(result)) return 'stopped';
+    if (result.failure.status === 401) return section.signedOut();
+    setProblem(problemOf(result.failure));
+    return 'failed';
   }
+
+  /** One confirm line: old to new, or the value unchanged. */
+  function line(label: string, was: readonly string[], now: readonly string[]): string {
+    const show = (names: readonly string[]) =>
+      names.length === 0 ? t('confirm-none') : names.join(', ');
+    return was.join() === now.join()
+      ? t('confirm-same', { label, value: show(now) })
+      : t('confirm-change', { label, from: show(was), to: show(now) });
+  }
+
+  function close() {
+    setErrors({});
+    setProblem(null);
+    setEditing(false);
+  }
+
+  const section = useSellerSection('activities', {
+    dirty,
+    title: t('title'),
+    lines: [
+      line(
+        t('main'),
+        current.mainActivityId === null ? [] : [nameOf(current.mainActivityId)],
+        main === null ? [] : [main.label],
+      ),
+      line(
+        t('extra'),
+        current.extraActivityIds.map(nameOf),
+        extras.filter((e) => e.value !== main?.value).map((e) => e.label),
+      ),
+      ...(reason.trim() === '' ? [] : [t('confirm-reason', { reason: reason.trim() })]),
+    ],
+    needsCode: true,
+    check,
+    save,
+    savedMessage: () => (changed.current ? t('saved') : t('unchanged')),
+    discard: close,
+  });
 
   return (
     <Card title={t('title')}>
@@ -188,7 +236,7 @@ export function SellerActivitiesCard({
           </ActionRow>
         ) : null}
         {canEdit && editing ? (
-          <form className="flex flex-col gap-4" onSubmit={(e) => void save(e)} noValidate>
+          <div className="flex flex-col gap-4">
             <SearchSelect
               label={t('field.main')}
               options={options}
@@ -222,22 +270,12 @@ export function SellerActivitiesCard({
               onChange={(event) => setReason(event.target.value)}
             />
             <ActionRow>
-              <Button type="submit" loading={pending}>
-                {t('save')}
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={pending}
-                onClick={() => {
-                  setErrors({});
-                  setProblem(null);
-                  setEditing(false);
-                }}
-              >
+              {/* Save is the page's save bar; Cancel closes this edit and drops its draft. */}
+              <Button variant="secondary" disabled={section.saving} onClick={close}>
                 {t('cancel')}
               </Button>
             </ActionRow>
-          </form>
+          </div>
         ) : null}
       </div>
     </Card>

@@ -10,6 +10,7 @@ import { callApi } from '../api/client.ts';
 import { STEP_UP_CANCELLED } from '../step-up/step-up.tsx';
 import type { ActivityOption, SellerActivities } from './activities-types.ts';
 import { SellerActivitiesCard } from './seller-activities-card.tsx';
+import { SellerEditForm } from './seller-edit-form.tsx';
 
 const call = vi.mocked(callApi);
 const SELLER = '0190a000-0000-7000-8000-0000000000a1';
@@ -31,17 +32,35 @@ const seller = (over: Partial<SellerActivities> = {}): SellerActivities => ({
 const mount = (initial: SellerActivities, canEdit = true) =>
   render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <SellerActivitiesCard
-        sellerId={SELLER}
-        initial={initial}
-        activities={options}
-        canEdit={canEdit}
-        csrfToken="csrf"
-      />
+      <SellerEditForm order={['activities']} page="Seller">
+        <SellerActivitiesCard
+          sellerId={SELLER}
+          initial={initial}
+          activities={options}
+          canEdit={canEdit}
+          csrfToken="csrf"
+        />
+      </SellerEditForm>
     </NextIntlClientProvider>,
   );
 
-beforeEach(() => vi.clearAllMocks());
+/** Save on the page's bar, then the one confirm. */
+const pressSave = () => fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+async function saveAll() {
+  pressSave();
+  fireEvent.click(await screen.findByRole('button', { name: 'Save 1 part' }));
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  // jsdom has no modal <dialog>.
+  HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
+    this.setAttribute('open', '');
+  };
+  HTMLDialogElement.prototype.close = function close(this: HTMLDialogElement) {
+    this.removeAttribute('open');
+  };
+});
 afterEach(cleanup);
 
 describe('SellerActivitiesCard', () => {
@@ -72,10 +91,21 @@ describe('SellerActivitiesCard', () => {
     expect(screen.queryByRole('button', { name: 'Change activities' })).toBeNull();
   });
 
-  it('asks for a reason before it calls the API', async () => {
+  it('shows no save bar until the edit changes something', () => {
     mount(seller());
     fireEvent.click(screen.getByRole('button', { name: 'Change activities' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Save activities' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    fireEvent.change(screen.getByLabelText(/Reason for the change/), { target: { value: 'x' } });
+    expect(screen.getByRole('region', { name: 'Unsaved changes' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+  });
+
+  it('asks for a reason before it calls the API', async () => {
+    // The inactive activity drops from the form, so the edit changes the set.
+    mount(seller({ extraActivityIds: [A3] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Change activities' }));
+    pressSave();
     expect(await screen.findByText('Give a reason.')).toBeTruthy();
     expect(call).not.toHaveBeenCalled();
   });
@@ -91,7 +121,7 @@ describe('SellerActivitiesCard', () => {
     fireEvent.change(screen.getByLabelText(/Reason for the change/), {
       target: { value: 'Seller asked' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save activities' }));
+    await saveAll();
     await waitFor(() => expect(call).toHaveBeenCalled());
     expect(call).toHaveBeenCalledWith(
       'PUT',
@@ -107,7 +137,7 @@ describe('SellerActivitiesCard', () => {
     mount(seller());
     fireEvent.click(screen.getByRole('button', { name: 'Change activities' }));
     fireEvent.change(screen.getByLabelText(/Reason for the change/), { target: { value: 'x' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save activities' }));
+    await saveAll();
     await waitFor(() => expect(call).toHaveBeenCalled());
     expect(screen.queryByRole('alert')).toBeNull();
   });
@@ -117,7 +147,7 @@ describe('SellerActivitiesCard', () => {
     mount(seller());
     fireEvent.click(screen.getByRole('button', { name: 'Change activities' }));
     fireEvent.change(screen.getByLabelText(/Reason for the change/), { target: { value: 'x' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save activities' }));
+    await saveAll();
     expect(await screen.findByText(/no longer available|not available any more/)).toBeTruthy();
   });
 
@@ -130,7 +160,7 @@ describe('SellerActivitiesCard', () => {
       status: 200,
       body: { mainActivityId: A1, extraActivityIds: [], changed: false },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Save activities' }));
+    await saveAll();
     await waitFor(() => expect(call).toHaveBeenCalled());
     expect(call.mock.calls[0]?.[2]).toEqual({
       mainActivityId: A1,

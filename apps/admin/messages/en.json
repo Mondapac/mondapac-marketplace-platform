@@ -1087,7 +1087,6 @@
       "unknown-activity": "Unknown activity",
       "last-change": "Last changed {when}. Reason: {reason}",
       "edit": "Change activities",
-      "save": "Save activities",
       "cancel": "Cancel",
       "saved": "Activities saved.",
       "unchanged": "The seller already had these activities.",
@@ -1108,7 +1107,11 @@
         "unavailable": "The service is not available. Try again in a moment.",
         "unknown": "The change could not be saved."
       },
-      "names-unavailable": "Activities can't be changed here because the activity names could not be loaded. Reload the page, or ask for the catalog activity read permission."
+      "names-unavailable": "Activities can't be changed here because the activity names could not be loaded. Reload the page, or ask for the catalog activity read permission.",
+      "confirm-change": "{label}: {from} to {to}",
+      "confirm-same": "{label}: {value} (unchanged)",
+      "confirm-reason": "Reason: {reason}",
+      "confirm-none": "none"
     },
     "health-queue": {
       "title": "Sellers that need a look",
@@ -1337,6 +1340,20 @@
         "not-found": "This seller could not be found.",
         "unknown": "That did not work. Try again."
       }
+    },
+    "bar": {
+      "confirm": {
+        "title": "Save changes to this seller?",
+        "intro": "These parts are saved one after another:",
+        "codes": "A part that needs a two-step code asks for its own code. If you close a code dialog, nothing after it is sent.",
+        "cancel": "Keep editing",
+        "go": "{count, plural, one {Save # part} other {Save # parts}}"
+      },
+      "saved": "{count, plural, one {# part saved.} other {# parts saved.}}",
+      "partial": "{saved, plural, one {# part saved} other {# parts saved}}; {failed, plural, one {# needs attention} other {# need attention}}. Its message is on its card.",
+      "stopped": "{saved, plural, one {# part saved} other {# parts saved}} before the code was cancelled. The rest are still unsaved.",
+      "summary": "{count, plural, one {# part with unsaved changes} other {# parts with unsaved changes}}",
+      "failed": "{count, plural, one {Nothing was saved. The message is on the part.} other {Nothing was saved. The messages are on each part.}}"
     }
   },
   "certificates": {
@@ -4023,8 +4040,8 @@
     "field": "Commission rate (%)",
     "field-help": "Between 0 and {max}, with up to 2 decimals.",
     "invalid": "Enter a percentage between 0 and {max}, with up to 2 decimals.",
-    "save": "Save rate",
     "saved-done": "Rate saved. It applies to orders placed from now on.",
+    "confirm-line": "Commission rate: {from}% to {to}%",
     "reset-done": "This seller is back on the Market rate.",
     "reset": "Reset to Market rate",
     "reset-title": "Reset to the Market rate?",
@@ -4167,7 +4184,8 @@
         }
       },
       "col": {}
-    }
+    },
+    "reset-hint": "Save or discard the typed rate first."
   },
   "catalog": {
     "review": {
@@ -8934,7 +8952,6 @@
     "title": "Delivery methods",
     "intro": "The methods this seller can offer buyers. By default a seller supports every method the Market has on. Untick a method the seller cannot serve, for example instant delivery for a seller without the capacity. Buyers then see it as unavailable for this seller’s items. The seller cannot change this. A method that is off for the whole Market stays off whatever is ticked here: the Market switch overrides this card.",
     "platform-off": "Off for the whole Market",
-    "save": "Save delivery methods",
     "saved": "Delivery methods saved. They apply to orders placed from now on.",
     "error": {
       "invalid": "That was refused. Try again.",
@@ -8953,11 +8970,6 @@
     },
     "viewer-only": "You can view these methods but not change them.",
     "confirm": {
-      "title": "Save this seller’s delivery methods?",
-      "intro": "These changes apply to orders placed from now on.",
-      "sellers": "What the seller sees",
-      "cancel": "Keep editing",
-      "go": "Confirm and save",
       "line": {
         "off": "{method} will be unavailable for this seller’s items.",
         "on": "{method} will be available for this seller’s items, if the Market has it on."
