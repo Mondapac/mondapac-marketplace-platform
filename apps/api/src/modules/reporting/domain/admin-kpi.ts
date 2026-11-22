@@ -144,6 +144,34 @@ export function financeOf(days: readonly DayTotals[]): FinanceKpis {
   };
 }
 
+/** One row of the top-sellers table: a seller's goods sold, orders, on-time and refund rates. */
+export interface TopSellerRow {
+  readonly sellerId: string;
+  readonly gmvWithTax: bigint;
+  readonly ordersPaid: number;
+  /** Shipped by the promise ÷ shipped, basis points; null with no shipped order. */
+  readonly onTimeRateBp: number | null;
+  /** Refunded goods ÷ GMV of the same range, basis points; null with no GMV. */
+  readonly refundRateBp: number | null;
+}
+
+export function topSellerRowOf(seller: {
+  readonly sellerId: string;
+  readonly ordersPaid: number;
+  readonly goodsAmount: bigint;
+  readonly ordersShipped: number;
+  readonly ordersShippedOnTime: number;
+  readonly refundGoodsAmount: bigint;
+}): TopSellerRow {
+  return {
+    sellerId: seller.sellerId,
+    gmvWithTax: seller.goodsAmount,
+    ordersPaid: seller.ordersPaid,
+    onTimeRateBp: ratioBp(seller.ordersShippedOnTime, seller.ordersShipped),
+    refundRateBp: ratioBp(-seller.refundGoodsAmount, seller.goodsAmount),
+  };
+}
+
 /** Smallest previous count that gets a percentage; below it the change reads "n/a". */
 export const MIN_COUNT_BASE = 5;
 /** Smallest previous amount (minor units, 100.00 of the currency) that gets a percentage. */

@@ -1,5 +1,6 @@
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { ViewMarketplaceFinanceKpis } from '../application/use-cases/view-marketplace-finance-kpis.use-case';
+import type { ViewMarketplaceTopSellers } from '../application/use-cases/view-marketplace-top-sellers.use-case';
 import type { ViewMarketplaceOperationsKpis } from '../application/use-cases/view-marketplace-operations-kpis.use-case';
 import type { PeriodId, ReportingKpiFacade } from '../contracts';
 
@@ -8,6 +9,7 @@ export class ReportingKpiFacadeImplementation implements ReportingKpiFacade {
   constructor(
     private readonly operations: ViewMarketplaceOperationsKpis,
     private readonly finance: ViewMarketplaceFinanceKpis,
+    private readonly topSellers: ViewMarketplaceTopSellers,
   ) {}
 
   marketplaceOperations(context: CallContext, input: { readonly period: PeriodId }) {
@@ -16,5 +18,9 @@ export class ReportingKpiFacadeImplementation implements ReportingKpiFacade {
 
   marketplaceFinance(context: CallContext, input: { readonly period: PeriodId }) {
     return this.finance.execute(context, input);
+  }
+
+  marketplaceTopSellers(context: CallContext, input: { readonly period: PeriodId }) {
+    return this.topSellers.execute(context, input);
   }
 }

@@ -19,7 +19,7 @@ import { emptyDay, type DayTotals } from '../domain/admin-kpi';
 import type { DayRange } from '../domain/period';
 import { RegistryMarketZone } from '../infrastructure/registry-market-zone';
 import type { AdminKpiDependencies } from './admin-kpi-flow';
-import type { AdminKpiReader, DailyTotals } from './ports/admin-kpi-reader';
+import type { AdminKpiReader, DailyTotals, SellerTotals } from './ports/admin-kpi-reader';
 import { ViewMarketplaceFinanceKpis } from './use-cases/view-marketplace-finance-kpis.use-case';
 import { ViewMarketplaceOperationsKpis } from './use-cases/view-marketplace-operations-kpis.use-case';
 
@@ -43,6 +43,18 @@ class FakeReader implements AdminKpiReader {
   readonly calls: { currency: string; range: DayRange; marketId: string }[] = [];
   rows: DayTotals[] = [];
   refreshedAt: Temporal.Instant | null = null;
+  sellers: SellerTotals[] = [];
+  readonly topCalls: { currency: string; range: DayRange; limit: number }[] = [];
+
+  topSellers(
+    _market: { marketId: string },
+    currency: string,
+    range: DayRange,
+    limit: number,
+  ): Promise<SellerTotals[]> {
+    this.topCalls.push({ currency, range, limit });
+    return Promise.resolve(this.sellers.slice(0, limit));
+  }
 
   dailyTotals(
     market: { marketId: string },
