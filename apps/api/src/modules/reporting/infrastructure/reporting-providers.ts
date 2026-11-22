@@ -13,6 +13,8 @@ import { MARKET_ZONE, type MarketZone } from '../application/ports/market-zone';
 import { ROLLUP_STORE, type RollupStore } from '../application/ports/rollup-store';
 import { PrismaBackfillProgressStore } from './prisma-backfill-progress-store';
 import { PrismaFactStore } from './prisma-fact-store';
+import { SELLER_KPI_READER, type SellerKpiReader } from '../application/ports/seller-kpi-reader';
+import { PrismaSellerKpiReader } from './prisma-seller-kpi-reader';
 import { PrismaRollupStore } from './prisma-rollup-store';
 import { RegistryMarketZone } from './registry-market-zone';
 
@@ -35,6 +37,11 @@ export const reportingProviders: readonly FactoryProvider[] = [
     inject: [PrismaService, CLOCK],
     useFactory: (prisma: PrismaService, clock: Clock): BackfillProgressStore =>
       new PrismaBackfillProgressStore(prisma, () => clock.now()),
+  },
+  {
+    provide: SELLER_KPI_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerKpiReader => new PrismaSellerKpiReader(prisma),
   },
   {
     provide: MARKET_ZONE,

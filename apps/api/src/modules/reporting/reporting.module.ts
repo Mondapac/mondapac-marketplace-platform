@@ -18,14 +18,21 @@ import {
   BACKFILL_PROGRESS_STORE,
   type BackfillProgressStore,
 } from './application/ports/backfill-progress-store';
+import { MARKET_ZONE, type MarketZone } from './application/ports/market-zone';
 import { REPORT_SOURCES, type ReportSources } from './application/ports/report-sources';
 import type { ReportFactsDependencies } from './application/report-facts-sync';
 import { BackfillHistory } from './application/use-cases/backfill-history.use-case';
 import { ReconcileReportFacts } from './application/use-cases/reconcile-report-facts.use-case';
 import { RecordReportFacts } from './application/use-cases/record-report-facts.use-case';
+import { SELLER_KPI_READER, type SellerKpiReader } from './application/ports/seller-kpi-reader';
+import {
+  ViewSellerKpis,
+  type ViewSellerKpisDependencies,
+} from './application/use-cases/view-seller-kpis.use-case';
 import { FacadeReportSources } from './infrastructure/facade-report-sources';
 import { reportingProviders } from './infrastructure/reporting-providers';
 import { backfillHistoryJob } from './presentation/jobs/backfill-history.job';
+import { SellerKpisController } from './presentation/seller-kpis.controller';
 import { reconcileReportFactsJob } from './presentation/jobs/reconcile-report-facts.job';
 import { reportFactsSubscriptions } from './presentation/subscribers/report-facts.subscriptions';
 
@@ -41,8 +48,26 @@ const REPORT_FACTS_DEPENDENCIES = Symbol('REPORT_FACTS_DEPENDENCIES');
  */
 @Module({
   imports: [PersistenceModule, OrderingModule, CatalogModule],
+  controllers: [SellerKpisController],
   providers: [
     ...reportingProviders,
+    {
+      provide: ViewSellerKpis,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, SELLER_KPI_READER, MARKET_ZONE, CLOCK],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        reader: SellerKpiReader,
+        zone: MarketZone,
+        clock: Clock,
+      ) =>
+        new ViewSellerKpis(gate, {
+          unitOfWork,
+          reader,
+          zone,
+          clock,
+        } satisfies ViewSellerKpisDependencies),
+    },
     {
       provide: REPORT_SOURCES,
       inject: [ORDERING_REPORTING_FACADE, CATALOG_FACADE],
