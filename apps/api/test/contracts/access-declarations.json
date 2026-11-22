@@ -391,6 +391,11 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
   },
+  {
+    "name": "dashboard.view-admin-work-queue",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "engagement.follow-store", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "engagement.followed-among", "rule": "system" },
   { "name": "engagement.follows-of-account", "rule": "system" },

@@ -52,6 +52,7 @@
 | promotions (تخفیف‌ها و پروموشن‌ها) | A | بسته T1: موتور و دامنهٔ تخفیف | [`promotions/notes.md`](promotions/notes.md) | بدون G1 (speed mode) | بدون G2 (speed mode) |
 | settings (تنظیمات قابل‌ویرایش بازار، مخزن مشترک) | A | بسته ۱: مخزن و List paging | [`settings/notes.md`](settings/notes.md) | بدون G1 (speed mode؛ تصمیم مالک 2026-11-01 و ADR-0042 در یادداشت) | بدون G2 (speed mode) |
 | lists (کیت مشترک سوپر لیست: فیلترهای ذخیره‌شده) | B | فاز ۰ سوپر لیست | [`lists/notes.md`](lists/notes.md) | بدون G1 (speed mode؛ «ساخت» مالک 2026-11-15 و ADR-0049) | بدون G2 (speed mode) |
+| dashboard (داشبورد پنل‌ها: شمارش صف کارها، ترکیب از facadeها) | C | ارتقای داشبورد، فاز ۱ | [`dashboard/notes.md`](dashboard/notes.md) | بدون G1 (speed mode؛ انتخاب گزینهٔ ب مالک 2026-11-22، ADR-0050) | بدون G2 (speed mode) |
 | tax | A | ۵ | [`tax/brief.md`](tax/brief.md) | تأیید (2026-10-08) | — |
 | shipping | B | ۵ (فقط SHP-01) و ۶ | [`shipping/brief.md`](shipping/brief.md) | دروازهٔ ترکیبی، بخش دامنه: تأیید محصولی برای SHP-01 (2026-10-08)؛ بقیهٔ ماژول فاز ۶ | بخش طراحی: در انتظار |
 | notifications | B | ۶ | — | — | — |

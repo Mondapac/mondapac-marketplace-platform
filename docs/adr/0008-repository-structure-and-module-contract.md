@@ -102,3 +102,7 @@ core/vertical split and the market/time rules visible and machine-checked.
 - Flat NestJS feature folders: no enforceable layering; boundaries erode.
 - One package per module: stronger isolation, much more build/config overhead for a small
   team; revisit if a module is extracted.
+
+*(Amended by ADR-0050, 2026-11-22: `modules/dashboard` composes other modules' facades for the
+panels' work queues; dependency-cruiser `nothing-imports-dashboard` keeps every module and platform
+file from importing it.)*
