@@ -1859,7 +1859,6 @@
       "bulk-help": "Bulk actions only fill the cells below. Nothing is saved until you press Save.",
       "skipped": "{count, plural, one {# variant has no price yet and was left as it is.} other {# variants have no price yet and were left as they are.}}",
       "save": "{count, plural, =0 {Save changes} one {Save # change} other {Save # changes}}",
-      "discard": "Discard changes",
       "saved": "{count, plural, one {Saved # change.} other {Saved # changes.}}",
       "partial": "Saved {done}, {failed} could not be saved. The cells that failed show why.",
       "throttled": "Too many changes at once. Saved {done}; the rest are kept as drafts. Press Save again in {minutes, plural, one {# minute} other {# minutes}}.",

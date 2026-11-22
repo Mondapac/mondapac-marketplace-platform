@@ -79,6 +79,7 @@ describe('OfferEditForm', () => {
       failure: { status: 409, code: 'offer.sku-taken' },
     });
     mount();
+    fireEvent.change(screen.getByLabelText(/Your SKU/), { target: { value: 'OIL-2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save offer' }));
     expect(await screen.findAllByText(/already have an open offer/)).not.toHaveLength(0);
   });
@@ -86,8 +87,39 @@ describe('OfferEditForm', () => {
   it('sends a signed-out seller to the session-ended page', async () => {
     call.mockResolvedValue({ ok: false, failure: { status: 401, code: 'session.invalid' } });
     mount();
+    fireEvent.change(screen.getByLabelText(/Your SKU/), { target: { value: 'OIL-2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save offer' }));
     await waitFor(() => expect(assign).toHaveBeenCalledWith('/session-ended'));
+    // The redirect leaves quietly: the leave prompt is off.
+    const quiet = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(quiet);
+    expect(quiet.defaultPrevented).toBe(false);
+  });
+  it('shows the save bar only after a change, and Discard puts the saved values back', () => {
+    mount();
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    const sku = screen.getByLabelText<HTMLInputElement>(/Your SKU/);
+    const before = sku.value;
+    fireEvent.change(sku, { target: { value: 'OIL-2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(sku.value).toBe(before);
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+  });
+
+  it('asks before unload with a change, and not after it is saved', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: { changedFields: ['sellerSku'] } });
+    mount();
+    fireEvent.change(screen.getByLabelText(/Your SKU/), { target: { value: 'OIL-2' } });
+    const asked = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(asked);
+    expect(asked.defaultPrevented).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: 'Save offer' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull(),
+    );
+    const quiet = new Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(quiet);
+    expect(quiet.defaultPrevented).toBe(false);
   });
 });
 

@@ -38,6 +38,30 @@ export async function OfferDetail({
   const zone = await getTimeZone();
   const status = known(offer.status, OFFER_STATUSES);
   const descriptions = Object.entries(offer.description);
+  // The cards after the shelf picker: inside its form when it shows, so its save bar can float.
+  const after = (
+    <>
+      {offer.offSaleCauses.length > 0 ? (
+        <Card title={t('catalog.offer.off-sale')}>
+          <ul className="list-disc ps-5">
+            {offer.offSaleCauses.map((cause) => (
+              <li key={cause}>{t(`catalog.offer.cause.${known(cause, CAUSES)}`)}</li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+      {descriptions.length > 0 ? (
+        <Card title={t('catalog.offer.description')}>
+          {descriptions.map(([locale, text]) => (
+            <p key={locale} className="whitespace-pre-line break-words">
+              <span className="me-2 text-sm text-fg-muted">{locale}</span>
+              {text}
+            </p>
+          ))}
+        </Card>
+      ) : null}
+    </>
+  );
   return (
     <div className="flex flex-col gap-6">
       <OfferHeader
@@ -106,27 +130,12 @@ export async function OfferDetail({
           version={offer.version}
           shelves={shelves}
           csrfToken={csrfToken}
-        />
-      ) : null}
-      {offer.offSaleCauses.length > 0 ? (
-        <Card title={t('catalog.offer.off-sale')}>
-          <ul className="list-disc ps-5">
-            {offer.offSaleCauses.map((cause) => (
-              <li key={cause}>{t(`catalog.offer.cause.${known(cause, CAUSES)}`)}</li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
-      {descriptions.length > 0 ? (
-        <Card title={t('catalog.offer.description')}>
-          {descriptions.map(([locale, text]) => (
-            <p key={locale} className="whitespace-pre-line break-words">
-              <span className="me-2 text-sm text-fg-muted">{locale}</span>
-              {text}
-            </p>
-          ))}
-        </Card>
-      ) : null}
+        >
+          {after}
+        </ShelfPicker>
+      ) : (
+        after
+      )}
     </div>
   );
 }

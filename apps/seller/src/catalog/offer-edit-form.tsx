@@ -1,8 +1,17 @@
 'use client';
 
-import { Banner, Button, Card, Select, TextField, toast } from '@mondapac/ui';
+import {
+  Banner,
+  Card,
+  SaveBar,
+  Select,
+  TextField,
+  toast,
+  useUnsavedChangesGuard,
+} from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRef, useState, type FormEvent } from 'react';
+import { flushSync } from 'react-dom';
 import { callApi } from '../api/client.ts';
 import { readable } from './format.ts';
 import { offerEditProblemOf } from './offer-edit-errors.ts';
@@ -27,6 +36,22 @@ export function descriptionWith(
   return { ...kept, ...descriptionOf(edited) };
 }
 
+interface OfferFields {
+  readonly conditionCode: string;
+  readonly sellerSku: string;
+  readonly description: Readonly<Record<string, string>>;
+}
+
+function fieldsOf(offer: OfferView, locales: readonly string[]): OfferFields {
+  return {
+    conditionCode: offer.conditionCode,
+    sellerSku: offer.sellerSku,
+    description: Object.fromEntries(
+      locales.map((locale) => [locale, offer.description[locale] ?? '']),
+    ),
+  };
+}
+
 export function OfferEditForm({
   offer,
   options,
@@ -38,14 +63,33 @@ export function OfferEditForm({
 }) {
   const t = useTranslations();
   const locales = options.locales.supported;
-  const [conditionCode, setConditionCode] = useState(offer.conditionCode);
-  const [sellerSku, setSellerSku] = useState(offer.sellerSku);
-  const [description, setDescription] = useState<Record<string, string>>(() =>
-    Object.fromEntries(locales.map((locale) => [locale, offer.description[locale] ?? ''])),
-  );
+  const [saved, setSaved] = useState<OfferFields>(() => fieldsOf(offer, locales));
+  const [conditionCode, setConditionCode] = useState(saved.conditionCode);
+  const [sellerSku, setSellerSku] = useState(saved.sellerSku);
+  const [description, setDescription] = useState<Record<string, string>>(saved.description);
+  const [leaving, setLeaving] = useState(false);
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<ReturnType<typeof offerEditProblemOf> | null>(null);
   const busy = useRef(false);
+  const current: OfferFields = { conditionCode, sellerSku, description };
+  const dirty = JSON.stringify(current) !== JSON.stringify(saved);
+  const guard = useUnsavedChangesGuard(
+    dirty && !leaving,
+    {
+      title: t('settings.leave.title'),
+      message: (info) => t('settings.leave.message', { count: info.count, page: info.page }),
+      stay: t('settings.leave.stay'),
+      leave: t('settings.leave.leave'),
+    },
+    { count: 1, page: t('catalog.offer-edit.title') },
+  );
+
+  function discard() {
+    setConditionCode(saved.conditionCode);
+    setSellerSku(saved.sellerSku);
+    setDescription(saved.description);
+    setProblem(null);
+  }
 
   function fieldError(path: string): string | undefined {
     const key = problem?.fields[path];
@@ -54,7 +98,7 @@ export function OfferEditForm({
 
   async function submit(event: FormEvent) {
     event.preventDefault();
-    if (busy.current) return;
+    if (busy.current || !dirty) return;
     busy.current = true;
     setPending(true);
     setProblem(null);
@@ -70,17 +114,22 @@ export function OfferEditForm({
     );
     busy.current = false;
     setPending(false);
-    if (result.ok) toast.success(t('catalog.offer-edit.saved'));
-    else if (result.failure.status === 401) window.location.assign('/session-ended');
-    else setProblem(offerEditProblemOf(result.failure));
+    if (result.ok) {
+      // What was sent is now the saved state: the bar hides and leaving asks nothing.
+      setSaved(current);
+      toast.success(t('catalog.offer-edit.saved'));
+    } else if (result.failure.status === 401) {
+      flushSync(() => setLeaving(true));
+      window.location.assign('/session-ended');
+    } else setProblem(offerEditProblemOf(result.failure));
   }
 
   const conditions = options.conditions.includes(conditionCode)
     ? options.conditions
     : [conditionCode, ...options.conditions];
   return (
-    <Card>
-      <form className="flex flex-col gap-4" onSubmit={(event) => void submit(event)} noValidate>
+    <form className="flex flex-col gap-4" onSubmit={(event) => void submit(event)} noValidate>
+      <Card>
         {problem === null ? null : <Banner tone="critical">{t(problem.form)}</Banner>}
         <Select
           name="conditionCode"
@@ -109,10 +158,7 @@ export function OfferEditForm({
             onChange={(event) => setDescription({ ...description, [locale]: event.target.value })}
           />
         ))}
-        <div className="flex gap-3">
-          <Button type="submit" loading={pending}>
-            {t('catalog.offer-edit.save')}
-          </Button>
+        <div>
           <a
             className="inline-flex items-center font-medium text-link underline"
             href={`/offers/${offer.offerId}`}
@@ -120,7 +166,22 @@ export function OfferEditForm({
             {t('catalog.offer-edit.back')}
           </a>
         </div>
-      </form>
-    </Card>
+      </Card>
+      <SaveBar
+        count={dirty ? 1 : 0}
+        summary={t('settings.bar.summary', { count: 1 })}
+        saving={pending}
+        aboveBottomBar
+        labels={{
+          region: t('settings.bar.region'),
+          discard: t('settings.bar.discard'),
+          save: t('catalog.offer-edit.save'),
+          // The page keeps its own verb while it saves; the button shows the spinner.
+          saving: t('catalog.offer-edit.save'),
+        }}
+        onDiscard={discard}
+      />
+      {dirty ? guard.dialog : null}
+    </form>
   );
 }
