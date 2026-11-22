@@ -232,3 +232,21 @@ body {
     transform: translateX(300%);
   }
 }
+
+/* Sidebar scroll fade (ScrollFade): the edge with more content beyond it fades to transparent, so
+ * it works on any theme. A mask never intercepts pointer events. */
+.mp-scroll-fade[data-fade-bottom='true'] {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 3rem), transparent);
+}
+.mp-scroll-fade[data-fade-top='true'] {
+  mask-image: linear-gradient(to bottom, transparent, #000 3rem);
+}
+.mp-scroll-fade[data-fade-top='true'][data-fade-bottom='true'] {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent,
+    #000 3rem,
+    #000 calc(100% - 3rem),
+    transparent
+  );
+}
