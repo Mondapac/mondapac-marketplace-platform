@@ -142,8 +142,32 @@ describe('review queue lists', () => {
     expect(screen.getByRole('link', { name: 'Offers (3)' }).getAttribute('aria-current')).toBe(
       'page',
     );
-    expect(screen.queryByRole('searchbox')).toBeNull();
+    expect(screen.getByRole('searchbox', { name: 'Search offers' })).toBeTruthy();
   });
+
+  it.each([
+    ['offer', 'Search offers'],
+    ['revision', 'Search product changes'],
+  ] as const)(
+    'searches the %s queue by text on the server, from 2 characters',
+    async (tab, label) => {
+      call.mockResolvedValue(answer([tab === 'offer' ? { ...row(), actions: [] } : revision()]));
+      mount(tab);
+      const box = await screen.findByRole('searchbox', { name: label });
+      const asked = queueCalls().length;
+      fireEvent.change(box, { target: { value: 'a' } });
+      fireEvent.keyDown(box, { key: 'Enter' });
+      expect(await screen.findByText('Enter at least 2 characters.')).toBeTruthy();
+      expect(queueCalls().length).toBe(asked);
+      fireEvent.change(box, { target: { value: 'olive' } });
+      fireEvent.keyDown(box, { key: 'Enter' });
+      await waitFor(() => {
+        const last = new URLSearchParams(queueCalls().at(-1)![1].split('?')[1]);
+        expect(last.get('q')).toBe('olive');
+      });
+      expect(await screen.findByRole('button', { name: 'Save filter…' })).toBeTruthy();
+    },
+  );
 
   it('shows only the saved filters of its own kind, and opens one with its filters', async () => {
     const filter = (n: number, name: string, kind: string, extra = {}) => ({

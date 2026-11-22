@@ -5770,6 +5770,11 @@
       "list": {
         "title": "Product revisions",
         "intro": "Product changes that sellers sent for review, oldest first. Open one to check it and decide.",
+        "search": {
+          "label": "Search product changes",
+          "placeholder": "Product code, name or store",
+          "invalid": "Enter at least 2 characters."
+        },
         "tabs": "Review queue views",
         "tab": {
           "revision": "Product revisions"
@@ -5859,6 +5864,11 @@
       "offers": {
         "title": "Offers",
         "intro": "Offers waiting for their first publication, oldest first.",
+        "search": {
+          "label": "Search offers",
+          "placeholder": "Product code, name or store",
+          "invalid": "Enter at least 2 characters."
+        },
         "tabs": "Review queue views",
         "tab": {
           "offer": "Offers"

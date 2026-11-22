@@ -20,6 +20,9 @@ import { REVISION_REASONS, type QueuePage, type ReviewRow, type RevisionRow } fr
 const API_QUEUE = 'catalog/admin/review-queue';
 const KNOWN_REASONS: ReadonlySet<string> = new Set(REVISION_REASONS);
 
+// The route searches product code, product name and store name by 2 to 100 characters.
+const SEARCH = { max: 100, accepts: (text: string) => [...text].length >= 2 };
+
 type Actions = { readonly actions: readonly string[] };
 export type RevisionListRow = RevisionRow & Actions;
 export type OfferListRow = ReviewRow & Actions;
@@ -155,6 +158,7 @@ export function RevisionsList({
       rowId: (row) => row.revisionId,
       rowName: (row) => row.product.name ?? row.product.productCode ?? t('unnamed-product'),
       tabs: ['revision'],
+      search: SEARCH,
       tabParams: () => ({ kind: 'product-revision' }),
       exportEndpoint: `${API_QUEUE}/export`,
       exportName: 'product-revisions',
@@ -326,6 +330,7 @@ export function OffersList({
       rowId: (row) => row.offerId,
       rowName: (row) => nameOf(row),
       tabs: ['offer'],
+      search: SEARCH,
       tabParams: () => ({ kind: 'offer-first-publication' }),
       exportEndpoint: `${API_QUEUE}/export`,
       exportName: 'offers-for-review',
