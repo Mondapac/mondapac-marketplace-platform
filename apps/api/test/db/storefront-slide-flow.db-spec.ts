@@ -504,4 +504,91 @@ describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (c
       }
     });
   });
+
+  describe('links checked through facades that open their own unit, as catalog and sellers do', () => {
+    // Catalog's and sellers' facades each run a read-only unit; a unit never opens inside another,
+    // so the approval asks them before its own unit opens.
+    const asked: string[][] = [];
+    const facade = (answer: (keys: string[]) => ReadonlySet<string> | null) =>
+      ({
+        ...deps,
+        targets: {
+          live: (target: CallContext, targets: readonly { type: string; id: string }[]) =>
+            db.unitOfWork
+              .run(target.market, () => Promise.resolve({ ok: true as const, value: true }), {
+                readOnly: true,
+              })
+              .then((read) => {
+                const keys = targets.map((t) => targetKey(t as never));
+                asked.push(keys);
+                return read.ok ? answer(keys) : null;
+              }),
+        },
+      }) as StorefrontDependencies;
+    const linked = (hours: number, link: { type: string; id: string }, scopeId?: string) =>
+      draft(hours, {
+        kind: 'link',
+        content: { title: 'Fresh lamb', textTone: 'dark', link },
+        placements: [
+          scopeId === undefined
+            ? { position: PUBLIC_POSITION }
+            : { position: 'category.top', scope: 'category', scopeId },
+        ],
+      });
+    const submitted = async (target: StorefrontDependencies, body: object) => {
+      const created = ok(await createSlide(target, context, body));
+      ok(await submitSlide(target, context, { slide: created.id }));
+      return created;
+    };
+
+    it('approves a slide whose seller link and category scope are live', async () => {
+      const all = facade((keys) => new Set(keys));
+      const categoryId = ids.next<'Category'>();
+      const sellerId = ids.next<'Seller'>();
+      const created = await submitted(
+        all,
+        linked(24 * 300, { type: 'seller', id: sellerId }, categoryId),
+      );
+      asked.length = 0;
+      const done = ok(
+        await approveSlide(all, context, { slide: created.id, body: { versionNo: 1 } }),
+      );
+      expect(done.live?.versionNo).toBe(1);
+      expect(asked).toEqual([
+        [
+          targetKey({ type: 'seller', id: sellerId }),
+          targetKey({ type: 'category', id: categoryId }),
+        ],
+      ]);
+    });
+
+    it('refuses a link that is not live, and one whose answer could not be had', async () => {
+      const categoryId = ids.next<'Category'>();
+      const none = facade(() => new Set());
+      const gone = await submitted(none, linked(24 * 310, { type: 'category', id: categoryId }));
+      expect(await approveSlide(none, context, { slide: gone.id, body: { versionNo: 1 } })).toEqual(
+        {
+          ok: false,
+          error: {
+            code: 'storefront.slide-link-invalid',
+            fields: [{ path: 'content.link', code: 'not-found' }],
+          },
+        },
+      );
+      const failing = facade(() => null);
+      const unknown = await submitted(
+        failing,
+        linked(24 * 320, { type: 'product', id: categoryId }),
+      );
+      expect(
+        await approveSlide(failing, context, { slide: unknown.id, body: { versionNo: 1 } }),
+      ).toEqual({
+        ok: false,
+        error: {
+          code: 'storefront.slide-link-invalid',
+          fields: [{ path: 'content.link', code: 'unverifiable' }],
+        },
+      });
+    });
+  });
 });
