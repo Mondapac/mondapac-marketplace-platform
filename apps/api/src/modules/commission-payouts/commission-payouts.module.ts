@@ -1,6 +1,8 @@
 import { CountFailedPayouts } from './application/use-cases/count-failed-payouts.use-case';
 import { CountPayoutHolds } from './application/use-cases/count-payout-holds.use-case';
 import { CountDisputesDue } from './application/use-cases/count-disputes-due.use-case';
+import { CountSellerDisputesNeedingReply } from './application/use-cases/count-seller-disputes-needing-reply.use-case';
+import { CountSellerPayoutHolds } from './application/use-cases/count-seller-payout-holds.use-case';
 import {
   COMMISSION_PAYOUTS_WORK_QUEUE_COUNT_READER,
   type CommissionPayoutsWorkQueueCountReader,
@@ -454,7 +456,13 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     SellerPayoutsController,
   ],
   providers: [
-    ...[CountFailedPayouts, CountPayoutHolds, CountDisputesDue].map((type) => ({
+    ...[
+      CountFailedPayouts,
+      CountPayoutHolds,
+      CountDisputesDue,
+      CountSellerDisputesNeedingReply,
+      CountSellerPayoutHolds,
+    ].map((type) => ({
       provide: type,
       inject: [USE_CASE_GATE, UNIT_OF_WORK, COMMISSION_PAYOUTS_WORK_QUEUE_COUNT_READER],
       useFactory: (
@@ -465,13 +473,27 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     })),
     {
       provide: COMMISSION_PAYOUTS_WORK_QUEUE_FACADE,
-      inject: [CountFailedPayouts, CountPayoutHolds, CountDisputesDue],
+      inject: [
+        CountFailedPayouts,
+        CountPayoutHolds,
+        CountDisputesDue,
+        CountSellerDisputesNeedingReply,
+        CountSellerPayoutHolds,
+      ],
       useFactory: (
         failedPayouts: CountFailedPayouts,
         payoutHolds: CountPayoutHolds,
         disputesDue: CountDisputesDue,
+        sellerDisputes: CountSellerDisputesNeedingReply,
+        sellerHolds: CountSellerPayoutHolds,
       ) =>
-        new CommissionPayoutsWorkQueueFacadeImplementation(failedPayouts, payoutHolds, disputesDue),
+        new CommissionPayoutsWorkQueueFacadeImplementation(
+          failedPayouts,
+          payoutHolds,
+          disputesDue,
+          sellerDisputes,
+          sellerHolds,
+        ),
     },
     PersistenceModule.outboxWriterFor('commission-payouts'),
     PersistenceModule.securityEventsFor('commission-payouts'),

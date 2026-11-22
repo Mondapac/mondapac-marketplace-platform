@@ -145,7 +145,9 @@ model OrderingSellerOrder {
   /// The partial indexes (market_id, paid_at DESC, id DESC) WHERE paid_at IS NOT NULL, and the same
   /// WHERE fulfilment = 'to-ship' as well (admin Shipments and Invoices lists), are hand-written in
   /// their own migrations, built CONCURRENTLY; Prisma cannot declare them. So is the partial index
-  /// (market_id, delivery_window_end) of the open scheduled orders (dashboard late-delivery count).
+  /// (market_id, delivery_window_end) of the open scheduled orders (dashboard late-delivery count),
+  /// and the partial index (market_id, seller_id) of the open paid orders, not delivered and not
+  /// refunded in full (the dashboard's seller tasks).
   @@map("seller_orders")
   @@schema("ordering")
 }

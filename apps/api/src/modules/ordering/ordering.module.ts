@@ -193,6 +193,10 @@ import {
 import { CountLateDeliveries } from './application/use-cases/count-late-deliveries.use-case';
 import { CountPendingRefunds } from './application/use-cases/count-pending-refunds.use-case';
 import { CountFailedPayments } from './application/use-cases/count-failed-payments.use-case';
+import { CountSellerLateOrders } from './application/use-cases/count-seller-late-orders.use-case';
+import { CountSellerPickupsUncollected } from './application/use-cases/count-seller-pickups-uncollected.use-case';
+import { CountSellerToShipToday } from './application/use-cases/count-seller-to-ship-today.use-case';
+import { SELLER_ZONES, type SellerZones } from './application/ports/seller-zones';
 import {
   WORK_QUEUE_COUNT_READER,
   type WorkQueueCountReader,
@@ -835,20 +839,54 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         clock: RebuildOfferPairsDependencies['clock'],
       ) => new RebuildOfferPairs(gate, { unitOfWork, pairs, clock }),
     },
-    ...[CountLateDeliveries, CountPendingRefunds, CountFailedPayments].map((type) => ({
+    ...[
+      CountLateDeliveries,
+      CountPendingRefunds,
+      CountFailedPayments,
+      CountSellerLateOrders,
+      CountSellerPickupsUncollected,
+    ].map((type) => ({
       provide: type,
       inject: [USE_CASE_GATE, UNIT_OF_WORK, WORK_QUEUE_COUNT_READER],
       useFactory: (gate: UseCaseGate, unitOfWork: UnitOfWork, counts: WorkQueueCountReader) =>
         new type(gate, { unitOfWork, counts }),
     })),
     {
+      provide: CountSellerToShipToday,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, WORK_QUEUE_COUNT_READER, SELLER_ZONES],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        counts: WorkQueueCountReader,
+        zones: SellerZones,
+      ) => new CountSellerToShipToday(gate, { unitOfWork, counts, zones }),
+    },
+    {
       provide: ORDERING_WORK_QUEUE_FACADE,
-      inject: [CountLateDeliveries, CountPendingRefunds, CountFailedPayments],
+      inject: [
+        CountLateDeliveries,
+        CountPendingRefunds,
+        CountFailedPayments,
+        CountSellerLateOrders,
+        CountSellerToShipToday,
+        CountSellerPickupsUncollected,
+      ],
       useFactory: (
         late: CountLateDeliveries,
         refunds: CountPendingRefunds,
         failed: CountFailedPayments,
-      ) => new OrderingWorkQueueFacadeImplementation(late, refunds, failed),
+        sellerLate: CountSellerLateOrders,
+        sellerToShip: CountSellerToShipToday,
+        sellerPickups: CountSellerPickupsUncollected,
+      ) =>
+        new OrderingWorkQueueFacadeImplementation(
+          late,
+          refunds,
+          failed,
+          sellerLate,
+          sellerToShip,
+          sellerPickups,
+        ),
     },
     {
       provide: ORDERING_RANKING_FACADE,

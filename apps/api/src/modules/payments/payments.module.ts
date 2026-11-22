@@ -1,5 +1,6 @@
 import { CountFailedWebhooks } from './application/use-cases/count-failed-webhooks.use-case';
 import { CountRestrictedAccounts } from './application/use-cases/count-restricted-accounts.use-case';
+import { CountSellerPayoutsBlocked } from './application/use-cases/count-seller-payouts-blocked.use-case';
 import {
   PAYMENTS_WORK_QUEUE_COUNT_READER,
   type PaymentsWorkQueueCountReader,
@@ -170,7 +171,7 @@ function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
     AdminCustomerPaymentsController,
   ],
   providers: [
-    ...[CountFailedWebhooks, CountRestrictedAccounts].map((type) => ({
+    ...[CountFailedWebhooks, CountRestrictedAccounts, CountSellerPayoutsBlocked].map((type) => ({
       provide: type,
       inject: [USE_CASE_GATE, UNIT_OF_WORK, PAYMENTS_WORK_QUEUE_COUNT_READER],
       useFactory: (
@@ -181,11 +182,17 @@ function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
     })),
     {
       provide: PAYMENTS_WORK_QUEUE_FACADE,
-      inject: [CountFailedWebhooks, CountRestrictedAccounts],
+      inject: [CountFailedWebhooks, CountRestrictedAccounts, CountSellerPayoutsBlocked],
       useFactory: (
         failedWebhooks: CountFailedWebhooks,
         restrictedAccounts: CountRestrictedAccounts,
-      ) => new PaymentsWorkQueueFacadeImplementation(failedWebhooks, restrictedAccounts),
+        sellerPayoutsBlocked: CountSellerPayoutsBlocked,
+      ) =>
+        new PaymentsWorkQueueFacadeImplementation(
+          failedWebhooks,
+          restrictedAccounts,
+          sellerPayoutsBlocked,
+        ),
     },
     PersistenceModule.auditWriterFor('payments'),
     PersistenceModule.securityEventsFor('payments'),

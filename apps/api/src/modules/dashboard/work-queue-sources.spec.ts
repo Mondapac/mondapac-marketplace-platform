@@ -12,12 +12,18 @@ import {
 } from '../certification';
 import {
   COMMISSION_PAYOUTS_DISPUTE_VIEW,
+  COMMISSION_PAYOUTS_EARNINGS_VIEW,
   COMMISSION_PAYOUTS_PAYOUT_VIEW,
   COMMISSION_PAYOUTS_SETTLEMENT_VIEW,
 } from '../commission-payouts';
-import { ORDERING_ORDER_VIEW } from '../ordering';
-import { PAYMENTS_CONNECTED_ACCOUNT_VIEW, PAYMENTS_CUSTOMER_PAYMENT_VIEW } from '../payments';
+import { ORDERING_ORDER_VIEW, ORDERING_SELLER_ORDER_VIEW } from '../ordering';
+import {
+  PAYMENTS_CONNECTED_ACCOUNT_VIEW,
+  PAYMENTS_CUSTOMER_PAYMENT_VIEW,
+  PAYMENTS_PAYOUT_ACCOUNT_VIEW,
+} from '../payments';
 import { PRICING_PRICE_HOLD_VIEW } from '../pricing';
+import { REVIEWS_SELLER_VIEW } from '../reviews';
 import { SECURITY_VIEW } from '../security';
 import { SELLERS_SELLER_VIEW } from '../sellers';
 import { checkWorkQueueSources } from './application/work-queue-source';
@@ -41,6 +47,9 @@ describe('the bound work-queue sources', () => {
       lateDeliveries: record('ordering.lateDeliveries'),
       pendingRefunds: record('ordering.pendingRefunds'),
       failedPayments: record('ordering.failedPayments'),
+      sellerLateOrders: record('ordering.sellerLateOrders'),
+      sellerToShipToday: record('ordering.sellerToShipToday'),
+      sellerPickupsUncollected: record('ordering.sellerPickupsUncollected'),
     },
     catalog: {
       claimsWithoutCertificate: record('catalog.claimsWithoutCertificate'),
@@ -62,12 +71,16 @@ describe('the bound work-queue sources', () => {
     payments: {
       failedWebhooks: record('payments.failedWebhooks'),
       restrictedAccounts: record('payments.restrictedAccounts'),
+      sellerPayoutsBlocked: record('payments.sellerPayoutsBlocked'),
     },
     commissionPayouts: {
       failedPayouts: record('commissionPayouts.failedPayouts'),
       payoutHolds: record('commissionPayouts.payoutHolds'),
       disputesDue: record('commissionPayouts.disputesDue'),
+      sellerDisputesNeedingReply: record('commissionPayouts.sellerDisputesNeedingReply'),
+      sellerPayoutHolds: record('commissionPayouts.sellerPayoutHolds'),
     },
+    reviews: { sellerUnanswered: record('reviews.sellerUnanswered') },
   };
   const sources = workQueueSources(owners);
 
@@ -222,6 +235,55 @@ describe('the bound work-queue sources', () => {
         requires: [CERTIFICATION_PRODUCT_CERTIFICATE_VIEW.key],
         live: false,
       },
+      {
+        key: 'ordering.late-orders',
+        panel: 'seller',
+        level: 'critical',
+        requires: [ORDERING_SELLER_ORDER_VIEW.key],
+        live: true,
+      },
+      {
+        key: 'commission-payouts.dispute-reply-needed',
+        panel: 'seller',
+        level: 'critical',
+        requires: [COMMISSION_PAYOUTS_EARNINGS_VIEW.key],
+        live: true,
+      },
+      {
+        key: 'payments.payouts-blocked',
+        panel: 'seller',
+        level: 'critical',
+        requires: [PAYMENTS_PAYOUT_ACCOUNT_VIEW.key],
+        live: false,
+      },
+      {
+        key: 'ordering.to-ship-today',
+        panel: 'seller',
+        level: 'today',
+        requires: [ORDERING_SELLER_ORDER_VIEW.key],
+        live: false,
+      },
+      {
+        key: 'ordering.pickups-uncollected',
+        panel: 'seller',
+        level: 'today',
+        requires: [ORDERING_SELLER_ORDER_VIEW.key],
+        live: false,
+      },
+      {
+        key: 'commission-payouts.payout-holds',
+        panel: 'seller',
+        level: 'today',
+        requires: [COMMISSION_PAYOUTS_EARNINGS_VIEW.key],
+        live: false,
+      },
+      {
+        key: 'reviews.unanswered',
+        panel: 'seller',
+        level: 'review',
+        requires: [REVIEWS_SELLER_VIEW.key],
+        live: false,
+      },
     ]);
   });
 
@@ -250,6 +312,13 @@ describe('the bound work-queue sources', () => {
       'catalog.categoryProposals',
       'certification.sellerCertificates',
       'certification.productCertificates',
+      'ordering.sellerLateOrders',
+      'commissionPayouts.sellerDisputesNeedingReply',
+      'payments.sellerPayoutsBlocked',
+      'ordering.sellerToShipToday',
+      'ordering.sellerPickupsUncollected',
+      'commissionPayouts.sellerPayoutHolds',
+      'reviews.sellerUnanswered',
     ]);
     expect(calls.every((c) => c.context === context && c.query === query)).toBe(true);
   });

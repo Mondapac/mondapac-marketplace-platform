@@ -1,4 +1,4 @@
-import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { WorkQueueCount } from '../../../../platform/work-queue/work-queue-count';
 
 /**
@@ -55,6 +55,47 @@ export interface WorkQueueCountReader {
   failedPayments(
     market: MarketContext,
     now: Temporal.Instant,
+    staleBefore: Temporal.Instant,
+  ): Promise<WorkQueueCount>;
+
+  /**
+   * Seller tasks: {@link lateDeliveries} for one seller's orders only (the same late rule).
+   */
+  sellerLateOrders(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    now: Temporal.Instant,
+    overdueBefore: Temporal.Instant,
+    signal: AbortSignal,
+  ): Promise<WorkQueueCount>;
+
+  /**
+   * Seller tasks: one seller's paid orders still to get ready today and not late, so none is
+   * also in {@link sellerLateOrders}. Not refunded in full, still `to-ship` and not marked ready:
+   * - scheduled: the buyer's window starts within the seller's local day (`dayStart` to
+   *   `dayEnd`) and has not ended at `now`;
+   * - instant, same day, pickup: the ready-by time (payment time plus the frozen minutes) is
+   *   from `now` to the end of the seller's local day; null minutes carry no promise.
+   * Nothing is overdue (an item past its promise is late instead); `oldestAt` is the earliest
+   * payment time.
+   */
+  sellerToShipToday(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    now: Temporal.Instant,
+    dayStart: Temporal.Instant,
+    dayEnd: Temporal.Instant,
+    signal: AbortSignal,
+  ): Promise<WorkQueueCount>;
+
+  /**
+   * Seller tasks: one seller's paid pickup orders marked ready and not collected yet (still
+   * `to-ship`, not refunded in full). Overdue: ready since before `staleBefore`; `oldestAt` the
+   * earliest ready time.
+   */
+  sellerPickupsUncollected(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
     staleBefore: Temporal.Instant,
   ): Promise<WorkQueueCount>;
 }

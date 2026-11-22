@@ -20,6 +20,7 @@ import { isWorkQueueCount } from '../../../platform/work-queue/work-queue-count'
 import type { WorkQueueCountQuery } from '../../../platform/work-queue/work-queue-count';
 import type { DashboardViewer } from './ports/viewer-permissions';
 import { ViewAdminWorkQueue } from './use-cases/view-admin-work-queue.use-case';
+import { ViewSellerTasks } from './use-cases/view-seller-tasks.use-case';
 import { WorkQueueCache } from './work-queue-cache';
 import { composeWorkQueue, WORK_QUEUE_TIMEOUT_MS } from './work-queue-flow';
 import { checkWorkQueueSources, type WorkQueueSource } from './work-queue-source';
@@ -449,6 +450,103 @@ describe.each(TEST_MARKETS)('the work queue in market %s', (code) => {
 
     it("passes on identity's refusal", async () => {
       expect(await useCase('denied').execute(admin(), {})).toEqual(err({ code: 'access.denied' }));
+    });
+  });
+
+  describe('ViewSellerTasks', () => {
+    const SELLER = id<'Seller'>(0xb3);
+    const sellerContext = (sellerId: Id<'Seller'> = SELLER) =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: id(0xb1),
+          sessionId: id(0xb2),
+          sellerId,
+        }),
+      );
+    const member = (sellerId: string | null = SELLER, state = 'approved'): DashboardViewer => ({
+      population: 'seller',
+      sellerId,
+      sellerAccessState: state,
+      permissionKeys: [A],
+    });
+    const useCase = (
+      described: DashboardViewer | 'denied',
+      sources: readonly WorkQueueSource[] = [],
+    ) =>
+      new ViewSellerTasks(allowAll, {
+        ...deps(sources),
+        viewer: {
+          describe: () =>
+            Promise.resolve(
+              described === 'denied' ? err({ code: 'access.denied' as const }) : ok(described),
+            ),
+        },
+      });
+
+    it('answers the seller panel only, with the caller context unchanged', async () => {
+      const context = sellerContext();
+      const result = await useCase(member(), [
+        source(script, 'a.admin'),
+        source(script, 'a.seller', { panel: 'seller' }),
+      ]).execute(context, {});
+      expect(result.ok && result.value.panel).toBe('seller');
+      expect(result.ok && result.value.queues.map((q) => q.key)).toEqual(['a.seller']);
+      expect(script.calls.map((c) => c.context)).toEqual([context]);
+    });
+
+    it('declares own-resources and lets each owner answer for a seller not approved', () => {
+      expect(ViewSellerTasks.access).toEqual({
+        name: 'dashboard.view-seller-tasks',
+        rule: { kind: 'own-resources' },
+        whenSellerNotApproved: 'allow',
+      });
+    });
+
+    it("keeps one seller's counts apart from another's, and from another access state", async () => {
+      const sources = [source(script, 'a.seller', { panel: 'seller' })];
+      await useCase(member(), sources).execute(sellerContext(), {});
+      const other = id<'Seller'>(0xc3);
+      await useCase(member(other), sources).execute(sellerContext(other), {});
+      await useCase(member(SELLER, 'suspended'), sources).execute(sellerContext(), {});
+      expect(script.calls).toHaveLength(3);
+    });
+
+    it('refuses an admin, a customer and the anonymous actor, before any queue is asked', async () => {
+      const customer = testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'customer',
+          accountId: id(0xd1),
+          sessionId: id(0xd2),
+          sellerId: null,
+        }),
+      );
+      const sources = [source(script, 'a.seller', { panel: 'seller' })];
+      for (const context of [admin(), customer]) {
+        expect(await useCase(member(), sources).execute(context, {})).toEqual(
+          err({ code: 'access.denied' }),
+        );
+      }
+      expect(
+        (await useCase(member(), sources).execute(testCallContext(market, 'anonymous'), {})).ok,
+      ).toBe(false);
+      expect(script.calls).toHaveLength(0);
+    });
+
+    it('refuses when identity describes another seller or population, or refuses', async () => {
+      const sources = [source(script, 'a.seller', { panel: 'seller' })];
+      expect(
+        await useCase(member(id<'Seller'>(0xc3)), sources).execute(sellerContext(), {}),
+      ).toEqual(err({ code: 'access.denied' }));
+      expect(
+        await useCase({ ...member(), population: 'admin' }, sources).execute(sellerContext(), {}),
+      ).toEqual(err({ code: 'access.denied' }));
+      expect(await useCase('denied', sources).execute(sellerContext(), {})).toEqual(
+        err({ code: 'access.denied' }),
+      );
+      expect(script.calls).toHaveLength(0);
     });
   });
 });

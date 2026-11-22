@@ -109,3 +109,36 @@ Definitions by Hadi (product owner), 22 Nov 2026. Each count is scoped to the ca
   state = 'failed' once a Market holds about 10,000 failed payouts. The restricted-account and
   due-dispute counts read every row of their Market's state or bucket; revisit at about 50,000
   sellers, or if the `needs-response` bucket stops being small.
+
+## Seller tasks (PR 6)
+
+`GET dashboard/seller/tasks` (`ViewSellerTasks`, rule `own-resources`, not-approved `allow`; each
+queue's owner applies its own seller-state rule). Always the session's own seller: every owner use
+case reads the seller id from the session through `countSellerWorkQueue` (platform/work-queue),
+never from input. A customer or an admin acting as themselves is `access.denied`; a seller session
+that carries the acting-as marker (Login as Seller, SEL-08) is allowed, as the seller reads are.
+Counts are cached per seller and access state, except the live queues.
+
+| Key | Level | Key needed | Definition |
+|---|---|---|---|
+| `ordering.late-orders` | critical, live | `ordering.seller-order.view` | The admin late-delivery rule for this seller only. Overdue: past the promise by more than 1 hour. |
+| `commission-payouts.dispute-reply-needed` | critical, live | `commission-payouts.earnings.view` | Cases in `needs-response` whose dispute holds one of the seller's orders (active dispute holds). Overdue: deadline passed; `oldestAt`: nearest deadline. |
+| `payments.payouts-blocked` | critical | `payments.payout-account.view` | 0 or 1: the seller's account is `restricted` or `payouts_enabled` is false (onboarding not finished counts too). No account: 0. Overdue 0; `oldestAt`: the account's last update. |
+| `ordering.to-ship-today` | today | `ordering.seller-order.view` | Paid, `to-ship`, not marked ready, not refunded in full; ready-by from now to the end of the seller's local day, or a scheduled window that starts that day and has not ended. Never late (no double count). Overdue 0; `oldestAt`: earliest payment. |
+| `ordering.pickups-uncollected` | today | `ordering.seller-order.view` | Pickup orders marked ready, not collected. Overdue: ready since before 48 hours; `oldestAt`: earliest ready time. |
+| `commission-payouts.payout-holds` | today | `commission-payouts.earnings.view` | The seller's active payout holds (dispute holds included). Overdue: placed before 48 hours. |
+| `reviews.unanswered` | review | `reviews.seller.view` | The Reviews list's `unanswered` view: published reviews without a published reply of the shop. Overdue: published before 7 days. |
+
+- The seller's day is the seller's approved operating zone (sellers `operatingZones`, read before
+  the unit); before the seller has an approved file it falls back to the Market's zone.
+- commission-payouts has no seller dispute key: the two money queues use
+  `commission-payouts.earnings.view`, the module's one seller read key, while the dispute and hold
+  lists are `own-resources`. A member without that key does not see these two queues.
+- New partial index `seller_orders_market_id_seller_id_open_idx` on (market_id, seller_id) WHERE not
+  delivered, paid and not refunded in full, built CONCURRENTLY in its own migration. It serves
+  the three ordering seller counts.
+- Dropped: `inventory.published-out-of-stock`. Whether an Offer is published is catalog data and
+  the stock is inventory data, so a count would need both modules (no cross-module join).
+  Inventory's availability signals carry no publication state.
+- Deferred: low stock, changes requested on an Offer, certificate expiring, a delivery-by promise
+  for shipped instant and same-day orders (FE-095), and the thresholds as Market settings (FE-109).

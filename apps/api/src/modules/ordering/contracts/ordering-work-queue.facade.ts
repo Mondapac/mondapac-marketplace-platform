@@ -6,9 +6,10 @@ import type {
 } from '../../../platform/work-queue/work-queue-count';
 
 /**
- * The ordering queues of the admin dashboard's work queue (dashboards upgrade, phase 1). Each
- * method runs one use case with the caller's `CallContext` unchanged. Rule: `ordering.order.view`,
- * platform admins only. Not exposed over HTTP; the dashboard module composes them.
+ * The ordering queues of the dashboards' work queues (dashboards upgrade, phase 1). Each method
+ * runs one use case with the caller's `CallContext` unchanged. The admin queues: rule
+ * `ordering.order.view`, platform admins only; the seller tasks: below. Not exposed over HTTP;
+ * the dashboard module composes them.
  */
 export interface OrderingWorkQueueFacade {
   /** Paid seller orders past their delivery promise, per delivery method. */
@@ -25,6 +26,26 @@ export interface OrderingWorkQueueFacade {
 
   /** Orders cancelled because the buyer's payment failed, within the last 24 hours. */
   failedPayments(
+    context: CallContext,
+    query: WorkQueueCountQuery,
+  ): Promise<Result<WorkQueueCount, AccessDenied>>;
+
+  // The seller tasks (seller panel): rule `ordering.seller-order.view`, the session's own seller.
+
+  /** The seller's own paid orders past their promise (the admin late-delivery rule). */
+  sellerLateOrders(
+    context: CallContext,
+    query: WorkQueueCountQuery,
+  ): Promise<Result<WorkQueueCount, AccessDenied>>;
+
+  /** The seller's own paid orders to get ready on the seller's local day, not late. */
+  sellerToShipToday(
+    context: CallContext,
+    query: WorkQueueCountQuery,
+  ): Promise<Result<WorkQueueCount, AccessDenied>>;
+
+  /** The seller's own ready pickup orders the buyer has not collected. */
+  sellerPickupsUncollected(
     context: CallContext,
     query: WorkQueueCountQuery,
   ): Promise<Result<WorkQueueCount, AccessDenied>>;

@@ -1,4 +1,4 @@
-import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { WorkQueueCount } from '../../../../platform/work-queue/work-queue-count';
 
 /**
@@ -37,4 +37,24 @@ export interface CommissionPayoutsWorkQueueCountReader {
 
   /** The disputes that need a response within 24 hours or are past their deadline (critical queue, live). Overdue: past the deadline. */
   disputesDue(market: MarketContext, now: Temporal.Instant): Promise<WorkQueueCount>;
+
+  /**
+   * Seller tasks (critical, live): the disputes on the seller's own orders that need a response
+   * (the `needs-response` bucket), found as the admin list and the seller's dispute list find a
+   * seller's disputes: through the seller's dispute holds (one per disputed seller order; active
+   * while the case is open). Overdue: the response deadline has passed; `oldestAt` the nearest
+   * deadline (null when no case of the queue has one).
+   */
+  sellerDisputesNeedingReply(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    now: Temporal.Instant,
+  ): Promise<WorkQueueCount>;
+
+  /** Seller tasks (today): the seller's own active payout holds. Overdue: placed before the age limit. */
+  sellerPayoutHolds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    staleBefore: Temporal.Instant,
+  ): Promise<WorkQueueCount>;
 }

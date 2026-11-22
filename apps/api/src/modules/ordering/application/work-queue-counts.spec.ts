@@ -84,6 +84,10 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s', (code) =>
       reads.push({ method: 'failed', market: m, times: [now, staleBefore] });
       return failing ? Promise.reject(new Error('down')) : Promise.resolve(COUNT);
     },
+    // The seller tasks have their own spec (seller-work-queue-counts.spec.ts).
+    sellerLateOrders: () => Promise.reject(new Error('not an admin count')),
+    sellerToShipToday: () => Promise.reject(new Error('not an admin count')),
+    sellerPickupsUncollected: () => Promise.reject(new Error('not an admin count')),
   };
   const late = new CountLateDeliveries(gate, { unitOfWork, counts });
   const refunds = new CountPendingRefunds(gate, { unitOfWork, counts });
