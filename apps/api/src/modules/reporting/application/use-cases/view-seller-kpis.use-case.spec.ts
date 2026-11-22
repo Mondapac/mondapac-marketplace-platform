@@ -87,6 +87,21 @@ describe.each(TEST_MARKETS)('ViewSellerKpis in market %s', (code) => {
     expect(asked).toEqual([]);
   });
 
+  it('refuses an array period and answers access.unavailable when the store throws', async () => {
+    const array = await build().execute(as('seller'), { period: ['7d', '30d'] });
+    expect(array).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    const failing = new ViewSellerKpis(openGate(), {
+      unitOfWork: {
+        run: () => Promise.reject(new Error('select secret')),
+      } as unknown as UnitOfWork,
+      reader,
+      zone: zone('Australia/Brisbane'),
+      clock: new FixedClock(Temporal.Instant.from('2026-11-21T23:30:00Z')),
+    });
+    const result = await failing.execute(as('seller'), { period: '7d' });
+    expect(result).toMatchObject({ ok: false, error: { code: 'access.unavailable' } });
+  });
+
   it.each(['customer', 'admin'] as const)('refuses a %s session before any read', async (who) => {
     const result = await build().execute(as(who), { period: '7d' });
     expect(result).toMatchObject({ ok: false, error: { code: 'access.denied' } });

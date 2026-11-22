@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Result } from '@mondapac/shared-kernel';
 import {
@@ -14,6 +15,8 @@ import { isPeriodId, resolvePeriod, type PeriodId, type ResolvedPeriod } from '.
 import { buildSellerKpis, type SellerKpis } from '../../domain/seller-kpis';
 import type { MarketZone } from '../ports/market-zone';
 import type { SellerKpiReader } from '../ports/seller-kpi-reader';
+
+const logger = new Logger('ViewSellerKpis');
 
 export interface ViewSellerKpisDependencies {
   readonly unitOfWork: UnitOfWork;
@@ -76,20 +79,37 @@ export class ViewSellerKpis extends UseCase<
     const timezone = this.deps.zone.zoneOf(market);
     const currency = this.deps.zone.currencyOf(market);
     const period = resolvePeriod(asked, marketDayOf(this.deps.clock.now(), timezone));
-    const read = await this.deps.unitOfWork.run(
-      market,
-      async () =>
-        ok(
-          await this.deps.reader.read(market, sellerId, currency, period.current, period.previous),
-        ),
-      { readOnly: true },
-    );
-    if (!read.ok) return err({ code: 'access.unavailable' });
-    return ok({
-      period,
-      timezone,
-      currency,
-      kpis: buildSellerKpis(period, read.value.daily, read.value.categories),
-    });
+    try {
+      const read = await this.deps.unitOfWork.run(
+        market,
+        async () =>
+          ok(
+            await this.deps.reader.read(
+              market,
+              sellerId,
+              currency,
+              period.current,
+              period.previous,
+            ),
+          ),
+        { readOnly: true },
+      );
+      if (!read.ok) return err({ code: 'access.unavailable' });
+      return ok({
+        period,
+        timezone,
+        currency,
+        kpis: buildSellerKpis(period, read.value.daily, read.value.categories),
+      });
+    } catch (error) {
+      // The class only: a store error may carry a statement or a value.
+      logger.error({
+        msg: 'reporting.seller-kpis.read-failed',
+        errorClass: error instanceof Error ? error.constructor.name : typeof error,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+      return err({ code: 'access.unavailable' });
+    }
   }
 }
