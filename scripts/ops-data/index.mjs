@@ -5,7 +5,7 @@
 // mails and the audit. Never raw seeds: the only SQL is the guards' read of the database marker
 // (and the claim vocabulary stand-in, until certification types can be created in the admin).
 //
-//   node scripts/ops-data/index.mjs [--market AU] [--only admin,catalog]
+//   node scripts/ops-data/index.mjs [--market AU] [--only admin,catalog] [--backup]
 //
 // Needs the API and the worker running (the worker with CATALOG_SEED_JOBS_OFF, see README.md) and
 // Mailpit. Runs the scenario packs of the Market in order; each pack creates only what is missing,
@@ -23,6 +23,7 @@ import {
   loadDotEnv,
 } from './guard.mjs';
 import { API, MAILPIT, sleep } from './lib.mjs';
+import { acquireRun } from './lock.mjs';
 import { adminPack } from './packs/admin.mjs';
 import { catalogPack } from './packs/catalog.mjs';
 import { certificatesPack } from './packs/certificates.mjs';
@@ -31,7 +32,7 @@ import { ordersPack } from './packs/orders.mjs';
 import { productsPack } from './packs/products.mjs';
 import { sellersPack } from './packs/sellers.mjs';
 import { approveOpen } from './packs/requests.mjs';
-import { readState, writeState } from './state.mjs';
+import { STATE_DIR, readState, writeState } from './state.mjs';
 
 /**
  * The version of the scenario data. A database built with another version is not topped up: the
@@ -47,7 +48,14 @@ const PACKS = ['admin', 'catalog', 'sellers', 'products', 'content', 'orders'];
 const PASSWORD = process.env.OPS_PASSWORD ?? 'Mondapac-Ops-2026-Passw0rd!';
 
 const { values } = parseArgs({
-  options: { market: { type: 'string', default: 'AU' }, only: { type: 'string' } },
+  options: {
+    market: { type: 'string', default: 'AU' },
+    only: { type: 'string' },
+    // Passed by `ops-local.bat reset` to the loader it starts itself: the reset lock is its own.
+    'within-reset': { type: 'boolean', default: false },
+    // Save the finished database as the backup `ops-local.bat fast` restores (ops.mjs backup).
+    backup: { type: 'boolean', default: false },
+  },
 });
 const market = values.market.toUpperCase();
 if (!/^[A-Z]{2}$/.test(market)) throw new Error(`--market must be a Market code such as AU`);
@@ -93,6 +101,7 @@ const reachable = (url) => async () => {
   }
 };
 
+const releaseLock = acquireRun(STATE_DIR, 'the loader', { withinReset: values['within-reset'] });
 const db = await connect(DB_URL);
 try {
   await assertDatabaseMarker(db);
@@ -197,7 +206,18 @@ try {
     state.packs = { ...state.packs, orders: 'done' };
     save();
   }
+  if (values.backup) {
+    const saved = spawnSync(
+      process.execPath,
+      [resolve(ROOT, 'scripts/ops-data/ops.mjs'), 'backup'],
+      {
+        stdio: 'inherit',
+      },
+    );
+    if (saved.status !== 0) throw new Error('the backup failed');
+  }
   log(`Done. State: .local/ops-data/${market}.json`);
 } finally {
   await db.end();
+  releaseLock();
 }
