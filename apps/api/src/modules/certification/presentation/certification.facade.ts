@@ -17,7 +17,10 @@ import type { ClaimTermList } from '../application/use-cases/claim-term-list.use
 import type { ClaimTermLocales } from '../application/use-cases/claim-term-locales.use-case';
 import type { MatchClaimTerms } from '../application/use-cases/match-claim-terms.use-case';
 import type { MatchClaimTermsSystem } from '../application/use-cases/match-claim-terms-system.use-case';
+import type { MatchCandidateClaimTerms } from '../application/use-cases/match-candidate-claim-terms.use-case';
+import type { MatchCandidateClaimTermsSystem } from '../application/use-cases/match-candidate-claim-terms-system.use-case';
 import type {
+  CandidateClaimTerms,
   CategoryReferencedByPolicy,
   CertificationFacade,
   CertificationTypeView,
@@ -38,6 +41,8 @@ export interface CertificationFacadeUseCases {
   readonly claimTermList: ClaimTermList;
   readonly matchClaimTerms: MatchClaimTerms;
   readonly matchClaimTermsSystem: MatchClaimTermsSystem;
+  readonly matchCandidateClaimTerms: MatchCandidateClaimTerms;
+  readonly matchCandidateClaimTermsSystem: MatchCandidateClaimTermsSystem;
   readonly claimTermLocales: ClaimTermLocales;
   readonly certificationTypes: CertificationTypes;
   readonly certificationTypesSystem: CertificationTypesSystem;
@@ -81,6 +86,17 @@ export class CertificationFacadeImplementation implements CertificationFacade {
         ? this.useCases.matchClaimTermsSystem
         : this.useCases.matchClaimTerms;
     return useCase.execute(context, { texts });
+  }
+
+  matchCandidateClaimTerms(
+    context: CallContext,
+    candidate: CandidateClaimTerms,
+    texts: readonly ClaimTextInput[],
+  ): Promise<Result<readonly (readonly ClaimTermMatch[])[], Failure>> {
+    const input = { candidate, texts };
+    return context.actor.kind === 'system'
+      ? this.useCases.matchCandidateClaimTermsSystem.execute(context, input)
+      : this.useCases.matchCandidateClaimTerms.execute(context, input);
   }
 
   async claimTermList(

@@ -47,6 +47,16 @@ export interface ClaimTextInput {
   readonly text: string;
 }
 
+/**
+ * A candidate claim term list for `matchCandidateClaimTerms` (catalog request X-1): the terms a
+ * type revision would publish, per locale. `typeCode` only labels the match (absent for a type
+ * not yet created).
+ */
+export interface CandidateClaimTerms {
+  readonly typeCode?: string;
+  readonly termsByLocale: Readonly<Record<string, readonly string[]>>;
+}
+
 /** What `certificationTypes` answers per type (design 8.1). No claim terms. */
 export interface CertificationTypeView {
   /** The type's id (slice 14: catalog maps the `typeId` of an event payload to a code). */
@@ -98,6 +108,20 @@ export interface CertificationFacade {
    */
   matchClaimTerms(
     context: CallContext,
+    texts: readonly ClaimTextInput[],
+  ): Promise<Result<readonly (readonly ClaimTermMatch[])[], Failure>>;
+
+  /**
+   * Matches a CANDIDATE term list (per locale, not yet published) against texts with the same
+   * matcher and normalisation as `matchClaimTerms`, over the candidate terms only (catalog
+   * design 6.5, request X-1). Terms are validated as a type revision's are; a term the matcher
+   * cannot use is refused (`validation.failed`), never dropped. At most 100 texts of 20,000
+   * characters. Rule: authenticated admin holding `certification.type.edit`, not acting-as; the
+   * `system` actor uses the pair use case. A fault is `certification.unavailable`.
+   */
+  matchCandidateClaimTerms(
+    context: CallContext,
+    candidate: CandidateClaimTerms,
     texts: readonly ClaimTextInput[],
   ): Promise<Result<readonly (readonly ClaimTermMatch[])[], Failure>>;
 

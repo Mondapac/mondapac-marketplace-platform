@@ -831,9 +831,22 @@ and Offers whose published text would match, and `complete: true|false`. It runs
 6.4 in dry-run mode, synchronous, bounded (at most 20,000 texts or 10 seconds; beyond that it
 answers `complete: false` with the count so far, which CUX shows as "at least N"). It needs a
 matcher over **candidate** terms (`matchClaimTerms` uses published vocabulary only): request X-1,
-ruled by Ali as a **`certification` facade method**, not a matcher exported from `contracts/`. Until
-catalog slice 18 merges (with X-1), the endpoint does not exist and CUX's "We couldn't count" state
-is what ships.
+ruled by Ali as a **`certification` facade method**, not a matcher exported from `contracts/`.
+
+**Built (C-7 and X-1).** `POST catalog/admin/claim-terms/impact-count` with `{typeCode?, termsByLocale}`
+answers `{products, offers, total, complete}`. It reads the published texts a page at a time (a
+read-only unit opened and closed per page) and calls `certification.matchCandidateClaimTerms` outside
+any unit, 100 texts a call, against the candidate terms of every locale. Bounds: 20,000 texts or 10
+seconds of the injected Clock (`complete: false`: "at least N"). A first call with an empty text makes
+`certification` validate the terms even when nothing is published. Errors: `validation.failed` (400,
+`details.fields`), `access.denied` (403, also acting-as), `request.throttled` (429), `access.unavailable`
+and `claim-text.check-unavailable` (503: the panel shows "We couldn't count"; never a zero). It spends
+the account's claim-text check budget (30 a minute, 1,000 a day; no new counter kind, so no migration).
+Counted: product name, short description and description (published revision) and published Offer
+descriptions, every locale. **Not yet counted** (their readers do not exist; they join with the rescan
+job of slice 18): seller and platform category names and descriptions, attribute definition names and
+option labels, category-proposal texts. A text over 20,000 characters is cut at the matcher's limit
+and makes the answer `complete: false`.
 
 ### 6.6 Seller-facing check (brief s4 a 4; Jafar)
 `claim-text.check` (seller and admin HTTP; same keys as the form) runs 6.1 on given field values
@@ -2075,7 +2088,7 @@ now; this document does not edit it):
 5. Tax-category override (L4): the admin confirm lists the tags that would be suspended.
 6. Category editor (B4, after the first sale): every move, merge and archive is a confirmed action
    with the affected-Offer count; no tree change happens outside the editor.
-7. Impact count (X-1): until catalog slice 18 the "We couldn't count" state is what ships.
+7. Impact count (X-1, C-7): built (6.5). The "We couldn't count" state is what the panel shows on a 503; `complete: false` is "at least N".
 8. `material` flag (19.2 item 8): clearing it is a request awaiting a second admin's confirmation.
 9. Refusal codes to add: `variant.unknown`, `product.not-found` (byte-identical for a product the
    seller may not sell from), `batch.too-large` (none shown to sellers), `text.invisible-character`

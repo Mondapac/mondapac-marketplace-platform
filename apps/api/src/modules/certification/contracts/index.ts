@@ -10,6 +10,7 @@ export type {
 } from '../domain/claim-types';
 export {
   CERTIFICATION_FACADE,
+  type CandidateClaimTerms,
   type CategoryReferencedByPolicy,
   type CertificationFacade,
   type CertificationTypeView,
@@ -22,6 +23,7 @@ export {
 } from './certification.facade';
 export {
   CERTIFICATION_OWN_CERTIFICATE_VIEW,
+  CERTIFICATION_TYPE_EDIT,
   CERTIFICATION_PERMISSIONS,
   CERTIFICATION_PRODUCT_CERTIFICATE_VIEW,
   CERTIFICATION_SELLER_CERTIFICATE_REVIEW,

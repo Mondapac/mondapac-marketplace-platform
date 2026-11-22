@@ -157,6 +157,62 @@ const textOk = (s: unknown, max: number): boolean =>
   /[\p{L}\p{N}]/u.test(s) &&
   !hasMarkupOrControl(s.replace(/[\u200c\u200d]/gu, ''));
 
+/** One refused part of a candidate term list: a path under `termsByLocale` and a code. */
+export interface CandidateTermsProblem {
+  readonly path: string;
+  readonly code:
+    'type' | 'locale-not-supported' | 'too-many' | 'text-invalid' | 'unmatchable' | 'empty';
+}
+
+/**
+ * Validates a CANDIDATE claim term list (per locale) the way {@link validateTypeRevision} checks
+ * the terms of a revision: the same text rule, length and count limits, and the same
+ * matchability test. A term the matcher cannot use is refused, never dropped. Locales must be
+ * supported by the Market; a supported locale may be absent. At least one term overall (catalog
+ * design 6.5, request X-1). Returns the terms per locale, copied.
+ */
+export function validateCandidateClaimTerms(
+  termsByLocale: unknown,
+  supportedLocales: readonly string[],
+): Result<Readonly<Record<string, readonly string[]>>, readonly CandidateTermsProblem[]> {
+  if (typeof termsByLocale !== 'object' || termsByLocale === null || Array.isArray(termsByLocale)) {
+    return err([{ path: 'termsByLocale', code: 'type' }]);
+  }
+  const problems: CandidateTermsProblem[] = [];
+  const out: Record<string, readonly string[]> = {};
+  let total = 0;
+  for (const locale of Object.keys(termsByLocale)) {
+    const path = `termsByLocale.${locale.slice(0, 16)}`;
+    if (!supportedLocales.includes(locale)) {
+      problems.push({ path, code: 'locale-not-supported' });
+      continue;
+    }
+    const terms: unknown = (termsByLocale as Record<string, unknown>)[locale];
+    if (!Array.isArray(terms) || Object.keys(terms).length !== terms.length) {
+      problems.push({ path, code: 'type' });
+      continue;
+    }
+    if (terms.length > MAX_TERMS_PER_LOCALE) {
+      problems.push({ path, code: 'too-many' });
+      continue;
+    }
+    if (!terms.every((t) => textOk(t, MAX_TERM_LENGTH))) {
+      problems.push({ path, code: 'text-invalid' });
+      continue;
+    }
+    if (!(terms as string[]).every(termMatchable)) {
+      problems.push({ path, code: 'unmatchable' });
+      continue;
+    }
+    out[locale] = [...(terms as string[])];
+    total += terms.length;
+  }
+  if (problems.length === 0 && total === 0) {
+    problems.push({ path: 'termsByLocale', code: 'empty' });
+  }
+  return problems.length > 0 ? err(problems) : ok(out);
+}
+
 /**
  * Validates a revision against the Market's `supportedLocales` and, when there is a previous
  * published revision, the immutability of `verificationMode` (H1). Every supported locale

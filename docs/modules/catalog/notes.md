@@ -161,3 +161,17 @@ indexes pick the queue rows and the search filters them; Prisma's relation filte
 subqueries, which Postgres may hash over the whole tables. Before the catalogue reaches about 100k
 products, or on the first slow-query report, capture `EXPLAIN (ANALYZE, BUFFERS)` on seeded data and,
 if needed, move the search to a `$queryRaw` with a correlated `EXISTS` (database review of PR #1267).
+
+## Claim term impact count (C-7)
+
+`POST /catalog/admin/claim-terms/impact-count` (use case `catalog.claim-terms-impact-count`, key
+`certification.type.edit` imported from `certification`, admin only, refused in acting-as). Body:
+`{ typeCode?, termsByLocale: { <locale>: string[] } }`; answer `{ products, offers, total, complete }`.
+Read-only. It scans published product texts (name, short description, description) and published Offer
+descriptions, 100 texts a call to `certification.matchCandidateClaimTerms` (request X-1), stopping at
+20,000 texts or 10 seconds (`complete: false`, "at least N"). Errors: `validation.failed` 400 (the
+terms the matcher cannot use are refused with `details.fields`), `access.denied` 403,
+`request.throttled` 429 (shares the claim-text check budget, 30 a minute), `access.unavailable` and
+`claim-text.check-unavailable` 503 ("We couldn't count"; never a zero). Not yet counted: category
+names and descriptions (seller and platform), attribute definition names and option labels,
+category-proposal texts; they join with the rescan job (design 6.4, slice 18).

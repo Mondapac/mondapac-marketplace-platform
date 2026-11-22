@@ -12,6 +12,7 @@ import {
   prepareVocabulary,
   type ClaimTermMatch,
 } from '../domain/claim-text-matcher';
+import type { CertificationTypeCode } from '../domain/claim-types';
 import { MAX_TEXTS, MAX_TEXT_LENGTH } from '../domain/claim-text-data';
 import type { PublishedTypesReader } from './ports/published-types.reader';
 
@@ -25,7 +26,7 @@ const invalid = (path: string, code: string): Result<never, CertificationValidat
   err({ code: 'validation.failed', fields: [{ path, code }] });
 
 /** The request check of `matchClaimTerms`: refused whole, before any read. */
-function parseTexts(
+export function parseTexts(
   texts: readonly ClaimTextInput[],
 ): Result<readonly string[], CertificationValidationFailed> {
   if (!Array.isArray(texts)) return invalid('texts', 'length');
@@ -76,6 +77,32 @@ export async function matchClaimTermsFor(
   } catch (error) {
     // Never the texts or the terms: the class of the failure only.
     logger.error(`matchClaimTerms failed: ${error instanceof Error ? error.name : 'unknown'}`);
+    return err(UNAVAILABLE);
+  }
+}
+
+/**
+ * Matches a CANDIDATE term list (already validated, per locale) against texts with the same
+ * matcher and normalisation as {@link matchClaimTermsFor}, over the candidate terms only (the
+ * published vocabulary is not consulted: catalog design 6.5, request X-1). Every locale's terms
+ * apply to every text. A matcher fault is `certification.unavailable`, never an empty answer.
+ */
+export function matchCandidateTermsFor(
+  typeCode: CertificationTypeCode,
+  termsByLocale: Readonly<Record<string, readonly string[]>>,
+  texts: readonly ClaimTextInput[],
+): Result<readonly (readonly ClaimTermMatch[])[], QueryFailure> {
+  const parsed = parseTexts(texts);
+  if (!parsed.ok) return parsed;
+  try {
+    const terms = [...new Set(Object.values(termsByLocale).flat())];
+    if (terms.length === 0) throw new Error('no candidate terms');
+    const vocabulary = prepareVocabulary([{ typeCode, terms }]);
+    return ok(matchClaimTerms(parsed.value, vocabulary));
+  } catch (error) {
+    logger.error(
+      `matchCandidateClaimTerms failed: ${error instanceof Error ? error.name : 'unknown'}`,
+    );
     return err(UNAVAILABLE);
   }
 }

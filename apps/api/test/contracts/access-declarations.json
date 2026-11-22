@@ -198,6 +198,7 @@
   { "name": "certification.evaluate-claims-system", "rule": "system" },
   { "name": "certification.expire-product-certificates", "rule": "system" },
   { "name": "certification.expire-seller-certificates", "rule": "system" },
+  { "name": "certification.match-candidate-claim-terms-system", "rule": "system" },
   { "name": "certification.match-claim-terms", "rule": "anonymous" },
   { "name": "certification.match-claim-terms-system", "rule": "system" },
   {
