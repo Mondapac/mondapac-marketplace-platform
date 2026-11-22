@@ -92,7 +92,10 @@ describe('EditForm', () => {
     expect(screen.getByRole('link', { name: 'Back to products' }).getAttribute('href')).toBe(
       '/products',
     );
-    expect(screen.getByText(/^Saved /)).toBeTruthy();
+    expect(screen.getByText(/^Saved /).getAttribute('role')).toBe('status');
+    expect(screen.getByText(/^Type: /)).toBeTruthy();
+    expect(screen.getByText(/^Created: /)).toBeTruthy();
+    expect(screen.getByText(/^Last change: /)).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Suggest a value' }).getAttribute('href')).toBe(
       '/value-suggestions/new?product=p1',
     );

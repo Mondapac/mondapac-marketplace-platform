@@ -490,11 +490,7 @@ export function EditForm({
       noValidate
     >
       {guard.dialog}
-      {adding ? (
-        <BackLink href="/products" label={t('catalog.create.back')} />
-      ) : (
-        <BackLink href="/products" label={t('catalog.create.back')} />
-      )}
+      <BackLink href="/products" label={t('catalog.create.back')} />
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="min-w-0 break-words text-2xl font-semibold">
@@ -507,10 +503,19 @@ export function EditForm({
             ? t('catalog.add.subtitle', { market: marketName })
             : t('catalog.edit.page.subtitle', { market: marketName, code: product.productCode })}
         </p>
-        {adding || (product.workingCopy === null && !canSuggest) ? null : (
+        {adding ? null : (
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
+            <span>
+              {t('catalog.product.type')}: {product.typeCode}
+            </span>
+            <span>
+              {t('catalog.col.changed')}: {formatInstant(product.lastChangedAt, locale, zone)}
+            </span>
+            <span>
+              {t('catalog.product.created')}: {formatInstant(product.createdAt, locale, zone)}
+            </span>
             {product.workingCopy === null ? null : (
-              <span>
+              <span role="status">
                 {t('catalog.product.saved-at', {
                   when: formatInstant(product.workingCopy.lastSavedAt, locale, zone),
                 })}
