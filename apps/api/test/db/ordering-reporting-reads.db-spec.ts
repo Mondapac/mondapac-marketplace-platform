@@ -335,8 +335,45 @@ describe.each(TEST_MARKETS)('ordering reporting reads in market %s (database)', 
     expect(fact.lines).toHaveLength(1);
     expect(fact.lines[0]?.quantity).toBe(1);
     expect(typeof fact.lines[0]?.offerId).toBe('string');
-    expect(fact.total.amount).toBeGreaterThan(0n);
     expect(fact.refundedAt).not.toBeNull();
+    // Positive totals, tax inside the amount; no shipping was refunded, so the total is the goods.
+    const line = fact.lines[0]!.goods;
+    expect(line.amount).toBeGreaterThan(0n);
+    expect(line.tax).toBeGreaterThan(0n);
+    expect(line.tax).toBeLessThan(line.amount);
+    expect(fact.shipping).toEqual({ amount: 0n, tax: 0n });
+    expect(fact.total).toEqual(line);
+    // One unit of three: the inclusive line is 1100 with 100 tax.
+    if (inclusive) expect(line).toEqual({ amount: 1100n, tax: 100n });
+
+    // Another Market's system actor never sees it.
+    const elsewhere = await new RefundReportFactsQuery(gate, deps).execute(otherSystem(), {
+      refundIds: [done.refundId],
+    });
+    expect(elsewhere.ok && elsewhere.value).toEqual([]);
+  });
+
+  it('denies every reporting read to a human actor, admin or seller', async () => {
+    const seller = testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'seller',
+        accountId: ids.next<'Account'>(),
+        sessionId: ids.next<'Session'>(),
+        sellerId: ids.next<'Seller'>(),
+      }),
+    );
+    const at = clock.now();
+    const page = { window: { from: null, to: at }, after: null, limit: 10 };
+    for (const human of [admin, seller]) {
+      const results = [
+        await new SellerOrderReportFactsQuery(gate, deps).execute(human, { sellerOrders: [] }),
+        await new RefundReportFactsQuery(gate, deps).execute(human, { refundIds: [] }),
+        await new SellerOrdersChangedQuery(gate, changesDeps()).execute(human, page),
+        await new RefundsSucceededQuery(gate, changesDeps()).execute(human, page),
+      ];
+      for (const result of results) expect(!result.ok && result.error.code).toBe('access.denied');
+    }
   });
 
   it('pages the seller orders and refunds of a window by id, and nothing of another Market', async () => {
@@ -364,6 +401,12 @@ describe.each(TEST_MARKETS)('ordering reporting reads in market %s (database)', 
     }
     expect(seen.filter((id) => mine.has(id as Id<'SellerOrder'>)).sort()).toEqual([...mine].sort());
     expect([...seen].sort()).toEqual(seen);
+    const otherOrders = await new SellerOrdersChangedQuery(gate, changesDeps()).execute(
+      otherSystem(),
+      { window, after: null, limit: 500 },
+    );
+    if (!otherOrders.ok) throw new Error(otherOrders.error.code);
+    expect(otherOrders.value.items.some((item) => mine.has(item.sellerOrderId))).toBe(false);
 
     const refunds = await new RefundsSucceededQuery(gate, changesDeps()).execute(system, {
       window,

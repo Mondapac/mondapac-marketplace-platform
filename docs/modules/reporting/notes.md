@@ -65,9 +65,21 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
   id, at most 500; a window with no start is the whole history, for the backfill).
 - On time (for now): the seller handed the order over (ready, else shipped) by its ready-by promise
   (`readyByOf`). Null with no promise, or unshipped within it; false once it passed unshipped. To be
-  replaced by the per-delivery-method promise of phase 1 (repo register FE-056, project register FE-093).
+  replaced by the per-delivery-method promise of phase 1 (repo register FE-060, project register FE-093).
 - `CatalogFacade.offerPrimaryCategories` (at most 200 Offers): the primary platform category of the
   product's published revision; a deleted Offer still answers. The category is read when the fact is
   written, so a later move of the product changes past days only at the next reconcile or backfill
-  (repo register FE-055, project register FE-092).
-- No customer id is copied into reporting (repo register FE-057, project register FE-094).
+  (repo register FE-059, project register FE-092).
+- No customer id is copied into reporting (repo register FE-061, project register FE-094).
+- The fact reads load the whole request at once: one read of the orders (seller orders and lines
+  included) per seller-order call, one of the refunds and one of their orders per refund call
+  (Mojtaba, PR 10 finding 2).
+- The changes scans walk `seller_orders` and `refunds` by `(market_id, id)` and filter each row: no
+  index answers an OR of five instants, one of them on the order. Correct for the backfill and cheap
+  at launch volume. Trigger: when `ordering.seller_orders` passes about 200k rows of a Market, or a
+  nightly run takes more than 2 s, run one keyset query per instant (cancellations by the ids of the
+  orders cancelled in the window), merge them in memory, and add the partial indexes
+  `seller_orders (market_id, ready_at, id) WHERE ready_at IS NOT NULL`, the same for `shipped_at` and
+  `delivered_at`, `orders (market_id, cancelled_at, id) WHERE cancelled_at IS NOT NULL` and
+  `refunds (market_id, settled_at, id) WHERE state = 'succeeded'` (Mojtaba, PR 10 findings 1 and 3;
+  repo register FE-062, project register FE-105).

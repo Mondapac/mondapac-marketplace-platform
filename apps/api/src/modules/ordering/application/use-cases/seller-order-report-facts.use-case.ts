@@ -79,9 +79,11 @@ export class SellerOrderReportFactsQuery extends UseCase<
       async () => {
         const now = this.deps.clock.now();
         const facts: SellerOrderReportFacts[] = [];
-        for (const [orderId, sellerOrderIds] of wanted) {
-          const order = await this.deps.orders.findById(context.market, orderId);
-          if (order === null) continue;
+        // One read for every order of the request (Mojtaba: no read per order).
+        const orders = await this.deps.orders.findByIds(context.market, [...wanted.keys()]);
+        for (const order of orders) {
+          const sellerOrderIds = wanted.get(order.id);
+          if (sellerOrderIds === undefined) continue;
           for (const sellerOrder of order.sellerOrders) {
             if (sellerOrderIds === 'all' || sellerOrderIds.has(sellerOrder.id)) {
               facts.push(sellerOrderReportFacts(order, sellerOrder, now));

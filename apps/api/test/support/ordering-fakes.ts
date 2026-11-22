@@ -174,6 +174,9 @@ class EmptyRefunds implements RefundRepository {
   findById() {
     return Promise.resolve(null);
   }
+  findByIds() {
+    return Promise.resolve([]);
+  }
   private unexpected(name: string): Promise<never> {
     return Promise.reject(new Error(`refunds.${name} not expected`));
   }
@@ -352,6 +355,14 @@ export class MemoryOrders implements OrderRepository {
     const order = this.rows.get(orderId);
     return Promise.resolve(
       order !== undefined && order.marketId === market.marketId ? order : null,
+    );
+  }
+  findByIds(market: MarketContext, orderIds: readonly Id<'Order'>[]) {
+    return Promise.resolve(
+      orderIds.flatMap((id) => {
+        const order = this.rows.get(id);
+        return order !== undefined && order.marketId === market.marketId ? [order] : [];
+      }),
     );
   }
   findOwn(_m: MarketContext, orderId: Id<'Order'>, accountId: Id<'Account'>) {

@@ -52,11 +52,15 @@ export class RefundReportFactsQuery extends UseCase<
       context.market,
       async () => {
         const facts: RefundReportFacts[] = [];
-        for (const id of ids) {
-          const refund = await this.deps.refunds.findById(context.market, id);
-          if (refund === null) continue;
-          const order = await this.deps.orders.findById(context.market, refund.orderId);
-          if (order === null) continue;
+        // Two reads for the whole request: the refunds, then their orders (no read per refund).
+        const refunds = await this.deps.refunds.findByIds(context.market, [...ids]);
+        const orders = await this.deps.orders.findByIds(context.market, [
+          ...new Set(refunds.map((refund) => refund.orderId)),
+        ]);
+        const byId = new Map(orders.map((order) => [order.id, order]));
+        for (const refund of refunds) {
+          const order = byId.get(refund.orderId);
+          if (order === undefined) continue;
           const fact = refundReportFacts(refund, order);
           if (fact !== null) facts.push(fact);
         }
