@@ -29,6 +29,13 @@ export interface PopoverProps {
   readonly count?: number;
   /** `sm` 288 px, `md` 340 px, `lg` 520 px; never wider than the viewport. */
   readonly width?: keyof typeof WIDTH;
+  /**
+   * `control` (default) is the bordered 36 px list-toolbar button. `icon` is a borderless 16 px
+   * icon with a 44 px touch area on a phone, for a hint beside a heading (see `PageInfo`).
+   */
+  readonly variant?: 'control' | 'icon';
+  /** Id of text that describes the trigger for assistive technology without opening the panel. */
+  readonly describedBy?: string;
   /** The panel's content; `close` shuts the panel and returns focus to the trigger. */
   readonly children: (close: () => void) => ReactNode;
 }
@@ -40,7 +47,15 @@ export interface PopoverProps {
  * viewport and scrolls when it is taller than the space left. Escape and a click outside close
  * it. Unlike a menu it holds fields, so Tab moves through them and focus starts on the panel.
  */
-export function Popover({ label, icon, count = 0, width = 'md', children }: PopoverProps) {
+export function Popover({
+  label,
+  icon,
+  count = 0,
+  width = 'md',
+  variant = 'control',
+  describedBy,
+  children,
+}: PopoverProps) {
   const [open, setOpen] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const panel = useRef<HTMLDivElement>(null);
@@ -114,11 +129,16 @@ export function Popover({ label, icon, count = 0, width = 'md', children }: Popo
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
+        aria-describedby={describedBy}
         aria-label={count > 0 ? `${label} (${count})` : label}
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex h-(--mp-size-control) w-(--mp-size-control) items-center justify-center rounded-md border border-line-control bg-surface text-fg hover:bg-muted"
+        className={
+          variant === 'icon'
+            ? `relative inline-flex size-6 items-center justify-center rounded-full text-icon-muted hover:bg-muted ${open ? 'bg-muted text-fg' : ''} before:absolute before:-inset-2.5 before:content-[''] md:before:hidden`
+            : 'inline-flex h-(--mp-size-control) w-(--mp-size-control) items-center justify-center rounded-md border border-line-control bg-surface text-fg hover:bg-muted'
+        }
       >
-        <Icon name={icon} />
+        <Icon name={icon} className={variant === 'icon' ? 'size-4!' : undefined} />
       </button>
       {count > 0 ? (
         <span
