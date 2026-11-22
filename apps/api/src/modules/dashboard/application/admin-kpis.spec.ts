@@ -44,7 +44,7 @@ const NOW = Temporal.Instant.from('2026-11-22T01:00:00Z');
 const ORDERS = 'ordering.order.view' as PermissionKey;
 const MONEY = 'commission-payouts.settlement.view' as PermissionKey;
 
-const operations = { period: { id: '7d' } } as unknown as OperationsAnswer;
+const operations = { period: { id: '7d' }, sellersWithOrders: 3 } as unknown as OperationsAnswer;
 const finance = {
   period: {
     id: '7d',
@@ -109,6 +109,27 @@ const topCategories = {
   ],
 } as unknown as TopCategoriesAnswer;
 
+const CATALOG_VIEW = 'catalog.product.view' as PermissionKey;
+const SELLERS_VIEW = 'sellers.seller.view' as PermissionKey;
+const queueCount = (count: number) =>
+  ok({ count, overdue: 0, oldestAt: null }) as ReturnType<
+    typeof ok<{ count: number; overdue: number; oldestAt: null }>
+  >;
+const queues = (
+  overrides: {
+    claims?: () => Promise<unknown>;
+    unhealthy?: () => Promise<unknown>;
+  } = {},
+): AdminKpisDependencies['queues'] =>
+  ({
+    catalog: {
+      claimsWithoutCertificate: overrides.claims ?? (() => Promise.resolve(queueCount(2))),
+    },
+    sellers: {
+      unhealthySellers: overrides.unhealthy ?? (() => Promise.resolve(queueCount(14))),
+    },
+  }) as unknown as AdminKpisDependencies['queues'];
+
 describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
   const market = testMarketContext(code, PLATFORM_TENANT_ID);
   const admin = testCallContext(
@@ -132,6 +153,7 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     const deps: AdminKpisDependencies = {
       viewer: { describe: () => Promise.resolve(ok(viewer(keys))) },
       reporting: facade,
+      queues: queues(),
       catalog: {
         categoryTree: () =>
           Promise.resolve(
@@ -213,12 +235,49 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     expect(ordersOnly.ok && ordersOnly.value.topCategories).toBeNull();
   });
 
+  it('answers the health counts the viewer may see, each under its own key', async () => {
+    const both = await build([CATALOG_VIEW, SELLERS_VIEW]).execute(admin, { period: '7d' });
+    expect(both.ok && both.value.health).toEqual({
+      uncertifiedListings: { status: 'ok', count: 2 },
+      sellersAtRisk: { status: 'ok', count: 14 },
+    });
+    const one = await build([SELLERS_VIEW]).execute(admin, { period: '7d' });
+    expect(one.ok && one.value.health).toEqual({
+      uncertifiedListings: null,
+      sellersAtRisk: { status: 'ok', count: 14 },
+    });
+    const none = await build([ORDERS, MONEY]).execute(admin, { period: '7d' });
+    expect(none.ok && none.value.health).toBeNull();
+  });
+
+  it('marks a health count that fails, is refused or is slow as error, never zero', async () => {
+    const deps: AdminKpisDependencies = {
+      viewer: { describe: () => Promise.resolve(ok(viewer([CATALOG_VIEW, SELLERS_VIEW]))) },
+      reporting: facade,
+      sellers: { sellerSummaries: () => Promise.resolve(ok([])) },
+      catalog: { categoryTree: () => Promise.resolve(ok([])) },
+      queues: queues({
+        claims: () => Promise.reject(new TypeError('boom')),
+        unhealthy: () => new Promise(() => undefined),
+      }),
+      clock: new FixedClock(NOW),
+      timeoutMs: 20,
+    };
+    const out = await new ViewAdminKpis(gate, deps).execute(admin, { period: '7d' });
+    const body = out.ok ? adminKpisBody(out.value) : null;
+    expect(body?.health).toEqual({
+      uncertifiedListings: { status: 'error' },
+      sellersAtRisk: { status: 'error' },
+    });
+  });
+
   it('keeps the money when the store names cannot be read', async () => {
     const deps: AdminKpisDependencies = {
       viewer: { describe: () => Promise.resolve(ok(viewer([MONEY]))) },
       reporting: facade,
       sellers: { sellerSummaries: () => Promise.reject(new TypeError('boom')) },
       catalog: { categoryTree: () => Promise.reject(new TypeError('boom')) },
+      queues: queues(),
       clock: new FixedClock(NOW),
       timeoutMs: 50,
     };

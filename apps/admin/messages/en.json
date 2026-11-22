@@ -271,6 +271,25 @@
         "label": "Refunds",
         "scope": "Refunds that succeeded in the period"
       },
+      "health": {
+        "title": "Marketplace health",
+        "scope": "Counts of now, except sellers with orders (the period)",
+        "incident": "Incident",
+        "watch": "Watch",
+        "clear": "All clear",
+        "active": {
+          "label": "Sellers with orders",
+          "hint": "At least one paid order in the period"
+        },
+        "listings": {
+          "label": "Listings with a lapsed certificate",
+          "hint": "A certification tag is still on after its certificate ended"
+        },
+        "risk": {
+          "label": "Sellers at risk",
+          "hint": "Sellers in the health queue"
+        }
+      },
       "categories": {
         "title": "Top categories",
         "scope": "By goods sold (incl. GST) in the period, before refunds",

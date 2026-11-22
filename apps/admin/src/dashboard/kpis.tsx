@@ -1,5 +1,6 @@
 import {
   ActivityTable,
+  Badge,
   BarList,
   ChartCardSkeleton,
   ChartEmpty,
@@ -36,6 +37,7 @@ import {
   type KpiDelta,
   type KpiPeriod,
   type KpiResult,
+  type HealthCount,
   type TopSellerRow,
   KPI_MONEY_PERMISSION,
   KPI_ORDERS_PERMISSION,
@@ -404,6 +406,94 @@ function TopSellers({
   );
 }
 
+function HealthRow({
+  label,
+  hint,
+  children,
+}: {
+  readonly label: string;
+  readonly hint: string;
+  readonly children: React.ReactNode;
+}) {
+  return (
+    <li className="flex items-start justify-between gap-4 border-t border-line-row py-3 first:border-t-0 first:pt-0 last:pb-0">
+      <span className="flex min-w-0 flex-col gap-0.5">
+        <span className="text-sm text-fg">{label}</span>
+        <span className="text-xs text-fg-muted">{hint}</span>
+      </span>
+      <span className="flex shrink-0 flex-col items-end gap-1">{children}</span>
+    </li>
+  );
+}
+
+/** One count of the health card: the number and, in words, what it means. */
+function HealthFigure({
+  count,
+  incidentWhenAny,
+}: {
+  readonly count: HealthCount;
+  readonly incidentWhenAny: boolean;
+}) {
+  const t = useTranslations('dashboard.kpis.health');
+  const tErr = useTranslations('dashboard');
+  const locale = useLocale();
+  if (count.status === 'error') {
+    return <span className="text-sm text-critical-fg">{tErr('error.card')}</span>;
+  }
+  return (
+    <>
+      <span className="text-lg font-semibold text-fg">
+        {formatCount(count.count, false, locale)}
+      </span>
+      {incidentWhenAny ? (
+        count.count > 0 ? (
+          <Badge tone="critical">{t('incident')}</Badge>
+        ) : (
+          <Badge tone="success">{t('clear')}</Badge>
+        )
+      ) : count.count > 0 ? (
+        <Badge tone="attention">{t('watch')}</Badge>
+      ) : (
+        <Badge tone="success">{t('clear')}</Badge>
+      )}
+    </>
+  );
+}
+
+function MarketHealthCard({
+  health,
+  operations,
+}: {
+  readonly health: NonNullable<AdminKpis['health']>;
+  readonly operations: (NonNullable<AdminKpis['operations']> & { readonly status: 'ok' }) | null;
+}) {
+  const t = useTranslations('dashboard.kpis.health');
+  const locale = useLocale();
+  return (
+    <DashboardCard id="dash-market-health" title={t('title')} scope={t('scope')}>
+      <ul aria-label={t('title')} className="flex flex-col">
+        {operations === null ? null : (
+          <HealthRow label={t('active.label')} hint={t('active.hint')}>
+            <span className="text-lg font-semibold text-fg">
+              {formatCount(operations.kpis.sellersWithOrders, false, locale)}
+            </span>
+          </HealthRow>
+        )}
+        {health.uncertifiedListings === null ? null : (
+          <HealthRow label={t('listings.label')} hint={t('listings.hint')}>
+            <HealthFigure count={health.uncertifiedListings} incidentWhenAny />
+          </HealthRow>
+        )}
+        {health.sellersAtRisk === null ? null : (
+          <HealthRow label={t('risk.label')} hint={t('risk.hint')}>
+            <HealthFigure count={health.sellersAtRisk} incidentWhenAny={false} />
+          </HealthRow>
+        )}
+      </ul>
+    </DashboardCard>
+  );
+}
+
 function TopCategories({
   topCategories,
   value,
@@ -474,7 +564,8 @@ function Strip({
     t('market-time'),
     minutes === null ? t('no-data-yet') : t('updated', { minutes }),
   ].join(' · ');
-  const hidden = value !== null && value.operations === null && value.finance === null;
+  const hidden =
+    value !== null && value.operations === null && value.finance === null && value.health === null;
   if (hidden) return null;
   return (
     <section aria-labelledby="dash-kpis" className="flex flex-col gap-3">
@@ -513,6 +604,12 @@ function Strip({
       </StatGrid>
       {value?.finance?.status === 'ok' ? (
         <GmvChart finance={value.finance} period={period} value={value} />
+      ) : null}
+      {value?.health !== null && value?.health !== undefined ? (
+        <MarketHealthCard
+          health={value.health}
+          operations={value.operations?.status === 'ok' ? value.operations : null}
+        />
       ) : null}
       {value?.topSellers?.status === 'ok' ? (
         <TopSellers

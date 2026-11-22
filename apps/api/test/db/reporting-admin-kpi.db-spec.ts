@@ -191,6 +191,19 @@ describe.each(TEST_MARKETS)('the admin KPI reader in market %s (database)', (cod
       ties[1]!,
     ]);
     expect(await readTop('XXX', 5)).toEqual([]);
+
+    // The same sellers, counted once each however many days or orders they have.
+    const countIn = async (rowCurrency: string) => {
+      const unit = await db.unitOfWork.run(
+        market,
+        async () => ok(await reader.sellersWithOrders(market, rowCurrency, range)),
+        { readOnly: true },
+      );
+      if (!unit.ok) throw new Error('read failed');
+      return unit.value;
+    };
+    expect(await countIn(currency)).toBe(5);
+    expect(await countIn('XXX')).toBe(0);
   });
 
   it('ranks the categories by goods sold across sellers, inside the range, the currency and the Market', async () => {

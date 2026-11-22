@@ -200,3 +200,12 @@ still answers.
   categories with the most goods sold from `daily_category_sales` (every seller summed), gross of
   refunds (the card says so). The dashboard joins names from `catalog` `categoryTree`; the nil UUID
   (goods whose category could not be read) and a deleted category show as "Uncategorised".
+- Marketplace health card (PR 4): the operations answer carries `sellersWithOrders` (sellers with a
+  paid order in the period, from `daily_seller_sales`). The dashboard adds a `health` section from
+  two owners' work-queue counts with the caller's context: listings with a lapsed certificate
+  (`catalog.claimsWithoutCertificate`, key `catalog.product.view`, shown as an incident when above
+  zero) and sellers in the health queue (`sellers.unhealthySellers`, key `sellers.seller.view`).
+  Each count is under the 1.5 s limit and answers `error`, never zero, when it fails. The percentage
+  of verified halal listings, sellers with orders out of approved sellers, out of stock everywhere
+  and products missing details need new owner counts (FE-148, FE-149). The KPI strip loads only for
+  a session with the orders or the money key, so the card needs one of them too (FE-150).

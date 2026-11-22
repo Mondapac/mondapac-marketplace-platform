@@ -71,6 +71,7 @@ const operations = {
   status: 'ok' as const,
   refreshedAt: '2026-11-22T09:58:00.000Z',
   kpis: {
+    sellersWithOrders: 2,
     current: {
       ordersPaid: 3,
       ordersCancelled: 1,
@@ -158,6 +159,7 @@ const answer = (parts: Partial<AdminKpis>): KpiResult => ({
     finance: null,
     topSellers: null,
     topCategories: null,
+    health: null,
     ...parts,
   },
 });
@@ -324,6 +326,45 @@ describe('the KPI formats', () => {
     expect(within(items[0]!).getByText('$5,000.00')).toBeTruthy();
     expect(within(items[0]!).getByText('40 seller orders')).toBeTruthy();
     expect(within(items[1]!).getByText('Uncategorised')).toBeTruthy();
+  });
+
+  it('shows the health counts with a word for each state, and an error in place', () => {
+    strip(
+      answer({
+        operations,
+        health: {
+          uncertifiedListings: { status: 'ok', count: 2 },
+          sellersAtRisk: { status: 'ok', count: 0 },
+        },
+      }),
+      ['ordering.order.view', 'catalog.product.view', 'sellers.seller.view'],
+    );
+    const card = screen.getByRole('region', { name: 'Marketplace health' });
+    const rows = within(card).getAllByRole('listitem');
+    expect(rows).toHaveLength(3);
+    expect(within(rows[0]!).getByText('2')).toBeTruthy(); // sellers with orders
+    expect(within(rows[1]!).getByText('Incident')).toBeTruthy();
+    expect(within(rows[2]!).getByText('All clear')).toBeTruthy();
+  });
+
+  it('shows a failed health count as an error, not a zero, and leaves the card out without its keys', () => {
+    const { unmount } = render(
+      wrap(
+        <AdminKpiStrip
+          source={answer({
+            health: { uncertifiedListings: null, sellersAtRisk: { status: 'error' } },
+          })}
+          period="7d"
+          permissionKeys={['sellers.seller.view']}
+        />,
+      ),
+    );
+    const card = screen.getByRole('region', { name: 'Marketplace health' });
+    expect(within(card).getAllByRole('listitem')).toHaveLength(1);
+    expect(within(card).queryByText('0')).toBeNull();
+    unmount();
+    strip(answer({ finance }), ['commission-payouts.settlement.view']);
+    expect(screen.queryByRole('region', { name: 'Marketplace health' })).toBeNull();
   });
 
   it('says so in the top categories card when empty or failed, and leaves it out without the money key', () => {
