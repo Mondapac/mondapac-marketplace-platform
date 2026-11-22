@@ -220,6 +220,68 @@
       "create-role": "Create a role",
       "without-owner": "Sellers without an owner",
       "find-customer": "Find a customer"
+    },
+    "kpis": {
+      "title": "Marketplace performance",
+      "market-time": "Market days",
+      "updated": "updated {minutes} min ago",
+      "no-data-yet": "no sales data yet",
+      "period": {
+        "label": "Period",
+        "today": "Today",
+        "days7": "7 days",
+        "days30": "30 days",
+        "month": "This month"
+      },
+      "compared": {
+        "today": "vs yesterday",
+        "days7": "vs previous 7 days",
+        "days30": "vs previous 30 days",
+        "month": "vs same days last month"
+      },
+      "gmv": {
+        "label": "GMV (incl. GST)",
+        "scope": "Goods of paid orders · {excl} excl. GST"
+      },
+      "net": {
+        "label": "Net sales (incl. GST)",
+        "scope": "GMV minus refunds of the period"
+      },
+      "aov": {
+        "label": "Average order (incl. GST)",
+        "scope": "GMV ÷ paid orders"
+      },
+      "refunded": {
+        "label": "Refunded (incl. GST)",
+        "scope": "Goods refunded in the period · {rate} of GMV"
+      },
+      "orders": {
+        "label": "Paid orders",
+        "scope": "Seller orders paid in the period"
+      },
+      "cancel": {
+        "label": "Cancel rate",
+        "scope": "{count} cancelled ÷ paid orders"
+      },
+      "on-time": {
+        "label": "Shipped on time",
+        "scope": "{count} shipped · late unshipped orders not counted yet"
+      },
+      "refunds": {
+        "label": "Refunds",
+        "scope": "Refunds that succeeded in the period"
+      },
+      "chart": {
+        "title": "GMV (incl. GST)",
+        "action": "View orders",
+        "this": "This period",
+        "previous": "Previous period",
+        "alt": "GMV incl. GST, {period}",
+        "empty": "No sales in this period yet.",
+        "table": "View as table",
+        "chart": "View as chart",
+        "date": "Day"
+      }
     }
   },
   "work-queue": {
