@@ -1,4 +1,13 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
+import { CountSellerApplications } from './application/use-cases/count-seller-applications.use-case';
+import { CountUnhealthySellers } from './application/use-cases/count-unhealthy-sellers.use-case';
+import {
+  SELLERS_WORK_QUEUE_COUNT_READER,
+  type SellersWorkQueueCountReader,
+} from './application/ports/work-queue-count.reader';
+import { SellersWorkQueueFacadeImplementation } from './presentation/sellers-work-queue.facade';
+import { SELLERS_WORK_QUEUE_FACADE } from './contracts/sellers-work-queue.facade';
+import type { UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import {
   AUTHORISATION_CHECK,
   registerPermissions,
@@ -413,6 +422,23 @@ const REVIEW_DECISION_PORTS = {
     StoreProfileController,
   ],
   providers: [
+    ...[CountSellerApplications, CountUnhealthySellers].map((type) => ({
+      provide: type,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, SELLERS_WORK_QUEUE_COUNT_READER],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        counts: SellersWorkQueueCountReader,
+      ) => new type(gate, { unitOfWork, counts }),
+    })),
+    {
+      provide: SELLERS_WORK_QUEUE_FACADE,
+      inject: [CountSellerApplications, CountUnhealthySellers],
+      useFactory: (
+        applications: CountSellerApplications,
+        unhealthySellers: CountUnhealthySellers,
+      ) => new SellersWorkQueueFacadeImplementation(applications, unhealthySellers),
+    },
     PersistenceModule.outboxWriterFor('sellers'),
     PersistenceModule.auditWriterFor('sellers'),
     PersistenceModule.auditTrailReaderFor('sellers'),
@@ -1227,6 +1253,7 @@ const REVIEW_DECISION_PORTS = {
   // SELLER_CERTIFICATE_DIRECTORY: SellerStoreProfileModule binds them.
   // SELLER_HEALTH_SIGNALS: SellerHealthModule binds the three feeds to it at start.
   exports: [
+    SELLERS_WORK_QUEUE_FACADE,
     SELLERS_FACADE,
     APPROVED_SELLER_ZONES,
     STORE_TEXT_CLAIM_CHECK,

@@ -41,3 +41,7 @@ export {
   type PricingSpecialsFacade,
   type SpecialInForce,
 } from './pricing-specials.facade';
+export {
+  PRICING_WORK_QUEUE_FACADE,
+  type PricingWorkQueueFacade,
+} from './pricing-work-queue.facade';

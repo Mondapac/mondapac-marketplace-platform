@@ -10,7 +10,11 @@ import type {
   WorkQueueCountQuery,
 } from '../../../../platform/work-queue/work-queue-count';
 import { ORDERING_ORDER_VIEW } from '../../contracts/permissions';
-import { countQueue, type WorkQueueCountDependencies } from '../work-queue-counts';
+import {
+  countAdminWorkQueue,
+  type WorkQueueCountDependencies,
+} from '../../../../platform/work-queue/count-work-queue';
+import type { WorkQueueCountReader } from '../ports/work-queue-count.reader';
 
 /**
  * `ordering.count-late-deliveries` (dashboards upgrade, phase 1): The paid seller orders past their delivery promise (critical queue; the promise per delivery method is documented on the reader). Overdue: past it by more than the queue's age limit.
@@ -28,7 +32,7 @@ export class CountLateDeliveries extends UseCase<
 
   constructor(
     gate: UseCaseGate,
-    private readonly deps: WorkQueueCountDependencies,
+    private readonly deps: WorkQueueCountDependencies<WorkQueueCountReader>,
   ) {
     super(gate);
   }
@@ -37,7 +41,7 @@ export class CountLateDeliveries extends UseCase<
     context: CallContext,
     query: WorkQueueCountQuery,
   ): Promise<Result<WorkQueueCount, AccessDenied>> {
-    return countQueue(this.deps, context, query, (counts) =>
+    return countAdminWorkQueue(this.deps, context, query, (counts) =>
       counts.lateDeliveries(context.market, query.now, query.staleBefore, query.signal),
     );
   }

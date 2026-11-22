@@ -628,6 +628,7 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   SearchFilterUnavailable: { noCustomerText: 'one error code' },
   CatalogFiltersFacade: { noCustomerText: 'a facade interface: no text of its own' },
+  CatalogWorkQueueFacade: { noCustomerText: 'a facade interface of dashboard counts: no text' },
   OfferSearchText: {
     noCustomerText:
       'read copy of the published revision text, already claim-checked when the revision was frozen',
