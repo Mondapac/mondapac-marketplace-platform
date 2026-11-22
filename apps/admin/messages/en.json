@@ -271,7 +271,6 @@
         "label": "Refunds",
         "scope": "Refunds that succeeded in the period"
       },
-<<<<<<< HEAD
       "sellers": {
         "title": "Top sellers",
         "scope": "By goods sold (incl. GST) in the period",
@@ -286,8 +285,6 @@
           "refunds": "Refunds"
         }
       },
-=======
->>>>>>> origin/main
       "flow": {
         "title": "Order flow",
         "scope": "Counts of the period; shipped and delivered orders may have been paid earlier",
@@ -2690,12 +2687,6 @@
       "list": {
         "title": "Held prices",
         "intro": "Prices waiting for a decision, oldest first. Approve or reject each one from its Actions menu.",
-        "search": {
-          "label": "Search held prices",
-          "placeholder": "Record ID or Offer ID",
-          "invalid": "Enter a full record ID or Offer ID."
-        },
-        "chip-search": "ID is {text}",
         "tabs": "Held price views",
         "tab": {
           "all": "All held prices",
