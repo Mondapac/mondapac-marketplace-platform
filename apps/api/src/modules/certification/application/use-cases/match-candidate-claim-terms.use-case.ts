@@ -16,7 +16,10 @@ export interface MatchCandidateClaimTermsInput {
 
 export type MatchCandidateClaimTermsFailure = QueryFailure | { readonly code: 'access.denied' };
 
-type Answer = Result<readonly (readonly ClaimTermMatch[])[], QueryFailure>;
+export type MatchCandidateClaimTermsAnswer = Result<
+  readonly (readonly ClaimTermMatch[])[],
+  QueryFailure
+>;
 
 /** A code for a type not yet created: only labels the match, nothing is stored or published. */
 const NEW_TYPE_CODE = 'candidate' as CertificationTypeCode;
@@ -25,11 +28,11 @@ const NEW_TYPE_CODE = 'candidate' as CertificationTypeCode;
  * Validates the candidate the way `validateTypeRevision` checks a revision's terms, then matches
  * the texts against the candidate terms only. Refused whole, before any matching.
  */
-function matchCandidate(
+export function matchCandidate(
   supportedLocales: (market: MarketContext) => readonly string[],
   context: CallContext,
   input: MatchCandidateClaimTermsInput,
-): Answer {
+): MatchCandidateClaimTermsAnswer {
   const candidate = (input as Partial<MatchCandidateClaimTermsInput> | null)?.candidate as
     Partial<CandidateClaimTerms> | null | undefined;
   if (typeof candidate !== 'object' || candidate === null) {
@@ -77,29 +80,6 @@ export class MatchCandidateClaimTerms extends UseCase<
     if (reviewerOf(context, { write: true }) === null) {
       return Promise.resolve(err({ code: 'access.denied' } as const));
     }
-    return Promise.resolve(matchCandidate(this.supportedLocales, context, input));
-  }
-}
-
-/** The `system` pair, for jobs and handlers (same answer). */
-export class MatchCandidateClaimTermsSystem extends UseCase<
-  MatchCandidateClaimTermsInput,
-  readonly (readonly ClaimTermMatch[])[],
-  QueryFailure
-> {
-  static override readonly access: AccessDeclaration = {
-    name: 'certification.match-candidate-claim-terms-system',
-    rule: { kind: 'system' },
-  };
-
-  constructor(
-    gate: UseCaseGate,
-    private readonly supportedLocales: (market: MarketContext) => readonly string[],
-  ) {
-    super(gate);
-  }
-
-  protected handle(context: CallContext, input: MatchCandidateClaimTermsInput): Promise<Answer> {
     return Promise.resolve(matchCandidate(this.supportedLocales, context, input));
   }
 }

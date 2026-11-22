@@ -43,10 +43,8 @@ import { EvaluateClaims } from './application/use-cases/evaluate-claims.use-case
 import { ClaimTermList } from './application/use-cases/claim-term-list.use-case';
 import { MatchClaimTermsSystem } from './application/use-cases/match-claim-terms-system.use-case';
 import { MatchClaimTerms } from './application/use-cases/match-claim-terms.use-case';
-import {
-  MatchCandidateClaimTerms,
-  MatchCandidateClaimTermsSystem,
-} from './application/use-cases/match-candidate-claim-terms.use-case';
+import { MatchCandidateClaimTerms } from './application/use-cases/match-candidate-claim-terms.use-case';
+import { MatchCandidateClaimTermsSystem } from './application/use-cases/match-candidate-claim-terms-system.use-case';
 import { ClaimTermLocales } from './application/use-cases/claim-term-locales.use-case';
 import { CERTIFICATION_FACADE } from './contracts/certification.facade';
 import { isUsableZone } from './domain/validity';

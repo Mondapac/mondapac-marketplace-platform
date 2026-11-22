@@ -13,10 +13,8 @@ import { createUseCaseGate } from '../../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../../platform/market-config/market-registry';
 import { CertificationFacadeImplementation } from '../../presentation/certification.facade';
-import {
-  MatchCandidateClaimTerms,
-  MatchCandidateClaimTermsSystem,
-} from './match-candidate-claim-terms.use-case';
+import { MatchCandidateClaimTerms } from './match-candidate-claim-terms.use-case';
+import { MatchCandidateClaimTermsSystem } from './match-candidate-claim-terms-system.use-case';
 
 // `matchCandidateClaimTerms` (catalog request X-1, design 6.5): a candidate term list matched
 // against texts with the real matcher, on both Market fixtures. No reader: the published
