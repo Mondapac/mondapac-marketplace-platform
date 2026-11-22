@@ -75,7 +75,7 @@ export async function signedInBuyer(buyer, password, market, known) {
     if (again.status === 200) return { session, created: false };
     throw error;
   }
-  const confirmed = await session.request('POST', '/identity/customer/confirm-email', {
+  const confirmed = await session.requestLink('POST', '/identity/customer/confirm-email', {
     token,
     password,
   });
