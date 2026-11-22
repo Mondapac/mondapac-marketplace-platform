@@ -16,10 +16,14 @@ const earliest = (instants: readonly (Temporal.Instant | null)[]): Temporal.Inst
   );
 
 /**
- * {@link WorkQueueCountReader} over Prisma. The not-ready orders read the to-ship partial index
- * (`fulfilment = 'to-ship'`, small by nature); their ready-by time is `paid_at` plus the frozen
- * minutes, so they are counted once per distinct number of minutes (a handful per Market: one
- * per delivery method's setting). Scheduled orders not delivered are counted on the window end.
+ * {@link WorkQueueCountReader} over Prisma (the late rule is documented on the port). The
+ * not-ready orders read the to-ship partial index (`fulfilment = 'to-ship'`, small by nature);
+ * their ready-by time is `paid_at` plus the frozen minutes, so they are counted once per distinct
+ * number of minutes. Kept in Prisma rather than one raw statement (ADR-0030's reviewed list): the
+ * distinct values among open orders are a handful per Market (one per delivery method's setting,
+ * plus the values a setting held before it changed), and a read-only unit opens no transaction
+ * (ADR-0025), so those counts run side by side. The scheduled orders not delivered read the
+ * partial index on (market_id, delivery_window_end) of the open scheduled orders.
  */
 export class PrismaWorkQueueCountReader implements WorkQueueCountReader {
   constructor(private readonly prisma: PrismaService) {}
@@ -28,6 +32,7 @@ export class PrismaWorkQueueCountReader implements WorkQueueCountReader {
     market: MarketContext,
     now: Temporal.Instant,
     overdueBefore: Temporal.Instant,
+    signal: AbortSignal,
   ): Promise<WorkQueueCount> {
     const orders = this.prisma.tx(market).orderingSellerOrder;
     const notReady = {
@@ -44,7 +49,7 @@ export class PrismaWorkQueueCountReader implements WorkQueueCountReader {
       marketId: market.marketId,
       tenantId: market.tenantId,
       paidAt: { not: null },
-      fulfilment: { in: ['to-ship', 'shipped'] as string[] },
+      fulfilment: { not: 'delivered' },
       refundedInFull: false,
       deliveryMethod: 'scheduled',
       deliveryWindowEnd: { not: null },
@@ -58,6 +63,7 @@ export class PrismaWorkQueueCountReader implements WorkQueueCountReader {
       }),
       orders.count({ where: { ...scheduled, deliveryWindowEnd: { lt: toDate(overdueBefore) } } }),
     ]);
+    if (signal.aborted) throw new Error('The dashboard stopped waiting');
     const perMinutes = await Promise.all(
       minutes.map(async ({ readyPrepMinutes }) => {
         const prep = readyPrepMinutes ?? 0;

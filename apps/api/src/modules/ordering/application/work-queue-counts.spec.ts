@@ -50,6 +50,7 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s', (code) =>
     );
   let declarations: AccessDeclaration[];
   let reads: { method: string; market: MarketContext; times: Temporal.Instant[] }[];
+  let signals: AbortSignal[];
   let failing: boolean;
 
   const gate = createUseCaseGate(markets, {
@@ -69,7 +70,8 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s', (code) =>
     },
   } as unknown as UnitOfWork;
   const counts: WorkQueueCountReader = {
-    lateDeliveries: (m, now, overdueBefore) => {
+    lateDeliveries: (m, now, overdueBefore, signal) => {
+      signals.push(signal);
       reads.push({ method: 'late', market: m, times: [now, overdueBefore] });
       return failing ? Promise.reject(new Error('down')) : Promise.resolve(COUNT);
     },
@@ -80,7 +82,7 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s', (code) =>
   };
   const late = new CountLateDeliveries(gate, { unitOfWork, counts });
   const refunds = new CountPendingRefunds(gate, { unitOfWork, counts });
-  const query = (signal = new AbortController().signal) => ({
+  const query = (signal: AbortSignal = new AbortController().signal) => ({
     now: NOW,
     staleBefore: STALE,
     signal,
@@ -89,6 +91,7 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s', (code) =>
   beforeEach(() => {
     declarations = [];
     reads = [];
+    signals = [];
     failing = false;
   });
 
@@ -103,6 +106,12 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s', (code) =>
       { method: 'late', market, times: [NOW, STALE] },
       { method: 'refunds', market, times: [STALE] },
     ]);
+  });
+
+  it("hands the dashboard's signal to the late read, which stops between its rounds", async () => {
+    const waiting = new AbortController();
+    await late.execute(actor('admin'), query(waiting.signal));
+    expect(signals).toEqual([waiting.signal]);
   });
 
   it('refuses anyone but a platform admin, before any read', async () => {

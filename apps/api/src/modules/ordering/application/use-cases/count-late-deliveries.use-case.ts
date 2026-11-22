@@ -38,7 +38,7 @@ export class CountLateDeliveries extends UseCase<
     query: WorkQueueCountQuery,
   ): Promise<Result<WorkQueueCount, AccessDenied>> {
     return countQueue(this.deps, context, query, (counts) =>
-      counts.lateDeliveries(context.market, query.now, query.staleBefore),
+      counts.lateDeliveries(context.market, query.now, query.staleBefore, query.signal),
     );
   }
 }

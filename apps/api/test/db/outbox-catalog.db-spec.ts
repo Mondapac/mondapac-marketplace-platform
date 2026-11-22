@@ -360,6 +360,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX seller_orders_market_id_paid_at_id_idx ON ordering.seller_orders USING btree (market_id, paid_at DESC, id DESC) WHERE (paid_at IS NOT NULL)',
   'ordering.seller_orders_market_id_to_ship_paid_at_idx':
     "CREATE INDEX seller_orders_market_id_to_ship_paid_at_idx ON ordering.seller_orders USING btree (market_id, paid_at DESC, id DESC) WHERE ((fulfilment = 'to-ship'::text) AND (paid_at IS NOT NULL))",
+  // The dashboard's late-delivery count: the open scheduled orders, on their window end.
+  'ordering.seller_orders_market_id_scheduled_open_window_end_idx':
+    "CREATE INDEX seller_orders_market_id_scheduled_open_window_end_idx ON ordering.seller_orders USING btree (market_id, delivery_window_end) WHERE ((delivery_method = 'scheduled'::text) AND (fulfilment <> 'delivered'::text) AND (paid_at IS NOT NULL) AND (refunded_in_full = false))",
   'ordering.seller_refund_limits_default_key':
     'CREATE UNIQUE INDEX seller_refund_limits_default_key ON ordering.seller_refund_limits USING btree (market_id) WHERE (seller_id IS NULL)',
   'ordering.seller_refund_limits_seller_key':

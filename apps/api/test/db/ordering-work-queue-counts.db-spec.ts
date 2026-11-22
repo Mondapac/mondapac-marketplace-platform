@@ -1,23 +1,25 @@
-import { money, ok, Temporal } from '@mondapac/shared-kernel';
-import { FixedClock } from '@mondapac/shared-kernel/testing';
+import { money, ok, parseTenantId, Temporal } from '@mondapac/shared-kernel';
+import { FixedClock, testMarketContext } from '@mondapac/shared-kernel/testing';
 import type { OrderState } from '../../src/modules/ordering/domain/order';
 import { PrismaOrderRepository } from '../../src/modules/ordering/infrastructure/prisma-order.repository';
 import { PrismaWorkQueueCountReader } from '../../src/modules/ordering/infrastructure/prisma-work-queue-count.reader';
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import { TEST_MARKETS } from '../support/test-config';
-import { createPersistence, marketOf, type Persistence } from './persistence-support';
+import { createPersistence, type Persistence } from './persistence-support';
 
 // The ordering counts of the dashboard's work queue (dashboards upgrade, phase 1) on PostgreSQL, as
 // the application role, for both Market fixtures: seller orders past their promise per delivery
 // method (not ready by the ready-by time; scheduled not delivered by the window end), with the
 // overdue count and the earliest promise passed; refunds pending. Other files write orders into the
-// same database at the same time, all in 2026: this file's orders are paid in January 2000 and it
-// counts at a moment of that month, so no other file's order is past a promise then.
+// same database at the same time: this file writes and counts under a tenant of its own (the
+// reader filters on it), so its counts are exact; its orders are paid in January 2000 as well.
 
 const T0 = Temporal.Instant.from('2000-01-10T00:00:00Z');
+const tenant = parseTenantId('work-queue-counts-spec');
+if (!tenant.ok) throw new Error('bad tenant');
 
 describe.each(TEST_MARKETS)('ordering work-queue counts in market %s (database)', (code) => {
-  const market = marketOf(code);
+  const market = testMarketContext(code, tenant.value);
   const currency = code === 'AU' ? 'AUD' : 'JPY';
   const clock = new FixedClock(T0);
   const ids = new UuidV7IdGenerator(clock);
@@ -32,12 +34,13 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s (database)'
   });
   afterAll(() => db.close());
 
+  const live = new AbortController().signal;
   const date = (instant: Temporal.Instant) => new Date(instant.epochMilliseconds);
 
   /**
    * One seller order paid at `paidAt` (its order confirmed then), placed with the delivery method,
    * window and preparation minutes `data` names; the rest of `data` is written after, as the
-   * fulfilment units would.
+   * fulfilment units would. `unpaid`: the order is still waiting for its payment (no `paid_at`).
    */
   const sellerOrder = async (
     paidAt: Temporal.Instant,
@@ -47,6 +50,7 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s (database)'
       readonly state: 'pending' | 'succeeded';
       readonly requestedAt: Temporal.Instant;
     },
+    unpaid = false,
   ) => {
     const {
       deliveryMethod = 'instant',
@@ -68,9 +72,9 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s (database)'
       id: orderId,
       marketId: market.marketId,
       accountId: ids.next<'Account'>(),
-      status: 'confirmed',
+      status: unpaid ? 'pending-payment' : 'confirmed',
       cancelReason: null,
-      paymentState: 'captured',
+      paymentState: unpaid ? 'none' : 'captured',
       total: money(1000n, currency),
       reservationId: ids.next<'Reservation'>(),
       stripeIdempotencyKey: `checkout-${orderId}`,
@@ -78,7 +82,7 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s (database)'
       stripePaymentIntentId: `pi_${orderId.replaceAll('-', '')}`,
       paymentExpiresAt: paidAt.add({ minutes: 30 }),
       createdAt: paidAt,
-      confirmedAt: paidAt,
+      confirmedAt: unpaid ? null : paidAt,
       cancelledAt: null,
       version: 1,
       taxStrategyId: null,
@@ -207,6 +211,32 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s (database)'
       { gross: 1000n, state: 'succeeded', requestedAt: paid.add({ minutes: 10 }) },
     );
     await sellerOrder(paid, { readyPrepMinutes: null });
+    // Ready-by exactly now: not passed yet.
+    await sellerOrder(T0.subtract({ minutes: 30 }), { readyPrepMinutes: 30 });
+    // Refunded in part: still late, and overdue.
+    await sellerOrder(
+      paid,
+      { readyPrepMinutes: 30 },
+      { gross: 500n, state: 'succeeded', requestedAt: paid.add({ minutes: 10 }) },
+    );
+    // Not paid yet: no promise runs.
+    await sellerOrder(paid, { readyPrepMinutes: 30 }, undefined, true);
+    // Shipped instant order, ready in time: no delivery-by promise, never late.
+    await sellerOrder(paid, {
+      readyPrepMinutes: 30,
+      readyAt: date(paid.add({ minutes: 20 })),
+      fulfilment: 'shipped',
+      shippedAt: date(paid.add({ minutes: 25 })),
+      carrier: 'Courier',
+    });
+    // Scheduled, ready but still to ship, window ended 2 hours ago: late and overdue.
+    await sellerOrder(paid, {
+      deliveryMethod: 'scheduled',
+      readyPrepMinutes: 30,
+      deliveryWindowStart: date(T0.subtract({ hours: 3 })),
+      deliveryWindowEnd: date(T0.subtract({ hours: 2 })),
+      readyAt: date(T0.subtract({ hours: 4 })),
+    });
     // Scheduled, shipped, window ended 3 hours ago: late and overdue.
     await sellerOrder(paid, {
       deliveryMethod: 'scheduled',
@@ -237,8 +267,10 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s (database)'
       carrier: 'Courier',
     });
 
-    const counted = await read(() => reader.lateDeliveries(market, T0, T0.subtract({ hours: 1 })));
-    expect(counted).toEqual({ count: 3, overdue: 2, oldestAt: paid.add({ minutes: 30 }) });
+    const counted = await read(() =>
+      reader.lateDeliveries(market, T0, T0.subtract({ hours: 1 }), live),
+    );
+    expect(counted).toEqual({ count: 5, overdue: 4, oldestAt: paid.add({ minutes: 30 }) });
   });
 
   it('counts nothing at a moment before any promise passed', async () => {
@@ -247,13 +279,21 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s (database)'
         market,
         Temporal.Instant.from('1999-01-01T00:00:00Z'),
         Temporal.Instant.from('1998-12-31T23:00:00Z'),
+        live,
       ),
     );
     expect(counted).toEqual({ count: 0, overdue: 0, oldestAt: null });
   });
 
+  it('stops before its second round of reads once the dashboard stopped waiting', async () => {
+    const stopped = new AbortController();
+    stopped.abort();
+    await expect(
+      read(() => reader.lateDeliveries(market, T0, T0.subtract({ hours: 1 }), stopped.signal)),
+    ).rejects.toThrow();
+  });
+
   it('counts the pending refunds, overdue by their request time', async () => {
-    const before = await read(() => reader.pendingRefunds(market, T0));
     const refund = (requestedAt: Temporal.Instant, state: 'pending' | 'succeeded') =>
       sellerOrder(
         T0.subtract({ hours: 72 }),
@@ -265,14 +305,8 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s (database)'
     await refund(T0.subtract({ hours: 1 }), 'pending');
     await refund(T0.subtract({ hours: 48 }), 'succeeded');
 
-    // Only this file's refunds were requested before T0 (others run in 2026), so the overdue count
-    // is exact; the total and the oldest hold at least this file's.
+    // The first test's refunds succeeded, so only these two are pending under this file's tenant.
     const counted = await read(() => reader.pendingRefunds(market, T0.subtract({ hours: 24 })));
-    expect(counted.overdue).toBe(1);
-    expect(counted.count).toBeGreaterThanOrEqual(before.count + 2);
-    expect(counted.oldestAt).not.toBeNull();
-    expect(
-      Temporal.Instant.compare(counted.oldestAt!, T0.subtract({ hours: 48 })),
-    ).toBeLessThanOrEqual(0);
+    expect(counted).toEqual({ count: 2, overdue: 1, oldestAt: T0.subtract({ hours: 48 }) });
   });
 });
