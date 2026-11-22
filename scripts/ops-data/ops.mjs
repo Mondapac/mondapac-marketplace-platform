@@ -274,10 +274,13 @@ async function main() {
     beginReset(STATE_DIR, 'reset');
     recreateDatabase(name);
     bootstrap(name);
+    // Marked while still empty: dev-local.bat runs the migrations before its own check, and a
+    // database with tables and no marker is refused there as someone else's data.
+    markDatabase();
     flushRedis();
     clearLoaderState();
     console.log(
-      `Database ${name} is empty. Next: pnpm db:migrate, mark-database.mjs, the loader, then backup.`,
+      `Database ${name} is empty and marked. Next: pnpm db:migrate, the loader, then backup.`,
     );
     return;
   }
