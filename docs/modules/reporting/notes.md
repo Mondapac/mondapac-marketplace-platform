@@ -107,7 +107,7 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
 - A seller order's instants only go from unknown to known, so an older read written after a newer
   one keeps what is stored (`keepKnownInstants`; Hassan, PR 10b finding 1): an event's facade read
   happens before its unit, so two deliveries of one seller order can write in the other order.
-- Migration `20261122070000_reporting_refunds_seller_order_index` adds
+- Migration `20261122110100_reporting_refunds_seller_order_index` adds
   `refunds (market_id, seller_order_id)` for the check below (Mojtaba, PR 10b finding 1).
 - `putSellerOrder` also refuses a seller order whose refund, recorded before it, names another
   seller, order or currency (Hassan, PR 9 re-review).
