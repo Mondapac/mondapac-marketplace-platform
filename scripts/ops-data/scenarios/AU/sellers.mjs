@@ -61,7 +61,7 @@ export const SELLERS = [
     '4031',
     '000000101',
     '0755500001',
-    'Family-run butchery in Kedron. We prepare every cut ourselves and deliver across Greater Brisbane. Lamb, beef, goat and free-range chicken, cut to order and packed the same morning.',
+    'Family-run butchery in Kedron. We cut and trim every piece ourselves and deliver across Greater Brisbane. Lamb, beef, goat and free-range chicken, cut to order and packed the same morning.',
     {
       certificate: halal('HC-2025-0142', '2025-07-01', '2027-06-30'),
       minimum: 4000,

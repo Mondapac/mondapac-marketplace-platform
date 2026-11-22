@@ -1,5 +1,11 @@
 import { spawnSync } from 'node:child_process';
+import { readFileSync } from 'node:fs';
 import path from 'node:path';
+
+import {
+  matchClaimTerms,
+  prepareVocabulary,
+} from '../src/modules/certification/domain/claim-text-matcher';
 
 // scripts/ops-data (the operational test data loader, phase 2): the guards that keep it off any
 // production system, and the invariants of the AU scenario's catalog structure. The strict local
@@ -205,5 +211,54 @@ describe('the ops-data AU scenario', () => {
       console.log(problems.length === 0 ? 'ok' : problems.join('; '));
     `);
     expect(answer.out.trim()).toBe('ok');
+  });
+
+  it('carries no claim term of the seeded vocabulary in any text, as the claim matcher reads it', () => {
+    // Catalog and sellers run every text through the claim matcher with the Market's whole
+    // vocabulary, inactive types included, and its compact pass finds a term across word breaks
+    // ("prepare every" holds "pareve"). A hit stops the loader halfway, so every string of the
+    // scenario is checked here with the same matcher and the seeded terms.
+    const seed = JSON.parse(
+      readFileSync(path.join(REPO_ROOT, 'config/certification-seed/AU.json'), 'utf8'),
+    ) as {
+      types: { code: string; locales: Record<string, { claimTerms: string[] }> }[];
+    };
+    const vocabulary = prepareVocabulary(
+      seed.types.map((type) => ({
+        typeCode: type.code as never,
+        terms: Object.values(type.locales).flatMap((locale) => locale.claimTerms),
+      })),
+    );
+    // Keys whose values are codes, not text a buyer reads: a certificate's type names the claim
+    // through a certificate, which is the allowed way.
+    const answer = run(`
+      import { SCENARIO } from './scripts/ops-data/scenarios/AU/index.mjs';
+      const out = [];
+      const walk = (value, at) => {
+        if (typeof value === 'string') out.push([at, value]);
+        else if (Array.isArray(value)) value.forEach((v, i) => walk(v, at + '[' + i + ']'));
+        else if (value !== null && typeof value === 'object')
+          for (const [k, v] of Object.entries(value)) walk(v, at + '.' + k);
+      };
+      walk(SCENARIO, 'scenario');
+      console.log(JSON.stringify(out));
+    `);
+    const strings = JSON.parse(answer.out) as [string, string][];
+    expect(strings.length).toBeGreaterThan(100);
+    const allowed = new Set(Object.values(seed.types).map((type) => type.code));
+    const hits: string[] = [];
+    for (let i = 0; i < strings.length; i += 100) {
+      const batch = strings.slice(i, i + 100);
+      matchClaimTerms(
+        batch.map(([, text]) => text),
+        vocabulary,
+      ).forEach((matches, j) => {
+        const [at, text] = batch[j]!;
+        if (matches.length > 0 && !allowed.has(text)) {
+          hits.push(`${at}: ${matches.map((m) => `${m.typeCode}/${m.pass}`).join(',')}`);
+        }
+      });
+    }
+    expect(hits).toEqual([]);
   });
 });
