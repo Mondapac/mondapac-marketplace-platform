@@ -24,6 +24,7 @@ import {
   detailOf,
   invalidField,
   lockForChange,
+  slideIdOf,
   type SlideDetailView,
   type SlideFailure,
 } from './slide-flow';
@@ -126,18 +127,12 @@ async function projectLive(
   );
 }
 
-/**
- * The link and the scope ids of the draft that do not point at something live in this Market: a
- * page that exists and is not archived, a category in the public tree, a published product, a
- * seller who may sell. An answer that could not be had counts against the draft (fail closed).
- */
-async function unresolvedTargets(
-  deps: StorefrontDependencies,
-  context: CallContext,
-  slide: SlideRecord,
+/** The link and the scope ids of a draft, each with the field it is in. */
+function targetsOf(
+  slide: Pick<SlideRecord, 'kind'>,
   draft: { readonly content: unknown },
   placements: readonly SlidePlacement[],
-): Promise<Problems> {
+): { path: string; type: string; id: string }[] {
   const wanted: { path: string; type: string; id: string }[] = [];
   const link = readContent(slide.kind, draft.content)?.link ?? null;
   if (link !== null) wanted.push({ path: 'content.link', type: link.type, id: link.id });
@@ -150,8 +145,73 @@ async function unresolvedTargets(
       });
     }
   }
+  return wanted;
+}
+
+const facadeTargets = (wanted: readonly { type: string; id: string }[]): SlideTarget[] =>
+  wanted
+    .filter(
+      (entry): entry is SlideTarget =>
+        entry.type === 'category' || entry.type === 'product' || entry.type === 'seller',
+    )
+    .map((entry) => ({ type: entry.type, id: entry.id }));
+
+/**
+ * What catalog and sellers say is live among the targets of the slide's draft version `versionNo`,
+ * asked before the approving unit opens: their facades run their own read-only units, and a unit
+ * never opens inside another. `draftId` names the version that was checked; the approving unit
+ * refuses if the draft has changed since. A slide or version that is not there checks nothing
+ * (the approving unit answers the refusal). `live` null: an answer could not be had.
+ */
+async function liveTargetsOfDraft(
+  deps: StorefrontDependencies,
+  context: CallContext,
+  slideInput: unknown,
+  versionNo: number,
+): Promise<{ readonly draftId: string | null; readonly live: ReadonlySet<string> | null }> {
+  const id = slideIdOf(slideInput);
+  if (id === null) return { draftId: null, live: new Set() };
+  const read = await deps.unitOfWork.run<
+    { readonly draftId: string | null; readonly targets: SlideTarget[] },
+    never
+  >(
+    context.market,
+    async () => {
+      const slide = await deps.slides.findSlide(context.market, id);
+      const draft =
+        slide === null || slide.draftVersionId === null
+          ? null
+          : await deps.slides.findVersion(context.market, slide.id, slide.draftVersionId);
+      if (slide === null || draft === null || draft.versionNo !== versionNo) {
+        return ok({ draftId: null, targets: [] as SlideTarget[] });
+      }
+      const targets = facadeTargets(targetsOf(slide, draft, readPlacements(draft.placements)));
+      return ok({ draftId: draft.id, targets });
+    },
+    { readOnly: true },
+  );
+  if (!read.ok) return { draftId: null, live: null };
+  const { draftId, targets } = read.value;
+  if (targets.length === 0) return { draftId, live: new Set() };
+  return { draftId, live: await deps.targets.live(context, targets) };
+}
+
+/**
+ * The link and the scope ids of the draft that do not point at something live in this Market: a
+ * page that exists and is not archived (read here, in the approving unit), and a category in the
+ * public tree, a published product or a seller who may sell (from `live`, asked before the unit
+ * opened). An answer that could not be had counts against the draft (fail closed).
+ */
+async function unresolvedTargets(
+  deps: StorefrontDependencies,
+  context: CallContext,
+  slide: SlideRecord,
+  draft: { readonly content: unknown },
+  placements: readonly SlidePlacement[],
+  live: ReadonlySet<string> | null,
+): Promise<Problems> {
+  const wanted = targetsOf(slide, draft, placements);
   const failed: Problems = [];
-  const toFacade: SlideTarget[] = [];
   for (const entry of wanted) {
     if (entry.type === 'page') {
       const page = await deps.pages.findPage(context.market, entry.id as Id<'StorefrontPage'>);
@@ -159,19 +219,11 @@ async function unresolvedTargets(
         failed.push({ path: entry.path, code: 'not-found' });
       }
     } else if (entry.type === 'category' || entry.type === 'product' || entry.type === 'seller') {
-      toFacade.push({ type: entry.type, id: entry.id });
-    }
-    // A prepared search is named by a code, checked by its format when the draft was saved.
-  }
-  if (toFacade.length > 0) {
-    const live = await deps.targets.live(context, toFacade);
-    for (const entry of wanted) {
-      if (entry.type !== 'category' && entry.type !== 'product' && entry.type !== 'seller')
-        continue;
       const key = targetKey({ type: entry.type, id: entry.id });
       if (live === null) failed.push({ path: entry.path, code: 'unverifiable' });
       else if (!live.has(key)) failed.push({ path: entry.path, code: 'not-found' });
     }
+    // A prepared search is named by a code, checked by its format when the draft was saved.
   }
   return failed;
 }
@@ -228,6 +280,7 @@ export async function approveSlide(
     return err(invalidField('versionNo', reviewed === undefined ? 'required' : 'format'));
   }
   const stamp: SlideStamp = { at: deps.clock.now(), by: admin.accountId };
+  const checked = await liveTargetsOfDraft(deps, context, input.slide, reviewed);
   return deps.unitOfWork.run<SlideDetailView, SlideFailure>(context.market, async () => {
     const locked = await lockForChange(deps, context, input.slide);
     if (!locked.ok) return err(locked.error);
@@ -248,7 +301,19 @@ export async function approveSlide(
     if (problems.length > 0) return err({ code: 'validation.failed', fields: problems } as const);
     if (isEnded(draft, stamp.at)) return err({ code: 'storefront.slide-ended' } as const);
 
-    const unresolved = await unresolvedTargets(deps, context, slide, draft, placements);
+    // The targets were checked for this version before the unit opened; a draft saved since then
+    // is another version, and the admin reviews that one.
+    if (checked.draftId !== draft.id) {
+      return err({ code: 'storefront.slide-draft-changed' } as const);
+    }
+    const unresolved = await unresolvedTargets(
+      deps,
+      context,
+      slide,
+      draft,
+      placements,
+      checked.live,
+    );
     if (unresolved.length > 0) {
       return err({ code: 'storefront.slide-link-invalid', fields: unresolved } as const);
     }

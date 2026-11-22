@@ -504,4 +504,51 @@ describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (c
       }
     });
   });
+
+  it('approves a slide linked to a category when the targets facade opens its own unit, as catalog does', async () => {
+    const categoryId = ids.next<'Category'>();
+    // Catalog's and sellers' facades each run a read-only unit; a unit never opens inside another,
+    // so the approval asks them before its own unit opens.
+    const asked: number[] = [];
+    const facadeDeps: StorefrontDependencies = {
+      ...deps,
+      targets: {
+        live: (target, targets) =>
+          db.unitOfWork
+            .run(target.market, () => Promise.resolve({ ok: true as const, value: true }), {
+              readOnly: true,
+            })
+            .then((read) => {
+              asked.push(targets.length);
+              return read.ok ? new Set(targets.map(targetKey)) : null;
+            }),
+      },
+    };
+    const linked = draft(24 * 300, {
+      kind: 'link',
+      content: {
+        title: 'Fresh lamb',
+        textTone: 'dark',
+        link: { type: 'category', id: categoryId },
+      },
+      placements: [{ position: PUBLIC_POSITION }],
+    });
+    const created = ok(await createSlide(facadeDeps, context, linked));
+    ok(await submitSlide(facadeDeps, context, { slide: created.id }));
+    const done = ok(
+      await approveSlide(facadeDeps, context, { slide: created.id, body: { versionNo: 1 } }),
+    );
+    expect(done.status).not.toBe('draft');
+    expect(done.live?.versionNo).toBe(1);
+    expect(asked).toEqual([1]);
+    // A draft saved after the check is another version: the approval of version 1 is refused.
+    const edit = Object.fromEntries(Object.entries(linked).filter(([key]) => key !== 'kind'));
+    const again = ok(
+      await updateSlideDraft(facadeDeps, context, { slide: created.id, body: edit }),
+    );
+    ok(await submitSlide(facadeDeps, context, { slide: again.id }));
+    expect(
+      await approveSlide(facadeDeps, context, { slide: created.id, body: { versionNo: 1 } }),
+    ).toEqual({ ok: false, error: { code: 'storefront.slide-draft-changed' } });
+  });
 });
