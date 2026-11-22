@@ -185,3 +185,8 @@ still answers.
 - One grouped read per range of `daily_seller_sales`, summed over sellers in the database, in one
   read-only unit (ADR-0025). No cache (FE-070 when it is needed).
 - No table, migration or permission is added.
+- Order flow card (phase 5, part 2): the operations answer also carries `ordersDelivered`
+  (`daily_seller_sales.orders_delivered`). The admin card shows paid, shipped and delivered as a
+  funnel of the period's own counts, plus cancelled (with the cancel rate) and refund counts. It is
+  not a cohort: an order paid before the period and shipped in it counts as shipped, so the
+  percentages are approximate (FE-147). It needs only `ordering.order.view`.

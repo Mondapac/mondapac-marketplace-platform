@@ -138,4 +138,58 @@ describe.each(TEST_MARKETS)('the admin KPI reader in market %s (database)', (cod
     });
     expect(none).toEqual({ days: [], refreshedAt: null });
   });
+
+  it('ranks the sellers by goods sold, biggest first, inside the range, the currency and the Market', async () => {
+    const big = idOf<'Seller'>();
+    const mid = idOf<'Seller'>();
+    const small = idOf<'Seller'>();
+    const noSale = idOf<'Seller'>();
+    const tieA = idOf<'Seller'>();
+    const tieB = idOf<'Seller'>();
+    await record(market, order(mid, `2026-${M}-22T03:00:00Z`, 20_000n));
+    await record(market, order(mid, `2026-${M}-23T03:00:00Z`, 20_000n)); // two days of one seller add up
+    await record(
+      market,
+      order(big, `2026-${M}-22T03:00:00Z`, 90_000n, {
+        shippedAt: at(`2026-${M}-22T05:00:00Z`),
+        shippedOnTime: true,
+      }),
+    );
+    await record(market, order(small, `2026-${M}-23T03:00:00Z`, 1_100n));
+    // Equal totals: the lower seller id comes first.
+    await record(market, order(tieA, `2026-${M}-23T03:00:00Z`, 1_100n));
+    await record(market, order(tieB, `2026-${M}-23T03:00:00Z`, 1_100n));
+    await record(market, order(noSale, `2026-${M}-27T03:00:00Z`, 500_000n)); // outside the range
+    await record(
+      other,
+      order(small, `2026-${M}-22T03:00:00Z`, 9_000_000n, {}, CURRENCIES[otherMarketOf(code)]),
+    );
+
+    const range = { from: day(`2026-${M}-22`), to: day(`2026-${M}-24`) };
+    const readTop = async (rowCurrency: string, limit: number) => {
+      const unit = await db.unitOfWork.run(
+        market,
+        async () => ok(await reader.topSellers(market, rowCurrency, range, limit)),
+        { readOnly: true },
+      );
+      if (!unit.ok) throw new Error('read failed');
+      return unit.value;
+    };
+    const top = await readTop(currency, 5);
+    const ties = [small, tieA, tieB].sort();
+    expect(top.map((row) => [row.sellerId, row.goodsAmount, row.ordersPaid])).toEqual([
+      [big, 90_000n, 1],
+      [mid, 40_000n, 2],
+      ...ties.map((sellerId) => [sellerId, 1_100n, 1]),
+    ]);
+    expect(top[0]).toMatchObject({ ordersShipped: 1, ordersShippedOnTime: 1 });
+    expect((await readTop(currency, 2)).map((row) => row.sellerId)).toEqual([big, mid]);
+    expect((await readTop(currency, 4)).map((row) => row.sellerId)).toEqual([
+      big,
+      mid,
+      ties[0]!,
+      ties[1]!,
+    ]);
+    expect(await readTop('XXX', 5)).toEqual([]);
+  });
 });

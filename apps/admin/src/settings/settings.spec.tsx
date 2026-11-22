@@ -48,7 +48,11 @@ describe('SupportEmailCard', () => {
     expect(screen.getByText('help@example.com')).toBeTruthy();
     expect(screen.getByText('View only')).toBeTruthy();
     expect(screen.getByText(/^Your role can see these settings but not change them/)).toBeTruthy();
-    expect(screen.queryByRole('button')).toBeNull();
+    expect(
+      screen
+        .queryAllByRole('button')
+        .filter((b) => !b.getAttribute('aria-label')?.startsWith('About ')),
+    ).toEqual([]);
     expect(screen.queryByLabelText('Support email address')).toBeNull();
   });
 

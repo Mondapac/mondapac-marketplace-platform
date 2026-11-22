@@ -10,6 +10,7 @@ import {
   TextField,
   toast,
   FormSkeleton,
+  PageInfo,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -246,8 +247,10 @@ export function NewPageFormView({
     <div className="flex flex-col gap-4">
       <BackLink href={PAGES_PATH} label={t('back')} />
       <div>
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
-        <p className="text-fg-muted">{t('intro')}</p>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold">{t('title')}</h1>
+          <PageInfo page={t('title')}>{t('intro')}</PageInfo>
+        </div>
       </div>
       {load === 'loading' ? (
         <FormSkeleton label={t('loading')} slowLabel={tl('slow')} sections={[{ fields: 4 }]} />

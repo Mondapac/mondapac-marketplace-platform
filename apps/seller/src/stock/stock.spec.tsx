@@ -101,7 +101,11 @@ describe('StockLocations', () => {
 
   it('hides every action without the edit permission', () => {
     mount(view(), false);
-    expect(screen.queryByRole('button')).toBeNull();
+    expect(
+      screen
+        .queryAllByRole('button')
+        .filter((b) => !b.getAttribute('aria-label')?.startsWith('About ')),
+    ).toEqual([]);
     expect(
       screen.getByText(
         /You can see your stock locations but not change them. The store owner can give you access/,

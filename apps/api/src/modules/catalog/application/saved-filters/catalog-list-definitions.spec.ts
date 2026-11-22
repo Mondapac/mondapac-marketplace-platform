@@ -394,7 +394,28 @@ describe('the catalog phase 2 saved-filter lists', () => {
       };
       expect(list.parsePayload(payload)).toEqual({ ok: true, value: payload });
     });
-    it('refuses what the queue refuses, and has no search', () => {
+    it('keeps the search text q, trimmed, with the filters', () => {
+      const payload = {
+        v: 1,
+        q: '  Dates Co ',
+        filters: { kind: 'product-revision' },
+        sort: 'submitted',
+        direction: 'asc',
+      };
+      expect(list.parsePayload(payload)).toEqual({
+        ok: true,
+        value: { ...payload, q: 'Dates Co' },
+      });
+    });
+    it('refuses a search text the queue refuses', () => {
+      expect(fieldsOf(list, { v: 1, q: ' a ', sort: 'submitted', direction: 'asc' })).toEqual([
+        { path: 'payload.q', code: 'length' },
+      ]);
+      expect(
+        fieldsOf(list, { v: 1, q: 'x'.repeat(101), sort: 'submitted', direction: 'asc' }),
+      ).toEqual([{ path: 'payload.q', code: 'length' }]);
+    });
+    it('refuses what the queue refuses', () => {
       expect(
         fieldsOf(list, { v: 1, filters: { kind: 'x' }, sort: 'submitted', direction: 'asc' }),
       ).toEqual([{ path: 'payload.filters.kind', code: 'unknown' }]);

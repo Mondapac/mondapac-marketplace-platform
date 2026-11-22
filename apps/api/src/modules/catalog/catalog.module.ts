@@ -108,6 +108,7 @@ import {
   SELLER_ELIGIBILITY_STATUS_READER,
 } from './application/ports/seller-eligibility.reader';
 import { SELLER_NAMES_READER } from './application/ports/seller-names.reader';
+import { STORE_NAME_SEARCH } from './application/ports/store-name-search';
 import { ProductRevisionApprove } from './application/use-cases/product-revision-approve.use-case';
 import { ProductRevisionRequestChanges } from './application/use-cases/product-revision-request-changes.use-case';
 import { ProductRevisionAdminRead } from './application/use-cases/revision-review-read.use-case';
@@ -691,6 +692,7 @@ const PORT = {
   eligibilityStatus: SELLER_ELIGIBILITY_STATUS_READER,
   allowedTypes: ALLOWED_PRODUCT_TYPES_READER,
   sellerNames: SELLER_NAMES_READER,
+  storeSearch: STORE_NAME_SEARCH,
   ownReader: OWN_CATALOG_READER,
   adminProductsReader: ADMIN_PRODUCTS_READER,
   adminVariantsReader: ADMIN_VARIANTS_READER,
@@ -2407,6 +2409,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       ownReader: true,
       policy: true,
       sellerNames: true,
+      storeSearch: true,
       gtinRegistry: true,
       productApproveProbe: true,
     }),

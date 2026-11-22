@@ -81,9 +81,12 @@ export interface FunnelStep {
 export function Funnel({
   label,
   steps,
+  showShare = true,
 }: {
   readonly label: string;
   readonly steps: readonly FunnelStep[];
+  /** Print each later step's share of the first. Off when a step may exceed the first. */
+  readonly showShare?: boolean;
 }) {
   const first = steps[0]?.value ?? 0;
   return (
@@ -96,7 +99,7 @@ export function Funnel({
               <span className="min-w-0 break-words text-fg">{step.label}</span>
               <span className="shrink-0 font-medium text-fg">
                 {step.display}
-                {i === 0 ? null : (
+                {i === 0 || !showShare ? null : (
                   <span className="ms-2 text-xs font-normal text-fg-muted">
                     {Math.round(share)}%
                   </span>

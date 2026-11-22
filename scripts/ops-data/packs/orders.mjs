@@ -37,7 +37,7 @@ async function waitFor(label, check, seconds) {
  * Signs the buyer in, or signs them up and confirms the address from Mailpit (confirming signs in,
  * so every buyer costs one sign-in against the per-address limit of the run).
  */
-async function signedInBuyer(buyer, password, market, known) {
+export async function signedInBuyer(buyer, password, market, known) {
   const session = new Session('customer', market);
   if (known) {
     const first = await session.request('POST', '/identity/customer/sign-in', {
@@ -75,7 +75,7 @@ async function signedInBuyer(buyer, password, market, known) {
     if (again.status === 200) return { session, created: false };
     throw error;
   }
-  const confirmed = await session.request('POST', '/identity/customer/confirm-email', {
+  const confirmed = await session.requestLink('POST', '/identity/customer/confirm-email', {
     token,
     password,
   });
@@ -92,7 +92,7 @@ async function signedInBuyer(buyer, password, market, known) {
 }
 
 /** The buyer's addresses, created when missing (matched by street line); returns their ids. */
-async function ensureAddresses(session, buyer, scenario) {
+export async function ensureAddresses(session, buyer, scenario) {
   const book = await session.ok('GET', '/customers/me/addresses');
   const items = book.addresses ?? book.items ?? [];
   const ids = [];
@@ -121,7 +121,7 @@ async function ensureAddresses(session, buyer, scenario) {
  * The offer id and variant ids of each store's scenario products, read from the store's own offer
  * list (the products pack made them with SKU <PREFIX>-<n>, n the offer's place in the scenario).
  */
-async function offerIndex(scenario, sessions, state) {
+export async function offerIndex(scenario, sessions, state) {
   const index = new Map();
   for (const seller of scenario.sellers) {
     const session = sessions.get(seller.key);
@@ -181,7 +181,7 @@ async function pickupChoices(session, addressId, label) {
  * buyer's answer carries no PaymentIntent once the card is authorised), then waits for the worker
  * to confirm the order. Safe to repeat: the API stores each Stripe event once.
  */
-async function confirmPaid(ctx, entry, buyer, orderId, label) {
+export async function confirmPaid(ctx, entry, buyer, orderId, label) {
   const { admin, stripe, secret, scenario, state, save } = ctx;
   const view = await admin.ok('GET', `/ordering/admin/orders/${orderId}`);
   if (typeof view.paymentIntentId !== 'string') {
@@ -214,7 +214,7 @@ async function confirmPaid(ctx, entry, buyer, orderId, label) {
   save();
 }
 
-async function place(ctx, entry, buyer, addressIds, label) {
+export async function place(ctx, entry, buyer, addressIds, label) {
   const { scenario, index, stripe, state, save, sellerIdOf } = ctx;
   await fillCart(
     buyer,
@@ -281,7 +281,7 @@ async function giveBack(ctx, path, body, label) {
 }
 
 /** Takes a paid order as far as its outcome: ready, collected, refunded, or cancelled. */
-async function fulfil(ctx, entry, buyer, label) {
+export async function fulfil(ctx, entry, buyer, label) {
   const { admin, sessions, state, save, sellerKeyOf } = ctx;
   const record = state.orders[entry.key];
   const target = TARGET[entry.outcome];
@@ -345,19 +345,24 @@ async function fulfil(ctx, entry, buyer, label) {
   }
 }
 
-export async function ordersPack({
+/**
+ * What the order steps share: the Stripe test client and webhook secret, the offers of each store,
+ * and the loader's state (state.buyers, state.orders, state.carts are created here).
+ */
+export async function orderContext({
   admin,
   reviewer,
   scenario,
   sessions,
   state,
   save,
-  password,
   log,
+  withStripe = true,
 }) {
   const market = scenario.market;
-  const stripe = new StripeTestMode(process.env.STRIPE_SECRET_KEY, market);
-  const secret = webhookSecretOf(process.env.STRIPE_WEBHOOK_SECRET, market);
+  // A refresh without orders needs no Stripe key (the shelves and prices are still refreshed).
+  const stripe = withStripe ? new StripeTestMode(process.env.STRIPE_SECRET_KEY, market) : null;
+  const secret = withStripe ? webhookSecretOf(process.env.STRIPE_WEBHOOK_SECRET, market) : null;
   state.buyers ??= {};
   state.orders ??= {};
   state.carts ??= {};
@@ -371,7 +376,7 @@ export async function ordersPack({
   };
   const sellerKeyOf = (id) => [...sellerIds].find(([, value]) => value === id)?.[0];
   const index = await offerIndex(scenario, sessions, state);
-  const ctx = {
+  return {
     admin,
     reviewer,
     scenario,
@@ -385,6 +390,37 @@ export async function ordersPack({
     sellerIdOf,
     sellerKeyOf,
   };
+}
+
+/** Takes one order from nothing to its outcome; a rerun resumes where an earlier run stopped. */
+export async function runOrder(ctx, entry, buyer, addressIds) {
+  const { state } = ctx;
+  const label = `order ${entry.key}`;
+  if (!state.orders[entry.key]) await place(ctx, entry, buyer, addressIds, label);
+  // An earlier run stopped between the card and the confirmation: deliver the events again.
+  if (state.orders[entry.key].stage === 'placed') {
+    await confirmPaid(ctx, entry, buyer, state.orders[entry.key].orderId, label);
+  }
+  const stage = state.orders[entry.key].stage;
+  if (!['declined', 'requires-action', 'cancelled', 'refunded'].includes(stage)) {
+    if (TARGET[entry.outcome] !== 'paid') await fulfil(ctx, entry, buyer, label);
+  }
+  return state.orders[entry.key].stage;
+}
+
+export async function ordersPack({
+  admin,
+  reviewer,
+  scenario,
+  sessions,
+  state,
+  save,
+  password,
+  log,
+}) {
+  const market = scenario.market;
+  const ctx = await orderContext({ admin, reviewer, scenario, sessions, state, save, log });
+  const { index } = ctx;
 
   const buyers = new Map();
   let made = 0;
@@ -411,18 +447,8 @@ export async function ordersPack({
 
   const counts = {};
   for (const entry of scenario.orders) {
-    const label = `order ${entry.key}`;
     const { session, addressIds } = buyers.get(entry.buyer);
-    if (!state.orders[entry.key]) await place(ctx, entry, session, addressIds, label);
-    // An earlier run stopped between the card and the confirmation: deliver the events again.
-    if (state.orders[entry.key].stage === 'placed') {
-      await confirmPaid(ctx, entry, session, state.orders[entry.key].orderId, label);
-    }
-    const stage = state.orders[entry.key].stage;
-    if (!['declined', 'requires-action', 'cancelled', 'refunded'].includes(stage)) {
-      if (TARGET[entry.outcome] !== 'paid') await fulfil(ctx, entry, session, label);
-    }
-    const reachedStage = state.orders[entry.key].stage;
+    const reachedStage = await runOrder(ctx, entry, session, addressIds);
     counts[reachedStage] = (counts[reachedStage] ?? 0) + 1;
   }
   if (ctx.refundsOff) {

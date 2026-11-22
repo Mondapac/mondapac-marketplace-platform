@@ -115,6 +115,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       generatedAt: START,
       period: '30d',
       operations: null,
+      topSellers: null,
       finance: {
         status: 'ok',
         value: {
@@ -152,6 +153,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       periodId: '30d',
       period: { id: '30d', current: { from: '2026-10-24', to: '2026-11-22' } },
       operations: null,
+      topSellers: null,
       finance: {
         status: 'ok',
         refreshedAt: START.subtract({ minutes: 4 }).toString(),
@@ -177,6 +179,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       generatedAt: START,
       period: '7d',
       operations: { status: 'error' },
+      topSellers: null,
       finance: null,
     });
     const answer = await get('?period=7d');

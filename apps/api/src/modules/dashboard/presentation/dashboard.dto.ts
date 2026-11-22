@@ -100,6 +100,8 @@ export class OperationsKpiValuesBody {
   @ApiProperty({ nullable: true, type: Number }) cancelRateBp!: number | null;
   @ApiProperty() ordersShipped!: number;
   @ApiProperty({ nullable: true, type: Number }) onTimeRateBp!: number | null;
+  @ApiProperty({ description: 'Seller orders delivered in the period.' })
+  ordersDelivered!: number;
   @ApiProperty() refunds!: number;
 }
 
@@ -165,6 +167,26 @@ export class FinanceSectionBody {
   @ApiProperty({ required: false, type: FinanceKpiBody }) kpis?: FinanceKpiBody;
 }
 
+export class TopSellerBody {
+  @ApiProperty({ format: 'uuid' }) sellerId!: string;
+  @ApiProperty({ nullable: true, type: String, description: 'The public store name.' })
+  storeName!: string | null;
+  @ApiProperty({ type: MoneyBody, description: 'Goods sold with GST.' }) gmvWithTax!: MoneyBody;
+  @ApiProperty() ordersPaid!: number;
+  @ApiProperty({ nullable: true, type: Number }) onTimeRateBp!: number | null;
+  @ApiProperty({ nullable: true, type: Number }) refundRateBp!: number | null;
+}
+
+export class TopSellersKpiBody {
+  @ApiProperty({ type: [TopSellerBody], description: 'Biggest GMV first, at most five.' })
+  rows!: TopSellerBody[];
+}
+
+export class TopSellersSectionBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: TopSellersKpiBody }) kpis?: TopSellersKpiBody;
+}
+
 export class AdminKpisBody {
   @ApiProperty({ format: 'date-time' }) generatedAt!: string;
   @ApiProperty({ enum: ['today', '7d', '30d', 'month'], description: 'The period asked for.' })
@@ -188,6 +210,12 @@ export class AdminKpisBody {
     description: 'Null without `commission-payouts.settlement.view`: leave the cards out.',
   })
   finance!: FinanceSectionBody | null;
+  @ApiProperty({
+    type: TopSellersSectionBody,
+    nullable: true,
+    description: 'Null without `commission-payouts.settlement.view`: leave the card out.',
+  })
+  topSellers!: TopSellersSectionBody | null;
 }
 
 const money = (amount: bigint, currency: string): MoneyBody => ({
@@ -252,9 +280,28 @@ function financeSection(section: AdminKpisAnswer['finance']): FinanceSectionBody
   };
 }
 
+function topSellersSection(section: AdminKpisAnswer['topSellers']): TopSellersSectionBody | null {
+  if (section === null) return null;
+  if (section.status === 'error') return { status: 'error' };
+  const { value } = section;
+  return {
+    status: 'ok',
+    kpis: {
+      rows: value.rows.map((row) => ({
+        sellerId: row.sellerId,
+        storeName: row.storeName,
+        gmvWithTax: money(row.gmvWithTax, value.currency),
+        ordersPaid: row.ordersPaid,
+        onTimeRateBp: row.onTimeRateBp,
+        refundRateBp: row.refundRateBp,
+      })),
+    },
+  };
+}
+
 export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
   // The period is the same in both sections; the first one that answered names it.
-  const resolved = [answer.operations, answer.finance].find(
+  const resolved = [answer.operations, answer.finance, answer.topSellers].find(
     (section) => section !== null && section.status === 'ok',
   );
   const period = resolved && resolved.status === 'ok' ? resolved.value.period : null;
@@ -266,5 +313,6 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
       : null,
     operations: operationsSection(answer.operations),
     finance: financeSection(answer.finance),
+    topSellers: topSellersSection(answer.topSellers),
   };
 }

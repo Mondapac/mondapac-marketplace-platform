@@ -470,7 +470,7 @@ export function SellerOrders({
       {toggle}
       <SuperList
         heading={{
-          subtitle: t('intro'),
+          info: t('intro'),
           note: ts('zone-note', { zone }),
           actions: (
             <OrdersBulk

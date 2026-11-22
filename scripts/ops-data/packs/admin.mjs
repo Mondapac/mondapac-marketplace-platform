@@ -67,7 +67,7 @@ async function ensureAdmin({ key, command, person, market, state, save, password
     }
     if (outcome !== 'issued') throw new Error(`${command}: ${outcome}`);
     token = await mailLink(email, /#(mi1_\S+)/, { since });
-    enrolment = await new Session('admin', market).ok(
+    enrolment = await new Session('admin', market).okLink(
       'POST',
       '/identity/admin/invitation/enrolment',
       { token },
@@ -78,7 +78,7 @@ async function ensureAdmin({ key, command, person, market, state, save, password
   } else {
     token = await mailLink(email, /#(mi1_\S+)/);
   }
-  await new Session('admin', market).ok('POST', '/identity/admin/invitation/accept', {
+  await new Session('admin', market).okLink('POST', '/identity/admin/invitation/accept', {
     token,
     displayName,
     password,

@@ -32,14 +32,7 @@ import { ordersPack } from './packs/orders.mjs';
 import { productsPack } from './packs/products.mjs';
 import { sellersPack } from './packs/sellers.mjs';
 import { approveOpen } from './packs/requests.mjs';
-import { STATE_DIR, readState, writeState } from './state.mjs';
-
-/**
- * The version of the scenario data. A database built with another version is not topped up: the
- * loader stops and asks for a rebuild, so a run never mixes two scenario shapes. Raise it when a
- * change to a scenario would not converge on an existing database (a renamed slug or code).
- */
-export const DATA_VERSION = 1;
+import { DATA_VERSION, STATE_DIR, readState, writeState } from './state.mjs';
 
 /** The packs in the order they run. */
 const PACKS = ['admin', 'catalog', 'sellers', 'products', 'content', 'orders'];

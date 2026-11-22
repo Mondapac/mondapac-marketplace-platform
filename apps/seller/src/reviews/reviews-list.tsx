@@ -413,7 +413,7 @@ export function ReviewsList({
   return (
     <SuperList
       heading={{
-        subtitle: ts('intro'),
+        info: ts('intro'),
         actions: (
           <ReviewsBulk
             selection={{

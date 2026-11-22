@@ -61,7 +61,9 @@ import {
   type SecurityWorkQueueFacade,
 } from '../security';
 import {
+  SELLERS_FACADE,
   SELLERS_SELLER_VIEW,
+  type SellersFacade,
   SELLERS_WORK_QUEUE_FACADE,
   SellersModule,
   type SellersWorkQueueFacade,
@@ -397,14 +399,21 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
     },
     {
       provide: ViewAdminKpis,
-      inject: [USE_CASE_GATE, VIEWER_PERMISSIONS, REPORTING_KPI_FACADE, CLOCK],
+      inject: [USE_CASE_GATE, VIEWER_PERMISSIONS, REPORTING_KPI_FACADE, SELLERS_FACADE, CLOCK],
       useFactory: (
         gate: UseCaseGate,
         viewer: ViewerPermissions,
         reporting: ReportingKpiFacade,
+        sellers: SellersFacade,
         clock: Clock,
       ) => {
-        const deps: AdminKpisDependencies = { viewer, reporting, clock, timeoutMs: KPI_TIMEOUT_MS };
+        const deps: AdminKpisDependencies = {
+          viewer,
+          reporting,
+          sellers,
+          clock,
+          timeoutMs: KPI_TIMEOUT_MS,
+        };
         return new ViewAdminKpis(gate, deps);
       },
     },

@@ -10,6 +10,8 @@ export const isKpiPeriod = (value: unknown): value is KpiPeriod =>
 
 /** The keys that open the two sections; the card is asked for when the session holds either. */
 export const KPI_ORDERS_PERMISSION = 'ordering.order.view';
+/** The key that opens the sellers pages the top-sellers card links to. */
+export const KPI_SELLERS_PERMISSION = 'sellers.seller.view';
 export const KPI_MONEY_PERMISSION = 'commission-payouts.settlement.view';
 
 export interface KpiDelta {
@@ -30,6 +32,7 @@ export interface OperationsValues {
   readonly cancelRateBp: number | null;
   readonly ordersShipped: number;
   readonly onTimeRateBp: number | null;
+  readonly ordersDelivered: number;
   readonly refunds: number;
 }
 
@@ -57,7 +60,7 @@ export interface FinancePoint {
 }
 
 export type KpiSection<K> =
-  | { readonly status: 'ok'; readonly refreshedAt: string | null; readonly kpis: K }
+  | { readonly status: 'ok'; readonly refreshedAt?: string | null; readonly kpis: K }
   | { readonly status: 'error' };
 
 export interface OperationsKpis {
@@ -77,6 +80,20 @@ export interface FinanceKpis {
   readonly previousSeries: readonly FinancePoint[];
 }
 
+export interface TopSellerRow {
+  readonly sellerId: string;
+  /** The public store name; null when it could not be read. */
+  readonly storeName: string | null;
+  readonly gmvWithTax: KpiMoney;
+  readonly ordersPaid: number;
+  readonly onTimeRateBp: number | null;
+  readonly refundRateBp: number | null;
+}
+
+export interface TopSellersKpis {
+  readonly rows: readonly TopSellerRow[];
+}
+
 export interface AdminKpis {
   readonly generatedAt: string;
   readonly periodId: KpiPeriod;
@@ -87,6 +104,8 @@ export interface AdminKpis {
   } | null;
   readonly operations: KpiSection<OperationsKpis> | null;
   readonly finance: KpiSection<FinanceKpis> | null;
+  /** Needs the money key, like `finance`; null leaves the card out. */
+  readonly topSellers: KpiSection<TopSellersKpis> | null;
 }
 
 /** The KPI read as the page passes it: null when the session holds neither key. */

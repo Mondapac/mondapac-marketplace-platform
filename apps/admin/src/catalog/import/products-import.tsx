@@ -10,6 +10,7 @@ import {
   Icon,
   flashToast,
   FormSkeleton,
+  PageInfo,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -299,8 +300,10 @@ export function ProductsImport({
     <div className="flex flex-col gap-4">
       <div>
         <BackLink href={LIST_PATH} label={t('back')} />
-        <h1 className="text-2xl font-semibold text-fg">{t('title')}</h1>
-        <p className="text-sm text-fg-muted">{t('subtitle')}</p>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold text-fg">{t('title')}</h1>
+          <PageInfo page={t('title')}>{t('subtitle')}</PageInfo>
+        </div>
       </div>
       <ImportSteps active={active} />
       {actionFailed === null ? null : (

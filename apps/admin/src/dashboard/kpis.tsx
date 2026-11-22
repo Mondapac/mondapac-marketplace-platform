@@ -1,13 +1,16 @@
 import {
+  ActivityTable,
   ChartCardSkeleton,
   ChartEmpty,
   DashboardCard,
   DashboardSlot,
+  Funnel,
   LineAreaChart,
   StatCard,
   StatCardSkeleton,
   StatGrid,
   formatCount,
+  type ActivityColumn,
   type ChartPoint,
   type IconName,
   type PeriodOption,
@@ -32,8 +35,10 @@ import {
   type KpiDelta,
   type KpiPeriod,
   type KpiResult,
+  type TopSellerRow,
   KPI_MONEY_PERMISSION,
   KPI_ORDERS_PERMISSION,
+  KPI_SELLERS_PERMISSION,
 } from './kpi-types.ts';
 
 const PERIOD_KEY: Record<KpiPeriod, string> = {
@@ -247,6 +252,157 @@ function GmvChart({
   );
 }
 
+function OrderFlow({
+  operations,
+  value,
+}: {
+  readonly operations: NonNullable<AdminKpis['operations']> & { readonly status: 'ok' };
+  readonly value: AdminKpis;
+}) {
+  const t = useTranslations('dashboard.kpis');
+  const locale = useLocale();
+  const { current } = operations.kpis;
+  const count = (n: number) => formatCount(n, false, locale);
+  const periodNote = value.period
+    ? `${kpiDayLabel(value.period.current.from, locale)} - ${kpiDayLabel(value.period.current.to, locale)}`
+    : undefined;
+  return (
+    <DashboardCard
+      id="dash-order-flow"
+      title={t('flow.title')}
+      scope={periodNote === undefined ? t('flow.scope') : `${periodNote} · ${t('flow.scope')}`}
+      action={{ href: '/orders', label: t('flow.action') }}
+    >
+      {current.ordersPaid === 0 ? (
+        <ChartEmpty message={t('flow.empty')} height={120} />
+      ) : (
+        <div className="flex flex-col gap-4">
+          <Funnel
+            label={t('flow.title')}
+            showShare={false}
+            steps={[
+              {
+                id: 'paid',
+                label: t('flow.paid'),
+                value: current.ordersPaid,
+                display: count(current.ordersPaid),
+              },
+              {
+                id: 'shipped',
+                label: t('flow.shipped'),
+                value: current.ordersShipped,
+                display: count(current.ordersShipped),
+              },
+              {
+                id: 'delivered',
+                label: t('flow.delivered'),
+                value: current.ordersDelivered,
+                display: count(current.ordersDelivered),
+              },
+            ]}
+          />
+          <p className="text-sm text-fg-muted">
+            {t('flow.leaks', {
+              cancelled: count(current.ordersCancelled),
+              cancelRate: kpiRate(current.cancelRateBp, locale),
+              refunds: count(current.refunds),
+            })}
+          </p>
+        </div>
+      )}
+    </DashboardCard>
+  );
+}
+
+function TopSellers({
+  topSellers,
+  value,
+  canOpenSellers,
+}: {
+  readonly canOpenSellers: boolean;
+  readonly topSellers: NonNullable<AdminKpis['topSellers']> & { readonly status: 'ok' };
+  readonly value: AdminKpis;
+}) {
+  const t = useTranslations('dashboard.kpis');
+  const locale = useLocale();
+  const columns: ActivityColumn<TopSellerRow>[] = [
+    {
+      id: 'store',
+      header: t('sellers.col.store'),
+      kind: 'title',
+      cell: (row) =>
+        canOpenSellers ? (
+          <a
+            className="font-medium text-link underline"
+            href={`/sellers/${encodeURIComponent(row.sellerId)}`}
+          >
+            {row.storeName ?? t('sellers.unnamed')}
+          </a>
+        ) : (
+          <span className="font-medium">{row.storeName ?? t('sellers.unnamed')}</span>
+        ),
+    },
+    {
+      id: 'gmv',
+      header: t('sellers.col.gmv'),
+      kind: 'labelled',
+      size: 'figure',
+      align: 'end',
+      cell: (row) => kpiMoney(row.gmvWithTax, locale),
+    },
+    {
+      id: 'orders',
+      header: t('sellers.col.orders'),
+      kind: 'labelled',
+      size: 'figure',
+      align: 'end',
+      cell: (row) => formatCount(row.ordersPaid, false, locale),
+    },
+    {
+      id: 'on-time',
+      header: t('sellers.col.on-time'),
+      kind: 'labelled',
+      size: 'figure',
+      align: 'end',
+      cell: (row) => kpiRate(row.onTimeRateBp, locale),
+    },
+    {
+      id: 'refunds',
+      header: t('sellers.col.refunds'),
+      kind: 'labelled',
+      size: 'figure',
+      align: 'end',
+      cell: (row) => kpiRate(row.refundRateBp, locale),
+    },
+  ];
+  const { rows } = topSellers.kpis;
+  const periodNote = value.period
+    ? `${kpiDayLabel(value.period.current.from, locale)} - ${kpiDayLabel(value.period.current.to, locale)}`
+    : undefined;
+  return (
+    <DashboardCard
+      id="dash-top-sellers"
+      title={t('sellers.title')}
+      scope={
+        periodNote === undefined ? t('sellers.scope') : `${periodNote} · ${t('sellers.scope')}`
+      }
+      {...(canOpenSellers ? { action: { href: '/sellers', label: t('sellers.action') } } : {})}
+      flush
+    >
+      {rows.length === 0 ? (
+        <ChartEmpty message={t('sellers.empty')} height={120} />
+      ) : (
+        <ActivityTable
+          caption={t('sellers.title')}
+          columns={columns}
+          rows={rows}
+          rowKey={(row) => row.sellerId}
+        />
+      )}
+    </DashboardCard>
+  );
+}
+
 function Strip({
   result,
   period,
@@ -257,6 +413,7 @@ function Strip({
   readonly keys: ReadonlySet<string>;
 }) {
   const t = useTranslations('dashboard.kpis');
+  const tErr = useTranslations('dashboard');
   const options: PeriodOption[] = KPI_PERIODS.map((id) => ({
     id,
     label: t(`period.${PERIOD_KEY[id]}`),
@@ -315,6 +472,24 @@ function Strip({
       {value?.finance?.status === 'ok' ? (
         <GmvChart finance={value.finance} period={period} value={value} />
       ) : null}
+      {value?.topSellers?.status === 'ok' ? (
+        <TopSellers
+          topSellers={value.topSellers}
+          value={value}
+          canOpenSellers={keys.has(KPI_SELLERS_PERMISSION)}
+        />
+      ) : value?.topSellers?.status === 'error' ? (
+        <DashboardCard id="dash-top-sellers" title={t('sellers.title')} error={tErr('error.card')}>
+          {null}
+        </DashboardCard>
+      ) : null}
+      {value?.operations?.status === 'ok' ? (
+        <OrderFlow operations={value.operations} value={value} />
+      ) : value?.operations?.status === 'error' ? (
+        <DashboardCard id="dash-order-flow" title={t('flow.title')} error={tErr('error.card')}>
+          {null}
+        </DashboardCard>
+      ) : null}
     </section>
   );
 }
@@ -361,6 +536,14 @@ export function AdminKpiStrip({
             <ChartCardSkeleton
               id="dash-gmv"
               title={t('chart.title')}
+              slowLabel={slowLabel}
+              stalledLabel={stalledLabel}
+            />
+          ) : null}
+          {money ? (
+            <ChartCardSkeleton
+              id="dash-top-sellers"
+              title={t('sellers.title')}
               slowLabel={slowLabel}
               stalledLabel={stalledLabel}
             />

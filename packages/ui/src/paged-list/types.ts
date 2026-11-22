@@ -95,6 +95,11 @@ export interface PagedListConfig<Row> {
   readonly search?: {
     readonly max: number;
     /** The query key the route reads (default `q`). */ readonly param?: string;
+    /**
+     * Text the route can take (an exact id). Other text is not searched; the list says
+     * `search.invalid` instead of asking the route.
+     */
+    readonly accepts?: (text: string) => boolean;
   };
   readonly sorts: readonly PagedSort[];
   readonly defaultSort: string;

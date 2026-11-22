@@ -271,6 +271,30 @@
         "label": "Refunds",
         "scope": "Refunds that succeeded in the period"
       },
+      "sellers": {
+        "title": "Top sellers",
+        "scope": "By goods sold (incl. GST) in the period",
+        "action": "All sellers",
+        "empty": "No sales in this period yet.",
+        "unnamed": "Unnamed store",
+        "col": {
+          "store": "Store",
+          "gmv": "GMV",
+          "orders": "Orders",
+          "on-time": "On time",
+          "refunds": "Refunds"
+        }
+      },
+      "flow": {
+        "title": "Order flow",
+        "scope": "Counts of the period; shipped and delivered orders may have been paid earlier",
+        "action": "View orders",
+        "empty": "No paid orders in this period yet.",
+        "paid": "Paid",
+        "shipped": "Shipped",
+        "delivered": "Delivered",
+        "leaks": "Cancelled {cancelled} ({cancelRate} of paid) · Refunds {refunds}"
+      },
       "chart": {
         "title": "GMV (incl. GST)",
         "action": "View orders",
@@ -2663,6 +2687,12 @@
       "list": {
         "title": "Held prices",
         "intro": "Prices waiting for a decision, oldest first. Approve or reject each one from its Actions menu.",
+        "search": {
+          "label": "Search held prices",
+          "placeholder": "Record ID or Offer ID",
+          "invalid": "Enter a full record ID or Offer ID."
+        },
+        "chip-search": "ID is {text}",
         "tabs": "Held price views",
         "tab": {
           "all": "All held prices",
@@ -5733,6 +5763,11 @@
       "list": {
         "title": "Product revisions",
         "intro": "Product changes that sellers sent for review, oldest first. Open one to check it and decide.",
+        "search": {
+          "label": "Search product changes",
+          "placeholder": "Product code, name or store",
+          "invalid": "Enter at least 2 characters."
+        },
         "tabs": "Review queue views",
         "tab": {
           "revision": "Product revisions"
@@ -5822,6 +5857,11 @@
       "offers": {
         "title": "Offers",
         "intro": "Offers waiting for their first publication, oldest first.",
+        "search": {
+          "label": "Search offers",
+          "placeholder": "Product code, name or store",
+          "invalid": "Enter at least 2 characters."
+        },
         "tabs": "Review queue views",
         "tab": {
           "offer": "Offers"
