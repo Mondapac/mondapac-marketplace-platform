@@ -32,17 +32,12 @@ import { ordersPack } from './packs/orders.mjs';
 import { productsPack } from './packs/products.mjs';
 import { sellersPack } from './packs/sellers.mjs';
 import { approveOpen } from './packs/requests.mjs';
-import { STATE_DIR, readState, writeState } from './state.mjs';
-
-/**
- * The version of the scenario data. A database built with another version is not topped up: the
- * loader stops and asks for a rebuild, so a run never mixes two scenario shapes. Raise it when a
- * change to a scenario would not converge on an existing database (a renamed slug or code).
- */
-export const DATA_VERSION = 1;
+import { DATA_VERSION, STATE_DIR, readState, writeState } from './state.mjs';
 
 /** The packs in the order they run. */
 const PACKS = ['admin', 'catalog', 'sellers', 'products', 'content', 'orders'];
+/** The packs of the ci profile (kept in step with scenarios/<MARKET>/ci.mjs, checked at start). */
+const CI_DEFAULT = ['admin', 'catalog', 'sellers', 'products'];
 
 /** The one password of every sample account (local machine only). */
 const PASSWORD = process.env.OPS_PASSWORD ?? 'Mondapac-Ops-2026-Passw0rd!';
@@ -55,11 +50,22 @@ const { values } = parseArgs({
     'within-reset': { type: 'boolean', default: false },
     // Save the finished database as the backup `ops-local.bat fast` restores (ops.mjs backup).
     backup: { type: 'boolean', default: false },
+    // `ci` builds the small scenario of a pull request's CI run (scenarios/<MARKET>/ci.mjs): no
+    // Stripe, no content, no orders. Unset, the full scenario.
+    profile: { type: 'string' },
   },
 });
 const market = values.market.toUpperCase();
 if (!/^[A-Z]{2}$/.test(market)) throw new Error(`--market must be a Market code such as AU`);
-const only = values.only === undefined ? PACKS : values.only.split(',').map((name) => name.trim());
+if (values.profile !== undefined && values.profile !== 'ci')
+  throw new Error(`unknown --profile ${values.profile} (profiles: ci)`);
+const ci = values.profile === 'ci';
+const only =
+  values.only === undefined
+    ? values.profile === 'ci'
+      ? CI_DEFAULT
+      : PACKS
+    : values.only.split(',').map((name) => name.trim());
 const unknown = only.filter((name) => !PACKS.includes(name));
 if (unknown.length > 0)
   throw new Error(`unknown pack(s): ${unknown.join(', ')} (packs: ${PACKS.join(', ')})`);
@@ -74,12 +80,32 @@ assertLocalDevelopment({
   },
 });
 if (!DB_URL) throw new Error('MIGRATION_DATABASE_URL is not set (copy .env.example to .env).');
+// The ci profile needs no Stripe key; one that is set must still be a test-mode key.
 assertStripeTestKey(process.env.STRIPE_SECRET_KEY);
 
 const scenarioFile = resolve(ROOT, 'scripts/ops-data/scenarios', market, 'index.mjs');
 if (!existsSync(scenarioFile))
   throw new Error(`no scenario for Market ${market} (${scenarioFile})`);
-const { SCENARIO } = await import(scenarioFile);
+const { SCENARIO: FULL_SCENARIO } = await import(scenarioFile);
+let SCENARIO = FULL_SCENARIO;
+let CI_PACKS = PACKS;
+if (ci) {
+  const profileFile = resolve(ROOT, 'scripts/ops-data/scenarios', market, 'ci.mjs');
+  if (!existsSync(profileFile))
+    throw new Error(`Market ${market} has no ci profile (${profileFile})`);
+  const profile = await import(profileFile);
+  SCENARIO = profile.ciProfile(FULL_SCENARIO);
+  CI_PACKS = profile.CI_PACKS;
+  // The orders pack pays with Stripe and the content pack is large: neither runs in the profile,
+  // and asking for one is an error, not a silent skip (a run that quietly built less would look
+  // green). Without a Stripe key the orders pack is never reached.
+  if (CI_PACKS.join() !== CI_DEFAULT.join()) throw new Error('CI_PACKS and CI_DEFAULT differ');
+  const left = only.filter((name) => !CI_PACKS.includes(name));
+  if (left.length > 0)
+    throw new Error(
+      `the ci profile does not run: ${left.join(', ')} (it runs ${CI_PACKS.join(', ')})`,
+    );
+}
 if (SCENARIO.market !== market)
   throw new Error(`the ${market} scenario names Market ${SCENARIO.market}`);
 
@@ -117,7 +143,9 @@ try {
   const save = () => writeState(market, state);
   save();
 
-  log(`Operational test data for ${market} (data version ${DATA_VERSION}): ${only.join(', ')}`);
+  log(
+    `Operational test data for ${market} (data version ${DATA_VERSION}${ci ? ', ci profile' : ''}): ${only.join(', ')}`,
+  );
   // The claim vocabulary stand-in: catalog refuses every name while the Market has no published
   // certification type, and certification types cannot be created in the admin yet.
   const vocabulary = spawnSync(

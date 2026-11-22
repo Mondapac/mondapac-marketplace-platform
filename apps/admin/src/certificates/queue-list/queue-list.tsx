@@ -32,7 +32,7 @@ import { QueueBulk } from './queue-export.tsx';
 import { QueueFilterPanel, type TypeOption } from './queue-filter-panel.tsx';
 import { queryString } from './queue-query.ts';
 import { useQueueRowActions } from './queue-row-actions.tsx';
-import { LIST_KEY, payloadOf, queryOf, somethingToSave, type SavedPayload } from './queue-saved.ts';
+import { LIST_KEY, payloadOf, queryOf, type SavedPayload } from './queue-saved.ts';
 import { queueSearchRoute } from './queue-search.ts';
 import { QueueSortPanel } from './queue-sort-panel.tsx';
 import { QueueTable } from './queue-table.tsx';
@@ -332,7 +332,7 @@ export function QueueList({
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
   const filtered = chips.length > 0;
   // "Save filter" is offered on a built-in tab that shows something a saved filter can keep.
-  const canSave = saved !== null && savedId === null && somethingToSave(query);
+  const canSave = saved !== null && savedId === null && filtered;
   const sortField = t(`sort.field.${query.sort}`);
   const sortOrder = t(`sort.${query.sort}.${query.direction === 'asc' ? 'first' : 'second'}`);
   const summary = [

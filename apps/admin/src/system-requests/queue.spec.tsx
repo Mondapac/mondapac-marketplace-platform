@@ -788,6 +788,9 @@ describe('QueueList saved filters', () => {
     serve([], true);
     call.mockResolvedValue(ok(page([row(1)])));
     mount('pages', 'view=all');
+    const box = await screen.findByRole('searchbox');
+    fireEvent.change(box, { target: { value: 'abc' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
     fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
     const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
     fireEvent.click(within(dialog).getByRole('radio', { name: 'Everyone' }));

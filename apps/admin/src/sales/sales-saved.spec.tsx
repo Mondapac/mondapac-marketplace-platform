@@ -220,6 +220,14 @@ function mount(c: Case, paging: 'pages' | 'prev-next' = 'pages') {
   );
 }
 
+/** "Save filter…" is offered only while a search or filter is active (as on the Products list). */
+async function withSearch() {
+  const box = screen.getByRole('searchbox', { name: 'Search' });
+  fireEvent.change(box, { target: { value: 'Cedar' } });
+  fireEvent.keyDown(box, { key: 'Enter' });
+  await screen.findByRole('button', { name: 'Save filter…' });
+}
+
 beforeEach(() => {
   // jsdom has no modal dialog: the kit's dialogs open by the attribute.
   HTMLDialogElement.prototype.showModal = function showModal() {
@@ -300,6 +308,7 @@ describe.each(CASES)('$name saved filters', (c) => {
     await screen.findByRole('button', { name: 'Manage filters' });
     expect(screen.queryByRole('button', { name: 'Save filter…' })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: c.otherTab.button }));
+    await withSearch();
     fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
     const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
     expect(
@@ -326,6 +335,7 @@ describe.each(CASES)('$name saved filters', (c) => {
     mount(c);
     await screen.findByRole('button', { name: 'Manage filters' });
     fireEvent.click(screen.getByRole('button', { name: c.otherTab.button }));
+    await withSearch();
     fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
     const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
     fireEvent.click(within(dialog).getByRole('radio', { name: 'Everyone' }));
@@ -451,6 +461,7 @@ describe.each(CASES)('$name saved filters', (c) => {
     const sort = await screen.findByRole('dialog', { name: 'Sort' });
     fireEvent.click(within(sort).getByRole('radio', { name: c.sortChoice.radio }));
     fireEvent.click(within(sort).getByRole('radio', { name: 'Lowest first' }));
+    await withSearch();
     fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
     const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
     fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'By amount' } });
@@ -476,6 +487,7 @@ describe.each(CASES)('$name saved filters', (c) => {
     mount(c, 'prev-next');
     await screen.findByRole('button', { name: 'Manage filters' });
     fireEvent.click(screen.getByRole('button', { name: c.otherTab.button }));
+    await withSearch();
     fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
     const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
     fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Tab only' } });
@@ -498,6 +510,7 @@ describe.each(CASES)('$name saved filters', (c) => {
       target: { value: 'Cedar' },
     });
     fireEvent.click(screen.getByRole('button', { name: c.otherTab.button }));
+    await withSearch();
     fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
     const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
     fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Fresh' } });
@@ -541,6 +554,7 @@ describe('Shipments saved filters: the payload keeps what the admin changed', ()
     const sort = await screen.findByRole('dialog', { name: 'Sort' });
     fireEvent.click(within(sort).getByRole('radio', { name: 'Total' }));
     fireEvent.click(within(sort).getByRole('radio', { name: 'Lowest first' }));
+    await withSearch();
     fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
     const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
     expect(within(dialog).getByText(/Paid is Today/)).toBeTruthy();

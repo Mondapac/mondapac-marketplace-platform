@@ -89,6 +89,17 @@ On Windows, `scripts\ops-local.bat` does it all (`scripts\demo-local.bat`, the o
 | `scripts\ops-local.bat reset` | Closes the running windows, drops and creates the database, hands it to the migration role (`bootstrap-dev.sql`), empties Redis, runs the migrations and the loader, then saves the backup. | minutes |
 | `scripts\ops-local.bat fast` | Closes the windows and restores the backup, then starts. Refused when the code's migrations are not the backup's (then run `reset`). | seconds |
 
+`scripts\ops-local.bat refresh [--orders N]` (`node scripts/ops-data/refresh.mjs`) adds fresh activity to the
+running environment and deletes nothing, so the dashboards and lists show today's data: shelves below half
+of the scenario's level are filled again, a "was" price whose special price ended or ends within 3 days gets a
+new two-week window, and a batch of today's orders (default 6, at most 20; keys `r<YYYYMMDD>-<n>`) is paid in
+Stripe test mode and taken to paid, ready, collected, and one cancelled by the admin (local only, like every
+refund). A rerun on the same day tops the batch up and never pays twice; the next day adds a new batch. It
+needs the API, the worker and Mailpit running and a finished loader run (the same data version), takes the
+loader's run lock (so it cannot overlap a reset, a fast restore or a loader run), and runs every guard first.
+Without a Stripe test key the shelves and prices are refreshed and the orders are left out. After `fast`, run
+`refresh` to bring the restored data up to the day.
+
 The two share one database. When it holds other data (the demo's) and has no operational test marker,
 `start` stops and `reset` asks you to type YES before replacing it. Without a test-mode Stripe key in
 `.env`, the orders pack is left out.
@@ -122,7 +133,7 @@ starter tree into the admin-built one: reset the database instead. A switched-of
 when started by hand (`runJobOnce`).
 
 The loader's state (the data version, finished packs, the admin's authenticator secret) is in
-`.local/ops-data/<MARKET>.json`. `DATA_VERSION` in `index.mjs` is the scenario's version: a
+`.local/ops-data/<MARKET>.json`. `DATA_VERSION` in `state.mjs` is the scenario's version: a
 database built with another one is not topped up; rebuild it.
 
 ## Guards: never on production
@@ -153,3 +164,18 @@ the webhook secret, and uses Stripe's test payment methods (`pm_card_*`), never 
   type, and certification types cannot be created in the admin yet, so the loader runs
   `scripts/demo-seed/claim-vocabulary.mjs` (SQL, the migration role) first. It goes when the
   certification type editor lands (future enhancements register).
+
+## The ci profile (pull request checks)
+
+`node scripts/ops-data/index.mjs --profile ci` builds a small scenario (`scenarios/AU/ci.mjs`): the
+whole catalog structure, the admin and the reviewer, a certified halal butcher and a bakery with
+three offers each, and one seller in each other onboarding state. The packs are the same ones and
+call the same API; only the amount of data is smaller. It runs the `admin`, `catalog`, `sellers`
+and `products` packs. It needs no Stripe key, and the `orders` and `content` packs are not part of
+it: `--only orders` with the profile stops with an error instead of quietly building less.
+
+The `ops-data-smoke` job of `.github/workflows/ci.yml` runs it on every pull request, on the
+job's own PostgreSQL, a Mailpit container, and the built API and worker (`MAIL_CATCHER_URL`,
+`OBJECT_STORE_*` and `CATALOG_SEED_JOBS_OFF` as above). A change to the API that the loader no
+longer fits turns that pull request red. The API and worker logs are printed when it fails. The
+orders pack runs only where a Stripe test key exists (future enhancements register, FE-141).

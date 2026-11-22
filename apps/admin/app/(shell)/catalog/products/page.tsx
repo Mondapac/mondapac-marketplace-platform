@@ -29,8 +29,8 @@ export default async function ProductsPage() {
   const paging = mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
   return (
     <AdminShell session={gate.session} activeId="products" title={title}>
-      {/* The topbar already names the page; the tabs come first, as in the design. */}
-      <h1 className="sr-only">{title}</h1>
+      {/* A visible page title, like the other admin lists; the tabs follow it. */}
+      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
       {allowed ? (
         <ProductsList
           accountId={gate.session.accountId}

@@ -592,3 +592,146 @@ describe('the ops-data lock and backup checks', () => {
     expect(answer.out.trim()).toBe('true true true true');
   });
 });
+
+describe('the ops-data ci profile', () => {
+  // The small scenario a pull request's CI run builds (scenarios/AU/ci.mjs). The packs call the
+  // API, so a profile that points at something it dropped would fail only in that CI run.
+  it('keeps every reference of the AU scenario whole, and runs no Stripe pack', () => {
+    const answer = run(`
+      import { SCENARIO } from './scripts/ops-data/scenarios/AU/index.mjs';
+      import { ciProfile, CI_PACKS } from './scripts/ops-data/scenarios/AU/ci.mjs';
+      const ci = ciProfile(SCENARIO);
+      const productKeys = new Set(ci.products.map((p) => p.key));
+      const sellerKeys = new Set(ci.sellers.map((s) => s.key));
+      const wholeOffers = Object.entries(ci.offers).every(([seller, list]) =>
+        sellerKeys.has(seller) && list.length > 0 && list.every((o) => productKeys.has(o.product)));
+      const heldOk = ci.offers[ci.held.seller].some((o) => o.product === ci.held.product);
+      const states = new Set(ci.sellers.map((s) => s.state));
+      console.log(wholeOffers, heldOk, ci.products.length < SCENARIO.products.length,
+        ['approved', 'in-review', 'rejected', 'suspended', 'draft'].every((s) => states.has(s)),
+        ci.sellers.some((s) => s.certificate !== null), CI_PACKS.join(','));
+    `);
+    expect(answer.out.trim()).toBe('true true true true true admin,catalog,sellers,products');
+  });
+
+  it('refuses a pack it does not run, before it touches anything', () => {
+    // No database, API or Stripe key is needed: the profile check comes before any request.
+    const result = spawnSync(
+      process.execPath,
+      ['scripts/ops-data/index.mjs', '--profile', 'ci', '--only', 'orders'],
+      {
+        cwd: REPO_ROOT,
+        env: {
+          PATH: process.env.PATH,
+          NODE_ENV: 'test',
+          MIGRATION_DATABASE_URL: 'postgresql://x:x@localhost:5432/none',
+        },
+        encoding: 'utf8',
+      },
+    );
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toContain('the ci profile does not run: orders');
+  });
+});
+
+describe('the ops-data refresh batch', () => {
+  const dir = () => mkdtempSync(path.join(tmpdir(), 'ops-lock-'));
+  const lock = (code: string) =>
+    run(`import * as lock from './scripts/ops-data/lock.mjs'; ${code}`);
+  /** Runs a snippet with the AU scenario and an offer index that lists every scenario offer. */
+  const refresh = (body: string) =>
+    run(`
+      import { SCENARIO } from './scripts/ops-data/scenarios/AU/index.mjs';
+      import * as r from './scripts/ops-data/packs/refresh.mjs';
+      const index = new Map();
+      for (const seller of SCENARIO.sellers) {
+        const offers = SCENARIO.offers[seller.key];
+        if (!offers) continue;
+        index.set(seller.key, new Map(offers.map((o) => [o.product, { offerId: 'x', variantIds: ['v'] }])));
+      }
+      const asList = (v) => (Array.isArray(v) ? v : [v]);
+      ${body}
+    `);
+
+  it('plans the same keyed orders for a day, and new keys for the next day', () => {
+    const answer = refresh(`
+      const day = Date.UTC(2026, 10, 23, 5);
+      const a = r.planBatch({ scenario: SCENARIO, index, now: day, count: 6 });
+      const b = r.planBatch({ scenario: SCENARIO, index, now: day + 3600_000, count: 6 });
+      const c = r.planBatch({ scenario: SCENARIO, index, now: day + 86_400_000, count: 6 });
+      const keys = new Set([...a, ...c].map((e) => e.key));
+      const known = new Set([...SCENARIO.orders.map((o) => o.key)]);
+      console.log(a.length, JSON.stringify(a) === JSON.stringify(b), a[0].key,
+        keys.size === 12, [...keys].some((k) => known.has(k)));
+    `);
+    expect(answer.out.trim()).toBe('6 true r20261123-1 true false');
+  });
+
+  it('meets every store minimum within the shelf, and never sells the held-price product', () => {
+    const answer = refresh(`
+      const problems = [];
+      for (let d = 0; d < 60; d += 1) {
+        const plan = r.planBatch({ scenario: SCENARIO, index, now: Date.UTC(2026, 10, 1 + d), count: 6 });
+        if (plan.length !== 6) problems.push('day ' + d + ' planned ' + plan.length);
+        for (const e of plan) {
+          if (!SCENARIO.buyers.some((b) => b.key === e.buyer)) problems.push('unknown buyer ' + e.buyer);
+          if (!SCENARIO.cards[e.card]) problems.push('unknown card ' + e.card);
+          const store = e.lines[0][0];
+          if (e.lines.some((l) => l[0] !== store)) problems.push(e.key + ': several stores');
+          const seller = SCENARIO.sellers.find((s) => s.key === store);
+          let total = 0;
+          for (const [, product, quantity] of e.lines) {
+            const offer = SCENARIO.offers[store].find((o) => o.product === product);
+            if (!offer) problems.push(e.key + ': ' + product + ' is not on the shelf');
+            if (product === SCENARIO.held.product) problems.push(e.key + ': held product');
+            if (quantity > asList(offer.stock)[0]) problems.push(e.key + ': more than the shelf');
+            total += asList(offer.price)[0] * quantity;
+          }
+          if (total < (seller.minimum ?? 0)) problems.push(e.key + ': under the minimum ' + total);
+        }
+      }
+      console.log(problems.length === 0 ? 'ok' : problems.slice(0, 5).join('; '));
+    `);
+    expect(answer.out.trim()).toBe('ok');
+  });
+
+  it('cycles the outcomes through paid, ready, collected and one cancellation', () => {
+    const answer = refresh(`
+      const plan = r.planBatch({ scenario: SCENARIO, index, now: Date.UTC(2026, 10, 23), count: 6 });
+      console.log(plan.map((e) => e.outcome).join(','), r.dayKey(Date.UTC(2026, 10, 3)));
+    `);
+    expect(answer.out.trim()).toBe('paid,ready,paid,collected,ready,cancelled 20261103');
+  });
+
+  it('fills a shelf below half its level and renews a special price that ended or ends soon', () => {
+    const answer = refresh(`
+      const now = Date.UTC(2026, 10, 23);
+      const iso = (days) => new Date(now + days * 86_400_000).toISOString();
+      console.log(
+        r.needsStock(4, 10), r.needsStock(5, 10), r.needsStock(0, 1), r.needsStock(1, 1),
+        r.needsSpecial(null, now),
+        r.needsSpecial({ state: 'ended', endsAt: iso(-1) }, now),
+        r.needsSpecial({ state: 'running', endsAt: iso(2) }, now),
+        r.needsSpecial({ state: 'running', endsAt: iso(10) }, now),
+      );
+    `);
+    expect(answer.out.trim()).toBe('true false true false true true true false');
+  });
+
+  it('is refused during a reset, and holds a lock that keeps a reset out while it runs', () => {
+    const d = dir();
+    const answer = lock(`
+      import { writeFileSync } from 'node:fs';
+      const d = ${JSON.stringify(d)};
+      lock.beginReset(d, 'reset');
+      let during; try { lock.acquireRun(d, 'refresh'); during = 'allowed'; } catch { during = 'refused'; }
+      lock.endReset(d);
+      // a refresh of another process (this one's parent) is running
+      writeFileSync(d + '/lock.json', JSON.stringify({ kind: 'run', command: 'refresh', pid: process.ppid, at: new Date().toISOString() }));
+      let reset; try { lock.beginReset(d, 'reset'); reset = 'allowed'; } catch (e) { reset = e.message.includes('refresh is running') ? 'refused' : 'wrong'; }
+      lock.unlock(d);
+      console.log(during, reset, lock.readLock(d) === null ? 'free' : 'held');
+    `);
+    expect(answer.out.trim()).toBe('refused refused free');
+  });
+});

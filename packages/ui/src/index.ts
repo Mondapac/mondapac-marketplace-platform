@@ -323,6 +323,7 @@ export {
   type ActionMenuLink,
   type ActionMenuProps,
 } from './overlay/action-menu.tsx';
+export { PageInfo, type PageInfoProps } from './overlay/page-info.tsx';
 export { Popover, type PopoverProps } from './overlay/popover.tsx';
 export {
   ColumnPickerPanel,

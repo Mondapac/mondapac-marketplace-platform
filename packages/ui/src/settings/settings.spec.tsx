@@ -425,10 +425,10 @@ describe('SettingsViewOnlyBanner', () => {
 });
 
 describe('SettingsTitle', () => {
-  it('is the page h1 with room for the pin star beside it', () => {
+  it('is the page h1 only: the pin star lives in the top bar', () => {
     const out = html(<SettingsTitle>Delivery rules</SettingsTitle>);
     expect(out).toContain('<h1');
     expect(out).toContain('>Delivery rules</h1>');
-    expect(out).toContain('flex min-w-0 items-center');
+    expect(out).not.toContain('<button');
   });
 });

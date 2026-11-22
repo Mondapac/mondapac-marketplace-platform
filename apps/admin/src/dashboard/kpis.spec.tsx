@@ -269,6 +269,7 @@ describe('the KPI formats', () => {
     ).toBeTruthy();
   });
 
+<<<<<<< HEAD
   it('lists the top sellers with money, rates, a link to each store and "-" for a missing rate', () => {
     strip(answer({ finance, topSellers }), [
       'commission-payouts.settlement.view',
@@ -318,6 +319,8 @@ describe('the KPI formats', () => {
     expect(screen.queryByRole('region', { name: 'Top sellers' })).toBeNull();
   });
 
+=======
+>>>>>>> origin/main
   it('leaves the order flow out without the orders section', () => {
     strip(answer({ finance }), ['commission-payouts.settlement.view']);
     expect(screen.queryByRole('region', { name: 'Order flow' })).toBeNull();
