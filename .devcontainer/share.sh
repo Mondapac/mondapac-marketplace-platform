@@ -105,7 +105,10 @@ API_BASE_URL=http://$ip:3000"
   chmod 600 "$SHARE"/*.env
 
   # Mail links and allowed origins of the local Market config point at the tunnels.
-  SELLER_PANEL_ORIGIN="$seller" ADMIN_PANEL_ORIGIN="$admin" STOREFRONT_ORIGIN="$web" \
+  # Always the committed limits and switches when shared: the local-only opt-ins are dropped (a
+  # variable left set in the shell would otherwise stop the script with the tunnels open).
+  env -u LOCAL_MAIL_ORIGIN_LIMIT -u LOCAL_SIGN_IN_ORIGIN_LIMIT -u LOCAL_REFUND_CREDIT \
+    SELLER_PANEL_ORIGIN="$seller" ADMIN_PANEL_ORIGIN="$admin" STOREFRONT_ORIGIN="$web" \
     node scripts/dev-panels-market.mjs "$MARKET" >/dev/null
 
   printf 'Seller panel : %s\nAdmin panel  : %s\nBuyer site   : %s\nAPI          : %s\n' \

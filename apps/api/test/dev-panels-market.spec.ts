@@ -97,6 +97,56 @@ describe('scripts/dev-panels-market.mjs', () => {
     }
   });
 
+  it('raises only the per-address sign-in limit when LOCAL_SIGN_IN_ORIGIN_LIMIT is given', () => {
+    const committed = loadMarketConfigs([generate()], [AU]).get(AU)!.identity.signInThrottles;
+    const raised = loadMarketConfigs([generate({ LOCAL_SIGN_IN_ORIGIN_LIMIT: '300' })], [AU]).get(
+      AU,
+    )!.identity.signInThrottles;
+
+    expect(raised.origin).toEqual({ ...committed.origin, limit: 300 });
+    expect(raised.accountOrigin).toEqual(committed.accountOrigin);
+    expect(raised.account).toEqual(committed.account);
+    for (const value of ['0', '1001', 'many', '-5']) {
+      expect(() => generate({ LOCAL_SIGN_IN_ORIGIN_LIMIT: value })).toThrow();
+    }
+    expect(() =>
+      generate({
+        LOCAL_SIGN_IN_ORIGIN_LIMIT: '300',
+        STOREFRONT_ORIGIN: 'https://shop.example.com',
+      }),
+    ).toThrow();
+  });
+
+  it('switches refunds on only in the local file with LOCAL_REFUND_CREDIT=1, never for a shared origin', () => {
+    expect(loadMarketConfigs([generate()], [AU]).get(AU)!.tax?.refundCredit?.enabled).not.toBe(
+      true,
+    );
+    const on = loadMarketConfigs(
+      [generate({ LOCAL_REFUND_CREDIT: '1', STRIPE_SECRET_KEY: 'sk_test_51abcdefgh' })],
+      [AU],
+    ).get(AU)!.tax;
+    expect(on?.refundCredit).toEqual({ enabled: true });
+    expect(on?.defaultRateBps).toBe(
+      loadMarketConfigs([generate()], [AU]).get(AU)!.tax?.defaultRateBps,
+    );
+    for (const value of ['0', 'true', 'yes']) {
+      expect(() =>
+        generate({ LOCAL_REFUND_CREDIT: value, STRIPE_SECRET_KEY: 'sk_test_51abcdefgh' }),
+      ).toThrow();
+    }
+    expect(() =>
+      generate({
+        LOCAL_REFUND_CREDIT: '1',
+        STRIPE_SECRET_KEY: 'sk_test_51abcdefgh',
+        ADMIN_PANEL_ORIGIN: 'https://admin.example.com',
+      }),
+    ).toThrow();
+    // Refunds move money: never for an API with a live (or restricted live) key.
+    for (const key of ['sk_live_51abcdefgh', 'rk_live_51abcdefgh']) {
+      expect(() => generate({ LOCAL_REFUND_CREDIT: '1', STRIPE_SECRET_KEY: key })).toThrow();
+    }
+  });
+
   it('refuses LOCAL_MAIL_ORIGIN_LIMIT when an origin is not on this machine (a shared tunnel)', () => {
     expect(() =>
       generate({

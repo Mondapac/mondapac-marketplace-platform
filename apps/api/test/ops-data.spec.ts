@@ -1,6 +1,9 @@
 import { spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
+import { Temporal } from '@mondapac/shared-kernel';
+import { FixedClock } from '@mondapac/shared-kernel/testing';
+import { StripeWebhookSignature } from '../src/modules/payments/infrastructure/stripe-webhook-signature';
 
 import {
   matchClaimTerms,
@@ -322,6 +325,208 @@ describe('the ops-data AU scenario', () => {
         ...blog.posts.map((post) => post.title + ' ' + post.excerpt + ' ' + JSON.stringify(post.body)),
       ];
       for (const t of texts) if (words.test(t)) problems.push('claim word in ' + t);
+      console.log(problems.length === 0 ? 'ok' : problems.join('; '));
+    `);
+    expect(answer.out.trim()).toBe('ok');
+  });
+});
+
+describe('the ops-data orders pack: Stripe test mode and the replayed webhook', () => {
+  it('signs a replayed event the way the API verifies Stripe', () => {
+    const at = 1_795_000_000;
+    const secret = 'whsec_spec0ops0data0au';
+    const body = '{"id":"evt_1","type":"payment_intent.amount_capturable_updated"}';
+    const answer = run(
+      `import { signatureFor } from './scripts/ops-data/stripe.mjs';
+       console.log(signatureFor(process.env.SECRET, process.env.BODY, ${at}));`,
+      { SECRET: secret, BODY: body },
+    );
+    const header = answer.out.trim();
+    const verifier = new StripeWebhookSignature(
+      { AU: secret },
+      new FixedClock(Temporal.Instant.fromEpochMilliseconds(at * 1000)),
+    );
+    expect(verifier.verify('AU', Buffer.from(body), header)).toBe('platform');
+    expect(verifier.verify('AU', Buffer.from(`${body} `), header)).toBeNull();
+  });
+
+  it("reads the Market's secret in the API's formats and names no secret when it has none", () => {
+    const answer = run(`
+      import { webhookSecretOf } from './scripts/ops-data/stripe.mjs';
+      const out = [];
+      out.push(webhookSecretOf('whsec_bare0secret0value', 'AU'));
+      out.push(webhookSecretOf('NZ=whsec_nz0secret0value,AU=whsec_au0secret0value', 'AU'));
+      for (const value of [undefined, '', 'NZ=whsec_nz0secret0value', 'sk_test_notawebhooksecret']) {
+        try { webhookSecretOf(value, 'AU'); out.push('allowed'); } catch (e) { out.push(e.message.includes('no signing secret') && !String(e.message).includes('whsec_nz') ? 'refused' : 'leaked'); }
+      }
+      console.log(JSON.stringify(out));
+    `);
+    expect(JSON.parse(answer.out.trim())).toEqual([
+      'whsec_bare0secret0value',
+      'whsec_au0secret0value',
+      'refused',
+      'refused',
+      'refused',
+      'refused',
+    ]);
+  });
+
+  it('refuses a live or missing Stripe key before any call, without printing it', () => {
+    for (const key of ['sk_live_51abcdefgh', 'rk_live_51abcdefgh', '']) {
+      const answer = run(
+        `import { StripeTestMode } from './scripts/ops-data/stripe.mjs';
+         globalThis.fetch = () => { console.log('called Stripe'); process.exit(3); };
+         new StripeTestMode(process.env.STRIPE_SECRET_KEY, 'AU');
+         console.log('allowed');`,
+        { STRIPE_SECRET_KEY: key },
+      );
+      expect(answer.status).not.toBe(0);
+      expect(answer.out).not.toContain('allowed');
+      expect(answer.out).not.toContain('called Stripe');
+      if (key !== '') expect(answer.out).not.toContain(key);
+    }
+  });
+
+  it('makes tokens only from Stripe test payment methods and refuses a live-mode answer', () => {
+    const answer = run(`
+      import { StripeTestMode } from './scripts/ops-data/stripe.mjs';
+      const stripe = new StripeTestMode('sk_test_51abcdefgh', 'AU');
+      const out = [];
+      globalThis.fetch = async (url, init) => ({
+        ok: true, status: 200,
+        json: async () => ({ object: 'confirmation_token', id: 'ctoken_1', livemode: process.env.LIVE === '1' }),
+      });
+      try { await stripe.confirmationToken('4242424242424242'); out.push('allowed'); } catch { out.push('refused'); }
+      out.push(await stripe.confirmationToken('pm_card_visa'));
+      console.log(JSON.stringify(out));
+    `);
+    expect(JSON.parse(answer.out.trim())).toEqual(['refused', 'ctoken_1']);
+    const live = run(
+      `import { StripeTestMode } from './scripts/ops-data/stripe.mjs';
+       globalThis.fetch = async () => ({ ok: true, status: 200, json: async () => ({ object: 'confirmation_token', id: 'ctoken_1', livemode: true }) });
+       await new StripeTestMode('sk_test_51abcdefgh', 'AU').confirmationToken('pm_card_visa');
+       console.log('allowed');`,
+    );
+    expect(live.status).not.toBe(0);
+    expect(live.out).toContain('not a test-mode one');
+  });
+
+  it("replays only the events of the loader's own PaymentIntent, platform events only", () => {
+    const answer = run(`
+      import { StripeTestMode } from './scripts/ops-data/stripe.mjs';
+      const stripe = new StripeTestMode('sk_test_51abcdefgh', 'AU');
+      const events = [
+        { id: 'evt_a', created: 2, livemode: false, type: 'payment_intent.amount_capturable_updated', data: { object: { id: 'pi_mine' } } },
+        { id: 'evt_b', created: 1, livemode: false, type: 'payment_intent.amount_capturable_updated', data: { object: { id: 'pi_other' } } },
+        { id: 'evt_c', created: 3, livemode: false, account: 'acct_1', type: 'payment_intent.amount_capturable_updated', data: { object: { id: 'pi_mine' } } },
+      ];
+      globalThis.fetch = async (url) => ({ ok: true, status: 200, json: async () => ({ data: String(url).includes('amount_capturable_updated') ? events : [] }) });
+      const found = await stripe.eventsOf('pi_mine', 0, { seconds: 0 });
+      const out = [found.map((e) => e.id)];
+      try { await stripe.eventsOf('pi_mine', NaN, { seconds: 0 }); out.push('allowed'); } catch { out.push('refused'); }
+      console.log(JSON.stringify(out));
+    `);
+    expect(JSON.parse(answer.out.trim())).toEqual([['evt_a'], 'refused']);
+  });
+
+  it('follows every page of events, and replays nothing for a PaymentIntent of another order', () => {
+    const answer = run(`
+      import { StripeTestMode } from './scripts/ops-data/stripe.mjs';
+      const stripe = new StripeTestMode('sk_test_51abcdefgh', 'AU');
+      const urls = [];
+      globalThis.fetch = async (url) => {
+        urls.push(String(url));
+        const u = new URL(url);
+        if (u.pathname.startsWith('/v1/payment_intents/')) {
+          return { ok: true, status: 200, json: async () => ({ id: 'pi_mine', livemode: false, metadata: { order_id: 'o-1', market_id: 'AU', payment_flow: 'card-intent' } }) };
+        }
+        const second = u.searchParams.get('starting_after') === 'evt_x';
+        const page = second
+          ? { has_more: false, data: [{ id: 'evt_mine', created: 1, livemode: false, data: { object: { id: 'pi_mine' } } }] }
+          : { has_more: true, data: [{ id: 'evt_x', created: 2, livemode: false, data: { object: { id: 'pi_other' } } }] };
+        return { ok: true, status: 200, json: async () => (u.searchParams.get('type') === 'payment_intent.amount_capturable_updated' ? page : { has_more: false, data: [] }) };
+      };
+      const out = [];
+      out.push((await stripe.eventsOf('pi_mine', 0, { seconds: 0 })).map((e) => e.id));
+      await stripe.assertOwnPaymentIntent('pi_mine', 'o-1');
+      out.push('own');
+      for (const [order, market] of [['o-2', 'AU'], ['o-1', 'NZ']]) {
+        try { await new StripeTestMode('sk_test_51abcdefgh', market).assertOwnPaymentIntent('pi_mine', order); out.push('allowed'); } catch { out.push('refused'); }
+      }
+      console.log(JSON.stringify(out));
+    `);
+    expect(JSON.parse(answer.out.trim())).toEqual([['evt_mine'], 'own', 'refused', 'refused']);
+  });
+});
+
+describe('the ops-data AU buyers and orders', () => {
+  it('uses fictional buyers, sells only what approved stores list, meets each minimum and stays within stock', () => {
+    const answer = run(`
+      import { SCENARIO } from './scripts/ops-data/scenarios/AU/index.mjs';
+      const problems = [];
+      const buyers = new Map();
+      for (const b of SCENARIO.buyers) {
+        if (buyers.has(b.key)) problems.push('buyer repeated ' + b.key);
+        buyers.set(b.key, b);
+        if (!/^[a-z.]+@buyers\\.example$/.test(b.email)) problems.push('email ' + b.email);
+        if (!/^0755502\\d{3}$/.test(b.phone)) problems.push('phone ' + b.key);
+        for (const a of b.addresses) {
+          const n = Number(a.postcode);
+          if (!(n >= 4000 && n <= 4199)) problems.push('outside Greater Brisbane ' + b.key);
+        }
+      }
+      if (new Set(SCENARIO.buyers.map((b) => b.email)).size !== SCENARIO.buyers.length) problems.push('email repeated');
+      if (new Set(SCENARIO.buyers.map((b) => b.phone)).size !== SCENARIO.buyers.length) problems.push('phone repeated');
+      const approved = new Map(SCENARIO.sellers.filter((s) => s.state === 'approved').map((s) => [s.key, s]));
+      const used = new Map();
+      const list = (v) => (Array.isArray(v) ? v : [v]);
+      const check = (where, lines, counts, minimums = true) => {
+        const subtotal = new Map();
+        for (const [store, product, quantity, variant = 0] of lines) {
+          if (!approved.has(store)) { problems.push(where + ': store not approved ' + store); continue; }
+          const offer = (SCENARIO.offers[store] ?? []).find((o) => o.product === product);
+          if (!offer) { problems.push(where + ': ' + store + ' does not sell ' + product); continue; }
+          const price = list(offer.price)[variant];
+          if (price === undefined) { problems.push(where + ': no variant ' + variant + ' of ' + product); continue; }
+          if (!Number.isInteger(quantity) || quantity < 1 || quantity > 5) problems.push(where + ': quantity ' + product);
+          subtotal.set(store, (subtotal.get(store) ?? 0) + price * quantity);
+          if (counts) used.set(store + ':' + product + ':' + variant, (used.get(store + ':' + product + ':' + variant) ?? 0) + quantity);
+        }
+        for (const [store, amount] of subtotal) {
+          if (!minimums) continue;
+          const minimum = approved.get(store)?.minimum ?? 0;
+          if (amount < minimum) problems.push(where + ': below the minimum of ' + store);
+        }
+      };
+      const outcomes = { paid: 'card', ready: 'card', collected: 'card', refunded: 'card', cancelled: 'card', declined: 'declined', 'requires-action': '3ds' };
+      const keys = new Set();
+      for (const o of SCENARIO.orders) {
+        if (keys.has(o.key)) problems.push('order repeated ' + o.key);
+        keys.add(o.key);
+        const b = buyers.get(o.buyer);
+        if (!b) { problems.push(o.key + ': unknown buyer'); continue; }
+        if (!(o.outcome in outcomes)) problems.push(o.key + ': outcome ' + o.outcome);
+        const card = SCENARIO.cards[o.card];
+        if (!/^pm_card_[a-zA-Z]+$/.test(card ?? '')) problems.push(o.key + ': card ' + o.card);
+        const wanted = outcomes[o.outcome];
+        if (wanted === 'card' ? ['declined', '3ds'].includes(o.card) : o.card !== wanted) problems.push(o.key + ': card does not fit the outcome');
+        if ((o.address ?? 0) >= b.addresses.length) problems.push(o.key + ': unknown address');
+        for (const store of Object.keys(o.notes ?? {})) if (!o.lines.some(([s]) => s === store)) problems.push(o.key + ': note to a store not in the order');
+        // A declined card or a 3D Secure wait holds no stock for long; every other order commits it.
+        check(o.key, o.lines, !['declined', 'requires-action'].includes(o.outcome));
+      }
+      for (const [key, quantity] of used) {
+        const [store, product, variant] = key.split(':');
+        const offer = SCENARIO.offers[store].find((o) => o.product === product);
+        if (quantity > list(offer.stock)[Number(variant)]) problems.push('more sold than in stock ' + key);
+      }
+      for (const outcome of Object.keys(outcomes)) if (!SCENARIO.orders.some((o) => o.outcome === outcome)) problems.push('no order ' + outcome);
+      for (const c of SCENARIO.openCarts) {
+        if (!buyers.has(c.buyer)) problems.push('open cart of unknown buyer ' + c.buyer);
+        // An open cart may sit below a store's minimum: the cart page shows how much to add.
+        check('cart ' + c.buyer, c.lines, false, false);
+      }
+      if (new Set(SCENARIO.openCarts.map((c) => c.buyer)).size !== SCENARIO.openCarts.length) problems.push('two open carts for one buyer');
       console.log(problems.length === 0 ? 'ok' : problems.join('; '));
     `);
     expect(answer.out.trim()).toBe('ok');
