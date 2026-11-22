@@ -229,7 +229,6 @@ type Load =
  * shown as given. The cashback card is in exclusive-cashback.tsx (same patterns, type CASHBACK); each
  * card hides alone on a 403. The commission card (read only) is in exclusive-commission.tsx.
  */
-
 export function ExclusivePerks({
   canManage,
   csrfToken,

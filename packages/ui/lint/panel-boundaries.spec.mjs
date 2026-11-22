@@ -92,6 +92,21 @@ describe('check-panel-boundaries', () => {
         "import * as c from '../../../src/card.tsx';",
         '* as c',
       ],
+      [
+        'apps/admin/app/(shell)/x/page.tsx',
+        "export { cardPath } from '../../../src/card.tsx';",
+        'cardPath',
+      ],
+      [
+        'apps/admin/app/(shell)/x/page.tsx',
+        "import { cardPath } from '../../../src/card.js';",
+        'cardPath',
+      ],
+      [
+        'apps/admin/app/(shell)/x/page.tsx',
+        "import { cardPath } from '../../../src/card';",
+        'cardPath',
+      ],
     ])('refuses %s: %s', (file, text, name) => {
       const result = withCard(file, text);
       expect(result.status).toBe(1);
@@ -100,6 +115,11 @@ describe('check-panel-boundaries', () => {
 
     it.each([
       ['apps/admin/app/(shell)/x/page.tsx', "import { Card } from '../../../src/card.tsx';"],
+      ['apps/admin/app/(shell)/x/page.tsx', "import Card from '../../../src/card.tsx';"],
+      [
+        'apps/admin/app/(shell)/x/page.tsx',
+        "export type { CardRead } from '../../../src/card.tsx';",
+      ],
       [
         'apps/admin/app/(shell)/x/page.tsx',
         "import type { CardRead } from '../../../src/card.tsx';",

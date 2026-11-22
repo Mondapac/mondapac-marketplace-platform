@@ -10,6 +10,8 @@
 //     one is a client reference on the server: calling it throws at render ("Attempted to call
 //     x() from the server but x is on the client"), and a constant is not its value, so a
 //     permission check against it is silently false. Such helpers belong in a plain module.
+//     Limits: it follows relative specifiers only (not '@/' aliases or barrels re-exporting a
+//     client module) and tells components by name (PascalCase), not by what they are.
 //
 // Usage: node scripts/check-panel-boundaries.mjs [repo-root]
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
@@ -66,8 +68,10 @@ function isClientModule(source) {
 const clientModuleCache = new Map();
 /** Whether a relative specifier of `file` resolves to a 'use client' module of the repo. */
 function importsClientModule(file, specifier) {
-  for (const suffix of RESOLVE_SUFFIXES) {
-    const target = path.resolve(path.dirname(file), specifier) + suffix;
+  // A '.js' specifier may name the '.ts' or '.tsx' source.
+  const bases = [specifier, specifier.replace(/\.js$/, '.ts'), specifier.replace(/\.js$/, '.tsx')];
+  for (const suffix of RESOLVE_SUFFIXES.flatMap((s) => bases.map((b) => [b, s]))) {
+    const target = path.resolve(path.dirname(file), suffix[0]) + suffix[1];
     if (!existsSync(target) || !/\.(ts|tsx)$/.test(target)) continue;
     if (!clientModuleCache.has(target))
       clientModuleCache.set(target, isClientModule(parse(target, readFileSync(target, 'utf8'))));
@@ -86,6 +90,14 @@ function isServerFile(pkg, rel, source) {
 
 /** Names a declaration takes as values (type-only imports and specifiers left out). */
 function valueNamesOf(node) {
+  if (ts.isExportDeclaration(node)) {
+    if (node.isTypeOnly) return [];
+    if (node.exportClause === undefined) return ['*'];
+    if (ts.isNamespaceExport(node.exportClause)) return [`* as ${node.exportClause.name.text}`];
+    return node.exportClause.elements
+      .filter((e) => !e.isTypeOnly)
+      .map((e) => (e.propertyName ?? e.name).text);
+  }
   if (!ts.isImportDeclaration(node) || node.importClause === undefined) return [];
   const clause = node.importClause;
   if (clause.isTypeOnly) return [];
