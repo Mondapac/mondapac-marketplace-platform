@@ -11,10 +11,27 @@ export const REASON_MAX = 500;
 export const PROPOSAL_KINDS = ['revision', 'reactivation', 'policy'] as const;
 export type ProposalKind = (typeof PROPOSAL_KINDS)[number];
 
+export const TYPE_STATUSES = ['proposed', 'active', 'inactive', 'rejected', 'withdrawn'] as const;
+export type TypeStatus = (typeof TYPE_STATUSES)[number];
+export const STATUS_TONE: Readonly<
+  Record<TypeStatus, 'info' | 'success' | 'attention' | 'critical' | 'neutral'>
+> = {
+  proposed: 'info',
+  active: 'success',
+  inactive: 'attention',
+  rejected: 'critical',
+  withdrawn: 'neutral',
+};
+export const API_ISSUERS = 'certification/admin/issuers';
+export const API_IMPACT_COUNT = 'catalog/admin/claim-terms/impact-count';
+export const API_NEW_OPTIONS = `${API_TYPES}/new-options`;
+export const VERIFICATION_MODES = ['THIRD_PARTY_DOCUMENT', 'SELF_DECLARATION'] as const;
+export type VerificationMode = (typeof VERIFICATION_MODES)[number];
+
 export interface TypeRow {
   readonly typeId: string;
   readonly code: string;
-  readonly status: 'active' | 'inactive';
+  readonly status: TypeStatus;
   readonly verificationMode: string;
   readonly version: number;
   readonly publishedRevisionNo: number;
@@ -43,6 +60,8 @@ export interface DiffEntry {
 
 export interface TypeProposal {
   readonly id: string;
+  /** Who proposed it; absent in older answers. */
+  readonly proposer?: { readonly accountId: string };
   readonly proposedAt: string;
   readonly state: string;
   readonly version: number;
@@ -75,7 +94,7 @@ export interface TypeContent {
 export interface TypeDetail {
   readonly typeId: string;
   readonly code: string;
-  readonly status: 'active' | 'inactive';
+  readonly status: TypeStatus;
   readonly version: number;
   readonly published: {
     readonly revisionNo: number;
@@ -84,10 +103,45 @@ export interface TypeDetail {
   };
   readonly pendingRevision: TypeProposal | null;
   readonly pendingReactivation: TypeProposal | null;
+  /** A proposed new type waiting for a second admin (FE-091). */
+  readonly pendingCreation?: TypeProposal | null;
+}
+
+/** Answer of GET certification/admin/types/new-options. */
+export interface TypeNewOptions {
+  readonly locales: readonly string[];
+  readonly verificationModes: readonly string[];
+  readonly defaultBases: readonly string[];
+  readonly badgeArtworkKeys: readonly string[];
+  readonly limits: {
+    readonly codeMinLength: number;
+    readonly codeMaxLength: number;
+    readonly nameMaxLength: number;
+    readonly descriptionMaxLength: number;
+    readonly claimTermsPerLocale: number;
+    readonly claimTermMaxLength: number;
+    readonly reasonMaxLength: number;
+  };
+}
+
+export interface TypeCreated {
+  readonly typeId: string;
+  readonly proposalId: string;
+  readonly status: 'proposed';
+  readonly proposalVersion: number;
+}
+
+/** Answer of POST catalog/admin/claim-terms/impact-count. */
+export interface ImpactCount {
+  readonly products: number;
+  readonly offers: number;
+  readonly total: number;
+  /** False when the scan stopped early: the numbers are "at least". */
+  readonly complete: boolean;
 }
 
 export interface TypeRevisionSaved {
-  readonly outcome: 'published' | 'pending-second-admin';
+  readonly outcome: 'published' | 'pending-second-admin' | 'proposal-revised';
   readonly typeId: string;
   readonly revisionNo: number;
 }

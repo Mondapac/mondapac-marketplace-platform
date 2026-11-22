@@ -1,6 +1,6 @@
 import { Badge, CARD_TABLE, EmptyState } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import type { TypeRow } from './types.ts';
+import { STATUS_TONE, type TypeRow } from './types.ts';
 
 /** The certificate types of the Market, one card each below 1024 px. */
 export function TypesTable({ rows }: { readonly rows: readonly TypeRow[] }) {
@@ -40,9 +40,7 @@ export function TypesTable({ rows }: { readonly rows: readonly TypeRow[] }) {
                   )}
                 </td>
                 <td className={CARD_TABLE.corner}>
-                  <Badge tone={row.status === 'active' ? 'success' : 'attention'}>
-                    {t(`status.${row.status}`)}
-                  </Badge>
+                  <Badge tone={STATUS_TONE[row.status]}>{t(`status.${row.status}`)}</Badge>
                 </td>
                 <td className={CARD_TABLE.labelled} data-label={t('col.code')}>
                   {row.code}

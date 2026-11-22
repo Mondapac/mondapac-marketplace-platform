@@ -2372,7 +2372,10 @@
       },
       "status": {
         "active": "Active",
-        "inactive": "Inactive"
+        "inactive": "Inactive",
+        "proposed": "Proposed",
+        "rejected": "Rejected",
+        "withdrawn": "Withdrawn"
       },
       "mode": {
         "THIRD_PARTY_DOCUMENT": "Certificate from an issuer",
@@ -2393,7 +2396,10 @@
         "unavailable": "This type could not be loaded.",
         "status": {
           "active": "Active",
-          "inactive": "Inactive"
+          "inactive": "Inactive",
+          "proposed": "Proposed",
+          "rejected": "Rejected",
+          "withdrawn": "Withdrawn"
         },
         "revision": "Revision {n}",
         "mode": "Check method",
@@ -2428,8 +2434,18 @@
           "rejected": "Change rejected.",
           "withdrawn": "Proposal withdrawn.",
           "revision-published": "Change published.",
-          "revision-pending": "Change saved. A second admin has to approve it before it is published."
-        }
+          "revision-pending": "Change saved. A second admin has to approve it before it is published.",
+          "proposed": "Type sent. Another admin has to approve it before sellers and customers see it.",
+          "proposal-changed": "Proposal changed. Another admin has to approve it.",
+          "type-approved": "Type approved. Sellers can now add certificates of this type.",
+          "type-rejected": "Type rejected.",
+          "type-withdrawn": "Proposal withdrawn."
+        },
+        "closed-note": {
+          "rejected": "This proposal was rejected. The type is read-only.",
+          "withdrawn": "This proposal was withdrawn. The type is read-only."
+        },
+        "proposed-waiting": "This type is waiting for a second admin. Sellers and customers don't see it yet."
       },
       "revise": {
         "title": "Change a certificate type",
@@ -2463,7 +2479,13 @@
           "locale": "The languages do not match the ones this Market supports.",
           "auto": "Approving without a person is only for self-declared types.",
           "mode": "The check method cannot be changed.",
-          "basis": "The default basis is not valid."
+          "basis": "The default basis is not valid.",
+          "code": "The code is not valid.",
+          "document": "A certificate from an issuer always needs a document.",
+          "issuer": "A seller's own declaration can't need an issuer from the registry.",
+          "forbidden-word": "A name or description uses a word that isn't allowed.",
+          "term-common": "A claim term is too common to use.",
+          "mode-invalid": "The check method is not valid."
         },
         "confirm": {
           "title": "Save this change?",
@@ -2648,7 +2670,118 @@
         "csrf": "Your session needs a refresh. Reload the page.",
         "unavailable": "The service is not available right now. Try again in a few minutes.",
         "unknown": "Something went wrong. Try again.",
-        "not-proposer": "Only the admin who proposed this can withdraw it."
+        "not-proposer": "Only the admin who proposed this can withdraw it.",
+        "code-taken": "This code is already used by another type, including rejected and withdrawn ones. Choose a different code.",
+        "code-reserved": "This code is kept for a type that comes with the platform. Choose a different code.",
+        "not-proposed": "This type is not waiting for approval any more. Reload the page."
+      },
+      "new": "New type",
+      "show-closed": "Show closed proposals",
+      "fields": {
+        "title": "New certificate type",
+        "page": "New certificate type",
+        "unavailable": "The form could not be loaded.",
+        "intro": "Another admin has to approve a new type before sellers and customers see it.",
+        "basics": "Basics",
+        "code": "Code (required)",
+        "code-placeholder": "organic",
+        "code-help": "Lowercase letters, digits and hyphens, {min} to {max} characters, starting with a letter. It can't be changed or reused later.",
+        "mode": "Check method (required)",
+        "mode-help": {
+          "THIRD_PARTY_DOCUMENT": "The seller uploads a certificate from a certifying body and a person reviews it.",
+          "SELF_DECLARATION": "The seller declares it and a person reviews it, unless \"Approve without a person\" is on."
+        },
+        "mode-note": "It can't be changed later. To change this, add a new type.",
+        "rules": "Rules",
+        "document-locked": "A certificate from an issuer always needs a document.",
+        "auto-help": "These claims show as a seller's claim. No one reviews them.",
+        "artwork": "Badge artwork",
+        "artwork-text": "Text badge: customers see the name",
+        "artwork-choose": "Choose artwork",
+        "artwork-help": "Only artwork that exists in the storefront can be chosen.",
+        "wording": "Wording · {locale}",
+        "wording-intro": "One section per language of the Market.",
+        "name": "Name (required)",
+        "name-help": "Up to {max} characters. Customers see this. Plain text only.",
+        "description": "Description for customers (required)",
+        "description-help": "Up to {max} characters. Say what the platform checked. Don't claim a ruling or an outcome about the product.",
+        "terms": "Claim terms (at least one, in any language)",
+        "terms-help": "Words people use for this claim in product text. One per line. People write these. MondaPac doesn't generate them. Once the type is active, text that uses them can't be saved anywhere in the Market.",
+        "reason": "Reason",
+        "optional": "optional",
+        "reason-help": "Up to {max} characters. The admin who approves sees it.",
+        "cancel": "Cancel",
+        "review": "Review",
+        "summary-label": "Problems with the form",
+        "summary": "{count, plural, one {# thing needs fixing} other {# things need fixing}}",
+        "problem": {
+          "code": "Use {codeMin} to {codeMax} lowercase letters, digits or hyphens, starting with a letter.",
+          "mode": "Choose how the certificate is checked.",
+          "icon": "Choose the badge artwork.",
+          "name": "Enter a name of up to {nameMax} characters.",
+          "description": "Enter a description of up to {descriptionMax} characters.",
+          "terms": "Keep each term to {termMax} characters and the list to {termsMax} terms.",
+          "terms-missing": "Add at least one claim term in one language.",
+          "reason": "Use {reasonMax} characters or fewer."
+        }
+      },
+      "review": {
+        "title": "Send this type for approval?",
+        "back": "Back",
+        "send": "Send for approval",
+        "terms": "Claim terms ({locale}):",
+        "terms-none": "none",
+        "second-admin": "Another admin has to approve it.",
+        "needs-issuer": "issuer",
+        "needs-document": "document",
+        "needs-expiry": "expiry",
+        "needs": "Needs {list}",
+        "needs-nothing": "Needs nothing extra",
+        "default": "Default: {basis}",
+        "text-badge": "Text badge"
+      },
+      "impact": {
+        "loading": "Counting the affected texts…",
+        "none": "No published text uses these terms.",
+        "count": "{total, plural, one {Once active, # published text that uses these terms can't be saved again until the terms are removed from it.} other {Once active, # published texts that use these terms can't be saved again until the terms are removed from them.}}",
+        "count-at-least": "Once active, at least {total} published texts that use these terms can't be saved again until the terms are removed from them.",
+        "failed-send": "We couldn't count the affected texts. You can still send it.",
+        "failed-view": "We couldn't count the affected texts."
+      },
+      "creation": {
+        "waiting": "Waiting for a second admin.",
+        "hidden": "Sellers and customers don't see this type yet.",
+        "proposed-by-you": "Proposed by you",
+        "proposed-by-other": "Proposed by another admin",
+        "on": "on {date} (UTC)",
+        "reason": "Reason",
+        "no-issuer": "No issuer of this type is active. Certificates of this type can't be approved until one is.",
+        "add-issuer": "Add an issuer",
+        "no-other-admin": "No one else can approve this yet. Ask the Platform Administrator to give another admin the certificate type edit permission.",
+        "own": "You proposed this. Another admin has to approve it.",
+        "approve": "Approve type",
+        "reject": "Reject type",
+        "withdraw": "Withdraw proposal",
+        "change": "Change this proposal",
+        "cancel": "Cancel",
+        "reload": "Reload the page",
+        "confirm": {
+          "approve": {
+            "title": "Approve this type?",
+            "button": "Approve type",
+            "body": "The type becomes active. Sellers can add certificates of it, and its claim terms are checked in every text of the Market."
+          },
+          "reject": {
+            "title": "Reject this type?",
+            "button": "Reject type",
+            "body": "The proposal is closed for good and the code can't be used again."
+          },
+          "withdraw": {
+            "title": "Withdraw your proposal?",
+            "button": "Withdraw proposal",
+            "body": "The proposal is closed and the code can't be used again."
+          }
+        }
       }
     }
   },

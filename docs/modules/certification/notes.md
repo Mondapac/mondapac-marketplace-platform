@@ -110,3 +110,10 @@ Deviations:
 - No route-specific rate limit; the other type writes have none either.
 - The badge artwork list is configuration, not a domain constant, so artwork names are not literals
   in core code.
+
+## Panel: New type screens (FE-091 PR 4)
+
+- `apps/admin/src/certificates/type-registry/type-fields.tsx` holds the shared Rules and Wording fieldsets, the artwork Select (fed by `GET certification/admin/types/new-options`) and the focus-taking `ErrorSummary`; the New type form and the change form both use them.
+- `impact-count.tsx` reads `POST catalog/admin/claim-terms/impact-count`; a failed count never blocks sending or viewing.
+- The proposed type page (`type-creation.tsx`) takes Approve/Reject/Withdraw from the proposal `actions` and the proposer. The "No one else can approve" message is keyed on `actions.approve.code === review.no-other-admin`, which the API does not send yet.
+- Screenshots: `apps/admin/test/cert-type-new-shots`.

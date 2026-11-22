@@ -16,6 +16,11 @@ const BY_CODE: Readonly<Record<string, string>> = {
   'type.revision-invalid': 'revision-invalid',
   'claim-policy.revision-unchanged': 'unchanged',
   'claim-policy.revision-invalid': 'policy-invalid',
+  'approval.same-admin': 'second-admin',
+  'type.code-taken': 'code-taken',
+  'type.code-reserved': 'code-reserved',
+  'type.not-proposed': 'not-proposed',
+  'type.proposal-closed': 'proposal-closed',
   'conflict.stale': 'stale',
   'conflict.retry': 'retry',
   'access.denied': 'denied',
@@ -29,6 +34,8 @@ export interface TypeProblem {
   readonly key: string;
   /** The type changed or vanished meanwhile: the page is read again. */
   readonly reload: boolean;
+  /** The refused call named a code that belongs under the Code field of the New type form. */
+  readonly codeField: boolean;
   /**
    * For a refused revision: the keys under `certificates.types.revise.issue`, or for a refused
    * policy save under `certificates.types.policy.issue`, once each.
@@ -46,6 +53,12 @@ const ISSUES: Readonly<Record<string, string>> = {
   'type.auto-approve-needs-self-declaration': 'auto',
   'type.verification-mode-immutable': 'mode',
   'type.default-basis-invalid': 'basis',
+  'type.code-invalid': 'code',
+  'type.document-required': 'document',
+  'type.issuer-registry-not-allowed': 'issuer',
+  'type.text-forbidden-word': 'forbidden-word',
+  'type.claim-term-too-common': 'term-common',
+  'type.verification-mode-invalid': 'mode-invalid',
 };
 
 /** The issue codes of a refused policy save: keys under `certificates.types.policy.issue`. */
@@ -67,6 +80,7 @@ const RELOAD = new Set([
   'proposal-gone',
   'proposal-pending',
   'proposal-closed',
+  'not-proposed',
 ]);
 
 export function typeProblemOf(failure: ApiFailure): TypeProblem {
@@ -81,6 +95,7 @@ export function typeProblemOf(failure: ApiFailure): TypeProblem {
   return {
     key: `certificates.types.error.${key}`,
     reload: RELOAD.has(key),
+    codeField: key === 'code-taken' || key === 'code-reserved',
     issues: [...issues],
   };
 }

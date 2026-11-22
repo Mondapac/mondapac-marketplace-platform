@@ -6,6 +6,7 @@ import { serverGet } from '../../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../../src/server/session.ts';
 import { TypeDetailView } from '../../../../../src/certificates/type-registry/type-detail.tsx';
 import {
+  API_ISSUERS,
   API_TYPES,
   POLICY_VIEW_PERMISSION,
   TYPE_EDIT_PERMISSION,
@@ -68,6 +69,19 @@ export default async function TypePage({
   if (result.kind === 'forbidden') return shell(message('no-access'));
   if (result.kind === 'not-found') return shell(message('not-found'));
   if (result.kind !== 'ok') return shell(message('unavailable'));
+  // A proposed type that needs an issuer: warn when none is active (a warning, not a block).
+  let hasActiveIssuer: boolean | null = null;
+  const body = result.body;
+  if (
+    body.status === 'proposed' &&
+    body.published.content.requiresIssuerRegistry === true &&
+    keys.includes('certification.issuer.view')
+  ) {
+    const issuers = await serverGet<{ readonly items: readonly unknown[] }>(
+      `${API_ISSUERS}?typeId=${typeId}&state=active&limit=1`,
+    );
+    if (issuers.kind === 'ok') hasActiveIssuer = issuers.body.items.length > 0;
+  }
   const locale = await getLocale();
   const language = locale.split('-')[0] ?? locale;
   const locales = result.body.published.content.locales ?? {};
@@ -85,6 +99,8 @@ export default async function TypePage({
         canEdit={keys.includes(TYPE_EDIT_PERMISSION)}
         canViewPolicy={keys.includes(POLICY_VIEW_PERMISSION)}
         csrfToken={gate.session.csrfToken}
+        accountId={gate.session.accountId}
+        hasActiveIssuer={hasActiveIssuer}
         done={typeof done === 'string' ? done : null}
       />
     </>,

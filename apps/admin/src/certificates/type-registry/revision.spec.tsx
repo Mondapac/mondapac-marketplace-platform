@@ -179,6 +179,28 @@ describe('type revision form', () => {
     await waitFor(() => expect(assigned).toBe(`/certificates/types/${TYPE}?done=revision-pending`));
   });
 
+  it('offers the artwork the API lists and keeps the key the type already has', () => {
+    wrap(<TypeRevisionForm type={detail()} csrfToken="c" artworkKeys={['text', 'halal']} />);
+    const select = screen.getByLabelText<HTMLSelectElement>('Icon');
+    expect([...select.options].map((option) => option.value)).toEqual([
+      'shield-check',
+      'text',
+      'halal',
+    ]);
+    expect(within(select).getByText('Text badge: customers see the name')).toBeTruthy();
+    expect(select.value).toBe('shield-check');
+  });
+
+  it('locks the document switch for an issuer certificate and hides the issuer switch for a declaration', () => {
+    form();
+    const needsDocument = screen.getByLabelText<HTMLInputElement>('Needs a document');
+    expect(needsDocument.disabled).toBe(true);
+    expect(needsDocument.checked).toBe(true);
+    cleanup();
+    form(detail({ verificationMode: 'SELF_DECLARATION', requiresIssuerRegistry: true }));
+    expect(screen.queryByLabelText('Needs an issuer from the registry')).toBeNull();
+  });
+
   it('shows the self-declaration switch only for a self-declared type', () => {
     form(detail({ verificationMode: 'SELF_DECLARATION' }));
     expect(screen.getByLabelText('Approve without a person')).toBeTruthy();
@@ -187,16 +209,17 @@ describe('type revision form', () => {
   it('refuses an empty name, a bad icon key and no terms at all before it asks', () => {
     form();
     fireEvent.change(screen.getByLabelText('Name'), { target: { value: '  ' } });
-    fireEvent.change(screen.getByLabelText('Icon'), { target: { value: 'Shield Check' } });
     fireEvent.change(screen.getByLabelText('Claim terms'), { target: { value: '' } });
     click('Review changes');
-    expect(screen.getByText(/3 need fixing/)).toBeTruthy();
+    expect(screen.getByText(/2 need fixing/)).toBeTruthy();
+    expect(document.activeElement).toBe(
+      screen.getByRole('alert', { name: 'Problems with the form' }),
+    );
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Review changes' }).disabled).toBe(
       true,
     );
-    expect(screen.getByText(/Enter a name/)).toBeTruthy();
-    expect(screen.getByText(/lowercase letters, digits and hyphens, starting/)).toBeTruthy();
-    expect(screen.getByText(/Add at least one claim term/)).toBeTruthy();
+    expect(screen.getAllByText(/Enter a name/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Add at least one claim term/).length).toBeGreaterThan(0);
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(call).not.toHaveBeenCalled();
   });
