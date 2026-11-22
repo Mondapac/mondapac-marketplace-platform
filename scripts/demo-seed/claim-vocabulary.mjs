@@ -11,7 +11,7 @@
 import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
-import { ROOT, assertLocalDevelopment, loadDotEnv } from './guard.mjs';
+import { ROOT, assertDatabaseMarker, assertLocalDevelopment, loadDotEnv } from './guard.mjs';
 
 loadDotEnv();
 const url = process.env.MIGRATION_DATABASE_URL;
@@ -49,7 +49,11 @@ const V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}
  * such an id gets a v7 id here, with everything that points at it. Foreign keys are found in the
  * catalog, so a table added later is covered; the constraints are not deferrable, so the new type
  * row is added first (under a temporary code), the pointers are moved, then the old row goes.
- * Any other column named type_id that still holds the old id stops the run (nothing is changed).
+ * Only a pristine seed is moved: a type that issuers, certificates, documents or product
+ * certificates already use stops the run with nothing changed (those tables reference each other
+ * by keys that carry the type id, so they cannot move one at a time); reset the test database
+ * instead. The repair also switches an append-only guard off, so it runs only on a database that
+ * carries the operational test marker.
  */
 async function repairTypeIds(db) {
   const old = await db.query(
@@ -57,7 +61,9 @@ async function repairTypeIds(db) {
     [MARKET],
   );
   let repaired = 0;
-  for (const row of old.rows.filter((r) => !V7.test(r.id))) {
+  const stale = old.rows.filter((r) => !V7.test(r.id));
+  if (stale.length > 0) await assertDatabaseMarker(db);
+  for (const row of stale) {
     const newId = uuidv7();
     await db.query(
       `INSERT INTO certification.certification_types
@@ -90,6 +96,20 @@ async function repairTypeIds(db) {
           AND pat.attname = 'id'`,
     );
     for (const { schema, tbl, col } of pointers.rows) {
+      if (tbl === 'certification_type_revisions' || tbl === 'claim_basis_policies') continue;
+      const used = await db.query(
+        `SELECT count(*)::int AS n FROM ${quote(schema)}.${quote(tbl)} WHERE ${quote(col)} = $1`,
+        [row.id],
+      );
+      if (used.rows[0].n > 0) {
+        throw new Error(
+          `${schema}.${tbl} already has ${used.rows[0].n} row(s) for type ${row.code}; the id can only be repaired on a pristine seed. Reset the operational test database and load again. Nothing was changed.`,
+        );
+      }
+    }
+    for (const { schema, tbl, col } of pointers.rows.sort((a, b) =>
+      `${a.schema}.${a.tbl}`.localeCompare(`${b.schema}.${b.tbl}`),
+    )) {
       // Revisions are append-only; the owner of the table may switch that guard off for this one
       // statement (it comes back on in the same transaction, which a failure rolls back).
       const guarded = tbl === 'certification_type_revisions';
@@ -129,8 +149,14 @@ async function repairTypeIds(db) {
       'UPDATE certification.certification_types SET code = $1, published_revision_id = $2 WHERE id = $3',
       [row.code, revisionId, newId],
     );
+    console.log(`claim vocabulary: type ${row.code} ${row.id} -> ${newId}`);
     repaired += 1;
   }
+  const left = await db.query(
+    'SELECT code FROM certification.certification_types WHERE market_id = $1 AND id::text !~ $2',
+    [MARKET, '^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$'],
+  );
+  if (left.rowCount > 0) throw new Error('a certification type still has a non-v7 id');
   return repaired;
 }
 
