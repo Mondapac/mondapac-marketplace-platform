@@ -402,7 +402,7 @@ export function OffersList({
   return (
     <SuperList
       heading={{
-        subtitle: ts('intro'),
+        info: ts('intro'),
         actions: (
           <OffersBulk
             selection={{

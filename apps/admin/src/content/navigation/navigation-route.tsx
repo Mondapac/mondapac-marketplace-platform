@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageInfo } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../server/admin-shell.tsx';
@@ -36,8 +36,10 @@ export async function NavigationRoute() {
   return (
     <AdminShell session={gate.session} activeId="menus" title={title}>
       <div className="mb-4">
-        <h1 className="text-2xl font-semibold">{title}</h1>
-        <p className="text-fg-muted">{t('content.navigation.intro')}</p>
+        <div className="flex items-center gap-2">
+          <h1 className="text-2xl font-semibold">{title}</h1>
+          <PageInfo page={title}>{t('content.navigation.intro')}</PageInfo>
+        </div>
       </div>
       {body === null ? (
         <LoadError message={t('content.unavailable')} retryLabel={t('load.retry')} />

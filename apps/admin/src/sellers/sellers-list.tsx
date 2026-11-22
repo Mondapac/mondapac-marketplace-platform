@@ -548,7 +548,7 @@ export function SellersList({
   return (
     <SuperList
       heading={{
-        subtitle: t('intro'),
+        info: t('intro'),
         actions: (
           <SellersBulk
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}

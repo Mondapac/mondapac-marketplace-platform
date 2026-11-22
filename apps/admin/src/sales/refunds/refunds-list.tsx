@@ -477,7 +477,7 @@ export function RefundsList({
   return (
     <SuperList
       heading={{
-        subtitle: t('intro'),
+        info: t('intro'),
         note: to('zone-note', { zone }),
         actions: (
           <RefundsBulk

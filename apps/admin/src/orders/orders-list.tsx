@@ -480,7 +480,7 @@ export function OrdersList({
   return (
     <SuperList
       heading={{
-        subtitle: t(customerAccountId === undefined ? 'intro' : 'customer-intro'),
+        info: t(customerAccountId === undefined ? 'intro' : 'customer-intro'),
         note: t('zone-note', { zone }),
         actions: (
           <OrdersBulk
