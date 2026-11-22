@@ -768,7 +768,8 @@ describe.each(TEST_MARKETS)('certification registry in market %s (database)', (c
         id: withdrawn.proposalId,
         expectedVersion: 1,
         state: 'withdrawn',
-        decidedByAccountId: proposer,
+        // A withdrawal has no decider (relaxation_proposals_decided_by_check).
+        decidedByAccountId: null,
         decidedAt: T2,
       });
     });
@@ -777,7 +778,7 @@ describe.each(TEST_MARKETS)('certification registry in market %s (database)', (c
     });
     expect(await read(() => registry.proposal(market, withdrawn.proposalId))).toMatchObject({
       state: 'withdrawn',
-      decidedByAccountId: proposer,
+      decidedByAccountId: null,
     });
 
     // Closed types leave the default list and come after the open ones on request.
