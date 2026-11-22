@@ -217,17 +217,18 @@ export async function sampleDeliveryOptionsFor(
   _address: QuoteAddress,
   sellerIds: readonly string[],
 ): Promise<DeliveryOptionsAnswer> {
+  if (storefrontApiConfig() !== null) return Promise.resolve({ kind: 'failed' });
   return Promise.resolve({ kind: 'ok', sellers: sampleDeliveryOptions(sellerIds) });
 }
 
 /**
- * Pay: checks the order again (Express prices, stock) and then takes the payment, or answers what
- * changed with nothing charged. SAMPLE until the ordering API takes payments (the next package:
- * a manual-capture PaymentIntent from the card tile's confirmation token, refusing any brand but
- * Visa and Mastercard; the hosted Checkout Session for the Stripe tile). Until then a Stripe
- * confirmation token has nothing to go to and answers `failed`; the sample charges nothing.
+ * The SAMPLE Pay of the local preview (API_BASE_URL empty): checks the order against the sample
+ * delivery prices and stock and charges nothing. With the API configured, Pay goes from the
+ * browser through the session relay to `orders/pay` or `orders/checkout`
+ * (src/checkout/live-pay.ts), so this answers `failed`: a real cart never gets a sample "paid".
  */
 export function takePayment(request: PayRequest): Promise<PayAnswer> {
+  if (storefrontApiConfig() !== null) return Promise.resolve({ kind: 'failed' });
   return Promise.resolve(samplePayment(request));
 }
 

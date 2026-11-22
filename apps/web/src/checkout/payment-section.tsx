@@ -6,7 +6,7 @@ import { useId, type ReactNode, type RefObject } from 'react';
 import type { CartView } from '../cart/cart.ts';
 import { formatMoney } from '../format/money.ts';
 import { Icon } from '../icons/icon.tsx';
-import type { CardSetup, Money, PaymentMethod } from '../storefront/types.ts';
+import type { CardSetup, Money, PaymentMethod, PayRefusal } from '../storefront/types.ts';
 import { Field } from './address-section.tsx';
 import type { CardFieldsState } from './stripe-card.ts';
 
@@ -41,6 +41,11 @@ export type PayNotice =
         readonly now: number;
       }[];
     }
+  /** The server's total moved (prices, fees, tax or a discount); the cart was read again. */
+  | { readonly kind: 'total-changed'; readonly was: Money; readonly now: Money }
+  | { readonly kind: 'refused'; readonly reason: PayRefusal }
+  | { readonly kind: 'signed-out' }
+  | { readonly kind: 'throttled'; readonly retryAfterSeconds: number | null }
   | { readonly kind: 'declined' }
   | { readonly kind: 'failed' };
 
@@ -269,6 +274,37 @@ function Notice({ notice }: { readonly notice: PayNotice }) {
             </Link>
           </span>
         </>
+      ) : notice.kind === 'total-changed' ? (
+        <p>
+          <b>{t('notice-total-title')}</b>{' '}
+          {t('notice-total-line', {
+            was: formatMoney(notice.was, locale),
+            now: formatMoney(notice.now, locale),
+          })}{' '}
+          {t('notice-total-body')}
+        </p>
+      ) : notice.kind === 'refused' ? (
+        <>
+          <p>{t.rich(`notice-refused-${notice.reason}`, { b })}</p>
+          {notice.reason === 'stock' ? (
+            <span className="dwa">
+              <Link className="btn ghost sm" href="/cart">
+                {t('review-cart')}
+              </Link>
+            </span>
+          ) : null}
+        </>
+      ) : notice.kind === 'signed-out' ? (
+        <p>{t.rich('notice-signed-out', { b })}</p>
+      ) : notice.kind === 'throttled' ? (
+        <p>
+          {notice.retryAfterSeconds === null
+            ? t.rich('notice-throttled', { b })
+            : t.rich('notice-throttled-wait', {
+                b,
+                minutes: Math.max(1, Math.ceil(notice.retryAfterSeconds / 60)),
+              })}
+        </p>
       ) : notice.kind === 'declined' ? (
         <p>{t.rich('notice-declined', { b })}</p>
       ) : (

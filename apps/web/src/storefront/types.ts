@@ -457,8 +457,22 @@ export type PayAnswer =
         readonly now: number;
       }[];
     }
+  /**
+   * The order total the server computed is not the one the buyer saw (an item price, a fee, a tax
+   * or a discount moved): nothing was reserved or charged. The cart is read again.
+   */
+  | { readonly kind: 'total-changed'; readonly was: Money; readonly now: Money }
+  /** Pay again cannot fix it: the page says where to look (`cart` sends the buyer to the cart). */
+  | { readonly kind: 'refused'; readonly reason: PayRefusal }
+  /** The session ended: the buyer logs in again. */
+  | { readonly kind: 'signed-out' }
+  /** Too many attempts; null when the API gave no wait. */
+  | { readonly kind: 'throttled'; readonly retryAfterSeconds: number | null }
   | { readonly kind: 'declined' }
   | { readonly kind: 'failed' };
+
+/** Why the API refused an order Pay again cannot fix. */
+export type PayRefusal = 'discount' | 'address' | 'delivery' | 'cart' | 'stock';
 
 /**
  * How the cart shows the tax a GST-inclusive total holds ("Includes A$x GST"). A PLACEHOLDER

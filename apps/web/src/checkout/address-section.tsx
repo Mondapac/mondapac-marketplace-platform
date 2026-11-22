@@ -127,6 +127,19 @@ export function newAddressLine(fresh: NewAddress, area: ServiceArea, fallback: s
     .join(', ');
 }
 
+/** Saving a new address in live mode: what the button does and where it stands. */
+export interface SaveNewAddress {
+  readonly onSave: () => void;
+  readonly state: 'idle' | 'saving' | 'failed';
+}
+
+/** The recipient's first and last name from the one name field: the last word is the last name. */
+export function splitName(full: string): { firstName: string; lastName: string } | null {
+  const words = full.trim().split(/\s+/u).filter(Boolean);
+  if (words.length < 2) return null;
+  return { firstName: words.slice(0, -1).join(' '), lastName: words[words.length - 1]! };
+}
+
 export function AddressSection({
   source,
   addresses,
@@ -135,6 +148,7 @@ export function AddressSection({
   fresh,
   onFresh,
   areaState,
+  saveNew,
 }: {
   readonly source: CheckoutSource;
   readonly addresses: readonly SavedAddress[];
@@ -145,6 +159,11 @@ export function AddressSection({
   readonly onFresh: (fresh: NewAddress) => void;
   /** The delivery area answer for the new address's postcode. */
   readonly areaState: AreaState;
+  /**
+   * Live only: a new address is saved to the address book before delivery is priced (the API
+   * quotes and orders a saved address only), with the separate fields (no sample place search).
+   */
+  readonly saveNew?: SaveNewAddress;
 }) {
   const t = useTranslations('checkout');
   const area = source.serviceArea;
@@ -186,7 +205,13 @@ export function AddressSection({
         </label>
       </div>
       {isNew ? (
-        <NewAddressForm source={source} value={fresh} onChange={onFresh} areaState={areaState} />
+        <NewAddressForm
+          source={source}
+          value={fresh}
+          onChange={onFresh}
+          areaState={areaState}
+          {...(saveNew ? { saveNew } : {})}
+        />
       ) : null}
     </section>
   );
@@ -197,11 +222,13 @@ function NewAddressForm({
   value,
   onChange,
   areaState,
+  saveNew,
 }: {
   readonly source: CheckoutSource;
   readonly value: NewAddress;
   readonly onChange: (value: NewAddress) => void;
   readonly areaState: AreaState;
+  readonly saveNew?: SaveNewAddress;
 }) {
   const t = useTranslations('checkout');
   const area = source.serviceArea;
@@ -227,7 +254,7 @@ function NewAddressForm({
   );
   return (
     <>
-      {value.mode === 'search' ? (
+      {value.mode === 'search' && !saveNew ? (
         <>
           {value.picked ? (
             <PickedAddress
@@ -267,6 +294,7 @@ function NewAddressForm({
           onChange={onChange}
           nameField={nameField}
           phoneField={phoneField}
+          searchable={!saveNew}
         />
       )}
       <div className="fld">
@@ -278,10 +306,18 @@ function NewAddressForm({
           onChange={(event) => set('note')(event.target.value)}
         />
       </div>
-      <label className="chk">
-        <input type="checkbox" defaultChecked />
-        {t('save-address')}
-      </label>
+      {saveNew ? (
+        <SaveNewButton
+          saveNew={saveNew}
+          ready={newAddressComplete(value) && areaState === 'in'}
+          named={splitName(value.name) !== null}
+        />
+      ) : (
+        <label className="chk">
+          <input type="checkbox" defaultChecked />
+          {t('save-address')}
+        </label>
+      )}
     </>
   );
 }
@@ -517,6 +553,7 @@ function ManualAddress({
   onChange,
   nameField,
   phoneField,
+  searchable,
 }: {
   readonly area: ServiceArea;
   readonly areaState: AreaState;
@@ -524,6 +561,8 @@ function ManualAddress({
   readonly onChange: (value: NewAddress) => void;
   readonly nameField: ReactNode;
   readonly phoneField: ReactNode;
+  /** Whether "Search instead" is offered (not live: the place search is the sample's). */
+  readonly searchable: boolean;
 }) {
   const t = useTranslations('checkout');
   // The postcode error shows once four digits are typed, or when the field is left too short.
@@ -572,13 +611,15 @@ function ManualAddress({
           error={error}
         />
       </div>
-      <button
-        className="lnk acm"
-        type="button"
-        onClick={() => onChange({ ...value, mode: 'search' })}
-      >
-        {t('search-instead')}
-      </button>
+      {searchable ? (
+        <button
+          className="lnk acm"
+          type="button"
+          onClick={() => onChange({ ...value, mode: 'search' })}
+        >
+          {t('search-instead')}
+        </button>
+      ) : null}
     </>
   );
 }
@@ -646,6 +687,41 @@ export function Field({
       ) : hint ? (
         <small id={`${id}-help`}>{hint}</small>
       ) : null}
+    </div>
+  );
+}
+
+/** Live: saves the new address to the address book; delivery is priced for it once saved. */
+function SaveNewButton({
+  saveNew,
+  ready,
+  named,
+}: {
+  readonly saveNew: SaveNewAddress;
+  readonly ready: boolean;
+  readonly named: boolean;
+}) {
+  const t = useTranslations('checkout');
+  const note = useId();
+  const saving = saveNew.state === 'saving';
+  return (
+    <div className="fld">
+      <button
+        className="btn"
+        type="button"
+        disabled={!ready || !named || saving}
+        aria-describedby={note}
+        onClick={saveNew.onSave}
+      >
+        {saving ? t('use-address-saving') : t('use-address')}
+      </button>
+      <small id={note} role={saveNew.state === 'failed' ? 'alert' : undefined}>
+        {saveNew.state === 'failed'
+          ? t('use-address-failed')
+          : ready && !named
+            ? t('use-address-full-name')
+            : t('use-address-note')}
+      </small>
     </div>
   );
 }

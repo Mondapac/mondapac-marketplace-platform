@@ -29,7 +29,9 @@ function PageTitle({
 }
 
 // The pages around Stripe's hosted payment page: the sample stand-in for it, "Payment not
-// completed" (Stripe's cancel URL) and the confirmation (its success URL).
+// completed" (Stripe's cancel URL, /checkout/cancelled; the preview's /checkout/not-completed),
+// the confirmation of Pay on this page, and the return from Stripe's success URL
+// (/checkout/success), where the order is known only by its id.
 
 /**
  * Stands in for the redirect to Stripe's hosted Checkout page until payment is wired: no Stripe
@@ -91,7 +93,11 @@ export function SamplePayment({ reference }: { readonly reference: string }) {
 
 export function PaymentNotCompleted() {
   const t = useTranslations('checkout');
-  const { customer } = useStore();
+  const { customer, live, refreshCart } = useStore();
+  // Back from Stripe's page: the cart is the API's again (the order was not paid).
+  useEffect(() => {
+    if (live) void refreshCart();
+  }, [live, refreshCart]);
   return (
     <div className="cwrap">
       <CheckoutProgress current="pay" signedIn={customer !== null} />
@@ -103,8 +109,8 @@ export function PaymentNotCompleted() {
         <PageTitle className="dtitle">{t('try-again')}</PageTitle>
         <p className="legal">{t('not-paid-body')}</p>
         <div className="dact">
-          <Link className="btn" href="/checkout/payment">
-            {t('pay-again')}
+          <Link className="btn" href={live ? '/checkout' : '/checkout/payment'}>
+            {live ? t('try-again') : t('pay-again')}
           </Link>
           <Link className="btn ghost" href="/cart">
             {t('back-to-cart')}
@@ -193,6 +199,47 @@ export function Confirmation() {
         <div className="dord">
           <h2>{t('delivering-to')}</h2>
           <span>{order.address}</span>
+        </div>
+        <div className="dact">
+          <Link className="btn" href="/account">
+            {t('view-orders')}
+          </Link>
+          <Link className="btn ghost" href="/">
+            {t('continue-shopping')}
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Stripe's success URL (`/checkout/success?order=<id>`): the order is confirmed when Stripe's
+ * signed event arrives, so the page says the payment is being confirmed and points to the
+ * orders. The id comes from the URL and is only shown as the reference; nothing is read with it.
+ */
+export function HostedPaymentDone({ reference }: { readonly reference: string | null }) {
+  const t = useTranslations('checkout');
+  const { customer, clearCart } = useStore();
+  // The API empties the cart once Stripe's signed event confirms the order, which can come after
+  // this page: reading it now could show the paid items again, so this page only clears its own.
+  useEffect(() => {
+    clearCart();
+  }, [clearCart]);
+  return (
+    <div className="cwrap">
+      <CheckoutProgress current="done" signedIn={customer !== null} />
+      <div className="done">
+        <div className="okc">
+          <span className="tk">
+            <Icon name="check" />
+          </span>
+          <PageTitle>{t('hosted-done-title')}</PageTitle>
+          <p>
+            {reference === null
+              ? t('hosted-done-body-plain')
+              : t('hosted-done-body', { reference })}
+          </p>
         </div>
         <div className="dact">
           <Link className="btn" href="/account">
