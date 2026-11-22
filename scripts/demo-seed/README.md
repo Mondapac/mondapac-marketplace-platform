@@ -33,7 +33,10 @@ The seed is idempotent: a second run changes nothing. To start over, wipe the da
 - **Claim vocabulary** (`claim-vocabulary.mjs`): catalog refuses every product text and category
   name while a Market has no published certification type, and certification has no way to create
   one yet. The script writes halal, kosher, vegan and organic with their terms by SQL (the
-  migration role). It goes away when the certification package lands.
+  migration role). It goes away when the certification package lands. A type written by an older
+  version of the script has a UUIDv4 id, which the API refuses (the admin type page showed "This
+  type could not be loaded"); the script now gives such a type a UUIDv7 id, with its revisions and
+  everything that points at it, the next time it runs.
 - The AU starter categories and attributes are `config/catalog-seed/AU.json` (loaded by the
   catalog seed jobs at worker start), until slice 21.
 

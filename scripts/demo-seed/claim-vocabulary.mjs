@@ -41,6 +41,103 @@ function uuidv7() {
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
 
+const V7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+/**
+ * Earlier versions of this script wrote UUIDv4 type ids, which the API refuses (the type page of
+ * the admin Inbox then says "This type could not be loaded"). A type that is already there with
+ * such an id gets a v7 id here, with everything that points at it. Foreign keys are found in the
+ * catalog, so a table added later is covered; the constraints are not deferrable, so the new type
+ * row is added first (under a temporary code), the pointers are moved, then the old row goes.
+ * Any other column named type_id that still holds the old id stops the run (nothing is changed).
+ */
+async function repairTypeIds(db) {
+  const old = await db.query(
+    'SELECT id, code FROM certification.certification_types WHERE market_id = $1',
+    [MARKET],
+  );
+  let repaired = 0;
+  for (const row of old.rows.filter((r) => !V7.test(r.id))) {
+    const newId = uuidv7();
+    await db.query(
+      `INSERT INTO certification.certification_types
+         (id, market_id, tenant_id, code, verification_mode, status, published_revision_id, version, created_at)
+       SELECT $1::uuid, market_id, tenant_id, 'tmp-' || substr($1::text, 1, 8), verification_mode, status, NULL, version, created_at
+         FROM certification.certification_types WHERE id = $2`,
+      [newId, row.id],
+    );
+    // The old row stops pointing at its published revision, so the revisions can move.
+    const published = await db.query(
+      'SELECT published_revision_id AS revision FROM certification.certification_types WHERE id = $1',
+      [row.id],
+    );
+    const revisionId = published.rows[0].revision;
+    await db.query(
+      'UPDATE certification.certification_types SET published_revision_id = NULL WHERE id = $1',
+      [row.id],
+    );
+    // Every column that references certification_types(id): the foreign keys of the catalog.
+    const pointers = await db.query(
+      `SELECT DISTINCT ns.nspname AS schema, cl.relname AS tbl, att.attname AS col
+         FROM pg_constraint con
+         JOIN pg_class cl ON cl.oid = con.conrelid
+         JOIN pg_namespace ns ON ns.oid = cl.relnamespace
+         CROSS JOIN LATERAL unnest(con.conkey, con.confkey) AS k(child, parent)
+         JOIN pg_attribute att ON att.attrelid = con.conrelid AND att.attnum = k.child
+         JOIN pg_attribute pat ON pat.attrelid = con.confrelid AND pat.attnum = k.parent
+        WHERE con.contype = 'f'
+          AND con.confrelid = 'certification.certification_types'::regclass
+          AND pat.attname = 'id'`,
+    );
+    for (const { schema, tbl, col } of pointers.rows) {
+      // Revisions are append-only; the owner of the table may switch that guard off for this one
+      // statement (it comes back on in the same transaction, which a failure rolls back).
+      const guarded = tbl === 'certification_type_revisions';
+      if (guarded) {
+        await db.query(
+          `ALTER TABLE ${quote(schema)}.${quote(tbl)} DISABLE TRIGGER certification_type_revisions_no_update_delete`,
+        );
+      }
+      await db.query(
+        `UPDATE ${quote(schema)}.${quote(tbl)} SET ${quote(col)} = $1 WHERE ${quote(col)} = $2`,
+        [newId, row.id],
+      );
+      if (guarded) {
+        await db.query(
+          `ALTER TABLE ${quote(schema)}.${quote(tbl)} ENABLE TRIGGER certification_type_revisions_no_update_delete`,
+        );
+      }
+    }
+    // A column named type_id without a foreign key would be left pointing at nothing.
+    const loose = await db.query(
+      `SELECT table_schema, table_name FROM information_schema.columns
+        WHERE column_name = 'type_id' AND data_type = 'uuid' AND table_schema NOT IN ('pg_catalog', 'information_schema')`,
+    );
+    for (const { table_schema: schema, table_name: tbl } of loose.rows) {
+      const left = await db.query(
+        `SELECT count(*)::int AS n FROM ${quote(schema)}.${quote(tbl)} WHERE type_id = $1`,
+        [row.id],
+      );
+      if (left.rows[0].n > 0) {
+        throw new Error(
+          `${schema}.${tbl} still holds the old id of type ${row.code} (${row.id}); nothing was changed`,
+        );
+      }
+    }
+    await db.query('DELETE FROM certification.certification_types WHERE id = $1', [row.id]);
+    await db.query(
+      'UPDATE certification.certification_types SET code = $1, published_revision_id = $2 WHERE id = $3',
+      [row.code, revisionId, newId],
+    );
+    repaired += 1;
+  }
+  return repaired;
+}
+
+function quote(name) {
+  return `"${name.replaceAll('"', '""')}"`;
+}
+
 const TYPES = [
   {
     code: 'halal',
@@ -92,6 +189,7 @@ const client = new Client({ connectionString: url });
 await client.connect();
 try {
   await client.query('BEGIN');
+  const repaired = await repairTypeIds(client);
   let created = 0;
   for (const type of TYPES) {
     const exists = await client.query(
@@ -147,7 +245,8 @@ try {
   }
   await client.query('COMMIT');
   console.log(
-    `claim vocabulary: ${created} type(s) written, ${TYPES.length - created} already there`,
+    `claim vocabulary: ${created} type(s) written, ${TYPES.length - created} already there` +
+      (repaired > 0 ? `, ${repaired} type id(s) changed to UUIDv7` : ''),
   );
 } catch (error) {
   await client.query('ROLLBACK').catch(() => {});
