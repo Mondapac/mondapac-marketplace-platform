@@ -7,7 +7,8 @@ import messages from '../../messages/en.json';
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
-import { BlogAccessCard, blogAccessOf } from './blog-access-card.tsx';
+import { BlogAccessCard } from './blog-access-card.tsx';
+import { blogAccessOf } from './blog-access-types.ts';
 
 const call = vi.mocked(callApi);
 const SELLER = '0190a000-0000-7000-8000-000000000009';

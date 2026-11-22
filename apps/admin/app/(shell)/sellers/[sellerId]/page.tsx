@@ -22,19 +22,19 @@ import {
   healthPath,
   type SellerHealthRead,
 } from '../../../../src/sellers/health-types.ts';
+import { AiAccessCard } from '../../../../src/sellers/ai-access-card.tsx';
 import {
-  AiAccessCard,
   aiAccessOf,
   aiAccessPath,
   type AiAccessRead,
-} from '../../../../src/sellers/ai-access-card.tsx';
+} from '../../../../src/sellers/ai-access-types.ts';
+import { BlogAccessCard } from '../../../../src/sellers/blog-access-card.tsx';
 import {
   BLOG_ACCESS_PERMISSION,
-  BlogAccessCard,
   blogAccessOf,
   blogAccessPath,
   type BlogAccessRead,
-} from '../../../../src/sellers/blog-access-card.tsx';
+} from '../../../../src/sellers/blog-access-types.ts';
 import { CategoryProposalsCard } from '../../../../src/sellers/category-proposals-card.tsx';
 import { DECIDE_PERMISSION as PROPOSAL_DECIDE_PERMISSION } from '../../../../src/categories/proposals/types.ts';
 import { OwnerSecondFactorCard } from '../../../../src/sellers/owner-second-factor-card.tsx';

@@ -8,8 +8,6 @@ import { formatMinor } from '../price/money.ts';
 
 const PATH = 'commission-payouts/seller/exclusive-commission';
 
-export const EARNINGS_VIEW_PERMISSION = 'commission-payouts.earnings.view';
-
 export interface Saved {
   /** Signed minor units; negative when refunds gave back more than the month saved. */
   readonly amount: string;

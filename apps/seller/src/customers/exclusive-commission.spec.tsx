@@ -18,7 +18,8 @@ import {
   percentOf,
   type ExclusiveCommission,
 } from './exclusive-commission.tsx';
-import { ExclusivePerks, perkAccessOf } from './exclusive-perks.tsx';
+import { ExclusivePerks } from './exclusive-perks.tsx';
+import { perkAccessOf } from './perk-access.ts';
 
 const call = vi.mocked(callApi);
 const wrap = (node: ReactNode, locale: string) => (

@@ -5,7 +5,8 @@ import {
   productDraftName,
   SUGGESTING_STATUSES,
 } from '../../../../src/catalog/suggestion-fields.ts';
-import { SuggestTagForm, TAG_LABEL_MAX } from '../../../../src/catalog/suggest-tag-form.tsx';
+import { SuggestTagForm } from '../../../../src/catalog/suggest-tag-form.tsx';
+import { TAG_LABEL_MAX } from '../../../../src/catalog/tag-label-limits.ts';
 import {
   EDIT_PERMISSION,
   type OwnTopicSuggestionList,

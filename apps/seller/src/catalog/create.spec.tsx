@@ -26,7 +26,7 @@ const replace = vi.fn();
 vi.mock('next/navigation', () => ({ useRouter: () => ({ replace, refresh: vi.fn() }) }));
 
 import { callApi } from '../api/client.ts';
-import { blankProduct } from './add-offer.tsx';
+import { blankProduct } from './blank-product.ts';
 import { createProblemOf } from './create-errors.ts';
 import { EditForm } from './edit-form.tsx';
 import { readable } from './format.ts';
