@@ -1443,7 +1443,6 @@
       },
       "save": "Save draft",
       "submit": "Submit for review",
-      "back": "Back to product",
       "reload": "Reload the product",
       "replace-pending": "Replace the revision that is waiting for review",
       "refused-field": "This text was not saved because it holds a claim or a hidden character.",

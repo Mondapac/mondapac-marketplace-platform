@@ -12,7 +12,7 @@ import {
   toast,
   useUnsavedChangesGuard,
 } from '@mondapac/ui';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useRef, useState, type FormEvent } from 'react';
 import { flushSync } from 'react-dom';
@@ -42,6 +42,8 @@ import {
 import { createProblemOf, type CreateProblem } from './create-errors.ts';
 import { editProblemOf, type EditProblem } from './edit-errors.ts';
 import { DEFAULT_MAX_TAGS, TagField, topicSentences, useKnownTags } from './tag-field.tsx';
+import { formatInstant } from './format.ts';
+import { SUGGESTING_STATUSES } from './suggestion-fields.ts';
 import { OrganisationCard, StatusBadge, StatusCard, type Blocker } from './product-side.tsx';
 import { writerCategory, writerDetails } from './writer-inputs.ts';
 import { VariantsSection } from './variants-section.tsx';
@@ -157,6 +159,7 @@ export function EditForm({
 }) {
   const t = useTranslations();
   const locale = useLocale();
+  const zone = useTimeZone();
   const router = useRouter();
   const [content, setContent] = useState(product.workingCopy?.content);
   // Title and description are entered once, in the default language (ADR-0046); the other
@@ -196,6 +199,7 @@ export function EditForm({
   const busy = useRef(false);
   const savedName = textsOf(content, defaultLocale).name;
   const draftName = adding ? texts.name.trim() : savedName;
+  const canSuggest = !adding && SUGGESTING_STATUSES.has(product.status);
   const shownTitle = savedName === '' ? t('catalog.edit.page.untitled') : savedName;
   const published = product.published !== null;
   // Leaving with edits that are not saved asks first (the same dialog the settings pages use).
@@ -379,7 +383,7 @@ export function EditForm({
     // The page is left on purpose: the unsaved guard must not ask.
     flushSync(() => setDirty(false));
     try {
-      router.replace(`/products/${productId}/edit`);
+      router.replace(`/products/${productId}`);
     } catch {
       // The product exists, so the seller is not left locked in: the form unlocks and the back
       // link works. (A second Save draft would find the SKU taken by the product just created.)
@@ -487,11 +491,7 @@ export function EditForm({
       noValidate
     >
       {guard.dialog}
-      {adding ? (
-        <BackLink href="/products" label={t('catalog.create.back')} />
-      ) : (
-        <BackLink href={`/products/${product.productId}`} label={t('catalog.edit.back')} />
-      )}
+      <BackLink href="/products" label={t('catalog.create.back')} />
       <div className="flex flex-col gap-1">
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="min-w-0 break-words text-2xl font-semibold">
@@ -504,6 +504,34 @@ export function EditForm({
             ? t('catalog.add.subtitle', { market: marketName })
             : t('catalog.edit.page.subtitle', { market: marketName, code: product.productCode })}
         </p>
+        {adding ? null : (
+          <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
+            <span>
+              {t('catalog.product.type')}: {product.typeCode}
+            </span>
+            <span>
+              {t('catalog.col.changed')}: {formatInstant(product.lastChangedAt, locale, zone)}
+            </span>
+            <span>
+              {t('catalog.product.created')}: {formatInstant(product.createdAt, locale, zone)}
+            </span>
+            {product.workingCopy === null ? null : (
+              <span role="status">
+                {t('catalog.product.saved-at', {
+                  when: formatInstant(product.workingCopy.lastSavedAt, locale, zone),
+                })}
+              </span>
+            )}
+            {canSuggest ? (
+              <a
+                className="font-medium text-link underline"
+                href={`/value-suggestions/new?product=${product.productId}`}
+              >
+                {t('catalog.suggestions.new.start')}
+              </a>
+            ) : null}
+          </p>
+        )}
       </div>
       {offerProblem === null ? null : <Banner tone="critical">{t(offerProblem.form)}</Banner>}
       {notices.length > 0 ? (

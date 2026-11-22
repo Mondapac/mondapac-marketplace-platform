@@ -66,14 +66,6 @@ export async function ProductDetail({
         {product.pending !== null ? (
           <Badge tone="attention">{t('catalog.products.pending')}</Badge>
         ) : null}
-        {canEdit ? (
-          <a
-            className="font-medium text-link underline"
-            href={`/products/${product.productId}/edit`}
-          >
-            {t('catalog.edit.title')}
-          </a>
-        ) : null}
         {canEdit && SUGGESTING_STATUSES.has(product.status) ? (
           <a
             className="font-medium text-link underline"
