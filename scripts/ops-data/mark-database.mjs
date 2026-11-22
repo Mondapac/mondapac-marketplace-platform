@@ -54,7 +54,21 @@ try {
   } else {
     const run = spawnSync(
       'docker',
-      ['compose', 'exec', '-T', 'postgres', 'psql', '-U', 'postgres', '-d', name, '-v', 'ON_ERROR_STOP=1', '-c', statement],
+      [
+        'compose',
+        'exec',
+        '-T',
+        'postgres',
+        'psql',
+        '-U',
+        'postgres',
+        '-d',
+        name,
+        '-v',
+        'ON_ERROR_STOP=1',
+        '-c',
+        statement,
+      ],
       { cwd: ROOT, stdio: 'inherit' },
     );
     if (run.status !== 0) {
