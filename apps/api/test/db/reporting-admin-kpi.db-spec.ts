@@ -227,6 +227,8 @@ describe.each(TEST_MARKETS)('the admin KPI reader in market %s (database)', (cod
     await oneOrder(sellerB, `2026-${M}-28T04:00:00Z`, [[meat, 20_000n]]);
     await oneOrder(sellerB, `2026-${M}-29T04:00:00Z`, [[dairy, 7_000n]]);
     await oneOrder(sellerA, `2026-${M}-30T03:00:00Z`, [[dairy, 900_000n]]); // outside the range
+    // Goods whose category could not be read are kept under the nil UUID and rank like any other.
+    await oneOrder(sellerB, `2026-${M}-29T05:00:00Z`, [[UNKNOWN_CATEGORY, 5_000n]]);
     await within(other, () =>
       recorder.recordSellerOrder(
         other,
@@ -252,10 +254,11 @@ describe.each(TEST_MARKETS)('the admin KPI reader in market %s (database)', (cod
       return unit.value;
     };
     const top = await readTop(currency, 5);
+    const tied = [bakery, UNKNOWN_CATEGORY].sort(); // equal sales: the lower id comes first
     expect(top.map((row) => [row.categoryId, row.salesAmount, row.orders])).toEqual([
       [meat, 50_000n, 2],
       [dairy, 7_000n, 1],
-      [bakery, 5_000n, 1],
+      ...tied.map((categoryId) => [categoryId, 5_000n, 1]),
     ]);
     expect((await readTop(currency, 1)).map((row) => row.categoryId)).toEqual([meat]);
     expect(await readTop('XXX', 5)).toEqual([]);

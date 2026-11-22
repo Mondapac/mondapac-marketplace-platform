@@ -437,7 +437,7 @@ function TopCategories({
             label: row.name ?? t('categories.other'),
             value: Number(row.salesWithTax.amountMinor),
             display: kpiMoney(row.salesWithTax, locale),
-            detail: t('categories.orders', { count: formatCount(row.orders, false, locale) }),
+            detail: t('categories.orders', { count: row.orders }),
           }))}
         />
       )}
@@ -595,16 +595,16 @@ export function AdminKpiStrip({
           ) : null}
           {money ? (
             <ChartCardSkeleton
-              id="dash-top-categories"
-              title={t('categories.title')}
+              id="dash-top-sellers"
+              title={t('sellers.title')}
               slowLabel={slowLabel}
               stalledLabel={stalledLabel}
             />
           ) : null}
           {money ? (
             <ChartCardSkeleton
-              id="dash-top-sellers"
-              title={t('sellers.title')}
+              id="dash-top-categories"
+              title={t('categories.title')}
               slowLabel={slowLabel}
               stalledLabel={stalledLabel}
             />

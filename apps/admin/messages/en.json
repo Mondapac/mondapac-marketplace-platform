@@ -276,7 +276,7 @@
         "scope": "By goods sold (incl. GST) in the period, before refunds",
         "empty": "No sales in this period yet.",
         "other": "Uncategorised",
-        "orders": "{count} orders"
+        "orders": "{count, plural, one {# seller order} other {# seller orders}}"
       },
       "sellers": {
         "title": "Top sellers",

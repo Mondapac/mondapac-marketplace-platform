@@ -322,7 +322,7 @@ describe('the KPI formats', () => {
     expect(items).toHaveLength(2);
     expect(within(items[0]!).getByText('Fresh meat')).toBeTruthy();
     expect(within(items[0]!).getByText('$5,000.00')).toBeTruthy();
-    expect(within(items[0]!).getByText('40 orders')).toBeTruthy();
+    expect(within(items[0]!).getByText('40 seller orders')).toBeTruthy();
     expect(within(items[1]!).getByText('Uncategorised')).toBeTruthy();
   });
 
