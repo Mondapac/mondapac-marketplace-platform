@@ -592,3 +592,44 @@ describe('the ops-data lock and backup checks', () => {
     expect(answer.out.trim()).toBe('true true true true');
   });
 });
+
+describe('the ops-data ci profile', () => {
+  // The small scenario a pull request's CI run builds (scenarios/AU/ci.mjs). The packs call the
+  // API, so a profile that points at something it dropped would fail only in that CI run.
+  it('keeps every reference of the AU scenario whole, and runs no Stripe pack', () => {
+    const answer = run(`
+      import { SCENARIO } from './scripts/ops-data/scenarios/AU/index.mjs';
+      import { ciProfile, CI_PACKS } from './scripts/ops-data/scenarios/AU/ci.mjs';
+      const ci = ciProfile(SCENARIO);
+      const productKeys = new Set(ci.products.map((p) => p.key));
+      const sellerKeys = new Set(ci.sellers.map((s) => s.key));
+      const wholeOffers = Object.entries(ci.offers).every(([seller, list]) =>
+        sellerKeys.has(seller) && list.length > 0 && list.every((o) => productKeys.has(o.product)));
+      const heldOk = ci.offers[ci.held.seller].some((o) => o.product === ci.held.product);
+      const states = new Set(ci.sellers.map((s) => s.state));
+      console.log(wholeOffers, heldOk, ci.products.length < SCENARIO.products.length,
+        ['approved', 'in-review', 'rejected', 'suspended', 'draft'].every((s) => states.has(s)),
+        ci.sellers.some((s) => s.certificate !== null), CI_PACKS.join(','));
+    `);
+    expect(answer.out.trim()).toBe('true true true true true admin,catalog,sellers,products');
+  });
+
+  it('refuses a pack it does not run, before it touches anything', () => {
+    // No database, API or Stripe key is needed: the profile check comes before any request.
+    const result = spawnSync(
+      process.execPath,
+      ['scripts/ops-data/index.mjs', '--profile', 'ci', '--only', 'orders'],
+      {
+        cwd: REPO_ROOT,
+        env: {
+          PATH: process.env.PATH,
+          NODE_ENV: 'test',
+          MIGRATION_DATABASE_URL: 'postgresql://x:x@localhost:5432/none',
+        },
+        encoding: 'utf8',
+      },
+    );
+    expect(result.status).not.toBe(0);
+    expect(`${result.stdout}${result.stderr}`).toContain('the ci profile does not run: orders');
+  });
+});
