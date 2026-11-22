@@ -214,6 +214,13 @@ export {
   type UseSettingsFormOptions,
 } from './settings/use-settings-form.ts';
 export { useLiveErrors, type LiveErrors } from './settings/use-live-errors.ts';
+export {
+  useSectionSaves,
+  type SaveSection,
+  type SectionResult,
+  type SectionRun,
+  type SectionSaves,
+} from './settings/use-section-saves.ts';
 export { DataList, type DataListRow, type DataListVariant } from './data/data-list.tsx';
 export { SkeletonRows } from './data/skeleton.tsx';
 export {
