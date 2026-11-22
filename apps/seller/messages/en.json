@@ -2823,13 +2823,11 @@
       "variant": "Variant {number}",
       "on-hand-for": "Units in stock at {location}",
       "held": "{count, plural, one {# unit held in checkouts} other {# units held in checkouts}}",
-      "save": "Save",
       "saved": "Saved.",
       "no-locations": "Add a stock location before you set stock levels.",
       "no-variants": "This offer has no variants yet.",
       "error": {
         "invalid": "Enter a whole number from 0 up.",
-        "stale": "This level changed somewhere else. We reloaded it; check the number and save again.",
         "denied": "You don't have permission to change stock.",
         "not-eligible": "Your seller account can't change stock right now.",
         "throttled": "Too many requests. Wait a moment and try again.",
@@ -2838,9 +2836,14 @@
         "unknown": "Something went wrong. Try again.",
         "below-held": "You can't set the stock below the units held in checkouts.",
         "not-ready": "Stock isn't ready yet. Try again in a moment.",
-        "not-found": "This offer or location was not found. Reload the page."
+        "not-found": "This offer or location was not found. Reload the page.",
+        "stale-now": "This level changed somewhere else. It is now {onHand}. Check your number and save again.",
+        "stale-loading": "This level changed somewhere else. Loading the stored number…"
       },
-      "on-hand": "Units in stock"
+      "on-hand": "Units in stock",
+      "saved-many": "{count, plural, one {# level saved.} other {# levels saved.}}",
+      "partial": "{saved, plural, one {# level saved} other {# levels saved}}; {failed, plural, one {# needs attention} other {# need attention}}. The message is under the number.",
+      "failed": "{count, plural, one {Nothing was saved. The message is under the number.} other {Nothing was saved. The messages are under the numbers.}}"
     },
     "no-access": {
       "title": "You don't have access to this page",
