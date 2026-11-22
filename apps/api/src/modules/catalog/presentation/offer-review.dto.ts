@@ -193,6 +193,14 @@ export class ReviewQueueList {
       '`total` for the count of a filtered list.',
   })
   totals!: ReviewQueueTotals;
+
+  @ApiProperty({
+    description:
+      'True when the store-name part of `q` matched more stores than can be searched (200): the ' +
+      'rows of the stores left out are missing from `items` and `total`; narrow the search. ' +
+      'False with no `q`.',
+  })
+  searchCapped!: boolean;
 }
 
 export class OfferDecided {}

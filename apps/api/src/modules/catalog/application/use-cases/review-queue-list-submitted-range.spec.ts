@@ -69,6 +69,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue submitted range in market %s'
       } as never,
       policy: { locales: () => ({ default: 'en', supported: ['en'] }) } as never,
       sellerNames: { storeNames: () => Promise.resolve(new Map()) },
+      storeSearch: { sellersMatching: () => Promise.resolve({ sellerIds: [], capped: false }) },
       gtinRegistry: { duplicatesOf: () => Promise.resolve([]) },
       productApproveProbe: { probe: () => Promise.resolve(false) } as never,
     });
