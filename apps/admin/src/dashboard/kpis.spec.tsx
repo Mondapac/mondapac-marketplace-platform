@@ -77,6 +77,7 @@ const operations = {
       cancelRateBp: 3333,
       ordersShipped: 4,
       onTimeRateBp: 7500,
+      ordersDelivered: 2,
       refunds: 2,
     },
     previous: {
@@ -85,6 +86,7 @@ const operations = {
       cancelRateBp: 0,
       ordersShipped: 4,
       onTimeRateBp: 9000,
+      ordersDelivered: 3,
       refunds: 1,
     },
     deltas: {
@@ -93,6 +95,7 @@ const operations = {
       cancelRateBp: { value: 500, direction: 'up', state: 'ok' } as KpiDelta,
       ordersShipped: na(),
       onTimeRateBp: { value: -1500, direction: 'down', state: 'ok' } as KpiDelta,
+      ordersDelivered: na(),
       refunds: na(),
     },
     series: [{ day: '2026-11-22', ordersPaid: 3, ordersCancelled: 1, refunds: 2 }],
@@ -202,6 +205,20 @@ describe('the KPI formats', () => {
     expect(kpiDayLabel('2026-11-22', 'en-AU')).toBe('22 Nov');
     expect(minutesBetween('2026-11-22T09:57:00Z', GENERATED)).toBe(3);
     expect(minutesBetween(null, GENERATED)).toBeNull();
+  });
+
+  it('shows the order flow with its steps, cancellations and refunds', () => {
+    strip(answer({ operations }), ['ordering.order.view']);
+    const flow = screen.getByRole('region', { name: 'Order flow' });
+    const steps = within(flow).getAllByRole('listitem');
+    expect(steps).toHaveLength(3);
+    expect(within(flow).getByText('Delivered')).toBeTruthy();
+    expect(within(flow).getByText(/Cancelled 1 \(33\.3% of paid\) · Refunds 2/)).toBeTruthy();
+  });
+
+  it('leaves the order flow out without the orders section', () => {
+    strip(answer({ finance }), ['commission-payouts.settlement.view']);
+    expect(screen.queryByRole('region', { name: 'Order flow' })).toBeNull();
   });
 
   it('shows a chart value in the currency whatever its digits', () => {

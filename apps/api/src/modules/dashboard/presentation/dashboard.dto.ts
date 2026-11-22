@@ -100,6 +100,8 @@ export class OperationsKpiValuesBody {
   @ApiProperty({ nullable: true, type: Number }) cancelRateBp!: number | null;
   @ApiProperty() ordersShipped!: number;
   @ApiProperty({ nullable: true, type: Number }) onTimeRateBp!: number | null;
+  @ApiProperty({ description: 'Seller orders delivered in the period.' })
+  ordersDelivered!: number;
   @ApiProperty() refunds!: number;
 }
 

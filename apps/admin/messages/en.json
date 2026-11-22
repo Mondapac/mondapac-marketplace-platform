@@ -271,6 +271,16 @@
         "label": "Refunds",
         "scope": "Refunds that succeeded in the period"
       },
+      "flow": {
+        "title": "Order flow",
+        "scope": "Counts of the period; shipped and delivered orders may have been paid earlier",
+        "action": "View orders",
+        "empty": "No paid orders in this period yet.",
+        "paid": "Paid",
+        "shipped": "Shipped",
+        "delivered": "Delivered",
+        "leaks": "Cancelled {cancelled} ({cancelRate} of paid) · Refunds {refunds}"
+      },
       "chart": {
         "title": "GMV (incl. GST)",
         "action": "View orders",

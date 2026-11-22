@@ -86,6 +86,7 @@ describe('operationsOf', () => {
         ordersCancelled: 1,
         ordersShipped: 8,
         ordersShippedOnTime: 6,
+        ordersDelivered: 5,
         refunds: 2,
       }),
     ]);
@@ -95,6 +96,7 @@ describe('operationsOf', () => {
       cancelRateBp: 1000,
       ordersShipped: 8,
       onTimeRateBp: 7500,
+      ordersDelivered: 5,
       refunds: 2,
     });
     expect(operationsOf([row('2026-11-21')]).onTimeRateBp).toBeNull();

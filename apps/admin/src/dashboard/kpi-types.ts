@@ -30,6 +30,7 @@ export interface OperationsValues {
   readonly cancelRateBp: number | null;
   readonly ordersShipped: number;
   readonly onTimeRateBp: number | null;
+  readonly ordersDelivered: number;
   readonly refunds: number;
 }
 
