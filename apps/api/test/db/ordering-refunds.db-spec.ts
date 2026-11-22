@@ -1818,8 +1818,10 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
   describe('with the real seller ledger', () => {
     let real: OrderingDependencies;
     let ledger: PrismaLedgerRepository;
+    let announced: string[];
 
     beforeEach(() => {
+      announced = [];
       ledger = new PrismaLedgerRepository(db.service);
       const termsOverrides = new PrismaPayoutTermsRepository(db.service);
       const ledgerDeps: CommissionPayoutsDependencies = {
@@ -1833,9 +1835,15 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
         holds: new PrismaPayoutHoldRepository(db.service),
         disputes: { decisionsForSeller: () => Promise.resolve([]) },
         sellers: { exists: () => Promise.resolve(true) },
-        // Only the ledger paths run here: the payout schedule, the outbox and the step-up are not used.
+        // Only the ledger paths run here: the payout schedule and the step-up are not used. The
+        // outbox records each posting's `commission-payouts.ledger-recorded.v1` (PR 11).
         cursors: new PrismaPayoutCursorRepository(db.service),
-        outbox: { append: () => Promise.reject(new Error('not used')) },
+        outbox: {
+          append: (_context, events) => {
+            announced.push(...events.map((event) => event.type));
+            return Promise.resolve();
+          },
+        },
         stepUp: { consume: () => Promise.reject(new Error('not used')) },
         audit,
         review: {
@@ -1943,8 +1951,12 @@ describe.each(TEST_MARKETS)('refunds in market %s (database)', (code) => {
       if (!whole.ok) throw new Error('refund');
       await settle();
       const before = (await kinds(o)).rows.length;
+      const postings = announced.length;
+      expect(postings).toBeGreaterThan(0);
       await settle();
       expect((await kinds(o)).rows).toHaveLength(before);
+      // A replay that inserts nothing announces nothing.
+      expect(announced).toHaveLength(postings);
       // A debit with nothing against it (here a
       // dispute debit added by hand) takes the balance below zero.
       await sql.query(
