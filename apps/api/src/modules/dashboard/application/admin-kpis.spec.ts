@@ -16,7 +16,12 @@ import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../../../platform/market-context/tenant';
-import type { FinanceAnswer, OperationsAnswer, ReportingKpiFacade } from '../../reporting';
+import type {
+  FinanceAnswer,
+  OperationsAnswer,
+  ReportingKpiFacade,
+  TopSellersAnswer,
+} from '../../reporting';
 import type { DashboardViewer } from './ports/viewer-permissions';
 import { ViewAdminKpis, type AdminKpisDependencies } from './use-cases/view-admin-kpis.use-case';
 import { adminKpisBody } from '../presentation/dashboard.dto';
@@ -70,6 +75,28 @@ const finance = {
   previousSeries: [],
 } as unknown as FinanceAnswer;
 
+const topSellers = {
+  period: finance.period,
+  currency: 'AUD',
+  generatedAt: NOW,
+  rows: [
+    {
+      sellerId: id(0x51),
+      gmvWithTax: 1_842_000n,
+      ordersPaid: 311,
+      onTimeRateBp: 9700,
+      refundRateBp: 60,
+    },
+    {
+      sellerId: id(0x52),
+      gmvWithTax: 900_000n,
+      ordersPaid: 20,
+      onTimeRateBp: null,
+      refundRateBp: null,
+    },
+  ],
+} as unknown as TopSellersAnswer;
+
 describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
   const market = testMarketContext(code, PLATFORM_TENANT_ID);
   const admin = testCallContext(
@@ -93,6 +120,18 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     const deps: AdminKpisDependencies = {
       viewer: { describe: () => Promise.resolve(ok(viewer(keys))) },
       reporting: facade,
+      sellers: {
+        sellerSummaries: (_context: unknown, ids: readonly Id<'Seller'>[]) =>
+          Promise.resolve(
+            ok(
+              ids.map((sellerId) => ({
+                sellerId,
+                exists: true,
+                storeName: sellerId === id(0x51) ? 'Al-Noor Butchery' : null,
+              })),
+            ),
+          ),
+      },
       clock: new FixedClock(NOW),
       timeoutMs,
     };
@@ -110,14 +149,47 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
         asked.push('finance');
         return Promise.resolve(ok(finance));
       },
+      marketplaceTopSellers: () => {
+        asked.push('top-sellers');
+        return Promise.resolve(ok(topSellers));
+      },
     };
   });
 
   it('asks only the sections whose keys the viewer holds', async () => {
     const out = await build([MONEY]).execute(admin, { period: '7d' });
-    expect(asked).toEqual(['finance']);
+    expect(asked.sort()).toEqual(['finance', 'top-sellers']);
     expect(out.ok && out.value.operations).toBeNull();
     expect(out.ok && out.value.finance?.status).toBe('ok');
+  });
+
+  it('names the top sellers from the public store name and never asks without the money key', async () => {
+    const out = await build([MONEY]).execute(admin, { period: '7d' });
+    const body = out.ok ? adminKpisBody(out.value) : null;
+    expect(body?.topSellers?.kpis?.rows[0]).toMatchObject({
+      storeName: 'Al-Noor Butchery',
+      gmvWithTax: { amountMinor: '1842000', currency: 'AUD' },
+      ordersPaid: 311,
+    });
+    expect(body?.topSellers?.kpis?.rows[1]?.storeName).toBeNull();
+    asked.length = 0;
+    const ordersOnly = await build([ORDERS]).execute(admin, { period: '7d' });
+    expect(ordersOnly.ok && ordersOnly.value.topSellers).toBeNull();
+    expect(asked).toEqual(['operations']);
+  });
+
+  it('keeps the money when the store names cannot be read', async () => {
+    const deps: AdminKpisDependencies = {
+      viewer: { describe: () => Promise.resolve(ok(viewer([MONEY]))) },
+      reporting: facade,
+      sellers: { sellerSummaries: () => Promise.reject(new TypeError('boom')) },
+      clock: new FixedClock(NOW),
+      timeoutMs: 50,
+    };
+    const out = await new ViewAdminKpis(gate, deps).execute(admin, { period: '7d' });
+    const body = out.ok ? adminKpisBody(out.value) : null;
+    expect(body?.topSellers?.status).toBe('ok');
+    expect(body?.topSellers?.kpis?.rows.every((row) => row.storeName === null)).toBe(true);
   });
 
   it('leaves a section out when its owner refuses, and marks a slow one as error', async () => {

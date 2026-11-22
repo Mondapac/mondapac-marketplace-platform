@@ -1,4 +1,5 @@
 import {
+  ActivityTable,
   ChartCardSkeleton,
   ChartEmpty,
   DashboardCard,
@@ -9,6 +10,7 @@ import {
   StatCardSkeleton,
   StatGrid,
   formatCount,
+  type ActivityColumn,
   type ChartPoint,
   type IconName,
   type PeriodOption,
@@ -33,8 +35,10 @@ import {
   type KpiDelta,
   type KpiPeriod,
   type KpiResult,
+  type TopSellerRow,
   KPI_MONEY_PERMISSION,
   KPI_ORDERS_PERMISSION,
+  KPI_SELLERS_PERMISSION,
 } from './kpi-types.ts';
 
 const PERIOD_KEY: Record<KpiPeriod, string> = {
@@ -310,6 +314,95 @@ function OrderFlow({
   );
 }
 
+function TopSellers({
+  topSellers,
+  value,
+  canOpenSellers,
+}: {
+  readonly canOpenSellers: boolean;
+  readonly topSellers: NonNullable<AdminKpis['topSellers']> & { readonly status: 'ok' };
+  readonly value: AdminKpis;
+}) {
+  const t = useTranslations('dashboard.kpis');
+  const locale = useLocale();
+  const columns: ActivityColumn<TopSellerRow>[] = [
+    {
+      id: 'store',
+      header: t('sellers.col.store'),
+      kind: 'title',
+      cell: (row) =>
+        canOpenSellers ? (
+          <a
+            className="font-medium text-link underline"
+            href={`/sellers/${encodeURIComponent(row.sellerId)}`}
+          >
+            {row.storeName ?? t('sellers.unnamed')}
+          </a>
+        ) : (
+          <span className="font-medium">{row.storeName ?? t('sellers.unnamed')}</span>
+        ),
+    },
+    {
+      id: 'gmv',
+      header: t('sellers.col.gmv'),
+      kind: 'labelled',
+      size: 'figure',
+      align: 'end',
+      cell: (row) => kpiMoney(row.gmvWithTax, locale),
+    },
+    {
+      id: 'orders',
+      header: t('sellers.col.orders'),
+      kind: 'labelled',
+      size: 'figure',
+      align: 'end',
+      cell: (row) => formatCount(row.ordersPaid, false, locale),
+    },
+    {
+      id: 'on-time',
+      header: t('sellers.col.on-time'),
+      kind: 'labelled',
+      size: 'figure',
+      align: 'end',
+      cell: (row) => kpiRate(row.onTimeRateBp, locale),
+    },
+    {
+      id: 'refunds',
+      header: t('sellers.col.refunds'),
+      kind: 'labelled',
+      size: 'figure',
+      align: 'end',
+      cell: (row) => kpiRate(row.refundRateBp, locale),
+    },
+  ];
+  const { rows } = topSellers.kpis;
+  const periodNote = value.period
+    ? `${kpiDayLabel(value.period.current.from, locale)} - ${kpiDayLabel(value.period.current.to, locale)}`
+    : undefined;
+  return (
+    <DashboardCard
+      id="dash-top-sellers"
+      title={t('sellers.title')}
+      scope={
+        periodNote === undefined ? t('sellers.scope') : `${periodNote} · ${t('sellers.scope')}`
+      }
+      {...(canOpenSellers ? { action: { href: '/sellers', label: t('sellers.action') } } : {})}
+      flush
+    >
+      {rows.length === 0 ? (
+        <ChartEmpty message={t('sellers.empty')} height={120} />
+      ) : (
+        <ActivityTable
+          caption={t('sellers.title')}
+          columns={columns}
+          rows={rows}
+          rowKey={(row) => row.sellerId}
+        />
+      )}
+    </DashboardCard>
+  );
+}
+
 function Strip({
   result,
   period,
@@ -379,6 +472,17 @@ function Strip({
       {value?.finance?.status === 'ok' ? (
         <GmvChart finance={value.finance} period={period} value={value} />
       ) : null}
+      {value?.topSellers?.status === 'ok' ? (
+        <TopSellers
+          topSellers={value.topSellers}
+          value={value}
+          canOpenSellers={keys.has(KPI_SELLERS_PERMISSION)}
+        />
+      ) : value?.topSellers?.status === 'error' ? (
+        <DashboardCard id="dash-top-sellers" title={t('sellers.title')} error={tErr('error.card')}>
+          {null}
+        </DashboardCard>
+      ) : null}
       {value?.operations?.status === 'ok' ? (
         <OrderFlow operations={value.operations} value={value} />
       ) : value?.operations?.status === 'error' ? (
@@ -432,6 +536,14 @@ export function AdminKpiStrip({
             <ChartCardSkeleton
               id="dash-gmv"
               title={t('chart.title')}
+              slowLabel={slowLabel}
+              stalledLabel={stalledLabel}
+            />
+          ) : null}
+          {money ? (
+            <ChartCardSkeleton
+              id="dash-top-sellers"
+              title={t('sellers.title')}
               slowLabel={slowLabel}
               stalledLabel={stalledLabel}
             />

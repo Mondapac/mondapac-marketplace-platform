@@ -1,6 +1,10 @@
 import { Temporal, type MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type { AdminKpiReader, DailyTotals } from '../application/ports/admin-kpi-reader';
+import type {
+  AdminKpiReader,
+  DailyTotals,
+  SellerTotals,
+} from '../application/ports/admin-kpi-reader';
 import type { DayRange } from '../domain/period';
 import { dateToDay, dayToDate } from './prisma-fact-store';
 
@@ -64,5 +68,40 @@ export class PrismaAdminKpiReader implements AdminKpiReader {
       refreshedAt:
         newest === null ? null : Temporal.Instant.fromEpochMilliseconds(newest.getTime()),
     };
+  }
+
+  async topSellers(
+    market: MarketContext,
+    currency: string,
+    range: DayRange,
+    limit: number,
+  ): Promise<SellerTotals[]> {
+    const groups = await this.prisma.tx(market).reportingDailySellerSales.groupBy({
+      by: ['sellerId'],
+      where: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        currency,
+        marketDay: { gte: dayToDate(range.from), lte: dayToDate(range.to) },
+      },
+      _sum: {
+        ordersPaid: true,
+        goodsAmount: true,
+        ordersShipped: true,
+        ordersShippedOnTime: true,
+        refundGoodsAmount: true,
+      },
+      having: { goodsAmount: { _sum: { gt: 0n } } },
+      orderBy: [{ _sum: { goodsAmount: 'desc' } }, { sellerId: 'asc' }],
+      take: limit,
+    });
+    return groups.map((group) => ({
+      sellerId: group.sellerId,
+      ordersPaid: group._sum.ordersPaid ?? 0,
+      goodsAmount: group._sum.goodsAmount ?? 0n,
+      ordersShipped: group._sum.ordersShipped ?? 0,
+      ordersShippedOnTime: group._sum.ordersShippedOnTime ?? 0,
+      refundGoodsAmount: group._sum.refundGoodsAmount ?? 0n,
+    }));
   }
 }
