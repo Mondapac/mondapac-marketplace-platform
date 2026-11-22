@@ -53,6 +53,8 @@ describe('SettingsHubHeader', () => {
     expect(out).toContain('<h1');
     expect(out).toContain('Settings');
     expect(out).toContain('Set up the store.');
-    expect(out).not.toContain('<button');
+    // The only button is the info icon; the Search button needs the panel tools.
+    expect(out.match(/<button/g)).toHaveLength(1);
+    expect(out).toContain('aria-label="About Settings"');
   });
 });

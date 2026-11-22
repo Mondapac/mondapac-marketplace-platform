@@ -231,7 +231,12 @@ export async function revertTypeRevision(
   const type = await deps.registry.type(market, typeId);
   if (type === null) return 'gone';
   if (type.publishedRevisionId !== expectedId) return 'changed-since';
-  if ((await deps.registry.pendingProposal(market, 'type-revision', typeId)) !== null) {
+  // A pending relaxation or reactivation was proposed on the published revision; a revert would
+  // change what its second admin approves.
+  if (
+    (await deps.registry.pendingProposal(market, 'type-revision', typeId)) !== null ||
+    (await deps.registry.pendingProposal(market, 'type-reactivation', typeId)) !== null
+  ) {
     logRefused(context, kind, 'not-permitted', 'proposal-pending');
     return 'not-permitted';
   }

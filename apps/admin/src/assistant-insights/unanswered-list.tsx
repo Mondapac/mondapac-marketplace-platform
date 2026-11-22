@@ -35,7 +35,7 @@ import { SalesSavedViews } from '../sales/sales-saved-views.tsx';
 import { useSavedFilters } from '../sales/sales-saved.ts';
 import { SelectionBar } from '../sales/selection-bar.tsx';
 import { toCsv, toXlsx, type Cell } from './export-file.ts';
-import { LIST_KEY, payloadOf, queryOf, somethingToSave, type SavedPayload } from './list-saved.ts';
+import { LIST_KEY, payloadOf, queryOf, type SavedPayload } from './list-saved.ts';
 import { rowId, viewCounts, visibleRows } from './rows.ts';
 import {
   DEFAULT_QUERY,
@@ -235,7 +235,7 @@ export function UnansweredList({
     }),
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
   const filtered = chips.length > 0;
-  const canSave = saved !== null && savedId === null && somethingToSave(query);
+  const canSave = saved !== null && savedId === null && filtered;
   const sortField = t(`sort.field.${query.sort}`);
   const sortOrder = t(
     `sort.${query.sort}.${query.direction === defaultDirection(query.sort) ? 'first' : 'second'}`,
@@ -396,7 +396,7 @@ export function UnansweredList({
   return (
     <SuperList
       heading={{
-        subtitle: t('intro'),
+        info: t('intro'),
         note: truncated ? t('truncated') : undefined,
         actions: (
           <ActionMenu

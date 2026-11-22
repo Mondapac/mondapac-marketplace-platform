@@ -659,7 +659,7 @@ describe('Review moderation list: saved filters', () => {
     expect(screen.getByRole('button', { name: 'Reported (3)' })).toBeTruthy();
   });
 
-  it('offers Save filter… on a built-in tab that shows something to keep', async () => {
+  it('offers Save filter… on a built-in tab only while a filter is active', async () => {
     serve(
       () => pageOf([row()]),
       () =>
@@ -669,6 +669,11 @@ describe('Review moderation list: saved filters', () => {
     await findRow();
     expect(screen.queryByRole('button', { name: /^Save filter/ })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Reported (3)' }));
+    // A tab on its own is a view, not a filter: Save filter… waits for a search or a filter.
+    expect(screen.queryByRole('button', { name: /^Save filter/ })).toBeNull();
+    const box = screen.getByRole('searchbox');
+    fireEvent.change(box, { target: { value: 'abc' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
     expect(await screen.findByRole('button', { name: 'Save filter…' })).toBeTruthy();
   });
 

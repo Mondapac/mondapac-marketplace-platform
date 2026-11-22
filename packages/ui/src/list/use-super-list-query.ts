@@ -13,6 +13,8 @@ export interface SuperListQueryOptions<Q extends { readonly page: number }> {
   readonly withSearch: (query: Q, search: string) => Q;
   /** Typing searches after this pause (ms); Enter does not wait. */
   readonly searchDelayMs?: number;
+  /** Typed text the route cannot take (a whole id): it is not searched, so no refused request. */
+  readonly searchAccepts?: (text: string) => boolean;
 }
 
 export interface SuperListQuery<Q> {
@@ -51,6 +53,7 @@ export function useSuperListQuery<Q extends { readonly page: number }>({
   searchOf,
   withSearch,
   searchDelayMs = 300,
+  searchAccepts,
 }: SuperListQueryOptions<Q>): SuperListQuery<Q> {
   const [query, setQuery] = useState<Q>(defaultQuery);
   const [draft, setDraft] = useState(searchOf(defaultQuery));
@@ -102,13 +105,15 @@ export function useSuperListQuery<Q extends { readonly page: number }>({
 
   // Typing searches after a short pause.
   useEffect(() => {
-    if (draft.trim() === searched) return undefined;
+    const text = draft.trim();
+    if (text === searched) return undefined;
+    if (text !== '' && searchAccepts !== undefined && !searchAccepts(text)) return undefined;
     const timer = setTimeout(() => {
       setSavedId(null);
       setQuery((current) => ({ ...withSearch(current, draft.trim()), page: 1 }));
     }, searchDelayMs);
     return () => clearTimeout(timer);
-  }, [draft, searched, searchDelayMs, withSearch]);
+  }, [draft, searched, searchDelayMs, searchAccepts, withSearch]);
 
   return {
     query,

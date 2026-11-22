@@ -27,13 +27,7 @@ import { numberFormat } from '../shared/intl.ts';
 import { SalesSavedViews } from '../sales/sales-saved-views.tsx';
 import { useSavedFilters } from '../sales/sales-saved.ts';
 import { SelectionBar } from '../sales/selection-bar.tsx';
-import {
-  LIST_KEY,
-  payloadOf,
-  queryOf,
-  somethingToSave,
-  type SavedPayload,
-} from './health-queue-saved.ts';
+import { LIST_KEY, payloadOf, queryOf, type SavedPayload } from './health-queue-saved.ts';
 import { HealthQueueBulk } from './health-queue-bulk.tsx';
 import { HealthColumnsPanel, HealthFilterPanel, HealthSortPanel } from './health-queue-panels.tsx';
 import {
@@ -287,7 +281,7 @@ export function HealthQueue({
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
   const filtered = chips.length > 0;
   // "Save filter" is offered on a built-in view that shows something a saved filter can keep.
-  const canSave = saved !== null && savedId === null && somethingToSave(query);
+  const canSave = saved !== null && savedId === null && filtered;
 
   const optionalColumn = (id: OptionalColumn): SuperColumn<HealthQueueRow> => {
     switch (id) {
@@ -487,7 +481,7 @@ export function HealthQueue({
   return (
     <SuperList
       heading={{
-        subtitle: t('intro'),
+        info: t('intro'),
         note: t('informs'),
         actions: (
           <HealthQueueBulk

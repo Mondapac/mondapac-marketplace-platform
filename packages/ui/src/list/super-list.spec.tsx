@@ -198,6 +198,22 @@ describe('SuperList', () => {
     expect(html).not.toContain('>Columns<');
   });
 
+  it('keeps a static intro in the info icon, and a live subtitle on the page', () => {
+    const titled = list({
+      heading: { title: 'People', info: 'Everyone who bought.', subtitle: '5 people' },
+    });
+    expect(titled).toContain('aria-label="About People"');
+    expect(titled).toContain('5 people');
+    // The intro is only in the screen-reader description until the icon is opened.
+    expect(titled).toContain('class="sr-only">Everyone who bought.</span>');
+    expect(titled).not.toMatch(/<p[^>]*>Everyone who bought\./);
+    const bare = list({ heading: { info: 'Everyone who bought.' } });
+    expect(bare).toContain('aria-label="About this page"');
+    expect(list({ heading: { subtitle: '5 people' } })).not.toContain(
+      '<button aria-haspopup="dialog"',
+    );
+  });
+
   it('puts a page note under the subtitle, and anything the page gives after the search box', () => {
     const html = list({
       heading: { subtitle: '143 people', note: 'Times are in Brisbane.' },

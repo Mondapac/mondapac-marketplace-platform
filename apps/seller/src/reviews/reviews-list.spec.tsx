@@ -390,6 +390,11 @@ describe('saved filters', () => {
     serve(() => pageOf([row()]), ok({ ...answer, items: [] }));
     mount();
     fireEvent.click(screen.getByRole('button', { name: 'Unanswered (5)' }));
+    {
+      const box = screen.getByRole('searchbox');
+      fireEvent.change(box, { target: { value: 'abc' } });
+      fireEvent.keyDown(box, { key: 'Enter' });
+    }
     fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
     const dialog = screen.getByRole('dialog');
     fireEvent.change(within(dialog).getByRole('textbox'), { target: { value: 'Waiting' } });
@@ -404,7 +409,7 @@ describe('saved filters', () => {
           listKey: 'seller.reviews.list',
           name: 'Waiting',
           visibility: 'me',
-          payload: { v: 1, view: 'unanswered', sort: 'published', direction: 'desc' },
+          payload: { v: 1, view: 'unanswered', q: 'abc', sort: 'published', direction: 'desc' },
         },
         'csrf',
       ),

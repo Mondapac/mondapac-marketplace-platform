@@ -906,7 +906,7 @@ describe('Certificate queue: saved filters', () => {
     expect(screen.getByRole('button', { name: 'Renewal (2)' })).toBeTruthy();
   });
 
-  it('offers Save filter... on a built-in tab that shows something to keep', async () => {
+  it('offers Save filter... on a built-in tab only while a filter is active', async () => {
     serve(
       () => pageOf([row()]),
       () =>
@@ -916,6 +916,11 @@ describe('Certificate queue: saved filters', () => {
     await screen.findByText(STORE);
     expect(screen.queryByRole('button', { name: /^Save filter/ })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Renewal (2)' }));
+    // A tab on its own is a view, not a filter: Save filter… waits for a search or a filter.
+    expect(screen.queryByRole('button', { name: /^Save filter/ })).toBeNull();
+    const box = screen.getByRole('searchbox');
+    fireEvent.change(box, { target: { value: CERT } });
+    fireEvent.keyDown(box, { key: 'Enter' });
     expect(await screen.findByRole('button', { name: 'Save filter…' })).toBeTruthy();
   });
 

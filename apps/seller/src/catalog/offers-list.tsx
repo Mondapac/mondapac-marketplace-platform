@@ -316,12 +316,6 @@ export function OffersList({
         ]),
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
   const filtered = chips.length > 0;
-  // Saved filters keep a tab, search, filters and a sort; a list nobody changed has nothing to save.
-  const somethingToSave =
-    filtered ||
-    query.tab !== 'all' ||
-    query.sort !== DEFAULT_QUERY.sort ||
-    query.direction !== DEFAULT_QUERY.direction;
   const summary = [
     ts(`tab.${query.tab}`),
     ...chips.filter((chip) => chip.key !== 'search').map((chip) => chip.label),
@@ -408,7 +402,7 @@ export function OffersList({
   return (
     <SuperList
       heading={{
-        subtitle: ts('intro'),
+        info: ts('intro'),
         actions: (
           <OffersBulk
             selection={{
@@ -480,11 +474,11 @@ export function OffersList({
       }}
       sortedLine={ts('sorted', { field: ts(`sort.field.${query.sort}`), order: sortOrder })}
       chips={
-        filtered || (saved !== null && savedId === null && somethingToSave)
+        filtered
           ? {
               chips,
               clearAll: { label: ts('clear-all'), onClick: clearAll },
-              ...(saved === null || savedId !== null || !somethingToSave
+              ...(saved === null || savedId !== null
                 ? {}
                 : { save: { label: ts('saved.save-link'), onClick: () => setDialog('save') } }),
               status: total === null || failure !== null ? '' : ts('match', { count: total }),

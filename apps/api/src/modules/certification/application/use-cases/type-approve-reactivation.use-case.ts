@@ -48,6 +48,8 @@ export type TypeApproveReactivationFailure =
  * `certification.type.edit`, not the proposer (`review.second-admin-required`), makes an inactive
  * type active again. One unit: the proposal `approved` under its version, the status under the
  * type's version, `certification.type.reactivation-approved`, `certification-type-activated.v1`.
+ * A type whose published revision moved since the proposal refuses with `conflict.stale`, so the
+ * second admin never activates content they did not see.
  * Activation of a type for sellers (Kosher, Vegan; Q1) is this transition. Rule: key
  * `certification.type.edit` (protected), not acting-as.
  */
@@ -99,6 +101,11 @@ export class TypeApproveReactivation extends UseCase<
         const next = reactivateType(type.status, proposal, admin.accountId);
         if (!next.ok) return err(next.error);
         if (proposal.version !== version.value) return err({ code: 'conflict.stale' } as const);
+        // The second admin approves the type as it was proposed: a revision published since the
+        // proposal (design 5, as for type-approve-relaxation) makes the approval stale.
+        if (type.publishedRevisionId !== proposal.basedOnRevisionId) {
+          return err({ code: 'conflict.stale' } as const);
+        }
         // Lock order: the type row, then its proposal (as for issuers).
         await deps.registry.setTypeStatus(market, typeId, 'active', type.version);
         await deps.registry.closeProposal(market, {

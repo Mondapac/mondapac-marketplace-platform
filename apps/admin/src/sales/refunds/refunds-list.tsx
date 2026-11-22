@@ -36,13 +36,7 @@ import { RefundsFilterPanel } from './refunds-filter-panel.tsx';
 import { queryString } from './refunds-query.ts';
 import { RefundsSortPanel } from './refunds-sort-panel.tsx';
 import { useRefundRowActions } from './refunds-row-actions.tsx';
-import {
-  LIST_KEY,
-  payloadOf,
-  queryOf,
-  somethingToSave,
-  type SavedPayload,
-} from './refunds-saved.ts';
+import { LIST_KEY, payloadOf, queryOf, type SavedPayload } from './refunds-saved.ts';
 import { SalesSavedViews } from '../sales-saved-views.tsx';
 import { useSavedFilters } from '../sales-saved.ts';
 import { refundSearchRoute } from './refunds-search.ts';
@@ -355,7 +349,7 @@ export function RefundsList({
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
   const filtered = chips.length > 0;
   // "Save filter" is offered on a built-in tab that shows something a saved filter can keep.
-  const canSave = saved !== null && savedId === null && somethingToSave(query, paging);
+  const canSave = saved !== null && savedId === null && filtered;
   const summary = [
     query.tab === 'all' ? t('tab.all') : to(`refund-state.${query.tab}`),
     ...chips
@@ -483,7 +477,7 @@ export function RefundsList({
   return (
     <SuperList
       heading={{
-        subtitle: t('intro'),
+        info: t('intro'),
         note: to('zone-note', { zone }),
         actions: (
           <RefundsBulk

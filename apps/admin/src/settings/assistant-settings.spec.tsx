@@ -261,7 +261,11 @@ describe('AssistantSettingsPanel', () => {
 
   it('shows a read-only summary without the manage permission', () => {
     mount(answer({ audience: 'percent', audiencePercent: 25 }), false);
-    expect(screen.queryByRole('button')).toBeNull();
+    expect(
+      screen
+        .queryAllByRole('button')
+        .filter((b) => !b.getAttribute('aria-label')?.startsWith('About ')),
+    ).toEqual([]);
     expect(
       screen.getByText('Only the Platform Administrator can change these settings.'),
     ).toBeTruthy();

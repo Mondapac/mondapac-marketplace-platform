@@ -81,6 +81,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
   let calls: Record<string, unknown>[];
   let listFails: boolean;
   let listRefusal: { code: string; fields: { path: string; code: string }[] } | null;
+  let capped: boolean;
   const check: AuthorisationCheck = {
     check: () =>
       Promise.resolve(
@@ -108,6 +109,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
           hasNext: start + size < queue.length,
           total: null,
           totals: { 'product-revision': 0, 'offer-first-publication': 0 },
+          searchCapped: capped,
         } satisfies ReviewQueueListOutput,
       } as Result<ReviewQueueListOutput, ReviewQueueListFailure>);
     },
@@ -138,6 +140,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
     calls = [];
     listFails = false;
     listRefusal = null;
+    capped = false;
   });
 
   it('writes both kinds as CSV with a BOM, passing the filters to the keyset read of the list', async () => {
@@ -166,6 +169,38 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
     const result = await useCase().execute(context(), { ...range, kind: 'product-revision' });
     expect(result.ok).toBe(true);
     expect(calls).toEqual([{ ...range, kind: 'product-revision', limit: REVIEW_QUEUE_PAGE_MAX }]);
+  });
+
+  it('passes the search text q to every keyset read of the list, with the other filters', async () => {
+    queue = Array.from({ length: REVIEW_QUEUE_PAGE_MAX + 1 }, (_, n) => revision(n + 1));
+    const result = await useCase().execute(context(), { q: 'dates', kind: 'product-revision' });
+    expect(result.ok).toBe(true);
+    expect(calls).toEqual([
+      { q: 'dates', kind: 'product-revision', limit: REVIEW_QUEUE_PAGE_MAX },
+      {
+        q: 'dates',
+        kind: 'product-revision',
+        limit: REVIEW_QUEUE_PAGE_MAX,
+        afterId: String(REVIEW_QUEUE_PAGE_MAX),
+      },
+    ]);
+    // A text the list refuses is handed on as the list's refusal.
+    listRefusal = { code: 'validation.failed', fields: [{ path: 'q', code: 'length' }] };
+    expect(await useCase().execute(context(), { q: 'x' })).toEqual({
+      ok: false,
+      error: listRefusal,
+    });
+  });
+
+  it('refuses the whole file when the store names of q matched more stores than can be searched', async () => {
+    queue = [revision(1), offerRow(2)];
+    capped = true;
+    expect(await useCase().execute(context(), { q: 'store' })).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'q', code: 'too-broad' }] },
+    });
+    // One read is enough to know: no further page is read.
+    expect(calls).toHaveLength(1);
   });
 
   it('refuses a key that is not a filter of the queue, and hands a refusal of the list on', async () => {

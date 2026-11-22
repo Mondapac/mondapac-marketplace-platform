@@ -456,6 +456,76 @@ describe.each(['AU', 'ZZ'] as const)('certification registry in market %s', (cod
       );
     });
 
+    it('refuses a save while a reactivation is pending, so the approver sees what goes live', async () => {
+      const r = rig();
+      await unwrap(r.types.deactivate.execute(r.admin(), { typeId: r.typeId, version: 1 }));
+      const requester = r.admin();
+      const asked = await unwrap(
+        r.types.requestReactivation.execute(requester, { typeId: r.typeId, version: 2 }),
+      );
+      // Neither a tightening (publish-now) nor a relaxing save gets through.
+      for (const content of [
+        contentOf({ requiresIssuerRegistry: true, badgeIconKey: 'shield' }),
+        contentOf({ requiresExpiry: false }),
+      ]) {
+        expect(
+          await refusal(r.types.save.execute(r.admin(), { typeId: r.typeId, version: 2, content })),
+        ).toEqual({ code: 'review.proposal-pending' });
+      }
+      const type = r.registry.state.types.get(r.typeId)!;
+      expect(type.version).toBe(2);
+      expect(r.registry.state.revisions.size).toBe(1);
+
+      // Once the reactivation is withdrawn, the save goes through again.
+      await unwrap(
+        r.types.withdraw.execute(requester, {
+          subjectId: r.typeId,
+          proposalId: asked.proposalId,
+          version: 1,
+        }),
+      );
+      expect(
+        await unwrap(
+          r.types.save.execute(r.admin(), {
+            typeId: r.typeId,
+            version: 2,
+            content: contentOf({ requiresIssuerRegistry: true, badgeIconKey: 'shield' }),
+          }),
+        ),
+      ).toMatchObject({ outcome: 'published' });
+    });
+
+    it('refuses a reactivation approval once the published revision moved (conflict.stale)', async () => {
+      const r = rig();
+      await unwrap(r.types.deactivate.execute(r.admin(), { typeId: r.typeId, version: 1 }));
+      const asked = await unwrap(
+        r.types.requestReactivation.execute(r.admin(), { typeId: r.typeId, version: 2 }),
+      );
+      // A revision published after the proposal (data written before the save guard, or a race
+      // the guard did not see) moves the pointer the proposal was based on.
+      const type = r.registry.state.types.get(r.typeId)!;
+      const moved = r.ids.next<'CertificationTypeRevision'>();
+      r.registry.state.revisions.set(moved, {
+        ...r.registry.state.revisions.get(type.publishedRevisionId)!,
+        id: moved,
+        revisionNo: 2,
+      });
+      r.registry.state.types.set(r.typeId, { ...type, publishedRevisionId: moved });
+
+      expect(
+        await refusal(
+          r.types.approveReactivation.execute(r.admin(), {
+            typeId: r.typeId,
+            proposalId: asked.proposalId,
+            version: 1,
+          }),
+        ),
+      ).toEqual({ code: 'conflict.stale' });
+      expect(r.registry.state.types.get(r.typeId)!.status).toBe('inactive');
+      expect(r.registry.state.proposals.get(asked.proposalId)!.state).toBe('pending');
+      expect(eventTypes(r)).not.toContain('certification.certification-type-activated.v1');
+    });
+
     it('refuses writes in a Login as Seller session', async () => {
       const r = rig();
       expect(

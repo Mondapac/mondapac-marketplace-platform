@@ -184,7 +184,13 @@ export function PagedSuperList<Row>({
     withView: (current, view) => ({ ...current, tab: view, page: 1 }),
     searchOf: (current) => current.q,
     withSearch: (current, text) => ({ ...current, q: text }),
+    ...(config.search?.accepts === undefined ? {} : { searchAccepts: config.search.accepts }),
   });
+  const [hinted, setHinted] = useState(false);
+  const typed = draft.trim();
+  // The hint waits for Enter or for the box to lose focus, so it is not read out while typing.
+  const showHint =
+    hinted && typed !== '' && config.search?.accepts !== undefined && !config.search.accepts(typed);
 
   const [answer, setAnswer] = useState<PagedAnswer<Row> | null>(null);
   const [counts, setCounts] = useState<Readonly<Record<string, number>> | null>(null);
@@ -340,10 +346,11 @@ export function PagedSuperList<Row>({
           ];
     }),
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
-  const filtered = chips.length > 0 || query.tab !== config.tabs[0];
-  // "Save filter…" is offered on a built-in tab that shows something a saved filter can keep.
+  // Clear all and Save filter… appear only while a search or filter is active, as on the Products
+  // list; a tab or a sort on its own is a view, not a filter.
+  const filtered = chips.length > 0;
   const sortChanged = query.sort !== defaults.sort || query.direction !== defaults.direction;
-  const canSave = saved !== null && savedId === null && (filtered || sortChanged);
+  const canSave = saved !== null && savedId === null && filtered;
 
   const total = failure === null && mode === 'pages' ? (answer?.total ?? null) : null;
 
@@ -591,8 +598,26 @@ export function PagedSuperList<Row>({
               placeholder: t('search.placeholder'),
               value: draft,
               maxLength: config.search.max,
-              onChange: setDraft,
-              onSubmit: (value: string) => change({ q: value }),
+              onChange: (value: string) => {
+                setHinted(false);
+                setDraft(value);
+              },
+              onBlur: () => setHinted(true),
+              onSubmit: (value: string) => {
+                setHinted(true);
+                const text = value.trim();
+                if (text !== '' && config.search?.accepts?.(text) === false) return;
+                change({ q: value });
+              },
+              ...(showHint
+                ? {
+                    extra: (
+                      <p role="status" className="w-full text-sm text-fg-muted">
+                        {t('search.invalid')}
+                      </p>
+                    ),
+                  }
+                : {}),
             },
           })}
       {...(fields.length === 0
