@@ -81,6 +81,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
   let calls: Record<string, unknown>[];
   let listFails: boolean;
   let listRefusal: { code: string; fields: { path: string; code: string }[] } | null;
+  let capped: boolean;
   const check: AuthorisationCheck = {
     check: () =>
       Promise.resolve(
@@ -108,6 +109,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
           hasNext: start + size < queue.length,
           total: null,
           totals: { 'product-revision': 0, 'offer-first-publication': 0 },
+          searchCapped: capped,
         } satisfies ReviewQueueListOutput,
       } as Result<ReviewQueueListOutput, ReviewQueueListFailure>);
     },
@@ -138,6 +140,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
     calls = [];
     listFails = false;
     listRefusal = null;
+    capped = false;
   });
 
   it('writes both kinds as CSV with a BOM, passing the filters to the keyset read of the list', async () => {
@@ -187,6 +190,17 @@ describe.each(['AU', 'ZZ'] as const)('review queue export in market %s', (code) 
       ok: false,
       error: listRefusal,
     });
+  });
+
+  it('refuses the whole file when the store names of q matched more stores than can be searched', async () => {
+    queue = [revision(1), offerRow(2)];
+    capped = true;
+    expect(await useCase().execute(context(), { q: 'store' })).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'q', code: 'too-broad' }] },
+    });
+    // One read is enough to know: no further page is read.
+    expect(calls).toHaveLength(1);
   });
 
   it('refuses a key that is not a filter of the queue, and hands a refusal of the list on', async () => {

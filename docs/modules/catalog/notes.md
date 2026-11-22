@@ -152,8 +152,12 @@ Store names are owned by `sellers`: catalog asks `sellers.searchStoreNames` (thr
 `StoreNameSearch` port) before the read unit, and the matched seller ids join the condition. That
 method answers at most 200 sellers and accepts at most 80 characters, so a longer text matches
 products only; a failed store search fails the read (`access.unavailable`, 503) rather than show
-the queue without the store matches. `q` composes with every other filter and with `total`;
-`totals` stay the whole queue per kind. Saved filters keep `q` under the same rule. No index was
-added: the queue rows come from the partial queue indexes (`pending-first-publish` Offers, products
-with a pending revision), and the text is checked per queue row through the product and revision
-text keys.
+the queue without the store matches. When more than 200 stores match, the list answers
+`searchCapped: true` (the rows of the stores left out are missing; narrow the search) and the export
+is refused as `validation.failed` on `q` with `too-broad`, never a partial file. `q` composes with
+every other filter and with `total`; `totals` stay the whole queue per kind. Saved filters keep `q`
+under the same rule. No index was added. The expected plan (not measured) is that the partial queue
+indexes pick the queue rows and the search filters them; Prisma's relation filters are uncorrelated
+subqueries, which Postgres may hash over the whole tables. Before the catalogue reaches about 100k
+products, or on the first slow-query report, capture `EXPLAIN (ANALYZE, BUFFERS)` on seeded data and,
+if needed, move the search to a `$queryRaw` with a correlated `EXISTS` (database review of PR #1267).

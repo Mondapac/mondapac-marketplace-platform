@@ -146,6 +146,11 @@ export interface ReviewQueueListOutput {
   readonly total: number | null;
   /** Every row of each kind in the Market's queue, whatever the filters (the tab counts). */
   readonly totals: Readonly<Record<ReviewQueueKind, number>>;
+  /**
+   * The store-name part of `q` matched more stores than `sellers` answers (200): the rows of the
+   * stores left out are missing, so the search must be narrowed. False with no `q`.
+   */
+  readonly searchCapped: boolean;
 }
 
 export type ReviewQueueListFailure =
@@ -403,10 +408,12 @@ export class ReviewQueueList extends UseCase<
       return err({ code: 'access.unavailable' });
     }
     let search: QueueTextSearch | undefined;
+    let searchCapped = false;
     if (text !== undefined) {
       try {
         const stores = await this.deps.storeSearch.sellersMatching(context, text);
         search = { text, locale, sellerIds: stores.sellerIds };
+        searchCapped = stores.capped;
       } catch {
         // Never log the text or the error (it may carry the text).
         logger.warn({
@@ -621,6 +628,7 @@ export class ReviewQueueList extends UseCase<
         hasNext: hasMore,
         total,
         totals,
+        searchCapped,
       });
     }
     const hasNext = pagesMode ? offset + pageSize < total : hasMore;
@@ -634,6 +642,7 @@ export class ReviewQueueList extends UseCase<
       hasNext,
       total: pagesMode ? total : null,
       totals,
+      searchCapped,
     });
   }
 }

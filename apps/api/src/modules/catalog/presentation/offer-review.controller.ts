@@ -122,7 +122,8 @@ export class OfferReviewController {
       '`submittedTo` (exclusive) keep the rows submitted in that window; `q` keeps the rows whose ' +
       'product name, product code or seller store name contains the text (any case; both kinds). ' +
       'Every filter composes with the others. `total` counts what the filters keep; `totals` is ' +
-      'the whole queue per kind, whatever the filters.',
+      'the whole queue per kind, whatever the filters. `searchCapped` is true when the store ' +
+      'names of `q` matched more stores than can be searched (narrow the search).',
   })
   @ApiQuery({
     name: 'afterId',
@@ -205,7 +206,8 @@ export class OfferReviewController {
       'columns: kind, product_code, product_name, seller_id, store_name, seller_sku, ' +
       'first_publication, reasons, required_checks, has_images, warnings, submitted_at. At most ' +
       '1,000 rows (the pages the list reaches); a longer queue is refused whole as ' +
-      'batch.too-large, never cut. The file is an attachment. CSV: a text cell that starts with ' +
+      'batch.too-large, never cut; a `q` whose store names match more stores than can be ' +
+      'searched is refused as validation.failed (q, too-broad). The file is an attachment. CSV: a text cell that starts with ' +
       '= + - @ is written with a leading quote. XLSX: every cell is a string value, never a formula.',
   })
   @ApiQuery({ name: 'format', required: false, enum: ['csv', 'xlsx'] })

@@ -4,10 +4,14 @@ import { likeLiteral } from './like-literal';
 
 // The text search of the review queue (`q`), one condition per kind of row, so the list and its
 // count read the same rows. The text is a bound parameter of an ILIKE with its `\`, `%` and `_`
-// escaped, as on the admin Products list. The queue rows are found through the partial queue
-// indexes first (`pending-first-publish` Offers, products with a pending revision); the search then
-// filters those few rows through the product (unique `market_id, id`) and the revision texts
-// (primary key `market_id, revision_id, locale`), so it needs no index of its own.
+// escaped, as on the admin Products list. Expected plan, not measured: the partial queue indexes
+// (`pending-first-publish` Offers, products with a pending revision) pick the few queue rows and the
+// search filters them. Prisma compiles the to-one relation filters to uncorrelated `IN (SELECT ...)`
+// subqueries inside an OR, which Postgres may run per row or hashed (a scan of the whole products,
+// revisions and texts tables); which one depends on its estimates. Fine at today's volume. Before
+// the catalogue reaches about 100k products, or on the first slow-query report, capture
+// `EXPLAIN (ANALYZE, BUFFERS)` on seeded data; if a hashed SubPlan shows up, move this search to a
+// `$queryRaw` with a correlated EXISTS carrying `market_id`, rather than add a trigram index.
 
 const contains = (text: string) => ({ contains: likeLiteral(text), mode: 'insensitive' as const });
 

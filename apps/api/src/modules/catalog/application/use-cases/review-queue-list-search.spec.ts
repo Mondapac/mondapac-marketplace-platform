@@ -142,6 +142,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue search in market %s', (code) 
 
   let storeTerms: string[];
   let storeFails: boolean;
+  let storeCapped: boolean;
   let reads: number;
   let offerFilters: OfferQueueFilter[];
   let revisionFilters: RevisionQueueFilter[];
@@ -205,7 +206,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue search in market %s', (code) 
           const sellerIds = Object.entries(STORES)
             .filter(([, name]) => name.toLowerCase().includes(text.toLowerCase()))
             .map(([id]) => id) as never;
-          return Promise.resolve({ sellerIds, capped: false });
+          return Promise.resolve({ sellerIds, capped: storeCapped });
         },
       },
       gtinRegistry: { duplicatesOf: () => Promise.resolve([]) },
@@ -215,6 +216,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue search in market %s', (code) 
   beforeEach(() => {
     storeTerms = [];
     storeFails = false;
+    storeCapped = false;
     reads = 0;
     offerFilters = [];
     revisionFilters = [];
@@ -309,6 +311,21 @@ describe.each(['AU', 'ZZ'] as const)('review queue search in market %s', (code) 
     });
     expect(reads).toBe(0);
     expect(storeTerms).toEqual([]);
+  });
+
+  it('says searchCapped when the store names matched more stores than sellers answers', async () => {
+    const plain = await build().execute(context(), { paging: 'pages' });
+    expect(plain.ok && plain.value.searchCapped).toBe(false);
+    const narrow = await build().execute(context(), { q: 'spice', paging: 'pages' });
+    expect(narrow.ok && narrow.value.searchCapped).toBe(false);
+    storeCapped = true;
+    const wide = await build().execute(context(), { q: 'spice', paging: 'pages' });
+    if (!wide.ok) throw new Error(wide.error.code);
+    expect(wide.value.searchCapped).toBe(true);
+    // The rows the answered stores and the product texts keep are still listed.
+    expect(wide.value.total).toBe(4);
+    const cursor = await build().execute(context(), { q: 'spice', limit: 5 });
+    expect(cursor.ok && cursor.value.searchCapped).toBe(true);
   });
 
   it('fails closed when the store names cannot be searched', async () => {

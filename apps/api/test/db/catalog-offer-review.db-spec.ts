@@ -50,7 +50,10 @@ describe.each(TEST_MARKETS)(
     });
 
     /** A draft Offer with handling (set straight in the table: its own command comes later). */
-    async function draftOffer(sku = `S-${uuid7().slice(-12)}`): Promise<Id<'Offer'>> {
+    async function draftOffer(
+      sku = `S-${uuid7().slice(-12)}`,
+      offerSeller = sellerId,
+    ): Promise<Id<'Offer'>> {
       const product = Product.create({
         id: uuid7() as Id<'Product'>,
         marketId: market.marketId,
@@ -66,7 +69,7 @@ describe.each(TEST_MARKETS)(
       const created = Offer.create({
         id: uuid7() as Id<'Offer'>,
         marketId: market.marketId,
-        sellerId,
+        sellerId: offerSeller,
         productId: product.value.state.id,
         sellerSku: sku,
         conditionCode: 'new',
@@ -123,8 +126,8 @@ describe.each(TEST_MARKETS)(
         )
       ).rows as { change_kind: string; actor_kind: string; status: string }[];
     /** Submit as the seller with approval required: the Offer waits at `at`. */
-    async function submitted(at: Temporal.Instant): Promise<Id<'Offer'>> {
-      const id = await draftOffer();
+    async function submitted(at: Temporal.Instant, offerSeller = sellerId): Promise<Id<'Offer'>> {
+      const id = await draftOffer(undefined, offerSeller);
       const offer = await load(id);
       offer.submit({ approvalRequired: true, now: at });
       await save(offer);
@@ -296,6 +299,38 @@ describe.each(TEST_MARKETS)(
       expect(await has('Fresh dates')).toBe(false);
       expect(await has('no such text here', [sellerId])).toBe(true);
       expect(await has('no such text here', [other])).toBe(false);
+    });
+
+    it('pages through the search by keyset: page 2 holds only matching rows, none twice', async () => {
+      // A store of its own: the store match is the search, so rows of other specs cannot match.
+      const store = uuid7() as Id<'Seller'>;
+      const a = await submitted(T0.add({ minutes: 51 }), store);
+      await submitted(T0.add({ minutes: 52 }));
+      const b = await submitted(T0.add({ minutes: 53 }), store);
+      const c = await submitted(T0.add({ minutes: 54 }), store);
+      const filter = { search: { text: 'no such text here', locale: 'en', sellerIds: [store] } };
+      const read = async (after: { submittedAt: Temporal.Instant; id: string } | null) => {
+        const page = await persistence.unitOfWork.run(
+          market,
+          async () => ({
+            ok: true as const,
+            value: await offers.listPendingReview(market, { after, limit: 1 }, filter),
+          }),
+          { readOnly: true },
+        );
+        if (!page.ok) throw new Error('list failed');
+        return page.value;
+      };
+      const seen: string[] = [];
+      let after: { submittedAt: Temporal.Instant; id: string } | null = null;
+      for (let pageNo = 0; pageNo < 4; pageNo += 1) {
+        const rows = await read(after);
+        if (rows.length === 0) break;
+        expect(rows).toHaveLength(1);
+        seen.push(rows[0]!.state.id);
+        after = { submittedAt: rows[0]!.state.submittedAt!, id: rows[0]!.state.id };
+      }
+      expect(seen).toEqual([a, b, c]);
     });
 
     it('lists the waiting Offers oldest submit first in keyset pages, and nothing else', async () => {
