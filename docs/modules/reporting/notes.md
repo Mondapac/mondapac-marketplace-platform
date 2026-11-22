@@ -83,3 +83,34 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
   `delivered_at`, `orders (market_id, cancelled_at, id) WHERE cancelled_at IS NOT NULL` and
   `refunds (market_id, settled_at, id) WHERE state = 'succeeded'` (Mojtaba, PR 10 findings 1 and 3;
   repo register FE-062, project register FE-105).
+
+## Event worker and nightly reconcile (PR 10b)
+
+- Subscriptions (`presentation/subscribers/report-facts.subscriptions.ts`, `reporting.inbox`):
+  `ordering.order-paid.v1` and `ordering.order-cancelled.v1` (every seller order of the order),
+  `ordering.order-shipped.v1` and `ordering.seller-order-delivered.v1` (that seller order),
+  `ordering.refund-succeeded.v1` (that refund). Each hands the ids to `reporting.record-report-facts`
+  (rule `system`), which reads the facts again from ordering's reporting facade and catalog's
+  `offerPrimaryCategories` before any unit, then records them in one `runOnce` unit with
+  `isolation: 'serializable'` (Mojtaba F1 of PR 9).
+- A seller order that was never paid is not recorded: it counts in no rollup.
+- An Offer catalog cannot place goes to `UNKNOWN_CATEGORY`; the part of a refund its lines do not
+  cover goes there too, with 0 units, so goods by category always add up to the fact's goods.
+- `reporting.reconcile-facts` (job, daily): reads every seller order and refund with an instant in
+  the last seven days (`sellerOrdersChanged`, `refundsSucceeded`, pages of 100) and records them in
+  serializable units of at most 25 facts (timeout 15 s), each seller day rebuilt once per unit and
+  facts written in id order. A unit that keeps conflicting is tried again after a pause; a batch
+  that fails otherwise is retried one fact at a time, the facts still refused are logged by id
+  (`reporting.reconcile-batch-failed`) and skipped, and the run then fails so the scheduler reports
+  it. A cursor that does not move on, or more than 10,000 pages, stops the run. It also catches what no event names:
+  an on-time promise that passed, a product moved to another category.
+- A seller order's instants only go from unknown to known, so an older read written after a newer
+  one keeps what is stored (`keepKnownInstants`; Hassan, PR 10b finding 1): an event's facade read
+  happens before its unit, so two deliveries of one seller order can write in the other order.
+- Migration `20261122200100_reporting_refunds_seller_order_index` adds
+  `refunds (market_id, seller_order_id)` for the check below (Mojtaba, PR 10b finding 1).
+- `putSellerOrder` also refuses a seller order whose refund, recorded before it, names another
+  seller, order or currency (Hassan, PR 9 re-review).
+- Rule to revisit: if ordering ever clears an instant (a shipment undone, for example), reporting
+  keeps the stored one until `keepKnownInstants` learns that case. Amounts are not merged: ordering
+  does not change goods or shipping after payment (Hassan, PR 10b re-review).

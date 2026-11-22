@@ -1,6 +1,7 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import {
+  keepKnownInstants,
   marketDayOf,
   refundEntries,
   saleEntries,
@@ -246,6 +247,37 @@ describe('rollUpSellerDay', () => {
       entries: [],
     });
     expect(rollup.seller.map((row) => row.currency)).toEqual(['AUD', 'NZD']);
+  });
+});
+
+describe('keepKnownInstants', () => {
+  it('keeps an instant the stored fact knows and the new read does not', () => {
+    const at = Temporal.Instant.from('2026-11-20T00:00:00Z');
+    const read = {
+      sellerOrderId: 'so' as Id<'SellerOrder'>,
+      orderId: 'o' as Id<'Order'>,
+      sellerId: 's' as Id<'Seller'>,
+      currency: 'AUD',
+      goods: { amount: 1n, tax: 0n },
+      units: 1,
+      shipping: { amount: 0n, tax: 0n },
+      paidAt: at,
+      cancelledAt: null,
+      shippedAt: null,
+      shippedOnTime: null,
+      deliveredAt: null,
+    };
+    const later = at.add({ hours: 1 });
+    expect(keepKnownInstants(read, null)).toBe(read);
+    expect(
+      keepKnownInstants(read, {
+        paidAt: at,
+        cancelledAt: null,
+        shippedAt: later,
+        shippedOnTime: false,
+        deliveredAt: later,
+      }),
+    ).toEqual({ ...read, shippedAt: later, shippedOnTime: false, deliveredAt: later });
   });
 });
 

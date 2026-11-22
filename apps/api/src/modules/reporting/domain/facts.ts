@@ -65,6 +65,33 @@ export interface SellerOrderFact {
   readonly deliveredAt: Temporal.Instant | null;
 }
 
+/** The instants of a stored seller order, as {@link keepKnownInstants} compares them. */
+export type SellerOrderInstants = Pick<
+  SellerOrderFact,
+  'paidAt' | 'cancelledAt' | 'shippedAt' | 'shippedOnTime' | 'deliveredAt'
+>;
+
+/**
+ * A seller order's instants only ever go from unknown to known (paid, cancelled, shipped,
+ * delivered; on time once it shipped or its promise passed). A fact read before a later one but
+ * written after it would put an instant back to null (Hassan, PR 10b finding 1): an instant the
+ * stored fact knows and the new one does not is kept.
+ */
+export function keepKnownInstants(
+  fact: SellerOrderFact,
+  stored: SellerOrderInstants | null,
+): SellerOrderFact {
+  if (stored === null) return fact;
+  return {
+    ...fact,
+    paidAt: fact.paidAt ?? stored.paidAt,
+    cancelledAt: fact.cancelledAt ?? stored.cancelledAt,
+    shippedAt: fact.shippedAt ?? stored.shippedAt,
+    shippedOnTime: fact.shippedOnTime ?? stored.shippedOnTime,
+    deliveredAt: fact.deliveredAt ?? stored.deliveredAt,
+  };
+}
+
 /** One succeeded refund (table `reporting.refunds`), with positive totals. */
 export interface RefundFact {
   readonly refundId: Id<'Refund'>;

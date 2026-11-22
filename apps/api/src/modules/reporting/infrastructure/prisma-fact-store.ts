@@ -1,5 +1,5 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
-import type { Temporal } from '@mondapac/shared-kernel';
+import { Temporal } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import {
   ReportingFactConflict,
@@ -13,6 +13,7 @@ import {
   type SalesEntry,
   type SalesEntryKind,
   type SellerOrderFact,
+  type SellerOrderInstants,
 } from '../domain/facts';
 import type { SellerDay, SellerDayFacts } from '../domain/rollup';
 
@@ -35,6 +36,32 @@ export class PrismaFactStore implements FactStore {
     private readonly prisma: PrismaService,
     private readonly now: () => Temporal.Instant,
   ) {}
+
+  async sellerOrderInstants(
+    market: MarketContext,
+    sellerOrderId: SellerOrderFact['sellerOrderId'],
+  ): Promise<SellerOrderInstants | null> {
+    const row = await this.prisma.tx(market).reportingSellerOrder.findFirst({
+      where: { marketId: market.marketId, sellerOrderId },
+      select: {
+        paidAt: true,
+        cancelledAt: true,
+        shippedAt: true,
+        shippedOnTime: true,
+        deliveredAt: true,
+      },
+    });
+    if (row === null) return null;
+    const instant = (date: Date | null) =>
+      date === null ? null : Temporal.Instant.fromEpochMilliseconds(date.getTime());
+    return {
+      paidAt: instant(row.paidAt),
+      cancelledAt: instant(row.cancelledAt),
+      shippedAt: instant(row.shippedAt),
+      shippedOnTime: row.shippedOnTime,
+      deliveredAt: instant(row.deliveredAt),
+    };
+  }
 
   async putSellerOrder(
     market: MarketContext,
@@ -74,6 +101,21 @@ export class PrismaFactStore implements FactStore {
       updatedAt: at,
     };
     if (previous === null) {
+      // A refund recorded before its seller order must name the same seller, order and currency
+      // (Hassan, PR 9 re-review): the check that a refund meets otherwise runs one way only.
+      const refunded = await client.reportingRefund.findFirst({
+        where: {
+          marketId: market.marketId,
+          sellerOrderId: fact.sellerOrderId,
+          OR: [
+            { orderId: { not: fact.orderId } },
+            { sellerId: { not: fact.sellerId } },
+            { currency: { not: fact.currency } },
+          ],
+        },
+        select: { refundId: true },
+      });
+      if (refunded !== null) throw new ReportingFactConflict('seller-order', fact.sellerOrderId);
       await client.reportingSellerOrder.create({
         data: {
           ...key,

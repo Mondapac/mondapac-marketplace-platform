@@ -1,5 +1,6 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 import {
+  keepKnownInstants,
   marketDayOf,
   refundEntries,
   saleEntries,
@@ -44,7 +45,64 @@ export class FactRecorder {
     order: SellerOrderFact,
     goods: readonly CategoryGoods[],
   ): Promise<void> {
-    this.checkCurrency(market, order.currency);
+    await this.refresh(market, await this.putSellerOrder(market, order, goods));
+  }
+
+  /** A succeeded refund and its goods by category. */
+  async recordRefund(
+    market: MarketContext,
+    refund: RefundFact,
+    goods: readonly CategoryGoods[],
+  ): Promise<void> {
+    await this.refresh(market, await this.putRefund(market, refund, goods));
+  }
+
+  /**
+   * Many facts in one unit, with one rebuild of each seller day they touch at the end, so a page
+   * of facts of one busy day rebuilds it once, not once per fact (the reconcile and the backfill).
+   */
+  async recordBatch(
+    market: MarketContext,
+    batch: {
+      readonly sellerOrders: readonly {
+        readonly order: SellerOrderFact;
+        readonly goods: readonly CategoryGoods[];
+      }[];
+      readonly refunds: readonly {
+        readonly refund: RefundFact;
+        readonly goods: readonly CategoryGoods[];
+      }[];
+    },
+  ): Promise<void> {
+    const keys: SellerDay[] = [];
+    // Facts in id order, so two units write the same rows in one order (Mojtaba, PR 10b note 4).
+    const sellerOrders = [...batch.sellerOrders].sort((a, b) =>
+      a.order.sellerOrderId < b.order.sellerOrderId ? -1 : 1,
+    );
+    const refunds = [...batch.refunds].sort((a, b) =>
+      a.refund.refundId < b.refund.refundId ? -1 : 1,
+    );
+    for (const { order, goods } of sellerOrders) {
+      keys.push(...(await this.putSellerOrder(market, order, goods)));
+    }
+    for (const { refund, goods } of refunds) {
+      keys.push(...(await this.putRefund(market, refund, goods)));
+    }
+    await this.refresh(market, keys);
+  }
+
+  /** Writes the seller order's fact and entries; the seller days to rebuild. */
+  private async putSellerOrder(
+    market: MarketContext,
+    read: SellerOrderFact,
+    goods: readonly CategoryGoods[],
+  ): Promise<SellerDay[]> {
+    this.checkCurrency(market, read.currency);
+    // A fact read before a newer one was written keeps what the stored one already knows.
+    const order = keepKnownInstants(
+      read,
+      await this.deps.facts.sellerOrderInstants(market, read.sellerOrderId),
+    );
     checkGoods(goods, order.goods.amount, order.goods.tax, `seller order ${order.sellerOrderId}`);
     const zone = this.deps.zone.zoneOf(market);
     const day = (at: SellerOrderFact['paidAt']) => (at === null ? null : marketDayOf(at, zone));
@@ -65,15 +123,15 @@ export class FactRecorder {
     const after = [days.paidDay, days.cancelledDay, days.shippedDay, days.deliveredDay]
       .filter((value) => value !== null)
       .map((marketDay) => ({ marketDay, sellerId: order.sellerId }));
-    await this.refresh(market, [...before, ...entriesBefore, ...after]);
+    return [...before, ...entriesBefore, ...after];
   }
 
-  /** A succeeded refund and its goods by category. */
-  async recordRefund(
+  /** Writes the refund's fact and entries; the seller days to rebuild. */
+  private async putRefund(
     market: MarketContext,
     refund: RefundFact,
     goods: readonly CategoryGoods[],
-  ): Promise<void> {
+  ): Promise<SellerDay[]> {
     this.checkCurrency(market, refund.currency);
     checkGoods(
       goods,
@@ -90,11 +148,7 @@ export class FactRecorder {
       refund.refundId,
       refundEntries(refund, goods, zone),
     );
-    await this.refresh(market, [
-      ...before,
-      ...entriesBefore,
-      { marketDay: refundDay, sellerId: refund.sellerId },
-    ]);
+    return [...before, ...entriesBefore, { marketDay: refundDay, sellerId: refund.sellerId }];
   }
 
   private checkCurrency(market: MarketContext, currency: string): void {

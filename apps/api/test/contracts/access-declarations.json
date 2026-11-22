@@ -846,6 +846,8 @@
     "whenSellerNotApproved": "deny"
   },
   { "name": "promotions.view-store-follow-gift", "rule": "anonymous" },
+  { "name": "reporting.reconcile-report-facts", "rule": "system" },
+  { "name": "reporting.record-report-facts", "rule": "system" },
   {
     "name": "reviews.cast-helpful-vote",
     "rule": "own-resources",

@@ -233,6 +233,12 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'promotions.confirm-redemptions',
       'promotions.qualify-referral-on-delivery',
       'promotions.release-cancelled-redemptions',
+      // Dashboards upgrade phase 3: reporting records the facts of ordering's events.
+      'reporting.order-cancelled',
+      'reporting.order-paid',
+      'reporting.order-shipped',
+      'reporting.refund-succeeded',
+      'reporting.seller-order-delivered',
       'search.index-approved-seller',
       'search.index-availability-changed',
       'search.index-category-archived',
@@ -284,6 +290,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'notifications.seller-order-notice',
       'ordering.book-carrier-deliveries',
       'promotions.confirm-redemptions',
+      'reporting.order-paid',
     ]);
     expect(subscriptions.subscribersOf('ordering.seller-order-ready.v1')).toEqual([
       'ordering.book-ready-carrier-delivery',
@@ -292,6 +299,7 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'ordering.record-delivery-anchor',
       'promotions.cashback-on-delivery',
       'promotions.qualify-referral-on-delivery',
+      'reporting.seller-order-delivered',
     ]);
     expect(subscriptions.subscribersOf('reviews.review-hidden.v1')).toEqual([
       'customers.timeline-review-hidden',
@@ -307,12 +315,14 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'notifications.item-unavailable-refund-mail',
       'ordering.cancel-carrier-after-refund',
       'promotions.claw-back-on-refund',
+      'reporting.refund-succeeded',
     ]);
     expect(subscriptions.subscribersOf('shipping.carrier-delivery-progressed.v1')).toEqual([
       'ordering.record-carrier-progress',
     ]);
     expect(subscriptions.subscribersOf('ordering.order-shipped.v1')).toEqual([
       'notifications.order-shipped-mail',
+      'reporting.order-shipped',
     ]);
     expect(subscriptions.subscribersOf('identity.one-time-link-requested.v1')).toEqual([
       'identity.link-mail',
