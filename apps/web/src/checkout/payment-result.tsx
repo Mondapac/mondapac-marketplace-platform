@@ -214,18 +214,18 @@ export function Confirmation() {
 }
 
 /**
- * Stripe's success URL (`/checkout/success?order=<id>`): Stripe took the payment and the order is
- * confirmed when its signed event arrives, so the page says it is being confirmed and points to
- * the order. The id comes from the URL and is only shown as the reference; nothing is read with it
- * here. The cart is read again (the API empties it when the order is confirmed).
+ * Stripe's success URL (`/checkout/success?order=<id>`): the order is confirmed when Stripe's
+ * signed event arrives, so the page says the payment is being confirmed and points to the orders. The id comes from the URL and is only shown as the reference; nothing is read with it
+ * here.
  */
 export function HostedPaymentDone({ reference }: { readonly reference: string | null }) {
   const t = useTranslations('checkout');
-  const { customer, live, clearCart, refreshCart } = useStore();
+  const { customer, clearCart } = useStore();
+  // The API empties the cart once Stripe's signed event confirms the order, which can come after
+  // this page: reading it now could show the paid items again, so this page only clears its own.
   useEffect(() => {
     clearCart();
-    if (live) void refreshCart();
-  }, [live, clearCart, refreshCart]);
+  }, [clearCart]);
   return (
     <div className="cwrap">
       <CheckoutProgress current="done" signedIn={customer !== null} />

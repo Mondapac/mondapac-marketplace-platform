@@ -192,9 +192,10 @@ describe('live Pay: the bank check and the refusals', () => {
       kind: 'stock-changed',
       changes: [{ itemId: KEY, was: 3, now: 1 }],
     });
+    // The line is not in the fresh cart any more: none left.
     const gone = deps({
       payByCard: d.payByCard,
-      readStockLeft: () => Promise.resolve({}),
+      readStockLeft: () => Promise.resolve({ [KEY]: 0 }),
     });
     expect(await payLive(request(), {}, gone)).toEqual({
       kind: 'stock-changed',
@@ -202,13 +203,97 @@ describe('live Pay: the bank check and the refusals', () => {
     });
   });
 
-  it('answers failed for every other refusal, a throttle, a lost session or a broken answer', async () => {
+  it('says where to look for what Pay again cannot fix', async () => {
+    const cases: [string, string][] = [
+      ['ordering.discount-code-not-applied', 'discount'],
+      ['ordering.address-not-found', 'address'],
+      ['ordering.outside-delivery-area', 'address'],
+      ['ordering.delivery-method-unavailable', 'delivery'],
+      ['ordering.pickup-unavailable', 'delivery'],
+      ['ordering.cart-not-ready', 'cart'],
+      ['ordering.cart-empty', 'cart'],
+      ['ordering.cart-not-purchasable', 'cart'],
+    ];
+    for (const [code, reason] of cases) {
+      const d = deps({ payByCard: () => Promise.resolve(invalid(code)) });
+      expect(await payLive(request(), {}, d)).toEqual({ kind: 'refused', reason });
+    }
+  });
+
+  it('asks for a new log-in when the session ended, and says how long to wait when throttled', async () => {
+    const out = deps({
+      payByCard: () => Promise.resolve({ kind: 'signed-out', code: 'access.unauthenticated' }),
+    });
+    expect(await payLive(request(), {}, out)).toEqual({ kind: 'signed-out' });
+    const slow = deps({
+      payByCard: () => Promise.resolve({ kind: 'throttled', retryAfterSeconds: 90 }),
+    });
+    expect(await payLive(request(), {}, slow)).toEqual({
+      kind: 'throttled',
+      retryAfterSeconds: 90,
+    });
+    const unknown = deps({
+      payByCard: () => Promise.resolve({ kind: 'throttled', retryAfterSeconds: undefined }),
+    });
+    expect(await payLive(request(), {}, unknown)).toEqual({
+      kind: 'throttled',
+      retryAfterSeconds: null,
+    });
+  });
+
+  it('asks the hosted page once more after conflict.retry, never a card payment', async () => {
+    let calls = 0;
+    const hosted = deps({
+      startHostedCheckout: () => {
+        calls += 1;
+        return Promise.resolve(
+          calls === 1
+            ? invalid('conflict.retry')
+            : ok({ orderId: ORDER, checkoutUrl: 'https://checkout.stripe.com/c/pay/y' }),
+        );
+      },
+    });
+    expect(
+      await payLive(request({ method: 'stripe', confirmationToken: null }), {}, hosted),
+    ).toEqual({ kind: 'redirect', url: 'https://checkout.stripe.com/c/pay/y' });
+    const card = deps({ payByCard: vi.fn(() => Promise.resolve(invalid('conflict.retry'))) });
+    expect(await payLive(request(), {}, card)).toEqual({ kind: 'failed' });
+    expect(card.payByCard).toHaveBeenCalledTimes(1);
+  });
+
+  it('never calls an item sold out when the fresh count is unknown', async () => {
+    const refusal = (reason: string) => () =>
+      Promise.resolve(
+        invalid('ordering.stock-insufficient', {
+          lines: [{ offerId: OFFER, variantId: VARIANT, reason }],
+        }),
+      );
+    // The cart could not be read: no count is made up.
+    const unread = deps({
+      payByCard: refusal('not-enough'),
+      readStockLeft: () => Promise.resolve(null),
+    });
+    expect(await payLive(request(), {}, unread)).toEqual({ kind: 'refused', reason: 'stock' });
+    // A line with no low-stock count says nothing new either.
+    const plenty = deps({
+      payByCard: refusal('over-limit'),
+      readStockLeft: () => Promise.resolve({ [KEY]: Number.MAX_SAFE_INTEGER }),
+    });
+    expect(await payLive(request(), {}, plenty)).toEqual({ kind: 'refused', reason: 'stock' });
+    // Sold out is the API's own word for it.
+    const out = deps({ payByCard: refusal('out'), readStockLeft: () => Promise.resolve(null) });
+    expect(await payLive(request(), {}, out)).toEqual({
+      kind: 'stock-changed',
+      changes: [{ itemId: KEY, was: 3, now: 0 }],
+    });
+  });
+
+  it('answers failed for an unknown refusal or a broken answer', async () => {
     const answers: ApiResult<never>[] = [
-      invalid('ordering.cart-not-ready'),
+      invalid('ordering.something-new'),
       invalid('ordering.price-changed', { total: { amount: '-1', currency: 'NZD' } }),
       invalid('ordering.delivery-quote-changed', { quotes: 'x' }),
-      { kind: 'throttled', retryAfterSeconds: 30 },
-      { kind: 'signed-out', code: 'access.unauthenticated' },
+      invalid('ordering.stock-insufficient', { lines: 'x' }),
       { kind: 'failed' },
     ];
     for (const answer of answers) {
@@ -221,6 +306,12 @@ describe('live Pay: the bank check and the refusals', () => {
         kind: 'failed',
       });
     }
+  });
+
+  it('cuts a long note by characters, never inside an emoji', () => {
+    const note = `${'a'.repeat(199)}😀😀`;
+    const body = orderBody(request(), { [SELLER_A]: note });
+    expect(body?.sellerNotes?.[SELLER_A]).toBe(`${'a'.repeat(199)}😀`);
   });
 
   it('reads money bodies strictly', () => {

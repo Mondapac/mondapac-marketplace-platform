@@ -627,6 +627,9 @@ export function payByCard(
   confirmationToken: string,
   expectedTotal: Money,
 ): Promise<ApiResult<CardPaymentStarted>> {
+  // Minor units only: a fraction would reach the API as a malformed total.
+  if (!Number.isSafeInteger(expectedTotal.amount) || expectedTotal.amount < 0)
+    return Promise.resolve({ kind: 'failed' });
   return call(
     'POST',
     'orders/pay',

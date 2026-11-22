@@ -145,7 +145,9 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
   // Back from Stripe's page through the browser's cache: the page is not still paying.
   useEffect(() => {
     const shown = (event: PageTransitionEvent) => {
-      if (event.persisted) setPaying(false);
+      if (!event.persisted) return;
+      payingNow.current = false;
+      setPaying(false);
     };
     window.addEventListener('pageshow', shown);
     return () => window.removeEventListener('pageshow', shown);
@@ -162,6 +164,13 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
   // Nothing to check out, or a seller below its minimum: back to the cart (not once the order is
   // placed: the cart is emptied as the confirmation opens).
   const placed = useRef(false);
+  // One Pay at a time: a second press before the first answers is dropped (the state value is
+  // only seen on the next render, so a ref holds it).
+  const payingNow = useRef(false);
+  const setBusy = (busy: boolean) => {
+    payingNow.current = busy;
+    setPaying(busy);
+  };
   const blocked = !view || view.blocked.length > 0;
   useEffect(() => {
     if (blocked && !placed.current) router.replace('/cart');
@@ -217,7 +226,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
       }
       answer = { kind: 'failed' };
     }
-    setPaying(false);
+    setBusy(false);
     if (answer.kind === 'price-changed') {
       replace(answer.options);
       setNotice({
@@ -243,6 +252,17 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
       if (live) void refreshCart();
       else limitLines(Object.fromEntries(answer.changes.map((c) => [c.itemId, c.now])));
       setNotice({ kind: 'stock-changed', changes });
+    } else if (answer.kind === 'refused' && answer.reason === 'cart') {
+      // The cart cannot be ordered as it is (a seller below its minimum, a line not for sale):
+      // the cart page says what to change.
+      if (live) void refreshCart();
+      router.replace('/cart');
+      return;
+    } else if (answer.kind === 'signed-out') {
+      // The session ended: the log-in dialog opens; the cart is kept and merged at log-in.
+      setCustomer(null);
+      setLoginOpen(true);
+      setNotice(answer);
     } else if (answer.kind === 'total-changed') {
       // A price moved on the server: the cart shows the prices of now.
       void refreshCart();
@@ -252,7 +272,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
   };
 
   const pay = async () => {
-    if (paying) return;
+    if (paying || payingNow.current) return;
     if (block === null && quoteAddress !== null) {
       let token: string | null = null;
       if (method === 'card' && source.card.kind === 'stripe') {
@@ -262,10 +282,10 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
           if (nameField) revealField(nameField);
           return;
         }
-        setPaying(true);
+        setBusy(true);
         const made = await stripeCard.tokenize(cardName.trim());
         if (made.kind !== 'token') {
-          setPaying(false);
+          setBusy(false);
           if (made.kind === 'invalid') stripeCard.focus();
           else {
             setNotice({ kind: 'failed' });
@@ -275,7 +295,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
         }
         token = made.id;
       }
-      setPaying(true);
+      setBusy(true);
       setNotice(null);
       const request: PayRequest = {
         method,
@@ -755,10 +775,12 @@ async function readStockLeft(): Promise<Readonly<Record<string, number>> | null>
   const read = await api.readCart();
   const cart = read.kind === 'ok' ? liveCartOf(read.value, null) : null;
   if (cart === null) return null;
-  return Object.fromEntries(
-    Object.keys(cart.cart).map((key) => [
-      key,
-      cart.source.items[key]?.lowStock ?? Number.MAX_SAFE_INTEGER,
-    ]),
-  );
+  // A line the cart lists as not buyable has none left; a buyable one without a low-stock count
+  // has more than the buyer asked for (the page then says only that stock changed).
+  return Object.fromEntries([
+    ...cart.unavailable.map((line) => [line.key, 0] as const),
+    ...Object.keys(cart.cart).map(
+      (key) => [key, cart.source.items[key]?.lowStock ?? Number.MAX_SAFE_INTEGER] as const,
+    ),
+  ]);
 }

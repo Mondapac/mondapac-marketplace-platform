@@ -186,7 +186,7 @@ export function useStripeCard(publishableKey: string | null, total: Money | null
   /**
    * The bank's check of a card that needs one (3D Secure), in Stripe's own frame. `ok` once the
    * card holds the money (capture is manual, so the intent waits for capture); `declined` when
-   * the bank or the buyer refused it. The secret is used here only: never stored or logged.
+   * the bank or the buyer refused it; `failed` for anything else. The secret is used here only: never stored or logged.
    */
   const handleNextAction = useCallback(
     async (clientSecret: string): Promise<'ok' | 'declined' | 'failed'> => {
@@ -196,9 +196,12 @@ export function useStripeCard(publishableKey: string | null, total: Money | null
         const done = await current.js.handleNextAction({ clientSecret });
         if (done.error) return done.error.type === 'card_error' ? 'declined' : 'failed';
         const status = done.paymentIntent?.status;
-        return status === 'requires_capture' || status === 'succeeded' || status === 'processing'
-          ? 'ok'
-          : 'declined';
+        // Capture is manual: the card holds the money only as `requires_capture`. Any other
+        // status (a misconfigured intent included) is not a hold this page can count on.
+        if (status === 'requires_capture') return 'ok';
+        return status === 'requires_payment_method' || status === 'canceled'
+          ? 'declined'
+          : 'failed';
       } catch {
         return 'failed';
       }

@@ -241,4 +241,97 @@ describe('live checkout', () => {
     });
     expect(posted('orders/delivery-quotes')[0]!.body).toEqual({ addressId: NEW_ADDRESS });
   });
+
+  /** Stripe.js as the Card tile uses it; `next` is what the bank check answers. */
+  function stubStripe(next: Record<string, unknown>) {
+    const handled = vi.fn((options: { clientSecret: string }) =>
+      Promise.resolve(options.clientSecret ? next : {}),
+    );
+    vi.stubGlobal('Stripe', () => ({
+      elements: () => ({
+        create: () => ({
+          mount: vi.fn(),
+          destroy: vi.fn(),
+          focus: vi.fn(),
+          on: (event: string, handler: () => void) => {
+            if (event === 'ready') setTimeout(handler, 0);
+          },
+        }),
+        update: vi.fn(),
+        submit: () => Promise.resolve({}),
+      }),
+      createConfirmationToken: () => Promise.resolve({ confirmationToken: { id: 'ctoken_live1' } }),
+      handleNextAction: handled,
+    }));
+    return handled;
+  }
+
+  function renderCard() {
+    return render(
+      <NextIntlClientProvider locale="en" messages={messages} timeZone="UTC">
+        <StoreProvider live initialLiveCart={cart}>
+          <main>
+            <CheckoutPage
+              source={{ ...source, card: { kind: 'stripe', publishableKey: 'pk_test_51Live' } }}
+            />
+          </main>
+        </StoreProvider>
+      </NextIntlClientProvider>,
+    );
+  }
+
+  async function readyToPay() {
+    await screen.findByText('12 Example Street, Kedron QLD 4031', { exact: false });
+    for (const radio of await screen.findAllByRole('radio', { name: /^Instant/ }))
+      fireEvent.click(radio);
+    await waitFor(() => expect(screen.queryByText('Loading the secure card fields...')).toBeNull());
+    fireEvent.change(screen.getByLabelText('Name on card'), { target: { value: 'Jo Rahman' } });
+    await waitFor(() =>
+      expect(payButtons().every((b) => b.getAttribute('aria-disabled') !== 'true')).toBe(true),
+    );
+  }
+
+  it('pays by card after the bank check, once however often Pay is pressed', async () => {
+    const handled = stubStripe({ paymentIntent: { status: 'requires_capture' } });
+    answers['POST orders/pay'] = {
+      status: 200,
+      body: { orderId: ORDER, status: 'requires-action', clientSecret: 'pi_1_secret_2' },
+    };
+    renderCard();
+    await readyToPay();
+    const pay = payButtons()[0]!;
+    fireEvent.click(pay);
+    fireEvent.click(pay);
+    await waitFor(() => expect(push).toHaveBeenCalledWith('/checkout/confirmation'));
+    expect(posted('orders/pay')).toHaveLength(1);
+    expect(posted('orders/pay')[0]!.body).toMatchObject({
+      addressId: ADDRESS,
+      confirmationToken: 'ctoken_live1',
+      expectedTotal: { amount: '3490', currency: 'AUD' },
+    });
+    expect(handled).toHaveBeenCalledWith({ clientSecret: 'pi_1_secret_2' });
+  });
+
+  it('is not paid when the bank check fails', async () => {
+    stubStripe({ paymentIntent: { status: 'requires_payment_method' } });
+    answers['POST orders/pay'] = {
+      status: 200,
+      body: { orderId: ORDER, status: 'requires-action', clientSecret: 'pi_1_secret_2' },
+    };
+    renderCard();
+    await readyToPay();
+    fireEvent.click(payButtons()[0]!);
+    expect(await screen.findByText('Your card was declined.')).toBeTruthy();
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it('asks for a new log-in when the session ended during Pay', async () => {
+    stubStripe({});
+    answers['POST orders/pay'] = { status: 401, body: { code: 'session.invalid' } };
+    renderCard();
+    await readyToPay();
+    fireEvent.click(payButtons()[0]!);
+    expect(await screen.findByRole('button', { name: 'Log in and continue' })).toBeTruthy();
+    expect(push).not.toHaveBeenCalled();
+  });
 });

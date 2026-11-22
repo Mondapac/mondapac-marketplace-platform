@@ -54,7 +54,8 @@ export function orderBody(
   const sellerNotes: Record<string, string> = {};
   for (const sellerId of Object.keys(request.delivery)) {
     const note = Object.hasOwn(notes, sellerId) ? notes[sellerId]?.trim() : undefined;
-    if (note) sellerNotes[sellerId] = note.slice(0, MAX_NOTE);
+    // By characters, not UTF-16 units: an emoji is never cut in half.
+    if (note) sellerNotes[sellerId] = Array.from(note).slice(0, MAX_NOTE).join('');
   }
   return {
     addressId: request.address.id,
@@ -88,7 +89,11 @@ export async function payLive(
   const order = orderBody(request, notes);
   if (order === null) return { kind: 'failed' };
   if (request.method === 'stripe') {
-    const started = await deps.startHostedCheckout(order);
+    let started = await deps.startHostedCheckout(order);
+    // A write that met another one (conflict.retry) is asked once more: nothing was made. Only
+    // the hosted page: a card's confirmation token is single use.
+    if (started.kind === 'invalid' && started.code === 'conflict.retry')
+      started = await deps.startHostedCheckout(order);
     if (started.kind === 'ok') return { kind: 'redirect', url: started.value.checkoutUrl };
     return refused(started, request, order.addressId, deps);
   }
@@ -112,6 +117,9 @@ async function refused(
   addressId: string,
   deps: LivePayDeps,
 ): Promise<PayAnswer> {
+  if (result.kind === 'signed-out') return { kind: 'signed-out' };
+  if (result.kind === 'throttled')
+    return { kind: 'throttled', retryAfterSeconds: result.retryAfterSeconds ?? null };
   if (result.kind !== 'invalid') return { kind: 'failed' };
   switch (result.code) {
     case 'ordering.card-declined':
@@ -125,6 +133,19 @@ async function refused(
     }
     case 'ordering.stock-insufficient':
       return stockChanged(result.details, request, deps);
+    // What Pay again cannot fix: the page says where to look.
+    case 'ordering.discount-code-not-applied':
+      return { kind: 'refused', reason: 'discount' };
+    case 'ordering.address-not-found':
+    case 'ordering.outside-delivery-area':
+      return { kind: 'refused', reason: 'address' };
+    case 'ordering.delivery-method-unavailable':
+    case 'ordering.pickup-unavailable':
+      return { kind: 'refused', reason: 'delivery' };
+    case 'ordering.cart-not-ready':
+    case 'ordering.cart-empty':
+    case 'ordering.cart-not-purchasable':
+      return { kind: 'refused', reason: 'cart' };
     default:
       return { kind: 'failed' };
   }
@@ -150,6 +171,9 @@ async function quoteChanged(
   return { kind: 'price-changed', changes, options: options.value };
 }
 
+/** The stock refusals that leave none to buy (inventory's InsufficientReason). */
+const GONE: ReadonlySet<unknown> = new Set(['out', 'retired']);
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
 
 async function stockChanged(
@@ -158,21 +182,25 @@ async function stockChanged(
   deps: LivePayDeps,
 ): Promise<PayAnswer> {
   const lines = Array.isArray(details.lines) ? details.lines : [];
-  const keys = lines.flatMap((line: unknown) =>
+  const refusedLines = lines.flatMap((line: unknown) =>
     isRecord(line) &&
     typeof line.offerId === 'string' &&
     typeof line.variantId === 'string' &&
     UUID.test(line.offerId) &&
     UUID.test(line.variantId)
-      ? [`${line.offerId}:${line.variantId}`]
+      ? [{ key: `${line.offerId}:${line.variantId}`, gone: GONE.has(line.reason) }]
       : [],
   );
   const left = await deps.readStockLeft();
-  const changes = keys.flatMap((key) => {
+  const changes = refusedLines.flatMap(({ key, gone }) => {
     const was = Object.hasOwn(request.lines, key) ? request.lines[key] : undefined;
     if (was === undefined) return [];
-    const now = Math.min(was, left !== null && Object.hasOwn(left, key) ? (left[key] ?? 0) : 0);
-    return now < was ? [{ itemId: key, was, now }] : [];
+    // Sold out or retired: none. Otherwise the fresh cart's count, when it gives one below the
+    // quantity; a count that is not known is never shown as "sold out".
+    const known = left !== null && Object.hasOwn(left, key) ? left[key] : undefined;
+    const now = gone ? 0 : known;
+    return now !== undefined && now < was ? [{ itemId: key, was, now }] : [];
   });
-  return changes.length === 0 ? { kind: 'failed' } : { kind: 'stock-changed', changes };
+  if (changes.length > 0) return { kind: 'stock-changed', changes };
+  return refusedLines.length > 0 ? { kind: 'refused', reason: 'stock' } : { kind: 'failed' };
 }
