@@ -43,7 +43,7 @@ export class SellerKpisController {
       'Days are the Market\'s days, not UTC. Figures come from the daily rollups, so "today" is as ' +
       'fresh as the last event (see `refreshedAt`). Money is a decimal string of minor units. ' +
       'Shipped on time counts shipped orders only (an unshipped overdue order is a task, not yet ' +
-      'a KPI; FE-135).',
+      'a KPI; FE-127).',
   })
   @ApiQuery({ name: 'period', required: false, enum: ['today', '7d', '30d', 'month'] })
   @ApiOkResponse({ type: SellerKpisBody })

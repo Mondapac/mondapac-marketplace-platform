@@ -163,7 +163,7 @@ number of days of the previous month, cut at its end).
   Market). Money is a decimal string of minor units; sales are goods with and without GST,
   shipping apart. Refunds are the money refunded in the period, on the refund's day.
 - Shipped on time counts shipped orders only. An unshipped overdue order is a task (card "Today's
-  tasks"), not yet part of the rate (the rollup has no day for it; FE-register).
-- Top categories, not top products: reporting keeps category, not product, facts. The panel
+  tasks"), not yet part of the rate (the rollup has no day for it; FE-127).
+- Top categories, not top products (FE-125): reporting keeps category, not product, facts. The panel
   names a category from the public category tree.
-- Seller net earnings (sales minus commission and refunds) wait for a commission fact in reporting.
+- Seller net earnings (sales minus commission and refunds) wait for a commission fact in reporting (FE-126).
