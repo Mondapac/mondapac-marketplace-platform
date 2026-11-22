@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 
 /** Pixels of slack so a fractional scroll position at the very end still counts as the end. */
 const EDGE = 2;
@@ -30,7 +30,7 @@ export function ScrollFade({
     setBottom(el.scrollHeight - el.clientHeight - el.scrollTop > EDGE);
   }, []);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const el = box.current;
     if (el === null) return;
     measure();
@@ -38,7 +38,12 @@ export function ScrollFade({
     const resize = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
     resize?.observe(el);
     const mutation = new MutationObserver(measure);
-    mutation.observe(el, { childList: true, subtree: true, attributes: true });
+    mutation.observe(el, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['hidden', 'aria-expanded'],
+    });
     window.addEventListener('resize', measure);
     return () => {
       resize?.disconnect();
