@@ -43,6 +43,7 @@ import { jobRunBoundsOf, Scheduler } from './scheduler';
           ids,
           Math.random,
           jobRunBoundsOf(config.databasePoolMax),
+          new Set(config.seedJobsOff),
         ),
     },
   ],

@@ -104,6 +104,11 @@ export class Scheduler {
     private readonly ids: IdGenerator,
     private readonly jitter: Jitter = Math.random,
     private readonly bounds: JobRunBounds = UNBOUNDED_JOB_RUNS,
+    /**
+     * Jobs {@link start} does not tick: `CATALOG_SEED_JOBS_OFF` of the local operational test
+     * environment (development and test only, checked by the config). `runJobOnce` still runs them.
+     */
+    private readonly off: ReadonlySet<string> = new Set(),
   ) {}
 
   async runJobOnce(name: string): Promise<JobRunResult> {
@@ -154,6 +159,10 @@ export class Scheduler {
   start(): void {
     this.stopping = false;
     for (const name of this.registry.names()) {
+      if (this.off.has(name)) {
+        this.logger.warn({ msg: 'job.switched-off', job: name });
+        continue;
+      }
       const job = this.registry.get(name)!;
       const interval = intervalMsOf(job);
       const first = setTimeout(

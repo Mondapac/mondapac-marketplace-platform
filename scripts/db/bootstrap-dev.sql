@@ -63,6 +63,10 @@ ALTER ROLE mondapac_api SET idle_in_transaction_session_timeout = '60s';
 ALTER ROLE mondapac_migrator LOGIN NOSUPERUSER CREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS
   PASSWORD 'mondapac_migrator';
 GRANT pg_signal_backend TO mondapac_migrator;
+-- The operational test marker (scripts/ops-data/mark-database.mjs): the migration role may write
+-- ALTER DATABASE ... SET mondapac.env, a placeholder setting only a superuser could set otherwise.
+-- No migration and no table: a production database never carries it (development and CI only).
+GRANT SET ON PARAMETER mondapac.env TO mondapac_migrator;
 
 -- The database: owned by the migration role; PUBLIC loses CONNECT and TEMPORARY (10.5 gap 5).
 DO $database$
