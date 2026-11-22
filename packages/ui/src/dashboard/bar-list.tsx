@@ -14,7 +14,7 @@ export interface BarListItem {
 }
 
 const pct = (value: number, max: number) =>
-  max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
+  max > 0 && Number.isFinite(value) ? Math.max(0, Math.min(100, (value / max) * 100)) : 0;
 
 /**
  * Ranked horizontal bars ("top categories"). A list of text first: the figure is always printed,
@@ -27,7 +27,7 @@ export function BarList({
   readonly label: string;
   readonly items: readonly BarListItem[];
 }) {
-  const max = Math.max(0, ...items.map((i) => i.value));
+  const max = Math.max(0, ...items.map((i) => i.value).filter(Number.isFinite));
   return (
     <ul aria-label={label} className="flex flex-col gap-3">
       {items.map((item) => {

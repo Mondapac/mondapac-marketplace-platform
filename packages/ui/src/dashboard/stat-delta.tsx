@@ -31,7 +31,7 @@ export function StatDelta({ value, direction, sentiment, comparedWith }: StatDel
       <span aria-hidden="true">{value === 'n/a' ? '' : ARROW[direction]}</span>
       <span>{value}</span>
       <span className="sr-only">
-        {value === 'n/a' ? '' : `, ${WORD[sentiment]},`} {comparedWith}
+        {value === 'n/a' ? comparedWith : `${WORD[sentiment]}, ${comparedWith}`}
       </span>
       <span aria-hidden="true" className="font-normal text-fg-muted">
         {comparedWith}

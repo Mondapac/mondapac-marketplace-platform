@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
-import { compactNumber, labelIndexes, niceTicks } from './chart-scale.ts';
+import { useEffect, useId, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { compactNumber, labelIndexes, niceTicksRange } from './chart-scale.ts';
 
 export interface ChartPoint {
   /** The x label as shown ("12 Nov"). */
@@ -32,15 +32,14 @@ export interface LineAreaChartProps {
   };
 }
 
-const AXIS_W = 44;
+const AXIS_W = 52;
 const PAD = { top: 8, right: 8, bottom: 22 };
 
-/** The width of the box, read with a ResizeObserver so the axis text is drawn at real 12px. */
+/** The width of the box, read with a ResizeObserver; a callback ref follows the box when it remounts. */
 function useWidth() {
-  const ref = useRef<HTMLDivElement>(null);
+  const [el, setEl] = useState<HTMLDivElement | null>(null);
   const [width, setWidth] = useState(0);
   useEffect(() => {
-    const el = ref.current;
     if (el === null) return;
     setWidth(el.clientWidth);
     if (typeof ResizeObserver === 'undefined') return;
@@ -50,8 +49,8 @@ function useWidth() {
     });
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
-  return [ref, width] as const;
+  }, [el]);
+  return [setEl, width] as const;
 }
 
 /**
@@ -77,25 +76,32 @@ export function LineAreaChart({
   const tableId = useId();
   const width = measured > 0 ? measured : 640;
   const n = points.length;
+  // A non-finite value is drawn as zero; a compare series is cut to the length of the current one.
+  const safe = (v: number) => (Number.isFinite(v) ? v : 0);
+  const cur = points.map((p) => ({ ...p, value: safe(p.value) }));
+  const cmp = compare?.slice(0, n).map((p) => ({ ...p, value: safe(p.value) }));
 
-  const all = [...points, ...(compare ?? [])].map((p) => p.value);
-  const ticks = niceTicks(Math.max(0, ...all));
+  const all = [...cur, ...(cmp ?? [])].map((p) => p.value);
+  const ticks = niceTicksRange(Math.min(0, ...all), Math.max(0, ...all));
+  const bottom = ticks[0]!;
   const top = ticks[ticks.length - 1]!;
   const plotW = Math.max(width - AXIS_W - PAD.right, 1);
   const plotH = height - PAD.top - PAD.bottom;
   const x = (i: number) => AXIS_W + (n <= 1 ? plotW / 2 : (i / (n - 1)) * plotW);
-  const y = (v: number) => PAD.top + plotH - (v / top) * plotH;
+  const y = (v: number) => PAD.top + plotH - ((v - bottom) / (top - bottom)) * plotH;
   const path = (pts: readonly ChartPoint[]) =>
     pts
       .map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`)
       .join(' ');
 
   const pick = (e: PointerEvent<SVGSVGElement>) => {
+    if (n === 0) return;
     const rect = e.currentTarget.getBoundingClientRect();
     const rel = (e.clientX - rect.left - AXIS_W) / plotW;
     setActive(Math.min(n - 1, Math.max(0, Math.round(rel * (n - 1)))));
   };
   const key = (e: KeyboardEvent<SVGSVGElement>) => {
+    if (n === 0) return;
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       e.preventDefault();
       const dir = e.key === 'ArrowRight' ? 1 : -1;
@@ -103,8 +109,8 @@ export function LineAreaChart({
     } else if (e.key === 'Escape') setActive(null);
   };
 
-  const shown = active === null ? undefined : points[active];
-  const shownCompare = active === null ? undefined : compare?.[active];
+  const shown = active === null ? undefined : cur[active];
+  const shownCompare = active === null ? undefined : cmp?.[active];
   const xLabels = labelIndexes(n, Math.max(2, Math.floor(plotW / 72)));
 
   return (
@@ -126,7 +132,6 @@ export function LineAreaChart({
         </ul>
         <button
           type="button"
-          aria-pressed={table}
           aria-controls={tableId}
           onClick={() => setTable((v) => !v)}
           className="text-sm font-medium text-link underline"
@@ -149,13 +154,13 @@ export function LineAreaChart({
                   </th>
                   {compare === undefined ? null : (
                     <th scope="col" className="px-3 py-2 text-end font-medium">
-                      {compareLabel}
+                      {compareLabel ?? ''}
                     </th>
                   )}
                 </tr>
               </thead>
               <tbody>
-                {points.map((p, i) => (
+                {cur.map((p, i) => (
                   <tr key={`${p.label}-${i}`} className="border-t border-line-row">
                     <th scope="row" className="px-3 py-2 text-start font-normal text-fg-secondary">
                       {p.label}
@@ -163,7 +168,7 @@ export function LineAreaChart({
                     <td className="px-3 py-2 text-end text-fg">{formatValue(p.value)}</td>
                     {compare === undefined ? null : (
                       <td className="px-3 py-2 text-end text-fg-secondary">
-                        {compare[i] === undefined ? '' : formatValue(compare[i].value)}
+                        {cmp?.[i] === undefined ? '' : formatValue(cmp[i].value)}
                       </td>
                     )}
                   </tr>
@@ -181,6 +186,7 @@ export function LineAreaChart({
               height={height}
               viewBox={`0 0 ${width} ${height}`}
               onPointerMove={pick}
+              onPointerDown={pick}
               onPointerLeave={() => setActive(null)}
               onKeyDown={key}
               onBlur={() => setActive(null)}
@@ -222,14 +228,14 @@ export function LineAreaChart({
               ))}
               {area && n > 1 ? (
                 <path
-                  d={`${path(points)} L${x(n - 1).toFixed(1)},${y(0)} L${x(0).toFixed(1)},${y(0)} Z`}
+                  d={`${path(cur)} L${x(n - 1).toFixed(1)},${y(0)} L${x(0).toFixed(1)},${y(0)} Z`}
                   className="fill-chart-series-soft"
                   opacity={0.5}
                 />
               ) : null}
               {compare === undefined ? null : (
                 <path
-                  d={path(compare)}
+                  d={path(cmp ?? [])}
                   fill="none"
                   strokeWidth={1.5}
                   strokeDasharray="5 4"
@@ -237,14 +243,14 @@ export function LineAreaChart({
                 />
               )}
               <path
-                d={path(points)}
+                d={path(cur)}
                 fill="none"
                 strokeWidth={2}
                 strokeLinejoin="round"
                 className="stroke-chart-series"
               />
-              {n === 1 && points[0] !== undefined ? (
-                <circle cx={x(0)} cy={y(points[0].value)} r={3} className="fill-chart-series" />
+              {n === 1 && cur[0] !== undefined ? (
+                <circle cx={x(0)} cy={y(cur[0].value)} r={3} className="fill-chart-series" />
               ) : null}
               {active === null || shown === undefined ? null : (
                 <g aria-hidden="true">
@@ -259,9 +265,18 @@ export function LineAreaChart({
                 </g>
               )}
             </svg>
+            <div role="status" className="sr-only">
+              {shown === undefined
+                ? ''
+                : `${shown.label}: ${formatValue(shown.value)}${
+                    shownCompare === undefined || compareLabel === undefined
+                      ? ''
+                      : `, ${compareLabel}: ${formatValue(shownCompare.value)}`
+                  }`}
+            </div>
             {active === null || shown === undefined ? null : (
               <div
-                role="status"
+                aria-hidden="true"
                 className="pointer-events-none absolute top-0 rounded-md bg-chart-tooltip px-2.5 py-1.5 text-xs text-chart-tooltip-fg shadow"
                 style={{
                   left: Math.min(Math.max(x(active), 60), Math.max(width - 60, 60)),
@@ -270,7 +285,7 @@ export function LineAreaChart({
               >
                 <div className="text-chart-tooltip-muted">{shown.label}</div>
                 <div className="font-semibold">{formatValue(shown.value)}</div>
-                {shownCompare === undefined ? null : (
+                {shownCompare === undefined || compareLabel === undefined ? null : (
                   <div className="text-chart-tooltip-muted">
                     {compareLabel}: {formatValue(shownCompare.value)}
                   </div>

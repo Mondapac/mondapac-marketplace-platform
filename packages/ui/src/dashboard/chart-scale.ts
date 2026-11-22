@@ -1,4 +1,4 @@
-/** Rounds a step up to 1, 2, 2.5, 5 or 10 times a power of ten. */
+/** Rounds a step up to 1, 2, 5 or 10 times a power of ten. */
 function niceStep(raw: number): number {
   const pow = 10 ** Math.floor(Math.log10(raw));
   const f = raw / pow;
@@ -36,4 +36,18 @@ export function compactNumber(value: number): string {
 }
 function trim(v: number): string {
   return String(Math.round(v * 10) / 10);
+}
+
+/** Ticks from at or below `min` to at or above `max` (zero is always inside); handles negative values. */
+export function niceTicksRange(min: number, max: number, count = 4): readonly number[] {
+  const lo = Math.min(0, Number.isFinite(min) ? min : 0);
+  const hi = Math.max(0, Number.isFinite(max) ? max : 0);
+  if (hi === 0 && lo === 0) return [0, 1];
+  const step = niceStep((hi - lo) / count);
+  const start = Math.floor(lo / step + 1e-9) * step;
+  const ticks: number[] = [];
+  for (let v = start; v < hi + step - 1e-9; v += step) ticks.push(Number(v.toPrecision(12)));
+  if (ticks[ticks.length - 1]! < hi)
+    ticks.push(Number((ticks[ticks.length - 1]! + step).toPrecision(12)));
+  return ticks;
 }

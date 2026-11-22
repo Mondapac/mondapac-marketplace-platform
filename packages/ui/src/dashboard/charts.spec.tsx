@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BarList, Funnel } from './bar-list.tsx';
-import { compactNumber, labelIndexes, niceTicks } from './chart-scale.ts';
+import { compactNumber, labelIndexes, niceTicks, niceTicksRange } from './chart-scale.ts';
 import { ChartEmpty, ChartError, ChartSkeleton } from './chart-states.tsx';
 import { StatCard } from './dashboard.tsx';
 import { LineAreaChart } from './line-chart.tsx';
@@ -29,6 +29,14 @@ describe('chart scale', () => {
     expect(idx[idx.length - 1]).toBe(29);
     expect(idx.length).toBeLessThanOrEqual(5);
     expect(labelIndexes(3, 5)).toEqual([0, 1, 2]);
+  });
+  it('covers negative values and degenerate input', () => {
+    const t = niceTicksRange(-50, 10);
+    expect(t[0]).toBeLessThanOrEqual(-50);
+    expect(t[t.length - 1]!).toBeGreaterThanOrEqual(10);
+    expect(t).toContain(0);
+    expect(niceTicksRange(0, 0)).toEqual([0, 1]);
+    expect(niceTicksRange(Number.NaN, Number.NaN)).toEqual([0, 1]);
   });
   it('formats compact figures', () => {
     expect(compactNumber(1200)).toBe('1.2k');
@@ -131,7 +139,75 @@ describe('LineAreaChart', () => {
     fireEvent.keyDown(svg, { key: 'ArrowRight' });
     expect(screen.getByRole('status').textContent).toContain('A$20');
     fireEvent.keyDown(svg, { key: 'Escape' });
-    expect(screen.queryByRole('status')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('');
+  });
+  it('keeps negative values and an overlong compare series inside the plot', () => {
+    const { container } = render(
+      <LineAreaChart
+        title="Net"
+        points={[
+          { label: 'a', value: -50 },
+          { label: 'b', value: 10 },
+        ]}
+        compare={[
+          { label: 'p1', value: 5 },
+          { label: 'p2', value: 6 },
+          { label: 'p3', value: 7 },
+        ]}
+        compareLabel="Prev"
+        seriesLabel="Now"
+        formatValue={money}
+        labels={labels}
+      />,
+    );
+    const d = [...container.querySelectorAll('svg[data-chart] path[fill="none"]')]
+      .map((p) => p.getAttribute('d') ?? '')
+      .join(' ');
+    expect(d).not.toContain('NaN');
+    const xs = [...d.matchAll(/[ML]([\d.]+),/g)].map((m) => Number(m[1]));
+    expect(Math.max(...xs)).toBeLessThanOrEqual(640);
+    const ys = [...d.matchAll(/,([\d.]+)/g)].map((m) => Number(m[1]));
+    expect(Math.max(...ys)).toBeLessThanOrEqual(240 - 22);
+  });
+  it('survives empty data and non-finite values', () => {
+    const { container } = render(
+      <LineAreaChart title="E" points={[]} seriesLabel="s" formatValue={money} labels={labels} />,
+    );
+    const svg = screen.getByRole('img', { name: 'E' });
+    fireEvent.keyDown(svg, { key: 'ArrowRight' });
+    expect(screen.getByRole('status').textContent).toBe('');
+    cleanup();
+    const r = render(
+      <LineAreaChart
+        title="N"
+        points={[
+          { label: 'a', value: Number.NaN },
+          { label: 'b', value: 3 },
+        ]}
+        seriesLabel="s"
+        formatValue={money}
+        labels={labels}
+      />,
+    );
+    expect(r.container.innerHTML).not.toContain('NaN');
+    expect(container).toBeTruthy();
+  });
+  it('keeps measuring after the table is shown and hidden', () => {
+    const observed: Element[] = [];
+    class RO {
+      observe(el: Element) {
+        observed.push(el);
+      }
+      disconnect() {}
+      unobserve() {}
+    }
+    vi.stubGlobal('ResizeObserver', RO);
+    render(chart(false));
+    fireEvent.click(screen.getByRole('button', { name: 'View as table' }));
+    fireEvent.click(screen.getByRole('button', { name: 'View as chart' }));
+    vi.unstubAllGlobals();
+    expect(observed.length).toBe(2);
+    expect(observed[1]!.isConnected).toBe(true);
   });
   it('prints axis text at a real 12 px', () => {
     const { container } = render(chart(false));
@@ -158,6 +234,18 @@ describe('BarList and Funnel', () => {
     expect(screen.getByText('12 orders')).toBeTruthy();
     expect(container.querySelectorAll<HTMLElement>('li span[style]')[1]!.style.width).toBe('50%');
     expect(container.querySelector('a[href="/b"]')).not.toBeNull();
+  });
+  it('ignores a non-finite value when scaling', () => {
+    const { container } = render(
+      <BarList
+        label="x"
+        items={[
+          { id: 'a', label: 'A', value: Number.NaN, display: '?' },
+          { id: 'b', label: 'B', value: 5, display: '5' },
+        ]}
+      />,
+    );
+    expect(container.querySelectorAll<HTMLElement>('li span[style]')[1]!.style.width).toBe('100%');
   });
   it('shows each funnel step as a share of the first', () => {
     render(
