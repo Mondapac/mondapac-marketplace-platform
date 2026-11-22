@@ -28,7 +28,7 @@ catalog, sellers, security, certification, payments and commission-payouts.
    `error` (the panel shows "Couldn't load", never 0); an owner's refusal hides the queue.
 3. **Cache.** Counts are kept in the API process for 60 s under Market, tenant, panel, the viewer's
    whole sorted permission set and (seller panel) the seller. Live queues (security alerts,
-   disputes, halal listings) are never kept. The HTTP answer is `no-store`.
+   disputes, listings claiming a certification without a valid one, such as halal) are never kept. The HTTP answer is `no-store`.
 4. **Boundary.** No module or platform file imports `modules/dashboard` (dependency-cruiser
    `nothing-imports-dashboard`); only the module list registers it. The dashboard reaches other
    modules only through their `index.ts`, as every module does.

@@ -425,6 +425,20 @@ describe.each(TEST_MARKETS)('the work queue in market %s', (code) => {
       expect(script.calls).toHaveLength(0);
     });
 
+    it('refuses an admin acting as a seller, before any queue is asked', async () => {
+      const own = admin();
+      const actingAs = Object.assign(
+        Object.create(Object.getPrototypeOf(own) as object) as object,
+        own,
+        {
+          actor: { ...own.actor, actingAs: { sellerId: id(0xb3) } },
+        },
+      ) as CallContext;
+      const result = await useCase(viewer([A]), [source(script, 'a.one')]).execute(actingAs, {});
+      expect(result.ok).toBe(false);
+      expect(script.calls).toHaveLength(0);
+    });
+
     it("passes on identity's refusal", async () => {
       expect(await useCase('denied').execute(admin(), {})).toEqual(err({ code: 'access.denied' }));
     });
