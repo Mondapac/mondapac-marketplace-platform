@@ -647,12 +647,17 @@ describe('Needs a look list: saved filters', () => {
     expect(screen.getByRole('button', { name: /^All \(7\)$/ })).toBeTruthy();
   });
 
-  it('offers Save filter... on a built-in view that shows something to keep', async () => {
+  it('offers Save filter... on a built-in view only while a filter is active', async () => {
     serve(() => pageOf([row(1)]), savedWith([], true));
     mount();
     await screen.findByText('Store 1');
     expect(screen.queryByRole('button', { name: /^Save filter/ })).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: /^Orders ready late/ }));
+    // A tab on its own is a view, not a filter: Save filter… waits for a search or a filter.
+    expect(screen.queryByRole('button', { name: /^Save filter/ })).toBeNull();
+    const box = screen.getByRole('searchbox');
+    fireEvent.change(box, { target: { value: 'abc' } });
+    fireEvent.keyDown(box, { key: 'Enter' });
     expect(await screen.findByRole('button', { name: 'Save filter…' })).toBeTruthy();
   });
 

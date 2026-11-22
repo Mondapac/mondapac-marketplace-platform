@@ -341,6 +341,11 @@ describe.each(MARKETS)('held prices list ($name)', (m) => {
     mount(m);
     await screen.findByText('Halal beef mince 500 g');
     fireEvent.click((await screen.findAllByText(/^Increases/))[0]!);
+    // Save filter… is offered only while a filter is active.
+    fireEvent.click(await screen.findByRole('button', { name: 'Filter' }));
+    fireEvent.change(await screen.findByLabelText('Field'), { target: { value: 'kind' } });
+    fireEvent.change(screen.getByLabelText('Value'), { target: { value: 'special' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
     fireEvent.change(await screen.findByLabelText('Name'), { target: { value: 'Increases' } });
     fireEvent.click(await screen.findByRole('button', { name: 'Save filter' }));
@@ -352,7 +357,13 @@ describe.each(MARKETS)('held prices list ($name)', (m) => {
           listKey: 'admin.pricing.price-holds',
           name: 'Increases',
           visibility: 'me',
-          payload: { v: 1, view: 'up', filters: {}, sort: 'submitted', direction: 'asc' },
+          payload: {
+            v: 1,
+            view: 'up',
+            filters: { kind: 'special' },
+            sort: 'submitted',
+            direction: 'asc',
+          },
         },
         'csrf-1',
       ),
