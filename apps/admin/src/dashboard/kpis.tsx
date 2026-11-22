@@ -1,5 +1,6 @@
 import {
   ActivityTable,
+  BarList,
   ChartCardSkeleton,
   ChartEmpty,
   DashboardCard,
@@ -403,6 +404,47 @@ function TopSellers({
   );
 }
 
+function TopCategories({
+  topCategories,
+  value,
+}: {
+  readonly topCategories: NonNullable<AdminKpis['topCategories']> & { readonly status: 'ok' };
+  readonly value: AdminKpis;
+}) {
+  const t = useTranslations('dashboard.kpis');
+  const locale = useLocale();
+  const { rows } = topCategories.kpis;
+  const periodNote = value.period
+    ? `${kpiDayLabel(value.period.current.from, locale)} - ${kpiDayLabel(value.period.current.to, locale)}`
+    : undefined;
+  return (
+    <DashboardCard
+      id="dash-top-categories"
+      title={t('categories.title')}
+      scope={
+        periodNote === undefined
+          ? t('categories.scope')
+          : `${periodNote} · ${t('categories.scope')}`
+      }
+    >
+      {rows.length === 0 ? (
+        <ChartEmpty message={t('categories.empty')} height={120} />
+      ) : (
+        <BarList
+          label={t('categories.title')}
+          items={rows.map((row) => ({
+            id: row.categoryId,
+            label: row.name ?? t('categories.other'),
+            value: Number(row.salesWithTax.amountMinor),
+            display: kpiMoney(row.salesWithTax, locale),
+            detail: t('categories.orders', { count: row.orders }),
+          }))}
+        />
+      )}
+    </DashboardCard>
+  );
+}
+
 function Strip({
   result,
   period,
@@ -483,6 +525,17 @@ function Strip({
           {null}
         </DashboardCard>
       ) : null}
+      {value?.topCategories?.status === 'ok' ? (
+        <TopCategories topCategories={value.topCategories} value={value} />
+      ) : value?.topCategories?.status === 'error' ? (
+        <DashboardCard
+          id="dash-top-categories"
+          title={t('categories.title')}
+          error={tErr('error.card')}
+        >
+          {null}
+        </DashboardCard>
+      ) : null}
       {value?.operations?.status === 'ok' ? (
         <OrderFlow operations={value.operations} value={value} />
       ) : value?.operations?.status === 'error' ? (
@@ -544,6 +597,14 @@ export function AdminKpiStrip({
             <ChartCardSkeleton
               id="dash-top-sellers"
               title={t('sellers.title')}
+              slowLabel={slowLabel}
+              stalledLabel={stalledLabel}
+            />
+          ) : null}
+          {money ? (
+            <ChartCardSkeleton
+              id="dash-top-categories"
+              title={t('categories.title')}
               slowLabel={slowLabel}
               stalledLabel={stalledLabel}
             />

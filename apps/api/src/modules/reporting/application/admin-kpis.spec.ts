@@ -19,9 +19,15 @@ import { emptyDay, type DayTotals } from '../domain/admin-kpi';
 import type { DayRange } from '../domain/period';
 import { RegistryMarketZone } from '../infrastructure/registry-market-zone';
 import type { AdminKpiDependencies } from './admin-kpi-flow';
-import type { AdminKpiReader, DailyTotals, SellerTotals } from './ports/admin-kpi-reader';
+import type {
+  AdminKpiReader,
+  CategoryTotals,
+  DailyTotals,
+  SellerTotals,
+} from './ports/admin-kpi-reader';
 import { ViewMarketplaceFinanceKpis } from './use-cases/view-marketplace-finance-kpis.use-case';
 import { ViewMarketplaceOperationsKpis } from './use-cases/view-marketplace-operations-kpis.use-case';
+import { ViewMarketplaceTopCategories } from './use-cases/view-marketplace-top-categories.use-case';
 import { ViewMarketplaceTopSellers } from './use-cases/view-marketplace-top-sellers.use-case';
 
 // The admin KPI reads (dashboards upgrade phase 5) on both Market fixtures: today is the MARKET's
@@ -45,6 +51,18 @@ class FakeReader implements AdminKpiReader {
   rows: DayTotals[] = [];
   refreshedAt: Temporal.Instant | null = null;
   sellers: SellerTotals[] = [];
+  categories: CategoryTotals[] = [];
+  readonly categoryCalls: { currency: string; range: DayRange; limit: number }[] = [];
+
+  topCategories(
+    _market: { marketId: string },
+    currency: string,
+    range: DayRange,
+    limit: number,
+  ): Promise<CategoryTotals[]> {
+    this.categoryCalls.push({ currency, range, limit });
+    return Promise.resolve(this.categories.slice(0, limit));
+  }
   readonly topCalls: { currency: string; range: DayRange; limit: number }[] = [];
 
   topSellers(
@@ -292,5 +310,75 @@ describe.each(TEST_MARKETS)('the top sellers read in market %s', (code) => {
     reader.topSellers = () => Promise.reject(new TypeError('boom'));
     const out = await new ViewMarketplaceTopSellers(gate, deps).execute(admin, { period: '7d' });
     expect(!out.ok && out.error.code).toBe('access.unavailable');
+  });
+});
+
+describe.each(TEST_MARKETS)('the top categories read in market %s', (code) => {
+  const market = testMarketContext(code, PLATFORM_TENANT_ID);
+  const zone = new RegistryMarketZone(markets);
+  const actor = (population: 'admin' | 'seller') =>
+    testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population,
+        accountId: id(0xa1),
+        sessionId: id(0x10a1),
+        sellerId: population === 'seller' ? id(0x5e11) : null,
+      }),
+    );
+  let reader: FakeReader;
+  let deps: AdminKpiDependencies;
+
+  beforeEach(() => {
+    reader = new FakeReader();
+    deps = {
+      unitOfWork: {
+        run: (_market: unknown, work: () => Promise<unknown>) => work(),
+      } as unknown as AdminKpiDependencies['unitOfWork'],
+      reader,
+      zone,
+      clock: new FixedClock(NOW),
+    };
+  });
+
+  it('reads the current period only, in the Market currency, at most five, gross of refunds', async () => {
+    reader.categories = Array.from({ length: 7 }, (_, n) => ({
+      categoryId: id(0x200 + n),
+      orders: 3,
+      salesAmount: BigInt(100_000 - n),
+      refundAmount: -5_000n,
+    }));
+    const out = await new ViewMarketplaceTopCategories(gate, deps).execute(actor('admin'), {
+      period: '30d',
+    });
+    expect(out.ok).toBe(true);
+    if (!out.ok) return;
+    expect(reader.categoryCalls).toEqual([
+      { currency: zone.currencyOf(market), range: out.value.period.current, limit: 5 },
+    ]);
+    expect(out.value.rows).toHaveLength(5);
+    expect(out.value.rows[0]).toMatchObject({ salesWithTax: 100_000n, orders: 3 });
+  });
+
+  it('refuses a seller session and a missing money key without reading', async () => {
+    expect(
+      (
+        await new ViewMarketplaceTopCategories(gate, deps).execute(actor('seller'), {
+          period: '7d',
+        })
+      ).ok,
+    ).toBe(false);
+    const denied = createUseCaseGate(markets, {
+      check: () =>
+        Promise.resolve({ allowed: false as const, denial: { code: 'access.denied' as const } }),
+    });
+    expect(
+      (
+        await new ViewMarketplaceTopCategories(denied, deps).execute(actor('admin'), {
+          period: '7d',
+        })
+      ).ok,
+    ).toBe(false);
+    expect(reader.categoryCalls).toHaveLength(0);
   });
 });

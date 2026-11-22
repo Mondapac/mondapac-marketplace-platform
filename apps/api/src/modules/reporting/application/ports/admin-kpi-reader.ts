@@ -23,6 +23,17 @@ export interface AdminKpiReader {
     range: DayRange,
     limit: number,
   ): Promise<SellerTotals[]>;
+
+  /**
+   * The categories with the most goods sold (`daily_category_sales`, every seller summed) in
+   * `range`, biggest first (ties by category id), at most `limit`, in `currency` only.
+   */
+  topCategories(
+    market: MarketContext,
+    currency: string,
+    range: DayRange,
+    limit: number,
+  ): Promise<CategoryTotals[]>;
 }
 
 /** One seller's summed numbers over a range (the top-sellers read). Refund goods are NEGATIVE. */
@@ -33,6 +44,14 @@ export interface SellerTotals {
   readonly ordersShipped: number;
   readonly ordersShippedOnTime: number;
   readonly refundGoodsAmount: bigint;
+}
+
+/** One category's summed sales over a range. Refund amounts are NEGATIVE; `categoryId` may be the nil UUID (goods whose category could not be read). */
+export interface CategoryTotals {
+  readonly categoryId: string;
+  readonly orders: number;
+  readonly salesAmount: bigint;
+  readonly refundAmount: bigint;
 }
 
 export interface DailyTotals {

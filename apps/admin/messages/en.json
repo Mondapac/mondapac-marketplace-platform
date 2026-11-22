@@ -271,6 +271,13 @@
         "label": "Refunds",
         "scope": "Refunds that succeeded in the period"
       },
+      "categories": {
+        "title": "Top categories",
+        "scope": "By goods sold (incl. GST) in the period, before refunds",
+        "empty": "No sales in this period yet.",
+        "other": "Uncategorised",
+        "orders": "{count, plural, one {# seller order} other {# seller orders}}"
+      },
       "sellers": {
         "title": "Top sellers",
         "scope": "By goods sold (incl. GST) in the period",

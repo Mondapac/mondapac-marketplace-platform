@@ -190,3 +190,13 @@ still answers.
   funnel of the period's own counts, plus cancelled (with the cancel rate) and refund counts. It is
   not a cohort: an order paid before the period and shipped in it counts as shipped, so the
   percentages are approximate (FE-147). It needs only `ordering.order.view`.
+- Top sellers card (phase 5, part 2, PR 2): `reporting.view-marketplace-top-sellers` (key
+  `commission-payouts.settlement.view`, platform admin only) reads the five sellers with the most
+  GMV in the period from `daily_seller_sales` (one grouped read, ties by seller id) with orders,
+  on-time rate and refund rate (refunded goods ÷ GMV of the range). The dashboard joins the public
+  store name from `sellers.sellerSummaries`; a name that cannot be read shows "Unnamed store" and the
+  money still shows. Store links need `sellers.seller.view`.
+- Top categories card (PR 3): `reporting.view-marketplace-top-categories` (same key) reads the five
+  categories with the most goods sold from `daily_category_sales` (every seller summed), gross of
+  refunds (the card says so). The dashboard joins names from `catalog` `categoryTree`; the nil UUID
+  (goods whose category could not be read) and a deleted category show as "Uncategorised".

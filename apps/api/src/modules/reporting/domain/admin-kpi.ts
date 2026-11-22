@@ -172,6 +172,26 @@ export function topSellerRowOf(seller: {
   };
 }
 
+/** One row of the top-categories list: goods sold in the category and its orders. */
+export interface TopCategoryRow {
+  readonly categoryId: string;
+  readonly salesWithTax: bigint;
+  readonly orders: number;
+}
+
+/** Goods sold in a category are not netted against refunds: the figure is gross, like GMV. */
+export function topCategoryRowOf(category: {
+  readonly categoryId: string;
+  readonly orders: number;
+  readonly salesAmount: bigint;
+}): TopCategoryRow {
+  return {
+    categoryId: category.categoryId,
+    salesWithTax: category.salesAmount,
+    orders: category.orders,
+  };
+}
+
 /** Smallest previous count that gets a percentage; below it the change reads "n/a". */
 export const MIN_COUNT_BASE = 5;
 /** Smallest previous amount (minor units, 100.00 of the currency) that gets a percentage. */
