@@ -56,6 +56,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'customers/me/deletion-requests',
     // The delivery methods and prices of the basket for a saved address (delivery models, pkg 5).
     'orders/delivery-quotes',
+    // Checkout: the cart becomes an order; Stripe's hosted page (`checkout`) or the card on our
+    // page (`pay`, a Stripe confirmation token, manual capture). The server prices the order.
+    'orders/checkout',
+    'orders/pay',
     // The buyer writes a product review (reviews package 3).
     'reviews/products',
   ]),

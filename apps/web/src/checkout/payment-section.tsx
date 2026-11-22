@@ -41,6 +41,8 @@ export type PayNotice =
         readonly now: number;
       }[];
     }
+  /** The server's total moved (prices, fees, tax or a discount); the cart was read again. */
+  | { readonly kind: 'total-changed'; readonly was: Money; readonly now: Money }
   | { readonly kind: 'declined' }
   | { readonly kind: 'failed' };
 
@@ -269,6 +271,15 @@ function Notice({ notice }: { readonly notice: PayNotice }) {
             </Link>
           </span>
         </>
+      ) : notice.kind === 'total-changed' ? (
+        <p>
+          <b>{t('notice-total-title')}</b>{' '}
+          {t('notice-total-line', {
+            was: formatMoney(notice.was, locale),
+            now: formatMoney(notice.now, locale),
+          })}{' '}
+          {t('notice-total-body')}
+        </p>
       ) : notice.kind === 'declined' ? (
         <p>{t.rich('notice-declined', { b })}</p>
       ) : (

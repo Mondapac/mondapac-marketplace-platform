@@ -171,7 +171,10 @@ async function callOnce<T>(
       path.startsWith('customers/me/followed-stores') ||
       path === 'customers/me/store-invitation'
         ? [400, 403, 404, 409, 422]
-        : [400, 403, 404, 422];
+        : // Checkout and Pay: 409 says what changed (price, delivery quote, stock), 402 a declined card.
+          PAYMENT_PATHS.has(path)
+          ? [400, 402, 403, 404, 409, 422]
+          : [400, 403, 404, 422];
     if (refusals.includes(response.status)) {
       const fields = Array.isArray(details.fields)
         ? details.fields.flatMap((f: unknown) =>
@@ -187,6 +190,9 @@ async function callOnce<T>(
     return { kind: 'failed' };
   }
 }
+
+/** The two routes that turn the cart into an order; their refusals carry what changed. */
+const PAYMENT_PATHS: ReadonlySet<string> = new Set(['orders/pay', 'orders/checkout']);
 
 export const text = (value: unknown): string | undefined =>
   typeof value === 'string' ? value : undefined;
@@ -572,4 +578,83 @@ export function blockersOf(details: Readonly<Record<string, unknown>>): readonly
     const count = item.count;
     return [{ code, count: typeof count === 'number' ? count : null }];
   });
+}
+
+// Checkout and Pay (`POST orders/checkout`, `POST orders/pay`). The body names the saved address,
+// the delivery picks with the stored quote ids, the notes and the code; never a price. Only Pay
+// sends the total the buyer saw, which the server only compares with its own.
+
+/** The order fields both routes take. */
+export interface OrderRequestBody {
+  readonly addressId: string;
+  readonly deliveryMethods: Readonly<
+    Record<
+      string,
+      {
+        readonly method: DeliveryMethod;
+        readonly quoteId?: string;
+        readonly windowStart?: string;
+        readonly windowEnd?: string;
+      }
+    >
+  >;
+  readonly sellerNotes?: Readonly<Record<string, string>>;
+  readonly code?: string;
+}
+
+/** What `orders/pay` answered: the card holds the money, or the bank asks the buyer to confirm. */
+export interface CardPaymentStarted {
+  readonly orderId: string;
+  readonly status: 'authorised' | 'requires-action';
+  /** Only for requires-action; a secret of this page: never stored or logged. */
+  readonly clientSecret: string | null;
+}
+
+const ORDER_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu;
+
+function cardPaymentOf(json: Record<string, unknown>): CardPaymentStarted | undefined {
+  const { orderId, status, clientSecret } = json;
+  if (typeof orderId !== 'string' || !ORDER_ID.test(orderId)) return undefined;
+  if (status === 'authorised') return { orderId, status, clientSecret: null };
+  if (status === 'requires-action' && typeof clientSecret === 'string' && clientSecret !== '')
+    return { orderId, status, clientSecret };
+  return undefined;
+}
+
+/** `POST orders/pay`: the order with the Payment Element's confirmation token (manual capture). */
+export function payByCard(
+  order: OrderRequestBody,
+  confirmationToken: string,
+  expectedTotal: Money,
+): Promise<ApiResult<CardPaymentStarted>> {
+  return call(
+    'POST',
+    'orders/pay',
+    {
+      ...order,
+      confirmationToken,
+      expectedTotal: { amount: String(expectedTotal.amount), currency: expectedTotal.currency },
+    },
+    cardPaymentOf,
+  );
+}
+
+/** What `orders/checkout` answered: the order and Stripe's hosted page to send the buyer to. */
+export interface HostedCheckoutStarted {
+  readonly orderId: string;
+  readonly checkoutUrl: string;
+}
+
+function hostedCheckoutOf(json: Record<string, unknown>): HostedCheckoutStarted | undefined {
+  const { orderId, checkoutUrl } = json;
+  return typeof orderId === 'string' && ORDER_ID.test(orderId) && typeof checkoutUrl === 'string'
+    ? { orderId, checkoutUrl }
+    : undefined;
+}
+
+/** `POST orders/checkout`: the order and a Stripe Checkout page; nothing is charged here. */
+export function startHostedCheckout(
+  order: OrderRequestBody,
+): Promise<ApiResult<HostedCheckoutStarted>> {
+  return call('POST', 'orders/checkout', order, hostedCheckoutOf);
 }

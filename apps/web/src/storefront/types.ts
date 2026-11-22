@@ -457,6 +457,11 @@ export type PayAnswer =
         readonly now: number;
       }[];
     }
+  /**
+   * The order total the server computed is not the one the buyer saw (an item price, a fee, a tax
+   * or a discount moved): nothing was reserved or charged. The cart is read again.
+   */
+  | { readonly kind: 'total-changed'; readonly was: Money; readonly now: Money }
   | { readonly kind: 'declined' }
   | { readonly kind: 'failed' };
 

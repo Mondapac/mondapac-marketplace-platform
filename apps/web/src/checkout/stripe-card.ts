@@ -37,6 +37,10 @@ interface StripeJs {
     readonly confirmationToken?: { readonly id: string };
     readonly error?: StripeError;
   }>;
+  handleNextAction(options: { readonly clientSecret: string }): Promise<{
+    readonly paymentIntent?: { readonly status: string };
+    readonly error?: StripeError;
+  }>;
 }
 type StripeFactory = (publishableKey: string) => StripeJs;
 
@@ -179,9 +183,32 @@ export function useStripeCard(publishableKey: string | null, total: Money | null
     }
   }, []);
 
+  /**
+   * The bank's check of a card that needs one (3D Secure), in Stripe's own frame. `ok` once the
+   * card holds the money (capture is manual, so the intent waits for capture); `declined` when
+   * the bank or the buyer refused it. The secret is used here only: never stored or logged.
+   */
+  const handleNextAction = useCallback(
+    async (clientSecret: string): Promise<'ok' | 'declined' | 'failed'> => {
+      const current = stripe.current;
+      if (!current) return 'failed';
+      try {
+        const done = await current.js.handleNextAction({ clientSecret });
+        if (done.error) return done.error.type === 'card_error' ? 'declined' : 'failed';
+        const status = done.paymentIntent?.status;
+        return status === 'requires_capture' || status === 'succeeded' || status === 'processing'
+          ? 'ok'
+          : 'declined';
+      } catch {
+        return 'failed';
+      }
+    },
+    [],
+  );
+
   /** Puts the focus in Stripe's fields, where Stripe shows what to fix. */
   const focus = useCallback(() => stripe.current?.element.focus(), []);
 
   const retry = useCallback(() => setAttempt((n) => n + 1), []);
-  return { target, state, tokenize, retry, focus };
+  return { target, state, tokenize, handleNextAction, retry, focus };
 }

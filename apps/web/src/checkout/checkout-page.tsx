@@ -24,8 +24,10 @@ import {
   newAddressComplete,
   newAddressLine,
   newPostcode,
+  splitName,
   useDeliveryArea,
   type NewAddress,
+  type SaveNewAddress,
 } from './address-section.tsx';
 import {
   DeliverySection,
@@ -34,6 +36,9 @@ import {
   useDeliveryOptions,
 } from './delivery-section.tsx';
 import { payOrder } from './actions.ts';
+import { payLive } from './live-pay.ts';
+import * as api from '../account/customer-api.ts';
+import { liveCartOf } from '../cart/live-cart.ts';
 import { firstFieldToFix, revealField } from './focus-error.ts';
 import {
   legalLinks,
@@ -77,19 +82,38 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
     setStockChanges,
     clearCart,
     setPlacedOrder,
+    live,
+    refreshCart,
+    setLoginOpen,
   } = useStore();
   const sellerIds = viewCart(cart, cartSource)?.groups.map((g) => g.seller.id) ?? [];
   const addresses = customer?.addresses ?? [];
+  // Live, the address book is the session's (it may arrive after the first render); the sample
+  // customer's book is only for the local preview.
   const [choice, setChoice] = useState<string>(
-    () => source.customer.addresses.find((a) => a.isDefault)?.id ?? 'new',
+    () =>
+      (live ? (customer?.addresses ?? []) : source.customer.addresses).find((a) => a.isDefault)
+        ?.id ?? 'new',
   );
-  const [fresh, setFresh] = useState<NewAddress>(EMPTY_ADDRESS);
+  const pickedDefault = useRef(customer !== null);
+  useEffect(() => {
+    if (!live || pickedDefault.current || customer === null) return;
+    pickedDefault.current = true;
+    const fallback = customer.addresses.find((a) => a.isDefault);
+    if (fallback && !customer.addresses.some((a) => a.id === choice)) setChoice(fallback.id);
+  }, [live, customer, choice]);
+  // Live, a new address is typed in the separate fields: the place search is the sample's.
+  const [fresh, setFresh] = useState<NewAddress>(() =>
+    live ? { ...EMPTY_ADDRESS, mode: 'manual' } : EMPTY_ADDRESS,
+  );
+  const [savingNew, setSavingNew] = useState<SaveNewAddress['state']>('idle');
   const areaState = useDeliveryArea(source, newPostcode(fresh));
   const saved = addresses.find((a) => a.id === choice);
   const freshReady = newAddressComplete(fresh) && areaState === 'in';
+  // Live, only a saved address is priced and ordered: a new one is saved first (below).
   const quoteAddress: QuoteAddress | null = saved
     ? { kind: 'saved', id: saved.id }
-    : freshReady
+    : freshReady && !live
       ? { kind: 'new', postcode: newPostcode(fresh) }
       : null;
   const { states, retry, replace } = useDeliveryOptions(
@@ -150,7 +174,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
   const ready = deliveryStatus(sellerIds, states, choices);
   const block: PayBlock = !online
     ? 'offline'
-    : !saved && !freshReady
+    : !saved && (!freshReady || live)
       ? 'address'
       : ready === 'loading'
         ? 'loading'
@@ -214,8 +238,15 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
       // The cart says it too: with every line gone, or a seller now below its minimum, checkout
       // sends the buyer there.
       setStockChanges(changes);
-      limitLines(Object.fromEntries(answer.changes.map((c) => [c.itemId, c.now])));
+      // Live, the API's cart is the truth: it is read again (the lines keep their quantities
+      // there until the buyer changes them). Otherwise the sample cart is limited here.
+      if (live) void refreshCart();
+      else limitLines(Object.fromEntries(answer.changes.map((c) => [c.itemId, c.now])));
       setNotice({ kind: 'stock-changed', changes });
+    } else if (answer.kind === 'total-changed') {
+      // A price moved on the server: the cart shows the prices of now.
+      void refreshCart();
+      setNotice(answer);
     } else setNotice(answer);
     document.querySelector<HTMLElement>('#checkout-payment h2')?.focus();
   };
@@ -260,7 +291,16 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
         discountCode: discount?.code ?? null,
         total: view.total,
       };
-      settle(await payOrder(request).catch((): PayAnswer => ({ kind: 'failed' })));
+      const answer = live
+        ? payLive(request, notes, {
+            payByCard: api.payByCard,
+            startHostedCheckout: api.startHostedCheckout,
+            handleNextAction: stripeCard.handleNextAction,
+            readDeliveryOptions: api.readDeliveryOptions,
+            readStockLeft,
+          })
+        : payOrder(request);
+      settle(await answer.catch((): PayAnswer => ({ kind: 'failed' })));
       return;
     }
     // Blocked: the focus goes to the first thing to fix.
@@ -277,6 +317,32 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
             : null;
     if (target) revealField(target);
   };
+  /** Live: the new address goes into the address book, then it is the chosen one. */
+  const saveNewAddress = async () => {
+    const name = splitName(fresh.name);
+    if (savingNew === 'saving' || name === null || !freshReady) return;
+    setSavingNew('saving');
+    const created = await api.createAddress({
+      ...name,
+      phone: fresh.phone.trim(),
+      street: fresh.street.trim(),
+      line2: null,
+      suburb: fresh.suburb.trim(),
+      region: source.serviceArea.regionCode,
+      postcode: newPostcode(fresh),
+      deliveryNotes: fresh.note.trim() === '' ? null : fresh.note.trim(),
+    });
+    if (created.kind !== 'ok') {
+      setSavingNew('failed');
+      return;
+    }
+    const book = await api.listAddresses();
+    const next = book.kind === 'ok' ? book.value : [...addresses, created.value];
+    setCustomer((current) => (current ? { ...current, addresses: next } : current));
+    setChoice(created.value.id);
+    setFresh({ ...EMPTY_ADDRESS, mode: 'manual' });
+    setSavingNew('idle');
+  };
   const title = (
     <div className="ctitle">
       <h1>{t('title')}</h1>
@@ -289,10 +355,15 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
         <CheckoutProgress current="login" signedIn={false} />
         <div className="cgrid">
           <div className="clist">
-            <AccountStep
-              // Sample: no sign-in call yet; the session gives the customer when it is wired.
-              onSignedIn={() => setCustomer(source.customer)}
-            />
+            {live ? (
+              // Live: the real log-in (the shell's dialog); the session then gives the customer.
+              <LiveAccountStep onLogIn={() => setLoginOpen(true)} />
+            ) : (
+              <AccountStep
+                // The local preview's sample log-in.
+                onSignedIn={() => setCustomer(source.customer)}
+              />
+            )}
           </div>
           <div className="cs stick alt">
             <MiniSummary view={view} />
@@ -321,6 +392,9 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
               fresh={fresh}
               onFresh={setFresh}
               areaState={areaState}
+              {...(live
+                ? { saveNew: { onSave: () => void saveNewAddress(), state: savingNew } }
+                : {})}
             />
             <DeliverySection view={view} states={states} onRetry={retry} />
           </div>
@@ -552,6 +626,33 @@ function HelpCard() {
   );
 }
 
+/** The guest's Log in step, live: the real log-in dialog; the cart is kept and merged. */
+function LiveAccountStep({ onLogIn }: { readonly onLogIn: () => void }) {
+  const t = useTranslations('checkout');
+  const id = useId();
+  return (
+    <section className="stp cur" aria-labelledby={`${id}-h`}>
+      <div className="sth">
+        <span className="stn" aria-hidden="true">
+          1
+        </span>
+        <h2 id={`${id}-h`}>{t('account')}</h2>
+      </div>
+      <div className="stb">
+        <div className="infob">
+          <Icon name="info" />
+          <span>{t('cart-kept')}</span>
+        </div>
+        <div>
+          <button className="btn" type="button" onClick={onLogIn}>
+            {t('log-in-continue')}
+          </button>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 /** The guest's Log in step: log in or create an account; the cart is kept. */
 function AccountStep({ onSignedIn }: { readonly onSignedIn: () => void }) {
   const t = useTranslations('checkout');
@@ -647,4 +748,17 @@ export function safeRedirect(
     return { own: true, href: `${parsed.pathname}${parsed.search}${parsed.hash}` };
   if (parsed.origin === 'https://checkout.stripe.com') return { own: false, href: parsed.href };
   return null;
+}
+
+/** How many of each cart item can be bought now, from a fresh read of the API's cart. */
+async function readStockLeft(): Promise<Readonly<Record<string, number>> | null> {
+  const read = await api.readCart();
+  const cart = read.kind === 'ok' ? liveCartOf(read.value, null) : null;
+  if (cart === null) return null;
+  return Object.fromEntries(
+    Object.keys(cart.cart).map((key) => [
+      key,
+      cart.source.items[key]?.lowStock ?? Number.MAX_SAFE_INTEGER,
+    ]),
+  );
 }

@@ -94,6 +94,11 @@ describe('storefront session relay: what may cross', () => {
 
     expect(isSessionPathAllowed('POST', ['orders', 'delivery-quotes'])).toBe(true);
     expect(isSessionPathAllowed('GET', ['orders', 'delivery-quotes'])).toBe(false);
+    // Checkout and Pay: POST only.
+    expect(isSessionPathAllowed('POST', ['orders', 'checkout'])).toBe(true);
+    expect(isSessionPathAllowed('POST', ['orders', 'pay'])).toBe(true);
+    expect(isSessionPathAllowed('GET', ['orders', 'pay'])).toBe(false);
+    expect(isSessionPathAllowed('PUT', ['orders', 'checkout'])).toBe(false);
     expect(isSessionPathAllowed('POST', ['orders'])).toBe(false);
     expect(isSessionPathAllowed('POST', ['cart'])).toBe(false);
     expect(isSessionPathAllowed('PUT', ['cart', 'items', 'not-a-uuid'])).toBe(false);
