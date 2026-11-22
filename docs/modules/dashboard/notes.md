@@ -12,6 +12,25 @@ Architecture: ADR-0050.
 - Each queue is a `WorkQueueSource` bound in `dashboard.module.ts` to its owner's facade method.
 - Levels and default overdue ages: critical 1 h (or the queue's own deadline), today 48 h, review 7 d.
 
+## Seller KPIs: panel (phase 6, PR 17)
+
+The seller home shows, below "Needs attention", the KPI section (`apps/seller/src/dashboard/kpis`),
+read only when the session holds `ordering.seller-order.view`:
+
+- Period switch (Today, 7 days, 30 days, This month) kept in the address (`?period=`), so the
+  server renders the figures; an unknown value falls back to 30 days.
+- Eight cards with the change against the previous period: sales (with a sparkline), paid orders,
+  average order value, refunded, refund rate, shipped on time, units, cancelled. The change is
+  `n/a` when the previous figure is zero or its period had fewer than five paid orders; colour
+  follows better or worse (refunds and cancellations up are bad), and the words say it too.
+- Sales chart with a dashed previous period and "View as table"; top categories (named from the
+  public category tree, "Other categories" when unnamed); store health from `sellers/own-health`
+  (links to Performance). Recent orders stay as the existing "Recent orders" card.
+- A failed read says "could not be loaded" in its own card or cards, never a zero.
+- Deferred: top products (FE-125), seller net earnings (FE-126), on-time with overdue unshipped
+  orders (FE-127), average rating and next payout in the health card (FE-128), a relative
+  "updated N min ago" (FE-129; the chart card already says the Market zone and the update time).
+
 ## Deferred
 
 Tracked in the central register (FE-066 to FE-081), among them: overdue thresholds editable in admin
@@ -119,15 +138,15 @@ never from input. A customer or an admin acting as themselves is `access.denied`
 that carries the acting-as marker (Login as Seller, SEL-08) is allowed, as the seller reads are.
 Counts are cached per seller and access state, except the live queues.
 
-| Key | Level | Key needed | Definition |
-|---|---|---|---|
-| `ordering.late-orders` | critical, live | `ordering.seller-order.view` | The admin late-delivery rule for this seller only. Overdue: past the promise by more than 1 hour. |
-| `commission-payouts.dispute-reply-needed` | critical, live | `commission-payouts.earnings.view` | Cases in `needs-response` whose dispute holds one of the seller's orders (active dispute holds). Overdue: deadline passed; `oldestAt`: nearest deadline. |
-| `payments.payouts-blocked` | critical | `payments.payout-account.view` | 0 or 1: the seller's account is `restricted` or `payouts_enabled` is false (onboarding not finished counts too). No account: 0. Overdue 0; `oldestAt`: the account's last update. |
-| `ordering.to-ship-today` | today | `ordering.seller-order.view` | Paid, `to-ship`, not marked ready, not refunded in full; ready-by from now to the end of the seller's local day, or a scheduled window that starts that day and has not ended. Never late (no double count). Overdue 0; `oldestAt`: earliest payment. |
-| `ordering.pickups-uncollected` | today | `ordering.seller-order.view` | Pickup orders marked ready, not collected. Overdue: ready since before 48 hours; `oldestAt`: earliest ready time. |
-| `commission-payouts.payout-holds` | today | `commission-payouts.earnings.view` | The seller's active payout holds (dispute holds included). Overdue: placed before 48 hours. |
-| `reviews.unanswered` | review | `reviews.seller.view` | The Reviews list's `unanswered` view: published reviews without a published reply of the shop. Overdue: published before 7 days. |
+| Key                                       | Level          | Key needed                         | Definition                                                                                                                                                                                                                                            |
+| ----------------------------------------- | -------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ordering.late-orders`                    | critical, live | `ordering.seller-order.view`       | The admin late-delivery rule for this seller only. Overdue: past the promise by more than 1 hour.                                                                                                                                                     |
+| `commission-payouts.dispute-reply-needed` | critical, live | `commission-payouts.earnings.view` | Cases in `needs-response` whose dispute holds one of the seller's orders (active dispute holds). Overdue: deadline passed; `oldestAt`: nearest deadline.                                                                                              |
+| `payments.payouts-blocked`                | critical       | `payments.payout-account.view`     | 0 or 1: the seller's account is `restricted` or `payouts_enabled` is false (onboarding not finished counts too). No account: 0. Overdue 0; `oldestAt`: the account's last update.                                                                     |
+| `ordering.to-ship-today`                  | today          | `ordering.seller-order.view`       | Paid, `to-ship`, not marked ready, not refunded in full; ready-by from now to the end of the seller's local day, or a scheduled window that starts that day and has not ended. Never late (no double count). Overdue 0; `oldestAt`: earliest payment. |
+| `ordering.pickups-uncollected`            | today          | `ordering.seller-order.view`       | Pickup orders marked ready, not collected. Overdue: ready since before 48 hours; `oldestAt`: earliest ready time.                                                                                                                                     |
+| `commission-payouts.payout-holds`         | today          | `commission-payouts.earnings.view` | The seller's active payout holds (dispute holds included). Overdue: placed before 48 hours.                                                                                                                                                           |
+| `reviews.unanswered`                      | review         | `reviews.seller.view`              | The Reviews list's `unanswered` view: published reviews without a published reply of the shop. Overdue: published before 7 days.                                                                                                                      |
 
 - The seller's day is the seller's approved operating zone (sellers `operatingZones`, read before
   the unit); before the seller has an approved file it falls back to the Market's zone.
@@ -167,3 +186,60 @@ number of days of the previous month, cut at its end).
 - Top categories, not top products (FE-125): reporting keeps category, not product, facts. The panel
   names a category from the public category tree.
 - Seller net earnings (sales minus commission and refunds) wait for a commission fact in reporting (FE-126).
+
+## Phase 2: action centre UI (PR 7, admin)
+
+- The admin dashboard opens with the "Needs action" card (`packages/ui` `WorkQueueCard`, words and
+  links in `apps/admin/src/work-queue/queues.ts`). It replaces the four "Needs attention" figures,
+  which counted a first page and showed "50+". Every critical queue shows; the five most urgent
+  today queues show and the rest fold into one line; the review queues fold into one line; empty
+  queues are summed up as "All clear". Urgency: a queue that could not be read first, then the
+  most overdue, then the oldest, then the most items.
+- Each row says where it stands in words as well as colour (Reza, UI/UX): "Incident" for listings
+  claiming a certificate without a valid one, "Due in 6h" or "Overdue" for disputes (their
+  `oldestAt` is the nearest deadline; "Overdue by 30m" once it passed), else the count says
+  "17 · 5 overdue" with "Oldest 3d" in the critical tone, "Overdue 1h" when every item is
+  overdue, or "Oldest 9h". Folded lines keep the overdue count and tone, and never show 0 for
+  queues none of which could be read. A queue in its
+  normal state has a neutral dot (Jafar). A failed queue says "Couldn't load", never 0, and does
+  not link. On a phone only the critical group stays open.
+- The read is made only when the session holds the key of at least one queue the panel knows; a
+  key the panel does not know (a queue added to the API first) is left out. Without any, the
+  full page says there is no access (never "All clear"). `queues.spec.ts` checks the panel's
+  keys, levels and order against `dashboard.module.ts`.
+- `/work-queue` is the full page, a super list without saved filters and without row selection
+  (john's choice, 22 Nov 2026; FE-119): views (needs action, all, per level) with counts, search
+  by queue name, a state filter with chips, sort (most urgent first by default: level, then the
+  card's order; "Waiting since" sorts by age and leaves the disputes, whose time is a deadline,
+  last), the column picker,
+  CSV and XLSX export of the rows on show, the phone layout. It reads the queue once (about twenty
+  rows), so there is no footer. `?view=` opens a view (the card's folded lines use it).
+- Not yet: deep links that open each list oldest first (FE-120), lists for three queues that
+  have none (FE-121; failed webhooks is FE-110), refresh without a reload (FE-122).
+
+## Phase 2: action centre UI (PR 8, seller)
+
+- The seller dashboard opens with "Today's tasks" (the same `WorkQueueCard`; words and pages in
+  `apps/seller/src/work-queue/queues.ts`): every urgent task, today's tasks, the review task, and
+  "All clear" for empty ones. There is no full page: the seller has seven tasks at most, and each
+  row links to the page where it is done (orders, earnings, payout account, reviews).
+- "Payouts paused or not set up" counts an account whose setup is not finished as well as a
+  restricted one, so its words name both; its status is "Fix payout details".
+- A dispute's hold is counted in both "Disputes waiting for your reply" and "Payouts on hold,
+  disputes included"; the hold row says so.
+- "Orders to ship today" shows its count with no age. Design section 3 shows "Next by 2 pm", but
+  the API gives the earliest payment as `oldestAt`, and how long ago an order was paid is not what
+  the seller acts on. The next ready-by time is FE-123.
+- The groups are "Urgent", "Today" and "When you have time" (the admin card says "Critical"): a
+  seller reads a task, not a severity. The seller has three today tasks, under the card's limit of
+  five, so "top N of M" and "N more tasks" stay in the messages only for a task added later.
+- A member who may view the payout account but not manage it still reads "Fix payout details";
+  the page then says who can change it. Accepted for now (Reza, UI/UX).
+- The review task opens the Reviews page on every review: the page does not read a view from the
+  address yet (FE-124).
+- `queues.spec.ts` reads the API's bindings as text and checks every seller task's key, level,
+  order and permission, as the admin panel does.
+- The "Needs attention" figures stay until the seller KPI strip (phase 6) replaces them.
+- Deferred: "Published but out of stock" (FE-113), the folded low-stock, changes-requested and
+  certificate tasks (FE-114), the ready-by time of today's orders (FE-123), the Reviews page
+  opening on "Unanswered" from the task (FE-124).

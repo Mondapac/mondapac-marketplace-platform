@@ -1,4 +1,5 @@
 import 'server-only';
+import { workQueueRows } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { VIEW_PERMISSION as OFFERS_VIEW, type OfferView, type Page } from '../catalog/types.ts';
 import { EARNINGS_VIEW_PERMISSION, type Ledger } from '../earnings/types.ts';
@@ -7,6 +8,12 @@ import { PAYOUT_VIEW_PERMISSION, type PayoutAccount } from '../payout/types.ts';
 import { serverGet, type ServerGet } from '../server/server-fetch.ts';
 import type { SellerSession } from '../server/session.ts';
 import { STOCK_VIEW_PERMISSION, type SourcesView } from '../stock/types.ts';
+import {
+  mayHaveTasks,
+  SELLER_TASKS_PATH,
+  sellerQueue,
+  type WorkQueueAnswer,
+} from '../work-queue/queues.ts';
 import {
   COUNT_LIMIT,
   RECENT,
@@ -23,10 +30,11 @@ import {
 function widget<T>(
   allowed: boolean,
   read: () => Promise<ServerGet<T>>,
+  shown: (value: T) => boolean = () => true,
 ): Promise<Widget<T> | null> | null {
   if (!allowed) return null;
   const answer = read().then((answer): Widget<T> | null => {
-    if (answer.kind === 'ok') return { kind: 'ok', value: answer.body };
+    if (answer.kind === 'ok') return shown(answer.body) ? { kind: 'ok', value: answer.body } : null;
     // A refusal means the session may not see this widget after all: hide it, no error card.
     if (answer.kind === 'forbidden') return null;
     if (answer.kind === 'signed-out') redirect('/session-ended');
@@ -45,6 +53,16 @@ function widget<T>(
 export function startSellerDashboard(session: SellerSession): SellerDashboardSources {
   const keys = new Set(session.permissionKeys);
   return {
+    // No key of its own: asked when the member holds a key of one task, and absent when the API
+    // shows no task the panel knows. Always the session's own store (the API reads it).
+    tasks: widget<WorkQueueAnswer>(
+      mayHaveTasks(session.permissionKeys),
+      () => serverGet<WorkQueueAnswer>(SELLER_TASKS_PATH),
+      (answer) =>
+        workQueueRows(answer, (key) =>
+          sellerQueue(key) === null ? null : { label: key, href: null, signal: 'age' },
+        ).length > 0,
+    ),
     orders: widget<SellerOrderCursorPage>(keys.has(ORDER_VIEW_PERMISSION), () =>
       serverGet<SellerOrderCursorPage>(`ordering/seller/orders?limit=${COUNT_LIMIT}`),
     ),

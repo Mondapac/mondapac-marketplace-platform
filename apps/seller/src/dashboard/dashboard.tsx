@@ -21,6 +21,7 @@ import {
   type IconName,
 } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
+import { TodaysTasks } from '../work-queue/todays-tasks.tsx';
 import type { ReactNode } from 'react';
 import { known, OFFER_STATUSES, shortInstant } from '../catalog/format.ts';
 import type { OfferView, Page } from '../catalog/types.ts';
@@ -781,18 +782,23 @@ function allRefused(data: SellerDashboardSources): DashboardSource<boolean> {
 
 /**
  * The seller dashboard (the home page of an approved seller): every widget is present only when
- * the session holds the key its read needs. Order: what needs attention, the latest activity,
+ * the session holds the key its read needs. Order: today's tasks, what needs attention, the latest activity,
  * then quick actions. Given promises (the page), each card shows its skeleton until its own read
  * answers (panel loading L4).
  */
 export function SellerDashboard({
   data,
   permissionKeys,
+  kpis,
 }: {
   readonly data: SellerDashboardSources;
   readonly permissionKeys: readonly string[];
+  /** The KPI section (phase 6), shown below the attention figures; absent without the orders key. */
+  readonly kpis?: ReactNode;
 }) {
   const t = useTranslations('dashboard');
+  // `kpis` exists only with the orders key, the key `data.orders` is read with, so the checks below
+  // on `data` alone stay right while it does.
   const keys = new Set(permissionKeys);
   const nothing =
     Object.values(data).every((widget) => widget === null) &&
@@ -814,7 +820,9 @@ export function SellerDashboard({
         </DashboardSlot>
       )}
       <Notices data={data} />
+      <TodaysTasks source={data.tasks} />
       <Attention data={data} />
+      {kpis ?? null}
       <Orders data={data} />
       <LowStock data={data} />
       <Offers data={data} />

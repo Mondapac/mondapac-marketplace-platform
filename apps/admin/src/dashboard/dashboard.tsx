@@ -9,30 +9,24 @@ import {
   DistributionCardSkeleton,
   EmptyState,
   LinkButton,
-  StatCard,
-  StatCardSkeleton,
-  StatGrid,
   activitySkeletonColumns,
-  formatCount,
   type ActivityColumn,
   type BadgeTone,
   type DashboardSource,
-  type IconName,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
-import { offerRowsOf, type ReviewPage, type ReviewRow } from '../catalog/types.ts';
+import { offerRowsOf, type ReviewRow } from '../catalog/types.ts';
 import { AccountStatusBadge } from '../payments/status-badge.tsx';
-import type { ConnectedAccountPage, ConnectedAccountRow } from '../payments/types.ts';
+import type { ConnectedAccountRow } from '../payments/types.ts';
 import { formatMoney, percentChange } from '../pricing/format.ts';
-import type { PriceHoldPage, PriceHoldRow } from '../pricing/types.ts';
+import type { PriceHoldRow } from '../pricing/types.ts';
 import { areaName, known } from '../sellers/format.ts';
-import type { SellerListPage, SellerRow } from '../sellers/types.ts';
+import type { SellerRow } from '../sellers/types.ts';
 import { shortInstant } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
+import { NeedsAction } from '../work-queue/needs-action.tsx';
 import {
-  ACCOUNTS_PAGE,
-  COUNT_LIMIT,
   ORDER_STATUSES,
   RECENT,
   type AdminDashboardSources,
@@ -95,147 +89,7 @@ function useSkeletonText() {
   return { slowLabel: t('route.slow'), stalledLabel: t('dashboard.error.card') };
 }
 
-/** One Needs attention figure: its skeleton while its read runs, then the figure. */
-function Figure<T>({
-  source,
-  icon,
-  label,
-  children,
-}: {
-  readonly source: Source<T>;
-  readonly icon: IconName;
-  readonly label: string;
-  readonly children: (widget: Widget<T>) => ReactNode;
-}) {
-  const { stalledLabel } = useSkeletonText();
-  return (
-    <DashboardSlot
-      source={source}
-      fallback={<StatCardSkeleton icon={icon} label={label} stalledLabel={stalledLabel} />}
-    >
-      {(widget) => (widget === null ? null : children(widget))}
-    </DashboardSlot>
-  );
-}
-
 type Source<T> = DashboardSource<Widget<T> | null>;
-
-function SellersFigure({ widget }: { readonly widget: Widget<SellerListPage> }) {
-  const t = useTranslations('dashboard');
-  const locale = useLocale();
-  const page = ok(widget);
-  const total =
-    page === null
-      ? 0
-      : page.counts.awaitingReview.onboarding + page.counts.awaitingReview.identityChange;
-  return (
-    <StatCard
-      icon="store"
-      label={t('attention.sellers.label')}
-      value={formatCount(total, false, locale)}
-      scope={t('attention.sellers.scope')}
-      href="/sellers?tab=awaiting-review"
-      tone={total > 0 ? 'attention' : 'neutral'}
-      {...(page === null ? { error: t('error.card') } : {})}
-    />
-  );
-}
-
-function HoldsFigure({ widget }: { readonly widget: Widget<PriceHoldPage> }) {
-  const t = useTranslations('dashboard');
-  const locale = useLocale();
-  const page = ok(widget);
-  const more = page?.next != null;
-  return (
-    <StatCard
-      icon="clock"
-      label={t('attention.holds.label')}
-      value={formatCount(page?.items.length ?? 0, more, locale)}
-      scope={t(more ? 'scope.first-page' : 'scope.whole-queue', { count: COUNT_LIMIT })}
-      href="/price-holds"
-      tone={(page?.items.length ?? 0) > 0 ? 'attention' : 'neutral'}
-      {...(page === null ? { error: t('error.card') } : {})}
-    />
-  );
-}
-
-function OffersFigure({ widget }: { readonly widget: Widget<ReviewPage> }) {
-  const t = useTranslations('dashboard');
-  const locale = useLocale();
-  const page = ok(widget);
-  const more = page?.nextAfterId != null;
-  const waiting = page === null ? 0 : offerRowsOf(page.items).length;
-  return (
-    <StatCard
-      icon="inbox"
-      label={t('attention.offers.label')}
-      value={formatCount(waiting, more, locale)}
-      scope={t(more ? 'scope.first-page' : 'scope.whole-queue', { count: COUNT_LIMIT })}
-      href="/review?type=offer"
-      tone={waiting > 0 ? 'attention' : 'neutral'}
-      {...(page === null ? { error: t('error.card') } : {})}
-    />
-  );
-}
-
-function AccountsFigure({ widget }: { readonly widget: Widget<ConnectedAccountPage> }) {
-  const t = useTranslations('dashboard');
-  const locale = useLocale();
-  const page = ok(widget);
-  const more = page?.nextCursor != null;
-  return (
-    <StatCard
-      icon="wallet"
-      label={t('attention.accounts.label')}
-      value={formatCount(page?.items.length ?? 0, more, locale)}
-      scope={t(more ? 'scope.first-page' : 'scope.all-restricted', { count: ACCOUNTS_PAGE })}
-      href="/payout-accounts"
-      tone={(page?.items.length ?? 0) > 0 ? 'attention' : 'neutral'}
-      {...(page === null ? { error: t('error.card') } : {})}
-    />
-  );
-}
-
-/** The Needs attention figures; each loads on its own, and one whose read failed says so in its card. */
-function Attention({ data }: { readonly data: AdminDashboardSources }) {
-  const t = useTranslations('dashboard');
-  const cards: ReactNode[] = [];
-  if (data.sellers !== null) {
-    cards.push(
-      <Figure key="sellers" source={data.sellers} icon="store" label={t('attention.sellers.label')}>
-        {(widget) => <SellersFigure widget={widget} />}
-      </Figure>,
-    );
-  }
-  if (data.holds !== null) {
-    cards.push(
-      <Figure key="holds" source={data.holds} icon="clock" label={t('attention.holds.label')}>
-        {(widget) => <HoldsFigure widget={widget} />}
-      </Figure>,
-    );
-  }
-  if (data.offers !== null) {
-    cards.push(
-      <Figure key="offers" source={data.offers} icon="inbox" label={t('attention.offers.label')}>
-        {(widget) => <OffersFigure widget={widget} />}
-      </Figure>,
-    );
-  }
-  if (data.accounts !== null) {
-    cards.push(
-      <Figure
-        key="accounts"
-        source={data.accounts}
-        icon="wallet"
-        label={t('attention.accounts.label')}
-      >
-        {(widget) => <AccountsFigure widget={widget} />}
-      </Figure>,
-    );
-  }
-  if (cards.length === 0) return null;
-  return <StatGrid label={t('attention.title')}>{cards}</StatGrid>;
-}
 
 /** The title, scope line and link of a card, shared by the card and its skeleton. */
 interface Frame {
@@ -762,7 +616,8 @@ function allRefused(data: AdminDashboardSources): DashboardSource<boolean> {
 
 /**
  * The admin dashboard (the home page): every widget is present only when the session holds the
- * key its read needs. Order: what needs attention, the latest activity, then quick actions. Given
+ * key its read needs. Order: the work queue ("Needs action"), the latest activity, then quick
+ * actions. Given
  * promises (the page), each card shows its skeleton until its own read answers (panel loading L4).
  */
 export function AdminDashboard({
@@ -793,7 +648,7 @@ export function AdminDashboard({
           }
         </DashboardSlot>
       )}
-      <Attention data={data} />
+      <NeedsAction source={data.workQueue} />
       <Applications data={data} />
       <Holds data={data} />
       <Offers data={data} />
