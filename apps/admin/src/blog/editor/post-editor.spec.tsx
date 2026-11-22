@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, within, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/en.json';
@@ -114,7 +114,7 @@ describe('admin blog post editor', () => {
     show();
     const title = await screen.findByLabelText('Title');
     fireEvent.change(title, { target: { value: 'Spring pantry 2' } });
-    expect(screen.getByText('Unsaved changes')).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Unsaved changes' })).toBeTruthy();
     call.mockResolvedValueOnce(ok(post()));
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     await waitFor(() => expect(writes()).toHaveLength(1));
@@ -127,6 +127,27 @@ describe('admin blog post editor', () => {
     expect(sent.content.title).toBe('Spring pantry 2');
     expect(sent.content.body[1]).toEqual(content.body[1]);
     expect(sent.content.coverImageId).toBeNull();
+  });
+
+  it('shows the save bar only with a change; Discard puts the saved text back', async () => {
+    serve();
+    show();
+    const title = await screen.findByLabelText<HTMLInputElement>('Title');
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(screen.getByText('All changes saved')).toBeTruthy();
+    fireEvent.change(title, { target: { value: 'Spring pantry 2' } });
+    const asks = () => {
+      const event = new Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    expect(asks()).toBe(true);
+    const bar = within(screen.getByRole('region', { name: 'Unsaved changes' }));
+    fireEvent.click(bar.getByRole('button', { name: 'Discard' }));
+    expect(title.value).not.toBe('Spring pantry 2');
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(asks()).toBe(false);
+    expect(writes()).toHaveLength(0);
   });
 
   it('adds, edits, moves and removes text blocks', async () => {

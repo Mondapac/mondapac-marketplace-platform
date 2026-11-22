@@ -16,6 +16,7 @@ import {
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { FormSaveBar, useEditorLeaveGuard } from '../../shared/form-save-bar.tsx';
 import { callApi } from '../../api/client.ts';
 import { API_BLOG_POSTS, API_BLOG_TAXONOMY, BLOG_PATH, postPath } from '../types.ts';
 import { BlockEditor } from './block-editor.tsx';
@@ -110,13 +111,9 @@ export function PostEditor({
   }, [fetchAll]);
 
   const dirty = draft !== null && saved !== null && isDirty(draft, saved);
-  // Leaving with unsaved text asks the browser to confirm.
-  useEffect(() => {
-    if (!dirty) return;
-    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
-    window.addEventListener('beforeunload', warn);
-    return () => window.removeEventListener('beforeunload', warn);
-  }, [dirty]);
+  // Leaving with unsaved text asks first (the dialog the settings pages use), for a link in the
+  // panel as well as for closing or reloading the tab.
+  const leaveGuard = useEditorLeaveGuard(dirty, t('title'));
 
   const locked = post === null || LOCKED.includes(post.status);
   const reason = (path: string) => reasonFor(problem, path);
@@ -253,7 +250,8 @@ export function PostEditor({
             {version === null ? '' : t('version', { n: version.versionNo })}
           </span>
           <span role="status" className="text-sm text-fg-muted">
-            {dirty ? t('unsaved') : t('all-saved')}
+            {/* While something is unsaved the save bar says so. */}
+            {dirty ? '' : t('all-saved')}
           </span>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -267,14 +265,6 @@ export function PostEditor({
               {t('run-checks')}
             </Button>
           ) : null}
-          <Button
-            variant="secondary"
-            loading={busy === 'save'}
-            disabled={disabled || !dirty}
-            onClick={() => void onSave()}
-          >
-            {t('save')}
-          </Button>
           <Button
             loading={busy === 'submit'}
             disabled={disabled || (post.open === null && !dirty)}
@@ -327,182 +317,210 @@ export function PostEditor({
           )}
         </section>
       ) : null}
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
-        <div className="flex flex-col gap-4">
-          <TextField
-            label={t('field.title')}
-            value={draft.title}
-            maxLength={LIMITS.title}
-            disabled={disabled}
-            error={reason('content.title') === undefined ? undefined : t('field.invalid')}
-            onChange={(event) => set({ title: event.target.value })}
-          />
-          <TextAreaField
-            label={t('field.excerpt')}
-            help={t('field.excerpt-help')}
-            value={draft.excerpt}
-            rows={2}
-            maxLength={LIMITS.excerpt}
-            disabled={disabled}
-            counter={`${draft.excerpt.length} / ${LIMITS.excerpt}`}
-            onChange={(event) => set({ excerpt: event.target.value })}
-          />
-          <BlockEditor
-            blocks={draft.blocks}
-            disabled={disabled}
-            reasonAt={reason}
-            canUpload={canUploadMedia}
-            csrfToken={csrfToken}
-            onChange={(blocks) => set({ blocks })}
-          />
-        </div>
-        <div className="flex flex-col gap-4">
-          <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
-            <h2 className="text-base font-semibold">{t('side.post')}</h2>
-            <p className="text-sm text-fg-muted">
-              {t('side.type')}: {tc(`kind.${post.kind}`)}
-            </p>
+      <form
+        noValidate
+        className="flex flex-col gap-4"
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!disabled) void onSave();
+        }}
+      >
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+          <div className="flex flex-col gap-4">
             <TextField
-              label={t('field.slug')}
-              help={t('field.slug-help')}
-              value={draft.slug}
+              label={t('field.title')}
+              value={draft.title}
+              maxLength={LIMITS.title}
               disabled={disabled}
-              error={
-                reason('slug') === undefined
-                  ? undefined
-                  : t(
-                      problem?.key === 'blog.editor.error.slug-taken'
-                        ? 'field.slug-taken'
-                        : 'field.invalid',
-                    )
-              }
-              onChange={(event) => set({ slug: event.target.value })}
-            />
-            <Select
-              label={t('field.category')}
-              value={draft.categoryId}
-              disabled={disabled}
-              options={[
-                { value: '', label: t('field.none') },
-                ...taxonomy.categories.map((c) => ({ value: c.id, label: categoryLabel(c.names) })),
-              ]}
-              onChange={(event) => set({ categoryId: event.target.value })}
-            />
-            {post.ownerType === 'platform' ? (
-              <TextField
-                label={t('field.author')}
-                optionalLabel={t('optional')}
-                help={t('field.author-help')}
-                value={draft.authorDisplay}
-                maxLength={LIMITS.authorDisplay}
-                disabled={disabled}
-                onChange={(event) => set({ authorDisplay: event.target.value })}
-              />
-            ) : null}
-            <fieldset className="flex flex-col gap-1">
-              <legend className="mb-1 text-sm font-medium">
-                {t('field.tags', { max: LIMITS.tags })}
-              </legend>
-              {taxonomy.tags.length === 0 ? (
-                <p className="text-sm text-fg-muted">{t('field.tags-none')}</p>
-              ) : null}
-              {taxonomy.tags.map((tag) => {
-                const on = draft.tagIds.includes(tag.id);
-                return (
-                  <CheckboxRow
-                    key={tag.id}
-                    label={tag.name}
-                    checked={on}
-                    disabled={disabled || (!on && draft.tagIds.length >= LIMITS.tags)}
-                    onChange={() =>
-                      set({
-                        tagIds: on
-                          ? draft.tagIds.filter((id) => id !== tag.id)
-                          : [...draft.tagIds, tag.id],
-                      })
-                    }
-                  />
-                );
-              })}
-            </fieldset>
-          </div>
-          <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
-            <h2 className="text-base font-semibold">{t('side.cover')}</h2>
-            <ImageChooser
-              imageId={draft.coverImageId}
-              onChange={(coverImageId) => set({ coverImageId })}
-              disabled={disabled}
-              canUpload={canUploadMedia}
-              csrfToken={csrfToken}
-              error={
-                reason('content.coverImageId') === 'not-found'
-                  ? t('field.cover-not-found')
-                  : undefined
-              }
-              name={t('side.cover')}
-              altEmpty={draft.coverAlt.trim() === ''}
-              focusAlt={focusCoverAlt}
-            />
-            <div ref={altBox}>
-              <TextField
-                label={t('field.cover-alt')}
-                help={draft.coverImageId === '' ? undefined : t('field.cover-alt-help')}
-                required={draft.coverImageId !== ''}
-                error={
-                  coverNeedsAlt(draft) && (altTouched || attempted)
-                    ? t('field.cover-alt-missing')
-                    : undefined
-                }
-                value={draft.coverAlt}
-                maxLength={LIMITS.coverAlt}
-                disabled={disabled}
-                onBlur={() => setAltTouched(true)}
-                onChange={(event) => set({ coverAlt: event.target.value })}
-              />
-            </div>
-          </div>
-          <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
-            <h2 className="text-base font-semibold">{t('side.seo')}</h2>
-            <p className="text-sm text-fg-muted">{t('field.seo-help')}</p>
-            <TextField
-              label={t('field.seo-title')}
-              optionalLabel={t('optional')}
-              value={draft.seoTitle}
-              maxLength={LIMITS.seoTitle}
-              disabled={disabled}
-              onChange={(event) => set({ seoTitle: event.target.value })}
+              error={reason('content.title') === undefined ? undefined : t('field.invalid')}
+              onChange={(event) => set({ title: event.target.value })}
             />
             <TextAreaField
-              label={t('field.seo-description')}
-              optionalLabel={t('optional')}
-              value={draft.seoDescription}
-              rows={3}
-              maxLength={LIMITS.seoDescription}
+              label={t('field.excerpt')}
+              help={t('field.excerpt-help')}
+              value={draft.excerpt}
+              rows={2}
+              maxLength={LIMITS.excerpt}
               disabled={disabled}
-              counter={`${draft.seoDescription.length} / ${LIMITS.seoDescription}`}
-              onChange={(event) => set({ seoDescription: event.target.value })}
+              counter={`${draft.excerpt.length} / ${LIMITS.excerpt}`}
+              onChange={(event) => set({ excerpt: event.target.value })}
+            />
+            <BlockEditor
+              blocks={draft.blocks}
+              disabled={disabled}
+              reasonAt={reason}
+              canUpload={canUploadMedia}
+              csrfToken={csrfToken}
+              onChange={(blocks) => set({ blocks })}
             />
           </div>
-          {post.kind === 'event' ? (
-            <EventDetailsCard
-              form={draft.event ?? blankEvent(zone)}
-              disabled={disabled}
-              problem={problem}
-              onChange={(event) => set({ event })}
-            />
-          ) : null}
-          {post.kind === 'event' && post.live !== null ? (
-            <EventStatusCard
-              key={`${post.live.id}-${liveStatus.status}-${liveStatus.message}`}
-              postId={postId}
-              event={post.live.content.event}
-              canEdit={canEdit && post.status !== 'archived'}
-              csrfToken={csrfToken}
-              onChanged={() => void refreshLive()}
-            />
-          ) : null}
+          <div className="flex flex-col gap-4">
+            <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
+              <h2 className="text-base font-semibold">{t('side.post')}</h2>
+              <p className="text-sm text-fg-muted">
+                {t('side.type')}: {tc(`kind.${post.kind}`)}
+              </p>
+              <TextField
+                label={t('field.slug')}
+                help={t('field.slug-help')}
+                value={draft.slug}
+                disabled={disabled}
+                error={
+                  reason('slug') === undefined
+                    ? undefined
+                    : t(
+                        problem?.key === 'blog.editor.error.slug-taken'
+                          ? 'field.slug-taken'
+                          : 'field.invalid',
+                      )
+                }
+                onChange={(event) => set({ slug: event.target.value })}
+              />
+              <Select
+                label={t('field.category')}
+                value={draft.categoryId}
+                disabled={disabled}
+                options={[
+                  { value: '', label: t('field.none') },
+                  ...taxonomy.categories.map((c) => ({
+                    value: c.id,
+                    label: categoryLabel(c.names),
+                  })),
+                ]}
+                onChange={(event) => set({ categoryId: event.target.value })}
+              />
+              {post.ownerType === 'platform' ? (
+                <TextField
+                  label={t('field.author')}
+                  optionalLabel={t('optional')}
+                  help={t('field.author-help')}
+                  value={draft.authorDisplay}
+                  maxLength={LIMITS.authorDisplay}
+                  disabled={disabled}
+                  onChange={(event) => set({ authorDisplay: event.target.value })}
+                />
+              ) : null}
+              <fieldset className="flex flex-col gap-1">
+                <legend className="mb-1 text-sm font-medium">
+                  {t('field.tags', { max: LIMITS.tags })}
+                </legend>
+                {taxonomy.tags.length === 0 ? (
+                  <p className="text-sm text-fg-muted">{t('field.tags-none')}</p>
+                ) : null}
+                {taxonomy.tags.map((tag) => {
+                  const on = draft.tagIds.includes(tag.id);
+                  return (
+                    <CheckboxRow
+                      key={tag.id}
+                      label={tag.name}
+                      checked={on}
+                      disabled={disabled || (!on && draft.tagIds.length >= LIMITS.tags)}
+                      onChange={() =>
+                        set({
+                          tagIds: on
+                            ? draft.tagIds.filter((id) => id !== tag.id)
+                            : [...draft.tagIds, tag.id],
+                        })
+                      }
+                    />
+                  );
+                })}
+              </fieldset>
+            </div>
+            <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
+              <h2 className="text-base font-semibold">{t('side.cover')}</h2>
+              <ImageChooser
+                imageId={draft.coverImageId}
+                onChange={(coverImageId) => set({ coverImageId })}
+                disabled={disabled}
+                canUpload={canUploadMedia}
+                csrfToken={csrfToken}
+                error={
+                  reason('content.coverImageId') === 'not-found'
+                    ? t('field.cover-not-found')
+                    : undefined
+                }
+                name={t('side.cover')}
+                altEmpty={draft.coverAlt.trim() === ''}
+                focusAlt={focusCoverAlt}
+              />
+              <div ref={altBox}>
+                <TextField
+                  label={t('field.cover-alt')}
+                  help={draft.coverImageId === '' ? undefined : t('field.cover-alt-help')}
+                  required={draft.coverImageId !== ''}
+                  error={
+                    coverNeedsAlt(draft) && (altTouched || attempted)
+                      ? t('field.cover-alt-missing')
+                      : undefined
+                  }
+                  value={draft.coverAlt}
+                  maxLength={LIMITS.coverAlt}
+                  disabled={disabled}
+                  onBlur={() => setAltTouched(true)}
+                  onChange={(event) => set({ coverAlt: event.target.value })}
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
+              <h2 className="text-base font-semibold">{t('side.seo')}</h2>
+              <p className="text-sm text-fg-muted">{t('field.seo-help')}</p>
+              <TextField
+                label={t('field.seo-title')}
+                optionalLabel={t('optional')}
+                value={draft.seoTitle}
+                maxLength={LIMITS.seoTitle}
+                disabled={disabled}
+                onChange={(event) => set({ seoTitle: event.target.value })}
+              />
+              <TextAreaField
+                label={t('field.seo-description')}
+                optionalLabel={t('optional')}
+                value={draft.seoDescription}
+                rows={3}
+                maxLength={LIMITS.seoDescription}
+                disabled={disabled}
+                counter={`${draft.seoDescription.length} / ${LIMITS.seoDescription}`}
+                onChange={(event) => set({ seoDescription: event.target.value })}
+              />
+            </div>
+            {post.kind === 'event' ? (
+              <EventDetailsCard
+                form={draft.event ?? blankEvent(zone)}
+                disabled={disabled}
+                problem={problem}
+                onChange={(event) => set({ event })}
+              />
+            ) : null}
+            {post.kind === 'event' && post.live !== null ? (
+              <EventStatusCard
+                key={`${post.live.id}-${liveStatus.status}-${liveStatus.message}`}
+                postId={postId}
+                event={post.live.content.event}
+                canEdit={canEdit && post.status !== 'archived'}
+                csrfToken={csrfToken}
+                onChanged={() => void refreshLive()}
+              />
+            ) : null}
+          </div>
         </div>
-      </div>
+        {disabled && busy === null ? null : (
+          <FormSaveBar
+            dirty={dirty}
+            saving={busy === 'save'}
+            saveLabel={t('save')}
+            onDiscard={() => {
+              // Discarding during a submit or a check would change the draft under it.
+              if (busy !== null) return;
+              if (saved !== null) setDraft(saved);
+              setProblem(null);
+              setAttempted(false);
+              setAltTouched(false);
+            }}
+          />
+        )}
+      </form>
+      {leaveGuard}
     </div>
   );
 }

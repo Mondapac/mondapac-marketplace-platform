@@ -4,7 +4,6 @@ import {
   Banner,
   Button,
   EmptyState,
-  FormActionBar,
   LinkButton,
   LoadError,
   toast,
@@ -13,6 +12,7 @@ import {
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { FormSaveBar, useEditorLeaveGuard } from '../../shared/form-save-bar.tsx';
 import { callApi } from '../../api/client.ts';
 import { usePositionLabel } from './slide-labels.tsx';
 import { SlideOrderCard, type FocusRequest } from './slide-order-card.tsx';
@@ -104,6 +104,7 @@ export function SlideOrderView({
   }, [fetchOrder]);
 
   const dirty = !sameOrder(entries, baseline);
+  const leaveGuard = useEditorLeaveGuard(dirty && canEdit, t('page-title'));
 
   function moveSlide(index: number, direction: Direction) {
     const moved = entries[index];
@@ -219,51 +220,55 @@ export function SlideOrderView({
               ) : null}
             </Banner>
           )}
-          <SlideOrderCard
-            title={title}
-            maxActive={load.view.maxActive}
-            autoplay={definition?.autoplay ?? false}
-            scopeNote={
-              place.scope === 'all' || place.scopeId === null
-                ? null
-                : t('heading-scope', {
-                    scope: scopeText(`scope.${place.scope}`),
-                    id: place.scopeId,
-                  })
-            }
-            entries={entries}
-            overLimit={flags}
-            canEdit={canEdit}
-            zone={zone}
-            locale={locale}
-            focus={focus}
-            onMove={moveSlide}
-            footer={
-              <>
-                <p className="mb-3 text-xs text-fg-muted">{t('footnote', { zone })}</p>
-                {canEdit ? (
-                  <FormActionBar
-                    status={
-                      <>
-                        {/* Announces a move for screen readers; the save result is a toast. */}
-                        <span role="status" aria-live="polite" className="block">
-                          {message}
-                        </span>
-                        <span className="block">{t('note')}</span>
-                      </>
-                    }
-                  >
-                    <Button variant="secondary" disabled={!dirty || pending} onClick={discard}>
-                      {t('discard')}
-                    </Button>
-                    <Button disabled={!dirty} loading={pending} onClick={() => void save()}>
-                      {t('save')}
-                    </Button>
-                  </FormActionBar>
-                ) : null}
-              </>
-            }
-          />
+          {/* The form holds the whole card so the save bar stays at the bottom of the screen. */}
+          <form
+            noValidate
+            className="flex flex-col gap-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (canEdit) void save();
+            }}
+          >
+            <SlideOrderCard
+              title={title}
+              maxActive={load.view.maxActive}
+              autoplay={definition?.autoplay ?? false}
+              scopeNote={
+                place.scope === 'all' || place.scopeId === null
+                  ? null
+                  : t('heading-scope', {
+                      scope: scopeText(`scope.${place.scope}`),
+                      id: place.scopeId,
+                    })
+              }
+              entries={entries}
+              overLimit={flags}
+              canEdit={canEdit}
+              zone={zone}
+              locale={locale}
+              focus={focus}
+              onMove={moveSlide}
+              footer={
+                <>
+                  <p className="m-0 text-xs text-fg-muted">{t('footnote', { zone })}</p>
+                  {/* Announces a move for screen readers; the save result is a toast. */}
+                  <span role="status" aria-live="polite" className="sr-only">
+                    {message}
+                  </span>
+                  {leaveGuard}
+                </>
+              }
+            />
+            {canEdit ? (
+              <FormSaveBar
+                dirty={dirty}
+                saving={pending}
+                saveLabel={t('save')}
+                note={t('note')}
+                onDiscard={discard}
+              />
+            ) : null}
+          </form>
         </>
       ) : null}
     </div>

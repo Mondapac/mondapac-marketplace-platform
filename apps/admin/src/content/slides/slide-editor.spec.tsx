@@ -233,7 +233,8 @@ describe('new slide', () => {
 
   it('discards what was typed', () => {
     mount();
-    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Discard' }).disabled).toBe(true);
+    // A new slide is unsaved by definition: the bar shows at once.
+    expect(screen.getByText('New slide · nothing entered yet')).toBeTruthy();
     type('Headline', 'Head');
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(screen.getByLabelText<HTMLInputElement>('Headline').value).toBe('');

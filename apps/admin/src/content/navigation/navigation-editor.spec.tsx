@@ -232,12 +232,10 @@ describe('the navigation editor', () => {
     const confirm = within(dialog).getByRole('button', { name: 'Approve', hidden: true });
     fireEvent.click(confirm);
     await waitFor(() => expect(confirm.getAttribute('aria-busy')).toBe('true'));
-    const save = screen.getByRole('button', { name: 'Save to draft', hidden: true });
-    expect(save.getAttribute('aria-busy')).toBeNull();
-    expect(save.matches(':disabled')).toBe(true);
+    // Nothing is unsaved while a dialog runs, so the save bar (and its Save) is not there at all.
+    expect(screen.queryByRole('button', { name: 'Save to draft', hidden: true })).toBeNull();
     finish(refused('x', 503) as never);
     await waitFor(() => expect(confirm.getAttribute('aria-busy')).toBeNull());
-    expect(save.getAttribute('aria-busy')).toBeNull();
   });
 
   it('words a draft that changed under the approver and offers the reload', async () => {
@@ -287,9 +285,8 @@ describe('the navigation editor', () => {
     const confirm = within(dialog).getByRole('button', { name: 'Restore to draft', hidden: true });
     fireEvent.click(confirm);
     await waitFor(() => expect(confirm.getAttribute('aria-busy')).toBe('true'));
-    const save = screen.getByRole('button', { name: 'Save to draft', hidden: true });
-    expect(save.getAttribute('aria-busy')).toBeNull();
-    expect(save.matches(':disabled')).toBe(true);
+    // Nothing is unsaved while a dialog runs, so the save bar (and its Save) is not there at all.
+    expect(screen.queryByRole('button', { name: 'Save to draft', hidden: true })).toBeNull();
     finish(refused('x', 503) as never);
     await waitFor(() => expect(confirm.getAttribute('aria-busy')).toBeNull());
   });

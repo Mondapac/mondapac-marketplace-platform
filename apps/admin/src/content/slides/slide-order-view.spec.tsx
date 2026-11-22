@@ -76,6 +76,8 @@ const names = () =>
 const puts = () => call.mock.calls.filter(([method]) => method === 'PUT');
 const save = () => screen.getByRole<HTMLButtonElement>('button', { name: 'Save order' });
 const discard = () => screen.getByRole<HTMLButtonElement>('button', { name: 'Discard' });
+/** The save bar shows only with an unsaved order. */
+const noBar = () => screen.queryByRole('region', { name: 'Unsaved changes' }) === null;
 const button = (name: string) => screen.getByRole<HTMLButtonElement>('button', { name });
 const four = () => viewOf([pinned, shop, fruit, diwali]);
 
@@ -201,8 +203,7 @@ describe('moving slides', () => {
   it('moves a slide, announces it, and enables Discard and Save', async () => {
     mount([four()]);
     await screen.findByRole('heading', { name: 'Home · top' });
-    expect(save().disabled).toBe(true);
-    expect(discard().disabled).toBe(true);
+    expect(noBar()).toBe(true);
     fireEvent.click(button('Move Spring fruit boxes up'));
     const rows = names();
     expect(rows[1]).toContain('Spring fruit boxes');
@@ -239,7 +240,7 @@ describe('moving slides', () => {
     fireEvent.click(button('Move Spring fruit boxes up'));
     fireEvent.click(discard());
     expect(names()[1]).toContain('Shop Express');
-    expect(save().disabled).toBe(true);
+    expect(noBar()).toBe(true);
   });
 
   it('is not changed when a slide is moved back to where it was', async () => {
@@ -247,7 +248,7 @@ describe('moving slides', () => {
     await screen.findByRole('heading', { name: 'Home · top' });
     fireEvent.click(button('Move Spring fruit boxes up'));
     fireEvent.click(button('Move Spring fruit boxes down'));
-    expect(save().disabled).toBe(true);
+    expect(noBar()).toBe(true);
   });
 });
 
@@ -268,7 +269,7 @@ describe('saving', () => {
     await expectToast(/^Order saved\./);
     await waitFor(() => expect(call).toHaveBeenCalledTimes(3));
     expect(names()[1]).toContain('Spring fruit boxes');
-    expect(save().disabled).toBe(true);
+    expect(noBar()).toBe(true);
   });
 
   it('sends the scope id for one category', async () => {
@@ -296,7 +297,7 @@ describe('saving', () => {
     fireEvent.click(within(alert).getByRole('button', { name: 'Load current list' }));
     await waitFor(() => expect(names()).toHaveLength(2));
     expect(screen.queryByRole('alert')).toBeNull();
-    expect(save().disabled).toBe(true);
+    expect(noBar()).toBe(true);
   });
 
   it.each([
@@ -339,9 +340,11 @@ describe('saving', () => {
     await waitFor(() => expect(puts()).toHaveLength(1));
   });
 
-  it('shows the note about going live at once', async () => {
+  it('shows the note about going live at once with the save bar', async () => {
     mount([four()]);
     await screen.findByRole('heading', { name: 'Home · top' });
+    expect(screen.queryByText(/^Order changes go live at once/)).toBeNull();
+    fireEvent.click(button('Move Spring fruit boxes up'));
     expect(
       screen.getByText(
         'Order changes go live at once for slides already approved. Buyers see the new order within a minute; the change is recorded in the history.',
@@ -355,6 +358,7 @@ describe('permission to edit', () => {
     mount([four()]);
     await screen.findByRole('heading', { name: 'Home · top' });
     expect(screen.getAllByRole('button', { name: /^Move / })).toHaveLength(8);
+    fireEvent.click(button('Move Spring fruit boxes up'));
     expect(screen.getByRole('button', { name: 'Discard' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Save order' })).toBeTruthy();
     expect(screen.queryByText('You can view the order but not change it.')).toBeNull();
