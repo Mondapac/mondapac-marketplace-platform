@@ -6,6 +6,7 @@ import messages from '../../messages/en.json';
 import type { AdminSession } from '../server/session.ts';
 import type { SellerListPage } from '../sellers/types.ts';
 import { AdminDashboard } from './dashboard.tsx';
+import type { WorkQueueAnswer } from '../work-queue/queues.ts';
 import type { AdminDashboardData, Widget } from './types.ts';
 
 const mocks = vi.hoisted(() => ({
@@ -22,14 +23,15 @@ import { startAdminDashboard } from './load.ts';
 /** Every read of the dashboard, awaited. */
 async function loadAdminDashboard(session: AdminSession): Promise<AdminDashboardData> {
   const sources = startAdminDashboard(session);
-  const [sellers, holds, offers, accounts, orders] = await Promise.all([
+  const [workQueue, sellers, holds, offers, accounts, orders] = await Promise.all([
+    sources.workQueue,
     sources.sellers,
     sources.holds,
     sources.offers,
     sources.accounts,
     sources.orders,
   ]);
-  return { sellers, holds, offers, accounts, orders };
+  return { workQueue, sellers, holds, offers, accounts, orders };
 }
 
 const wrap = (node: React.ReactNode, locale = 'en-AU') => (
@@ -63,7 +65,71 @@ const sellers: SellerListPage = {
   areas: [],
   stateCounts: { changesNeeded: 1, notApproved: 0, approved: 9, suspended: 1 },
 };
+const NOW = '2026-10-14T03:00:00.000Z';
+const hoursAgo = (h: number) => new Date(Date.parse(NOW) - h * 3_600_000).toISOString();
+const workQueue: WorkQueueAnswer = {
+  panel: 'admin',
+  generatedAt: NOW,
+  queues: [
+    {
+      key: 'catalog.claims-without-certificate',
+      level: 'critical',
+      status: 'ok',
+      count: 2,
+      overdue: 2,
+      oldestAt: hoursAgo(1),
+      countedAt: NOW,
+    },
+    { key: 'security.open-alerts', level: 'critical', status: 'error' },
+    {
+      key: 'commission-payouts.disputes-due',
+      level: 'critical',
+      status: 'ok',
+      count: 0,
+      overdue: 0,
+      oldestAt: null,
+      countedAt: NOW,
+    },
+    {
+      key: 'sellers.applications',
+      level: 'today',
+      status: 'ok',
+      count: 17,
+      overdue: 5,
+      oldestAt: hoursAgo(72),
+      countedAt: NOW,
+    },
+    {
+      key: 'pricing.price-holds',
+      level: 'today',
+      status: 'ok',
+      count: 4,
+      overdue: 0,
+      oldestAt: hoursAgo(9),
+      countedAt: NOW,
+    },
+    {
+      key: 'future.queue',
+      level: 'today',
+      status: 'ok',
+      count: 9,
+      overdue: 0,
+      oldestAt: null,
+      countedAt: NOW,
+    },
+    {
+      key: 'catalog.brand-merges',
+      level: 'review',
+      status: 'ok',
+      count: 3,
+      overdue: 0,
+      oldestAt: hoursAgo(30),
+      countedAt: NOW,
+    },
+  ],
+};
 const full: AdminDashboardData = {
+  workQueue: ok(workQueue),
   sellers: ok(sellers),
   holds: ok({
     items: Array.from({ length: 50 }, (_, i) => ({
@@ -130,6 +196,7 @@ const full: AdminDashboardData = {
   }),
 };
 const none: AdminDashboardData = {
+  workQueue: null,
   sellers: null,
   holds: null,
   offers: null,
@@ -153,21 +220,43 @@ const ALL_KEYS = [
 afterEach(cleanup);
 
 describe('admin dashboard', () => {
-  it('shows the figures with their scope, and 50+ when the queue is longer than the page', () => {
+  it('shows the work queue first: critical queues, today queues, folded review queues', () => {
     render(wrap(<AdminDashboard data={full} permissionKeys={ALL_KEYS} />));
-    const stats = within(screen.getByRole('list', { name: 'Needs attention' }));
-    const sellersCard = stats.getByRole('link', { name: /Sellers awaiting review/ });
-    expect(sellersCard.getAttribute('href')).toBe('/sellers?tab=awaiting-review');
-    expect(sellersCard.textContent).toContain('9');
-    const holdsCard = stats.getByRole('link', { name: /Held prices to decide/ });
-    expect(holdsCard.textContent).toContain('50+');
-    expect(holdsCard.textContent).toContain('First 50 only; more are waiting');
-    expect(stats.getByRole('link', { name: /Offers to review/ }).textContent).toContain(
-      'The whole queue',
+    const card = within(screen.getByRole('region', { name: 'Needs action' }));
+    // A queue with no list yet is plain text; the status is in words, not only a colour.
+    expect(card.getByText('Certified listings without a valid certificate').tagName).toBe('SPAN');
+    expect(card.getByText('Incident')).toBeTruthy();
+    // A failed queue says so, never 0, and is not a link.
+    expect(card.getByText('Security alerts open').closest('li')?.textContent).toContain(
+      "Couldn't load",
     );
+    const applications = card.getByRole('link', { name: 'Seller applications' });
+    expect(applications.getAttribute('href')).toBe('/sellers?tab=awaiting-review');
+    expect(applications.closest('li')?.textContent).toContain('17 · 5 overdue');
+    expect(applications.closest('li')?.textContent).toContain('Overdue · oldest 3d');
     expect(
-      stats.getByRole('link', { name: /Payout accounts needing action/ }).textContent,
-    ).toContain('All restricted accounts');
+      card.getByRole('link', { name: 'Held prices to decide' }).closest('li')?.textContent,
+    ).toContain('Oldest 9h');
+    // One review queue shows as itself; a key the panel does not know is left out.
+    expect(card.getByRole('link', { name: 'Brand merge groups' })).toBeTruthy();
+    expect(card.queryByText('future.queue')).toBeNull();
+    expect(card.getByText('1 queue is all clear')).toBeTruthy();
+    const open = card.getByRole('link', { name: 'Open work queue (5)' });
+    expect(open.getAttribute('href')).toBe('/work-queue');
+  });
+
+  it('says the work queue could not be loaded in its card and still renders the rest', () => {
+    render(
+      wrap(
+        <AdminDashboard
+          data={{ ...full, workQueue: { kind: 'error' } }}
+          permissionKeys={ALL_KEYS}
+        />,
+      ),
+    );
+    const card = within(screen.getByRole('region', { name: 'Needs action' }));
+    expect(card.getByText('This could not be loaded. Reload the page to try again.')).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Recent orders' })).toBeTruthy();
   });
 
   it('lists the latest rows with links to their details, money in the Market locale', () => {
@@ -214,10 +303,9 @@ describe('admin dashboard', () => {
     expect(screen.getByText('No held prices are waiting for a decision.')).toBeTruthy();
     expect(screen.getByText('No offers are waiting for their first publication.')).toBeTruthy();
     expect(screen.queryAllByRole('table')).toHaveLength(0);
-    expect(screen.getByRole('link', { name: /Held prices to decide/ }).textContent).toContain('0');
   });
 
-  it('counts and lists only Offers, not the product revisions in the same queue', () => {
+  it('lists only Offers, not the product revisions in the same queue', () => {
     const mixed: AdminDashboardData = {
       ...none,
       offers: ok({ items: [{ kind: 'product-revision' as const }], nextAfterId: null }),
@@ -225,26 +313,6 @@ describe('admin dashboard', () => {
     render(wrap(<AdminDashboard data={mixed} permissionKeys={[]} />));
     expect(screen.getByText('No offers are waiting for their first publication.')).toBeTruthy();
     expect(screen.queryAllByRole('table')).toHaveLength(0);
-    expect(screen.getByRole('link', { name: /Offers to review/ }).textContent).toContain('0');
-  });
-
-  it('counts only the Offers of a full first page as a lower bound', () => {
-    const offers = full.offers?.kind === 'ok' ? full.offers.value.items : [];
-    const mixed: AdminDashboardData = {
-      ...none,
-      offers: ok({
-        items: [
-          { kind: 'product-revision' as const },
-          ...offers,
-          { kind: 'product-revision' as const },
-        ],
-        nextAfterId: 'next',
-      }),
-    };
-    render(wrap(<AdminDashboard data={mixed} permissionKeys={[]} />));
-    const figure = screen.getByRole('link', { name: /Offers to review/ });
-    expect(figure.textContent).toContain('1+');
-    expect(figure.textContent).toContain('First 50 only; more are waiting');
   });
 
   it('fails one widget in place and still renders the others', () => {
@@ -255,11 +323,9 @@ describe('admin dashboard', () => {
     };
     render(wrap(<AdminDashboard data={partly} permissionKeys={ALL_KEYS} />));
     const failed = 'This could not be loaded. Reload the page to try again.';
-    expect(screen.getAllByText(failed).length).toBe(3); // the held-prices figure and card, the orders card
-    expect(screen.getByRole('link', { name: /Sellers awaiting review/ })).toBeTruthy();
+    expect(screen.getAllByText(failed).length).toBe(2); // the held-prices card, the orders card
+    expect(screen.getByRole('link', { name: 'Seller applications' })).toBeTruthy();
     expect(screen.getByRole('link', { name: 'Olive Grove Bakehouse' })).toBeTruthy();
-    // A failed figure is not a link to a list it could not count.
-    expect(screen.queryByRole('link', { name: /Held prices to decide/ })).toBeNull();
   });
 
   it('shows only the widgets of the data it gets, and the quick actions the keys allow', () => {
@@ -272,7 +338,7 @@ describe('admin dashboard', () => {
         />,
       ),
     );
-    expect(screen.queryByRole('list', { name: 'Needs attention' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Needs action' })).toBeNull();
     expect(screen.getByRole('region', { name: 'Recent orders' })).toBeTruthy();
     expect(screen.queryByRole('region', { name: 'Held prices' })).toBeNull();
     const actions = within(screen.getByRole('region', { name: 'Quick actions' }));
@@ -294,6 +360,10 @@ describe('admin dashboard', () => {
   });
 
   it('streams each card on its own: a slow read shows its skeleton while the others render', async () => {
+    let answerQueue!: (value: AdminDashboardData['workQueue']) => void;
+    const queueRead = new Promise<AdminDashboardData['workQueue']>((resolve) => {
+      answerQueue = resolve;
+    });
     let answer!: (value: AdminDashboardData['sellers']) => void;
     const sellersRead = new Promise<AdminDashboardData['sellers']>((resolve) => {
       answer = resolve;
@@ -302,7 +372,12 @@ describe('admin dashboard', () => {
       render(
         wrap(
           <AdminDashboard
-            data={{ ...full, sellers: sellersRead, orders: Promise.resolve(full.orders) }}
+            data={{
+              ...full,
+              workQueue: queueRead,
+              sellers: sellersRead,
+              orders: Promise.resolve(full.orders),
+            }}
             permissionKeys={ALL_KEYS}
           />,
         ),
@@ -310,23 +385,37 @@ describe('admin dashboard', () => {
       await Promise.resolve();
     });
     // The other reads have answered.
-    expect(screen.getByRole('link', { name: /Held prices to decide/ })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Held prices' })).toBeTruthy();
     expect(await screen.findByRole('table', { name: 'Recent orders' })).toBeTruthy();
-    // The sellers read has not: its figure and cards are skeletons with their real labels.
-    expect(screen.getByText('Sellers awaiting review')).toBeTruthy();
-    expect(screen.queryByRole('link', { name: /Sellers awaiting review/ })).toBeNull();
+    // The work queue and sellers reads have not: their cards are skeletons with their real titles.
+    const queue = screen.getByRole('region', { name: 'Needs action' });
+    expect(queue.querySelector('[data-skeleton="chart-card"]')).not.toBeNull();
     const applications = screen.getByRole('region', { name: 'Seller applications' });
     expect(applications.querySelector('[data-skeleton="activity"]')).not.toBeNull();
     expect(screen.getByRole('status').textContent).toBe('Loading the dashboard');
     await act(async () => {
+      answerQueue(full.workQueue);
       answer(full.sellers);
       await Promise.resolve();
     });
-    expect(
-      (await screen.findByRole('link', { name: /Sellers awaiting review/ })).textContent,
-    ).toContain('9');
+    expect(await screen.findByRole('link', { name: 'Seller applications' })).toBeTruthy();
     expect(document.querySelector('[data-skeleton]')).toBeNull();
     expect(screen.getByRole('status').textContent).toBe('');
+  });
+
+  it('drops the work queue when the API shows no queue the panel knows', async () => {
+    await act(async () => {
+      render(
+        wrap(
+          <AdminDashboard
+            data={{ ...full, workQueue: Promise.resolve(null) }}
+            permissionKeys={ALL_KEYS}
+          />,
+        ),
+      );
+      await Promise.resolve();
+    });
+    expect(screen.queryByRole('region', { name: 'Needs action' })).toBeNull();
   });
 
   it('says there is nothing to show when every read is refused after the skeletons', async () => {
@@ -335,6 +424,7 @@ describe('admin dashboard', () => {
         wrap(
           <AdminDashboard
             data={{
+              workQueue: null,
               sellers: Promise.resolve(null),
               holds: Promise.resolve(null),
               offers: null,
@@ -368,7 +458,6 @@ describe('admin dashboard', () => {
       await Promise.resolve();
     });
     expect(screen.queryByRole('region', { name: 'Held prices' })).toBeNull();
-    expect(screen.queryByText('Held prices to decide')).toBeNull();
   });
 });
 
@@ -404,9 +493,10 @@ describe('startAdminDashboard', () => {
     const paths = mocks.get.mock.calls.map((call) => call[0] as string).sort();
     expect(paths).toEqual([
       'catalog/admin/review-queue?limit=50',
+      'dashboard/admin/work-queue',
       'ordering/admin/orders?limit=5',
       'payments/admin/connected-accounts?status=restricted',
-      'pricing/admin/price-holds?limit=50',
+      'pricing/admin/price-holds?limit=5',
       'sellers/admin/list',
     ]);
     const sellersCall = mocks.get.mock.calls.find((call) => call[0] === 'sellers/admin/list');
@@ -429,6 +519,30 @@ describe('startAdminDashboard', () => {
     expect(data.holds).toEqual({ kind: 'error' });
     expect(data.offers).toBeNull();
     expect(data.sellers?.kind).toBe('ok');
+  });
+
+  it('reads the work queue only with a key of one of its queues, and drops an answer with none it knows', async () => {
+    mocks.get.mockImplementation((path: string) =>
+      Promise.resolve({
+        kind: 'ok',
+        body:
+          path === 'dashboard/admin/work-queue'
+            ? {
+                panel: 'admin',
+                generatedAt: NOW,
+                queues: [
+                  { key: 'future.queue', level: 'today', status: 'ok', count: 1, overdue: 0 },
+                ],
+              }
+            : {},
+      }),
+    );
+    const only = await loadAdminDashboard(session(['notifications.support-contact.view']));
+    expect(only.workQueue).toBeNull();
+    expect(mocks.get).not.toHaveBeenCalled();
+    const unknown = await loadAdminDashboard(session(['security.centre.view']));
+    expect(mocks.get).toHaveBeenCalledWith('dashboard/admin/work-queue');
+    expect(unknown.workQueue).toBeNull();
   });
 
   it('sends a rejected session to the session-ended page', async () => {

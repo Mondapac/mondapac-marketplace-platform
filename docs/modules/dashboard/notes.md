@@ -148,3 +148,26 @@ Counts are cached per seller and access state, except the live queues.
   status = 'published'. The scheduled counts of a large seller read the Market-wide window index
   and filter by seller; the next step, if measured, is a partial index (market_id, seller_id,
   delivery_window_end) of the open scheduled orders.
+
+## Phase 2: action centre UI (PR 7, admin)
+
+- The admin dashboard opens with the "Needs action" card (`packages/ui` `WorkQueueCard`, words and
+  links in `apps/admin/src/work-queue/queues.ts`). It replaces the four "Needs attention" figures,
+  which counted a first page and showed "50+". Every critical queue shows; the five most urgent
+  today queues show and the rest fold into one line; the review queues fold into one line; empty
+  queues are summed up as "All clear". Urgency: a queue that could not be read first, then the
+  most overdue, then the oldest, then the most items.
+- Each row says where it stands in words as well as colour (Reza, UI/UX): "Incident" for listings
+  claiming a certificate without a valid one, "Due in 6h" or "Overdue" for disputes (their
+  `oldestAt` is the nearest deadline), else "Overdue · oldest 3d" or "Oldest 9h". A queue in its
+  normal state has a neutral dot (Jafar). A failed queue says "Couldn't load", never 0, and does
+  not link. On a phone only the critical group stays open.
+- The read is made only when the session holds the key of at least one queue the panel knows; a
+  key the panel does not know (a queue added to the API first) is left out.
+- `/work-queue` is the full page, a super list without saved filters and without row selection
+  (john's choice, 22 Nov 2026; FE-119): views (needs action, all, per level) with counts, search
+  by queue name, a state filter with chips, sort (oldest first by default), the column picker,
+  CSV and XLSX export of the rows on show, the phone layout. It reads the queue once (about twenty
+  rows), so there is no footer. `?view=` opens a view (the card's folded lines use it).
+- Not yet: deep links that open each list oldest first (FE-120), lists for three queues that
+  have none (FE-121; failed webhooks is FE-110), refresh without a reload (FE-122).

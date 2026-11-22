@@ -6,6 +6,7 @@ import type { ReviewPage } from '../catalog/types.ts';
 import type { ConnectedAccountPage } from '../payments/types.ts';
 import type { PriceHoldPage } from '../pricing/types.ts';
 import type { SellerListPage } from '../sellers/types.ts';
+import type { WorkQueueAnswer } from '../work-queue/queues.ts';
 
 /** `GET ordering/admin/orders` (apps/api AdminOrderPageBody); only the fields the dashboard shows. */
 export interface DashboardOrder {
@@ -23,10 +24,8 @@ export interface DashboardOrderPage {
 export const ORDER_VIEW_PERMISSION = 'ordering.order.view';
 export const ORDER_STATUSES = ['pending-payment', 'confirmed', 'cancelled'] as const;
 
-/** Rows asked for to count a queue; a full page means "this many or more". */
+/** Rows asked for so that the Offers table finds five Offers among the product revisions. */
 export const COUNT_LIMIT = 50;
-/** The accounts route has a fixed page of 25. */
-export const ACCOUNTS_PAGE = 25;
 /** Rows listed in each recent-activity table. */
 export const RECENT = 5;
 
@@ -37,6 +36,7 @@ export type Widget<T> =
 
 export interface AdminDashboardData {
   /** A widget is null when the session does not hold the permission its read needs. */
+  readonly workQueue: Widget<WorkQueueAnswer> | null;
   readonly sellers: Widget<SellerListPage> | null;
   readonly holds: Widget<PriceHoldPage> | null;
   readonly offers: Widget<ReviewPage> | null;

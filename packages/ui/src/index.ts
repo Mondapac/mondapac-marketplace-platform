@@ -288,6 +288,32 @@ export {
   type ChartStateProps,
 } from './dashboard/chart-states.tsx';
 export { compactNumber, labelIndexes, niceTicks } from './dashboard/chart-scale.ts';
+export {
+  WorkQueueCard,
+  type WorkQueueCardLabels,
+  type WorkQueueCardProps,
+} from './dashboard/work-queue-card.tsx';
+export {
+  WORK_QUEUE_LEVELS,
+  byUrgency,
+  foldRows,
+  groupWorkQueue,
+  needsAction,
+  shortAge,
+  workQueueRows,
+  workQueueStatus,
+  workQueueTone,
+  type WorkQueueAnswer,
+  type WorkQueueDefinition,
+  type WorkQueueGroups,
+  type WorkQueueItem,
+  type WorkQueueLevel,
+  type WorkQueueRow,
+  type WorkQueueSignal,
+  type WorkQueueState,
+  type WorkQueueStatus,
+  type WorkQueueTone,
+} from './dashboard/work-queue.ts';
 export { Dialog, type DialogProps } from './overlay/dialog.tsx';
 export { SidePanel, type SidePanelProps } from './overlay/side-panel.tsx';
 export { Menu, type MenuItem, type MenuProps } from './overlay/menu.tsx';
