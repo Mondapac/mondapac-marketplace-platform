@@ -7,6 +7,8 @@ rem
 rem   scripts\ops-local.bat          start everything and top up the data (first run builds all of it, minutes)
 rem   scripts\ops-local.bat reset    empty the database, build everything again, then save a backup
 rem   scripts\ops-local.bat fast     bring the saved backup back (seconds) and start; needs a reset done before
+rem   scripts\ops-local.bat refresh  add today's activity to the running environment, deleting nothing (a minute):
+rem                                 shelves filled, special prices renewed, a batch of today's orders (--orders N, default 6)
 rem
 rem scripts\demo-local.bat is the older, smaller demo and stays as it is. The two share one database: if it
 rem holds the demo's data, run "reset" first (it asks before replacing it).
@@ -16,8 +18,8 @@ setlocal
 cd /d "%~dp0.."
 set "MODE=%~1"
 if "%MODE%"=="" set "MODE=start"
-if /i not "%MODE%"=="start" if /i not "%MODE%"=="reset" if /i not "%MODE%"=="fast" (
-  echo Usage: scripts\ops-local.bat [start^|reset^|fast]
+if /i not "%MODE%"=="start" if /i not "%MODE%"=="reset" if /i not "%MODE%"=="fast" if /i not "%MODE%"=="refresh" (
+  echo Usage: scripts\ops-local.bat [start^|reset^|fast^|refresh [--orders N]]
   goto :fail
 )
 where node >nul 2>nul || (echo Node.js is not installed. & goto :fail)
@@ -36,6 +38,14 @@ if "%NO_STRIPE%"=="1" (
   set "ONLY= --only admin,catalog,sellers,products,content"
 )
 
+if /i "%MODE%"=="refresh" (
+  rem Needs the environment running (API, worker, Mailpit): the refresh only talks to it, and a reset or restore in progress holds the lock.
+  docker compose up -d --wait postgres redis mailpit || goto :fail
+  node scripts\ops-data\ops.mjs check || goto :fail
+  node scripts\ops-data\refresh.mjs %~2 %~3 || goto :fail
+  endlocal
+  exit /b 0
+)
 if /i "%MODE%"=="start" (
   docker compose up -d --wait postgres redis mailpit || goto :fail
   node scripts\ops-data\ops.mjs check || goto :fail
