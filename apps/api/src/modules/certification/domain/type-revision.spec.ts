@@ -1,4 +1,11 @@
+import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
+import { loadMarketConfigs } from '../../../platform/market-config/market-config';
+import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import type { SeededType } from '../application/ports/type-seed';
+import { loadFileTypeSeeds } from '../infrastructure/seed/file-type-seed';
+import { ZZ_CERTIFICATION_TYPES } from '../infrastructure/seed/zz.types.seed';
 import {
+  BADGE_ARTWORK_KEYS,
   assertSecondAdmin,
   classifyTypeRevision,
   isCertificationTypeCode,
@@ -463,5 +470,84 @@ describe('typeRevisionDiff (the read shape of a pending relaxation, design 7.6)'
     });
     expect(typeRevisionDiff(base(), after)).toEqual([]);
     expect(classifyTypeRevision(base(), after).relaxations).toEqual([]);
+  });
+});
+
+describe('validateTypeRevision, the new-type rules (FE-091, design 5)', () => {
+  const codes = (content: TypeRevisionContent, locales = LOCALES): string[] => {
+    const result = validateTypeRevision(content, locales, null);
+    return result.ok ? [] : result.error.map((problem) => problem.code);
+  };
+
+  it('requires a document for a certificate from an issuer', () => {
+    expect(codes(base({ requiresDocument: false }))).toEqual(['type.document-required']);
+    expect(codes(base())).toEqual([]);
+  });
+
+  it('refuses an issuer registry on a seller declaration', () => {
+    expect(codes(zz({ requiresIssuerRegistry: true }), ['zz'])).toEqual([
+      'type.issuer-registry-not-allowed',
+    ]);
+    expect(codes(zz(), ['zz'])).toEqual([]);
+  });
+
+  it('takes only badge artwork that exists, text included', () => {
+    for (const key of BADGE_ARTWORK_KEYS) expect(codes(base({ badgeIconKey: key }))).toEqual([]);
+    for (const key of ['shield', 'star', 'halal2']) {
+      expect(codes(base({ badgeIconKey: key }))).toEqual(['type.badge-icon-invalid']);
+    }
+  });
+
+  it('refuses forbidden words in a name or description, also disguised, as whole words', () => {
+    const withText = (name: string, customerDescription: string) =>
+      base({
+        locales: {
+          en: { name, customerDescription, claimTerms: ['halal'] },
+          ar: { name: 'حلال', customerDescription: 'معتمد', claimTerms: ['حلال'] },
+        },
+      });
+    for (const [name, description] of [
+      ['Halal', 'Guaranteed halal.'],
+      ['Halal', 'Follows the fatwa of the council.'],
+      ['Halal', 'Free of every ALLERGEN.'],
+      ['Halal', 'A healthy choice.'],
+      ['Gu4rantee', 'The seller holds a certificate.'],
+      ['Halal', 'Certified by MondaPac.'],
+    ] as const) {
+      expect([description, codes(withText(name, description))]).toEqual([
+        description,
+        ['type.text-forbidden-word'],
+      ]);
+    }
+    // Whole words only: "secure" holds "cure", "rule" is not "ruling".
+    expect(codes(withText('Halal', 'Kept secure under the rule of the certifier.'))).toEqual([]);
+  });
+
+  it('refuses a claim term too common to be a claim, but not a phrase that holds one', () => {
+    const withTerms = (terms: string[]) =>
+      base({
+        locales: {
+          en: { name: 'Organic', customerDescription: 'Checked.', claimTerms: terms },
+          ar: { name: 'حلال', customerDescription: 'معتمد', claimTerms: [] },
+        },
+      });
+    expect(codes(withTerms(['organic', 'Natural']))).toEqual(['type.claim-term-too-common']);
+    expect(codes(withTerms(['organic', 'CERTIFIED']))).toEqual(['type.claim-term-too-common']);
+    expect(codes(withTerms(['organic', 'certified organic']))).toEqual([]);
+  });
+
+  it('passes the checked-in seeds of both Markets (run against the seed first)', () => {
+    const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
+    const seeds: Record<string, readonly SeededType[]> = {
+      ...loadFileTypeSeeds(),
+      ZZ: ZZ_CERTIFICATION_TYPES,
+    };
+    expect(Object.keys(seeds).sort()).toEqual(['AU', 'ZZ']);
+    for (const [marketId, types] of Object.entries(seeds)) {
+      const { supportedLocales } = markets.get(marketId);
+      for (const seeded of types) {
+        expect([seeded.code, codes(seeded.content, supportedLocales)]).toEqual([seeded.code, []]);
+      }
+    }
   });
 });
