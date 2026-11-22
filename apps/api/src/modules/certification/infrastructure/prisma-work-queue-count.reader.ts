@@ -21,8 +21,10 @@ function answer(submitted: readonly Date[], staleBefore: Temporal.Instant): Work
  * names a pending submission (seller) or a pending revision (product), as the review queues read
  * them; it has waited since that submission (`submitted_at`: a renewal leaves the certificate's
  * status, and so its `status_changed_at`, unchanged). Only the submission time of each waiting
- * certificate is selected: the pending items are a reviewer's backlog (tens, not thousands), and
- * the queues read the same rows the same way.
+ * certificate is selected: the pending items are a reviewer's backlog (tens, not thousands). Each
+ * count reads only the waiting rows, through a partial index on `pending_* IS NOT NULL`:
+ * `seller_certifications_market_id_pending_idx` (also the seller review queue's) and
+ * `product_certifications_market_id_pending_idx`.
  */
 export class PrismaCertificationWorkQueueCountReader implements CertificationWorkQueueCountReader {
   constructor(private readonly prisma: PrismaService) {}

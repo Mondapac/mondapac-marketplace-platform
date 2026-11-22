@@ -823,6 +823,9 @@ model CertificationRetiredCategoryFlag {
 /// ADR-0028 d7; slice 14): the root with its status, its two revision pointers and the admin's
 /// draft. Coverage, editors and the decision of a revision are in the insert-only tables of 3.16;
 /// the draft's lists are mutable tables copied into them at submission. Never deleted (Q-C2).
+/// Hand-written partial index (migration 20261122120000): product_certifications_market_id_pending_idx
+/// on (market_id) INCLUDE (pending_revision_id) WHERE pending_revision_id IS NOT NULL, for the
+/// dashboard's count of certificates waiting for review.
 model CertificationProductCertification {
   id                               String                                      @id @db.Uuid
   marketId                         String                                      @map("market_id") @db.VarChar(8)
