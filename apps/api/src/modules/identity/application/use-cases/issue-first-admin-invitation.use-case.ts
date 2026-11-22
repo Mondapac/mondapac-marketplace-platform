@@ -150,7 +150,7 @@ export class IssueFirstAdminInvitation extends UseCase<
           await this.deps.audit.record(
             context,
             InvitationIssuedAudit.entry(invitation.state.id, {
-              after: { kind: 'admin', roleId: role.state.id },
+              after: { kind: 'admin', roleId: role.state.id, via: null },
             }),
           );
           return ok({ code: 'invitation.issued', invitationId: invitation.state.id, replaced });

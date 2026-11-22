@@ -808,7 +808,7 @@ describe.each(TEST_MARKETS)('admin team use cases in market %s (slices 8a-2, 8b)
       expect(fakes.audits).toEqual([
         expect.objectContaining({
           action: 'identity.invitation.issued',
-          after: { kind: 'admin', roleId: roleOf('viewer') },
+          after: { kind: 'admin', roleId: roleOf('viewer'), via: null },
           actor: 'authenticated',
         }),
       ]);

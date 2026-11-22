@@ -274,7 +274,7 @@ export class InviteSeller extends UseCase<
           await audit.record(
             context,
             InvitationIssuedAudit.entry(invitation.state.id, {
-              after: { kind: 'seller-owner', roleId: ownerRole.state.id },
+              after: { kind: 'seller-owner', roleId: ownerRole.state.id, via: null },
             }),
           );
           return ok({

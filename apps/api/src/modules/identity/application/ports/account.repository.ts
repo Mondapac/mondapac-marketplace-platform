@@ -68,6 +68,17 @@ export interface AccountRepository {
   existsInPopulation(market: MarketContext, population: Population): Promise<boolean>;
 
   /**
+   * Up to `limit` accounts of this population in any state, by id, as `{ id, status }` (the
+   * `second-admin` routine: the Market must have exactly one admin account). Reads no personal
+   * data.
+   */
+  firstInPopulation(
+    market: MarketContext,
+    population: Population,
+    limit: number,
+  ): Promise<readonly { readonly id: Id<'Account'>; readonly status: 'active' | 'disabled' }[]>;
+
+  /**
    * The name and sign-in address of the Market's customer accounts with these ids, in one read.
    * Unknown ids and other populations are absent. Reads no credential, so an account without one
    * is still answered. PERSONAL DATA: never logged.

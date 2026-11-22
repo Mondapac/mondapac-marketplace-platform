@@ -243,7 +243,7 @@ export class InviteStaff extends UseCase<InviteStaffInput, InviteStaffOutput, In
           await audit.record(
             context,
             InvitationIssuedAudit.entry(invitation.state.id, {
-              after: { kind: 'staff', roleId: role.state.id },
+              after: { kind: 'staff', roleId: role.state.id, via: null },
             }),
           );
           return ok({ code: 'invitation.issued', invitationId: invitation.state.id, replaced });

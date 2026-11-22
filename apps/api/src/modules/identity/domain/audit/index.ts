@@ -421,6 +421,9 @@ export const InvitationIssuedAudit = defineAuditAction({
   after: {
     kind: auditField.enumOf(INVITATION_KINDS),
     roleId: auditField.id(),
+    // Set only by the operator's second-admin routine, whose invitation names the Market's one
+    // admin as inviter although that admin did not act (Hassan, PR #1230 finding 4).
+    via: auditField.optional(auditField.enumOf(['operator.second-admin'] as const)),
   },
 });
 

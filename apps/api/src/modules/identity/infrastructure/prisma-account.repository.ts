@@ -183,6 +183,23 @@ export class PrismaAccountRepository implements AccountRepository {
     return row !== null;
   }
 
+  async firstInPopulation(
+    market: MarketContext,
+    population: Population,
+    limit: number,
+  ): Promise<readonly { readonly id: Id<'Account'>; readonly status: 'active' | 'disabled' }[]> {
+    const rows = await this.prisma.tx(market).identityAccount.findMany({
+      where: { marketId: market.marketId, population },
+      select: { id: true, status: true },
+      orderBy: { id: 'asc' },
+      take: limit,
+    });
+    return rows.map((row) => ({
+      id: row.id as Id<'Account'>,
+      status: row.status === 'active' ? 'active' : 'disabled',
+    }));
+  }
+
   async customerSummaries(
     market: MarketContext,
     ids: readonly Id<'Account'>[],

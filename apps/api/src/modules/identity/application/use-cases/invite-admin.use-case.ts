@@ -293,7 +293,7 @@ export class InviteAdmin extends UseCase<InviteAdminInput, InviteAdminOutput, In
           await this.deps.audit.record(
             context,
             InvitationIssuedAudit.entry(invitation.state.id, {
-              after: { kind: 'admin', roleId: role.state.id },
+              after: { kind: 'admin', roleId: role.state.id, via: null },
             }),
           );
           const opened = await openPeopleReview(this.deps.review, context, {

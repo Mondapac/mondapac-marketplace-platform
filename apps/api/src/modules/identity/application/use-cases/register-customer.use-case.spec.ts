@@ -135,6 +135,10 @@ class FakeAccounts implements AccountRepository {
     throw new Error('sign-up asks no population question');
   }
 
+  firstInPopulation(): never {
+    throw new Error('sign-up lists no population');
+  }
+
   searchCustomerIdsByName(): never {
     throw new Error('unused');
   }

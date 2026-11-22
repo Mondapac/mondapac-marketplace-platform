@@ -343,6 +343,14 @@ export class IdentityFakes {
         state === undefined || state.marketId !== market.marketId ? null : Account.restore(state),
       );
     },
+    firstInPopulation: (market: MarketContext, population: Population, limit: number) =>
+      Promise.resolve(
+        [...this.accounts.values()]
+          .filter((a) => a.marketId === market.marketId && a.population === population)
+          .sort((a, b) => (a.id < b.id ? -1 : 1))
+          .slice(0, limit)
+          .map((a) => ({ id: a.id, status: a.status })),
+      ),
     existsInPopulation: (market: MarketContext, population: Population) =>
       Promise.resolve(
         [...this.accounts.values()].some(
