@@ -2,8 +2,14 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CERTIFICATION_TYPE_VIEW } from '../../contracts/permissions';
-import type { ProposalSubject, TypeStatus } from '../../domain/registry';
-import { adminOf, registryFailure, type RegistryDependencies } from '../registry/registry.shared';
+import { isClosedTypeStatus, type ProposalSubject, type TypeStatus } from '../../domain/registry';
+import {
+  adminOf,
+  invalid,
+  registryFailure,
+  type RegistryDependencies,
+  type ValidationFailure,
+} from '../registry/registry.shared';
 
 export interface TypesListOutput {
   readonly items: readonly {
@@ -20,17 +26,24 @@ export interface TypesListOutput {
   }[];
 }
 
+export interface TypesListInput {
+  /** Also list rejected and withdrawn proposals of new types ("Show closed proposals"). */
+  readonly closed?: unknown;
+}
+
 export type TypesListFailure =
   | { readonly code: 'access.denied' }
   | { readonly code: 'access.unavailable' }
-  | { readonly code: 'conflict.stale' };
+  | { readonly code: 'conflict.stale' }
+  | ValidationFailure;
 
 /**
  * `types.list` (certification design 3.6, 7.2; slice 12): every certification type of the Market
- * with its status, published revision and names, and which proposals wait. Rule: key
+ * with its status, published revision and names, and which proposals wait. A proposed new type is
+ * listed (FE-091); rejected and withdrawn ones only when `closed` is true. Rule: key
  * `certification.type.view`, the admin population. Reads only.
  */
-export class TypesList extends UseCase<Record<string, never>, TypesListOutput, TypesListFailure> {
+export class TypesList extends UseCase<TypesListInput, TypesListOutput, TypesListFailure> {
   static override readonly access: AccessDeclaration = {
     name: 'certification.types-list',
     rule: { kind: 'permissions', allOf: [CERTIFICATION_TYPE_VIEW.key] },
@@ -43,8 +56,13 @@ export class TypesList extends UseCase<Record<string, never>, TypesListOutput, T
     super(gate);
   }
 
-  protected async handle(context: CallContext): Promise<Result<TypesListOutput, TypesListFailure>> {
+  protected async handle(
+    context: CallContext,
+    input: TypesListInput,
+  ): Promise<Result<TypesListOutput, TypesListFailure>> {
     if (adminOf(context, { write: false }) === null) return err({ code: 'access.denied' });
+    const closed = input?.closed ?? false;
+    if (typeof closed !== 'boolean') return invalid('closed', 'type');
     const { market } = context;
     const { deps } = this;
     return deps.unitOfWork
@@ -53,7 +71,9 @@ export class TypesList extends UseCase<Record<string, never>, TypesListOutput, T
         async () => {
           const rows = await deps.registry.listTypes(market);
           return ok({
-            items: rows.map((row) => ({
+            items: rows
+              .filter((row) => closed || !isClosedTypeStatus(row.type.status))
+              .map((row) => ({
               typeId: row.type.id,
               code: row.type.code,
               status: row.type.status,

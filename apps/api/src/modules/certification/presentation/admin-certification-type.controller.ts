@@ -1,8 +1,20 @@
-import { Body, Controller, Get, Header, HttpCode, Param, Post, Req, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Header,
+  HttpCode,
+  Param,
+  Post,
+  Query,
+  Req,
+  Res,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
   ApiBody,
   ApiConflictResponse,
+  ApiCreatedResponse,
   ApiForbiddenResponse,
   ApiHeader,
   ApiNotFoundResponse,
@@ -21,9 +33,12 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
+import { TypeApproveCreation } from '../application/use-cases/type-approve-creation.use-case';
 import { TypeApproveReactivation } from '../application/use-cases/type-approve-reactivation.use-case';
 import { TypeApproveRelaxation } from '../application/use-cases/type-approve-relaxation.use-case';
+import { TypeCreate } from '../application/use-cases/type-create.use-case';
 import { TypeDeactivate } from '../application/use-cases/type-deactivate.use-case';
+import { TypeNewOptions } from '../application/use-cases/type-new-options.use-case';
 import { TypeProposalReject } from '../application/use-cases/type-proposal-reject.use-case';
 import { TypeProposalWithdraw } from '../application/use-cases/type-proposal-withdraw.use-case';
 import { TypeRead } from '../application/use-cases/type-read.use-case';
@@ -35,6 +50,9 @@ import { CSRF, RegistryHttp, SECOND_ADMIN, UNAUTHORIZED } from './registry-http'
 import {
   ProposalClosedView,
   ReasonedVersionRequest,
+  TypeCreatedView,
+  TypeCreateRequest,
+  TypeNewOptionsView,
   TypeRelaxationApprovedView,
   TypeRevisionRequest,
   TypeRevisionSavedView,
@@ -74,6 +92,9 @@ export class AdminCertificationTypeController {
     private readonly approveReactivation: TypeApproveReactivation,
     private readonly reject: TypeProposalReject,
     private readonly withdraw: TypeProposalWithdraw,
+    private readonly create: TypeCreate,
+    private readonly approveCreation: TypeApproveCreation,
+    private readonly newOptions: TypeNewOptions,
   ) {}
 
   @Get()
@@ -81,18 +102,105 @@ export class AdminCertificationTypeController {
   @ReadsSession()
   @ApiOperation({
     summary: 'The certification types of the Market',
-    description: 'Needs certification.type.view. Every type, active and inactive, by code.',
+    description:
+      'Needs certification.type.view. Every type by code: active, inactive and proposed; ' +
+      'rejected and withdrawn proposals of new types only with `closed=true`.',
   })
   @ApiOkResponse({ type: TypesListView })
+  @ApiBadRequestResponse(BAD_REQUEST)
   @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({ type: CertificationErrorBody, description: 'access.denied' })
   @ApiServiceUnavailableResponse(UNAVAILABLE)
   async getList(
     @Call() context: CallContext,
     @Res({ passthrough: true }) response: Response,
+    @Query('closed') closed?: string,
   ): Promise<TypesListView> {
-    const outcome = this.#http.answer(await this.list.execute(context, {}), response, context);
+    const outcome = this.#http.answer(
+      await this.list.execute(context, {
+        closed: closed === undefined ? false : closed === 'true' ? true : closed,
+      }),
+      response,
+      context,
+    );
     return this.#http.settle('certification.types-list', context, outcome as TypesListView);
+  }
+
+  // Declared before `:typeId`, so `new-options` is never read as a type id.
+  @Get('new-options')
+  @Header('Cache-Control', 'private, no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'What the New type form offers',
+    description:
+      `${EDIT} The Market's locales, the verification modes and default bases, the badge ` +
+      'artwork that exists, and the length limits.',
+  })
+  @ApiOkResponse({ type: TypeNewOptionsView })
+  @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: CertificationErrorBody, description: 'access.denied' })
+  async getNewOptions(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<TypeNewOptionsView> {
+    const outcome = this.#http.answer(
+      await this.newOptions.execute(context, {}),
+      response,
+      context,
+    );
+    return this.#http.settle('certification.type-new-options', context, outcome);
+  }
+
+  @Post()
+  @HttpCode(201)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Propose a new certification type',
+    description:
+      `${EDIT} The type is created proposed with its first revision: sellers and customers ` +
+      'do not see it and its claim terms are not matched until another admin with ' +
+      'certification.type.edit approves it. The code is never a seed code of the Market and ' +
+      'is never reused.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: TypeCreateRequest })
+  @ApiCreatedResponse({ type: TypeCreatedView })
+  @ApiBadRequestResponse(BAD_REQUEST)
+  @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({
+    type: CertificationErrorBody,
+    description: 'access.denied, request.csrf',
+  })
+  @ApiConflictResponse({
+    type: CertificationErrorBody,
+    description: 'type.code-taken, type.code-reserved',
+  })
+  @ApiUnprocessableEntityResponse({
+    type: CertificationErrorBody,
+    description: 'type.revision-invalid (details.issues)',
+  })
+  @ApiUnsupportedMediaTypeResponse(UNSUPPORTED)
+  @ApiServiceUnavailableResponse(UNAVAILABLE)
+  postCreate(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<TypeCreatedView> {
+    return this.#http.post(
+      'certification.type-create',
+      context,
+      request,
+      response,
+      body,
+      { required: ['code', 'content'], optional: ['reason'] },
+      (input) =>
+        this.create.execute(context, {
+          code: input.code,
+          content: input.content,
+          reason: input.reason,
+        }),
+    );
   }
 
   @Get(':typeId')
@@ -134,7 +242,9 @@ export class AdminCertificationTypeController {
       'admin approves it. verificationMode never changes. A published revision opens a review ' +
       'in Admin Inbox › System requests while the Market reviews area certification (then ' +
       '`note` is required; 400 on note without it); a reviewer who rejects it restores the ' +
-      'content before only when that relaxes nothing.',
+      'content before only when that relaxes nothing. A proposed new type is changed only by ' +
+      'its proposer: the new revision replaces the proposal (outcome proposal-revised), so an ' +
+      'approval of the earlier one is stale. A rejected or withdrawn type is read-only.',
   })
   @ApiHeader(CSRF)
   @ApiBody({ type: TypeRevisionRequest })
@@ -148,7 +258,8 @@ export class AdminCertificationTypeController {
   @ApiNotFoundResponse({ type: CertificationErrorBody, description: 'type.not-found' })
   @ApiConflictResponse({
     type: CertificationErrorBody,
-    description: 'conflict.stale, review.proposal-pending, type.revision-unchanged',
+    description:
+      'conflict.stale, review.proposal-pending, type.revision-unchanged, type.proposal-closed',
   })
   @ApiUnprocessableEntityResponse({
     type: CertificationErrorBody,
@@ -353,6 +464,49 @@ export class AdminCertificationTypeController {
       { required: ['version'] },
       (input) =>
         this.approveReactivation.execute(context, { typeId, proposalId, version: input.version }),
+    );
+  }
+
+  @Post(':typeId/creations/:proposalId/approve')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Approve a proposed new type as the second admin',
+    description:
+      `${EDIT} Under the proposal version read; the proposer may not approve. A proposal the ` +
+      'proposer has since changed is stale. The type becomes active and its claim terms are ' +
+      'matched from now on; publishes certification-type-activated.v1.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: VersionRequest })
+  @ApiOkResponse({ type: TypeStatusView })
+  @ApiBadRequestResponse(BAD_REQUEST)
+  @ApiUnauthorizedResponse({ type: CertificationErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: CertificationErrorBody, description: SECOND_ADMIN })
+  @ApiNotFoundResponse({ type: CertificationErrorBody, description: 'proposal.not-found' })
+  @ApiConflictResponse({
+    type: CertificationErrorBody,
+    description: 'conflict.stale, review.proposal-closed, type.not-proposed, type.proposal-closed',
+  })
+  @ApiUnsupportedMediaTypeResponse(UNSUPPORTED)
+  @ApiServiceUnavailableResponse(UNAVAILABLE)
+  postApproveCreation(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('typeId') typeId: string,
+    @Param('proposalId') proposalId: string,
+    @Body() body: unknown,
+  ): Promise<TypeStatusView> {
+    return this.#http.post(
+      'certification.type-approve-creation',
+      context,
+      request,
+      response,
+      body,
+      { required: ['version'] },
+      (input) =>
+        this.approveCreation.execute(context, { typeId, proposalId, version: input.version }),
     );
   }
 

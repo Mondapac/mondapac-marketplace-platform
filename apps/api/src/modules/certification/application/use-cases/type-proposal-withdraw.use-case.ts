@@ -11,9 +11,9 @@ import { parseTypeId, type RegistryDependencies } from '../registry/registry.sha
 
 /**
  * `type-proposal.withdraw` (certification design 7.2, 7.6; slice 12): the proposer withdraws
- * their own pending type proposal; the type stays as it was. Audit
- * `certification.relaxation-proposal.withdrawn`. Rule: key `certification.type.edit` (protected),
- * not acting-as.
+ * their own pending type proposal; the type stays as it was (a new type is withdrawn for good).
+ * Audit `certification.relaxation-proposal.withdrawn`. Rule: key `certification.type.edit`
+ * (protected), not acting-as.
  */
 export class TypeProposalWithdraw extends UseCase<
   CloseProposalInput,
@@ -38,7 +38,7 @@ export class TypeProposalWithdraw extends UseCase<
   ): Promise<Result<CloseProposalOutput, CloseProposalFailure>> {
     return closeSubjectProposal(this.deps, context, input, {
       action: 'withdraw',
-      subjects: ['type-revision', 'type-reactivation'],
+      subjects: ['type-revision', 'type-reactivation', 'type-creation'],
       parseSubjectId: parseTypeId,
       msg: 'certification.type-proposal-withdraw',
     });

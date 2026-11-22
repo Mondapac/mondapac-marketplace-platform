@@ -1,3 +1,4 @@
+import type { MarketId } from '@mondapac/shared-kernel';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
@@ -544,7 +545,7 @@ describe('validateTypeRevision, the new-type rules (FE-091, design 5)', () => {
     };
     expect(Object.keys(seeds).sort()).toEqual(['AU', 'ZZ']);
     for (const [marketId, types] of Object.entries(seeds)) {
-      const { supportedLocales } = markets.get(marketId);
+      const { supportedLocales } = markets.get(marketId as MarketId);
       for (const seeded of types) {
         expect([seeded.code, codes(seeded.content, supportedLocales)]).toEqual([seeded.code, []]);
       }

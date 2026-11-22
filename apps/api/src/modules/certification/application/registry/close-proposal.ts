@@ -40,8 +40,9 @@ export type CloseProposalFailure =
  * The body of the reject and withdraw use cases (design 7.6): `reject` by an admin who is not the
  * proposer, `withdraw` by the proposer only. The proposal must belong to the route's subject and
  * one of `subjects`; one unit moves it under its version and writes its audit row. Nothing else
- * changes: the subject stays as it was (a rejected relaxing revision is never published). The
- * caller's use case declares the subject's edit key.
+ * changes: the subject stays as it was (a rejected relaxing revision is never published), except
+ * a new type's `type-creation` proposal, which takes its `proposed` type to `rejected` or
+ * `withdrawn` in the same unit (FE-091). The caller's use case declares the subject's edit key.
  */
 export async function closeSubjectProposal(
   deps: RegistryDependencies,
@@ -79,6 +80,18 @@ export async function closeSubjectProposal(
       if (!closed.ok) return err(closed.error);
       if (proposal.version !== version.value) return err({ code: 'conflict.stale' } as const);
       const state = closed.value as 'rejected' | 'withdrawn';
+      if (proposal.subject === 'type-creation') {
+        // A new type's proposal closes the type with it (FE-091): `rejected` or `withdrawn`, for
+        // good. Lock order: the type row, then its proposal.
+        const type = await deps.registry.typeOfAnyStatus(
+          market,
+          proposal.subjectId as Id<'CertificationType'>,
+        );
+        if (type === null || type.status !== 'proposed') {
+          throw new Error('a pending type-creation proposal without its proposed type');
+        }
+        await deps.registry.setTypeStatus(market, type.id, state, type.version);
+      }
       await deps.registry.closeProposal(market, {
         id: proposalId,
         expectedVersion: version.value,

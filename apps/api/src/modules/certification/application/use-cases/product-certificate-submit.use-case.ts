@@ -13,7 +13,7 @@ import {
 } from '../../domain/product-certification';
 import type { DraftField } from '../../domain/seller-certificate';
 import type { StoredProductCertification } from '../ports/product-certification.repository';
-import type { StoredType, StoredTypeRevision } from '../ports/registry.repository';
+import type { LiveStoredType, StoredTypeRevision } from '../ports/registry.repository';
 import {
   adminOf,
   invalid,
@@ -123,7 +123,7 @@ export class ProductCertificateSubmit extends UseCase<
       .run<
         {
           root: StoredProductCertification;
-          type: StoredType;
+          type: LiveStoredType;
           typeRevision: StoredTypeRevision;
         } | null,
         never

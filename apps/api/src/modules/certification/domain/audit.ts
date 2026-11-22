@@ -258,6 +258,48 @@ export const TypeReactivationApprovedAudit = defineAuditAction({
   after: { proposalId: auditField.id() },
 });
 
+/**
+ * A new type was proposed from the admin panel (FE-091; new-type design 5): the type `proposed`,
+ * its first revision and a pending `type-creation` proposal. Ids, numbers and flags only: the
+ * code, names and terms are in the registry, never in the audit row.
+ */
+export const TypeProposedAudit = defineAuditAction({
+  action: 'certification.type.proposed',
+  targetType: CERTIFICATION_TYPE_TARGET,
+  actors: ['authenticated'],
+  after: {
+    proposalId: auditField.id(),
+    revisionId: auditField.id(),
+    revisionNo: auditField.integer(),
+    reasonGiven: auditField.boolean(),
+  },
+});
+
+/**
+ * The proposer changed their proposed type (FE-091): a new revision, the earlier proposal
+ * `superseded` and a new pending one, so an approval of what was shown before is stale.
+ */
+export const TypeProposalRevisedAudit = defineAuditAction({
+  action: 'certification.type.proposal-revised',
+  targetType: CERTIFICATION_TYPE_TARGET,
+  actors: ['authenticated'],
+  after: {
+    proposalId: auditField.id(),
+    supersededProposalId: auditField.id(),
+    revisionId: auditField.id(),
+    revisionNo: auditField.integer(),
+    reasonGiven: auditField.boolean(),
+  },
+});
+
+/** A second admin approved a proposed type; it is active (FE-091; H1). */
+export const TypeCreatedAudit = defineAuditAction({
+  action: 'certification.type.created',
+  targetType: CERTIFICATION_TYPE_TARGET,
+  actors: ['authenticated'],
+  after: { proposalId: auditField.id(), revisionId: auditField.id() },
+});
+
 /** An issuer was added to the registry, `proposed` (design 3.5). */
 export const IssuerCreatedAudit = defineAuditAction({
   action: 'certification.issuer.created',
@@ -584,6 +626,9 @@ export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Obj
   TypeDeactivatedAudit,
   TypeReactivationRequestedAudit,
   TypeReactivationApprovedAudit,
+  TypeProposedAudit,
+  TypeProposalRevisedAudit,
+  TypeCreatedAudit,
   IssuerCreatedAudit,
   IssuerActivatedAudit,
   IssuerClosedToNewAudit,

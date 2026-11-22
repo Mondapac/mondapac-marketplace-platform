@@ -5,8 +5,10 @@ import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import type {
   CertificationRegistryRepository,
   IssuerStateWrite,
+  LiveStoredType,
   NewIssuer,
   NewProposal,
+  NewProposedType,
   NewTypeRevision,
   StoredIssuer,
   StoredProposal,
@@ -15,7 +17,14 @@ import type {
   TypeListRow,
 } from '../application/ports/registry.repository';
 import type { IssuerState } from '../domain/issuer';
-import type { ProposalState, ProposalSubject, TypeStatus } from '../domain/registry';
+import {
+  LIVE_TYPE_STATUSES,
+  TYPE_STATUSES,
+  isLiveTypeStatus,
+  type ProposalState,
+  type ProposalSubject,
+  type TypeStatus,
+} from '../domain/registry';
 import type {
   TypeDefaultBasis,
   TypeLocaleContent,
@@ -26,7 +35,11 @@ const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMillis
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
 
-const TYPE_SUBJECTS: readonly ProposalSubject[] = ['type-revision', 'type-reactivation'];
+const TYPE_SUBJECTS: readonly ProposalSubject[] = [
+  'type-revision',
+  'type-reactivation',
+  'type-creation',
+];
 const ISSUER_STATES: readonly string[] = ['proposed', 'active', 'closed-to-new', 'derecognised'];
 const PROPOSAL_STATES: readonly string[] = [
   'pending',
@@ -49,14 +62,17 @@ interface TypeRow {
 }
 
 function toType(row: TypeRow): StoredType {
-  if (row.publishedRevisionId === null || (row.status !== 'active' && row.status !== 'inactive')) {
+  if (
+    row.publishedRevisionId === null ||
+    !(TYPE_STATUSES as readonly string[]).includes(row.status)
+  ) {
     // Only the creating unit sees a type without its pointer; a read here is a fault.
     throw new Error(`certification type ${row.code} has no published revision`);
   }
   return {
     id: row.id as Id<'CertificationType'>,
     code: row.code,
-    status: row.status,
+    status: row.status as TypeStatus,
     verificationMode: row.verificationMode as VerificationMode,
     publishedRevisionId: row.publishedRevisionId as Id<'CertificationTypeRevision'>,
     version: row.version,
@@ -150,6 +166,8 @@ const ISSUER_INCLUDE = { type: { select: { code: true } } } as const;
  */
 /** The unique index on a type's revision numbers (claims-core migration). */
 const REVISION_NO_KEY = 'certification_type_revisions_market_id_type_id_revision_no_key';
+/** The unique index on a type's code within its Market (claims-core migration). */
+const TYPE_CODE_KEY = 'certification_types_market_id_code_key';
 
 export class PrismaCertificationRegistryRepository implements CertificationRegistryRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -196,12 +214,64 @@ export class PrismaCertificationRegistryRepository implements CertificationRegis
     });
   }
 
-  async type(market: MarketContext, typeId: Id<'CertificationType'>): Promise<StoredType | null> {
+  async type(
+    market: MarketContext,
+    typeId: Id<'CertificationType'>,
+  ): Promise<LiveStoredType | null> {
+    const row = await this.prisma.tx(market).certificationType.findFirst({
+      where: { marketId: market.marketId, id: typeId, status: { in: [...LIVE_TYPE_STATUSES] } },
+      select: TYPE_SELECT,
+    });
+    if (row === null) return null;
+    const type = toType(row);
+    if (!isLiveTypeStatus(type.status)) throw new Error('certification type read is not live');
+    return type as LiveStoredType;
+  }
+
+  async typeOfAnyStatus(
+    market: MarketContext,
+    typeId: Id<'CertificationType'>,
+  ): Promise<StoredType | null> {
     const row = await this.prisma.tx(market).certificationType.findFirst({
       where: { marketId: market.marketId, id: typeId },
       select: TYPE_SELECT,
     });
     return row === null ? null : toType(row);
+  }
+
+  async createType(
+    market: MarketContext,
+    type: NewProposedType,
+  ): Promise<'type.code-taken' | null> {
+    const tx = this.prisma.tx(market);
+    try {
+      // Inserted without its pointer; the revision and its content follow, then the pointer
+      // (only this unit sees the NULL, as for the seed).
+      await tx.certificationType.create({
+        data: {
+          id: type.typeId,
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          code: type.code,
+          verificationMode: type.revision.content.verificationMode,
+          status: 'proposed',
+          publishedRevisionId: null,
+          version: 1,
+          createdAt: toDate(type.revision.createdAt),
+        },
+        select: { id: true },
+      });
+    } catch (error) {
+      if (this.prisma.violatedConstraint(error) === TYPE_CODE_KEY) return 'type.code-taken';
+      throw error;
+    }
+    await this.addRevision(market, { ...type.revision, typeId: type.typeId });
+    await tx.certificationType.update({
+      where: { id: type.typeId, marketId: market.marketId },
+      data: { publishedRevisionId: type.revision.id },
+      select: { id: true },
+    });
+    return null;
   }
 
   async revision(

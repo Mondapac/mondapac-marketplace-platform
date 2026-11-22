@@ -201,6 +201,8 @@ export const RELAXATION_SUBJECTS = [
   'claim-policy-revision',
   'issuer-reactivation',
   'type-reactivation',
+  // A new type proposed from the admin panel (FE-091): a second admin approves it.
+  'type-creation',
 ] as const;
 
 /**

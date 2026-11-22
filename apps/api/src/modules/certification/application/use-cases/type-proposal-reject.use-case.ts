@@ -11,7 +11,7 @@ import { parseTypeId, type RegistryDependencies } from '../registry/registry.sha
 
 /**
  * `type-proposal.reject` (certification design 7.2, 7.6; slice 12): an admin who is not the
- * proposer rejects a pending type proposal (a relaxing revision or a reactivation); the type stays
+ * proposer rejects a pending type proposal (a relaxing revision, a reactivation or a new type, which is then rejected for good); the type stays
  * as it was and the revision is never published. Audit `certification.relaxation-proposal.rejected`.
  * Rule: key `certification.type.edit` (protected), not acting-as.
  */
@@ -38,7 +38,7 @@ export class TypeProposalReject extends UseCase<
   ): Promise<Result<CloseProposalOutput, CloseProposalFailure>> {
     return closeSubjectProposal(this.deps, context, input, {
       action: 'reject',
-      subjects: ['type-revision', 'type-reactivation'],
+      subjects: ['type-revision', 'type-reactivation', 'type-creation'],
       parseSubjectId: parseTypeId,
       msg: 'certification.type-proposal-reject',
     });

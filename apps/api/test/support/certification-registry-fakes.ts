@@ -7,8 +7,10 @@ import type {
 import type {
   CertificationRegistryRepository,
   IssuerStateWrite,
+  LiveStoredType,
   NewIssuer,
   NewProposal,
+  NewProposedType,
   NewTypeRevision,
   StoredIssuer,
   StoredProposal,
@@ -17,7 +19,11 @@ import type {
   TypeListRow,
 } from '../../src/modules/certification/application/ports/registry.repository';
 import type { ExpertApproval } from '../../src/modules/certification/domain/issuer';
-import type { ProposalSubject, TypeStatus } from '../../src/modules/certification/domain/registry';
+import {
+  isLiveTypeStatus,
+  type ProposalSubject,
+  type TypeStatus,
+} from '../../src/modules/certification/domain/registry';
 import type { TypeRevisionContent } from '../../src/modules/certification/domain/type-revision';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../src/platform/unit-of-work/unit-of-work';
@@ -150,9 +156,40 @@ export class MemoryRegistry implements CertificationRegistryRepository {
     return Promise.resolve(rows);
   }
 
-  type(market: MarketContext, typeId: Id<'CertificationType'>): Promise<StoredType | null> {
+  type(market: MarketContext, typeId: Id<'CertificationType'>): Promise<LiveStoredType | null> {
+    const row = this.mine(market, this.state.types.get(typeId));
+    return Promise.resolve(
+      row === null || !isLiveTypeStatus(row.status) ? null : (this.strip(row) as LiveStoredType),
+    );
+  }
+
+  typeOfAnyStatus(
+    market: MarketContext,
+    typeId: Id<'CertificationType'>,
+  ): Promise<StoredType | null> {
     const row = this.mine(market, this.state.types.get(typeId));
     return Promise.resolve(row === null ? null : this.strip(row));
+  }
+
+  async createType(
+    market: MarketContext,
+    type: NewProposedType,
+  ): Promise<'type.code-taken' | null> {
+    const taken = [...this.state.types.values()].some(
+      (t) => t.marketId === market.marketId && t.code === type.code,
+    );
+    if (taken) return 'type.code-taken';
+    this.state.types.set(type.typeId, {
+      marketId: market.marketId,
+      id: type.typeId,
+      code: type.code,
+      status: 'proposed',
+      verificationMode: type.revision.content.verificationMode,
+      publishedRevisionId: type.revision.id,
+      version: 1,
+    });
+    await this.addRevision(market, { ...type.revision, typeId: type.typeId });
+    return null;
   }
 
   revision(
@@ -225,6 +262,14 @@ export class MemoryRegistry implements CertificationRegistryRepository {
     expectedVersion: number,
   ): Promise<void> {
     const row = this.typeAt(market, typeId, expectedVersion);
+    // The status lifecycle trigger (type-creation migration).
+    const allowed =
+      row.status === 'proposed'
+        ? status !== 'inactive'
+        : isLiveTypeStatus(row.status)
+          ? isLiveTypeStatus(status)
+          : false;
+    if (!allowed) throw new Error('certification_types_guard_status');
     row.status = status;
     row.version += 1;
     return Promise.resolve();

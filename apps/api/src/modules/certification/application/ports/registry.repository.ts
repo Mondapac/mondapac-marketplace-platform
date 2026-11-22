@@ -1,6 +1,11 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { IssuerState } from '../../domain/issuer';
-import type { ProposalState, ProposalSubject, TypeStatus } from '../../domain/registry';
+import type {
+  LiveTypeStatus,
+  ProposalState,
+  ProposalSubject,
+  TypeStatus,
+} from '../../domain/registry';
 import type { TypeRevisionContent, VerificationMode } from '../../domain/type-revision';
 
 // The admin registry of certification slice 12 (design 3.5, 3.6, 7.6; data design 3.1 to 3.3, 3.7,
@@ -17,6 +22,9 @@ export interface StoredType {
   readonly publishedRevisionId: Id<'CertificationTypeRevision'>;
   readonly version: number;
 }
+
+/** A type sellers, buyers and the claim-text guard know: `active` or `inactive`. */
+export type LiveStoredType = StoredType & { readonly status: LiveTypeStatus };
 
 /** One revision with its texts and terms (data design 3.2, 3.3). */
 export interface StoredTypeRevision {
@@ -79,6 +87,13 @@ export interface NewTypeRevision {
   readonly createdAt: Temporal.Instant;
 }
 
+/** A new type proposed from the admin panel (FE-091). */
+export interface NewProposedType {
+  readonly typeId: Id<'CertificationType'>;
+  readonly code: string;
+  readonly revision: Omit<NewTypeRevision, 'typeId'>;
+}
+
 export interface NewProposal {
   readonly id: Id<'RelaxationProposal'>;
   readonly subject: ProposalSubject;
@@ -112,9 +127,24 @@ export interface IssuerStateWrite {
 }
 
 export interface CertificationRegistryRepository {
-  /** Every type of the Market, by code (a Market has a handful). */
+  /** Every type of the Market whatever its status, by code (a Market has a handful). */
   listTypes(market: MarketContext): Promise<readonly TypeListRow[]>;
-  type(market: MarketContext, typeId: Id<'CertificationType'>): Promise<StoredType | null>;
+  /**
+   * A live type (`active` or `inactive`), or null. A proposed, rejected or withdrawn type is null
+   * here, so every path outside the new-type proposal treats it as unknown (FE-091; fail closed).
+   */
+  type(market: MarketContext, typeId: Id<'CertificationType'>): Promise<LiveStoredType | null>;
+  /** A type whatever its status: only the admin registry's read, save and proposal use cases. */
+  typeOfAnyStatus(
+    market: MarketContext,
+    typeId: Id<'CertificationType'>,
+  ): Promise<StoredType | null>;
+  /**
+   * Inserts a `proposed` type, its revision 1 with texts and terms, and points at it (one unit,
+   * as the seed does; version 1). A code the Market already has, whatever its status, answers
+   * `type.code-taken` (the unique `(market, code)` index) and the unit is the caller's to end.
+   */
+  createType(market: MarketContext, type: NewProposedType): Promise<'type.code-taken' | null>;
   revision(
     market: MarketContext,
     revisionId: Id<'CertificationTypeRevision'>,
