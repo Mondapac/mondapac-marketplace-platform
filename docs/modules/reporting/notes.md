@@ -152,3 +152,36 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
 - Follow-up (Hassan, PR 12 L3): `isFactRefusal` treats any `RangeError` or `TypeError` as a
   refusal; a reporting-owned refusal error class would keep a future programming error from being
   passed over (FE register, «خطای ردّ ویژهٔ reporting»).
+
+
+## Admin KPIs (phase 5, PR 14)
+
+`GET dashboard/admin/kpis?period=today|7d|30d|month` (default `7d`; any other value or key is
+`validation.failed`). The dashboard composes two reporting reads and leaves out a section the
+viewer has no key for; one that fails or takes over 1.5 s answers `status: error` and the other
+still answers.
+
+- `reporting.view-marketplace-operations-kpis` (key `ordering.order.view`): paid orders, cancelled
+  and the cancel rate, shipped and the on-time rate, refund count. No money.
+- `reporting.view-marketplace-finance-kpis` (key `commission-payouts.settlement.view`, the ledger's
+  finance key; a dedicated key is FE-068; every role granted the ledger now also sees marketplace GMV, and the two cannot be granted apart: Hassan's note, 22 Nov): GMV with and without GST (goods only, shipping apart),
+  refunded goods on their refund day (positive, never lowers GMV), refund rate, net sales (GMV minus
+  that range's refunds) and the average order. Net revenue and take rate wait for a week of matching
+  ledger (FE-066).
+- Both: a platform admin acting as themselves only (`access.denied` for a seller, an acting-as
+  session or a customer). Each answers the period, the previous period of the same length (for
+  `month`, the same number of days from the first of the previous month), one point per day of both
+  for the dashed line, a change per number and when the newest rollup row was rebuilt ("updated N
+  min ago").
+- "Today" and every day are the Market's days (zone from Market configuration), never UTC.
+- Money is minor units as strings with the Market's currency (the only currency read, FE-069).
+- Rates are basis points. A change is a percentage in basis points of the previous value, or `na`
+  when the previous value is zero or below 5 orders, 5 refunds or 100.00 of money. A rate's change
+  is the difference in basis points (2.0% to 3.5% is +150), or `na` when a period has no rate or the previous period is below the same minimum bases.
+- Cancel rate is cancelled on their cancel day ÷ paid on their paid day, so in a short period such as today it can pass 100%; a cohort rate is not built (Sajad's note, 22 Nov).
+- Both sections read "now" separately, so a request across Market midnight could show two different periods (`period.id`/dates are in each section).
+- On time counts only shipped orders; an order unshipped past its promise is not in the rollup yet,
+  so the figure can read better than the truth (FE-067).
+- One grouped read per range of `daily_seller_sales`, summed over sellers in the database, in one
+  read-only unit (ADR-0025). No cache (FE-070 when it is needed).
+- No table, migration or permission is added.

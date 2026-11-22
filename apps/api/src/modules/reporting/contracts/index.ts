@@ -1,3 +1,3 @@
-// The public contracts of reporting (ADR-0008 decision 6). Nothing is public yet: the KPI and
-// trend facades arrive with the admin and seller KPI phases.
-export {};
+// The public contracts of reporting (ADR-0008 decision 6): the KPI reads of the dashboards. The
+// seller KPI contracts (phase 6) join them.
+export * from './reporting-kpi.facade';
