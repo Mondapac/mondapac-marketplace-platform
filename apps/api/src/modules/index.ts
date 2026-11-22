@@ -33,6 +33,7 @@ import { ReviewsModule } from './reviews';
 import { SettingsModule } from './settings';
 import { ListsModule } from './lists';
 import { PromotionsModule } from './promotions';
+import { ReportingModule } from './reporting';
 import { SecurityModule } from './security';
 import { SystemRequestsModule } from './system-requests';
 import { DashboardModule } from './dashboard';
@@ -67,6 +68,7 @@ export const CORE_MODULES = [
   SecurityModule,
   SystemRequestsModule,
   DashboardModule,
+  ReportingModule,
 ];
 
 /**

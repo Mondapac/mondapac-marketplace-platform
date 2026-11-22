@@ -1,0 +1,185 @@
+// The reporting module's tables (dashboards upgrade, option B, phase 3): the facts the dashboard
+// numbers are built from, and the daily rollups the KPI and trend reads use. Every model is named
+// Reporting<Name> and mapped to its table with @@map. The CHECKs and the grants are hand-written in
+// the migration.
+//
+// Rules (design section 6):
+// - reporting never reads another module's table: the facts are written from the owning modules'
+//   facades, by the event worker, the nightly reconcile and the history backfill.
+// - `market_day` is the calendar day of the instant in the Market's configured time zone, never UTC.
+// - Money is BigInt minor units with its ISO 4217 currency. Amounts include tax (`*_amount`) with
+//   the tax beside them (`*_tax_amount`), so the amount without tax is always `amount - tax`.
+// - A refund is recorded on its own day as negative sales entries; the day of the order it
+//   refunds never changes, so a past day's number stays as it was.
+// - Ids of other modules carry no foreign key.
+
+/// One seller order as reporting knows it: the instants of its lifecycle and the day of each in the
+/// Market's zone, its goods and shipping totals at payment, and whether it shipped by its delivery
+/// promise. Written again from ordering's facade on every event of the seller order, so a repeated
+/// or late event converges on the stored state (last read wins).
+model ReportingSellerOrder {
+  marketId          String    @map("market_id") @db.VarChar(8)
+  tenantId          String    @map("tenant_id")
+  sellerOrderId     String    @map("seller_order_id") @db.Uuid
+  orderId           String    @map("order_id") @db.Uuid
+  sellerId          String    @map("seller_id") @db.Uuid
+  currency          String    @db.Char(3)
+  /// Goods after discounts, with tax; shipping is apart (GMV counts goods only).
+  goodsAmount       BigInt    @map("goods_amount")
+  goodsTaxAmount    BigInt    @map("goods_tax_amount")
+  units             Int
+  shippingAmount    BigInt    @map("shipping_amount")
+  shippingTaxAmount BigInt    @map("shipping_tax_amount")
+  paidAt            DateTime? @map("paid_at") @db.Timestamptz(6)
+  paidDay           DateTime? @map("paid_day") @db.Date
+  cancelledAt       DateTime? @map("cancelled_at") @db.Timestamptz(6)
+  cancelledDay      DateTime? @map("cancelled_day") @db.Date
+  shippedAt         DateTime? @map("shipped_at") @db.Timestamptz(6)
+  shippedDay        DateTime? @map("shipped_day") @db.Date
+  /// Null until the seller order ships or its promise passes unshipped; then whether it shipped
+  /// by the promise of its delivery method (false also for one still unshipped past it).
+  shippedOnTime     Boolean?  @map("shipped_on_time")
+  deliveredAt       DateTime? @map("delivered_at") @db.Timestamptz(6)
+  deliveredDay      DateTime? @map("delivered_day") @db.Date
+  recordedAt        DateTime  @map("recorded_at") @db.Timestamptz(6)
+  updatedAt         DateTime  @map("updated_at") @db.Timestamptz(6)
+
+  @@id([marketId, sellerOrderId])
+  @@index([marketId, paidDay, sellerId])
+  @@index([marketId, cancelledDay, sellerId])
+  @@index([marketId, shippedDay, sellerId])
+  @@index([marketId, deliveredDay, sellerId])
+  @@map("seller_orders")
+  @@schema("reporting")
+}
+
+/// One succeeded refund: its day in the Market's zone and its totals (goods and shipping, with
+/// tax), stored as positive amounts as ordering records them. Its goods also appear as negative
+/// sales entries on the same day.
+model ReportingRefund {
+  marketId          String   @map("market_id") @db.VarChar(8)
+  tenantId          String   @map("tenant_id")
+  refundId          String   @map("refund_id") @db.Uuid
+  orderId           String   @map("order_id") @db.Uuid
+  sellerOrderId     String   @map("seller_order_id") @db.Uuid
+  sellerId          String   @map("seller_id") @db.Uuid
+  currency          String   @db.Char(3)
+  /// The whole refund, goods and shipping, with tax.
+  amount            BigInt
+  taxAmount         BigInt   @map("tax_amount")
+  shippingAmount    BigInt   @map("shipping_amount")
+  shippingTaxAmount BigInt   @map("shipping_tax_amount")
+  refundedAt        DateTime @map("refunded_at") @db.Timestamptz(6)
+  refundDay         DateTime @map("refund_day") @db.Date
+  recordedAt        DateTime @map("recorded_at") @db.Timestamptz(6)
+  updatedAt         DateTime @map("updated_at") @db.Timestamptz(6)
+
+  @@id([marketId, refundId])
+  @@index([marketId, refundDay, sellerId])
+  @@map("refunds")
+  @@schema("reporting")
+}
+
+/// The goods of a paid seller order (`kind` sale, positive) or of a refund (`kind` refund,
+/// negative), split by category, on the day of the payment or of the refund. `source_id` is the
+/// seller order or the refund. `category_id` is the product's category when the entry was
+/// written; the nil UUID stands for goods whose category could not be read.
+model ReportingSalesEntry {
+  marketId      String   @map("market_id") @db.VarChar(8)
+  tenantId      String   @map("tenant_id")
+  /// sale | refund.
+  kind          String
+  sourceId      String   @map("source_id") @db.Uuid
+  categoryId    String   @map("category_id") @db.Uuid
+  orderId       String   @map("order_id") @db.Uuid
+  sellerOrderId String   @map("seller_order_id") @db.Uuid
+  sellerId      String   @map("seller_id") @db.Uuid
+  currency      String   @db.Char(3)
+  marketDay     DateTime @map("market_day") @db.Date
+  /// Signed: at least 0 for a sale, at most 0 for a refund (CHECK).
+  amount        BigInt
+  taxAmount     BigInt   @map("tax_amount")
+  units         Int
+  recordedAt    DateTime @map("recorded_at") @db.Timestamptz(6)
+
+  @@id([marketId, kind, sourceId, categoryId])
+  @@index([marketId, marketDay, sellerId])
+  @@map("sales_entries")
+  @@schema("reporting")
+}
+
+/// The daily rollup per seller: one row per Market day, seller and currency, rebuilt from the
+/// facts above whenever a fact of that day and seller changes. Removed when no fact remains.
+model ReportingDailySellerSales {
+  marketId            String   @map("market_id") @db.VarChar(8)
+  tenantId            String   @map("tenant_id")
+  marketDay           DateTime @map("market_day") @db.Date
+  sellerId            String   @map("seller_id") @db.Uuid
+  currency            String   @db.Char(3)
+  /// Seller orders paid on the day, with their goods (GMV) and shipping.
+  ordersPaid          Int      @map("orders_paid")
+  goodsAmount         BigInt   @map("goods_amount")
+  goodsTaxAmount      BigInt   @map("goods_tax_amount")
+  units               Int
+  shippingAmount      BigInt   @map("shipping_amount")
+  shippingTaxAmount   BigInt   @map("shipping_tax_amount")
+  ordersCancelled     Int      @map("orders_cancelled")
+  ordersShipped       Int      @map("orders_shipped")
+  ordersShippedOnTime Int      @map("orders_shipped_on_time")
+  ordersDelivered     Int      @map("orders_delivered")
+  /// Refunds that succeeded on the day (whatever the day of their order), as NEGATIVE amounts, like
+  /// the sales entries: goods and shipping apart, so net GMV is `goods_amount + refund_goods_amount`.
+  refunds                 Int
+  refundGoodsAmount       BigInt   @map("refund_goods_amount")
+  refundGoodsTaxAmount    BigInt   @map("refund_goods_tax_amount")
+  refundShippingAmount    BigInt   @map("refund_shipping_amount")
+  refundShippingTaxAmount BigInt   @map("refund_shipping_tax_amount")
+  refreshedAt         DateTime @map("refreshed_at") @db.Timestamptz(6)
+
+  @@id([marketId, marketDay, sellerId, currency])
+  @@index([marketId, sellerId, marketDay])
+  @@map("daily_seller_sales")
+  @@schema("reporting")
+}
+
+/// The daily rollup per seller and category: sales and refunds of goods on the day (refunds
+/// negative), rebuilt from the sales entries of that day and seller.
+model ReportingDailyCategorySales {
+  marketId        String   @map("market_id") @db.VarChar(8)
+  tenantId        String   @map("tenant_id")
+  marketDay       DateTime @map("market_day") @db.Date
+  sellerId        String   @map("seller_id") @db.Uuid
+  categoryId      String   @map("category_id") @db.Uuid
+  currency        String   @db.Char(3)
+  /// Seller orders with goods of the category paid on the day.
+  orders          Int
+  salesAmount     BigInt   @map("sales_amount")
+  salesTaxAmount  BigInt   @map("sales_tax_amount")
+  salesUnits      Int      @map("sales_units")
+  /// At most 0.
+  refundAmount    BigInt   @map("refund_amount")
+  refundTaxAmount BigInt   @map("refund_tax_amount")
+  refundUnits     Int      @map("refund_units")
+  refreshedAt     DateTime @map("refreshed_at") @db.Timestamptz(6)
+
+  @@id([marketId, marketDay, sellerId, categoryId, currency])
+  @@index([marketId, marketDay, categoryId])
+  @@index([marketId, sellerId, marketDay])
+  @@map("daily_category_sales")
+  @@schema("reporting")
+}
+
+/// Reporting's inbox (P 6.4): one row per consumed event and handler, so a repeated delivery
+/// changes nothing. Insert-only.
+model ReportingInbox {
+  eventId     String   @map("event_id") @db.Uuid
+  /// The subscriber's name, "reporting.<handler>".
+  handler     String
+  marketId    String   @map("market_id") @db.VarChar(8)
+  tenantId    String   @map("tenant_id")
+  processedAt DateTime @map("processed_at") @db.Timestamptz(6)
+
+  @@id([eventId, handler])
+  @@map("inbox")
+  @@schema("reporting")
+}
