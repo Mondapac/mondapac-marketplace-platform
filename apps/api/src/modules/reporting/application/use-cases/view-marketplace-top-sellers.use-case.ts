@@ -60,7 +60,14 @@ export class ViewMarketplaceTopSellers extends UseCase<KpiInput, TopSellersAnswe
       const unit = await deps.unitOfWork.run(
         context.market,
         async () =>
-          ok(await deps.reader.topSellers(context.market, currency, period.current, TOP_SELLERS_LIMIT)),
+          ok(
+            await deps.reader.topSellers(
+              context.market,
+              currency,
+              period.current,
+              TOP_SELLERS_LIMIT,
+            ),
+          ),
         { readOnly: true },
       );
       if (!unit.ok) return err({ code: 'access.unavailable' });

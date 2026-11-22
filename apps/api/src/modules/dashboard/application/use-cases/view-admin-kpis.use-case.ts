@@ -10,11 +10,14 @@ import {
 } from '../../../../platform/authz';
 import { COMMISSION_PAYOUTS_SETTLEMENT_VIEW } from '../../../commission-payouts';
 import { ORDERING_ORDER_VIEW } from '../../../ordering';
+import type { Id } from '@mondapac/shared-kernel';
+import type { SellersFacade } from '../../../sellers';
 import type {
   FinanceAnswer,
   OperationsAnswer,
   PeriodId,
   ReportingKpiFacade,
+  TopSellersAnswer,
 } from '../../../reporting';
 import type { ViewerPermissions } from '../ports/viewer-permissions';
 
@@ -25,6 +28,22 @@ export const KPI_TIMEOUT_MS = 1_500;
 export type KpiSection<T> =
   { readonly status: 'ok'; readonly value: T } | { readonly status: 'error' };
 
+/** One row of the top-sellers table, with the seller's public store name (null: not known). */
+export interface NamedTopSeller {
+  readonly sellerId: string;
+  readonly storeName: string | null;
+  readonly gmvWithTax: bigint;
+  readonly ordersPaid: number;
+  readonly onTimeRateBp: number | null;
+  readonly refundRateBp: number | null;
+}
+
+export interface NamedTopSellers {
+  readonly period: TopSellersAnswer['period'];
+  readonly currency: string;
+  readonly rows: readonly NamedTopSeller[];
+}
+
 export interface AdminKpisAnswer {
   readonly generatedAt: Temporal.Instant;
   readonly period: PeriodId;
@@ -32,11 +51,14 @@ export interface AdminKpisAnswer {
   readonly operations: KpiSection<OperationsAnswer> | null;
   /** Null when the viewer does not hold `commission-payouts.settlement.view`. */
   readonly finance: KpiSection<FinanceAnswer> | null;
+  /** Null without `commission-payouts.settlement.view` (it shows each seller's money). */
+  readonly topSellers: KpiSection<NamedTopSellers> | null;
 }
 
 export interface AdminKpisDependencies {
   readonly viewer: ViewerPermissions;
   readonly reporting: ReportingKpiFacade;
+  readonly sellers: Pick<SellersFacade, 'sellerSummaries'>;
   readonly clock: Clock;
   /** {@link KPI_TIMEOUT_MS} outside tests. */
   readonly timeoutMs: number;
@@ -123,12 +145,15 @@ export class ViewAdminKpis extends UseCase<
     if (viewer.value.population !== 'admin') return err({ code: 'access.denied' });
     const held = new Set(viewer.value.permissionKeys);
     const { reporting, timeoutMs } = this.deps;
-    const [operations, finance] = await Promise.all([
+    const [operations, finance, topSellers] = await Promise.all([
       held.has(ORDERING_ORDER_VIEW.key)
         ? section('operations', timeoutMs, () => reporting.marketplaceOperations(context, input))
         : null,
       held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
         ? section('finance', timeoutMs, () => reporting.marketplaceFinance(context, input))
+        : null,
+      held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
+        ? section('top-sellers', timeoutMs, () => this.namedTopSellers(context, input))
         : null,
     ]);
     return ok({
@@ -136,6 +161,36 @@ export class ViewAdminKpis extends UseCase<
       period: input.period,
       operations,
       finance,
+      topSellers,
+    });
+  }
+
+  /**
+   * The top sellers with their public store names. A name that cannot be read leaves the row
+   * with a null name (the panel says "Unnamed store"); the money still shows.
+   */
+  private async namedTopSellers(
+    context: CallContext,
+    input: { readonly period: PeriodId },
+  ): Promise<Result<NamedTopSellers, AccessDenied>> {
+    const top = await this.deps.reporting.marketplaceTopSellers(context, input);
+    if (!top.ok) return top;
+    const ids = top.value.rows.map((row) => row.sellerId as Id<'Seller'>);
+    const names = new Map<string, string | null>();
+    if (ids.length > 0) {
+      try {
+        const summaries = await this.deps.sellers.sellerSummaries(context, ids);
+        if (summaries.ok) {
+          for (const summary of summaries.value) names.set(summary.sellerId, summary.storeName);
+        }
+      } catch (error) {
+        logger.warn({ msg: 'dashboard.admin-kpis.names', outcome: 'threw', error: nameOf(error) });
+      }
+    }
+    return ok({
+      period: top.value.period,
+      currency: top.value.currency,
+      rows: top.value.rows.map((row) => ({ ...row, storeName: names.get(row.sellerId) ?? null })),
     });
   }
 }

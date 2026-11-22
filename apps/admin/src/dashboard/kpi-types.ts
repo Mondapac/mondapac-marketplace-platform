@@ -58,7 +58,7 @@ export interface FinancePoint {
 }
 
 export type KpiSection<K> =
-  | { readonly status: 'ok'; readonly refreshedAt: string | null; readonly kpis: K }
+  | { readonly status: 'ok'; readonly refreshedAt?: string | null; readonly kpis: K }
   | { readonly status: 'error' };
 
 export interface OperationsKpis {
@@ -78,6 +78,20 @@ export interface FinanceKpis {
   readonly previousSeries: readonly FinancePoint[];
 }
 
+export interface TopSellerRow {
+  readonly sellerId: string;
+  /** The public store name; null when it could not be read. */
+  readonly storeName: string | null;
+  readonly gmvWithTax: KpiMoney;
+  readonly ordersPaid: number;
+  readonly onTimeRateBp: number | null;
+  readonly refundRateBp: number | null;
+}
+
+export interface TopSellersKpis {
+  readonly rows: readonly TopSellerRow[];
+}
+
 export interface AdminKpis {
   readonly generatedAt: string;
   readonly periodId: KpiPeriod;
@@ -88,6 +102,8 @@ export interface AdminKpis {
   } | null;
   readonly operations: KpiSection<OperationsKpis> | null;
   readonly finance: KpiSection<FinanceKpis> | null;
+  /** Needs the money key, like `finance`; null leaves the card out. */
+  readonly topSellers: KpiSection<TopSellersKpis> | null;
 }
 
 /** The KPI read as the page passes it: null when the session holds neither key. */

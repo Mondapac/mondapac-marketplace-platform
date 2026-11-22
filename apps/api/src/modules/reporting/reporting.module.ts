@@ -123,14 +123,20 @@ const ADMIN_KPI_DEPENDENCIES = Symbol('ADMIN_KPI_DEPENDENCIES');
         clock: Clock,
       ): AdminKpiDependencies => ({ unitOfWork, reader, zone, clock }),
     },
-    ...[ViewMarketplaceOperationsKpis, ViewMarketplaceFinanceKpis, ViewMarketplaceTopSellers].map((type) => ({
-      provide: type,
-      inject: [USE_CASE_GATE, ADMIN_KPI_DEPENDENCIES],
-      useFactory: (gate: UseCaseGate, deps: AdminKpiDependencies) => new type(gate, deps),
-    })),
+    ...[ViewMarketplaceOperationsKpis, ViewMarketplaceFinanceKpis, ViewMarketplaceTopSellers].map(
+      (type) => ({
+        provide: type,
+        inject: [USE_CASE_GATE, ADMIN_KPI_DEPENDENCIES],
+        useFactory: (gate: UseCaseGate, deps: AdminKpiDependencies) => new type(gate, deps),
+      }),
+    ),
     {
       provide: REPORTING_KPI_FACADE,
-      inject: [ViewMarketplaceOperationsKpis, ViewMarketplaceFinanceKpis, ViewMarketplaceTopSellers],
+      inject: [
+        ViewMarketplaceOperationsKpis,
+        ViewMarketplaceFinanceKpis,
+        ViewMarketplaceTopSellers,
+      ],
       useFactory: (
         operations: ViewMarketplaceOperationsKpis,
         finance: ViewMarketplaceFinanceKpis,
