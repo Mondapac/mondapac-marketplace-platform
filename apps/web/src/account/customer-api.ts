@@ -155,10 +155,17 @@ async function callOnce<T>(
     const details = isRecord(answer.details) ? answer.details : {};
     if (response.status === 401) return { kind: 'signed-out', code };
     if (response.status === 429) {
+      // The wait is in the details on some routes and only in `Retry-After` (seconds) on others.
       const after = details.retryAfterSeconds;
+      const header = Number(response.headers.get('retry-after'));
       return {
         kind: 'throttled',
-        retryAfterSeconds: typeof after === 'number' ? after : undefined,
+        retryAfterSeconds:
+          typeof after === 'number'
+            ? after
+            : Number.isSafeInteger(header) && header > 0
+              ? header
+              : undefined,
       };
     }
     // A 409 is a refusal to show only for the deletion request (its blockers and states); every

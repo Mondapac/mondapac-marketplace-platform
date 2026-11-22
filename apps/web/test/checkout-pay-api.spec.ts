@@ -8,7 +8,7 @@ const order = { addressId: ADDRESS, deliveryMethods: { s1: { method: 'pickup' as
 const calls: { path: string; method: string; headers: Record<string, string>; body: unknown }[] =
   [];
 
-function answerWith(status: number, json: unknown) {
+function answerWith(status: number, json: unknown, headers: Record<string, string> = {}) {
   calls.length = 0;
   forgetCsrfToken();
   vi.stubGlobal(
@@ -24,7 +24,7 @@ function answerWith(status: number, json: unknown) {
       return Promise.resolve(
         new Response(JSON.stringify(session ? { email: 'e', csrfToken: 'tok' } : json), {
           status: session ? 200 : status,
-          headers: { 'content-type': 'application/json' },
+          headers: { 'content-type': 'application/json', ...(session ? {} : headers) },
         }),
       );
     }),
@@ -92,5 +92,26 @@ describe('checkout and Pay through the relay', () => {
       value: { orderId: ORDER, checkoutUrl: 'https://checkout.stripe.com/c/pay/x' },
     });
     expect(calls.find((c) => c.path === '/api/orders/checkout')!.body).toEqual(order);
+  });
+
+  it("reads a throttle's wait from Retry-After when the body does not carry it", async () => {
+    answerWith(429, { statusCode: 429, code: 'request.throttled' }, { 'retry-after': '120' });
+    expect(await payByCard(order, 'ctoken_1', { amount: 1, currency: 'AUD' })).toEqual({
+      kind: 'throttled',
+      retryAfterSeconds: 120,
+    });
+    answerWith(429, { statusCode: 429, code: 'request.throttled' });
+    expect(await startHostedCheckout(order)).toEqual({
+      kind: 'throttled',
+      retryAfterSeconds: undefined,
+    });
+  });
+
+  it('never sends a total that is not whole minor units', async () => {
+    answerWith(200, { orderId: ORDER, status: 'authorised', clientSecret: null });
+    expect(await payByCard(order, 'ctoken_1', { amount: 54.9, currency: 'AUD' })).toEqual({
+      kind: 'failed',
+    });
+    expect(calls.some((c) => c.path === '/api/orders/pay')).toBe(false);
   });
 });

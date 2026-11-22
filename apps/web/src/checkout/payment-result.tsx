@@ -215,8 +215,8 @@ export function Confirmation() {
 
 /**
  * Stripe's success URL (`/checkout/success?order=<id>`): the order is confirmed when Stripe's
- * signed event arrives, so the page says the payment is being confirmed and points to the orders. The id comes from the URL and is only shown as the reference; nothing is read with it
- * here.
+ * signed event arrives, so the page says the payment is being confirmed and points to the
+ * orders. The id comes from the URL and is only shown as the reference; nothing is read with it.
  */
 export function HostedPaymentDone({ reference }: { readonly reference: string | null }) {
   const t = useTranslations('checkout');
