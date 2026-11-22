@@ -125,6 +125,25 @@ const topSellers = {
     ],
   },
 };
+const topCategories = {
+  status: 'ok' as const,
+  kpis: {
+    rows: [
+      {
+        categoryId: '01990000-0000-7000-8000-000000000061',
+        name: 'Fresh meat',
+        salesWithTax: { amountMinor: '500000', currency: 'AUD' },
+        orders: 40,
+      },
+      {
+        categoryId: '00000000-0000-0000-0000-000000000000',
+        name: null,
+        salesWithTax: { amountMinor: '20000', currency: 'AUD' },
+        orders: 2,
+      },
+    ],
+  },
+};
 const answer = (parts: Partial<AdminKpis>): KpiResult => ({
   kind: 'ok',
   value: {
@@ -138,6 +157,7 @@ const answer = (parts: Partial<AdminKpis>): KpiResult => ({
     operations: null,
     finance: null,
     topSellers: null,
+    topCategories: null,
     ...parts,
   },
 });
@@ -293,6 +313,50 @@ describe('the KPI formats', () => {
     const card = screen.getByRole('region', { name: 'Top sellers' });
     expect(within(card).queryByRole('link')).toBeNull();
     expect(within(card).getByText('Al-Noor Butchery')).toBeTruthy();
+  });
+
+  it('lists the top categories with sales and orders, and Uncategorised for an unknown one', () => {
+    strip(answer({ finance, topCategories }), ['commission-payouts.settlement.view']);
+    const card = screen.getByRole('region', { name: 'Top categories' });
+    const items = within(card).getAllByRole('listitem');
+    expect(items).toHaveLength(2);
+    expect(within(items[0]!).getByText('Fresh meat')).toBeTruthy();
+    expect(within(items[0]!).getByText('$5,000.00')).toBeTruthy();
+    expect(within(items[0]!).getByText('40 orders')).toBeTruthy();
+    expect(within(items[1]!).getByText('Uncategorised')).toBeTruthy();
+  });
+
+  it('says so in the top categories card when empty or failed, and leaves it out without the money key', () => {
+    const { unmount } = render(
+      wrap(
+        <AdminKpiStrip
+          source={answer({ finance, topCategories: { status: 'ok', kpis: { rows: [] } } })}
+          period="7d"
+          permissionKeys={BOTH}
+        />,
+      ),
+    );
+    expect(
+      within(screen.getByRole('region', { name: 'Top categories' })).getByText(
+        'No sales in this period yet.',
+      ),
+    ).toBeTruthy();
+    unmount();
+    const failed = render(
+      wrap(
+        <AdminKpiStrip
+          source={answer({ finance, topCategories: { status: 'error' } })}
+          period="7d"
+          permissionKeys={BOTH}
+        />,
+      ),
+    );
+    expect(
+      within(screen.getByRole('region', { name: 'Top categories' })).getByRole('alert'),
+    ).toBeTruthy();
+    failed.unmount();
+    strip(answer({ operations }), ['ordering.order.view']);
+    expect(screen.queryByRole('region', { name: 'Top categories' })).toBeNull();
   });
 
   it('says so in the top sellers card when nobody sold, and when the read failed', () => {

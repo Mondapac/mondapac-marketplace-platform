@@ -4,6 +4,7 @@ import type {
   AdminKpiReader,
   DailyTotals,
   SellerTotals,
+  CategoryTotals,
 } from '../application/ports/admin-kpi-reader';
 import type { DayRange } from '../domain/period';
 import { dateToDay, dayToDate } from './prisma-fact-store';
@@ -102,6 +103,33 @@ export class PrismaAdminKpiReader implements AdminKpiReader {
       ordersShipped: group._sum.ordersShipped ?? 0,
       ordersShippedOnTime: group._sum.ordersShippedOnTime ?? 0,
       refundGoodsAmount: group._sum.refundGoodsAmount ?? 0n,
+    }));
+  }
+
+  async topCategories(
+    market: MarketContext,
+    currency: string,
+    range: DayRange,
+    limit: number,
+  ): Promise<CategoryTotals[]> {
+    const groups = await this.prisma.tx(market).reportingDailyCategorySales.groupBy({
+      by: ['categoryId'],
+      where: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        currency,
+        marketDay: { gte: dayToDate(range.from), lte: dayToDate(range.to) },
+      },
+      _sum: { orders: true, salesAmount: true, refundAmount: true },
+      having: { salesAmount: { _sum: { gt: 0n } } },
+      orderBy: [{ _sum: { salesAmount: 'desc' } }, { categoryId: 'asc' }],
+      take: limit,
+    });
+    return groups.map((group) => ({
+      categoryId: group.categoryId,
+      orders: group._sum.orders ?? 0,
+      salesAmount: group._sum.salesAmount ?? 0n,
+      refundAmount: group._sum.refundAmount ?? 0n,
     }));
   }
 }

@@ -192,4 +192,72 @@ describe.each(TEST_MARKETS)('the admin KPI reader in market %s (database)', (cod
     ]);
     expect(await readTop('XXX', 5)).toEqual([]);
   });
+
+  it('ranks the categories by goods sold across sellers, inside the range, the currency and the Market', async () => {
+    const meat = idOf<'Category'>();
+    const bakery = idOf<'Category'>();
+    const dairy = idOf<'Category'>();
+    const sellerA = idOf<'Seller'>();
+    const sellerB = idOf<'Seller'>();
+    const inCategories = (
+      target: MarketContext,
+      fact: SellerOrderFact,
+      split: readonly [Id<'Category'>, bigint][],
+    ) =>
+      within(target, () =>
+        recorder.recordSellerOrder(
+          target,
+          fact,
+          split.map(([categoryId, amount]) => ({
+            categoryId,
+            goods: { amount, tax: amount / 11n },
+            units: 1,
+          })),
+        ),
+      );
+    const oneOrder = (seller: Id<'Seller'>, paidAt: string, split: [Id<'Category'>, bigint][]) => {
+      const total = split.reduce((sum, [, amount]) => sum + amount, 0n);
+      return inCategories(market, order(seller, paidAt, total, { units: split.length }), split);
+    };
+    // Two sellers add up in a category; one order may span two categories.
+    await oneOrder(sellerA, `2026-${M}-28T03:00:00Z`, [
+      [meat, 30_000n],
+      [bakery, 5_000n],
+    ]);
+    await oneOrder(sellerB, `2026-${M}-28T04:00:00Z`, [[meat, 20_000n]]);
+    await oneOrder(sellerB, `2026-${M}-29T04:00:00Z`, [[dairy, 7_000n]]);
+    await oneOrder(sellerA, `2026-${M}-30T03:00:00Z`, [[dairy, 900_000n]]); // outside the range
+    await within(other, () =>
+      recorder.recordSellerOrder(
+        other,
+        order(sellerA, `2026-${M}-28T03:00:00Z`, 5_000_000n, {}, CURRENCIES[otherMarketOf(code)]),
+        [
+          {
+            categoryId: bakery,
+            goods: { amount: 5_000_000n, tax: 0n },
+            units: 1,
+          },
+        ],
+      ),
+    );
+
+    const range = { from: day(`2026-${M}-28`), to: day(`2026-${M}-29`) };
+    const readTop = async (rowCurrency: string, limit: number) => {
+      const unit = await db.unitOfWork.run(
+        market,
+        async () => ok(await reader.topCategories(market, rowCurrency, range, limit)),
+        { readOnly: true },
+      );
+      if (!unit.ok) throw new Error('read failed');
+      return unit.value;
+    };
+    const top = await readTop(currency, 5);
+    expect(top.map((row) => [row.categoryId, row.salesAmount, row.orders])).toEqual([
+      [meat, 50_000n, 2],
+      [dairy, 7_000n, 1],
+      [bakery, 5_000n, 1],
+    ]);
+    expect((await readTop(currency, 1)).map((row) => row.categoryId)).toEqual([meat]);
+    expect(await readTop('XXX', 5)).toEqual([]);
+  });
 });

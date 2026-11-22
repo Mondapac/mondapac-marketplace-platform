@@ -94,6 +94,18 @@ export interface TopSellersKpis {
   readonly rows: readonly TopSellerRow[];
 }
 
+export interface TopCategoryRow {
+  readonly categoryId: string;
+  /** The category's name; null when it is gone or its goods had no readable category. */
+  readonly name: string | null;
+  readonly salesWithTax: KpiMoney;
+  readonly orders: number;
+}
+
+export interface TopCategoriesKpis {
+  readonly rows: readonly TopCategoryRow[];
+}
+
 export interface AdminKpis {
   readonly generatedAt: string;
   readonly periodId: KpiPeriod;
@@ -106,6 +118,8 @@ export interface AdminKpis {
   readonly finance: KpiSection<FinanceKpis> | null;
   /** Needs the money key, like `finance`; null leaves the card out. */
   readonly topSellers: KpiSection<TopSellersKpis> | null;
+  /** Needs the money key, like `finance`; null leaves the card out. */
+  readonly topCategories: KpiSection<TopCategoriesKpis> | null;
 }
 
 /** The KPI read as the page passes it: null when the session holds neither key. */

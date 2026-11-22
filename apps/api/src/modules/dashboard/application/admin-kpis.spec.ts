@@ -20,6 +20,7 @@ import type {
   FinanceAnswer,
   OperationsAnswer,
   ReportingKpiFacade,
+  TopCategoriesAnswer,
   TopSellersAnswer,
 } from '../../reporting';
 import type { DashboardViewer } from './ports/viewer-permissions';
@@ -97,6 +98,17 @@ const topSellers = {
   ],
 } as unknown as TopSellersAnswer;
 
+const NIL = '00000000-0000-0000-0000-000000000000';
+const topCategories = {
+  period: finance.period,
+  currency: 'AUD',
+  generatedAt: NOW,
+  rows: [
+    { categoryId: id(0x61), salesWithTax: 500_000n, orders: 40 },
+    { categoryId: NIL, salesWithTax: 20_000n, orders: 2 },
+  ],
+} as unknown as TopCategoriesAnswer;
+
 describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
   const market = testMarketContext(code, PLATFORM_TENANT_ID);
   const admin = testCallContext(
@@ -120,6 +132,12 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     const deps: AdminKpisDependencies = {
       viewer: { describe: () => Promise.resolve(ok(viewer(keys))) },
       reporting: facade,
+      catalog: {
+        categoryTree: () =>
+          Promise.resolve(
+            ok([{ id: id(0x61), parentId: null, slug: 'meat', name: 'Fresh meat', depth: 0 }]),
+          ),
+      },
       sellers: {
         sellerSummaries: (_context: unknown, ids: readonly Id<'Seller'>[]) =>
           Promise.resolve(
@@ -149,6 +167,10 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
         asked.push('finance');
         return Promise.resolve(ok(finance));
       },
+      marketplaceTopCategories: () => {
+        asked.push('top-categories');
+        return Promise.resolve(ok(topCategories));
+      },
       marketplaceTopSellers: () => {
         asked.push('top-sellers');
         return Promise.resolve(ok(topSellers));
@@ -158,7 +180,7 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
 
   it('asks only the sections whose keys the viewer holds', async () => {
     const out = await build([MONEY]).execute(admin, { period: '7d' });
-    expect(asked.sort()).toEqual(['finance', 'top-sellers']);
+    expect(asked.sort()).toEqual(['finance', 'top-categories', 'top-sellers']);
     expect(out.ok && out.value.operations).toBeNull();
     expect(out.ok && out.value.finance?.status).toBe('ok');
   });
@@ -178,11 +200,25 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     expect(asked).toEqual(['operations']);
   });
 
+  it('names the top categories from the live tree, null for a category it does not have', async () => {
+    const out = await build([MONEY]).execute(admin, { period: '7d' });
+    const body = out.ok ? adminKpisBody(out.value) : null;
+    expect(body?.topCategories?.kpis?.rows[0]).toMatchObject({
+      name: 'Fresh meat',
+      salesWithTax: { amountMinor: '500000', currency: 'AUD' },
+      orders: 40,
+    });
+    expect(body?.topCategories?.kpis?.rows[1]?.name).toBeNull();
+    const ordersOnly = await build([ORDERS]).execute(admin, { period: '7d' });
+    expect(ordersOnly.ok && ordersOnly.value.topCategories).toBeNull();
+  });
+
   it('keeps the money when the store names cannot be read', async () => {
     const deps: AdminKpisDependencies = {
       viewer: { describe: () => Promise.resolve(ok(viewer([MONEY]))) },
       reporting: facade,
       sellers: { sellerSummaries: () => Promise.reject(new TypeError('boom')) },
+      catalog: { categoryTree: () => Promise.reject(new TypeError('boom')) },
       clock: new FixedClock(NOW),
       timeoutMs: 50,
     };

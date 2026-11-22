@@ -11,12 +11,14 @@ import {
 import { COMMISSION_PAYOUTS_SETTLEMENT_VIEW } from '../../../commission-payouts';
 import { ORDERING_ORDER_VIEW } from '../../../ordering';
 import type { Id } from '@mondapac/shared-kernel';
+import type { CatalogIndexFacade } from '../../../catalog';
 import type { SellersFacade } from '../../../sellers';
 import type {
   FinanceAnswer,
   OperationsAnswer,
   PeriodId,
   ReportingKpiFacade,
+  TopCategoriesAnswer,
   TopSellersAnswer,
 } from '../../../reporting';
 import type { ViewerPermissions } from '../ports/viewer-permissions';
@@ -44,6 +46,20 @@ export interface NamedTopSellers {
   readonly rows: readonly NamedTopSeller[];
 }
 
+/** One row of the top-categories list, with the category's name (null: not known). */
+export interface NamedTopCategory {
+  readonly categoryId: string;
+  readonly name: string | null;
+  readonly salesWithTax: bigint;
+  readonly orders: number;
+}
+
+export interface NamedTopCategories {
+  readonly period: TopCategoriesAnswer['period'];
+  readonly currency: string;
+  readonly rows: readonly NamedTopCategory[];
+}
+
 export interface AdminKpisAnswer {
   readonly generatedAt: Temporal.Instant;
   readonly period: PeriodId;
@@ -53,12 +69,15 @@ export interface AdminKpisAnswer {
   readonly finance: KpiSection<FinanceAnswer> | null;
   /** Null without `commission-payouts.settlement.view` (it shows each seller's money). */
   readonly topSellers: KpiSection<NamedTopSellers> | null;
+  /** Null without `commission-payouts.settlement.view` (it shows money). */
+  readonly topCategories: KpiSection<NamedTopCategories> | null;
 }
 
 export interface AdminKpisDependencies {
   readonly viewer: ViewerPermissions;
   readonly reporting: ReportingKpiFacade;
   readonly sellers: Pick<SellersFacade, 'sellerSummaries'>;
+  readonly catalog: Pick<CatalogIndexFacade, 'categoryTree'>;
   readonly clock: Clock;
   /** {@link KPI_TIMEOUT_MS} outside tests. */
   readonly timeoutMs: number;
@@ -145,7 +164,7 @@ export class ViewAdminKpis extends UseCase<
     if (viewer.value.population !== 'admin') return err({ code: 'access.denied' });
     const held = new Set(viewer.value.permissionKeys);
     const { reporting, timeoutMs } = this.deps;
-    const [operations, finance, topSellers] = await Promise.all([
+    const [operations, finance, topSellers, topCategories] = await Promise.all([
       held.has(ORDERING_ORDER_VIEW.key)
         ? section('operations', timeoutMs, () => reporting.marketplaceOperations(context, input))
         : null,
@@ -155,6 +174,9 @@ export class ViewAdminKpis extends UseCase<
       held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
         ? section('top-sellers', timeoutMs, () => this.namedTopSellers(context, input))
         : null,
+      held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
+        ? section('top-categories', timeoutMs, () => this.namedTopCategories(context, input))
+        : null,
     ]);
     return ok({
       generatedAt: this.deps.clock.now(),
@@ -162,6 +184,41 @@ export class ViewAdminKpis extends UseCase<
       operations,
       finance,
       topSellers,
+      topCategories,
+    });
+  }
+
+  /**
+   * The top categories with their names from the live category tree. A category the tree does not
+   * have (deleted, or the nil UUID of unreadable goods) keeps a null name; the sales still show.
+   */
+  private async namedTopCategories(
+    context: CallContext,
+    input: { readonly period: PeriodId },
+  ): Promise<Result<NamedTopCategories, AccessDenied>> {
+    const top = await this.deps.reporting.marketplaceTopCategories(context, input);
+    if (!top.ok) return top;
+    const names = new Map<string, string>();
+    if (top.value.rows.length > 0) {
+      try {
+        const tree = await this.deps.catalog.categoryTree(context);
+        if (tree.ok) {
+          for (const category of tree.value) names.set(category.id, category.name);
+        } else {
+          logger.warn({ msg: 'dashboard.admin-kpis.category-names', outcome: tree.error.code });
+        }
+      } catch (error) {
+        logger.warn({
+          msg: 'dashboard.admin-kpis.category-names',
+          outcome: 'threw',
+          error: nameOf(error),
+        });
+      }
+    }
+    return ok({
+      period: top.value.period,
+      currency: top.value.currency,
+      rows: top.value.rows.map((row) => ({ ...row, name: names.get(row.categoryId) ?? null })),
     });
   }
 

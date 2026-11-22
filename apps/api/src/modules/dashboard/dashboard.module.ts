@@ -4,6 +4,8 @@ import { USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
 import {
   CATALOG_BRAND_READ,
+  CATALOG_INDEX_FACADE,
+  type CatalogIndexFacade,
   CATALOG_CATEGORY_PROPOSAL_DECIDE,
   CATALOG_PRODUCT_VIEW,
   CATALOG_WORK_QUEUE_FACADE,
@@ -399,18 +401,27 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
     },
     {
       provide: ViewAdminKpis,
-      inject: [USE_CASE_GATE, VIEWER_PERMISSIONS, REPORTING_KPI_FACADE, SELLERS_FACADE, CLOCK],
+      inject: [
+        USE_CASE_GATE,
+        VIEWER_PERMISSIONS,
+        REPORTING_KPI_FACADE,
+        SELLERS_FACADE,
+        CATALOG_INDEX_FACADE,
+        CLOCK,
+      ],
       useFactory: (
         gate: UseCaseGate,
         viewer: ViewerPermissions,
         reporting: ReportingKpiFacade,
         sellers: SellersFacade,
+        catalog: CatalogIndexFacade,
         clock: Clock,
       ) => {
         const deps: AdminKpisDependencies = {
           viewer,
           reporting,
           sellers,
+          catalog,
           clock,
           timeoutMs: KPI_TIMEOUT_MS,
         };

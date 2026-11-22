@@ -24,6 +24,7 @@ import { MARKET_ZONE, type MarketZone } from './application/ports/market-zone';
 import { REPORT_SOURCES, type ReportSources } from './application/ports/report-sources';
 import type { ReportFactsDependencies } from './application/report-facts-sync';
 import { ViewMarketplaceFinanceKpis } from './application/use-cases/view-marketplace-finance-kpis.use-case';
+import { ViewMarketplaceTopCategories } from './application/use-cases/view-marketplace-top-categories.use-case';
 import { ViewMarketplaceTopSellers } from './application/use-cases/view-marketplace-top-sellers.use-case';
 import { ViewMarketplaceOperationsKpis } from './application/use-cases/view-marketplace-operations-kpis.use-case';
 import { BackfillHistory } from './application/use-cases/backfill-history.use-case';
@@ -123,25 +124,30 @@ const ADMIN_KPI_DEPENDENCIES = Symbol('ADMIN_KPI_DEPENDENCIES');
         clock: Clock,
       ): AdminKpiDependencies => ({ unitOfWork, reader, zone, clock }),
     },
-    ...[ViewMarketplaceOperationsKpis, ViewMarketplaceFinanceKpis, ViewMarketplaceTopSellers].map(
-      (type) => ({
-        provide: type,
-        inject: [USE_CASE_GATE, ADMIN_KPI_DEPENDENCIES],
-        useFactory: (gate: UseCaseGate, deps: AdminKpiDependencies) => new type(gate, deps),
-      }),
-    ),
+    ...[
+      ViewMarketplaceOperationsKpis,
+      ViewMarketplaceFinanceKpis,
+      ViewMarketplaceTopSellers,
+      ViewMarketplaceTopCategories,
+    ].map((type) => ({
+      provide: type,
+      inject: [USE_CASE_GATE, ADMIN_KPI_DEPENDENCIES],
+      useFactory: (gate: UseCaseGate, deps: AdminKpiDependencies) => new type(gate, deps),
+    })),
     {
       provide: REPORTING_KPI_FACADE,
       inject: [
         ViewMarketplaceOperationsKpis,
         ViewMarketplaceFinanceKpis,
         ViewMarketplaceTopSellers,
+        ViewMarketplaceTopCategories,
       ],
       useFactory: (
         operations: ViewMarketplaceOperationsKpis,
         finance: ViewMarketplaceFinanceKpis,
         topSellers: ViewMarketplaceTopSellers,
-      ) => new ReportingKpiFacadeImplementation(operations, finance, topSellers),
+        topCategories: ViewMarketplaceTopCategories,
+      ) => new ReportingKpiFacadeImplementation(operations, finance, topSellers, topCategories),
     },
     registerSubscriptionsFrom('reporting', [RecordReportFacts], (record: RecordReportFacts) =>
       reportFactsSubscriptions(record),
