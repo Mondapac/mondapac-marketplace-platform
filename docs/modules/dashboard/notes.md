@@ -252,3 +252,13 @@ section each), asked only behind `ordering.order.view` and `commission-payouts.s
 each with a 1.5 s limit and its own `error` state. `Cache-Control: no-store`; nothing is cached in
 the dashboard. The numbers and their definitions are in `docs/modules/reporting/notes.md`.
 Dashboard imports `ReportingModule` through its index only (`nothing-imports-dashboard` still holds).
+
+### Admin KPI strip (phase 5, PR 15): scope against the design mock-up
+
+The strip shows GMV (incl. GST, excl. GST in its scope line), net sales, average order, refunded
+(amount and rate), paid orders, cancel rate, shipped on time and refund count, with the GMV chart.
+Against the mock-up: net revenue and take rate wait for the commission ledger (FE-130), new buyers
+for the ordering facade (FE-061), and the cancel rate and refund count were added because they
+come from the same rollup. Marketplace health, top sellers and categories and the order flow are
+separate PRs. The period is the `?period=` query of the home page; the skeleton and the error
+state show only the figures the session's keys allow.
