@@ -52,13 +52,7 @@ import {
   type OptionalColumn,
   type Query,
 } from './seller-list-query.ts';
-import {
-  LIST_KEY,
-  payloadOf,
-  queryOf,
-  somethingToSave,
-  type SavedPayload,
-} from './seller-list-saved.ts';
+import { LIST_KEY, payloadOf, queryOf, type SavedPayload } from './seller-list-saved.ts';
 import { SellersBulk } from './sellers-bulk.tsx';
 import { HealthCell, StatusCell } from './sellers-cells.tsx';
 import { SellersColumnsPanel, SellersFilterPanel, SellersSortPanel } from './sellers-panels.tsx';
@@ -334,7 +328,7 @@ export function SellersList({
     (item) => stateKnown || !isStateTab(item.payload.view),
   );
   // "Save filter" is offered on a built-in view that shows something a saved filter can keep.
-  const canSave = saved !== null && savedId === null && somethingToSave(query);
+  const canSave = saved !== null && savedId === null && filtered;
 
   const healthDown = answer?.healthUnavailable === true;
   const optionalColumn = (id: OptionalColumn): SuperColumn<SellerSuperRow> => {

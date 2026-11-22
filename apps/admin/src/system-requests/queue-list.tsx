@@ -39,7 +39,7 @@ import { DecisionDialog, type Decide } from './decision-dialogs.tsx';
 import type { Refusal } from './errors.ts';
 import { QueueBulk } from './queue-bulk.tsx';
 import { QueueFilterPanel } from './queue-filter-panel.tsx';
-import { LIST_KEY, payloadOf, queryOf, somethingToSave, type SavedPayload } from './queue-saved.ts';
+import { LIST_KEY, payloadOf, queryOf, type SavedPayload } from './queue-saved.ts';
 import { QueueTable, useRowMenu } from './queue-table.tsx';
 import { RefusalBanner } from './refusal-banner.tsx';
 import {
@@ -376,7 +376,7 @@ export function QueueList({
   const menuOf = useRowMenu((row, kind) => setDeciding({ row, kind }));
   const filterTotal = filterCount(query.filters);
   // "Save filter" is offered on a built-in view that shows something a saved filter can keep.
-  const canSave = saved !== null && savedId === null && somethingToSave(query);
+  const canSave = saved !== null && savedId === null && filtered;
   const summary = [
     t(`view.${query.view}`),
     ...chips.filter((chip) => chip.id !== 'subject').map((chip) => chip.label),

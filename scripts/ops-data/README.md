@@ -164,3 +164,18 @@ the webhook secret, and uses Stripe's test payment methods (`pm_card_*`), never 
   type, and certification types cannot be created in the admin yet, so the loader runs
   `scripts/demo-seed/claim-vocabulary.mjs` (SQL, the migration role) first. It goes when the
   certification type editor lands (future enhancements register).
+
+## The ci profile (pull request checks)
+
+`node scripts/ops-data/index.mjs --profile ci` builds a small scenario (`scenarios/AU/ci.mjs`): the
+whole catalog structure, the admin and the reviewer, a certified halal butcher and a bakery with
+three offers each, and one seller in each other onboarding state. The packs are the same ones and
+call the same API; only the amount of data is smaller. It runs the `admin`, `catalog`, `sellers`
+and `products` packs. It needs no Stripe key, and the `orders` and `content` packs are not part of
+it: `--only orders` with the profile stops with an error instead of quietly building less.
+
+The `ops-data-smoke` job of `.github/workflows/ci.yml` runs it on every pull request, on the
+job's own PostgreSQL, a Mailpit container, and the built API and worker (`MAIL_CATCHER_URL`,
+`OBJECT_STORE_*` and `CATALOG_SEED_JOBS_OFF` as above). A change to the API that the loader no
+longer fits turns that pull request red. The API and worker logs are printed when it fails. The
+orders pack runs only where a Stripe test key exists (future enhancements register, FE-141).

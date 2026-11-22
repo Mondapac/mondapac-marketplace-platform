@@ -348,9 +348,6 @@ export function SellerOrders({
         ]),
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
   const filtered = chips.length > 0;
-  // Saved filters keep a tab, days and a sort; a list nobody changed has nothing to save.
-  const somethingToSave =
-    filtered || query.tab !== 'all' || query.sort !== 'paid' || query.direction !== 'desc';
 
   const total = failure === null && mode === 'pages' ? (answer?.total ?? null) : null;
   const summary = [
@@ -571,11 +568,11 @@ export function SellerOrders({
         }}
         sortedLine={ts('sorted', { field: ts(`sort.field.${query.sort}`), order: sortOrder })}
         chips={
-          filtered || (saved !== null && savedId === null && somethingToSave)
+          filtered
             ? {
                 chips,
                 clearAll: { label: ts('clear-all'), onClick: clearAll },
-                ...(saved === null || savedId !== null || !somethingToSave
+                ...(saved === null || savedId !== null
                   ? {}
                   : { save: { label: t('saved.save-link'), onClick: () => setDialog('save') } }),
                 status: total === null || failure !== null ? '' : ts('match', { count: total }),

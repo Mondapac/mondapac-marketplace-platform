@@ -476,9 +476,10 @@ describe('settings navigation', () => {
   const read = (file: string) => readFileSync(join(__dirname, '..', file), 'utf8');
   const shell = read('src/server/settings-shell.tsx');
 
-  it('lets the page draw the pin star beside its title, so the top bar has none', () => {
-    expect(shell).toContain('pinInPage');
-    expect(read('src/server/seller-shell.tsx')).toContain('pinInPage ? undefined : <PinButton />');
+  it('keeps the pin star in the top bar of every settings page, never beside the title', () => {
+    expect(shell).not.toContain('pinInPage');
+    expect(read('src/server/seller-shell.tsx')).not.toContain('pinInPage');
+    expect(read('src/server/seller-shell.tsx')).toContain('titleAction={<PinButton />}');
   });
 
   it('has no second column: the back link shows only below the sidebar breakpoint', () => {

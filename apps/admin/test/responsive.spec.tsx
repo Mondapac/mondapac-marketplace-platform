@@ -78,21 +78,22 @@ describe('sellers without an owner', () => {
 describe('settings navigation', () => {
   const shell = read('src/server/settings-shell.tsx');
 
-  it('lets the page draw the pin star beside its title, so the top bar has none', () => {
-    expect(shell).toContain('pinInPage');
-    expect(read('src/server/admin-shell.tsx')).toContain('pinInPage ? undefined : <PinButton />');
+  it('keeps the pin star in the top bar of every settings page, never beside the title', () => {
+    expect(shell).not.toContain('pinInPage');
+    expect(read('src/server/admin-shell.tsx')).not.toContain('pinInPage');
+    expect(read('src/server/admin-shell.tsx')).toContain('titleAction={<PinButton />}');
   });
 
-  it('gives every settings page its pin beside the title: no plain h1 under Settings', () => {
+  it('gives every settings page the shared title: no plain h1 under Settings', () => {
     const pages = sourceFiles(join(__dirname, '..', 'app/(shell)/settings'));
     expect(pages.length).toBeGreaterThan(0);
     for (const page of pages) expect(readFileSync(page, 'utf8'), page).not.toContain('<h1');
   });
 
-  it('draws one pin on a wallet page outside Settings: the page title has it, the top bar not', () => {
+  it('draws one pin on a wallet page: in the top bar, not beside the title', () => {
     const wallet = read('src/wallet/wallet-page.tsx');
     expect(wallet).toContain('<SettingsTitle>');
-    expect(wallet).toMatch(/<AdminShell[^>]*pinInPage/);
+    expect(wallet).not.toContain('pinInPage');
   });
 
   it('has no second column: the back link shows only below the sidebar breakpoint', () => {
@@ -110,5 +111,16 @@ describe('settings navigation', () => {
     expect(hub).toContain('grid-cols-1');
     expect(hub).toContain('sm:grid-cols-2');
     expect(hub).not.toContain('grid-cols-3');
+  });
+});
+
+describe('products page title', () => {
+  it('shows the page title, not a screen-reader-only h1', () => {
+    const page = readFileSync(
+      join(__dirname, '..', 'app/(shell)/catalog/products/page.tsx'),
+      'utf8',
+    );
+    expect(page).toContain('<h1 className="mb-4 text-2xl font-semibold">{title}</h1>');
+    expect(page).not.toContain('sr-only');
   });
 });
