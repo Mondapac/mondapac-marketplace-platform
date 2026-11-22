@@ -257,7 +257,7 @@
         "7d": "Last 7 days",
         "30d": "Last 30 days",
         "month": "This month so far",
-        "on-time": "Of orders shipped in the period"
+        "on-time": "Shipped orders only"
       },
       "card": {
         "sales": "Sales (incl. GST)",
@@ -270,21 +270,24 @@
         "cancelled": "Cancelled orders"
       },
       "chart": {
-        "title": "Sales (incl. GST)",
+        "title": "Sales trend (incl. GST)",
         "alt": "Sales including GST, {period}, against the previous period",
         "series": "This period",
         "compare": "Previous period",
         "table": "View as table",
         "chart": "View as chart",
         "date": "Day",
-        "empty": "No paid orders in this period or the one before."
+        "empty": "No paid orders in this period or the one before.",
+        "zone": "Market time ({zone})",
+        "updated": "updated {time}"
       },
       "categories": {
         "title": "Top categories",
         "scope": "By sales after refunds, this period",
         "empty": "No sales in this period.",
         "other": "Other categories",
-        "detail": "{orders, plural, one {# order} other {# orders}} · {units, plural, one {# unit} other {# units}}"
+        "detail": "{orders, plural, one {# order} other {# orders}} · {units, plural, one {# unit} other {# units}}",
+        "numbered": "Category {n}"
       },
       "health": {
         "title": "Store health",
@@ -296,7 +299,8 @@
           "healthy": "Healthy",
           "at-risk": "At risk",
           "unhealthy": "Unhealthy"
-        }
+        },
+        "out-of": "/ 100"
       }
     }
   },

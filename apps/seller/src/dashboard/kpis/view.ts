@@ -27,17 +27,17 @@ function judge(rise: boolean, rule: Sentiment): StatDeltaProps['sentiment'] {
  * zero or its period had fewer than {@link MIN_BASE_ORDERS} paid orders.
  */
 export function changeOf(
-  current: bigint,
-  previous: bigint,
+  current: bigint | null,
+  previous: bigint | null,
   previousOrders: number,
   rule: Sentiment,
   comparedWith: string,
 ): StatDeltaProps {
-  if (previous <= 0n || previousOrders < MIN_BASE_ORDERS) {
+  if (current === null || previous === null || previous <= 0n || previousOrders < MIN_BASE_ORDERS) {
     return { ...flat('neutral', 'n/a'), comparedWith };
   }
   const basisPoints = Number(((current - previous) * 10000n) / previous);
-  if (basisPoints === 0) return { ...flat('neutral', '0.0%'), comparedWith };
+  if (Math.abs(basisPoints) < 5) return { ...flat('neutral', '0.0%'), comparedWith };
   const rise = basisPoints > 0;
   return {
     value: `${rise ? '+' : '-'}${(Math.abs(basisPoints) / 100).toFixed(1)}%`,
@@ -53,10 +53,13 @@ export function pointsChange(
   previous: number | null,
   rule: Sentiment,
   comparedWith: string,
+  previousBase: number = MIN_BASE_ORDERS,
 ): StatDeltaProps {
-  if (current === null || previous === null) return { ...flat('neutral', 'n/a'), comparedWith };
+  if (current === null || previous === null || previousBase < MIN_BASE_ORDERS) {
+    return { ...flat('neutral', 'n/a'), comparedWith };
+  }
   const diff = current - previous;
-  if (diff === 0) return { ...flat('neutral', '0.0 pts'), comparedWith };
+  if (Math.abs(diff) < 5) return { ...flat('neutral', '0.0 pts'), comparedWith };
   const rise = diff > 0;
   return {
     value: `${rise ? '+' : '-'}${(Math.abs(diff) / 100).toFixed(1)} pts`,
@@ -81,7 +84,8 @@ export interface CardDeltas {
   readonly cancelled: StatDeltaProps;
 }
 
-const big = (text: string | null): bigint => (text === null ? 0n : BigInt(text));
+const big = (text: string): bigint => BigInt(text);
+const bigOrNull = (text: string | null): bigint | null => (text === null ? null : BigInt(text));
 
 /** The change line of every card of the strip. */
 export function deltasOf(
@@ -106,8 +110,8 @@ export function deltasOf(
       comparedWith,
     ),
     averageOrderValue: changeOf(
-      big(current.averageOrderValue),
-      big(previous.averageOrderValue),
+      bigOrNull(current.averageOrderValue),
+      bigOrNull(previous.averageOrderValue),
       base,
       'higher-is-better',
       comparedWith,
@@ -124,12 +128,14 @@ export function deltasOf(
       previous.refundRateBps,
       'lower-is-better',
       comparedWith,
+      base,
     ),
     onTime: pointsChange(
       current.shippedOnTimeBps,
       previous.shippedOnTimeBps,
       'higher-is-better',
       comparedWith,
+      previous.ordersShipped,
     ),
     units: changeOf(
       BigInt(current.units),

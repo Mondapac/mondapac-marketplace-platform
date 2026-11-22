@@ -28,8 +28,8 @@ read only when the session holds `ordering.seller-order.view`:
   (links to Performance). Recent orders stay as the existing "Recent orders" card.
 - A failed read says "could not be loaded" in its own card or cards, never a zero.
 - Deferred: top products (FE-125), seller net earnings (FE-126), on-time with overdue unshipped
-  orders (FE-127), average rating and next payout in the health card (FE-128), "updated N min ago"
-  and the Market zone on the period note (FE-129).
+  orders (FE-127), average rating and next payout in the health card (FE-128), a relative
+  "updated N min ago" (FE-129; the chart card already says the Market zone and the update time).
 
 ## Deferred
 

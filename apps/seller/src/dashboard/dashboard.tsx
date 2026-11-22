@@ -796,6 +796,8 @@ export function SellerDashboard({
   readonly kpis?: ReactNode;
 }) {
   const t = useTranslations('dashboard');
+  // `kpis` exists only with the orders key, the key `data.orders` is read with, so the checks below
+  // on `data` alone stay right while it does.
   const keys = new Set(permissionKeys);
   const nothing =
     Object.values(data).every((widget) => widget === null) &&

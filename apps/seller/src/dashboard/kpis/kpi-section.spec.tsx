@@ -95,7 +95,7 @@ describe('the seller KPI section', () => {
     expect(within(cards[0]!).getByText(/\$2,200\.00/)).toBeTruthy();
     expect(within(cards[0]!).getByText('+100.0%')).toBeTruthy();
     expect(within(cards[3]!).getByText('Refunded (incl. GST)')).toBeTruthy();
-    expect(await screen.findByRole('heading', { name: 'Sales (incl. GST)' })).toBeTruthy();
+    expect(await screen.findByRole('heading', { name: 'Sales trend (incl. GST)' })).toBeTruthy();
     expect(await screen.findByText('Fresh meat')).toBeTruthy();
     expect(await screen.findByText('86')).toBeTruthy();
     expect(screen.getByText('Healthy')).toBeTruthy();
@@ -123,6 +123,24 @@ describe('the seller KPI section', () => {
     });
     expect(await screen.findByText(/No paid orders in this period/)).toBeTruthy();
     expect(await screen.findByText('No sales in this period.')).toBeTruthy();
+  });
+
+  it('numbers the bars when the category tree failed, and says the Market zone and update time', async () => {
+    render7d({
+      categories: null,
+      kpis: ok({
+        ...kpis,
+        topCategories: [
+          { categoryId: CAT_A, netSalesInclTax: '150000', orders: 12, units: 20 },
+          { categoryId: CAT_A.replace(/1$/, '2'), netSalesInclTax: '90000', orders: 5, units: 6 },
+        ],
+      }),
+    });
+    expect(await screen.findByText('Category 1')).toBeTruthy();
+    expect(screen.getByText('Category 2')).toBeTruthy();
+    expect(screen.queryByText('Other categories')).toBeNull();
+    expect(screen.getByText(/Market time \(Australia\/Brisbane\)/)).toBeTruthy();
+    expect(screen.getByText(/updated /)).toBeTruthy();
   });
 
   it('offers the four periods with the chosen one checked', async () => {

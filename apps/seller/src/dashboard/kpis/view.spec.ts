@@ -68,6 +68,23 @@ describe('pointsChange and percent', () => {
   });
 });
 
+describe('small bases and nulls', () => {
+  it('has no change for a missing current figure or a rounded zero', () => {
+    expect(changeOf(null, 1000n, 10, 'higher-is-better', VS).value).toBe('n/a');
+    expect(changeOf(10003n, 10000n, 10, 'higher-is-better', VS)).toMatchObject({
+      value: '0.0%',
+      direction: 'flat',
+    });
+    expect(pointsChange(502, 500, 'lower-is-better', VS)).toMatchObject({ direction: 'flat' });
+  });
+
+  it('shows no points change on a base of fewer than five orders', () => {
+    expect(pointsChange(9000, 5000, 'higher-is-better', VS, 1).value).toBe('n/a');
+    const d = deltasOf(totals(), totals({ orders: 10, ordersShipped: 2 }), VS);
+    expect(d.onTime.value).toBe('n/a');
+  });
+});
+
 describe('deltasOf', () => {
   it('judges refunds and cancellations the other way round', () => {
     const d = deltasOf(

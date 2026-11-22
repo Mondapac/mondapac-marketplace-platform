@@ -21,6 +21,7 @@ import {
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
+import { shortInstant } from '../../catalog/format.ts';
 import type { CategoryTree } from '../../catalog/products-list-types.ts';
 import type { HealthBand, OwnHealth } from '../../performance/types.ts';
 import { exponentOf, formatMinor } from '../../price/money.ts';
@@ -53,13 +54,13 @@ function useStalled() {
 
 const CARDS: readonly { readonly key: string; readonly icon: IconName }[] = [
   { key: 'sales', icon: 'wallet' },
-  { key: 'orders', icon: 'clipboard' },
+  { key: 'orders', icon: 'receipt' },
   { key: 'aov', icon: 'tag' },
-  { key: 'refunded', icon: 'wallet' },
-  { key: 'refund-rate', icon: 'clipboard' },
-  { key: 'on-time', icon: 'clipboard' },
-  { key: 'units', icon: 'inbox' },
-  { key: 'cancelled', icon: 'clipboard' },
+  { key: 'refunded', icon: 'arrow-left' },
+  { key: 'refund-rate', icon: 'sliders' },
+  { key: 'on-time', icon: 'clock' },
+  { key: 'units', icon: 'package' },
+  { key: 'cancelled', icon: 'ban' },
 ];
 
 function Strip({
@@ -154,7 +155,7 @@ function Strip({
               {...base('refund-rate', '/orders')}
             />
             <StatCard
-              icon="clipboard"
+              icon="clock"
               value={percent(current.shippedOnTimeBps)}
               delta={delta.onTime}
               {...base('on-time', '/orders')}
@@ -203,6 +204,15 @@ function SalesChart({
         const kpis = okOf(widget);
         if (kpis === null) return <DashboardCard {...frame} error={stalled} />;
         const exp = 10 ** exponentOf(kpis.currency);
+        const updated =
+          kpis.refreshedAt === null ? null : shortInstant(kpis.refreshedAt, locale, kpis.timezone);
+        const scope = [
+          t(`scope.${period}`),
+          t('chart.zone', { zone: kpis.timezone }),
+          updated === null ? null : t('chart.updated', { time: updated }),
+        ]
+          .filter((part) => part !== null)
+          .join(' · ');
         const points: ChartPoint[] = kpis.series.map((d) => ({
           label: dayLabel(d.day, locale),
           value: Number(d.salesInclTax),
@@ -213,7 +223,7 @@ function SalesChart({
         }));
         const empty = kpis.current.orders === 0 && kpis.previous.orders === 0;
         return (
-          <DashboardCard {...frame}>
+          <DashboardCard {...frame} scope={scope}>
             {empty ? (
               <ChartEmpty message={t('chart.empty')} />
             ) : (
@@ -277,9 +287,12 @@ function TopCategories({
           >
             {(tree) => {
               const names = new Map((tree?.categories ?? []).map((c) => [c.id, c.name]));
-              const items: BarListItem[] = kpis.topCategories.map((row) => ({
+              const items: BarListItem[] = kpis.topCategories.map((row, index) => ({
                 id: row.categoryId,
-                label: names.get(row.categoryId) ?? t('categories.other'),
+                label:
+                  tree === null
+                    ? t('categories.numbered', { n: index + 1 })
+                    : (names.get(row.categoryId) ?? t('categories.other')),
                 value: Number(row.netSalesInclTax),
                 display: formatMinor(row.netSalesInclTax, kpis.currency, locale),
                 detail: t('categories.detail', { orders: row.orders, units: row.units }),
@@ -333,7 +346,10 @@ function StoreHealth({ source }: { readonly source: Source<OwnHealth> }) {
         } else {
           body = (
             <div className="flex flex-wrap items-center gap-3">
-              <span className="text-3xl font-semibold text-fg">{card.score}</span>
+              <span className="text-3xl font-semibold text-fg">
+                {card.score}
+                <span className="text-base font-normal text-fg-muted"> {t('health.out-of')}</span>
+              </span>
               {card.band === null ? null : (
                 <Badge tone={BAND_TONE[card.band]}>{t(`health.band.${card.band}`)}</Badge>
               )}
@@ -371,13 +387,14 @@ export function KpiSection({
         options={options}
         value={period}
         note={t(`compared.${period}`)}
-      />
-      <Strip source={sources.kpis} period={period} />
-      <SalesChart source={sources.kpis} period={period} />
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <TopCategories source={sources.kpis} categories={sources.categories} />
-        <StoreHealth source={sources.health} />
-      </div>
+      >
+        <Strip source={sources.kpis} period={period} />
+        <SalesChart source={sources.kpis} period={period} />
+        <div className="grid items-start gap-4 lg:grid-cols-2">
+          <TopCategories source={sources.kpis} categories={sources.categories} />
+          <StoreHealth source={sources.health} />
+        </div>
+      </PeriodSwitch>
     </section>
   );
 }
