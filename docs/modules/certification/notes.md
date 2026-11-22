@@ -35,3 +35,17 @@ contract is in `docs/modules/system-requests/notes.md` ("Hooked areas").
 - Open (predates this hook): catalog subscribes to `claim-policy-changed.v1` but not to
   `certification-type-revised.v1`, so a type save (or revert) that changes `defaultBasis` triggers
   no tag re-check of its own. A revert can only make `defaultBasis` stricter.
+
+## Type reactivation: the second admin approves what they saw
+
+Fixed before "add a new type" (FE-091; new-type design section 5):
+
+- `type-approve-reactivation` refuses `conflict.stale` when the type's `publishedRevisionId` is no
+  longer the proposal's `basedOnRevisionId`, the same check as `type-approve-relaxation`. The
+  approval never makes active a revision the second admin did not see.
+- `type-save-revision` refuses `review.proposal-pending` while a `type-reactivation` proposal of
+  the type is pending (publish-now and relaxing saves alike). The proposer withdraws it, or a
+  second admin decides it, before the type is edited.
+- A System requests revert can still publish a revision while a reactivation is pending (the
+  reverter checks only a pending relaxation); the approval check above then refuses the stale
+  approval, so the admin asks again.
