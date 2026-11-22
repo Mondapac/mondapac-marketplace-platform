@@ -16,7 +16,6 @@ import type { AdminKpiDependencies } from './application/admin-kpi-flow';
 import type { BackfillDependencies } from './application/backfill-history';
 import { FactRecorder } from './application/fact-recorder';
 import { ADMIN_KPI_READER, type AdminKpiReader } from './application/ports/admin-kpi-reader';
-import { MARKET_ZONE, type MarketZone } from './application/ports/market-zone';
 import {
   BACKFILL_PROGRESS_STORE,
   type BackfillProgressStore,
