@@ -1,7 +1,9 @@
 // The buyer site's content, through the admin's storefront editor (scenarios/<market>/content.mjs):
 // slides with their pictures, the home page, the navigation and the information pages. The
 // platform admin writes and submits; the reviewer admin approves and publishes, as a second admin
-// would. A rerun changes nothing that already matches the scenario.
+// would. A rerun changes nothing: a slide is found by its internal name and kept while it runs,
+// and a page or the navigation is left alone once its published version matches. A slide whose
+// text changed in the scenario is not edited; reset the environment to see the new text.
 import { banner } from '../media.mjs';
 import { blogPack } from './blog.mjs';
 import { settle, write } from './requests.mjs';
@@ -120,11 +122,16 @@ async function ensurePage(admin, reviewer, page, slots, pending, label) {
       // A system page that was never edited shows its template's defaults, which have no
       // placement of their own yet: the first module added makes them a real draft. It goes to a
       // slot with room; everything is then removed and the scenario's modules added in order.
-      const [slot, entries] = Object.entries(slots).find(
-        ([key]) =>
+      const room = Object.entries(slots).find(
+        ([key, entries]) =>
+          entries.length > 0 &&
           (detail.draft.placements[key]?.length ?? 0) <
-          (detail.slots.find((definition) => definition.key === key)?.max ?? 0),
+            (detail.slots.find((definition) => definition.key === key)?.max ?? 0),
       );
+      if (room === undefined) {
+        throw new Error(`${label}: every slot the scenario fills is full of template defaults`);
+      }
+      const [slot, entries] = room;
       await write(admin, 'POST', `${path}/slots/${slot}/modules`, entries[0], pending, label);
       detail = await admin.ok('GET', path);
     }
@@ -228,6 +235,12 @@ async function ensureInfoPages(admin, reviewer, pages, pending) {
 }
 
 export async function contentPack({ admin, reviewer, scenario, categoryIds, state, log }) {
+  if (reviewer === null) {
+    throw new Error(
+      'The content pack needs the reviewer admin: slides, pages, the navigation and blog posts ' +
+        'are approved by a second admin.',
+    );
+  }
   const content = scenario.content;
   const pending = [];
   await ensureSlides(admin, reviewer, content.slides, categoryIds, log);

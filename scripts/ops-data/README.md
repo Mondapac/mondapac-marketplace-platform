@@ -87,8 +87,6 @@ All sample addresses use the reserved `.example` domain and mail reaches only Ma
 
 ## What is not done through the application yet
 
-- **Slides with a link need the API fix of PR #1242**: before it, approving a slide whose link
-  or scope names a category always answered `storefront.slide-link-invalid` on a real database.
 - **Claim vocabulary**: catalog refuses every name while a Market has no published certification
   type, and certification types cannot be created in the admin yet, so the loader runs
   `scripts/demo-seed/claim-vocabulary.mjs` (SQL, the migration role) first. It goes when the

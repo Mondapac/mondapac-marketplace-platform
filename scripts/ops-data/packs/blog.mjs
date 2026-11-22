@@ -1,7 +1,8 @@
 // The platform's blog (scenarios/<market>/content.mjs, `blog`), through the admin's blog editor:
 // categories, a cover picture per post, and posts the platform admin writes and submits; the
 // reviewer admin approves and publishes them (an author never approves their own post). A rerun
-// changes nothing: a post is found by its address (slug).
+// changes nothing: a post is found by its address (slug). A post an earlier run left in another
+// state (changes requested, paused, archived) is left as it is; reset the environment instead.
 import { banner } from '../media.mjs';
 
 /** The post body in the API's shape: keys of the scenario become the ids the loader made. */

@@ -305,6 +305,12 @@ describe('the ops-data AU scenario', () => {
         for (const b of post.body) if (b.type === 'seller_card' && !SCENARIO.sellers.some((x) => x.key === b.seller && x.state === 'approved')) problems.push(post.slug + ': not an approved seller ' + b.seller);
       }
       if (!blog.posts.some((post) => post.slug === blog.featured)) problems.push('the featured post is not in the blog');
+      if (blogCategories.size !== blog.categories.length) problems.push('blog category slug repeated');
+      if (new Set(blog.posts.map((post) => post.slug)).size !== blog.posts.length) problems.push('post slug repeated');
+      for (const r of navigation.rail) {
+        if (r.label.length > 40) problems.push('rail label too long ' + r.label);
+        if (!['system-page', 'category', 'page', 'path'].includes(r.target.kind)) problems.push('bad rail target ' + r.label);
+      }
       const pageSlugs = new Set(pages.map((p) => p.slug));
       if (pageSlugs.size !== pages.length) problems.push('page slug repeated');
       const words = /halal|halaal|kosher|vegan|organic|authentic|official|verified/i;
