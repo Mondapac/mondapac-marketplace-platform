@@ -165,17 +165,28 @@ export function SuperList({
         ) : (
           <div className={`flex min-w-0 flex-col ${heading.title === undefined ? 'gap-1' : ''}`}>
             {heading.title === undefined ? (
-              infoIcon
-            ) : (
               <div className="flex min-w-0 items-center gap-2">
-                <h1 className="min-w-0 break-words text-2xl font-semibold">{heading.title}</h1>
                 {infoIcon}
+                {heading.subtitle === undefined ? null : (
+                  <p className="min-h-5 text-sm text-fg-muted">{heading.subtitle}</p>
+                )}
+                {heading.subtitle === undefined && heading.note !== undefined ? (
+                  <p className="text-sm text-fg-muted">{heading.note}</p>
+                ) : null}
               </div>
+            ) : (
+              <>
+                <div className="flex min-w-0 items-center gap-2">
+                  <h1 className="min-w-0 break-words text-2xl font-semibold">{heading.title}</h1>
+                  {infoIcon}
+                </div>
+                {heading.subtitle === undefined ? null : (
+                  <p className="min-h-5 text-sm text-fg-muted">{heading.subtitle}</p>
+                )}
+              </>
             )}
-            {heading.subtitle === undefined ? null : (
-              <p className="min-h-5 text-sm text-fg-muted">{heading.subtitle}</p>
-            )}
-            {heading.note === undefined ? null : (
+            {heading.note === undefined ||
+            (heading.title === undefined && heading.subtitle === undefined) ? null : (
               <p className="text-sm text-fg-muted">{heading.note}</p>
             )}
           </div>
