@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { apiGetBytesWith, apiGetWith } from '../src/storefront/api.ts';
 import { checkDeliveryArea, deliveryAreaAnswer } from '../src/storefront/source.ts';
 import {
+  assertApiConfiguredInProduction,
   assertClientAddressForwarding,
   parseStorefrontApiConfig,
   storefrontHostFor,
@@ -104,6 +105,31 @@ describe('storefront API configuration', () => {
     expect(() =>
       assertClientAddressForwarding(config({ ...SIGNED, STOREFRONT_HOSTS: real.STOREFRONT_HOSTS })),
     ).not.toThrow();
+  });
+});
+
+describe('production tripwire', () => {
+  it('refuses to start in production without API_BASE_URL', () => {
+    expect(() => assertApiConfiguredInProduction({ NODE_ENV: 'production' })).toThrow(
+      /API_BASE_URL is empty in production/,
+    );
+    expect(() =>
+      assertApiConfiguredInProduction({ NODE_ENV: 'production', API_BASE_URL: '  ' }),
+    ).toThrow(/API_BASE_URL/);
+  });
+
+  it('passes with the API set, in the build, and outside production', () => {
+    expect(() =>
+      assertApiConfiguredInProduction({ NODE_ENV: 'production', API_BASE_URL: LOCAL.API_BASE_URL }),
+    ).not.toThrow();
+    expect(() =>
+      assertApiConfiguredInProduction({
+        NODE_ENV: 'production',
+        NEXT_PHASE: 'phase-production-build',
+      }),
+    ).not.toThrow();
+    expect(() => assertApiConfiguredInProduction({ NODE_ENV: 'development' })).not.toThrow();
+    expect(() => assertApiConfiguredInProduction({})).not.toThrow();
   });
 });
 

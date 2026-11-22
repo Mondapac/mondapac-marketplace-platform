@@ -1,16 +1,14 @@
 import 'server-only';
 import { apiGet, type ApiRead } from './api.ts';
 import { storefrontApiConfig } from './config.ts';
-import { sampleFallback } from './home-source.ts';
 import { SAMPLE_HERO } from './sample-home.ts';
 import { emptySet, SLIDE_POSITIONS, slideSetOf } from './slides.ts';
 import type { SlideSet } from './types.ts';
 
 // The buyer site's read of one slider position (`GET storefront/slides`, storefront slider PR 2).
 // The answer is checked slide by slide (./slides.ts); a slide that fails is dropped. With
-// API_BASE_URL empty, or while the read fails and the sample fallback is on (home-source's
-// STOREFRONT_SAMPLE_DATA), the sample slides of the position stand in; an answer with no live slide is
-// no slides, and the section is not drawn. The home page reads its hero together with the rest of
+// API_BASE_URL empty, the sample slides of the position stand in; with the API on, a failed
+// read or an answer with no live slide is no slides, and the section is not drawn. The home page reads its hero together with the rest of
 // the page (./home-source.ts), where the old top banner is the stand-in.
 
 /** The scope of the page the slider is asked for; every id is a UUID the page already holds. */
@@ -47,14 +45,12 @@ export async function loadSlides(
   position: string,
   scope: SlideScope = {},
   read: SlidesReader = apiGet,
-  env: Readonly<Record<string, string | undefined>> = process.env,
   mediaOrigin: string | null = storefrontApiConfig()?.imageOrigin ?? null,
 ): Promise<SlideSet> {
   const path = slidesPath(position, scope);
   if (path === null) return emptySet(position);
   const answer = await read(path);
   if (answer.kind === 'off') return sampleSet(position);
-  if (answer.kind === 'failed')
-    return sampleFallback(env) ? sampleSet(position) : emptySet(position);
+  if (answer.kind === 'failed') return emptySet(position);
   return slideSetOf(answer.body, position, mediaOrigin);
 }

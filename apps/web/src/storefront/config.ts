@@ -81,6 +81,21 @@ export function assertClientAddressForwarding(config: StorefrontApiConfig): void
   );
 }
 
+/**
+ * Start-up tripwire: a production server without API_BASE_URL would run on sample data, which the
+ * buyer site must never show to buyers. It throws there; `next build` is exempt (the build runs
+ * without the API's address), and so is every non-production run (the local design preview).
+ */
+export function assertApiConfiguredInProduction(env: Env): void {
+  if (env['NODE_ENV'] !== 'production') return;
+  if (env['NEXT_PHASE'] === 'phase-production-build') return;
+  if ((env['API_BASE_URL']?.trim() ?? '') !== '') return;
+  throw new Error(
+    'API_BASE_URL is empty in production: the buyer site would show sample data. Set it to the ' +
+      "API's origin (ADR-0037).",
+  );
+}
+
 /** The listed host a request came to, by its `Host` header. */
 export function storefrontHostFor(
   config: StorefrontApiConfig,

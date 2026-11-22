@@ -166,7 +166,6 @@ describe('cards with photos', () => {
           ['search/bestsellers?limit=12', { kind: 'ok', body: { items: [item(ref(P1))] } }],
         ]),
       },
-      false,
       photo,
     );
     const section = home.sections.find((s) => s.kind === 'products');

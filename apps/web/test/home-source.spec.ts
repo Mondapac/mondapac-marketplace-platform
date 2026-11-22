@@ -1,22 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { ApiRead } from '../src/storefront/api.ts';
-import {
-  cardOf,
-  loadHome,
-  moneyOf,
-  safeHref,
-  sampleFallback,
-  storesOf,
-} from '../src/storefront/home-source.ts';
+import { cardOf, loadHome, moneyOf, safeHref, storesOf } from '../src/storefront/home-source.ts';
 import { SAMPLE_CONTENT } from '../src/storefront/sample-home.ts';
 import type { HomeSection } from '../src/storefront/types.ts';
 
 const MEAT = '0b5e1c3a-0000-4000-8000-000000000001';
 const BAKERY = '0b5e1c3a-0000-4000-8000-000000000002';
 const LAMB = '0b5e1c3a-0000-4000-8000-000000000003';
-
-const ENV = {};
-const NO_SAMPLE = { STOREFRONT_SAMPLE_DATA: 'off' };
 
 /** The default home layout (template system.home, never published) plus one banner. */
 const PAGE = {
@@ -120,7 +110,7 @@ function serve(answers: Answers) {
   return calls;
 }
 
-const loadWith = (env: Readonly<Record<string, string>>) => loadHome(read, env);
+const loadWith = () => loadHome(read);
 
 const REAL: Answers = {
   'storefront/pages/home': PAGE,
@@ -133,15 +123,9 @@ const shelf = (sections: readonly HomeSection[], title: string) =>
   sections.find((s) => s.kind === 'products' && s.title === title);
 
 describe('home source: configuration', () => {
-  it('keeps the sample fallback unless STOREFRONT_SAMPLE_DATA is off', () => {
-    expect(sampleFallback({})).toBe(true);
-    expect(sampleFallback({ STOREFRONT_SAMPLE_DATA: 'on' })).toBe(true);
-    expect(sampleFallback({ STOREFRONT_SAMPLE_DATA: 'off' })).toBe(false);
-  });
-
   it('answers the sample home and reads no shelf while API_BASE_URL is empty', async () => {
     serve({ 'storefront/pages/home': OFF, 'catalog/categories': OFF, 'storefront/slides': OFF });
-    const result = await loadWith(NO_SAMPLE);
+    const result = await loadWith();
     expect(calls.sort()).toEqual([
       'catalog/categories',
       'storefront/pages/home',
@@ -154,7 +138,7 @@ describe('home source: configuration', () => {
 describe('home source: real data', () => {
   it('builds the home from the published layout, the category tree and the specials', async () => {
     serve(REAL);
-    const home = await loadWith(NO_SAMPLE);
+    const home = await loadWith();
 
     expect(calls.sort()).toEqual([
       'catalog/categories',
@@ -247,17 +231,16 @@ describe('home source: real data', () => {
       limit: 4,
     };
     serve({ ...REAL, 'storefront/pages/home': page });
-    const home = await loadWith(NO_SAMPLE);
+    const home = await loadWith();
     expect(calls).toContain('search/specials?limit=4');
     expect(home.categories.map((c) => c.code)).toEqual(['bakery']);
     expect(shelf(home.sections, 'Eid deals')).toBeDefined();
   });
 
-  it('fills the shelves the API leaves empty with the sample while the fallback is on', async () => {
+  it('leaves out a shelf the API leaves empty, never filling it with sample products', async () => {
     serve({ ...REAL, 'search/bestsellers': { items: [] } });
-    const home = await loadWith(ENV);
-    const bestsellers = shelf(home.sections, 'Best sellers');
-    expect(bestsellers?.kind === 'products' && bestsellers.products[0]?.id).toBe('lamb-shoulder');
+    const home = await loadWith();
+    expect(shelf(home.sections, 'Best sellers')).toBeUndefined();
     const specials = shelf(home.sections, 'Special prices this week');
     expect(specials?.kind === 'products' && specials.products.map((p) => p.id)).toEqual([LAMB]);
     // Sample stores never stand beside real products.
@@ -273,42 +256,28 @@ describe('home source: empty data', () => {
     'search/specials': { items: [] },
   };
 
-  it('leaves out every empty section when the sample fallback is off', async () => {
+  it('leaves out every empty section, with no sample categories or shelves', async () => {
     serve(EMPTY);
-    const home = await loadWith(NO_SAMPLE);
+    const home = await loadWith();
     expect(home.sections.map((s) => s.kind)).toEqual(['hero']);
     expect(home.categories).toEqual([]);
   });
 
-  it('shows the sample categories and shelves when the fallback is on', async () => {
-    serve(EMPTY);
-    const home = await loadWith(ENV);
-    expect(home.categories).toBe(SAMPLE_CONTENT.categories);
-    expect(home.sections.map((s) => s.kind)).toEqual([
-      'hero',
-      'categories',
-      'products',
-      'products',
-    ]);
-  });
-
-  it('answers the whole sample home when the layout holds nothing it can show', async () => {
+  it('answers an empty home, not the sample, when the layout holds nothing it can show', async () => {
     serve({ ...EMPTY, 'storefront/pages/home': { kind: 'page', page: { slots: [] } } });
-    expect((await loadWith(ENV)).sections).toBe(SAMPLE_CONTENT.home);
-    expect((await loadWith(NO_SAMPLE)).sections).toEqual([]);
+    expect(await loadWith()).toEqual({ sections: [], categories: [], sellers: [] });
   });
 });
 
 describe('home source: API error', () => {
-  it('falls back to the sample home when the layout read fails', async () => {
+  it('answers an empty home, not the sample, when the layout read fails', async () => {
     serve({ ...REAL, 'storefront/pages/home': 503 });
-    expect((await loadWith(ENV)).sections).toBe(SAMPLE_CONTENT.home);
-    expect(await loadWith(NO_SAMPLE)).toEqual({ sections: [], categories: [], sellers: [] });
+    expect(await loadWith()).toEqual({ sections: [], categories: [], sellers: [] });
   });
 
   it('keeps the page when one read fails', async () => {
     serve({ ...REAL, 'catalog/categories': 503, 'search/specials': 500 });
-    const result = await loadWith(NO_SAMPLE);
+    const result = await loadWith();
     // The categories and specials are gone; the best sellers still show.
     expect(result.sections.map((s) => [s.kind, s.kind === 'products' ? s.title : ''])).toEqual([
       ['hero', ''],
@@ -318,7 +287,7 @@ describe('home source: API error', () => {
 
   it('treats an answer that is not a page as no layout', async () => {
     serve({ ...REAL, 'storefront/pages/home': { kind: 'redirect', to: '/x' } });
-    expect((await loadWith(NO_SAMPLE)).sections).toEqual([]);
+    expect((await loadWith()).sections).toEqual([]);
   });
 });
 
@@ -361,7 +330,7 @@ describe('home source: checks on each answer', () => {
       image: { ref: 'unknown', alt: 'x' },
     };
     serve({ ...REAL, 'storefront/pages/home': page });
-    const home = await loadWith(NO_SAMPLE);
+    const home = await loadWith();
     expect(home.sections[0]).toEqual({
       kind: 'hero',
       set: {
@@ -406,7 +375,7 @@ describe('home source: sellers near you', () => {
 
   it('shows the stores of the public store list, with their minimum-order line', async () => {
     serve({ ...REAL, 'sellers/stores': STORES });
-    const home = await loadWith(NO_SAMPLE);
+    const home = await loadWith();
     expect(home.sections.map((s) => s.kind)).toContain('sellers');
     expect(calls).toContain('sellers/stores?pageSize=8');
     expect(home.sellers).toEqual([
@@ -440,11 +409,11 @@ describe('home source: sellers near you', () => {
     expect(store?.minimumOrder).toBe('NZ$25 minimum order');
   });
 
-  it('leaves the section out when the list is empty or fails, whatever the fallback says', async () => {
+  it('leaves the section out when the list is empty or fails, ', async () => {
     serve({ ...REAL, 'sellers/stores': { items: [], total: 0, page: 1, pageSize: 8 } });
-    expect((await loadWith(ENV)).sections.map((s) => s.kind)).not.toContain('sellers');
+    expect((await loadWith()).sections.map((s) => s.kind)).not.toContain('sellers');
     serve({ ...REAL, 'sellers/stores': 503 });
-    const failed = await loadWith(ENV);
+    const failed = await loadWith();
     expect(failed.sections.map((s) => s.kind)).not.toContain('sellers');
     expect(failed.sellers).toEqual([]);
   });
@@ -476,13 +445,13 @@ describe('home source: the hero slider', () => {
 
   it('asks for the hero slides of the position with the rest of the page', async () => {
     serve({ ...REAL, 'storefront/slides': SLIDES });
-    await loadWith(NO_SAMPLE);
+    await loadWith();
     expect(calls).toContain('storefront/slides?position=home.hero');
   });
 
   it('shows the live slides in place of the layout banner', async () => {
     serve({ ...REAL, 'storefront/slides': SLIDES });
-    const home = await loadWith(NO_SAMPLE);
+    const home = await loadWith();
     const set = hero(home.sections);
     expect(set?.slides.map((s) => s.title)).toEqual(['Fresh this week', 'Second']);
     expect(set?.autoplay).toBe(true);
@@ -506,14 +475,12 @@ describe('home source: the hero slider', () => {
         ],
       },
     });
-    expect(hero((await loadWith(NO_SAMPLE)).sections)?.slides.map((s) => s.title)).toEqual([
-      'Kept',
-    ]);
+    expect(hero((await loadWith()).sections)?.slides.map((s) => s.title)).toEqual(['Kept']);
   });
 
   it('falls back to the layout banner as a one-slide slider while the library holds no live slide', async () => {
     serve({ ...REAL, 'storefront/slides': { ...SLIDES, slides: [] } });
-    const set = hero((await loadWith(NO_SAMPLE)).sections);
+    const set = hero((await loadWith()).sections);
     expect(set?.slides.map((s) => s.title)).toEqual(['Ramadan specials']);
     expect(set?.autoplay).toBe(false);
   });
@@ -530,7 +497,7 @@ describe('home source: the hero slider', () => {
       'storefront/pages/home': page,
       'storefront/slides': { ...SLIDES, slides: [] },
     });
-    const home = await loadWith(NO_SAMPLE);
+    const home = await loadWith();
     expect(home.sections.map((s) => s.kind).slice(0, 2)).toEqual(['hero', 'promos']);
     const promos = home.sections[1];
     expect(promos?.kind === 'promos' && promos.banners.map((b) => [b.id, b.variant])).toEqual([
@@ -546,27 +513,26 @@ describe('home source: the hero slider', () => {
       'storefront/pages/home': page,
       'storefront/slides': { ...SLIDES, slides: [] },
     });
-    expect((await loadWith(NO_SAMPLE)).sections.map((s) => s.kind)).not.toContain('hero');
+    expect((await loadWith()).sections.map((s) => s.kind)).not.toContain('hero');
   });
 
-  it('uses the sample hero when the slides read fails and the fallback is on, not when it is off', async () => {
+  it('shows no sample hero when the slides read fails', async () => {
     const page = structuredClone(PAGE);
     page.page.slots[0]!.modules = [];
     serve({ ...REAL, 'storefront/pages/home': page, 'storefront/slides': 503 });
-    expect(hero((await loadWith(ENV)).sections)?.slides.length).toBeGreaterThan(1);
-    expect((await loadWith(NO_SAMPLE)).sections.map((s) => s.kind)).not.toContain('hero');
+    expect((await loadWith()).sections.map((s) => s.kind)).not.toContain('hero');
   });
 
   it('shows the live slides even when the layout read fails', async () => {
     serve({ ...REAL, 'storefront/pages/home': 503, 'storefront/slides': SLIDES });
-    const home = await loadWith(NO_SAMPLE);
+    const home = await loadWith();
     expect(home.sections.map((s) => s.kind)).toEqual(['hero']);
-    expect((await loadWith(ENV)).sections.filter((s) => s.kind === 'hero')).toHaveLength(1);
+    expect((await loadWith()).sections.filter((s) => s.kind === 'hero')).toHaveLength(1);
   });
 
   it('has the sample slider while API_BASE_URL is empty', async () => {
     serve({ 'storefront/pages/home': OFF, 'catalog/categories': OFF, 'storefront/slides': OFF });
-    const set = hero((await loadWith(NO_SAMPLE)).sections);
+    const set = hero((await loadWith()).sections);
     expect(set?.slides.map((s) => s.href)).toEqual(['/offers', '/express', '/certified']);
   });
 });
