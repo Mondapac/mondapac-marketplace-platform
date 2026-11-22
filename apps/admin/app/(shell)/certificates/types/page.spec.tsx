@@ -33,6 +33,11 @@ vi.mock('../../../../src/certificates/tabs.tsx', () => ({ CertificatesTabs: () =
 vi.mock('../../../../src/certificates/type-registry/types-table.tsx', () => ({
   TypesTable: ({ rows }: { readonly rows: readonly unknown[] }) => <p>{`${rows.length} types`}</p>,
 }));
+vi.mock('../../../../src/certificates/type-registry/types-toolbar.tsx', () => ({
+  TypesToolbar: ({ canEdit, closed }: { readonly canEdit: boolean; readonly closed: boolean }) => (
+    <p>{`toolbar edit=${canEdit} closed=${closed}`}</p>
+  ),
+}));
 vi.mock('../../../../src/certificates/type-registry/type-detail.tsx', () => ({
   TypeDetailView: ({
     name,
@@ -102,6 +107,18 @@ describe('types list page', () => {
     expect(screen.getByText("You don't have access to certificate types.")).toBeTruthy();
     mocks.get.mockResolvedValue({ kind: 'signed-out' });
     await expect(TypesPage()).rejects.toThrow('redirect:/session-ended');
+  });
+
+  it('reads closed proposals only when asked, and gives New type to editors only', async () => {
+    mocks.get.mockResolvedValue({ kind: 'ok', body: { items: [] } });
+    render(await TypesPage({ searchParams: Promise.resolve({ closed: 'true' }) }));
+    expect(mocks.get).toHaveBeenCalledWith('certification/admin/types?closed=true');
+    expect(screen.getByText('toolbar edit=false closed=true')).toBeTruthy();
+    cleanup();
+    mocks.session.mockResolvedValue({ kind: 'ok', session: session([VIEW, EDIT]) });
+    render(await TypesPage());
+    expect(mocks.get).toHaveBeenLastCalledWith('certification/admin/types');
+    expect(screen.getByText('toolbar edit=true closed=false')).toBeTruthy();
   });
 
   it('shows a load error when the session itself is unavailable', async () => {

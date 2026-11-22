@@ -6,10 +6,12 @@ import { serverGet } from '../../../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../../../src/server/session.ts';
 import { TypeRevisionForm } from '../../../../../../src/certificates/type-registry/type-revision-form.tsx';
 import {
+  API_NEW_OPTIONS,
   API_TYPES,
   TYPE_EDIT_PERMISSION,
   TYPE_VIEW_PERMISSION,
   type TypeDetail,
+  type TypeNewOptions,
 } from '../../../../../../src/certificates/type-registry/types.ts';
 
 export async function generateMetadata() {
@@ -65,6 +67,11 @@ export default async function TypeEditPage({
   if (result.kind === 'forbidden') return shell(message('no-access'));
   if (result.kind === 'not-found') return shell(message('not-found'));
   if (result.kind !== 'ok') return shell(message('unavailable'));
+  // Only a type that is live or proposed can be changed; a closed proposal is read-only.
+  if (result.body.status === 'rejected' || result.body.status === 'withdrawn')
+    return shell(message('not-found'));
+  // The artwork list; without it the type's own key stays the only choice.
+  const options = await serverGet<TypeNewOptions>(API_NEW_OPTIONS);
   return shell(
     <>
       <p className="mb-4">
@@ -75,7 +82,11 @@ export default async function TypeEditPage({
       <h2 className="mb-4 text-xl font-semibold">
         {t('certificates.types.revise.heading', { code: result.body.code })}
       </h2>
-      <TypeRevisionForm type={result.body} csrfToken={gate.session.csrfToken} />
+      <TypeRevisionForm
+        type={result.body}
+        csrfToken={gate.session.csrfToken}
+        artworkKeys={options.kind === 'ok' ? options.body.badgeArtworkKeys : []}
+      />
     </>,
   );
 }

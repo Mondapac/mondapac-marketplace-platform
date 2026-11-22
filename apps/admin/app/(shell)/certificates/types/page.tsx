@@ -5,9 +5,11 @@ import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
 import { CertificatesTabs } from '../../../../src/certificates/tabs.tsx';
+import { TypesToolbar } from '../../../../src/certificates/type-registry/types-toolbar.tsx';
 import { TypesTable } from '../../../../src/certificates/type-registry/types-table.tsx';
 import {
   API_TYPES,
+  TYPE_EDIT_PERMISSION,
   TYPE_VIEW_PERMISSION,
   type TypeList,
 } from '../../../../src/certificates/type-registry/types.ts';
@@ -18,7 +20,12 @@ export async function generateMetadata() {
 }
 
 /** Certificates > Types (certificates design CA4): the certificate types of the Market. */
-export default async function TypesPage() {
+export default async function TypesPage({
+  searchParams,
+}: {
+  readonly searchParams?: Promise<{ readonly closed?: string | readonly string[] }>;
+} = {}) {
+  const closed = (await searchParams)?.closed === 'true';
   const gate = await requireSession();
   const t = await getTranslations();
   if (gate.kind === 'unavailable') {
@@ -50,13 +57,14 @@ export default async function TypesPage() {
       </>
     );
   if (!keys.includes(TYPE_VIEW_PERMISSION)) return shell(message('no-access'));
-  const result = await serverGet<TypeList>(API_TYPES);
+  const result = await serverGet<TypeList>(closed ? `${API_TYPES}?closed=true` : API_TYPES);
   if (result.kind === 'signed-out') redirect('/session-ended');
   if (result.kind === 'forbidden') return shell(message('no-access'));
   if (result.kind !== 'ok') return shell(message('unavailable'));
   return shell(
     <div className="flex flex-col gap-4">
       <CertificatesTabs active="types" permissionKeys={keys} />
+      <TypesToolbar canEdit={keys.includes(TYPE_EDIT_PERMISSION)} closed={closed} />
       <TypesTable rows={result.body.items} />
     </div>,
   );

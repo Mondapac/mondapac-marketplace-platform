@@ -422,6 +422,7 @@ describe('type page', () => {
     expect(typeProblemOf({ status: 409, code: 'conflict.stale' })).toEqual({
       key: 'certificates.types.error.stale',
       reload: true,
+      codeField: false,
       issues: [],
     });
     expect(typeProblemOf({ status: 403, code: 'review.second-admin-required' }).reload).toBe(false);

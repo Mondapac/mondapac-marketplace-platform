@@ -3,12 +3,9 @@
 import {
   Banner,
   Button,
-  CheckboxRow,
   Dialog,
   SaveBar,
-  Select,
   TextAreaField,
-  TextField,
   useUnsavedChangesGuard,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
@@ -22,37 +19,27 @@ import {
   type TypeRevisionSaved,
 } from './types.ts';
 import { useTypeCall } from './use-type-call.ts';
+import {
+  DEFAULT_BASES,
+  DESCRIPTION_MAX,
+  ErrorSummary,
+  NAME_MAX,
+  RulesFields,
+  TERMS_MAX,
+  TERM_MAX,
+  WordingFields,
+  normaliseRules,
+  termsOf,
+  type LocaleDraft,
+  type RulesDraft,
+} from './type-fields.tsx';
 
-const NAME_MAX = 80;
-const DESCRIPTION_MAX = 500;
-const TERM_MAX = 100;
-const TERMS_MAX = 200;
 const ICON_KEY = /^[a-z][a-z0-9-]{0,63}$/;
-const DEFAULT_BASES = ['SELLER_REQUIRED', 'NOT_APPLICABLE'] as const;
 
-interface LocaleDraft {
-  name: string;
-  description: string;
-  /** One term per line. */
-  terms: string;
-}
-
-interface Draft {
-  requiresIssuerRegistry: boolean;
-  requiresDocument: boolean;
-  requiresExpiry: boolean;
-  defaultBasis: string;
-  autoApprove: boolean;
-  icon: string;
+interface Draft extends RulesDraft {
   locales: Readonly<Record<string, LocaleDraft>>;
   reason: string;
 }
-
-const termsOf = (text: string): string[] =>
-  text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line !== '');
 
 function draftOf(content: TypeContent): Draft {
   const locales: Record<string, LocaleDraft> = {};
@@ -64,15 +51,17 @@ function draftOf(content: TypeContent): Draft {
     };
   }
   return {
-    requiresIssuerRegistry: content.requiresIssuerRegistry === true,
-    requiresDocument: content.requiresDocument === true,
-    requiresExpiry: content.requiresExpiry === true,
-    defaultBasis: content.defaultBasis ?? 'NOT_APPLICABLE',
-    // Only a self-declared type shows the switch; any other type never auto-approves.
-    autoApprove:
-      content.verificationMode === 'SELF_DECLARATION' &&
-      content.autoApproveSelfDeclaration === true,
-    icon: content.badgeIconKey ?? '',
+    ...normaliseRules(content.verificationMode ?? '', {
+      requiresIssuerRegistry: content.requiresIssuerRegistry === true,
+      requiresDocument: content.requiresDocument === true,
+      requiresExpiry: content.requiresExpiry === true,
+      defaultBasis: content.defaultBasis ?? 'NOT_APPLICABLE',
+      // Only a self-declared type shows the switch; any other type never auto-approves.
+      autoApprove:
+        content.verificationMode === 'SELF_DECLARATION' &&
+        content.autoApproveSelfDeclaration === true,
+      icon: content.badgeIconKey ?? '',
+    }),
     locales,
     reason: '',
   };
@@ -90,13 +79,18 @@ function contentOf(published: TypeContent, draft: Draft): Record<string, unknown
   }
   return {
     verificationMode: published.verificationMode,
-    requiresIssuerRegistry: draft.requiresIssuerRegistry,
-    requiresDocument: draft.requiresDocument,
-    requiresExpiry: draft.requiresExpiry,
-    defaultBasis: draft.defaultBasis,
-    autoApproveSelfDeclaration:
-      published.verificationMode === 'SELF_DECLARATION' ? draft.autoApprove : false,
-    badgeIconKey: draft.icon.trim(),
+    ...(() => {
+      const rules = normaliseRules(published.verificationMode ?? '', draft);
+      return {
+        requiresIssuerRegistry: rules.requiresIssuerRegistry,
+        requiresDocument: rules.requiresDocument,
+        requiresExpiry: rules.requiresExpiry,
+        defaultBasis: rules.defaultBasis,
+        autoApproveSelfDeclaration:
+          published.verificationMode === 'SELF_DECLARATION' ? rules.autoApprove : false,
+        badgeIconKey: rules.icon.trim(),
+      };
+    })(),
     locales,
   };
 }
@@ -206,9 +200,12 @@ function problemsOf(draft: Draft, autoApproveAllowed: boolean): Record<string, s
 export function TypeRevisionForm({
   type,
   csrfToken,
+  artworkKeys = [],
 }: {
   readonly type: TypeDetail;
   readonly csrfToken: string;
+  /** The artwork the API lists (new-options); the key the type has stays choosable. */
+  readonly artworkKeys?: readonly string[];
 }) {
   const t = useTranslations('certificates.types.revise');
   const td = useTranslations('certificates.types.detail');
@@ -220,6 +217,7 @@ export function TypeRevisionForm({
   const [draft, setDraft] = useState<Draft>(() => draftOf(published));
   const [shown, setShown] = useState(false);
   const [confirming, setConfirming] = useState(false);
+  const [focusKey, setFocusKey] = useState(0);
   // Set once the revision is saved and the browser is sent on: the leave prompt stays quiet.
   const [leaving, setLeaving] = useState(false);
   const cancel = useRef<HTMLButtonElement>(null);
@@ -228,8 +226,22 @@ export function TypeRevisionForm({
   const failed = Object.keys(problems).length > 0;
   const yesNo = (value: boolean) => td(value ? 'yes' : 'no');
   const basis = (value: string) => (tb.has(value as never) ? tb(value as never) : value);
+  // What the method forces (a document for an issuer certificate) is the baseline, so a seed type
+  // stored without it opens clean.
+  const forced = normaliseRules(published.verificationMode ?? '', {
+    requiresIssuerRegistry: published.requiresIssuerRegistry === true,
+    requiresDocument: published.requiresDocument === true,
+    requiresExpiry: published.requiresExpiry === true,
+    defaultBasis: published.defaultBasis ?? 'NOT_APPLICABLE',
+    autoApprove: published.autoApproveSelfDeclaration === true,
+    icon: published.badgeIconKey ?? '',
+  });
   const changes = changesOf(
-    published,
+    {
+      ...published,
+      requiresIssuerRegistry: forced.requiresIssuerRegistry,
+      requiresDocument: forced.requiresDocument,
+    },
     draft,
     (key, values) => td(key as never, values as never),
     yesNo,
@@ -275,6 +287,7 @@ export function TypeRevisionForm({
   function review(event: FormEvent) {
     event.preventDefault();
     setShown(true);
+    if (failed) setFocusKey((key) => key + 1);
     if (failed || changes.length === 0) return;
     setConfirming(true);
   }
@@ -287,97 +300,57 @@ export function TypeRevisionForm({
       ...(why === '' ? {} : { reason: why }),
     });
     if (answer.ok) {
-      const what = answer.body.outcome === 'published' ? 'revision-published' : 'revision-pending';
+      const what =
+        answer.body.outcome === 'published'
+          ? 'revision-published'
+          : answer.body.outcome === 'proposal-revised'
+            ? 'proposal-changed'
+            : 'revision-pending';
       flushSync(() => setLeaving(true));
       window.location.assign(`/certificates/types/${type.typeId}?done=${what}`);
     }
   }
 
-  const localeEntries = Object.entries(draft.locales);
+  const summaryItems = shown
+    ? Object.keys(problems).flatMap((key) => {
+        const text = error(key, key === 'terms' ? 'terms-missing' : key.split('-')[0]!);
+        const field = key === 'terms' ? `terms-${Object.keys(draft.locales)[0] ?? ''}` : key;
+        return text === undefined ? [] : [{ field, text }];
+      })
+    : [];
   return (
     <form onSubmit={review} className="flex flex-col gap-6" noValidate>
       <p className="text-fg-muted">{t('intro')}</p>
-      <fieldset className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-4">
-        <legend className="px-1 text-base font-semibold">{t('settings')}</legend>
-        <p className="text-sm">
-          <span className="text-fg-muted">{td('mode')}: </span>
-          {published.verificationMode !== undefined && tm.has(published.verificationMode as never)
-            ? tm(published.verificationMode as never)
-            : (published.verificationMode ?? td('none'))}
-          <span className="text-fg-muted"> · {t('mode-fixed')}</span>
-        </p>
-        <CheckboxRow
-          label={td('needs-issuer')}
-          checked={draft.requiresIssuerRegistry}
-          onChange={(event) => set({ requiresIssuerRegistry: event.target.checked })}
-        />
-        <CheckboxRow
-          label={td('needs-document')}
-          checked={draft.requiresDocument}
-          onChange={(event) => set({ requiresDocument: event.target.checked })}
-        />
-        <CheckboxRow
-          label={td('needs-expiry')}
-          checked={draft.requiresExpiry}
-          onChange={(event) => set({ requiresExpiry: event.target.checked })}
-        />
-        <Select
-          label={td('default-basis')}
-          value={draft.defaultBasis}
-          onChange={(event) => set({ defaultBasis: event.target.value })}
-          options={DEFAULT_BASES.map((value) => ({ value, label: basis(value) }))}
-        />
-        {selfDeclared ? (
-          <CheckboxRow
-            label={td('auto-approve')}
-            help={t('auto-help')}
-            checked={draft.autoApprove}
-            onChange={(event) => set({ autoApprove: event.target.checked })}
-          />
-        ) : null}
-        <TextField
-          label={td('icon')}
-          value={draft.icon}
-          onChange={(event) => set({ icon: event.target.value })}
-          help={t('icon-help')}
-          error={error('icon', 'icon')}
-          autoComplete="off"
-          spellCheck={false}
-          dir="ltr"
-        />
-      </fieldset>
-      {localeEntries.map(([code, text]) => (
-        <fieldset
-          key={code}
-          lang={code}
-          className="flex flex-col gap-3 rounded-lg border border-line bg-surface p-4"
-        >
-          <legend className="px-1 text-base font-semibold">{td('locale', { locale: code })}</legend>
-          <TextField
-            label={td('locale-name')}
-            value={text.name}
-            onChange={(event) => setLocale(code, { name: event.target.value })}
-            error={error(`name-${code}`, 'name')}
-            help={t('name-help', { max: NAME_MAX })}
-          />
-          <TextAreaField
-            label={td('locale-description')}
-            rows={3}
-            value={text.description}
-            onChange={(event) => setLocale(code, { description: event.target.value })}
-            error={error(`description-${code}`, 'description')}
-            help={t('description-help', { max: DESCRIPTION_MAX })}
-          />
-          <TextAreaField
-            label={td('locale-terms')}
-            rows={6}
-            value={text.terms}
-            onChange={(event) => setLocale(code, { terms: event.target.value })}
-            error={error(`terms-${code}`, 'terms') ?? error('terms', 'terms-missing')}
-            help={t('terms-help', { term: TERM_MAX, terms: TERMS_MAX })}
-          />
-        </fieldset>
-      ))}
+      <ErrorSummary items={summaryItems} focusKey={focusKey} />
+      <RulesFields
+        variant="edit"
+        mode={published.verificationMode ?? ''}
+        value={draft}
+        onChange={set}
+        artworkKeys={artworkKeys}
+        bases={DEFAULT_BASES}
+        errors={{ icon: error('icon', 'icon') }}
+        lead={
+          <p className="text-sm">
+            <span className="text-fg-muted">{td('mode')}: </span>
+            {published.verificationMode !== undefined && tm.has(published.verificationMode as never)
+              ? tm(published.verificationMode as never)
+              : (published.verificationMode ?? td('none'))}
+            <span className="text-fg-muted"> · {t('mode-fixed')}</span>
+          </p>
+        }
+      />
+      <WordingFields
+        variant="edit"
+        locales={draft.locales}
+        onChange={setLocale}
+        errors={Object.fromEntries(
+          Object.keys(problems).map((key) => [
+            key,
+            error(key, key === 'terms' ? 'terms-missing' : key.split('-')[0]!),
+          ]),
+        )}
+      />
       <TextAreaField
         label={t('reason')}
         optionalLabel={t('optional')}
@@ -385,6 +358,7 @@ export function TypeRevisionForm({
         value={draft.reason}
         onChange={(event) => set({ reason: event.target.value })}
         help={t('reason-help', { max: REASON_MAX })}
+        dir="auto"
         error={error('reason', 'reason')}
       />
       <SaveBar
