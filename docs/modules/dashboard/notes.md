@@ -12,6 +12,22 @@ Architecture: ADR-0050.
 - Each queue is a `WorkQueueSource` bound in `dashboard.module.ts` to its owner's facade method.
 - Levels and default overdue ages: critical 1 h (or the queue's own deadline), today 48 h, review 7 d.
 
+## Seller KPIs: panel (phase 6, PR 17)
+
+The seller home shows, below "Needs attention", the KPI section (`apps/seller/src/dashboard/kpis`),
+read only when the session holds `ordering.seller-order.view`:
+
+- Period switch (Today, 7 days, 30 days, This month) kept in the address (`?period=`), so the
+  server renders the figures; an unknown value falls back to 30 days.
+- Eight cards with the change against the previous period: sales (with a sparkline), paid orders,
+  average order value, refunded, refund rate, shipped on time, units, cancelled. The change is
+  `n/a` when the previous figure is zero or its period had fewer than five paid orders; colour
+  follows better or worse (refunds and cancellations up are bad), and the words say it too.
+- Sales chart with a dashed previous period and "View as table"; top categories (named from the
+  public category tree, "Other categories" when unnamed); store health from `sellers/own-health`
+  (links to Performance). Recent orders stay as the existing "Recent orders" card.
+- A failed read says "could not be loaded" in its own card or cards, never a zero.
+
 ## Deferred
 
 Tracked in the central register (FE-066 to FE-081), among them: overdue thresholds editable in admin

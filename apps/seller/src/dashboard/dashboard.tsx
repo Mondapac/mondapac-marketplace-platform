@@ -788,9 +788,12 @@ function allRefused(data: SellerDashboardSources): DashboardSource<boolean> {
 export function SellerDashboard({
   data,
   permissionKeys,
+  kpis,
 }: {
   readonly data: SellerDashboardSources;
   readonly permissionKeys: readonly string[];
+  /** The KPI section (phase 6), shown below the attention figures; absent without the orders key. */
+  readonly kpis?: ReactNode;
 }) {
   const t = useTranslations('dashboard');
   const keys = new Set(permissionKeys);
@@ -815,6 +818,7 @@ export function SellerDashboard({
       )}
       <Notices data={data} />
       <Attention data={data} />
+      {kpis ?? null}
       <Orders data={data} />
       <LowStock data={data} />
       <Offers data={data} />
