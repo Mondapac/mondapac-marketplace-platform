@@ -32,7 +32,7 @@ export function PageInfo({ page, children, width = 'sm' }: PageInfoProps) {
         width={width}
         describedBy={textId}
       >
-        {() => <p className="max-h-36 overflow-y-auto text-sm text-fg-secondary">{children}</p>}
+        {() => <p className="max-h-30 overflow-y-auto text-sm text-fg-secondary">{children}</p>}
       </Popover>
     </>
   );

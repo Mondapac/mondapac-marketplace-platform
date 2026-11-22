@@ -134,7 +134,7 @@ export function Popover({
         onClick={() => setOpen((value) => !value)}
         className={
           variant === 'icon'
-            ? `relative inline-flex size-6 items-center justify-center rounded-full text-icon-muted hover:bg-muted ${open ? 'bg-muted text-fg' : ''} before:absolute before:-inset-2.5 before:content-[''] md:before:hidden`
+            ? `relative inline-flex size-6 items-center justify-center rounded-full hover:bg-muted ${open ? 'bg-muted text-fg' : 'text-icon-muted'} before:absolute before:-inset-2.5 before:content-[''] md:before:hidden`
             : 'inline-flex h-(--mp-size-control) w-(--mp-size-control) items-center justify-center rounded-md border border-line-control bg-surface text-fg hover:bg-muted'
         }
       >
