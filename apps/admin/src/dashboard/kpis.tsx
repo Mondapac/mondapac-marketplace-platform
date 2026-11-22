@@ -18,6 +18,7 @@ import { KpiPeriodSwitch } from './kpi-period-switch.tsx';
 import {
   kpiDayLabel,
   kpiDelta,
+  kpiMajor,
   kpiMoney,
   kpiRate,
   kpiSentiment,
@@ -31,6 +32,8 @@ import {
   type KpiDelta,
   type KpiPeriod,
   type KpiResult,
+  KPI_MONEY_PERMISSION,
+  KPI_ORDERS_PERMISSION,
 } from './kpi-types.ts';
 
 const PERIOD_KEY: Record<KpiPeriod, string> = {
@@ -232,9 +235,7 @@ function GmvChart({
           compare={previousSeries.map(point)}
           seriesLabel={t('chart.this')}
           compareLabel={t('chart.previous')}
-          formatValue={(v) =>
-            kpiMoney({ amountMinor: String(Math.round(v * 100)), currency }, locale)
-          }
+          formatValue={(v) => kpiMajor(v, currency, locale)}
           labels={{
             viewAsTable: t('chart.table'),
             viewAsChart: t('chart.chart'),
@@ -249,9 +250,11 @@ function GmvChart({
 function Strip({
   result,
   period,
+  keys,
 }: {
   readonly result: KpiResult | null;
   readonly period: KpiPeriod;
+  readonly keys: ReadonlySet<string>;
 }) {
   const t = useTranslations('dashboard.kpis');
   const options: PeriodOption[] = KPI_PERIODS.map((id) => ({
@@ -285,7 +288,14 @@ function Strip({
       <StatGrid label={t('title')}>
         {value === null ? (
           <ErrorCards
-            ids={['gmv', 'net', 'aov', 'refunded', 'orders', 'cancel', 'onTime', 'refunds']}
+            ids={[
+              ...(keys.has(KPI_MONEY_PERMISSION)
+                ? (['gmv', 'net', 'aov', 'refunded'] as const)
+                : []),
+              ...(keys.has(KPI_ORDERS_PERMISSION)
+                ? (['orders', 'cancel', 'onTime', 'refunds'] as const)
+                : []),
+            ]}
           />
         ) : (
           <>
@@ -317,10 +327,19 @@ function Strip({
 export function AdminKpiStrip({
   source,
   period,
+  permissionKeys,
 }: {
   readonly source: AdminKpiSource;
   readonly period: KpiPeriod;
+  readonly permissionKeys: readonly string[];
 }) {
+  const keys = new Set(permissionKeys);
+  const money = keys.has(KPI_MONEY_PERMISSION);
+  const orders = keys.has(KPI_ORDERS_PERMISSION);
+  const skeletonIds = [
+    ...(money ? (['gmv', 'net', 'aov', 'refunded'] as const) : []),
+    ...(orders ? (['orders', 'cancel', 'onTime', 'refunds'] as const) : []),
+  ];
   const t = useTranslations('dashboard.kpis');
   const { slowLabel, stalledLabel } = useSkeletonText();
   return (
@@ -329,25 +348,27 @@ export function AdminKpiStrip({
       fallback={
         <div className="flex flex-col gap-3">
           <StatGrid label={t('title')}>
-            {(['gmv', 'net', 'aov', 'refunded'] as const).map((id) => (
+            {skeletonIds.map((id) => (
               <StatCardSkeleton
                 key={id}
                 icon={CARDS[id]!.icon}
-                label={t(`${id}.label`)}
+                label={t(`${id === 'onTime' ? 'on-time' : id}.label`)}
                 stalledLabel={stalledLabel}
               />
             ))}
           </StatGrid>
-          <ChartCardSkeleton
-            id="dash-gmv"
-            title={t('chart.title')}
-            slowLabel={slowLabel}
-            stalledLabel={stalledLabel}
-          />
+          {money ? (
+            <ChartCardSkeleton
+              id="dash-gmv"
+              title={t('chart.title')}
+              slowLabel={slowLabel}
+              stalledLabel={stalledLabel}
+            />
+          ) : null}
         </div>
       }
     >
-      {(result) => <Strip result={result} period={period} />}
+      {(result) => <Strip result={result} period={period} keys={keys} />}
     </DashboardSlot>
   );
 }

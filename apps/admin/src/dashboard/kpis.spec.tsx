@@ -4,6 +4,7 @@ import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 import {
+  kpiMajor,
   kpiDayLabel,
   kpiDelta,
   kpiMoney,
@@ -114,8 +115,9 @@ const answer = (parts: Partial<AdminKpis>): KpiResult => ({
   },
 });
 
-const strip = (result: KpiResult | null) =>
-  render(wrap(<AdminKpiStrip source={result} period="7d" />));
+const BOTH = ['ordering.order.view', 'commission-payouts.settlement.view'];
+const strip = (result: KpiResult | null, keys: readonly string[] = BOTH) =>
+  render(wrap(<AdminKpiStrip source={result} period="7d" permissionKeys={keys} />));
 
 describe('the admin KPI strip', () => {
   it('shows eight figures with money in the currency, rates, changes and the update time', () => {
@@ -159,6 +161,11 @@ describe('the admin KPI strip', () => {
     const { unmount } = strip({ kind: 'error' });
     expect(screen.getAllByRole('alert').length).toBe(8);
     unmount();
+    // Only the figures the session may see, never the money cards of an orders-only admin.
+    const some = strip({ kind: 'error' }, ['ordering.order.view']);
+    expect(screen.getAllByRole('alert').length).toBe(4);
+    expect(screen.queryByText('GMV (incl. GST)')).toBeNull();
+    some.unmount();
     const hidden = strip(answer({}));
     expect(hidden.container.textContent).toBe('');
     hidden.unmount();
@@ -195,6 +202,11 @@ describe('the KPI formats', () => {
     expect(kpiDayLabel('2026-11-22', 'en-AU')).toBe('22 Nov');
     expect(minutesBetween('2026-11-22T09:57:00Z', GENERATED)).toBe(3);
     expect(minutesBetween(null, GENERATED)).toBeNull();
+  });
+
+  it('shows a chart value in the currency whatever its digits', () => {
+    expect(kpiMajor(1500, 'JPY', 'en-AU')).toContain('1,500');
+    expect(kpiMajor(12.5, 'AUD', 'en-AU')).toBe('$12.50');
   });
 
   it('judges better or worse by the metric, not the arrow', () => {

@@ -13,6 +13,15 @@ export function kpiMoney(money: KpiMoney, locale: string): string {
   }
 }
 
+/** A major-unit amount (a chart value) shown in the currency, whatever its number of digits. */
+export function kpiMajor(value: number, currency: string, locale: string): string {
+  try {
+    return numberFormat(locale, { style: 'currency', currency }).format(value);
+  } catch {
+    return '-';
+  }
+}
+
 /** The major-unit number of minor units, for a chart value; NaN for a bad value (drawn as 0). */
 export function minorToMajor(amountMinor: string, currency: string, locale: string): number {
   if (!/^-?[0-9]{1,18}$/.test(amountMinor)) return Number.NaN;
@@ -28,7 +37,11 @@ export function kpiRate(bp: number | null, locale: string): string {
   return numberFormat(locale, { style: 'percent', maximumFractionDigits: 1 }).format(bp / 10000);
 }
 
-/** A change as the card shows it: "+12.5%" for a count or an amount, "+1.5 pts" for a rate, "n/a". */
+/**
+ * A change as the card shows it. The literal 'n/a' is a contract with `StatDelta` (no arrow, the
+ * comparison read alone); "pts" stays English because admin panels are English LTR.
+ * Shapes: "+12.5%" for a count or an amount, "+1.5 pts" for a rate, "n/a".
+ */
 export function kpiDelta(delta: KpiDelta, kind: 'percent' | 'points', locale: string): string {
   if (delta.state === 'na') return 'n/a';
   const signed = (text: string) => (delta.value > 0 ? `+${text}` : text);

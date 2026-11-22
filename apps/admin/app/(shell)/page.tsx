@@ -35,7 +35,7 @@ export default async function HomePage({
           <h1 className="break-words text-2xl font-semibold">{t('home.title')}</h1>
           <p className="text-fg-muted">{t('home.intro', { name: gate.session.displayName })}</p>
         </div>
-        <AdminKpiStrip source={kpis} period={period} />
+        <AdminKpiStrip source={kpis} period={period} permissionKeys={gate.session.permissionKeys} />
         <AdminDashboard data={data} permissionKeys={gate.session.permissionKeys} />
       </div>
     </AdminShell>
