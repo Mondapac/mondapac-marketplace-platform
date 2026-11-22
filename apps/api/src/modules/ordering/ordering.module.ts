@@ -184,7 +184,19 @@ import { PayByCard } from './application/use-cases/pay-by-card.use-case';
 import { StartCheckout } from './application/use-cases/start-checkout.use-case';
 import { ViewOrder } from './application/use-cases/view-order.use-case';
 import { ViewOrderDocument } from './application/use-cases/view-order-document.use-case';
-import { ORDERING_FACADE, ORDERING_PERMISSIONS, ORDERING_RANKING_FACADE } from './contracts';
+import {
+  ORDERING_FACADE,
+  ORDERING_PERMISSIONS,
+  ORDERING_RANKING_FACADE,
+  ORDERING_WORK_QUEUE_FACADE,
+} from './contracts';
+import { CountLateDeliveries } from './application/use-cases/count-late-deliveries.use-case';
+import { CountPendingRefunds } from './application/use-cases/count-pending-refunds.use-case';
+import {
+  WORK_QUEUE_COUNT_READER,
+  type WorkQueueCountReader,
+} from './application/ports/work-queue-count.reader';
+import { OrderingWorkQueueFacadeImplementation } from './presentation/ordering-work-queue.facade';
 import { OFFER_PAIR_STORE } from './application/ports/offer-pairs.store';
 import {
   BoughtTogetherQuery,
@@ -822,6 +834,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         clock: RebuildOfferPairsDependencies['clock'],
       ) => new RebuildOfferPairs(gate, { unitOfWork, pairs, clock }),
     },
+    ...[CountLateDeliveries, CountPendingRefunds].map((type) => ({
+      provide: type,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, WORK_QUEUE_COUNT_READER],
+      useFactory: (gate: UseCaseGate, unitOfWork: UnitOfWork, counts: WorkQueueCountReader) =>
+        new type(gate, { unitOfWork, counts }),
+    })),
+    {
+      provide: ORDERING_WORK_QUEUE_FACADE,
+      inject: [CountLateDeliveries, CountPendingRefunds],
+      useFactory: (late: CountLateDeliveries, refunds: CountPendingRefunds) =>
+        new OrderingWorkQueueFacadeImplementation(late, refunds),
+    },
     {
       provide: ORDERING_RANKING_FACADE,
       inject: [BestSellingOffersQuery, BoughtTogetherQuery],
@@ -858,6 +882,6 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ],
     ),
   ],
-  exports: [ORDERING_FACADE, ORDERING_RANKING_FACADE],
+  exports: [ORDERING_FACADE, ORDERING_RANKING_FACADE, ORDERING_WORK_QUEUE_FACADE],
 })
 export class OrderingModule {}
