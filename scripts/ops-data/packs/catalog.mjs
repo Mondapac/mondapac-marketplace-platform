@@ -3,39 +3,7 @@
 // published), feature sets, each department's feature set and buyer filters, and cultures. The
 // catalog seed jobs are switched off in this environment (CATALOG_SEED_JOBS_OFF), so nothing here
 // comes from config/catalog-seed. A rerun creates only what is missing and changes nothing else.
-
-/** Every catalogue write in a reviewed Market carries a note (Admin Inbox, reviewed after). */
-const NOTE = 'Operational test data (scripts/ops-data)';
-
-/**
- * A write that waits for a second admin's approval answers 202 with the request it filed
- * (Admin Inbox › System requests): nothing changed yet. The request is collected; the run
- * approves it as the reviewer admin when the scenario has one, else it stops and says which
- * requests wait.
- */
-function filed(answer, pending, label) {
-  if (answer.status === 202) {
-    pending.push({ label, request: answer.body.request });
-    return true;
-  }
-  // An earlier run filed the same change and it still waits: settle it rather than file twice.
-  if (answer.status === 409 && answer.body?.code === 'system-requests.already-pending') {
-    pending.push({ label, request: { id: null, number: answer.body.details.pendingNumber } });
-    return true;
-  }
-  return false;
-}
-
-async function write(admin, method, path, body, pending, label) {
-  const answer = await admin.request(method, path, body);
-  if (filed(answer, pending, label)) return null;
-  if (answer.status < 200 || answer.status > 299) {
-    throw new Error(
-      `${method} ${path} (${label}) -> ${answer.status} ${JSON.stringify(answer.body).slice(0, 400)}`,
-    );
-  }
-  return answer.body;
-}
+import { NOTE, approveOpen, settle, write } from './requests.mjs';
 
 async function ensureCategories(admin, scenario, log) {
   const { locale } = scenario;
@@ -149,35 +117,6 @@ async function ensureAttributes(admin, scenario, log) {
   if (made > 0 || published > 0) byCode = await attributesByCode(admin);
   log(`  ${scenario.catalog.attributes.length} attributes (${made} new, ${published} published)`);
   return byCode;
-}
-
-/**
- * Approves the requests the writes filed, as the reviewer admin (maker-checker: the author never
- * approves their own). Without a reviewer the run stops and names the requests that wait.
- */
-async function settle(reviewer, pending, log) {
-  if (pending.length === 0) return;
-  if (reviewer === null) {
-    const list = pending.map((item) => `SR-${item.request.number} (${item.label})`).join(', ');
-    throw new Error(
-      `These catalogue changes wait for a second admin's approval: ${list}. ` +
-        'The scenario has no reviewer admin yet, so the loader cannot approve them.',
-    );
-  }
-  for (const item of pending.splice(0)) {
-    if (item.request.id === null)
-      item.request.id = await requestIdOf(reviewer, item.request.number);
-    await reviewer.ok('POST', `/system-requests/admin/requests/${item.request.id}/approve`, {});
-    log(`  approved SR-${item.request.number} (${item.label}) as the reviewer`);
-  }
-}
-
-/** The id of an open request by its number (SR-n), from the reviewer's queue. */
-async function requestIdOf(reviewer, number) {
-  const list = await reviewer.ok('GET', '/system-requests/admin/requests?status=open&pageSize=100');
-  const row = list.rows.find((item) => item.number === number);
-  if (row === undefined) throw new Error(`SR-${number} is not in the open requests`);
-  return row.id;
 }
 
 async function featureSetIdsByCode(admin) {
@@ -306,28 +245,6 @@ async function ensureCultures(admin, reviewer, scenario, log) {
 }
 
 /**
- * The catalogue changes that applied at once still sit in the reviewer's queue ("reviewed
- * after"); the reviewer approves them, as a second admin would, so the Admin Inbox starts clean.
- */
-async function approveReviewed(reviewer, log) {
-  if (reviewer === null) return;
-  let approved = 0;
-  for (;;) {
-    const list = await reviewer.ok(
-      'GET',
-      '/system-requests/admin/requests?status=open&area=catalogue&pageSize=100',
-    );
-    const open = list.rows.filter((row) => row.status === 'open' && row.area === 'catalogue');
-    if (open.length === 0) break;
-    for (const row of open) {
-      await reviewer.ok('POST', `/system-requests/admin/requests/${row.id}/approve`, {});
-      approved += 1;
-    }
-  }
-  log(`  ${approved} reviewed-after catalogue changes approved by the reviewer`);
-}
-
-/**
  * Builds the scenario's catalog structure. `reviewer` is a second admin's session that approves
  * what waits for approval, or null.
  */
@@ -337,5 +254,6 @@ export async function catalogPack({ admin, reviewer = null, scenario, log }) {
   const featureSetIds = await ensureFeatureSets(admin, reviewer, scenario, log);
   await ensureLinks(admin, reviewer, scenario, categoryIds, featureSetIds, log);
   await ensureCultures(admin, reviewer, scenario, log);
-  await approveReviewed(reviewer, log);
+  await approveOpen(reviewer, 'catalogue', log);
+  return categoryIds;
 }

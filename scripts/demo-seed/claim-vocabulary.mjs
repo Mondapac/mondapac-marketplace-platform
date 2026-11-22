@@ -8,7 +8,7 @@
 //   node scripts/demo-seed/claim-vocabulary.mjs
 //
 // Local PostgreSQL only (guard.mjs). Idempotent: a type that exists is left as it is.
-import { randomUUID } from 'node:crypto';
+import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
 import { ROOT, assertLocalDevelopment, loadDotEnv } from './guard.mjs';
@@ -27,6 +27,19 @@ const TENANT = 'mondapac';
 const LOCALE = 'en-AU';
 // A fixed system author: revisions need an account id and this stand-in has no account.
 const AUTHOR = '00000000-0000-7000-8000-000000000001';
+
+/**
+ * A UUIDv7 (RFC 9562): the API accepts only version 7 ids (shared kernel parseId), so a v4 id
+ * written here would be refused wherever an admin page sends it back (an issuer's typeId).
+ */
+function uuidv7() {
+  const bytes = randomBytes(16);
+  bytes.writeUIntBE(Date.now(), 0, 6);
+  bytes[6] = (bytes[6] & 0x0f) | 0x70;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
 
 const TYPES = [
   {
@@ -86,8 +99,8 @@ try {
       [MARKET, type.code],
     );
     if (exists.rowCount > 0) continue;
-    const typeId = randomUUID();
-    const revisionId = randomUUID();
+    const typeId = uuidv7();
+    const revisionId = uuidv7();
     await client.query(
       `INSERT INTO certification.certification_types
          (id, market_id, tenant_id, code, verification_mode, status, published_revision_id, version, created_at)

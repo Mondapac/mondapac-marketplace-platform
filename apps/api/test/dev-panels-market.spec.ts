@@ -82,6 +82,36 @@ describe('scripts/dev-panels-market.mjs', () => {
     );
   });
 
+  it('raises only the per-address mail limit when LOCAL_MAIL_ORIGIN_LIMIT is given', () => {
+    const committed = loadMarketConfigs([generate()], [AU]).get(AU)!.identity.mailThrottles;
+    const raised = loadMarketConfigs([generate({ LOCAL_MAIL_ORIGIN_LIMIT: '200' })], [AU]).get(AU)!
+      .identity.mailThrottles;
+
+    expect(raised.origin).toEqual({ ...committed.origin, limit: 200 });
+    expect(raised.account).toEqual(committed.account);
+  });
+
+  it('refuses a LOCAL_MAIL_ORIGIN_LIMIT that is not a whole number from 1 to 1000', () => {
+    for (const value of ['0', '1001', 'many', '-5']) {
+      expect(() => generate({ LOCAL_MAIL_ORIGIN_LIMIT: value })).toThrow();
+    }
+  });
+
+  it('refuses LOCAL_MAIL_ORIGIN_LIMIT when an origin is not on this machine (a shared tunnel)', () => {
+    expect(() =>
+      generate({
+        LOCAL_MAIL_ORIGIN_LIMIT: '200',
+        SELLER_PANEL_ORIGIN: 'https://seller-abc.trycloudflare.com',
+      }),
+    ).toThrow();
+    expect(() =>
+      generate({
+        LOCAL_MAIL_ORIGIN_LIMIT: '200',
+        STOREFRONT_ORIGIN: 'https://shop.example.com',
+      }),
+    ).toThrow();
+  });
+
   it('accepts other loopback panel origins', () => {
     const out = generate({
       SELLER_PANEL_ORIGIN: 'http://127.0.0.1:4001',

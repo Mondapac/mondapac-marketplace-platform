@@ -15,7 +15,8 @@ and `lib.mjs`.
 |---|---|---|
 | `admin` | The platform admin (`identity-admin first-admin`) and a second admin, the reviewer (`identity-admin second-admin`); each invitation read from Mailpit, accepted with TOTP | 1 |
 | `catalog` | Categories (created, then shown), attributes (created, then published), feature sets, each department's feature set and buyer filters, cultures, through the admin API; the reviewer approves what waits for a second admin and the reviewed-after changes | 1 |
-| `sellers` | Sellers in every state, products, offers, prices, stock | 2 |
+| `sellers` | 22 sellers: the storefront sample's 18 stores approved (About text, logo, minimum order, stock location), and one each in review, rejected, suspended and a draft file; the sample issuer and 4 halal certificates (submitted, checked, approved), and their culture membership | 2 |
+| `products` | 107 platform products on level-3 categories (texts, attributes, pack-size or volume variants, the sample photos), 142 offers on the 18 stores (handling, first-publish approval, halal tags on certified sellers' meat and poultry), stock, regular prices, two-week special prices for the sample's "was" prices, and one price rise held for the admin | 2 |
 | `orders` | Buyers, carts, orders paid with Stripe test confirmation tokens, the webhook | 3 |
 | `content` | Home page, slides, menu, blog, notices | 4 |
 
@@ -30,12 +31,29 @@ approves them, so the environment shows the same maker-checker flow as productio
 docker compose up -d --wait
 pnpm db:migrate
 node scripts/ops-data/mark-database.mjs     # once per database: the operational test marker
-node scripts/dev-panels-market.mjs AU        # local Market and service-area files in .local/
+LOCAL_MAIL_ORIGIN_LIMIT=200 node scripts/dev-panels-market.mjs AU   # local Market files in .local/
 # start the API and the worker with MARKET_CONFIG_DIR=.local/markets,
 # SERVICE_AREA_CONFIG_DIR=.local/service-areas and
 # CATALOG_SEED_JOBS_OFF=catalog.seed-category-tree,catalog.seed-attributes,catalog.seed-cultures
-node scripts/ops-data/index.mjs              # --market AU (default), --only admin,catalog
+node scripts/ops-data/index.mjs              # --market AU (default), --only sellers (and the packs before it)
 ```
+
+`LOCAL_MAIL_ORIGIN_LIMIT` raises the sign-up mail limit per client address in the local Market
+file only: every local client is 127.0.0.1, and the committed limit (10 an hour) would stop the
+sellers pack after ten sign-ups. The limit per account stays as committed.
+
+## The scenario
+
+`scenarios/AU/` mirrors the buyer site's sample data (`apps/web/src/storefront/sample-*.ts`), so
+the live site shows the stores, products, prices and "was" prices the sample showed, with more of
+each. Store, business and product texts never use a claim word (halal, kosher, vegan, organic and
+their terms): the catalog refuses them, and a claim is made only through a certificate. So the
+sample's "Kedron Halal Butchers" is "Kedron Family Butchers" here and shows the Halal badge from
+its approved certificate and its tagged offers. Onboarding needs an address inside the Greater
+Brisbane service area, so Toowoomba Farm Direct sells from a stall at the Rocklea markets. The
+category tree keeps the sample's departments and categories (levels 1 and 2) and adds the level-3
+product categories products sit on. Every certificate, issuer and person is sample data, marked as
+such where it is shown.
 
 `CATALOG_SEED_JOBS_OFF` stops the worker from building the AU starter catalog from
 `config/catalog-seed/` the moment it starts on an empty database; the loader builds the catalog

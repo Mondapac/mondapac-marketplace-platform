@@ -25,6 +25,10 @@ import {
 import { API, MAILPIT, sleep } from './lib.mjs';
 import { adminPack } from './packs/admin.mjs';
 import { catalogPack } from './packs/catalog.mjs';
+import { certificatesPack } from './packs/certificates.mjs';
+import { productsPack } from './packs/products.mjs';
+import { sellersPack } from './packs/sellers.mjs';
+import { approveOpen } from './packs/requests.mjs';
 import { readState, writeState } from './state.mjs';
 
 /**
@@ -34,8 +38,8 @@ import { readState, writeState } from './state.mjs';
  */
 export const DATA_VERSION = 1;
 
-/** The packs in the order they run; later phases add sellers, buyers and orders, and content. */
-const PACKS = ['admin', 'catalog'];
+/** The packs in the order they run; later phases add buyers and orders, and content. */
+const PACKS = ['admin', 'catalog', 'sellers', 'products'];
 
 /** The one password of every sample account (local machine only). */
 const PASSWORD = process.env.OPS_PASSWORD ?? 'Mondapac-Ops-2026-Passw0rd!';
@@ -130,10 +134,44 @@ try {
   state.packs = { ...state.packs, admin: 'done' };
   save();
 
-  if (only.includes('catalog')) {
-    log('[catalog] Categories, attributes, feature sets, department links, cultures');
-    await catalogPack({ admin, reviewer, scenario: SCENARIO, log });
-    state.packs = { ...state.packs, catalog: 'done' };
+  // Later packs read what the catalog pack made, so it always runs (a rerun changes nothing).
+  log('[catalog] Categories, attributes, feature sets, department links, cultures');
+  const categoryIds = await catalogPack({ admin, reviewer, scenario: SCENARIO, log });
+  state.packs = { ...state.packs, catalog: 'done' };
+  save();
+
+  const wants = (name) =>
+    only.includes(name) || only.some((pack) => PACKS.indexOf(pack) > PACKS.indexOf(name));
+  let sessions = new Map();
+  if (wants('sellers')) {
+    log('[sellers] Sellers in every onboarding state, store profiles, halal certificates');
+    sessions = await sellersPack({
+      admin,
+      reviewer,
+      scenario: SCENARIO,
+      state,
+      save,
+      password: PASSWORD,
+      log,
+    });
+    await certificatesPack({ admin, reviewer, scenario: SCENARIO, state, sessions, log });
+    state.packs = { ...state.packs, sellers: 'done' };
+    save();
+  }
+  if (only.includes('products')) {
+    log('[products] Platform products, offers, tags, stock and prices');
+    await productsPack({
+      admin,
+      reviewer,
+      scenario: SCENARIO,
+      categoryIds,
+      sessions,
+      state,
+      save,
+      log,
+    });
+    await approveOpen(reviewer, 'catalogue', log);
+    state.packs = { ...state.packs, products: 'done' };
     save();
   }
   log(`Done. State: .local/ops-data/${market}.json`);
