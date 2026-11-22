@@ -10,6 +10,8 @@ export const isKpiPeriod = (value: unknown): value is KpiPeriod =>
 
 /** The keys that open the two sections; the card is asked for when the session holds either. */
 export const KPI_ORDERS_PERMISSION = 'ordering.order.view';
+/** The key that opens the sellers pages the top-sellers card links to. */
+export const KPI_SELLERS_PERMISSION = 'sellers.seller.view';
 export const KPI_MONEY_PERMISSION = 'commission-payouts.settlement.view';
 
 export interface KpiDelta {

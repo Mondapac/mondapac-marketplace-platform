@@ -38,6 +38,7 @@ import {
   type TopSellerRow,
   KPI_MONEY_PERMISSION,
   KPI_ORDERS_PERMISSION,
+  KPI_SELLERS_PERMISSION,
 } from './kpi-types.ts';
 
 const PERIOD_KEY: Record<KpiPeriod, string> = {
@@ -316,7 +317,9 @@ function OrderFlow({
 function TopSellers({
   topSellers,
   value,
+  canOpenSellers,
 }: {
+  readonly canOpenSellers: boolean;
   readonly topSellers: NonNullable<AdminKpis['topSellers']> & { readonly status: 'ok' };
   readonly value: AdminKpis;
 }) {
@@ -327,11 +330,17 @@ function TopSellers({
       id: 'store',
       header: t('sellers.col.store'),
       kind: 'title',
-      cell: (row) => (
-        <a className="font-medium text-link underline" href={`/sellers/${row.sellerId}`}>
-          {row.storeName ?? t('sellers.unnamed')}
-        </a>
-      ),
+      cell: (row) =>
+        canOpenSellers ? (
+          <a
+            className="font-medium text-link underline"
+            href={`/sellers/${encodeURIComponent(row.sellerId)}`}
+          >
+            {row.storeName ?? t('sellers.unnamed')}
+          </a>
+        ) : (
+          <span className="font-medium">{row.storeName ?? t('sellers.unnamed')}</span>
+        ),
     },
     {
       id: 'gmv',
@@ -377,7 +386,7 @@ function TopSellers({
       scope={
         periodNote === undefined ? t('sellers.scope') : `${periodNote} · ${t('sellers.scope')}`
       }
-      action={{ href: '/sellers', label: t('sellers.action') }}
+      {...(canOpenSellers ? { action: { href: '/sellers', label: t('sellers.action') } } : {})}
       flush
     >
       {rows.length === 0 ? (
@@ -464,7 +473,11 @@ function Strip({
         <GmvChart finance={value.finance} period={period} value={value} />
       ) : null}
       {value?.topSellers?.status === 'ok' ? (
-        <TopSellers topSellers={value.topSellers} value={value} />
+        <TopSellers
+          topSellers={value.topSellers}
+          value={value}
+          canOpenSellers={keys.has(KPI_SELLERS_PERMISSION)}
+        />
       ) : value?.topSellers?.status === 'error' ? (
         <DashboardCard id="dash-top-sellers" title={t('sellers.title')} error={tErr('error.card')}>
           {null}
@@ -523,6 +536,14 @@ export function AdminKpiStrip({
             <ChartCardSkeleton
               id="dash-gmv"
               title={t('chart.title')}
+              slowLabel={slowLabel}
+              stalledLabel={stalledLabel}
+            />
+          ) : null}
+          {money ? (
+            <ChartCardSkeleton
+              id="dash-top-sellers"
+              title={t('sellers.title')}
               slowLabel={slowLabel}
               stalledLabel={stalledLabel}
             />

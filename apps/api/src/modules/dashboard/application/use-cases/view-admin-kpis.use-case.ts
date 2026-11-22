@@ -182,6 +182,11 @@ export class ViewAdminKpis extends UseCase<
         const summaries = await this.deps.sellers.sellerSummaries(context, ids);
         if (summaries.ok) {
           for (const summary of summaries.value) names.set(summary.sellerId, summary.storeName);
+        } else {
+          logger.warn({
+            msg: 'dashboard.admin-kpis.names',
+            outcome: summaries.error.code,
+          });
         }
       } catch (error) {
         logger.warn({ msg: 'dashboard.admin-kpis.names', outcome: 'threw', error: nameOf(error) });

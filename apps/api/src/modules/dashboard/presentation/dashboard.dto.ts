@@ -301,7 +301,7 @@ function topSellersSection(section: AdminKpisAnswer['topSellers']): TopSellersSe
 
 export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
   // The period is the same in both sections; the first one that answered names it.
-  const resolved = [answer.operations, answer.finance].find(
+  const resolved = [answer.operations, answer.finance, answer.topSellers].find(
     (section) => section !== null && section.status === 'ok',
   );
   const period = resolved && resolved.status === 'ok' ? resolved.value.period : null;

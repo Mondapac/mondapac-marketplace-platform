@@ -270,7 +270,10 @@ describe('the KPI formats', () => {
   });
 
   it('lists the top sellers with money, rates, a link to each store and "-" for a missing rate', () => {
-    strip(answer({ finance, topSellers }), ['commission-payouts.settlement.view']);
+    strip(answer({ finance, topSellers }), [
+      'commission-payouts.settlement.view',
+      'sellers.seller.view',
+    ]);
     const card = screen.getByRole('region', { name: 'Top sellers' });
     const rows = within(card).getAllByRole('row');
     expect(rows).toHaveLength(3); // header + 2
@@ -283,6 +286,13 @@ describe('the KPI formats', () => {
     expect(within(card).getByRole('link', { name: 'All sellers' }).getAttribute('href')).toBe(
       '/sellers',
     );
+  });
+
+  it('shows store names as plain text without the sellers key', () => {
+    strip(answer({ finance, topSellers }), ['commission-payouts.settlement.view']);
+    const card = screen.getByRole('region', { name: 'Top sellers' });
+    expect(within(card).queryByRole('link')).toBeNull();
+    expect(within(card).getByText('Al-Noor Butchery')).toBeTruthy();
   });
 
   it('says so in the top sellers card when nobody sold, and when the read failed', () => {
