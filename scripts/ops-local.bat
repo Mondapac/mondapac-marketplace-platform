@@ -44,27 +44,29 @@ if /i "%MODE%"=="start" (
   goto :run
 )
 
-rem reset and fast replace the database: the windows of a running environment hold connections, so close them.
-echo Closing the windows of a running environment
-taskkill /f /t /fi "WINDOWTITLE eq MondaPac*" >nul 2>nul
+rem reset and fast replace the database. Check first (guards, other data, a matching backup); close the windows of a
+rem running environment (they hold connections) only when nothing refuses and, for other data, you typed YES.
 docker compose up -d --wait postgres redis mailpit || goto :fail
-
+set "REPLACE="
 if /i "%MODE%"=="fast" (
+  node scripts\ops-data\ops.mjs check --fast || goto :fail
+  call :closewindows
   node scripts\ops-data\ops.mjs restore || goto :fail
   set "OPS_LOADER_ARGS=skip"
   goto :run
 )
-
-node scripts\ops-data\ops.mjs wipe
-if %errorlevel% equ 0 goto :wiped
+node scripts\ops-data\ops.mjs check
+if %errorlevel% equ 0 goto :confirmed
 if %errorlevel% neq 3 goto :fail
 echo.
 echo The database holds other data. A reset replaces ALL of it with the operational test data.
 set "ANSWER="
 set /p "ANSWER=Type YES to replace it: "
 if not "%ANSWER%"=="YES" goto :nothing
-node scripts\ops-data\ops.mjs wipe --replace-unmarked || goto :fail
-:wiped
+set "REPLACE=--replace-unmarked"
+:confirmed
+call :closewindows
+node scripts\ops-data\ops.mjs wipe %REPLACE% || goto :fail
 set "OPS_LOADER_ARGS=--within-reset --backup%ONLY%"
 goto :run
 
@@ -74,14 +76,21 @@ endlocal
 exit /b 1
 
 :run
-call "%~dp0dev-local.bat" ops
+call "%~dp0dev-local.bat" ops || goto :fail
 endlocal
-exit /b %errorlevel%
+exit /b 0
+
+:closewindows
+echo Closing the windows of a running environment
+rem "MondaPac " with a space: the titles this environment's windows have, nothing else.
+taskkill /f /t /fi "WINDOWTITLE eq MondaPac *" >nul 2>nul
+exit /b 0
 
 :fail
 echo.
-echo Something failed above. Fix it and run this file again. If it says a reset has not finished, run:
+echo Something failed above. Fix it and run this file again. If it says a reset has not finished (or a reset failed half way), run:
 echo   node scripts\ops-data\ops.mjs unlock
+echo and then scripts\ops-local.bat reset
 pause
 endlocal
 exit /b 1

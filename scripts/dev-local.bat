@@ -80,6 +80,8 @@ if "%OPS%"=="1" (
   set "LOCAL_SIGN_IN_ORIGIN_LIMIT=300"
   rem Refunds move money: switched on only when .env holds a test-mode Stripe key.
   findstr /r /b /c:"STRIPE_SECRET_KEY=[sr]k_test_" ".env" >nul 2>nul && set "LOCAL_REFUND_CREDIT=1"
+  rem Marks only a database that is already marked or holds no tables (not the demo's).
+  node scripts\ops-data\ops.mjs check || goto :fail
   node scripts\ops-data\mark-database.mjs || goto :fail
 )
 node scripts\dev-panels-market.mjs "%MARKET%" || goto :fail

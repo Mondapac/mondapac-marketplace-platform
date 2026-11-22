@@ -40,9 +40,26 @@ export function activeLock(dir, now = Date.now()) {
   return null;
 }
 
-function write(dir, lock) {
+/**
+ * Creates the lock file exclusively (flag wx), so two processes cannot both take it. An existing
+ * file that no longer blocks (a dead run, a stale reset) is removed and taken once.
+ */
+function write(dir, lock, now = Date.now()) {
   mkdirSync(dir, { recursive: true });
-  writeFileSync(lockFile(dir), `${JSON.stringify(lock)}\n`);
+  const put = () => writeFileSync(lockFile(dir), `${JSON.stringify(lock)}\n`, { flag: 'wx' });
+  try {
+    put();
+  } catch (error) {
+    if (error.code !== 'EEXIST') throw error;
+    const held = activeLock(dir, now);
+    if (held)
+      throw new Error(
+        `${describe(held)}. Wait for it, or run: node scripts/ops-data/ops.mjs unlock`,
+        { cause: error },
+      );
+    rmSync(lockFile(dir), { force: true });
+    put();
+  }
 }
 
 const describe = (lock) =>
@@ -55,7 +72,7 @@ export function beginReset(dir, command, now = Date.now()) {
   const held = activeLock(dir, now);
   if (held)
     throw new Error(`${describe(held)}. Wait for it, or run: node scripts/ops-data/ops.mjs unlock`);
-  write(dir, { kind: 'reset', command, at: new Date(now).toISOString() });
+  write(dir, { kind: 'reset', command, at: new Date(now).toISOString() }, now);
 }
 
 export function endReset(dir) {
@@ -68,10 +85,11 @@ export function endReset(dir) {
  */
 export function acquireRun(dir, command, { withinReset = false, now = Date.now() } = {}) {
   const held = activeLock(dir, now);
-  if (held?.kind === 'reset' && withinReset) return () => {};
+  // Only the loader of a full reset (`reset`) is let in, not a fast restore.
+  if (held?.kind === 'reset' && withinReset && held.command === 'reset') return () => {};
   if (held)
     throw new Error(`${describe(held)}. Wait for it, or run: node scripts/ops-data/ops.mjs unlock`);
-  write(dir, { kind: 'run', command, pid: process.pid, at: new Date(now).toISOString() });
+  write(dir, { kind: 'run', command, pid: process.pid, at: new Date(now).toISOString() }, now);
   const release = () => {
     if (readLock(dir)?.pid === process.pid) rmSync(lockFile(dir), { force: true });
   };

@@ -5,7 +5,7 @@
 //   node scripts/ops-data/ops.mjs wipe [--replace-unmarked]   empty database, roles re-granted, marked
 //   node scripts/ops-data/ops.mjs backup                      save the finished database (pg_dump)
 //   node scripts/ops-data/ops.mjs restore                     `fast`: bring the backup back
-//   node scripts/ops-data/ops.mjs check                       exit 3 when the database holds other data (the demo)
+//   node scripts/ops-data/ops.mjs check [--fast]                      exit 3 when the database holds other data (the demo)
 //   node scripts/ops-data/ops.mjs unlock                      clear a lock left by a crashed run
 //
 // Every command runs the guards first (guard.mjs: local development only, local URLs, a test-mode
@@ -23,20 +23,20 @@ import {
   openSync,
   readdirSync,
   readFileSync,
+  renameSync,
   rmSync,
   writeFileSync,
 } from 'node:fs';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
-import { connect } from './db.mjs';
 import {
+  DB_MARKER_SETTING,
   DB_MARKER_VALUE,
   ROOT,
   assertLocalDevelopment,
   assertStripeTestKey,
   loadDotEnv,
-  readDatabaseMarker,
 } from './guard.mjs';
 import { beginReset, endReset, unlock } from './lock.mjs';
 import { STATE_DIR } from './state.mjs';
@@ -93,31 +93,61 @@ function databaseName(url) {
   return name;
 }
 
-/** The marker of the database and whether it has tables; both null/0 when it does not exist. */
-async function inspect(url) {
-  let db;
-  try {
-    db = await connect(url);
-  } catch (error) {
-    if (error.code === '3D000') return { exists: false, marker: null, tables: 0 };
-    throw error;
-  }
-  try {
-    const marker = await readDatabaseMarker(db);
-    const tables = await db.query(
-      `SELECT count(*)::int AS n FROM information_schema.tables WHERE table_schema = 'public'`,
+/** Runs a query in the Compose database container as its superuser; the answer's lines. */
+function query(database, sql) {
+  const run = compose(
+    [
+      'exec',
+      '-T',
+      'postgres',
+      'psql',
+      '-U',
+      'postgres',
+      '-d',
+      database,
+      '-v',
+      'ON_ERROR_STOP=1',
+      '-At',
+      '-c',
+      sql,
+    ],
+    { encoding: 'utf8' },
+  );
+  if (run.status !== 0) {
+    throw new Error(
+      'Could not query the Compose database container (is `docker compose up -d` done?).',
     );
-    return { exists: true, marker, tables: tables.rows[0].n };
-  } finally {
-    await db.end();
   }
+  return run.stdout.split(/\r?\n/).filter(Boolean);
+}
+
+/**
+ * The marker of the database and whether it has tables, read in the same container that a wipe
+ * would drop in (never through the URL, which could name another server on a forwarded port).
+ */
+function inspect(name) {
+  if (query('postgres', `SELECT 1 FROM pg_database WHERE datname = '${name}'`).length === 0) {
+    return { exists: false, marker: null, tables: 0 };
+  }
+  const settings = query(
+    name,
+    `SELECT unnest(s.setconfig) FROM pg_catalog.pg_db_role_setting s
+       JOIN pg_catalog.pg_database d ON d.oid = s.setdatabase
+      WHERE d.datname = '${name}' AND s.setrole = 0`,
+  );
+  const prefix = `${DB_MARKER_SETTING}=`;
+  const marker = settings.find((entry) => entry.startsWith(prefix))?.slice(prefix.length) ?? null;
+  const tables = Number(
+    query(name, `SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public'`)[0],
+  );
+  return { exists: true, marker, tables };
 }
 
 function recreateDatabase(name) {
   psql(
     'postgres',
     `SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '${name}' AND pid <> pg_backend_pid()`,
-    `DROP DATABASE IF EXISTS "${name}"`,
+    `DROP DATABASE IF EXISTS "${name}" WITH (FORCE)`,
     `CREATE DATABASE "${name}" OWNER mondapac_migrator`,
   );
 }
@@ -165,11 +195,31 @@ function markDatabase() {
   if (run.status !== 0) throw new Error('marking the database failed');
 }
 
+/** The backup's meta, or throws when there is none or it is not this code's. */
+function readBackup() {
+  const metaFile = resolve(BACKUP_DIR, 'meta.json');
+  if (!existsSync(metaFile) || !existsSync(resolve(BACKUP_DIR, 'mondapac.dump'))) {
+    throw new Error('There is no backup yet. Run a full reset first: scripts\\ops-local.bat reset');
+  }
+  const meta = JSON.parse(readFileSync(metaFile, 'utf8'));
+  const mismatch = migrationMismatch(meta.migrations, migrationNames());
+  if (mismatch) {
+    throw new Error(
+      `The backup does not match this code (${mismatch}). Run a full reset: scripts\\ops-local.bat reset`,
+    );
+  }
+  return meta;
+}
+
 async function main() {
   const command = process.argv[2];
   const { values } = parseArgs({
     args: process.argv.slice(3),
-    options: { 'replace-unmarked': { type: 'boolean', default: false } },
+    options: {
+      'replace-unmarked': { type: 'boolean', default: false },
+      // check --fast: also check that a backup exists and matches this code (before windows close)
+      fast: { type: 'boolean', default: false },
+    },
   });
   if (!['wipe', 'backup', 'restore', 'check', 'unlock'].includes(command)) {
     console.error('usage: node scripts/ops-data/ops.mjs wipe|backup|restore|check|unlock');
@@ -194,7 +244,7 @@ async function main() {
   const name = databaseName(url);
 
   if (command === 'wipe' || command === 'restore' || command === 'check') {
-    const state = await inspect(url);
+    const state = inspect(name);
     if (
       state.exists &&
       state.marker !== DB_MARKER_VALUE &&
@@ -207,7 +257,10 @@ async function main() {
       );
       process.exit(3);
     }
-    if (command === 'check') return;
+    if (command === 'check') {
+      if (values.fast) readBackup();
+      return;
+    }
   }
 
   if (command === 'wipe') {
@@ -223,13 +276,15 @@ async function main() {
   }
 
   if (command === 'backup') {
-    const state = await inspect(url);
+    const state = inspect(name);
     if (state.marker !== DB_MARKER_VALUE) {
       throw new Error('the database has no operational test marker; nothing to back up');
     }
     mkdirSync(BACKUP_DIR, { recursive: true });
     const dumpFile = resolve(BACKUP_DIR, 'mondapac.dump');
-    const out = openSync(dumpFile, 'w');
+    // Written beside the old backup and renamed last, so a failed dump never costs the good one.
+    const tmpDump = `${dumpFile}.tmp`;
+    const out = openSync(tmpDump, 'w');
     let run;
     try {
       run = compose(
@@ -251,7 +306,7 @@ async function main() {
       closeSync(out);
     }
     if (run.status !== 0) {
-      rmSync(dumpFile, { force: true });
+      rmSync(tmpDump, { force: true });
       throw new Error('pg_dump failed');
     }
     // The loader's state goes with the data: it holds the admin's authenticator secret.
@@ -261,28 +316,21 @@ async function main() {
     mkdirSync(resolve(BACKUP_DIR, 'state'), { recursive: true });
     for (const file of states)
       copyFileSync(resolve(STATE_DIR, file), resolve(BACKUP_DIR, 'state', file));
+    const tmpMeta = resolve(BACKUP_DIR, 'meta.json.tmp');
     writeFileSync(
-      resolve(BACKUP_DIR, 'meta.json'),
+      tmpMeta,
       `${JSON.stringify({ createdAt: new Date().toISOString(), database: name, migrations: migrationNames(), states }, null, 2)}\n`,
     );
+    renameSync(tmpDump, dumpFile);
+    renameSync(tmpMeta, resolve(BACKUP_DIR, 'meta.json'));
     endReset(STATE_DIR);
     console.log(`Backup saved in .local/ops-data/backup (${states.length} loader state file(s)).`);
     return;
   }
 
-  // restore (reset --fast)
-  const metaFile = resolve(BACKUP_DIR, 'meta.json');
+  // restore (the `fast` mode)
+  const meta = readBackup();
   const dumpFile = resolve(BACKUP_DIR, 'mondapac.dump');
-  if (!existsSync(metaFile) || !existsSync(dumpFile)) {
-    throw new Error('There is no backup yet. Run a full reset first: scripts\\ops-local.bat reset');
-  }
-  const meta = JSON.parse(readFileSync(metaFile, 'utf8'));
-  const mismatch = migrationMismatch(meta.migrations, migrationNames());
-  if (mismatch) {
-    throw new Error(
-      `The backup does not match this code (${mismatch}). Run a full reset: scripts\\ops-local.bat reset`,
-    );
-  }
   beginReset(STATE_DIR, 'fast restore');
   recreateDatabase(name);
   bootstrap(name);
