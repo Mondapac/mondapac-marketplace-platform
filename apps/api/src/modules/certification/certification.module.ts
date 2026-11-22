@@ -43,6 +43,10 @@ import { EvaluateClaims } from './application/use-cases/evaluate-claims.use-case
 import { ClaimTermList } from './application/use-cases/claim-term-list.use-case';
 import { MatchClaimTermsSystem } from './application/use-cases/match-claim-terms-system.use-case';
 import { MatchClaimTerms } from './application/use-cases/match-claim-terms.use-case';
+import {
+  MatchCandidateClaimTerms,
+  MatchCandidateClaimTermsSystem,
+} from './application/use-cases/match-candidate-claim-terms.use-case';
 import { ClaimTermLocales } from './application/use-cases/claim-term-locales.use-case';
 import { CERTIFICATION_FACADE } from './contracts/certification.facade';
 import { isUsableZone } from './domain/validity';
@@ -119,6 +123,16 @@ const readerUseCases = [
   inject: [USE_CASE_GATE, PUBLISHED_TYPES_READER],
   useFactory: (gate: UseCaseGate, reader: PublishedTypesReader) => new type(gate, reader),
 }));
+
+/** The candidate-terms match (request X-1) and its pair: the gate and the Market's locales. */
+const candidateMatchUseCases = [MatchCandidateClaimTerms, MatchCandidateClaimTermsSystem].map(
+  (type): FactoryProvider => ({
+    provide: type,
+    inject: [USE_CASE_GATE, MarketRegistry],
+    useFactory: (gate: UseCaseGate, markets: MarketRegistry) =>
+      new type(gate, (market: MarketContext) => markets.get(market.marketId).supportedLocales),
+  }),
+);
 
 /**
  * `evaluateClaims` and its pair: the gate, the claim facts, the seller zones, the clock and the
@@ -301,6 +315,7 @@ const validTypesUseCases = [SellerValidCertificateTypes, SellerValidCertificateT
       ],
     ),
     ...readerUseCases,
+    ...candidateMatchUseCases,
     ...evaluateUseCases,
     ...validTypesUseCases,
     {
@@ -320,6 +335,8 @@ const validTypesUseCases = [SellerValidCertificateTypes, SellerValidCertificateT
         ClaimTermList,
         MatchClaimTerms,
         MatchClaimTermsSystem,
+        MatchCandidateClaimTerms,
+        MatchCandidateClaimTermsSystem,
         ClaimTermLocales,
         CertificationTypes,
         CertificationTypesSystem,
@@ -338,6 +355,8 @@ const validTypesUseCases = [SellerValidCertificateTypes, SellerValidCertificateT
         claimTermList: ClaimTermList,
         matchClaimTerms: MatchClaimTerms,
         matchClaimTermsSystem: MatchClaimTermsSystem,
+        matchCandidateClaimTerms: MatchCandidateClaimTerms,
+        matchCandidateClaimTermsSystem: MatchCandidateClaimTermsSystem,
         claimTermLocales: ClaimTermLocales,
         certificationTypes: CertificationTypes,
         certificationTypesSystem: CertificationTypesSystem,
@@ -356,6 +375,8 @@ const validTypesUseCases = [SellerValidCertificateTypes, SellerValidCertificateT
           claimTermList,
           matchClaimTerms,
           matchClaimTermsSystem,
+          matchCandidateClaimTerms,
+          matchCandidateClaimTermsSystem,
           claimTermLocales,
           certificationTypes,
           certificationTypesSystem,
