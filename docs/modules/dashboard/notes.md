@@ -148,3 +148,22 @@ Counts are cached per seller and access state, except the live queues.
   status = 'published'. The scheduled counts of a large seller read the Market-wide window index
   and filter by seller; the next step, if measured, is a partial index (market_id, seller_id,
   delivery_window_end) of the open scheduled orders.
+
+## Seller KPIs: API (phase 6, PR 16)
+
+`GET reporting/seller/kpis?period=today|7d|30d|month` (default 30d), owned by `reporting`
+(`ViewSellerKpis`; the dashboard module composes nothing here). Always the session's own seller
+(`sessionSellerOf`, never an id from input; a customer or an admin acting as themselves is
+`access.denied`), key `ordering.seller-order.view`, denied while the seller is not approved. Days
+are the Market's (ADR-0005); the previous period is as long and just before (month: the same
+number of days of the previous month, cut at its end).
+
+- Figures come from `reporting.daily_seller_sales` and `daily_category_sales`; every statement
+  carries Market, seller and currency (the database spec holds a canary seller and a canary
+  Market). Money is a decimal string of minor units; sales are goods with and without GST,
+  shipping apart. Refunds are the money refunded in the period, on the refund's day.
+- Shipped on time counts shipped orders only. An unshipped overdue order is a task (card "Today's
+  tasks"), not yet part of the rate (the rollup has no day for it; FE-register).
+- Top categories, not top products: reporting keeps category, not product, facts. The panel
+  names a category from the public category tree.
+- Seller net earnings (sales minus commission and refunds) wait for a commission fact in reporting.
