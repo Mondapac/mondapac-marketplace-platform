@@ -48,7 +48,7 @@ async function signedUp(seller, password, market) {
     password,
   });
   const token = await mailLink(seller.email, /#(ml1_\S+)/, { since });
-  await anonymous.ok('POST', '/identity/seller/confirm-email', { token, password });
+  await anonymous.okLink('POST', '/identity/seller/confirm-email', { token, password });
   const again = await sellerSignIn(seller, password, market);
   if (again === null) throw new Error(`${seller.key}: cannot sign in after confirming the email`);
   return again;
