@@ -15,6 +15,16 @@
 // address 127.0.0.1: the operational test data loader (scripts/ops-data) signs up a few dozen
 // accounts in one run. The per-account limit stays as committed. Unset, nothing changes.
 //
+// LOCAL_SIGN_IN_ORIGIN_LIMIT (opt-in, 1 to 1000) raises, the same way and for the same reason, the
+// per-address limit of sign-ins (identity.signInThrottles.origin.limit; confirming a buyer's email
+// counts as a sign-in): the loader's orders pack signs in thirty buyers after the sellers. The
+// per-account and per-account-and-address limits stay as committed. Unset, nothing changes.
+//
+// LOCAL_REFUND_CREDIT=1 (opt-in, owner decision of 22 Nov 2026) switches on tax.refundCredit.enabled
+// in the local Market file only, so the loader's orders pack can cancel and refund test-mode
+// orders and the refund screens can be tried. The committed file stays off until the registered
+// tax agent confirms in writing. Only 1 is accepted; unset, nothing changes.
+//
 // The Market code is required: there is no default Market (ADR-0020 decision 3).
 // DEV_MARKETS_OUT_DIR changes the output folder (a test writes to a temporary one).
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -32,27 +42,34 @@ const adminOrigin = process.env.ADMIN_PANEL_ORIGIN ?? 'http://admin.localhost:30
 const storefrontOrigin = process.env.STOREFRONT_ORIGIN;
 
 const mailOriginLimit = process.env.LOCAL_MAIL_ORIGIN_LIMIT;
-if (
-  mailOriginLimit !== undefined &&
-  mailOriginLimit !== '' &&
-  !(/^[1-9]\d{0,3}$/.test(mailOriginLimit) && Number(mailOriginLimit) <= 1000)
-) {
-  console.error('LOCAL_MAIL_ORIGIN_LIMIT must be a whole number from 1 to 1000');
+const signInOriginLimit = process.env.LOCAL_SIGN_IN_ORIGIN_LIMIT;
+const refundCredit = process.env.LOCAL_REFUND_CREDIT;
+const given = (value) => value !== undefined && value !== '';
+if (given(refundCredit) && refundCredit !== '1') {
+  console.error('LOCAL_REFUND_CREDIT must be 1 (or unset)');
   process.exit(1);
 }
+for (const [name, value] of [
+  ['LOCAL_MAIL_ORIGIN_LIMIT', mailOriginLimit],
+  ['LOCAL_SIGN_IN_ORIGIN_LIMIT', signInOriginLimit],
+]) {
+  if (given(value) && !(/^[1-9]\d{0,3}$/.test(value) && Number(value) <= 1000)) {
+    console.error(`${name} must be a whole number from 1 to 1000`);
+    process.exit(1);
+  }
+}
 // Only for panels on this machine: a shared session (.devcontainer/share.sh, tunnel origins)
-// keeps the committed limit even when the variable is left set in the shell.
+// keeps the committed limits even when a variable is left set in the shell.
 const onThisMachine = (origin) => {
   const { hostname } = new URL(origin);
   return ['localhost', '127.0.0.1', '[::1]'].includes(hostname) || hostname.endsWith('.localhost');
 };
 if (
-  mailOriginLimit !== undefined &&
-  mailOriginLimit !== '' &&
+  (given(mailOriginLimit) || given(signInOriginLimit) || given(refundCredit)) &&
   ![sellerOrigin, adminOrigin, ...(storefrontOrigin ? [storefrontOrigin] : [])].every(onThisMachine)
 ) {
   console.error(
-    'LOCAL_MAIL_ORIGIN_LIMIT is refused: a panel or site origin is not on this machine',
+    'LOCAL_MAIL_ORIGIN_LIMIT, LOCAL_SIGN_IN_ORIGIN_LIMIT and LOCAL_REFUND_CREDIT are refused: a panel or site origin is not on this machine',
   );
   process.exit(1);
 }
@@ -87,8 +104,14 @@ config.allowedOrigins = {
         : [],
 };
 
-if (mailOriginLimit !== undefined && mailOriginLimit !== '') {
+if (given(mailOriginLimit)) {
   config.identity.mailThrottles.origin.limit = Number(mailOriginLimit);
+}
+if (given(signInOriginLimit)) {
+  config.identity.signInThrottles.origin.limit = Number(signInOriginLimit);
+}
+if (given(refundCredit)) {
+  config.tax = { ...config.tax, refundCredit: { enabled: true } };
 }
 
 const directory = resolve(process.env.DEV_MARKETS_OUT_DIR ?? '.local/markets');

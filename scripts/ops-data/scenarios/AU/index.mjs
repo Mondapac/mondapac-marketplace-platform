@@ -6,6 +6,7 @@ import { CATALOG } from './catalog.mjs';
 import { HELD, OFFERS, PRODUCTS, TAGGED_DEPARTMENTS } from './products.mjs';
 import { SELLERS } from './sellers.mjs';
 import { CONTENT } from './content.mjs';
+import { BUYERS, CARDS, OPEN_CARTS, ORDERS } from './buyers.mjs';
 
 export const SCENARIO = {
   market: 'AU',
@@ -22,4 +23,10 @@ export const SCENARIO = {
   taggedDepartments: TAGGED_DEPARTMENTS,
   held: HELD,
   content: CONTENT,
+  // The region of every buyer address (the service area is Greater Brisbane).
+  buyerRegion: 'QLD',
+  buyers: BUYERS,
+  orders: ORDERS,
+  openCarts: OPEN_CARTS,
+  cards: CARDS,
 };
