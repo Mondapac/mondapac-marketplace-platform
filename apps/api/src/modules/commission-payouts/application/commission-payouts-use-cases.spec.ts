@@ -7,6 +7,7 @@ import {
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
+import type { RecordingCpOutbox } from '../../../../test/support/commission-payouts-dispute-fakes';
 import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { RecordingReview } from '../../../../test/support/system-request-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
@@ -1512,6 +1513,31 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
 
     beforeEach(async () => {
       await record();
+    });
+
+    it('announces each posting that wrote rows, ids and cause only, and none on a replay', async () => {
+      const posted = () =>
+        (deps.outbox as unknown as RecordingCpOutbox).events
+          .filter((event) => event.type === 'commission-payouts.ledger-recorded.v1')
+          .map((event) => {
+            const { postingId, ...rest } = event.payload as Record<string, unknown>;
+            expect(typeof postingId).toBe('string');
+            return rest;
+          });
+      const ids = { sellerOrderId: SELLER_ORDER, sellerId: SELLER_A, orderId: ORDER };
+      // The paid seller order of the beforeEach was announced once.
+      expect(posted()).toEqual([{ ...ids, cause: 'paid', sourceId: null }]);
+      expect(await record()).toEqual(ok('already-recorded'));
+      expect(await recordRefund(refunded())).toEqual(ok('recorded'));
+      expect(await recordRefund(refunded())).toEqual(ok('already-recorded'));
+      // The platform bears this one: nothing is posted, nothing announced.
+      expect(await recordRefund(refunded({ refundId: REFUND_2, lossBearer: 'platform' }))).toEqual(
+        ok('nothing-to-post'),
+      );
+      expect(posted()).toEqual([
+        { ...ids, cause: 'paid', sourceId: null },
+        { ...ids, cause: 'refund', sourceId: REFUND_1 },
+      ]);
     });
 
     it('reverses the stored sale and commission rows of a refunded line, with the original rate', async () => {

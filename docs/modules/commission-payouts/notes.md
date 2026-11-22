@@ -165,3 +165,13 @@ and the admin Disputes list (`admin.commission-payouts.disputes`, key
 (`application/saved-filters/list-definitions.ts`). Sharing one with every admin needs the new
 unprotected key `commission-payouts.saved-filter.share`; no role is seeded with it. The seller
 Payouts list (33) joins when `lists` has the seller routes. See docs/modules/lists/notes.md.
+
+## Ledger posting event (dashboards upgrade phase 3, PR 11)
+
+`commission-payouts.ledger-recorded.v1` (aggregate `ledger-posting`, a fresh id, version 1) is
+written in the unit of each posting that inserted rows: a paid seller order (`cause: paid`), a
+seller-borne refund's reversal (`refund`, `sourceId` the refund), a seller-funded cashback
+(`cashback`, the promotions credit) and its return (`cashback-return`, the clawback). A replay
+that inserts nothing, and a platform-borne refund, publish nothing. Ids and the cause only: no
+amount, rate or line. `reporting` will subscribe to it for net revenue and the take rate
+(phase 5) and read the posted rows back through the facade.

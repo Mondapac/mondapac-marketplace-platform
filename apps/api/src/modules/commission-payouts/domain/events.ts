@@ -47,9 +47,34 @@ export const SellerReinstatedHoldRemains = defineEvent({
   },
 });
 
+/** What posted rows to a seller order's ledger. */
+export const LEDGER_POSTING_CAUSES = ['paid', 'refund', 'cashback', 'cashback-return'] as const;
+
+/**
+ * Rows were posted to a seller order's ledger (dashboards upgrade phase 3): the sale, shipping
+ * and commission of a paid seller order, the reversal of a refund, a seller-funded cashback or its
+ * return. Once per posting that inserted rows, in the unit that inserts them; a replay that writes
+ * nothing publishes nothing. The aggregate is the posting (a fresh id, version 1). Ids and the
+ * cause only: no amount, rate or line reaches the event; `reporting` reads the posted rows back
+ * through the facade. `sourceId` is the refund, the promotions credit or the clawback.
+ */
+export const LedgerRecorded = defineEvent({
+  type: 'commission-payouts.ledger-recorded.v1',
+  aggregateType: 'ledger-posting',
+  payload: {
+    postingId: eventField.id(),
+    sellerOrderId: eventField.id(),
+    sellerId: eventField.id(),
+    orderId: eventField.id(),
+    cause: eventField.enumOf(LEDGER_POSTING_CAUSES),
+    sourceId: eventField.optional(eventField.id()),
+  },
+});
+
 /** Every event type commission-payouts publishes, registered with the event catalogue at boot. */
 export const COMMISSION_PAYOUTS_EVENTS: readonly EventDefinition[] = [
   SellerOrderDisputed,
   PayoutTermsChanged,
   SellerReinstatedHoldRemains,
+  LedgerRecorded,
 ];
