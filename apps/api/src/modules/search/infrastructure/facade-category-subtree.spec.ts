@@ -1,7 +1,7 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
-import type { AssistantCategory, CatalogAssistantFacade } from '../../catalog';
+import type { CatalogIndexFacade, IndexCategory } from '../../catalog';
 import { categorySubtree, MAX_FILTER_CATEGORIES } from '../domain/category-subtree';
 import { FacadeCategorySubtree } from './facade-category-subtree';
 
@@ -11,7 +11,7 @@ import { FacadeCategorySubtree } from './facade-category-subtree';
 
 const category = (n: number) =>
   `01990000-0000-7000-8000-${n.toString(16).padStart(12, '0')}` as Id<'Category'>;
-const node = (n: number, parent: number | null, depth = 0): AssistantCategory => ({
+const node = (n: number, parent: number | null, depth = 0): IndexCategory => ({
   id: category(n),
   parentId: parent === null ? null : category(parent),
   slug: `c-${n}`,
@@ -58,15 +58,15 @@ describe('categorySubtree', () => {
 describe.each(['AU', 'ZZ'])('FacadeCategorySubtree in market %s', (code) => {
   const context: CallContext = testCallContext(testMarketContext(code, 'default'), 'anonymous');
 
-  const facade = (categories: CatalogAssistantFacade['categories']) => {
+  const facade = (categoryTree: CatalogIndexFacade['categoryTree']) => {
     const seen: CallContext[] = [];
-    const catalog: CatalogAssistantFacade = {
-      categories: (asked) => {
+    const catalog: Pick<CatalogIndexFacade, 'categoryTree'> = {
+      categoryTree: (asked) => {
         seen.push(asked);
-        return categories(asked);
+        return categoryTree(asked);
       },
     };
-    return { source: new FacadeCategorySubtree(catalog), seen };
+    return { source: new FacadeCategorySubtree(catalog as CatalogIndexFacade), seen };
   };
 
   it("reads catalog's live tree with the request's context unchanged", async () => {

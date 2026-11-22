@@ -240,9 +240,10 @@ export interface SellersFacade {
    * `publishedStoreSlugs` (storefront slider): the held store address of each requested seller
    * (at most 100 ids), only under the published-store rules of the public store page (approved
    * revision, `held` slug, the may-sell contract says yes). A seller that is unknown, of another
-   * Market, not approved or not selling is absent from the map, byte-identical. A request actor
-   * only (rule `anonymous`); ids and slugs only. A fault is `sellers.unavailable`: the caller
-   * fails closed. In-process only.
+   * Market, not approved or not selling is absent from the map, byte-identical. An `anonymous` /
+   * `system` pair: a request actor reaches `sellers.published-store-slugs`, the system actor
+   * (search's index sync) `sellers.published-store-slugs-system`, with the same answer. Ids and
+   * slugs only. A fault is `sellers.unavailable`: the caller fails closed. In-process only.
    */
   publishedStoreSlugs(
     context: CallContext,

@@ -28,8 +28,8 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   follow-ups; it was `default` before), `no-store`). `q` 2 to 100
   characters in web-search syntax (`websearch_to_tsquery`, ranked by `ts_rank`, ties by Offer id, so
   pages are stable); no `q` with `category` browses by name; `category` covers its live
-  subcategories: search reads catalog's public category tree (`CATALOG_ASSISTANT_FACADE.categories`,
-  rule `anonymous`, the caller's context) and filters on the category and every category under it
+  subcategories: search reads catalog's live category tree (`CATALOG_INDEX_FACADE.categoryTree`, an
+  `anonymous` / `system` pair, the caller's context) and filters on the category and every category under it
   (at most 1000, array overlap `&&`), so a top-level page lists its subcategories' products without
   indexing ancestors; a tree that cannot be read is `search.unavailable`; a category the live tree
   does not hold filters on itself alone. The same holds for a store's list and the two shelves; `pageSize` 1 to 48 (24), `page` 1 to 100;
@@ -367,3 +367,25 @@ index, the answer carries counts, and the use cases talk to a port.
   reading; a write or a delete from an earlier read never replaces a document from a later read
   (`UPDATE ... WHERE indexed_at <= $read`, else an insert that skips an existing row). Every change
   emits an event whose sync starts after it, so the last answer standing reflects the last change.
+
+## System actor reads: category tree and store slugs (fix, 22 Nov 2026)
+
+Search's event handlers (`search.sync-offer-documents`) and the rebuild (`search.rebuild-offer-index`)
+run as the system actor, and the gate never lets the system actor pass an `anonymous` rule
+(identity design 6.2 row 1). Two sources still called `anonymous` use cases there, so every
+offer, price, tag and category event failed with `access.denied` and `search.offer_documents`
+stayed empty on a real database:
+
+- The category tree and subtree now read `CATALOG_INDEX_FACADE.categoryTree`, which picks
+  `catalog.category-tree` for a request and its twin `catalog.category-tree-system` for the system
+  actor (same read, same answer). The assistant's `CATALOG_ASSISTANT_FACADE` is unchanged: no AI
+  tool runs as the system actor (R9).
+- Sellers' `publishedStoreSlugs` picks `sellers.published-store-slugs` or its twin
+  `sellers.published-store-slugs-system` by actor, like `sellerSummaries`.
+
+`test/db/search-system-actor-sources.db-spec.ts` boots the real application (real gate, real use
+cases, Postgres) and checks that both sources and an index sync pass the gate as the system actor
+and as an anonymous buyer; the unit and e2e suites wire fakes for these ports, so they could not
+see it. **After the deploy** the index fills from `search.rebuild-index`, which runs at worker
+start and every six hours: restart the worker once (or run the job) so that Offers already
+published are indexed.

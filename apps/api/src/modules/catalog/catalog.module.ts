@@ -214,6 +214,7 @@ import {
   type CategoryTreeReader,
 } from './application/ports/category-tree.reader';
 import { CategoryTreeQuery } from './application/use-cases/category-tree.use-case';
+import { CategoryTreeSystemQuery } from './application/use-cases/category-tree-system.use-case';
 import { CategorySlugResolveQuery } from './application/use-cases/category-slug-resolve.use-case';
 import { PublicCategoryTreeQuery } from './application/use-cases/public-category-tree.use-case';
 import { PUBLIC_CATEGORY_READER } from './application/ports/public-category.reader';
@@ -3310,6 +3311,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       productLinkingReader: true,
     }),
     useCaseProvider(CategoryTreeQuery, { unitOfWork: true, treeReader: true, policy: true }),
+    useCaseProvider(CategoryTreeSystemQuery, { unitOfWork: true, treeReader: true, policy: true }),
     useCaseProvider(PublicCategoryTreeQuery, {
       unitOfWork: true,
       treeReader: true,
@@ -3411,12 +3413,20 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     useCaseProvider(SearchIndexStampQuery, { unitOfWork: true, searchReader: true }),
     {
       provide: CATALOG_INDEX_FACADE,
-      inject: [OfferSearchFactsQuery, PublishedOfferIdsQuery, SearchIndexStampQuery],
+      inject: [
+        OfferSearchFactsQuery,
+        PublishedOfferIdsQuery,
+        SearchIndexStampQuery,
+        CategoryTreeQuery,
+        CategoryTreeSystemQuery,
+      ],
       useFactory: (
         facts: OfferSearchFactsQuery,
         published: PublishedOfferIdsQuery,
         stamp: SearchIndexStampQuery,
-      ) => new CatalogIndexFacadeImplementation(facts, published, stamp),
+        tree: CategoryTreeQuery,
+        treeSystem: CategoryTreeSystemQuery,
+      ) => new CatalogIndexFacadeImplementation(facts, published, stamp, { tree, treeSystem }),
     },
     useCaseProvider(SearchFiltersQuery, {
       unitOfWork: true,

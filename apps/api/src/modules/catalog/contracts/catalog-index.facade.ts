@@ -83,9 +83,19 @@ export interface PublishedOfferIdsInput {
   readonly limit: number;
 }
 
+/** A live platform category, as {@link CatalogIndexFacade.categoryTree} answers it. */
+export interface IndexCategory {
+  readonly id: Id<'Category'>;
+  readonly parentId: Id<'Category'> | null;
+  readonly slug: string;
+  readonly name: string;
+  readonly depth: number;
+}
+
 /**
- * The feed of catalog for read models (speed mode, search). Both methods are `system` only:
- * a request actor gets `access.denied`. Not exposed over HTTP. Runs in read-only units.
+ * The feed of catalog for read models (speed mode, search). The Offer methods are `system`
+ * only: a request actor gets `access.denied`. `categoryTree` is an `anonymous` / `system` pair.
+ * Not exposed over HTTP. Runs in read-only units.
  */
 export interface CatalogIndexFacade {
   /** The facts of each requested Offer (at most 200 ids) with the text in `locale`. */
@@ -108,6 +118,17 @@ export interface CatalogIndexFacade {
    * flags, options or names, a brand or an alias). Search rebuilds its documents when it changes.
    */
   searchIndexStamp(context: CallContext): Promise<Result<string, AccessDenied>>;
+
+  /**
+   * The live platform category tree (`catalog.category-tree`), depth first, names in the Market's
+   * default locale. An `anonymous` / `system` pair: a request (anonymous or signed in) reaches
+   * `catalog.category-tree`, the system actor (search's event handlers and rebuild) its twin
+   * `catalog.category-tree-system`; the answer is the same. Any refusal or fault is
+   * `catalog.categories-unavailable`, never a partial tree.
+   */
+  categoryTree(
+    context: CallContext,
+  ): Promise<Result<readonly IndexCategory[], { readonly code: 'catalog.categories-unavailable' }>>;
 }
 
 /** Nest token of the {@link CatalogIndexFacade}, provided and exported by `CatalogModule`. */

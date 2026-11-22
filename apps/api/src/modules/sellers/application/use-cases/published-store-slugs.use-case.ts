@@ -23,7 +23,9 @@ export const MAX_SLUG_IDS = 100;
  * same published-store rules as `sellers.published-store-read`: a `held` slug of a seller with an
  * approved revision who may sell now. A seller that is unknown, in another Market, not approved or
  * not selling (suspended) is absent from the answer, byte-identical. A fault is
- * `sellers.unavailable`: the caller fails closed. Ids and slugs only.
+ * `sellers.unavailable`: the caller fails closed. Ids and slugs only. Its twin for event handlers
+ * and jobs (search's index sync runs as the system actor, which the `anonymous` rule never admits)
+ * is `PublishedStoreSlugsSystem`, behind the same facade method.
  */
 export class PublishedStoreSlugs extends UseCase<
   PublishedStoreSlugsInput,
@@ -42,23 +44,32 @@ export class PublishedStoreSlugs extends UseCase<
     super(gate);
   }
 
-  protected async handle(
+  protected handle(
     context: CallContext,
     input: PublishedStoreSlugsInput,
   ): Promise<Result<ReadonlyMap<Id<'Seller'>, string>, PublishedStoresUnavailable>> {
-    const wanted = new Set(input.sellerIds.slice(0, MAX_SLUG_IDS));
-    if (wanted.size === 0) return ok(new Map());
-    const read = await failClosed(context, 'published-store-slugs', async () => {
-      const stores = await readApproved(this.deps, context, (repository) =>
-        repository.approvedStores(context.market, MAX_PUBLISHED_STORES),
-      );
-      const eligible = await eligibleOnly(
-        this.deps,
-        context,
-        stores.filter((store) => wanted.has(store.sellerId)),
-      );
-      return new Map(eligible.map((store) => [store.sellerId, store.slug] as const));
-    });
-    return read.ok ? ok(read.value) : err(read.error);
+    return readPublishedStoreSlugs(this.deps, context, input);
   }
+}
+
+/** The read behind `sellers.published-store-slugs` and its system twin: the same answer for every caller. */
+export async function readPublishedStoreSlugs(
+  deps: PublishedStoresDependencies,
+  context: CallContext,
+  input: PublishedStoreSlugsInput,
+): Promise<Result<ReadonlyMap<Id<'Seller'>, string>, PublishedStoresUnavailable>> {
+  const wanted = new Set(input.sellerIds.slice(0, MAX_SLUG_IDS));
+  if (wanted.size === 0) return ok(new Map());
+  const read = await failClosed(context, 'published-store-slugs', async () => {
+    const stores = await readApproved(deps, context, (repository) =>
+      repository.approvedStores(context.market, MAX_PUBLISHED_STORES),
+    );
+    const eligible = await eligibleOnly(
+      deps,
+      context,
+      stores.filter((store) => wanted.has(store.sellerId)),
+    );
+    return new Map(eligible.map((store) => [store.sellerId, store.slug] as const));
+  });
+  return read.ok ? ok(read.value) : err(read.error);
 }
