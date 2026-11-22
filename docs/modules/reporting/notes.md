@@ -164,7 +164,7 @@ still answers.
 - `reporting.view-marketplace-operations-kpis` (key `ordering.order.view`): paid orders, cancelled
   and the cancel rate, shipped and the on-time rate, refund count. No money.
 - `reporting.view-marketplace-finance-kpis` (key `commission-payouts.settlement.view`, the ledger's
-  finance key; a dedicated key is FE-068): GMV with and without GST (goods only, shipping apart),
+  finance key; a dedicated key is FE-068; every role granted the ledger now also sees marketplace GMV, and the two cannot be granted apart: Hassan's note, 22 Nov): GMV with and without GST (goods only, shipping apart),
   refunded goods on their refund day (positive, never lowers GMV), refund rate, net sales (GMV minus
   that range's refunds) and the average order. Net revenue and take rate wait for a week of matching
   ledger (FE-066).

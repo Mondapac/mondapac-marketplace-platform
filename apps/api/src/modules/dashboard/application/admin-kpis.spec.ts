@@ -149,4 +149,18 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     expect(body.operations).toBeNull();
     expect(() => JSON.stringify(body)).not.toThrow();
   });
+  it('refuses a seller session and a viewer of another population, and asks nobody', async () => {
+    const seller = testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'seller',
+        accountId: id(0xb1),
+        sessionId: id(0x10b1),
+        sellerId: id(0x5e11),
+      }),
+    );
+    const out = await build([ORDERS, MONEY]).execute(seller, { period: '7d' });
+    expect(out.ok).toBe(false);
+    expect(asked).toEqual([]);
+  });
 });

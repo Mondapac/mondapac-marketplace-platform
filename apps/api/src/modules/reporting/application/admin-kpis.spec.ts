@@ -158,4 +158,45 @@ describe.each(TEST_MARKETS)('the admin KPIs in market %s', (code) => {
     }
     expect(reader.calls).toHaveLength(0);
   });
+  it("refuses a customer session and reads nothing (acting-as is covered by isPlatformAdminActor's own spec)", async () => {
+    const customer = testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'customer',
+        accountId: id(0xc1),
+        sessionId: id(0x10c1),
+        sellerId: null,
+      }),
+    );
+    for (const context of [customer]) {
+      for (const useCase of [
+        new ViewMarketplaceFinanceKpis(gate, deps),
+        new ViewMarketplaceOperationsKpis(gate, deps),
+      ]) {
+        const out = await useCase.execute(context, { period: '7d' });
+        expect(out.ok).toBe(false);
+      }
+    }
+    expect(reader.calls).toHaveLength(0);
+  });
+
+  it('checks the money key itself: an admin with only the orders key reads operations, not finance', async () => {
+    const ordersOnly = createUseCaseGate(markets, {
+      check: (_context, declaration) =>
+        Promise.resolve(
+          JSON.stringify(declaration.rule).includes('ordering.order.view')
+            ? { allowed: true as const }
+            : { allowed: false as const, denial: { code: 'access.denied' as const } },
+        ),
+    });
+    const finance = await new ViewMarketplaceFinanceKpis(ordersOnly, deps).execute(admin, {
+      period: '7d',
+    });
+    expect(finance.ok).toBe(false);
+    expect(reader.calls).toHaveLength(0);
+    const operations = await new ViewMarketplaceOperationsKpis(ordersOnly, deps).execute(admin, {
+      period: '7d',
+    });
+    expect(operations.ok).toBe(true);
+  });
 });
