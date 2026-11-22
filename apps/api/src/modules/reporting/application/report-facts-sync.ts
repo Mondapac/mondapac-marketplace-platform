@@ -5,6 +5,7 @@ import type { EventDelivery } from '../../../platform/events/event-delivery';
 import { TransactionConflictError } from '../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { FactRecorder } from './fact-recorder';
+import { ReportingFactConflict } from './ports/fact-store';
 import {
   SOURCE_BATCH,
   type RefundSource,
@@ -120,6 +121,9 @@ export interface ReconcileCounts extends RecordCounts {
 export const FACT_KINDS = ['seller-orders', 'refunds'] as const;
 export type FactKind = (typeof FACT_KINDS)[number];
 
+/** The name the nightly reconcile's logs carry (its job's name). */
+const RECONCILE_JOB = 'reporting.reconcile-facts';
+
 /** The most facts one reconcile unit writes. */
 export const WRITE_BATCH = 25;
 /** Rounds of a unit that keeps conflicting (each round is the unit of work's own retries). */
@@ -135,7 +139,22 @@ const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
 export interface WrittenPage {
   readonly next: string | null;
   readonly counts: ReconcileCounts;
+  /**
+   * Of `counts.failedFacts`, those that failed for a reason that may pass (a conflict after every
+   * round, a timeout, a lost connection), not because the recorder refused the fact. A caller that
+   * moves a cursor past the page must not do so while this is above 0 (Hassan, PR 12 M1).
+   */
+  readonly transientFacts: number;
 }
+
+/**
+ * Whether a write failure is the recorder refusing the fact itself (another currency, goods that
+ * do not add up, a changed identity): writing it again gives the same answer.
+ */
+const isRefusal = (error: unknown): boolean =>
+  error instanceof ReportingFactConflict ||
+  error instanceof RangeError ||
+  error instanceof TypeError;
 
 /** One page of refs of `kind`, as the request that reads their facts. */
 async function readPage(
@@ -165,8 +184,9 @@ async function readPage(
  * still conflicts after its own retries is tried again after a pause. Every write replaces, so a
  * page written twice is harmless. A batch that fails for another reason than a conflict is written
  * again one fact at a time, so a fact the recorder refuses does not hold the good ones of its batch
- * back (Hassan, PR 10b finding 3); only the facts that still fail are logged and counted. A failed
- * read, or a cursor that does not move on, is a failure: nothing is skipped past it.
+ * back (Hassan, PR 10b finding 3); only the facts that still fail are logged (with `job` and the
+ * kind) and counted, refusals apart from failures that may pass. A failed read, or a cursor that
+ * does not move on, is a failure: nothing is skipped past it.
  */
 export async function writePage(
   deps: ReportFactsDependencies,
@@ -174,12 +194,16 @@ export async function writePage(
   kind: FactKind,
   window: SourceWindow,
   after: string | null,
+  job: string,
 ): Promise<Result<WrittenPage, SourceUnavailable>> {
   let sellerOrders = 0;
   let refunds = 0;
   let failedFacts = 0;
+  let transientFacts = 0;
   /** One unit; a conflict is tried again after a pause. True when written. */
-  const attempt = async (batch: ReadFacts): Promise<{ written: boolean; error: string }> => {
+  const attempt = async (
+    batch: ReadFacts,
+  ): Promise<{ written: boolean; error: string; refused: boolean }> => {
     for (let round = 1; ; round += 1) {
       try {
         const counts = await deps.unitOfWork.run(
@@ -188,23 +212,31 @@ export async function writePage(
           // A unit of 25 facts on a busy day can pass the default 5 s (Mojtaba, PR 10b note 3).
           { isolation: 'serializable', timeoutMs: RECONCILE_UNIT_MS },
         );
-        if (!counts.ok) return { written: false, error: 'refused' };
+        if (!counts.ok) return { written: false, error: 'refused', refused: true };
         sellerOrders += counts.value.sellerOrders;
         refunds += counts.value.refunds;
-        return { written: true, error: '' };
+        return { written: true, error: '', refused: false };
       } catch (error) {
         if (error instanceof TransactionConflictError && round < CONFLICT_ROUNDS) {
           await pause(CONFLICT_PAUSE_MS * round);
           continue;
         }
-        return { written: false, error: error instanceof Error ? error.name : 'unknown' };
+        return {
+          written: false,
+          error: error instanceof Error ? error.name : 'unknown',
+          refused: isRefusal(error),
+        };
       }
     }
   };
-  const failed = (batch: ReadFacts, error: string): void => {
+  const failed = (batch: ReadFacts, error: string, refused: boolean): void => {
     failedFacts += 1;
+    if (!refused) transientFacts += 1;
     logger.error({
-      msg: 'reporting.reconcile-batch-failed',
+      msg: 'reporting.fact-write-failed',
+      job,
+      kind,
+      refused,
       marketId: context.market.marketId,
       correlationId: context.correlationId,
       sellerOrderIds: batch.sellerOrders.map((source) => source.order.sellerOrderId),
@@ -215,14 +247,15 @@ export async function writePage(
   const write = async (batch: ReadFacts): Promise<void> => {
     const whole = await attempt(batch);
     if (whole.written) return;
-    if (batch.sellerOrders.length + batch.refunds.length === 1) return failed(batch, whole.error);
+    if (batch.sellerOrders.length + batch.refunds.length === 1)
+      return failed(batch, whole.error, whole.refused);
     const singles: ReadFacts[] = [
       ...batch.sellerOrders.map((source) => ({ sellerOrders: [source], refunds: [] })),
       ...batch.refunds.map((source) => ({ sellerOrders: [], refunds: [source] })),
     ];
     for (const single of singles) {
       const one = await attempt(single);
-      if (!one.written) failed(single, one.error);
+      if (!one.written) failed(single, one.error, one.refused);
     }
   };
 
@@ -249,7 +282,7 @@ export async function writePage(
       });
     }
   }
-  return ok({ next, counts: { sellerOrders, refunds, failedFacts } });
+  return ok({ next, counts: { sellerOrders, refunds, failedFacts }, transientFacts });
 }
 
 /** Adds two runs' counts. */
@@ -276,7 +309,7 @@ export async function reconcileWindow(
   for (const kind of FACT_KINDS) {
     let after: string | null = null;
     for (let pages = 1; ; pages += 1) {
-      const page = await writePage(deps, context, kind, window, after);
+      const page = await writePage(deps, context, kind, window, after, RECONCILE_JOB);
       if (!page.ok) return page;
       total = addCounts(total, page.value.counts);
       if (page.value.next === null) break;

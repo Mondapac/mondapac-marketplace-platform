@@ -6,7 +6,7 @@ import type {
   BackfillProgressStore,
   BackfillStep,
 } from '../application/ports/backfill-progress-store';
-import { FACT_KINDS, type FactKind } from '../application/report-facts-sync';
+import { FACT_KINDS } from '../application/report-facts-sync';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
@@ -44,36 +44,39 @@ export class PrismaBackfillProgressStore implements BackfillProgressStore {
     private readonly now: () => Temporal.Instant,
   ) {}
 
-  async start(
+  async startAll(
     market: MarketContext,
-    kind: FactKind,
     until: Temporal.Instant,
-  ): Promise<BackfillProgress> {
+  ): Promise<readonly BackfillProgress[]> {
     const client = this.prisma.tx(market);
+    const read = async () =>
+      (await client.reportingBackfillProgress.findMany({ where: { marketId: market.marketId } }))
+        .map(toProgress)
+        .sort((a, b) => FACT_KINDS.indexOf(a.kind) - FACT_KINDS.indexOf(b.kind));
+    const stored = await read();
+    if (stored.length === FACT_KINDS.length) return stored;
     const now = toDate(this.now());
     // `ON CONFLICT DO NOTHING`: a concurrent or earlier start keeps its own `until`.
     await client.reportingBackfillProgress.createMany({
-      data: [
-        {
-          marketId: market.marketId,
-          tenantId: market.tenantId,
-          kind,
-          until: toDate(until),
-          after: null,
-          pages: 0,
-          failedFacts: 0,
-          startedAt: now,
-          updatedAt: now,
-          finishedAt: null,
-        },
-      ],
+      data: FACT_KINDS.map((kind) => ({
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        kind,
+        until: toDate(until),
+        after: null,
+        pages: 0,
+        failedFacts: 0,
+        startedAt: now,
+        updatedAt: now,
+        finishedAt: null,
+      })),
       skipDuplicates: true,
     });
-    const row = await client.reportingBackfillProgress.findFirst({
-      where: { marketId: market.marketId, kind },
-    });
-    if (row === null) throw new Error('reporting.backfill_progress: row not written');
-    return toProgress(row);
+    const started = await read();
+    if (started.length !== FACT_KINDS.length) {
+      throw new Error('reporting.backfill_progress: rows not written');
+    }
+    return started;
   }
 
   async advance(

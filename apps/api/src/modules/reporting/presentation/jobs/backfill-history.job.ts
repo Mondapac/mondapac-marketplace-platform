@@ -8,10 +8,10 @@ export const BACKFILL_HISTORY_JOB = 'reporting.backfill-history';
 
 /**
  * `reporting.backfill-history`, every five minutes and at worker start (worker role): writes the
- * next pages of the history backfill (dashboards upgrade phase 3, PR 12) until both kinds are read
+ * next pages (at most 20, for at most a minute) of the history backfill (dashboards upgrade phase 3, PR 12) until both kinds are read
  * to the end; then each tick only reads its two progress rows. The Market's system-actor context
  * goes unchanged to the use case (rule `system`). Resumable and idempotent, so a late overlap or a
- * second run is harmless. A refusal, or a fact that could not be written, throws, so the scheduler
+ * second run is harmless. A failed read or write, or a fact the recorder refused, throws, so the scheduler
  * logs that Market's run as failed. Logs counts only.
  */
 export function backfillHistoryJob(backfill: BackfillHistory): JobDefinition {
@@ -19,7 +19,8 @@ export function backfillHistoryJob(backfill: BackfillHistory): JobDefinition {
   return {
     name: BACKFILL_HISTORY_JOB,
     every: Temporal.Duration.from({ minutes: 5 }),
-    maxRunMs: 600_000,
+    // The run stops starting pages after 60 s; this leaves room for the page in flight.
+    maxRunMs: 180_000,
     runAtStart: true,
     async run(context: JobContext): Promise<void> {
       const result = await backfill.execute(context, {});

@@ -101,7 +101,7 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
   serializable units of at most 25 facts (timeout 15 s), each seller day rebuilt once per unit and
   facts written in id order. A unit that keeps conflicting is tried again after a pause; a batch
   that fails otherwise is retried one fact at a time, the facts still refused are logged by id
-  (`reporting.reconcile-batch-failed`) and skipped, and the run then fails so the scheduler reports
+  (`reporting.fact-write-failed`) and skipped, and the run then fails so the scheduler reports
   it. A cursor that does not move on, or more than 10,000 pages, stops the run. It also catches what no event names:
   an on-time promise that passed, a product moved to another category.
 - A seller order's instants only go from unknown to known, so an older read written after a newer
@@ -120,21 +120,29 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
 - `reporting.backfill-history` (job, every 5 minutes and at worker start; use case of the same name,
   rule `system`): reads every seller order and refund with an instant before the moment the backfill
   first started (the window `[history, until)`), in id order, pages of 100, through the same page
-  writer as the nightly reconcile (`writePage`: units of 25, conflict pauses, refused facts logged
-  and skipped). Facts after `until` come from the event worker and the nightly reconcile.
+  writer as the nightly reconcile (`writePage`: units of 25, conflict pauses, facts that still fail
+  logged by id as `reporting.fact-write-failed` with the job and kind). Facts after `until` come
+  from the event worker and the nightly reconcile.
 - Progress: `reporting.backfill_progress` (migration `20261122080000_reporting_backfill_progress`),
-  one row per Market and kind (`seller-orders`, then `refunds`): `until` (fixed at the first start),
-  the id cursor `after` of the last page written, `pages`, `failed_facts`, `finished_at`. The cursor
-  is saved in its own unit after each page, so a run that fails, stops or times out goes on from the
-  last page written. The application role may update only the cursor columns.
-- At most 20 pages (2,000 facts) a run, one page after the other (low concurrency beside the event
-  worker). Once both kinds are finished, a tick only reads the two progress rows.
+  one row per Market and kind (`seller-orders`, then `refunds`), both created in one unit at the
+  first start so they share `until`. Each row holds the id cursor `after` of the last page saved,
+  `pages`, `failed_facts` and `finished_at`. The cursor is saved in its own unit after each page,
+  so a run that fails, stops or times out goes on from the last page saved. The application role
+  may update only the cursor columns.
+- Each run writes at most 20 pages (2,000 facts) and starts no page after 60 s on the injected
+  clock, one page after the other (`maxRunMs` 180 s, so the worker's long-job lane stays free for
+  imports and reindexes; Mojtaba, PR 12 finding 1). Once both kinds are finished, a tick only reads
+  the progress rows.
 - Idempotent: every fact write replaces, and `advance` moves the cursor only from where the run read
   it (and only while unfinished), so a late run that overlaps another writes one page again at most
-  and then stops. A failed read stops the run with the cursor where it was. A run with a refused
-  fact fails, so the scheduler reports it; the fact is counted in `failed_facts`.
-- To run the backfill again from the beginning (after a bug fix in the recorder, say), an operator
-  deletes the Market's rows of `reporting.backfill_progress` as the migration role; the next tick
-  starts again with a new `until`. There is no admin screen for this yet (FE register, «پیشرفت
-  backfill گزارش در پنل ادمین»).
+  and then stops (at READ COMMITTED the second UPDATE waits on the row and re-checks its WHERE).
+- A failed read, or a fact that failed for a reason that may pass (a conflict after every round, a
+  timeout, a lost connection), stops the run before the cursor moves, so the next run writes that
+  page again (Hassan, PR 12 M1). A fact the recorder refuses (another currency, goods that do not
+  add up, a changed identity) is counted in `failed_facts` and passed over, and the run fails so
+  the scheduler reports it.
+- Recovery for a refused fact older than the reconcile's seven days, or to run the backfill again
+  after a recorder fix: an operator deletes the Market's rows of `reporting.backfill_progress` as
+  the migration role; the next tick starts again with a new `until`. There is no admin screen for
+  this yet (FE register, «پیشرفت backfill گزارش در پنل ادمین»).
 - The nightly reconcile's counter is now `failedFacts` (it always counted facts, not batches).

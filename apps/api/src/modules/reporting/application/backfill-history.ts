@@ -1,10 +1,9 @@
-import { ok } from '@mondapac/shared-kernel';
+import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { BackfillProgress, BackfillProgressStore } from './ports/backfill-progress-store';
 import type { SourceUnavailable } from './ports/report-sources';
 import {
   addCounts,
-  FACT_KINDS,
   NO_COUNTS,
   writePage,
   type ReconcileCounts,
@@ -15,13 +14,31 @@ export interface BackfillDependencies extends ReportFactsDependencies {
   readonly progress: BackfillProgressStore;
 }
 
-/** The most pages one run writes, over both kinds: 2,000 facts, well inside the job's ten minutes. */
+/** The name the backfill's logs carry (its job's name). */
+const BACKFILL_JOB = 'reporting.backfill-history';
+
+/** The most pages one run writes, over both kinds: 2,000 facts. */
 export const BACKFILL_PAGES_PER_RUN = 20;
+/**
+ * A run starts no new page after this long, measured on the injected clock, so it leaves the
+ * worker's long-job lane to the imports and reindexes (Mojtaba, PR 12 finding 1).
+ */
+export const BACKFILL_RUN_BUDGET_MS = 60_000;
+
+export interface BackfillLimits {
+  readonly maxPages: number;
+  readonly budgetMs: number;
+}
+
+const DEFAULT_LIMITS: BackfillLimits = {
+  maxPages: BACKFILL_PAGES_PER_RUN,
+  budgetMs: BACKFILL_RUN_BUDGET_MS,
+};
 
 export interface BackfillCounts extends ReconcileCounts {
-  /** Pages written by this run. */
+  /** Pages written and saved by this run. */
   readonly pages: number;
-  /** True when both kinds are known to be read to the end (now or by an earlier run). */
+  /** True when every kind is read to the end (now or by an earlier run). */
   readonly finished: boolean;
 }
 
@@ -29,37 +46,54 @@ export interface BackfillCounts extends ReconcileCounts {
  * The history backfill (dashboards upgrade phase 3, PR 12): reads every seller order and refund up
  * to the moment the backfill started, page by page in id order ({@link writePage}), and saves the
  * cursor after each page in its own unit, so a run that stops, fails or times out goes on from the
- * last page written. At most `maxPages` pages a run, one after the other (low concurrency beside
- * the event worker). Later facts come from the worker and the nightly reconcile.
+ * last page saved. Every kind shares the window end fixed at the first start. At most
+ * `maxPages` pages and `budgetMs` a run, one page after the other (low concurrency beside the
+ * event worker). Later facts come from the worker and the nightly reconcile.
  *
  * Idempotent: every fact write replaces, and the cursor only moves on from where it was read
  * (`advance`), so a late run that overlaps another writes the same page again at most and then
- * stops. A failed read stops the run with the cursor where it was; a fact the recorder refuses is
- * logged, counted on the progress (`failed_facts`) and skipped. Once both kinds are finished a run
- * does nothing but read the two progress rows.
+ * stops. A failed read, or a fact that failed for a reason that may pass (a conflict after every
+ * round, a timeout), stops the run before the cursor moves, so the next run writes that page
+ * again (Hassan, PR 12 M1). A fact the recorder refuses is logged by id, counted on the progress
+ * (`failed_facts`) and passed over; the run reports it, and a reset after the fix brings it in.
+ * Once every kind is finished a run only reads the progress rows.
  */
 export async function backfillHistory(
   deps: BackfillDependencies,
   context: CallContext,
-  maxPages: number = BACKFILL_PAGES_PER_RUN,
+  limits: BackfillLimits = DEFAULT_LIMITS,
 ): Promise<Result<BackfillCounts, SourceUnavailable>> {
   const market = context.market;
-  const until = deps.clock.now();
+  const startedAt = deps.clock.now();
+  const started = await deps.unitOfWork.run(market, async () =>
+    ok(await deps.progress.startAll(market, startedAt)),
+  );
+  if (!started.ok) return started;
   let counts = NO_COUNTS;
   let pages = 0;
-  let finished = true;
-  for (const kind of FACT_KINDS) {
-    const started = await deps.unitOfWork.run(market, async () =>
-      ok(await deps.progress.start(market, kind, until)),
-    );
-    if (!started.ok) return started;
-    let progress: BackfillProgress | null = started.value;
-    while (progress !== null && progress.finishedAt === null && pages < maxPages) {
+  const outOfBudget = () =>
+    pages >= limits.maxPages ||
+    deps.clock.now().since(startedAt).total({ unit: 'milliseconds' }) >= limits.budgetMs;
+  for (const initial of started.value) {
+    let progress: BackfillProgress | null = initial;
+    while (progress !== null && progress.finishedAt === null && !outOfBudget()) {
       const from: BackfillProgress = progress;
-      const page = await writePage(deps, context, kind, { from: null, to: from.until }, from.after);
+      const page = await writePage(
+        deps,
+        context,
+        from.kind,
+        { from: null, to: from.until },
+        from.after,
+        BACKFILL_JOB,
+      );
       if (!page.ok) return page;
-      pages += 1;
       counts = addCounts(counts, page.value.counts);
+      if (page.value.transientFacts > 0) {
+        return err({
+          code: 'reporting.source-unavailable',
+          cause: `reporting ${from.kind} write`,
+        });
+      }
       const next = page.value.next;
       const saved = await deps.unitOfWork.run(market, async () =>
         ok(
@@ -73,13 +107,13 @@ export async function backfillHistory(
       );
       if (!saved.ok) return saved;
       // Null: another run moved the cursor on meanwhile; it carries on from there.
+      if (saved.value === null) return ok({ ...counts, pages, finished: false });
+      pages += 1;
       progress = saved.value;
     }
-    // Out of pages, or overtaken by another run: the next run goes on (and reads the rest).
-    if (progress === null || progress.finishedAt === null || pages >= maxPages) {
-      finished = progress !== null && progress.finishedAt !== null && kind === 'refunds';
-      break;
+    if (progress === null || progress.finishedAt === null) {
+      return ok({ ...counts, pages, finished: false });
     }
   }
-  return ok({ ...counts, pages, finished });
+  return ok({ ...counts, pages, finished: true });
 }

@@ -41,8 +41,9 @@ import { ownerTestDatabaseUrl } from './test-database';
 // recorded in serializable units, a never-paid seller order is not recorded, an Offer catalog
 // cannot place counts in the unknown category, a second run converges, a refund refused by the
 // recorder fails its page only, and another Market's rows stay apart. The history backfill (PR 12)
-// goes on from its saved cursor run after run, keeps its window end, and a failed read or an
-// overtaken cursor moves nothing.
+// goes on from its saved cursor run after run with one window end for both kinds, counts a refused
+// fact and goes on, writes a page again after a failed read or a failure that may pass, and lets
+// only one of two overlapping runs move the cursor; the other Market's progress never moves.
 
 const ZONES: Record<string, string> = { AU: 'Australia/Brisbane', ZZ: 'Asia/Tokyo' };
 const CURRENCIES: Record<string, string> = { AU: 'AUD', ZZ: 'JPY' };
@@ -343,21 +344,56 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
   describe('history backfill', () => {
     let backfill: BackfillDependencies;
     let windows: SourceWindow[];
-    const progressOf = async () =>
+    const limits = (maxPages: number) => ({ maxPages, budgetMs: 60_000 });
+    const progressOf = async (target: MarketContext = market) =>
       (
-        await owner.query<{ kind: string; after: string | null; pages: number; done: boolean }>(
-          `SELECT kind, after::text AS after, pages, finished_at IS NOT NULL AS done
+        await owner.query<{
+          kind: string;
+          after: string | null;
+          pages: number;
+          failed: number;
+          done: boolean;
+        }>(
+          `SELECT kind, after::text AS after, pages, failed_facts AS failed,
+                  finished_at IS NOT NULL AS done
              FROM reporting.backfill_progress WHERE market_id = $1 ORDER BY kind DESC`,
-          [market.marketId],
+          [target.marketId],
         )
       ).rows;
     const idsOf = <T>(items: readonly T[], key: (item: T) => string) => items.map(key).sort();
+    const refundOf = (order: SellerOrderReportFacts, refundCurrency = currency) => ({
+      refundId: idOf<'Refund'>(),
+      orderId: order.orderId,
+      sellerOrderId: order.sellerOrderId,
+      sellerId: order.sellerId,
+      currency: refundCurrency,
+      total: { amount: 1100n, tax: 100n },
+      shipping: { amount: 0n, tax: 0n },
+      refundedAt: T0.subtract({ hours: 240 }),
+      lines: [
+        { offerId: order.lines[0]!.offerId, quantity: 1, goods: { amount: 1100n, tax: 100n } },
+      ],
+    });
+    const stored = async (sellerId: string) =>
+      (
+        await owner.query<{ orders: string; refunds: string }>(
+          `SELECT (SELECT count(*) FROM reporting.seller_orders WHERE seller_id = $1) AS orders,
+                  (SELECT count(*) FROM reporting.refunds WHERE seller_id = $1) AS refunds`,
+          [sellerId],
+        )
+      ).rows[0];
 
     beforeEach(async () => {
-      // Both Markets, so the other Market's progress is known to be untouched by this one's runs.
       await owner.query('DELETE FROM reporting.backfill_progress WHERE market_id = ANY($1)', [
         [market.marketId, other.marketId],
       ]);
+      // The other Market is part way through its own backfill: no run of this Market moves it.
+      await owner.query(
+        `INSERT INTO reporting.backfill_progress (market_id, tenant_id, kind, until, after, pages,
+           failed_facts, started_at, updated_at)
+         VALUES ($1, $2, 'seller-orders', $3, $4, 7, 0, $3, $3)`,
+        [other.marketId, other.tenantId, new Date(T0.epochMilliseconds), idOf<'SellerOrder'>()],
+      );
       windows = [];
       const sources = sourcesOf(owners);
       backfill = {
@@ -368,84 +404,113 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
             windows.push(window);
             return sources.changedSellerOrders(context, window, after, limit);
           },
+          succeededRefunds: (context, window, after, limit) => {
+            windows.push(window);
+            return sources.succeededRefunds(context, window, after, limit);
+          },
         },
         progress: new PrismaBackfillProgressStore(db.service, () => Temporal.Now.instant()),
       };
     });
 
     it('goes on from the saved cursor run after run, up to the instant it started', async () => {
+      const elsewhere = await progressOf(other);
       const sellerId = idOf<'Seller'>();
       const offer = idOf<'Offer'>();
       for (let i = 0; i < 250; i += 1)
         owners.orders.push(sellerOrder(sellerId, offer, T0.subtract({ hours: 24 * (400 - i) })));
-      for (const order of owners.orders.slice(0, 120)) {
-        owners.refundFacts.push({
-          refundId: idOf<'Refund'>(),
-          orderId: order.orderId,
-          sellerOrderId: order.sellerOrderId,
-          sellerId,
-          currency,
-          total: { amount: 1100n, tax: 100n },
-          shipping: { amount: 0n, tax: 0n },
-          refundedAt: T0.subtract({ hours: 240 }),
-          lines: [{ offerId: offer, quantity: 1, goods: { amount: 1100n, tax: 100n } }],
-        });
-      }
+      for (const order of owners.orders.slice(0, 120)) owners.refundFacts.push(refundOf(order));
       const orderIds = idsOf(owners.orders, (order) => order.sellerOrderId);
 
-      const first = await backfillHistory(backfill, system(), 2);
+      const first = await backfillHistory(backfill, system(), limits(2));
       expect(first).toEqual(
         ok({ sellerOrders: 200, refunds: 0, failedFacts: 0, pages: 2, finished: false }),
       );
+      // Both kinds start together, with one window end.
       expect(await progressOf()).toEqual([
-        { kind: 'seller-orders', after: orderIds[199], pages: 2, done: false },
+        { kind: 'seller-orders', after: orderIds[199], pages: 2, failed: 0, done: false },
+        { kind: 'refunds', after: null, pages: 0, failed: 0, done: false },
       ]);
 
-      // A later run keeps the window end fixed at the first start.
-      const later = new FixedClock(T0.add({ hours: 3 }));
-      backfill = { ...backfill, clock: later };
-      const second = await backfillHistory(backfill, system(), 2);
+      // A later run keeps the window end fixed at the first start, for both kinds.
+      backfill = { ...backfill, clock: new FixedClock(T0.add({ hours: 3 })) };
+      const second = await backfillHistory(backfill, system(), limits(2));
       expect(second).toEqual(
         ok({ sellerOrders: 50, refunds: 100, failedFacts: 0, pages: 2, finished: false }),
       );
-      const third = await backfillHistory(backfill, system(), 2);
+      const third = await backfillHistory(backfill, system(), limits(2));
       expect(third).toEqual(
         ok({ sellerOrders: 0, refunds: 20, failedFacts: 0, pages: 1, finished: true }),
       );
+      expect(windows.length).toBe(5);
       expect(windows.every((window) => window.from === null && window.to.equals(T0))).toBe(true);
       expect(await progressOf()).toEqual([
-        { kind: 'seller-orders', after: orderIds[199], pages: 3, done: true },
+        { kind: 'seller-orders', after: orderIds[199], pages: 3, failed: 0, done: true },
         {
           kind: 'refunds',
           after: idsOf(owners.refundFacts, (refund) => refund.refundId)[99],
           pages: 2,
+          failed: 0,
           done: true,
         },
       ]);
-      const stored = await owner.query<{ orders: string; refunds: string }>(
-        `SELECT (SELECT count(*) FROM reporting.seller_orders WHERE seller_id = $1) AS orders,
-                (SELECT count(*) FROM reporting.refunds WHERE seller_id = $1) AS refunds`,
-        [sellerId],
-      );
-      expect(stored.rows).toEqual([{ orders: '250', refunds: '120' }]);
+      expect(await stored(sellerId)).toEqual({ orders: '250', refunds: '120' });
 
-      // Finished: a run reads nothing more.
+      // Finished: a run reads nothing more, and the other Market's progress never moved.
       const reads = owners.reads;
-      const idle = await backfillHistory(backfill, system(), 2);
+      const idle = await backfillHistory(backfill, system(), limits(2));
       expect(idle).toEqual(
         ok({ sellerOrders: 0, refunds: 0, failedFacts: 0, pages: 0, finished: true }),
       );
       expect(owners.reads).toBe(reads);
-      expect(
-        (
-          await owner.query('SELECT 1 FROM reporting.backfill_progress WHERE market_id = $1', [
-            other.marketId,
-          ])
-        ).rowCount,
-      ).toBe(0);
+      expect(windows.length).toBe(5);
+      expect(await progressOf(other)).toEqual(elsewhere);
     });
 
-    it('keeps the cursor where it was when a read fails, and an overtaken cursor moves nothing', async () => {
+    it('counts a refused fact and goes on, but writes a page again after a failure that may pass', async () => {
+      const sellerId = idOf<'Seller'>();
+      const offer = idOf<'Offer'>();
+      for (let i = 0; i < 3; i += 1)
+        owners.orders.push(sellerOrder(sellerId, offer, T0.subtract({ hours: 720 })));
+      // Another currency than the Market's: the recorder refuses it, whenever it is written.
+      owners.refundFacts.push(refundOf(owners.orders[0]!, currency === 'AUD' ? 'JPY' : 'AUD'));
+      owners.refundFacts.push(refundOf(owners.orders[1]!));
+
+      // A seller order whose every write fails as a lost connection would.
+      const flaky = owners.orders[2]!.sellerOrderId;
+      const recorder = deps.recorder;
+      const failing: BackfillDependencies = {
+        ...backfill,
+        recorder: Object.assign(Object.create(recorder) as FactRecorder, {
+          recordBatch: (
+            target: MarketContext,
+            facts: Parameters<FactRecorder['recordBatch']>[1],
+          ) =>
+            facts.sellerOrders.some((source) => source.order.sellerOrderId === flaky)
+              ? Promise.reject(new Error('connection lost'))
+              : recorder.recordBatch(target, facts),
+        }),
+      };
+      const stopped = await backfillHistory(failing, system(), limits(5));
+      expect(!stopped.ok && stopped.error.cause).toBe('reporting seller-orders write');
+      expect(await progressOf()).toEqual([
+        { kind: 'seller-orders', after: null, pages: 0, failed: 0, done: false },
+        { kind: 'refunds', after: null, pages: 0, failed: 0, done: false },
+      ]);
+
+      // The connection is back: the page is written again, and the refused refund is counted.
+      const done = await backfillHistory(backfill, system(), limits(5));
+      expect(done).toEqual(
+        ok({ sellerOrders: 3, refunds: 1, failedFacts: 1, pages: 2, finished: true }),
+      );
+      expect(await progressOf()).toEqual([
+        { kind: 'seller-orders', after: null, pages: 1, failed: 0, done: true },
+        { kind: 'refunds', after: null, pages: 1, failed: 1, done: true },
+      ]);
+      expect(await stored(sellerId)).toEqual({ orders: '3', refunds: '1' });
+    });
+
+    it('keeps the cursor where it was when a read fails', async () => {
       const sellerId = idOf<'Seller'>();
       const offer = idOf<'Offer'>();
       for (let i = 0; i < 150; i += 1)
@@ -453,39 +518,61 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
       const down: ReportSources['sellerOrders'] = () =>
         Promise.resolve(err({ code: 'reporting.source-unavailable', cause: 'down' }));
       const failing = { ...backfill, sources: { ...backfill.sources, sellerOrders: down } };
-      const stopped = await backfillHistory(failing, system(), 5);
+      const stopped = await backfillHistory(failing, system(), limits(5));
       expect(!stopped.ok && stopped.error.code).toBe('reporting.source-unavailable');
-      expect(await progressOf()).toEqual([
-        { kind: 'seller-orders', after: null, pages: 0, done: false },
-      ]);
+      expect((await progressOf())[0]).toEqual({
+        kind: 'seller-orders',
+        after: null,
+        pages: 0,
+        failed: 0,
+        done: false,
+      });
+      const resumed = await backfillHistory(backfill, system(), limits(5));
+      expect(resumed.ok && resumed.value.finished).toBe(true);
+      expect(await stored(sellerId)).toEqual({ orders: '150', refunds: '0' });
+    });
 
-      // Another run moved the cursor on meanwhile: a late run's step from the old place is refused.
+    it('lets exactly one of two concurrent steps from one place move the cursor', async () => {
       const started = await db.unitOfWork.run(market, async () =>
-        ok(await backfill.progress.start(market, 'seller-orders', T0)),
+        ok(await backfill.progress.startAll(market, T0)),
       );
       if (!started.ok) throw new Error('start');
-      const step = {
-        after: owners.orders[0]!.sellerOrderId,
-        pages: 1,
-        failedFacts: 0,
-        finished: false,
-      };
-      const moved = await db.unitOfWork.run(market, async () =>
-        ok(await backfill.progress.advance(market, started.value, step)),
+      const from = started.value[0]!;
+      const step = { after: idOf<'SellerOrder'>(), pages: 1, failedFacts: 0, finished: false };
+      const steps = await Promise.all(
+        [0, 1].map(() =>
+          db.unitOfWork.run(market, async () =>
+            ok(await backfill.progress.advance(market, from, step)),
+          ),
+        ),
       );
-      expect(moved.ok && moved.value?.pages).toBe(1);
-      const late = await db.unitOfWork.run(market, async () =>
-        ok(await backfill.progress.advance(market, started.value, step)),
-      );
-      expect(late).toEqual(ok(null));
+      expect(steps.filter((moved) => moved.ok && moved.value !== null)).toHaveLength(1);
+      expect((await progressOf())[0]).toMatchObject({ after: step.after, pages: 1 });
+    });
 
-      const resumed = await backfillHistory(backfill, system(), 5);
-      expect(resumed.ok && resumed.value.finished).toBe(true);
-      expect((await progressOf())[0]).toMatchObject({
-        kind: 'seller-orders',
-        pages: 3,
-        done: true,
-      });
+    it('ends with every page counted once when two runs overlap', async () => {
+      const sellerId = idOf<'Seller'>();
+      const offer = idOf<'Offer'>();
+      for (let i = 0; i < 250; i += 1)
+        owners.orders.push(sellerOrder(sellerId, offer, T0.subtract({ hours: 720 })));
+      const runs = await Promise.all([
+        backfillHistory(backfill, system(), limits(20)),
+        backfillHistory(backfill, system(), limits(20)),
+      ]);
+      expect(runs.every((run) => run.ok)).toBe(true);
+      // A run overtaken stops; one more run finishes whatever is left.
+      await backfillHistory(backfill, system(), limits(20));
+      expect(await progressOf()).toEqual([
+        {
+          kind: 'seller-orders',
+          after: idsOf(owners.orders, (order) => order.sellerOrderId)[199],
+          pages: 3,
+          failed: 0,
+          done: true,
+        },
+        { kind: 'refunds', after: null, pages: 1, failed: 0, done: true },
+      ]);
+      expect(await stored(sellerId)).toEqual({ orders: '250', refunds: '0' });
     });
   });
 });

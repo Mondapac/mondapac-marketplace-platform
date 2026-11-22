@@ -26,8 +26,12 @@ export interface BackfillStep {
  * caller's unit and is scoped to its Market.
  */
 export interface BackfillProgressStore {
-  /** The progress of `kind`, started with `until` when there is none yet (a concurrent start keeps the first). */
-  start(market: MarketContext, kind: FactKind, until: Temporal.Instant): Promise<BackfillProgress>;
+  /**
+   * The progress of every kind, in the order of `FACT_KINDS`. A kind with none yet is started with
+   * `until`, all in one unit so every kind shares one window end (a concurrent start keeps the
+   * first). Once every kind has a row it only reads.
+   */
+  startAll(market: MarketContext, until: Temporal.Instant): Promise<readonly BackfillProgress[]>;
   /**
    * Moves the progress on from `from` to `to`, only while it is still at `from` and unfinished: a
    * late overlapping run that wrote the same page finds it moved and stops. Null when it had moved.

@@ -27,7 +27,7 @@ ALTER TABLE "reporting"."backfill_progress"
   ADD CONSTRAINT "backfill_progress_counts_check" CHECK ("pages" >= 0 AND "failed_facts" >= 0),
   ADD CONSTRAINT "backfill_progress_updated_check" CHECK ("updated_at" >= "started_at"),
   ADD CONSTRAINT "backfill_progress_finished_check" CHECK (
-    "finished_at" IS NULL OR "finished_at" >= "started_at"
+    "finished_at" IS NULL OR ("finished_at" >= "started_at" AND "finished_at" <= "updated_at")
   );
 
 GRANT SELECT, INSERT, UPDATE ("after", "pages", "failed_facts", "updated_at", "finished_at")
