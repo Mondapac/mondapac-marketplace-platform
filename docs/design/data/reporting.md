@@ -1,6 +1,6 @@
 # reporting: physical data design (dashboards upgrade, phase 3)
 
-Owner: `reporting`. Schema `reporting`. Migration `20261122110000_reporting_daily_rollups`. Module
+Owner: `reporting`. Schema `reporting`. Migration `20261122200000_reporting_daily_rollups`. Module
 notes: `docs/modules/reporting/notes.md`.
 
 ## Tables and expected size
