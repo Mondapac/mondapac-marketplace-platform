@@ -1,4 +1,4 @@
--- Reverses 20261122050000_reporting_daily_rollups. Every reporting fact and rollup is lost; they
+-- Reverses 20261122110000_reporting_daily_rollups. Every reporting fact and rollup is lost; they
 -- are derived data, rebuilt by the history backfill once the migration is applied again.
 SET lock_timeout = '5s';
 

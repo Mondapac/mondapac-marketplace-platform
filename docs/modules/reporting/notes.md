@@ -20,7 +20,7 @@ is `handoffs/dashboards-upgrade/phase-plan.md` there.
 - A fact is the owner's state as read, not a delta: recording it again writes the same rows, and
   calls in any order converge.
 
-## Tables (`20261122050000_reporting_daily_rollups`)
+## Tables (`20261122110000_reporting_daily_rollups`)
 
 - `seller_orders`: one per seller order; the four instants (paid, cancelled, shipped, delivered)
   with their Market days, goods and shipping totals, `shipped_on_time`.
