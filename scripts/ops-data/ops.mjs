@@ -252,8 +252,15 @@ async function main() {
       !values['replace-unmarked']
     ) {
       console.error(
-        `The database "${name}" holds tables and is not marked as an operational test database ` +
-          `(for example the demo's). Not touching it. Run: scripts\\ops-local.bat reset`,
+        [
+          `The database "${name}" holds other data (probably the demo's, from scripts\\demo-local.bat)`,
+          'and is not marked as an operational test database. Nothing was changed.',
+          'The operational test data uses this same database. To switch to it, run',
+          '  scripts\\ops-local.bat reset',
+          'which DELETES everything in it and builds the operational test data (it asks you to type YES first).',
+          'To keep a copy of the current data first:',
+          `  docker compose exec -T postgres pg_dump -U postgres -d ${name} -Fc > ${name}-before-ops.dump`,
+        ].join('\n'),
       );
       process.exit(3);
     }

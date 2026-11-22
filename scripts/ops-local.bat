@@ -41,14 +41,14 @@ if "%NO_STRIPE%"=="1" (
 if /i "%MODE%"=="refresh" (
   rem Needs the environment running (API, worker, Mailpit): the refresh only talks to it, and a reset or restore in progress holds the lock.
   docker compose up -d --wait postgres redis mailpit || goto :fail
-  node scripts\ops-data\ops.mjs check || goto :fail
+  node scripts\ops-data\ops.mjs check || goto :checkfailed
   node scripts\ops-data\refresh.mjs %2 %3 %4 %5 || goto :fail
   endlocal
   exit /b 0
 )
 if /i "%MODE%"=="start" (
   docker compose up -d --wait postgres redis mailpit || goto :fail
-  node scripts\ops-data\ops.mjs check || goto :fail
+  node scripts\ops-data\ops.mjs check || goto :checkfailed
   set "OPS_LOADER_ARGS=%ONLY%"
   if not exist ".local\ops-data\backup\meta.json" set "OPS_LOADER_ARGS=--backup%ONLY%"
   goto :run
@@ -59,7 +59,7 @@ rem running environment (they hold connections) only when nothing refuses and, f
 docker compose up -d --wait postgres redis mailpit || goto :fail
 set "REPLACE="
 if /i "%MODE%"=="fast" (
-  node scripts\ops-data\ops.mjs check --fast || goto :fail
+  node scripts\ops-data\ops.mjs check --fast || goto :checkfailed
   call :closewindows
   node scripts\ops-data\ops.mjs restore || goto :fail
   set "OPS_LOADER_ARGS=skip"
@@ -95,6 +95,15 @@ echo Closing the windows of a running environment
 rem "MondaPac " with a space: the titles this environment's windows have, nothing else.
 taskkill /f /t /fi "WINDOWTITLE eq MondaPac *" >nul 2>nul
 exit /b 0
+
+:checkfailed
+rem Exit code 3: the database holds other data and nothing was changed; ops.mjs said what to do, and the
+rem unlock advice below is for a reset that failed half way, so it is not shown.
+if %errorlevel% neq 3 goto :fail
+echo.
+pause
+endlocal
+exit /b 1
 
 :fail
 echo.
