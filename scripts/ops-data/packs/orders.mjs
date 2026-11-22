@@ -187,6 +187,9 @@ async function confirmPaid(ctx, entry, buyer, orderId, label) {
   if (typeof view.paymentIntentId !== 'string') {
     throw new Error(`${label}: the order has no PaymentIntent (${view.paymentState})`);
   }
+  // Only a PaymentIntent Stripe ties to this very order (a stale state file never points the
+  // replay at another one), and only its events.
+  await stripe.assertOwnPaymentIntent(view.paymentIntentId, orderId);
   const since = Math.floor(Date.parse(view.createdAt) / 1000) - 120;
   const events = await stripe.eventsOf(view.paymentIntentId, since);
   if (events.length === 0) throw new Error(`${label}: Stripe wrote no event for the payment`);

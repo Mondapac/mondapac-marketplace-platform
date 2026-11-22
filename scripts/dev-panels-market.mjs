@@ -29,6 +29,7 @@
 // DEV_MARKETS_OUT_DIR changes the output folder (a test writes to a temporary one).
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { assertStripeTestKey, loadDotEnv } from './ops-data/guard.mjs';
 
 const code = process.argv[2];
 if (code === undefined || !/^[A-Z]{2}$/.test(code)) {
@@ -48,6 +49,25 @@ const given = (value) => value !== undefined && value !== '';
 if (given(refundCredit) && refundCredit !== '1') {
   console.error('LOCAL_REFUND_CREDIT must be 1 (or unset)');
   process.exit(1);
+}
+// Refunds move money: switched on only for an API whose Stripe key is a test-mode one (the same
+// .env the API reads; a variable already set wins, as in the API). Unset, there is nothing to
+// refund with, so the switch is refused too (Hassan, PR 1245).
+if (given(refundCredit)) {
+  loadDotEnv();
+  const key = process.env.STRIPE_SECRET_KEY;
+  if (key === undefined || key === '') {
+    console.error('LOCAL_REFUND_CREDIT needs STRIPE_SECRET_KEY, a Stripe test-mode key');
+    process.exit(1);
+  }
+  try {
+    assertStripeTestKey(key);
+  } catch {
+    console.error(
+      'LOCAL_REFUND_CREDIT is refused: STRIPE_SECRET_KEY is not a Stripe test-mode key',
+    );
+    process.exit(1);
+  }
 }
 for (const [name, value] of [
   ['LOCAL_MAIL_ORIGIN_LIMIT', mailOriginLimit],
@@ -111,7 +131,7 @@ if (given(signInOriginLimit)) {
   config.identity.signInThrottles.origin.limit = Number(signInOriginLimit);
 }
 if (given(refundCredit)) {
-  config.tax = { ...config.tax, refundCredit: { enabled: true } };
+  config.tax = { ...config.tax, refundCredit: { ...config.tax?.refundCredit, enabled: true } };
 }
 
 const directory = resolve(process.env.DEV_MARKETS_OUT_DIR ?? '.local/markets');

@@ -422,9 +422,40 @@ describe('the ops-data orders pack: Stripe test mode and the replayed webhook', 
       ];
       globalThis.fetch = async (url) => ({ ok: true, status: 200, json: async () => ({ data: String(url).includes('amount_capturable_updated') ? events : [] }) });
       const found = await stripe.eventsOf('pi_mine', 0, { seconds: 0 });
-      console.log(JSON.stringify(found.map((e) => e.id)));
+      const out = [found.map((e) => e.id)];
+      try { await stripe.eventsOf('pi_mine', NaN, { seconds: 0 }); out.push('allowed'); } catch { out.push('refused'); }
+      console.log(JSON.stringify(out));
     `);
-    expect(JSON.parse(answer.out.trim())).toEqual(['evt_a']);
+    expect(JSON.parse(answer.out.trim())).toEqual([['evt_a'], 'refused']);
+  });
+
+  it('follows every page of events, and replays nothing for a PaymentIntent of another order', () => {
+    const answer = run(`
+      import { StripeTestMode } from './scripts/ops-data/stripe.mjs';
+      const stripe = new StripeTestMode('sk_test_51abcdefgh', 'AU');
+      const urls = [];
+      globalThis.fetch = async (url) => {
+        urls.push(String(url));
+        const u = new URL(url);
+        if (u.pathname.startsWith('/v1/payment_intents/')) {
+          return { ok: true, status: 200, json: async () => ({ id: 'pi_mine', livemode: false, metadata: { order_id: 'o-1', market_id: 'AU', payment_flow: 'card-intent' } }) };
+        }
+        const second = u.searchParams.get('starting_after') === 'evt_x';
+        const page = second
+          ? { has_more: false, data: [{ id: 'evt_mine', created: 1, livemode: false, data: { object: { id: 'pi_mine' } } }] }
+          : { has_more: true, data: [{ id: 'evt_x', created: 2, livemode: false, data: { object: { id: 'pi_other' } } }] };
+        return { ok: true, status: 200, json: async () => (u.searchParams.get('type') === 'payment_intent.amount_capturable_updated' ? page : { has_more: false, data: [] }) };
+      };
+      const out = [];
+      out.push((await stripe.eventsOf('pi_mine', 0, { seconds: 0 })).map((e) => e.id));
+      await stripe.assertOwnPaymentIntent('pi_mine', 'o-1');
+      out.push('own');
+      for (const [order, market] of [['o-2', 'AU'], ['o-1', 'NZ']]) {
+        try { await new StripeTestMode('sk_test_51abcdefgh', market).assertOwnPaymentIntent('pi_mine', order); out.push('allowed'); } catch { out.push('refused'); }
+      }
+      console.log(JSON.stringify(out));
+    `);
+    expect(JSON.parse(answer.out.trim())).toEqual([['evt_mine'], 'own', 'refused', 'refused']);
   });
 });
 

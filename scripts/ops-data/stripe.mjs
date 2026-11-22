@@ -17,6 +17,8 @@ import { API, sleep } from './lib.mjs';
 
 const STRIPE = 'https://api.stripe.com';
 const PAYMENT_INTENT = /^pi_[A-Za-z0-9]{1,100}$/;
+/** At most this many pages of 100 events per type and attempt. */
+const MAX_EVENT_PAGES = 10;
 const WEBHOOK_SECRET = /^whsec_[A-Za-z0-9+/=_-]{8,200}$/;
 
 /** The card PaymentIntent events the API keeps (payments' CARD_PAYMENT_EVENT_TYPES). */
@@ -115,24 +117,50 @@ export class StripeTestMode {
    */
   async eventsOf(paymentIntentId, since, { types = CARD_EVENT_TYPES, seconds = 60 } = {}) {
     if (!PAYMENT_INTENT.test(paymentIntentId)) throw new Error('not a PaymentIntent id');
+    if (!Number.isSafeInteger(since) || since < 0) throw new Error('not a time in seconds');
     for (let waited = 0; ; waited += 2) {
       const found = [];
       for (const type of types) {
-        const page = await this.#call(
-          'GET',
-          `/v1/events?type=${encodeURIComponent(type)}&created[gte]=${since}&limit=100`,
-        );
-        for (const event of page.data ?? []) {
-          if (event.livemode !== false) throw new Error('Stripe listed a live-mode event');
-          if (event.data?.object?.id === paymentIntentId && !event.account) {
-            found.push(event);
+        // Every page: a shared test account can have more than 100 events since the order.
+        let after = '';
+        for (let page = 0; page < MAX_EVENT_PAGES; page += 1) {
+          const list = await this.#call(
+            'GET',
+            `/v1/events?type=${encodeURIComponent(type)}&created[gte]=${since}&limit=100${after}`,
+          );
+          for (const event of list.data ?? []) {
+            if (event.livemode !== false) throw new Error('Stripe listed a live-mode event');
+            if (event.data?.object?.id === paymentIntentId && !event.account) found.push(event);
           }
+          const last = list.data?.at(-1)?.id;
+          if (!list.has_more || typeof last !== 'string') break;
+          after = `&starting_after=${encodeURIComponent(last)}`;
         }
       }
       if (found.length > 0 || waited >= seconds) {
         return found.sort((a, b) => a.created - b.created);
       }
       await sleep(2000);
+    }
+  }
+
+  /**
+   * The PaymentIntent of a local order, read from Stripe: it must be a test-mode one that the
+   * checkout made for this order (metadata), or the loader replays nothing for it.
+   */
+  async assertOwnPaymentIntent(paymentIntentId, orderId) {
+    if (!PAYMENT_INTENT.test(paymentIntentId)) throw new Error('not a PaymentIntent id');
+    const intent = await this.#call('GET', `/v1/payment_intents/${paymentIntentId}`);
+    if (intent?.id !== paymentIntentId || intent.livemode !== false) {
+      throw new Error('Stripe answered a PaymentIntent that is not this test-mode one');
+    }
+    const meta = intent.metadata ?? {};
+    if (
+      meta.order_id !== orderId ||
+      meta.market_id !== this.market ||
+      meta.payment_flow !== 'card-intent'
+    ) {
+      throw new Error(`the PaymentIntent was not made for order ${orderId}; nothing is replayed`);
     }
   }
 }
