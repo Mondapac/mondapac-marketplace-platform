@@ -14,6 +14,8 @@ import {
   type LedgerKind,
   type LedgerTotals,
 } from '../domain/ledger';
+import type { LEDGER_POSTING_CAUSES } from '../domain/events';
+import { LedgerRecorded } from '../domain/events';
 import { reverseLine, reverseShipping } from '../domain/reversal';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
 import type { LedgerPage } from './ports/ledger.repository';
@@ -237,6 +239,39 @@ function checkPaid(paid: PaidSellerOrder, currency: string): readonly string[] {
 }
 
 /**
+ * In the posting's unit, after rows were inserted: {@link LedgerRecorded}, ids and the cause only
+ * (dashboards upgrade phase 3). A replay that inserted nothing publishes nothing.
+ */
+async function publishPosting(
+  deps: CommissionPayoutsDependencies,
+  context: CallContext,
+  posting: {
+    readonly sellerOrderId: Id<'SellerOrder'>;
+    readonly sellerId: Id<'Seller'>;
+    readonly orderId: Id<'Order'>;
+    readonly cause: (typeof LEDGER_POSTING_CAUSES)[number];
+    readonly sourceId: Id | null;
+  },
+): Promise<void> {
+  const postingId = deps.ids.next<'LedgerPosting'>();
+  await deps.outbox.append(context, [
+    LedgerRecorded.record({
+      aggregateId: postingId,
+      aggregateVersion: 1,
+      occurredAt: deps.clock.now(),
+      payload: {
+        postingId,
+        sellerOrderId: posting.sellerOrderId,
+        sellerId: posting.sellerId,
+        orderId: posting.orderId,
+        cause: posting.cause,
+        sourceId: posting.sourceId,
+      },
+    }),
+  ]);
+}
+
+/**
  * The system use case behind the facade: writes the ledger rows of one paid seller order, in one
  * unit. A seller order that already has rows writes nothing (`already-recorded`); the unique key
  * on (seller order, kind, line) is the second lock against a concurrent replay.
@@ -315,6 +350,15 @@ export async function recordSellerOrderPaid(
         return ok('already-recorded' as const);
       }
       const inserted = await deps.ledger.append(context.market, entries);
+      if (inserted > 0) {
+        await publishPosting(deps, context, {
+          sellerOrderId: paid.sellerOrderId,
+          sellerId: paid.sellerId,
+          orderId: paid.orderId,
+          cause: 'paid',
+          sourceId: null,
+        });
+      }
       return ok(inserted === 0 ? ('already-recorded' as const) : ('recorded' as const));
     },
   );
@@ -519,6 +563,15 @@ export async function recordRefund(
       }
       if (entries.length === 0) return ok('nothing-to-post' as const);
       const inserted = await deps.ledger.append(context.market, entries);
+      if (inserted > 0) {
+        await publishPosting(deps, context, {
+          sellerOrderId: refund.sellerOrderId,
+          sellerId: refund.sellerId,
+          orderId: refund.orderId,
+          cause: 'refund',
+          sourceId: refund.refundId,
+        });
+      }
       return ok(inserted === 0 ? ('already-recorded' as const) : ('recorded' as const));
     },
   );
@@ -584,6 +637,15 @@ export async function recordSellerCashback(
         return err({ code: 'commission-payouts.ledger-inconsistent' } as const);
       }
       const inserted = await deps.ledger.append(context.market, [entry]);
+      if (inserted > 0) {
+        await publishPosting(deps, context, {
+          sellerOrderId: cashback.sellerOrderId,
+          sellerId: cashback.sellerId,
+          orderId: cashback.orderId,
+          cause: 'cashback',
+          sourceId: cashback.creditId,
+        });
+      }
       return ok(inserted === 0 ? ('already-recorded' as const) : ('recorded' as const));
     },
   );
@@ -658,6 +720,15 @@ export async function recordSellerCashbackReturn(
         return err({ code: 'commission-payouts.ledger-inconsistent' } as const);
       }
       const inserted = await deps.ledger.append(context.market, [entry]);
+      if (inserted > 0) {
+        await publishPosting(deps, context, {
+          sellerOrderId: returned.sellerOrderId,
+          sellerId: returned.sellerId,
+          orderId: returned.orderId,
+          cause: 'cashback-return',
+          sourceId: returned.clawbackId,
+        });
+      }
       return ok(inserted === 0 ? ('already-recorded' as const) : ('recorded' as const));
     },
   );

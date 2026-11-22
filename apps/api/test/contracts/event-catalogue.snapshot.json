@@ -637,6 +637,18 @@
     }
   },
   {
+    "type": "commission-payouts.ledger-recorded.v1",
+    "aggregateType": "ledger-posting",
+    "fields": {
+      "postingId": "id",
+      "sellerOrderId": "id",
+      "sellerId": "id",
+      "orderId": "id",
+      "cause": "enumOf(paid|refund|cashback|cashback-return)",
+      "sourceId": "optional(id)"
+    }
+  },
+  {
     "type": "customers.account-deletion-settings-changed.v1",
     "aggregateType": "account-deletion-settings",
     "fields": {
