@@ -52,7 +52,7 @@ export async function loadShellContent(read: ShellReader = readOnce): Promise<St
   ]);
   if (tree.kind === 'off' && navigation.kind === 'off') return SAMPLE_CONTENT;
   const content = shellFrom({ tree, navigation });
-  // `apiGet` logs a refused or unreachable read; this line says the shell fell back.
+  // `apiGet` logs a refused or unreachable read; this line says the shell showed less.
   const rows = tree.kind === 'ok' ? treeOf(tree.body) : null;
   if (rows === null) log({ msg: 'storefront.shell-categories-unusable' });
   else if (navigation.kind !== 'ok' || navigationOf(navigation.body, rows) === null)

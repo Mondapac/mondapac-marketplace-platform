@@ -409,7 +409,7 @@ describe('home source: sellers near you', () => {
     expect(store?.minimumOrder).toBe('NZ$25 minimum order');
   });
 
-  it('leaves the section out when the list is empty or fails, ', async () => {
+  it('leaves the section out when the list is empty or fails', async () => {
     serve({ ...REAL, 'sellers/stores': { items: [], total: 0, page: 1, pageSize: 8 } });
     expect((await loadWith()).sections.map((s) => s.kind)).not.toContain('sellers');
     serve({ ...REAL, 'sellers/stores': 503 });
@@ -527,7 +527,7 @@ describe('home source: the hero slider', () => {
     serve({ ...REAL, 'storefront/pages/home': 503, 'storefront/slides': SLIDES });
     const home = await loadWith();
     expect(home.sections.map((s) => s.kind)).toEqual(['hero']);
-    expect((await loadWith()).sections.filter((s) => s.kind === 'hero')).toHaveLength(1);
+    expect(home.sections.filter((s) => s.kind === 'hero')).toHaveLength(1);
   });
 
   it('has the sample slider while API_BASE_URL is empty', async () => {

@@ -230,8 +230,8 @@ dropped, image only a known placeholder key); later banners stay promos.
 Without JavaScript the slider still scrolls (CSS scroll-snap) and every slide is readable and
 clickable, but the controls row below it (pause, arrows, picker) is an empty strip of fixed height:
 it keeps its space so the page does not shift when the script adds the buttons. A slide's button
-label is drawn only when the slide has a link (a label without a link is not shown). The sample hero shows
-only when the slides read failed and the sample fallback is on.
+label is drawn only when the slide has a link (a label without a link is not shown). A failed slides read
+shows no hero; sample slides appear only with `API_BASE_URL` empty (the local design preview).
 
 ## Facade: served placements (personalization 1d-3 B)
 
