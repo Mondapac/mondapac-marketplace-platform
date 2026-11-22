@@ -48,7 +48,7 @@ const CATEGORIES = [
 
 /** Attribute definitions: created, then published. Options are in order. */
 const ATTRIBUTES = [
-  { code: 'brand', dataType: 'text', name: 'Brand', bounds: { maxLength: 80 }, filter: true },
+  { code: 'brand', dataType: 'text', name: 'Brand', bounds: { maxLength: 80 } },
   {
     code: 'description',
     dataType: 'long-text',
@@ -61,7 +61,6 @@ const ATTRIBUTES = [
     dataType: 'text',
     name: 'Country of origin',
     bounds: { maxLength: 80 },
-    filter: true,
   },
   {
     code: 'pack-size',
@@ -102,7 +101,7 @@ const ATTRIBUTES = [
     ],
   },
   { code: 'ingredients', dataType: 'long-text', name: 'Ingredients', localizable: true },
-  { code: 'flavour', dataType: 'text', name: 'Flavour', bounds: { maxLength: 60 }, filter: true },
+  { code: 'flavour', dataType: 'text', name: 'Flavour', bounds: { maxLength: 60 } },
 ].map((attribute) => ({
   localizable: false,
   isVariantOption: false,
@@ -169,17 +168,20 @@ const FEATURE_SETS = [
   },
 ];
 
-/** Each department's feature set and buyer filters; its categories inherit the set. */
+/**
+ * Each department's feature set and buyer filters; its categories inherit the set. A buyer filter
+ * is a choice attribute (text attributes cannot be filters).
+ */
 const LINKS = [
-  ['pantry', 'grocery', ['brand', 'pack-size', 'country-of-origin']],
-  ['meat-and-poultry', 'grocery', ['brand', 'pack-size', 'storage']],
-  ['dairy-and-eggs', 'grocery', ['brand', 'storage']],
-  ['fruit-and-vegetables', 'grocery', ['country-of-origin', 'pack-size']],
-  ['bakery', 'grocery', ['brand']],
-  ['frozen', 'grocery', ['brand', 'pack-size']],
-  ['sweets-and-snacks', 'grocery', ['brand', 'pack-size']],
-  ['drinks', 'drinks', ['brand', 'volume', 'flavour']],
-  ['household', 'household', ['brand']],
+  ['pantry', 'grocery', ['pack-size', 'storage']],
+  ['meat-and-poultry', 'grocery', ['pack-size', 'storage']],
+  ['dairy-and-eggs', 'grocery', ['storage']],
+  ['fruit-and-vegetables', 'grocery', ['pack-size']],
+  ['bakery', 'grocery', ['storage']],
+  ['frozen', 'grocery', ['pack-size']],
+  ['sweets-and-snacks', 'grocery', ['pack-size']],
+  ['drinks', 'drinks', ['volume']],
+  ['household', 'household', []],
 ].map(([category, featureSet, filters]) => ({ category, featureSet, filters }));
 
 /** Cultures (ADR-0047): a required certification type is one the certification seed creates. */

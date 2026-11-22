@@ -118,15 +118,21 @@ try {
     60,
   );
 
-  log('[admin] Platform admin');
-  // Every pack signs in as the admin; the admin pack always runs, so --only catalog works too.
-  const admin = await adminPack({ scenario: SCENARIO, state, save, password: PASSWORD, log });
+  log('[admin] Platform admin and reviewer admin');
+  // Every pack signs in as the admins; the admin pack always runs, so --only catalog works too.
+  const { admin, reviewer } = await adminPack({
+    scenario: SCENARIO,
+    state,
+    save,
+    password: PASSWORD,
+    log,
+  });
   state.packs = { ...state.packs, admin: 'done' };
   save();
 
   if (only.includes('catalog')) {
     log('[catalog] Categories, attributes, feature sets, department links, cultures');
-    await catalogPack({ admin, reviewer: null, scenario: SCENARIO, log });
+    await catalogPack({ admin, reviewer, scenario: SCENARIO, log });
     state.packs = { ...state.packs, catalog: 'done' };
     save();
   }

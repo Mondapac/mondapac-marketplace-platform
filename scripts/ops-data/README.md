@@ -13,13 +13,15 @@ and `lib.mjs`.
 
 | Pack | What it builds | PR |
 |---|---|---|
-| `admin` | The platform admin (first-admin command, invitation from Mailpit, TOTP) | 1 |
-| `catalog` | Categories, attributes, feature sets, each department's feature set and filters, cultures, through the admin API | 1 |
+| `admin` | The platform admin (`identity-admin first-admin`) and a second admin, the reviewer (`identity-admin second-admin`); each invitation read from Mailpit, accepted with TOTP | 1 |
+| `catalog` | Categories (created, then shown), attributes (created, then published), feature sets, each department's feature set and buyer filters, cultures, through the admin API; the reviewer approves what waits for a second admin and the reviewed-after changes | 1 |
 | `sellers` | Sellers in every state, products, offers, prices, stock | 2 |
 | `orders` | Buyers, carts, orders paid with Stripe test confirmation tokens, the webhook | 3 |
 | `content` | Home page, slides, menu, blog, notices | 4 |
 
-Each pack creates only what is missing, so a rerun changes nothing. The scenario of a Market is
+Each pack creates only what is missing, so a rerun changes nothing. Catalogue changes are
+reviewed in every Market (Admin Inbox › System requests): the admin makes them and the reviewer
+approves them, so the environment shows the same maker-checker flow as production. The scenario of a Market is
 `scenarios/<MARKET>/`; a second Market adds its own folder.
 
 ## Run it

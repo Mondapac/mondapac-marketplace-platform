@@ -10,5 +10,7 @@ export const SCENARIO = {
   currency: 'AUD',
   timeZone: 'Australia/Brisbane',
   admin: { email: 'admin@ops.example', displayName: 'Ops Admin' },
+  // The second admin: approves what waits for a second admin's approval (System requests).
+  reviewer: { email: 'reviewer@ops.example', displayName: 'Ops Reviewer' },
   catalog: CATALOG,
 };

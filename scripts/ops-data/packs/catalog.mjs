@@ -80,7 +80,23 @@ async function ensureCategories(admin, scenario, log) {
     }
     made += 1;
   }
-  log(`  ${scenario.catalog.categories.length} categories (${made} new)`);
+  // A new category is created hidden and goes live with Show, as in the tree editor; parents
+  // first, so a child is never shown under a hidden parent.
+  tree = await admin.ok('GET', '/catalog/admin/categories');
+  treeVersion = tree.treeVersion;
+  const statusBySlug = new Map(tree.categories.map((row) => [row.slug, row.status]));
+  let shown = 0;
+  for (const category of scenario.catalog.categories) {
+    if (statusBySlug.get(category.slug) !== 'hidden') continue;
+    const answer = await admin.ok(
+      'POST',
+      `/catalog/admin/categories/${idBySlug.get(category.slug)}/show`,
+      { treeVersion },
+    );
+    treeVersion = answer.category.treeVersion;
+    shown += 1;
+  }
+  log(`  ${scenario.catalog.categories.length} categories (${made} new, ${shown} shown)`);
   return idBySlug;
 }
 
@@ -208,7 +224,8 @@ async function ensureLinks(admin, reviewer, scenario, categoryIds, featureSetIds
     const featureSetId = featureSetIds.get(link.featureSet);
     if (featureSetId === undefined) throw new Error(`feature set ${link.featureSet} is missing`);
     const path = `/catalog/admin/categories/${categoryId}/attribute-links`;
-    const current = await admin.ok('GET', path);
+    // `own` is the category's own link, null until one is set.
+    const current = (await admin.ok('GET', path)).own ?? {};
     const same =
       current.featureSetId === featureSetId &&
       JSON.stringify(current.filters ?? []) === JSON.stringify(link.filters);
@@ -289,6 +306,28 @@ async function ensureCultures(admin, reviewer, scenario, log) {
 }
 
 /**
+ * The catalogue changes that applied at once still sit in the reviewer's queue ("reviewed
+ * after"); the reviewer approves them, as a second admin would, so the Admin Inbox starts clean.
+ */
+async function approveReviewed(reviewer, log) {
+  if (reviewer === null) return;
+  let approved = 0;
+  for (;;) {
+    const list = await reviewer.ok(
+      'GET',
+      '/system-requests/admin/requests?status=open&area=catalogue&pageSize=100',
+    );
+    const open = list.rows.filter((row) => row.status === 'open' && row.area === 'catalogue');
+    if (open.length === 0) break;
+    for (const row of open) {
+      await reviewer.ok('POST', `/system-requests/admin/requests/${row.id}/approve`, {});
+      approved += 1;
+    }
+  }
+  log(`  ${approved} reviewed-after catalogue changes approved by the reviewer`);
+}
+
+/**
  * Builds the scenario's catalog structure. `reviewer` is a second admin's session that approves
  * what waits for approval, or null.
  */
@@ -298,4 +337,5 @@ export async function catalogPack({ admin, reviewer = null, scenario, log }) {
   const featureSetIds = await ensureFeatureSets(admin, reviewer, scenario, log);
   await ensureLinks(admin, reviewer, scenario, categoryIds, featureSetIds, log);
   await ensureCultures(admin, reviewer, scenario, log);
+  await approveReviewed(reviewer, log);
 }
