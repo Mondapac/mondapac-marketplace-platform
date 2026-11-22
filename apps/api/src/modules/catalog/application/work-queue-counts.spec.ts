@@ -126,7 +126,7 @@ describe.each(TEST_MARKETS)('catalog work-queue counts in market %s', (code) => 
     const own = actor('admin');
     return Object.assign(Object.create(Object.getPrototypeOf(own) as object) as object, own, {
       actor: { ...own.actor, actingAs: { sellerId: id(0xa4) } },
-    }) as CallContext;
+    });
   };
   const query = (signal: AbortSignal = new AbortController().signal): WorkQueueCountQuery => ({
     now: NOW,
