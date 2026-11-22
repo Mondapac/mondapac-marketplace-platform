@@ -56,6 +56,7 @@ export function TypeDetailView({
   const t = useTranslations('certificates.types.detail');
   const tb = useTranslations('certificates.types.basis');
   const tm = useTranslations('certificates.types.mode');
+  const tf = useTranslations('certificates.types.fields');
   const locale = useLocale();
   const content: TypeContent = type.published.content;
   const yesNo = (value: boolean | undefined) =>
@@ -170,10 +171,18 @@ export function TypeDetailView({
         {content.verificationMode === 'SELF_DECLARATION' ? (
           <Row label={t('auto-approve')}>{yesNo(content.autoApproveSelfDeclaration)}</Row>
         ) : null}
-        <Row label={t('icon')}>{content.badgeIconKey ?? t('none')}</Row>
-        <Row label={t('published')}>
-          <When iso={type.published.createdAt} missing="-" />
+        <Row label={t('icon')}>
+          {content.badgeIconKey === undefined
+            ? t('none')
+            : content.badgeIconKey === 'text'
+              ? tf('artwork-text-short')
+              : content.badgeIconKey}
         </Row>
+        {type.status === 'active' || type.status === 'inactive' ? (
+          <Row label={t('published')}>
+            <When iso={type.published.createdAt} missing="-" />
+          </Row>
+        ) : null}
       </dl>
       {locales.map(([code, text]) => (
         <section

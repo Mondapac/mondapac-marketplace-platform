@@ -2696,6 +2696,7 @@
         "document-locked": "A certificate from an issuer always needs a document.",
         "auto-help": "These claims show as a seller's claim. No one reviews them.",
         "artwork": "Badge artwork",
+        "artwork-text-short": "Text badge",
         "artwork-text": "Text badge: customers see the name",
         "artwork-choose": "Choose artwork",
         "artwork-help": "Only artwork that exists in the storefront can be chosen.",

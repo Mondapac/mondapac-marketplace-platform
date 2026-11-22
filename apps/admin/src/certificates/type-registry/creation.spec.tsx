@@ -363,6 +363,13 @@ describe('Proposed type page', () => {
     expect(screen.getByText(/No one else can approve this yet/)).toBeTruthy();
   });
 
+  it('shows the artwork by its label and no Published row before the type is live', () => {
+    view(proposed(proposal()));
+    expect(screen.getByText('Text badge')).toBeTruthy();
+    expect(screen.queryByText('text')).toBeNull();
+    expect(screen.queryByText('Published')).toBeNull();
+  });
+
   it('shows a rejected or withdrawn type read-only without buttons', () => {
     view(proposed(null, 'rejected'));
     expect(screen.getByText('Rejected')).toBeTruthy();

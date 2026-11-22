@@ -226,8 +226,22 @@ export function TypeRevisionForm({
   const failed = Object.keys(problems).length > 0;
   const yesNo = (value: boolean) => td(value ? 'yes' : 'no');
   const basis = (value: string) => (tb.has(value as never) ? tb(value as never) : value);
+  // What the method forces (a document for an issuer certificate) is the baseline, so a seed type
+  // stored without it opens clean.
+  const forced = normaliseRules(published.verificationMode ?? '', {
+    requiresIssuerRegistry: published.requiresIssuerRegistry === true,
+    requiresDocument: published.requiresDocument === true,
+    requiresExpiry: published.requiresExpiry === true,
+    defaultBasis: published.defaultBasis ?? 'NOT_APPLICABLE',
+    autoApprove: published.autoApproveSelfDeclaration === true,
+    icon: published.badgeIconKey ?? '',
+  });
   const changes = changesOf(
-    published,
+    {
+      ...published,
+      requiresIssuerRegistry: forced.requiresIssuerRegistry,
+      requiresDocument: forced.requiresDocument,
+    },
     draft,
     (key, values) => td(key as never, values as never),
     yesNo,

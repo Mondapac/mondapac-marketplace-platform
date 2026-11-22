@@ -201,6 +201,13 @@ describe('type revision form', () => {
     expect(screen.queryByLabelText('Needs an issuer from the registry')).toBeNull();
   });
 
+  it('opens clean for an issuer type stored without the document the method forces', () => {
+    form(detail({ requiresDocument: false }));
+    expect(screen.getByLabelText<HTMLInputElement>('Needs a document').checked).toBe(true);
+    expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
+    expect(asksBeforeUnload()).toBe(false);
+  });
+
   it('shows the self-declaration switch only for a self-declared type', () => {
     form(detail({ verificationMode: 'SELF_DECLARATION' }));
     expect(screen.getByLabelText('Approve without a person')).toBeTruthy();
