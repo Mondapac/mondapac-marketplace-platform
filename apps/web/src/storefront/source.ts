@@ -85,10 +85,9 @@ import type {
 export const SAMPLE_DATA: boolean = true;
 
 /**
- * The shell's content: delivery area, popular searches, the drawer categories and the sample
- * sellers. The categories and popular searches come from the approved navigation and the live
- * category tree when API_BASE_URL is set; the delivery area and sellers are sample data. See
- * ./shell-source.ts.
+ * The shell's content: delivery area, popular searches and the drawer categories. The categories and popular searches come from the approved navigation and the live
+ * category tree when API_BASE_URL is set; the delivery area is still the sample's label, and the
+ * shell holds no sellers. See ./shell-source.ts.
  */
 export async function loadStorefrontContent(): Promise<StorefrontContent> {
   return loadShellContent();
@@ -96,8 +95,8 @@ export async function loadStorefrontContent(): Promise<StorefrontContent> {
 
 /**
  * The home page middle: the published home layout, the live category tree and the product
- * shelves when API_BASE_URL is set, with sample data where they answer nothing (unless
- * STOREFRONT_SAMPLE_DATA is off). Sample only without the URL. See ./home-source.ts.
+ * shelves when API_BASE_URL is set, with nothing where they answer nothing. Sample only without the
+ * URL. See ./home-source.ts.
  */
 export async function loadHomeContent(): Promise<HomeContent> {
   return loadHome();
@@ -106,7 +105,7 @@ export async function loadHomeContent(): Promise<HomeContent> {
 /**
  * The slides of one slider position for a page (`GET storefront/slides`), each checked here: plain
  * text, site-path links, images from this app or our media origin only. Sample slides stand in
- * while API_BASE_URL is empty or the read fails (unless STOREFRONT_SAMPLE_DATA is off). See
+ * only while API_BASE_URL is empty; a failed read gives none. See
  * ./slides-source.ts. The home hero is read with the home page (loadHomeContent).
  */
 export async function loadSlides(position: string, scope?: SlideScope): Promise<SlideSet> {

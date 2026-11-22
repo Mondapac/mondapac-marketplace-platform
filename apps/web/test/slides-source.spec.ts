@@ -39,15 +39,15 @@ describe('slides source', () => {
 
   it('reads no API for a position or id it does not know', async () => {
     const { read, paths } = reader({ kind: 'off' });
-    expect((await loadSlides('nope', {}, read, {})).slides).toEqual([]);
-    expect((await loadSlides('home.mid', { product: 'x' }, read, {})).slides).toEqual([]);
+    expect((await loadSlides('nope', {}, read)).slides).toEqual([]);
+    expect((await loadSlides('home.mid', { product: 'x' }, read)).slides).toEqual([]);
     expect(paths).toEqual([]);
   });
 
   it('answers the sample hero while API_BASE_URL is empty, and nothing for other positions', async () => {
     const { read } = reader({ kind: 'off' });
-    expect((await loadSlides('home.hero', {}, read, {})).slides.length).toBeGreaterThan(1);
-    expect((await loadSlides('home.mid', {}, read, {})).slides).toEqual([]);
+    expect((await loadSlides('home.hero', {}, read)).slides.length).toBeGreaterThan(1);
+    expect((await loadSlides('home.mid', {}, read)).slides).toEqual([]);
   });
 
   it('answers the checked slides of the API', async () => {
@@ -59,20 +59,17 @@ describe('slides source', () => {
         slides: [SLIDE, { ...SLIDE, id: 'b', href: 'https://evil.test' }],
       },
     });
-    const set = await loadSlides('home.mid', {}, read, {});
+    const set = await loadSlides('home.mid', {}, read);
     expect(set.slides.map((s) => s.id)).toEqual(['a']);
   });
 
   it('answers no slides, and shows no section, when the API has none live', async () => {
     const { read } = reader({ kind: 'ok', body: { position: 'home.hero', slides: [] } });
-    expect((await loadSlides('home.hero', {}, read, {})).slides).toEqual([]);
+    expect((await loadSlides('home.hero', {}, read)).slides).toEqual([]);
   });
 
-  it('uses the sample when the read fails, unless the fallback is off', async () => {
+  it('shows no sample slides when the read fails', async () => {
     const { read } = reader({ kind: 'failed', status: 503 });
-    expect((await loadSlides('home.hero', {}, read, {})).slides.length).toBeGreaterThan(1);
-    expect(
-      (await loadSlides('home.hero', {}, read, { STOREFRONT_SAMPLE_DATA: 'off' })).slides,
-    ).toEqual([]);
+    expect((await loadSlides('home.hero', {}, read)).slides).toEqual([]);
   });
 });

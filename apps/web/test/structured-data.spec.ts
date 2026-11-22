@@ -41,8 +41,11 @@ vi.mock('../src/storefront/source.ts', async (importOriginal) => {
   const { sampleProduct } = await import('../src/storefront/sample-product.ts');
   const { sampleUnavailableProduct } = await import('../src/storefront/sample-unavailable.ts');
   const { sampleBrandIndex, sampleBrandPage } = await import('../src/storefront/sample-brands.ts');
+  const { SAMPLE_CONTENT } = await import('../src/storefront/sample-home.ts');
   return {
     ...actual,
+    // The shell's categories are the fixture here: with the API on, a failed read shows none.
+    loadStorefrontContent: () => Promise.resolve(SAMPLE_CONTENT),
     loadProduct: (id: string) => Promise.resolve(read.product ?? sampleProduct(id)),
     loadUnavailableProduct: (id: string) => Promise.resolve(sampleUnavailableProduct(id)),
     loadBrands: () => Promise.resolve(sampleBrandIndex()),

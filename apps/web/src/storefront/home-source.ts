@@ -4,13 +4,12 @@ import { apiGet, type ApiRead } from './api.ts';
 import { storefrontApiConfig } from './config.ts';
 import { photoUrls } from './photo-source.ts';
 import { imageRefOf, imageRefsOf, photoSetOf, type PhotoUrl } from './photos.ts';
-import { PRODUCTS, SAMPLE_CONTENT, SAMPLE_HERO } from './sample-home.ts';
+import { SAMPLE_CONTENT } from './sample-home.ts';
 import { emptySet, legacySlideOf, PLACEHOLDER_KEYS, slideSetOf } from './slides.ts';
 import type {
   Category,
   HomeSection,
   Money,
-  ProductCard,
   ShelfCard,
   PromoBanner,
   HomeSeller,
@@ -21,8 +20,8 @@ import type {
 // category tree (`GET catalog/categories`) and the product shelves (`GET search/bestsellers`,
 // `GET search/specials`, `GET search/products`, PR #408). Every answer is checked here before it
 // becomes a card or a banner: text stays text, links are site paths or https only, prices need a
-// currency. Where the API answers nothing or fails, sample data stands in while the sample
-// fallback is on (STOREFRONT_SAMPLE_DATA, below); with it off the section is left out.
+// currency. Where the API answers nothing or fails, the section is left out: with the API on, no
+// sample data is ever shown (the sample home is only for API_BASE_URL empty).
 //
 // Not in the API yet, so left off the cards: seller names, prices of best sellers and category
 // shelves (no add button either), certification seals, store delivery windows and logos.
@@ -47,11 +46,6 @@ const SAMPLE_HOME: HomeContent = {
 };
 
 const EMPTY_HOME: HomeContent = { sections: [], categories: [], sellers: [] };
-
-const SAMPLE_SHELVES: Readonly<Record<'bestsellers' | 'specials', readonly ProductCard[]>> = {
-  bestsellers: PRODUCTS,
-  specials: PRODUCTS.filter((p) => p.wasPrice !== undefined),
-};
 
 const DEFAULT_TITLE = {
   bestsellers: 'Best sellers',
@@ -375,7 +369,6 @@ function withHero(content: HomeContent, set: SlideSet): HomeContent {
  */
 export function homeFrom(
   reads: HomeReads,
-  fallback: boolean,
   photo: PhotoUrl | null = null,
   media: string | null = null,
 ): HomeContent {
@@ -384,8 +377,7 @@ export function homeFrom(
     reads.slides?.kind === 'ok' ? slideSetOf(reads.slides.body, 'home.hero', media) : null;
   const apiHero = api !== null && api.slides.length > 0 ? api : null;
   if (placed === null) {
-    const base = fallback ? SAMPLE_HOME : EMPTY_HOME;
-    return apiHero === null ? base : withHero(base, apiHero);
+    return apiHero === null ? EMPTY_HOME : withHero(EMPTY_HOME, apiHero);
   }
   const categories = categoriesOf(reads.tree.kind === 'ok' ? reads.tree.body : null);
   const sections: HomeSection[] = [];
@@ -420,7 +412,7 @@ export function homeFrom(
           ids === null
             ? categories.top
             : ids.flatMap((id) => categories.top.filter((c) => c.id === id));
-        shownCategories = chosen.length > 0 ? chosen : fallback ? SAMPLE_HOME.categories : [];
+        shownCategories = chosen.length > 0 ? chosen : [];
         if (shownCategories.length > 0) sections.push({ kind: 'categories' });
         break;
       }
@@ -429,13 +421,8 @@ export function homeFrom(
         if (plan === null) break;
         const read = reads.shelves.get(plan.path);
         const cards = read?.kind === 'ok' ? cardsOf(read.body, categories.slugs, photo) : [];
-        const limit = limitOf(m.config.limit, 12, SHELF_LIMIT_MAX);
-        const products =
-          cards.length > 0 || !fallback || plan.kind === 'category'
-            ? cards
-            : SAMPLE_SHELVES[plan.kind].slice(0, limit);
-        if (products.length > 0) {
-          sections.push({ kind: 'products', title: plan.title, href: plan.href, products });
+        if (cards.length > 0) {
+          sections.push({ kind: 'products', title: plan.title, href: plan.href, products: cards });
         }
         break;
       }
@@ -454,11 +441,8 @@ export function homeFrom(
         break;
     }
   }
-  // The library's slides win; else the old banner; else (the read failed) the sample hero.
-  const sampleHero: SlideSet | null =
-    fallback && reads.slides?.kind === 'failed' ? SAMPLE_HERO : null;
-  const hero = apiHero ?? legacy ?? sampleHero;
-  if (sections.length === 0 && apiHero === null && legacy === null && fallback) return SAMPLE_HOME;
+  // The library's slides win; else the old banner; else no hero.
+  const hero = apiHero ?? legacy;
   const content: HomeContent = { sections, categories: shownCategories, sellers };
   return hero === null ? content : withHero(content, hero);
 }
@@ -466,21 +450,9 @@ export function homeFrom(
 /** A read of one public route, as `apiGet` answers it. */
 export type HomeReader = (path: string) => Promise<ApiRead<unknown>>;
 
-/**
- * `STOREFRONT_SAMPLE_DATA=off` stops sample data standing in where the API answers nothing or
- * fails; any other value, or none, keeps it (the demo default). With API_BASE_URL empty the
- * whole home is the sample whatever this says.
- */
-export const SAMPLE_DATA_ENV = 'STOREFRONT_SAMPLE_DATA';
-
-export function sampleFallback(env: Readonly<Record<string, string | undefined>>): boolean {
-  return env[SAMPLE_DATA_ENV]?.trim() !== 'off';
-}
-
-/** The home page's content: the API's when API_BASE_URL is set, else the sample. */
+/** The home page's content: the API's when API_BASE_URL is set (never sample data), else the sample. */
 export async function loadHome(
   read: HomeReader = apiGet,
-  env: Readonly<Record<string, string | undefined>> = process.env,
   photos: () => Promise<PhotoUrl | null> = photoUrls,
   mediaOrigin: string | null = storefrontApiConfig()?.imageOrigin ?? null,
 ): Promise<HomeContent> {
@@ -493,10 +465,5 @@ export async function loadHome(
   const paths = shelfPaths(page, tree);
   const answers = await Promise.all(paths.map((path) => read(path)));
   const shelves = new Map(paths.map((path, i) => [path, answers[i]!]));
-  return homeFrom(
-    { page, tree, shelves, slides },
-    sampleFallback(env),
-    await photos(),
-    mediaOrigin,
-  );
+  return homeFrom({ page, tree, shelves, slides }, await photos(), mediaOrigin);
 }

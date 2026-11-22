@@ -1,7 +1,10 @@
 // Fails the server at start-up, not on the first request, when its API configuration is malformed.
 export async function register(): Promise<void> {
   if (process.env['NEXT_RUNTIME'] === 'nodejs') {
-    const { cardSetup, storefrontApiConfig } = await import('./src/storefront/config.ts');
+    const { assertApiConfiguredInProduction, cardSetup, storefrontApiConfig } =
+      await import('./src/storefront/config.ts');
+    // Production never runs on sample data: an empty API_BASE_URL stops the site here.
+    assertApiConfiguredInProduction(process.env);
     const { sellerSignInUrls } = await import('./src/storefront/seller-sign-in.ts');
     sellerSignInUrls(storefrontApiConfig());
     // Deliver to lookup (MAPBOX_*): a malformed value stops the site here, not on every page.

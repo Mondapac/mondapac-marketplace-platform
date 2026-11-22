@@ -235,42 +235,39 @@ describe('shell content', () => {
     'drawer-categories': [entry(BAKERY)],
   });
 
-  it('uses the approved navigation, then keeps the sample sellers and delivery area', () => {
-    const shell = shellFrom({ tree: ok(TREE), navigation: ok(approved) }, true);
+  it('uses the approved navigation, keeps the delivery area and carries no sample sellers', () => {
+    const shell = shellFrom({ tree: ok(TREE), navigation: ok(approved) });
     expect(shell.categories.map((c) => c.code)).toEqual(['bakery']);
     expect(shell.popularSearches).toEqual(['Halal meat']);
-    expect(shell.sellers).toBe(SAMPLE_CONTENT.sellers);
+    expect(shell.sellers).toEqual([]);
+    expect(shell.home).toEqual([]);
     expect(shell.delivery).toBe(SAMPLE_CONTENT.delivery);
   });
 
   it('uses the live tree when the navigation is empty, never the sample categories', () => {
-    for (const fallback of [true, false]) {
-      const shell = shellFrom({ tree: ok(TREE), navigation: ok(EMPTY_NAV) }, fallback);
-      expect(shell.categories.map((c) => c.code)).toEqual(['meat', 'bakery']);
-    }
+    const shell = shellFrom({ tree: ok(TREE), navigation: ok(EMPTY_NAV) });
+    expect(shell.categories.map((c) => c.code)).toEqual(['meat', 'bakery']);
+    expect(shell.popularSearches).toEqual([]);
   });
 
-  it('takes the sample only while the fallback is on, for what the API gives nothing of', () => {
-    const empty = { tree: ok({ categories: [] }), navigation: ok(EMPTY_NAV) };
-    expect(shellFrom(empty, true).categories).toBe(SAMPLE_CONTENT.categories);
-    expect(shellFrom(empty, true).popularSearches).toBe(SAMPLE_CONTENT.popularSearches);
-    expect(shellFrom(empty, false).categories).toEqual([]);
-    expect(shellFrom(empty, false).popularSearches).toEqual([]);
-    // The tree beside an empty navigation still gives popular searches the sample's words.
-    expect(shellFrom({ tree: ok(TREE), navigation: ok(EMPTY_NAV) }, false).popularSearches).toEqual(
-      [],
-    );
+  it('shows nothing, never the sample, for what the API gives nothing of', () => {
+    const empty = shellFrom({ tree: ok({ categories: [] }), navigation: ok(EMPTY_NAV) });
+    expect(empty.categories).toEqual([]);
+    expect(empty.popularSearches).toEqual([]);
+    expect(empty.sellers).toEqual([]);
+    const failed = shellFrom({ tree: FAILED, navigation: FAILED });
+    expect(failed.categories).toEqual([]);
+    expect(failed.popularSearches).toEqual([]);
+    expect(failed.sellers).toEqual([]);
+    expect(failed.home).toEqual([]);
   });
 
-  it('falls back when a read fails or the body is not what it should be', () => {
-    expect(shellFrom({ tree: FAILED, navigation: FAILED }, true).categories).toBe(
-      SAMPLE_CONTENT.categories,
-    );
-    expect(shellFrom({ tree: FAILED, navigation: ok(approved) }, false).categories).toEqual([]);
-    expect(shellFrom({ tree: ok('junk'), navigation: ok(approved) }, false).categories).toEqual([]);
+  it('shows less when a read fails or the body is not what it should be', () => {
+    expect(shellFrom({ tree: FAILED, navigation: ok(approved) }).categories).toEqual([]);
+    expect(shellFrom({ tree: ok('junk'), navigation: ok(approved) }).categories).toEqual([]);
     // Without the navigation the tree still serves the menu.
-    expect(shellFrom({ tree: ok(TREE), navigation: FAILED }, false).categories).toHaveLength(2);
-    expect(shellFrom({ tree: ok(TREE), navigation: ok('junk') }, true).categories).toHaveLength(2);
+    expect(shellFrom({ tree: ok(TREE), navigation: FAILED }).categories).toHaveLength(2);
+    expect(shellFrom({ tree: ok(TREE), navigation: ok('junk') }).categories).toHaveLength(2);
   });
 
   it('reads both routes, is the sample with the API off and logs a fallback', async () => {
@@ -280,7 +277,7 @@ describe('shell content', () => {
       paths.push(path);
       return Promise.resolve(path === 'catalog/categories' ? ok(TREE) : FAILED);
     };
-    const shell = await loadShellContent(read, { STOREFRONT_SAMPLE_DATA: 'off' });
+    const shell = await loadShellContent(read);
     expect(paths.sort()).toEqual(['catalog/categories', 'storefront/navigation']);
     expect(shell.categories.map((c) => c.code)).toEqual(['meat', 'bakery']);
     expect(log).toHaveBeenCalledWith(
@@ -289,7 +286,7 @@ describe('shell content', () => {
     log.mockClear();
 
     const off = (): Promise<ApiRead<unknown>> => Promise.resolve({ kind: 'off' });
-    expect(await loadShellContent(off, {})).toBe(SAMPLE_CONTENT);
+    expect(await loadShellContent(off)).toBe(SAMPLE_CONTENT);
     expect(log).not.toHaveBeenCalled();
     log.mockRestore();
   });
