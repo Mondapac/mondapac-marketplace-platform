@@ -196,6 +196,9 @@ const draftOf = (detail: VariantTypeDetail): Draft => ({
   sellerHelp: { ...detail.sellerHelp },
 });
 
+const trimmed = (texts: Readonly<Record<string, string>>): Readonly<Record<string, string>> =>
+  Object.fromEntries(Object.entries(texts).map(([key, text]) => [key, text.trim()]));
+
 /** How many settings differ from the saved ones: each field and each swatch counts once. */
 function changesOf(draft: Draft, saved: Draft): number {
   const differ = (a: Readonly<Record<string, string>>, b: Readonly<Record<string, string>>) =>
@@ -207,7 +210,8 @@ function changesOf(draft: Draft, saved: Draft): number {
     (draft.optionOrder === saved.optionOrder ? 0 : 1) +
     // Swatches are sent only for the Swatches style, so only then are they changes.
     (draft.displayStyle === 'swatches' ? differ(draft.swatches, saved.swatches) : 0) +
-    differ(draft.sellerHelp, saved.sellerHelp)
+    // Blank help is not sent, so spaces alone are no change.
+    differ(trimmed(draft.sellerHelp), trimmed(saved.sellerHelp))
   );
 }
 
@@ -230,6 +234,8 @@ function VariantTypePanel({
   const [load, setLoad] = useState<Load<VariantTypeDetail>>({ state: 'loading' });
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
+  // Set before the request, so a second submit in the same tick is dropped.
+  const busy = useRef(false);
   const [leaving, setLeaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Readonly<Record<string, string>>>({});
@@ -316,7 +322,7 @@ function VariantTypePanel({
   }
 
   async function save() {
-    if (draft === null || saving || count === 0) return;
+    if (draft === null || busy.current || count === 0) return;
     // Swatches are sent (and so checked) only for the Swatches style.
     const bad =
       draft.displayStyle === 'swatches'
@@ -326,6 +332,7 @@ function VariantTypePanel({
       setFieldErrors({ [`swatches.${bad[0]}`]: t('swatch.format') });
       return;
     }
+    busy.current = true;
     setSaving(true);
     setProblem(null);
     setFieldErrors({});
@@ -343,6 +350,7 @@ function VariantTypePanel({
       },
       csrfToken,
     );
+    busy.current = false;
     setSaving(false);
     if (result.ok) {
       toast.success(t('save.done'));

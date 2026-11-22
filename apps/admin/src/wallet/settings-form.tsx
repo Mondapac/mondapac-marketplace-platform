@@ -79,6 +79,8 @@ export function SettingsForm({
   const sentForReview = useSentForReview();
   const [conflict, setConflict] = useState(false);
   const [leaving, setLeaving] = useState(false);
+  // The field a refused Review points at; a new object each time, so a second refusal moves focus again.
+  const [focusField, setFocusField] = useState<{ readonly name: string } | null>(null);
   const busy = useRef(false);
   // Before the loading and error returns below: a hook is called on every render.
   const changeHistory = useChangeHistory(settings?.lastChanged, 'wallet/admin/settings/history');
@@ -108,6 +110,12 @@ export function SettingsForm({
   useEffect(() => {
     void load();
   }, [load]);
+
+  // After the refused field renders its error: Review is then off, so focus goes to what to fix.
+  useEffect(() => {
+    if (focusField === null) return;
+    document.querySelector<HTMLElement>(`[name="${focusField.name}"]`)?.focus();
+  }, [focusField]);
 
   useEffect(() => {
     if (!loading.stalled) return;
@@ -229,13 +237,15 @@ export function SettingsForm({
   function review() {
     if (busy.current || unchanged) return;
     setProblem(null);
-    // The bar's button stays on, so a missing reason is shown on its field instead.
+    // A missing reason or note is shown on its field, which takes focus; Review stays off until it is fixed.
     if (incomplete) {
       setReasonError(true);
+      setFocusField({ name: 'reasonCode' });
       return;
     }
     if (needsNote && trimmedNote(note) === null) {
       setNoteError('required');
+      setFocusField({ name: 'note' });
       return;
     }
     if (chosen === 'active') void send();
@@ -297,7 +307,10 @@ export function SettingsForm({
           <SaveBar
             {...chrome.saveBar({
               count: unchanged ? 0 : 1,
-              errorCount: (reasonError ? 1 : 0) + (noteError === null ? 0 : 1),
+              // Only what the admin still has to fill in blocks Review; after a refusal from the
+              // server the same values can be sent again.
+              errorCount:
+                (reasonError && reason === '' ? 1 : 0) + (noteError === 'required' ? 1 : 0),
               saving: pending,
               onDiscard: discard,
               saveLabel: t('settings.review'),

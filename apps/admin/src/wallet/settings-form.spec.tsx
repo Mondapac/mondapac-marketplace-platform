@@ -169,6 +169,7 @@ describe('SettingsForm', () => {
     // No confirm without a reason: the field says what is missing and Review waits for it.
     expect(await screen.findByText('Choose a reason for this state.')).toBeTruthy();
     expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByLabelText('Reason'));
     const button = screen.getByRole<HTMLButtonElement>('button', { name: 'Review change' });
     expect(button.disabled).toBe(true);
     fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'maintenance' } });
@@ -178,6 +179,20 @@ describe('SettingsForm', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
     expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
     expect(screen.getByLabelText<HTMLSelectElement>('New state').value).toBe('active');
+    expect(call.mock.calls.some(([method]) => method === 'PUT')).toBe(false);
+  });
+
+  it('only reviews on a form submit: an off switch opens its confirm and sends nothing', async () => {
+    call.mockResolvedValue(
+      ok(settings({ status: 'active', updatedAt: '2026-10-01T00:00:00.000Z' })),
+    );
+    mount();
+    await screen.findByText(/Changed/);
+    choose('off');
+    note();
+    // Enter in a field submits the page form; that is Review, never the change itself.
+    fireEvent.submit(screen.getByLabelText('Note for reviewers').closest('form')!);
+    expect(await confirmDialog('Turn the wallet off?')).toBeTruthy();
     expect(call.mock.calls.some(([method]) => method === 'PUT')).toBe(false);
   });
 
@@ -220,6 +235,7 @@ describe('SettingsForm', () => {
     choose('active');
     review();
     expect(screen.getByText(/Write a note for the reviewers/)).toBeTruthy();
+    expect(document.activeElement).toBe(screen.getByLabelText('Note for reviewers'));
     expect(call).toHaveBeenCalledTimes(1);
     note('Open it');
     expect(screen.getByText('7 / 500')).toBeTruthy();
@@ -276,6 +292,10 @@ describe('SettingsForm', () => {
     review();
     expect(await screen.findByText(/The note was refused/)).toBeTruthy();
     expect(screen.queryByText('Choose a reason for this state.')).toBeNull();
+    // A refusal from the server does not lock Review: the same note can be sent again.
+    expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Review change' }).disabled).toBe(
+      false,
+    );
   });
 
   it('has a confirm for frozen and off with their own words', async () => {
