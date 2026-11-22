@@ -299,6 +299,21 @@ describe.each(MARKETS)('held prices list ($name)', (m) => {
       expect(call.mock.calls.some(([, url]) => String(url).includes('view=up'))).toBe(true),
     );
   });
+  it('searches by one record id or Offer id on the server and shows it as a chip', async () => {
+    serve(ok(page([row(m)])));
+    mount(m);
+    await screen.findByText('Halal beef mince 500 g');
+    const box = screen.getByRole('searchbox', { name: 'Search held prices' });
+    fireEvent.change(box, { target: { value: id(7) } });
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await waitFor(() => {
+      const asked = listCalls().map(([, url]) => new URLSearchParams(String(url).split('?')[1]));
+      expect(asked.some((q) => q.get('q') === id(7))).toBe(true);
+    });
+    expect(await screen.findByRole('button', { name: 'Save filter…' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Clear all' })).toBeTruthy();
+  });
+
   it('reads its saved filters under its own list key', async () => {
     serve(ok(page([row(m)])));
     mount(m);

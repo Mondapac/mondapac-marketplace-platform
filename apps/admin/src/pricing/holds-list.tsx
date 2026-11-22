@@ -163,6 +163,8 @@ export function HoldsList({
       // its `view`, and kind, change and the other query keys as its filters.
       savedKey: HOLDS_SAVED_KEY,
       savedViews: true,
+      // The route matches one record id or Offer id, exactly (a UUID).
+      search: { max: 36 },
       sorts: [
         {
           id: 'submitted',
