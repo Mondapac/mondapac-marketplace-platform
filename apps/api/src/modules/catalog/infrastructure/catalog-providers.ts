@@ -243,6 +243,16 @@ import {
 import { ID_GENERATOR } from '../../../platform/ids/ids.module';
 import type { IdGenerator } from '@mondapac/shared-kernel';
 import { CertificationClaimTextMatcher } from './certification-claim-text-matcher';
+import { CertificationClaimTermsCandidateMatcher } from './certification-claim-terms-candidate-matcher';
+import { PrismaClaimTextImpactReader } from './prisma-claim-text-impact.reader';
+import {
+  CLAIM_TERMS_CANDIDATE_MATCHER,
+  type ClaimTermsCandidateMatcher,
+} from '../application/ports/claim-terms-candidate-matcher';
+import {
+  CLAIM_TEXT_IMPACT_READER,
+  type ClaimTextImpactReader,
+} from '../application/ports/claim-text-impact.reader';
 import { CERTIFICATION_FACADE, type CertificationFacade } from '../../certification';
 import { ConfigCatalogMarketPolicy } from './config-catalog-market-policy';
 import { HmacRateCounterKeys, localCatalogSecret } from './hmac-rate-counter-keys';
@@ -441,6 +451,19 @@ export const catalogProviders: readonly Provider[] = [
     inject: [CERTIFICATION_FACADE],
     useFactory: (certification: CertificationFacade): ClaimTextMatcher =>
       new CertificationClaimTextMatcher(certification),
+  },
+  // Request X-1: the candidate-terms match behind `claim-terms.impact-count` (design 6.5).
+  {
+    provide: CLAIM_TERMS_CANDIDATE_MATCHER,
+    inject: [CERTIFICATION_FACADE],
+    useFactory: (certification: CertificationFacade): ClaimTermsCandidateMatcher =>
+      new CertificationClaimTermsCandidateMatcher(certification),
+  },
+  {
+    provide: CLAIM_TEXT_IMPACT_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ClaimTextImpactReader =>
+      new PrismaClaimTextImpactReader(prisma),
   },
   {
     provide: CATEGORY_RETIREMENT_CHECK,

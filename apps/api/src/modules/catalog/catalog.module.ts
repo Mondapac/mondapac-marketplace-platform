@@ -123,6 +123,10 @@ import { OwnOfferRecordAttestation } from './application/use-cases/own-offer-rec
 import { OwnOfferSubmit } from './application/use-cases/own-offer-submit.use-case';
 import { ReviewQueueList } from './application/use-cases/review-queue-list.use-case';
 import { ReviewQueueExport } from './application/use-cases/review-queue-export.use-case';
+import { ClaimTermsImpactCount } from './application/use-cases/claim-terms-impact-count.use-case';
+import { CLAIM_TERMS_CANDIDATE_MATCHER } from './application/ports/claim-terms-candidate-matcher';
+import { CLAIM_TEXT_IMPACT_READER } from './application/ports/claim-text-impact.reader';
+import { ClaimTermsImpactCountController } from './presentation/claim-terms-impact-count.controller';
 import { AdminCustomVariantLabels } from './application/use-cases/admin-custom-variant-labels.use-case';
 import { CUSTOM_VARIANT_LABELS_READER } from './application/ports/custom-variant-labels.reader';
 import { AdminCustomVariantLabelsController } from './presentation/admin-custom-variant-labels.controller';
@@ -691,6 +695,8 @@ const PORT = {
   adminProductsReader: ADMIN_PRODUCTS_READER,
   adminVariantsReader: ADMIN_VARIANTS_READER,
   customVariantLabelsReader: CUSTOM_VARIANT_LABELS_READER,
+  candidateMatcher: CLAIM_TERMS_CANDIDATE_MATCHER,
+  impactReader: CLAIM_TEXT_IMPACT_READER,
   images: PRODUCT_IMAGE_REPOSITORY,
   imageProcessor: IMAGE_PROCESSOR,
   objectStore: OBJECT_STORE,
@@ -1072,6 +1078,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     OfferReviewController,
     AdminProductListController,
     AdminCustomVariantLabelsController,
+    ClaimTermsImpactCountController,
     VariantAdminController,
     AttributeFileController,
     AdminProductBulkController,
@@ -2406,6 +2413,16 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     useCaseProvider(ReviewQueueExport, {
       reviewQueue: true,
       sheetWriter: true,
+      clock: true,
+    }),
+    // Request C-7 (design 6.5): the count before a vocabulary change.
+    useCaseProvider(ClaimTermsImpactCount, {
+      unitOfWork: true,
+      impactReader: true,
+      candidateMatcher: true,
+      counters: true,
+      counterKeys: true,
+      policy: true,
       clock: true,
     }),
     useCaseProvider(AdminCustomVariantLabels, {

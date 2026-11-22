@@ -139,3 +139,17 @@ items `{ id: offerId, version }`; results are keyed by `id`. Each row runs the s
 the caller. A bulk approve passes no ticked check, so a revision whose review needs checks comes
 back `skipped` with `review.checks-missing` (owner decision 20 Nov 2026). Offers and revisions are
 separate calls because their reason codes differ.
+
+## Claim term impact count (C-7)
+
+`POST /catalog/admin/claim-terms/impact-count` (use case `catalog.claim-terms-impact-count`, key
+`certification.type.edit` imported from `certification`, admin only, refused in acting-as). Body:
+`{ typeCode?, termsByLocale: { <locale>: string[] } }`; answer `{ products, offers, total, complete }`.
+Read-only. It scans published product texts (name, short description, description) and published Offer
+descriptions, 100 texts a call to `certification.matchCandidateClaimTerms` (request X-1), stopping at
+20,000 texts or 10 seconds (`complete: false`, "at least N"). Errors: `validation.failed` 400 (the
+terms the matcher cannot use are refused with `details.fields`), `access.denied` 403,
+`request.throttled` 429 (shares the claim-text check budget, 30 a minute), `access.unavailable` and
+`claim-text.check-unavailable` 503 ("We couldn't count"; never a zero). Not yet counted: category
+names and descriptions (seller and platform), attribute definition names and option labels,
+category-proposal texts; they join with the rescan job (design 6.4, slice 18).
