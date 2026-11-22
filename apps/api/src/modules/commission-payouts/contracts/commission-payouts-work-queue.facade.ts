@@ -6,9 +6,9 @@ import type {
 } from '../../../platform/work-queue/work-queue-count';
 
 /**
- * The commission-payouts queues of the admin dashboard's work queue (dashboards upgrade, phase 1). Each method
- * runs one use case with the caller's `CallContext` unchanged (the key of each is on its use
- * case), platform admins only. Not exposed over HTTP; the dashboard module composes them.
+ * The commission-payouts queues of the dashboards' work queues (dashboards upgrade, phase 1). Each
+ * method runs one use case with the caller's `CallContext` unchanged (the key of each is on its use
+ * case): platform admins only, except the seller tasks. Not exposed over HTTP; the dashboard module composes them.
  */
 export interface CommissionPayoutsWorkQueueFacade {
   /** The payouts that failed within the last 7 days. */
@@ -25,6 +25,20 @@ export interface CommissionPayoutsWorkQueueFacade {
 
   /** The disputes that need a response within 24 hours or are past their deadline. */
   disputesDue(
+    context: CallContext,
+    query: WorkQueueCountQuery,
+  ): Promise<Result<WorkQueueCount, AccessDenied>>;
+
+  // The seller tasks: rule `commission-payouts.earnings.view`, the session's own seller.
+
+  /** The disputes on the session seller's own orders that need a response. */
+  sellerDisputesNeedingReply(
+    context: CallContext,
+    query: WorkQueueCountQuery,
+  ): Promise<Result<WorkQueueCount, AccessDenied>>;
+
+  /** The session seller's own active payout holds. */
+  sellerPayoutHolds(
     context: CallContext,
     query: WorkQueueCountQuery,
   ): Promise<Result<WorkQueueCount, AccessDenied>>;

@@ -66,6 +66,8 @@ const record = (method: string, market: MarketContext, times: Temporal.Instant[]
 const counts: PaymentsWorkQueueCountReader = {
   failedWebhooks: (m, now, staleBefore) => record('failedWebhooks', m, [now, staleBefore]),
   restrictedAccounts: (m, now, staleBefore) => record('restrictedAccounts', m, [now, staleBefore]),
+  // The seller task has its own spec (seller-work-queue-counts.spec.ts).
+  sellerPayoutsBlocked: () => Promise.reject(new Error('not an admin count')),
 };
 const USE_CASES = [
   {

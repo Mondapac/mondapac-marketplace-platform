@@ -98,6 +98,8 @@ import {
 import { PrismaRefundRepository } from './prisma-refund.repository';
 import { PrismaAdminShipmentListReader } from './prisma-admin-shipment-list.reader';
 import { PrismaWorkQueueCountReader } from './prisma-work-queue-count.reader';
+import { FacadeSellerZones } from './facade-seller-zones';
+import { SELLER_ZONES, type SellerZones } from '../application/ports/seller-zones';
 import {
   WORK_QUEUE_COUNT_READER,
   type WorkQueueCountReader,
@@ -193,6 +195,13 @@ export const orderingProviders: readonly FactoryProvider[] = [
     provide: MARKET_ZONES,
     inject: [MarketRegistry],
     useFactory: (markets: MarketRegistry): MarketZones => new RegistryMarketZones(markets),
+  },
+  /** The seller's own zone for the seller tasks' local day (Market zone as the fallback). */
+  {
+    provide: SELLER_ZONES,
+    inject: [SELLERS_FACADE, MARKET_ZONES],
+    useFactory: (sellers: SellersFacade, zones: MarketZones): SellerZones =>
+      new FacadeSellerZones(sellers, zones),
   },
   /** The XLSX writer of the Sales list exports (the shared list-export kit). */
   {

@@ -277,6 +277,16 @@
     "whenSellerNotApproved": "deny"
   },
   {
+    "name": "commission-payouts.count-seller-disputes-needing-reply",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
+    "name": "commission-payouts.count-seller-payout-holds",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
+  {
     "name": "commission-payouts.export-own-payouts",
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
@@ -397,6 +407,11 @@
     "name": "dashboard.view-admin-work-queue",
     "rule": "own-resources",
     "whenSellerNotApproved": "deny"
+  },
+  {
+    "name": "dashboard.view-seller-tasks",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "allow"
   },
   { "name": "engagement.follow-store", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "engagement.followed-among", "rule": "system" },
@@ -787,6 +802,11 @@
   },
   { "name": "payments.abandon-transfer", "rule": "system" },
   { "name": "payments.apply-stripe-events", "rule": "system" },
+  {
+    "name": "payments.count-seller-payouts-blocked",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   { "name": "payments.dispute-of", "rule": "system" },
   { "name": "payments.disputes-of-order", "rule": "system" },
   { "name": "payments.instruct-transfer", "rule": "system" },

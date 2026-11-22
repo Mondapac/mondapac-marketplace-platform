@@ -1,5 +1,5 @@
 import { Temporal } from '@mondapac/shared-kernel';
-import type { MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { WorkQueueCount } from '../../../platform/work-queue/work-queue-count';
 import {
@@ -24,6 +24,10 @@ const toInstant = (date: Date | null, count: number): Temporal.Instant | null =>
  * - Disputes due: the cases in the `needs-response` bucket whose response is due before
  *   `now` + 24 hours, past due included, on `dispute_cases_bucket_idx`; a case without a deadline
  *   is not counted. Overdue: the deadline has passed; the oldest is the nearest deadline.
+ * - Seller disputes needing a reply (seller tasks): the distinct disputes of the seller's active
+ *   dispute holds (on `payout_holds_active_seller_idx`), then their cases in `needs-response` (on
+ *   the cases' primary key). Two reads of this module's own tables, no join to another module.
+ * - Seller payout holds (seller tasks): the seller's active holds, on the same partial index.
  */
 export class PrismaCommissionPayoutsWorkQueueCountReader implements CommissionPayoutsWorkQueueCountReader {
   constructor(private readonly prisma: PrismaService) {}
@@ -80,5 +84,51 @@ export class PrismaCommissionPayoutsWorkQueueCountReader implements CommissionPa
     ]);
     const count = all._count._all;
     return { count, overdue, oldestAt: toInstant(all._min.evidenceDueBy, count) };
+  }
+
+  async sellerDisputesNeedingReply(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    now: Temporal.Instant,
+  ): Promise<WorkQueueCount> {
+    const tx = this.prisma.tx(market);
+    const holds = await tx.commissionPayoutsPayoutHold.findMany({
+      where: { marketId: market.marketId, sellerId, releasedAt: null, reason: 'dispute' },
+      select: { sourceRef: true },
+      distinct: ['sourceRef'],
+    });
+    if (holds.length === 0) return { count: 0, overdue: 0, oldestAt: null };
+    const where = {
+      marketId: market.marketId,
+      disputeId: { in: holds.map((hold) => hold.sourceRef) },
+      bucket: 'needs-response',
+    };
+    const [all, overdue] = await Promise.all([
+      tx.commissionPayoutsDisputeCase.aggregate({
+        where,
+        _count: { _all: true },
+        _min: { evidenceDueBy: true },
+      }),
+      tx.commissionPayoutsDisputeCase.count({
+        where: { ...where, evidenceDueBy: { lt: toDate(now) } },
+      }),
+    ]);
+    const count = all._count._all;
+    return { count, overdue, oldestAt: toInstant(all._min.evidenceDueBy, count) };
+  }
+
+  async sellerPayoutHolds(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    staleBefore: Temporal.Instant,
+  ): Promise<WorkQueueCount> {
+    const holds = this.prisma.tx(market).commissionPayoutsPayoutHold;
+    const where = { marketId: market.marketId, sellerId, releasedAt: null };
+    const [all, overdue] = await Promise.all([
+      holds.aggregate({ where, _count: { _all: true }, _min: { placedAt: true } }),
+      holds.count({ where: { ...where, placedAt: { lt: toDate(staleBefore) } } }),
+    ]);
+    const count = all._count._all;
+    return { count, overdue, oldestAt: toInstant(all._min.placedAt, count) };
   }
 }

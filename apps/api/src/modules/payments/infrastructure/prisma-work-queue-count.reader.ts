@@ -1,5 +1,5 @@
 import { Temporal } from '@mondapac/shared-kernel';
-import type { MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { WorkQueueCount } from '../../../platform/work-queue/work-queue-count';
 import {
@@ -20,6 +20,8 @@ const toInstant = (date: Date | null, count: number): Temporal.Instant | null =>
  *   `rejected` events (a bad signature or an object of no interest) are not counted.
  * - Restricted accounts: the connected accounts in `restricted`, since their last update (the
  *   table holds one row per seller).
+ * - Seller payouts blocked (seller tasks): the seller's own account row (its primary key) when it
+ *   is restricted or its payouts are not enabled.
  */
 export class PrismaPaymentsWorkQueueCountReader implements PaymentsWorkQueueCountReader {
   constructor(private readonly prisma: PrismaService) {}
@@ -61,5 +63,22 @@ export class PrismaPaymentsWorkQueueCountReader implements PaymentsWorkQueueCoun
     ]);
     const count = all._count._all;
     return { count, overdue, oldestAt: toInstant(all._min.updatedAt, count) };
+  }
+
+  async sellerPayoutsBlocked(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<WorkQueueCount> {
+    const account = await this.prisma.tx(market).paymentsConnectedAccount.findFirst({
+      where: {
+        marketId: market.marketId,
+        sellerId,
+        OR: [{ status: 'restricted' }, { payoutsEnabled: false }],
+      },
+      select: { updatedAt: true },
+    });
+    return account === null
+      ? { count: 0, overdue: 0, oldestAt: null }
+      : { count: 1, overdue: 0, oldestAt: toInstant(account.updatedAt, 1) };
   }
 }

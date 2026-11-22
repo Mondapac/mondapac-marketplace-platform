@@ -51,3 +51,7 @@ export {
   type SellerRatingSummary,
   type SellerReviewCount,
 } from './reviews.facade';
+export {
+  REVIEWS_WORK_QUEUE_FACADE,
+  type ReviewsWorkQueueFacade,
+} from './reviews-work-queue.facade';

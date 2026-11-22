@@ -69,6 +69,9 @@ const counts: CommissionPayoutsWorkQueueCountReader = {
   failedPayouts: (m, now, staleBefore) => record('failedPayouts', m, [now, staleBefore]),
   payoutHolds: (m, now, staleBefore) => record('payoutHolds', m, [now, staleBefore]),
   disputesDue: (m, now) => record('disputesDue', m, [now]),
+  // The seller tasks have their own spec (seller-work-queue-counts.spec.ts).
+  sellerDisputesNeedingReply: () => Promise.reject(new Error('not an admin count')),
+  sellerPayoutHolds: () => Promise.reject(new Error('not an admin count')),
 };
 const USE_CASES = [
   {

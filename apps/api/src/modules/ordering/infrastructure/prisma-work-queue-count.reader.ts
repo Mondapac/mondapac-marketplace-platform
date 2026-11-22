@@ -1,5 +1,5 @@
 import { Temporal } from '@mondapac/shared-kernel';
-import type { MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { WorkQueueCount } from '../../../platform/work-queue/work-queue-count';
 import {
@@ -28,12 +28,135 @@ const earliest = (instants: readonly (Temporal.Instant | null)[]): Temporal.Inst
  * plus the values a setting held before it changed), and a read-only unit opens no transaction
  * (ADR-0025), so those counts run side by side. The scheduled orders not delivered read the
  * partial index on (market_id, delivery_window_end) of the open scheduled orders.
+ *
+ * The seller tasks (dashboards upgrade, phase 1, PR 6) add the seller id to the same statements
+ * and read the partial index (market_id, seller_id) of the seller's open paid orders
+ * (`seller_orders_market_id_seller_id_open_idx`: not delivered, not refunded in full), which every
+ * one of them implies.
  */
 export class PrismaWorkQueueCountReader implements WorkQueueCountReader {
   constructor(private readonly prisma: PrismaService) {}
 
-  async lateDeliveries(
+  lateDeliveries(
     market: MarketContext,
+    now: Temporal.Instant,
+    overdueBefore: Temporal.Instant,
+    signal: AbortSignal,
+  ): Promise<WorkQueueCount> {
+    return this.late(market, {}, now, overdueBefore, signal);
+  }
+
+  sellerLateOrders(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    now: Temporal.Instant,
+    overdueBefore: Temporal.Instant,
+    signal: AbortSignal,
+  ): Promise<WorkQueueCount> {
+    return this.late(market, { sellerId }, now, overdueBefore, signal);
+  }
+
+  async sellerToShipToday(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    now: Temporal.Instant,
+    dayStart: Temporal.Instant,
+    dayEnd: Temporal.Instant,
+    signal: AbortSignal,
+  ): Promise<WorkQueueCount> {
+    const orders = this.prisma.tx(market).orderingSellerOrder;
+    const open = {
+      marketId: market.marketId,
+      tenantId: market.tenantId,
+      sellerId,
+      paidAt: { not: null },
+      fulfilment: 'to-ship',
+      readyAt: null,
+      refundedInFull: false,
+    } as const;
+    const notScheduled = {
+      ...open,
+      deliveryMethod: { not: 'scheduled' },
+      readyPrepMinutes: { not: null },
+    } as const;
+    const [minutes, scheduled] = await Promise.all([
+      orders.groupBy({ by: ['readyPrepMinutes'], where: notScheduled }),
+      orders.aggregate({
+        where: {
+          ...open,
+          deliveryMethod: 'scheduled',
+          deliveryWindowStart: { gte: toDate(dayStart), lt: toDate(dayEnd) },
+          deliveryWindowEnd: { gte: toDate(now) },
+        },
+        _count: { _all: true },
+        _min: { paidAt: true },
+      }),
+    ]);
+    if (signal.aborted) throw new Error('The dashboard stopped waiting');
+    const perMinutes = await Promise.all(
+      minutes.map(async ({ readyPrepMinutes }) => {
+        const prep = readyPrepMinutes ?? 0;
+        // The ready-by time (paid at plus the minutes) is from now to the end of the local day.
+        const due = await orders.aggregate({
+          where: {
+            ...notScheduled,
+            readyPrepMinutes: prep,
+            paidAt: {
+              gte: toDate(now.subtract({ minutes: prep })),
+              lt: toDate(dayEnd.subtract({ minutes: prep })),
+            },
+          },
+          _count: { _all: true },
+          _min: { paidAt: true },
+        });
+        return { count: due._count._all, paidAt: due._min.paidAt };
+      }),
+    );
+    const parts = [
+      ...perMinutes,
+      { count: scheduled._count._all, paidAt: scheduled._min.paidAt },
+    ].filter((part) => part.count > 0);
+    return {
+      count: parts.reduce((n, part) => n + part.count, 0),
+      overdue: 0,
+      oldestAt: earliest(
+        parts.map((part) => (part.paidAt === null ? null : toInstant(part.paidAt))),
+      ),
+    };
+  }
+
+  async sellerPickupsUncollected(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    staleBefore: Temporal.Instant,
+  ): Promise<WorkQueueCount> {
+    const orders = this.prisma.tx(market).orderingSellerOrder;
+    const ready = {
+      marketId: market.marketId,
+      tenantId: market.tenantId,
+      sellerId,
+      paidAt: { not: null },
+      deliveryMethod: 'pickup',
+      fulfilment: 'to-ship',
+      readyAt: { not: null },
+      refundedInFull: false,
+    } as const;
+    const [all, overdue] = await Promise.all([
+      orders.aggregate({ where: ready, _count: { _all: true }, _min: { readyAt: true } }),
+      orders.count({ where: { ...ready, readyAt: { lt: toDate(staleBefore) } } }),
+    ]);
+    const oldest = all._min.readyAt;
+    return {
+      count: all._count._all,
+      overdue,
+      oldestAt: oldest === null || all._count._all === 0 ? null : toInstant(oldest),
+    };
+  }
+
+  /** The late rule of the port, for the Market or (with `scope`) for one seller's orders. */
+  private async late(
+    market: MarketContext,
+    scope: { readonly sellerId?: Id<'Seller'> },
     now: Temporal.Instant,
     overdueBefore: Temporal.Instant,
     signal: AbortSignal,
@@ -42,6 +165,7 @@ export class PrismaWorkQueueCountReader implements WorkQueueCountReader {
     const notReady = {
       marketId: market.marketId,
       tenantId: market.tenantId,
+      ...scope,
       paidAt: { not: null },
       fulfilment: 'to-ship',
       readyAt: null,
@@ -52,6 +176,7 @@ export class PrismaWorkQueueCountReader implements WorkQueueCountReader {
     const scheduled = {
       marketId: market.marketId,
       tenantId: market.tenantId,
+      ...scope,
       paidAt: { not: null },
       fulfilment: { not: 'delivered' },
       refundedInFull: false,

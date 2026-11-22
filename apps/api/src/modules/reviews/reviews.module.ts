@@ -17,7 +17,7 @@ import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { MarketRegistry } from '../../platform/market-config/market-registry';
-import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
+import { UNIT_OF_WORK, type UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { CATALOG_FACADE, CatalogModule } from '../catalog';
 import { IdentityModule } from '../identity';
 import { ListsModule, registerLists } from '../lists';
@@ -88,6 +88,13 @@ import {
 } from './contracts';
 import { REVIEWS_EVENTS } from './domain/events';
 import { reviewsProviders } from './infrastructure/reviews-providers';
+import {
+  REVIEWS_WORK_QUEUE_COUNT_READER,
+  type ReviewsWorkQueueCountReader,
+} from './application/ports/work-queue-count.reader';
+import { CountSellerUnansweredReviews } from './application/use-cases/count-seller-unanswered-reviews.use-case';
+import { REVIEWS_WORK_QUEUE_FACADE } from './contracts/reviews-work-queue.facade';
+import { ReviewsWorkQueueFacadeImplementation } from './presentation/reviews-work-queue.facade';
 import { rebuildRatingSummariesJob } from './presentation/jobs/rebuild-rating-summaries.job';
 import {
   AdminModerationController,
@@ -260,6 +267,21 @@ function moderationListUseCaseProvider<U>(type: ModerationListUseCaseClass<U>): 
     // The seller Reviews list's saved filters, through the generic routes of `lists` (rule 14).
     registerLists('reviews', [...REVIEWS_LISTS, ...REVIEWS_MODERATION_LISTS]),
     ...reviewsProviders,
+    {
+      provide: CountSellerUnansweredReviews,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, REVIEWS_WORK_QUEUE_COUNT_READER],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        counts: ReviewsWorkQueueCountReader,
+      ) => new CountSellerUnansweredReviews(gate, { unitOfWork, counts }),
+    },
+    {
+      provide: REVIEWS_WORK_QUEUE_FACADE,
+      inject: [CountSellerUnansweredReviews],
+      useFactory: (unanswered: CountSellerUnansweredReviews) =>
+        new ReviewsWorkQueueFacadeImplementation(unanswered),
+    },
     ...[
       SubmitProductReview,
       EditProductReview,
@@ -362,6 +384,6 @@ function moderationListUseCaseProvider<U>(type: ModerationListUseCaseClass<U>): 
       ],
     ),
   ],
-  exports: [REVIEWS_FACADE, CUSTOMER_REVIEWS_FACADE],
+  exports: [REVIEWS_FACADE, CUSTOMER_REVIEWS_FACADE, REVIEWS_WORK_QUEUE_FACADE],
 })
 export class ReviewsModule {}

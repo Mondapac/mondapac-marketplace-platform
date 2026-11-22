@@ -3,6 +3,8 @@ import type { WorkQueueCountQuery } from '../../../platform/work-queue/work-queu
 import type { CountFailedPayouts } from '../application/use-cases/count-failed-payouts.use-case';
 import type { CountPayoutHolds } from '../application/use-cases/count-payout-holds.use-case';
 import type { CountDisputesDue } from '../application/use-cases/count-disputes-due.use-case';
+import type { CountSellerDisputesNeedingReply } from '../application/use-cases/count-seller-disputes-needing-reply.use-case';
+import type { CountSellerPayoutHolds } from '../application/use-cases/count-seller-payout-holds.use-case';
 import type { CommissionPayoutsWorkQueueFacade } from '../contracts';
 
 /** Passes the caller's `CallContext` unchanged to each use case, so the gate runs. */
@@ -11,6 +13,8 @@ export class CommissionPayoutsWorkQueueFacadeImplementation implements Commissio
     private readonly failedPayoutsUseCase: CountFailedPayouts,
     private readonly payoutHoldsUseCase: CountPayoutHolds,
     private readonly disputesDueUseCase: CountDisputesDue,
+    private readonly sellerDisputesUseCase: CountSellerDisputesNeedingReply,
+    private readonly sellerHoldsUseCase: CountSellerPayoutHolds,
   ) {}
 
   failedPayouts(context: CallContext, query: WorkQueueCountQuery) {
@@ -23,5 +27,13 @@ export class CommissionPayoutsWorkQueueFacadeImplementation implements Commissio
 
   disputesDue(context: CallContext, query: WorkQueueCountQuery) {
     return this.disputesDueUseCase.execute(context, query);
+  }
+
+  sellerDisputesNeedingReply(context: CallContext, query: WorkQueueCountQuery) {
+    return this.sellerDisputesUseCase.execute(context, query);
+  }
+
+  sellerPayoutHolds(context: CallContext, query: WorkQueueCountQuery) {
+    return this.sellerHoldsUseCase.execute(context, query);
   }
 }

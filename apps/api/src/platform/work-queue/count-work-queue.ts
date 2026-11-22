@@ -1,6 +1,6 @@
 import { Logger } from '@nestjs/common';
-import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Result } from '@mondapac/shared-kernel';
+import { err, ok, parseId } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { isPlatformAdminActor, type AccessDenied } from '../authz';
 import type { UnitOfWork } from '../unit-of-work/unit-of-work';
 import type { WorkQueueCount, WorkQueueCountQuery } from './work-queue-count';
@@ -39,13 +39,64 @@ export async function countAdminWorkQueue<Reader>(
       readOnly: true,
     });
   } catch (error) {
-    // The class only (a stored-data integrity error is not a timeout); never the message.
-    logger.warn({
-      msg: 'work-queue.count-failed',
-      thrown: nameOf(error),
-      marketId: context.market.marketId,
-      correlationId: context.correlationId,
-    });
-    return err({ code: 'access.unavailable' });
+    return failed(context, error);
   }
+}
+
+/**
+ * The seller of a seller-panel session: an authenticated actor of the seller population with a
+ * well-formed seller id, the same test as the seller read use cases (for example ordering's seller
+ * order list). The id comes from the session only, never from input. An admin in a Login as
+ * Seller session reaches it the same way as those reads do: a read is allowed there. Null for any
+ * other actor (fail closed).
+ */
+export function sessionSellerOf(context: CallContext): Id<'Seller'> | null {
+  const actor = context.actor;
+  if (actor.kind !== 'authenticated' || actor.population !== 'seller') return null;
+  const parsed = typeof actor.sellerId === 'string' ? parseId<'Seller'>(actor.sellerId) : null;
+  return parsed !== null && parsed.ok ? parsed.value : null;
+}
+
+/**
+ * One seller work-queue count of an owner module (dashboards upgrade, phase 1, seller tasks),
+ * after the use case's gate: a seller-panel session with its own seller ({@link sessionSellerOf};
+ * `access.denied` otherwise, so a customer or an admin acting as themselves never reads one),
+ * `access.unavailable` once the dashboard stopped waiting or when the store fails, and the read in
+ * one read-only unit, always for the session's seller. `prepare` runs before the unit, for what a
+ * count needs from another module's facade (a facade call never runs inside a unit); its failure
+ * is `access.unavailable` too, and the signal is checked again after it.
+ */
+export async function countSellerWorkQueue<Reader, Prepared = undefined>(
+  deps: WorkQueueCountDependencies<Reader>,
+  context: CallContext,
+  query: WorkQueueCountQuery,
+  read: (counts: Reader, sellerId: Id<'Seller'>, prepared: Prepared) => Promise<WorkQueueCount>,
+  prepare?: (sellerId: Id<'Seller'>) => Promise<Prepared>,
+): Promise<Result<WorkQueueCount, AccessDenied>> {
+  const sellerId = sessionSellerOf(context);
+  if (sellerId === null) return err({ code: 'access.denied' });
+  if (query.signal.aborted) return err({ code: 'access.unavailable' });
+  try {
+    const prepared = prepare === undefined ? (undefined as Prepared) : await prepare(sellerId);
+    if (query.signal.aborted) return err({ code: 'access.unavailable' });
+    return await deps.unitOfWork.run(
+      context.market,
+      async () => ok(await read(deps.counts, sellerId, prepared)),
+      { readOnly: true },
+    );
+  } catch (error) {
+    return failed(context, error);
+  }
+}
+
+/** Logs a failed count by the thrown value's class only (never its message). */
+function failed(context: CallContext, error: unknown): Result<never, AccessDenied> {
+  // The class only (a stored-data integrity error is not a timeout); never the message.
+  logger.warn({
+    msg: 'work-queue.count-failed',
+    thrown: nameOf(error),
+    marketId: context.market.marketId,
+    correlationId: context.correlationId,
+  });
+  return err({ code: 'access.unavailable' });
 }

@@ -25,9 +25,20 @@ import { UnavailableSellerOverlap } from './unavailable-seller-overlap';
 import { IDENTITY_FACADE, type IdentityFacade } from '../../identity';
 import { IdentitySellerAffinity } from './identity-seller-affinity';
 import { UnavailableReviewerNames } from './unavailable-reviewer-names';
+import {
+  REVIEWS_WORK_QUEUE_COUNT_READER,
+  type ReviewsWorkQueueCountReader,
+} from '../application/ports/work-queue-count.reader';
+import { PrismaReviewsWorkQueueCountReader } from './prisma-work-queue-count.reader';
 
 /** Binds the ports of reviews. Only this layer may reach `PrismaService`. */
 export const reviewsProviders: readonly FactoryProvider[] = [
+  {
+    provide: REVIEWS_WORK_QUEUE_COUNT_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ReviewsWorkQueueCountReader =>
+      new PrismaReviewsWorkQueueCountReader(prisma),
+  },
   {
     provide: REVIEW_REPOSITORY,
     inject: [PrismaService],
