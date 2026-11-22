@@ -30,6 +30,7 @@ import type { Product, ProductStatus } from '../domain/product';
 import type { WorkingCopy } from '../domain/working-copy';
 import { offerFromRow } from './prisma-offer.repository';
 import { productFromRow } from './prisma-product.repository';
+import { offerQueueSearchWhere, revisionQueueSearchWhere } from './review-queue-search';
 
 const toInstant = (date: Date): Temporal.Instant =>
   Temporal.Instant.fromEpochMilliseconds(date.getTime());
@@ -254,6 +255,7 @@ function pendingRevisionsWhere(market: MarketContext, filter: RevisionQueueFilte
     ...(filter.hasImages === undefined
       ? {}
       : { pendingRevision: { images: filter.hasImages ? { some: {} } : { none: {} } } }),
+    ...(filter.search === undefined ? {} : { AND: [revisionQueueSearchWhere(filter.search)] }),
   } satisfies Prisma.CatalogProductWhereInput;
 }
 
@@ -697,6 +699,7 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
         status: 'pending-first-publish',
         ...(filter.sellerId === undefined ? {} : { sellerId: filter.sellerId }),
         ...submittedWhere('submittedAt', filter),
+        ...(filter.search === undefined ? {} : { AND: [offerQueueSearchWhere(filter.search)] }),
       },
     });
   }

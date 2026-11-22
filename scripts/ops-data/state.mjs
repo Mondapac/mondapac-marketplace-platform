@@ -19,3 +19,10 @@ export function writeState(market, state) {
   mkdirSync(STATE_DIR, { recursive: true });
   writeFileSync(stateFile(market), `${JSON.stringify(state, null, 2)}\n`);
 }
+
+/**
+ * The version of the scenario data. A database built with another version is not topped up: the
+ * loader stops and asks for a rebuild, so a run never mixes two scenario shapes. Raise it when a
+ * change to a scenario would not converge on an existing database (a renamed slug or code).
+ */
+export const DATA_VERSION = 1;

@@ -188,11 +188,11 @@ export function CommandPalette({
       style={{
         maxHeight: `min(${visibleHeight === null ? '100dvh' : `${visibleHeight}px`}, 34rem)`,
       }}
-      className="m-0 mb-auto h-fit w-full max-w-none overflow-hidden rounded-b-lg border-0 bg-surface p-0 pt-[env(safe-area-inset-top)] text-start text-fg backdrop:bg-fg/40 sm:mx-auto sm:mt-[10vh] sm:w-[min(40rem,calc(100%-2rem))] sm:rounded-lg sm:border sm:border-line sm:pt-0"
+      className="m-0 mb-auto h-fit w-full max-w-none overflow-hidden rounded-b-lg border-0 bg-surface p-0 pt-[env(safe-area-inset-top)] text-start text-fg backdrop:bg-fg/40 sm:mx-auto sm:mt-[10vh] sm:w-[min(40rem,calc(100%-2rem))] sm:rounded-lg sm:border sm:border-line sm:pt-0 sm:focus-within:border-focus"
     >
       {open ? (
         <div className="flex max-h-[inherit] flex-col">
-          <div className="flex shrink-0 items-center border-b border-line focus-within:outline-2 focus-within:-outline-offset-2 focus-within:outline-focus">
+          <div className="flex shrink-0 items-center border-b border-line">
             <span className="ps-4 text-icon">
               <Icon name="search" />
             </span>
@@ -216,7 +216,7 @@ export function CommandPalette({
                 setActive(0);
               }}
               onKeyDown={onKeyDown}
-              // The ring is drawn once, on the whole bar (focus-within), not on the field.
+              // No ring on the field or its bar: the dialog's border carries the focus (focus-within).
               style={{ outline: 'none' }}
               className="h-14 min-w-0 flex-1 bg-transparent px-3 text-base text-fg placeholder:text-fg-muted"
             />

@@ -40,6 +40,7 @@ const KEYS = [
   'hasImages',
   'submittedFrom',
   'submittedTo',
+  'q',
   'format',
 ] as const;
 const CHUNK = 500;
@@ -65,10 +66,12 @@ type Cell = string | number;
 /**
  * `catalog.review-queue-export` (super list 13): the rows the Product review queue shows for the
  * same filters (`kind`, `sellerId`, `firstPublication`, `hasImages`, `submittedFrom`,
- * `submittedTo`), oldest submit first, as
+ * `submittedTo`, and the search text `q`), oldest submit first, as
  * CSV (default) or XLSX. The rows are read through the queue's own use case with its keyset cursor, so the
  * filter, the order and the access rule cannot drift from the list; a queue longer than
- * {@link REVIEW_QUEUE_EXPORT_MAX_ROWS} rows is refused whole as `batch.too-large`, never cut.
+ * {@link REVIEW_QUEUE_EXPORT_MAX_ROWS} rows is refused whole as `batch.too-large`, never cut, and a `q`
+ * whose store names matched more stores than `sellers` answers as `validation.failed` (`q`,
+ * `too-broad`).
  * CSV text cells that a spreadsheet would run as a formula get a leading quote; XLSX cells are
  * strings, never formulas. Rule: `catalog.product.view` and the admin population.
  */
@@ -114,6 +117,11 @@ export class ReviewQueueExport extends UseCase<
         ...(afterId === null ? {} : { afterId }),
       });
       if (!read.ok) return read;
+      // A search that matched more stores than `sellers` answers would export only part of the
+      // queue: refused whole, never a partial file.
+      if (read.value.searchCapped) {
+        return err({ code: 'validation.failed', fields: [{ path: 'q', code: 'too-broad' }] });
+      }
       rows.push(...read.value.items);
       if (rows.length > REVIEW_QUEUE_EXPORT_MAX_ROWS) {
         return err({ code: 'batch.too-large', max: REVIEW_QUEUE_EXPORT_MAX_ROWS });

@@ -169,6 +169,112 @@ jobs:
           if [ "${{ job.status }}" != "success" ]; then docker compose logs postgres || true; fi
           docker compose down -v
 
+  # The operational test data loader (scripts/ops-data) at smoke size: the loader's "ci" profile
+  # builds the catalog structure, a handful of sellers in every onboarding state, a certified
+  # halal seller and six offers through a running API and worker, the way the panels do. A change
+  # to the API that breaks the loader turns this pull request red. No Stripe: the orders pack is
+  # not part of the profile and runs only in stripe-test.yml (operational test data design,
+  # phase 3). One run on the .nvmrc Node: the loader is a local tool, not a Node-range check.
+  ops-data-smoke:
+    name: Operational test data loader (ci profile)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: mirror.gcr.io/library/postgres:17-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: mondapac
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -h 127.0.0.1 -U postgres -d mondapac"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+
+    # Job level holds only what the application may see (as in the verify job); the loader's own
+    # variables are set on the steps that need them.
+    env:
+      DATABASE_URL: postgresql://mondapac_api:mondapac_api@localhost:5432/mondapac
+      HOSTED_MARKETS: AU
+      NODE_ENV: test
+      # The mail catcher below: the API and the worker send every mail to it (NODE_ENV is explicit).
+      MAIL_CATCHER_URL: http://localhost:8025
+      # Store logos and product photos go to a folder (gitignored), as in .env.example.
+      OBJECT_STORE_DRIVER: disk
+      OBJECT_STORE_DIR: ./.object-store
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create database roles (cluster bootstrap)
+        run: docker exec -i "${{ job.services.postgres.id }}" psql -U postgres -d mondapac < scripts/db/bootstrap-dev.sql
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # The API and its packages only: the loader needs no panel or buyer site.
+      - name: Build the API
+        run: pnpm db:generate && pnpm --filter "@mondapac/api..." build
+
+      - name: Apply migrations
+        run: pnpm db:migrate
+        env:
+          MIGRATION_DATABASE_URL: postgresql://mondapac_migrator:mondapac_migrator@localhost:5432/mondapac
+
+      # The mail catcher the loader reads the invitation links from (docker-compose.yml's image).
+      - name: Start the mail catcher
+        run: |
+          docker run -d --name mailpit -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 \
+            mirror.gcr.io/axllent/mailpit:v1.27 || \
+          docker run -d --name mailpit -p 127.0.0.1:1025:1025 -p 127.0.0.1:8025:8025 \
+            axllent/mailpit:v1.27
+
+      # The operational test marker (a database-level setting) and the local Market file, as
+      # scripts/ops-data/README.md describes for a developer's machine.
+      - name: Mark the database and write the local Market file
+        run: |
+          node scripts/ops-data/mark-database.mjs
+          LOCAL_MAIL_ORIGIN_LIMIT=200 LOCAL_SIGN_IN_ORIGIN_LIMIT=300 node scripts/dev-panels-market.mjs AU
+        env:
+          MIGRATION_DATABASE_URL: postgresql://mondapac_migrator:mondapac_migrator@localhost:5432/mondapac
+          OPS_SUPERUSER_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/mondapac
+
+      - name: Start the API and the worker
+        run: |
+          export MARKET_CONFIG_DIR=.local/markets SERVICE_AREA_CONFIG_DIR=.local/service-areas
+          export CATALOG_SEED_JOBS_OFF=catalog.seed-category-tree,catalog.seed-attributes,catalog.seed-cultures
+          APP_ROLE=api PORT=3000 node apps/api/dist/main > api.log 2>&1 &
+          APP_ROLE=worker PORT=3100 node apps/api/dist/main > worker.log 2>&1 &
+          for attempt in $(seq 1 60); do
+            curl --silent --fail http://localhost:3000/health/ready > /dev/null && exit 0
+            sleep 1
+          done
+          echo "API did not become ready" >&2
+          exit 1
+
+      - name: Run the loader (ci profile)
+        run: node scripts/ops-data/index.mjs --profile ci
+        timeout-minutes: 8
+        env:
+          MIGRATION_DATABASE_URL: postgresql://mondapac_migrator:mondapac_migrator@localhost:5432/mondapac
+
+      - name: Show the API and worker logs
+        if: failure()
+        run: |
+          echo "--- api.log (last 150 lines)"; tail -n 150 api.log || true
+          echo "--- worker.log (last 150 lines)"; tail -n 150 worker.log || true
+
   # The API's unit and e2e tests (`pnpm test:api`, the API part of `pnpm test`), split by spec
   # file into three parts that run in parallel (Jest --shard). Every spec file runs in exactly one
   # part. Same service, roles and environment as the verify job, where these tests ran before.

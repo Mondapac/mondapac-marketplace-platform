@@ -10,6 +10,7 @@ import {
   Tabs,
   type MenuItem,
   type SuperColumn,
+  PageInfo,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
@@ -162,8 +163,10 @@ export function CustomerGroups({
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
-          <h1 className="text-2xl font-semibold">{t('title')}</h1>
-          <p className="text-fg-muted">{t('intro')}</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-semibold">{t('title')}</h1>
+            <PageInfo page={t('title')}>{t('intro')}</PageInfo>
+          </div>
         </div>
         {canManage ? <Button onClick={() => setEditing('new')}>{t('new')}</Button> : null}
       </div>

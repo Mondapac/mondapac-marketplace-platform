@@ -170,6 +170,9 @@ describe('admin tags list', () => {
         true,
       ),
     );
+    // A view on its own is not a filter: no Clear all and no Save filter….
+    expect(screen.queryByRole('button', { name: 'Clear all' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^Save filter/ })).toBeNull();
     fireEvent.change(screen.getByRole('searchbox', { name: 'Search tags' }), {
       target: { value: 'bbq' },
     });

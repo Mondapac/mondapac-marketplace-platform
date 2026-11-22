@@ -4,6 +4,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
 import { Icon, type IconName } from '../icon/icon.tsx';
 import { PinnedSection } from '../palette/panel-tools.tsx';
 import { NAV_OPEN_COOKIE, navOpenGroups } from './nav.ts';
+import { ScrollFade } from './scroll-fade.tsx';
 import { NavBadgePill, sumBadges, useNavBadges } from './nav-badges.tsx';
 
 export interface SidebarLink {
@@ -151,7 +152,7 @@ export function SidebarNav({
       onKeyDown={onKeyDown}
       className="flex min-h-0 flex-1 flex-col"
     >
-      <div className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden p-3">
+      <ScrollFade className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto overflow-x-hidden p-3">
         {/* The account's pinned pages (empty, and so absent, outside a PanelTools). */}
         <PinnedSection />
         {entries.map((entry) => {
@@ -224,7 +225,7 @@ export function SidebarNav({
             </div>
           );
         })}
-      </div>
+      </ScrollFade>
       {footer.length === 0 ? null : (
         <div className="flex shrink-0 flex-col gap-1 border-t border-line p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {footer.map((link) => (

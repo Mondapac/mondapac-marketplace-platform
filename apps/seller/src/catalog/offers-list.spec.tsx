@@ -569,6 +569,11 @@ describe('seller offers saved filters', () => {
     }) as never);
     mount();
     fireEvent.click(screen.getByRole('button', { name: /^Drafts/ }));
+    {
+      const box = screen.getByRole('searchbox');
+      fireEvent.change(box, { target: { value: 'abc' } });
+      fireEvent.keyDown(box, { key: 'Enter' });
+    }
     fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
     const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
     fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: ' Mine ' } });
@@ -581,7 +586,7 @@ describe('seller offers saved filters', () => {
         listKey: 'seller.catalog.offers',
         name: 'Mine',
         visibility: 'me',
-        payload: { v: 1, view: 'drafts', sort: 'created', direction: 'desc' },
+        payload: { v: 1, view: 'drafts', q: 'abc', sort: 'created', direction: 'desc' },
       },
       'csrf',
     );

@@ -34,7 +34,11 @@ import { ATTRIBUTE_SORTS } from '../use-cases/attribute-admin-list.use-case';
 import { SUGGESTION_SORTS } from '../use-cases/attribute-suggestion-list.use-case';
 import { PROPOSAL_SORTS } from '../use-cases/category-proposal-list.use-case';
 import { GAP_SORTS } from '../use-cases/products-missing-details-list.use-case';
-import { REVIEW_QUEUE_KINDS, REVIEW_QUEUE_SORTS } from '../use-cases/review-queue-list.use-case';
+import {
+  parseQueueSearch,
+  REVIEW_QUEUE_KINDS,
+  REVIEW_QUEUE_SORTS,
+} from '../use-cases/review-queue-list.use-case';
 import { TOPIC_SUGGESTION_SORTS } from '../use-cases/topic-suggestion-list.use-case';
 import { VARIANT_REQUEST_SORTS } from '../use-cases/variant-request-list.use-case';
 import { parseFilter as parseVariantsFilter } from '../variants/variant-admin.shared';
@@ -377,10 +381,15 @@ const REVIEW_QUEUE: ListDefinition = {
       }
       const date = dateFilterOf(query, SUBMITTED);
       if (date.refusal !== null) return date.refusal;
+      // The list's own reading of `q` (2 to 100 characters once trimmed), so a saved text is one
+      // the list accepts.
+      const text = parseQueueSearch(query['q']);
+      if (!text.ok) return { fields: fieldsOf(text.error), canonical: {} };
       return {
         fields: [],
         canonical: canonicalQuery({
           ...date.canonical,
+          q: text.value,
           kind: kind ?? null,
           sellerId: sellerId === undefined ? null : sellerId.toLowerCase(),
           firstPublication: query['firstPublication'] ?? null,

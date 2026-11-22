@@ -2713,6 +2713,12 @@
       "list": {
         "title": "Held prices",
         "intro": "Prices waiting for a decision, oldest first. Approve or reject each one from its Actions menu.",
+        "search": {
+          "label": "Search held prices",
+          "placeholder": "Record ID or Offer ID",
+          "invalid": "Enter a full record ID or Offer ID."
+        },
+        "chip-search": "ID is {text}",
         "tabs": "Held price views",
         "tab": {
           "all": "All held prices",
@@ -5783,6 +5789,11 @@
       "list": {
         "title": "Product revisions",
         "intro": "Product changes that sellers sent for review, oldest first. Open one to check it and decide.",
+        "search": {
+          "label": "Search product changes",
+          "placeholder": "Product code, name or store",
+          "invalid": "Enter at least 2 characters."
+        },
         "tabs": "Review queue views",
         "tab": {
           "revision": "Product revisions"
@@ -5872,6 +5883,11 @@
       "offers": {
         "title": "Offers",
         "intro": "Offers waiting for their first publication, oldest first.",
+        "search": {
+          "label": "Search offers",
+          "placeholder": "Product code, name or store",
+          "invalid": "Enter at least 2 characters."
+        },
         "tabs": "Review queue views",
         "tab": {
           "offer": "Offers"

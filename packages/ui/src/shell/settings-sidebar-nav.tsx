@@ -2,6 +2,7 @@
 
 import { useState, type KeyboardEvent } from 'react';
 import { Icon } from '../icon/icon.tsx';
+import { ScrollFade } from './scroll-fade.tsx';
 import { filterSettingsMenu, type SettingsMenu } from './settings-menu.ts';
 
 const RAIL_HIDDEN = 'group-data-[rail=true]/rail:sr-only';
@@ -31,7 +32,7 @@ export function SettingsSidebarNav({ menu }: { readonly menu: SettingsMenu }) {
 
   return (
     <nav aria-label={menu.navLabel} className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden p-3">
+      <ScrollFade className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden p-3">
         <a href={menu.backHref} className={`${ROW} text-sm font-medium text-link hover:bg-muted`}>
           <Icon name="chevron-left" className="rtl:rotate-180" />
           <span className={`min-w-0 truncate ${RAIL_HIDDEN}`}>{menu.backLabel}</span>
@@ -111,7 +112,7 @@ export function SettingsSidebarNav({ menu }: { readonly menu: SettingsMenu }) {
             </div>
           );
         })}
-      </div>
+      </ScrollFade>
     </nav>
   );
 }

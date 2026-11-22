@@ -32,7 +32,7 @@ import { AlertBulk } from './list-export.tsx';
 import { AlertColumnsPanel, AlertFilterPanel, AlertSortPanel } from './list-panels.tsx';
 import { queryString, searchText } from './list-query.ts';
 import { alertRowActions } from './list-row-actions.ts';
-import { LIST_KEY, payloadOf, queryOf, somethingToSave, type SavedPayload } from './list-saved.ts';
+import { LIST_KEY, payloadOf, queryOf, type SavedPayload } from './list-saved.ts';
 import { AlertTable } from './list-table.tsx';
 import {
   DEFAULT_QUERY,
@@ -337,7 +337,7 @@ export function AlertList({
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
   const filtered = chips.length > 0;
   // "Save filter" is offered on a built-in tab that shows something a saved filter can keep.
-  const canSave = saved !== null && savedId === null && somethingToSave(query);
+  const canSave = saved !== null && savedId === null && filtered;
   const sortField = t(`sort.field.${query.sort}`);
   const sortOrder = t(
     `sort.${query.sort}.${query.direction === defaultDirection(query.sort) ? 'first' : 'second'}`,
@@ -444,7 +444,7 @@ export function AlertList({
   return (
     <SuperList
       heading={{
-        subtitle: t('intro'),
+        info: t('intro'),
         actions: (
           <AlertBulk
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}

@@ -51,8 +51,22 @@ export interface PendingRevisionRow {
  * any state (a taken-down photo counts, as on the row).
  */
 /** What narrows the Offers of the review queue: one seller, and when they were submitted. */
+/**
+ * The text search of the review queue: rows whose product code or product name (in `locale`)
+ * contains `text`, case-insensitively and as typed (LIKE wildcards are literal), or whose seller is
+ * one of `sellerIds` (the stores whose name matched, resolved by `sellers` beforehand). The name is
+ * the one the row shows: the pending revision's for a product revision, the published one for an
+ * Offer.
+ */
+export interface QueueTextSearch {
+  readonly text: string;
+  readonly locale: string;
+  readonly sellerIds: readonly Id<'Seller'>[];
+}
+
 export interface OfferQueueFilter {
   readonly sellerId?: Id<'Seller'>;
+  readonly search?: QueueTextSearch;
   /** Submitted at or after this instant (inclusive). */
   readonly submittedFrom?: Temporal.Instant | null;
   /** Submitted before this instant (exclusive). */
@@ -61,6 +75,7 @@ export interface OfferQueueFilter {
 
 export interface RevisionQueueFilter {
   readonly sellerId?: Id<'Seller'>;
+  readonly search?: QueueTextSearch;
   readonly firstPublication?: boolean;
   readonly hasImages?: boolean;
   /** Submitted at or after this instant (inclusive). */

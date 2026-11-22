@@ -85,9 +85,32 @@ export class Session {
   put = (path, body = {}) => this.request('PUT', path, body);
   patch = (path, body = {}) => this.request('PATCH', path, body);
 
+  /**
+   * Uses a link from a mail (a token read out of Mailpit). The worker sends the mail first and
+   * stores the link's hash in the unit after it (identity design 9: mail is at least once), so
+   * for a moment the mail can be in Mailpit while the API still answers link.rejected. That
+   * answer is retried for up to 15 s; any other answer, or the last one, is returned as it is.
+   */
+  async requestLink(method, path, body) {
+    const deadline = Date.now() + 15000;
+    for (;;) {
+      const answer = await this.request(method, path, body);
+      if (answer.body?.code !== 'link.rejected' || Date.now() >= deadline) return answer;
+      await sleep(500);
+    }
+  }
+
+  /** Like requestLink, but throws unless the status is 2xx. */
+  async okLink(method, path, body) {
+    return Session.#checked(method, path, await this.requestLink(method, path, body));
+  }
+
   /** Like request, but throws unless the status is 2xx. */
   async ok(method, path, body) {
-    const answer = await this.request(method, path, body);
+    return Session.#checked(method, path, await this.request(method, path, body));
+  }
+
+  static #checked(method, path, answer) {
     if (answer.status < 200 || answer.status > 299) {
       throw new Error(
         `${method} ${path} -> ${answer.status} ${JSON.stringify(answer.body).slice(0, 400)}`,

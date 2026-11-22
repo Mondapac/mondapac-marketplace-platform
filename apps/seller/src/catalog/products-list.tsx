@@ -299,7 +299,7 @@ export function ProductsList({
     ? undefined
     : saved?.items.find((item) => sameList(queryOf(item.payload, query.pageSize), query));
   // "Save filter" is offered when the list differs from every view, built in or saved.
-  const canSave = saved !== null && !isPlainView(query) && activeSaved === undefined;
+  const canSave = saved !== null && filtered && activeSaved === undefined;
   const openSaved = (id: string) => {
     const filter = saved?.items.find((item) => item.id === id);
     if (filter === undefined) return;
