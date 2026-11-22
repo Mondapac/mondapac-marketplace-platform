@@ -103,7 +103,7 @@ async function missingRoute(request: NextRequest): Promise<string | null> {
     });
   if (product && (await productIsMissing(product[1]!, read, config !== null)))
     return `/missing${path}`;
-  if (store && (await storeIsMissing(store[1]!, read))) return `/missing${path}`;
+  if (store && (await storeIsMissing(store[1]!, read, config !== null))) return `/missing${path}`;
   return null;
 }
 

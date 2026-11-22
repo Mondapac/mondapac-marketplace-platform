@@ -18,7 +18,7 @@ export function AccountLists() {
   const t = useTranslations('account.lists');
   const title = useTranslations('account.titles')('lists');
   const { saved, moveToCart, removeSaved, cartSource, add } = useStore();
-  const { lists, createList } = useAccount();
+  const { lists, createList, source } = useAccount();
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState('');
   const createButton = useRef<HTMLButtonElement>(null);
@@ -101,7 +101,13 @@ export function AccountLists() {
           )}
         </section>
       ))}
-      {creating ? (
+      {source.live ? (
+        // Named lists have no API yet: say so rather than offer a list that only lives in this tab.
+        <section className="ac-card" aria-labelledby="list-named">
+          <h2 id="list-named">{t('named')}</h2>
+          <p>{t('named-unavailable')}</p>
+        </section>
+      ) : creating ? (
         <section className="ac-card" aria-labelledby="list-new">
           <h2 id="list-new">{t('new')}</h2>
           <form

@@ -81,6 +81,10 @@ import type {
  * True while any read in this file returns sample data. It turns false only when every read here
  * calls the API. It is the indexing lock: search engines cannot be let in while it is true
  * (src/seo/indexing.ts).
+ *
+ * Still true because, with the API on, these reads answer sample values: the shell's sellers and
+ * delivery area, the home and slides fallbacks, `loadCartSource` and `loadCheckout`, the delivery
+ * locator's launch area, and the seller sign-up page's Market values (see the register rows).
  */
 export const SAMPLE_DATA: boolean = true;
 
@@ -268,15 +272,22 @@ function samplePayment(request: PayRequest): PayAnswer {
 }
 
 /**
- * The Deliver to modal's service area and map extent (sample until the map provider PR), and
- * whether its address lookup is live: Mapbox is configured for this host's Market
- * (MAPBOX_SEARCH_TOKEN, MAPBOX_COUNTRIES). Otherwise the stubbed lookup on sample places.
+ * The Deliver to modal's service area and map extent (from the launch-area config in
+ * ./sample-delivery.ts until the map provider PR), and whether its address lookup is live: Mapbox
+ * is configured for this host's Market (MAPBOX_SEARCH_TOKEN, MAPBOX_COUNTRIES). Otherwise the
+ * stubbed lookup. The made-up addresses and suburbs of the sample are offered only without the
+ * API; with it on they are left out, so the stub finds no address and names no suburb (the modal
+ * says "No match") instead of presenting made-up places as real.
  */
 export async function loadDeliveryLocator(): Promise<DeliveryLocatorSource> {
   const live = lookupIsLive(placesDeps(), await headers());
   const map = live ? mapConfig() : null;
-  if (!live) return SAMPLE_DELIVERY_LOCATOR;
-  return map ? { ...SAMPLE_DELIVERY_LOCATOR, live, map } : { ...SAMPLE_DELIVERY_LOCATOR, live };
+  const base: DeliveryLocatorSource =
+    storefrontApiConfig() === null
+      ? SAMPLE_DELIVERY_LOCATOR
+      : { ...SAMPLE_DELIVERY_LOCATOR, addresses: [], suburbs: [] };
+  if (!live) return base;
+  return map ? { ...base, live, map } : { ...base, live };
 }
 
 /** The display name of a ServiceArea code ("greater-brisbane"); the code itself when unnamed. */
@@ -478,15 +489,25 @@ export async function loadSellers(query: SellerQuery): Promise<SellerResults> {
 
 /**
  * The signed-in buyer's account: profile, orders, address book, saved lists and email choices.
- * Saved lists and email choices are sample data until their backends exist; the profile, session,
- * address book and orders come from the API in live mode (see `live`). Live, the orders are the
+ * Saved lists and email choices are sample data only without the API (live they are empty and the
+ * pages say they are not available yet); the profile, session, address book and orders come from
+ * the API in live mode (see `live`). Live, the orders are the
  * paid ones among the buyer's newest 100; a failed read shows none.
  */
 export async function loadAccount(): Promise<AccountSource> {
   if (!storefrontIsLive()) return { ...SAMPLE_ACCOUNT, live: false };
   const [read, labels] = await Promise.all([sessionGet('orders?limit=100'), orderLabels()]);
   const orders = read.kind === 'ok' ? accountOrdersOf(read.body, labels) : null;
-  return { ...SAMPLE_ACCOUNT, live: true, orders: orders ?? [] };
+  // Live, nothing of the sample reaches the page: the named lists and email choices have no API
+  // yet (they show an honest "not available yet" state), and the profile and address book are the
+  // session's (account-area.tsx replaces the sample customer and mobile).
+  return {
+    ...SAMPLE_ACCOUNT,
+    live: true,
+    orders: orders ?? [],
+    lists: [],
+    emails: { offers: false, recommendations: false, sellerMessages: false },
+  };
 }
 
 /**
@@ -619,10 +640,12 @@ export async function loadUnavailableProduct(id: string): Promise<UnavailablePro
 /**
  * A seller slug the seller read did not find: a store that is not taking orders (paused,
  * suspended or not live; the reason never reaches the buyer), or undefined for an unknown slug.
- * Sample data until the seller public read tells them apart.
+ * With the API on, always undefined: the public store read answers the same 404
+ * (`sellers.store-not-found`) for every store it does not show, so an unknown slug is the normal
+ * 404 page until a read tells a closed store apart. The sample answers only without the API.
  */
 export async function loadClosedStore(slug: string): Promise<ClosedStore | undefined> {
-  return Promise.resolve(sampleClosedStore(slug));
+  return Promise.resolve(storefrontApiConfig() === null ? sampleClosedStore(slug) : undefined);
 }
 
 /** The buyer relay's route to the assistant (app/api/[...path]): same-origin, so no CORS. */

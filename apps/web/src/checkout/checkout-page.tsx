@@ -77,6 +77,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
     setStockChanges,
     clearCart,
     setPlacedOrder,
+    live,
   } = useStore();
   const sellerIds = viewCart(cart, cartSource)?.groups.map((g) => g.seller.id) ?? [];
   const addresses = customer?.addresses ?? [];
@@ -306,9 +307,11 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
       {title}
       <CheckoutProgress current="pay" signedIn />
       <SummaryDisclosure view={view} />
-      <div className="ckdc" inert={paying}>
-        <DiscountBox startOpen />
-      </div>
+      {live ? null : (
+        <div className="ckdc" inert={paying}>
+          <DiscountBox startOpen />
+        </div>
+      )}
       <div className="cgrid">
         <div className="cklist">
           {/* While Pay waits for its answer, the order cannot change under it. */}
@@ -357,7 +360,7 @@ export function CheckoutPage({ source }: { readonly source: CheckoutSource }) {
             </div>
             <ItemList view={view} />
             <div className="ckwait" inert={paying}>
-              <DiscountBox startOpen />
+              {live ? null : <DiscountBox startOpen />}
             </div>
             <SummaryTotals view={view} deliveryLoading={ready === 'loading'} />
             <PayButton
