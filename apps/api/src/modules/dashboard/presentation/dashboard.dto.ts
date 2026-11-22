@@ -113,6 +113,8 @@ export class OperationsPointBody {
 }
 
 export class OperationsKpiBody {
+  @ApiProperty({ description: 'Sellers with at least one paid order in the period.' })
+  sellersWithOrders!: number;
   @ApiProperty({ type: OperationsKpiValuesBody }) current!: OperationsKpiValuesBody;
   @ApiProperty({ type: OperationsKpiValuesBody }) previous!: OperationsKpiValuesBody;
   @ApiProperty({
@@ -278,6 +280,7 @@ function operationsSection(section: AdminKpisAnswer['operations']): OperationsSe
     status: 'ok',
     refreshedAt: instantOf(value.refreshedAt),
     kpis: {
+      sellersWithOrders: value.sellersWithOrders,
       current: { ...value.current },
       previous: { ...value.previous },
       deltas: { ...value.deltas },

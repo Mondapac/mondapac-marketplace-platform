@@ -30,6 +30,8 @@ export interface OperationsAnswer {
   readonly generatedAt: Temporal.Instant;
   readonly refreshedAt: Temporal.Instant | null;
   readonly current: OperationsKpis;
+  /** Sellers with at least one paid seller order in the period (market health). */
+  readonly sellersWithOrders: number;
   readonly previous: OperationsKpis;
   readonly deltas: KpiDeltas<keyof OperationsKpis>;
   /** One point per day of the period, oldest first. */
@@ -79,11 +81,25 @@ export class ViewMarketplaceOperationsKpis extends UseCase<
     const ranges = read.value;
     const current = operationsOf(ranges.current);
     const previous = operationsOf(ranges.previous);
+    const sellers = await this.deps.unitOfWork.run(
+      context.market,
+      async () =>
+        ok(
+          await this.deps.reader.sellersWithOrders(
+            context.market,
+            ranges.currency,
+            ranges.period.current,
+          ),
+        ),
+      { readOnly: true },
+    );
+    if (!sellers.ok) return err({ code: 'access.unavailable' });
     return ok({
       period: ranges.period,
       generatedAt: ranges.generatedAt,
       refreshedAt: ranges.refreshedAt,
       current,
+      sellersWithOrders: sellers.value,
       previous,
       deltas: operationsDeltas(current, previous),
       series: ranges.current.map(point),

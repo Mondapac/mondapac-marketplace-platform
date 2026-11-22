@@ -13,6 +13,9 @@ export interface AdminKpiReader {
    */
   dailyTotals(market: MarketContext, currency: string, range: DayRange): Promise<DailyTotals>;
 
+  /** How many sellers had at least one paid seller order in `range`, in `currency` only. */
+  sellersWithOrders(market: MarketContext, currency: string, range: DayRange): Promise<number>;
+
   /**
    * The sellers with the most goods sold (GMV) in `range`, biggest first (ties by seller id), at
    * most `limit`, in `currency` only. A seller with no sale in the range is not listed.
