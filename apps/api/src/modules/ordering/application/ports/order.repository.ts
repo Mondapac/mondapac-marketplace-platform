@@ -162,6 +162,12 @@ export interface OrderRepository {
 
   findById(market: MarketContext, orderId: Id<'Order'>): Promise<OrderState | null>;
 
+  /** The orders of the Market among `orderIds`, in one read (reporting's batches, at most 100). */
+  findByIds(
+    market: MarketContext,
+    orderIds: readonly Id<'Order'>[],
+  ): Promise<readonly OrderState[]>;
+
   /** The account's own order, or null: unknown and foreign are one answer. */
   findOwn(
     market: MarketContext,

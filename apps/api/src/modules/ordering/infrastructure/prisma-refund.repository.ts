@@ -204,6 +204,15 @@ export class PrismaRefundRepository implements RefundRepository {
     return row === null ? null : toRefund(row);
   }
 
+  async findByIds(market: MarketContext, refundIds: readonly Id<'Refund'>[]) {
+    if (refundIds.length === 0) return [];
+    const rows = await this.prisma.tx(market).orderingRefund.findMany({
+      where: { marketId: market.marketId, id: { in: [...refundIds] } },
+      include: { lines: true },
+    });
+    return rows.map(toRefund);
+  }
+
   async guardSellerRefunds(
     market: MarketContext,
     sellerId: Id<'Seller'>,

@@ -214,8 +214,10 @@ import { SearchFiltersQuery } from './application/use-cases/search-filters.use-c
 import { CATALOG_FILTERS_FACADE } from './contracts/catalog-filters.facade';
 import { CatalogFiltersFacadeImplementation } from './presentation/catalog-filters.facade';
 import { OFFER_TAX_CATEGORIES_READER } from './application/ports/offer-tax-categories.reader';
+import { OFFER_PRIMARY_CATEGORIES_READER } from './application/ports/offer-primary-categories.reader';
 import { PENDING_PRODUCT_REVISIONS_READER } from './application/ports/pending-product-revisions.reader';
 import { OfferTaxCategoriesQuery } from './application/use-cases/offer-tax-categories.use-case';
+import { OfferPrimaryCategoriesQuery } from './application/use-cases/offer-primary-categories.use-case';
 import { PendingProductRevisionsQuery } from './application/use-cases/pending-product-revisions.use-case';
 import { PRODUCT_LINKING_READER } from './application/ports/product-linking.reader';
 import { ProductsForLinkingQuery } from './application/use-cases/products-for-linking.use-case';
@@ -669,6 +671,7 @@ const PORT = {
   labelsReader: SELL_UNIT_LABELS_READER,
   productSellUnitFacts: PRODUCT_SELL_UNIT_FACTS_READER,
   taxCategoriesReader: OFFER_TAX_CATEGORIES_READER,
+  primaryCategoriesReader: OFFER_PRIMARY_CATEGORIES_READER,
   pendingRevisionsReader: PENDING_PRODUCT_REVISIONS_READER,
   productOwnersReader: SELLER_PRODUCT_OWNERS_READER,
   productLinkingReader: PRODUCT_LINKING_READER,
@@ -3349,6 +3352,10 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     useCaseProvider(OfferNamesSystemQuery, { unitOfWork: true, namesReader: true }),
     useCaseProvider(SellUnitLabelsQuery, { unitOfWork: true, labelsReader: true }),
     useCaseProvider(OfferTaxCategoriesQuery, { unitOfWork: true, taxCategoriesReader: true }),
+    useCaseProvider(OfferPrimaryCategoriesQuery, {
+      unitOfWork: true,
+      primaryCategoriesReader: true,
+    }),
     useCaseProvider(PendingProductRevisionsQuery, {
       unitOfWork: true,
       pendingRevisionsReader: true,
@@ -3416,6 +3423,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
         OfferNamesSystemQuery,
         SellUnitLabelsQuery,
         OfferTaxCategoriesQuery,
+        OfferPrimaryCategoriesQuery,
         OfferListingsQuery,
         OfferListingsSystemQuery,
         OfferBadgesQuery,
@@ -3432,6 +3440,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
         offerNamesSystem: OfferNamesSystemQuery,
         sellUnitLabels: SellUnitLabelsQuery,
         offerTaxCategories: OfferTaxCategoriesQuery,
+        offerPrimaryCategories: OfferPrimaryCategoriesQuery,
         offerListings: OfferListingsQuery,
         offerListingsSystem: OfferListingsSystemQuery,
         offerBadges: OfferBadgesQuery,
@@ -3448,6 +3457,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
           offerNamesSystem,
           sellUnitLabels,
           offerTaxCategories,
+          offerPrimaryCategories,
           offerListings,
           offerListingsSystem,
           offerBadges,

@@ -189,6 +189,7 @@ import {
   ORDERING_PERMISSIONS,
   ORDERING_RANKING_FACADE,
   ORDERING_WORK_QUEUE_FACADE,
+  ORDERING_REPORTING_FACADE,
 } from './contracts';
 import { CountLateDeliveries } from './application/use-cases/count-late-deliveries.use-case';
 import { CountPendingRefunds } from './application/use-cases/count-pending-refunds.use-case';
@@ -198,6 +199,13 @@ import {
   type WorkQueueCountReader,
 } from './application/ports/work-queue-count.reader';
 import { OrderingWorkQueueFacadeImplementation } from './presentation/ordering-work-queue.facade';
+import { REPORTING_CHANGES_READER } from './application/ports/reporting-changes.reader';
+import { RefundReportFactsQuery } from './application/use-cases/refund-report-facts.use-case';
+import type { ReportingChangesDependencies } from './application/reporting-changes';
+import { RefundsSucceededQuery } from './application/use-cases/refunds-succeeded.use-case';
+import { SellerOrdersChangedQuery } from './application/use-cases/seller-orders-changed.use-case';
+import { SellerOrderReportFactsQuery } from './application/use-cases/seller-order-report-facts.use-case';
+import { OrderingReportingFacadeImplementation } from './presentation/ordering-reporting.facade';
 import { OFFER_PAIR_STORE } from './application/ports/offer-pairs.store';
 import {
   BoughtTogetherQuery,
@@ -470,6 +478,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       SellerCustomerOrdersQuery,
       OrderPaymentRefQuery,
       DeliveredSellerOrderFactsQuery,
+      SellerOrderReportFactsQuery,
+      RefundReportFactsQuery,
       ShipmentNoticeQuery,
       RefundNoticeQuery,
       SellerOrderCustomerNames,
@@ -850,6 +860,37 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         failed: CountFailedPayments,
       ) => new OrderingWorkQueueFacadeImplementation(late, refunds, failed),
     },
+    // Dashboards upgrade phase 3: what reporting reads of ordering (ids and money, rule `system`).
+    ...[SellerOrdersChangedQuery, RefundsSucceededQuery].map((type) => ({
+      provide: type,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, REPORTING_CHANGES_READER],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: ReportingChangesDependencies['unitOfWork'],
+        changes: ReportingChangesDependencies['changes'],
+      ) => new type(gate, { unitOfWork, changes }),
+    })),
+    {
+      provide: ORDERING_REPORTING_FACADE,
+      inject: [
+        SellerOrderReportFactsQuery,
+        RefundReportFactsQuery,
+        SellerOrdersChangedQuery,
+        RefundsSucceededQuery,
+      ],
+      useFactory: (
+        sellerOrderFacts: SellerOrderReportFactsQuery,
+        refundFacts: RefundReportFactsQuery,
+        sellerOrders: SellerOrdersChangedQuery,
+        refunds: RefundsSucceededQuery,
+      ) =>
+        new OrderingReportingFacadeImplementation(
+          sellerOrderFacts,
+          refundFacts,
+          sellerOrders,
+          refunds,
+        ),
+    },
     {
       provide: ORDERING_RANKING_FACADE,
       inject: [BestSellingOffersQuery, BoughtTogetherQuery],
@@ -886,6 +927,11 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ],
     ),
   ],
-  exports: [ORDERING_FACADE, ORDERING_RANKING_FACADE, ORDERING_WORK_QUEUE_FACADE],
+  exports: [
+    ORDERING_FACADE,
+    ORDERING_RANKING_FACADE,
+    ORDERING_WORK_QUEUE_FACADE,
+    ORDERING_REPORTING_FACADE,
+  ],
 })
 export class OrderingModule {}

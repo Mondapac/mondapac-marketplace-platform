@@ -373,6 +373,15 @@ export class PrismaOrderRepository implements OrderRepository {
     return row === null ? null : toOrder(row);
   }
 
+  async findByIds(market: MarketContext, orderIds: readonly Id<'Order'>[]) {
+    if (orderIds.length === 0) return [];
+    const rows = await this.prisma.tx(market).orderingOrder.findMany({
+      where: { marketId: market.marketId, id: { in: [...orderIds] } },
+      include: INCLUDE,
+    });
+    return rows.map(toOrder);
+  }
+
   async findOwn(market: MarketContext, orderId: Id<'Order'>, accountId: Id<'Account'>) {
     const row = await this.prisma.tx(market).orderingOrder.findFirst({
       where: { marketId: market.marketId, id: orderId, accountId },

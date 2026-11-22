@@ -352,6 +352,22 @@ export interface CatalogFacade {
   >;
 
   /**
+   * The primary platform category of the PUBLISHED revision of each requested Offer's product, at
+   * most 200 ids, for reporting's sales by category (dashboards upgrade phase 3). Rule `system`.
+   * An Offer that is unknown, of another Market or whose product has no published revision is
+   * absent; a deleted Offer still answers (past sales keep their category). Not exposed over HTTP.
+   */
+  offerPrimaryCategories(
+    context: CallContext,
+    offerIds: readonly Id<'Offer'>[],
+  ): Promise<
+    Result<
+      ReadonlyMap<Id<'Offer'>, Id<'Category'>>,
+      AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge
+    >
+  >;
+
+  /**
    * The published product name and published Variant label of each requested (Offer, Variant),
    * in `locale` (any locale present when that one is missing), at most 200 keys. Rule
    * `anonymous` (names are public content once published); callers pass their `CallContext`

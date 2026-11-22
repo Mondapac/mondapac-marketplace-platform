@@ -70,3 +70,19 @@ export {
   ORDERING_WORK_QUEUE_FACADE,
   type OrderingWorkQueueFacade,
 } from './ordering-work-queue.facade';
+export {
+  MAX_REPORT_CHANGES,
+  MAX_REPORT_FACTS,
+  ORDERING_REPORTING_FACADE,
+  type OrderingReportingFacade,
+  type RefundReportFacts,
+  type RefundReportLine,
+  type ReportAmount,
+  type ReportChangesPage,
+  type ReportingReadFailure,
+  type ReportLine,
+  type ReportWindow,
+  type SellerOrderQuery,
+  type SellerOrderRef,
+  type SellerOrderReportFacts,
+} from './ordering-reporting.facade';
