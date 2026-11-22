@@ -505,50 +505,90 @@ describe.each(TEST_MARKETS)('storefront slide flows in market %s (database)', (c
     });
   });
 
-  it('approves a slide linked to a category when the targets facade opens its own unit, as catalog does', async () => {
-    const categoryId = ids.next<'Category'>();
+  describe('links checked through facades that open their own unit, as catalog and sellers do', () => {
     // Catalog's and sellers' facades each run a read-only unit; a unit never opens inside another,
     // so the approval asks them before its own unit opens.
-    const asked: number[] = [];
-    const facadeDeps: StorefrontDependencies = {
-      ...deps,
-      targets: {
-        live: (target, targets) =>
-          db.unitOfWork
-            .run(target.market, () => Promise.resolve({ ok: true as const, value: true }), {
-              readOnly: true,
-            })
-            .then((read) => {
-              asked.push(targets.length);
-              return read.ok ? new Set(targets.map(targetKey)) : null;
-            }),
-      },
+    const asked: string[][] = [];
+    const facade = (answer: (keys: string[]) => ReadonlySet<string> | null) =>
+      ({
+        ...deps,
+        targets: {
+          live: (target: CallContext, targets: readonly { type: string; id: string }[]) =>
+            db.unitOfWork
+              .run(target.market, () => Promise.resolve({ ok: true as const, value: true }), {
+                readOnly: true,
+              })
+              .then((read) => {
+                const keys = targets.map((t) => targetKey(t as never));
+                asked.push(keys);
+                return read.ok ? answer(keys) : null;
+              }),
+        },
+      }) as StorefrontDependencies;
+    const linked = (hours: number, link: { type: string; id: string }, scopeId?: string) =>
+      draft(hours, {
+        kind: 'link',
+        content: { title: 'Fresh lamb', textTone: 'dark', link },
+        placements: [
+          scopeId === undefined
+            ? { position: PUBLIC_POSITION }
+            : { position: 'category.top', scope: 'category', scopeId },
+        ],
+      });
+    const submitted = async (target: StorefrontDependencies, body: object) => {
+      const created = ok(await createSlide(target, context, body));
+      ok(await submitSlide(target, context, { slide: created.id }));
+      return created;
     };
-    const linked = draft(24 * 300, {
-      kind: 'link',
-      content: {
-        title: 'Fresh lamb',
-        textTone: 'dark',
-        link: { type: 'category', id: categoryId },
-      },
-      placements: [{ position: PUBLIC_POSITION }],
+
+    it('approves a slide whose seller link and category scope are live', async () => {
+      const all = facade((keys) => new Set(keys));
+      const categoryId = ids.next<'Category'>();
+      const sellerId = ids.next<'Seller'>();
+      const created = await submitted(
+        all,
+        linked(24 * 300, { type: 'seller', id: sellerId }, categoryId),
+      );
+      asked.length = 0;
+      const done = ok(
+        await approveSlide(all, context, { slide: created.id, body: { versionNo: 1 } }),
+      );
+      expect(done.live?.versionNo).toBe(1);
+      expect(asked).toEqual([
+        [
+          targetKey({ type: 'seller', id: sellerId }),
+          targetKey({ type: 'category', id: categoryId }),
+        ],
+      ]);
     });
-    const created = ok(await createSlide(facadeDeps, context, linked));
-    ok(await submitSlide(facadeDeps, context, { slide: created.id }));
-    const done = ok(
-      await approveSlide(facadeDeps, context, { slide: created.id, body: { versionNo: 1 } }),
-    );
-    expect(done.status).not.toBe('draft');
-    expect(done.live?.versionNo).toBe(1);
-    expect(asked).toEqual([1]);
-    // A draft saved after the check is another version: the approval of version 1 is refused.
-    const edit = Object.fromEntries(Object.entries(linked).filter(([key]) => key !== 'kind'));
-    const again = ok(
-      await updateSlideDraft(facadeDeps, context, { slide: created.id, body: edit }),
-    );
-    ok(await submitSlide(facadeDeps, context, { slide: again.id }));
-    expect(
-      await approveSlide(facadeDeps, context, { slide: created.id, body: { versionNo: 1 } }),
-    ).toEqual({ ok: false, error: { code: 'storefront.slide-draft-changed' } });
+
+    it('refuses a link that is not live, and one whose answer could not be had', async () => {
+      const categoryId = ids.next<'Category'>();
+      const none = facade(() => new Set());
+      const gone = await submitted(none, linked(24 * 310, { type: 'category', id: categoryId }));
+      expect(await approveSlide(none, context, { slide: gone.id, body: { versionNo: 1 } })).toEqual(
+        {
+          ok: false,
+          error: {
+            code: 'storefront.slide-link-invalid',
+            fields: [{ path: 'content.link', code: 'not-found' }],
+          },
+        },
+      );
+      const failing = facade(() => null);
+      const unknown = await submitted(
+        failing,
+        linked(24 * 320, { type: 'product', id: categoryId }),
+      );
+      expect(
+        await approveSlide(failing, context, { slide: unknown.id, body: { versionNo: 1 } }),
+      ).toEqual({
+        ok: false,
+        error: {
+          code: 'storefront.slide-link-invalid',
+          fields: [{ path: 'content.link', code: 'unverifiable' }],
+        },
+      });
+    });
   });
 });

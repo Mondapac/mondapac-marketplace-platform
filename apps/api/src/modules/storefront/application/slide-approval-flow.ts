@@ -159,22 +159,22 @@ const facadeTargets = (wanted: readonly { type: string; id: string }[]): SlideTa
 /**
  * What catalog and sellers say is live among the targets of the slide's draft version `versionNo`,
  * asked before the approving unit opens: their facades run their own read-only units, and a unit
- * never opens inside another. `draftId` names the version that was checked; the approving unit
- * refuses if the draft has changed since. A slide or version that is not there checks nothing
- * (the approving unit answers the refusal). `live` null: an answer could not be had.
+ * never opens inside another. Versions never change and a saved draft is always a new version, so
+ * the approving unit's own check that the draft is still `versionNo` means these are its targets.
+ * The answer is read just before the unit, not under its lock: a target that stops being live in
+ * that moment is approved on the earlier answer (catalog and sellers keep their own state; nothing
+ * is held across modules). A slide or version that is not there checks nothing (the approving
+ * unit answers the refusal). Null: an answer could not be had, which fails closed.
  */
 async function liveTargetsOfDraft(
   deps: StorefrontDependencies,
   context: CallContext,
   slideInput: unknown,
   versionNo: number,
-): Promise<{ readonly draftId: string | null; readonly live: ReadonlySet<string> | null }> {
+): Promise<ReadonlySet<string> | null> {
   const id = slideIdOf(slideInput);
-  if (id === null) return { draftId: null, live: new Set() };
-  const read = await deps.unitOfWork.run<
-    { readonly draftId: string | null; readonly targets: SlideTarget[] },
-    never
-  >(
+  if (id === null) return new Set();
+  const read = await deps.unitOfWork.run<SlideTarget[], never>(
     context.market,
     async () => {
       const slide = await deps.slides.findSlide(context.market, id);
@@ -182,18 +182,14 @@ async function liveTargetsOfDraft(
         slide === null || slide.draftVersionId === null
           ? null
           : await deps.slides.findVersion(context.market, slide.id, slide.draftVersionId);
-      if (slide === null || draft === null || draft.versionNo !== versionNo) {
-        return ok({ draftId: null, targets: [] as SlideTarget[] });
-      }
-      const targets = facadeTargets(targetsOf(slide, draft, readPlacements(draft.placements)));
-      return ok({ draftId: draft.id, targets });
+      if (slide === null || draft === null || draft.versionNo !== versionNo) return ok([]);
+      return ok(facadeTargets(targetsOf(slide, draft, readPlacements(draft.placements))));
     },
     { readOnly: true },
   );
-  if (!read.ok) return { draftId: null, live: null };
-  const { draftId, targets } = read.value;
-  if (targets.length === 0) return { draftId, live: new Set() };
-  return { draftId, live: await deps.targets.live(context, targets) };
+  if (!read.ok) return null;
+  if (read.value.length === 0) return new Set();
+  return deps.targets.live(context, read.value);
 }
 
 /**
@@ -280,7 +276,7 @@ export async function approveSlide(
     return err(invalidField('versionNo', reviewed === undefined ? 'required' : 'format'));
   }
   const stamp: SlideStamp = { at: deps.clock.now(), by: admin.accountId };
-  const checked = await liveTargetsOfDraft(deps, context, input.slide, reviewed);
+  const live = await liveTargetsOfDraft(deps, context, input.slide, reviewed);
   return deps.unitOfWork.run<SlideDetailView, SlideFailure>(context.market, async () => {
     const locked = await lockForChange(deps, context, input.slide);
     if (!locked.ok) return err(locked.error);
@@ -301,19 +297,7 @@ export async function approveSlide(
     if (problems.length > 0) return err({ code: 'validation.failed', fields: problems } as const);
     if (isEnded(draft, stamp.at)) return err({ code: 'storefront.slide-ended' } as const);
 
-    // The targets were checked for this version before the unit opened; a draft saved since then
-    // is another version, and the admin reviews that one.
-    if (checked.draftId !== draft.id) {
-      return err({ code: 'storefront.slide-draft-changed' } as const);
-    }
-    const unresolved = await unresolvedTargets(
-      deps,
-      context,
-      slide,
-      draft,
-      placements,
-      checked.live,
-    );
+    const unresolved = await unresolvedTargets(deps, context, slide, draft, placements, live);
     if (unresolved.length > 0) {
       return err({ code: 'storefront.slide-link-invalid', fields: unresolved } as const);
     }
