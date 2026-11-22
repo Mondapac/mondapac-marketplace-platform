@@ -42,7 +42,7 @@ if /i "%MODE%"=="refresh" (
   rem Needs the environment running (API, worker, Mailpit): the refresh only talks to it, and a reset or restore in progress holds the lock.
   docker compose up -d --wait postgres redis mailpit || goto :fail
   node scripts\ops-data\ops.mjs check || goto :fail
-  node scripts\ops-data\refresh.mjs %~2 %~3 || goto :fail
+  node scripts\ops-data\refresh.mjs %2 %3 %4 %5 || goto :fail
   endlocal
   exit /b 0
 )

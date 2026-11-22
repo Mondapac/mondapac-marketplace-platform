@@ -69,8 +69,9 @@ if (state.dataVersion !== DATA_VERSION || state.packs?.products !== 'done') {
 }
 
 const releaseLock = acquireRun(STATE_DIR, 'refresh');
-const db = await connect(DB_URL);
+let db;
 try {
+  db = await connect(DB_URL);
   await assertDatabaseMarker(db);
   const save = () => writeState(market, state);
   const log = (message) => console.log(message);
@@ -94,6 +95,6 @@ try {
   });
   log('Done.');
 } finally {
-  await db.end();
+  await db?.end();
   releaseLock();
 }

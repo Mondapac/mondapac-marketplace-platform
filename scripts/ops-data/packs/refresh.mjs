@@ -80,7 +80,11 @@ function linesFor(scenario, seller, products, start) {
     const entry = shelf[(start + step) % shelf.length];
     const price = Number(asList(entry.price)[0]);
     const level = Number(asList(entry.stock)[0]);
-    const quantity = Math.min(level, 5, Math.max(1, Math.ceil((minimum - total) / price)));
+    const quantity = Math.min(
+      Math.ceil(level / 2),
+      5,
+      Math.max(1, Math.ceil((minimum - total) / price)),
+    );
     if (quantity < 1) continue;
     lines.push([seller.key, entry.product, quantity]);
     total += price * quantity;
@@ -166,7 +170,16 @@ export async function refreshPack({
   }
   if (sessions.size === 0) throw new Error('no approved store in the state: run the loader first');
 
-  const ctx = await orderContext({ admin, reviewer, scenario, sessions, state, save, log });
+  const ctx = await orderContext({
+    admin,
+    reviewer,
+    scenario,
+    sessions,
+    state,
+    save,
+    log,
+    withStripe: orders > 0,
+  });
   let filled = 0;
   let renewed = 0;
   for (const seller of scenario.sellers) {

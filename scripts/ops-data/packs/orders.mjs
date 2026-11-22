@@ -349,10 +349,20 @@ export async function fulfil(ctx, entry, buyer, label) {
  * What the order steps share: the Stripe test client and webhook secret, the offers of each store,
  * and the loader's state (state.buyers, state.orders, state.carts are created here).
  */
-export async function orderContext({ admin, reviewer, scenario, sessions, state, save, log }) {
+export async function orderContext({
+  admin,
+  reviewer,
+  scenario,
+  sessions,
+  state,
+  save,
+  log,
+  withStripe = true,
+}) {
   const market = scenario.market;
-  const stripe = new StripeTestMode(process.env.STRIPE_SECRET_KEY, market);
-  const secret = webhookSecretOf(process.env.STRIPE_WEBHOOK_SECRET, market);
+  // A refresh without orders needs no Stripe key (the shelves and prices are still refreshed).
+  const stripe = withStripe ? new StripeTestMode(process.env.STRIPE_SECRET_KEY, market) : null;
+  const secret = withStripe ? webhookSecretOf(process.env.STRIPE_WEBHOOK_SECRET, market) : null;
   state.buyers ??= {};
   state.orders ??= {};
   state.carts ??= {};
