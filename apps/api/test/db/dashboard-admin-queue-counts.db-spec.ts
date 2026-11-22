@@ -1,6 +1,8 @@
 import { ok, Temporal } from '@mondapac/shared-kernel';
 import { PrismaCatalogWorkQueueCountReader } from '../../src/modules/catalog/infrastructure/prisma-work-queue-count.reader';
+import { PrismaCommissionPayoutsWorkQueueCountReader } from '../../src/modules/commission-payouts/infrastructure/prisma-work-queue-count.reader';
 import { PrismaCertificationWorkQueueCountReader } from '../../src/modules/certification/infrastructure/prisma-work-queue-count.reader';
+import { PrismaPaymentsWorkQueueCountReader } from '../../src/modules/payments/infrastructure/prisma-work-queue-count.reader';
 import { PrismaPricingWorkQueueCountReader } from '../../src/modules/pricing/infrastructure/prisma-work-queue-count.reader';
 import { PrismaSecurityWorkQueueCountReader } from '../../src/modules/security/infrastructure/prisma-work-queue-count.reader';
 import { PrismaSellerHealthStore } from '../../src/modules/sellers/infrastructure/prisma-seller-health.store';
@@ -12,7 +14,7 @@ import {
 import { TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 
-// The catalog, pricing, sellers, security and certification counts of the dashboard's work queue (dashboards upgrade,
+// The catalog, pricing, sellers, security, certification, payments and commission-payouts counts of the dashboard's work queue (dashboards upgrade,
 // phase 1) on PostgreSQL, as the application role, for both Market fixtures. Each count reuses
 // the where clause of its queue's own list (covered by that list's database spec); here every
 // statement runs against the real schema and grants, and its answer holds together: a valid
@@ -26,6 +28,7 @@ describe.each(TEST_MARKETS)('dashboard admin queue counts in market %s (database
   const market = marketOf(code);
   let db: Persistence;
   let claims: (now: Temporal.Instant) => Promise<WorkQueueCount>;
+  let disputes: (now: Temporal.Instant) => Promise<WorkQueueCount>;
   let readers: Record<string, (staleBefore: Temporal.Instant) => Promise<WorkQueueCount>>;
 
   beforeAll(() => {
@@ -34,11 +37,14 @@ describe.each(TEST_MARKETS)('dashboard admin queue counts in market %s (database
     const pricing = new PrismaPricingWorkQueueCountReader(db.service);
     const security = new PrismaSecurityWorkQueueCountReader(db.service);
     const certification = new PrismaCertificationWorkQueueCountReader(db.service);
+    const payments = new PrismaPaymentsWorkQueueCountReader(db.service);
+    const payouts = new PrismaCommissionPayoutsWorkQueueCountReader(db.service);
     const sellers = new PrismaSellersWorkQueueCountReader(
       db.service,
       new PrismaSellerHealthStore(db.service),
     );
     claims = (now) => catalog.claimsWithoutCertificate(market, now);
+    disputes = (now) => payouts.disputesDue(market, now);
     readers = {
       'security.openAlerts': (stale) => security.openAlerts(market, NOW, stale),
       'certification.sellerCertificates': (stale) =>
@@ -52,6 +58,10 @@ describe.each(TEST_MARKETS)('dashboard admin queue counts in market %s (database
       'pricing.priceHolds': (stale) => pricing.priceHolds(market, NOW, stale),
       'sellers.applications': (stale) => sellers.applications(market, NOW, stale),
       'sellers.unhealthySellers': () => sellers.unhealthySellers(market, NOW),
+      'payments.failedWebhooks': (stale) => payments.failedWebhooks(market, NOW, stale),
+      'payments.restrictedAccounts': (stale) => payments.restrictedAccounts(market, NOW, stale),
+      'commissionPayouts.failedPayouts': (stale) => payouts.failedPayouts(market, NOW, stale),
+      'commissionPayouts.payoutHolds': (stale) => payouts.payoutHolds(market, NOW, stale),
     };
   });
   afterAll(() => db.close());
@@ -75,6 +85,10 @@ describe.each(TEST_MARKETS)('dashboard admin queue counts in market %s (database
     'pricing.priceHolds',
     'sellers.applications',
     'sellers.unhealthySellers',
+    'payments.failedWebhooks',
+    'payments.restrictedAccounts',
+    'commissionPayouts.failedPayouts',
+    'commissionPayouts.payoutHolds',
   ])('%s answers a count that holds together', async (name) => {
     const early = await read(() => readers[name]!(BEFORE_ANY));
     expect(isWorkQueueCount(early)).toBe(true);
@@ -98,5 +112,17 @@ describe.each(TEST_MARKETS)('dashboard admin queue counts in market %s (database
     expect(counted.oldestAt === null).toBe(counted.count === 0);
     // No certificate ended before 1990: nothing is counted at that moment.
     expect(await read(() => claims(BEFORE_ANY))).toEqual({ count: 0, overdue: 0, oldestAt: null });
+  });
+
+  it('counts the disputes due within a day, overdue once their deadline passed', async () => {
+    const counted = await read(() => disputes(NOW));
+    expect(isWorkQueueCount(counted)).toBe(true);
+    expect(counted.oldestAt === null).toBe(counted.count === 0);
+    // No dispute was due before 1990: nothing is counted at that moment.
+    expect(await read(() => disputes(BEFORE_ANY))).toEqual({
+      count: 0,
+      overdue: 0,
+      oldestAt: null,
+    });
   });
 });

@@ -33,6 +33,8 @@ export const STALE_AFTER_MINUTES: Readonly<Record<WorkQueueLevel, number>> = Obj
  * - `requires`: the keys the viewer must hold for the queue to be asked at all. The owner's use
  *   case checks its own rule again (defence in depth); its `access.denied` hides the queue too.
  * - `live`: never cached (security alerts, disputes, halal listings: design section 6).
+ * - `staleAfterMinutes`: the queue's own age limit, when design section 2 gives it one (the failed
+ *   payments, webhooks and payouts: 1 hour); otherwise its level's {@link STALE_AFTER_MINUTES}.
  * - `count`: the owner's facade method, called with the viewer's `CallContext` unchanged.
  */
 export interface WorkQueueSource {
@@ -42,6 +44,7 @@ export interface WorkQueueSource {
   readonly level: WorkQueueLevel;
   readonly requires: readonly PermissionKey[];
   readonly live: boolean;
+  readonly staleAfterMinutes?: number;
   count(
     context: CallContext,
     query: WorkQueueCountQuery,
@@ -69,6 +72,10 @@ export function checkWorkQueueSources(sources: readonly WorkQueueSource[]): void
     seen.add(id);
     if (source.requires.length === 0) {
       throw new Error(`dashboard: work queue ${id} requires no permission key`);
+    }
+    const limit = source.staleAfterMinutes;
+    if (limit !== undefined && !(Number.isSafeInteger(limit) && limit > 0)) {
+      throw new Error(`dashboard: work queue ${id} has a bad age limit`);
     }
   }
 }

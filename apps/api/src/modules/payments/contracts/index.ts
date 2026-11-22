@@ -1,6 +1,10 @@
 // Public contracts of the payments module (ADR-0008): the facade interface and its token.
 // Other modules may import only what this file exports, through ../index.ts.
 export { PAYMENTS_FACADE } from './payments.facade';
+export {
+  PAYMENTS_WORK_QUEUE_FACADE,
+  type PaymentsWorkQueueFacade,
+} from './payments-work-queue.facade';
 export { DisputeChanged, TransferChanged } from '../domain/events';
 export type {
   AbandonTransferAnswer,
@@ -16,6 +20,7 @@ export type {
 } from './payments.facade';
 export {
   PAYMENTS_CONNECTED_ACCOUNT_VIEW,
+  PAYMENTS_CUSTOMER_PAYMENT_VIEW,
   PAYMENTS_PAYOUT_ACCOUNT_MANAGE,
   PAYMENTS_PAYOUT_ACCOUNT_VIEW,
   PAYMENTS_PERMISSIONS,

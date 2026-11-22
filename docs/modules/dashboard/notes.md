@@ -75,3 +75,37 @@ promise for instant and same-day orders once shipped (today only their ready-by 
   built CONCURRENTLY.
 - Certificate reviews wait from their pending submission's `submitted_at`, because a renewal leaves
   the certificate's `status_changed_at` unchanged.
+
+## Payments and payout queues (PR 5)
+
+Definitions by Hadi (product owner), 22 Nov 2026. Each count is scoped to the caller's Market.
+
+- Critical, live: `commission-payouts.disputes-due` (`commission-payouts.dispute.view`). It counts
+  the cases in the `needs-response` bucket whose response is due within 24 hours, past due
+  included. Overdue means the deadline has passed. `oldestAt` is the nearest deadline, so the row's
+  link sorts the Disputes list by due date, the one exception to "oldest first". The
+  `under-review` and `decision-needed` buckets have no response deadline and are not counted.
+- Today, with their own 1-hour age limit (`WorkQueueSource.staleAfterMinutes`, design section 2):
+  - `ordering.failed-payments` (`ordering.order.view`): orders cancelled `payment-failed` or
+    `provider-failed` within the last 24 hours.
+  - `payments.failed-webhooks` (`payments.customer-payment.view`): Stripe events still not applied
+    an hour after they arrived, plus events given up (`outcome = 'failed'`) within 7 days.
+    `rejected` events are not counted. No admin list exists yet (FE-110).
+  - `commission-payouts.failed-payouts` (`commission-payouts.payout.view`): payouts in `failed`
+    within 7 days. Their items are planned again automatically, and transfer failures in payments
+    are not part of this queue.
+- Today, with the default 48 hours: `payments.restricted-accounts`
+  (`payments.connected-account.view`), since the account's last update, and
+  `commission-payouts.payout-holds` (`commission-payouts.settlement.view`), every active hold since
+  it was placed.
+- Failed payments, webhooks and payouts have no handled state, so they count over a rolling
+  window (FE-108). The windows and age limits are constants for now and become Market settings
+  later (FE-109).
+- Two new partial indexes, each built CONCURRENTLY in its own migration: the cancellations for a
+  failed payment on (market_id, cancelled_at), and the given-up Stripe events on
+  (market_id, received_at).
+- Growth (Mojtaba, DB): the failed-payout count reads every failed payout of the Market and checks
+  the 7-day window on each row. Add a partial index on (market_id, state_changed_at) WHERE
+  state = 'failed' once a Market holds about 10,000 failed payouts. The restricted-account and
+  due-dispute counts read every row of their Market's state or bucket; revisit at about 50,000
+  sellers, or if the `needs-response` bucket stops being small.

@@ -2,7 +2,11 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { WorkQueueCount } from '../../../platform/work-queue/work-queue-count';
-import type { WorkQueueCountReader } from '../application/ports/work-queue-count.reader';
+import {
+  FAILED_PAYMENT_REASONS,
+  FAILED_PAYMENT_WINDOW_HOURS,
+  type WorkQueueCountReader,
+} from '../application/ports/work-queue-count.reader';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
@@ -111,6 +115,34 @@ export class PrismaWorkQueueCountReader implements WorkQueueCountReader {
       refunds.count({ where: { ...pending, requestedAt: { lt: toDate(staleBefore) } } }),
     ]);
     const oldest = all._min.requestedAt;
+    return {
+      count: all._count._all,
+      overdue,
+      oldestAt: oldest === null || all._count._all === 0 ? null : toInstant(oldest),
+    };
+  }
+
+  async failedPayments(
+    market: MarketContext,
+    now: Temporal.Instant,
+    staleBefore: Temporal.Instant,
+  ): Promise<WorkQueueCount> {
+    const orders = this.prisma.tx(market).orderingOrder;
+    const since = now.subtract({ hours: FAILED_PAYMENT_WINDOW_HOURS });
+    const failed = {
+      marketId: market.marketId,
+      tenantId: market.tenantId,
+      status: 'cancelled',
+      cancelReason: { in: [...FAILED_PAYMENT_REASONS] },
+      cancelledAt: { gte: toDate(since) },
+    };
+    const [all, overdue] = await Promise.all([
+      orders.aggregate({ where: failed, _count: { _all: true }, _min: { cancelledAt: true } }),
+      orders.count({
+        where: { ...failed, cancelledAt: { gte: toDate(since), lt: toDate(staleBefore) } },
+      }),
+    ]);
+    const oldest = all._min.cancelledAt;
     return {
       count: all._count._all,
       overdue,

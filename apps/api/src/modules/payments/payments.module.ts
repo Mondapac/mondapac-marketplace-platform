@@ -1,3 +1,12 @@
+import { CountFailedWebhooks } from './application/use-cases/count-failed-webhooks.use-case';
+import { CountRestrictedAccounts } from './application/use-cases/count-restricted-accounts.use-case';
+import {
+  PAYMENTS_WORK_QUEUE_COUNT_READER,
+  type PaymentsWorkQueueCountReader,
+} from './application/ports/work-queue-count.reader';
+import { PaymentsWorkQueueFacadeImplementation } from './presentation/payments-work-queue.facade';
+import { PAYMENTS_WORK_QUEUE_FACADE } from './contracts/payments-work-queue.facade';
+import type { UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { AdminCustomerPaymentsController } from './presentation/admin-customer-payments.controller';
 import { AdminCustomerDisputesExport } from './application/use-cases/admin-customer-disputes-export.use-case';
@@ -161,6 +170,23 @@ function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
     AdminCustomerPaymentsController,
   ],
   providers: [
+    ...[CountFailedWebhooks, CountRestrictedAccounts].map((type) => ({
+      provide: type,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, PAYMENTS_WORK_QUEUE_COUNT_READER],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        counts: PaymentsWorkQueueCountReader,
+      ) => new type(gate, { unitOfWork, counts }),
+    })),
+    {
+      provide: PAYMENTS_WORK_QUEUE_FACADE,
+      inject: [CountFailedWebhooks, CountRestrictedAccounts],
+      useFactory: (
+        failedWebhooks: CountFailedWebhooks,
+        restrictedAccounts: CountRestrictedAccounts,
+      ) => new PaymentsWorkQueueFacadeImplementation(failedWebhooks, restrictedAccounts),
+    },
     PersistenceModule.auditWriterFor('payments'),
     PersistenceModule.securityEventsFor('payments'),
     PersistenceModule.outboxWriterFor('payments'),
@@ -252,6 +278,6 @@ function listUseCaseProvider<U>(type: ListUseCaseClass<U>): FactoryProvider<U> {
       ],
     ),
   ],
-  exports: [PAYMENTS_FACADE],
+  exports: [PAYMENTS_FACADE, PAYMENTS_WORK_QUEUE_FACADE],
 })
 export class PaymentsModule {}

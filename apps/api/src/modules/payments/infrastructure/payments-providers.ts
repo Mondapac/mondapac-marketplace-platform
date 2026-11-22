@@ -6,6 +6,11 @@ import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import {
+  PAYMENTS_WORK_QUEUE_COUNT_READER,
+  type PaymentsWorkQueueCountReader,
+} from '../application/ports/work-queue-count.reader';
+import { PrismaPaymentsWorkQueueCountReader } from './prisma-work-queue-count.reader';
+import {
   CONNECTED_ACCOUNT_STORE,
   type ConnectedAccountStore,
 } from '../application/ports/connected-account-store';
@@ -54,6 +59,12 @@ import { StripeWebhookSignature } from './stripe-webhook-signature';
 
 /** Binds the ports of payments. Only this layer may reach `PrismaService` and the Stripe secrets. */
 export const paymentsProviders: readonly FactoryProvider[] = [
+  {
+    provide: PAYMENTS_WORK_QUEUE_COUNT_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PaymentsWorkQueueCountReader =>
+      new PrismaPaymentsWorkQueueCountReader(prisma),
+  },
   {
     provide: STRIPE_EVENT_INBOX,
     inject: [PrismaService],

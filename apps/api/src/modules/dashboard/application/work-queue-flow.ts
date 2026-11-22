@@ -133,7 +133,9 @@ async function askOne(
     const kept = deps.cache.get(cacheKey, now);
     if (kept !== undefined) return okItem(source, kept.count, kept.countedAt);
   }
-  const staleBefore = now.subtract({ minutes: STALE_AFTER_MINUTES[level] });
+  const staleBefore = now.subtract({
+    minutes: source.staleAfterMinutes ?? STALE_AFTER_MINUTES[level],
+  });
   const read = (): Promise<Answer> =>
     within(async (signal) => {
       try {

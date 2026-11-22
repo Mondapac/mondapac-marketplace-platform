@@ -26,6 +26,8 @@ model PaymentsStripeEvent {
 
   @@id([marketId, eventId])
   @@index([marketId, processedAt, nextAttemptAt])
+  /// Hand-written partial index (migration 20261122130100): stripe_events_market_id_received_at_failed_idx
+  /// on (market_id, received_at) WHERE outcome = 'failed', for the dashboard's failed-webhook count.
   @@map("stripe_events")
   @@schema("payments")
 }

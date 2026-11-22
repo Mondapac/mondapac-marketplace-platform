@@ -18,6 +18,10 @@ export {
 } from './permissions';
 export { COMMISSION_PAYOUTS_STEP_UP_ACTIONS } from './step-up';
 export {
+  COMMISSION_PAYOUTS_WORK_QUEUE_FACADE,
+  type CommissionPayoutsWorkQueueFacade,
+} from './commission-payouts-work-queue.facade';
+export {
   COMMISSION_PAYOUTS_FACADE,
   type CommissionPayoutsFacade,
   type CommissionPayoutsFailure,
