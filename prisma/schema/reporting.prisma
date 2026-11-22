@@ -76,6 +76,7 @@ model ReportingRefund {
 
   @@id([marketId, refundId])
   @@index([marketId, refundDay, sellerId])
+  @@index([marketId, sellerOrderId])
   @@map("refunds")
   @@schema("reporting")
 }

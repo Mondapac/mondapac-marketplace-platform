@@ -1,5 +1,6 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 import {
+  keepKnownInstants,
   marketDayOf,
   refundEntries,
   saleEntries,
@@ -74,10 +75,17 @@ export class FactRecorder {
     },
   ): Promise<void> {
     const keys: SellerDay[] = [];
-    for (const { order, goods } of batch.sellerOrders) {
+    // Facts in id order, so two units write the same rows in one order (Mojtaba, PR 10b note 4).
+    const sellerOrders = [...batch.sellerOrders].sort((a, b) =>
+      a.order.sellerOrderId < b.order.sellerOrderId ? -1 : 1,
+    );
+    const refunds = [...batch.refunds].sort((a, b) =>
+      a.refund.refundId < b.refund.refundId ? -1 : 1,
+    );
+    for (const { order, goods } of sellerOrders) {
       keys.push(...(await this.putSellerOrder(market, order, goods)));
     }
-    for (const { refund, goods } of batch.refunds) {
+    for (const { refund, goods } of refunds) {
       keys.push(...(await this.putRefund(market, refund, goods)));
     }
     await this.refresh(market, keys);
@@ -86,10 +94,15 @@ export class FactRecorder {
   /** Writes the seller order's fact and entries; the seller days to rebuild. */
   private async putSellerOrder(
     market: MarketContext,
-    order: SellerOrderFact,
+    read: SellerOrderFact,
     goods: readonly CategoryGoods[],
   ): Promise<SellerDay[]> {
-    this.checkCurrency(market, order.currency);
+    this.checkCurrency(market, read.currency);
+    // A fact read before a newer one was written keeps what the stored one already knows.
+    const order = keepKnownInstants(
+      read,
+      await this.deps.facts.sellerOrderInstants(market, read.sellerOrderId),
+    );
     checkGoods(goods, order.goods.amount, order.goods.tax, `seller order ${order.sellerOrderId}`);
     const zone = this.deps.zone.zoneOf(market);
     const day = (at: SellerOrderFact['paidAt']) => (at === null ? null : marketDayOf(at, zone));

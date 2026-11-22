@@ -259,14 +259,77 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
       refundedAt: T0.subtract({ hours: 1 }),
       lines: [],
     });
+    // A good refund in the same batch is still written: the batch is retried one fact at a time.
+    const kept = idOf<'Refund'>();
+    owners.refundFacts.push({
+      refundId: kept,
+      orderId: good.orderId,
+      sellerOrderId: good.sellerOrderId,
+      sellerId,
+      currency,
+      total: { amount: 1100n, tax: 100n },
+      shipping: { amount: 0n, tax: 0n },
+      refundedAt: T0.subtract({ hours: 1 }),
+      lines: [
+        { offerId: good.lines[0]!.offerId, quantity: 1, goods: { amount: 1100n, tax: 100n } },
+      ],
+    });
+    // Lines that cover more than the refund's goods are refused, not trimmed.
+    owners.refundFacts.push({
+      refundId: idOf<'Refund'>(),
+      orderId: good.orderId,
+      sellerOrderId: good.sellerOrderId,
+      sellerId,
+      currency,
+      total: { amount: 500n, tax: 0n },
+      shipping: { amount: 0n, tax: 0n },
+      refundedAt: T0.subtract({ hours: 1 }),
+      lines: [
+        { offerId: good.lines[0]!.offerId, quantity: 1, goods: { amount: 1100n, tax: 100n } },
+      ],
+    });
     const done = await reconcileWindow(deps, system(), window);
-    expect(done).toEqual(ok({ sellerOrders: 1, refunds: 0, failedBatches: 1 }));
+    expect(done).toEqual(ok({ sellerOrders: 1, refunds: 1, failedBatches: 2 }));
     expect((await days(sellerId)).map((row) => row.orders_paid)).toEqual([1]);
+    const stored = await owner.query<{ refund_id: string }>(
+      'SELECT refund_id FROM reporting.refunds WHERE seller_order_id = $1',
+      [good.sellerOrderId],
+    );
+    expect(stored.rows.map((row) => row.refund_id)).toEqual([kept]);
 
     const down: ReportSources['sellerOrders'] = () =>
       Promise.resolve(err({ code: 'reporting.source-unavailable', cause: 'down' }));
     deps = { ...deps, sources: { ...sourcesOf(owners), sellerOrders: down } };
     const stopped = await reconcileWindow(deps, system(), window);
     expect(!stopped.ok && stopped.error.code).toBe('reporting.source-unavailable');
+
+    // A cursor that does not move on stops the run instead of looping.
+    const looping: ReportSources['changedSellerOrders'] = () =>
+      Promise.resolve(ok({ items: [], next: good.sellerOrderId }));
+    deps = { ...deps, sources: { ...sourcesOf(owners), changedSellerOrders: looping } };
+    const loop = await reconcileWindow(deps, system(), window);
+    expect(!loop.ok && loop.error.code).toBe('reporting.source-unavailable');
+  });
+
+  it('keeps what a newer fact recorded when an older read is written after it', async () => {
+    const sellerId = idOf<'Seller'>();
+    const paid = sellerOrder(sellerId, idOf<'Offer'>(), T0.subtract({ hours: 5 }));
+    const shippedAt = T0.subtract({ hours: 2 });
+    owners.orders.push({ ...paid, shippedAt, shippedOnTime: true });
+    await reconcileWindow(deps, system(), window);
+    // The paid event's read, taken before the shipment, is written last.
+    owners.orders = [paid];
+    await reconcileWindow(deps, system(), window);
+    const row = await owner.query<{ shipped: boolean; on_time: boolean | null }>(
+      `SELECT shipped_at IS NOT NULL AS shipped, shipped_on_time AS on_time
+         FROM reporting.seller_orders WHERE seller_order_id = $1`,
+      [paid.sellerOrderId],
+    );
+    expect(row.rows).toEqual([{ shipped: true, on_time: true }]);
+    const shippedDays = await owner.query<{ n: number }>(
+      'SELECT orders_shipped AS n FROM reporting.daily_seller_sales WHERE seller_id = $1 AND orders_shipped > 0',
+      [sellerId],
+    );
+    expect(shippedDays.rows).toEqual([{ n: 1 }]);
   });
 });

@@ -5,6 +5,7 @@ import type {
   SalesEntry,
   SalesEntryKind,
   SellerOrderFact,
+  SellerOrderInstants,
 } from '../../domain/facts';
 import type { SellerDay, SellerDayFacts } from '../../domain/rollup';
 
@@ -14,6 +15,11 @@ import type { SellerDay, SellerDayFacts } from '../../domain/rollup';
  * stored fact touched BEFORE the write, so the caller can refresh a day a fact moved away from.
  */
 export interface FactStore {
+  /** The instants of the stored seller order, or null when it is not recorded yet. */
+  sellerOrderInstants(
+    market: MarketContext,
+    sellerOrderId: SellerOrderFact['sellerOrderId'],
+  ): Promise<SellerOrderInstants | null>;
   /** Inserts or rewrites the seller order (its keys and first record time stay). */
   putSellerOrder(
     market: MarketContext,

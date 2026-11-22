@@ -98,9 +98,16 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
   cover goes there too, with 0 units, so goods by category always add up to the fact's goods.
 - `reporting.reconcile-facts` (job, daily): reads every seller order and refund with an instant in
   the last seven days (`sellerOrdersChanged`, `refundsSucceeded`, pages of 100) and records them in
-  serializable units of at most 25 facts, each seller day rebuilt once per unit. A unit that keeps
-  conflicting is tried again after a pause; a batch the recorder refuses is logged by id and
-  skipped, and the run then fails so the scheduler reports it. It also catches what no event names:
+  serializable units of at most 25 facts (timeout 15 s), each seller day rebuilt once per unit and
+  facts written in id order. A unit that keeps conflicting is tried again after a pause; a batch
+  that fails otherwise is retried one fact at a time, the facts still refused are logged by id
+  (`reporting.reconcile-batch-failed`) and skipped, and the run then fails so the scheduler reports
+  it. A cursor that does not move on, or more than 10,000 pages, stops the run. It also catches what no event names:
   an on-time promise that passed, a product moved to another category.
+- A seller order's instants only go from unknown to known, so an older read written after a newer
+  one keeps what is stored (`keepKnownInstants`; Hassan, PR 10b finding 1): an event's facade read
+  happens before its unit, so two deliveries of one seller order can write in the other order.
+- Migration `20261122070000_reporting_refunds_seller_order_index` adds
+  `refunds (market_id, seller_order_id)` for the check below (Mojtaba, PR 10b finding 1).
 - `putSellerOrder` also refuses a seller order whose refund, recorded before it, names another
   seller, order or currency (Hassan, PR 9 re-review).

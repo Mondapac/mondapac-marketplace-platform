@@ -121,6 +121,10 @@ export const WRITE_BATCH = 25;
 /** Rounds of a unit that keeps conflicting (each round is the unit of work's own retries). */
 const CONFLICT_ROUNDS = 3;
 const CONFLICT_PAUSE_MS = 200;
+/** A reconcile unit's timeout (the unit of work allows up to 30 s). */
+const RECONCILE_UNIT_MS = 15_000;
+/** The most pages one run reads per kind: 1,000,000 facts, far above a day's volume. */
+const MAX_PAGES = 10_000;
 const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
@@ -130,8 +134,9 @@ const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout
  * history backfill (no start). Small units keep a serialization conflict with the event worker
  * rare (Mojtaba, PR 9: low concurrency); a unit that still conflicts after its own retries is tried
  * again after a pause. Safe to run twice or to overlap a late run of itself, since every write
- * replaces. A batch the recorder refuses is logged and skipped, so one bad fact does not hold the
- * rest back; a failed read stops the run, which the next run repeats.
+ * replaces. A fact the recorder refuses is logged and skipped, so one bad fact does not hold the
+ * rest back; a failed read, or a cursor that does not move on, stops the run, which the next run
+ * repeats.
  */
 export async function reconcileWindow(
   deps: ReportFactsDependencies,
@@ -141,35 +146,56 @@ export async function reconcileWindow(
   let sellerOrders = 0;
   let refunds = 0;
   let failedBatches = 0;
-  const write = async (batch: ReadFacts): Promise<void> => {
-    for (let attempt = 1; ; attempt += 1) {
+  /** One unit; a conflict is tried again after a pause. True when written. */
+  const attempt = async (batch: ReadFacts): Promise<{ written: boolean; error: string }> => {
+    for (let round = 1; ; round += 1) {
       try {
         const counts = await deps.unitOfWork.run(
           context.market,
           async () => ok(await writeFacts(deps, context.market, batch)),
-          { isolation: 'serializable' },
+          // A unit of 25 facts on a busy day can pass the default 5 s (Mojtaba, PR 10b note 3).
+          { isolation: 'serializable', timeoutMs: RECONCILE_UNIT_MS },
         );
-        if (counts.ok) {
-          sellerOrders += counts.value.sellerOrders;
-          refunds += counts.value.refunds;
-        }
-        return;
+        if (!counts.ok) return { written: false, error: 'refused' };
+        sellerOrders += counts.value.sellerOrders;
+        refunds += counts.value.refunds;
+        return { written: true, error: '' };
       } catch (error) {
-        if (error instanceof TransactionConflictError && attempt < CONFLICT_ROUNDS) {
-          await pause(CONFLICT_PAUSE_MS * attempt);
+        if (error instanceof TransactionConflictError && round < CONFLICT_ROUNDS) {
+          await pause(CONFLICT_PAUSE_MS * round);
           continue;
         }
-        failedBatches += 1;
-        logger.error({
-          msg: 'reporting.reconcile-batch-failed',
-          marketId: context.market.marketId,
-          correlationId: context.correlationId,
-          sellerOrderIds: batch.sellerOrders.map((source) => source.order.sellerOrderId),
-          refundIds: batch.refunds.map((source) => source.refund.refundId),
-          error: error instanceof Error ? error.name : 'unknown',
-        });
-        return;
+        return { written: false, error: error instanceof Error ? error.name : 'unknown' };
       }
+    }
+  };
+  const failed = (batch: ReadFacts, error: string): void => {
+    failedBatches += 1;
+    logger.error({
+      msg: 'reporting.reconcile-batch-failed',
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+      sellerOrderIds: batch.sellerOrders.map((source) => source.order.sellerOrderId),
+      refundIds: batch.refunds.map((source) => source.refund.refundId),
+      error,
+    });
+  };
+  /**
+   * A batch, and when it fails for another reason than a conflict, each of its facts alone, so a
+   * fact the recorder refuses does not hold the good ones of its batch back (Hassan, PR 10b
+   * finding 3); only the facts that still fail are logged.
+   */
+  const write = async (batch: ReadFacts): Promise<void> => {
+    const whole = await attempt(batch);
+    if (whole.written) return;
+    if (batch.sellerOrders.length + batch.refunds.length === 1) return failed(batch, whole.error);
+    const singles: ReadFacts[] = [
+      ...batch.sellerOrders.map((source) => ({ sellerOrders: [source], refunds: [] })),
+      ...batch.refunds.map((source) => ({ sellerOrders: [], refunds: [source] })),
+    ];
+    for (const single of singles) {
+      const one = await attempt(single);
+      if (!one.written) failed(single, one.error);
     }
   };
   const record = async (request: RecordRequest): Promise<boolean> => {
@@ -189,9 +215,12 @@ export async function reconcileWindow(
     }
     return true;
   };
+  /** A cursor that does not move on, or too many pages, stops the run (Hassan, finding 2). */
+  const stuck = (after: string | null, next: string, pages: number): boolean =>
+    next === after || (after !== null && next <= after) || pages >= MAX_PAGES;
 
   let after: string | null = null;
-  for (;;) {
+  for (let pages = 1; ; pages += 1) {
     const page = await deps.sources.changedSellerOrders(context, window, after, SOURCE_BATCH);
     if (!page.ok) return page;
     if (page.value.items.length > 0) {
@@ -199,10 +228,12 @@ export async function reconcileWindow(
       if (!read) return err(unavailable('ordering seller orders'));
     }
     if (page.value.next === null) break;
+    if (stuck(after, page.value.next, pages))
+      return err(unavailable('ordering seller orders cursor'));
     after = page.value.next;
   }
   after = null;
-  for (;;) {
+  for (let pages = 1; ; pages += 1) {
     const page = await deps.sources.succeededRefunds(context, window, after, SOURCE_BATCH);
     if (!page.ok) return page;
     if (page.value.items.length > 0) {
@@ -210,6 +241,7 @@ export async function reconcileWindow(
       if (!read) return err(unavailable('ordering refunds'));
     }
     if (page.value.next === null) break;
+    if (stuck(after, page.value.next, pages)) return err(unavailable('ordering refunds cursor'));
     after = page.value.next;
   }
   return ok({ sellerOrders, refunds, failedBatches });
