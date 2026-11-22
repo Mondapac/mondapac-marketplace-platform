@@ -949,6 +949,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'reporting.daily_seller_sales': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'reporting.daily_category_sales': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'reporting.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // The backfill's cursor: its Market, kind, window end and start time stay.
+    'reporting.backfill_progress': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['after', 'failed_facts', 'finished_at', 'pages', 'updated_at'],
+    },
     'promotions.co_funding_opt_ins': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['decided_by_account_id', 'opted_in_at', 'withdrawn_at'],

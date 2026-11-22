@@ -184,3 +184,23 @@ model ReportingInbox {
   @@map("inbox")
   @@schema("reporting")
 }
+
+/// The history backfill's progress, per Market and kind of fact (dashboards upgrade phase 3, PR 12).
+model ReportingBackfillProgress {
+  marketId    String    @map("market_id") @db.VarChar(8)
+  tenantId    String    @map("tenant_id")
+  /// "seller-orders" or "refunds".
+  kind        String    @db.VarChar(16)
+  until       DateTime  @db.Timestamptz(6)
+  after       String?   @db.Uuid
+  pages       Int
+  /// Facts the recorder refused or that could not be written, logged and skipped.
+  failedFacts Int       @map("failed_facts")
+  startedAt   DateTime  @map("started_at") @db.Timestamptz(6)
+  updatedAt   DateTime  @map("updated_at") @db.Timestamptz(6)
+  finishedAt  DateTime? @map("finished_at") @db.Timestamptz(6)
+
+  @@id([marketId, kind])
+  @@map("backfill_progress")
+  @@schema("reporting")
+}
