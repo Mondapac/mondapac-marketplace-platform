@@ -8,6 +8,7 @@ import {
   DataList,
   Dialog,
   LoadError,
+  SaveBar,
   SettingRow,
   SettingSelect,
   SettingsConflictBanner,
@@ -20,8 +21,10 @@ import {
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { callApi } from '../api/client.ts';
 import { useChangeHistory, useWinnerTitle } from '../settings/last-changed.tsx';
+import { useSettingsChrome } from '../settings/settings-chrome.ts';
 import { formatInstant } from '../shared/format.ts';
 import {
   isNoteFailure,
@@ -62,6 +65,7 @@ export function SettingsForm({
   const root = useTranslations();
   const locale = useLocale();
   const guarded = useGuardedCall();
+  const chrome = useSettingsChrome();
   const [settings, setSettings] = useState<WalletSettings | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const [state, setState] = useState<WalletState | ''>('');
@@ -74,6 +78,7 @@ export function SettingsForm({
   const [noteError, setNoteError] = useState<'required' | 'rejected' | null>(null);
   const sentForReview = useSentForReview();
   const [conflict, setConflict] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const busy = useRef(false);
   // Before the loading and error returns below: a hook is called on every render.
   const changeHistory = useChangeHistory(settings?.lastChanged, 'wallet/admin/settings/history');
@@ -94,8 +99,10 @@ export function SettingsForm({
       if (WALLET_STATES.includes(result.body.status) && Number.isInteger(result.body.version)) {
         setSettings(result.body);
       } else setLoadFailed(true);
-    } else if (result.failure.status === 401) window.location.assign('/session-ended');
-    else setLoadFailed(true);
+    } else if (result.failure.status === 401) {
+      flushSync(() => setLeaving(true));
+      window.location.assign('/session-ended');
+    } else setLoadFailed(true);
   }, []);
 
   useEffect(() => {
@@ -199,6 +206,8 @@ export function SettingsForm({
     }
     if (isStepUpCancelled(result)) return;
     if (result.failure.status === 401) {
+      // The leave prompt is dropped first, so the browser does not ask on the way out.
+      flushSync(() => setLeaving(true));
       window.location.assign('/session-ended');
       return;
     }
@@ -218,13 +227,28 @@ export function SettingsForm({
   }
 
   function review() {
+    if (busy.current || unchanged) return;
     setProblem(null);
+    // The bar's button stays on, so a missing reason is shown on its field instead.
+    if (incomplete) {
+      setReasonError(true);
+      return;
+    }
     if (needsNote && trimmedNote(note) === null) {
       setNoteError('required');
       return;
     }
     if (chosen === 'active') void send();
     else setConfirming(true);
+  }
+
+  function discard() {
+    setState('');
+    setReason('');
+    setNote('');
+    setReasonError(false);
+    setNoteError(null);
+    setProblem(null);
   }
 
   // The confirm dialog exists for off, paused and frozen; Active applies after the code only.
@@ -264,6 +288,23 @@ export function SettingsForm({
       banner={
         banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
       }
+      onSubmit={canManage ? review : undefined}
+      dirty={canManage && !unchanged && !leaving}
+      dirtyCount={unchanged ? 0 : 1}
+      leave={chrome.leave}
+      saveBar={
+        canManage ? (
+          <SaveBar
+            {...chrome.saveBar({
+              count: unchanged ? 0 : 1,
+              errorCount: (reasonError ? 1 : 0) + (noteError === null ? 0 : 1),
+              saving: pending,
+              onDiscard: discard,
+              saveLabel: t('settings.review'),
+            })}
+          />
+        ) : undefined
+      }
     >
       <SettingsSection title={t('settings.current')}>
         <SettingRow label={t('settings.state')} plain>
@@ -297,8 +338,8 @@ export function SettingsForm({
           />
         </div>
       </SettingsSection>
-      {/* Changing the state is an action of its own, with a confirmation and a code: it is not
-          saved with the page, so it sits in the danger zone with its own button. */}
+      {/* Changing the state is the page's one change: the save bar's "Review change" opens its
+          confirmation (and then the code), so it stays in the danger zone without a button. */}
       <SettingsSection
         variant="danger"
         title={root('settings.danger.title')}
@@ -357,14 +398,7 @@ export function SettingsForm({
           </div>
         ) : null}
         {canManage ? (
-          <div className="flex flex-col gap-2 px-5 py-4">
-            <div>
-              <Button disabled={unchanged || incomplete} loading={pending} onClick={review}>
-                {t('settings.review')}
-              </Button>
-            </div>
-            <p className="text-sm text-fg-muted">{root('step-up.wait-note')}</p>
-          </div>
+          <p className="px-5 py-4 text-sm text-fg-muted">{root('step-up.wait-note')}</p>
         ) : null}
       </SettingsSection>
       <Dialog

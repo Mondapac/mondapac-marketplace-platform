@@ -3,18 +3,20 @@
 import {
   Badge,
   Banner,
-  Button,
   EmptyState,
   LoadError,
   RadioGroup,
+  SaveBar,
   Select,
   TextField,
   toast,
   DetailSkeleton,
   FormSkeleton,
+  useUnsavedChangesGuard,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { callApi, type ApiFailure } from '../api/client.ts';
 import { languageName } from '../attributes/types.ts';
 import {
@@ -194,6 +196,21 @@ const draftOf = (detail: VariantTypeDetail): Draft => ({
   sellerHelp: { ...detail.sellerHelp },
 });
 
+/** How many settings differ from the saved ones: each field and each swatch counts once. */
+function changesOf(draft: Draft, saved: Draft): number {
+  const differ = (a: Readonly<Record<string, string>>, b: Readonly<Record<string, string>>) =>
+    [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(
+      (key) => (a[key] ?? '') !== (b[key] ?? ''),
+    ).length;
+  return (
+    (draft.displayStyle === saved.displayStyle ? 0 : 1) +
+    (draft.optionOrder === saved.optionOrder ? 0 : 1) +
+    // Swatches are sent only for the Swatches style, so only then are they changes.
+    (draft.displayStyle === 'swatches' ? differ(draft.swatches, saved.swatches) : 0) +
+    differ(draft.sellerHelp, saved.sellerHelp)
+  );
+}
+
 function VariantTypePanel({
   typeId,
   canEdit,
@@ -209,9 +226,11 @@ function VariantTypePanel({
 }) {
   const t = useTranslations('variants.types');
   const tl = useTranslations('load');
+  const root = useTranslations();
   const [load, setLoad] = useState<Load<VariantTypeDetail>>({ state: 'loading' });
   const [draft, setDraft] = useState<Draft | null>(null);
   const [saving, setSaving] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Readonly<Record<string, string>>>({});
   const latest = useRef(0);
@@ -231,7 +250,7 @@ function VariantTypePanel({
       return;
     }
     if (result.failure.status === 401) {
-      window.location.assign('/session-ended');
+      signOut();
       return;
     }
     setLoad({ state: result.failure.status === 404 ? 'missing' : 'failed' });
@@ -240,6 +259,26 @@ function VariantTypePanel({
   useEffect(() => {
     void fetchType();
   }, [fetchType]);
+
+  // Worked out before the early returns, so the guard hook runs on every render.
+  const ready = load.state === 'ready' ? load.value : null;
+  const count = canEdit && ready !== null && draft !== null ? changesOf(draft, draftOf(ready)) : 0;
+  const guard = useUnsavedChangesGuard(
+    count > 0 && !leaving,
+    {
+      title: root('settings.leave.title'),
+      message: (info) => root('settings.leave.message', { count: info.count, page: info.page }),
+      stay: root('settings.leave.stay'),
+      leave: root('settings.leave.leave'),
+    },
+    { count, page: ready === null ? '' : nameOf(ready, ready.languages[0]?.locale ?? 'en') },
+  );
+
+  /** A 401 answer: leave for the session-ended page without the leave prompt. */
+  function signOut() {
+    flushSync(() => setLeaving(true));
+    window.location.assign('/session-ended');
+  }
 
   if (typeId === null) {
     return <EmptyState size="card" icon="columns" title={t('none')} body={t('none-body')} />;
@@ -267,7 +306,6 @@ function VariantTypePanel({
   const locales = detail.languages.map((language) => language.locale);
   const locale = locales[0] ?? 'en';
   const disabled = !canEdit || saving;
-  const changed = JSON.stringify(draft) !== JSON.stringify(draftOf(detail));
 
   function failureOf(failure: ApiFailure): string {
     if (failure.code === 'variant-type.stale') return t('save.stale');
@@ -278,7 +316,7 @@ function VariantTypePanel({
   }
 
   async function save() {
-    if (draft === null) return;
+    if (draft === null || saving || count === 0) return;
     // Swatches are sent (and so checked) only for the Swatches style.
     const bad =
       draft.displayStyle === 'swatches'
@@ -313,7 +351,7 @@ function VariantTypePanel({
       return;
     }
     if (result.failure.status === 401) {
-      window.location.assign('/session-ended');
+      signOut();
       return;
     }
     const fields: Record<string, string> = {};
@@ -328,143 +366,158 @@ function VariantTypePanel({
     setProblem(failureOf(result.failure));
   }
 
+  function discard() {
+    setDraft(draftOf(detail));
+    setFieldErrors({});
+    setProblem(null);
+  }
+
   return (
-    <section
-      aria-label={t('detail-label')}
-      className="flex min-w-0 flex-col gap-4 rounded-lg border border-line bg-surface p-5"
-    >
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-xl font-semibold wrap-anywhere">{nameOf(detail, locale)}</h2>
-        <Badge tone="info">{t('badge')}</Badge>
-        <span className="font-mono text-sm text-fg-muted">{detail.code}</span>
-        {canOpenAttributes ? (
-          <a
-            className="ms-auto text-sm font-medium text-link underline"
-            href={`${ATTRIBUTES_PATH}/${encodeURIComponent(detail.id)}`}
-          >
-            {t('edit-in-attributes')}
-          </a>
-        ) : null}
-      </div>
-      <p className="text-sm text-fg-muted">{t('intro')}</p>
-      {problem === null ? null : (
-        <Banner tone="critical" title={t('save.failed')}>
-          {problem}
-        </Banner>
-      )}
-      <RadioGroup
-        legend={t('display.legend')}
-        name="display-style"
-        value={draft.displayStyle}
-        disabled={disabled}
-        onChange={(value) => setDraft({ ...draft, displayStyle: value as DisplayStyle })}
-        options={DISPLAY_STYLES.map((style) => ({
-          value: style,
-          label: t(`display.${style}`),
-          help: t(`display.${style}-help`),
-        }))}
-      />
-      <Select
-        label={t('order.label')}
-        help={t('order.help')}
-        value={draft.optionOrder}
-        disabled={disabled}
-        onChange={(event) => setDraft({ ...draft, optionOrder: event.target.value as OptionOrder })}
-        options={OPTION_ORDERS.map((order) => ({ value: order, label: t(`order.${order}`) }))}
-      />
-      {locales.map((help) => (
-        <TextField
-          key={help}
-          name={`seller-help-${help}`}
-          label={t('help.label', { language: languageName(help, locales) })}
-          help={t('help.help')}
-          value={draft.sellerHelp[help] ?? ''}
-          disabled={disabled}
-          maxLength={200}
-          error={fieldErrors[`sellerHelp.${help}`]}
-          dir="auto"
-          onChange={(event) =>
-            setDraft({ ...draft, sellerHelp: { ...draft.sellerHelp, [help]: event.target.value } })
-          }
-        />
-      ))}
-      <div className="flex flex-col gap-2">
-        <h3 className="text-sm font-semibold text-fg-muted">{t('options.title')}</h3>
-        <ul
-          className="divide-y divide-line rounded-lg border border-line"
-          aria-label={t('options.title')}
-        >
-          {detail.optionList.map((option) => {
-            const colour = draft.swatches[option.code] ?? '';
-            const preview = colourOf(colour);
-            return (
-              <li key={option.code} className="flex flex-col gap-2 px-3 py-2">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-                  <span className="font-medium text-fg">
-                    {option.labels[locale] ?? option.code}
-                  </span>
-                  {locales.slice(1).map((other) => (
-                    <span key={other} dir="auto" className="text-sm text-fg-muted">
-                      {option.labels[other] ?? (
-                        <span className="text-attention-fg">
-                          {t('options.missing', { language: languageName(other, locales) })}
-                        </span>
-                      )}
-                    </span>
-                  ))}
-                  {option.active ? null : <Badge tone="neutral">{t('options.inactive')}</Badge>}
-                  <span className="ms-auto text-sm text-fg-muted">
-                    {t('options.products', { count: option.products })}
-                  </span>
-                </div>
-                {draft.displayStyle === 'swatches' ? (
-                  <div className="flex items-end gap-2">
-                    <span
-                      aria-hidden="true"
-                      className="mb-2 size-6 shrink-0 rounded-full border border-line"
-                      style={preview === null ? undefined : { backgroundColor: preview }}
-                    />
-                    <TextField
-                      name={`swatch-${option.code}`}
-                      label={t('swatch.label', { option: option.labels[locale] ?? option.code })}
-                      value={colour}
-                      placeholder={t('swatch.placeholder')}
-                      disabled={disabled}
-                      maxLength={7}
-                      autoComplete="off"
-                      error={fieldErrors[`swatches.${option.code}`]}
-                      onChange={(event) => {
-                        const swatches = { ...draft.swatches };
-                        if (event.target.value === '') delete swatches[option.code];
-                        else swatches[option.code] = event.target.value;
-                        setDraft({ ...draft, swatches });
-                      }}
-                    />
-                  </div>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-      {canEdit ? (
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button
-            variant="secondary"
-            disabled={!changed || saving}
-            onClick={() => {
-              setDraft(draftOf(detail));
-              setFieldErrors({});
-              setProblem(null);
-            }}
-          >
-            {t('save.discard')}
-          </Button>
-          <Button loading={saving} disabled={!changed || saving} onClick={() => void save()}>
-            {t('save.label')}
-          </Button>
+    <>
+      <form
+        aria-label={t('detail-label')}
+        noValidate
+        className="flex min-w-0 flex-col gap-4 rounded-lg border border-line bg-surface p-5"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void save();
+        }}
+      >
+        <div className="flex flex-wrap items-center gap-2">
+          <h2 className="text-xl font-semibold wrap-anywhere">{nameOf(detail, locale)}</h2>
+          <Badge tone="info">{t('badge')}</Badge>
+          <span className="font-mono text-sm text-fg-muted">{detail.code}</span>
+          {canOpenAttributes ? (
+            <a
+              className="ms-auto text-sm font-medium text-link underline"
+              href={`${ATTRIBUTES_PATH}/${encodeURIComponent(detail.id)}`}
+            >
+              {t('edit-in-attributes')}
+            </a>
+          ) : null}
         </div>
-      ) : null}
-    </section>
+        <p className="text-sm text-fg-muted">{t('intro')}</p>
+        {problem === null ? null : (
+          <Banner tone="critical" title={t('save.failed')}>
+            {problem}
+          </Banner>
+        )}
+        <RadioGroup
+          legend={t('display.legend')}
+          name="display-style"
+          value={draft.displayStyle}
+          disabled={disabled}
+          onChange={(value) => setDraft({ ...draft, displayStyle: value as DisplayStyle })}
+          options={DISPLAY_STYLES.map((style) => ({
+            value: style,
+            label: t(`display.${style}`),
+            help: t(`display.${style}-help`),
+          }))}
+        />
+        <Select
+          label={t('order.label')}
+          help={t('order.help')}
+          value={draft.optionOrder}
+          disabled={disabled}
+          onChange={(event) =>
+            setDraft({ ...draft, optionOrder: event.target.value as OptionOrder })
+          }
+          options={OPTION_ORDERS.map((order) => ({ value: order, label: t(`order.${order}`) }))}
+        />
+        {locales.map((help) => (
+          <TextField
+            key={help}
+            name={`seller-help-${help}`}
+            label={t('help.label', { language: languageName(help, locales) })}
+            help={t('help.help')}
+            value={draft.sellerHelp[help] ?? ''}
+            disabled={disabled}
+            maxLength={200}
+            error={fieldErrors[`sellerHelp.${help}`]}
+            dir="auto"
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                sellerHelp: { ...draft.sellerHelp, [help]: event.target.value },
+              })
+            }
+          />
+        ))}
+        <div className="flex flex-col gap-2">
+          <h3 className="text-sm font-semibold text-fg-muted">{t('options.title')}</h3>
+          <ul
+            className="divide-y divide-line rounded-lg border border-line"
+            aria-label={t('options.title')}
+          >
+            {detail.optionList.map((option) => {
+              const colour = draft.swatches[option.code] ?? '';
+              const preview = colourOf(colour);
+              return (
+                <li key={option.code} className="flex flex-col gap-2 px-3 py-2">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                    <span className="font-medium text-fg">
+                      {option.labels[locale] ?? option.code}
+                    </span>
+                    {locales.slice(1).map((other) => (
+                      <span key={other} dir="auto" className="text-sm text-fg-muted">
+                        {option.labels[other] ?? (
+                          <span className="text-attention-fg">
+                            {t('options.missing', { language: languageName(other, locales) })}
+                          </span>
+                        )}
+                      </span>
+                    ))}
+                    {option.active ? null : <Badge tone="neutral">{t('options.inactive')}</Badge>}
+                    <span className="ms-auto text-sm text-fg-muted">
+                      {t('options.products', { count: option.products })}
+                    </span>
+                  </div>
+                  {draft.displayStyle === 'swatches' ? (
+                    <div className="flex items-end gap-2">
+                      <span
+                        aria-hidden="true"
+                        className="mb-2 size-6 shrink-0 rounded-full border border-line"
+                        style={preview === null ? undefined : { backgroundColor: preview }}
+                      />
+                      <TextField
+                        name={`swatch-${option.code}`}
+                        label={t('swatch.label', { option: option.labels[locale] ?? option.code })}
+                        value={colour}
+                        placeholder={t('swatch.placeholder')}
+                        disabled={disabled}
+                        maxLength={7}
+                        autoComplete="off"
+                        error={fieldErrors[`swatches.${option.code}`]}
+                        onChange={(event) => {
+                          const swatches = { ...draft.swatches };
+                          if (event.target.value === '') delete swatches[option.code];
+                          else swatches[option.code] = event.target.value;
+                          setDraft({ ...draft, swatches });
+                        }}
+                      />
+                    </div>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+        {canEdit ? (
+          <SaveBar
+            count={count}
+            summary={root('settings.bar.summary', { count })}
+            saving={saving}
+            labels={{
+              region: root('settings.bar.region'),
+              discard: root('settings.bar.discard'),
+              save: root('settings.bar.save'),
+              saving: root('settings.bar.saving'),
+            }}
+            onDiscard={discard}
+          />
+        ) : null}
+      </form>
+      {count > 0 ? guard.dialog : null}
+    </>
   );
 }

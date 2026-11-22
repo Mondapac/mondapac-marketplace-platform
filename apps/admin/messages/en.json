@@ -14261,8 +14261,6 @@
         "placeholder": "#RRGGBB"
       },
       "save": {
-        "label": "Save",
-        "discard": "Discard changes",
         "done": "Variant type saved",
         "failed": "Not saved",
         "stale": "Someone else changed this variant type. Reload it and make your change again.",

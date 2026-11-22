@@ -296,6 +296,7 @@ export function EditForm({
   readonly startProblem?: StartProblem | undefined;
 }) {
   const t = useTranslations('catalog.productForm');
+  const root = useTranslations();
   const locale = useLocale();
   const [typeCode, setTypeCode] = useState('');
   const [typeMissing, setTypeMissing] = useState(false);
@@ -1046,8 +1047,8 @@ export function EditForm({
           region: t('bar.region'),
           discard: t('bar.discard'),
           save: t(published ? 'bar.save-revision' : 'bar.save-draft'),
-          // The page keeps its own label while it saves; the button shows the spinner.
-          saving: t(published ? 'bar.save-revision' : 'bar.save-draft'),
+          // Every bar says "Saving…" while it saves, as the settings pages do.
+          saving: root('settings.bar.saving'),
         }}
         onDiscard={discardChanges}
       />
