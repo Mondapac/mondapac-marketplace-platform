@@ -438,7 +438,9 @@ function HealthFigure({
   const tErr = useTranslations('dashboard');
   const locale = useLocale();
   if (count.status === 'error') {
-    return <span className="text-sm text-critical-fg">{tErr('error.card')}</span>;
+    return (
+      <span className="max-w-40 text-right text-sm text-critical-fg">{tErr('error.card')}</span>
+    );
   }
   return (
     <>
@@ -465,18 +467,25 @@ function MarketHealthCard({
   operations,
 }: {
   readonly health: NonNullable<AdminKpis['health']>;
-  readonly operations: (NonNullable<AdminKpis['operations']> & { readonly status: 'ok' }) | null;
+  readonly operations: AdminKpis['operations'];
 }) {
   const t = useTranslations('dashboard.kpis.health');
+  const tErr = useTranslations('dashboard');
   const locale = useLocale();
   return (
     <DashboardCard id="dash-market-health" title={t('title')} scope={t('scope')}>
-      <ul aria-label={t('title')} className="flex flex-col">
+      <ul aria-label={t('title')} role="list" className="flex flex-col">
         {operations === null ? null : (
           <HealthRow label={t('active.label')} hint={t('active.hint')}>
-            <span className="text-lg font-semibold text-fg">
-              {formatCount(operations.kpis.sellersWithOrders, false, locale)}
-            </span>
+            {operations.status === 'ok' && operations.kpis.sellersWithOrders !== null ? (
+              <span className="text-lg font-semibold text-fg">
+                {formatCount(operations.kpis.sellersWithOrders, false, locale)}
+              </span>
+            ) : (
+              <span className="max-w-40 text-right text-sm text-critical-fg">
+                {tErr('error.card')}
+              </span>
+            )}
           </HealthRow>
         )}
         {health.uncertifiedListings === null ? null : (
@@ -575,41 +584,40 @@ function Strip({
         </h2>
         <KpiPeriodSwitch label={t('period.label')} options={options} value={period} note={note} />
       </div>
-      <StatGrid label={t('title')}>
-        {value === null ? (
-          <ErrorCards
-            ids={[
-              ...(keys.has(KPI_MONEY_PERMISSION)
-                ? (['gmv', 'net', 'aov', 'refunded'] as const)
-                : []),
-              ...(keys.has(KPI_ORDERS_PERMISSION)
-                ? (['orders', 'cancel', 'onTime', 'refunds'] as const)
-                : []),
-            ]}
-          />
-        ) : (
-          <>
-            {value.finance === null ? null : value.finance.status === 'ok' ? (
-              <FinanceCards kpis={value.finance} period={period} />
-            ) : (
-              <ErrorCards ids={['gmv', 'net', 'aov', 'refunded']} />
-            )}
-            {value.operations === null ? null : value.operations.status === 'ok' ? (
-              <OperationsCards kpis={value.operations} period={period} />
-            ) : (
-              <ErrorCards ids={['orders', 'cancel', 'onTime', 'refunds']} />
-            )}
-          </>
-        )}
-      </StatGrid>
+      {value !== null && value.operations === null && value.finance === null ? null : (
+        <StatGrid label={t('title')}>
+          {value === null ? (
+            <ErrorCards
+              ids={[
+                ...(keys.has(KPI_MONEY_PERMISSION)
+                  ? (['gmv', 'net', 'aov', 'refunded'] as const)
+                  : []),
+                ...(keys.has(KPI_ORDERS_PERMISSION)
+                  ? (['orders', 'cancel', 'onTime', 'refunds'] as const)
+                  : []),
+              ]}
+            />
+          ) : (
+            <>
+              {value.finance === null ? null : value.finance.status === 'ok' ? (
+                <FinanceCards kpis={value.finance} period={period} />
+              ) : (
+                <ErrorCards ids={['gmv', 'net', 'aov', 'refunded']} />
+              )}
+              {value.operations === null ? null : value.operations.status === 'ok' ? (
+                <OperationsCards kpis={value.operations} period={period} />
+              ) : (
+                <ErrorCards ids={['orders', 'cancel', 'onTime', 'refunds']} />
+              )}
+            </>
+          )}
+        </StatGrid>
+      )}
       {value?.finance?.status === 'ok' ? (
         <GmvChart finance={value.finance} period={period} value={value} />
       ) : null}
       {value?.health !== null && value?.health !== undefined ? (
-        <MarketHealthCard
-          health={value.health}
-          operations={value.operations?.status === 'ok' ? value.operations : null}
-        />
+        <MarketHealthCard health={value.health} operations={value.operations} />
       ) : null}
       {value?.topSellers?.status === 'ok' ? (
         <TopSellers

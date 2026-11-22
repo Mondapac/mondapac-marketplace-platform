@@ -173,6 +173,16 @@ describe.each(TEST_MARKETS)('the admin KPIs in market %s', (code) => {
     expect(out.ok && out.value.deltas.gmvWithTax.state).toBe('na');
   });
 
+  it('keeps the order numbers when only the sellers count cannot be read', async () => {
+    reader.rows = [{ ...emptyDay(today() as never), ordersPaid: 5 }];
+    reader.sellersWithOrders = () => Promise.reject(new TypeError('boom'));
+    const out = await new ViewMarketplaceOperationsKpis(gate, deps).execute(admin, {
+      period: 'month',
+    });
+    expect(out.ok && out.value.sellersWithOrders).toBeNull();
+    expect(out.ok && out.value.current.ordersPaid).toBe(5);
+  });
+
   it('answers the operations numbers with no money in them', async () => {
     reader.rows = [
       { ...emptyDay(today() as never), ordersPaid: 12, ordersShipped: 4, ordersShippedOnTime: 3 },

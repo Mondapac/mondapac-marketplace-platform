@@ -113,8 +113,13 @@ export class OperationsPointBody {
 }
 
 export class OperationsKpiBody {
-  @ApiProperty({ description: 'Sellers with at least one paid order in the period.' })
-  sellersWithOrders!: number;
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description:
+      'Sellers with at least one paid order in the period. Null when this one count could not be read.',
+  })
+  sellersWithOrders!: number | null;
   @ApiProperty({ type: OperationsKpiValuesBody }) current!: OperationsKpiValuesBody;
   @ApiProperty({ type: OperationsKpiValuesBody }) previous!: OperationsKpiValuesBody;
   @ApiProperty({

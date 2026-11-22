@@ -273,7 +273,7 @@
       },
       "health": {
         "title": "Marketplace health",
-        "scope": "Counts of now, except sellers with orders (the period)",
+        "scope": "Live counts, except sellers with orders, which follow the period.",
         "incident": "Incident",
         "watch": "Watch",
         "clear": "All clear",

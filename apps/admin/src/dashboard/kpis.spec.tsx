@@ -367,6 +367,51 @@ describe('the KPI formats', () => {
     expect(screen.queryByRole('region', { name: 'Marketplace health' })).toBeNull();
   });
 
+  it('shows an error row for the sellers count when it, or the whole orders read, failed', () => {
+    const health = {
+      uncertifiedListings: { status: 'ok', count: 0 },
+      sellersAtRisk: null,
+    } as const;
+    const keys = ['ordering.order.view', 'catalog.product.view'];
+    const { unmount } = render(
+      wrap(
+        <AdminKpiStrip
+          source={answer({
+            operations: { ...operations, kpis: { ...operations.kpis, sellersWithOrders: null } },
+            health,
+          })}
+          period="7d"
+          permissionKeys={keys}
+        />,
+      ),
+    );
+    let card = screen.getByRole('region', { name: 'Marketplace health' });
+    expect(within(card).getAllByRole('listitem')).toHaveLength(2);
+    expect(within(card).getByText(/could not be loaded/i)).toBeTruthy();
+    expect(within(card).getByText('All clear')).toBeTruthy(); // 0 listings is clear, not an error
+    unmount();
+    render(
+      wrap(
+        <AdminKpiStrip
+          source={answer({ operations: { status: 'error' }, health })}
+          period="7d"
+          permissionKeys={keys}
+        />,
+      ),
+    );
+    card = screen.getByRole('region', { name: 'Marketplace health' });
+    expect(within(card).getAllByRole('listitem')).toHaveLength(2);
+  });
+
+  it('shows no empty figure grid to a viewer who only has a health key', () => {
+    strip(
+      answer({ health: { uncertifiedListings: null, sellersAtRisk: { status: 'ok', count: 1 } } }),
+      ['sellers.seller.view'],
+    );
+    expect(screen.getByRole('region', { name: 'Marketplace health' })).toBeTruthy();
+    expect(screen.queryByRole('list', { name: 'Marketplace performance' })).toBeNull();
+  });
+
   it('says so in the top categories card when empty or failed, and leaves it out without the money key', () => {
     const { unmount } = render(
       wrap(

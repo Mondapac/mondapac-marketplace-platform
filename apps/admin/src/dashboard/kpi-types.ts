@@ -64,8 +64,8 @@ export type KpiSection<K> =
   | { readonly status: 'error' };
 
 export interface OperationsKpis {
-  /** Sellers with at least one paid order in the period. */
-  readonly sellersWithOrders: number;
+  /** Sellers with at least one paid order in the period; null when it could not be read. */
+  readonly sellersWithOrders: number | null;
   readonly current: OperationsValues;
   readonly previous: OperationsValues;
   readonly deltas: Readonly<Record<keyof OperationsValues, KpiDelta>>;

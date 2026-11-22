@@ -255,6 +255,9 @@ export class ViewAdminKpis extends UseCase<
     name: string,
     read: (query: WorkQueueCountQuery) => Promise<Result<WorkQueueCount, AccessDenied>>,
   ): Promise<HealthCount> {
+    // The signal only stops an owner before it starts its next read; a query already running is
+    // not cancelled. `section()` below is what bounds the wait. `staleBefore` is `now` because
+    // only `count` is used here, never the overdue figure.
     const controller = new AbortController();
     const now = this.deps.clock.now();
     const timer = setTimeout(() => controller.abort(), this.deps.timeoutMs);

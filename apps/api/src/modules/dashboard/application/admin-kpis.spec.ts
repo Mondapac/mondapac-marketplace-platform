@@ -271,6 +271,33 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     });
   });
 
+  it('marks a health count as error when its owner refuses the viewer', async () => {
+    const deps: AdminKpisDependencies = {
+      viewer: { describe: () => Promise.resolve(ok(viewer([CATALOG_VIEW, SELLERS_VIEW]))) },
+      reporting: facade,
+      sellers: { sellerSummaries: () => Promise.resolve(ok([])) },
+      catalog: { categoryTree: () => Promise.resolve(ok([])) },
+      queues: queues({
+        claims: () => Promise.resolve(err({ code: 'access.denied' as const })),
+      }),
+      clock: new FixedClock(NOW),
+      timeoutMs: 50,
+    };
+    const out = await new ViewAdminKpis(gate, deps).execute(admin, { period: '7d' });
+    const body = out.ok ? adminKpisBody(out.value) : null;
+    expect(body?.health?.uncertifiedListings).toEqual({ status: 'error' });
+    expect(body?.health?.sellersAtRisk?.status).toBe('ok');
+  });
+
+  it('maps a health section to the response body with its counts', async () => {
+    const out = await build([CATALOG_VIEW, SELLERS_VIEW], 50).execute(admin, { period: '7d' });
+    const body = out.ok ? adminKpisBody(out.value) : null;
+    expect(body?.health).toMatchObject({
+      uncertifiedListings: { status: 'ok' },
+      sellersAtRisk: { status: 'ok' },
+    });
+  });
+
   it('keeps the money when the store names cannot be read', async () => {
     const deps: AdminKpisDependencies = {
       viewer: { describe: () => Promise.resolve(ok(viewer([MONEY]))) },
