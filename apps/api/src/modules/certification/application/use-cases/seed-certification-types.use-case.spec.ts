@@ -1,3 +1,4 @@
+import { loadBadgeArtworkKeys } from '../../infrastructure/badge-artwork-keys';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, Result } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
@@ -54,6 +55,7 @@ describe.each(TEST_MARKETS)('SeedCertificationTypes in market %s', (code) => {
       types: repository,
       seed: { types: () => types },
       supportedLocales: (m) => markets.get(m.marketId).supportedLocales,
+      badgeArtworkKeys: loadBadgeArtworkKeys(),
       clock: new FixedClock(Temporal.Instant.from('2026-10-14T00:00:00Z')),
       ids: {
         next: <T extends string>() =>

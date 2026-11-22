@@ -1,11 +1,14 @@
 import {
   accreditationNumberIn,
+  approveTypeCreation,
   changeReasonIn,
   closeProposal,
   deactivateType,
   expertApprovalIn,
   issuerNameIn,
   issuerNameKey,
+  isLiveTypeStatus,
+  newTypeCodeIn,
   MAX_CHANGE_REASON_LENGTH,
   reactivateType,
   requestTypeReactivation,
@@ -141,5 +144,33 @@ describe('closing a pending proposal (design 7.6; H1)', () => {
         expect(code(closeProposal(pending({ state }), action, B))).toBe('review.proposal-closed');
       }
     }
+  });
+});
+
+describe('a new type (FE-091)', () => {
+  it('takes a code of the pattern that is not a seed code', () => {
+    expect(newTypeCodeIn('organic', ['halal'])).toEqual({ ok: true, value: 'organic' });
+    expect(newTypeCodeIn('halal', ['halal'])).toEqual({ ok: false, code: 'type.code-reserved' });
+    expect(newTypeCodeIn(undefined, [])).toEqual({ ok: false, code: 'required' });
+    expect(newTypeCodeIn(7, [])).toEqual({ ok: false, code: 'type' });
+    for (const bad of ['O', 'Organic', '9lives', 'a'.repeat(33), 'or ganic']) {
+      expect(newTypeCodeIn(bad, [])).toEqual({ ok: false, code: 'format' });
+    }
+  });
+
+  it('is approved by a second admin only while proposed', () => {
+    expect(approveTypeCreation('proposed', pending(), B)).toEqual({ ok: true, value: 'active' });
+    expect(code(approveTypeCreation('proposed', pending(), A))).toBe(
+      'review.second-admin-required',
+    );
+    expect(code(approveTypeCreation('active', pending(), B))).toBe('type.not-proposed');
+    for (const closed of ['rejected', 'withdrawn'] as const) {
+      expect(code(approveTypeCreation(closed, pending(), B))).toBe('type.proposal-closed');
+    }
+  });
+
+  it('counts only active and inactive types as live', () => {
+    const all = ['proposed', 'active', 'inactive', 'rejected', 'withdrawn'];
+    expect(all.filter(isLiveTypeStatus)).toEqual(['active', 'inactive']);
   });
 });

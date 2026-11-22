@@ -189,6 +189,7 @@ export class TypeSaveRevision extends UseCase<
       parsed.value,
       deps.supportedLocales(market),
       published.content,
+      deps.badgeArtworkKeys,
     );
     if (!checked.ok) return err({ code: 'type.revision-invalid', issues: checked.error });
     const content = checked.value;
@@ -419,7 +420,8 @@ export class TypeSaveRevision extends UseCase<
           changeReasonCiphertext: reasonCiphertext,
           proposedAt: now,
         });
-        if (refused !== null) throw new Error('a superseded type-creation proposal is still pending');
+        if (refused !== null)
+          throw new Error('a superseded type-creation proposal is still pending');
         await deps.audit.record(
           context,
           TypeProposalRevisedAudit.entry(typeId, {
@@ -432,14 +434,7 @@ export class TypeSaveRevision extends UseCase<
             },
           }),
         );
-        await deps.outbox.append(context, [
-          RelaxationProposed.record({
-            aggregateId: proposalId,
-            aggregateVersion: 1,
-            occurredAt: now,
-            payload: { proposalId, subject: 'type-creation' },
-          }),
-        ]);
+        // No `relaxation-proposed.v1` for a type-creation proposal (see PROPOSAL_SUBJECTS).
         return ok({
           outcome: 'proposal-revised' as const,
           typeId,

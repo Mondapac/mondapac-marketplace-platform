@@ -13,7 +13,8 @@ const BASES: readonly string[] = ['SELLER_REQUIRED', 'NOT_APPLICABLE'];
 /**
  * {@link PublishedTypesReader} on `certification.certification_types`, its published revision,
  * texts and claim terms (data design 3.1 to 3.3). It reads inside the caller's unit and asks for
- * every type row of the Market, active or inactive: a type whose published revision is missing
+ * every live type row of the Market, active or inactive (never a proposed, rejected or withdrawn
+ * new type, FE-091): a type whose published revision is missing
  * or unreadable, or that has no claim term, rejects the whole read (the caller answers
  * `unavailable`), never drops the type, because a dropped type would let its words pass unseen
  * (Hassan, #142). Output order is fixed in code (type code, then locale, then phrase), never the
@@ -83,7 +84,12 @@ export class PrismaPublishedTypesReader implements PublishedTypesReader {
   /** Every type row of the Market in code order, each with its resolved published revision. */
   private async readTypes(market: MarketContext, status: 'active' | 'inactive' | undefined) {
     const rows = await this.prisma.tx(market).certificationType.findMany({
-      where: { marketId: market.marketId, ...(status === undefined ? {} : { status }) },
+      // Live types only: a proposed new type, and a rejected or withdrawn one, is not matched
+      // and not offered (FE-091, the explicit exception to Hassan #142; see the port).
+      where: {
+        marketId: market.marketId,
+        status: status === undefined ? { in: [...STATUSES] } : status,
+      },
       include: {
         publishedRevision: {
           include: { texts: { include: { terms: true } } },

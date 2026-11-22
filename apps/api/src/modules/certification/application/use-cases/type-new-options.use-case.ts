@@ -4,7 +4,6 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { CERTIFICATION_TYPE_EDIT } from '../../contracts/permissions';
 import { MAX_CHANGE_REASON_LENGTH } from '../../domain/registry';
 import {
-  BADGE_ARTWORK_KEYS,
   MAX_TERM_LENGTH,
   MAX_TERMS_PER_LOCALE,
   MAX_TYPE_DESCRIPTION_LENGTH,
@@ -66,7 +65,7 @@ export class TypeNewOptions extends UseCase<
         locales: [...this.deps.supportedLocales(context.market)],
         verificationModes: [...VERIFICATION_MODES],
         defaultBases: ['SELLER_REQUIRED', 'NOT_APPLICABLE'],
-        badgeArtworkKeys: [...BADGE_ARTWORK_KEYS],
+        badgeArtworkKeys: [...this.deps.badgeArtworkKeys],
         limits: {
           codeMinLength: 2,
           codeMaxLength: 32,

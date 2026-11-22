@@ -1,3 +1,4 @@
+import { loadBadgeArtworkKeys } from '../../infrastructure/badge-artwork-keys';
 import { Logger } from '@nestjs/common';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, Result } from '@mondapac/shared-kernel';
@@ -159,6 +160,7 @@ describe.each(['AU', 'ZZ'] as const)('certification registry in market %s', (cod
       ids,
       review: new RecordingReview(),
       supportedLocales: (m) => markets.get(m.marketId).supportedLocales,
+      badgeArtworkKeys: loadBadgeArtworkKeys(),
     };
     const typeId = ids.next<'CertificationType'>();
     registry.addType(

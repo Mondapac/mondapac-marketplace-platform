@@ -4,7 +4,6 @@ import type { CallContext, MarketContext, Result } from '@mondapac/shared-kernel
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CERTIFICATION_TYPE_EDIT } from '../../contracts/permissions';
 import { TypeProposedAudit } from '../../domain/audit';
-import { RelaxationProposed } from '../../domain/events';
 import { changeReasonIn, newTypeCodeIn } from '../../domain/registry';
 import {
   VERIFICATION_MODES,
@@ -102,7 +101,12 @@ export class TypeCreate extends UseCase<TypeCreateInput, TypeCreateOutput, TypeC
     if (mode === null) return invalid('content.verificationMode', 'format');
     const parsed = typeRevisionContentIn(input.content, mode);
     if (!parsed.ok) return err({ code: 'validation.failed', fields: parsed.problems });
-    const checked = validateTypeRevision(parsed.value, deps.supportedLocales(market), null);
+    const checked = validateTypeRevision(
+      parsed.value,
+      deps.supportedLocales(market),
+      null,
+      deps.badgeArtworkKeys,
+    );
     if (!checked.ok) return err({ code: 'type.revision-invalid', issues: checked.error });
     const content = checked.value;
 
@@ -144,17 +148,16 @@ export class TypeCreate extends UseCase<TypeCreateInput, TypeCreateOutput, TypeC
         await deps.audit.record(
           context,
           TypeProposedAudit.entry(typeId, {
-            after: { proposalId, revisionId, revisionNo: 1, reasonGiven: reasonCiphertext !== null },
+            after: {
+              proposalId,
+              revisionId,
+              revisionNo: 1,
+              reasonGiven: reasonCiphertext !== null,
+            },
           }),
         );
-        await deps.outbox.append(context, [
-          RelaxationProposed.record({
-            aggregateId: proposalId,
-            aggregateVersion: 1,
-            occurredAt: now,
-            payload: { proposalId, subject: 'type-creation' },
-          }),
-        ]);
+        // No `relaxation-proposed.v1`: its subject enum is a published contract without
+        // `type-creation` (see PROPOSAL_SUBJECTS).
         return ok({
           typeId,
           proposalId,

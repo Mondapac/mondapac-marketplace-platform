@@ -1,6 +1,7 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import type { AuditActionDefinition } from '@mondapac/shared-kernel';
-import { ISSUER_REQUEST_OUTCOME_VALUES, RELAXATION_SUBJECTS, SUBMISSION_KINDS } from './events';
+import { ISSUER_REQUEST_OUTCOME_VALUES, SUBMISSION_KINDS } from './events';
+import { PROPOSAL_SUBJECTS } from './registry';
 
 // The audited actions of certification's admin review (design 11; AC 22), registered at boot with
 // `registerAuditActions('certification', CERTIFICATION_AUDIT_ACTIONS)` and written through the
@@ -371,7 +372,7 @@ export const RelaxationProposalRejectedAudit = defineAuditAction({
   action: 'certification.relaxation-proposal.rejected',
   targetType: RELAXATION_PROPOSAL_TARGET,
   actors: ['authenticated'],
-  after: { subject: auditField.enumOf(RELAXATION_SUBJECTS), subjectId: auditField.id() },
+  after: { subject: auditField.enumOf(PROPOSAL_SUBJECTS), subjectId: auditField.id() },
 });
 
 /** The proposer withdrew a pending proposal (design 7.6). */
@@ -379,7 +380,7 @@ export const RelaxationProposalWithdrawnAudit = defineAuditAction({
   action: 'certification.relaxation-proposal.withdrawn',
   targetType: RELAXATION_PROPOSAL_TARGET,
   actors: ['authenticated'],
-  after: { subject: auditField.enumOf(RELAXATION_SUBJECTS), subjectId: auditField.id() },
+  after: { subject: auditField.enumOf(PROPOSAL_SUBJECTS), subjectId: auditField.id() },
 });
 
 /** The audit target type of a claim basis policy (one per Market and type; design 3.7). */

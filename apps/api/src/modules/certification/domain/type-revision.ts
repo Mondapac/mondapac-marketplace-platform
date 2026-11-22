@@ -47,29 +47,13 @@ export type TypeRevisionProblem =
   | { readonly code: 'type.claim-term-too-common'; readonly locale: string };
 
 const CODE_PATTERN = /^[a-z][a-z0-9-]{1,31}$/;
-const ICON_KEY_PATTERN = /^[a-z][a-z0-9-]{0,63}$/;
+export const BADGE_ICON_KEY_PATTERN = /^[a-z][a-z0-9-]{0,63}$/;
 export const MAX_TYPE_NAME_LENGTH = 80;
 export const MAX_TYPE_DESCRIPTION_LENGTH = 500;
 export const MAX_TERMS_PER_LOCALE = 200;
 export const MAX_TERM_LENGTH = 100;
 const MAX_NAME = MAX_TYPE_NAME_LENGTH;
 const MAX_DESCRIPTION = MAX_TYPE_DESCRIPTION_LENGTH;
-
-/**
- * The badge artwork keys a revision may name (new-type design 5): `text` (the storefront shows the
- * type's name) and the keys already in use (the AU seed, the operational and demo data's organic,
- * the synthetic Market's seed). Only artwork that exists can be chosen; a new key is added here
- * with its storefront artwork.
- */
-export const BADGE_ARTWORK_KEYS = [
-  'text',
-  'halal',
-  'kosher',
-  'vegan',
-  'organic',
-  'seal',
-  'leaf',
-] as const;
 
 /** Each list entry as its token sequence after the matcher's normalisation and leet map. */
 function wordForms(text: string): string[] {
@@ -145,12 +129,15 @@ const textOk = (s: unknown, max: number): boolean =>
 /**
  * Validates a revision against the Market's `supportedLocales` and, when there is a previous
  * published revision, the immutability of `verificationMode` (H1). Every supported locale
- * needs a name and a description; claim terms may be empty for a locale.
+ * needs a name and a description; claim terms may be empty for a locale. The badge names one of
+ * `badgeArtworkKeys`, the checked-in artwork list (configuration, FE-091): only artwork that
+ * exists can be chosen.
  */
 export function validateTypeRevision(
   content: TypeRevisionContent,
   supportedLocales: readonly string[],
   previous: TypeRevisionContent | null,
+  badgeArtworkKeys: readonly string[],
 ): Result<TypeRevisionContent, readonly TypeRevisionProblem[]> {
   const problems: TypeRevisionProblem[] = [];
   if (!(VERIFICATION_MODES as readonly string[]).includes(content.verificationMode)) {
@@ -173,8 +160,8 @@ export function validateTypeRevision(
     problems.push({ code: 'type.issuer-registry-not-allowed' });
   }
   if (
-    !ICON_KEY_PATTERN.test(content.badgeIconKey) ||
-    !(BADGE_ARTWORK_KEYS as readonly string[]).includes(content.badgeIconKey)
+    !BADGE_ICON_KEY_PATTERN.test(content.badgeIconKey) ||
+    !badgeArtworkKeys.includes(content.badgeIconKey)
   ) {
     problems.push({ code: 'type.badge-icon-invalid' });
   }

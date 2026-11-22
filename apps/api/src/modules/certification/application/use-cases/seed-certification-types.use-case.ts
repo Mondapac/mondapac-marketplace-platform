@@ -32,6 +32,8 @@ export interface SeedCertificationTypesDependencies {
   readonly seed: CertificationTypeSeed;
   /** The Market's `supportedLocales`. */
   readonly supportedLocales: (market: CallContext['market']) => readonly string[];
+  /** The badge artwork keys a revision may name (configuration, FE-091). */
+  readonly badgeArtworkKeys: readonly string[];
   readonly clock: Clock;
   readonly ids: IdGenerator;
 }
@@ -81,7 +83,12 @@ export class SeedCertificationTypes extends UseCase<
     }
     const locales = this.deps.supportedLocales(market);
     for (const entry of seeded) {
-      const checked = validateTypeRevision(entry.content, locales, null);
+      const checked = validateTypeRevision(
+        entry.content,
+        locales,
+        null,
+        this.deps.badgeArtworkKeys,
+      );
       if (!checked.ok) {
         this.#logger.error({
           msg: 'certification.seed-types.invalid',

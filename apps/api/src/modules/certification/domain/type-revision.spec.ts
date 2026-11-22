@@ -1,3 +1,4 @@
+import { loadBadgeArtworkKeys } from '../infrastructure/badge-artwork-keys';
 import type { MarketId } from '@mondapac/shared-kernel';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
@@ -6,7 +7,6 @@ import type { SeededType } from '../application/ports/type-seed';
 import { loadFileTypeSeeds } from '../infrastructure/seed/file-type-seed';
 import { ZZ_CERTIFICATION_TYPES } from '../infrastructure/seed/zz.types.seed';
 import {
-  BADGE_ARTWORK_KEYS,
   assertSecondAdmin,
   classifyTypeRevision,
   isCertificationTypeCode,
@@ -51,6 +51,9 @@ const zz = (over: Partial<TypeRevisionContent> = {}): TypeRevisionContent => ({
   ...over,
 });
 
+// The checked-in badge artwork list (config/certification-badge-artwork/keys.json).
+const KEYS = loadBadgeArtworkKeys();
+
 describe('type code', () => {
   it('accepts the pattern and rejects the rest', () => {
     expect(isCertificationTypeCode('halal')).toBe(true);
@@ -72,12 +75,12 @@ describe('validateTypeRevision', () => {
         },
       },
     });
-    expect(validateTypeRevision(content, ['en-AU'], null).ok).toBe(true);
+    expect(validateTypeRevision(content, ['en-AU'], null, KEYS).ok).toBe(true);
   });
 
   it('accepts a complete revision for both Market fixtures', () => {
-    expect(validateTypeRevision(base(), LOCALES, null).ok).toBe(true);
-    expect(validateTypeRevision(zz(), ['zz'], null).ok).toBe(true);
+    expect(validateTypeRevision(base(), LOCALES, null, KEYS).ok).toBe(true);
+    expect(validateTypeRevision(zz(), ['zz'], null, KEYS).ok).toBe(true);
   });
 
   const problems = (
@@ -85,7 +88,7 @@ describe('validateTypeRevision', () => {
     locales = LOCALES,
     prev: TypeRevisionContent | null = null,
   ) => {
-    const r = validateTypeRevision(c, locales, prev);
+    const r = validateTypeRevision(c, locales, prev, KEYS);
     return r.ok ? [] : r.error.map((p) => p.code);
   };
 
@@ -375,7 +378,7 @@ describe('validateTypeRevision, further cases (Sajad)', () => {
     locales = LOCALES,
     prev: TypeRevisionContent | null = null,
   ) => {
-    const r = validateTypeRevision(c, locales, prev);
+    const r = validateTypeRevision(c, locales, prev, KEYS);
     return r.ok ? [] : r.error.map((p) => p.code);
   };
   const withEn = (over: Partial<TypeRevisionContent['locales'][string]>): TypeRevisionContent =>
@@ -476,7 +479,7 @@ describe('typeRevisionDiff (the read shape of a pending relaxation, design 7.6)'
 
 describe('validateTypeRevision, the new-type rules (FE-091, design 5)', () => {
   const codes = (content: TypeRevisionContent, locales = LOCALES): string[] => {
-    const result = validateTypeRevision(content, locales, null);
+    const result = validateTypeRevision(content, locales, null, KEYS);
     return result.ok ? [] : result.error.map((problem) => problem.code);
   };
 
@@ -493,7 +496,8 @@ describe('validateTypeRevision, the new-type rules (FE-091, design 5)', () => {
   });
 
   it('takes only badge artwork that exists, text included', () => {
-    for (const key of BADGE_ARTWORK_KEYS) expect(codes(base({ badgeIconKey: key }))).toEqual([]);
+    expect(KEYS).toEqual(['text', 'halal', 'kosher', 'vegan', 'organic', 'seal', 'leaf']);
+    for (const key of KEYS) expect(codes(base({ badgeIconKey: key }))).toEqual([]);
     for (const key of ['shield', 'star', 'halal2']) {
       expect(codes(base({ badgeIconKey: key }))).toEqual(['type.badge-icon-invalid']);
     }

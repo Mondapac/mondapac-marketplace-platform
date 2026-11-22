@@ -24,7 +24,10 @@ import {
   type SellerOwnerContact,
 } from '../application/ports/decision-mail.ports';
 import { REGISTRY_CIPHER, type RegistryCipher } from '../application/ports/registry-cipher';
-import { CERTIFICATION_TYPE_SEED, type CertificationTypeSeed } from '../application/ports/type-seed';
+import {
+  CERTIFICATION_TYPE_SEED,
+  type CertificationTypeSeed,
+} from '../application/ports/type-seed';
 import {
   CERTIFICATION_REGISTRY_REPOSITORY,
   type CertificationRegistryRepository,
@@ -57,6 +60,7 @@ import {
 import { TypeApproveCreation } from '../application/use-cases/type-approve-creation.use-case';
 import { TypeApproveReactivation } from '../application/use-cases/type-approve-reactivation.use-case';
 import { TypeApproveRelaxation } from '../application/use-cases/type-approve-relaxation.use-case';
+import { loadBadgeArtworkKeys } from './badge-artwork-keys';
 import { TypeCreate } from '../application/use-cases/type-create.use-case';
 import { TypeDeactivate } from '../application/use-cases/type-deactivate.use-case';
 import { TypeNewOptions } from '../application/use-cases/type-new-options.use-case';
@@ -169,6 +173,7 @@ export const registryProviders: readonly Provider[] = [
       ids,
       review,
       supportedLocales: (market: MarketContext) => markets.get(market.marketId).supportedLocales,
+      badgeArtworkKeys: loadBadgeArtworkKeys(),
     }),
   },
   {

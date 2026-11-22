@@ -198,7 +198,7 @@ export class TypeCreateRequest {
   @ApiProperty({
     description:
       'Lowercase letters, digits and hyphens, 2 to 32 characters, starting with a letter. Never ' +
-      "a seed code of the Market and never reused, whatever the status of the type that has it.",
+      'a seed code of the Market and never reused, whatever the status of the type that has it.',
   })
   code!: string;
   @ApiProperty(CONTENT_SCHEMA) content!: Record<string, unknown>;

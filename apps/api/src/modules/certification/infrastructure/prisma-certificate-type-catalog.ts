@@ -5,6 +5,7 @@ import type {
   IssuerChoice,
   SellerTypeView,
 } from '../application/ports/certificate-type-catalog';
+import { LIVE_TYPE_STATUSES } from '../domain/registry';
 import type { TypeSettings } from '../domain/seller-certificate';
 import type { IssuerState } from '../domain/validity';
 
@@ -69,14 +70,15 @@ function toIssuer(row: {
 
 /**
  * {@link CertificateTypeCatalog} on the type registry tables of `certification` (data design 3.1
- * to 3.3, 3.7). Reads inside the caller's unit.
+ * to 3.3, 3.7). Reads inside the caller's unit. A proposed, rejected or withdrawn new type (FE-091)
+ * is not found here: a seller can neither see it nor add a certificate of it.
  */
 export class PrismaCertificateTypeCatalog implements CertificateTypeCatalog {
   constructor(private readonly prisma: PrismaService) {}
 
   async typeByCode(market: MarketContext, code: string): Promise<TypeSettings | null> {
     const row = await this.prisma.tx(market).certificationType.findFirst({
-      where: { marketId: market.marketId, code },
+      where: { marketId: market.marketId, code, status: { in: [...LIVE_TYPE_STATUSES] } },
       include: TYPE_INCLUDE,
     });
     return row === null ? null : toView(row);
@@ -87,7 +89,7 @@ export class PrismaCertificateTypeCatalog implements CertificateTypeCatalog {
     typeId: Id<'CertificationType'>,
   ): Promise<TypeSettings | null> {
     const row = await this.prisma.tx(market).certificationType.findFirst({
-      where: { marketId: market.marketId, id: typeId },
+      where: { marketId: market.marketId, id: typeId, status: { in: [...LIVE_TYPE_STATUSES] } },
       include: TYPE_INCLUDE,
     });
     return row === null ? null : toView(row);

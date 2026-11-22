@@ -74,16 +74,16 @@ export class TypesList extends UseCase<TypesListInput, TypesListOutput, TypesLis
             items: rows
               .filter((row) => closed || !isClosedTypeStatus(row.type.status))
               .map((row) => ({
-              typeId: row.type.id,
-              code: row.type.code,
-              status: row.type.status,
-              verificationMode: row.type.verificationMode,
-              version: row.type.version,
-              publishedRevisionId: row.type.publishedRevisionId,
-              publishedRevisionNo: row.publishedRevisionNo,
-              names: row.names,
-              pending: row.pendingSubjects,
-            })),
+                typeId: row.type.id,
+                code: row.type.code,
+                status: row.type.status,
+                verificationMode: row.type.verificationMode,
+                version: row.type.version,
+                publishedRevisionId: row.type.publishedRevisionId,
+                publishedRevisionNo: row.publishedRevisionNo,
+                names: row.names,
+                pending: row.pendingSubjects,
+              })),
           });
         },
         { readOnly: true },

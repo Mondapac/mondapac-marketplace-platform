@@ -1,6 +1,6 @@
 import { err, ok, parsePlainText } from '@mondapac/shared-kernel';
 import type { Result } from '@mondapac/shared-kernel';
-import type { RELAXATION_SUBJECTS } from './events';
+import { RELAXATION_SUBJECTS } from './events';
 import { assertSecondAdmin } from './type-revision';
 import type { ExpertApproval } from './issuer';
 
@@ -131,8 +131,7 @@ export type TypeStatusProblem =
 
 /** The refusals of the new-type proposal (FE-091). */
 export type TypeCreationProblem =
-  | { readonly code: 'type.not-proposed' }
-  | { readonly code: 'type.proposal-closed' };
+  { readonly code: 'type.not-proposed' } | { readonly code: 'type.proposal-closed' };
 
 /**
  * The code of a new type (new-type design 5): the type code pattern (lowercase letters, digits and
@@ -187,7 +186,14 @@ export const PROPOSAL_STATES = [
 ] as const;
 export type ProposalState = (typeof PROPOSAL_STATES)[number];
 
-export type ProposalSubject = (typeof RELAXATION_SUBJECTS)[number];
+/**
+ * Every subject a proposal can have: the relaxations of the event's v1 enum, and a new type
+ * proposed from the admin panel (FE-091), which a second admin approves. A type-creation proposal
+ * publishes no `relaxation-proposed.v1` (its enum is a published contract; the event has no
+ * consumer yet, and its mail consumer takes a v2 that adds the subject).
+ */
+export const PROPOSAL_SUBJECTS = [...RELAXATION_SUBJECTS, 'type-creation'] as const;
+export type ProposalSubject = (typeof PROPOSAL_SUBJECTS)[number];
 
 /** What the closing rules read of a stored proposal. */
 export interface ProposalRecord {

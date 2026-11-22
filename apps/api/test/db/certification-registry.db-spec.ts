@@ -555,4 +555,143 @@ describe.each(TEST_MARKETS)('certification registry in market %s (database)', (c
     await Promise.all([approval, change]);
     expect(changed).toBe(true);
   }, 30_000);
+
+  it('creates a proposed type that only the any-status read sees, under one code per Market (FE-091)', async () => {
+    const typeId = uuid7() as Id<'CertificationType'>;
+    const revisionId = uuid7() as Id<'CertificationTypeRevision'>;
+    const typeCode = `n${typeId.slice(-12)}`;
+    const proposed = (id: Id<'CertificationType'>, revision: Id<'CertificationTypeRevision'>) => ({
+      typeId: id,
+      code: typeCode,
+      revision: {
+        id: revision,
+        content: contentOf(),
+        authorAccountId: uuid7() as Id<'Account'>,
+        changeReasonCiphertext: null,
+        createdAt: T0,
+      },
+    });
+    expect(
+      await inUnit(() => registry.createType(market, proposed(typeId, revisionId))),
+    ).toBeNull();
+    expect(await read(() => registry.typeOfAnyStatus(market, typeId))).toMatchObject({
+      code: typeCode,
+      status: 'proposed',
+      publishedRevisionId: revisionId,
+      version: 1,
+    });
+    expect(await read(() => registry.revision(market, revisionId))).toMatchObject({
+      revisionNo: 1,
+      content: contentOf(),
+    });
+    // Every other path treats a proposed type as unknown; the other Market sees nothing.
+    expect(await read(() => registry.type(market, typeId))).toBeNull();
+    expect(await read(() => registry.typeOfAnyStatus(other, typeId), other)).toBeNull();
+
+    // The code is taken whatever the status; the same code in the other Market is free.
+    expect(
+      await inUnit(() =>
+        registry.createType(
+          market,
+          proposed(uuid7() as Id<'CertificationType'>, uuid7() as Id<'CertificationTypeRevision'>),
+        ),
+      ),
+    ).toBe('type.code-taken');
+    expect(
+      await inUnit(
+        () =>
+          registry.createType(
+            other,
+            proposed(
+              uuid7() as Id<'CertificationType'>,
+              uuid7() as Id<'CertificationTypeRevision'>,
+            ),
+          ),
+        other,
+      ),
+    ).toBeNull();
+
+    // A proposal of the creation is a subject of its own kind.
+    const proposalId = uuid7() as Id<'RelaxationProposal'>;
+    expect(
+      await inUnit(() =>
+        registry.addProposal(market, {
+          id: proposalId,
+          subject: 'type-creation',
+          subjectId: typeId,
+          basedOnRevisionId: revisionId,
+          proposedRevisionId: revisionId,
+          proposedExpertReferenceCiphertext: null,
+          proposerAccountId: uuid7() as Id<'Account'>,
+          changeReasonCiphertext: null,
+          proposedAt: T0,
+        }),
+      ),
+    ).toBeNull();
+    expect(
+      await read(() => registry.pendingProposal(market, 'type-creation', typeId)),
+    ).toMatchObject({ id: proposalId, state: 'pending' });
+
+    // Approved, the type is live.
+    await inUnit(() => registry.setTypeStatus(market, typeId, 'active', 1));
+    expect(await read(() => registry.type(market, typeId))).toMatchObject({
+      status: 'active',
+      version: 2,
+    });
+  });
+
+  it('keeps the type status lifecycle in the database (FE-091)', async () => {
+    const insertSql = `INSERT INTO certification.certification_types
+           (id, market_id, tenant_id, code, verification_mode, status, published_revision_id, version, created_at)
+         VALUES ($1, $2, $3, $4, 'THIRD_PARTY_DOCUMENT', $5, NULL, 1, $6)`;
+    const insert = async (status: string) => {
+      const id = uuid7();
+      await sql.query(insertSql, [
+        id,
+        market.marketId,
+        market.tenantId,
+        `l${id.slice(-12)}`,
+        status,
+        T0.toString(),
+      ]);
+      return id;
+    };
+    const statusOf = (id: string) =>
+      sql
+        .query<{ status: string }>(
+          `SELECT status FROM certification.certification_types WHERE id = $1`,
+          [id],
+        )
+        .then((r) => r.rows[0]!.status);
+    const setStatus = (id: string, next: string) =>
+      sql.query(`UPDATE certification.certification_types SET status = $1 WHERE id = $2`, [
+        next,
+        id,
+      ]);
+
+    // Never inserted closed; an unknown status fails the CHECK.
+    await expect(insert('rejected')).rejects.toThrow();
+    await expect(insert('withdrawn')).rejects.toThrow();
+    await expect(insert('archived')).rejects.toThrow();
+
+    // A proposed type is approved, rejected or withdrawn, never made inactive.
+    await expect(setStatus(await insert('proposed'), 'inactive')).rejects.toThrow();
+    for (const closed of ['rejected', 'withdrawn']) {
+      const id = await insert('proposed');
+      await setStatus(id, closed);
+      expect(await statusOf(id)).toBe(closed);
+      // A closed type is frozen.
+      await expect(setStatus(id, 'active')).rejects.toThrow();
+      await expect(setStatus(id, 'proposed')).rejects.toThrow();
+    }
+
+    // A live type stays active or inactive.
+    const live = await insert('proposed');
+    await setStatus(live, 'active');
+    await setStatus(live, 'inactive');
+    await setStatus(live, 'active');
+    await expect(setStatus(live, 'proposed')).rejects.toThrow();
+    await expect(setStatus(live, 'rejected')).rejects.toThrow();
+    expect(await statusOf(live)).toBe('active');
+  });
 });
