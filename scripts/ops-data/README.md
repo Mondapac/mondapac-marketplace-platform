@@ -79,6 +79,27 @@ person, because the local environment has no courier (future enhancements regist
 environment that allows it; behind an HTTPS proxy, start the API, the worker and the loader with
 `NODE_USE_ENV_PROXY=1` (Node's own `fetch` ignores `HTTPS_PROXY` otherwise).
 
+## Reset, fast restore and the .bat (phase 3)
+
+On Windows, `scripts\ops-local.bat` does it all (`scripts\demo-local.bat`, the older and smaller demo, stays as it is):
+
+| Command | What it does | Time |
+|---|---|---|
+| `scripts\ops-local.bat` | Starts Docker services, the API, the worker, the panels and the buyer site (as `dev-local.bat`), marks the database, runs the loader (a rerun changes nothing). The first run also saves the backup. | first run: minutes |
+| `scripts\ops-local.bat reset` | Closes the running windows, drops and creates the database, hands it to the migration role (`bootstrap-dev.sql`), empties Redis, runs the migrations and the loader, then saves the backup. | minutes |
+| `scripts\ops-local.bat fast` | Closes the windows and restores the backup, then starts. Refused when the code's migrations are not the backup's (then run `reset`). | seconds |
+
+The two share one database. When it holds other data (the demo's) and has no operational test marker,
+`start` stops and `reset` asks you to type YES before replacing it. Without a test-mode Stripe key in
+`.env`, the orders pack is left out.
+
+`scripts/ops-data/ops.mjs` has the steps (`wipe`, `backup`, `restore`, `check`, `unlock`); every one runs
+the guards first. The backup is `.local/ops-data/backup/` (a `pg_dump -Fc` made inside the Compose
+container, without owners but with the table grants, the migration list, and the loader's state, which
+holds the admin's authenticator secret). A lock (`.local/ops-data/lock.json`) keeps a reset, a fast
+restore and a loader run from overlapping; a crashed run's lock is ignored (the process is gone), a reset's
+goes stale after 90 minutes, and `node scripts/ops-data/ops.mjs unlock` clears either.
+
 ## The scenario
 
 `scenarios/AU/` mirrors the buyer site's sample data (`apps/web/src/storefront/sample-*.ts`), so

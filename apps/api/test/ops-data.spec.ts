@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Temporal } from '@mondapac/shared-kernel';
 import { FixedClock } from '@mondapac/shared-kernel/testing';
@@ -530,5 +531,64 @@ describe('the ops-data AU buyers and orders', () => {
       console.log(problems.length === 0 ? 'ok' : problems.join('; '));
     `);
     expect(answer.out.trim()).toBe('ok');
+  });
+});
+
+// scripts/ops-data/lock.mjs and ops.mjs (phase 3): the lock that keeps a reset, a fast restore and
+// a loader run from overlapping, and the check that a backup belongs to this code.
+describe('the ops-data lock and backup checks', () => {
+  const dir = () => mkdtempSync(path.join(tmpdir(), 'ops-lock-'));
+  const lock = (code: string) =>
+    run(`import * as lock from './scripts/ops-data/lock.mjs'; ${code}`);
+
+  it('refuses a second reset, and a loader run outside the reset, while a reset is fresh', () => {
+    const d = dir();
+    const answer = lock(`
+      const d = ${JSON.stringify(d)};
+      lock.beginReset(d, 'reset');
+      const tries = [];
+      for (const attempt of [
+        () => lock.beginReset(d, 'fast restore'),
+        () => lock.acquireRun(d, 'the loader'),
+      ]) { try { attempt(); tries.push('allowed'); } catch (e) { tries.push('refused'); } }
+      // The loader the reset starts itself takes no lock and is allowed.
+      lock.acquireRun(d, 'the loader', { withinReset: true });
+      lock.endReset(d);
+      lock.acquireRun(d, 'the loader')();
+      console.log(tries.join(','), lock.readLock(d) === null ? 'free' : 'held');
+    `);
+    expect(answer.out.trim()).toBe('refused,refused free');
+  });
+
+  it('refuses a reset while a live loader runs, and ignores a dead or stale lock', () => {
+    const d = dir();
+    const answer = lock(`
+      import { spawnSync } from 'node:child_process';
+      import { writeFileSync } from 'node:fs';
+      const d = ${JSON.stringify(d)};
+      const file = d + '/lock.json';
+      // a live process (this one's parent) holds a run lock
+      writeFileSync(file, JSON.stringify({ kind: 'run', command: 'the loader', pid: process.ppid, at: new Date().toISOString() }));
+      let live; try { lock.beginReset(d, 'reset'); live = 'allowed'; } catch { live = 'refused'; }
+      // a pid that does not exist
+      writeFileSync(file, JSON.stringify({ kind: 'run', command: 'the loader', pid: 2 ** 22 + 12345, at: new Date().toISOString() }));
+      let dead; try { lock.beginReset(d, 'reset'); dead = 'allowed'; } catch { dead = 'refused'; }
+      // a reset older than its time to live
+      writeFileSync(file, JSON.stringify({ kind: 'reset', command: 'reset', at: new Date(Date.now() - lock.RESET_TTL_MS - 1000).toISOString() }));
+      let stale; try { lock.beginReset(d, 'reset'); stale = 'allowed'; } catch { stale = 'refused'; }
+      lock.unlock(d);
+      console.log(live, dead, stale, lock.readLock(d) === null ? 'cleared' : 'held');
+    `);
+    expect(answer.out.trim()).toBe('refused allowed allowed cleared');
+  });
+
+  it('accepts a backup only when its migrations are the code’s', () => {
+    const answer = run(`
+      import { migrationNames, migrationMismatch } from './scripts/ops-data/ops.mjs';
+      const now = migrationNames();
+      console.log(now.length > 100, migrationMismatch(now, now) === null,
+        migrationMismatch(now.slice(1), now) !== null, migrationMismatch([...now, 'zz_gone'], now) !== null);
+    `);
+    expect(answer.out.trim()).toBe('true true true true');
   });
 });

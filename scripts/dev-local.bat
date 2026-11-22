@@ -10,6 +10,10 @@ rem sellers, 14 products, prices, stock, a buyer) once the services are up; the 
 rem written to .local\demo-credentials.txt. Without it nothing is added. Run "scripts\demo-local.bat"
 rem for the same thing by double-click. The buyer site runs at http://storefront.localhost:3003
 rem (STOREFRONT_ORIGIN below; port 3003 is fixed in apps\web\package.json). It shows sample data only.
+rem Optional argument "ops": the operational test environment (scripts\ops-local.bat starts it): the loader of
+rem scripts\ops-data fills the database through the API instead of the demo seed, the catalog seed jobs stay
+rem off, the database gets the operational test marker, and the local Market file raises the sign-up and
+rem sign-in limits of this machine and switches on refunds (test-mode Stripe key only).
 rem The Market is AU, the first Market (HOSTED_MARKETS in .env.example and PANEL_HOSTS in
 rem apps\seller\.env.example name it too; change all three together for another Market).
 setlocal
@@ -17,6 +21,8 @@ cd /d "%~dp0.."
 set "MARKET=AU"
 set "SEED=0"
 if /i "%~1"=="seed" set "SEED=1"
+set "OPS=0"
+if /i "%~1"=="ops" set "OPS=1"
 rem The buyer site's slot in the local demo: its origin is allowed for customer requests.
 set "STOREFRONT_ORIGIN=http://storefront.localhost:3003"
 echo Buyer site (when started): %STOREFRONT_ORIGIN%  (or http://localhost:3003)
@@ -69,6 +75,13 @@ docker compose up -d --wait || goto :fail
 
 echo [3/5] Preparing the database and the local Market configuration
 call pnpm db:migrate || goto :fail
+if "%OPS%"=="1" (
+  set "LOCAL_MAIL_ORIGIN_LIMIT=200"
+  set "LOCAL_SIGN_IN_ORIGIN_LIMIT=300"
+  rem Refunds move money: switched on only when .env holds a test-mode Stripe key.
+  findstr /r /b /c:"STRIPE_SECRET_KEY=[sr]k_test_" ".env" >nul 2>nul && set "LOCAL_REFUND_CREDIT=1"
+  node scripts\ops-data\mark-database.mjs || goto :fail
+)
 node scripts\dev-panels-market.mjs "%MARKET%" || goto :fail
 rem The catalog refuses every text until the Market has a claim vocabulary; this writes the demo's.
 if "%SEED%"=="1" ( node scripts\demo-seed\claim-vocabulary.mjs || goto :fail )
@@ -76,6 +89,8 @@ if "%SEED%"=="1" ( node scripts\demo-seed\claim-vocabulary.mjs || goto :fail )
 echo [4/5] Starting the API and the worker in their own windows
 set "MARKET_CONFIG_DIR=%CD%\.local\markets"
 set "SERVICE_AREA_CONFIG_DIR=%CD%\.local\service-areas"
+rem The loader builds the catalog through the admin API; the worker must not seed the starter tree first.
+if "%OPS%"=="1" set "CATALOG_SEED_JOBS_OFF=catalog.seed-category-tree,catalog.seed-attributes,catalog.seed-cultures"
 rem Type-checking the API takes about 2.7 GB of heap, more than Node's default limit on an 8 GB
 rem machine ("JavaScript heap out of memory", exit code 134). Raise the limit for the windows below;
 rem it is a ceiling, not a reservation. Flags already in NODE_OPTIONS are kept.
@@ -89,6 +104,10 @@ start "MondaPac seller panel" /d "%CD%" cmd /k "pnpm dev:seller"
 start "MondaPac admin panel" /d "%CD%" cmd /k "pnpm dev:admin"
 start "MondaPac buyer site" /d "%CD%" cmd /k "pnpm dev:web"
 
+if "%OPS%"=="1" if not "%OPS_LOADER_ARGS%"=="skip" (
+  echo Starting the operational test data in its own window; it waits for the API and the worker.
+  start "MondaPac operational data" /d "%CD%" cmd /k "node scripts\ops-data\index.mjs %OPS_LOADER_ARGS%"
+)
 if "%SEED%"=="1" (
   echo Starting the demo data in its own window; it waits for the API and the worker.
   start "MondaPac demo data" /d "%CD%" cmd /k "node scripts\demo-seed\index.mjs"
@@ -120,6 +139,7 @@ echo   Admin panel  : http://admin.localhost:3002
 echo   Buyer site   : %STOREFRONT_ORIGIN%  (or http://localhost:3003 if that name does not open)
 echo   Mail (Mailpit): http://localhost:8025
 if "%SEED%"=="1" echo   Sample logins : .local\demo-credentials.txt  (written when the demo data window says Done)
+if "%OPS%"=="1" echo   Sample logins : scripts\ops-data\README.md  (the loader window says Done when the data is ready)
 echo To stop: close the windows, then run "docker compose down" (add -v to wipe the demo data).
 echo (The windows inherit MARKET_CONFIG_DIR, SERVICE_AREA_CONFIG_DIR and NODE_OPTIONS from this one.)
 pause
