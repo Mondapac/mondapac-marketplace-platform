@@ -438,9 +438,7 @@ function HealthFigure({
   const tErr = useTranslations('dashboard');
   const locale = useLocale();
   if (count.status === 'error') {
-    return (
-      <span className="max-w-40 text-end text-sm text-critical-fg">{tErr('error.card')}</span>
-    );
+    return <span className="max-w-40 text-end text-sm text-critical-fg">{tErr('error.card')}</span>;
   }
   return (
     <>
