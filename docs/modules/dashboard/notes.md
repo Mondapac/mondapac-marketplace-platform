@@ -189,6 +189,19 @@ Counts are cached per seller and access state, except the live queues.
   restricted one, so its words name both; its status is "Fix payout details".
 - A dispute's hold is counted in both "Disputes waiting for your reply" and "Payouts on hold,
   disputes included"; the hold row says so.
+- "Orders to ship today" shows its count with no age. Design section 3 shows "Next by 2 pm", but
+  the API gives the earliest payment as `oldestAt`, and how long ago an order was paid is not what
+  the seller acts on. The next ready-by time is FE-123.
+- The groups are "Urgent", "Today" and "When you have time" (the admin card says "Critical"): a
+  seller reads a task, not a severity. The seller has three today tasks, under the card's limit of
+  five, so "top N of M" and "N more tasks" stay in the messages only for a task added later.
+- A member who may view the payout account but not manage it still reads "Fix payout details";
+  the page then says who can change it. Accepted for now (Reza, UI/UX).
+- The review task opens the Reviews page on every review: the page does not read a view from the
+  address yet (FE-124).
+- `queues.spec.ts` reads the API's bindings as text and checks every seller task's key, level,
+  order and permission, as the admin panel does.
 - The "Needs attention" figures stay until the seller KPI strip (phase 6) replaces them.
 - Deferred: "Published but out of stock" (FE-113), the folded low-stock, changes-requested and
-  certificate tasks (FE-114).
+  certificate tasks (FE-114), the ready-by time of today's orders (FE-123), the Reviews page
+  opening on "Unanswered" from the task (FE-124).

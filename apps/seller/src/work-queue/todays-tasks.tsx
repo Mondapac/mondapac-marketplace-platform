@@ -10,6 +10,7 @@ import {
   type WorkQueueCardLabels,
   type WorkQueueDefinition,
   type WorkQueueLevel,
+  type WorkQueueRow,
   type WorkQueueStatus,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -29,7 +30,7 @@ function useDefinitions(): (key: string) => WorkQueueDefinition | null {
 
 function useLabels(): WorkQueueCardLabels {
   const t = useTranslations('tasks');
-  const status = (value: WorkQueueStatus, age: string | null): string => {
+  const status = (value: WorkQueueStatus, age: string | null, row: WorkQueueRow): string => {
     switch (value.kind) {
       case 'error':
         return t('status.error');
@@ -40,13 +41,15 @@ function useLabels(): WorkQueueCardLabels {
       case 'overdue':
         // The count already says how many are overdue when only some are: the status then
         // gives the age, in the critical tone.
-        if (age === null) return t('status.overdue');
+        if (age === null || sellerQueue(row.key)?.showsAge === false) return t('status.overdue');
         if (value.deadline) return t('status.overdue-by', { age });
         return value.all ? t('status.overdue-age', { age }) : t('status.oldest', { age });
       case 'due-in':
         return t('status.due-in', { age: age ?? '' });
       case 'oldest':
-        return t('status.oldest', { age: age ?? '' });
+        return sellerQueue(row.key)?.showsAge === false
+          ? ''
+          : t('status.oldest', { age: age ?? '' });
       case 'waiting':
       case 'clear':
         return '';

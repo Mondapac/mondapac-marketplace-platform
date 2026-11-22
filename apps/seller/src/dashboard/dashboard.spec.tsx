@@ -310,6 +310,91 @@ describe('seller dashboard', () => {
     expect(card.getByText('This could not be loaded. Reload the page to try again.')).toBeTruthy();
   });
 
+  it("gives no age for today's orders to ship: when they were paid is not what the seller acts on", () => {
+    render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />));
+    const card = within(screen.getByRole('region', { name: "Today's tasks" }));
+    const row = card.getByRole('link', { name: 'Orders to ship today' }).closest('li');
+    expect(row?.textContent).toContain('9');
+    expect(row?.textContent).not.toContain('Oldest');
+    // The review task keeps its age.
+    expect(
+      card.getByRole('link', { name: 'Reviews to answer' }).closest('li')?.textContent,
+    ).toContain('Oldest 2d');
+  });
+
+  it('says how late a passed dispute deadline and every overdue late order are', () => {
+    const answer: WorkQueueAnswer = {
+      panel: 'seller',
+      generatedAt: NOW,
+      queues: [
+        {
+          key: 'ordering.late-orders',
+          level: 'critical',
+          status: 'ok',
+          count: 1,
+          overdue: 1,
+          oldestAt: hoursAgo(1),
+        },
+        {
+          key: 'commission-payouts.dispute-reply-needed',
+          level: 'critical',
+          status: 'ok',
+          count: 1,
+          overdue: 1,
+          oldestAt: hoursAgo(2),
+        },
+        // Nothing paused: the payout task is clear, never "Fix payout details".
+        { key: 'payments.payouts-blocked', level: 'critical', status: 'ok', count: 0, overdue: 0 },
+      ],
+    };
+    render(wrap(<SellerDashboard data={{ ...full, tasks: ok(answer) }} permissionKeys={KEYS} />));
+    const card = within(screen.getByRole('region', { name: "Today's tasks" }));
+    expect(
+      card.getByRole('link', { name: 'Orders past their delivery promise' }).closest('li')
+        ?.textContent,
+    ).toContain('Overdue 1h');
+    expect(
+      card.getByRole('link', { name: 'Disputes waiting for your reply' }).closest('li')
+        ?.textContent,
+    ).toContain('Overdue by 2h');
+    expect(card.queryByText('Fix payout details')).toBeNull();
+    expect(card.queryByRole('link', { name: 'Payouts paused or not set up' })).toBeNull();
+    expect(card.getByText('1 task is all clear')).toBeTruthy();
+  });
+
+  it('says all clear when every task is empty', () => {
+    const answer: WorkQueueAnswer = {
+      panel: 'seller',
+      generatedAt: NOW,
+      queues: [
+        { key: 'ordering.late-orders', level: 'critical', status: 'ok', count: 0, overdue: 0 },
+        { key: 'reviews.unanswered', level: 'review', status: 'ok', count: 0, overdue: 0 },
+      ],
+    };
+    render(wrap(<SellerDashboard data={{ ...full, tasks: ok(answer) }} permissionKeys={KEYS} />));
+    const card = within(screen.getByRole('region', { name: "Today's tasks" }));
+    expect(card.getByText('All clear: nothing needs you right now.')).toBeTruthy();
+  });
+
+  it('counts from the clock when the answer has no readable time', () => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(Date.parse(NOW) + 3_600_000);
+    try {
+      render(
+        wrap(
+          <SellerDashboard
+            data={{ ...full, tasks: ok({ ...tasks, generatedAt: 'not a time' }) }}
+            permissionKeys={KEYS}
+          />,
+        ),
+      );
+      const card = within(screen.getByRole('region', { name: "Today's tasks" }));
+      expect(card.getByText('Due in 19h')).toBeTruthy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('counts what needs attention and says what each figure covers', () => {
     render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />));
     const stats = within(screen.getByRole('list', { name: 'Needs attention' }));
@@ -557,6 +642,21 @@ describe('seller dashboard while it streams', () => {
   });
 });
 
+describe("today's tasks while they are read", () => {
+  it('shows the card skeleton under its own title', () => {
+    render(
+      wrap(
+        <SellerDashboard
+          data={{ ...none, tasks: new Promise<never>(() => undefined) }}
+          permissionKeys={['reviews.seller.view']}
+        />,
+      ),
+    );
+    const card = screen.getByRole('region', { name: "Today's tasks" });
+    expect(card.querySelector('[data-skeleton="chart-card"]')).toBeTruthy();
+  });
+});
+
 describe('startSellerDashboard', () => {
   beforeEach(() => {
     mocks.get.mockReset();
@@ -605,6 +705,26 @@ describe('startSellerDashboard', () => {
     const unknown = await loadSellerDashboard(session(['reviews.seller.view']));
     expect(mocks.get).toHaveBeenCalledWith('dashboard/seller/tasks');
     expect(unknown.tasks).toBeNull();
+  });
+
+  it('hides the tasks when the API refuses them, and sends a rejected session to sign in', async () => {
+    mocks.get.mockResolvedValue({ kind: 'forbidden' });
+    const refused = await loadSellerDashboard(session(['reviews.seller.view']));
+    expect(refused.tasks).toBeNull();
+    mocks.get.mockResolvedValue({ kind: 'signed-out' });
+    const sources = startSellerDashboard(session(['reviews.seller.view']));
+    await expect(sources.tasks).rejects.toThrow('redirect:/session-ended');
+  });
+
+  it('keeps the tasks card when every known task is empty', async () => {
+    const empty = {
+      panel: 'seller',
+      generatedAt: NOW,
+      queues: [{ key: 'reviews.unanswered', level: 'review', status: 'ok', count: 0, overdue: 0 }],
+    };
+    mocks.get.mockResolvedValue({ kind: 'ok', body: empty });
+    const data = await loadSellerDashboard(session(['reviews.seller.view']));
+    expect(data.tasks).toEqual({ kind: 'ok', value: empty });
   });
 
   it('keeps going when one read fails', async () => {
