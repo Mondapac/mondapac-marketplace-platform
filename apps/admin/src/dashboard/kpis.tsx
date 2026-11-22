@@ -374,7 +374,9 @@ function TopSellers({
     <DashboardCard
       id="dash-top-sellers"
       title={t('sellers.title')}
-      scope={periodNote === undefined ? t('sellers.scope') : `${periodNote} · ${t('sellers.scope')}`}
+      scope={
+        periodNote === undefined ? t('sellers.scope') : `${periodNote} · ${t('sellers.scope')}`
+      }
       action={{ href: '/sellers', label: t('sellers.action') }}
       flush
     >
@@ -421,8 +423,7 @@ function Strip({
     t('market-time'),
     minutes === null ? t('no-data-yet') : t('updated', { minutes }),
   ].join(' · ');
-  const hidden =
-    value !== null && value.operations === null && value.finance === null;
+  const hidden = value !== null && value.operations === null && value.finance === null;
   if (hidden) return null;
   return (
     <section aria-labelledby="dash-kpis" className="flex flex-col gap-3">

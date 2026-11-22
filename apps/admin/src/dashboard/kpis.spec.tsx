@@ -102,6 +102,29 @@ const operations = {
     previousSeries: [],
   },
 };
+const topSellers = {
+  status: 'ok' as const,
+  kpis: {
+    rows: [
+      {
+        sellerId: '01990000-0000-7000-8000-000000000051',
+        storeName: 'Al-Noor Butchery',
+        gmvWithTax: { amountMinor: '1842000', currency: 'AUD' },
+        ordersPaid: 311,
+        onTimeRateBp: 9700,
+        refundRateBp: 60,
+      },
+      {
+        sellerId: '01990000-0000-7000-8000-000000000052',
+        storeName: null,
+        gmvWithTax: { amountMinor: '900000', currency: 'AUD' },
+        ordersPaid: 20,
+        onTimeRateBp: null,
+        refundRateBp: null,
+      },
+    ],
+  },
+};
 const answer = (parts: Partial<AdminKpis>): KpiResult => ({
   kind: 'ok',
   value: {
@@ -114,6 +137,7 @@ const answer = (parts: Partial<AdminKpis>): KpiResult => ({
     },
     operations: null,
     finance: null,
+    topSellers: null,
     ...parts,
   },
 });
@@ -243,6 +267,45 @@ describe('the KPI formats', () => {
     expect(
       within(screen.getByRole('region', { name: 'Order flow' })).getByRole('alert'),
     ).toBeTruthy();
+  });
+
+  it('lists the top sellers with money, rates, a link to each store and "-" for a missing rate', () => {
+    strip(answer({ finance, topSellers }), ['commission-payouts.settlement.view']);
+    const card = screen.getByRole('region', { name: 'Top sellers' });
+    const rows = within(card).getAllByRole('row');
+    expect(rows).toHaveLength(3); // header + 2
+    expect(
+      within(rows[1]!).getByRole('link', { name: 'Al-Noor Butchery' }).getAttribute('href'),
+    ).toBe('/sellers/01990000-0000-7000-8000-000000000051');
+    expect(within(rows[1]!).getByText('$18,420.00')).toBeTruthy();
+    expect(within(rows[1]!).getByText('97%')).toBeTruthy();
+    expect(within(rows[2]!).getByRole('link', { name: 'Unnamed store' })).toBeTruthy();
+    expect(within(card).getByRole('link', { name: 'All sellers' }).getAttribute('href')).toBe(
+      '/sellers',
+    );
+  });
+
+  it('says so in the top sellers card when nobody sold, and when the read failed', () => {
+    const { unmount } = render(
+      wrap(
+        <AdminKpiStrip
+          source={answer({ finance, topSellers: { status: 'ok', kpis: { rows: [] } } })}
+          period="7d"
+          permissionKeys={BOTH}
+        />,
+      ),
+    );
+    expect(screen.getByText('No sales in this period yet.', { selector: 'p' })).toBeTruthy();
+    unmount();
+    strip(answer({ finance, topSellers: { status: 'error' } }), BOTH);
+    expect(
+      within(screen.getByRole('region', { name: 'Top sellers' })).getByRole('alert'),
+    ).toBeTruthy();
+  });
+
+  it('leaves the top sellers out without the money section', () => {
+    strip(answer({ operations }), ['ordering.order.view']);
+    expect(screen.queryByRole('region', { name: 'Top sellers' })).toBeNull();
   });
 
   it('leaves the order flow out without the orders section', () => {
