@@ -360,6 +360,19 @@ module.exports = {
       },
     },
     {
+      name: 'nothing-imports-dashboard',
+      comment:
+        "The dashboard module only composes other modules' public facades for the panels " +
+        '(dashboards upgrade, ADR-0050): no module or platform file imports it, so it can never ' +
+        'become a path between two modules. Only the module list registers it.',
+      severity: 'error',
+      from: {
+        path: '^src/',
+        pathNot: ['^src/modules/dashboard/', '^src/modules/index\\.ts$'],
+      },
+      to: { path: '^src/modules/dashboard/' },
+    },
+    {
       name: 'seller-access-contract-is-for-sellers',
       comment:
         "Only the sellers module imports identity's seller-access contract (sellerAccessOf, " +
