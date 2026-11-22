@@ -94,7 +94,8 @@ const logger = new Logger('CertificationTypeRevision');
  * that relaxes a setting, removes a claim term or drops a locale is saved and a `type-revision`
  * proposal is written `pending` (audit `.type.relaxation-requested`, `relaxation-proposed.v1`):
  * it is published only when a second admin approves it. While one is pending, every save is
- * refused (`review.proposal-pending`, design 7.6). The optional reason is sealed under its own
+ * refused (`review.proposal-pending`, design 7.6), as is every save while a `type-reactivation`
+ * proposal is pending. The optional reason is sealed under its own
  * key, the revision id, inside the unit (CE8). Approved certificates keep their own revision, so
  * no certificate's status or badge text changes (AC 19). A published revision opens its review
  * in Admin Inbox › System requests in the same unit (area certification; the `note` is checked
@@ -189,6 +190,11 @@ export class TypeSaveRevision extends UseCase<
           await deps.registry.lockType(market, typeId, version.value);
         }
         if ((await deps.registry.pendingProposal(market, 'type-revision', typeId)) !== null) {
+          return err({ code: 'review.proposal-pending' } as const);
+        }
+        // A pending reactivation was proposed on the published revision: a new revision would
+        // change what the second admin approves (design 5), so the save waits for its decision.
+        if ((await deps.registry.pendingProposal(market, 'type-reactivation', typeId)) !== null) {
           return err({ code: 'review.proposal-pending' } as const);
         }
         const reasonCiphertext =
