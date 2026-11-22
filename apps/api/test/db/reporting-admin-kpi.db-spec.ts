@@ -236,7 +236,7 @@ describe.each(TEST_MARKETS)('the admin KPI reader in market %s (database)', (cod
         [
           {
             categoryId: bakery,
-            goods: { amount: 5_000_000n, tax: 0n },
+            goods: { amount: 5_000_000n, tax: 5_000_000n / 11n },
             units: 1,
           },
         ],
