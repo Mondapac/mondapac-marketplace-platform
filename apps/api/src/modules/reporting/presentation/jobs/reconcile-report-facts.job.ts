@@ -30,9 +30,9 @@ export function reconcileReportFactsJob(reconcile: ReconcileReportFacts): JobDef
         correlationId: context.correlationId,
         ...result.value,
       });
-      if (result.value.failedBatches > 0) {
+      if (result.value.failedFacts > 0) {
         throw new Error(
-          `${RECONCILE_REPORT_FACTS_JOB}: ${result.value.failedBatches} batch(es) failed`,
+          `${RECONCILE_REPORT_FACTS_JOB}: ${result.value.failedFacts} fact(s) not written`,
         );
       }
     },

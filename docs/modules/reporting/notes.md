@@ -114,3 +114,27 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
 - Rule to revisit: if ordering ever clears an instant (a shipment undone, for example), reporting
   keeps the stored one until `keepKnownInstants` learns that case. Amounts are not merged: ordering
   does not change goods or shipping after payment (Hassan, PR 10b re-review).
+
+## History backfill (PR 12)
+
+- `reporting.backfill-history` (job, every 5 minutes and at worker start; use case of the same name,
+  rule `system`): reads every seller order and refund with an instant before the moment the backfill
+  first started (the window `[history, until)`), in id order, pages of 100, through the same page
+  writer as the nightly reconcile (`writePage`: units of 25, conflict pauses, refused facts logged
+  and skipped). Facts after `until` come from the event worker and the nightly reconcile.
+- Progress: `reporting.backfill_progress` (migration `20261122080000_reporting_backfill_progress`),
+  one row per Market and kind (`seller-orders`, then `refunds`): `until` (fixed at the first start),
+  the id cursor `after` of the last page written, `pages`, `failed_facts`, `finished_at`. The cursor
+  is saved in its own unit after each page, so a run that fails, stops or times out goes on from the
+  last page written. The application role may update only the cursor columns.
+- At most 20 pages (2,000 facts) a run, one page after the other (low concurrency beside the event
+  worker). Once both kinds are finished, a tick only reads the two progress rows.
+- Idempotent: every fact write replaces, and `advance` moves the cursor only from where the run read
+  it (and only while unfinished), so a late run that overlaps another writes one page again at most
+  and then stops. A failed read stops the run with the cursor where it was. A run with a refused
+  fact fails, so the scheduler reports it; the fact is counted in `failed_facts`.
+- To run the backfill again from the beginning (after a bug fix in the recorder, say), an operator
+  deletes the Market's rows of `reporting.backfill_progress` as the migration role; the next tick
+  starts again with a new `until`. There is no admin screen for this yet (FE register, «پیشرفت
+  backfill گزارش در پنل ادمین»).
+- The nightly reconcile's counter is now `failedFacts` (it always counted facts, not batches).

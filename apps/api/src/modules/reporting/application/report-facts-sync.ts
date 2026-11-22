@@ -112,9 +112,13 @@ export async function recordFromEvent(
 }
 
 export interface ReconcileCounts extends RecordCounts {
-  /** Write batches that failed; logged and left to the next run. */
-  readonly failedBatches: number;
+  /** Facts the recorder refused or that could not be written; logged and left to the next run. */
+  readonly failedFacts: number;
 }
+
+/** The two kinds of fact a window is read for, in the order they are read. */
+export const FACT_KINDS = ['seller-orders', 'refunds'] as const;
+export type FactKind = (typeof FACT_KINDS)[number];
 
 /** The most facts one reconcile unit writes. */
 export const WRITE_BATCH = 25;
@@ -127,25 +131,53 @@ const RECONCILE_UNIT_MS = 15_000;
 const MAX_PAGES = 10_000;
 const pause = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-/**
- * Reads every seller order and refund of the window again, one page of at most
- * {@link SOURCE_BATCH} at a time, and records each page in serializable units of at most
- * {@link WRITE_BATCH} facts: the nightly reconcile (the last {@link RECONCILE_DAYS} days) and the
- * history backfill (no start). Small units keep a serialization conflict with the event worker
- * rare (Mojtaba, PR 9: low concurrency); a unit that still conflicts after its own retries is tried
- * again after a pause. Safe to run twice or to overlap a late run of itself, since every write
- * replaces. A fact the recorder refuses is logged and skipped, so one bad fact does not hold the
- * rest back; a failed read, or a cursor that does not move on, stops the run, which the next run
- * repeats.
- */
-export async function reconcileWindow(
+/** One page of a window read and recorded: the cursor to go on from, null at the end. */
+export interface WrittenPage {
+  readonly next: string | null;
+  readonly counts: ReconcileCounts;
+}
+
+/** One page of refs of `kind`, as the request that reads their facts. */
+async function readPage(
   deps: ReportFactsDependencies,
   context: CallContext,
+  kind: FactKind,
   window: SourceWindow,
-): Promise<Result<ReconcileCounts, SourceUnavailable>> {
+  after: string | null,
+): Promise<Result<{ next: string | null; request: RecordRequest }, SourceUnavailable>> {
+  if (kind === 'seller-orders') {
+    const page = await deps.sources.changedSellerOrders(context, window, after, SOURCE_BATCH);
+    if (!page.ok) return page;
+    return ok({
+      next: page.value.next,
+      request: { sellerOrders: page.value.items, refundIds: [] },
+    });
+  }
+  const page = await deps.sources.succeededRefunds(context, window, after, SOURCE_BATCH);
+  if (!page.ok) return page;
+  return ok({ next: page.value.next, request: { sellerOrders: [], refundIds: page.value.items } });
+}
+
+/**
+ * Reads one page of `kind` in the window after `after` (at most {@link SOURCE_BATCH} facts) and
+ * records it in serializable units of at most {@link WRITE_BATCH} facts. Small units keep a
+ * serialization conflict with the event worker rare (Mojtaba, PR 9: low concurrency); a unit that
+ * still conflicts after its own retries is tried again after a pause. Every write replaces, so a
+ * page written twice is harmless. A batch that fails for another reason than a conflict is written
+ * again one fact at a time, so a fact the recorder refuses does not hold the good ones of its batch
+ * back (Hassan, PR 10b finding 3); only the facts that still fail are logged and counted. A failed
+ * read, or a cursor that does not move on, is a failure: nothing is skipped past it.
+ */
+export async function writePage(
+  deps: ReportFactsDependencies,
+  context: CallContext,
+  kind: FactKind,
+  window: SourceWindow,
+  after: string | null,
+): Promise<Result<WrittenPage, SourceUnavailable>> {
   let sellerOrders = 0;
   let refunds = 0;
-  let failedBatches = 0;
+  let failedFacts = 0;
   /** One unit; a conflict is tried again after a pause. True when written. */
   const attempt = async (batch: ReadFacts): Promise<{ written: boolean; error: string }> => {
     for (let round = 1; ; round += 1) {
@@ -170,7 +202,7 @@ export async function reconcileWindow(
     }
   };
   const failed = (batch: ReadFacts, error: string): void => {
-    failedBatches += 1;
+    failedFacts += 1;
     logger.error({
       msg: 'reporting.reconcile-batch-failed',
       marketId: context.market.marketId,
@@ -180,11 +212,6 @@ export async function reconcileWindow(
       error,
     });
   };
-  /**
-   * A batch, and when it fails for another reason than a conflict, each of its facts alone, so a
-   * fact the recorder refuses does not hold the good ones of its batch back (Hassan, PR 10b
-   * finding 3); only the facts that still fail are logged.
-   */
   const write = async (batch: ReadFacts): Promise<void> => {
     const whole = await attempt(batch);
     if (whole.written) return;
@@ -198,9 +225,17 @@ export async function reconcileWindow(
       if (!one.written) failed(single, one.error);
     }
   };
-  const record = async (request: RecordRequest): Promise<boolean> => {
+
+  const read = await readPage(deps, context, kind, window, after);
+  if (!read.ok) return read;
+  const { next, request } = read.value;
+  // A cursor that does not move on stops the run (Hassan, PR 10b finding 2).
+  if (next !== null && (next === after || (after !== null && next <= after))) {
+    return err(unavailable(`ordering ${kind} cursor`));
+  }
+  if (request.sellerOrders.length + request.refundIds.length > 0) {
     const facts = await readFacts(deps, context, request);
-    if (!facts.ok) return false;
+    if (!facts.ok) return err(unavailable(`ordering ${kind}`));
     for (let start = 0; start < facts.value.sellerOrders.length; start += WRITE_BATCH) {
       await write({
         sellerOrders: facts.value.sellerOrders.slice(start, start + WRITE_BATCH),
@@ -213,38 +248,43 @@ export async function reconcileWindow(
         refunds: facts.value.refunds.slice(start, start + WRITE_BATCH),
       });
     }
-    return true;
-  };
-  /** A cursor that does not move on, or too many pages, stops the run (Hassan, finding 2). */
-  const stuck = (after: string | null, next: string, pages: number): boolean =>
-    next === after || (after !== null && next <= after) || pages >= MAX_PAGES;
+  }
+  return ok({ next, counts: { sellerOrders, refunds, failedFacts } });
+}
 
-  let after: string | null = null;
-  for (let pages = 1; ; pages += 1) {
-    const page = await deps.sources.changedSellerOrders(context, window, after, SOURCE_BATCH);
-    if (!page.ok) return page;
-    if (page.value.items.length > 0) {
-      const read = await record({ sellerOrders: page.value.items, refundIds: [] });
-      if (!read) return err(unavailable('ordering seller orders'));
+/** Adds two runs' counts. */
+export const addCounts = (a: ReconcileCounts, b: ReconcileCounts): ReconcileCounts => ({
+  sellerOrders: a.sellerOrders + b.sellerOrders,
+  refunds: a.refunds + b.refunds,
+  failedFacts: a.failedFacts + b.failedFacts,
+});
+
+export const NO_COUNTS: ReconcileCounts = { sellerOrders: 0, refunds: 0, failedFacts: 0 };
+
+/**
+ * Reads every seller order and refund of the window again, page by page ({@link writePage}), in one
+ * run: the nightly reconcile (the last {@link RECONCILE_DAYS} days). Safe to run twice or to
+ * overlap a late run of itself, since every write replaces. A failed read, a cursor that does not
+ * move on, or more than {@link MAX_PAGES} pages stops the run, which the next run repeats.
+ */
+export async function reconcileWindow(
+  deps: ReportFactsDependencies,
+  context: CallContext,
+  window: SourceWindow,
+): Promise<Result<ReconcileCounts, SourceUnavailable>> {
+  let total = NO_COUNTS;
+  for (const kind of FACT_KINDS) {
+    let after: string | null = null;
+    for (let pages = 1; ; pages += 1) {
+      const page = await writePage(deps, context, kind, window, after);
+      if (!page.ok) return page;
+      total = addCounts(total, page.value.counts);
+      if (page.value.next === null) break;
+      if (pages >= MAX_PAGES) return err(unavailable(`ordering ${kind} cursor`));
+      after = page.value.next;
     }
-    if (page.value.next === null) break;
-    if (stuck(after, page.value.next, pages))
-      return err(unavailable('ordering seller orders cursor'));
-    after = page.value.next;
   }
-  after = null;
-  for (let pages = 1; ; pages += 1) {
-    const page = await deps.sources.succeededRefunds(context, window, after, SOURCE_BATCH);
-    if (!page.ok) return page;
-    if (page.value.items.length > 0) {
-      const read = await record({ sellerOrders: [], refundIds: page.value.items });
-      if (!read) return err(unavailable('ordering refunds'));
-    }
-    if (page.value.next === null) break;
-    if (stuck(after, page.value.next, pages)) return err(unavailable('ordering refunds cursor'));
-    after = page.value.next;
-  }
-  return ok({ sellerOrders, refunds, failedBatches });
+  return ok(total);
 }
 
 /** The nightly reconcile's window: the last {@link RECONCILE_DAYS} days up to now. */
