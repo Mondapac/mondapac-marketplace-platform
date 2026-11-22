@@ -252,8 +252,15 @@ async function main() {
       !values['replace-unmarked']
     ) {
       console.error(
-        `The database "${name}" holds tables and is not marked as an operational test database ` +
-          `(for example the demo's). Not touching it. Run: scripts\\ops-local.bat reset`,
+        [
+          `The database "${name}" holds other data (probably the demo's, from scripts\\demo-local.bat)`,
+          'and is not marked as an operational test database. Nothing was changed.',
+          'The operational test data uses this same database. To switch to it, run',
+          '  scripts\\ops-local.bat reset',
+          'which DELETES everything in it and builds the operational test data (it asks you to type YES first).',
+          'To keep a copy of the current data first (in cmd; PowerShell would corrupt the file):',
+          `  docker compose exec -T postgres pg_dump -U postgres -d ${name} -Fc > .local\\${name}-before-ops.dump`,
+        ].join('\n'),
       );
       process.exit(3);
     }
@@ -267,10 +274,13 @@ async function main() {
     beginReset(STATE_DIR, 'reset');
     recreateDatabase(name);
     bootstrap(name);
+    // Marked while still empty: dev-local.bat runs the migrations before its own check, and a
+    // database with tables and no marker is refused there as someone else's data.
+    markDatabase();
     flushRedis();
     clearLoaderState();
     console.log(
-      `Database ${name} is empty. Next: pnpm db:migrate, mark-database.mjs, the loader, then backup.`,
+      `Database ${name} is empty and marked. Next: pnpm db:migrate, the loader, then backup.`,
     );
     return;
   }
