@@ -31,6 +31,8 @@ const COLUMNS = {
  * open a confirmation dialog; nothing in a row is a button. Product and store names are
  * seller-entered text, rendered as plain text.
  */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export function HoldsList({
   paging,
   accountId,
@@ -164,7 +166,7 @@ export function HoldsList({
       savedKey: HOLDS_SAVED_KEY,
       savedViews: true,
       // The route matches one record id or Offer id, exactly (a UUID).
-      search: { max: 36 },
+      search: { max: 36, accepts: (text) => UUID.test(text) },
       sorts: [
         {
           id: 'submitted',
