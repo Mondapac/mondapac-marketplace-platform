@@ -277,3 +277,42 @@ export function DistributionCardSkeleton({
     </DashboardCard>
   );
 }
+
+export interface ChartCardSkeletonProps extends CardFrameProps {
+  /** The height of the chart the card shows when full. */
+  readonly height?: number;
+}
+
+/**
+ * The placeholder of a DashboardCard holding a chart: the real title, scope and link, and grid
+ * lines at the chart's height. Counted by the page's status like every card skeleton.
+ */
+export function ChartCardSkeleton({
+  id,
+  title,
+  scope,
+  action,
+  height = 240,
+  slowLabel,
+  stalledLabel,
+}: ChartCardSkeletonProps) {
+  const loading = useCardLoading();
+  const frame = { id, title, ...(scope === undefined ? {} : { scope }) };
+  if (loading.stalled) return <DashboardCard {...frame} error={stalledLabel} />;
+  return (
+    <DashboardCard {...frame} {...(action === undefined ? {} : { action })}>
+      <div data-skeleton="chart-card">
+        <div
+          aria-hidden="true"
+          style={{ height }}
+          className="flex flex-col justify-between motion-safe:animate-pulse"
+        >
+          {[0, 1, 2, 3, 4].map((i) => (
+            <span key={i} className="block h-px w-full bg-muted" />
+          ))}
+        </div>
+        {loading.slow ? <p className="mt-2 text-xs text-fg-muted">{slowLabel}</p> : null}
+      </div>
+    </DashboardCard>
+  );
+}
