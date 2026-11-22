@@ -3,6 +3,7 @@ import {
   ChartEmpty,
   DashboardCard,
   DashboardSlot,
+  Funnel,
   LineAreaChart,
   StatCard,
   StatCardSkeleton,
@@ -247,6 +248,68 @@ function GmvChart({
   );
 }
 
+function OrderFlow({
+  operations,
+  value,
+}: {
+  readonly operations: NonNullable<AdminKpis['operations']> & { readonly status: 'ok' };
+  readonly value: AdminKpis;
+}) {
+  const t = useTranslations('dashboard.kpis');
+  const locale = useLocale();
+  const { current } = operations.kpis;
+  const count = (n: number) => formatCount(n, false, locale);
+  const periodNote = value.period
+    ? `${kpiDayLabel(value.period.current.from, locale)} - ${kpiDayLabel(value.period.current.to, locale)}`
+    : undefined;
+  return (
+    <DashboardCard
+      id="dash-order-flow"
+      title={t('flow.title')}
+      scope={periodNote === undefined ? t('flow.scope') : `${periodNote} · ${t('flow.scope')}`}
+      action={{ href: '/orders', label: t('flow.action') }}
+    >
+      {current.ordersPaid === 0 ? (
+        <ChartEmpty message={t('flow.empty')} height={120} />
+      ) : (
+        <div className="flex flex-col gap-4">
+          <Funnel
+            label={t('flow.title')}
+            showShare={false}
+            steps={[
+              {
+                id: 'paid',
+                label: t('flow.paid'),
+                value: current.ordersPaid,
+                display: count(current.ordersPaid),
+              },
+              {
+                id: 'shipped',
+                label: t('flow.shipped'),
+                value: current.ordersShipped,
+                display: count(current.ordersShipped),
+              },
+              {
+                id: 'delivered',
+                label: t('flow.delivered'),
+                value: current.ordersDelivered,
+                display: count(current.ordersDelivered),
+              },
+            ]}
+          />
+          <p className="text-sm text-fg-muted">
+            {t('flow.leaks', {
+              cancelled: count(current.ordersCancelled),
+              cancelRate: kpiRate(current.cancelRateBp, locale),
+              refunds: count(current.refunds),
+            })}
+          </p>
+        </div>
+      )}
+    </DashboardCard>
+  );
+}
+
 function Strip({
   result,
   period,
@@ -257,6 +320,7 @@ function Strip({
   readonly keys: ReadonlySet<string>;
 }) {
   const t = useTranslations('dashboard.kpis');
+  const tErr = useTranslations('dashboard');
   const options: PeriodOption[] = KPI_PERIODS.map((id) => ({
     id,
     label: t(`period.${PERIOD_KEY[id]}`),
@@ -314,6 +378,13 @@ function Strip({
       </StatGrid>
       {value?.finance?.status === 'ok' ? (
         <GmvChart finance={value.finance} period={period} value={value} />
+      ) : null}
+      {value?.operations?.status === 'ok' ? (
+        <OrderFlow operations={value.operations} value={value} />
+      ) : value?.operations?.status === 'error' ? (
+        <DashboardCard id="dash-order-flow" title={t('flow.title')} error={tErr('error.card')}>
+          {null}
+        </DashboardCard>
       ) : null}
     </section>
   );

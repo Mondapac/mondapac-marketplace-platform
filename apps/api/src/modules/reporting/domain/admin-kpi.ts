@@ -15,6 +15,7 @@ export interface DayTotals {
   readonly ordersCancelled: number;
   readonly ordersShipped: number;
   readonly ordersShippedOnTime: number;
+  readonly ordersDelivered: number;
   readonly refunds: number;
   readonly refundGoodsAmount: bigint;
   readonly refundGoodsTax: bigint;
@@ -28,6 +29,7 @@ export const emptyDay = (day: MarketDay): DayTotals => ({
   ordersCancelled: 0,
   ordersShipped: 0,
   ordersShippedOnTime: 0,
+  ordersDelivered: 0,
   refunds: 0,
   refundGoodsAmount: 0n,
   refundGoodsTax: 0n,
@@ -63,6 +65,7 @@ export function sumDays(days: readonly DayTotals[]): Omit<DayTotals, 'day'> {
       ordersCancelled: sum.ordersCancelled + row.ordersCancelled,
       ordersShipped: sum.ordersShipped + row.ordersShipped,
       ordersShippedOnTime: sum.ordersShippedOnTime + row.ordersShippedOnTime,
+      ordersDelivered: sum.ordersDelivered + row.ordersDelivered,
       refunds: sum.refunds + row.refunds,
       refundGoodsAmount: sum.refundGoodsAmount + row.refundGoodsAmount,
       refundGoodsTax: sum.refundGoodsTax + row.refundGoodsTax,
@@ -74,6 +77,7 @@ export function sumDays(days: readonly DayTotals[]): Omit<DayTotals, 'day'> {
       ordersCancelled: 0,
       ordersShipped: 0,
       ordersShippedOnTime: 0,
+      ordersDelivered: 0,
       refunds: 0,
       refundGoodsAmount: 0n,
       refundGoodsTax: 0n,
@@ -94,6 +98,8 @@ export interface OperationsKpis {
    * better than the truth.
    */
   readonly onTimeRateBp: number | null;
+  /** Seller orders delivered in the period (the last step of the order flow). */
+  readonly ordersDelivered: number;
   readonly refunds: number;
 }
 
@@ -105,6 +111,7 @@ export function operationsOf(days: readonly DayTotals[]): OperationsKpis {
     cancelRateBp: ratioBp(sum.ordersCancelled, sum.ordersPaid),
     ordersShipped: sum.ordersShipped,
     onTimeRateBp: ratioBp(sum.ordersShippedOnTime, sum.ordersShipped),
+    ordersDelivered: sum.ordersDelivered,
     refunds: sum.refunds,
   };
 }
@@ -183,6 +190,7 @@ export function operationsDeltas(
       before.onTimeRateBp,
       before.ordersShipped >= MIN_COUNT_BASE,
     ),
+    ordersDelivered: delta(now.ordersDelivered, before.ordersDelivered, MIN_COUNT_BASE),
     refunds: delta(now.refunds, before.refunds, MIN_COUNT_BASE),
   };
 }
