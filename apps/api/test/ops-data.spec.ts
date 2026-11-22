@@ -126,4 +126,84 @@ describe('the ops-data AU scenario', () => {
     `);
     expect(answer.out.trim()).toBe('ok');
   });
+
+  it('has sellers in every onboarding state, each with a unique email, slug and valid ABN', () => {
+    const answer = run(`
+      import { SCENARIO } from './scripts/ops-data/scenarios/AU/index.mjs';
+      const problems = [];
+      const states = new Set(SCENARIO.sellers.map((s) => s.state));
+      for (const state of ['approved', 'in-review', 'rejected', 'suspended', 'draft'])
+        if (!states.has(state)) problems.push('no seller in state ' + state);
+      for (const field of ['key', 'email', 'slug', 'abn', 'storeName'])
+        if (new Set(SCENARIO.sellers.map((s) => s[field])).size !== SCENARIO.sellers.length) problems.push(field + ' repeated');
+      const weights = [10, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19];
+      for (const s of SCENARIO.sellers) {
+        const digits = s.abn.split('').map(Number);
+        digits[0] -= 1;
+        if (s.abn.length !== 11 || digits.reduce((sum, d, i) => sum + d * weights[i], 0) % 89 !== 0) problems.push('bad ABN ' + s.key);
+        if (!s.email.endsWith('.example')) problems.push('email outside .example ' + s.key);
+        if (s.state === 'rejected' && !s.rejection) problems.push('no rejection reason ' + s.key);
+        if (s.state === 'suspended' && !s.suspension) problems.push('no suspension reason ' + s.key);
+        if (s.certificate && s.certificate.expiryDate <= s.certificate.issueDate) problems.push('certificate dates ' + s.key);
+      }
+      console.log(problems.length === 0 ? 'ok' : problems.join('; '));
+    `);
+    expect(answer.out.trim()).toBe('ok');
+  });
+
+  it('puts products on level 3, sells them only through approved sellers, and shapes prices by variant', () => {
+    const answer = run(`
+      import { SCENARIO } from './scripts/ops-data/scenarios/AU/index.mjs';
+      const problems = [];
+      const bySlug = new Map(SCENARIO.catalog.categories.map((c) => [c.slug, c]));
+      const level = (slug) => { let n = 1; let c = bySlug.get(slug); while (c.parent !== null) { c = bySlug.get(c.parent); n += 1; } return n; };
+      const attributes = new Map(SCENARIO.catalog.attributes.map((a) => [a.code, a]));
+      const keys = new Set();
+      for (const p of SCENARIO.products) {
+        if (keys.has(p.key)) problems.push('product repeated ' + p.key);
+        keys.add(p.key);
+        if (!bySlug.has(p.category)) { problems.push('unknown category ' + p.key); continue; }
+        if (level(p.category) !== 3) problems.push('not on level 3 ' + p.key);
+        if (!['gst_free', 'taxable'].includes(p.tax)) problems.push('tax ' + p.key);
+        const storage = attributes.get('storage').options.map(([code]) => code);
+        if (!storage.includes(p.storage)) problems.push('storage ' + p.key);
+        if (p.variants !== null) {
+          const options = attributes.get(p.variantAttribute).options.map(([code]) => code);
+          for (const [option] of p.variants) if (!options.includes(option)) problems.push('option ' + p.key + ' ' + option);
+        }
+      }
+      const approved = new Set(SCENARIO.sellers.filter((s) => s.state === 'approved').map((s) => s.key));
+      for (const [seller, offers] of Object.entries(SCENARIO.offers)) {
+        if (!approved.has(seller)) problems.push('offers of a seller that is not approved ' + seller);
+        const listed = new Set();
+        for (const o of offers) {
+          const p = SCENARIO.products.find((x) => x.key === o.product);
+          if (!p) { problems.push('unknown product ' + seller + ':' + o.product); continue; }
+          if (listed.has(o.product)) problems.push('listed twice ' + seller + ':' + o.product);
+          listed.add(o.product);
+          const n = p.variants === null ? 1 : p.variants.length;
+          for (const v of [o.price, o.stock, o.was]) {
+            if (v === undefined) continue;
+            const list = Array.isArray(v) ? v : [v];
+            if (list.length !== n || !list.every((x) => Number.isInteger(x) && x > 0)) problems.push('shape ' + seller + ':' + o.product);
+          }
+          if (o.was !== undefined) {
+            const was = Array.isArray(o.was) ? o.was : [o.was];
+            const price = Array.isArray(o.price) ? o.price : [o.price];
+            if (was.some((x, i) => x <= price[i])) problems.push('was not above price ' + seller + ':' + o.product);
+          }
+        }
+      }
+      const held = SCENARIO.offers[SCENARIO.held.seller]?.find((o) => o.product === SCENARIO.held.product);
+      if (!held || SCENARIO.held.amount <= held.price) problems.push('held price');
+      const words = /halal|halaal|kosher|vegan|organic|certified|authentic|official|verified/i;
+      const texts = [
+        ...SCENARIO.sellers.flatMap((s) => [s.storeName, s.businessName, s.about]),
+        ...SCENARIO.products.flatMap((p) => [p.name, p.short, p.text, p.brand]),
+      ];
+      for (const t of texts) if (words.test(t)) problems.push('claim word in ' + t);
+      console.log(problems.length === 0 ? 'ok' : problems.join('; '));
+    `);
+    expect(answer.out.trim()).toBe('ok');
+  });
 });

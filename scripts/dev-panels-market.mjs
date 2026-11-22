@@ -10,6 +10,11 @@
 // for seller onboarding and delivery, so a local demo can onboard Brisbane sellers
 // (SERVICE_AREA_CONFIG_DIR=.local/service-areas). The committed file stays untouched.
 //
+// LOCAL_MAIL_ORIGIN_LIMIT (opt-in, 1 to 1000) raises the per-address limit of sign-up and
+// verification mails (identity.mailThrottles.origin.limit), because every local client shares the
+// address 127.0.0.1: the operational test data loader (scripts/ops-data) signs up a few dozen
+// accounts in one run. The per-account limit stays as committed. Unset, nothing changes.
+//
 // The Market code is required: there is no default Market (ADR-0020 decision 3).
 // DEV_MARKETS_OUT_DIR changes the output folder (a test writes to a temporary one).
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -25,6 +30,16 @@ const adminOrigin = process.env.ADMIN_PANEL_ORIGIN ?? 'http://admin.localhost:30
 // Opt-in: the buyer site's origin (the local demo's slot is http://storefront.localhost:3003).
 // Unset, the customer list and links stay as committed and no unsafe customer request is allowed.
 const storefrontOrigin = process.env.STOREFRONT_ORIGIN;
+
+const mailOriginLimit = process.env.LOCAL_MAIL_ORIGIN_LIMIT;
+if (
+  mailOriginLimit !== undefined &&
+  mailOriginLimit !== '' &&
+  !(/^[1-9]\d{0,3}$/.test(mailOriginLimit) && Number(mailOriginLimit) <= 1000)
+) {
+  console.error('LOCAL_MAIL_ORIGIN_LIMIT must be a whole number from 1 to 1000');
+  process.exit(1);
+}
 
 const source = resolve('config/markets', `${code}.json`);
 const config = JSON.parse(await readFile(source, 'utf8'));
@@ -55,6 +70,10 @@ config.allowedOrigins = {
         ? committedCustomer
         : [],
 };
+
+if (mailOriginLimit !== undefined && mailOriginLimit !== '') {
+  config.identity.mailThrottles.origin.limit = Number(mailOriginLimit);
+}
 
 const directory = resolve(process.env.DEV_MARKETS_OUT_DIR ?? '.local/markets');
 await mkdir(directory, { recursive: true });
