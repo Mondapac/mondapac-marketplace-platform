@@ -97,6 +97,21 @@ describe('scripts/dev-panels-market.mjs', () => {
     }
   });
 
+  it('refuses LOCAL_MAIL_ORIGIN_LIMIT when an origin is not on this machine (a shared tunnel)', () => {
+    expect(() =>
+      generate({
+        LOCAL_MAIL_ORIGIN_LIMIT: '200',
+        SELLER_PANEL_ORIGIN: 'https://seller-abc.trycloudflare.com',
+      }),
+    ).toThrow();
+    expect(() =>
+      generate({
+        LOCAL_MAIL_ORIGIN_LIMIT: '200',
+        STOREFRONT_ORIGIN: 'https://shop.example.com',
+      }),
+    ).toThrow();
+  });
+
   it('accepts other loopback panel origins', () => {
     const out = generate({
       SELLER_PANEL_ORIGIN: 'http://127.0.0.1:4001',

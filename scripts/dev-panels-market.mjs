@@ -40,6 +40,22 @@ if (
   console.error('LOCAL_MAIL_ORIGIN_LIMIT must be a whole number from 1 to 1000');
   process.exit(1);
 }
+// Only for panels on this machine: a shared session (.devcontainer/share.sh, tunnel origins)
+// keeps the committed limit even when the variable is left set in the shell.
+const onThisMachine = (origin) => {
+  const { hostname } = new URL(origin);
+  return ['localhost', '127.0.0.1', '[::1]'].includes(hostname) || hostname.endsWith('.localhost');
+};
+if (
+  mailOriginLimit !== undefined &&
+  mailOriginLimit !== '' &&
+  ![sellerOrigin, adminOrigin, ...(storefrontOrigin ? [storefrontOrigin] : [])].every(onThisMachine)
+) {
+  console.error(
+    'LOCAL_MAIL_ORIGIN_LIMIT is refused: a panel or site origin is not on this machine',
+  );
+  process.exit(1);
+}
 
 const source = resolve('config/markets', `${code}.json`);
 const config = JSON.parse(await readFile(source, 'utf8'));
