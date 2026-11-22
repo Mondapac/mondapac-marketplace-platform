@@ -1,4 +1,9 @@
 import type { FactoryProvider } from '@nestjs/common';
+import { PrismaSellersWorkQueueCountReader } from './prisma-work-queue-count.reader';
+import {
+  SELLERS_WORK_QUEUE_COUNT_READER,
+  type SellersWorkQueueCountReader,
+} from '../application/ports/work-queue-count.reader';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { APP_CONFIG } from '../../../platform/config/config.module';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
@@ -241,6 +246,14 @@ const SELLERS_SECRET = Symbol('SELLERS_SECRET');
  * `seller-access-contract-is-for-sellers`).
  */
 export const sellerProviders: readonly FactoryProvider[] = [
+  {
+    provide: SELLERS_WORK_QUEUE_COUNT_READER,
+    inject: [PrismaService, SELLER_HEALTH_STORE],
+    useFactory: (
+      prisma: PrismaService,
+      healthStore: SellerHealthStore,
+    ): SellersWorkQueueCountReader => new PrismaSellersWorkQueueCountReader(prisma, healthStore),
+  },
   {
     provide: SELLER_FILE_REPOSITORY,
     inject: [PrismaService],

@@ -1,4 +1,12 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
+import { CountPriceHolds } from './application/use-cases/count-price-holds.use-case';
+import {
+  PRICING_WORK_QUEUE_COUNT_READER,
+  type PricingWorkQueueCountReader,
+} from './application/ports/work-queue-count.reader';
+import { PricingWorkQueueFacadeImplementation } from './presentation/pricing-work-queue.facade';
+import { PRICING_WORK_QUEUE_FACADE } from './contracts/pricing-work-queue.facade';
+import type { UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import {
@@ -169,6 +177,21 @@ function holdListUseCaseProvider<U>(type: HoldListUseCaseClass<U>): FactoryProvi
     AdminPriceHoldController,
   ],
   providers: [
+    ...[CountPriceHolds].map((type) => ({
+      provide: type,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, PRICING_WORK_QUEUE_COUNT_READER],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        counts: PricingWorkQueueCountReader,
+      ) => new type(gate, { unitOfWork, counts }),
+    })),
+    {
+      provide: PRICING_WORK_QUEUE_FACADE,
+      inject: [CountPriceHolds],
+      useFactory: (priceHolds: CountPriceHolds) =>
+        new PricingWorkQueueFacadeImplementation(priceHolds),
+    },
     PersistenceModule.outboxWriterFor('pricing'),
     PersistenceModule.auditWriterFor('pricing'),
     registerEvents('pricing', PRICING_EVENTS),
@@ -334,6 +357,6 @@ function holdListUseCaseProvider<U>(type: HoldListUseCaseClass<U>): FactoryProvi
       ],
     ),
   ],
-  exports: [PRICING_FACADE, PRICING_SPECIALS_FACADE],
+  exports: [PRICING_WORK_QUEUE_FACADE, PRICING_FACADE, PRICING_SPECIALS_FACADE],
 })
 export class PricingModule {}

@@ -64,6 +64,7 @@ export {
   CATALOG_CULTURE_READ,
   CATALOG_BRAND_EDIT,
   CATALOG_BRAND_READ,
+  CATALOG_CATEGORY_PROPOSAL_DECIDE,
   CATALOG_OWN_IMPORT_RUN,
   CATALOG_OWN_PRODUCT_VIEW,
   CATALOG_PERMISSIONS,
@@ -73,3 +74,7 @@ export {
   CATALOG_PRODUCT_VIEW,
   CATALOG_VARIANT_VIEW,
 } from './permissions';
+export {
+  CATALOG_WORK_QUEUE_FACADE,
+  type CatalogWorkQueueFacade,
+} from './catalog-work-queue.facade';

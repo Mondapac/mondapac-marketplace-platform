@@ -1,4 +1,15 @@
 import { CertificationModule } from '../certification';
+import { CountPendingOffers } from './application/use-cases/count-pending-offers.use-case';
+import { CountPendingRevisions } from './application/use-cases/count-pending-revisions.use-case';
+import { CountBrandMerges } from './application/use-cases/count-brand-merges.use-case';
+import { CountCategoryProposals } from './application/use-cases/count-category-proposals.use-case';
+import {
+  CATALOG_WORK_QUEUE_COUNT_READER,
+  type CatalogWorkQueueCountReader,
+} from './application/ports/work-queue-count.reader';
+import { CatalogWorkQueueFacadeImplementation } from './presentation/catalog-work-queue.facade';
+import { CATALOG_WORK_QUEUE_FACADE } from './contracts/catalog-work-queue.facade';
+import type { UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import {
   createSystemChangeRegistrar,
   SYSTEM_ACTION_PROPOSER,
@@ -1103,6 +1114,33 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     ListsModule,
   ],
   providers: [
+    ...[CountPendingOffers, CountPendingRevisions, CountBrandMerges, CountCategoryProposals].map(
+      (type) => ({
+        provide: type,
+        inject: [USE_CASE_GATE, UNIT_OF_WORK, CATALOG_WORK_QUEUE_COUNT_READER],
+        useFactory: (
+          gate: UseCaseGate,
+          unitOfWork: UnitOfWork,
+          counts: CatalogWorkQueueCountReader,
+        ) => new type(gate, { unitOfWork, counts }),
+      }),
+    ),
+    {
+      provide: CATALOG_WORK_QUEUE_FACADE,
+      inject: [CountPendingOffers, CountPendingRevisions, CountBrandMerges, CountCategoryProposals],
+      useFactory: (
+        pendingOffers: CountPendingOffers,
+        pendingRevisions: CountPendingRevisions,
+        brandMerges: CountBrandMerges,
+        categoryProposals: CountCategoryProposals,
+      ) =>
+        new CatalogWorkQueueFacadeImplementation(
+          pendingOffers,
+          pendingRevisions,
+          brandMerges,
+          categoryProposals,
+        ),
+    },
     PersistenceModule.outboxWriterFor('catalog'),
     PersistenceModule.auditWriterFor('catalog'),
     registerAuditActions('catalog', CATALOG_AUDIT_ACTIONS),
@@ -3436,6 +3474,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     },
   ],
   exports: [
+    CATALOG_WORK_QUEUE_FACADE,
     CATALOG_FACADE,
     CATALOG_INDEX_FACADE,
     CATALOG_ASSISTANT_FACADE,

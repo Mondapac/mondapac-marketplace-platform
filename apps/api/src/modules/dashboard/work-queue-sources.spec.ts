@@ -1,7 +1,14 @@
 import { ok, Temporal } from '@mondapac/shared-kernel';
 import { testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import { PLATFORM_TENANT_ID } from '../../platform/market-context/tenant';
+import {
+  CATALOG_BRAND_READ,
+  CATALOG_CATEGORY_PROPOSAL_DECIDE,
+  CATALOG_PRODUCT_VIEW,
+} from '../catalog';
 import { ORDERING_ORDER_VIEW } from '../ordering';
+import { PRICING_PRICE_HOLD_VIEW } from '../pricing';
+import { SELLERS_SELLER_VIEW } from '../sellers';
 import { checkWorkQueueSources } from './application/work-queue-source';
 import { workQueueSources, type WorkQueueOwners } from './dashboard.module';
 
@@ -22,6 +29,17 @@ describe('the bound work-queue sources', () => {
     ordering: {
       lateDeliveries: record('ordering.lateDeliveries'),
       pendingRefunds: record('ordering.pendingRefunds'),
+    },
+    catalog: {
+      pendingOffers: record('catalog.pendingOffers'),
+      pendingRevisions: record('catalog.pendingRevisions'),
+      brandMerges: record('catalog.brandMerges'),
+      categoryProposals: record('catalog.categoryProposals'),
+    },
+    pricing: { priceHolds: record('pricing.priceHolds') },
+    sellers: {
+      applications: record('sellers.applications'),
+      unhealthySellers: record('sellers.unhealthySellers'),
     },
   };
   const sources = workQueueSources(owners);
@@ -54,6 +72,55 @@ describe('the bound work-queue sources', () => {
         requires: [ORDERING_ORDER_VIEW.key],
         live: false,
       },
+      {
+        key: 'sellers.applications',
+        panel: 'admin',
+        level: 'today',
+        requires: [SELLERS_SELLER_VIEW.key],
+        live: false,
+      },
+      {
+        key: 'catalog.pending-offers',
+        panel: 'admin',
+        level: 'today',
+        requires: [CATALOG_PRODUCT_VIEW.key],
+        live: false,
+      },
+      {
+        key: 'catalog.pending-revisions',
+        panel: 'admin',
+        level: 'today',
+        requires: [CATALOG_PRODUCT_VIEW.key],
+        live: false,
+      },
+      {
+        key: 'pricing.price-holds',
+        panel: 'admin',
+        level: 'today',
+        requires: [PRICING_PRICE_HOLD_VIEW.key],
+        live: false,
+      },
+      {
+        key: 'sellers.health-queue',
+        panel: 'admin',
+        level: 'today',
+        requires: [SELLERS_SELLER_VIEW.key],
+        live: false,
+      },
+      {
+        key: 'catalog.brand-merges',
+        panel: 'admin',
+        level: 'review',
+        requires: [CATALOG_BRAND_READ.key],
+        live: false,
+      },
+      {
+        key: 'catalog.category-proposals',
+        panel: 'admin',
+        level: 'review',
+        requires: [CATALOG_CATEGORY_PROPOSAL_DECIDE.key],
+        live: false,
+      },
     ]);
   });
 
@@ -65,6 +132,13 @@ describe('the bound work-queue sources', () => {
     expect(calls.map((c) => c.method)).toEqual([
       'ordering.lateDeliveries',
       'ordering.pendingRefunds',
+      'sellers.applications',
+      'catalog.pendingOffers',
+      'catalog.pendingRevisions',
+      'pricing.priceHolds',
+      'sellers.unhealthySellers',
+      'catalog.brandMerges',
+      'catalog.categoryProposals',
     ]);
     expect(calls.every((c) => c.context === context && c.query === query)).toBe(true);
   });

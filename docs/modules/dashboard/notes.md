@@ -34,3 +34,21 @@ promise for instant and same-day orders once shipped (today only their ready-by 
 - The open scheduled orders have a partial index on (market_id, delivery_window_end); the per-minutes
   counts stay in Prisma, not one raw statement (Mojtaba, database).
 - The database spec counts under a tenant of its own, so its counts are exact (Sajad, QA).
+
+## Catalog, pricing and sellers queues (PR 3)
+
+- Each owner answers through its own `*WorkQueueFacade` and one use case per queue, gated by the
+  key of the queue's own list, through the shared `countAdminWorkQueue` (platform/work-queue):
+  platform admins acting as themselves only, one read-only unit, `access.unavailable` on abort or
+  failure.
+- Today: seller applications (`sellers.seller.view`; pending business-file revisions, by creation),
+  Offers pending first publication and product revisions (`catalog.product.view`; by submission),
+  price holds (`pricing.price-hold.view`; regular and special records pending review, counts only),
+  the seller health queue (`sellers.seller.view`; a snapshot of the queue's own read: no overdue,
+  no oldest). Review: brand merge groups (`catalog.brand.read`; shared by every Market) and
+  category proposals (`catalog.category-proposal.decide`).
+- Each count runs on the partial index its list already reads; no migration.
+- The category-proposal count reader is on the shelf-isolation allow-list (CAT-52): it reads a count
+  and the earliest `created_at`, never a name or a shelf.
+- There is no attribute-proposal queue in catalog yet, so the design's "category and attribute
+  proposals" row counts category proposals only.

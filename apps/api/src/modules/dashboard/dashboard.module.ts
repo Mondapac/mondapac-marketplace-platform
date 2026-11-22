@@ -2,6 +2,14 @@ import { Module } from '@nestjs/common';
 import type { Clock } from '@mondapac/shared-kernel';
 import { USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
 import { CLOCK } from '../../platform/clock/clock.module';
+import {
+  CATALOG_BRAND_READ,
+  CATALOG_CATEGORY_PROPOSAL_DECIDE,
+  CATALOG_PRODUCT_VIEW,
+  CATALOG_WORK_QUEUE_FACADE,
+  CatalogModule,
+  type CatalogWorkQueueFacade,
+} from '../catalog';
 import { IDENTITY_FACADE, IdentityModule, type IdentityFacade } from '../identity';
 import {
   ORDERING_ORDER_VIEW,
@@ -9,6 +17,18 @@ import {
   OrderingModule,
   type OrderingWorkQueueFacade,
 } from '../ordering';
+import {
+  PRICING_PRICE_HOLD_VIEW,
+  PRICING_WORK_QUEUE_FACADE,
+  PricingModule,
+  type PricingWorkQueueFacade,
+} from '../pricing';
+import {
+  SELLERS_SELLER_VIEW,
+  SELLERS_WORK_QUEUE_FACADE,
+  SellersModule,
+  type SellersWorkQueueFacade,
+} from '../sellers';
 import { VIEWER_PERMISSIONS, type ViewerPermissions } from './application/ports/viewer-permissions';
 import { ViewAdminWorkQueue } from './application/use-cases/view-admin-work-queue.use-case';
 import { WorkQueueCache } from './application/work-queue-cache';
@@ -24,6 +44,9 @@ import { AdminDashboardController } from './presentation/admin-dashboard.control
 /** The owners' facades the work-queue sources are bound to. */
 export interface WorkQueueOwners {
   readonly ordering: OrderingWorkQueueFacade;
+  readonly catalog: CatalogWorkQueueFacade;
+  readonly pricing: PricingWorkQueueFacade;
+  readonly sellers: SellersWorkQueueFacade;
 }
 
 /**
@@ -33,7 +56,7 @@ export interface WorkQueueOwners {
  * commission-payouts).
  */
 export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSource[] {
-  const { ordering } = owners;
+  const { ordering, catalog, pricing, sellers } = owners;
   return [
     {
       key: 'ordering.late-deliveries',
@@ -51,6 +74,62 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
       live: false,
       count: (context, query) => ordering.pendingRefunds(context, query),
     },
+    {
+      key: 'sellers.applications',
+      panel: 'admin',
+      level: 'today',
+      requires: [SELLERS_SELLER_VIEW.key],
+      live: false,
+      count: (context, query) => sellers.applications(context, query),
+    },
+    {
+      key: 'catalog.pending-offers',
+      panel: 'admin',
+      level: 'today',
+      requires: [CATALOG_PRODUCT_VIEW.key],
+      live: false,
+      count: (context, query) => catalog.pendingOffers(context, query),
+    },
+    {
+      key: 'catalog.pending-revisions',
+      panel: 'admin',
+      level: 'today',
+      requires: [CATALOG_PRODUCT_VIEW.key],
+      live: false,
+      count: (context, query) => catalog.pendingRevisions(context, query),
+    },
+    {
+      key: 'pricing.price-holds',
+      panel: 'admin',
+      level: 'today',
+      requires: [PRICING_PRICE_HOLD_VIEW.key],
+      live: false,
+      count: (context, query) => pricing.priceHolds(context, query),
+    },
+    {
+      key: 'sellers.health-queue',
+      panel: 'admin',
+      level: 'today',
+      requires: [SELLERS_SELLER_VIEW.key],
+      live: false,
+      count: (context, query) => sellers.unhealthySellers(context, query),
+    },
+    {
+      key: 'catalog.brand-merges',
+      panel: 'admin',
+      level: 'review',
+      requires: [CATALOG_BRAND_READ.key],
+      live: false,
+      count: (context, query) => catalog.brandMerges(context, query),
+    },
+    {
+      key: 'catalog.category-proposals',
+      panel: 'admin',
+      level: 'review',
+      requires: [CATALOG_CATEGORY_PROPOSAL_DECIDE.key],
+      live: false,
+      count: (context, query) => catalog.categoryProposals(context, query),
+    },
   ];
 }
 
@@ -60,7 +139,7 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
  * unchanged, and no module imports it (dependency-cruiser `nothing-imports-dashboard`).
  */
 @Module({
-  imports: [IdentityModule, OrderingModule],
+  imports: [IdentityModule, OrderingModule, CatalogModule, PricingModule, SellersModule],
   controllers: [AdminDashboardController],
   providers: [
     {
@@ -70,9 +149,19 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
     },
     {
       provide: WORK_QUEUE_SOURCES,
-      inject: [ORDERING_WORK_QUEUE_FACADE],
-      useFactory: (ordering: OrderingWorkQueueFacade) => {
-        const sources = workQueueSources({ ordering });
+      inject: [
+        ORDERING_WORK_QUEUE_FACADE,
+        CATALOG_WORK_QUEUE_FACADE,
+        PRICING_WORK_QUEUE_FACADE,
+        SELLERS_WORK_QUEUE_FACADE,
+      ],
+      useFactory: (
+        ordering: OrderingWorkQueueFacade,
+        catalog: CatalogWorkQueueFacade,
+        pricing: PricingWorkQueueFacade,
+        sellers: SellersWorkQueueFacade,
+      ) => {
+        const sources = workQueueSources({ ordering, catalog, pricing, sellers });
         checkWorkQueueSources(sources);
         return sources;
       },

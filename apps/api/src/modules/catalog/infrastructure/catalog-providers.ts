@@ -1,4 +1,9 @@
 import type { Provider } from '@nestjs/common';
+import { PrismaCatalogWorkQueueCountReader } from './prisma-work-queue-count.reader';
+import {
+  CATALOG_WORK_QUEUE_COUNT_READER,
+  type CatalogWorkQueueCountReader,
+} from '../application/ports/work-queue-count.reader';
 import {
   CATEGORY_PROPOSAL_CAPABILITY,
   CATEGORY_PROPOSAL_POLICY,
@@ -401,6 +406,12 @@ import { GatewayDescriptionWriterModel } from './gateway-description-writer-mode
 import { RegistryMarketDayCalendar } from './registry-market-day-calendar';
 
 export const catalogProviders: readonly Provider[] = [
+  {
+    provide: CATALOG_WORK_QUEUE_COUNT_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): CatalogWorkQueueCountReader =>
+      new PrismaCatalogWorkQueueCountReader(prisma),
+  },
   {
     provide: DESCRIPTION_WRITER_MODEL,
     inject: [ModelGateway],

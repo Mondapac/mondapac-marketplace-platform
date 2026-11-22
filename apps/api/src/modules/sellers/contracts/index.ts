@@ -42,3 +42,7 @@ export {
   type SellersValidationFailed,
   type SellingEligibilityMap,
 } from './sellers.facade';
+export {
+  SELLERS_WORK_QUEUE_FACADE,
+  type SellersWorkQueueFacade,
+} from './sellers-work-queue.facade';

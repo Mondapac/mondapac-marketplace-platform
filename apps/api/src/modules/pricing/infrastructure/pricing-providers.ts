@@ -1,4 +1,9 @@
 import type { FactoryProvider } from '@nestjs/common';
+import { PrismaPricingWorkQueueCountReader } from './prisma-work-queue-count.reader';
+import {
+  PRICING_WORK_QUEUE_COUNT_READER,
+  type PricingWorkQueueCountReader,
+} from '../application/ports/work-queue-count.reader';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
@@ -54,6 +59,12 @@ import { PrismaSpecialsInForceReader } from './prisma-specials-in-force.reader';
  * production binding is its fail-closed placeholder until catalog slice 7, ADR-0031 decision 6).
  */
 export const pricingProviders: readonly FactoryProvider[] = [
+  {
+    provide: PRICING_WORK_QUEUE_COUNT_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PricingWorkQueueCountReader =>
+      new PrismaPricingWorkQueueCountReader(prisma),
+  },
   {
     provide: SPECIALS_IN_FORCE_READER,
     inject: [PrismaService],

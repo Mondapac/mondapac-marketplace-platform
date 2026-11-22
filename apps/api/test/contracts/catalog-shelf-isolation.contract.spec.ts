@@ -50,6 +50,10 @@ const ALLOWED = new Set([
   'modules/catalog/domain/claim-checked-fields.ts',
   'modules/catalog/catalog.module.ts',
   'modules/catalog/infrastructure/catalog-providers.ts',
+  // The dashboard's count of pending category proposals (dashboards upgrade, phase 1): a count and
+  // the earliest created_at of `catalog.category_proposals` WHERE status = 'pending', never a name
+  // or a shelf.
+  'modules/catalog/infrastructure/prisma-work-queue-count.reader.ts',
 ]);
 
 describe('seller shelves stay out of platform reads (CAT-52)', () => {
