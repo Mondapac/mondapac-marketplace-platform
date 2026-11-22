@@ -66,3 +66,7 @@ export {
   type OrderingRankingFacade,
   type RankingFailure,
 } from './ordering-ranking.facade';
+export {
+  ORDERING_WORK_QUEUE_FACADE,
+  type OrderingWorkQueueFacade,
+} from './ordering-work-queue.facade';

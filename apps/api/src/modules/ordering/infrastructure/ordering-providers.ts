@@ -92,6 +92,11 @@ import {
 } from '../application/ports/saved-filter.repository';
 import { PrismaRefundRepository } from './prisma-refund.repository';
 import { PrismaAdminShipmentListReader } from './prisma-admin-shipment-list.reader';
+import { PrismaWorkQueueCountReader } from './prisma-work-queue-count.reader';
+import {
+  WORK_QUEUE_COUNT_READER,
+  type WorkQueueCountReader,
+} from '../application/ports/work-queue-count.reader';
 import { PrismaAdminDocumentListReader } from './prisma-admin-document-list.reader';
 import { PrismaAdminRefundListReader } from './prisma-admin-refund-list.reader';
 import {
@@ -147,6 +152,12 @@ export const orderingProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): AdminShipmentListReader =>
       new PrismaAdminShipmentListReader(prisma),
+  },
+  {
+    provide: WORK_QUEUE_COUNT_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): WorkQueueCountReader =>
+      new PrismaWorkQueueCountReader(prisma),
   },
   {
     provide: ADMIN_DOCUMENT_LIST_READER,
