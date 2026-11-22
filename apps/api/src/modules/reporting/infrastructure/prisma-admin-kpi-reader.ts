@@ -71,6 +71,24 @@ export class PrismaAdminKpiReader implements AdminKpiReader {
     };
   }
 
+  async sellersWithOrders(
+    market: MarketContext,
+    currency: string,
+    range: DayRange,
+  ): Promise<number> {
+    const groups = await this.prisma.tx(market).reportingDailySellerSales.groupBy({
+      by: ['sellerId'],
+      where: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        currency,
+        marketDay: { gte: dayToDate(range.from), lte: dayToDate(range.to) },
+      },
+      having: { ordersPaid: { _sum: { gt: 0 } } },
+    });
+    return groups.length;
+  }
+
   async topSellers(
     market: MarketContext,
     currency: string,

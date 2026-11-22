@@ -407,6 +407,8 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
         REPORTING_KPI_FACADE,
         SELLERS_FACADE,
         CATALOG_INDEX_FACADE,
+        CATALOG_WORK_QUEUE_FACADE,
+        SELLERS_WORK_QUEUE_FACADE,
         CLOCK,
       ],
       useFactory: (
@@ -415,6 +417,8 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
         reporting: ReportingKpiFacade,
         sellers: SellersFacade,
         catalog: CatalogIndexFacade,
+        catalogQueues: CatalogWorkQueueFacade,
+        sellerQueues: SellersWorkQueueFacade,
         clock: Clock,
       ) => {
         const deps: AdminKpisDependencies = {
@@ -422,6 +426,7 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
           reporting,
           sellers,
           catalog,
+          queues: { catalog: catalogQueues, sellers: sellerQueues },
           clock,
           timeoutMs: KPI_TIMEOUT_MS,
         };

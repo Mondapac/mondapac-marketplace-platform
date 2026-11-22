@@ -64,6 +64,8 @@ export type KpiSection<K> =
   | { readonly status: 'error' };
 
 export interface OperationsKpis {
+  /** Sellers with at least one paid order in the period; null when it could not be read. */
+  readonly sellersWithOrders: number | null;
   readonly current: OperationsValues;
   readonly previous: OperationsValues;
   readonly deltas: Readonly<Record<keyof OperationsValues, KpiDelta>>;
@@ -106,6 +108,15 @@ export interface TopCategoriesKpis {
   readonly rows: readonly TopCategoryRow[];
 }
 
+/** A count of the health card: its number, or `error`. Null when the session lacks its key. */
+export type HealthCount =
+  { readonly status: 'ok'; readonly count: number } | { readonly status: 'error' };
+
+export interface MarketHealth {
+  readonly uncertifiedListings: HealthCount | null;
+  readonly sellersAtRisk: HealthCount | null;
+}
+
 export interface AdminKpis {
   readonly generatedAt: string;
   readonly periodId: KpiPeriod;
@@ -120,6 +131,8 @@ export interface AdminKpis {
   readonly topSellers: KpiSection<TopSellersKpis> | null;
   /** Needs the money key, like `finance`; null leaves the card out. */
   readonly topCategories: KpiSection<TopCategoriesKpis> | null;
+  /** Null when the session holds neither the catalog nor the sellers view key. */
+  readonly health: MarketHealth | null;
 }
 
 /** The KPI read as the page passes it: null when the session holds neither key. */

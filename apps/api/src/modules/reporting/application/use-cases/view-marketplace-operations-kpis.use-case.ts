@@ -30,6 +30,9 @@ export interface OperationsAnswer {
   readonly generatedAt: Temporal.Instant;
   readonly refreshedAt: Temporal.Instant | null;
   readonly current: OperationsKpis;
+  /** Sellers with at least one paid seller order in the period (market health). */
+  /** Null when this one secondary read failed: the other numbers stay. */
+  readonly sellersWithOrders: number | null;
   readonly previous: OperationsKpis;
   readonly deltas: KpiDeltas<keyof OperationsKpis>;
   /** One point per day of the period, oldest first. */
@@ -79,11 +82,30 @@ export class ViewMarketplaceOperationsKpis extends UseCase<
     const ranges = read.value;
     const current = operationsOf(ranges.current);
     const previous = operationsOf(ranges.previous);
+    // A second unit, so this count can differ slightly from `current` if a rollup
+    // refreshes between the two reads. It is a secondary number: when it fails only
+    // it goes missing (null), never the order numbers.
+    const sellersWithOrders = await this.deps.unitOfWork
+      .run(
+        context.market,
+        async () =>
+          ok(
+            await this.deps.reader.sellersWithOrders(
+              context.market,
+              ranges.currency,
+              ranges.period.current,
+            ),
+          ),
+        { readOnly: true },
+      )
+      .then((answer) => (answer.ok ? answer.value : null))
+      .catch(() => null);
     return ok({
       period: ranges.period,
       generatedAt: ranges.generatedAt,
       refreshedAt: ranges.refreshedAt,
       current,
+      sellersWithOrders,
       previous,
       deltas: operationsDeltas(current, previous),
       series: ranges.current.map(point),

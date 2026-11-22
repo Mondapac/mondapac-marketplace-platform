@@ -113,6 +113,13 @@ export class OperationsPointBody {
 }
 
 export class OperationsKpiBody {
+  @ApiProperty({
+    nullable: true,
+    type: Number,
+    description:
+      'Sellers with at least one paid order in the period. Null when this one count could not be read.',
+  })
+  sellersWithOrders!: number | null;
   @ApiProperty({ type: OperationsKpiValuesBody }) current!: OperationsKpiValuesBody;
   @ApiProperty({ type: OperationsKpiValuesBody }) previous!: OperationsKpiValuesBody;
   @ApiProperty({
@@ -206,6 +213,27 @@ export class TopCategoriesSectionBody {
   @ApiProperty({ required: false, type: TopCategoriesKpiBody }) kpis?: TopCategoriesKpiBody;
 }
 
+export class HealthCountBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: Number }) count?: number;
+}
+
+export class MarketHealthBody {
+  @ApiProperty({
+    type: HealthCountBody,
+    nullable: true,
+    description:
+      'Offers whose certification tag outlived the certificate (an incident). Null without `catalog.product.view`.',
+  })
+  uncertifiedListings!: HealthCountBody | null;
+  @ApiProperty({
+    type: HealthCountBody,
+    nullable: true,
+    description: 'Sellers in the health queue. Null without `sellers.seller.view`.',
+  })
+  sellersAtRisk!: HealthCountBody | null;
+}
+
 export class AdminKpisBody {
   @ApiProperty({ format: 'date-time' }) generatedAt!: string;
   @ApiProperty({ enum: ['today', '7d', '30d', 'month'], description: 'The period asked for.' })
@@ -241,6 +269,13 @@ export class AdminKpisBody {
     description: 'Null without `commission-payouts.settlement.view`: leave the card out.',
   })
   topCategories!: TopCategoriesSectionBody | null;
+  @ApiProperty({
+    type: MarketHealthBody,
+    nullable: true,
+    description:
+      'Null when the viewer holds neither `catalog.product.view` nor `sellers.seller.view`.',
+  })
+  health!: MarketHealthBody | null;
 }
 
 const money = (amount: bigint, currency: string): MoneyBody => ({
@@ -278,6 +313,7 @@ function operationsSection(section: AdminKpisAnswer['operations']): OperationsSe
     status: 'ok',
     refreshedAt: instantOf(value.refreshedAt),
     kpis: {
+      sellersWithOrders: value.sellersWithOrders,
       current: { ...value.current },
       previous: { ...value.previous },
       deltas: { ...value.deltas },
@@ -362,5 +398,12 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     finance: financeSection(answer.finance),
     topSellers: topSellersSection(answer.topSellers),
     topCategories: topCategoriesSection(answer.topCategories),
+    health:
+      answer.health === null
+        ? null
+        : {
+            uncertifiedListings: answer.health.uncertifiedListings,
+            sellersAtRisk: answer.health.sellersAtRisk,
+          },
   };
 }
