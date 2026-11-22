@@ -1300,6 +1300,27 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       });
     };
 
+    it('announces the cashback and its return once each, and nothing for a refused one', async () => {
+      await withCashback();
+      expect(await recordReturn(returned())).toEqual(ok('recorded'));
+      expect(await recordReturn(returned())).toEqual(ok('already-recorded'));
+      // Another seller's return is refused and publishes nothing.
+      expect(
+        await recordReturn(returned({ clawbackId: CLAWBACK_2, sellerId: SELLER_B })),
+      ).toMatchObject({ ok: false });
+      const posted = (deps.outbox as unknown as RecordingCpOutbox).events
+        .filter((event) => event.type === 'commission-payouts.ledger-recorded.v1')
+        .map((event) => {
+          const payload = event.payload as Record<string, unknown>;
+          return [payload.cause, payload.sourceId, payload.sellerId];
+        });
+      expect(posted).toEqual([
+        ['paid', null, SELLER_A],
+        ['cashback', CREDIT, SELLER_A],
+        ['cashback-return', CLAWBACK_1, SELLER_A],
+      ]);
+    });
+
     it('credits the seller once per clawback and nets it off the cashback total', async () => {
       await withCashback();
       expect(await recordReturn(returned())).toEqual(ok('recorded'));

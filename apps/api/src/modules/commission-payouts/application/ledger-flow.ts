@@ -14,7 +14,7 @@ import {
   type LedgerKind,
   type LedgerTotals,
 } from '../domain/ledger';
-import type { LEDGER_POSTING_CAUSES} from '../domain/events';
+import type { LEDGER_POSTING_CAUSES } from '../domain/events';
 import { LedgerRecorded } from '../domain/events';
 import { reverseLine, reverseShipping } from '../domain/reversal';
 import type { CommissionPayoutsDependencies } from './commission-payouts-dependencies';
