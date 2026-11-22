@@ -1,6 +1,8 @@
 import { ok, Temporal } from '@mondapac/shared-kernel';
 import { PrismaCatalogWorkQueueCountReader } from '../../src/modules/catalog/infrastructure/prisma-work-queue-count.reader';
+import { PrismaCertificationWorkQueueCountReader } from '../../src/modules/certification/infrastructure/prisma-work-queue-count.reader';
 import { PrismaPricingWorkQueueCountReader } from '../../src/modules/pricing/infrastructure/prisma-work-queue-count.reader';
+import { PrismaSecurityWorkQueueCountReader } from '../../src/modules/security/infrastructure/prisma-work-queue-count.reader';
 import { PrismaSellerHealthStore } from '../../src/modules/sellers/infrastructure/prisma-seller-health.store';
 import { PrismaSellersWorkQueueCountReader } from '../../src/modules/sellers/infrastructure/prisma-work-queue-count.reader';
 import {
@@ -10,7 +12,7 @@ import {
 import { TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 
-// The catalog, pricing and sellers counts of the dashboard's work queue (dashboards upgrade,
+// The catalog, pricing, sellers, security and certification counts of the dashboard's work queue (dashboards upgrade,
 // phase 1) on PostgreSQL, as the application role, for both Market fixtures. Each count reuses
 // the where clause of its queue's own list (covered by that list's database spec); here every
 // statement runs against the real schema and grants, and its answer holds together: a valid
@@ -23,17 +25,26 @@ const AFTER_ALL = Temporal.Instant.from('2100-01-01T00:00:00Z');
 describe.each(TEST_MARKETS)('dashboard admin queue counts in market %s (database)', (code) => {
   const market = marketOf(code);
   let db: Persistence;
+  let claims: (now: Temporal.Instant) => Promise<WorkQueueCount>;
   let readers: Record<string, (staleBefore: Temporal.Instant) => Promise<WorkQueueCount>>;
 
   beforeAll(() => {
     db = createPersistence();
     const catalog = new PrismaCatalogWorkQueueCountReader(db.service);
     const pricing = new PrismaPricingWorkQueueCountReader(db.service);
+    const security = new PrismaSecurityWorkQueueCountReader(db.service);
+    const certification = new PrismaCertificationWorkQueueCountReader(db.service);
     const sellers = new PrismaSellersWorkQueueCountReader(
       db.service,
       new PrismaSellerHealthStore(db.service),
     );
+    claims = (now) => catalog.claimsWithoutCertificate(market, now);
     readers = {
+      'security.openAlerts': (stale) => security.openAlerts(market, NOW, stale),
+      'certification.sellerCertificates': (stale) =>
+        certification.sellerCertificates(market, NOW, stale),
+      'certification.productCertificates': (stale) =>
+        certification.productCertificates(market, NOW, stale),
       'catalog.pendingOffers': (stale) => catalog.pendingOffers(market, NOW, stale),
       'catalog.pendingRevisions': (stale) => catalog.pendingRevisions(market, NOW, stale),
       'catalog.brandMerges': (stale) => catalog.brandMerges(market, NOW, stale),
@@ -54,6 +65,9 @@ describe.each(TEST_MARKETS)('dashboard admin queue counts in market %s (database
   };
 
   it.each([
+    'security.openAlerts',
+    'certification.sellerCertificates',
+    'certification.productCertificates',
     'catalog.pendingOffers',
     'catalog.pendingRevisions',
     'catalog.brandMerges',
@@ -75,5 +89,14 @@ describe.each(TEST_MARKETS)('dashboard admin queue counts in market %s (database
     // Other files write rows at the same time: at least the rows counted early are overdue late.
     expect(late.overdue).toBe(late.count);
     expect(late.count).toBeGreaterThanOrEqual(0);
+  });
+
+  it('counts the badges past their certificate as incidents: every one overdue', async () => {
+    const counted = await read(() => claims(NOW));
+    expect(isWorkQueueCount(counted)).toBe(true);
+    expect(counted.overdue).toBe(counted.count);
+    expect(counted.oldestAt === null).toBe(counted.count === 0);
+    // No certificate ended before 1990: nothing is counted at that moment.
+    expect(await read(() => claims(BEFORE_ANY))).toEqual({ count: 0, overdue: 0, oldestAt: null });
   });
 });

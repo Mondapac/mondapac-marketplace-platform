@@ -100,6 +100,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   'catalog.offer_tags_market_id_seller_id_offer_id_idx':
     "CREATE INDEX offer_tags_market_id_seller_id_offer_id_idx ON catalog.offer_tags USING btree (market_id, seller_id, offer_id) WHERE ((status <> 'removed'::text) AND copy_revision_published)",
   // Slice 14 (certification): the tags of one type (claim policy, manufacturer certificate).
+  // The dashboard's incident count: active tags on their validity end.
+  'catalog.offer_tags_market_id_valid_until_active_idx':
+    "CREATE INDEX offer_tags_market_id_valid_until_active_idx ON catalog.offer_tags USING btree (market_id, valid_until) WHERE (status = 'active'::text)",
   'catalog.offer_tags_market_id_type_code_offer_id_idx':
     "CREATE INDEX offer_tags_market_id_type_code_offer_id_idx ON catalog.offer_tags USING btree (market_id, type_code, offer_id) WHERE ((status <> 'removed'::text) AND copy_revision_published)",
   // docs/design/data/catalog.md 3.15 (slice 8): one tag that is not removed per Offer and type.

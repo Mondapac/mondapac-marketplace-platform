@@ -27,6 +27,7 @@ import type { CatalogWorkQueueCountReader } from './ports/work-queue-count.reade
 import { CountPendingOffers } from './use-cases/count-pending-offers.use-case';
 import { CountPendingRevisions } from './use-cases/count-pending-revisions.use-case';
 import { CountBrandMerges } from './use-cases/count-brand-merges.use-case';
+import { CountClaimsWithoutCertificate } from './use-cases/count-claims-without-certificate.use-case';
 import { CountCategoryProposals } from './use-cases/count-category-proposals.use-case';
 
 // The catalog counts of the dashboard's work queue (dashboards upgrade, phase 1), on both Market
@@ -63,6 +64,10 @@ const unitOfWork = {
   },
 } as unknown as UnitOfWork;
 const counts: CatalogWorkQueueCountReader = {
+  claimsWithoutCertificate: (m, now, staleBefore) => {
+    reads.push({ method: 'claimsWithoutCertificate', market: m, times: [now, staleBefore] });
+    return failing ? Promise.reject(new Error('down')) : Promise.resolve(COUNT);
+  },
   pendingOffers: (m, now, staleBefore) => {
     reads.push({ method: 'pendingOffers', market: m, times: [now, staleBefore] });
     return failing ? Promise.reject(new Error('down')) : Promise.resolve(COUNT);
@@ -81,6 +86,11 @@ const counts: CatalogWorkQueueCountReader = {
   },
 };
 const USE_CASES = [
+  {
+    method: 'claimsWithoutCertificate',
+    make: (deps: Deps) => new CountClaimsWithoutCertificate(gate, deps),
+    key: CATALOG_PRODUCT_VIEW.key,
+  },
   {
     method: 'pendingOffers',
     make: (deps: Deps) => new CountPendingOffers(gate, deps),

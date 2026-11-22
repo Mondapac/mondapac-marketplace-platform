@@ -59,3 +59,19 @@ promise for instant and same-day orders once shipped (today only their ready-by 
 - The readers' statement specs pin each where clause (status, scope, Market, age column, strict
   `lt`), so a count that drops its Market filter fails there; the database spec runs them on
   PostgreSQL.
+
+## Security and certification queues (PR 4)
+
+- Critical, live (never cached): `catalog.claims-without-certificate` (`catalog.product.view`) and
+  `security.open-alerts` (`security.centre.view`). Review: `certification.seller-certificates` and
+  `certification.product-certificates` (each its review list's view key).
+- Claims without a certificate (definition by Hadi, product owner): the Offer tags of every type
+  that are `active` with `valid_until` before now, so a buyer still sees the badge after the
+  certificate has expired. These are incidents, so every one counts as overdue. `oldestAt` is the
+  earliest validity end that has passed. The count lives in catalog, which owns `offer_tags`.
+  `rechecking`, `suspended`, `pending-publish` and `removed` tags show no badge and are not
+  counted. A separate "stuck re-evaluation" signal for long `rechecking` tags is FE-107.
+- The incident count reads a new partial index, (market_id, valid_until) WHERE status = 'active',
+  built CONCURRENTLY.
+- Certificate reviews wait from their pending submission's `submitted_at`, because a renewal leaves
+  the certificate's `status_changed_at` unchanged.

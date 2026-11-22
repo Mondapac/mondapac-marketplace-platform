@@ -1,4 +1,5 @@
 import { CertificationModule } from '../certification';
+import { CountClaimsWithoutCertificate } from './application/use-cases/count-claims-without-certificate.use-case';
 import { CountPendingOffers } from './application/use-cases/count-pending-offers.use-case';
 import { CountPendingRevisions } from './application/use-cases/count-pending-revisions.use-case';
 import { CountBrandMerges } from './application/use-cases/count-brand-merges.use-case';
@@ -1114,27 +1115,39 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     ListsModule,
   ],
   providers: [
-    ...[CountPendingOffers, CountPendingRevisions, CountBrandMerges, CountCategoryProposals].map(
-      (type) => ({
-        provide: type,
-        inject: [USE_CASE_GATE, UNIT_OF_WORK, CATALOG_WORK_QUEUE_COUNT_READER],
-        useFactory: (
-          gate: UseCaseGate,
-          unitOfWork: UnitOfWork,
-          counts: CatalogWorkQueueCountReader,
-        ) => new type(gate, { unitOfWork, counts }),
-      }),
-    ),
+    ...[
+      CountClaimsWithoutCertificate,
+      CountPendingOffers,
+      CountPendingRevisions,
+      CountBrandMerges,
+      CountCategoryProposals,
+    ].map((type) => ({
+      provide: type,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, CATALOG_WORK_QUEUE_COUNT_READER],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        counts: CatalogWorkQueueCountReader,
+      ) => new type(gate, { unitOfWork, counts }),
+    })),
     {
       provide: CATALOG_WORK_QUEUE_FACADE,
-      inject: [CountPendingOffers, CountPendingRevisions, CountBrandMerges, CountCategoryProposals],
+      inject: [
+        CountClaimsWithoutCertificate,
+        CountPendingOffers,
+        CountPendingRevisions,
+        CountBrandMerges,
+        CountCategoryProposals,
+      ],
       useFactory: (
+        claimsWithoutCertificate: CountClaimsWithoutCertificate,
         pendingOffers: CountPendingOffers,
         pendingRevisions: CountPendingRevisions,
         brandMerges: CountBrandMerges,
         categoryProposals: CountCategoryProposals,
       ) =>
         new CatalogWorkQueueFacadeImplementation(
+          claimsWithoutCertificate,
           pendingOffers,
           pendingRevisions,
           brandMerges,

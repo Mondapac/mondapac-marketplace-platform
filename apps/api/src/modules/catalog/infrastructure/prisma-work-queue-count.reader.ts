@@ -19,7 +19,9 @@ function answer(count: number, overdue: number, oldest: Date | null): WorkQueueC
 }
 
 /**
- * {@link CatalogWorkQueueCountReader} over Prisma. Each queue is one aggregate (count and earliest
+ * {@link CatalogWorkQueueCountReader} over Prisma. The active certification tags past their
+ * certificate's end read the partial index (market_id, valid_until) WHERE status = 'active' (an
+ * incident count: exact, never sampled). Each queue is one aggregate (count and earliest
  * entry) and one overdue count on the same partial index the queue's own list reads: the Offers
  * pending first publication on (market_id, submitted_at, id), the products with a pending revision
  * on (market_id, pending_submitted_at, id), the pending category proposals on (market_id,
@@ -32,6 +34,20 @@ function answer(count: number, overdue: number, oldest: Date | null): WorkQueueC
  */
 export class PrismaCatalogWorkQueueCountReader implements CatalogWorkQueueCountReader {
   constructor(private readonly prisma: PrismaService) {}
+
+  async claimsWithoutCertificate(
+    market: MarketContext,
+    now: Temporal.Instant,
+  ): Promise<WorkQueueCount> {
+    // Every type (no type code named): the incident is any badge past its certificate's end.
+    const all = await this.prisma.tx(market).catalogOfferTag.aggregate({
+      where: { marketId: market.marketId, status: 'active', validUntil: { lt: toDate(now) } },
+      _count: { _all: true },
+      _min: { validUntil: true },
+    });
+    const count = all._count._all;
+    return answer(count, count, all._min.validUntil);
+  }
 
   async pendingOffers(
     market: MarketContext,
