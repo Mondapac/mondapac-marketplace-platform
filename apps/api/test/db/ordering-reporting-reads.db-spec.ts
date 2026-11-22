@@ -14,10 +14,8 @@ import { ORDERING_AUDIT_ACTIONS } from '../../src/modules/ordering/domain/audit'
 import type { OrderState } from '../../src/modules/ordering/domain/order';
 import { ConfigOrderingPolicy } from '../../src/modules/ordering/infrastructure/config-ordering-policy';
 import { RefundReportFactsQuery } from '../../src/modules/ordering/application/use-cases/refund-report-facts.use-case';
-import {
-  RefundsSucceededQuery,
-  SellerOrdersChangedQuery,
-} from '../../src/modules/ordering/application/use-cases/reporting-changes.use-case';
+import { RefundsSucceededQuery } from '../../src/modules/ordering/application/use-cases/refunds-succeeded.use-case';
+import { SellerOrdersChangedQuery } from '../../src/modules/ordering/application/use-cases/seller-orders-changed.use-case';
 import { SellerOrderReportFactsQuery } from '../../src/modules/ordering/application/use-cases/seller-order-report-facts.use-case';
 import { PrismaReportingChangesReader } from '../../src/modules/ordering/infrastructure/prisma-reporting-changes.reader';
 import { PrismaOrderRepository } from '../../src/modules/ordering/infrastructure/prisma-order.repository';

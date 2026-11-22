@@ -1,9 +1,7 @@
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import type { RefundReportFactsQuery } from '../application/use-cases/refund-report-facts.use-case';
-import type {
-  RefundsSucceededQuery,
-  SellerOrdersChangedQuery,
-} from '../application/use-cases/reporting-changes.use-case';
+import type { RefundsSucceededQuery } from '../application/use-cases/refunds-succeeded.use-case';
+import type { SellerOrdersChangedQuery } from '../application/use-cases/seller-orders-changed.use-case';
 import type { SellerOrderReportFactsQuery } from '../application/use-cases/seller-order-report-facts.use-case';
 import type {
   OrderingReportingFacade,

@@ -200,11 +200,9 @@ import {
 import { OrderingWorkQueueFacadeImplementation } from './presentation/ordering-work-queue.facade';
 import { REPORTING_CHANGES_READER } from './application/ports/reporting-changes.reader';
 import { RefundReportFactsQuery } from './application/use-cases/refund-report-facts.use-case';
-import {
-  RefundsSucceededQuery,
-  SellerOrdersChangedQuery,
-  type ReportingChangesDependencies,
-} from './application/use-cases/reporting-changes.use-case';
+import type { ReportingChangesDependencies } from './application/reporting-changes';
+import { RefundsSucceededQuery } from './application/use-cases/refunds-succeeded.use-case';
+import { SellerOrdersChangedQuery } from './application/use-cases/seller-orders-changed.use-case';
 import { SellerOrderReportFactsQuery } from './application/use-cases/seller-order-report-facts.use-case';
 import { OrderingReportingFacadeImplementation } from './presentation/ordering-reporting.facade';
 import { OFFER_PAIR_STORE } from './application/ports/offer-pairs.store';
