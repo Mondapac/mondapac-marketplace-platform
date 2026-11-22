@@ -74,6 +74,21 @@ export class PrismaFactStore implements FactStore {
       updatedAt: at,
     };
     if (previous === null) {
+      // A refund recorded before its seller order must name the same seller, order and currency
+      // (Hassan, PR 9 re-review): the check that a refund meets otherwise runs one way only.
+      const refunded = await client.reportingRefund.findFirst({
+        where: {
+          marketId: market.marketId,
+          sellerOrderId: fact.sellerOrderId,
+          OR: [
+            { orderId: { not: fact.orderId } },
+            { sellerId: { not: fact.sellerId } },
+            { currency: { not: fact.currency } },
+          ],
+        },
+        select: { refundId: true },
+      });
+      if (refunded !== null) throw new ReportingFactConflict('seller-order', fact.sellerOrderId);
       await client.reportingSellerOrder.create({
         data: {
           ...key,

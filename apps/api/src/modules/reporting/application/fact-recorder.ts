@@ -44,6 +44,51 @@ export class FactRecorder {
     order: SellerOrderFact,
     goods: readonly CategoryGoods[],
   ): Promise<void> {
+    await this.refresh(market, await this.putSellerOrder(market, order, goods));
+  }
+
+  /** A succeeded refund and its goods by category. */
+  async recordRefund(
+    market: MarketContext,
+    refund: RefundFact,
+    goods: readonly CategoryGoods[],
+  ): Promise<void> {
+    await this.refresh(market, await this.putRefund(market, refund, goods));
+  }
+
+  /**
+   * Many facts in one unit, with one rebuild of each seller day they touch at the end, so a page
+   * of facts of one busy day rebuilds it once, not once per fact (the reconcile and the backfill).
+   */
+  async recordBatch(
+    market: MarketContext,
+    batch: {
+      readonly sellerOrders: readonly {
+        readonly order: SellerOrderFact;
+        readonly goods: readonly CategoryGoods[];
+      }[];
+      readonly refunds: readonly {
+        readonly refund: RefundFact;
+        readonly goods: readonly CategoryGoods[];
+      }[];
+    },
+  ): Promise<void> {
+    const keys: SellerDay[] = [];
+    for (const { order, goods } of batch.sellerOrders) {
+      keys.push(...(await this.putSellerOrder(market, order, goods)));
+    }
+    for (const { refund, goods } of batch.refunds) {
+      keys.push(...(await this.putRefund(market, refund, goods)));
+    }
+    await this.refresh(market, keys);
+  }
+
+  /** Writes the seller order's fact and entries; the seller days to rebuild. */
+  private async putSellerOrder(
+    market: MarketContext,
+    order: SellerOrderFact,
+    goods: readonly CategoryGoods[],
+  ): Promise<SellerDay[]> {
     this.checkCurrency(market, order.currency);
     checkGoods(goods, order.goods.amount, order.goods.tax, `seller order ${order.sellerOrderId}`);
     const zone = this.deps.zone.zoneOf(market);
@@ -65,15 +110,15 @@ export class FactRecorder {
     const after = [days.paidDay, days.cancelledDay, days.shippedDay, days.deliveredDay]
       .filter((value) => value !== null)
       .map((marketDay) => ({ marketDay, sellerId: order.sellerId }));
-    await this.refresh(market, [...before, ...entriesBefore, ...after]);
+    return [...before, ...entriesBefore, ...after];
   }
 
-  /** A succeeded refund and its goods by category. */
-  async recordRefund(
+  /** Writes the refund's fact and entries; the seller days to rebuild. */
+  private async putRefund(
     market: MarketContext,
     refund: RefundFact,
     goods: readonly CategoryGoods[],
-  ): Promise<void> {
+  ): Promise<SellerDay[]> {
     this.checkCurrency(market, refund.currency);
     checkGoods(
       goods,
@@ -90,11 +135,7 @@ export class FactRecorder {
       refund.refundId,
       refundEntries(refund, goods, zone),
     );
-    await this.refresh(market, [
-      ...before,
-      ...entriesBefore,
-      { marketDay: refundDay, sellerId: refund.sellerId },
-    ]);
+    return [...before, ...entriesBefore, { marketDay: refundDay, sellerId: refund.sellerId }];
   }
 
   private checkCurrency(market: MarketContext, currency: string): void {

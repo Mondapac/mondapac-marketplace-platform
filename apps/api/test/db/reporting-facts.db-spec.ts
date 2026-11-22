@@ -317,4 +317,28 @@ describe.each(TEST_MARKETS)('reporting facts and rollups in market %s (database)
     expect((await sellerDays(sellerId)).map((row) => row.orders_paid)).toEqual([1]);
     expect(await sellerDays(moved.sellerId)).toEqual([]);
   });
+
+  it('refuses a seller order that differs from a refund recorded before it', async () => {
+    const sellerId = idOf<'Seller'>();
+    const order = sellerOrder(sellerId);
+    const early: RefundFact = {
+      refundId: idOf<'Refund'>(),
+      orderId: order.orderId,
+      sellerOrderId: order.sellerOrderId,
+      sellerId: idOf<'Seller'>(),
+      currency,
+      total: { amount: 1100n, tax: 100n },
+      shipping: { amount: 0n, tax: 0n },
+      refundedAt: at('2026-11-26T01:00:00Z'),
+    };
+    await within(market, () =>
+      recorder.recordRefund(market, early, [
+        { categoryId: UNKNOWN_CATEGORY, goods: early.total, units: 1 },
+      ]),
+    );
+    await expect(
+      within(market, () => recorder.recordSellerOrder(market, order, allGoods(order))),
+    ).rejects.toThrow(ReportingFactConflict);
+    expect(await sellerDays(sellerId)).toEqual([]);
+  });
 });
