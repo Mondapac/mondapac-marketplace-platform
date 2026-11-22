@@ -237,6 +237,51 @@
       "invite-team": "Invite a team member"
     }
   },
+  "tasks": {
+    "title": "Today's tasks",
+    "scope": "Your store's work, most urgent first · counts can be up to a minute old",
+    "group": {
+      "critical": "Urgent",
+      "today": "Today",
+      "today-top": "Today · top {shown, number} of {total, number}",
+      "review": "When you have time"
+    },
+    "count": "{count, number}",
+    "count-overdue": "{count, number} · {overdue, number} overdue",
+    "status": {
+      "error": "Couldn't load",
+      "incident": "Incident",
+      "fix": "Fix payout details",
+      "overdue": "Overdue",
+      "overdue-age": "Overdue {age}",
+      "overdue-by": "Overdue by {age}",
+      "due-in": "Due in {age}",
+      "oldest": "Oldest {age}"
+    },
+    "today-more": "{count, plural, one {# more task} other {# more tasks}}",
+    "review-line": "{first} and {second}",
+    "review-line-more": "{first}, {second} and {more, number} more",
+    "clear": "{count, plural, one {# task is} other {# tasks are}} all clear",
+    "all-clear": "All clear: nothing needs you right now.",
+    "some-failed": "Some couldn't load",
+    "queue": {
+      "ordering": {
+        "late-orders": "Orders past their delivery promise",
+        "to-ship-today": "Orders to ship today",
+        "pickups-uncollected": "Pickups ready, not collected"
+      },
+      "commission-payouts": {
+        "dispute-reply-needed": "Disputes waiting for your reply",
+        "payout-holds": "Payouts on hold, disputes included"
+      },
+      "payments": {
+        "payouts-blocked": "Payouts paused or not set up"
+      },
+      "reviews": {
+        "unanswered": "Reviews to answer"
+      }
+    }
+  },
   "showcase": {
     "title": "Sell to neighbours who care where their food comes from.",
     "cards": {

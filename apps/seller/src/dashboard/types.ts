@@ -7,6 +7,7 @@ import type { Ledger } from '../earnings/types.ts';
 import type { SellerOrderCursorPage } from '../orders/types.ts';
 import type { PayoutAccount } from '../payout/types.ts';
 import type { SourcesView } from '../stock/types.ts';
+import type { WorkQueueAnswer } from '../work-queue/queues.ts';
 
 /** Rows asked for to count a list; a full page means "this many or more". */
 export const COUNT_LIMIT = 50;
@@ -38,6 +39,7 @@ export interface LowStockPage {
 
 export interface SellerDashboardData {
   /** A widget is null when the session does not hold the permission its read needs. */
+  readonly tasks: Widget<WorkQueueAnswer> | null;
   readonly orders: Widget<SellerOrderCursorPage> | null;
   readonly offers: Widget<Page<OfferView>> | null;
   readonly ledger: Widget<Ledger> | null;
