@@ -158,7 +158,7 @@ describe('Add product page', () => {
     fill();
     classify();
     saveDraft();
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/products/p1/edit'));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/products/p1'));
     expect(call).toHaveBeenNthCalledWith(
       1,
       'POST',
@@ -208,7 +208,7 @@ describe('Add product page', () => {
     call.mockResolvedValueOnce(created).mockResolvedValueOnce(saved);
     fireEvent.change(screen.getByLabelText(/Your SKU/), { target: { value: 'OIL-2L' } });
     saveDraft();
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/products/p1/edit'));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/products/p1'));
   });
 
   it('sends a second click only once', async () => {
@@ -231,7 +231,7 @@ describe('Add product page', () => {
     mount();
     fill();
     saveDraft();
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/products/p1/edit'));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/products/p1'));
     expectFlash(/Your product was created, but the page was not saved\./, 'error');
     // The product is not created a second time.
     expect(call.mock.calls.filter(([method]) => method === 'POST').length).toBe(1);
@@ -249,7 +249,7 @@ describe('Add product page', () => {
     mount();
     fill();
     saveDraft();
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/products/p1/edit'));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/products/p1'));
     expectFlash(/some text was not saved/, 'error');
   });
 
@@ -269,7 +269,7 @@ describe('Add product page', () => {
     fill();
     expect(screen.getByText('Unsaved product')).toBeTruthy();
     saveDraft();
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/products/p1/edit'));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/products/p1'));
     expect(seen).toEqual([{ bar: false, prevented: false, flashed: true }]);
     const flash = vi.mocked(toast.flash).mock.invocationCallOrder[0] ?? Infinity;
     expect(flash).toBeLessThan(replace.mock.invocationCallOrder[0] ?? 0);
@@ -336,7 +336,7 @@ describe('Add product page', () => {
     fireEvent.submit(form);
     expect(call).toHaveBeenCalledTimes(1);
     resolve(created as never);
-    await waitFor(() => expect(replace).toHaveBeenCalledWith('/products/p1/edit'));
+    await waitFor(() => expect(replace).toHaveBeenCalledWith('/products/p1'));
     fireEvent.submit(form);
     expect(call.mock.calls.filter(([method]) => method === 'POST').length).toBe(1);
     expect(replace).toHaveBeenCalledTimes(1);

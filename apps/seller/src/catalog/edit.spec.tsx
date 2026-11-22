@@ -87,6 +87,22 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe('EditForm', () => {
+  it('goes back to the products list, not to itself, and shows the working copy and suggest link', () => {
+    mount(product({ status: 'published' }));
+    expect(screen.getByRole('link', { name: 'Back to products' }).getAttribute('href')).toBe(
+      '/products',
+    );
+    expect(screen.getByText(/^Saved /)).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Suggest a value' }).getAttribute('href')).toBe(
+      '/value-suggestions/new?product=p1',
+    );
+  });
+
+  it('offers no suggest link for a retired product', () => {
+    mount(product({ status: 'retired' }));
+    expect(screen.queryByRole('link', { name: 'Suggest a value' })).toBeNull();
+  });
+
   it('keeps the card order: Status, Product, then Organisation', () => {
     mount();
     const status = screen.getByRole('button', { name: 'Submit for review' });
@@ -204,7 +220,7 @@ describe('EditForm', () => {
     expect(screen.getByRole('region', { name: 'Unsaved changes' }).textContent).toContain(
       'Unsaved changes',
     );
-    fireEvent.click(screen.getByRole('link', { name: 'Back to product' }));
+    fireEvent.click(screen.getByRole('link', { name: 'Back to products' }));
     expect(await screen.findByText('Leave this page?')).toBeTruthy();
     expect(screen.getByText("Your changes to Olive oil aren't saved.")).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Leave without saving' })).toBeTruthy();

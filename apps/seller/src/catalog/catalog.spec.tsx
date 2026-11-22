@@ -88,6 +88,15 @@ describe('seller catalog pages', () => {
     expect(screen.queryByText('Waiting for review')).toBeNull();
   });
 
+  it('has no Edit link: the product page is the form for a seller who may edit', async () => {
+    render(await ProductDetail({ product: detail(), canEdit: true }));
+    expect(screen.queryByRole('link', { name: 'Edit product' })).toBeNull();
+    expect(document.querySelector('a[href$="/edit"]')).toBeNull();
+    expect(screen.getByRole('link', { name: 'Back to products' }).getAttribute('href')).toBe(
+      '/products',
+    );
+  });
+
   it('flags a pending revision and a closer review', async () => {
     render(
       await ProductDetail({
