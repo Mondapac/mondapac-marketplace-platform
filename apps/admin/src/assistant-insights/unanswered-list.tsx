@@ -396,7 +396,7 @@ export function UnansweredList({
   return (
     <SuperList
       heading={{
-        subtitle: t('intro'),
+        info: t('intro'),
         note: truncated ? t('truncated') : undefined,
         actions: (
           <ActionMenu

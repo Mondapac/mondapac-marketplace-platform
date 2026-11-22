@@ -489,7 +489,7 @@ export function PayoutsList({
   return (
     <SuperList
       heading={{
-        subtitle: tp('intro'),
+        info: tp('intro'),
         note: t('zone-note', { zone }),
         actions: (
           <PayoutsBulk

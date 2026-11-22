@@ -466,7 +466,7 @@ export function InvoicesList({
   return (
     <SuperList
       heading={{
-        subtitle: t('intro'),
+        info: t('intro'),
         note: to('zone-note', { zone }),
         actions: (
           <InvoicesBulk

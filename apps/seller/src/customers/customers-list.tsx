@@ -435,7 +435,7 @@ export function CustomersList({
   return (
     <SuperList
       heading={{
-        subtitle: t('intro'),
+        info: t('intro'),
         note: t('zone-note', { zone }),
         actions: canExport ? (
           <CustomersExport

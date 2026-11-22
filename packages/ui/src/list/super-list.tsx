@@ -6,6 +6,7 @@ import { Button } from '../form/button.tsx';
 import { LoadError } from '../form/load-error.tsx';
 import { SearchField } from '../form/search-field.tsx';
 import type { IconName } from '../icon/icon.tsx';
+import { PageInfo } from '../overlay/page-info.tsx';
 import { Popover, type PopoverProps } from '../overlay/popover.tsx';
 import { FilterChipRow, type FilterChipRowProps } from './filter-chip-row.tsx';
 import { ListPagination, type ListPaginationProps } from './list-pagination.tsx';
@@ -26,7 +27,10 @@ export interface SuperListProps {
   readonly heading: {
     /** A page title (h1) above the subtitle; omit it when the shell's top bar already names the page. */
     readonly title?: string;
-    readonly subtitle: string;
+    /** A live line (a count, a filter state); empty or absent when the list has none. */
+    readonly subtitle?: string;
+    /** The list's static intro (its purpose or rule): shown in the info icon (ⓘ), not as a line. */
+    readonly info?: string;
     /** A second small muted line under the subtitle (for example the zone the times are in). */
     readonly note?: string;
     readonly actions?: ReactNode;
@@ -143,6 +147,8 @@ export function SuperList({
   dialogs,
 }: SuperListProps) {
   const skeleton = status.skeleton && failure === null;
+  const infoIcon =
+    heading.info === undefined ? null : <PageInfo page={heading.title}>{heading.info}</PageInfo>;
   const hasTools = filter !== undefined || sort !== undefined || columns !== undefined;
   return (
     <div className="flex flex-col gap-4">
@@ -150,13 +156,25 @@ export function SuperList({
         className={`flex flex-wrap justify-between gap-x-4 gap-y-3 ${heading.title === undefined ? 'items-center' : 'items-start'}`}
       >
         {heading.title === undefined && heading.note === undefined ? (
-          <p className="min-w-0 text-sm text-fg-muted">{heading.subtitle}</p>
+          <div className="flex min-w-0 items-center gap-2">
+            {infoIcon}
+            {heading.subtitle ? (
+              <p className="min-w-0 text-sm text-fg-muted">{heading.subtitle}</p>
+            ) : null}
+          </div>
         ) : (
           <div className={`flex min-w-0 flex-col ${heading.title === undefined ? 'gap-1' : ''}`}>
-            {heading.title === undefined ? null : (
-              <h1 className="text-2xl font-semibold">{heading.title}</h1>
+            {heading.title === undefined ? (
+              infoIcon
+            ) : (
+              <div className="flex min-w-0 items-center gap-2">
+                <h1 className="min-w-0 break-words text-2xl font-semibold">{heading.title}</h1>
+                {infoIcon}
+              </div>
             )}
-            <p className="min-h-5 text-sm text-fg-muted">{heading.subtitle}</p>
+            {heading.subtitle === undefined ? null : (
+              <p className="min-h-5 text-sm text-fg-muted">{heading.subtitle}</p>
+            )}
             {heading.note === undefined ? null : (
               <p className="text-sm text-fg-muted">{heading.note}</p>
             )}

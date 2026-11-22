@@ -349,7 +349,7 @@ export function AccountsList({
   return (
     <SuperList
       heading={{
-        subtitle: ta('intro'),
+        info: ta('intro'),
         note: t('zone-note', { zone }),
         actions: (
           <AccountsBulk

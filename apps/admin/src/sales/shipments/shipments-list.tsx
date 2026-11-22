@@ -489,7 +489,7 @@ export function ShipmentsList({
   return (
     <SuperList
       heading={{
-        subtitle: t('intro'),
+        info: t('intro'),
         note: to('zone-note', { zone }),
         actions: (
           <ShipmentsBulk
