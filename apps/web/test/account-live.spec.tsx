@@ -152,7 +152,7 @@ describe('what the sample account never shows live', () => {
   it('shows no sample list and no create button on the lists page', async () => {
     signedIn();
     renderLive(<AccountLists />);
-    expect(await within(main()).findByText(/You have no saved lists yet/)).toBeTruthy();
+    expect(await within(main()).findByText(/Named lists are not available yet/)).toBeTruthy();
     expect(within(main()).queryByRole('button', { name: 'Create a list' })).toBeNull();
   });
 });

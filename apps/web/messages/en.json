@@ -368,7 +368,7 @@
       "list-empty": "This list is empty.",
       "create": "Create a list",
       "named": "Your lists",
-      "named-unavailable": "You have no saved lists yet. Named lists are not available yet.",
+      "named-unavailable": "Named lists are not available yet.",
       "new": "New list",
       "name": "List name",
       "name-hint": "For example: Eid dinner",

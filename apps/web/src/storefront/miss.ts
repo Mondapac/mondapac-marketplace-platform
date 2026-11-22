@@ -41,7 +41,8 @@ export async function productIsMissing(
 
 /**
  * Whether `/s/<slug>` is a store with no page: unknown, and (without the API only) not a closed
- * store either (a closed store keeps its own 200 page). The same rules as `loadSeller` and `loadClosedStore`.
+ * store either (a closed store keeps its own 200 page). The same rules as `loadSeller` and
+ * `loadClosedStore`.
  */
 export async function storeIsMissing(
   slug: string,
