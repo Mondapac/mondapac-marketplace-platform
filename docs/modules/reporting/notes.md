@@ -177,7 +177,9 @@ still answers.
 - Money is minor units as strings with the Market's currency (the only currency read, FE-069).
 - Rates are basis points. A change is a percentage in basis points of the previous value, or `na`
   when the previous value is zero or below 5 orders, 5 refunds or 100.00 of money. A rate's change
-  is the difference in basis points (2.0% to 3.5% is +150), or `na` when a period has no rate.
+  is the difference in basis points (2.0% to 3.5% is +150), or `na` when a period has no rate or the previous period is below the same minimum bases.
+- Cancel rate is cancelled on their cancel day ÷ paid on their paid day, so in a short period such as today it can pass 100%; a cohort rate is not built (Sajad's note, 22 Nov).
+- Both sections read "now" separately, so a request across Market midnight could show two different periods (`period.id`/dates are in each section).
 - On time counts only shipped orders; an order unshipped past its promise is not in the rollup yet,
   so the figure can read better than the truth (FE-067).
 - One grouped read per range of `daily_seller_sales`, summed over sellers in the database, in one

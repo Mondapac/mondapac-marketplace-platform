@@ -103,8 +103,15 @@ describe('operationsOf', () => {
 
 describe('deltas', () => {
   it('compares rates by points and says n/a when a period has no rate', () => {
-    expect(rateDelta(350, 200)).toEqual({ value: 150, direction: 'up', state: 'ok' });
-    expect(rateDelta(null, 200).state).toBe('na');
+    expect(rateDelta(350, 200, true)).toEqual({ value: 150, direction: 'up', state: 'ok' });
+    expect(rateDelta(null, 200, true).state).toBe('na');
+    expect(rateDelta(350, 200, false).state).toBe('na');
+  });
+
+  it('says n/a for a rate whose previous period is too small to judge', () => {
+    const before = operationsOf([row('2026-11-21', { ordersPaid: 1, ordersCancelled: 1 })]);
+    const now = operationsOf([row('2026-11-22', { ordersPaid: 100, ordersCancelled: 2 })]);
+    expect(operationsDeltas(now, before).cancelRateBp.state).toBe('na');
   });
 
   it('says n/a for a base that is zero or too small', () => {

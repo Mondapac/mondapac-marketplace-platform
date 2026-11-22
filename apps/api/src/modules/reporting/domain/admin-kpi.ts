@@ -146,10 +146,15 @@ const NA: Delta = { value: 0, direction: 'flat', state: 'na' };
 
 /**
  * The change of a rate between two periods, in basis points of difference (the move from 2.0% to
- * 3.5% is +150), not a percentage of a percentage; `na` when either period has no rate.
+ * 3.5% is +150), not a percentage of a percentage; `na` when either period has no rate or the previous period is too small to judge (the same minimum
+ * bases as a count or an amount).
  */
-export function rateDelta(current: number | null, previous: number | null): Delta {
-  if (current === null || previous === null) return NA;
+export function rateDelta(
+  current: number | null,
+  previous: number | null,
+  baseIsEnough: boolean,
+): Delta {
+  if (current === null || previous === null || !baseIsEnough) return NA;
   const change = current - previous;
   return {
     value: change,
@@ -167,9 +172,17 @@ export function operationsDeltas(
   return {
     ordersPaid: delta(now.ordersPaid, before.ordersPaid, MIN_COUNT_BASE),
     ordersCancelled: delta(now.ordersCancelled, before.ordersCancelled, MIN_COUNT_BASE),
-    cancelRateBp: rateDelta(now.cancelRateBp, before.cancelRateBp),
+    cancelRateBp: rateDelta(
+      now.cancelRateBp,
+      before.cancelRateBp,
+      before.ordersPaid >= MIN_COUNT_BASE,
+    ),
     ordersShipped: delta(now.ordersShipped, before.ordersShipped, MIN_COUNT_BASE),
-    onTimeRateBp: rateDelta(now.onTimeRateBp, before.onTimeRateBp),
+    onTimeRateBp: rateDelta(
+      now.onTimeRateBp,
+      before.onTimeRateBp,
+      before.ordersShipped >= MIN_COUNT_BASE,
+    ),
     refunds: delta(now.refunds, before.refunds, MIN_COUNT_BASE),
   };
 }
@@ -179,7 +192,11 @@ export function financeDeltas(now: FinanceKpis, before: FinanceKpis): KpiDeltas<
     gmvWithTax: delta(now.gmvWithTax, before.gmvWithTax, MIN_MONEY_BASE),
     gmvWithoutTax: delta(now.gmvWithoutTax, before.gmvWithoutTax, MIN_MONEY_BASE),
     refundedWithTax: delta(now.refundedWithTax, before.refundedWithTax, MIN_MONEY_BASE),
-    refundRateBp: rateDelta(now.refundRateBp, before.refundRateBp),
+    refundRateBp: rateDelta(
+      now.refundRateBp,
+      before.refundRateBp,
+      before.gmvWithTax >= MIN_MONEY_BASE,
+    ),
     netSalesWithTax: delta(now.netSalesWithTax, before.netSalesWithTax, MIN_MONEY_BASE),
     averageOrderWithTax:
       now.averageOrderWithTax === null || before.averageOrderWithTax === null
