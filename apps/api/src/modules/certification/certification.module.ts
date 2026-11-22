@@ -57,6 +57,7 @@ import {
   CERTIFICATION_TYPE_REPOSITORY,
   type CertificationTypeRepository,
 } from './application/ports/certification-type.repository';
+import { loadBadgeArtworkKeys } from './infrastructure/badge-artwork-keys';
 import { CERTIFICATION_TYPE_SEED, type CertificationTypeSeed } from './application/ports/type-seed';
 import { SeedCertificationTypes } from './application/use-cases/seed-certification-types.use-case';
 import { certificationTypeRepositoryProvider } from './infrastructure/certification-type-repository.provider';
@@ -277,6 +278,7 @@ const validTypesUseCases = [SellerValidCertificateTypes, SellerValidCertificateT
           seed,
           supportedLocales: (market: MarketContext) =>
             markets.get(market.marketId).supportedLocales,
+          badgeArtworkKeys: loadBadgeArtworkKeys(),
           clock,
           ids,
         }),

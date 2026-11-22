@@ -248,6 +248,7 @@ export async function revertTypeRevision(
     restored.content,
     deps.supportedLocales(market),
     current.content,
+    deps.badgeArtworkKeys,
   );
   if (!checked.ok) {
     logRefused(context, kind, 'gone', 'content-invalid');

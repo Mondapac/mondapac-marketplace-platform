@@ -1,0 +1,4 @@
+{
+  "note": "The badge artwork keys a certification type revision may name (FE-091, new-type design 5). `text` shows the type's name; every other key has its storefront artwork. Add a key here only together with its artwork. Not per Market: artwork is platform data, and each Market's types name the keys they use.",
+  "keys": ["text", "halal", "kosher", "vegan", "organic", "seal", "leaf"]
+}

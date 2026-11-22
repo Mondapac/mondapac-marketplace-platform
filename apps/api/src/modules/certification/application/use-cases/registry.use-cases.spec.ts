@@ -1,3 +1,4 @@
+import { loadBadgeArtworkKeys } from '../../infrastructure/badge-artwork-keys';
 import { Logger } from '@nestjs/common';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, Result } from '@mondapac/shared-kernel';
@@ -159,6 +160,7 @@ describe.each(['AU', 'ZZ'] as const)('certification registry in market %s', (cod
       ids,
       review: new RecordingReview(),
       supportedLocales: (m) => markets.get(m.marketId).supportedLocales,
+      badgeArtworkKeys: loadBadgeArtworkKeys(),
     };
     const typeId = ids.next<'CertificationType'>();
     registry.addType(
@@ -295,7 +297,7 @@ describe.each(['AU', 'ZZ'] as const)('certification registry in market %s', (cod
         r.types.save.execute(r.admin(), {
           typeId: r.typeId,
           version: 1,
-          content: contentOf({ requiresIssuerRegistry: true, badgeIconKey: 'shield' }),
+          content: contentOf({ requiresIssuerRegistry: true, badgeIconKey: 'leaf' }),
           reason: 'New icon',
         }),
       );
@@ -331,7 +333,7 @@ describe.each(['AU', 'ZZ'] as const)('certification registry in market %s', (cod
           r.types.save.execute(r.admin(), {
             typeId: r.typeId,
             version: 1,
-            content: contentOf({ badgeIconKey: 'shield' }),
+            content: contentOf({ badgeIconKey: 'leaf' }),
           }),
         ),
       ).toEqual({ code: 'review.proposal-pending' });
@@ -385,7 +387,7 @@ describe.each(['AU', 'ZZ'] as const)('certification registry in market %s', (cod
         r.types.save.execute(author, {
           typeId: r.typeId,
           version: 1,
-          content: contentOf({ requiresDocument: false }),
+          content: contentOf({ requiresExpiry: false }),
         }),
       );
       const proposalId = saved.outcome === 'pending-second-admin' ? saved.proposalId : '';
@@ -465,7 +467,7 @@ describe.each(['AU', 'ZZ'] as const)('certification registry in market %s', (cod
       );
       // Neither a tightening (publish-now) nor a relaxing save gets through.
       for (const content of [
-        contentOf({ requiresIssuerRegistry: true, badgeIconKey: 'shield' }),
+        contentOf({ requiresIssuerRegistry: true, badgeIconKey: 'leaf' }),
         contentOf({ requiresExpiry: false }),
       ]) {
         expect(
@@ -489,7 +491,7 @@ describe.each(['AU', 'ZZ'] as const)('certification registry in market %s', (cod
           r.types.save.execute(r.admin(), {
             typeId: r.typeId,
             version: 2,
-            content: contentOf({ requiresIssuerRegistry: true, badgeIconKey: 'shield' }),
+            content: contentOf({ requiresIssuerRegistry: true, badgeIconKey: 'leaf' }),
           }),
         ),
       ).toMatchObject({ outcome: 'published' });

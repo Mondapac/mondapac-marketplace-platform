@@ -1,6 +1,7 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import type { AuditActionDefinition } from '@mondapac/shared-kernel';
-import { ISSUER_REQUEST_OUTCOME_VALUES, RELAXATION_SUBJECTS, SUBMISSION_KINDS } from './events';
+import { ISSUER_REQUEST_OUTCOME_VALUES, SUBMISSION_KINDS } from './events';
+import { PROPOSAL_SUBJECTS } from './registry';
 
 // The audited actions of certification's admin review (design 11; AC 22), registered at boot with
 // `registerAuditActions('certification', CERTIFICATION_AUDIT_ACTIONS)` and written through the
@@ -258,6 +259,48 @@ export const TypeReactivationApprovedAudit = defineAuditAction({
   after: { proposalId: auditField.id() },
 });
 
+/**
+ * A new type was proposed from the admin panel (FE-091; new-type design 5): the type `proposed`,
+ * its first revision and a pending `type-creation` proposal. Ids, numbers and flags only: the
+ * code, names and terms are in the registry, never in the audit row.
+ */
+export const TypeProposedAudit = defineAuditAction({
+  action: 'certification.type.proposed',
+  targetType: CERTIFICATION_TYPE_TARGET,
+  actors: ['authenticated'],
+  after: {
+    proposalId: auditField.id(),
+    revisionId: auditField.id(),
+    revisionNo: auditField.integer(),
+    reasonGiven: auditField.boolean(),
+  },
+});
+
+/**
+ * The proposer changed their proposed type (FE-091): a new revision, the earlier proposal
+ * `superseded` and a new pending one, so an approval of what was shown before is stale.
+ */
+export const TypeProposalRevisedAudit = defineAuditAction({
+  action: 'certification.type.proposal-revised',
+  targetType: CERTIFICATION_TYPE_TARGET,
+  actors: ['authenticated'],
+  after: {
+    proposalId: auditField.id(),
+    supersededProposalId: auditField.id(),
+    revisionId: auditField.id(),
+    revisionNo: auditField.integer(),
+    reasonGiven: auditField.boolean(),
+  },
+});
+
+/** A second admin approved a proposed type; it is active (FE-091; H1). */
+export const TypeCreatedAudit = defineAuditAction({
+  action: 'certification.type.created',
+  targetType: CERTIFICATION_TYPE_TARGET,
+  actors: ['authenticated'],
+  after: { proposalId: auditField.id(), revisionId: auditField.id() },
+});
+
 /** An issuer was added to the registry, `proposed` (design 3.5). */
 export const IssuerCreatedAudit = defineAuditAction({
   action: 'certification.issuer.created',
@@ -329,7 +372,7 @@ export const RelaxationProposalRejectedAudit = defineAuditAction({
   action: 'certification.relaxation-proposal.rejected',
   targetType: RELAXATION_PROPOSAL_TARGET,
   actors: ['authenticated'],
-  after: { subject: auditField.enumOf(RELAXATION_SUBJECTS), subjectId: auditField.id() },
+  after: { subject: auditField.enumOf(PROPOSAL_SUBJECTS), subjectId: auditField.id() },
 });
 
 /** The proposer withdrew a pending proposal (design 7.6). */
@@ -337,7 +380,7 @@ export const RelaxationProposalWithdrawnAudit = defineAuditAction({
   action: 'certification.relaxation-proposal.withdrawn',
   targetType: RELAXATION_PROPOSAL_TARGET,
   actors: ['authenticated'],
-  after: { subject: auditField.enumOf(RELAXATION_SUBJECTS), subjectId: auditField.id() },
+  after: { subject: auditField.enumOf(PROPOSAL_SUBJECTS), subjectId: auditField.id() },
 });
 
 /** The audit target type of a claim basis policy (one per Market and type; design 3.7). */
@@ -584,6 +627,9 @@ export const CERTIFICATION_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Obj
   TypeDeactivatedAudit,
   TypeReactivationRequestedAudit,
   TypeReactivationApprovedAudit,
+  TypeProposedAudit,
+  TypeProposalRevisedAudit,
+  TypeCreatedAudit,
   IssuerCreatedAudit,
   IssuerActivatedAudit,
   IssuerClosedToNewAudit,

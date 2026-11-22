@@ -3,6 +3,7 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, IdGenerator, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
+import { isLiveTypeStatus } from '../../domain/registry';
 import { validateTypeRevision, type TypeRevisionProblem } from '../../domain/type-revision';
 import type { CertificationTypeRepository } from '../ports/certification-type.repository';
 import type { CertificationTypeSeed } from '../ports/type-seed';
@@ -24,7 +25,13 @@ export type SeedCertificationTypesFailure =
       readonly code: 'type.seed-invalid';
       readonly typeCode: string;
       readonly problems: readonly TypeRevisionProblem[];
-    };
+    }
+  /**
+   * A seed code is held by a type that is not live (a proposed, rejected or withdrawn new type,
+   * FE-091). A fault, never "already seeded": the seeded type would be missing. Every other seed
+   * type is still created.
+   */
+  | { readonly code: 'type.seed-code-not-live'; readonly typeCodes: readonly string[] };
 
 export interface SeedCertificationTypesDependencies {
   readonly unitOfWork: UnitOfWork;
@@ -32,6 +39,8 @@ export interface SeedCertificationTypesDependencies {
   readonly seed: CertificationTypeSeed;
   /** The Market's `supportedLocales`. */
   readonly supportedLocales: (market: CallContext['market']) => readonly string[];
+  /** The badge artwork keys a revision may name (configuration, FE-091). */
+  readonly badgeArtworkKeys: readonly string[];
   readonly clock: Clock;
   readonly ids: IdGenerator;
 }
@@ -42,7 +51,10 @@ export interface SeedCertificationTypesDependencies {
  * passes `validateTypeRevision` against the Market's supported locales; one that fails refuses
  * the whole run before anything is written. Then, per type, one unit creates it with its first
  * revision, texts and claim terms when its code is missing. It only ever creates: a type that
- * exists is skipped whatever its state or revisions, so an edit by an admin is never undone. No
+ * exists live (active or inactive) is skipped whatever its revisions, so an edit by an admin is
+ * never undone. A seed code held by a proposed, rejected or withdrawn type is a fault
+ * (`type.seed-code-not-live`, logged; the other types are still created): a new type never takes a
+ * seed code (`type.code-reserved`), so only a hand-made row gets there. No
  * issuer is seeded (none is known; an issuer is `proposed` with no expert reference, design
  * 5.2, and needs real data). A concurrent run converges on the unique `(market, code)`.
  */
@@ -81,7 +93,12 @@ export class SeedCertificationTypes extends UseCase<
     }
     const locales = this.deps.supportedLocales(market);
     for (const entry of seeded) {
-      const checked = validateTypeRevision(entry.content, locales, null);
+      const checked = validateTypeRevision(
+        entry.content,
+        locales,
+        null,
+        this.deps.badgeArtworkKeys,
+      );
       if (!checked.ok) {
         this.#logger.error({
           msg: 'certification.seed-types.invalid',
@@ -94,9 +111,15 @@ export class SeedCertificationTypes extends UseCase<
       }
     }
     let created = 0;
+    const notLive: string[] = [];
     for (const entry of seeded) {
       const done = await unitOfWork.run(market, async () => {
-        if (await types.existsByCode(market, entry.code)) return ok(false);
+        const status = await types.statusByCode(market, entry.code);
+        if (status !== null && !isLiveTypeStatus(status)) {
+          notLive.push(entry.code);
+          return ok(false);
+        }
+        if (status !== null) return ok(false);
         await types.addSeeded(market, {
           typeId: ids.next(),
           revisionId: ids.next(),
@@ -115,6 +138,16 @@ export class SeedCertificationTypes extends UseCase<
           correlationId: context.correlationId,
         });
       }
+    }
+    if (notLive.length > 0) {
+      this.#logger.error({
+        msg: 'certification.seed-types.code-not-live',
+        typeCodes: notLive,
+        created,
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+      return err({ code: 'type.seed-code-not-live', typeCodes: notLive });
     }
     return ok({ created });
   }

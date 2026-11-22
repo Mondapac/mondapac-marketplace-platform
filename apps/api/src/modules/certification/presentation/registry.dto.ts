@@ -9,7 +9,9 @@ const PROPOSAL_SUBJECTS = [
   'claim-policy-revision',
   'type-reactivation',
   'issuer-reactivation',
+  'type-creation',
 ];
+const TYPE_STATUSES = ['proposed', 'active', 'inactive', 'rejected', 'withdrawn'];
 const ISSUER_STATES = ['proposed', 'active', 'closed-to-new', 'derecognised'];
 
 export class VersionRequest {
@@ -116,7 +118,7 @@ const CONTENT_SCHEMA = {
 class TypeListRowView {
   @ApiProperty({ format: 'uuid' }) typeId!: string;
   @ApiProperty() code!: string;
-  @ApiProperty({ enum: ['active', 'inactive'] }) status!: string;
+  @ApiProperty({ enum: TYPE_STATUSES }) status!: string;
   @ApiProperty() verificationMode!: string;
   @ApiProperty() version!: number;
   @ApiProperty({ format: 'uuid' }) publishedRevisionId!: string;
@@ -142,13 +144,19 @@ class PublishedRevisionView {
 export class TypeView {
   @ApiProperty({ format: 'uuid' }) typeId!: string;
   @ApiProperty() code!: string;
-  @ApiProperty({ enum: ['active', 'inactive'] }) status!: string;
+  @ApiProperty({ enum: TYPE_STATUSES }) status!: string;
   @ApiProperty() version!: number;
   @ApiProperty({ type: PublishedRevisionView }) published!: PublishedRevisionView;
   @ApiProperty({ type: RelaxationProposalView, nullable: true })
   pendingRevision!: RelaxationProposalView | null;
   @ApiProperty({ type: RelaxationProposalView, nullable: true })
   pendingReactivation!: RelaxationProposalView | null;
+  @ApiProperty({
+    type: RelaxationProposalView,
+    nullable: true,
+    description: 'A proposed new type waiting for a second admin (FE-091).',
+  })
+  pendingCreation!: RelaxationProposalView | null;
   @ApiProperty({ type: CertificationReviewView }) review!: CertificationReviewView;
 }
 
@@ -158,13 +166,20 @@ export class TypeRevisionRequest extends ReasonedVersionRequest {
 }
 
 export class TypeRevisionSavedView {
-  @ApiProperty({ enum: ['published', 'pending-second-admin'] }) outcome!: string;
+  @ApiProperty({ enum: ['published', 'pending-second-admin', 'proposal-revised'] })
+  outcome!: string;
   @ApiProperty({ format: 'uuid' }) typeId!: string;
   @ApiProperty({ format: 'uuid' }) revisionId!: string;
   @ApiProperty() revisionNo!: number;
   @ApiProperty({ description: 'The type version; unchanged while pending.' }) version!: number;
   @ApiPropertyOptional({ description: 'Published only.' }) claimTermsChanged?: boolean;
-  @ApiPropertyOptional({ format: 'uuid', description: 'Pending only.' }) proposalId?: string;
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Pending, or the new proposal of a revised proposed type.',
+  })
+  proposalId?: string;
+  @ApiPropertyOptional({ description: 'Proposal-revised only: the new proposal version.' })
+  proposalVersion?: number;
   @ApiPropertyOptional({ type: [String], description: 'Pending only: what relaxes.' })
   relaxations?: string[];
   @ApiProperty({ type: CertificationRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
@@ -173,10 +188,52 @@ export class TypeRevisionSavedView {
 
 export class TypeStatusView {
   @ApiProperty({ format: 'uuid' }) typeId!: string;
-  @ApiProperty({ enum: ['active', 'inactive'] }) status!: string;
+  @ApiProperty({ enum: TYPE_STATUSES }) status!: string;
   @ApiPropertyOptional() version?: number;
   @ApiPropertyOptional({ format: 'uuid' }) proposalId?: string;
   @ApiPropertyOptional() typeVersion?: number;
+}
+
+export class TypeCreateRequest {
+  @ApiProperty({
+    description:
+      'Lowercase letters, digits and hyphens, 2 to 32 characters, starting with a letter. Never ' +
+      'a seed code of the Market and never reused, whatever the status of the type that has it.',
+  })
+  code!: string;
+  @ApiProperty(CONTENT_SCHEMA) content!: Record<string, unknown>;
+  @ApiPropertyOptional({
+    description: 'Optional reason for the approving admin, at most 500 characters; encrypted.',
+  })
+  reason?: string;
+}
+
+export class TypeCreatedView {
+  @ApiProperty({ format: 'uuid' }) typeId!: string;
+  @ApiProperty({ format: 'uuid' }) proposalId!: string;
+  @ApiProperty({ enum: ['proposed'] }) status!: string;
+  @ApiProperty({ format: 'uuid' }) revisionId!: string;
+  @ApiProperty({ description: 'The version the approving admin sends.' }) proposalVersion!: number;
+}
+
+class TypeLimitsView {
+  @ApiProperty() codeMinLength!: number;
+  @ApiProperty() codeMaxLength!: number;
+  @ApiProperty() nameMaxLength!: number;
+  @ApiProperty() descriptionMaxLength!: number;
+  @ApiProperty() claimTermsPerLocale!: number;
+  @ApiProperty() claimTermMaxLength!: number;
+  @ApiProperty() reasonMaxLength!: number;
+}
+
+export class TypeNewOptionsView {
+  @ApiProperty({ type: [String], description: 'One wording section per locale.' })
+  locales!: string[];
+  @ApiProperty({ type: [String] }) verificationModes!: string[];
+  @ApiProperty({ type: [String] }) defaultBases!: string[];
+  @ApiProperty({ type: [String], description: '`text` shows the type name as the badge.' })
+  badgeArtworkKeys!: string[];
+  @ApiProperty({ type: TypeLimitsView }) limits!: TypeLimitsView;
 }
 
 export class TypeRelaxationApprovedView {
@@ -351,13 +408,20 @@ class PolicyRowChangeView {
 }
 
 export class ClaimPolicyRevisionSavedView {
-  @ApiProperty({ enum: ['published', 'pending-second-admin'] }) outcome!: string;
+  @ApiProperty({ enum: ['published', 'pending-second-admin', 'proposal-revised'] })
+  outcome!: string;
   @ApiProperty({ format: 'uuid' }) typeId!: string;
   @ApiProperty({ format: 'uuid' }) policyId!: string;
   @ApiProperty({ format: 'uuid' }) revisionId!: string;
   @ApiProperty() revisionNo!: number;
   @ApiProperty({ description: 'The policy version; unchanged while pending.' }) version!: number;
-  @ApiPropertyOptional({ format: 'uuid', description: 'Pending only.' }) proposalId?: string;
+  @ApiPropertyOptional({
+    format: 'uuid',
+    description: 'Pending, or the new proposal of a revised proposed type.',
+  })
+  proposalId?: string;
+  @ApiPropertyOptional({ description: 'Proposal-revised only: the new proposal version.' })
+  proposalVersion?: number;
   @ApiProperty({ type: [PolicyRowChangeView] }) changes!: PolicyRowChangeView[];
   @ApiProperty({ type: CertificationRequestRef, nullable: true, description: REQUEST_DESCRIPTION })
   request!: CertificationRequestRef | null;

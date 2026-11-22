@@ -1,3 +1,4 @@
+import { loadBadgeArtworkKeys } from '../../infrastructure/badge-artwork-keys';
 import { Logger } from '@nestjs/common';
 import { ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, MarketContext, Result } from '@mondapac/shared-kernel';
@@ -106,6 +107,7 @@ describe.each(['AU', 'ZZ'] as const)('claim policy reviews in market %s', (code)
       ids,
       review,
       supportedLocales: (m) => markets.get(m.marketId).supportedLocales,
+      badgeArtworkKeys: loadBadgeArtworkKeys(),
     };
     const typeId = ids.next<'CertificationType'>();
     registry.addType(

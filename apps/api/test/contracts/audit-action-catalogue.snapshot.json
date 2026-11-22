@@ -1239,7 +1239,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "subject": "enumOf(type-revision|claim-policy-revision|issuer-reactivation|type-reactivation)",
+      "subject": "enumOf(type-revision|claim-policy-revision|issuer-reactivation|type-reactivation|type-creation)",
       "subjectId": "id"
     }
   },
@@ -1250,7 +1250,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "subject": "enumOf(type-revision|claim-policy-revision|issuer-reactivation|type-reactivation)",
+      "subject": "enumOf(type-revision|claim-policy-revision|issuer-reactivation|type-reactivation|type-creation)",
       "subjectId": "id"
     }
   },
@@ -1367,6 +1367,17 @@
     }
   },
   {
+    "action": "certification.type.created",
+    "targetType": "certification.type",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "proposalId": "id",
+      "revisionId": "id"
+    }
+  },
+  {
     "action": "certification.type.deactivated",
     "targetType": "certification.type",
     "targetId": "id",
@@ -1374,6 +1385,33 @@
     "before": null,
     "after": {
       "publishedRevisionId": "id"
+    }
+  },
+  {
+    "action": "certification.type.proposal-revised",
+    "targetType": "certification.type",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "proposalId": "id",
+      "supersededProposalId": "id",
+      "revisionId": "id",
+      "revisionNo": "integer",
+      "reasonGiven": "boolean"
+    }
+  },
+  {
+    "action": "certification.type.proposed",
+    "targetType": "certification.type",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "proposalId": "id",
+      "revisionId": "id",
+      "revisionNo": "integer",
+      "reasonGiven": "boolean"
     }
   },
   {

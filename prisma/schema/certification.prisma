@@ -65,7 +65,7 @@ model CertificationType {
   code                String
   /// THIRD_PARTY_DOCUMENT | SELF_DECLARATION; immutable (D 16.1 item 4).
   verificationMode    String                              @map("verification_mode")
-  /// active | inactive (CERT-03).
+  /// active | inactive (CERT-03), or a new type's proposed | rejected | withdrawn (FE-091).
   status              String
   /// The published revision (V1 pointer); only a revision of this type. Null only inside the
   /// creating unit; a null read by evaluateClaims is type-unknown (fail closed).
@@ -370,7 +370,7 @@ model CertificationRelaxationProposal {
   id                                String    @id @db.Uuid
   marketId                          String    @map("market_id") @db.VarChar(8)
   tenantId                          String    @map("tenant_id")
-  /// type-revision | claim-policy-revision | issuer-reactivation | type-reactivation
+  /// type-revision | claim-policy-revision | issuer-reactivation | type-reactivation | type-creation
   subjectKind                       String    @map("subject_kind")
   subjectId                         String    @map("subject_id") @db.Uuid
   basedOnRevisionId                 String?   @map("based_on_revision_id") @db.Uuid

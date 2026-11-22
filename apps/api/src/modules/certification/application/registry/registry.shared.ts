@@ -30,6 +30,8 @@ export interface RegistryDependencies {
   readonly review: SystemRequestRecorder;
   /** The Market's `supportedLocales` (a type revision names every one). */
   readonly supportedLocales: (market: MarketContext) => readonly string[];
+  /** The badge artwork keys a revision may name (configuration, FE-091). */
+  readonly badgeArtworkKeys: readonly string[];
 }
 
 export { reviewerOf as adminOf, reviewFailure as registryFailure } from '../review/review.shared';

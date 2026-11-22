@@ -3,15 +3,21 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { CERTIFICATION_TYPE_EDIT } from '../../contracts/permissions';
-import { TypeRelaxationRequestedAudit, TypeRevisedAudit } from '../../domain/audit';
-import { CertificationTypeRevised, RelaxationProposed } from '../../domain/events';
-import { changeReasonIn } from '../../domain/registry';
 import {
+  TypeProposalRevisedAudit,
+  TypeRelaxationRequestedAudit,
+  TypeRevisedAudit,
+} from '../../domain/audit';
+import { CertificationTypeRevised, RelaxationProposed } from '../../domain/events';
+import { changeReasonIn, isClosedTypeStatus } from '../../domain/registry';
+import {
+  assertSecondAdmin,
   classifyTypeRevision,
   publicationOf,
   typeRevisionDiff,
   validateTypeRevision,
   type TypeRelaxation,
+  type TypeRevisionContent,
   type TypeRevisionProblem,
 } from '../../domain/type-revision';
 import type { StoredType, StoredTypeRevision } from '../ports/registry.repository';
@@ -69,6 +75,18 @@ export type TypeSaveRevisionOutput =
       readonly relaxations: readonly TypeRelaxation[];
       /** Always null: nothing is live yet; the second admin's approval is the check. */
       readonly request: null;
+    }
+  | {
+      /** The proposer changed their proposed type (FE-091); a second admin approves the new one. */
+      readonly outcome: 'proposal-revised';
+      readonly typeId: string;
+      readonly revisionId: string;
+      readonly revisionNo: number;
+      /** The new pending `type-creation` proposal; the earlier one is `superseded`. */
+      readonly proposalId: string;
+      readonly proposalVersion: number;
+      readonly version: number;
+      readonly request: null;
     };
 
 export type TypeSaveRevisionFailure =
@@ -77,6 +95,8 @@ export type TypeSaveRevisionFailure =
   | { readonly code: 'type.not-found' }
   | { readonly code: 'type.revision-unchanged' }
   | { readonly code: 'review.proposal-pending' }
+  | { readonly code: 'review.not-proposer' }
+  | { readonly code: 'type.proposal-closed' }
   | { readonly code: 'conflict.stale' }
   | {
       readonly code: 'type.revision-invalid';
@@ -99,7 +119,12 @@ const logger = new Logger('CertificationTypeRevision');
  * key, the revision id, inside the unit (CE8). Approved certificates keep their own revision, so
  * no certificate's status or badge text changes (AC 19). A published revision opens its review
  * in Admin Inbox › System requests in the same unit (area certification; the `note` is checked
- * there and a refusal rolls the save back); a pending one opens none. Rule: key
+ * there and a refusal rolls the save back); a pending one opens none. A `proposed` type (FE-091)
+ * is changed only by its proposer (`review.not-proposer`): the revision is published on the
+ * proposed type at once, its pending `type-creation` proposal is `superseded` and a new one is
+ * written, so a second admin's approval of the earlier content answers `conflict.stale`; nothing
+ * is live and nothing is reviewed in System requests. A rejected or withdrawn type refuses every
+ * save (`type.proposal-closed`). Rule: key
  * `certification.type.edit` (protected), the admin population, not acting-as.
  */
 export class TypeSaveRevision extends UseCase<
@@ -141,7 +166,7 @@ export class TypeSaveRevision extends UseCase<
       .run<{ type: StoredType; published: StoredTypeRevision } | null, never>(
         market,
         async () => {
-          const type = await deps.registry.type(market, typeId);
+          const type = await deps.registry.typeOfAnyStatus(market, typeId);
           if (type === null) return ok(null);
           const published = await deps.registry.revision(market, type.publishedRevisionId);
           if (published === null) throw new Error('certification type without its revision');
@@ -155,6 +180,7 @@ export class TypeSaveRevision extends UseCase<
     if (!read.ok) return read;
     if (read.value === null) return err({ code: 'type.not-found' });
     const { type, published } = read.value;
+    if (isClosedTypeStatus(type.status)) return err({ code: 'type.proposal-closed' });
     if (type.version !== version.value) return err({ code: 'conflict.stale' });
 
     const parsed = typeRevisionContentIn(input.content, type.verificationMode);
@@ -163,11 +189,21 @@ export class TypeSaveRevision extends UseCase<
       parsed.value,
       deps.supportedLocales(market),
       published.content,
+      deps.badgeArtworkKeys,
     );
     if (!checked.ok) return err({ code: 'type.revision-invalid', issues: checked.error });
     const content = checked.value;
     const diff = typeRevisionDiff(published.content, content);
     if (diff.length === 0) return err({ code: 'type.revision-unchanged' });
+    if (type.status === 'proposed') {
+      return this.reviseProposal(context, admin.accountId, {
+        typeId,
+        version: version.value,
+        published,
+        content,
+        reason: reason.value,
+      });
+    }
     const classification = classifyTypeRevision(published.content, content);
     const publication = publicationOf(classification);
 
@@ -311,5 +347,107 @@ export class TypeSaveRevision extends UseCase<
       });
     }
     return result;
+  }
+
+  /** The proposer's edit of their proposed type (FE-091): see the class comment. */
+  private async reviseProposal(
+    context: CallContext,
+    accountId: Id<'Account'>,
+    save: {
+      readonly typeId: Id<'CertificationType'>;
+      readonly version: number;
+      readonly published: StoredTypeRevision;
+      readonly content: TypeRevisionContent;
+      readonly reason: string | null;
+    },
+  ): Promise<Result<TypeSaveRevisionOutput, TypeSaveRevisionFailure>> {
+    const { deps } = this;
+    const { market } = context;
+    const { typeId } = save;
+    const now = deps.clock.now();
+    const revisionId = deps.ids.next<'CertificationTypeRevision'>();
+    const proposalId = deps.ids.next<'RelaxationProposal'>();
+    return deps.unitOfWork
+      .run<TypeSaveRevisionOutput, TypeSaveRevisionFailure>(market, async () => {
+        const current = await deps.registry.typeOfAnyStatus(market, typeId);
+        if (current === null) return err({ code: 'type.not-found' } as const);
+        if (isClosedTypeStatus(current.status)) {
+          return err({ code: 'type.proposal-closed' } as const);
+        }
+        if (
+          current.status !== 'proposed' ||
+          current.version !== save.version ||
+          current.publishedRevisionId !== save.published.id
+        ) {
+          return err({ code: 'conflict.stale' } as const);
+        }
+        // Lock order: the type row, then its proposal.
+        await deps.registry.lockType(market, typeId, save.version);
+        const pending = await deps.registry.pendingProposal(market, 'type-creation', typeId);
+        if (pending === null) throw new Error('a proposed certification type without its proposal');
+        if (assertSecondAdmin(pending.proposerAccountId, accountId).ok) {
+          return err({ code: 'review.not-proposer' } as const);
+        }
+        const revisionNo = await deps.registry.addRevision(market, {
+          id: revisionId,
+          typeId,
+          content: save.content,
+          authorAccountId: accountId,
+          changeReasonCiphertext: null,
+          createdAt: now,
+        });
+        await deps.registry.publishRevision(market, typeId, revisionId, save.version);
+        await deps.registry.closeProposal(market, {
+          id: pending.id,
+          expectedVersion: pending.version,
+          state: 'superseded',
+          decidedByAccountId: null,
+          decidedAt: now,
+        });
+        // The reason given with the edit is the new proposal's, sealed under its own key (CE8).
+        const reasonCiphertext =
+          save.reason === null
+            ? null
+            : await deps.cipher.sealChangeReason(market, proposalId, save.reason);
+        const refused = await deps.registry.addProposal(market, {
+          id: proposalId,
+          subject: 'type-creation',
+          subjectId: typeId,
+          basedOnRevisionId: revisionId,
+          proposedRevisionId: null,
+          proposedExpertReferenceCiphertext: null,
+          proposerAccountId: accountId,
+          changeReasonCiphertext: reasonCiphertext,
+          proposedAt: now,
+        });
+        if (refused !== null)
+          throw new Error('a superseded type-creation proposal is still pending');
+        await deps.audit.record(
+          context,
+          TypeProposalRevisedAudit.entry(typeId, {
+            after: {
+              proposalId,
+              supersededProposalId: pending.id,
+              revisionId,
+              revisionNo,
+              reasonGiven: reasonCiphertext !== null,
+            },
+          }),
+        );
+        // No `relaxation-proposed.v1` for a type-creation proposal (see PROPOSAL_SUBJECTS).
+        return ok({
+          outcome: 'proposal-revised' as const,
+          typeId,
+          revisionId,
+          revisionNo,
+          proposalId,
+          proposalVersion: 1,
+          version: save.version + 1,
+          request: null,
+        });
+      })
+      .catch((error: unknown) =>
+        registryFailure(context, 'certification.type-save-revision.proposal', error),
+      );
   }
 }

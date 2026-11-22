@@ -1,3 +1,4 @@
+import { loadBadgeArtworkKeys } from '../../infrastructure/badge-artwork-keys';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext, Result } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
@@ -28,8 +29,13 @@ const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TE
 
 class MemoryTypes implements CertificationTypeRepository {
   readonly byCode = new Map<string, NewSeededType>();
-  existsByCode(_m: MarketContext, code: string): Promise<boolean> {
-    return Promise.resolve(this.byCode.has(code));
+  /** Codes held by a type of another status than the seed's (a proposed new type, FE-091). */
+  readonly statusOf = new Map<string, string>();
+  statusByCode(_m: MarketContext, code: string): Promise<string | null> {
+    const stored = this.byCode.get(code);
+    return Promise.resolve(
+      this.statusOf.get(code) ?? (stored === undefined ? null : stored.seeded.status),
+    );
   }
   addSeeded(_m: MarketContext, type: NewSeededType): Promise<void> {
     this.byCode.set(type.seeded.code, type);
@@ -54,6 +60,7 @@ describe.each(TEST_MARKETS)('SeedCertificationTypes in market %s', (code) => {
       types: repository,
       seed: { types: () => types },
       supportedLocales: (m) => markets.get(m.marketId).supportedLocales,
+      badgeArtworkKeys: loadBadgeArtworkKeys(),
       clock: new FixedClock(Temporal.Instant.from('2026-10-14T00:00:00Z')),
       ids: {
         next: <T extends string>() =>
@@ -105,6 +112,21 @@ describe.each(TEST_MARKETS)('SeedCertificationTypes in market %s', (code) => {
     s.repository.byCode.set(first!.code, stored);
     await s.useCase.execute(system(), {});
     expect(s.repository.byCode.get(first!.code)).toBe(stored);
+  });
+
+  it('counts a seed code held by a type that is not live as a fault, not as seeded', async () => {
+    const all = seed.types(market);
+    for (const status of ['proposed', 'rejected', 'withdrawn']) {
+      const s = build();
+      s.repository.statusOf.set(all[0]!.code, status);
+      const result = await s.useCase.execute(system(), {});
+      expect(result).toEqual({
+        ok: false,
+        error: { code: 'type.seed-code-not-live', typeCodes: [all[0]!.code] },
+      });
+      // Every other seed type is still created.
+      expect(s.repository.byCode.size).toBe(all.length - 1);
+    }
   });
 
   it('refuses a seed that breaks a revision rule, writing nothing, naming the type', async () => {

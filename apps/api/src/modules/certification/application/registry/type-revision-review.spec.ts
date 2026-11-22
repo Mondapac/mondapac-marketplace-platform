@@ -1,3 +1,4 @@
+import { loadBadgeArtworkKeys } from '../../infrastructure/badge-artwork-keys';
 import { Logger } from '@nestjs/common';
 import { ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, MarketContext, Result } from '@mondapac/shared-kernel';
@@ -104,6 +105,7 @@ describe.each(['AU', 'ZZ'] as const)('type revision reviews in market %s', (code
       ids,
       review,
       supportedLocales: () => marketLocales,
+      badgeArtworkKeys: loadBadgeArtworkKeys(),
     };
     const typeId = ids.next<'CertificationType'>();
     const seedRevision = ids.next<'CertificationTypeRevision'>();
@@ -221,7 +223,7 @@ describe.each(['AU', 'ZZ'] as const)('type revision reviews in market %s', (code
       r.save.execute(r.admin(), {
         typeId: r.typeId,
         version: 1,
-        content: contentOf({ badgeIconKey: 'shield' }, 'Qorvane Seal'),
+        content: contentOf({ badgeIconKey: 'leaf' }, 'Qorvane Seal'),
         note: 'Brand refresh',
       }),
     );
@@ -264,7 +266,7 @@ describe.each(['AU', 'ZZ'] as const)('type revision reviews in market %s', (code
       r.save.execute(r.admin(), {
         typeId: r.typeId,
         version: 1,
-        content: contentOf({ requiresDocument: false }),
+        content: contentOf({ requiresIssuerRegistry: false }),
       }),
     );
     expect(relaxing).toMatchObject({ outcome: 'pending-second-admin', request: null });
@@ -363,7 +365,7 @@ describe.each(['AU', 'ZZ'] as const)('type revision reviews in market %s', (code
       r.save.execute(r.admin(), {
         typeId: r.typeId,
         version: 2,
-        content: contentOf({ requiresDocument: false }, 'Qorvane Seal'),
+        content: contentOf({ requiresIssuerRegistry: false }, 'Qorvane Seal'),
       }),
     );
     const before = published(r);
@@ -418,10 +420,10 @@ describe.each(['AU', 'ZZ'] as const)('type revision reviews in market %s', (code
       [
         ['the names', { ...lax(), ...renamed('Qorvane Seal') }, 'reverted'],
         ['the descriptions', { ...lax(), ...described('Holds a seal.') }, 'reverted'],
-        ['the badge icon', { ...lax(), badgeIconKey: 'shield' }, 'reverted'],
+        ['the badge icon', { ...lax(), badgeIconKey: 'leaf' }, 'reverted'],
         [
           'names, descriptions and the icon together',
-          { ...lax(), ...renamed('Qorvane Seal', 'Holds a seal.'), badgeIconKey: 'shield' },
+          { ...lax(), ...renamed('Qorvane Seal', 'Holds a seal.'), badgeIconKey: 'leaf' },
           'reverted',
         ],
         [
@@ -430,11 +432,6 @@ describe.each(['AU', 'ZZ'] as const)('type revision reviews in market %s', (code
           'not-permitted',
         ],
         ['a document now required', { ...lax(), requiresDocument: true }, 'not-permitted'],
-        [
-          'the issuer registry now required',
-          { ...lax(), requiresIssuerRegistry: true },
-          'not-permitted',
-        ],
         ['an expiry now required', { ...lax(), requiresExpiry: true }, 'not-permitted'],
         ['a stricter default basis', { ...lax(), defaultBasis: 'NOT_APPLICABLE' }, 'not-permitted'],
         ['a claim term added', withTerms(lax(), ['qorvane', 'qorvane seal']), 'not-permitted'],
@@ -482,6 +479,26 @@ describe.each(['AU', 'ZZ'] as const)('type revision reviews in market %s', (code
         expect(r.registry.state.revisions.size).toBe(revisions);
       }
     });
+
+    // A seller's own declaration never names an issuer (type.issuer-registry-not-allowed), so the
+    // issuer registry is tightened on a type with an issuer's certificate.
+    it('restoring the issuer registry now required answers not-permitted', async () => {
+      const base = contentOf({ requiresIssuerRegistry: false });
+      const r = rig(true, base);
+      const saved = await unwrap(
+        r.save.execute(r.admin(), {
+          typeId: r.typeId,
+          version: 1,
+          content: { ...base, requiresIssuerRegistry: true },
+          note: 'Edit',
+        }),
+      );
+      expect(saved).toMatchObject({ outcome: 'published' });
+      const revisions = r.registry.state.revisions.size;
+      expect(await r.revert(requestOf(r))).toBe('not-permitted');
+      expect(published(r)).toBe(saved.revisionId);
+      expect(r.registry.state.revisions.size).toBe(revisions);
+    });
   });
 
   it('locks the type row before a relaxing save checks for a pending proposal', async () => {
@@ -496,7 +513,7 @@ describe.each(['AU', 'ZZ'] as const)('type revision reviews in market %s', (code
     const raced = await r.save.execute(r.admin(), {
       typeId: r.typeId,
       version: 1,
-      content: contentOf({ requiresDocument: false }),
+      content: contentOf({ requiresIssuerRegistry: false }),
     });
     expect(locked).toBe(true);
     expect(!raced.ok && raced.error).toEqual({ code: 'conflict.stale' });
@@ -511,7 +528,7 @@ describe.each(['AU', 'ZZ'] as const)('type revision reviews in market %s', (code
       r.save.execute(r.admin(), {
         typeId: r.typeId,
         version: 1,
-        content: contentOf({ requiresDocument: false }),
+        content: contentOf({ requiresIssuerRegistry: false }),
       }),
     );
     expect(locked).toBe(true);

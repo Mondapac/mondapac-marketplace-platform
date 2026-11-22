@@ -1,3 +1,11 @@
+import { loadBadgeArtworkKeys } from '../infrastructure/badge-artwork-keys';
+import type { MarketId } from '@mondapac/shared-kernel';
+import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
+import { loadMarketConfigs } from '../../../platform/market-config/market-config';
+import { MarketRegistry } from '../../../platform/market-config/market-registry';
+import type { SeededType } from '../application/ports/type-seed';
+import { loadFileTypeSeeds } from '../infrastructure/seed/file-type-seed';
+import { ZZ_CERTIFICATION_TYPES } from '../infrastructure/seed/zz.types.seed';
 import {
   assertSecondAdmin,
   classifyTypeRevision,
@@ -43,6 +51,9 @@ const zz = (over: Partial<TypeRevisionContent> = {}): TypeRevisionContent => ({
   ...over,
 });
 
+// The checked-in badge artwork list (config/certification-badge-artwork/keys.json).
+const KEYS = loadBadgeArtworkKeys();
+
 describe('type code', () => {
   it('accepts the pattern and rejects the rest', () => {
     expect(isCertificationTypeCode('halal')).toBe(true);
@@ -64,12 +75,12 @@ describe('validateTypeRevision', () => {
         },
       },
     });
-    expect(validateTypeRevision(content, ['en-AU'], null).ok).toBe(true);
+    expect(validateTypeRevision(content, ['en-AU'], null, KEYS).ok).toBe(true);
   });
 
   it('accepts a complete revision for both Market fixtures', () => {
-    expect(validateTypeRevision(base(), LOCALES, null).ok).toBe(true);
-    expect(validateTypeRevision(zz(), ['zz'], null).ok).toBe(true);
+    expect(validateTypeRevision(base(), LOCALES, null, KEYS).ok).toBe(true);
+    expect(validateTypeRevision(zz(), ['zz'], null, KEYS).ok).toBe(true);
   });
 
   const problems = (
@@ -77,7 +88,7 @@ describe('validateTypeRevision', () => {
     locales = LOCALES,
     prev: TypeRevisionContent | null = null,
   ) => {
-    const r = validateTypeRevision(c, locales, prev);
+    const r = validateTypeRevision(c, locales, prev, KEYS);
     return r.ok ? [] : r.error.map((p) => p.code);
   };
 
@@ -367,7 +378,7 @@ describe('validateTypeRevision, further cases (Sajad)', () => {
     locales = LOCALES,
     prev: TypeRevisionContent | null = null,
   ) => {
-    const r = validateTypeRevision(c, locales, prev);
+    const r = validateTypeRevision(c, locales, prev, KEYS);
     return r.ok ? [] : r.error.map((p) => p.code);
   };
   const withEn = (over: Partial<TypeRevisionContent['locales'][string]>): TypeRevisionContent =>
@@ -463,5 +474,103 @@ describe('typeRevisionDiff (the read shape of a pending relaxation, design 7.6)'
     });
     expect(typeRevisionDiff(base(), after)).toEqual([]);
     expect(classifyTypeRevision(base(), after).relaxations).toEqual([]);
+  });
+});
+
+describe('validateTypeRevision, the new-type rules (FE-091, design 5)', () => {
+  const codes = (content: TypeRevisionContent, locales = LOCALES): string[] => {
+    const result = validateTypeRevision(content, locales, null, KEYS);
+    return result.ok ? [] : result.error.map((problem) => problem.code);
+  };
+
+  it('requires a document for a certificate from an issuer', () => {
+    expect(codes(base({ requiresDocument: false }))).toEqual(['type.document-required']);
+    expect(codes(base())).toEqual([]);
+  });
+
+  it('refuses an issuer registry on a seller declaration', () => {
+    expect(codes(zz({ requiresIssuerRegistry: true }), ['zz'])).toEqual([
+      'type.issuer-registry-not-allowed',
+    ]);
+    expect(codes(zz(), ['zz'])).toEqual([]);
+  });
+
+  it('takes only badge artwork that exists, text included', () => {
+    expect(KEYS).toEqual(['text', 'halal', 'kosher', 'vegan', 'organic', 'seal', 'leaf']);
+    for (const key of KEYS) expect(codes(base({ badgeIconKey: key }))).toEqual([]);
+    for (const key of ['shield', 'star', 'halal2']) {
+      expect(codes(base({ badgeIconKey: key }))).toEqual(['type.badge-icon-invalid']);
+    }
+  });
+
+  it('refuses forbidden words in a name or description, also disguised, as whole words', () => {
+    const withText = (name: string, customerDescription: string) =>
+      base({
+        locales: {
+          en: { name, customerDescription, claimTerms: ['halal'] },
+          ar: { name: 'حلال', customerDescription: 'معتمد', claimTerms: ['حلال'] },
+        },
+      });
+    for (const [name, description] of [
+      ['Halal', 'Guaranteed halal.'],
+      ['Halal', 'Follows the fatwa of the council.'],
+      ['Halal', 'Free of every ALLERGEN.'],
+      ['Halal', 'A healthy choice.'],
+      ['Gu4rantee', 'The seller holds a certificate.'],
+      ['Halal', 'Certified by MondaPac.'],
+      // Split, dotted and stretched spellings read as the plain word (Hassan).
+      ['Halal', 'Guaran-tee of the council.'],
+      ['Halal', 'A g.u.a.r.a.n.t.e.e for you.'],
+      ['Halal', 'Guaaaranteed halal.'],
+      ['Halal', 'Guaranteeing halal.'],
+      ['Halal', 'Good for your health.'],
+      ['Halal', 'A healthier choice.'],
+      ['Halal', 'Approved by MondaPac.'],
+      ['Halal', 'MondaPac verified.'],
+      ['Halal', 'MondaPac approved.'],
+      ['Halal', 'Mondapac-certified.'],
+    ] as const) {
+      expect([description, codes(withText(name, description))]).toEqual([
+        description,
+        ['type.text-forbidden-word'],
+      ]);
+    }
+    // Whole words only: "secure" holds "cure", "rule" is not "ruling".
+    expect(codes(withText('Halal', 'Kept secure under the rule of the certifier.'))).toEqual([]);
+    // A compacted run starts and ends on whole words: "procured" and "overruling" hold nothing.
+    expect(codes(withText('Halal', 'Procured from an overruling supplier.'))).toEqual([]);
+  });
+
+  it('refuses a claim term made only of common words, but not a phrase with another word', () => {
+    const withTerms = (terms: string[]) =>
+      base({
+        locales: {
+          en: { name: 'Organic', customerDescription: 'Checked.', claimTerms: terms },
+          ar: { name: 'حلال', customerDescription: 'معتمد', claimTerms: [] },
+        },
+      });
+    expect(codes(withTerms(['organic', 'Natural']))).toEqual(['type.claim-term-too-common']);
+    expect(codes(withTerms(['organic', 'CERTIFIED']))).toEqual(['type.claim-term-too-common']);
+    expect(codes(withTerms(['organic', 'certified organic']))).toEqual([]);
+    // A term made only of common words is refused too (Hassan).
+    expect(codes(withTerms(['organic', 'fresh food']))).toEqual(['type.claim-term-too-common']);
+    expect(codes(withTerms(['organic', 'Natural Products']))).toEqual([
+      'type.claim-term-too-common',
+    ]);
+  });
+
+  it('passes the checked-in seeds of both Markets (run against the seed first)', () => {
+    const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
+    const seeds: Record<string, readonly SeededType[]> = {
+      ...loadFileTypeSeeds(),
+      ZZ: ZZ_CERTIFICATION_TYPES,
+    };
+    expect(Object.keys(seeds).sort()).toEqual(['AU', 'ZZ']);
+    for (const [marketId, types] of Object.entries(seeds)) {
+      const { supportedLocales } = markets.get(marketId as MarketId);
+      for (const seeded of types) {
+        expect([seeded.code, codes(seeded.content, supportedLocales)]).toEqual([seeded.code, []]);
+      }
+    }
   });
 });

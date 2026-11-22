@@ -493,6 +493,7 @@ const SELLER_BASIS_SQL = `SELECT q.ord::int4 AS ord, t.id AS type_id, c.id AS ce
        (ic.submission_id IS NOT NULL) AS verified_with_issuer
   FROM unnest($2::uuid[], $3::text[]) WITH ORDINALITY AS q(seller_id, type_code, ord)
   JOIN "certification"."certification_types" t ON t.market_id = $1 AND t.code = q.type_code
+   AND t.status IN ('active', 'inactive')
   JOIN "certification"."seller_certifications" c
     ON c.market_id = $1 AND c.seller_id = q.seller_id AND c.type_id = t.id
    AND c.status NOT IN ('declined', 'revoked')
@@ -516,7 +517,8 @@ const TYPE_AND_POLICY_SQL = `SELECT t.id AS type_id, t.code, t.verification_mode
   LEFT JOIN "certification"."claim_basis_policies" p ON p.market_id = $1 AND p.type_id = t.id
   LEFT JOIN "certification"."claim_policy_rows" r
     ON r.market_id = $1 AND r.revision_id = p.published_revision_id
- WHERE t.market_id = $1 AND t.code = ANY ($2::text[])`;
+ WHERE t.market_id = $1 AND t.code = ANY ($2::text[])
+   AND t.status IN ('active', 'inactive')`;
 
 // S3 (slice 14): the coverage entries of approved, current manufacturer revisions of the asked
 // type for the asked product revision (M3), joined through the revision's foreign key so the plan
@@ -534,6 +536,7 @@ const MANUFACTURER_BASIS_SQL = `SELECT q.ord::int4 AS ord, t.code AS type_code, 
        (pic.revision_id IS NOT NULL) AS verified_with_issuer
   FROM unnest($2::uuid[], $3::uuid[], $4::text[]) WITH ORDINALITY AS q(product_id, product_revision_id, type_code, ord)
   JOIN "certification"."certification_types" t ON t.market_id = $1 AND t.code = q.type_code
+   AND t.status IN ('active', 'inactive')
   JOIN "certification"."product_revision_coverage" cv
     ON cv.market_id = $1 AND cv.product_id = q.product_id AND cv.type_id = t.id
    AND cv.product_revision_id = q.product_revision_id

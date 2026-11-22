@@ -1,6 +1,7 @@
 import { err, ok, type Result } from '@mondapac/shared-kernel';
-import { compactForm, normaliseClaimText, tokenise } from './claim-text-matcher';
+import { collapseRuns, compactForm, normaliseClaimText, tokenise } from './claim-text-matcher';
 import type { CertificationTypeCode } from './claim-types';
+import { CLAIM_TERM_STOP_LIST, FORBIDDEN_TYPE_TEXT_WORDS } from './type-wording-data';
 
 export const VERIFICATION_MODES = ['THIRD_PARTY_DOCUMENT', 'SELF_DECLARATION'] as const;
 export type VerificationMode = (typeof VERIFICATION_MODES)[number];
@@ -39,14 +40,85 @@ export type TypeRevisionProblem =
   | { readonly code: 'type.claim-term-unmatchable'; readonly locale: string }
   | { readonly code: 'type.claim-terms-missing' }
   | { readonly code: 'type.badge-icon-invalid' }
-  | { readonly code: 'type.verification-mode-immutable' };
+  | { readonly code: 'type.verification-mode-immutable' }
+  | { readonly code: 'type.document-required' }
+  | { readonly code: 'type.issuer-registry-not-allowed' }
+  | { readonly code: 'type.text-forbidden-word'; readonly locale: string }
+  | { readonly code: 'type.claim-term-too-common'; readonly locale: string };
 
 const CODE_PATTERN = /^[a-z][a-z0-9-]{1,31}$/;
-const ICON_KEY_PATTERN = /^[a-z][a-z0-9-]{0,63}$/;
-const MAX_NAME = 80;
-const MAX_DESCRIPTION = 500;
-const MAX_TERMS_PER_LOCALE = 200;
-const MAX_TERM_LENGTH = 100;
+export const BADGE_ICON_KEY_PATTERN = /^[a-z][a-z0-9-]{0,63}$/;
+export const MAX_TYPE_NAME_LENGTH = 80;
+export const MAX_TYPE_DESCRIPTION_LENGTH = 500;
+export const MAX_TERMS_PER_LOCALE = 200;
+export const MAX_TERM_LENGTH = 100;
+const MAX_NAME = MAX_TYPE_NAME_LENGTH;
+const MAX_DESCRIPTION = MAX_TYPE_DESCRIPTION_LENGTH;
+
+/** Each list entry as its token sequence after the matcher's normalisation and leet map. */
+function wordForms(text: string): string[] {
+  return tokenise(normaliseClaimText(text)).map((token) => compactForm(token));
+}
+
+const FORBIDDEN_FORMS: readonly (readonly string[])[] = FORBIDDEN_TYPE_TEXT_WORDS.map(wordForms);
+/** Each phrase with its separators removed and its runs folded: `guarantee` is `guarante`. */
+const FORBIDDEN_COMPACT: readonly string[] = FORBIDDEN_FORMS.map((words) =>
+  collapseRuns(words.join('')),
+).filter((form) => form.length > 0);
+const STOP_FORMS: ReadonlySet<string> = new Set(
+  CLAIM_TERM_STOP_LIST.flatMap((word) => wordForms(word)),
+);
+
+/**
+ * True when a run of whole words of the text, joined and with its runs folded, is a forbidden
+ * phrase compacted the same way: `guaran-tee`, `g.u.a.r.a.n.t.e.e` and `guaaaranteed` are caught,
+ * and the match never starts or ends inside a word, so `secure` never matches `cure`.
+ */
+function hasCompactedForbiddenRun(tokens: readonly string[]): boolean {
+  for (let start = 0; start < tokens.length; start++) {
+    let joined = '';
+    for (let end = start; end < tokens.length; end++) {
+      joined += tokens[end];
+      const folded = collapseRuns(joined);
+      if (FORBIDDEN_COMPACT.includes(folded)) return true;
+      if (FORBIDDEN_COMPACT.every((form) => folded.length > form.length)) break;
+    }
+  }
+  return false;
+}
+
+/**
+ * True when the text holds a forbidden word or phrase (design 5): as whole words, or as a run of
+ * whole words that reads as one once separators are removed and stretched letters folded.
+ */
+export function hasForbiddenTypeWord(text: string): boolean {
+  let tokens: string[];
+  try {
+    tokens = wordForms(text);
+  } catch {
+    return true; // fails closed: a text the matcher cannot read is refused
+  }
+  return (
+    FORBIDDEN_FORMS.some(
+      (phrase) =>
+        phrase.length > 0 &&
+        tokens.some((_, start) => phrase.every((word, i) => tokens[start + i] === word)),
+    ) || hasCompactedForbiddenRun(tokens)
+  );
+}
+
+/**
+ * True when every word of the term is a common word of the stop-list (design 5): `fresh` and
+ * `fresh food` are refused, `certified organic` is not.
+ */
+export function isTooCommonClaimTerm(term: string): boolean {
+  try {
+    const words = wordForms(term);
+    return words.length > 0 && words.every((word) => STOP_FORMS.has(word));
+  } catch {
+    return false; // an unreadable term is `type.claim-term-unmatchable` already
+  }
+}
 /**
  * A term shorter than this after the matcher's own compaction would match almost any text in
  * the second pass (Hassan M1). A per-script exception needs the product owner's word.
@@ -88,12 +160,15 @@ const textOk = (s: unknown, max: number): boolean =>
 /**
  * Validates a revision against the Market's `supportedLocales` and, when there is a previous
  * published revision, the immutability of `verificationMode` (H1). Every supported locale
- * needs a name and a description; claim terms may be empty for a locale.
+ * needs a name and a description; claim terms may be empty for a locale. The badge names one of
+ * `badgeArtworkKeys`, the checked-in artwork list (configuration, FE-091): only artwork that
+ * exists can be chosen.
  */
 export function validateTypeRevision(
   content: TypeRevisionContent,
   supportedLocales: readonly string[],
   previous: TypeRevisionContent | null,
+  badgeArtworkKeys: readonly string[],
 ): Result<TypeRevisionContent, readonly TypeRevisionProblem[]> {
   const problems: TypeRevisionProblem[] = [];
   if (!(VERIFICATION_MODES as readonly string[]).includes(content.verificationMode)) {
@@ -107,8 +182,20 @@ export function validateTypeRevision(
   if (content.autoApproveSelfDeclaration && content.verificationMode !== 'SELF_DECLARATION') {
     problems.push({ code: 'type.auto-approve-needs-self-declaration' });
   }
-  if (!ICON_KEY_PATTERN.test(content.badgeIconKey))
+  // A certificate from an issuer is a document a person reviews; a seller's own declaration has
+  // no issuer (new-type design 5).
+  if (content.verificationMode === 'THIRD_PARTY_DOCUMENT' && !content.requiresDocument) {
+    problems.push({ code: 'type.document-required' });
+  }
+  if (content.verificationMode === 'SELF_DECLARATION' && content.requiresIssuerRegistry) {
+    problems.push({ code: 'type.issuer-registry-not-allowed' });
+  }
+  if (
+    !BADGE_ICON_KEY_PATTERN.test(content.badgeIconKey) ||
+    !badgeArtworkKeys.includes(content.badgeIconKey)
+  ) {
     problems.push({ code: 'type.badge-icon-invalid' });
+  }
   for (const locale of Object.keys(content.locales)) {
     if (!supportedLocales.includes(locale)) {
       problems.push({ code: 'type.locale-not-supported', locale });
@@ -129,6 +216,13 @@ export function validateTypeRevision(
       problems.push({ code: 'type.text-invalid', locale });
     } else if (!l.claimTerms.every(termMatchable)) {
       problems.push({ code: 'type.claim-term-unmatchable', locale });
+    } else {
+      if (hasForbiddenTypeWord(l.name) || hasForbiddenTypeWord(l.customerDescription)) {
+        problems.push({ code: 'type.text-forbidden-word', locale });
+      }
+      if (l.claimTerms.some(isTooCommonClaimTerm)) {
+        problems.push({ code: 'type.claim-term-too-common', locale });
+      }
     }
   }
   // Every type has a human-written term list in at least one locale, active or not: without

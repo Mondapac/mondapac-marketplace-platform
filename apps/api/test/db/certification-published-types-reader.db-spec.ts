@@ -24,7 +24,7 @@ const uuid7 = (): string =>
 
 interface SavedType {
   readonly code: string;
-  readonly status?: 'active' | 'inactive';
+  readonly status?: 'active' | 'inactive' | 'proposed';
   /** locale -> phrases; a locale with no phrase still has its text. */
   readonly texts: Readonly<Record<string, readonly string[]>>;
   readonly published?: boolean;
@@ -190,6 +190,43 @@ for (const phase of ['happy', 'faults'] as const) {
           const elsewhere = (await read(() => reader.types(other, {}), other)).map((t) => t.code);
           expect(elsewhere).toContain(`elsewhere-${code.toLowerCase()}`);
           expect(elsewhere).not.toContain(own);
+        });
+
+      if (phase === 'happy')
+        it('never reads a proposed, rejected or withdrawn new type (FE-091)', async () => {
+          const proposedCode = `proposed-${code.toLowerCase()}`;
+          await save(market, {
+            code: proposedCode,
+            status: 'proposed',
+            texts: { en: ['qorvane'] },
+          });
+          const closed: string[] = [];
+          for (const state of ['rejected', 'withdrawn']) {
+            const closedCode = `${state}-${code.toLowerCase()}`;
+            await save(market, {
+              code: closedCode,
+              status: 'proposed',
+              texts: { en: [closedCode] },
+            });
+            await sql.query(
+              `UPDATE certification.certification_types SET status = $1 WHERE market_id = $2 AND code = $3`,
+              [state, market.marketId, closedCode],
+            );
+            closed.push(closedCode);
+          }
+          const hidden = [proposedCode, ...closed];
+          const vocabulary = (await read(() => reader.claimVocabulary(market))).map(
+            (v) => v.typeCode as string,
+          );
+          for (const c of hidden) expect(vocabulary).not.toContain(c);
+          for (const filter of [
+            {},
+            { status: 'active' as const },
+            { status: 'inactive' as const },
+          ]) {
+            const codes = (await read(() => reader.types(market, filter))).map((t) => t.code);
+            for (const c of hidden) expect(codes).not.toContain(c);
+          }
         });
 
       if (phase === 'happy')

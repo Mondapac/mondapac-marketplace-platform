@@ -25,6 +25,10 @@ import {
 } from '../application/ports/decision-mail.ports';
 import { REGISTRY_CIPHER, type RegistryCipher } from '../application/ports/registry-cipher';
 import {
+  CERTIFICATION_TYPE_SEED,
+  type CertificationTypeSeed,
+} from '../application/ports/type-seed';
+import {
   CERTIFICATION_REGISTRY_REPOSITORY,
   type CertificationRegistryRepository,
 } from '../application/ports/registry.repository';
@@ -53,9 +57,13 @@ import {
   SendDerecognitionMail,
   type DerecognitionMailDependencies,
 } from '../application/use-cases/send-derecognition-mail.use-case';
+import { TypeApproveCreation } from '../application/use-cases/type-approve-creation.use-case';
 import { TypeApproveReactivation } from '../application/use-cases/type-approve-reactivation.use-case';
 import { TypeApproveRelaxation } from '../application/use-cases/type-approve-relaxation.use-case';
+import { loadBadgeArtworkKeys } from './badge-artwork-keys';
+import { TypeCreate } from '../application/use-cases/type-create.use-case';
 import { TypeDeactivate } from '../application/use-cases/type-deactivate.use-case';
+import { TypeNewOptions } from '../application/use-cases/type-new-options.use-case';
 import { TypeProposalReject } from '../application/use-cases/type-proposal-reject.use-case';
 import { TypeProposalWithdraw } from '../application/use-cases/type-proposal-withdraw.use-case';
 import { TypeRead } from '../application/use-cases/type-read.use-case';
@@ -81,6 +89,8 @@ export const registryUseCases = [
   TypeApproveReactivation,
   TypeProposalReject,
   TypeProposalWithdraw,
+  TypeApproveCreation,
+  TypeNewOptions,
   IssuersList,
   IssuerRead,
   IssuerExpertReferenceRead,
@@ -163,6 +173,7 @@ export const registryProviders: readonly Provider[] = [
       ids,
       review,
       supportedLocales: (market: MarketContext) => markets.get(market.marketId).supportedLocales,
+      badgeArtworkKeys: loadBadgeArtworkKeys(),
     }),
   },
   {
@@ -198,6 +209,16 @@ export const registryProviders: readonly Provider[] = [
     inject: [USE_CASE_GATE, DERECOGNITION_MAIL_DEPENDENCIES],
     useFactory: (gate: UseCaseGate, deps: DerecognitionMailDependencies) =>
       new SendDerecognitionMail(gate, deps),
+  },
+  {
+    // The create use case also needs the Market's seed codes, which a new type never takes.
+    provide: TypeCreate,
+    inject: [USE_CASE_GATE, REGISTRY_DEPENDENCIES, CERTIFICATION_TYPE_SEED],
+    useFactory: (gate: UseCaseGate, deps: RegistryDependencies, seed: CertificationTypeSeed) =>
+      new TypeCreate(gate, {
+        ...deps,
+        reservedTypeCodes: (market: MarketContext) => seed.types(market).map((t) => t.code),
+      }),
   },
   ...useCaseProviders,
 ];

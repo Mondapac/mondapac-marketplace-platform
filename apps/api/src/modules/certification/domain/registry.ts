@@ -1,6 +1,6 @@
 import { err, ok, parsePlainText } from '@mondapac/shared-kernel';
 import type { Result } from '@mondapac/shared-kernel';
-import type { RELAXATION_SUBJECTS } from './events';
+import { RELAXATION_SUBJECTS } from './events';
 import { assertSecondAdmin } from './type-revision';
 import type { ExpertApproval } from './issuer';
 
@@ -106,10 +106,66 @@ export function changeReasonIn(value: unknown): FieldAnswer<string | null> {
   return textIn(value, MAX_CHANGE_REASON_LENGTH, { optional: true, multiline: true });
 }
 
-export type TypeStatus = 'active' | 'inactive';
+/**
+ * A type's status (CERT-03; FE-091). `active` and `inactive` are live: sellers, buyers and the
+ * claim-text guard know the type. `proposed` is a new type waiting for a second admin, and
+ * `rejected` and `withdrawn` close that proposal for good: no one outside the admin registry sees
+ * those three, and their claim terms are not matched (new-type design 2, 5).
+ */
+export const TYPE_STATUSES = ['proposed', 'active', 'inactive', 'rejected', 'withdrawn'] as const;
+export type TypeStatus = (typeof TYPE_STATUSES)[number];
+export const LIVE_TYPE_STATUSES = ['active', 'inactive'] as const;
+export type LiveTypeStatus = (typeof LIVE_TYPE_STATUSES)[number];
+
+export function isLiveTypeStatus(status: string): status is LiveTypeStatus {
+  return (LIVE_TYPE_STATUSES as readonly string[]).includes(status);
+}
+
+/** A rejected or withdrawn proposal of a new type: read-only for every admin. */
+export function isClosedTypeStatus(status: TypeStatus): boolean {
+  return status === 'rejected' || status === 'withdrawn';
+}
 
 export type TypeStatusProblem =
   { readonly code: 'type.already-inactive' } | { readonly code: 'type.already-active' };
+
+/** The refusals of the new-type proposal (FE-091). */
+export type TypeCreationProblem =
+  { readonly code: 'type.not-proposed' } | { readonly code: 'type.proposal-closed' };
+
+/**
+ * The code of a new type (new-type design 5): the type code pattern (lowercase letters, digits and
+ * hyphens, 2 to 32 characters, starting with a letter), and never one of the Market's seed codes
+ * (`type.code-reserved`): those types carry reviewed seed content an admin must not replace. A code
+ * already used, whatever its status, is the repository's `type.code-taken`.
+ */
+export function newTypeCodeIn(
+  value: unknown,
+  reservedCodes: readonly string[],
+): FieldAnswer<string> | { readonly ok: false; readonly code: 'type.code-reserved' } {
+  if (value === undefined || value === null || value === '') {
+    return { ok: false, code: 'required' };
+  }
+  if (typeof value !== 'string') return { ok: false, code: 'type' };
+  if (!/^[a-z][a-z0-9-]{1,31}$/.test(value)) return { ok: false, code: 'format' };
+  if (reservedCodes.includes(value)) return { ok: false, code: 'type.code-reserved' };
+  return { ok: true, value };
+}
+
+/**
+ * `proposed` → `active` when a second admin approves the pending `type-creation` proposal
+ * (new-type design 2; H1).
+ */
+export function approveTypeCreation(
+  status: TypeStatus,
+  proposal: ProposalRecord,
+  approverAccountId: string,
+): Result<'active', TypeCreationProblem | ProposalProblem> {
+  if (isClosedTypeStatus(status)) return err({ code: 'type.proposal-closed' });
+  if (status !== 'proposed') return err({ code: 'type.not-proposed' });
+  const closed = closeProposal(proposal, 'approve', approverAccountId);
+  return closed.ok ? ok('active') : closed;
+}
 
 /** `active` → `inactive` by `type.edit`, at once (design 3.6; CERT-03). */
 export function deactivateType(status: TypeStatus): Result<TypeStatus, TypeStatusProblem> {
@@ -130,7 +186,14 @@ export const PROPOSAL_STATES = [
 ] as const;
 export type ProposalState = (typeof PROPOSAL_STATES)[number];
 
-export type ProposalSubject = (typeof RELAXATION_SUBJECTS)[number];
+/**
+ * Every subject a proposal can have: the relaxations of the event's v1 enum, and a new type
+ * proposed from the admin panel (FE-091), which a second admin approves. A type-creation proposal
+ * publishes no `relaxation-proposed.v1` (its enum is a published contract; the event has no
+ * consumer yet, and its mail consumer takes a v2 that adds the subject).
+ */
+export const PROPOSAL_SUBJECTS = [...RELAXATION_SUBJECTS, 'type-creation'] as const;
+export type ProposalSubject = (typeof PROPOSAL_SUBJECTS)[number];
 
 /** What the closing rules read of a stored proposal. */
 export interface ProposalRecord {

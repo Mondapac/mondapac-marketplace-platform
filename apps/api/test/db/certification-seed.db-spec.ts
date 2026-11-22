@@ -1,3 +1,4 @@
+import { loadBadgeArtworkKeys } from '../../src/modules/certification/infrastructure/badge-artwork-keys';
 import { Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext } from '@mondapac/shared-kernel/testing';
@@ -51,6 +52,7 @@ describe.each(TEST_MARKETS)('certification type seed in market %s (database)', (
       types: new PrismaCertificationTypeRepository(persistence.service),
       seed,
       supportedLocales: (m) => markets.get(m.marketId).supportedLocales,
+      badgeArtworkKeys: loadBadgeArtworkKeys(),
       clock: new FixedClock(Temporal.Instant.from(T0)),
       ids: {
         next: <T extends string>() =>
