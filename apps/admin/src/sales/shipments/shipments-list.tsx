@@ -37,13 +37,7 @@ import { ShipmentsFilterPanel } from './shipments-filter-panel.tsx';
 import { queryString } from './shipments-query.ts';
 import { ShipmentsSortPanel } from './shipments-sort-panel.tsx';
 import { useShipmentRowActions } from './shipments-row-actions.tsx';
-import {
-  LIST_KEY,
-  payloadOf,
-  queryOf,
-  somethingToSave,
-  type SavedPayload,
-} from './shipments-saved.ts';
+import { LIST_KEY, payloadOf, queryOf, type SavedPayload } from './shipments-saved.ts';
 import { SalesSavedViews } from '../sales-saved-views.tsx';
 import { useSavedFilters } from '../sales-saved.ts';
 import {
@@ -366,7 +360,7 @@ export function ShipmentsList({
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
   const filtered = chips.length > 0;
   // "Save filter" is offered on a built-in tab that shows something a saved filter can keep.
-  const canSave = saved !== null && savedId === null && somethingToSave(query, paging);
+  const canSave = saved !== null && savedId === null && filtered;
   const summary = [
     t(`tab.${query.tab}`),
     ...chips

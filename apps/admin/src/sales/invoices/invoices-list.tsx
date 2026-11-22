@@ -36,13 +36,7 @@ import { InvoicesColumnsPanel } from './invoices-columns-panel.tsx';
 import { InvoicesFilterPanel } from './invoices-filter-panel.tsx';
 import { invoiceSearchRoute, queryString } from './invoices-query.ts';
 import { useInvoiceRowActions } from './invoices-row-actions.tsx';
-import {
-  LIST_KEY,
-  payloadOf,
-  queryOf,
-  somethingToSave,
-  type SavedPayload,
-} from './invoices-saved.ts';
+import { LIST_KEY, payloadOf, queryOf, type SavedPayload } from './invoices-saved.ts';
 import { SalesSavedViews } from '../sales-saved-views.tsx';
 import { useSavedFilters } from '../sales-saved.ts';
 import { InvoicesSortPanel } from './invoices-sort-panel.tsx';
@@ -346,7 +340,7 @@ export function InvoicesList({
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
   const filtered = chips.length > 0;
   // "Save filter" is offered on a built-in tab that shows something a saved filter can keep.
-  const canSave = saved !== null && savedId === null && somethingToSave(query, paging);
+  const canSave = saved !== null && savedId === null && filtered;
   const summary = [
     t(`tab.${query.tab}`),
     ...chips

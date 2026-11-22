@@ -691,7 +691,7 @@ describe('saved filter tabs', () => {
     expect(screen.queryByRole('button', { name: 'Save filter…' })).toBeNull();
   });
 
-  it('offers Save filter only when the list differs from every view', async () => {
+  it('offers Save filter only while a search or filter is active', async () => {
     mount();
     await screen.findByText('Olive oil 1L');
     await screen.findByRole('button', { name: 'Live oils' });
@@ -703,9 +703,9 @@ describe('saved filter tabs', () => {
     // A search makes it a list of its own.
     nav.router.replace('/products?view=live&q=beef');
     expect(await screen.findByRole('button', { name: 'Save filter…' })).toBeTruthy();
-    // Another sort of a plain view does too, without chips or "match" text.
+    // Another sort of a plain view is not a filter: no Save filter… and no Clear all.
     nav.router.replace('/products?sort=name');
-    expect(await screen.findByRole('button', { name: 'Save filter…' })).toBeTruthy();
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Save filter…' })).toBeNull());
     expect(screen.queryByRole('button', { name: 'Clear all' })).toBeNull();
     // The list of a saved filter is that tab.
     nav.router.replace('/products?view=in-review&typeCode=grocery');

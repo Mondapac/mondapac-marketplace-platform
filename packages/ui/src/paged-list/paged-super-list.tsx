@@ -340,10 +340,11 @@ export function PagedSuperList<Row>({
           ];
     }),
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
-  const filtered = chips.length > 0 || query.tab !== config.tabs[0];
-  // "Save filter…" is offered on a built-in tab that shows something a saved filter can keep.
+  // Clear all and Save filter… appear only while a search or filter is active, as on the Products
+  // list; a tab or a sort on its own is a view, not a filter.
+  const filtered = chips.length > 0;
   const sortChanged = query.sort !== defaults.sort || query.direction !== defaults.direction;
-  const canSave = saved !== null && savedId === null && (filtered || sortChanged);
+  const canSave = saved !== null && savedId === null && filtered;
 
   const total = failure === null && mode === 'pages' ? (answer?.total ?? null) : null;
 

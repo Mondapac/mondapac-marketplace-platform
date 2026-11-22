@@ -586,6 +586,11 @@ describe('seller orders saved filters', () => {
     }) as never);
     mount(pageOf([row()]), { csrfToken: 'csrf-1' });
     fireEvent.click(screen.getByRole('button', { name: /^Shipped/ }));
+    {
+      const box = screen.getByRole('searchbox');
+      fireEvent.change(box, { target: { value: ID1 } });
+      fireEvent.keyDown(box, { key: 'Enter' });
+    }
     fireEvent.click(await screen.findByRole('button', { name: 'Save filter…' }));
     const dialog = await screen.findByRole('dialog', { name: 'Save this filter' });
     fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: ' Sent ' } });

@@ -41,7 +41,6 @@ import {
   queryOf,
   queryString,
   requestIdOf,
-  somethingToSave,
   type Filters,
   type ListPagingMode,
   type OptionalColumn,
@@ -337,7 +336,7 @@ export function RequestsList({
   ].map((chip) => ({ ...chip, removeLabel: ts('chip-remove', { filter: chip.label }) }));
   const filtered = chips.length > 0;
   // "Save filter" is offered on the built-in tab when it shows something a saved filter can keep.
-  const canSave = saved !== null && savedId === null && somethingToSave(query);
+  const canSave = saved !== null && savedId === null && filtered;
   const sortField = t(`sort.field.${query.sort}`);
   const sortOrder = t(`sort.${orderKey(query.sort, query.direction)}`);
   const summary = [
