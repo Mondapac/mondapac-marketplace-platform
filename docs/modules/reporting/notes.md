@@ -123,7 +123,7 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
   writer as the nightly reconcile (`writePage`: units of 25, conflict pauses, facts that still fail
   logged by id as `reporting.fact-write-failed` with the job and kind). Facts after `until` come
   from the event worker and the nightly reconcile.
-- Progress: `reporting.backfill_progress` (migration `20261122110200_reporting_backfill_progress`),
+- Progress: `reporting.backfill_progress` (migration `20261122200200_reporting_backfill_progress`),
   one row per Market and kind (`seller-orders`, then `refunds`), both created in one unit at the
   first start so they share `until`. Each row holds the id cursor `after` of the last page saved,
   `pages`, `failed_facts` and `finished_at`. The cursor is saved in its own unit after each page,
