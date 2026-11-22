@@ -1,6 +1,7 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import {
+  isPlatformAdminActor,
   UseCase,
   type AccessDeclaration,
   type AccessDenied,
@@ -23,8 +24,10 @@ export interface DashboardDependencies extends WorkQueueFlowDependencies {
  * `GET dashboard/admin/work-queue` (dashboards upgrade, phase 1): the admin's work queue, every
  * queue of the admin panel whose keys the admin holds, with its count, overdue count and oldest
  * item. Rule `own-resources`: the dashboard is the admin's own view and needs no key of its own;
- * each queue is asked only behind its keys and its owner checks its own rule again. Only an
- * admin acting as themselves; any other population is `access.denied`.
+ * each queue is asked only behind its keys and its owner checks its own rule again. Only a
+ * platform admin acting as themselves (`isPlatformAdminActor`: no acting-as session, no seller
+ * membership); anyone else is `access.denied`, so a cached count never reaches an acting-as
+ * session.
  */
 export class ViewAdminWorkQueue extends UseCase<
   Record<string, never>,
@@ -46,9 +49,8 @@ export class ViewAdminWorkQueue extends UseCase<
   }
 
   protected async handle(context: CallContext): Promise<Result<WorkQueueAnswer, AccessDenied>> {
-    if (context.actor.kind !== 'authenticated' || context.actor.population !== 'admin') {
-      return err({ code: 'access.denied' });
-    }
+    // A platform admin acting as themselves: never a seller member or an acting-as session.
+    if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
     const viewer = await this.deps.viewer.describe(context);
     if (!viewer.ok) return err(viewer.error);
     if (viewer.value.population !== 'admin') return err({ code: 'access.denied' });

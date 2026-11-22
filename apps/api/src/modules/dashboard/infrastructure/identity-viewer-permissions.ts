@@ -16,8 +16,8 @@ export class IdentityViewerPermissions implements ViewerPermissions {
     try {
       const described = await this.identity.describeActor(context);
       if (!described.ok) return err(described.error);
-      const { population, sellerId, permissionKeys } = described.value;
-      return ok({ population, sellerId, permissionKeys: [...permissionKeys] });
+      const { population, sellerId, sellerAccessState, permissionKeys } = described.value;
+      return ok({ population, sellerId, sellerAccessState, permissionKeys: [...permissionKeys] });
     } catch {
       return err({ code: 'access.unavailable' });
     }

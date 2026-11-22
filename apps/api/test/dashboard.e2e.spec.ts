@@ -190,7 +190,9 @@ describe.each(TEST_MARKETS)('the admin work queue over HTTP in market %s', (code
       population: 'admin',
       accountId: ADMIN,
     });
-    await get(sessionOf('customer'), false);
+    // The use case refuses the anonymous actor (stubbed here as its refusal).
+    next = err({ code: 'access.unauthenticated' });
+    expect((await get(sessionOf('customer'), false)).status).toBe(401);
     expect(actors[1]).toMatchObject({ kind: 'anonymous' });
   });
 });

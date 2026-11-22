@@ -46,21 +46,39 @@ export interface WorkQueueFlowDependencies {
 
 const TIMED_OUT = Symbol('timed-out');
 
-/** Runs `work`, or answers {@link TIMED_OUT} after `ms`; the timer never holds the process. */
-async function within<T>(work: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT> {
+/**
+ * Runs `work` with a signal, or answers {@link TIMED_OUT} after `ms` and aborts the signal so
+ * the owner stops the reads it has not started; the timer never holds the process.
+ */
+async function within<T>(
+  work: (signal: AbortSignal) => Promise<T>,
+  ms: number,
+): Promise<T | typeof TIMED_OUT> {
+  const controller = new AbortController();
   let timer: NodeJS.Timeout | undefined;
   const limit = new Promise<typeof TIMED_OUT>((resolve) => {
-    timer = setTimeout(() => resolve(TIMED_OUT), ms);
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve(TIMED_OUT);
+    }, ms);
     timer.unref();
   });
   try {
-    return await Promise.race([work, limit]);
+    return await Promise.race([work(controller.signal), limit]);
   } finally {
     clearTimeout(timer);
   }
 }
 
 const logger = new Logger('WorkQueue');
+
+type Answer = Awaited<ReturnType<WorkQueueSource['count']>> | typeof TIMED_OUT;
+
+/** The class name of a thrown value (never its message): enough to trace, nothing to leak. */
+function nameOf(error: unknown): string {
+  const name = error instanceof Error ? error.constructor.name : typeof error;
+  return /^[A-Za-z0-9_]{1,64}$/.test(name) ? name : 'unknown';
+}
 
 /**
  * Composes one panel's work queue (design section 6): asks, at the same time, every queue of the
@@ -108,6 +126,7 @@ async function askOne(
     panel,
     permissionKeys: viewer.permissionKeys,
     sellerId: panel === 'seller' ? viewer.sellerId : null,
+    sellerAccessState: panel === 'seller' ? viewer.sellerAccessState : null,
     queue: key,
   };
   if (!source.live) {
@@ -115,12 +134,16 @@ async function askOne(
     if (kept !== undefined) return okItem(source, kept.count, kept.countedAt);
   }
   const staleBefore = now.subtract({ minutes: STALE_AFTER_MINUTES[level] });
-  let answer: Awaited<ReturnType<WorkQueueSource['count']>> | typeof TIMED_OUT;
-  try {
-    answer = await within(source.count(context, { now, staleBefore }), deps.timeoutMs);
-  } catch {
-    answer = { ok: false, error: { code: 'internal' } };
-  }
+  const read = (): Promise<Answer> =>
+    within(async (signal) => {
+      try {
+        return await source.count(context, { now, staleBefore, signal });
+      } catch (error) {
+        return { ok: false, error: { code: 'internal', thrown: nameOf(error) } };
+      }
+    }, deps.timeoutMs);
+  // A live queue is asked for each viewer; a cached one once per key while a read is running.
+  const answer = source.live ? await read() : await deps.cache.shared(cacheKey, read);
   if (answer === TIMED_OUT) {
     log(context, key, 'timeout');
     return { key, level, status: 'error' };
@@ -128,7 +151,8 @@ async function askOne(
   if (!answer.ok) {
     const { code } = answer.error;
     if (code === 'access.denied' || code === 'access.seller-not-approved') return null;
-    log(context, key, code);
+    const thrown = (answer.error as { readonly thrown?: string }).thrown;
+    log(context, key, thrown === undefined ? code : `${code}:${thrown}`);
     return { key, level, status: 'error' };
   }
   if (!isWorkQueueCount(answer.value)) {

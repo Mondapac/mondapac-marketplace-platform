@@ -46,8 +46,10 @@ export class AdminDashboardController {
     description:
       'No key of its own: each queue is asked only when the admin holds its keys, and its owner ' +
       'checks them again. Every queue is asked at once with a 1.5 s limit; one that fails or is ' +
-      'late answers status error and the rest still answer. Counts are kept for 60 s per Market ' +
-      'and permission set, except the live (critical) queues.',
+      'late answers status error and the rest still answer. Counts are kept for 60 s per Market, ' +
+      'tenant, panel and permission set, except the live queues (security alerts, disputes, ' +
+      'uncertified listings). Only a platform admin acting as themselves; an acting-as session is ' +
+      'access.denied.',
   })
   @ApiOkResponse({ type: WorkQueueBody })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })

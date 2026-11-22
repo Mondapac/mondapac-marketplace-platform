@@ -16,3 +16,10 @@ Architecture: ADR-0050.
 
 Tracked in the central register (FE-066 to FE-081), among them: overdue thresholds editable in admin
 Settings, and counts from a read model if the work queue's p95 grows.
+
+## Review notes (PR 1225)
+
+- Only a platform admin acting as themselves reads the admin work queue (`isPlatformAdminActor`), so
+  a cached count never reaches an acting-as session (Hassan, security).
+- A late queue's signal is aborted; owners check it before each read they start.
+- Single flight: concurrent requests with one cache key share one read of the owner (Sajad, QA).

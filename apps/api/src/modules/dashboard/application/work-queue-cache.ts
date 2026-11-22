@@ -10,7 +10,8 @@ export const WORK_QUEUE_CACHE_MAX_ENTRIES = 2_000;
 
 /**
  * What a cached count depends on (design section 6, Mohammad): the Market and tenant, the panel,
- * the viewer's whole permission set (sorted) and, on the seller panel, the seller. Two viewers
+ * the viewer's whole permission set (sorted) and, on the seller panel, the seller and its access
+ * state. Two viewers
  * share an answer only when they could each read exactly the same queues, so no count reaches a
  * viewer without the key behind it.
  */
@@ -20,6 +21,8 @@ export interface WorkQueueCacheKey {
   readonly panel: WorkQueuePanel;
   readonly permissionKeys: readonly string[];
   readonly sellerId: string | null;
+  /** The seller's access state on the seller panel (a suspended seller never shares a count). */
+  readonly sellerAccessState: string | null;
   readonly queue: string;
 }
 
@@ -36,6 +39,7 @@ const keyOf = (key: WorkQueueCacheKey): string =>
     key.panel,
     [...key.permissionKeys].sort(),
     key.sellerId,
+    key.sellerAccessState,
     key.queue,
   ]);
 
@@ -47,6 +51,7 @@ const keyOf = (key: WorkQueueCacheKey): string =>
  */
 export class WorkQueueCache {
   readonly #entries = new Map<string, CachedCount & { readonly expiresAt: number }>();
+  readonly #inFlight = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly ttlMs: number = WORK_QUEUE_CACHE_TTL_MS,
@@ -74,6 +79,19 @@ export class WorkQueueCache {
       if (oldest === undefined) break;
       this.#entries.delete(oldest);
     }
+  }
+
+  /**
+   * Single flight: while one read of `key` runs, a second caller with the same key waits for it
+   * instead of asking the owner again. The entry is gone once the read settles.
+   */
+  shared<T>(key: WorkQueueCacheKey, read: () => Promise<T>): Promise<T> {
+    const id = keyOf(key);
+    const running = this.#inFlight.get(id);
+    if (running !== undefined) return running as Promise<T>;
+    const started = read().finally(() => this.#inFlight.delete(id));
+    this.#inFlight.set(id, started);
+    return started;
   }
 
   get size(): number {

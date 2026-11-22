@@ -16,11 +16,12 @@ import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../../../platform/market-context/tenant';
+import { isWorkQueueCount } from '../../../platform/work-queue/work-queue-count';
 import type { WorkQueueCountQuery } from '../../../platform/work-queue/work-queue-count';
 import type { DashboardViewer } from './ports/viewer-permissions';
 import { ViewAdminWorkQueue } from './use-cases/view-admin-work-queue.use-case';
 import { WorkQueueCache } from './work-queue-cache';
-import { composeWorkQueue } from './work-queue-flow';
+import { composeWorkQueue, WORK_QUEUE_TIMEOUT_MS } from './work-queue-flow';
 import { checkWorkQueueSources, type WorkQueueSource } from './work-queue-source';
 
 // The work-queue composer (dashboards upgrade, phase 1, design section 6) on both Market fixtures:
@@ -84,6 +85,7 @@ describe.each(TEST_MARKETS)('the work queue in market %s', (code) => {
   const viewer = (keys: readonly PermissionKey[]): DashboardViewer => ({
     population: 'admin',
     sellerId: null,
+    sellerAccessState: null,
     permissionKeys: keys,
   });
   let clock: FixedClock;
@@ -119,10 +121,11 @@ describe.each(TEST_MARKETS)('the work queue in market %s', (code) => {
     );
     expect(script.calls.map((c) => c.key)).toEqual(['ordering.late']);
     expect(script.calls[0]!.context).toBe(context);
-    expect(script.calls[0]!.query).toEqual({
+    expect(script.calls[0]!.query).toMatchObject({
       now: START,
       staleBefore: START.subtract({ hours: 48 }),
     });
+    expect(script.calls[0]!.query.signal.aborted).toBe(false);
     expect(answer).toEqual({
       panel: 'admin',
       generatedAt: START,
@@ -321,6 +324,66 @@ describe.each(TEST_MARKETS)('the work queue in market %s', (code) => {
     expect(script.calls).toHaveLength(2);
   });
 
+  it('aborts the signal of a queue it stops waiting for', async () => {
+    let seen: AbortSignal | undefined;
+    const late: WorkQueueSource = {
+      ...source(script, 'a.late'),
+      count: (_context, query) => {
+        seen = query.signal;
+        return new Promise(() => undefined);
+      },
+    };
+    await composeWorkQueue(deps([late]), admin(), 'admin', viewer([A]));
+    expect(seen?.aborted).toBe(true);
+  });
+
+  it('asks the owner once while a read of the same key is running (single flight)', async () => {
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => (release = resolve));
+    script.answer.set('a.shared', () =>
+      held.then(() => ok({ count: 4, overdue: 0, oldestAt: START })),
+    );
+    const sources = [source(script, 'a.shared')];
+    const first = composeWorkQueue(deps(sources, 5_000), admin(1), 'admin', viewer([A]));
+    const second = composeWorkQueue(deps(sources, 5_000), admin(2), 'admin', viewer([A]));
+    await Promise.resolve();
+    release();
+    const answers = await Promise.all([first, second]);
+    expect(script.calls).toHaveLength(1);
+    expect(answers.map((a) => a.queues[0])).toEqual([
+      expect.objectContaining({ count: 4 }),
+      expect.objectContaining({ count: 4 }),
+    ]);
+  });
+
+  it('keeps counts of one tenant apart from another', async () => {
+    const otherTenant = testMarketContext(code, 'tenant-two');
+    const otherAdmin = testCallContext(
+      otherTenant,
+      testAuthenticatedActor(otherTenant, {
+        population: 'admin',
+        accountId: id(0xa1),
+        sessionId: id(0x10a1),
+        sellerId: null,
+      }),
+    );
+    const sources = [source(script, 'a.kept')];
+    await composeWorkQueue(deps(sources), admin(), 'admin', viewer([A]));
+    await composeWorkQueue(deps(sources), otherAdmin, 'admin', viewer([A]));
+    expect(script.calls).toHaveLength(2);
+  });
+
+  it('logs a thrown queue as error and still answers', async () => {
+    script.answer.set('a.thrown', () => Promise.reject(new TypeError('secret detail')));
+    const answer = await composeWorkQueue(
+      deps([source(script, 'a.thrown')]),
+      admin(),
+      'admin',
+      viewer([A]),
+    );
+    expect(answer.queues).toEqual([{ key: 'a.thrown', level: 'today', status: 'error' }]);
+  });
+
   describe('ViewAdminWorkQueue', () => {
     const useCase = (
       described: DashboardViewer | 'denied',
@@ -388,5 +451,48 @@ describe('checkWorkQueueSources', () => {
         source(script, 'a.one', { panel: 'seller' }),
       ]),
     ).not.toThrow();
+  });
+});
+
+describe('the work-queue parts', () => {
+  it('waits 1.5 seconds for a queue (design section 6)', () => {
+    expect(WORK_QUEUE_TIMEOUT_MS).toBe(1_500);
+  });
+
+  it('keeps at most the bound number of counts, dropping the oldest first', () => {
+    const cache = new WorkQueueCache(60_000, 2);
+    const at = (queue: string) => ({
+      marketId: 'AU',
+      tenantId: 't',
+      panel: 'admin' as const,
+      permissionKeys: ['a.b.c'],
+      sellerId: null,
+      sellerAccessState: null,
+      queue,
+    });
+    const count = { count: 1, overdue: 0, oldestAt: START };
+    cache.set(at('a.one'), count, START);
+    cache.set(at('a.two'), count, START);
+    cache.set(at('a.three'), count, START);
+    expect(cache.size).toBe(2);
+    expect(cache.get(at('a.one'), START)).toBeUndefined();
+    expect(cache.get(at('a.three'), START)).toEqual({ count, countedAt: START });
+  });
+
+  it.each([
+    ['an empty queue with an oldest item', { count: 0, overdue: 0, oldestAt: START }],
+    ['a negative count', { count: -1, overdue: 0, oldestAt: null }],
+    ['a fractional count', { count: 1.5, overdue: 0, oldestAt: null }],
+    ['more overdue than counted', { count: 1, overdue: 2, oldestAt: null }],
+    ['an oldest item as text', { count: 1, overdue: 0, oldestAt: START.toString() }],
+    ['nothing', null],
+  ])('refuses %s as a count', (_label, value) => {
+    expect(isWorkQueueCount(value)).toBe(false);
+  });
+
+  it('accepts a count with or without an oldest item', () => {
+    expect(isWorkQueueCount({ count: 0, overdue: 0, oldestAt: null })).toBe(true);
+    expect(isWorkQueueCount({ count: 3, overdue: 1, oldestAt: START })).toBe(true);
+    expect(isWorkQueueCount({ count: 3, overdue: 1, oldestAt: null })).toBe(true);
   });
 });

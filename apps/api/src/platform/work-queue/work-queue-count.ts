@@ -9,10 +9,13 @@ import type { Temporal } from '@mondapac/shared-kernel';
  * every queue). `staleBefore` is the age limit of a queue without its own deadline: an item that
  * has waited since before it counts as overdue. A queue with its own deadline (a dispute's reply
  * due, a delivery promise) ignores `staleBefore` and counts against its deadline at `now`.
+ * `signal` aborts when the dashboard stops waiting (its time limit): an owner checks it before
+ * each read it starts and answers `access.unavailable` once it is aborted.
  */
 export interface WorkQueueCountQuery {
   readonly now: Temporal.Instant;
   readonly staleBefore: Temporal.Instant;
+  readonly signal: AbortSignal;
 }
 
 /**

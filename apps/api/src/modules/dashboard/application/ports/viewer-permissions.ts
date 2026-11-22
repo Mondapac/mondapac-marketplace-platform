@@ -5,6 +5,8 @@ import type { AccessDenied } from '../../../../platform/authz';
 export interface DashboardViewer {
   readonly population: 'customer' | 'seller' | 'admin';
   readonly sellerId: string | null;
+  /** The seller's access state (seller panel; null for an admin): part of the cache key. */
+  readonly sellerAccessState: string | null;
   readonly permissionKeys: readonly string[];
 }
 
