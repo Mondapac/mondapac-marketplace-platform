@@ -261,4 +261,69 @@ describe('the ops-data AU scenario', () => {
     }
     expect(hits).toEqual([]);
   });
+
+  it('builds content and the blog on known categories, products and photos, within the editor limits, with no claim word', () => {
+    const answer = run(`
+      import { existsSync } from 'node:fs';
+      import { SCENARIO } from './scripts/ops-data/scenarios/AU/index.mjs';
+      const { slides, home, navigation, pages } = SCENARIO.content;
+      const slugs = new Set(SCENARIO.catalog.categories.map((c) => c.slug));
+      const departments = SCENARIO.catalog.categories.filter((c) => c.parent === null).map((c) => c.slug);
+      const problems = [];
+      const known = (slug, where) => { if (!slugs.has(slug)) problems.push(where + ': unknown category ' + slug); };
+      const keys = new Set();
+      const perPosition = {};
+      for (const s of slides) {
+        if (keys.has(s.key)) problems.push('slide key repeated ' + s.key);
+        keys.add(s.key);
+        if (!['announcement', 'promotion', 'link'].includes(s.kind)) problems.push(s.key + ': bad kind');
+        if (s.kind === 'link' && s.link === undefined) problems.push(s.key + ': a link slide without a link');
+        if (s.ctaLabel !== undefined && s.link === undefined) problems.push(s.key + ': a button without a link');
+        if (s.title.length > 60 || (s.body ?? '').length > 160 || (s.ctaLabel ?? '').length > 24) problems.push(s.key + ': too long');
+        if (s.link !== undefined) known(s.link, s.key);
+        if (s.scope !== undefined) known(s.scope, s.key);
+        if (s.autoplay && !['home.hero', 'landing.top'].includes(s.position)) problems.push(s.key + ': autoplay not allowed here');
+        if (s.image !== undefined && !existsSync('apps/web/public/placeholders/' + s.image + '.jpg')) problems.push(s.key + ': no photo ' + s.image);
+        perPosition[s.position + '|' + (s.scope ?? '')] = (perPosition[s.position + '|' + (s.scope ?? '')] ?? 0) + 1;
+      }
+      const max = { 'home.hero': 8, 'home.mid': 4, 'category.top': 4 };
+      for (const [key, n] of Object.entries(perPosition)) if (n > (max[key.split('|')[0]] ?? 0)) problems.push('too many slides at ' + key);
+      if ((home.main ?? []).length < 1) problems.push('the home page main slot is empty');
+      for (const slug of [...navigation.popular, ...navigation.departments]) known(slug, 'navigation');
+      if (JSON.stringify(navigation.departments) !== JSON.stringify(departments)) problems.push('the drawer does not list every department in order');
+      const { blog } = SCENARIO.content;
+      const blogCategories = new Set(blog.categories.map((c) => c.slug));
+      const sold = new Set(Object.values(SCENARIO.offers).flat().map((o) => o.product));
+      for (const post of blog.posts) {
+        if (!['news', 'product'].includes(post.kind)) problems.push(post.slug + ': kind the loader does not fill');
+        if (!blogCategories.has(post.category)) problems.push(post.slug + ': unknown blog category');
+        if (post.title.length > 120 || post.excerpt.length > 160 || !post.coverAlt) problems.push(post.slug + ': title, excerpt or cover text');
+        if (!existsSync('apps/web/public/placeholders/' + post.cover + '.jpg')) problems.push(post.slug + ': no photo ' + post.cover);
+        const cards = post.body.filter((b) => b.type === 'product_cards').flatMap((b) => b.products);
+        if (post.kind === 'product' && cards.length === 0) problems.push(post.slug + ': a product post without products');
+        for (const key of cards) if (!sold.has(key)) problems.push(post.slug + ': not on sale ' + key);
+        for (const b of post.body) if (b.type === 'seller_card' && !SCENARIO.sellers.some((x) => x.key === b.seller && x.state === 'approved')) problems.push(post.slug + ': not an approved seller ' + b.seller);
+      }
+      if (!blog.posts.some((post) => post.slug === blog.featured)) problems.push('the featured post is not in the blog');
+      if (blogCategories.size !== blog.categories.length) problems.push('blog category slug repeated');
+      if (new Set(blog.posts.map((post) => post.slug)).size !== blog.posts.length) problems.push('post slug repeated');
+      for (const r of navigation.rail) {
+        if (r.label.length > 40) problems.push('rail label too long ' + r.label);
+        if (!['system-page', 'category', 'page', 'path'].includes(r.target.kind)) problems.push('bad rail target ' + r.label);
+      }
+      const pageSlugs = new Set(pages.map((p) => p.slug));
+      if (pageSlugs.size !== pages.length) problems.push('page slug repeated');
+      const words = /halal|halaal|kosher|vegan|organic|authentic|official|verified/i;
+      const texts = [
+        ...slides.flatMap((s) => [s.title, s.body ?? '', s.ctaLabel ?? '']),
+        ...Object.values(home).flat().map((m) => JSON.stringify(m.config)),
+        ...navigation.rail.map((r) => r.label),
+        ...pages.map((p) => p.title + ' ' + JSON.stringify(p.blocks)),
+        ...blog.posts.map((post) => post.title + ' ' + post.excerpt + ' ' + JSON.stringify(post.body)),
+      ];
+      for (const t of texts) if (words.test(t)) problems.push('claim word in ' + t);
+      console.log(problems.length === 0 ? 'ok' : problems.join('; '));
+    `);
+    expect(answer.out.trim()).toBe('ok');
+  });
 });

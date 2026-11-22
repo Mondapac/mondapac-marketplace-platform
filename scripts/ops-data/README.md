@@ -18,7 +18,7 @@ and `lib.mjs`.
 | `sellers` | 22 sellers: the storefront sample's 18 stores approved (About text, logo, minimum order, stock location), and one each in review, rejected, suspended and a draft file; the sample issuer and 4 halal certificates (submitted, checked, approved), and their culture membership | 2 |
 | `products` | 107 platform products on level-3 categories (texts, attributes, pack-size or volume variants, the sample photos), 142 offers on the 18 stores (handling, first-publish approval, halal tags on certified sellers' meat and poultry), stock, regular prices, two-week special prices for the sample's "was" prices, and one price rise held for the admin | 2 |
 | `orders` | Buyers, carts, orders paid with Stripe test confirmation tokens, the webhook | 3 |
-| `content` | Home page, slides, menu, blog, notices | 4 |
+| `content` | Through the storefront editor: 6 slides (3 on the home hero, 1 mid-page, 1 at the top of Meat and of Pantry, each with its picture), the home page (category circles, sellers near you, best sellers and special-price shelves, the information strip), the navigation (rail, popular departments, every department in the Browse drawer) the About, Delivery and Returns pages, and the blog (2 categories, 4 posts with cover pictures, product and store cards, one featured); notices are the announcement slides. The admin writes and submits, the reviewer approves and publishes | 4 |
 
 Each pack creates only what is missing, so a rerun changes nothing. Catalogue changes are
 reviewed in every Market (Admin Inbox › System requests): the admin makes them and the reviewer

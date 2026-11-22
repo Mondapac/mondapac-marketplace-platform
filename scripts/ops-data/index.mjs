@@ -26,6 +26,7 @@ import { API, MAILPIT, sleep } from './lib.mjs';
 import { adminPack } from './packs/admin.mjs';
 import { catalogPack } from './packs/catalog.mjs';
 import { certificatesPack } from './packs/certificates.mjs';
+import { contentPack } from './packs/content.mjs';
 import { productsPack } from './packs/products.mjs';
 import { sellersPack } from './packs/sellers.mjs';
 import { approveOpen } from './packs/requests.mjs';
@@ -38,8 +39,8 @@ import { readState, writeState } from './state.mjs';
  */
 export const DATA_VERSION = 1;
 
-/** The packs in the order they run; later phases add buyers and orders, and content. */
-const PACKS = ['admin', 'catalog', 'sellers', 'products'];
+/** The packs in the order they run; a later phase adds buyers and orders. */
+const PACKS = ['admin', 'catalog', 'sellers', 'products', 'content'];
 
 /** The one password of every sample account (local machine only). */
 const PASSWORD = process.env.OPS_PASSWORD ?? 'Mondapac-Ops-2026-Passw0rd!';
@@ -172,6 +173,12 @@ try {
     });
     await approveOpen(reviewer, 'catalogue', log);
     state.packs = { ...state.packs, products: 'done' };
+    save();
+  }
+  if (only.includes('content')) {
+    log('[content] Slides, home page, navigation, information pages and the blog');
+    await contentPack({ admin, reviewer, scenario: SCENARIO, categoryIds, state, log });
+    state.packs = { ...state.packs, content: 'done' };
     save();
   }
   log(`Done. State: .local/ops-data/${market}.json`);

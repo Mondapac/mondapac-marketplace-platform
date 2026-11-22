@@ -5,6 +5,7 @@
 import { CATALOG } from './catalog.mjs';
 import { HELD, OFFERS, PRODUCTS, TAGGED_DEPARTMENTS } from './products.mjs';
 import { SELLERS } from './sellers.mjs';
+import { CONTENT } from './content.mjs';
 
 export const SCENARIO = {
   market: 'AU',
@@ -20,4 +21,5 @@ export const SCENARIO = {
   offers: OFFERS,
   taggedDepartments: TAGGED_DEPARTMENTS,
   held: HELD,
+  content: CONTENT,
 };
