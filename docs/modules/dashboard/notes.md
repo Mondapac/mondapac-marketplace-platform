@@ -27,6 +27,9 @@ read only when the session holds `ordering.seller-order.view`:
   public category tree, "Other categories" when unnamed); store health from `sellers/own-health`
   (links to Performance). Recent orders stay as the existing "Recent orders" card.
 - A failed read says "could not be loaded" in its own card or cards, never a zero.
+- Deferred: top products (FE-125), seller net earnings (FE-126), on-time with overdue unshipped
+  orders (FE-127), average rating and next payout in the health card (FE-128), "updated N min ago"
+  and the Market zone on the period note (FE-129).
 
 ## Deferred
 
