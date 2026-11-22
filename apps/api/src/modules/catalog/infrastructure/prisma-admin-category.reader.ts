@@ -10,6 +10,9 @@ import type {
 import type { AdminStoredCategory, CategoryProductFact } from '../domain/category-admin-tree';
 import type { CategoryStatus } from '../domain/platform-category';
 
+/** The version of a Market tree that has no row yet: the one its first write creates. */
+export const INITIAL_TREE_VERSION = 1;
+
 /** The products read per statement; between two statements the time bound is checked. */
 const PRODUCT_PAGE = 500;
 
@@ -67,7 +70,10 @@ export class PrismaAdminCategoryReader implements AdminCategoryReader {
       where: { marketId: market.marketId },
       select: { version: true },
     });
-    return row?.version ?? 0;
+    // No row yet (a Market whose tree nothing has written): the first structural write creates it
+    // at version 1 and checks the page's version against that (PrismaPlatformCategoryRepository
+    // .treeVersion), so the page must name 1, not 0; with 0 the first create was always stale.
+    return row?.version ?? INITIAL_TREE_VERSION;
   }
 
   async productFacts(market: MarketContext, budgetMs: number): Promise<CategoryProductFacts> {

@@ -40,6 +40,7 @@ describe('loadAppConfig', () => {
       clientAddressTrust: null,
       aiKillSwitch: false,
       storefrontIndexing: { ceiling: 'off', sampleData: true },
+      seedJobsOff: [],
       assistantModels: {
         apiKeys: {},
         models: { fast: {}, balanced: {} },
@@ -65,6 +66,54 @@ describe('loadAppConfig', () => {
       );
       expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', AI_KILL_SWITCH: 'yes' })).toThrow();
       expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', AI_KILL_SWITCH: 'TRUE' })).toThrow();
+    });
+  });
+
+  describe('the catalog seed switch of the operational test environment (CATALOG_SEED_JOBS_OFF)', () => {
+    const OFF = 'catalog.seed-category-tree,catalog.seed-attributes';
+
+    it('is empty when unset and lists the switched-off jobs in development and test', () => {
+      expect(loadAppConfig({ HOSTED_MARKETS: 'AU' }).seedJobsOff).toEqual([]);
+      for (const NODE_ENV of ['development', 'test']) {
+        expect(
+          loadAppConfig({ HOSTED_MARKETS: 'AU', NODE_ENV, CATALOG_SEED_JOBS_OFF: OFF }).seedJobsOff,
+        ).toEqual(['catalog.seed-category-tree', 'catalog.seed-attributes']);
+      }
+      expect(
+        loadAppConfig({
+          HOSTED_MARKETS: 'AU',
+          NODE_ENV: 'development',
+          CATALOG_SEED_JOBS_OFF: ' catalog.seed-cultures ',
+        }).seedJobsOff,
+      ).toEqual(['catalog.seed-cultures']);
+    });
+
+    it('fails boot in production and when NODE_ENV is not set explicitly', () => {
+      expect(() =>
+        loadAppConfig({
+          HOSTED_MARKETS: 'AU',
+          NODE_ENV: 'production',
+          CLAMD_HOST: 'clamav',
+          CATALOG_SEED_JOBS_OFF: OFF,
+        }),
+      ).toThrow(/CATALOG_SEED_JOBS_OFF: refused unless NODE_ENV/);
+      expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', CATALOG_SEED_JOBS_OFF: OFF })).toThrow(
+        /CATALOG_SEED_JOBS_OFF: refused unless NODE_ENV/,
+      );
+    });
+
+    it('fails boot on a job that is not a catalog seed, and on a repeated name', () => {
+      for (const value of [
+        'identity.seed-roles',
+        'certification.seed-types',
+        'catalog.seed-category-tree,catalog.sweep-orphan-images',
+        'catalog.seed-attributes,catalog.seed-attributes',
+        'catalog.seed-attributes,',
+      ]) {
+        expect(() =>
+          loadAppConfig({ HOSTED_MARKETS: 'AU', NODE_ENV: 'test', CATALOG_SEED_JOBS_OFF: value }),
+        ).toThrow(/CATALOG_SEED_JOBS_OFF: must be distinct names/);
+      }
     });
   });
 

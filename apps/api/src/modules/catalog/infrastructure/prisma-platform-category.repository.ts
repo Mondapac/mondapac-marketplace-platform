@@ -1,6 +1,7 @@
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
+import { INITIAL_TREE_VERSION } from './prisma-admin-category.reader';
 import type {
   CategoryTreeVersion,
   PlatformCategoryRepository,
@@ -24,7 +25,9 @@ export class PrismaPlatformCategoryRepository implements PlatformCategoryReposit
     // ensured first: a no-op, taking no lock, when it exists.
     const tx = this.prisma.tx(market);
     await tx.catalogCategoryTree.createMany({
-      data: [{ marketId: market.marketId, tenantId: market.tenantId, version: 1 }],
+      data: [
+        { marketId: market.marketId, tenantId: market.tenantId, version: INITIAL_TREE_VERSION },
+      ],
       skipDuplicates: true,
     });
     const row = await tx.catalogCategoryTree.findFirstOrThrow({

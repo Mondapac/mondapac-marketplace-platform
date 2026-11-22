@@ -73,6 +73,11 @@ const envSchema = z.object({
   // while it is on, the panel cannot turn indexing on.
   STOREFRONT_INDEXING: z.enum(['on', 'off']).default('off'),
   STOREFRONT_SAMPLE_DATA: z.enum(['on', 'off']).default('on'),
+  // The local operational test environment (scripts/ops-data): the catalog seed jobs it switches
+  // off, comma-separated, so the loader builds the category tree, attributes and cultures through
+  // the admin API instead. Only the names in SWITCHABLE_SEED_JOBS; refused unless NODE_ENV is
+  // explicitly development or test, so a production worker always runs every seed.
+  CATALOG_SEED_JOBS_OFF: z.string().max(500).optional(),
   // ADR-0026 decision 8: the AI break-glass of this Region Stack. `true` forces every AI capability
   // off, never on; unset is `false`; any other value fails boot, so a typo never leaves AI running.
   AI_KILL_SWITCH: z.enum(['true', 'false']).default('false'),
@@ -374,6 +379,45 @@ export interface AssistantModelConfig {
 /** The migration role's URL: read by the prisma CLI, the scripts and test setup only. */
 export const MIGRATION_DATABASE_URL = 'MIGRATION_DATABASE_URL';
 
+/**
+ * The scheduled jobs `CATALOG_SEED_JOBS_OFF` may switch off: the catalog's starter seeds and
+ * nothing else. Roles, permissions and certification types are part of the software and always
+ * run (operational test data design, "three kinds of data").
+ */
+export const SWITCHABLE_SEED_JOBS = [
+  'catalog.seed-category-tree',
+  'catalog.seed-attributes',
+  'catalog.seed-cultures',
+] as const;
+
+/** `CATALOG_SEED_JOBS_OFF` checked: the job names, or the issues that fail boot. */
+function parseSeedJobsOff(
+  value: string | undefined,
+  nodeEnv: string | undefined,
+): { readonly names: readonly string[]; readonly issues: readonly string[] } {
+  if (value === undefined || value.trim() === '') return { names: [], issues: [] };
+  if (nodeEnv !== 'development' && nodeEnv !== 'test') {
+    return {
+      names: [],
+      issues: [
+        'CATALOG_SEED_JOBS_OFF: refused unless NODE_ENV is explicitly development or test (a production worker runs every seed)',
+      ],
+    };
+  }
+  const names = value.split(',').map((name) => name.trim());
+  const allowed: ReadonlySet<string> = new Set(SWITCHABLE_SEED_JOBS);
+  const unknown = names.filter((name) => !allowed.has(name));
+  if (unknown.length > 0 || names.length !== new Set(names).size) {
+    return {
+      names: [],
+      issues: [
+        `CATALOG_SEED_JOBS_OFF: must be distinct names among ${SWITCHABLE_SEED_JOBS.join(', ')}`,
+      ],
+    };
+  }
+  return { names, issues: [] };
+}
+
 export interface AppConfig {
   /**
    * `api` serves HTTP; `worker` runs the relay and the scheduler (platform persistence 8).
@@ -402,6 +446,11 @@ export interface AppConfig {
     readonly ceiling: 'on' | 'off';
     readonly sampleData: boolean;
   };
+  /**
+   * `CATALOG_SEED_JOBS_OFF`: the catalog seed jobs the worker does not start (development and
+   * test only; empty in production). Names from {@link SWITCHABLE_SEED_JOBS}.
+   */
+  readonly seedJobsOff: readonly string[];
   /** Directories holding `<CODE>.json` Market configuration (ADR-0003 decision 5). */
   readonly marketConfigDirs: readonly string[];
   /** Directories holding `<MARKET>.json` ServiceArea postcode sets (ADR-0005 decision 7). */
@@ -944,6 +993,10 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       'ASSISTANT_PREVIEW_TOKEN_KEY: a dev-only placeholder is refused when NODE_ENV is production (each environment has its own key)',
     );
   }
+  const seedJobsOff = parsed.success
+    ? parseSeedJobsOff(parsed.data.CATALOG_SEED_JOBS_OFF, env.NODE_ENV)
+    : { names: [], issues: [] };
+  issues.push(...seedJobsOff.issues);
   if (!parsed.success || issues.length > 0 || assistant.config === null) {
     throw new InvalidConfigError(issues);
   }
@@ -962,6 +1015,7 @@ export function loadAppConfig(env: Record<string, string | undefined>): AppConfi
       ceiling: parsed.data.STOREFRONT_INDEXING,
       sampleData: parsed.data.STOREFRONT_SAMPLE_DATA === 'on',
     }),
+    seedJobsOff: Object.freeze([...seedJobsOff.names]),
     marketConfigDirs: Object.freeze([path.resolve(parsed.data.MARKET_CONFIG_DIR)]),
     serviceAreaConfigDirs: Object.freeze([path.resolve(parsed.data.SERVICE_AREA_CONFIG_DIR)]),
     localeConfigDirs: Object.freeze([path.resolve(parsed.data.LOCALE_CONFIG_DIR)]),

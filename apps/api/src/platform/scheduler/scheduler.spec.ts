@@ -50,8 +50,8 @@ function setup(
     new FixedClock(Temporal.Instant.from('2026-10-07T00:00:00Z')),
   );
   const lock = new InMemoryJobLock();
-  const scheduler = (jitter = () => 0) =>
-    new Scheduler(registry, lock, markets, contexts, ids, jitter);
+  const scheduler = (jitter = () => 0, off?: ReadonlySet<string>) =>
+    new Scheduler(registry, lock, markets, contexts, ids, jitter, undefined, off);
   return { lock, scheduler };
 }
 
@@ -195,6 +195,23 @@ describe('Scheduler.start and stop', () => {
     expect(run).toHaveBeenCalledTimes(4);
 
     await instance.stop(10_000);
+  });
+
+  it('never ticks a switched-off job (CATALOG_SEED_JOBS_OFF), which runJobOnce still runs', async () => {
+    const run = jest.fn(() => Promise.resolve());
+    const { scheduler } = setup(run, { runAtStart: true });
+    const warnings = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    const instance = scheduler(() => 0, new Set([NAME]));
+
+    instance.start();
+    await jest.advanceTimersByTimeAsync(3 * 3_600_000);
+    expect(run).not.toHaveBeenCalled();
+    expect(warnings).toHaveBeenCalledWith({ msg: 'job.switched-off', job: NAME });
+
+    await expect(instance.runJobOnce(NAME)).resolves.toEqual({ outcome: 'ran', failedMarkets: [] });
+    expect(run).toHaveBeenCalledTimes(2);
+    await instance.stop(10_000);
+    warnings.mockRestore();
   });
 });
 
