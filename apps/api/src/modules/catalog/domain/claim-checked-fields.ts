@@ -724,6 +724,10 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
     noCustomerText:
       'the public tree view for the buyer assistant: ids, slug, depth and one published category name, already claim-checked when written',
   },
+  IndexCategory: {
+    noCustomerText:
+      'the public tree view for search: ids, slug, depth and one published category name, already claim-checked when written',
+  },
   CatalogActivitiesFacade: { noCustomerText: 'interface of methods' },
   CatalogCulturesFacade: { noCustomerText: 'interface of methods' },
   CatalogCultureSummary: {

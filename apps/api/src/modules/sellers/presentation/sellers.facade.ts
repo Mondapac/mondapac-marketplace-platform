@@ -18,6 +18,7 @@ import type { PickupPostcodes } from '../application/use-cases/pickup-postcodes.
 import type { PublishedStoreSellerId } from '../application/use-cases/published-store-seller-id.use-case';
 import type { PublishedStoreCards } from '../application/use-cases/published-store-cards.use-case';
 import type { PublishedStoreSlugs } from '../application/use-cases/published-store-slugs.use-case';
+import type { PublishedStoreSlugsSystem } from '../application/use-cases/published-store-slugs-system.use-case';
 import type { ReviewerBusinessDetailsRead } from '../application/use-cases/reviewer-business-details.use-case';
 import type { SellingEligibilitySystem } from '../application/use-cases/selling-eligibility-system.use-case';
 import type { CultureApprovedMembers } from '../application/use-cases/culture-approved-members.use-case';
@@ -67,6 +68,7 @@ export interface SellersFacadeUseCases {
   readonly reviewerBusinessDetails: ReviewerBusinessDetailsRead;
   readonly publishedStoreSellerId: PublishedStoreSellerId;
   readonly publishedStoreSlugs: PublishedStoreSlugs;
+  readonly publishedStoreSlugsSystem: PublishedStoreSlugsSystem;
   readonly publishedStoreCards: PublishedStoreCards;
   readonly publishedStoreRead: PublishedStoreRead;
   readonly carrierPickup: CarrierPickupRead;
@@ -202,7 +204,11 @@ export class SellersFacadeImplementation implements SellersFacade {
     context: CallContext,
     sellerIds: readonly Id<'Seller'>[],
   ): Promise<Result<ReadonlyMap<Id<'Seller'>, string>, AccessDenied | SellersUnavailable>> {
-    return this.useCases.publishedStoreSlugs.execute(context, { sellerIds });
+    const useCase =
+      context.actor.kind === 'system'
+        ? this.useCases.publishedStoreSlugsSystem
+        : this.useCases.publishedStoreSlugs;
+    return useCase.execute(context, { sellerIds });
   }
 
   publishedStoreCards(

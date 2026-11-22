@@ -220,6 +220,7 @@ import { PublishedStoreRead } from './application/use-cases/published-store-read
 import { PublishedStoreSellerId } from './application/use-cases/published-store-seller-id.use-case';
 import { PublishedStoreCards } from './application/use-cases/published-store-cards.use-case';
 import { PublishedStoreSlugs } from './application/use-cases/published-store-slugs.use-case';
+import { PublishedStoreSlugsSystem } from './application/use-cases/published-store-slugs-system.use-case';
 import { PUBLISHED_STORE_REPOSITORY } from './application/ports/published-store.repository';
 import { OBJECT_STORE } from '../../platform/storage/object-store';
 import { STORE_IMAGE_PROCESSOR } from './application/ports/store-image-processor';
@@ -539,6 +540,7 @@ const REVIEW_DECISION_PORTS = {
     }),
     useCaseProvider(PublishedStoreSellerId, PUBLISHED_STORE_PORTS),
     useCaseProvider(PublishedStoreSlugs, PUBLISHED_STORE_PORTS),
+    useCaseProvider(PublishedStoreSlugsSystem, PUBLISHED_STORE_PORTS),
     useCaseProvider(PublishedStoreCards, PUBLISHED_STORE_PORTS),
     useCaseProvider(OwnZoneRead, { unitOfWork: true, revisions: true }),
     useCaseProvider(StoreSettingsRead, {
@@ -1024,6 +1026,7 @@ const REVIEW_DECISION_PORTS = {
         ReviewerBusinessDetailsRead,
         PublishedStoreSellerId,
         PublishedStoreSlugs,
+        PublishedStoreSlugsSystem,
         PublishedStoreCards,
         PublishedStoreRead,
         CarrierPickupRead,
@@ -1055,6 +1058,7 @@ const REVIEW_DECISION_PORTS = {
         reviewerBusinessDetails: ReviewerBusinessDetailsRead,
         publishedStoreSellerId: PublishedStoreSellerId,
         publishedStoreSlugs: PublishedStoreSlugs,
+        publishedStoreSlugsSystem: PublishedStoreSlugsSystem,
         publishedStoreCards: PublishedStoreCards,
         publishedStoreRead: PublishedStoreRead,
         carrierPickup: CarrierPickupRead,
@@ -1086,6 +1090,7 @@ const REVIEW_DECISION_PORTS = {
           reviewerBusinessDetails,
           publishedStoreSellerId,
           publishedStoreSlugs,
+          publishedStoreSlugsSystem,
           publishedStoreCards,
           publishedStoreRead,
           carrierPickup,

@@ -6,19 +6,13 @@ import {
   type RawReadPort,
 } from '../../../platform/persistence/raw-reads/raw-read-port';
 import {
-  CATALOG_ASSISTANT_FACADE,
   CATALOG_FACADE,
   CATALOG_FILTERS_FACADE,
   CATALOG_INDEX_FACADE,
   CATALOG_CULTURES_FACADE,
   type CatalogCulturesFacade,
 } from '../../catalog';
-import type {
-  CatalogAssistantFacade,
-  CatalogFacade,
-  CatalogFiltersFacade,
-  CatalogIndexFacade,
-} from '../../catalog';
+import type { CatalogFacade, CatalogFiltersFacade, CatalogIndexFacade } from '../../catalog';
 import { SEARCH_FILTER_SOURCE, type SearchFilterSource } from '../application/ports/search-filters';
 import { FacadeSearchFilters } from './facade-search-filters';
 import { CERTIFICATION_FACADE, type CertificationFacade } from '../../certification';
@@ -263,14 +257,14 @@ export const searchProviders: readonly FactoryProvider[] = [
   },
   {
     provide: CATEGORY_TREE_SOURCE,
-    inject: [CATALOG_ASSISTANT_FACADE],
-    useFactory: (catalog: CatalogAssistantFacade): CategoryTreeSource =>
+    inject: [CATALOG_INDEX_FACADE],
+    useFactory: (catalog: CatalogIndexFacade): CategoryTreeSource =>
       new FacadeCategoryTree(catalog),
   },
   {
     provide: CATEGORY_SUBTREE_SOURCE,
-    inject: [CATALOG_ASSISTANT_FACADE],
-    useFactory: (catalog: CatalogAssistantFacade): CategorySubtreeSource =>
+    inject: [CATALOG_INDEX_FACADE],
+    useFactory: (catalog: CatalogIndexFacade): CategorySubtreeSource =>
       new FacadeCategorySubtree(catalog),
   },
   {

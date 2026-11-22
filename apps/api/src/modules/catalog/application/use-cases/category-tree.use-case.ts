@@ -28,7 +28,9 @@ export type CategoryTreeFailure = { readonly code: 'catalog.categories-unavailab
 /**
  * `catalog.category-tree`: the live platform category tree of the request's Market, for the buyer
  * site's left menu and Browse drawer (storefront reads package). Rule `anonymous`: category ids,
- * slugs and names are public content; no seller category, no count, nothing unpublished. One
+ * slugs and names are public content; no seller category, no count, nothing unpublished. Its twin
+ * for event handlers and jobs is `CategoryTreeSystemQuery` (the `anonymous` rule never admits
+ * the system actor). One
  * read-only unit; a tree that cannot be built (see `liveCategoryTree`) or is larger than
  * {@link MAX_TREE_NODES} is `catalog.categories-unavailable`, never a partial tree.
  */
@@ -49,24 +51,30 @@ export class CategoryTreeQuery extends UseCase<
     super(gate);
   }
 
-  protected async handle(
-    context: CallContext,
-  ): Promise<Result<CategoryTreeAnswer, CategoryTreeFailure>> {
-    const { market } = context;
-    const locale = this.deps.policy.locales(market).default;
-    const read = await this.deps.unitOfWork.run(
-      market,
-      async () => ok(await this.deps.treeReader.nodes(market, MAX_TREE_NODES + 1)),
-      { readOnly: true },
-    );
-    if (!read.ok) return err({ code: 'catalog.categories-unavailable' });
-    try {
-      return ok({ locale, categories: liveCategoryTree(read.value, locale) });
-    } catch (error) {
-      if (error instanceof CategoryTreeUnavailableError) {
-        return err({ code: 'catalog.categories-unavailable' });
-      }
-      throw error;
+  protected handle(context: CallContext): Promise<Result<CategoryTreeAnswer, CategoryTreeFailure>> {
+    return readCategoryTree(this.deps, context);
+  }
+}
+
+/** The read behind `catalog.category-tree` and its system twin: the same answer for every caller. */
+export async function readCategoryTree(
+  deps: CategoryTreeDependencies,
+  context: CallContext,
+): Promise<Result<CategoryTreeAnswer, CategoryTreeFailure>> {
+  const { market } = context;
+  const locale = deps.policy.locales(market).default;
+  const read = await deps.unitOfWork.run(
+    market,
+    async () => ok(await deps.treeReader.nodes(market, MAX_TREE_NODES + 1)),
+    { readOnly: true },
+  );
+  if (!read.ok) return err({ code: 'catalog.categories-unavailable' });
+  try {
+    return ok({ locale, categories: liveCategoryTree(read.value, locale) });
+  } catch (error) {
+    if (error instanceof CategoryTreeUnavailableError) {
+      return err({ code: 'catalog.categories-unavailable' });
     }
+    throw error;
   }
 }
