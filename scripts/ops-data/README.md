@@ -89,6 +89,17 @@ On Windows, `scripts\ops-local.bat` does it all (`scripts\demo-local.bat`, the o
 | `scripts\ops-local.bat reset` | Closes the running windows, drops and creates the database, hands it to the migration role (`bootstrap-dev.sql`), empties Redis, runs the migrations and the loader, then saves the backup. | minutes |
 | `scripts\ops-local.bat fast` | Closes the windows and restores the backup, then starts. Refused when the code's migrations are not the backup's (then run `reset`). | seconds |
 
+`scripts\ops-local.bat refresh [--orders N]` (`node scripts/ops-data/refresh.mjs`) adds fresh activity to the
+running environment and deletes nothing, so the dashboards and lists show today's data: shelves below half
+of the scenario's level are filled again, a "was" price whose special price ended or ends within 3 days gets a
+new two-week window, and a batch of today's orders (default 6, at most 20; keys `r<YYYYMMDD>-<n>`) is paid in
+Stripe test mode and taken to paid, ready, collected, and one cancelled by the admin (local only, like every
+refund). A rerun on the same day tops the batch up and never pays twice; the next day adds a new batch. It
+needs the API, the worker and Mailpit running and a finished loader run (the same data version), takes the
+loader's run lock (so it cannot overlap a reset, a fast restore or a loader run), and runs every guard first.
+Without a Stripe test key the shelves and prices are refreshed and the orders are left out. After `fast`, run
+`refresh` to bring the restored data up to the day.
+
 The two share one database. When it holds other data (the demo's) and has no operational test marker,
 `start` stops and `reset` asks you to type YES before replacing it. Without a test-mode Stripe key in
 `.env`, the orders pack is left out.
@@ -122,7 +133,7 @@ starter tree into the admin-built one: reset the database instead. A switched-of
 when started by hand (`runJobOnce`).
 
 The loader's state (the data version, finished packs, the admin's authenticator secret) is in
-`.local/ops-data/<MARKET>.json`. `DATA_VERSION` in `index.mjs` is the scenario's version: a
+`.local/ops-data/<MARKET>.json`. `DATA_VERSION` in `state.mjs` is the scenario's version: a
 database built with another one is not topped up; rebuild it.
 
 ## Guards: never on production
