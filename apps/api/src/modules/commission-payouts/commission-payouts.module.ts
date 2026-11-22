@@ -1,3 +1,13 @@
+import { CountFailedPayouts } from './application/use-cases/count-failed-payouts.use-case';
+import { CountPayoutHolds } from './application/use-cases/count-payout-holds.use-case';
+import { CountDisputesDue } from './application/use-cases/count-disputes-due.use-case';
+import {
+  COMMISSION_PAYOUTS_WORK_QUEUE_COUNT_READER,
+  type CommissionPayoutsWorkQueueCountReader,
+} from './application/ports/work-queue-count.reader';
+import { CommissionPayoutsWorkQueueFacadeImplementation } from './presentation/commission-payouts-work-queue.facade';
+import { COMMISSION_PAYOUTS_WORK_QUEUE_FACADE } from './contracts/commission-payouts-work-queue.facade';
+import type { UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
@@ -444,6 +454,25 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     SellerPayoutsController,
   ],
   providers: [
+    ...[CountFailedPayouts, CountPayoutHolds, CountDisputesDue].map((type) => ({
+      provide: type,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, COMMISSION_PAYOUTS_WORK_QUEUE_COUNT_READER],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        counts: CommissionPayoutsWorkQueueCountReader,
+      ) => new type(gate, { unitOfWork, counts }),
+    })),
+    {
+      provide: COMMISSION_PAYOUTS_WORK_QUEUE_FACADE,
+      inject: [CountFailedPayouts, CountPayoutHolds, CountDisputesDue],
+      useFactory: (
+        failedPayouts: CountFailedPayouts,
+        payoutHolds: CountPayoutHolds,
+        disputesDue: CountDisputesDue,
+      ) =>
+        new CommissionPayoutsWorkQueueFacadeImplementation(failedPayouts, payoutHolds, disputesDue),
+    },
     PersistenceModule.outboxWriterFor('commission-payouts'),
     PersistenceModule.securityEventsFor('commission-payouts'),
     registerEvents('commission-payouts', COMMISSION_PAYOUTS_EVENTS),
@@ -593,6 +622,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   // part of the module's entry point).
   exports: [
     COMMISSION_PAYOUTS_FACADE,
+    COMMISSION_PAYOUTS_WORK_QUEUE_FACADE,
     SyncDispute,
     DISPUTE_SOURCE,
     ORDER_PAYMENT_LOOKUP,

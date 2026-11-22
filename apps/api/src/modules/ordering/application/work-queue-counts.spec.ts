@@ -19,6 +19,7 @@ import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import { ORDERING_ORDER_VIEW } from '../contracts/permissions';
 import type { WorkQueueCountReader } from './ports/work-queue-count.reader';
 import { CountLateDeliveries } from './use-cases/count-late-deliveries.use-case';
+import { CountFailedPayments } from './use-cases/count-failed-payments.use-case';
 import { CountPendingRefunds } from './use-cases/count-pending-refunds.use-case';
 
 // The ordering counts of the dashboard's work queue (dashboards upgrade, phase 1), on both Market
@@ -79,9 +80,14 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s', (code) =>
       reads.push({ method: 'refunds', market: m, times: [staleBefore] });
       return failing ? Promise.reject(new Error('down')) : Promise.resolve(COUNT);
     },
+    failedPayments: (m, now, staleBefore) => {
+      reads.push({ method: 'failed', market: m, times: [now, staleBefore] });
+      return failing ? Promise.reject(new Error('down')) : Promise.resolve(COUNT);
+    },
   };
   const late = new CountLateDeliveries(gate, { unitOfWork, counts });
   const refunds = new CountPendingRefunds(gate, { unitOfWork, counts });
+  const failed = new CountFailedPayments(gate, { unitOfWork, counts });
   const query = (signal: AbortSignal = new AbortController().signal) => ({
     now: NOW,
     staleBefore: STALE,
@@ -95,16 +101,19 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s', (code) =>
     failing = false;
   });
 
-  it('counts late deliveries and pending refunds behind ordering.order.view', async () => {
+  it('counts late deliveries, pending refunds and failed payments behind ordering.order.view', async () => {
     expect(await late.execute(actor('admin'), query())).toEqual(ok(COUNT));
     expect(await refunds.execute(actor('admin'), query())).toEqual(ok(COUNT));
+    expect(await failed.execute(actor('admin'), query())).toEqual(ok(COUNT));
     expect(declarations.map((d) => d.rule)).toEqual([
+      { kind: 'permissions', allOf: [ORDERING_ORDER_VIEW.key] },
       { kind: 'permissions', allOf: [ORDERING_ORDER_VIEW.key] },
       { kind: 'permissions', allOf: [ORDERING_ORDER_VIEW.key] },
     ]);
     expect(reads).toEqual([
       { method: 'late', market, times: [NOW, STALE] },
       { method: 'refunds', market, times: [STALE] },
+      { method: 'failed', market, times: [NOW, STALE] },
     ]);
   });
 
@@ -117,6 +126,7 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s', (code) =>
   it('refuses anyone but a platform admin, before any read', async () => {
     expect(await late.execute(actor('seller'), query())).toEqual(err({ code: 'access.denied' }));
     expect(await refunds.execute(actor('seller'), query())).toEqual(err({ code: 'access.denied' }));
+    expect(await failed.execute(actor('seller'), query())).toEqual(err({ code: 'access.denied' }));
     expect(reads).toHaveLength(0);
   });
 

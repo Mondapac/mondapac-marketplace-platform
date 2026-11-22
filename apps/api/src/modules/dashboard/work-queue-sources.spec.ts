@@ -10,7 +10,13 @@ import {
   CERTIFICATION_PRODUCT_CERTIFICATE_VIEW,
   CERTIFICATION_SELLER_CERTIFICATE_VIEW,
 } from '../certification';
+import {
+  COMMISSION_PAYOUTS_DISPUTE_VIEW,
+  COMMISSION_PAYOUTS_PAYOUT_VIEW,
+  COMMISSION_PAYOUTS_SETTLEMENT_VIEW,
+} from '../commission-payouts';
 import { ORDERING_ORDER_VIEW } from '../ordering';
+import { PAYMENTS_CONNECTED_ACCOUNT_VIEW, PAYMENTS_CUSTOMER_PAYMENT_VIEW } from '../payments';
 import { PRICING_PRICE_HOLD_VIEW } from '../pricing';
 import { SECURITY_VIEW } from '../security';
 import { SELLERS_SELLER_VIEW } from '../sellers';
@@ -34,6 +40,7 @@ describe('the bound work-queue sources', () => {
     ordering: {
       lateDeliveries: record('ordering.lateDeliveries'),
       pendingRefunds: record('ordering.pendingRefunds'),
+      failedPayments: record('ordering.failedPayments'),
     },
     catalog: {
       claimsWithoutCertificate: record('catalog.claimsWithoutCertificate'),
@@ -52,6 +59,15 @@ describe('the bound work-queue sources', () => {
       sellerCertificates: record('certification.sellerCertificates'),
       productCertificates: record('certification.productCertificates'),
     },
+    payments: {
+      failedWebhooks: record('payments.failedWebhooks'),
+      restrictedAccounts: record('payments.restrictedAccounts'),
+    },
+    commissionPayouts: {
+      failedPayouts: record('commissionPayouts.failedPayouts'),
+      payoutHolds: record('commissionPayouts.payoutHolds'),
+      disputesDue: record('commissionPayouts.disputesDue'),
+    },
   };
   const sources = workQueueSources(owners);
 
@@ -61,12 +77,13 @@ describe('the bound work-queue sources', () => {
 
   it('binds each queue as the design gives it', () => {
     expect(
-      sources.map(({ key, panel, level, requires, live }) => ({
+      sources.map(({ key, panel, level, requires, live, staleAfterMinutes }) => ({
         key,
         panel,
         level,
         requires,
         live,
+        staleAfterMinutes,
       })),
     ).toEqual([
       {
@@ -84,11 +101,42 @@ describe('the bound work-queue sources', () => {
         live: true,
       },
       {
+        key: 'commission-payouts.disputes-due',
+        panel: 'admin',
+        level: 'critical',
+        requires: [COMMISSION_PAYOUTS_DISPUTE_VIEW.key],
+        live: true,
+      },
+      {
         key: 'ordering.late-deliveries',
         panel: 'admin',
         level: 'critical',
         requires: [ORDERING_ORDER_VIEW.key],
         live: false,
+      },
+      {
+        key: 'ordering.failed-payments',
+        panel: 'admin',
+        level: 'today',
+        requires: [ORDERING_ORDER_VIEW.key],
+        live: false,
+        staleAfterMinutes: 60,
+      },
+      {
+        key: 'payments.failed-webhooks',
+        panel: 'admin',
+        level: 'today',
+        requires: [PAYMENTS_CUSTOMER_PAYMENT_VIEW.key],
+        live: false,
+        staleAfterMinutes: 60,
+      },
+      {
+        key: 'commission-payouts.failed-payouts',
+        panel: 'admin',
+        level: 'today',
+        requires: [COMMISSION_PAYOUTS_PAYOUT_VIEW.key],
+        live: false,
+        staleAfterMinutes: 60,
       },
       {
         key: 'ordering.pending-refunds',
@@ -123,6 +171,20 @@ describe('the bound work-queue sources', () => {
         panel: 'admin',
         level: 'today',
         requires: [PRICING_PRICE_HOLD_VIEW.key],
+        live: false,
+      },
+      {
+        key: 'payments.restricted-accounts',
+        panel: 'admin',
+        level: 'today',
+        requires: [PAYMENTS_CONNECTED_ACCOUNT_VIEW.key],
+        live: false,
+      },
+      {
+        key: 'commission-payouts.payout-holds',
+        panel: 'admin',
+        level: 'today',
+        requires: [COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key],
         live: false,
       },
       {
@@ -171,12 +233,18 @@ describe('the bound work-queue sources', () => {
     expect(calls.map((c) => c.method)).toEqual([
       'catalog.claimsWithoutCertificate',
       'security.openAlerts',
+      'commissionPayouts.disputesDue',
       'ordering.lateDeliveries',
+      'ordering.failedPayments',
+      'payments.failedWebhooks',
+      'commissionPayouts.failedPayouts',
       'ordering.pendingRefunds',
       'sellers.applications',
       'catalog.pendingOffers',
       'catalog.pendingRevisions',
       'pricing.priceHolds',
+      'payments.restrictedAccounts',
+      'commissionPayouts.payoutHolds',
       'sellers.unhealthySellers',
       'catalog.brandMerges',
       'catalog.categoryProposals',

@@ -1,6 +1,16 @@
 import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { WorkQueueCount } from '../../../../platform/work-queue/work-queue-count';
 
+/**
+ * How far back the failed-payment queue looks (dashboards upgrade, phase 1; product owner,
+ * 22 Nov 2026): 24 hours. A failed payment has no handled state, so the queue is a rolling window.
+ * A Market setting later (future-enhancements register).
+ */
+export const FAILED_PAYMENT_WINDOW_HOURS = 24;
+
+/** The cancellations that mean the buyer's payment failed (the card, or the provider). */
+export const FAILED_PAYMENT_REASONS = ['payment-failed', 'provider-failed'] as const;
+
 export const WORK_QUEUE_COUNT_READER = Symbol('ORDERING_WORK_QUEUE_COUNT_READER');
 
 /**
@@ -32,4 +42,15 @@ export interface WorkQueueCountReader {
 
   /** The refunds still pending at the provider; `overdue` those requested before `staleBefore`. */
   pendingRefunds(market: MarketContext, staleBefore: Temporal.Instant): Promise<WorkQueueCount>;
+
+  /**
+   * The orders cancelled because the buyer's payment failed (`payment-failed`, `provider-failed`)
+   * within the window before `now`; `overdue` those cancelled before `staleBefore`, `oldestAt` the
+   * earliest cancellation.
+   */
+  failedPayments(
+    market: MarketContext,
+    now: Temporal.Instant,
+    staleBefore: Temporal.Instant,
+  ): Promise<WorkQueueCount>;
 }

@@ -52,7 +52,9 @@ interface Scripted {
 function source(
   script: Scripted,
   k: string,
-  fields: Partial<Pick<WorkQueueSource, 'level' | 'requires' | 'live' | 'panel'>> = {},
+  fields: Partial<
+    Pick<WorkQueueSource, 'level' | 'requires' | 'live' | 'panel' | 'staleAfterMinutes'>
+  > = {},
 ): WorkQueueSource {
   return {
     key: k,
@@ -60,6 +62,9 @@ function source(
     level: fields.level ?? 'today',
     requires: fields.requires ?? [A],
     live: fields.live ?? false,
+    ...(fields.staleAfterMinutes === undefined
+      ? {}
+      : { staleAfterMinutes: fields.staleAfterMinutes }),
     count: (context, query) => {
       script.calls.push({ key: k, query, context });
       const answer = script.answer.get(k);
@@ -148,6 +153,7 @@ describe.each(TEST_MARKETS)('the work queue in market %s', (code) => {
       deps([
         source(script, 'a.critical', { level: 'critical' }),
         source(script, 'a.review', { level: 'review' }),
+        source(script, 'a.own', { staleAfterMinutes: 60 }),
       ]),
       admin(),
       'admin',
@@ -157,6 +163,8 @@ describe.each(TEST_MARKETS)('the work queue in market %s', (code) => {
     expect(limits).toEqual({
       'a.critical': START.subtract({ hours: 1 }),
       'a.review': START.subtract({ hours: 7 * 24 }),
+      // A queue with its own age limit (a failed payment: 1 hour) instead of its level's 48 hours.
+      'a.own': START.subtract({ hours: 1 }),
     });
   });
 
@@ -456,6 +464,11 @@ describe('checkWorkQueueSources', () => {
     expect(() => checkWorkQueueSources([source(script, 'a.one', { requires: [] })])).toThrow(
       /requires no permission key/,
     );
+    for (const staleAfterMinutes of [0, -5, 1.5]) {
+      expect(() => checkWorkQueueSources([source(script, 'a.one', { staleAfterMinutes })])).toThrow(
+        /bad age limit/,
+      );
+    }
   });
 
   it('accepts one key in both panels', () => {

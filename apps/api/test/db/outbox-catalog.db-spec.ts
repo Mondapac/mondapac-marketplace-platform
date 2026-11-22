@@ -339,6 +339,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // still hold a sealed ship-to by time; cleared orders leave the index.
   'ordering.orders_market_id_confirmed_at_id_ship_to_idx':
     "CREATE INDEX orders_market_id_confirmed_at_id_ship_to_idx ON ordering.orders USING btree (market_id, confirmed_at, id) WHERE ((status = 'confirmed'::text) AND (ship_to_ciphertext IS NOT NULL))",
+  // The dashboard's count of orders whose payment failed (dashboards upgrade, phase 1).
+  'ordering.orders_market_id_cancelled_at_failed_payment_idx':
+    "CREATE INDEX orders_market_id_cancelled_at_failed_payment_idx ON ordering.orders USING btree (market_id, cancelled_at) WHERE ((status = 'cancelled'::text) AND (cancel_reason = ANY (ARRAY['payment-failed'::text, 'provider-failed'::text])))",
   // Phase 5 package 1: a Stripe session or payment intent belongs to one order.
   'ordering.orders_stripe_payment_intent_id_key':
     'CREATE UNIQUE INDEX orders_stripe_payment_intent_id_key ON ordering.orders USING btree (stripe_payment_intent_id) WHERE (stripe_payment_intent_id IS NOT NULL)',
@@ -346,6 +349,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE UNIQUE INDEX orders_stripe_session_id_key ON ordering.orders USING btree (stripe_session_id) WHERE (stripe_session_id IS NOT NULL)',
   'ordering.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON ordering.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
+  // The dashboard's count of failed webhooks (dashboards upgrade, phase 1): the events given up.
+  'payments.stripe_events_market_id_received_at_failed_idx':
+    "CREATE INDEX stripe_events_market_id_received_at_failed_idx ON payments.stripe_events USING btree (market_id, received_at) WHERE (outcome = 'failed'::text)",
   // Payments package 8a: the relay's claim index of payments' outbox.
   'payments.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON payments.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',

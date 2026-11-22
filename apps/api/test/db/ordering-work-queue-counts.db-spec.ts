@@ -309,4 +309,26 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s (database)'
     const counted = await read(() => reader.pendingRefunds(market, T0.subtract({ hours: 24 })));
     expect(counted).toEqual({ count: 2, overdue: 1, oldestAt: T0.subtract({ hours: 48 }) });
   });
+
+  it('counts the orders whose payment failed within the last 24 hours, overdue after the age limit', async () => {
+    const cancelled = async (reason: string, at: Temporal.Instant) => {
+      const { orderId } = await sellerOrder(at.subtract({ minutes: 10 }), {}, undefined, true);
+      const done = await db.unitOfWork.run(market, async () => {
+        await db.service.tx(market).orderingOrder.updateMany({
+          where: { marketId: market.marketId, id: orderId },
+          data: { status: 'cancelled', cancelReason: reason, cancelledAt: date(at) },
+        });
+        return ok(undefined);
+      });
+      if (!done.ok) throw new Error('could not cancel the order');
+    };
+    await cancelled('payment-failed', T0.subtract({ minutes: 30 }));
+    await cancelled('provider-failed', T0.subtract({ hours: 5 }));
+    // Before the window, and a cancellation that is not a failed payment.
+    await cancelled('payment-failed', T0.subtract({ hours: 25 }));
+    await cancelled('expired', T0.subtract({ hours: 2 }));
+
+    const counted = await read(() => reader.failedPayments(market, T0, T0.subtract({ hours: 1 })));
+    expect(counted).toEqual({ count: 2, overdue: 1, oldestAt: T0.subtract({ hours: 5 }) });
+  });
 });

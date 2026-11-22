@@ -192,6 +192,7 @@ import {
 } from './contracts';
 import { CountLateDeliveries } from './application/use-cases/count-late-deliveries.use-case';
 import { CountPendingRefunds } from './application/use-cases/count-pending-refunds.use-case';
+import { CountFailedPayments } from './application/use-cases/count-failed-payments.use-case';
 import {
   WORK_QUEUE_COUNT_READER,
   type WorkQueueCountReader,
@@ -834,7 +835,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         clock: RebuildOfferPairsDependencies['clock'],
       ) => new RebuildOfferPairs(gate, { unitOfWork, pairs, clock }),
     },
-    ...[CountLateDeliveries, CountPendingRefunds].map((type) => ({
+    ...[CountLateDeliveries, CountPendingRefunds, CountFailedPayments].map((type) => ({
       provide: type,
       inject: [USE_CASE_GATE, UNIT_OF_WORK, WORK_QUEUE_COUNT_READER],
       useFactory: (gate: UseCaseGate, unitOfWork: UnitOfWork, counts: WorkQueueCountReader) =>
@@ -842,9 +843,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     })),
     {
       provide: ORDERING_WORK_QUEUE_FACADE,
-      inject: [CountLateDeliveries, CountPendingRefunds],
-      useFactory: (late: CountLateDeliveries, refunds: CountPendingRefunds) =>
-        new OrderingWorkQueueFacadeImplementation(late, refunds),
+      inject: [CountLateDeliveries, CountPendingRefunds, CountFailedPayments],
+      useFactory: (
+        late: CountLateDeliveries,
+        refunds: CountPendingRefunds,
+        failed: CountFailedPayments,
+      ) => new OrderingWorkQueueFacadeImplementation(late, refunds, failed),
     },
     {
       provide: ORDERING_RANKING_FACADE,

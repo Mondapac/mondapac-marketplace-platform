@@ -22,6 +22,12 @@ export interface OrderingWorkQueueFacade {
     context: CallContext,
     query: WorkQueueCountQuery,
   ): Promise<Result<WorkQueueCount, AccessDenied>>;
+
+  /** Orders cancelled because the buyer's payment failed, within the last 24 hours. */
+  failedPayments(
+    context: CallContext,
+    query: WorkQueueCountQuery,
+  ): Promise<Result<WorkQueueCount, AccessDenied>>;
 }
 
 /** Nest token of the {@link OrderingWorkQueueFacade}, provided and exported by `OrderingModule`. */

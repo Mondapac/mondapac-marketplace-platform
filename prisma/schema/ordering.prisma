@@ -52,6 +52,8 @@ model OrderingOrder {
   @@index([marketId, status, createdAt(sort: Desc)])
   /// The partial index (market_id, confirmed_at, id) WHERE status = 'confirmed' (nightly bought-together
   /// job) is hand-written in its own migration, built CONCURRENTLY; Prisma cannot declare it.
+  /// So is orders_market_id_cancelled_at_failed_payment_idx (market_id, cancelled_at) WHERE the
+  /// order was cancelled for a failed payment (migration 20261122130000; the dashboard's count).
   @@map("orders")
   @@schema("ordering")
 }

@@ -17,6 +17,14 @@ import {
   CertificationModule,
   type CertificationWorkQueueFacade,
 } from '../certification';
+import {
+  COMMISSION_PAYOUTS_DISPUTE_VIEW,
+  COMMISSION_PAYOUTS_PAYOUT_VIEW,
+  COMMISSION_PAYOUTS_SETTLEMENT_VIEW,
+  COMMISSION_PAYOUTS_WORK_QUEUE_FACADE,
+  CommissionPayoutsModule,
+  type CommissionPayoutsWorkQueueFacade,
+} from '../commission-payouts';
 import { IDENTITY_FACADE, IdentityModule, type IdentityFacade } from '../identity';
 import {
   ORDERING_ORDER_VIEW,
@@ -24,6 +32,13 @@ import {
   OrderingModule,
   type OrderingWorkQueueFacade,
 } from '../ordering';
+import {
+  PAYMENTS_CONNECTED_ACCOUNT_VIEW,
+  PAYMENTS_CUSTOMER_PAYMENT_VIEW,
+  PAYMENTS_WORK_QUEUE_FACADE,
+  PaymentsModule,
+  type PaymentsWorkQueueFacade,
+} from '../payments';
 import {
   PRICING_PRICE_HOLD_VIEW,
   PRICING_WORK_QUEUE_FACADE,
@@ -54,6 +69,9 @@ import {
 import { IdentityViewerPermissions } from './infrastructure/identity-viewer-permissions';
 import { AdminDashboardController } from './presentation/admin-dashboard.controller';
 
+/** The age limit of a failed payment, webhook or payout (design section 2: every item over 1 hour). */
+const FAILED_ITEM_STALE_AFTER_MINUTES = 60;
+
 /** The owners' facades the work-queue sources are bound to. */
 export interface WorkQueueOwners {
   readonly ordering: OrderingWorkQueueFacade;
@@ -62,6 +80,8 @@ export interface WorkQueueOwners {
   readonly sellers: SellersWorkQueueFacade;
   readonly security: SecurityWorkQueueFacade;
   readonly certification: CertificationWorkQueueFacade;
+  readonly payments: PaymentsWorkQueueFacade;
+  readonly commissionPayouts: CommissionPayoutsWorkQueueFacade;
 }
 
 /**
@@ -71,7 +91,8 @@ export interface WorkQueueOwners {
  * commission-payouts).
  */
 export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSource[] {
-  const { ordering, catalog, pricing, sellers, security, certification } = owners;
+  const { ordering, catalog, pricing, sellers, security, certification, payments } = owners;
+  const { commissionPayouts } = owners;
   return [
     {
       key: 'catalog.claims-without-certificate',
@@ -90,12 +111,47 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
       count: (context, query) => security.openAlerts(context, query),
     },
     {
+      key: 'commission-payouts.disputes-due',
+      panel: 'admin',
+      level: 'critical',
+      requires: [COMMISSION_PAYOUTS_DISPUTE_VIEW.key],
+      live: true,
+      count: (context, query) => commissionPayouts.disputesDue(context, query),
+    },
+    {
       key: 'ordering.late-deliveries',
       panel: 'admin',
       level: 'critical',
       requires: [ORDERING_ORDER_VIEW.key],
       live: false,
       count: (context, query) => ordering.lateDeliveries(context, query),
+    },
+    {
+      key: 'ordering.failed-payments',
+      panel: 'admin',
+      level: 'today',
+      requires: [ORDERING_ORDER_VIEW.key],
+      live: false,
+      staleAfterMinutes: FAILED_ITEM_STALE_AFTER_MINUTES,
+      count: (context, query) => ordering.failedPayments(context, query),
+    },
+    {
+      key: 'payments.failed-webhooks',
+      panel: 'admin',
+      level: 'today',
+      requires: [PAYMENTS_CUSTOMER_PAYMENT_VIEW.key],
+      live: false,
+      staleAfterMinutes: FAILED_ITEM_STALE_AFTER_MINUTES,
+      count: (context, query) => payments.failedWebhooks(context, query),
+    },
+    {
+      key: 'commission-payouts.failed-payouts',
+      panel: 'admin',
+      level: 'today',
+      requires: [COMMISSION_PAYOUTS_PAYOUT_VIEW.key],
+      live: false,
+      staleAfterMinutes: FAILED_ITEM_STALE_AFTER_MINUTES,
+      count: (context, query) => commissionPayouts.failedPayouts(context, query),
     },
     {
       key: 'ordering.pending-refunds',
@@ -136,6 +192,22 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
       requires: [PRICING_PRICE_HOLD_VIEW.key],
       live: false,
       count: (context, query) => pricing.priceHolds(context, query),
+    },
+    {
+      key: 'payments.restricted-accounts',
+      panel: 'admin',
+      level: 'today',
+      requires: [PAYMENTS_CONNECTED_ACCOUNT_VIEW.key],
+      live: false,
+      count: (context, query) => payments.restrictedAccounts(context, query),
+    },
+    {
+      key: 'commission-payouts.payout-holds',
+      panel: 'admin',
+      level: 'today',
+      requires: [COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key],
+      live: false,
+      count: (context, query) => commissionPayouts.payoutHolds(context, query),
     },
     {
       key: 'sellers.health-queue',
@@ -194,6 +266,8 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
     SellersModule,
     SecurityModule,
     CertificationModule,
+    PaymentsModule,
+    CommissionPayoutsModule,
   ],
   controllers: [AdminDashboardController],
   providers: [
@@ -211,6 +285,8 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
         SELLERS_WORK_QUEUE_FACADE,
         SECURITY_WORK_QUEUE_FACADE,
         CERTIFICATION_WORK_QUEUE_FACADE,
+        PAYMENTS_WORK_QUEUE_FACADE,
+        COMMISSION_PAYOUTS_WORK_QUEUE_FACADE,
       ],
       useFactory: (
         ordering: OrderingWorkQueueFacade,
@@ -219,6 +295,8 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
         sellers: SellersWorkQueueFacade,
         security: SecurityWorkQueueFacade,
         certification: CertificationWorkQueueFacade,
+        payments: PaymentsWorkQueueFacade,
+        commissionPayouts: CommissionPayoutsWorkQueueFacade,
       ) => {
         const sources = workQueueSources({
           ordering,
@@ -227,6 +305,8 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
           sellers,
           security,
           certification,
+          payments,
+          commissionPayouts,
         });
         checkWorkQueueSources(sources);
         return sources;
