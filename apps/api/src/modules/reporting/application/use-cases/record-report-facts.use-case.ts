@@ -14,7 +14,7 @@ export interface RecordReportFactsInput extends RecordRequest {
 }
 
 /**
- * `reporting.record-facts`: the handler of ordering's order and refund events (dashboards upgrade
+ * `reporting.record-report-facts`: the handler of ordering's order and refund events (dashboards upgrade
  * phase 3). Rule `system`. Reads the seller orders and refunds the event names from their owners
  * and records them with the rollups of every seller day they touch, once per delivery.
  */
@@ -24,7 +24,7 @@ export class RecordReportFacts extends UseCase<
   ReportFactsFailure
 > {
   static override readonly access: AccessDeclaration = {
-    name: 'reporting.record-facts',
+    name: 'reporting.record-report-facts',
     rule: { kind: 'system' },
   };
 

@@ -9,7 +9,7 @@ import {
 } from '../report-facts-sync';
 
 /**
- * `reporting.reconcile-facts`: the nightly reconcile (dashboards upgrade phase 3, design section
+ * `reporting.reconcile-report-facts`: the nightly reconcile (dashboards upgrade phase 3, design section
  * 4). Rule `system`. Reads again every seller order and refund of the last seven days from their
  * owners and records them, so an event that was lost, dead-lettered or came before a change it
  * does not name (an on-time promise that passed, a category moved) is put right.
@@ -20,7 +20,7 @@ export class ReconcileReportFacts extends UseCase<
   SourceUnavailable
 > {
   static override readonly access: AccessDeclaration = {
-    name: 'reporting.reconcile-facts',
+    name: 'reporting.reconcile-report-facts',
     rule: { kind: 'system' },
   };
 

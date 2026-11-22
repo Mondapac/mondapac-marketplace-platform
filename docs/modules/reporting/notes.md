@@ -89,7 +89,7 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
 - Subscriptions (`presentation/subscribers/report-facts.subscriptions.ts`, `reporting.inbox`):
   `ordering.order-paid.v1` and `ordering.order-cancelled.v1` (every seller order of the order),
   `ordering.order-shipped.v1` and `ordering.seller-order-delivered.v1` (that seller order),
-  `ordering.refund-succeeded.v1` (that refund). Each hands the ids to `reporting.record-facts`
+  `ordering.refund-succeeded.v1` (that refund). Each hands the ids to `reporting.record-report-facts`
   (rule `system`), which reads the facts again from ordering's reporting facade and catalog's
   `offerPrimaryCategories` before any unit, then records them in one `runOnce` unit with
   `isolation: 'serializable'` (Mojtaba F1 of PR 9).
