@@ -80,6 +80,7 @@ describe.each(TEST_MARKETS)('publishedProduct in market %s', (code) => {
     offerNamesSystem: undefined as never,
     sellUnitLabels: undefined as never,
     offerTaxCategories: undefined as never,
+    offerPrimaryCategories: undefined as never,
     offerListings: undefined as never,
     offerListingsSystem: undefined as never,
     offerBadges: undefined as never,

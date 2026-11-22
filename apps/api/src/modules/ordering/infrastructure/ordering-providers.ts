@@ -1,3 +1,8 @@
+import {
+  REPORTING_CHANGES_READER,
+  type ReportingChangesReader,
+} from '../application/ports/reporting-changes.reader';
+import { PrismaReportingChangesReader } from './prisma-reporting-changes.reader';
 import { Logger, type FactoryProvider } from '@nestjs/common';
 import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
 import { CUSTOMERS_READ_FACADE, type CustomersReadFacade } from '../../customers';
@@ -141,6 +146,13 @@ export const orderingProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SellerOrderNoteRepository =>
       new PrismaSellerOrderNoteRepository(prisma),
+  },
+  // Dashboards upgrade phase 3: which seller orders and refunds changed, for reporting.
+  {
+    provide: REPORTING_CHANGES_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ReportingChangesReader =>
+      new PrismaReportingChangesReader(prisma),
   },
   {
     provide: REFUND_REPOSITORY,

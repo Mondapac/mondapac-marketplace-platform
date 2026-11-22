@@ -197,6 +197,11 @@ import {
   type OfferTaxCategoriesReader,
 } from '../application/ports/offer-tax-categories.reader';
 import { PrismaOfferTaxCategoriesReader } from './prisma-offer-tax-categories.reader';
+import { PrismaOfferPrimaryCategoriesReader } from './prisma-offer-primary-categories.reader';
+import {
+  OFFER_PRIMARY_CATEGORIES_READER,
+  type OfferPrimaryCategoriesReader,
+} from '../application/ports/offer-primary-categories.reader';
 import {
   PENDING_PRODUCT_REVISIONS_READER,
   type PendingProductRevisionsReader,
@@ -750,6 +755,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OfferTaxCategoriesReader =>
       new PrismaOfferTaxCategoriesReader(prisma),
+  },
+  {
+    provide: OFFER_PRIMARY_CATEGORIES_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OfferPrimaryCategoriesReader =>
+      new PrismaOfferPrimaryCategoriesReader(prisma),
   },
   {
     provide: PENDING_PRODUCT_REVISIONS_READER,

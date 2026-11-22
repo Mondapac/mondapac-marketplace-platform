@@ -52,3 +52,22 @@ Seller days are rebuilt in a fixed order (day, then seller). Growth and retentio
   the caller's unit.
 - `domain/facts.ts`: Market day, `withTax` (a price with or without tax, as an amount with tax),
   the sale and refund entries.
+
+## What reporting reads of the owners (PR 10)
+
+All rule `system`, not exposed over HTTP; ids and money only (no name, address, email or customer).
+
+- `ORDERING_REPORTING_FACADE` (`ordering/contracts/ordering-reporting.facade.ts`):
+  `sellerOrderReportFacts` (at most 100 seller orders: goods per line after discount with tax,
+  shipping after discount with tax, paid, cancelled, shipped and delivered times, on time),
+  `refundReportFacts` (succeeded refunds only, with the Offer of each refunded line),
+  `sellerOrdersChanged` and `refundsSucceeded` (ids whose instants fall in a window, keyset-paged by
+  id, at most 500; a window with no start is the whole history, for the backfill).
+- On time (for now): the seller handed the order over (ready, else shipped) by its ready-by promise
+  (`readyByOf`). Null with no promise, or unshipped within it; false once it passed unshipped. To be
+  replaced by the per-delivery-method promise of phase 1 (repo register FE-056, project register FE-093).
+- `CatalogFacade.offerPrimaryCategories` (at most 200 Offers): the primary platform category of the
+  product's published revision; a deleted Offer still answers. The category is read when the fact is
+  written, so a later move of the product changes past days only at the next reconcile or backfill
+  (repo register FE-055, project register FE-092).
+- No customer id is copied into reporting (repo register FE-057, project register FE-094).
