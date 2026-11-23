@@ -15,6 +15,43 @@ function giveFocusBack(element: HTMLElement | null, dialog: HTMLDialogElement | 
   }, 0);
 }
 
+/** How many modals hold the page still; the lock is lifted when the last one lets go. */
+let scrollLocks = 0;
+let savedOverflow = '';
+let savedPadding = '';
+let paddingSide: 'paddingLeft' | 'paddingRight' = 'paddingRight';
+
+/**
+ * Stops the page behind a modal from scrolling. A native `<dialog>` made modal makes the page
+ * inert but does not freeze its scroll, so the page's own scrollbar stayed beside the sheet's and
+ * its list's (three bars side by side). When the page had a bar, its width is given back as
+ * padding on the root so the page behind the dim does not jump sideways, while the sheet itself
+ * stays flush with the screen edge (a reserved gutter would leave a blank strip beside it). Counted, so a dialog opened
+ * over a sheet does not unlock the page when it closes. Returns the release function.
+ */
+function lockPageScroll(): () => void {
+  const root = document.documentElement;
+  if (scrollLocks === 0) {
+    savedOverflow = root.style.overflow;
+    const bar = window.innerWidth - root.clientWidth;
+    paddingSide = getComputedStyle(root).direction === 'rtl' ? 'paddingLeft' : 'paddingRight';
+    savedPadding = root.style[paddingSide];
+    if (bar > 0) root.style[paddingSide] = `${bar}px`;
+    root.style.overflow = 'hidden';
+  }
+  scrollLocks += 1;
+  let released = false;
+  return () => {
+    if (released) return;
+    released = true;
+    scrollLocks -= 1;
+    if (scrollLocks === 0) {
+      root.style.overflow = savedOverflow;
+      root.style[paddingSide] = savedPadding;
+    }
+  };
+}
+
 /**
  * Opens and closes a native `<dialog>` as a modal with `open`: the browser traps focus, makes the
  * rest of the page inert and closes on Escape, and focus returns to the opener. Shared by the
@@ -31,6 +68,11 @@ export function useModal(
   initialFocus?: RefObject<HTMLElement | null>,
 ): void {
   const opener = useRef<HTMLElement | null>(null);
+  // The page stays put while the modal is open, and is released when it closes or unmounts.
+  useLayoutEffect(() => {
+    if (!open) return;
+    return lockPageScroll();
+  }, [open]);
   useLayoutEffect(() => {
     const dialog = ref.current;
     if (dialog === null) return;
