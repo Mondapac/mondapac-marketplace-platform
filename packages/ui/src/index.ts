@@ -265,11 +265,17 @@ export {
 export { DashboardSlot, type DashboardSource } from './dashboard/dashboard-slot.tsx';
 export {
   DashboardCard,
+  DashboardGrid,
   DistributionBar,
+  GridItem,
+  gridItemClass,
   StatCard,
   StatGrid,
   type DashboardCardProps,
   type DistributionPart,
+  type GridLayout,
+  type GridSpan,
+  type MobileOrder,
   type StatCardProps,
   type StatTone,
 } from './dashboard/dashboard.tsx';
@@ -280,6 +286,9 @@ export {
   type ChartPoint,
   type LineAreaChartProps,
 } from './dashboard/line-chart.tsx';
+export { Gauge, type GaugeProps } from './dashboard/gauge.tsx';
+export { Ring, type RingProps } from './dashboard/ring.tsx';
+export { FunnelChart, conversion, type FunnelChartProps } from './dashboard/funnel-chart.tsx';
 export { BarList, Funnel, type BarListItem, type FunnelStep } from './dashboard/bar-list.tsx';
 export {
   PeriodSelector,

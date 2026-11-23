@@ -34,6 +34,77 @@ export function StatGrid({
   );
 }
 
+export type GridSpan = 3 | 4 | 6 | 8 | 12;
+/** Where an item sits when the grid is one column wide: KPIs first, the tasks card next, then the rest. */
+export type MobileOrder = 'kpi' | 'tasks' | 'rest';
+
+export interface GridLayout {
+  /** Columns of 12 from the desktop width (lg) up. Default 12. */
+  readonly span?: GridSpan;
+  /** Columns of 12 at the tablet width (md). Default: the desktop span. */
+  readonly tabletSpan?: GridSpan;
+  /** Columns of 12 on a phone: 6 puts two items side by side (KPI cards). Default 12. */
+  readonly phoneSpan?: 6 | 12;
+  /** Phone order; from the tablet width the order is the order in the page. Default 'rest'. */
+  readonly mobileOrder?: MobileOrder;
+}
+
+// Whole class names, so Tailwind finds them.
+const LG_SPAN: Record<GridSpan, string> = {
+  3: 'lg:col-span-3',
+  4: 'lg:col-span-4',
+  6: 'lg:col-span-6',
+  8: 'lg:col-span-8',
+  12: 'lg:col-span-12',
+};
+const MD_SPAN: Record<GridSpan, string> = {
+  3: 'md:col-span-3',
+  4: 'md:col-span-4',
+  6: 'md:col-span-6',
+  8: 'md:col-span-8',
+  12: 'md:col-span-12',
+};
+const PHONE_SPAN: Record<6 | 12, string> = { 6: 'col-span-6', 12: 'col-span-12' };
+const ORDER: Record<MobileOrder, string> = {
+  kpi: 'order-1 md:order-none',
+  tasks: 'order-2 md:order-none',
+  rest: 'order-3 md:order-none',
+};
+
+/** The classes of one grid item (exported for tests and for items that are not a plain div). */
+export function gridItemClass({
+  span = 12,
+  tabletSpan = span,
+  phoneSpan = 12,
+  mobileOrder = 'rest',
+}: GridLayout = {}): string {
+  return `min-w-0 ${PHONE_SPAN[phoneSpan]} ${MD_SPAN[tabletSpan]} ${LG_SPAN[span]} ${ORDER[mobileOrder]}`;
+}
+
+/** The 12-column grid of a dashboard: one column on a phone (two for items with phoneSpan 6). */
+export function DashboardGrid({
+  className = '',
+  children,
+}: {
+  readonly className?: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div data-dashboard-grid="" className={`grid grid-cols-12 gap-4 ${className}`.trim()}>
+      {children}
+    </div>
+  );
+}
+
+/** One item of the grid; declares its spans and phone order. */
+export function GridItem({
+  as: Tag = 'div',
+  children,
+  ...layout
+}: GridLayout & { readonly as?: 'div' | 'li'; readonly children: ReactNode }) {
+  return <Tag className={gridItemClass(layout)}>{children}</Tag>;
+}
+
 export interface StatCardProps {
   readonly icon: IconName;
   /** What is counted ("Sellers awaiting review"). */
@@ -141,7 +212,7 @@ export function DashboardCard({
         </div>
         {action === undefined || error !== undefined ? null : (
           <a
-            className="shrink-0 whitespace-nowrap text-sm font-medium text-link underline"
+            className="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap text-sm font-medium text-link underline sm:min-h-0"
             href={action.href}
           >
             {action.label}

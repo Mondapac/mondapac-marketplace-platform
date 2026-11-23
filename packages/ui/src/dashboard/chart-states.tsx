@@ -37,7 +37,11 @@ export function ChartError({
     >
       <p>{message}</p>
       {onRetry === undefined || retryLabel === undefined ? null : (
-        <button type="button" onClick={onRetry} className="font-medium text-link underline">
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex min-h-11 items-center font-medium text-link underline sm:min-h-0"
+        >
           {retryLabel}
         </button>
       )}
