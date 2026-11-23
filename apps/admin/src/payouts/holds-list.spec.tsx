@@ -125,7 +125,25 @@ function mount(
     </NextIntlClientProvider>,
   );
 }
-const firstRow = () => screen.findByRole('checkbox', { name: `Select ${NAME}` });
+/**
+ * Waits until a hold's row checkbox is on screen. The wait polls a plain attribute selector, not
+ * `findByRole`: a role query with a name computes the accessible name of every checkbox on
+ * every poll and on every DOM mutation, so on a CI worker already busy with hundreds of other
+ * files it starved the very render it was waiting for and gave up after the default 1 s. The
+ * role query then runs once, on a DOM that is already complete.
+ */
+const rowBox = async (label = NAME) => {
+  await waitFor(
+    () => {
+      if (!document.querySelector(`input[type="checkbox"][aria-label="Select ${label}"]`)) {
+        throw new Error(`The row "${label}" is not on screen yet.`);
+      }
+    },
+    { timeout: 10_000 },
+  );
+  return screen.getByRole('checkbox', { name: `Select ${label}` });
+};
+const firstRow = () => rowBox();
 const openMenu = async (name = NAME) => {
   fireEvent.click(await screen.findByRole('button', { name: `Actions for ${name}` }));
   return screen.findByRole('menu');
@@ -248,7 +266,7 @@ describe('Holds list: page numbers', () => {
     );
     serve(() => pageOf([released(3, { releaseReason: 'placed-in-error' })]));
     mount();
-    await screen.findByRole('checkbox', { name: 'Select hold 00000003' });
+    await rowBox('hold 00000003');
     const table = screen.getByRole('table');
     for (const header of ['Released because', 'Released on', 'Hold ID']) {
       expect(within(table).getByRole('columnheader', { name: header })).toBeTruthy();
@@ -343,7 +361,7 @@ describe('Holds list: page numbers', () => {
     await firstRow();
     expect(screen.getByText('1 hold selected')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Page 2' }));
-    expect(await screen.findByRole('checkbox', { name: 'Select hold 00000002' })).toBeTruthy();
+    expect(await rowBox('hold 00000002')).toBeTruthy();
     expect(screen.getByText('1 hold selected')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /^Sort/ }));
     fireEvent.click(await screen.findByRole('radio', { name: 'Placed on' }));
@@ -362,7 +380,7 @@ describe('Holds list: page numbers', () => {
     mount();
     await firstRow();
     fireEvent.click(screen.getByRole('button', { name: 'Page 4' }));
-    expect(await screen.findByRole('checkbox', { name: 'Select hold 00000002' })).toBeTruthy();
+    expect(await rowBox('hold 00000002')).toBeTruthy();
     expect(listUrls().map((url) => new URL(`http://x/${url}`).searchParams.get('page'))).toEqual([
       '1',
       '4',
@@ -422,13 +440,13 @@ describe('Holds list: Previous and next', () => {
     expect(screen.queryByRole('button', { name: /^Sort/ })).toBeNull();
     expect(screen.getByText('Sorted by Placed on: Newest first')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    await screen.findByRole('checkbox', { name: 'Select hold 00000002' });
+    await rowBox('hold 00000002');
     expect(lastParams()).toEqual({ limit: '25', cursor: 'c1' });
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
-    await screen.findByRole('checkbox', { name: 'Select hold 00000003' });
+    await rowBox('hold 00000003');
     expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Next' }).disabled).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
-    await screen.findByRole('checkbox', { name: 'Select hold 00000002' });
+    await rowBox('hold 00000002');
     expect(lastParams()).toEqual({ limit: '25', cursor: 'c1' });
   });
 
@@ -939,7 +957,7 @@ describe('Holds list: columns and Markets', () => {
       ]),
     );
     mount({ zone: 'Pacific/Auckland', marketId: 'NZ' });
-    await screen.findByRole('checkbox', { name: 'Select hold 00000001' });
+    await rowBox('hold 00000001');
     const table = screen.getByRole('table');
     expect(within(table).getByRole('columnheader', { name: 'Released on' })).toBeTruthy();
     expect(within(table).queryByRole('columnheader', { name: 'Placed by' })).toBeNull();
