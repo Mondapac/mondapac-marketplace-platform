@@ -26,6 +26,7 @@ const EXCLUDED = [
   '/reset-password',
   '/accept-invitation',
   '/session-ended',
+  '/sign-out',
   '/api',
   '/_next',
 ];
@@ -44,9 +45,14 @@ export function safeReturnTo(raw: unknown): string | null {
   }
   if (url.origin !== BASE) return null;
   const path = url.pathname;
-  if (path === '/') return null;
+  // Dot segments are resolved but empty ones kept: "/.//evil.com" becomes "//evil.com", which a
+  // browser reads as another host (Hassan, PR 1282). The result is checked again, not only the input.
+  if (path === '/' || path.startsWith('//') || path.includes('\\')) return null;
   if (EXCLUDED.some((prefix) => path === prefix || path.startsWith(`${prefix}/`))) return null;
-  return `${path}${url.search}`;
+  // Next's own flight marker is never part of a page address.
+  url.searchParams.delete('_rsc');
+  const target = `${path}${url.search}`;
+  return target.startsWith('//') ? null : target;
 }
 
 /** `base` with `?next=` (or `&next=`) for a safe return path; `base` unchanged otherwise. */

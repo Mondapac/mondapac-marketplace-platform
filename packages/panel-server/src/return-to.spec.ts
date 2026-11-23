@@ -30,8 +30,17 @@ describe('safeReturnTo', () => {
     ['next internals', '/_next/static/x.js'],
     ['dot segments out to sign-in', '/orders/../sign-in'],
     ['reset password', '/reset-password'],
+    ['dot segment then empty segment', '/.//evil.com'],
+    ['parent segment then empty segment', '/a/..//evil.com'],
+    ['encoded parent segment then empty segment', '/x/%2e%2e//evil.com'],
+    ['several dot segments', '/././/evil.com/x?y=1'],
   ])('drops %s', (_name, raw) => {
     expect(safeReturnTo(raw)).toBeNull();
+  });
+
+  it('drops the flight marker of a client navigation', () => {
+    expect(safeReturnTo('/orders?_rsc=abc12&view=late')).toBe('/orders?view=late');
+    expect(safeReturnTo('/orders?_rsc=abc12')).toBe('/orders');
   });
 
   it('does not treat a path that only starts like an excluded one as excluded', () => {
