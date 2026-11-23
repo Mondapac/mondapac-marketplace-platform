@@ -317,7 +317,7 @@ export function SearchSelect(props: SearchSelectProps) {
             placeholder={labels.search}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onKeyDown}
-            className="h-(--mp-size-control) min-w-0 flex-1 bg-transparent text-fg focus-visible:-outline-offset-2"
+            className="h-(--mp-size-control) min-w-0 flex-1 bg-transparent text-fg focus-visible:outline-none"
           />
         </div>
       ) : null}
