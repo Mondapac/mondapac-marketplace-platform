@@ -1,6 +1,7 @@
 import 'server-only';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
+import { cache } from 'react';
 import { serverGet } from './server-fetch.ts';
 
 export interface AdminSession {
@@ -29,13 +30,13 @@ export type SessionRead =
 /**
  * Reads the actor summary for the page being rendered, with the same mapping and header code as
  * the relay (ADR-0034 decision 4). It never sets a cookie: a rejected session is cleared through
- * the relay by `/session-ended`.
+ * the relay by `/session-ended`. One read per request: the `(shell)` layout and the page share it.
  */
-export async function readSession(): Promise<SessionRead> {
+export const readSession = cache(async (): Promise<SessionRead> => {
   const read = await serverGet<AdminSession>('identity/admin/session');
   if (read.kind === 'ok') return { kind: 'signed-in', session: read.body };
   return read.kind === 'signed-out' ? { kind: 'signed-out' } : { kind: 'unavailable' };
-}
+});
 
 /**
  * The session for a page that needs one: signed-out visitors are sent to sign-in (through
