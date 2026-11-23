@@ -3,7 +3,8 @@
 // claim vocabulary of the AU Market (halal, kosher, vegan and organic with their terms), because
 // catalog refuses every product text, category name and attribute name while a Market has no
 // published certification type (fail closed, certification design 8.1). Run it after
-// `pnpm db:migrate` and before the worker starts, so the catalog seed jobs can run.
+// `pnpm db:migrate`; the operational test data loader (scripts/ops-data) runs it once the worker's
+// certification seed job has written the codes of config/certification-seed.
 //
 //   node scripts/demo-seed/claim-vocabulary.mjs
 //

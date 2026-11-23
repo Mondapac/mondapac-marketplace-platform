@@ -40,9 +40,9 @@ The seed is idempotent: a second run changes nothing. To start over, wipe the da
   issuers, certificates or documents yet) in a database marked by `scripts/ops-data/mark-database.mjs`;
   otherwise it stops with nothing changed, and the test database is reset instead. Restart the API
   afterwards if it caches the published types. The worker's `certification.seed-certification-types`
-  job writes the codes of `config/certification-seed/<Market>.json` at start, often at the same
-  moment; the script claims each code with `INSERT ... ON CONFLICT DO NOTHING`, so a type that the
-  job wrote first is left as it is (no duplicate-key failure).
+  job writes the codes of `config/certification-seed/<Market>.json` at start; the loader waits for
+  it, and the script also claims each code with `INSERT ... ON CONFLICT DO NOTHING`, so a type that
+  the job wrote first is left as it is (no duplicate-key failure when it runs on its own).
 - The AU starter categories and attributes are `config/catalog-seed/AU.json` (loaded by the
   catalog seed jobs at worker start), until slice 21.
 
