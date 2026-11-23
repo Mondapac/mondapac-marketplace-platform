@@ -18,21 +18,25 @@ function giveFocusBack(element: HTMLElement | null, dialog: HTMLDialogElement | 
 /** How many modals hold the page still; the lock is lifted when the last one lets go. */
 let scrollLocks = 0;
 let savedOverflow = '';
-let savedGutter = '';
+let savedPadding = '';
+let paddingSide: 'paddingLeft' | 'paddingRight' = 'paddingRight';
 
 /**
  * Stops the page behind a modal from scrolling. A native `<dialog>` made modal makes the page
  * inert but does not freeze its scroll, so the page's own scrollbar stayed beside the sheet's and
- * its list's (three bars side by side). When the page had a bar, its width stays reserved
- * (`scrollbar-gutter: stable`) so the page does not shift sideways. Counted, so a dialog opened
+ * its list's (three bars side by side). When the page had a bar, its width is given back as
+ * padding on the root so the page behind the dim does not jump sideways, while the sheet itself
+ * stays flush with the screen edge (a reserved gutter would leave a blank strip beside it). Counted, so a dialog opened
  * over a sheet does not unlock the page when it closes. Returns the release function.
  */
 function lockPageScroll(): () => void {
   const root = document.documentElement;
   if (scrollLocks === 0) {
     savedOverflow = root.style.overflow;
-    savedGutter = root.style.scrollbarGutter;
-    if (window.innerWidth > root.clientWidth) root.style.scrollbarGutter = 'stable';
+    const bar = window.innerWidth - root.clientWidth;
+    paddingSide = getComputedStyle(root).direction === 'rtl' ? 'paddingLeft' : 'paddingRight';
+    savedPadding = root.style[paddingSide];
+    if (bar > 0) root.style[paddingSide] = `${bar}px`;
     root.style.overflow = 'hidden';
   }
   scrollLocks += 1;
@@ -43,7 +47,7 @@ function lockPageScroll(): () => void {
     scrollLocks -= 1;
     if (scrollLocks === 0) {
       root.style.overflow = savedOverflow;
-      root.style.scrollbarGutter = savedGutter;
+      root.style[paddingSide] = savedPadding;
     }
   };
 }
