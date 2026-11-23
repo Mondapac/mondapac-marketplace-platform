@@ -12,6 +12,7 @@ import {
 } from 'react';
 import { Button } from '../form/button.tsx';
 import { toast } from '../feedback/toast-store.ts';
+import { TopbarIconButton } from '../shell/topbar-icon-button.tsx';
 import { Icon } from '../icon/icon.tsx';
 import { Dialog } from '../overlay/dialog.tsx';
 import { CommandPalette, Kbd, type CommandPaletteLabels } from './command-palette.tsx';
@@ -446,26 +447,21 @@ function ShortcutsDialog({
   );
 }
 
-/** The top bar's search control: opens the palette, and shows the shortcut where there is a keyboard. */
+/** The top bar's search control: a round icon that opens the palette; its tooltip names the shortcut. */
 export function PaletteSearchButton() {
   const tools = usePanelTools();
   const modifier = useModifierLabel();
   if (tools === null) return null;
   return (
-    <button
-      type="button"
-      aria-label={tools.labels.search}
+    <TopbarIconButton
+      label={tools.labels.search}
+      hint={<span className="font-normal opacity-75">{`${modifier} K`}</span>}
       aria-haspopup="dialog"
+      aria-keyshortcuts={modifier === '⌘' ? 'Meta+K' : 'Control+K'}
       onClick={(event) => tools.openPalette(event.currentTarget)}
-      className="flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-md border-line-control px-3 text-fg-secondary hover:bg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-focus md:min-h-10 md:border md:bg-subtle"
     >
       <Icon name="search" />
-      <span className="hidden md:inline">{tools.labels.search}</span>
-      <span className="hidden items-center gap-1 lg:flex">
-        <Kbd>{modifier}</Kbd>
-        <Kbd>K</Kbd>
-      </span>
-    </button>
+    </TopbarIconButton>
   );
 }
 
@@ -474,16 +470,15 @@ export function ShortcutsButton() {
   const tools = usePanelTools();
   if (tools === null) return null;
   return (
-    <button
-      type="button"
-      aria-label={tools.labels.shortcuts.title}
-      aria-haspopup="dialog"
-      title={tools.labels.shortcuts.title}
-      onClick={(event) => tools.openHelp(event.currentTarget)}
-      className="hidden min-h-11 min-w-11 items-center justify-center rounded-md text-icon hover:bg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-focus md:flex"
-    >
-      <Icon name="keyboard" />
-    </button>
+    <span className="hidden md:inline-flex">
+      <TopbarIconButton
+        label={tools.labels.shortcuts.title}
+        aria-haspopup="dialog"
+        onClick={(event) => tools.openHelp(event.currentTarget)}
+      >
+        <Icon name="keyboard" />
+      </TopbarIconButton>
+    </span>
   );
 }
 
@@ -507,16 +502,15 @@ export function PinButton() {
   const pinned = tools.isPinned(page.id);
   const name = tools.labels.pin.pin.replace('{page}', page.label);
   return (
-    <button
-      type="button"
+    <TopbarIconButton
+      label={name}
       aria-pressed={pinned}
-      aria-label={name}
-      title={name}
+      pressedFill={false}
+      className={pinned ? 'text-attention-solid! hover:text-attention-solid!' : ''}
       onClick={() => tools.toggle(page.id)}
-      className={`flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-md hover:bg-muted focus-visible:outline-2 focus-visible:outline-focus ${pinned ? 'text-attention-solid' : 'text-icon'}`}
     >
       <Icon name="star" className={pinned ? 'fill-current' : ''} />
-    </button>
+    </TopbarIconButton>
   );
 }
 

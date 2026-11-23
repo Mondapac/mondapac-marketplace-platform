@@ -140,6 +140,9 @@ export async function SellerShell({
               titleAction={<PinButton />}
               actions={
                 <>
+                  <span className="hidden md:inline-flex">
+                    <PinButton />
+                  </span>
                   <SellerHelpButton />
                   <ShortcutsButton />
                   <PaletteSearchButton />

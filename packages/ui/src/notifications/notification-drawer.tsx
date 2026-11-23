@@ -4,6 +4,7 @@ import { useId, useRef, type MouseEvent, type ReactNode } from 'react';
 import { Badge, type BadgeTone } from '../form/badge.tsx';
 import { Button } from '../form/button.tsx';
 import { EmptyState } from '../form/empty-state.tsx';
+import { TopbarIconButton } from '../shell/topbar-icon-button.tsx';
 import { Icon, type IconName } from '../icon/icon.tsx';
 import { useModal } from '../overlay/dialog.tsx';
 import { initials } from '../shell/account-menu.tsx';
@@ -64,24 +65,24 @@ export interface NotificationBellProps {
 export function NotificationBell({ unread, expanded, onClick, label }: NotificationBellProps) {
   const count = badgeCount(unread);
   return (
-    <button
-      type="button"
-      aria-label={label}
+    <TopbarIconButton
+      label={label}
       aria-haspopup="dialog"
       aria-expanded={expanded}
       onClick={onClick}
-      className="relative flex size-(--mp-size-control) items-center justify-center rounded-full text-icon hover:bg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-focus"
+      badge={
+        count === '' ? null : (
+          <span
+            aria-hidden="true"
+            className="absolute -end-0.5 -top-0.5 flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-critical-solid px-1 text-[10.5px] font-bold leading-none text-on-accent ring-2 ring-surface"
+          >
+            {count}
+          </span>
+        )
+      }
     >
       <Icon name="bell" />
-      {count === '' ? null : (
-        <span
-          aria-hidden="true"
-          className="absolute start-1/2 top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-critical-solid px-1 text-xs font-semibold leading-none text-on-accent ring-2 ring-surface"
-        >
-          {count}
-        </span>
-      )}
-    </button>
+    </TopbarIconButton>
   );
 }
 
