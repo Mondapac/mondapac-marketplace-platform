@@ -210,7 +210,7 @@ function Applications({ data }: { readonly data: AdminDashboardSources }) {
 
 function useHoldColumns(): ActivityColumn<PriceHoldRow>[] {
   const t = useTranslations('dashboard');
-  const tp = useTranslations('pricing.holds');
+  const tp = useTranslations('pricing.holds.list');
   const locale = useLocale();
   return [
     {
