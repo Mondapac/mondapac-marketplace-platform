@@ -53,4 +53,28 @@ describe('serverGet', () => {
     mocks.fetch.mockResolvedValue(new Response('{}', { status: 403 }));
     await expect(serverGet('x')).resolves.toEqual({ kind: 'forbidden' });
   });
+
+  it('sets no deadline unless one is asked for', async () => {
+    await serverGet('x');
+    const [, init] = mocks.fetch.mock.calls[0] as [string, RequestInit];
+    expect(init.signal).toBeUndefined();
+  });
+
+  it('answers unavailable when the API does not answer within the deadline', async () => {
+    // A fetch that only ends when its signal aborts, as a hung API would.
+    mocks.fetch.mockImplementation(
+      (_url: string, init: RequestInit) =>
+        new Promise((_resolve, reject) => {
+          init.signal?.addEventListener('abort', () => reject(init.signal?.reason as Error));
+        }),
+    );
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    await expect(serverGet('identity/x/session', { timeoutMs: 20 })).resolves.toEqual({
+      kind: 'unavailable',
+    });
+    expect(log).toHaveBeenCalledWith(
+      JSON.stringify({ msg: 'panel.server-get.timeout', path: 'identity/x/session' }),
+    );
+    log.mockRestore();
+  });
 });

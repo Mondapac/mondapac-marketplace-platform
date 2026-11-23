@@ -18,6 +18,7 @@ vi.mock('next/headers', () => ({ cookies: mocks.cookies }));
 vi.mock('next/navigation', () => ({ redirect: mocks.redirect }));
 
 import ShellLayout from '../../app/(shell)/layout.tsx';
+import { SESSION_READ_TIMEOUT_MS } from './session.ts';
 
 const jar = (names: string[]) => ({ getAll: () => names.map((name) => ({ name, value: 'x' })) });
 
@@ -42,6 +43,14 @@ describe('(shell) layout', () => {
     mocks.serverGet.mockResolvedValue({ kind: 'ok', body: { accountId: 'a' } });
     await expect(ShellLayout({ children: 'panel' })).resolves.toBe('panel');
     expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
+  it('reads the session with a deadline, so a hung API cannot leave a blank tab', async () => {
+    mocks.serverGet.mockResolvedValue({ kind: 'ok', body: { accountId: 'a' } });
+    await ShellLayout({ children: 'panel' });
+    expect(mocks.serverGet).toHaveBeenCalledWith('identity/seller/session', {
+      timeoutMs: SESSION_READ_TIMEOUT_MS,
+    });
   });
 
   it('lets the page show its own error when the session cannot be read', async () => {
