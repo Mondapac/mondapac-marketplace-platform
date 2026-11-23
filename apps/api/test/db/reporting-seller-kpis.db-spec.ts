@@ -70,6 +70,7 @@ describe.each(TEST_MARKETS)('the seller KPI reader in market %s (database)', (co
       shippedAt: null,
       shippedOnTime: null,
       deliveredAt: null,
+      delivery: { method: 'instant' as const, state: null },
     };
     return within(target, () =>
       recorder.recordSellerOrder(target, order, [

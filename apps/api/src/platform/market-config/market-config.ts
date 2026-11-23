@@ -9,6 +9,7 @@ import {
 } from '@mondapac/shared-kernel';
 import type { MarketId, Population } from '@mondapac/shared-kernel';
 import { z } from 'zod';
+import { postcodeRegionsSchema } from './postcode-regions';
 
 const CURRENCIES = new Set(Intl.supportedValuesOf('currency'));
 const TIME_ZONES = new Set(Intl.supportedValuesOf('timeZone'));
@@ -1433,6 +1434,12 @@ const fleetSchema = z
 
 const shippingSchema = z.strictObject({
   /**
+   * The region (state) of each postcode, as ranges per region code (dashboards v2, phase 1): how
+   * shipping tells reporting the state of a drop-off or of a seller's pickup without the postcode
+   * leaving shipping. Absent: every state is unknown. See `postcode-regions.ts`.
+   */
+  postcodeRegions: postcodeRegionsSchema.optional(),
+  /**
    * The most the platform absorbs, in minor units of the Market currency, when the router books a
    * different fleet than the one the buyer was quoted and charged, and that fleet costs more
    * (delivery models, package 5). The buyer is never charged more after payment; a difference above
@@ -2172,6 +2179,21 @@ const marketSchema = z
     path: ['supportedLocales'],
   })
   .superRefine(checkOriginsAgainstLinkTargets)
+  .superRefine((market, context) => {
+    // A postcode's region must be one the Market's customer addresses know.
+    const table = market.shipping?.postcodeRegions;
+    const regions = market.customers?.address?.regions;
+    if (table === undefined || regions === undefined) return;
+    for (const region of Object.keys(table)) {
+      if (!regions.includes(region)) {
+        context.addIssue({
+          code: 'custom',
+          message: `shipping.postcodeRegions names ${region}, which is not in customers.address.regions`,
+          path: ['shipping', 'postcodeRegions', region],
+        });
+      }
+    }
+  })
   .superRefine((market, context) => {
     // A transfer limit in another currency than the Market's would cap the wrong money.
     const payments = market.payments;

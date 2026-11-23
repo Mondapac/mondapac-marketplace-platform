@@ -41,6 +41,14 @@ model ReportingSellerOrder {
   shippedOnTime     Boolean?  @map("shipped_on_time")
   deliveredAt       DateTime? @map("delivered_at") @db.Timestamptz(6)
   deliveredDay      DateTime? @map("delivered_day") @db.Date
+  /// The buyer's delivery method (pickup | instant | same_day | scheduled, CHECK), as ordering
+  /// reports it; null only on a row recorded before the column, until the backfill's delivery pass.
+  /// An attribute, not a rollup key.
+  deliveryMethod    String?   @map("delivery_method") @db.VarChar(16)
+  /// The region (state) code of the delivery: the drop-off postcode's region for a delivery, the
+  /// store's region for a pickup, as shipping derives it from the Market's `postcodeRegions`
+  /// (1 to 3 capital letters or digits, CHECK). Null when unknown. Never the postcode itself.
+  deliveryState     String?   @map("delivery_state") @db.VarChar(3)
   recordedAt        DateTime  @map("recorded_at") @db.Timestamptz(6)
   updatedAt         DateTime  @map("updated_at") @db.Timestamptz(6)
 

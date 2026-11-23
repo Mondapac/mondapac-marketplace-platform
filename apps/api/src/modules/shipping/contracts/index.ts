@@ -55,3 +55,10 @@ export {
   type ShippingFacade,
   type ShippingFailure,
 } from './shipping.facade';
+export {
+  MAX_REPORT_REGIONS,
+  SHIPPING_REPORTING_FACADE,
+  type DeliveryRegions,
+  type ShippingReportingFacade,
+  type ShippingReportingFailure,
+} from './shipping-reporting.facade';

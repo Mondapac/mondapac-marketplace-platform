@@ -348,6 +348,14 @@ export class MemoryDeliveryQuotes implements DeliveryQuoteRepository {
   findById(m: MarketContext, id: Id<'DeliveryQuote'>) {
     return Promise.resolve(this.rows.get(`${m.marketId}|${id}`) ?? null);
   }
+  dropoffPostcodesOf(m: MarketContext, ids: readonly Id<'DeliveryQuote'>[]) {
+    const found = new Map<Id<'DeliveryQuote'>, string>();
+    for (const id of ids) {
+      const quote = this.rows.get(`${m.marketId}|${id}`);
+      if (quote !== undefined) found.set(id, quote.dropoffPostcode);
+    }
+    return Promise.resolve(found);
+  }
   findFresh(m: MarketContext, scope: QuoteScope, now: Temporal.Instant) {
     const found = [...this.rows.entries()]
       .filter(([key, quote]) => key.startsWith(`${m.marketId}|`) && matchesScope(quote, scope))

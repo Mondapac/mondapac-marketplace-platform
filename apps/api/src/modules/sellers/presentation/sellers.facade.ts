@@ -14,7 +14,10 @@ import type { AllowedProductTypesSystem } from '../application/use-cases/allowed
 import type { AllowedProductTypes } from '../application/use-cases/allowed-product-types.use-case';
 import type { CarrierPickupRead } from '../application/use-cases/carrier-pickup.use-case';
 import type { OperatingZones } from '../application/use-cases/operating-zones.use-case';
-import type { PickupPostcodes } from '../application/use-cases/pickup-postcodes.use-case';
+import type {
+  PickupPostcodes,
+  PickupPostcodesSystem,
+} from '../application/use-cases/pickup-postcodes.use-case';
 import type { PublishedStoreSellerId } from '../application/use-cases/published-store-seller-id.use-case';
 import type { PublishedStoreCards } from '../application/use-cases/published-store-cards.use-case';
 import type { PublishedStoreSlugs } from '../application/use-cases/published-store-slugs.use-case';
@@ -73,6 +76,7 @@ export interface SellersFacadeUseCases {
   readonly publishedStoreRead: PublishedStoreRead;
   readonly carrierPickup: CarrierPickupRead;
   readonly pickupPostcodes: PickupPostcodes;
+  readonly pickupPostcodesSystem: PickupPostcodesSystem;
   readonly operatingZones: OperatingZones;
   readonly applySignupCultures: ApplySignupCultures;
   readonly cultureApprovedMembers: CultureApprovedMembers;
@@ -268,7 +272,11 @@ export class SellersFacadeImplementation implements SellersFacade {
       AccessDenied | SellersValidationFailed | SellersUnavailable
     >
   > {
-    return this.useCases.pickupPostcodes.execute(context, { sellerIds });
+    const useCase =
+      context.actor.kind === 'system'
+        ? this.useCases.pickupPostcodesSystem
+        : this.useCases.pickupPostcodes;
+    return useCase.execute(context, { sellerIds });
   }
 
   operatingZones(

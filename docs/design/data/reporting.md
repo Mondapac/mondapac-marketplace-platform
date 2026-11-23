@@ -14,6 +14,12 @@ notes: `docs/modules/reporting/notes.md`.
 | `daily_category_sales` | `(market_id, market_day, seller_id, category_id, currency)` | one per seller, category and day with sales | about 2 × `daily_seller_sales` |
 | `inbox` | `(event_id, handler)` | one per consumed event and handler | about 5 per seller order (500k) |
 
+`seller_orders` also holds `delivery_method` and `delivery_state` (a region code of at most 3
+characters, never a postcode; migration `20261123120000_reporting_seller_orders_delivery`): nullable
+attributes added without a default (catalog-only change, CHECKs added NOT VALID then validated), not
+rollup keys, with no index until a read needs one (the orders-by-state card of phase 2 reads a range
+of paid days already served by `(market_id, paid_day, seller_id)`).
+
 All rows are small (under 200 bytes), so even 10x this volume stays under a few GB with indexes.
 
 ## Access paths
@@ -28,7 +34,7 @@ All rows are small (under 200 bytes), so even 10x this volume stays under a few 
 ## Retention and later work
 
 - The rollups and facts are derived data: kept as long as the dashboards show history, rebuilt by
-  the backfill if lost. No personal data is stored (no customer, account or address id).
+  the backfill if lost. No personal data is stored (no customer, account or address id, no postcode; the delivery state is a region code only).
 - `inbox` rows have no purge yet, the same as the other modules' inboxes; the shared inbox
   retention, when it is added, covers this one too.
 - Revisit partitioning `sales_entries` and the rollups by `market_day` when a table passes about

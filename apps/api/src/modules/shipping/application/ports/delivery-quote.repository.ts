@@ -11,6 +11,15 @@ export interface DeliveryQuoteRepository {
   /** A quote by id, whoever it was made for (the caller checks the scope). */
   findById(market: MarketContext, id: Id<'DeliveryQuote'>): Promise<DeliveryQuote | null>;
 
+  /**
+   * The drop-off postcode of each quote of `ids` (at most 100), for the region reporting reads.
+   * An unknown id or another Market's quote is absent. The postcode stays in shipping.
+   */
+  dropoffPostcodesOf(
+    market: MarketContext,
+    ids: readonly Id<'DeliveryQuote'>[],
+  ): Promise<ReadonlyMap<Id<'DeliveryQuote'>, string>>;
+
   /** The newest quote of the scope that still holds at `now`, or null. */
   findFresh(
     market: MarketContext,

@@ -6,8 +6,11 @@ import { TEST_MARKETS } from '../../../../test/support/test-config';
 import type { EventDelivery } from '../../../platform/events/event-delivery';
 import type { UnitOfWork, UnitOfWorkOptions } from '../../../platform/unit-of-work/unit-of-work';
 import type { RefundReportFacts, SellerOrderReportFacts } from '../../ordering';
-import { UNKNOWN_CATEGORY } from '../domain/facts';
-import { refundSource, sellerOrderSource } from './facade-report-sources';
+import { UNKNOWN_CATEGORY, UNKNOWN_DELIVERY } from '../domain/facts';
+import type { CatalogFacade } from '../../catalog';
+import type { OrderingReportingFacade } from '../../ordering';
+import type { ShippingReportingFacade } from '../../shipping';
+import { FacadeReportSources, refundSource, sellerOrderSource } from './facade-report-sources';
 import type { FactRecorder } from '../application/fact-recorder';
 import type { ReportSources, SellerOrderSource } from '../application/ports/report-sources';
 import { TransactionConflictError } from '../../../platform/unit-of-work/errors';
@@ -44,6 +47,8 @@ describe.each(TEST_MARKETS)('reporting event worker in market %s', (code) => {
     shippedAt: null,
     shippedOnTime: null,
     deliveredAt: null,
+    deliveryMethod: 'instant',
+    deliveryQuoteId: null,
   });
 
   const setup = (sources: Partial<ReportSources>) => {
@@ -81,7 +86,11 @@ describe.each(TEST_MARKETS)('reporting event worker in market %s', (code) => {
     const { deps, batches, options } = setup({
       sellerOrders: () =>
         Promise.resolve(
-          ok([fact(1, T0), fact(2, null)].map((f) => sellerOrderSource(f, new Map()))),
+          ok(
+            [fact(1, T0), fact(2, null)].map((f) =>
+              sellerOrderSource(f, new Map(), UNKNOWN_DELIVERY),
+            ),
+          ),
         ),
     });
     const request = { sellerOrders: [{ orderId: id(1), sellerOrderId: null }], refundIds: [] };
@@ -122,7 +131,7 @@ describe.each(TEST_MARKETS)('reporting event worker in market %s', (code) => {
         { offerId: id<'Offer'>(8), quantity: 3, goods: { amount: 3300n, tax: 300n } },
       ],
     };
-    const source = sellerOrderSource(order, new Map([[known, category]]));
+    const source = sellerOrderSource(order, new Map([[known, category]]), UNKNOWN_DELIVERY);
     expect(source.order.goods).toEqual({ amount: 4400n, tax: 400n });
     expect(source.order.units).toBe(4);
     expect(source.goods.map((g) => g.categoryId)).toEqual([category, UNKNOWN_CATEGORY]);
@@ -143,6 +152,47 @@ describe.each(TEST_MARKETS)('reporting event worker in market %s', (code) => {
       { categoryId: category, goods: { amount: 1100n, tax: 100n }, units: 1 },
       { categoryId: UNKNOWN_CATEGORY, goods: { amount: 1100n, tax: 100n }, units: 0 },
     ]);
+  });
+
+  it('asks shipping for the region of each delivery and pickup, in region codes only', async () => {
+    const [north, south] = code === 'AU' ? ['QLD', 'VIC'] : ['ZA', 'ZB'];
+    const quoted = {
+      ...fact(11, T0),
+      deliveryMethod: 'same_day' as const,
+      deliveryQuoteId: id(70),
+    };
+    const pickup = { ...fact(12, T0), deliveryMethod: 'pickup' as const };
+    const legacy = { ...fact(13, T0), deliveryMethod: 'scheduled' as const };
+    const asked: unknown[] = [];
+    const shipping: ShippingReportingFacade = {
+      deliveryRegions: (_context, request) => {
+        asked.push(request);
+        return Promise.resolve(
+          ok({ quotes: new Map([[id(70), north]]), pickups: new Map([[id<'Seller'>(1), south]]) }),
+        );
+      },
+    };
+    const ordering = {
+      sellerOrderReportFacts: () => Promise.resolve(ok([quoted, pickup, legacy])),
+    } as unknown as OrderingReportingFacade;
+    const catalog = {
+      offerPrimaryCategories: () => Promise.resolve(ok(new Map())),
+    } as unknown as CatalogFacade;
+    const sources = new FacadeReportSources(ordering, catalog, shipping);
+    const read = await sources.sellerOrders(context, [{ orderId: id(11), sellerOrderId: null }]);
+    expect(read.ok && read.value.map((source) => source.order.delivery)).toEqual([
+      { method: 'same_day', state: north },
+      { method: 'pickup', state: south },
+      // Placed before quotes were kept: the state is unknown.
+      { method: 'scheduled', state: null },
+    ]);
+    expect(asked).toEqual([{ quoteIds: [id(70)], pickupSellerIds: [id(1)] }]);
+
+    const down = new FacadeReportSources(ordering, catalog, {
+      deliveryRegions: () => Promise.resolve(err({ code: 'shipping.unavailable' })),
+    });
+    const failed = await down.sellerOrders(context, [{ orderId: id(11), sellerOrderId: null }]);
+    expect(!failed.ok && failed.error.code).toBe('reporting.source-unavailable');
   });
 
   it('reconciles the last seven days', () => {

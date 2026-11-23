@@ -71,6 +71,15 @@ export class PrismaDeliveryQuoteRepository implements DeliveryQuoteRepository {
     });
   }
 
+  async dropoffPostcodesOf(market: MarketContext, ids: readonly Id<'DeliveryQuote'>[]) {
+    if (ids.length === 0) return new Map<Id<'DeliveryQuote'>, string>();
+    const rows = await this.prisma.tx(market).shippingDeliveryQuote.findMany({
+      where: { marketId: market.marketId, id: { in: [...ids] } },
+      select: { id: true, dropoffPostcode: true },
+    });
+    return new Map(rows.map((row) => [row.id as Id<'DeliveryQuote'>, row.dropoffPostcode]));
+  }
+
   async findById(market: MarketContext, id: Id<'DeliveryQuote'>) {
     const row = await this.prisma
       .tx(market)

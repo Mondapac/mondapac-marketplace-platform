@@ -6,7 +6,7 @@ import type {
   BackfillProgressStore,
   BackfillStep,
 } from '../application/ports/backfill-progress-store';
-import { FACT_KINDS } from '../application/report-facts-sync';
+import { BACKFILL_KINDS } from '../application/report-facts-sync';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
@@ -22,7 +22,7 @@ interface ProgressRow {
 }
 
 const toProgress = (row: ProgressRow): BackfillProgress => {
-  const kind = FACT_KINDS.find((known) => known === row.kind);
+  const kind = BACKFILL_KINDS.find((known) => known === row.kind);
   if (kind === undefined) throw new Error(`reporting.backfill_progress: unknown kind ${row.kind}`);
   return {
     kind,
@@ -52,13 +52,13 @@ export class PrismaBackfillProgressStore implements BackfillProgressStore {
     const read = async () =>
       (await client.reportingBackfillProgress.findMany({ where: { marketId: market.marketId } }))
         .map(toProgress)
-        .sort((a, b) => FACT_KINDS.indexOf(a.kind) - FACT_KINDS.indexOf(b.kind));
+        .sort((a, b) => BACKFILL_KINDS.indexOf(a.kind) - BACKFILL_KINDS.indexOf(b.kind));
     const stored = await read();
-    if (stored.length === FACT_KINDS.length) return stored;
+    if (stored.length === BACKFILL_KINDS.length) return stored;
     const now = toDate(this.now());
     // `ON CONFLICT DO NOTHING`: a concurrent or earlier start keeps its own `until`.
     await client.reportingBackfillProgress.createMany({
-      data: FACT_KINDS.map((kind) => ({
+      data: BACKFILL_KINDS.map((kind) => ({
         marketId: market.marketId,
         tenantId: market.tenantId,
         kind,
@@ -73,7 +73,7 @@ export class PrismaBackfillProgressStore implements BackfillProgressStore {
       skipDuplicates: true,
     });
     const started = await read();
-    if (started.length !== FACT_KINDS.length) {
+    if (started.length !== BACKFILL_KINDS.length) {
       throw new Error('reporting.backfill_progress: rows not written');
     }
     return started;

@@ -29,6 +29,13 @@ export interface ShippingPolicy {
   quoteBounds(
     market: MarketContext,
   ): { readonly minMinor: number; readonly maxMinor: number } | null;
+
+  /**
+   * The region (state) code of the postcode, from the Market's `shipping.postcodeRegions`
+   * (dashboards v2): 1 to 3 capital letters or digits, or null when no range holds it or the
+   * Market has no table. Only this code leaves shipping, never the postcode.
+   */
+  regionOfPostcode(market: MarketContext, postcode: string): string | null;
 }
 
 export const SHIPPING_POLICY = Symbol('SHIPPING_POLICY');

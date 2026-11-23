@@ -920,6 +920,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'cancelled_day',
         'delivered_at',
         'delivered_day',
+        'delivery_method',
+        'delivery_state',
         'goods_amount',
         'goods_tax_amount',
         'paid_at',
