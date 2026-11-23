@@ -241,4 +241,59 @@ describe('CategoryChooser', () => {
     expect(onValue).toHaveBeenLastCalledWith(['zz-leaf']);
     expect(screen.getByRole('button', { name: 'Remove Zorbia › Plinkus › Quuxen' })).toBeTruthy();
   });
+
+  describe('sameBranch', () => {
+    const branchLabels: CategoryChooserLabels = {
+      ...labels,
+      sameBranchHint: 'Other categories must be in the same department as the primary one.',
+      droppedOthers: (count) => `${count} dropped.`,
+    };
+
+    it('offers only the primary department and shows the hint', async () => {
+      render(<Harness sameBranch labels={branchLabels} initial={['basmati']} />);
+      expect(screen.getByText(branchLabels.sameBranchHint as string)).toBeTruthy();
+      open();
+      expect(await screen.findByRole('option', { name: /^Pantry › Oils/ })).toBeTruthy();
+      expect(screen.queryByRole('option', { name: /^Drinks/ })).toBeNull();
+    });
+
+    it('drops others and announces it when Make primary or Remove changes the department', () => {
+      const seen = vi.fn();
+      render(
+        <Harness
+          sameBranch
+          labels={branchLabels}
+          initial={['basmati', 'oils', 'tea']}
+          onValue={seen}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Remove Pantry › Rice › Basmati' }));
+      // oils is next primary; tea (Drinks) is dropped
+      expect(seen).toHaveBeenLastCalledWith(['oils']);
+      expect(screen.getByRole('status').textContent).toContain('1 dropped.');
+    });
+
+    it('drops on Make primary into another department', () => {
+      const seen = vi.fn();
+      render(
+        <Harness
+          sameBranch
+          labels={branchLabels}
+          initial={['basmati', 'oils', 'tea']}
+          onValue={seen}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Make primary: Drinks › Tea' }));
+      expect(seen).toHaveBeenLastCalledWith(['tea']);
+      expect(screen.getByRole('status').textContent).toContain('2 dropped.');
+    });
+
+    it('stays unrestricted without the prop (admin)', () => {
+      const seen = vi.fn();
+      render(<Harness initial={['basmati', 'tea']} onValue={seen} />);
+      expect(screen.queryByText(/same department/)).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Make primary: Drinks › Tea' }));
+      expect(seen).toHaveBeenLastCalledWith(['tea', 'basmati']);
+    });
+  });
 });

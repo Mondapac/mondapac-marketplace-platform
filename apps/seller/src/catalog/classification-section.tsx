@@ -70,6 +70,8 @@ export function ClassificationSection({
     added: (name) => t('categories-added', { name }),
     removed: (name) => t('categories-removed', { name }),
     madePrimary: (name) => t('categories-made-primary', { name }),
+    sameBranchHint: t('categories-same-branch-hint'),
+    droppedOthers: (count) => t('categories-dropped-others', { count }),
   };
   // Before the picker is read, a chosen category is named by its path from the form's own list.
   const nameOf = (id: string) => {
@@ -106,6 +108,7 @@ export function ClassificationSection({
           ]),
         )}
         announcement={announcement}
+        sameBranch
         onChange={(ids) => {
           const added = ids.find((id) => !categoryIds.includes(id));
           const removed = categoryIds.find((id) => !ids.includes(id));

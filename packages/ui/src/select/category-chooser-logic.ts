@@ -67,3 +67,44 @@ export function addCategory(
   if (ids.includes(id) || ids.length >= max) return [...ids];
   return [...ids, id];
 }
+
+/** The department (level 1 name) of a choice; null when its path is unknown. */
+export function departmentOfChoice(choice: CategoryChoice | undefined): string | null {
+  return choice?.path[0] ?? null;
+}
+
+/**
+ * Same-branch rule of a seller's product: the choices an Add control may offer. Without a primary
+ * (or one the picker does not describe) nothing is restricted.
+ */
+export function choicesInBranch(
+  choices: readonly CategoryChoice[],
+  ids: readonly string[],
+): readonly CategoryChoice[] {
+  const primary = ids[0];
+  const department =
+    primary === undefined ? null : departmentOfChoice(choices.find((c) => c.id === primary));
+  return department === null
+    ? choices
+    : choices.filter((choice) => departmentOfChoice(choice) === department);
+}
+
+/**
+ * Drops the non-primary ids that are known to sit in another department than the primary. A
+ * chosen id the picker does not describe is kept (the API still checks it at submit).
+ */
+export function dropOutOfBranch(
+  ids: readonly string[],
+  choices: readonly CategoryChoice[],
+): { readonly ids: string[]; readonly dropped: number } {
+  const byId = new Map(choices.map((choice) => [choice.id, choice]));
+  const primary = ids[0];
+  const department = primary === undefined ? null : departmentOfChoice(byId.get(primary));
+  if (primary === undefined || department === null) return { ids: [...ids], dropped: 0 };
+  const kept = ids.filter((id, index) => {
+    if (index === 0) return true;
+    const other = departmentOfChoice(byId.get(id));
+    return other === null || other === department;
+  });
+  return { ids: kept, dropped: ids.length - kept.length };
+}

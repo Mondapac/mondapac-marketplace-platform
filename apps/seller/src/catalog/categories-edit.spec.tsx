@@ -147,22 +147,26 @@ describe('the category field of the seller product form', () => {
     expect(call).toHaveBeenCalledTimes(2);
   });
 
-  it('adds up to three, makes one primary, and saves them in that order', async () => {
+  it('adds up to three in one department, makes one primary, and saves them in that order', async () => {
     call.mockImplementation((method) => Promise.resolve(method === 'GET' ? picker() : saved));
     mount();
     await add(/^Pantry › Oils/);
-    await add(/^Drinks › Tea/);
-    await add(/^Pantry › Rice › General/);
+    fireEvent.click(screen.getByRole('combobox', { name: 'Add a category' }));
+    expect(await screen.findByRole('option', { name: /^Pantry › Rice › General/ })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: /^Drinks › Tea/ })).toBeNull();
+    fireEvent.click(screen.getByRole('option', { name: /^Pantry › Rice › General/ }));
+    await add(/^Pantry › Rice › Basmati/);
     expect(
       screen.getByText('A product can be in up to 3 categories. Remove one to add another.'),
     ).toBeTruthy();
-    expect(screen.queryByRole('combobox', { name: 'Add a category' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Make primary: Drinks › Tea' }));
-    expect(screen.getByText('Drinks › Tea is now the primary category.')).toBeTruthy();
+    expect(
+      screen.getByText('Other categories must be in the same department as the primary one.'),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Make primary: Pantry › Rice › General' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
     expect(call.mock.calls[1]?.[2]).toMatchObject({
-      content: { categoryIds: ['tea', 'oils', 'rice'] },
+      content: { categoryIds: ['rice', 'oils', 'basmati'] },
     });
   });
 
@@ -213,6 +217,7 @@ describe('category issues of a refused submit', () => {
       { path: 'categoryIds.1', code: 'unknown' },
       { path: 'categoryIds.2', code: 'category.not-available' },
       { path: 'categoryIds.3', code: 'category.level-not-allowed' },
+      { path: 'categoryIds.4', code: 'category.not-same-branch' },
       { path: 'topicIds.0', code: 'unknown' },
     ]);
     expect(found).toEqual({
@@ -222,6 +227,7 @@ describe('category issues of a refused submit', () => {
         1: 'unknown',
         2: 'not-available',
         3: 'level-not-allowed',
+        4: 'not-same-branch',
       },
     });
     expect(categoryIssuesOf([{ path: 'categoryIds', code: 'too-many' }]).list).toBe('too-many');
@@ -251,7 +257,15 @@ describe('category issues of a refused submit', () => {
       }
     ).catalog.edit['categories-error'];
     expect(Object.keys(errors).sort()).toEqual(
-      ['duplicate', 'level-not-allowed', 'not-available', 'required', 'too-many', 'unknown'].sort(),
+      [
+        'duplicate',
+        'level-not-allowed',
+        'not-available',
+        'not-same-branch',
+        'required',
+        'too-many',
+        'unknown',
+      ].sort(),
     );
   });
 
