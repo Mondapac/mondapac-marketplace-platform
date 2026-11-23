@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Badge } from '../form/badge.tsx';
 import { Icon, type IconName } from '../icon/icon.tsx';
 import { applyThemeChoice } from '../theme/theme-menu.tsx';
@@ -26,6 +26,8 @@ export interface AccountMenuProps {
   readonly email: string;
   /** A short label next to the name, such as the user's role. */
   readonly badge?: string;
+  /** The zone line under the name ("Times are in Australia/Brisbane. Change"); the app builds it with its link. */
+  readonly zone?: ReactNode;
   /** The account's own pages, in order. Later user settings are added here as links. */
   readonly links: readonly AccountMenuLink[];
   /** The theme saved in the cookie when the page was rendered. */
@@ -83,6 +85,7 @@ export function AccountMenu({
   name,
   email,
   badge,
+  zone,
   links,
   theme: saved,
   labels,
@@ -145,6 +148,7 @@ export function AccountMenu({
       className="relative"
       onKeyDown={(event) => {
         if (event.key === 'Escape' && open) {
+          event.preventDefault();
           setOpen(false);
           trigger.current?.focus();
         }
@@ -180,6 +184,9 @@ export function AccountMenu({
             </div>
             {badge === undefined ? null : <Badge tone="info">{badge}</Badge>}
           </div>
+          {zone === undefined ? null : (
+            <p className="border-b border-line px-4 py-2 text-sm text-fg-muted">{zone}</p>
+          )}
           {links.length > 0 ? (
             <nav aria-label={labels.pages} className="border-b border-line p-2">
               <ul>

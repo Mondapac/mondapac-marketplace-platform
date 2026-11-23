@@ -324,6 +324,15 @@ export {
   type ActionMenuProps,
 } from './overlay/action-menu.tsx';
 export { PageInfo, type PageInfoProps } from './overlay/page-info.tsx';
+export { HelpProvider, useHelp, type HelpProviderProps } from './help/help-context.tsx';
+export { HelpButton, type HelpButtonProps } from './help/help-button.tsx';
+export {
+  HelpPanel,
+  type HelpContent,
+  type HelpLink,
+  type HelpPanelProps,
+} from './help/help-panel.tsx';
+export { PageHeader, type PageHeaderProps } from './help/page-header.tsx';
 export { Popover, type PopoverProps } from './overlay/popover.tsx';
 export {
   ColumnPickerPanel,
