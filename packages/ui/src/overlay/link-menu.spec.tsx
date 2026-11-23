@@ -91,4 +91,24 @@ describe('LinkMenu', () => {
     fireEvent.mouseDown(screen.getByText('after'));
     expect(screen.queryByRole('menu')).toBeNull();
   });
+
+  it('returns focus to the button on Tab, so Tab moves on from it', () => {
+    const button = open();
+    fireEvent.click(button);
+    fireEvent.keyDown(screen.getByRole('menu'), { key: 'Tab' });
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('activates the focused link with Space', () => {
+    fireEvent.click(open());
+    const link = screen.getAllByRole('menuitem')[1] as HTMLAnchorElement;
+    let clicked = false;
+    link.addEventListener('click', (event) => {
+      clicked = true;
+      event.preventDefault();
+    });
+    link.focus();
+    fireEvent.keyDown(screen.getByRole('menu'), { key: ' ' });
+    expect(clicked).toBe(true);
+  });
 });

@@ -946,7 +946,10 @@
     "queues": {
       "button": "Queues",
       "button-count": "Queues, {count, plural, one {# item needs} other {# items need}} attention",
-      "all": "All sellers"
+      "button-count-more": "Queues, at least {count} items need attention",
+      "all": "All sellers",
+      "needs-a-look-hint": "Health problems, newest first",
+      "without-owner-hint": "Invite or assign an owner"
     },
     "list": {
       "title": "Sellers",

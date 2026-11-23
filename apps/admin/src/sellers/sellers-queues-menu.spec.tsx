@@ -80,7 +80,7 @@ describe('SellersQueuesMenu', () => {
     await waitFor(() => expect(mocks.call).toHaveBeenCalledTimes(2));
     expect(screen.getByRole('button', { name: 'Queues' })).toBeTruthy();
     fireEvent.click(screen.getByRole('button'));
-    expect(screen.getByRole('menuitem', { name: 'Sellers without an owner' })).toBeTruthy();
+    expect(screen.getByRole('menuitem', { name: /^Sellers without an owner/ })).toBeTruthy();
   });
 
   it('hides the badge when a call throws', async () => {
@@ -94,6 +94,9 @@ describe('SellersQueuesMenu', () => {
     answer(health(1), orphans(100, 'cursor'));
     view({ health: true, owner: true });
     expect(await screen.findByText('101+')).toBeTruthy();
+    expect(
+      screen.getByRole('button', { name: 'Queues, at least 101 items need attention' }),
+    ).toBeTruthy();
   });
 
   it('ticks the current queue and offers All sellers off the main page, not on it', async () => {

@@ -78,13 +78,17 @@ export function SellersQueuesMenu({
   if (!canHealth && !canOrphaned) return null;
 
   const items: LinkMenuItem[] = [
-    ...(current === 'all' ? [] : [{ id: 'all', label: t('all'), href: '/sellers' }]),
+    ...(current === 'all'
+      ? []
+      : [{ id: 'all', label: t('all'), href: '/sellers', icon: 'users' as const }]),
     ...(canHealth
       ? [
           {
             id: 'needs-a-look',
             label: th('title'),
             href: '/sellers/needs-a-look',
+            icon: 'flag' as const,
+            description: t('needs-a-look-hint'),
             count: health === null ? null : health.value,
             current: current === 'needs-a-look',
           },
@@ -96,6 +100,8 @@ export function SellersQueuesMenu({
             id: 'without-owner',
             label: to('title'),
             href: '/sellers/without-owner',
+            icon: 'user' as const,
+            description: t('without-owner-hint'),
             count: orphans === null ? null : orphans.value,
             current: current === 'without-owner',
           },
@@ -115,8 +121,8 @@ export function SellersQueuesMenu({
       ? null
       : {
           text: show({ value: total, more }),
-          accessibleName: t('button-count', { count: total }),
+          accessibleName: t(more ? 'button-count-more' : 'button-count', { count: total }),
         };
 
-  return <LinkMenu label={t('button')} items={items} badge={badge} />;
+  return <LinkMenu label={t('button')} icon="list-checks" items={items} badge={badge} />;
 }
