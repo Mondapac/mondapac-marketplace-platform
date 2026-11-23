@@ -26,7 +26,7 @@ export function PeriodSelector({ label, options, value, onChange, note }: Period
   const name = useId();
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-      <label className="sm:hidden">
+      <label className="block w-full sm:hidden">
         <span className="sr-only">{label}</span>
         <select
           value={value}
@@ -54,14 +54,14 @@ export function PeriodSelector({ label, options, value, onChange, note }: Period
                 onChange={() => onChange(option.id)}
                 className="peer absolute inset-0 size-full cursor-pointer opacity-0"
               />
-              <span className="flex min-h-10 items-center whitespace-nowrap rounded-sm px-3 py-2 text-sm font-medium text-fg-secondary peer-checked:bg-selected peer-checked:font-semibold peer-checked:text-fg peer-checked:shadow-[inset_0_0_0_1px_var(--mp-color-border-control)] peer-focus-visible:outline-2 peer-focus-visible:outline-focus">
+              <span className="flex min-h-11 items-center lg:min-h-10 whitespace-nowrap rounded-sm px-3 py-2 text-sm font-medium text-fg-secondary peer-checked:bg-selected peer-checked:font-semibold peer-checked:text-fg peer-checked:shadow-[inset_0_0_0_1px_var(--mp-color-border-control)] peer-focus-visible:outline-2 peer-focus-visible:outline-focus">
                 {option.label}
               </span>
             </label>
           ))}
         </div>
       </fieldset>
-      {note === undefined ? null : <p className="text-xs text-fg-muted">{note}</p>}
+      {note === undefined ? null : <p className="w-full text-xs text-fg-muted sm:w-auto">{note}</p>}
     </div>
   );
 }

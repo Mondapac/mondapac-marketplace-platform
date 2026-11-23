@@ -6,15 +6,17 @@ export interface ChartStateProps {
 /** A chart whose period holds no data. Said in words ("All clear" style), never an empty axis. */
 export function ChartEmpty({
   message,
+  hint,
   height = 240,
-}: ChartStateProps & { readonly message: string }) {
+}: ChartStateProps & { readonly message: string; readonly hint?: string }) {
   return (
-    <p
+    <div
       style={{ minHeight: height }}
-      className="flex items-center justify-center rounded-md border border-dashed border-line text-sm text-fg-muted"
+      className="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-line p-3 text-center text-sm text-fg-muted"
     >
-      {message}
-    </p>
+      <p>{message}</p>
+      {hint === undefined ? null : <p className="text-xs">{hint}</p>}
+    </div>
   );
 }
 
@@ -40,7 +42,7 @@ export function ChartError({
         <button
           type="button"
           onClick={onRetry}
-          className="inline-flex min-h-11 items-center font-medium text-link underline sm:min-h-0"
+          className="inline-flex min-h-11 items-center font-medium text-link underline lg:min-h-0"
         >
           {retryLabel}
         </button>

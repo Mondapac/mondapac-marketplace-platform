@@ -134,7 +134,7 @@ export function LineAreaChart({
           type="button"
           aria-controls={tableId}
           onClick={() => setTable((v) => !v)}
-          className="inline-flex min-h-11 items-center text-sm font-medium text-link underline sm:min-h-0"
+          className="inline-flex min-h-11 items-center text-sm font-medium text-link underline lg:min-h-0"
         >
           {table ? labels.viewAsChart : labels.viewAsTable}
         </button>
