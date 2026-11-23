@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Banner,
   Card,
   CategoryChooser,
   Select,
@@ -89,6 +90,9 @@ export function ClassificationSection({
   const issueText = (code: string) => t(`categories-error.${code}`);
   return (
     <Card title={t('classification')}>
+      {choices.state === 'ready' && choices.noActivity ? (
+        <Banner tone="attention">{t('categories-no-activity')}</Banner>
+      ) : null}
       <CategoryChooser
         choices={choiceList}
         value={categoryIds}

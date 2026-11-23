@@ -78,6 +78,17 @@ export interface FreezeRevisionDependencies {
   readonly categories?: Pick<CategoryTreeReader, 'nodes'>;
 }
 
+/** What one freeze is told by its caller, beyond the stored state. */
+export interface FreezeOptions {
+  /**
+   * The seller's activity scope (`allowedCategoryIdsForSeller`), read by the caller before its
+   * unit. On a SELLER product every category outside it is `category.not-in-activity` at its
+   * index (unless the category already has another issue there). Ignored for a PLATFORM product;
+   * absent: no scope check.
+   */
+  readonly allowedCategoryIds?: ReadonlySet<string>;
+}
+
 /**
  * Freezes a working copy into the immutable content of a revision (catalog design 2.3 M-2, 4.2 row
  * 1; slice 4c-5b): an internal service of the submit use cases, not a use case itself, so it
@@ -105,6 +116,7 @@ export class FreezeRevision {
     market: MarketContext,
     product: Product,
     copy: WorkingCopy,
+    options: FreezeOptions = {},
   ): Promise<Result<FrozenRevision, FreezeRevisionFailure>> {
     const state = product.state;
     // Defence in depth: the caller loaded both under the ownership check, in this unit.
@@ -237,6 +249,16 @@ export class FreezeRevision {
     }
     if (frozen.ok && frozen.value.topicIds.length > 0) {
       issues.push(...(await this.#topicIssues(market, product, frozen.value.topicIds)));
+    }
+    const allowed = options.allowedCategoryIds;
+    if (frozen.ok && allowed !== undefined && state.scope === 'SELLER') {
+      // Owner decision 2026-10-31: a seller's categories stay inside their business activities.
+      frozen.value.categoryIds.forEach((categoryId, index) => {
+        const path = `categoryIds.${index}`;
+        if (!allowed.has(categoryId) && !issues.some((issue) => issue.path === path)) {
+          issues.push({ path, code: 'category.not-in-activity' });
+        }
+      });
     }
     if (issues.length > 0 || !frozen.ok) return err({ code: 'revision.not-ready', issues });
     return ok({

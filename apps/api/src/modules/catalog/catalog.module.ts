@@ -391,6 +391,8 @@ import { OwnTopicController } from './presentation/own-topic.controller';
 import { OwnTopicList } from './application/use-cases/own-topic-list.use-case';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
 import { OwnCategoryPicker } from './application/use-cases/own-category-picker.use-case';
+import { SellerCategoryScope } from './application/business-activities/allowed-category-ids';
+import { SELLER_ACTIVITY_READER } from './application/ports/seller-activity.reader';
 import { PlatformCategoryPicker } from './application/use-cases/platform-category-picker.use-case';
 import { OwnProductOptions } from './application/use-cases/own-product-options.use-case';
 import { OwnProductSaveDraft } from './application/use-cases/own-product-save-draft.use-case';
@@ -806,6 +808,8 @@ const PORT = {
   shelves: SELLER_CATEGORY_STORE,
   capability: CATEGORY_PROPOSAL_CAPABILITY,
   proposalPolicy: CATEGORY_PROPOSAL_POLICY,
+  sellerActivities: SELLER_ACTIVITY_READER,
+  sellerCategories: SellerCategoryScope,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -1264,6 +1268,13 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       policy: true,
     }),
     serviceProvider(ClaimQueryBuilder, { products: true, revisions: true, categoryPaths: true }),
+    // A seller's category scope (owner decision 2026-10-31): the picker, the submit and the proposal.
+    serviceProvider(SellerCategoryScope, {
+      unitOfWork: true,
+      sellerActivities: true,
+      activities: true,
+      treeReader: true,
+    }),
     serviceProvider(SubmitProduct, {
       unitOfWork: true,
       products: true,
@@ -1279,6 +1290,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       requests: true,
       audit: true,
       brandAssigner: true,
+      sellerCategories: true,
     }),
     useCaseProvider(OwnDescriptionWriterStatus, {
       unitOfWork: true,
@@ -2206,6 +2218,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       eligibility: true,
       counters: true,
       counterKeys: true,
+      sellerCategories: true,
     }),
     useCaseProvider(OwnCategoryProposalCancel, {
       unitOfWork: true,
@@ -3146,6 +3159,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       unitOfWork: true,
       adminCategoryReader: true,
       policy: true,
+      sellerCategories: true,
     }),
     useCaseProvider(PlatformCategoryPicker, {
       unitOfWork: true,

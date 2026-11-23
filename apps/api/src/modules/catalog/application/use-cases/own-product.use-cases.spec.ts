@@ -164,6 +164,8 @@ describe.each(FIXTURES)(
         unavailable?: boolean;
         /** Called before each read of the seller's Offer; may change it (another write). */
         onOfferRead?: (read: number, state: OfferState) => OfferState;
+        /** The seller's activity scope (allowedCategoryIdsForSeller); absent: not wired. */
+        activityScope?: 'down' | readonly string[];
       } = {},
     ) {
       const evaluator = new FakeClaimEvaluator(
@@ -367,6 +369,21 @@ describe.each(FIXTURES)(
         ids,
         offers: NO_OFFERS_ON_PRODUCT,
         requests: fanOut,
+        ...(options.activityScope === undefined
+          ? {}
+          : {
+              sellerCategories: {
+                allowedCategoryIdsForSeller: () =>
+                  Promise.resolve(
+                    options.activityScope === 'down'
+                      ? { ok: false as const, error: { code: 'access.unavailable' as const } }
+                      : {
+                          ok: true as const,
+                          value: new Set(options.activityScope as readonly Id<'Category'>[]),
+                        },
+                  ),
+              },
+            }),
       });
       const eligibility = { isEligible: () => Promise.resolve(options.eligible ?? true) };
       const allowedTypes = {
@@ -522,6 +539,35 @@ describe.each(FIXTURES)(
       );
       expect(replaced.ok && replaced.value.revisionNo).toBe(2);
       expect(r.revisions.size).toBe(2);
+    });
+
+    it("refuses a category outside the seller's business activities, failing closed", async () => {
+      const outside = rig(undefined, { activityScope: ['c9'] });
+      const product = newProduct();
+      outside.seed(product);
+      expect(await outside.useCase.execute(contextOf('seller'), request(product.state.id))).toEqual(
+        {
+          ok: false,
+          error: {
+            code: 'revision.not-ready',
+            issues: [{ path: 'categoryIds.0', code: 'category.not-in-activity' }],
+          },
+        },
+      );
+      const down = rig(undefined, { activityScope: 'down' });
+      down.seed(product);
+      expect(await down.useCase.execute(contextOf('seller'), request(product.state.id))).toEqual({
+        ok: false,
+        error: { code: 'access.unavailable' },
+      });
+      const inside = rig(undefined, { activityScope: ['c1'] });
+      inside.seed(product);
+      const submitted = await inside.useCase.execute(
+        contextOf('seller'),
+        request(product.state.id),
+      );
+      expect(submitted.ok).toBe(true);
+      expect(outside.revisions.size + down.revisions.size).toBe(0);
     });
 
     it('answers another seller’s product, a PLATFORM product and an unknown id alike', async () => {
