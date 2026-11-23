@@ -13,6 +13,7 @@ area's own docs (owner rule, 21 Nov 2026).
   `FE-20261124-orders-export-chunking`). The file name is `<id>.json`.
 - **Aggregated views are generated, not committed.** `README.md` of each area folder is a
   fixed stub. Never edit or commit anything under `_generated/` (git ignores it).
+- A git add/add conflict on an item file means two PRs picked the same slug on the same day: rename your slug (and the `id` inside), nothing else.
 - To change the status of an item (done, obsolete), edit only that item's file.
 
 ## Add an item
@@ -21,7 +22,7 @@ area's own docs (owner rule, 21 Nov 2026).
 python3 docs/future-enhancements/generate.py new \
   --slug orders-export-chunking --area orders \
   --title "..." --desc "..." --src "PR 1234 (reviewer)" --trig "when ..." \
-  [--prio بالا|متوسط|پایین] [--status موکول]
+  [--prio پایین] [--status موکول]   # prio and status are literal Persian values, see below
 ```
 
 Fields: `area` (see `areas.json`), `title`, `desc`, `src`, `date` (YYYY-MM-DD, filled in by

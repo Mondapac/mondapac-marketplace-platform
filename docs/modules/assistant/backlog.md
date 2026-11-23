@@ -25,4 +25,4 @@ Recorded on 20 Nov 2026 at the owner's request.
 Related: `conversation.md`, sections "Feedback and insights (B3)" and "History and feedback in the
 widget".
 
-See also the central register of deferred work (area: assistant): `docs/future-enhancements/assistant/README.md` (FE-010 to FE-013).
+See also the central register of deferred work (area: assistant): `docs/future-enhancements/items/FE-010.json` to `FE-013.json` (area: assistant).

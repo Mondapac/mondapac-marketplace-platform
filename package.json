@@ -31,7 +31,7 @@
     "verify": "pnpm verify:without-test-db && pnpm test:db",
     "verify:without-test-db": "pnpm verify:static && pnpm test",
     "verify:static": "pnpm db:generate && pnpm typecheck && pnpm lint && pnpm boundaries && pnpm docs:register:check && pnpm db:check-reversible",
-    "docs:register:check": "python3 docs/future-enhancements/generate.py --check",
+    "docs:register:check": "node scripts/check-future-enhancements.mjs",
     "boundaries": "pnpm --filter @mondapac/api boundaries && node scripts/check-prisma-boundaries.mjs && node scripts/check-panel-boundaries.mjs"
   },
   "devDependencies": {

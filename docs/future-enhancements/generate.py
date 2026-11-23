@@ -32,17 +32,22 @@ def load():
         rid = r.get("id", "")
         if name != rid + ".json": errors.append(f"{name}: file name must be <id>.json")
         if not ID_RE.match(rid): errors.append(f"{name}: id must be FE-NNN (legacy) or FE-YYYYMMDD-slug")
-        missing = [k for k in FIELDS if not str(r.get(k, "")).strip()]
+        missing = [k for k in FIELDS if not (isinstance(r.get(k), str) and r[k].strip())]
         if missing: errors.append(f"{name}: missing {', '.join(missing)}")
         extra = set(r) - set(FIELDS) - {"id"}
         if extra: errors.append(f"{name}: unknown keys {', '.join(sorted(extra))}")
         if r.get("area") not in areas: errors.append(f"{name}: unknown area {r.get('area')!r}")
         if r.get("status") not in STATUSES: errors.append(f"{name}: status must be one of {sorted(STATUSES)}")
         if r.get("prio") not in PRIOS: errors.append(f"{name}: prio must be one of {sorted(PRIOS)}")
-        if not re.match(r"^\d{4}-\d{2}-\d{2}$", str(r.get("date", ""))): errors.append(f"{name}: date must be YYYY-MM-DD")
+        try:
+            datetime.date.fromisoformat(r.get("date", ""))
+        except (ValueError, TypeError):
+            errors.append(f"{name}: date must be a real YYYY-MM-DD date")
+        m = re.match(r"^FE-(\d{4})(\d{2})(\d{2})-", rid)
+        if m and r.get("date") != f"{m[1]}-{m[2]}-{m[3]}": errors.append(f"{name}: id date must equal the date field")
         rows.append(r)
     # legacy sequential ids first (by number), then dated ids (by date, then slug)
-    rows.sort(key=lambda r: (0, r["id"]) if re.match(r"^FE-\d{3}$", r["id"]) else (1, r["id"]))
+    rows.sort(key=lambda r: (0, r.get("id", "")) if re.match(r"^FE-\d{3}$", r.get("id", "")) else (1, r.get("id", "")))
     return areas, rows, errors
 
 
@@ -51,13 +56,13 @@ def cmd_new(a):
     if a.area not in areas: sys.exit(f"unknown area {a.area}; one of {', '.join(areas)}")
     date = a.date or datetime.date.today().isoformat()
     rid = f"FE-{date.replace('-', '')}-{a.slug}"
+    if not ID_RE.match(rid): sys.exit("slug must be lowercase kebab-case ASCII and date YYYY-MM-DD")
     path = os.path.join(ITEMS, rid + ".json")
     if os.path.exists(path): sys.exit(f"{rid} already exists; pick another slug")
     r = {"id": rid, "area": a.area, "title": a.title, "desc": a.desc, "src": a.src, "date": date,
          "trig": a.trig, "prio": a.prio, "status": a.status}
     with open(path, "w", encoding="utf-8") as f:
         json.dump(r, f, ensure_ascii=False, indent=2); f.write("\n")
-    if not ID_RE.match(rid): os.remove(path); sys.exit("slug must be lowercase kebab-case ASCII")
     print("created", path)
 
 
@@ -118,4 +123,5 @@ def main():
         print(f"future-enhancements register ok: {len(rows)} items"); return
     build(a.out)
 
-main()
+if __name__ == "__main__":
+    main()
