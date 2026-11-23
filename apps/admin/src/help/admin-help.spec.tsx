@@ -50,4 +50,10 @@ describe('Admin Help panel', () => {
       '/catalog/products',
     );
   });
+
+  it('shows no Help button on a route that has no help text', () => {
+    path = '/not-registered';
+    mount('UTC');
+    expect(screen.queryByRole('button', { name: 'Help' })).toBeNull();
+  });
 });

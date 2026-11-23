@@ -31,7 +31,8 @@ export function PageHeader({
 }: PageHeaderProps) {
   return (
     <div
-      className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-3 ${className ?? ''}`}
+      // The row keeps the control height, so the h1 does not move when buttons come and go.
+      className={`flex min-h-(--mp-size-control) flex-wrap items-center justify-between gap-x-4 gap-y-3 ${className ?? ''}`}
     >
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
         <h1

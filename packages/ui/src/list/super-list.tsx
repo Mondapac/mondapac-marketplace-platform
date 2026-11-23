@@ -182,7 +182,7 @@ export function SuperList({
               value={search.value}
               maxLength={search.maxLength}
               {...(search.help === undefined ? {} : { help: search.help })}
-              className="w-full min-w-0 sm:min-w-64 sm:max-w-110 sm:flex-1"
+              className="w-full min-w-0 sm:min-w-80 sm:max-w-110 sm:flex-1"
               onChange={(event) => search.onChange(event.target.value)}
               onBlur={search.onBlur}
               onKeyDown={(event) => {

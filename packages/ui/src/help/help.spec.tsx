@@ -10,6 +10,7 @@ import { HelpPanel, type HelpContent } from './help-panel.tsx';
 import { PageHeader } from './page-header.tsx';
 import { AccountMenu } from '../shell/account-menu.tsx';
 import { AppShell } from '../shell/app-shell.tsx';
+import { Topbar } from '../shell/topbar.tsx';
 
 /** Stubs the viewport: `wide` is true from 1280 px. */
 function setViewport(wide: boolean) {
@@ -289,6 +290,54 @@ describe('Help panel below and above 1280 px', () => {
     expect(className).toContain('md:border');
     expect(className).toContain('border-line-control');
     expect(className).toContain('md:bg-subtle');
+  });
+});
+
+describe('Help button pressed state and title row', () => {
+  it('is pressed (aria-pressed) with a visible fill and stronger border only while open', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    const button = screen.getByRole('button', { name: 'Help' });
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(button.className).not.toContain('bg-selected');
+    await user.click(button);
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    expect(button.className).toContain('bg-selected');
+    expect(button.className).toContain('border-line-input');
+  });
+
+  it('keeps a fixed minimum height on the title row, so the h1 does not move', () => {
+    const html = renderToStaticMarkup(<PageHeader title="Orders" />);
+    expect(html).toContain('min-h-(--mp-size-control)');
+  });
+
+  it('shows no Help button on a route without help text, whatever else is on the page', () => {
+    render(
+      <HelpProvider hasContent={false}>
+        <HelpButton label="Help" />
+        <button>Search</button>
+      </HelpProvider>,
+    );
+    expect(screen.queryByRole('button', { name: 'Help' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Search' })).toBeTruthy();
+  });
+});
+
+describe('Topbar breadcrumb', () => {
+  it('shows the parent and the current page from 768 px and keeps the phone title', () => {
+    const html = renderToStaticMarkup(
+      <Topbar
+        pageTitle="Orders"
+        trail={[{ label: 'Dashboard', href: '/' }, { label: 'Sales' }]}
+        trailLabel="Breadcrumb"
+      />,
+    );
+    expect(html).toContain('hidden min-w-0 flex-1 overflow-hidden md:block');
+    // The upper level waits for 1024 px; the parent and the current page do not.
+    expect(html).toMatch(/hidden lg:flex[^>]*>[^]*?Dashboard/u);
+    expect(html.match(/hidden lg:flex/gu)).toHaveLength(1);
+    expect(html).toContain('aria-current="page"');
+    expect(html).toContain('md:hidden');
   });
 });
 
