@@ -5,6 +5,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BarList, Funnel } from './bar-list.tsx';
 import { compactNumber, labelIndexes, niceTicks, niceTicksRange } from './chart-scale.ts';
 import { ChartEmpty, ChartError, ChartSkeleton } from './chart-states.tsx';
+import { DonutChart, sliceSegments } from './donut-chart.tsx';
+import { StackedBarChart, stackSeries } from './stacked-bar-chart.tsx';
+import { splitTop } from './chart-scale.ts';
 import { StatCard } from './dashboard.tsx';
 import { LineAreaChart } from './line-chart.tsx';
 import { PeriodSelector } from './period-selector.tsx';
@@ -297,5 +300,194 @@ describe('chart states', () => {
     expect(screen.getByRole('alert').textContent).toContain('Could not load');
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     expect(retry).toHaveBeenCalled();
+  });
+});
+
+const dLabels = {
+  viewAsTable: 'View as table',
+  viewAsChart: 'View as chart',
+  categoryColumn: 'Category',
+  valueColumn: 'Sales',
+  shareColumn: 'Share',
+};
+const cats = (n: number) =>
+  Array.from({ length: n }, (_, i) => ({
+    id: `c${i + 1}`,
+    label: `Cat ${i + 1}`,
+    value: (n - i) * 10,
+  }));
+const donut = (segments: ReturnType<typeof cats>) => (
+  <DonutChart
+    title="Sales by category"
+    segments={segments}
+    formatValue={money}
+    otherLabel="Other"
+    totalLabel="Total"
+    emptyMessage="Not enough data"
+    labels={dLabels}
+  />
+);
+
+describe('splitTop', () => {
+  it('ranks by size, keeps input order on ties and ignores non-positive or non-finite values', () => {
+    const r = splitTop([5, 0, Number.NaN, 9, 5, -3, 7], 3);
+    expect(r.top).toEqual([3, 6, 0]);
+    expect(r.rest).toEqual([4]);
+  });
+});
+
+describe('DonutChart', () => {
+  it('draws one focusable segment per category with a label that says value and share', () => {
+    const { container } = render(donut(cats(3)));
+    const segs = container.querySelectorAll('[data-segment]');
+    expect(segs).toHaveLength(3);
+    expect(screen.getByRole('img', { name: 'Cat 1: A$30, 50%' })).toBeTruthy();
+    segs.forEach((s) => expect(s.getAttribute('tabindex')).toMatch(/^-?\d$/));
+    expect(container.querySelector('.stroke-chart-cat-1')).not.toBeNull();
+    expect(container.querySelector('.stroke-chart-cat-3')).not.toBeNull();
+    expect(screen.getByRole('group', { name: 'Sales by category' })).toBeTruthy();
+  });
+  it('shows the total in the centre and a legend with value and share', () => {
+    const { container } = render(donut(cats(3)));
+    expect(container.querySelector('svg text')?.textContent).toBe('A$60');
+    const legend = container.querySelector('ul')!;
+    expect(legend.textContent).toContain('Cat 2');
+    expect(legend.textContent).toContain('A$20');
+    expect(legend.textContent).toContain('33.3%');
+  });
+  it('buckets everything past the fifth category into a neutral Other', () => {
+    const slices = sliceSegments(cats(8), 'Other');
+    expect(slices.map((s) => s.label)).toEqual([
+      'Cat 1',
+      'Cat 2',
+      'Cat 3',
+      'Cat 4',
+      'Cat 5',
+      'Other',
+    ]);
+    expect(slices[5]!.value).toBe(30 + 20 + 10);
+    expect(slices[5]!.color).toBe(-1);
+    expect(slices.reduce((s, x) => s + x.share, 0)).toBeCloseTo(1);
+    const { container } = render(donut(cats(8)));
+    expect(container.querySelectorAll('[data-segment]')).toHaveLength(6);
+    expect(container.querySelector('.stroke-chart-cat-other')).not.toBeNull();
+    expect(screen.getByRole('img', { name: /^Other: A\$60/ })).toBeTruthy();
+  });
+  it('keeps exactly five categories without an Other bucket', () => {
+    expect(sliceSegments(cats(5), 'Other')).toHaveLength(5);
+  });
+  it('shows a tooltip on focus and arrow keys move between segments', () => {
+    const { container } = render(donut(cats(3)));
+    const first = container.querySelector('[data-segment="c1"]')!;
+    fireEvent.focus(first);
+    expect(container.querySelector('[data-donut-tooltip]')?.textContent).toContain('Cat 1');
+    expect(screen.getByRole('status').textContent).toBe('Cat 1: A$30, 50%');
+    fireEvent.keyDown(first, { key: 'ArrowRight' });
+    expect(screen.getByRole('status').textContent).toContain('Cat 2');
+    fireEvent.keyDown(first, { key: 'Escape' });
+    expect(container.querySelector('[data-donut-tooltip]')).toBeNull();
+  });
+  it('switches to a table with value and share and back', () => {
+    render(donut(cats(8)));
+    fireEvent.click(screen.getByRole('button', { name: 'View as table' }));
+    const table = screen.getByRole('table', { name: 'Sales by category' });
+    expect(table.querySelectorAll('tbody tr')).toHaveLength(6);
+    expect(screen.getByText('Other', { selector: 'th' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'View as chart' }));
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+  it('says there is not enough data when nothing is above zero', () => {
+    for (const segments of [
+      [],
+      [{ id: 'a', label: 'A', value: 0 }],
+      [{ id: 'a', label: 'A', value: Number.NaN }],
+    ]) {
+      const { container, unmount } = render(donut(segments));
+      expect(screen.getByText('Not enough data')).toBeTruthy();
+      expect(container.querySelector('svg')).toBeNull();
+      expect(screen.queryByRole('button')).toBeNull();
+      unmount();
+    }
+  });
+  it('draws a single category as a full ring', () => {
+    const { container } = render(donut([{ id: 'a', label: 'Only', value: 5 }]));
+    expect(container.querySelector('[data-segment] circle')).not.toBeNull();
+    expect(screen.getByRole('img', { name: 'Only: A$5, 100%' })).toBeTruthy();
+  });
+});
+
+describe('StackedBarChart', () => {
+  const series = Array.from({ length: 7 }, (_, i) => ({
+    id: `s${i + 1}`,
+    label: `Source ${i + 1}`,
+  }));
+  const days = [1, 2, 3].map((d) => ({
+    label: `D${d}`,
+    values: Object.fromEntries(series.map((s, i) => [s.id, (7 - i) * d])),
+  }));
+  const stacked = (p = days, s = series) => (
+    <StackedBarChart
+      title="Orders by source"
+      series={s}
+      points={p}
+      formatValue={(v) => `${v} orders`}
+      otherLabel="Other"
+      totalLabel="Total"
+      emptyMessage="Not enough data"
+      labels={labels}
+    />
+  );
+  it('stacks five named series and an Other bucket in the palette order, with a legend', () => {
+    const cols = stackSeries(series, days, 'Other');
+    expect(cols.map((c) => c.label)).toEqual([
+      'Source 1',
+      'Source 2',
+      'Source 3',
+      'Source 4',
+      'Source 5',
+      'Other',
+    ]);
+    expect(cols[5]!.values).toEqual([3, 6, 9]);
+    const { container } = render(stacked());
+    expect(screen.getByRole('img', { name: 'Orders by source' })).toBeTruthy();
+    expect(container.querySelectorAll('rect.fill-chart-cat-1')).toHaveLength(3);
+    expect(container.querySelectorAll('rect.fill-chart-cat-other')).toHaveLength(3);
+    expect(container.querySelector('ul')!.textContent).toContain('Other');
+    expect(container.querySelector('ul .bg-chart-cat-5')).not.toBeNull();
+  });
+  it('reads a period with arrow keys: tooltip and status list every category and the total', () => {
+    const { container } = render(stacked());
+    const svg = screen.getByRole('img', { name: 'Orders by source' });
+    fireEvent.keyDown(svg, { key: 'ArrowRight' });
+    expect(screen.getByRole('status').textContent).toContain('D1: Source 1 7 orders');
+    expect(screen.getByRole('status').textContent).toContain('Total 28 orders');
+    expect(container.querySelector('[data-stacked-tooltip]')?.textContent).toContain('Other');
+    fireEvent.keyDown(svg, { key: 'ArrowRight' });
+    expect(screen.getByRole('status').textContent).toContain('D2: Source 1 14 orders');
+    fireEvent.keyDown(svg, { key: 'Escape' });
+    expect(container.querySelector('[data-stacked-tooltip]')).toBeNull();
+  });
+  it('switches to a table with a column per category and a total, and back', () => {
+    render(stacked());
+    fireEvent.click(screen.getByRole('button', { name: 'View as table' }));
+    const table = screen.getByRole('table', { name: 'Orders by source' });
+    expect(table.querySelectorAll('thead th')).toHaveLength(8);
+    expect(screen.getByText('56 orders')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'View as chart' }));
+    expect(screen.queryByRole('table')).toBeNull();
+  });
+  it('treats missing, negative and non-finite values as zero', () => {
+    const { container } = render(
+      stacked([{ label: 'D1', values: { s1: 4, s2: -2, s3: Number.NaN } }], series.slice(0, 4)),
+    );
+    expect(container.querySelectorAll('rect')).toHaveLength(1);
+  });
+  it('says there is not enough data without periods or without any value', () => {
+    for (const p of [[], [{ label: 'D1', values: {} }]]) {
+      const { container, unmount } = render(stacked(p));
+      expect(screen.getByText('Not enough data')).toBeTruthy();
+      expect(container.querySelector('svg')).toBeNull();
+      unmount();
+    }
   });
 });

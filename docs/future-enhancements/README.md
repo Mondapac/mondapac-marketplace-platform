@@ -5,7 +5,7 @@
 | بخش | تعداد | فایل بخش |
 |---|---|---|
 | سایت فروشگاه | 13 | `docs/future-enhancements/storefront/README.md` |
-| پنل ادمین | 75 | `docs/future-enhancements/admin/README.md` |
+| پنل ادمین | 76 | `docs/future-enhancements/admin/README.md` |
 | پنل فروشنده | 20 | `docs/future-enhancements/seller/README.md` |
 | دستیار هوشمند | 4 | `docs/future-enhancements/assistant/README.md` |
 | کاتالوگ | 15 | `docs/future-enhancements/catalog/README.md` |
@@ -13,7 +13,7 @@
 | کاربران و دسترسی | 6 | `docs/future-enhancements/users/README.md` |
 | محتوا و اعلان | 1 | `docs/future-enhancements/content/README.md` |
 | زیرساخت | 26 | `docs/future-enhancements/infra/README.md` |
-| جمع | 166 | |
+| جمع | 167 | |
 
 ## سایت فروشگاه
 
@@ -112,6 +112,7 @@
 | FE-164 | قفل اسکرول صفحه پشت drawerها در iOS Safari | PR 1286 اسکرول صفحه را با overflow:hidden روی html پشت modalها قفل می‌کند؛ در iOS Safari این همیشه جلوی اسکرول لمسی صفحهٔ پشت drawer را نمی‌گیرد. راه: قفل با position:fixed روی body و برگرداندن موقعیت اسکرول هنگام بستن، یا overscroll-behavior: contain روی بدنهٔ drawerها. همچنین scrim منوی انتخاب جستجوپذیر در گوشی (search-select) modal نیست و صفحه زیرش اسکرول می‌شود. | `PR 1286 (بازبینی رضا، UI/UX)` | اگر کاربر iPhone اسکرول صفحه پشت drawer را دید (مهدی، رضا) | پایین | موکول | 2026-11-23 |
 | FE-165 | منوی حساب موبایل با Pin، Help و میانبرها | در نمونهٔ هدر آیکونی، Pin و Help و میانبرها روی موبایل به منوی حساب می‌روند؛ طراحی خود منو باید هنگام ساخت انجام شود. تا آن زمان روی گوشی Pin (کنار عنوان)، Help، جستجو و زنگ به‌صورت آیکون دایره‌ای می‌مانند و میانبرها دکمه ندارند. | `design/admin/header-icons (رضا، جعفر)` | ساخت منوی حساب موبایل | متوسط | موکول | 2026-11-23 |
 | FE-166 | tooltip لمسی و جابه‌جایی خودکار کنار لبهٔ صفحه | tooltip آیکون‌های هدر فقط با نشانگر و فوکوس صفحه‌کلید کار می‌کند و زیر ۷۶۸ پیکسل پنهان است (نام در aria-label می‌ماند). اگر بازخورد گوشی خواست: نگه‌داشتن لمسی، و جابه‌جایی tooltip وقتی به لبهٔ صفحه می‌رسد. | `PR آیکون‌های دایره‌ای هدر (مهدی، رضا)` | اگر کاربر گوشی نام آیکون را خواست | پایین | موکول | 2026-11-23 |
+| FE-167 | رسم DonutChart، StackedBarChart و کاشی آیکون KPI در Figma | توکن‌های رنگ طبقه‌ای (chart/cat-*) و کاشی آیکون KPI در 1.11.0 به Figma اضافه شدند، ولی کامپوننت‌های DonutChart و StackedBarChart و کاشی KPI در کد ساخته شدند (حالت سرعت: اول کد). نیاز: رضا آن‌ها را در Figma رسم کند و در فایل Figma «Update library» برای 1.11.0 اجرا شود. | `PR 1 داشبوردهای نسخهٔ ۲ (palette و donut)` | بعد از ادغام فاز ۱ داشبوردها | متوسط | موکول | 2026-11-23 |
 
 ## پنل فروشنده
 

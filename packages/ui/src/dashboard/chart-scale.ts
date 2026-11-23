@@ -51,3 +51,22 @@ export function niceTicksRange(min: number, max: number, count = 4): readonly nu
     ticks.push(Number((ticks[ticks.length - 1]! + step).toPrecision(12)));
   return ticks;
 }
+
+/**
+ * Splits `values` into the `max` largest (indexes, largest first, ties in input order) and the
+ * rest. Used to show at most five named categories and one "Other" bucket. Values that are not
+ * finite or not above zero are ignored.
+ */
+export function splitTop(
+  values: readonly number[],
+  max: number,
+): { readonly top: readonly number[]; readonly rest: readonly number[] } {
+  const ranked = values
+    .map((v, i) => ({ v, i }))
+    .filter((x) => Number.isFinite(x.v) && x.v > 0)
+    .sort((a, b) => b.v - a.v || a.i - b.i);
+  return {
+    top: ranked.slice(0, max).map((x) => x.i),
+    rest: ranked.slice(max).map((x) => x.i),
+  };
+}

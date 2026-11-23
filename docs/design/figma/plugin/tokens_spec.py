@@ -103,6 +103,22 @@ C = {
  "bg/auth-showcase-seller": ("#06352E", "#06352E", "FRAME_FILL,SHAPE_FILL", "Auth brand panel, Seller; dark in both themes"),
  "text/on-showcase": ("#FFFFFF", "#FFFFFF", "TEXT_FILL,FRAME_FILL,SHAPE_FILL", "Brand line on the Auth brand panel"),
  "text/on-showcase-muted": ("#FFFFFFBD", "#FFFFFFBD", "TEXT_FILL,STROKE_COLOR", "Secondary brand line on the Auth brand panel; alpha is part of the value"),
+ # 1.11.0 "Dashboards v2": categorical chart palette (donut, stacked bars, category charts) and KPI icon tiles. Appended last for the same reason.
+ # cat-1 is the main blue; "other" is neutral. Fills are non-text graphics: every segment also has a legend label, a value and a table view.
+ "chart/cat-1": ("#1D4FD7", "#5F86F5", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical series 1 (blue)"),
+ "chart/cat-2": ("#1BAF7A", "#199E70", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical series 2 (aqua)"),
+ "chart/cat-3": ("#6250D6", "#9085E9", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical series 3 (violet)"),
+ "chart/cat-4": ("#EDA100", "#C98500", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical series 4 (amber)"),
+ "chart/cat-5": ("#E87BA4", "#D55181", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical series 5 (pink)"),
+ "chart/cat-other": ("#A3ABB8", "#5B6475", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical 'Other' bucket (neutral)"),
+ "kpi/blue-bg": ("#1D4FD7", "#3D68E6", "FRAME_FILL,SHAPE_FILL", "KPI icon tile, blue (sales, orders)"),
+ "kpi/blue-fg": ("#FFFFFF", "#FFFFFF", "SHAPE_FILL,STROKE_COLOR", "Icon on the blue KPI tile"),
+ "kpi/aqua-bg": ("#128A60", "#16865F", "FRAME_FILL,SHAPE_FILL", "KPI icon tile, aqua (fulfilment, health)"),
+ "kpi/aqua-fg": ("#FFFFFF", "#FFFFFF", "SHAPE_FILL,STROKE_COLOR", "Icon on the aqua KPI tile"),
+ "kpi/violet-bg": ("#6250D6", "#6D5FD8", "FRAME_FILL,SHAPE_FILL", "KPI icon tile, violet (customers, growth)"),
+ "kpi/violet-fg": ("#FFFFFF", "#FFFFFF", "SHAPE_FILL,STROKE_COLOR", "Icon on the violet KPI tile"),
+ "kpi/slate-bg": ("#475467", "#5B6475", "FRAME_FILL,SHAPE_FILL", "KPI icon tile, slate (neutral counts)"),
+ "kpi/slate-fg": ("#FFFFFF", "#FFFFFF", "SHAPE_FILL,STROKE_COLOR", "Icon on the slate KPI tile"),
 }
 def literal(h): return len(h) == 9
 # family for primitive naming
@@ -115,6 +131,12 @@ fam("amber", ["#FFFCF7","#FFF1E0","#8F4A00","#C46A00","#FBE3C4","#F2C894","#FFF8
 fam("green", ["#E7F6EC","#12663A","#DDF2E5","#F1F8F3","#CFE6D7","#0F2E1D","#6CD49A","#1C4A30","#10221A","#1F4A33"])
 fam("red", ["#FDEBEA","#A8231A","#D92D20","#B42318","#F6C9C5","#F3C4C0","#3B1512","#F79A90","#F04438","#4F201C","#7A2E28"])
 fam("teal", ["#06352E","#0B6B5C","#F2FAF8","#B7DDD5","#E6F4F1","#DCEFEA","#5BCFB8","#0F2925","#1F4D45","#123430","#143A34"])
+fam("teal", ["#1BAF7A","#199E70","#128A60","#16865F"])
+fam("purple", ["#6250D6","#9085E9","#6D5FD8"])
+fam("honey", ["#EDA100","#C98500"])
+fam("pink", ["#E87BA4","#D55181"])
+fam("neutral", ["#A3ABB8","#475467"])
+fam("blue", ["#5F86F5"])
 fam("lime", ["#3F6212","#F5FAEF","#C8DDB0","#9DBB7A","#A9D570","#1A2812","#35511F","#6E8F45"])
 fam("purple", ["#F1ECFF","#5B3CC4","#271E47","#B9A6FF"])
 fam("coral", ["#FDE7E3","#B23F2E","#3A1A16","#F4A595"])
@@ -148,7 +170,7 @@ prim = {}   # hex -> name
 used = set()
 # Primitives added after 1.0.0 are named after the existing ones, so an existing name never changes
 # (a rename would be a MAJOR change). A new hex that lands on a taken step takes the next free step.
-NEW_PRIMITIVES = ["#0B1D2E", "#06352E"]  # 1.7.0: Auth brand panel
+NEW_PRIMITIVES = ["#0B1D2E", "#06352E", "#5F86F5", "#1BAF7A", "#199E70", "#128A60", "#16865F", "#6250D6", "#9085E9", "#6D5FD8", "#EDA100", "#C98500", "#E87BA4", "#D55181", "#A3ABB8", "#475467"]  # 1.7.0: Auth brand panel; 1.11.0: categorical chart palette and KPI tiles
 for h in sorted([x for x in allhex if x not in NEW_PRIMITIVES], key=lambda x: (FAM[x], -oklab_L(x))) + NEW_PRIMITIVES:
     step = int(round((1 - oklab_L(h)) * 1000 / 5.0) * 5)
     if h == '#FFFFFF': step = 0
@@ -191,6 +213,9 @@ need('map/seller-pin', ['map/land'], 3.0, 'graphic')
 need('map/courier', ['map/land'], 3.0, 'graphic')
 need('chart/tooltip-fg', ['chart/tooltip-bg'], 4.5, 'text')
 need('chart/tooltip-muted', ['chart/tooltip-bg'], 4.5, 'text')
+# 1.11.0: white icon on each KPI tile (non-text graphic, 3:1); chart categories are graphics identified by label, value and table, see README
+for k in ['blue','aqua','violet','slate']:
+    need('kpi/%s-fg' % k, ['kpi/%s-bg' % k], 3.0, 'icon')
 need('icon/default', ['bg/surface'], 3.0, 'icon')
 need('icon/muted', ['bg/surface'], 3.0, 'icon')
 # 1.7.0: brand line on the Auth brand panel (both panel colours are the same in both themes)
@@ -255,7 +280,7 @@ EFFECTS = [
 MOTION = {"duration/fast": 120, "duration/base": 160, "duration/slow": 240}
 
 spec = {
- "version": "1.10.1", "generated": "2026-10-08",
+ "version": "1.11.0", "generated": "2026-11-23",
  "primitives": [{"name": n, "hex": h} for n, h in primitives],
  "color": [{"name": k, "light": None if literal(v[0]) else prim[v[0].upper()], "dark": None if literal(v[1]) else prim[v[1].upper()], "lightHex": v[0].upper(), "darkHex": v[1].upper(), "scopes": v[2].split(','), "description": v[3]} for k, v in C.items()],
  "dimension": [{"name": k, "desktop": v[0], "touch": v[1], "scopes": DSCOPE[k.split('/')[0]].split(',')} for k, v in D.items()],

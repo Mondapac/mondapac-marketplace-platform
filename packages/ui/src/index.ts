@@ -280,6 +280,19 @@ export {
   type ChartPoint,
   type LineAreaChartProps,
 } from './dashboard/line-chart.tsx';
+export {
+  DonutChart,
+  sliceSegments,
+  type DonutChartProps,
+  type DonutSegment,
+} from './dashboard/donut-chart.tsx';
+export {
+  StackedBarChart,
+  stackSeries,
+  type StackedBarChartProps,
+  type StackedPoint,
+  type StackedSeries,
+} from './dashboard/stacked-bar-chart.tsx';
 export { BarList, Funnel, type BarListItem, type FunnelStep } from './dashboard/bar-list.tsx';
 export {
   PeriodSelector,

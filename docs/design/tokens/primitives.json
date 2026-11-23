@@ -132,6 +132,10 @@
         "$type": "color",
         "$value": "#7096FF"
       },
+      "355": {
+        "$type": "color",
+        "$value": "#5F86F5"
+      },
       "440": {
         "$type": "color",
         "$value": "#3D68E6"
@@ -296,6 +300,14 @@
         "$type": "color",
         "$value": "#F3C46A"
       },
+      "235": {
+        "$type": "color",
+        "$value": "#EDA100"
+      },
+      "330": {
+        "$type": "color",
+        "$value": "#C98500"
+      },
       "470": {
         "$type": "color",
         "$value": "#9A5A08"
@@ -376,6 +388,10 @@
         "$type": "color",
         "$value": "#C3C9D3"
       },
+      "260": {
+        "$type": "color",
+        "$value": "#A3ABB8"
+      },
       "295": {
         "$type": "color",
         "$value": "#98A1B0"
@@ -399,6 +415,10 @@
       "500": {
         "$type": "color",
         "$value": "#5B6475"
+      },
+      "560": {
+        "$type": "color",
+        "$value": "#475467"
       },
       "565": {
         "$type": "color",
@@ -471,6 +491,16 @@
         "$value": "#1F2B14"
       }
     },
+    "pink": {
+      "285": {
+        "$type": "color",
+        "$value": "#E87BA4"
+      },
+      "380": {
+        "$type": "color",
+        "$value": "#D55181"
+      }
+    },
     "purple": {
       "45": {
         "$type": "color",
@@ -479,6 +509,18 @@
       "225": {
         "$type": "color",
         "$value": "#B9A6FF"
+      },
+      "330": {
+        "$type": "color",
+        "$value": "#9085E9"
+      },
+      "440": {
+        "$type": "color",
+        "$value": "#6D5FD8"
+      },
+      "475": {
+        "$type": "color",
+        "$value": "#6250D6"
       },
       "525": {
         "$type": "color",
@@ -555,6 +597,22 @@
       "220": {
         "$type": "color",
         "$value": "#5BCFB8"
+      },
+      "330": {
+        "$type": "color",
+        "$value": "#1BAF7A"
+      },
+      "380": {
+        "$type": "color",
+        "$value": "#199E70"
+      },
+      "440": {
+        "$type": "color",
+        "$value": "#128A60"
+      },
+      "450": {
+        "$type": "color",
+        "$value": "#16865F"
       },
       "525": {
         "$type": "color",

@@ -1,6 +1,6 @@
 {
- "version": "1.10.1",
- "generated": "2026-10-08",
+ "version": "1.11.0",
+ "generated": "2026-11-23",
  "primitives": [
   {
    "name": "amber/10",
@@ -129,6 +129,10 @@
   {
    "name": "blue/305",
    "hex": "#7096FF"
+  },
+  {
+   "name": "blue/355",
+   "hex": "#5F86F5"
   },
   {
    "name": "blue/440",
@@ -287,6 +291,14 @@
    "hex": "#F3C46A"
   },
   {
+   "name": "honey/235",
+   "hex": "#EDA100"
+  },
+  {
+   "name": "honey/330",
+   "hex": "#C98500"
+  },
+  {
    "name": "honey/470",
    "hex": "#9A5A08"
   },
@@ -363,6 +375,10 @@
    "hex": "#C3C9D3"
   },
   {
+   "name": "neutral/260",
+   "hex": "#A3ABB8"
+  },
+  {
    "name": "neutral/295",
    "hex": "#98A1B0"
   },
@@ -385,6 +401,10 @@
   {
    "name": "neutral/500",
    "hex": "#5B6475"
+  },
+  {
+   "name": "neutral/560",
+   "hex": "#475467"
   },
   {
    "name": "neutral/565",
@@ -455,12 +475,32 @@
    "hex": "#1F2B14"
   },
   {
+   "name": "pink/285",
+   "hex": "#E87BA4"
+  },
+  {
+   "name": "pink/380",
+   "hex": "#D55181"
+  },
+  {
    "name": "purple/45",
    "hex": "#F1ECFF"
   },
   {
    "name": "purple/225",
    "hex": "#B9A6FF"
+  },
+  {
+   "name": "purple/330",
+   "hex": "#9085E9"
+  },
+  {
+   "name": "purple/440",
+   "hex": "#6D5FD8"
+  },
+  {
+   "name": "purple/475",
+   "hex": "#6250D6"
   },
   {
    "name": "purple/525",
@@ -533,6 +573,22 @@
   {
    "name": "teal/220",
    "hex": "#5BCFB8"
+  },
+  {
+   "name": "teal/330",
+   "hex": "#1BAF7A"
+  },
+  {
+   "name": "teal/380",
+   "hex": "#199E70"
+  },
+  {
+   "name": "teal/440",
+   "hex": "#128A60"
+  },
+  {
+   "name": "teal/450",
+   "hex": "#16865F"
   },
   {
    "name": "teal/525",
@@ -1680,6 +1736,180 @@
     "STROKE_COLOR"
    ],
    "description": "Secondary brand line on the Auth brand panel; alpha is part of the value"
+  },
+  {
+   "name": "chart/cat-1",
+   "light": "blue/510",
+   "dark": "blue/355",
+   "lightHex": "#1D4FD7",
+   "darkHex": "#5F86F5",
+   "scopes": [
+    "SHAPE_FILL",
+    "FRAME_FILL",
+    "STROKE_COLOR"
+   ],
+   "description": "Categorical series 1 (blue)"
+  },
+  {
+   "name": "chart/cat-2",
+   "light": "teal/330",
+   "dark": "teal/380",
+   "lightHex": "#1BAF7A",
+   "darkHex": "#199E70",
+   "scopes": [
+    "SHAPE_FILL",
+    "FRAME_FILL",
+    "STROKE_COLOR"
+   ],
+   "description": "Categorical series 2 (aqua)"
+  },
+  {
+   "name": "chart/cat-3",
+   "light": "purple/475",
+   "dark": "purple/330",
+   "lightHex": "#6250D6",
+   "darkHex": "#9085E9",
+   "scopes": [
+    "SHAPE_FILL",
+    "FRAME_FILL",
+    "STROKE_COLOR"
+   ],
+   "description": "Categorical series 3 (violet)"
+  },
+  {
+   "name": "chart/cat-4",
+   "light": "honey/235",
+   "dark": "honey/330",
+   "lightHex": "#EDA100",
+   "darkHex": "#C98500",
+   "scopes": [
+    "SHAPE_FILL",
+    "FRAME_FILL",
+    "STROKE_COLOR"
+   ],
+   "description": "Categorical series 4 (amber)"
+  },
+  {
+   "name": "chart/cat-5",
+   "light": "pink/285",
+   "dark": "pink/380",
+   "lightHex": "#E87BA4",
+   "darkHex": "#D55181",
+   "scopes": [
+    "SHAPE_FILL",
+    "FRAME_FILL",
+    "STROKE_COLOR"
+   ],
+   "description": "Categorical series 5 (pink)"
+  },
+  {
+   "name": "chart/cat-other",
+   "light": "neutral/260",
+   "dark": "neutral/500",
+   "lightHex": "#A3ABB8",
+   "darkHex": "#5B6475",
+   "scopes": [
+    "SHAPE_FILL",
+    "FRAME_FILL",
+    "STROKE_COLOR"
+   ],
+   "description": "Categorical 'Other' bucket (neutral)"
+  },
+  {
+   "name": "kpi/blue-bg",
+   "light": "blue/510",
+   "dark": "blue/440",
+   "lightHex": "#1D4FD7",
+   "darkHex": "#3D68E6",
+   "scopes": [
+    "FRAME_FILL",
+    "SHAPE_FILL"
+   ],
+   "description": "KPI icon tile, blue (sales, orders)"
+  },
+  {
+   "name": "kpi/blue-fg",
+   "light": "neutral/0",
+   "dark": "neutral/0",
+   "lightHex": "#FFFFFF",
+   "darkHex": "#FFFFFF",
+   "scopes": [
+    "SHAPE_FILL",
+    "STROKE_COLOR"
+   ],
+   "description": "Icon on the blue KPI tile"
+  },
+  {
+   "name": "kpi/aqua-bg",
+   "light": "teal/440",
+   "dark": "teal/450",
+   "lightHex": "#128A60",
+   "darkHex": "#16865F",
+   "scopes": [
+    "FRAME_FILL",
+    "SHAPE_FILL"
+   ],
+   "description": "KPI icon tile, aqua (fulfilment, health)"
+  },
+  {
+   "name": "kpi/aqua-fg",
+   "light": "neutral/0",
+   "dark": "neutral/0",
+   "lightHex": "#FFFFFF",
+   "darkHex": "#FFFFFF",
+   "scopes": [
+    "SHAPE_FILL",
+    "STROKE_COLOR"
+   ],
+   "description": "Icon on the aqua KPI tile"
+  },
+  {
+   "name": "kpi/violet-bg",
+   "light": "purple/475",
+   "dark": "purple/440",
+   "lightHex": "#6250D6",
+   "darkHex": "#6D5FD8",
+   "scopes": [
+    "FRAME_FILL",
+    "SHAPE_FILL"
+   ],
+   "description": "KPI icon tile, violet (customers, growth)"
+  },
+  {
+   "name": "kpi/violet-fg",
+   "light": "neutral/0",
+   "dark": "neutral/0",
+   "lightHex": "#FFFFFF",
+   "darkHex": "#FFFFFF",
+   "scopes": [
+    "SHAPE_FILL",
+    "STROKE_COLOR"
+   ],
+   "description": "Icon on the violet KPI tile"
+  },
+  {
+   "name": "kpi/slate-bg",
+   "light": "neutral/560",
+   "dark": "neutral/500",
+   "lightHex": "#475467",
+   "darkHex": "#5B6475",
+   "scopes": [
+    "FRAME_FILL",
+    "SHAPE_FILL"
+   ],
+   "description": "KPI icon tile, slate (neutral counts)"
+  },
+  {
+   "name": "kpi/slate-fg",
+   "light": "neutral/0",
+   "dark": "neutral/0",
+   "lightHex": "#FFFFFF",
+   "darkHex": "#FFFFFF",
+   "scopes": [
+    "SHAPE_FILL",
+    "STROKE_COLOR"
+   ],
+   "description": "Icon on the slate KPI tile"
   }
  ],
  "dimension": [

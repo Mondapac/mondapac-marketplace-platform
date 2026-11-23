@@ -669,6 +669,12 @@ function explained190(n) {
   }
   return false;
 }
+// What Update library reports for 1.11.0 (Dashboards v2 tokens: 14 new primitives, 14 colour variables), first in the report: primitives, then colours.
+const PRIMS_1110 = ['blue/355', 'honey/235', 'honey/330', 'neutral/260', 'neutral/560', 'pink/285', 'pink/380', 'purple/330', 'purple/440', 'purple/475', 'teal/330', 'teal/380', 'teal/440', 'teal/450'];
+const COLORS_1110 = ['chart/cat-1', 'chart/cat-2', 'chart/cat-3', 'chart/cat-4', 'chart/cat-5', 'chart/cat-other', 'kpi/blue-bg', 'kpi/blue-fg', 'kpi/aqua-bg', 'kpi/aqua-fg', 'kpi/violet-bg', 'kpi/violet-fg', 'kpi/slate-bg', 'kpi/slate-fg'];
+const ADDED_1110 = (opts) => PRIMS_1110.map((p) => 'primitive ' + p).concat(COLORS_1110.map((c) => 'variable ' + c + (opts.maxModes > 1 ? ' (Light and Dark modes)' : ' (Color and Color · Dark)')));
+// Variables a 1.11.0 update adds: 14 primitives and 14 colours (one variable per collection: two collections without modes).
+const VARS_1110 = (opts) => 14 * (1 + (opts.maxModes > 1 ? 1 : 2));
 // What Update library reports for 1.9.0 on a 1.8.x file, in report order: tokens and icons first, then the components and the in-place
 // properties, then the templates (after the 1.8.3 ones), then the size table row (before the changelog rows).
 const ADDED_190_HEAD = (opts) => ['variable size/form-max ' + (opts.maxModes > 1 ? '(Desktop and Touch modes)' : '(Dimension and Dimension · Touch)'), 'icon pencil', 'icon refresh-cw', 'icon globe'];
@@ -894,7 +900,7 @@ async function updateTo180(M, label, opts, from) {
   const added = r.done ? r.done.added : [];
   check(NEW_180.every((n) => added.includes('component ' + n)) && added.includes('variants added to TableCell (5): State=Loading') && added.includes('update TableCell description') && added.includes('update Field description') && added.includes('Field Control: preferred values Input, Select, Textarea') && added.includes('templates Panel · Admin (' + ADMIN_180.length + ' frames, 3 template bodies)') && added.includes('templates Panel · Seller (' + SELLER_180.length + ' frames, 2 template bodies)') && added.includes(ADDED_183[0]) && added.includes(ADDED_183[1]), 'the report names every addition, including "variants added to TableCell (5)" and the 1.8.3 frames');
   check(added.includes('variable size/dialog-sm' + (opts.maxModes > 1 ? ' (Desktop and Touch modes)' : ' (Dimension and Dimension · Touch)')) && added.includes('size table row size/dialog-sm') && added.includes('size table row size/dialog-md') && added.includes('changelog row 1.8.0') && added.includes('changelog row 1.8.1') && added.includes('changelog row 1.8.3') && added.includes('file version ' + SPEC_VERSION), 'the report names the tokens, size table rows, changelog row and the file version');
-  check(M.VARS.size === nVars + 3 * nColl, 'exactly ' + (3 * nColl) + ' variables added: size/dialog-sm, size/dialog-md and size/form-max (' + (M.VARS.size - nVars) + ')');
+  check(M.VARS.size === nVars + 3 * nColl + VARS_1110(opts), 'exactly ' + (3 * nColl) + ' variables added: size/dialog-sm, size/dialog-md and size/form-max (' + (M.VARS.size - nVars) + ')');
   state180(M, opts, 'updated');
   state181(M, 'updated', true); // overlaps of the update path are checked just below: reported, not absent
   state183(M, 'updated');
@@ -902,7 +908,7 @@ async function updateTo180(M, label, opts, from) {
   state1100(M, opts, 'updated');
   { const rep = r.done ? r.done.report : []; const ovs = overlapsOf(M); const un = ovs.filter((o) => { const parts = o.split(': ')[1].split(' / '); return !rep.some((l) => l.indexOf('\u2139 overlap: ' + parts[0] + ' and ' + parts[1]) === 0); });
     check(un.length === 0, 'updated: every overlap of top-level nodes (' + ovs.length + ', e.g. Starter sections that grew) is reported, none is fixed by moving' + (un.length ? ' (unreported: ' + un.slice(0, 3).join(' | ') + ')' : '')); }
-  check(M.ROOT.getPluginData('version') === SPEC_VERSION && SPEC_VERSION === '1.10.1', 'file version is ' + SPEC_VERSION);
+  check(M.ROOT.getPluginData('version') === SPEC_VERSION && SPEC_VERSION === '1.11.0', 'file version is ' + SPEC_VERSION);
   check(textCount(M, SPEC_VERSION) >= 2 && allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === SPEC_VERSION)).length === 1, 'one changelog row for ' + SPEC_VERSION + ' (and the cover shows it)');
   check(['size/dialog-sm', 'size/dialog-md'].every((v) => allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === v)).length === 1), 'one size table row each for size/dialog-sm and size/dialog-md');
   // the in-place edit of TableCell: nothing existing was renamed, moved, resized or changed
@@ -1270,7 +1276,7 @@ async function updateScenario(label, opts, from) {
     const rp11 = r.done ? r.done.report.concat(r.done.added) : []; console.log('    ' + rp11.join('\n    '));
     // The 1.8.2 layout fixes (Input, AuthShowcase, Starter sections) run in the same update; scenario 12 checks them.
     const own181 = r.done ? r.done.added.filter((l) => !/^(Input|AuthShowcase) (variants laid out|documentation block)|^section .* moved /.test(l)) : [];
-    check(r.done && own181.join('|') === ADDED_190_HEAD(opts).concat(ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ['fix minimum height 900 px of Panel pages (18 frames)', 'fix Shared · Members · Admin (phone): 2 member cards that do not fit removed', 'fix CheckboxRow layout (Value in columns, State in rows)'], ADDED_183, ADDED_190_TPL, ADDED_1100_TPL, FIXED_184(ph11), ADDED_190_TAIL, ['changelog row 1.8.1', 'changelog row 1.8.2', 'changelog row 1.8.3', 'changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !rp11.some((l) => /^⚠|^ℹ (?!overlap:)/.test(l)), 'the report names the three fixes, the changelog row and the version, with no warning or skip (' + (r.done ? r.done.added.join(', ') : '') + ')');
+    check(r.done && own181.join('|') === ADDED_1110(opts).concat(ADDED_190_HEAD(opts), ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ['fix minimum height 900 px of Panel pages (18 frames)', 'fix Shared · Members · Admin (phone): 2 member cards that do not fit removed', 'fix CheckboxRow layout (Value in columns, State in rows)'], ADDED_183, ADDED_190_TPL, ADDED_1100_TPL, FIXED_184(ph11), ADDED_190_TAIL, ['changelog row 1.8.1', 'changelog row 1.8.2', 'changelog row 1.8.3', 'changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'changelog row 1.11.0', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !rp11.some((l) => /^⚠|^ℹ (?!overlap:)/.test(l)), 'the report names the three fixes, the changelog row and the version, with no warning or skip (' + (r.done ? r.done.added.join(', ') : '') + ')');
     state181(Q, '1.8.0 file repaired ' + tag11, true);
     state183(Q, '1.8.0 file updated ' + tag11);
     state190(Q, opts, '1.8.0 file updated ' + tag11);
@@ -1401,7 +1407,7 @@ async function updateScenario(label, opts, from) {
     check(!r.err && r.done, 'Update library finished on the 1.8.2 file ' + tag13 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
     const add13 = r.done ? r.done.added : []; console.log('    ' + add13.join('\n    '));
     const own13 = add13.filter((l) => !/^section .* moved /.test(l));
-    check(own13.join('|') === ADDED_190_HEAD(opts).concat(ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ADDED_183, ADDED_190_TPL, ADDED_1100_TPL, FIXED_184(ph13), ADDED_190_TAIL, ['changelog row 1.8.3', 'changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the 1.8.3 frames, the 1.8.4 fixes, the changelog rows and the version, with no warning, skip or overlap (' + own13.join(', ') + ')');
+    check(own13.join('|') === ADDED_1110(opts).concat(ADDED_190_HEAD(opts), ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ADDED_183, ADDED_190_TPL, ADDED_1100_TPL, FIXED_184(ph13), ADDED_190_TAIL, ['changelog row 1.8.3', 'changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'changelog row 1.11.0', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the 1.8.3 frames, the 1.8.4 fixes, the changelog rows and the version, with no warning, skip or overlap (' + own13.join(', ') + ')');
     state180(Q, opts, '1.8.2 file updated ' + tag13);
     state181(Q, '1.8.2 file updated ' + tag13);
     state183(Q, '1.8.2 file updated ' + tag13);
@@ -1496,7 +1502,7 @@ async function updateScenario(label, opts, from) {
     const pos0 = posOf(Q);
     r = await send(Q, { type: 'update' });
     const add14 = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : [];
-    const want14 = ADDED_190_HEAD(opts).concat(ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ADDED_190_TPL, ADDED_1100_TPL, ['fix effect style Focus/Ring: spread 2 and 4 px', 'fix effect style Ring/Urgent: spread 3 px', 'fix phone screens: Main scrolls vertically (' + ph0 + ' frames)'], ADDED_190_TAIL, ['changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'cover version', 'file version ' + SPEC_VERSION]);
+    const want14 = ADDED_1110(opts).concat(ADDED_190_HEAD(opts), ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ADDED_190_TPL, ADDED_1100_TPL, ['fix effect style Focus/Ring: spread 2 and 4 px', 'fix effect style Ring/Urgent: spread 3 px', 'fix phone screens: Main scrolls vertically (' + ph0 + ' frames)'], ADDED_190_TAIL, ['changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'changelog row 1.11.0', 'cover version', 'file version ' + SPEC_VERSION]);
     check(!r.err && add14.join('|') === want14.join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the two ring styles, the phone screens, the changelog row and the version, with no warning or skip (' + (r.err ? r.err.message : add14.join(', ')) + ')');
     state190(Q, opts, '1.8.3 file updated ' + tag14);
     state1100(Q, opts, '1.8.3 file updated ' + tag14);
@@ -1623,7 +1629,7 @@ async function updateScenario(label, opts, from) {
     r = await send(Q, { type: 'update' });
     check(!r.err && r.done, 'Update library finished on the 1.8.4 file ' + tag15 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
     const add15 = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : []; console.log('    ' + add15.join('\n    '));
-    const want15 = ADDED_190_HEAD(opts).concat(ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ADDED_190_TPL, ADDED_1100_TPL, ADDED_190_TAIL, ['changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'cover version', 'file version ' + SPEC_VERSION]);
+    const want15 = ADDED_1110(opts).concat(ADDED_190_HEAD(opts), ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ADDED_190_TPL, ADDED_1100_TPL, ADDED_190_TAIL, ['changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'changelog row 1.11.0', 'cover version', 'file version ' + SPEC_VERSION]);
     check(add15.join('|') === want15.join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the token, icons, components, properties, templates, size table row, changelog row and version, with no warning, skip or overlap (' + add15.join(', ') + ')');
     state180(Q, opts, '1.8.4 file updated ' + tag15);
     state181(Q, '1.8.4 file updated ' + tag15);
@@ -1631,7 +1637,7 @@ async function updateScenario(label, opts, from) {
     state190(Q, opts, '1.8.4 file updated ' + tag15);
     state1100(Q, opts, '1.8.4 file updated ' + tag15);
     const nColl = opts.maxModes > 1 ? 1 : 2;
-    check(Q.VARS.size === nVars + nColl, 'exactly ' + nColl + ' variable(s) added: size/form-max (' + (Q.VARS.size - nVars) + ')');
+    check(Q.VARS.size === nVars + nColl + VARS_1110(opts), 'exactly ' + nColl + ' variable(s) added: size/form-max (' + (Q.VARS.size - nVars) + ')');
     const gone = [...ids0].filter((id) => !Q.byId.has(id));
     check(gone.length === 0, 'nothing was deleted (' + gone.length + ')');
     // Outside the four components 1.9.0 edits in place, no existing layer changed, apart from the cover, the changelog, Starter section bounds and
@@ -1763,14 +1769,14 @@ async function updateScenario(label, opts, from) {
     check(hostW(Q) === w0, 'Templates · Admin and Templates · Seller keep their width (' + w0 + ') ' + tag16);
     check(!r.err && r.done, 'Update library finished on the 1.9.0 file ' + tag16 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
     const add16 = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : []; console.log('    ' + add16.join('\n    '));
-    const want16 = ADDED_1100_MID.concat(ADDED_1101, ADDED_1100_TPL, ['changelog row 1.10.0', 'changelog row 1.10.1', 'cover version', 'file version ' + SPEC_VERSION]);
+    const want16 = ADDED_1110(opts).concat(ADDED_1100_MID, ADDED_1101, ADDED_1100_TPL, ['changelog row 1.10.0', 'changelog row 1.10.1', 'changelog row 1.11.0', 'cover version', 'file version ' + SPEC_VERSION]);
     check(add16.join('|') === want16.join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names SettingRow, the CheckboxRow additions, the templates, the changelog row and the version, with no warning, skip or overlap (' + add16.join(', ') + ')');
     state180(Q, opts, '1.9.0 file updated ' + tag16);
     state181(Q, '1.9.0 file updated ' + tag16);
     state183(Q, '1.9.0 file updated ' + tag16);
     state190(Q, opts, '1.9.0 file updated ' + tag16);
     state1100(Q, opts, '1.9.0 file updated ' + tag16);
-    check(Q.VARS.size === nVars, 'no variable added (' + (Q.VARS.size - nVars) + ')');
+    check(Q.VARS.size === nVars + VARS_1110(opts), 'no variable added (' + (Q.VARS.size - nVars) + ')');
     const gone = [...ids0].filter((id) => !Q.byId.has(id));
     check(gone.length === 0, 'nothing was deleted (' + gone.length + ')');
     // Outside CheckboxRow, its instances and its documentation block, no existing layer changed, apart from the cover, the changelog, Starter
@@ -1883,11 +1889,11 @@ async function updateScenario(label, opts, from) {
     r = await send(Q, { type: 'update' });
     check(!r.err && r.done, 'Update library finished on the 1.10.0 file ' + tag17 + (r.err ? ': ' + r.err.message : ''));
     const add17 = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : [];
-    const want17 = ADDED_1101.concat(['changelog row 1.10.1', 'cover version', 'file version ' + SPEC_VERSION]);
+    const want17 = ADDED_1110(opts).concat(ADDED_1101, ['changelog row 1.10.1', 'changelog row 1.11.0', 'cover version', 'file version ' + SPEC_VERSION]);
     check(add17.join('|') === want17.join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the frame, the changelog row and the version, with no warning or skip ' + tag17 + ' (' + add17.join(', ') + ')');
     state180(Q, opts, '1.10.0 file updated ' + tag17);
     state1100(Q, opts, '1.10.0 file updated ' + tag17);
-    check(Q.VARS.size === nVars && [...ids0].every((id) => Q.byId.has(id)) && host.width === w0, 'no variable added, nothing deleted, and Templates · Admin keeps its width ' + tag17);
+    check(Q.VARS.size === nVars + VARS_1110(opts) && [...ids0].every((id) => Q.byId.has(id)) && host.width === w0, 'no variable added, nothing deleted, and Templates · Admin keeps its width ' + tag17);
     const changed = before.filter((n) => fullSnap(n) !== snap0.get(n.id) && !(n.type === 'TEXT' && (n.characters === SPEC_VERSION || /^\d{1,2} [A-Z][a-z]{2} \d{4}$/.test(n.characters))) && !(n.type === 'SECTION' && fullSnap(n, true) === encodeSnap(JSON.parse(snap0.get(n.id)), true)) && !inChangelog(n) && !grown190(Q, n, ids0, snap0));
     check(changed.length === 0, 'no existing layer changed apart from the cover, the changelog and grown hosts ' + tag17 + ' (' + changed.length + (changed.length ? ': ' + snapDiff(changed, snap0) : '') + ')');
     const pos1 = posOf(Q); const moved = [...pos0.keys()].filter((id) => pos1.get(id) !== pos0.get(id)).map((id) => Q.byId.get(id));
