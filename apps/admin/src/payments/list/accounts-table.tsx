@@ -13,7 +13,7 @@ import type { AccountListRow } from './accounts-list-types.ts';
  * The connected accounts of one page (`SuperTable`): a box to select the row, the seller, the
  * status, ready for payouts and the details due, then the optional columns the admin chose, and
  * the row Actions menu last. From 1024 px a table; below it each account is a card (the seller as
- * its title, the status in its corner). Times are in the admin's zone.
+ * its title, the status in its corner). Times are in the admin's own zone (named in the Help panel and the account menu).
  */
 export function AccountsTable({
   rows,

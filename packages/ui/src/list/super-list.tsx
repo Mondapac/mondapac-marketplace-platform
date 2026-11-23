@@ -6,7 +6,7 @@ import { Button } from '../form/button.tsx';
 import { LoadError } from '../form/load-error.tsx';
 import { SearchField } from '../form/search-field.tsx';
 import type { IconName } from '../icon/icon.tsx';
-import { PageInfo } from '../overlay/page-info.tsx';
+import { PageHeader } from '../help/page-header.tsx';
 import { Popover, type PopoverProps } from '../overlay/popover.tsx';
 import { FilterChipRow, type FilterChipRowProps } from './filter-chip-row.tsx';
 import { ListPagination, type ListPaginationProps } from './list-pagination.tsx';
@@ -29,10 +29,8 @@ export interface SuperListProps {
     readonly title?: string;
     /** A live line (a count, a filter state); empty or absent when the list has none. */
     readonly subtitle?: string;
-    /** The list's static intro (its purpose or rule): shown in the info icon (ⓘ), not as a line. */
-    readonly info?: string;
-    /** A second small muted line under the subtitle (for example the zone the times are in). */
-    readonly note?: string;
+    /** A live-state label beside the title ("Live · every 30 s", "Default"). */
+    readonly status?: string;
     readonly actions?: ReactNode;
   };
   /** A notice between the heading and the tabs (for example a view-only banner). */
@@ -147,54 +145,32 @@ export function SuperList({
   dialogs,
 }: SuperListProps) {
   const skeleton = status.skeleton && failure === null;
-  const infoIcon =
-    heading.info === undefined ? null : <PageInfo page={heading.title}>{heading.info}</PageInfo>;
   const hasTools = filter !== undefined || sort !== undefined || columns !== undefined;
   return (
     <div className="flex flex-col gap-4">
-      <div
-        className={`flex flex-wrap justify-between gap-x-4 gap-y-3 ${heading.title === undefined ? 'items-center' : 'items-start'}`}
-      >
-        {heading.title === undefined && heading.note === undefined ? (
-          <div className="flex min-w-0 items-center gap-2">
-            {infoIcon}
+      {heading.title === undefined ? (
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+          <div className="min-w-0">
             {heading.subtitle ? (
               <p className="min-w-0 text-sm text-fg-muted">{heading.subtitle}</p>
             ) : null}
           </div>
-        ) : (
-          <div className={`flex min-w-0 flex-col ${heading.title === undefined ? 'gap-1' : ''}`}>
-            {heading.title === undefined ? (
-              <div className="flex min-w-0 items-center gap-2">
-                {infoIcon}
-                {heading.subtitle === undefined ? null : (
-                  <p className="min-h-5 text-sm text-fg-muted">{heading.subtitle}</p>
-                )}
-                {heading.subtitle === undefined && heading.note !== undefined ? (
-                  <p className="text-sm text-fg-muted">{heading.note}</p>
-                ) : null}
-              </div>
-            ) : (
-              <>
-                <div className="flex min-w-0 items-center gap-2">
-                  <h1 className="min-w-0 break-words text-2xl font-semibold">{heading.title}</h1>
-                  {infoIcon}
-                </div>
-                {heading.subtitle === undefined ? null : (
-                  <p className="min-h-5 text-sm text-fg-muted">{heading.subtitle}</p>
-                )}
-              </>
-            )}
-            {heading.note === undefined ||
-            (heading.title === undefined && heading.subtitle === undefined) ? null : (
-              <p className="text-sm text-fg-muted">{heading.note}</p>
-            )}
-          </div>
-        )}
-        {heading.actions === undefined ? null : (
-          <div className="flex flex-wrap items-center gap-2">{heading.actions}</div>
-        )}
-      </div>
+          {heading.actions === undefined ? null : (
+            <div className="flex flex-wrap items-center gap-2">{heading.actions}</div>
+          )}
+        </div>
+      ) : (
+        <div className="flex min-w-0 flex-col gap-1">
+          <PageHeader
+            title={heading.title}
+            {...(heading.status === undefined ? {} : { status: heading.status })}
+            {...(heading.actions === undefined ? {} : { actions: heading.actions })}
+          />
+          {heading.subtitle === undefined ? null : (
+            <p className="min-h-5 text-sm text-fg-muted">{heading.subtitle}</p>
+          )}
+        </div>
+      )}
       {notice}
       {views === undefined ? null : <ListViewsBar {...views} />}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -206,7 +182,7 @@ export function SuperList({
               value={search.value}
               maxLength={search.maxLength}
               {...(search.help === undefined ? {} : { help: search.help })}
-              className="w-full min-w-0 sm:min-w-64 sm:max-w-110 sm:flex-1"
+              className="w-full min-w-0 sm:min-w-80 sm:max-w-110 sm:flex-1"
               onChange={(event) => search.onChange(event.target.value)}
               onBlur={search.onBlur}
               onKeyDown={(event) => {

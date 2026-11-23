@@ -1,7 +1,7 @@
 'use client';
 
 import { Banner } from '@mondapac/ui';
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
 import type { ListPagingMode } from '../sales/cursor-paging.ts';
@@ -15,7 +15,6 @@ import {
   S1_RESPONSE_MS,
   type Severity,
   type Summary,
-  zoneLabel,
 } from './types.ts';
 
 /**
@@ -44,7 +43,6 @@ export function AlertsList({
   readonly initialSeverity?: Severity;
 }) {
   const t = useTranslations('security-centre');
-  const locale = useLocale();
   const ago = useAgo();
   const now = useNow();
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -109,7 +107,6 @@ export function AlertsList({
           {summary === null ? null : ' · '}
           {t('updates')}
         </span>
-        <span>{t('zone-note', { zone: zoneLabel(zone, locale) })}</span>
       </div>
       {noRoster ? (
         <Banner tone="critical" title={t('banner.no-roster-title')}>

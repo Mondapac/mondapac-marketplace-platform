@@ -134,7 +134,10 @@ describe('dispute detail', () => {
     expect(screen.getByText('$90.00')).toBeTruthy();
     expect(screen.getByText('Dispute opened')).toBeTruthy();
     expect(screen.getByText('The bank took the money')).toBeTruthy();
-    expect(screen.getByText('Dates are shown in Australia/Brisbane.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
   });
 
   it('offers Decide only with the permission and an allowed decision', () => {

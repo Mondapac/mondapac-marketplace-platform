@@ -158,7 +158,6 @@ export function SupportEmailCard({
   return (
     <SettingsPage
       title={t('settings.support.title')}
-      description={t('settings.support.intro')}
       lastChanged={changeHistory.line}
       overlay={changeHistory.drawer}
       banner={banner}

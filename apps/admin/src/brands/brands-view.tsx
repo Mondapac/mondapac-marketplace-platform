@@ -1,6 +1,6 @@
 'use client';
 
-import { Banner, Button, LoadError, SkeletonRows, Tabs, toast } from '@mondapac/ui';
+import { Banner, Button, LoadError, PageHeader, SkeletonRows, Tabs, toast } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -22,6 +22,7 @@ type Section = 'brands' | 'duplicates';
  * decision is confirmed in a dialog and checked again by the API.
  */
 export function BrandsView({
+  title,
   canEdit,
   csrfToken,
   paging,
@@ -29,6 +30,8 @@ export function BrandsView({
   marketId,
   zone,
 }: {
+  /** The page's h1; the New button sits in its row on the Brands tab. */
+  readonly title: string;
   readonly canEdit: boolean;
   readonly csrfToken: string;
   readonly paging: ListPagingMode;
@@ -86,13 +89,20 @@ export function BrandsView({
 
   return (
     <div className="flex flex-col gap-4">
+      <PageHeader
+        title={title}
+        {...(canEdit && section === 'brands'
+          ? { actions: <Button onClick={() => setDialog({ kind: 'form' })}>{t('new')}</Button> }
+          : {})}
+      />
       <Tabs
         label={t('tabs')}
         items={[
-          { id: 'brands', label: t('tab.brands') },
+          { id: 'brands', label: t('tab.brands'), help: 'Brands' },
           {
             id: 'duplicates',
-            label: `${t('tab.duplicates')}${queueLoad === 'ready' ? ` ${groups.length}` : ''}`,
+            help: 'Duplicates',
+            label: `${t('tab.duplicates')}${queueLoad === 'ready' ? ` (${groups.length})` : ''}`,
           },
         ]}
         activeId={section}
@@ -114,7 +124,6 @@ export function BrandsView({
           />
         ) : (
           <>
-            <p className="max-w-prose text-fg-muted">{t('intro')}</p>
             <MergeQueue
               groups={groups}
               canEdit={canEdit}
@@ -132,9 +141,7 @@ export function BrandsView({
           csrfToken={csrfToken}
           refreshKey={refresh}
           onOpen={setDialog}
-          headerAction={
-            canEdit ? <Button onClick={() => setDialog({ kind: 'form' })}>{t('new')}</Button> : null
-          }
+          headerAction={null}
           dialogs={
             <>
               {dialog?.kind === 'form' ? (

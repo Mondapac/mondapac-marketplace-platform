@@ -58,8 +58,8 @@ export function CategoriesTabs({
       <Tabs
         label={t('tabs')}
         items={[
-          { id: 'tree', label: t('tab.tree') },
-          { id: 'proposals', label: t('tab.proposals') },
+          { id: 'tree', label: t('tab.tree'), help: 'Category tree' },
+          { id: 'proposals', label: t('tab.proposals'), help: 'Category proposals' },
         ]}
         activeId={tab}
         onSelect={(id) => {

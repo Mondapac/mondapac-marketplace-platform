@@ -222,7 +222,10 @@ describe('Holds list: page numbers', () => {
     expect(screen.queryByText('Manage filters')).toBeNull();
     // 2026-10-21 01:00 UTC is 11:00 in Brisbane; 2026-10-25 01:00 UTC likewise.
     expect(within(table).getAllByText(/21 Oct/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Times are shown in Australia\/Brisbane\./)).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
     // A page of 100 is a choice of the footer, not a cap.
     fireEvent.change(screen.getByLabelText('Rows per page'), { target: { value: '100' } });
     await waitFor(() => expect(lastParams()['pageSize']).toBe('100'));
@@ -963,6 +966,9 @@ describe('Holds list: columns and Markets', () => {
     expect(within(table).queryByRole('columnheader', { name: 'Placed by' })).toBeNull();
     expect(within(table).getAllByText(/11 Nov/).length).toBeGreaterThan(0);
     expect(within(table).queryByText(/10 Nov/)).toBeNull();
-    expect(screen.getByText(/Times are shown in Pacific\/Auckland\./)).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
   });
 });

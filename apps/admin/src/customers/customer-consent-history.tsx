@@ -296,7 +296,6 @@ export function CustomerConsentHistory({
     <SuperList
       heading={{
         subtitle: t('subtitle'),
-        note: t('zone', { zone }),
         actions: keys.has(EXPORT_PERMISSION) ? (
           <Button
             variant="secondary"

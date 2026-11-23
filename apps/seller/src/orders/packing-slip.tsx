@@ -1,6 +1,6 @@
 'use client';
 
-import { BackLink, Button } from '@mondapac/ui';
+import { BackLink, Button, PageHeader } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useId } from 'react';
 import { shortInstant } from '../catalog/format.ts';
@@ -152,7 +152,7 @@ export function PackingSlips({
         {orders.length === 0 ? null : <Button onClick={() => window.print()}>{t('print')}</Button>}
       </div>
       <div className="flex flex-col gap-1 print:hidden">
-        <h1 className="text-2xl font-semibold">{t('many-title')}</h1>
+        <PageHeader title={t('many-title')} />
         <p className="text-fg-muted">{t('many-count', { count: orders.length })}</p>
         {skipped === 0 ? null : (
           <p className="text-fg-muted">{t('many-skipped', { count: skipped })}</p>

@@ -396,8 +396,7 @@ export function UnansweredList({
   return (
     <SuperList
       heading={{
-        info: t('intro'),
-        note: truncated ? t('truncated') : undefined,
+        ...(truncated ? { subtitle: t('truncated') } : {}),
         actions: (
           <ActionMenu
             label={t('bulk.button')}

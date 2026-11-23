@@ -99,6 +99,7 @@ export function OrdersList({
   csrfToken = '',
   zone,
   customerAccountId,
+  title,
 }: {
   readonly paging?: ListPaging;
   readonly accountId: string;
@@ -112,6 +113,8 @@ export function OrdersList({
    * all matching" (the export route takes no customer, so a bulk export goes by ticked ids).
    */
   readonly customerAccountId?: string;
+  /** The page's h1: the buttons then sit in its row (the Orders page). Left out inside a tab. */
+  readonly title?: string;
 }) {
   const t = useTranslations('orders');
   const ts = useTranslations('sales-lists');
@@ -480,8 +483,7 @@ export function OrdersList({
   return (
     <SuperList
       heading={{
-        info: t(customerAccountId === undefined ? 'intro' : 'customer-intro'),
-        note: t('zone-note', { zone }),
+        ...(title === undefined ? {} : { title }),
         actions: (
           <OrdersBulk
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}

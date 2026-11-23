@@ -1,4 +1,4 @@
-import { Badge, LoadError } from '@mondapac/ui';
+import { Badge, LoadError, PageHeader } from '@mondapac/ui';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { isView, type View } from '../../../src/payouts/list/payouts-list-types.ts';
@@ -55,7 +55,7 @@ export default async function PayoutsPage({
     // No session, so no shell; the page still has its heading.
     return (
       <div className="flex flex-col gap-4 p-4">
-        <h1 className="text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} />
         <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
       </div>
     );
@@ -64,7 +64,7 @@ export default async function PayoutsPage({
   if (!session.permissionKeys.includes(VIEW_PERMISSION)) {
     return (
       <AdminShell session={session} activeId="payouts" title={title}>
-        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} className="mb-4" />
         <p className="text-fg-muted">{t('payouts.no-access')}</p>
         <p className="mt-4">
           <a className="font-medium text-link underline" href="/">
@@ -91,7 +91,7 @@ export default async function PayoutsPage({
   const zone = displayZone(session.timezone);
   return (
     <AdminShell session={session} activeId="payouts" title={title}>
-      <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-2" />
       <div className="flex flex-col gap-4">
         <p className="max-w-(--mp-size-form-max) text-sm text-fg-muted">{t('step-up.wait-note')}</p>
         {limits === null ? null : (

@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { ContentNoAccess } from '../../../../../src/content/content-no-access.tsx';
 import { placeFromSearch, orderPageHref } from '../../../../../src/content/slides/slide-order.ts';
@@ -45,7 +45,7 @@ export default async function SlideOrderPage({
   return (
     <AdminShell session={gate.session} activeId="slides" title={title}>
       <div className="mb-4">
-        <h1 className="text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} />
         <p className="text-fg-muted">{t('content.slides.intro')}</p>
       </div>
       <div className="mb-4">

@@ -9,6 +9,7 @@ import {
   Menu,
   SkeletonRows,
   type MenuItem,
+  PageHeader,
 } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
@@ -139,7 +140,7 @@ export function GroupPage({
       <Card>
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 flex-col gap-1">
-            <h1 className="text-2xl font-semibold wrap-anywhere">{group.name}</h1>
+            <PageHeader title={group.name} />
             {group.description === null ? null : (
               <p className="text-fg-muted wrap-anywhere">{group.description}</p>
             )}

@@ -152,7 +152,7 @@ export function ReviewPolicyPanel({
   const title = t('title');
   if (loadFailed) {
     return (
-      <SettingsPage title={title} description={t('intro')}>
+      <SettingsPage title={title}>
         <LoadError
           className="flex flex-col items-start gap-3"
           message={t('load-failed')}
@@ -164,7 +164,7 @@ export function ReviewPolicyPanel({
   }
   if (policy === null || loading.visible) {
     return (
-      <SettingsPage title={title} description={t('intro')}>
+      <SettingsPage title={title}>
         <SettingsSkeleton
           label={root('route.loading-page', { page: title })}
           header={false}
@@ -426,7 +426,6 @@ export function ReviewPolicyPanel({
   return (
     <SettingsPage
       title={title}
-      description={t('intro')}
       banner={<div className="flex flex-col gap-3">{banners}</div>}
       onSubmit={canManage ? startSaving : undefined}
       dirty={canManage && changeCount > 0}

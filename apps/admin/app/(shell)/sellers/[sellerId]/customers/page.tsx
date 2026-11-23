@@ -1,4 +1,4 @@
-import { BackLink, LoadError } from '@mondapac/ui';
+import { BackLink, LoadError, PageHeader } from '@mondapac/ui';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
@@ -55,7 +55,7 @@ export default async function SellerCustomersPage({
     <AdminShell session={session} activeId="sellers" title={title}>
       <div className="mb-4 flex flex-col items-start gap-2">
         <BackLink href={`/sellers/${sellerId}`} label={t('customers.seller-tab.back')} />
-        <h1 className="text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} />
       </div>
       {body}
     </AdminShell>

@@ -1,6 +1,15 @@
 'use client';
 
-import { Banner, BackLink, Button, Dialog, RadioGroup, TextAreaField, toast } from '@mondapac/ui';
+import {
+  Banner,
+  BackLink,
+  Button,
+  Dialog,
+  RadioGroup,
+  TextAreaField,
+  toast,
+  PageHeader,
+} from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -189,7 +198,7 @@ export function AlertDetailView({
           <SeverityBadge severity={alert.severity} />
           <StateBadge state={alert.state} />
         </div>
-        <h1 className="text-2xl font-semibold">{alert.title}</h1>
+        <PageHeader title={alert.title} />
         <p className="font-mono text-sm text-fg-muted">{alert.rule}</p>
       </header>
 

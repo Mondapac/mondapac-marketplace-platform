@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { SellerDashboard } from '../../src/dashboard/dashboard.tsx';
@@ -36,7 +36,7 @@ export default async function HomePage({
     <SellerShell session={gate.session} activeId="s_home" title={t('home.title')}>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-1">
-          <h1 className="break-words text-2xl font-semibold">{t('home.title')}</h1>
+          <PageHeader title={t('home.title')} />
           <p className="text-fg-muted">{t('home.intro', { name: gate.session.displayName })}</p>
         </div>
         <SellerDashboard

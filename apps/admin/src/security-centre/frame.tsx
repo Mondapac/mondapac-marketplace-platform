@@ -1,5 +1,5 @@
 import 'server-only';
-import { LoadError, PageInfo, Tabs } from '@mondapac/ui';
+import { LoadError, Tabs, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import type { ReactNode } from 'react';
 import { AdminShell } from '../server/admin-shell.tsx';
@@ -29,10 +29,7 @@ export async function SecurityFrame({
     <AdminShell session={session} activeId="security" title={title}>
       {pageTitle === undefined ? (
         <>
-          <div className="mb-4 flex items-center gap-2">
-            <h1 className="text-2xl font-semibold">{title}</h1>
-            <PageInfo page={title}>{t('intro')}</PageInfo>
-          </div>
+          <PageHeader title={title} className="mb-4" />
         </>
       ) : null}
       {tab === null ? null : (

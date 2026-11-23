@@ -8,6 +8,7 @@ import {
   LinkButton,
   type BadgeTone,
   type DataListRow,
+  PageHeader,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
@@ -80,18 +81,20 @@ export function OrderDetail({
         label={from === undefined ? t('detail.back') : t('detail.back-customer')}
       />
       <header className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold break-words">
-            {t('reference', { id: shortId(order.orderId) })}
-          </h1>
-          <OrderStatusBadge status={order.status} />
-          <OrderMoreMenu
-            order={order}
-            canRefund={canRefund}
-            csrfToken={csrfToken}
-            startOpen={startCancel}
-          />
-        </div>
+        <PageHeader
+          title={t('reference', { id: shortId(order.orderId) })}
+          badges={
+            <>
+              <OrderStatusBadge status={order.status} />
+              <OrderMoreMenu
+                order={order}
+                canRefund={canRefund}
+                csrfToken={csrfToken}
+                startOpen={startCancel}
+              />
+            </>
+          }
+        />
         <p className="text-sm text-fg-muted break-all">{order.orderId}</p>
         <p className="text-sm text-fg-muted">
           {t('detail.meta', {

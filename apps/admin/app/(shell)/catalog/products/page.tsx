@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
@@ -30,7 +30,7 @@ export default async function ProductsPage() {
   return (
     <AdminShell session={gate.session} activeId="products" title={title}>
       {/* A visible page title, like the other admin lists; the tabs follow it. */}
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       {allowed ? (
         <ProductsList
           accountId={gate.session.accountId}

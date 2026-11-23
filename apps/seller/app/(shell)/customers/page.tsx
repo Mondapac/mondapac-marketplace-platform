@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { CustomersList } from '../../../src/customers/customers-list.tsx';
@@ -28,7 +28,7 @@ export default async function CustomersPage() {
   if (gate.kind === 'no-access') {
     return (
       <SellerShell session={gate.session} activeId="s_customers" title={title}>
-        <h1 className="mb-2 text-2xl font-semibold">{t('catalog.no-access.title')}</h1>
+        <PageHeader title={t('catalog.no-access.title')} className="mb-2" />
         <p className="text-fg-muted">{t('catalog.no-access.body')}</p>
       </SellerShell>
     );
@@ -41,7 +41,7 @@ export default async function CustomersPage() {
   const keys = session.permissionKeys;
   return (
     <SellerShell session={session} activeId="s_customers" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       <CustomersList
         paging={paging}
         accountId={session.accountId}

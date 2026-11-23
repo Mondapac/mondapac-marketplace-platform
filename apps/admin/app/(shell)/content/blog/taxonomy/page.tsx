@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { BLOG_READ_PERMISSION, BLOG_TAXONOMY_PERMISSION } from '../../../../../src/blog/types.ts';
 import { TaxonomyView } from '../../../../../src/blog/taxonomy/taxonomy-view.tsx';
@@ -25,7 +25,7 @@ export default async function BlogTaxonomyPage() {
   return (
     <AdminShell session={gate.session} activeId="blog" title={title}>
       <div className="mb-4">
-        <h1 className="text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} />
         <p className="text-fg-muted">{t('blog.taxonomy.intro')}</p>
       </div>
       <TaxonomyView

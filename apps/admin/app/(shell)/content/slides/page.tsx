@@ -1,4 +1,4 @@
-import { LinkButton, LoadError } from '@mondapac/ui';
+import { LinkButton, LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { ContentNoAccess } from '../../../../src/content/content-no-access.tsx';
 import {
@@ -32,7 +32,7 @@ export default async function SlidesPage() {
     <AdminShell session={gate.session} activeId="slides" title={title}>
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-semibold">{title}</h1>
+          <PageHeader title={title} />
           <p className="text-fg-muted">{t('content.slides.intro')}</p>
         </div>
         {permissionKeys.includes(SLIDE_EDIT_PERMISSION) ? (

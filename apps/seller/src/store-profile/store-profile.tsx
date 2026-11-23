@@ -44,7 +44,6 @@ export function StoreProfile({
   return (
     <SettingsPage
       title={t('store-profile.title')}
-      description={t('store-profile.intro')}
       lastChanged={changeHistory.line}
       overlay={changeHistory.drawer}
       banner={

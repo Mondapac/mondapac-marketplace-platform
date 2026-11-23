@@ -62,13 +62,14 @@ export function VariantsView({
 
   return (
     <div className="mt-1 flex flex-col gap-4">
-      <p className="max-w-prose text-fg-muted">{t('intro')}</p>
       <Tabs
         label={t('tabs')}
         items={[
-          { id: 'types', label: t('tab.types') },
-          { id: 'variants', label: t('tab.variants') },
-          ...(canReview ? [{ id: 'waiting', label: t('tab.waiting') }] : []),
+          { id: 'types', label: t('tab.types'), help: 'Variant types' },
+          { id: 'variants', label: t('tab.variants'), help: 'Variants' },
+          ...(canReview
+            ? [{ id: 'waiting', label: t('tab.waiting'), help: 'Waiting for you' }]
+            : []),
         ]}
         activeId={tab}
         onSelect={(id) => setTab(id as Tab)}

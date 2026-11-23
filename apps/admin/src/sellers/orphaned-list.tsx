@@ -81,7 +81,6 @@ export function OrphanedList({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-fg-muted">{t('intro')}</p>
       {failed === 'first' ? (
         <LoadError
           className="flex flex-col items-start gap-3 rounded-lg border border-line p-6"

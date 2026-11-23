@@ -1,6 +1,6 @@
 'use client';
 
-import { BackLink, LoadError, SkeletonRows } from '@mondapac/ui';
+import { BackLink, LoadError, SkeletonRows, PageHeader } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useState } from 'react';
@@ -79,7 +79,7 @@ export function ProductAdd({
     return (
       <div className="flex flex-col gap-4">
         <BackLink href="/catalog/products" label={t('back')} />
-        <h1 className="text-2xl font-semibold">{t('create.title')}</h1>
+        <PageHeader title={t('create.title')} />
         {phase.kind === 'loading' ? (
           <SkeletonRows label={t('loading')} rows={6} />
         ) : (

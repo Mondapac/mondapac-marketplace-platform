@@ -1,4 +1,4 @@
-import { BackLink, Badge, LinkButton, Tabs } from '@mondapac/ui';
+import { BackLink, Badge, LinkButton, Tabs, PageHeader } from '@mondapac/ui';
 import { known, OFFER_STATUSES } from './format.ts';
 import { OFFER_TONE } from './offer-tone.ts';
 import type { OfferView } from './types.ts';
@@ -44,14 +44,15 @@ export function OfferHeader({
       <div className="flex flex-col items-start gap-2">
         <BackLink href="/offers" label={t('catalog.offers.back')} />
         <div className="flex w-full flex-wrap items-center justify-between gap-3">
-          <div className="flex min-w-0 flex-wrap items-center gap-3">
-            <h1 className="min-w-0 break-words text-2xl font-semibold">
-              {offer.product.name ?? offer.product.productCode ?? offer.sellerSku}
-            </h1>
-            <Badge tone={OFFER_TONE[status] ?? 'neutral'}>
-              {t(`catalog.offers.status.${status}`)}
-            </Badge>
-          </div>
+          <PageHeader
+            title={offer.product.name ?? offer.product.productCode ?? offer.sellerSku}
+            badges={
+              <Badge tone={OFFER_TONE[status] ?? 'neutral'}>
+                {t(`catalog.offers.status.${status}`)}
+              </Badge>
+            }
+            className="min-w-0"
+          />
           {canEdit && active === 'details' && status !== 'published' ? (
             <LinkButton variant="secondary" href={`${base}/edit`} className="max-sm:w-full">
               {t('catalog.offer-edit.title')}

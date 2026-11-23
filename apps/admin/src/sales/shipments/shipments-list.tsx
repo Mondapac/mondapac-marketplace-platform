@@ -489,8 +489,6 @@ export function ShipmentsList({
   return (
     <SuperList
       heading={{
-        info: t('intro'),
-        note: to('zone-note', { zone }),
         actions: (
           <ShipmentsBulk
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}

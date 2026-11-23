@@ -23,6 +23,16 @@ export const REVIEWS_VIEW = 'reviews.customer-review.view';
 export const SHOPPING_KEYS = [CART_VIEW, REMINDER_VIEW, BEHAVIOUR_VIEW, ASSISTANT_VIEW] as const;
 
 export const TABS = ['overview', 'orders', 'money', 'shopping', 'reviews', 'security'] as const;
+
+/** The tabs' names in the Help text. */
+export const CUSTOMER_TAB_HELP: Readonly<Record<(typeof TABS)[number], string>> = {
+  overview: 'Overview',
+  orders: 'Orders',
+  money: 'Money',
+  shopping: 'Shopping',
+  reviews: 'Reviews',
+  security: 'Account & security',
+};
 export type Tab = (typeof TABS)[number];
 
 export const isTab = (value: unknown): value is Tab =>

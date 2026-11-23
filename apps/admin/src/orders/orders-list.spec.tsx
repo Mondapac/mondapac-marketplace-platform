@@ -224,7 +224,10 @@ describe('orders list', () => {
     serve(() => pageOf([row({ createdAt: '2026-10-12T15:30:00.000Z' })]));
     mount({ zone: 'Australia/Brisbane' });
     const table = await screen.findByRole('table');
-    expect(screen.getByText('Times and days are in Australia/Brisbane.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
     expect(within(table).getByText(/13 Oct.*1:30/)).toBeTruthy();
   });
 });

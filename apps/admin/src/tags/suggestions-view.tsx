@@ -1,6 +1,6 @@
 'use client';
 
-import { Tabs } from '@mondapac/ui';
+import { Tabs, PageHeader } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import type { ListPagingMode } from '../shared/paged-list/types.ts';
 import { SuggestionsList } from './suggestions-list.tsx';
@@ -28,7 +28,7 @@ export function SuggestionsView({
   const t = useTranslations('tags.suggestions');
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-2xl font-semibold text-fg">{t('title')}</h1>
+      <PageHeader title={t('title')} />
       <Tabs
         label={t('tabs')}
         activeId="suggestions"

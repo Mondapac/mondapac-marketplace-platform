@@ -183,8 +183,8 @@ function CarrierProgressCell({
  * The shipments of one page, from one column definition (`SuperTable`): a box to select the row,
  * the order reference, the stage, then the columns the admin chose in their order, and the row
  * Actions menu last. From 1024 px a table; below it each shipment is a card with labelled lines
- * (the reference as its title, the stage in its corner). Times are in `zone`, which the page names
- * once; money is in each row's own currency.
+ * (the reference as its title, the stage in its corner). Times are in `zone`, the viewer's own zone (named in the Help
+ * panel and the account menu, not on the page); money is in each row's own currency.
  */
 export function ShipmentsTable({
   rows,

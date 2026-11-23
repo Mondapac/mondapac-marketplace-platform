@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { CustomersList } from '../../../src/customers/customers-list.tsx';
@@ -26,7 +26,7 @@ export default async function CustomersPage() {
   if (!keys.includes(VIEW_PERMISSION)) {
     return (
       <AdminShell session={gate.session} activeId="customers" title={title}>
-        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} className="mb-4" />
         <p className="text-fg-muted">{t('customers.no-access')}</p>
         <p className="mt-4">
           <a className="font-medium text-link underline" href="/">
@@ -44,7 +44,7 @@ export default async function CustomersPage() {
   const marketId = panelHostFor(config, (await headers()).get('host'))?.marketId ?? '';
   return (
     <AdminShell session={gate.session} activeId="customers" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       <CustomersList
         accountId={gate.session.accountId}
         marketId={marketId}

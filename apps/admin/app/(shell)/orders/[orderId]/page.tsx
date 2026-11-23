@@ -1,4 +1,4 @@
-import { BackLink, LoadError } from '@mondapac/ui';
+import { BackLink, LoadError, PageHeader } from '@mondapac/ui';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { OrderDetail } from '../../../../src/orders/order-detail.tsx';
@@ -53,7 +53,7 @@ export default async function OrderPage({
           label={t(from === undefined ? 'orders.detail.back' : 'orders.detail.back-customer')}
         />
         <div>
-          <h1 className="mb-2 text-2xl font-semibold">{t(`orders.${key}-title`)}</h1>
+          <PageHeader title={t(`orders.${key}-title`)} className="mb-2" />
           <p className="text-fg-muted">{t(`orders.${key}`)}</p>
         </div>
       </div>,

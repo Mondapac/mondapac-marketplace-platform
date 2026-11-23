@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../server/admin-shell.tsx';
@@ -48,7 +48,7 @@ export async function PageRoute({
   if (read.kind !== 'ok') {
     return (
       <AdminShell session={gate.session} activeId="content" title={title}>
-        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} className="mb-4" />
         <LoadError message={t('content.unavailable')} retryLabel={t('load.retry')} />
       </AdminShell>
     );

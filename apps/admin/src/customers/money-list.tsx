@@ -405,8 +405,7 @@ export function MoneyList<Row, Answer extends ListAnswer<Row>>({
     <Card title={t('title')}>
       <SuperList
         heading={{
-          subtitle: t('subtitle'),
-          ...(note === undefined ? {} : { note }),
+          subtitle: note === undefined ? t('subtitle') : `${t('subtitle')} ${note}`,
           actions: keys.has(EXPORT_PERMISSION) ? (
             <Button
               variant="secondary"

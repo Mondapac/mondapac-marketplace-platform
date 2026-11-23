@@ -1,9 +1,10 @@
 'use client';
 
 import { AccountMenu, type AccountMenuLink, type ThemeChoice } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useTimeZone, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { callApi } from '../api/client.ts';
+import { resolveZone } from '../price/zone-time.ts';
 
 /** The topbar's account menu: who is signed in, their own pages, the theme and sign-out. */
 export function UserMenu({
@@ -21,6 +22,7 @@ export function UserMenu({
   readonly csrfToken: string;
 }) {
   const t = useTranslations('account-menu');
+  const zone = resolveZone(useTimeZone());
   const themeT = useTranslations('theme');
   const router = useRouter();
   const links: readonly AccountMenuLink[] = [
@@ -55,6 +57,14 @@ export function UserMenu({
       name={name}
       email={email}
       links={links}
+      zone={t.rich('zone', {
+        zone,
+        change: (chunks) => (
+          <a href="/account/profile" className="text-link underline-offset-2 hover:underline">
+            {chunks}
+          </a>
+        ),
+      })}
       theme={theme}
       labels={{
         trigger: t('trigger', { name }),

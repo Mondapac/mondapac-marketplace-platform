@@ -216,7 +216,6 @@ export function ApproveDialog({
             <Banner tone="attention">{t('over-level')}</Banner>
           ) : null}
           <DataList missing="-" rows={rows} />
-          <p className="text-sm text-fg-muted">{t('zone-note', { zone })}</p>
           {canApprove ? (
             <>
               <p className="text-sm text-fg-muted">{t('step-up-note')}</p>

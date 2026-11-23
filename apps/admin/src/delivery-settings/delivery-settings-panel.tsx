@@ -341,7 +341,6 @@ export function DeliverySettingsPanel({
   return (
     <SettingsPage
       title={t(`${P}.title`)}
-      description={t(`${P}.intro`)}
       lastChanged={changeHistory.line}
       overlay={changeHistory.drawer}
       banner={

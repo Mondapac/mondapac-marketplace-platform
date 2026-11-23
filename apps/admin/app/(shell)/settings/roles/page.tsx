@@ -37,7 +37,6 @@ export default async function RolesPageRoute() {
     <SettingsShell session={gate.session} linkId="roles" title={title}>
       <SettingsPage
         title={title}
-        description={t('settings.roles.description')}
         actions={
           gate.session.permissionKeys.includes(CREATE_PERMISSION) ? (
             <LinkButton href="/settings/roles/new">{t('identity.roles.action.create')}</LinkButton>

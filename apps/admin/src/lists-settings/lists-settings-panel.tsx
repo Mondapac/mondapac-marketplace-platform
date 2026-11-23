@@ -157,7 +157,6 @@ export function ListsSettingsPanel({
   return (
     <SettingsPage
       title={t(`${P}.title`)}
-      description={t(`${P}.intro`)}
       lastChanged={{
         text:
           savedRow.version === 0

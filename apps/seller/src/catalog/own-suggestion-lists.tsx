@@ -10,6 +10,7 @@ import {
   type PagedFilterField,
   type PagedListConfig,
   type SuperColumn,
+  PageHeader,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
@@ -304,7 +305,7 @@ function OwnSuggestionsList<Row extends { readonly id: string; readonly label: s
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+        <PageHeader title={t('title')} />
         {button}
       </div>
       {sent ? <Banner tone="success">{t('sent')}</Banner> : null}

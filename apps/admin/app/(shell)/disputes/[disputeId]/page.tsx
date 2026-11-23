@@ -1,4 +1,4 @@
-import { BackLink, LoadError } from '@mondapac/ui';
+import { BackLink, LoadError, PageHeader } from '@mondapac/ui';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { DisputeDetailView } from '../../../../src/disputes/dispute-detail.tsx';
@@ -32,7 +32,7 @@ export default async function DisputePage({
     // No session, so no shell; the page still has its heading.
     return (
       <div className="flex flex-col gap-4 p-4">
-        <h1 className="text-2xl font-semibold">{t('disputes.detail.page-title')}</h1>
+        <PageHeader title={t('disputes.detail.page-title')} />
         <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
       </div>
     );
@@ -48,7 +48,7 @@ export default async function DisputePage({
     shell(
       <div className="flex flex-col gap-4">
         <BackLink href="/disputes" label={title} />
-        <h1 className="text-2xl font-semibold">{t(`disputes.${key}-title`)}</h1>
+        <PageHeader title={t(`disputes.${key}-title`)} />
         <p className="text-fg-muted">{t(`disputes.${key}`)}</p>
       </div>,
     );
@@ -61,7 +61,7 @@ export default async function DisputePage({
     return shell(
       <div className="flex flex-col gap-4">
         <BackLink href="/disputes" label={title} />
-        <h1 className="text-2xl font-semibold">{t('disputes.detail.page-title')}</h1>
+        <PageHeader title={t('disputes.detail.page-title')} />
         <LoadError message={t('disputes.error.unavailable')} retryLabel={t('load.retry')} />
       </div>,
     );

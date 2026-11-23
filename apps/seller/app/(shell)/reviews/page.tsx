@@ -1,4 +1,4 @@
-import { EmptyState } from '@mondapac/ui';
+import { EmptyState, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { catalogStateFor } from '../../../src/catalog/catalog-states.tsx';
@@ -50,7 +50,7 @@ export default async function ReviewsPage() {
   const { session } = page;
   return (
     <SellerShell session={session} activeId="s_reviews" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       <ReviewsList
         initial={page.body}
         paging={paging}

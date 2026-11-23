@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { AdminDashboard } from '../../src/dashboard/dashboard.tsx';
 import { startAdminKpis } from '../../src/dashboard/kpi-load.ts';
@@ -33,7 +33,7 @@ export default async function HomePage({
     <AdminShell session={gate.session} activeId="home" title={t('home.title')}>
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-1">
-          <h1 className="break-words text-2xl font-semibold">{t('home.title')}</h1>
+          <PageHeader title={t('home.title')} />
           <p className="text-fg-muted">{t('home.intro', { name: gate.session.displayName })}</p>
         </div>
         <AdminKpiStrip source={kpis} period={period} permissionKeys={gate.session.permissionKeys} />

@@ -169,7 +169,10 @@ describe('Review moderation list: page numbers and views', () => {
       sort: 'submitted',
       direction: 'desc',
     });
-    expect(screen.getByText('Times are shown in Australia/Brisbane.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
     expect(screen.getByText('Sorted by Submitted: Newest first')).toBeTruthy();
     expect(screen.getByText('1-1 of 143')).toBeTruthy();
     expect(screen.getByRole('img', { name: '1 out of 5' })).toBeTruthy();

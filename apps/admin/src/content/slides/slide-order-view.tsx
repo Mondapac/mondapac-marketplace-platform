@@ -250,7 +250,6 @@ export function SlideOrderView({
               onMove={moveSlide}
               footer={
                 <>
-                  <p className="m-0 text-xs text-fg-muted">{t('footnote', { zone })}</p>
                   {/* Announces a move for screen readers; the save result is a toast. */}
                   <span role="status" aria-live="polite" className="sr-only">
                     {message}

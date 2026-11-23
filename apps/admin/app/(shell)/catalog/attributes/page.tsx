@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -64,7 +64,7 @@ export default async function AttributesPage({
   const { permissionKeys, csrfToken } = gate.session;
   return (
     <AdminShell session={gate.session} activeId="attributes" title={title}>
-      <h1 className="text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} />
       {permissionKeys.includes(VIEW_PERMISSION) ? (
         <AttributesView
           canEdit={permissionKeys.includes(EDIT_PERMISSION)}

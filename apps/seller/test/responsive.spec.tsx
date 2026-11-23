@@ -415,7 +415,7 @@ describe('topbar', () => {
     expect(screen.queryByRole('heading')).toBeNull();
     const nav = screen.getByRole('navigation', { name: 'Breadcrumb' });
     expect(nav.className).toContain('hidden');
-    expect(nav.className).toContain('lg:block');
+    expect(nav.className).toContain('md:block');
     expect(screen.getByRole('link', { name: 'Settings' }).getAttribute('href')).toBe(
       '/account/security',
     );

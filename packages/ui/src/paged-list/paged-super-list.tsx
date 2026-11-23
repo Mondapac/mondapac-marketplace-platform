@@ -547,7 +547,8 @@ export function PagedSuperList<Row>({
   return (
     <SuperList
       heading={{
-        subtitle: t('intro'),
+        // A list whose page has the Help panel needs no line here: `intro` is optional.
+        ...(t.has('intro') ? { subtitle: t('intro') } : {}),
         actions: (
           <>
             {heading}

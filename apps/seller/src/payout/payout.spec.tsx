@@ -66,7 +66,7 @@ describe('payout account page frame', () => {
   it('uses the settings template: a header, two sections, and no save bar', () => {
     mount(account({ status: 'enabled', ready: true }));
     expect(screen.getByRole('heading', { level: 1, name: 'Payout account' })).toBeTruthy();
-    expect(screen.getByText(/MondaPac never sees your bank details/)).toBeTruthy();
+    expect(screen.queryByText(/MondaPac never sees your bank details/)).toBeNull();
     const sections = screen.getAllByRole('heading', { level: 2 }).map((node) => node.textContent);
     expect(sections).toEqual(['Status', 'Recent changes']);
     // Nothing on this page is saved with a bar: its one action asks for a code of its own.

@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { TwoStepPanel } from '../../../../src/security/two-step-panel.tsx';
@@ -22,7 +22,7 @@ export default async function SecurityPage() {
   if (session.sellerAccessState !== 'approved') redirect(SETUP_ROOT);
   return (
     <SellerShell session={session} activeId="account" title={t('security.title')}>
-      <h1 className="mb-6 text-2xl font-semibold">{t('security.title')}</h1>
+      <PageHeader title={t('security.title')} className="mb-6" />
       <TwoStepPanel active={session.secondFactorActive} csrfToken={session.csrfToken} />
     </SellerShell>
   );

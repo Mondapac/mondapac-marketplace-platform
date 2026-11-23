@@ -25,7 +25,7 @@ const REASONS = [
  * The documents of one page, from one column definition (`SuperTable`): a box to select the row,
  * the order reference, then the columns the admin chose in their order (those for credit notes
  * only are skipped on the confirmations tab), and the row Actions menu last. From 1024 px a
- * table; below it each document is a card with labelled lines. Times are in `zone`; money is in
+ * table; below it each document is a card with labelled lines. Times are in `zone`, the viewer's own zone (named in the Help panel and the account menu); money is in
  * each row's own currency.
  */
 export function InvoicesTable({

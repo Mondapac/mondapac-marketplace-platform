@@ -124,7 +124,6 @@ export function RequestsList({
 }) {
   const t = useTranslations('certificates.requests');
   const ts = useTranslations('sales-lists');
-  const to = useTranslations('orders');
   const tl = useTranslations('load');
   const locale = useLocale();
   const {
@@ -439,7 +438,6 @@ export function RequestsList({
     <SuperList
       heading={{
         subtitle: tabCounts === null ? '' : t('total', { count: tabCounts.all }),
-        note: to('zone-note', { zone }),
         actions: (
           <RequestsBulk
             selection={{

@@ -19,6 +19,7 @@ import {
   toast,
   useDesktop,
   type MenuItem,
+  PageHeader,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -274,14 +275,16 @@ export function RequestDetail({
       <Card>
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 flex-col gap-2">
-            <h1 className="break-words text-2xl font-semibold text-fg">
-              {request.displayNumber} {kindTitle(request.subjectKind)}
-            </h1>
-            <div className="flex flex-wrap items-center gap-2">
-              <AreaBadge area={request.area} />
-              <RiskBadge risk={request.risk} />
-              <StatusBadges request={request} />
-            </div>
+            <PageHeader
+              title={`${request.displayNumber} ${kindTitle(request.subjectKind)}`}
+              badges={
+                <>
+                  <AreaBadge area={request.area} />
+                  <RiskBadge risk={request.risk} />
+                  <StatusBadges request={request} />
+                </>
+              }
+            />
           </div>
           {desktop && (buttons.length > 0 || hasLink) ? (
             <ActionRow>

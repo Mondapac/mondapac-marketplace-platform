@@ -30,7 +30,8 @@ function SellerNames({ order }: { readonly order: AdminOrderRow }) {
  * The orders of one page, from one column definition (`SuperTable`): a box to select the row, the
  * reference, the status, then the columns the admin chose in their order, and the row Actions menu
  * last. From 1024 px a table; below it each order is a card with labelled lines (the reference as
- * its title, the status in its corner). Times are in `zone`, which the page names once.
+ * its title, the status in its corner). Times are in `zone`, the viewer's own zone (named in the Help panel
+ * and the account menu, not on the page).
  */
 export function OrdersTable({
   rows,

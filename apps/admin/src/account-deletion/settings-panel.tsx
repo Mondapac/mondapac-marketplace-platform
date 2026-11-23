@@ -210,13 +210,11 @@ export function AccountDeletionSettingsPanel({
   return (
     <SettingsPage
       title={t(`${P}.settings.card`)}
-      description={t(`${P}.settings.intro`)}
-      lastChanged={{
-        text:
-          form.saved.version === 0
-            ? t(`${P}.settings.version-defaults`)
-            : t(`${P}.settings.version`, { version: form.saved.version }),
-      }}
+      status={
+        form.saved.version === 0
+          ? t(`${P}.settings.version-defaults`)
+          : t(`${P}.settings.version`, { version: form.saved.version })
+      }
       banner={banner}
       onSubmit={canManage ? review : undefined}
       dirty={dirty}

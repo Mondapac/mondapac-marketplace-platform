@@ -48,13 +48,11 @@ describe('SettingsHub', () => {
 });
 
 describe('SettingsHubHeader', () => {
-  it('names the page and says what it is for; the Search button needs the panel tools', () => {
-    const out = html(<SettingsHubHeader title="Settings" description="Set up the store." />);
-    expect(out).toContain('<h1');
+  it('names the page; the Search button needs the panel tools, and there is no info icon', () => {
+    const out = html(<SettingsHubHeader title="Settings" />);
+    expect(out.match(/<h1/g)).toHaveLength(1);
     expect(out).toContain('Settings');
-    expect(out).toContain('Set up the store.');
-    // The only button is the info icon; the Search button needs the panel tools.
-    expect(out.match(/<button/g)).toHaveLength(1);
-    expect(out).toContain('aria-label="About Settings"');
+    expect(out).not.toContain('<button');
+    expect(out).not.toContain('About Settings');
   });
 });

@@ -1,15 +1,13 @@
 'use client';
 
 import type { FormEvent, ReactNode } from 'react';
-import { PageInfo } from '../overlay/page-info.tsx';
+import { Badge } from '../form/badge.tsx';
 import { SettingsTitle } from './settings-title.tsx';
 import { useUnsavedChangesGuard, type LeaveLabels } from './unsaved-changes-guard.tsx';
 
 export interface SettingsPageProps {
   /** The page's h1. */
   readonly title: string;
-  /** One sentence about the page; shown in the info icon (ⓘ) beside the title, not under it. */
-  readonly description?: string;
   /** "Last changed by Sara K. · 2 days ago": the caller writes the text. */
   readonly lastChanged?: {
     readonly text: string;
@@ -23,6 +21,8 @@ export interface SettingsPageProps {
     /** An ISO instant: the text becomes a `<time>` for assistive technology. */
     readonly dateTime?: string;
   };
+  /** A label beside the title in a pill: "Saved version 3", "Built-in defaults in force". */
+  readonly status?: string;
   /** Buttons at the end of the header (help). The pin star is in the top bar, not here. */
   readonly actions?: ReactNode;
   /** A read-only, conflict or error-summary `Banner` above the sections. */
@@ -43,13 +43,13 @@ export interface SettingsPageProps {
 }
 
 /**
- * The one frame of a settings page: header (title, description, last change, actions), a banner
+ * The one frame of a settings page: header (title, last change, actions), a banner
  * slot, the sections, and the save bar. It also guards the page against being left with unsaved
  * changes. The path above the title is the shell's own breadcrumb.
  */
 export function SettingsPage({
   title,
-  description,
+  status,
   lastChanged,
   actions,
   banner,
@@ -74,11 +74,11 @@ export function SettingsPage({
   );
   return (
     <div className="flex flex-col gap-4">
-      <header className="flex flex-wrap items-start justify-between gap-3">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
             <SettingsTitle>{title}</SettingsTitle>
-            {description ? <PageInfo page={title}>{description}</PageInfo> : null}
+            {status === undefined ? null : <Badge tone="neutral">{status}</Badge>}
           </div>
           {lastChanged ? (
             <p className="mt-1 text-xs text-fg-muted" data-testid="last-changed">

@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
@@ -50,7 +50,7 @@ export default async function SellersPage({
       title={title}
     >
       <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-        <h1 className="text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} />
         {gate.session.permissionKeys.includes(SELLER_VIEW_PERMISSION) ? (
           <a
             className="inline-flex min-h-12 items-center font-medium text-link underline"

@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { headers } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { CategoriesTabs } from '../../../../src/categories/proposals/categories-tabs.tsx';
@@ -38,7 +38,7 @@ export default async function CategoriesPage() {
   const { permissionKeys } = gate.session;
   return (
     <AdminShell session={gate.session} activeId="categories" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       {permissionKeys.includes(READ_PERMISSION) ? (
         <CategoriesTabs
           canDecide={permissionKeys.includes(DECIDE_PERMISSION)}

@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { NewPostForm } from '../../../../../src/blog/editor/new-post-form.tsx';
 import { BLOG_EDIT_PERMISSION } from '../../../../../src/blog/types.ts';
@@ -23,7 +23,7 @@ export default async function NewBlogPostPage() {
   const title = t('blog.editor.new.title');
   return (
     <AdminShell session={gate.session} activeId="blog" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       <NewPostForm csrfToken={gate.session.csrfToken} />
     </AdminShell>
   );

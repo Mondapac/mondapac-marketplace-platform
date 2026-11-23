@@ -15,6 +15,7 @@ import {
   tabIdOf,
   useMediaQuery,
   type MenuItem,
+  PageHeader,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -46,6 +47,7 @@ import { STATUS_PERMISSION, titleOf } from './list-types.ts';
 import { PASSWORD_RESET_SEND, SESSION_END } from './security-types.ts';
 import {
   BUYER_DELETE,
+  CUSTOMER_TAB_HELP,
   EMAIL_CHANGE,
   WALLET_ISSUE,
   WALLET_VIEW,
@@ -395,7 +397,7 @@ export function CustomerPage({
       <Card>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="flex min-w-0 flex-col gap-2">
-            <h1 className="text-2xl font-semibold wrap-anywhere">{title}</h1>
+            <PageHeader title={title} />
             <div className="flex min-w-0 items-center gap-1">
               <span className="text-fg-muted wrap-anywhere">{customer.email}</span>
               <IconButton
@@ -468,7 +470,11 @@ export function CustomerPage({
           activeId={tab}
           onSelect={select}
           panelId={PANEL_ID}
-          items={tabs.map((item) => ({ id: item, label: t(`tab.${item}`) }))}
+          items={tabs.map((item) => ({
+            id: item,
+            label: t(`tab.${item}`),
+            help: CUSTOMER_TAB_HELP[item],
+          }))}
         />
       ) : null}
       <div

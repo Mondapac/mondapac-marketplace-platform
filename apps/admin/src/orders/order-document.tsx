@@ -1,4 +1,4 @@
-import { BackLink } from '@mondapac/ui';
+import { BackLink, PageHeader } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { formatMoney } from '../pricing/format.ts';
 import { formatInstant } from '../shared/format.ts';
@@ -58,7 +58,7 @@ export function OrderDocumentView({
         <PrintButton label={t('print')} />
       </div>
       <header className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold">{t('title')}</h1>
+        <PageHeader title={t('title')} />
         <p>{to('reference', { id: shortId(document.orderId) })}</p>
         <p className="text-sm text-fg-muted break-all">{document.orderId}</p>
         <p className="text-sm text-fg-muted">

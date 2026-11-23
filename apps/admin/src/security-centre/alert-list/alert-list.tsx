@@ -444,7 +444,6 @@ export function AlertList({
   return (
     <SuperList
       heading={{
-        info: t('intro'),
         actions: (
           <AlertBulk
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}

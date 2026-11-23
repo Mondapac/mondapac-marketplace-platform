@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { headers } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { panelHostFor } from '../../../src/server/bff.ts';
@@ -24,7 +24,7 @@ export default async function PriceHoldsPage() {
   const title = t('pricing.holds.title');
   const shell = (body: React.ReactNode) => (
     <AdminShell session={gate.session} activeId="price-holds" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       {body}
     </AdminShell>
   );

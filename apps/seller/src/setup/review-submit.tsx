@@ -1,4 +1,4 @@
-import { Badge, Banner, Card } from '@mondapac/ui';
+import { Badge, Banner, Card, PageHeader } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { SETUP_ROOT, SETUP_STEPS, type SetupStepKey } from './steps.ts';
@@ -137,7 +137,7 @@ export function ReviewSubmit({
         <Link href={SETUP_ROOT} className="text-sm font-medium text-link hover:underline">
           {t('sellers.step.back')}
         </Link>
-        <h1 className="text-2xl font-semibold text-fg">{t('sellers.submit.title')}</h1>
+        <PageHeader title={t('sellers.submit.title')} />
       </header>
       <Banner tone="info">{t('sellers.submit.banner')}</Banner>
       {waiting ? <Banner tone="attention">{t('sellers.submit.locked')}</Banner> : null}

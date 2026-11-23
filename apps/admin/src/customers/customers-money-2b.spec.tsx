@@ -203,7 +203,7 @@ describe('the Money tab sections of phase 2b', () => {
     // Payments: the order links back to this tab, the paid sum is under the heading.
     const link = (await screen.findAllByRole('link', { name: /^Order 000000C1/ }))[0]!;
     expect(link.getAttribute('href')).toBe(`/orders/${ORDER}?customer=${ID}&from=money`);
-    expect(await screen.findByText('Paid, before refunds: $125.50')).toBeTruthy();
+    expect(await screen.findByText(/Paid, before refunds: \$125\.50/u)).toBeTruthy();
     expect(bodiesTo(`payments/admin/customers/${ID}/payments`)[0]).toEqual({
       sort: 'created',
       direction: 'desc',
@@ -231,7 +231,7 @@ describe('the Money tab sections of phase 2b', () => {
   it('shows amounts in the Market currency, never AUD by default (NZD and JPY)', async () => {
     route({}, 'NZD');
     render(wrap(<CustomerMoney {...props('NZD', 'Pacific/Auckland', 'NZ')} />, 'en-NZ'));
-    expect(await screen.findByText(/Paid, before refunds: .*125\.50/)).toBeTruthy();
+    expect(await screen.findByText(/Paid, before refunds: .*125\.50/u)).toBeTruthy();
     expect((await screen.findAllByText(/\$10\.00/)).length).toBeGreaterThan(0);
     expect(screen.queryByText(/A\$/)).toBeNull();
     cleanup();
@@ -294,7 +294,7 @@ describe('the Money tab sections of phase 2b', () => {
   it('turns a state view and a day range into the API filters, days as instants in the admin zone', async () => {
     route();
     render(wrap(<CustomerMoney {...props('AUD', 'Australia/Brisbane')} />));
-    await screen.findByText('Paid, before refunds: $125.50');
+    await screen.findByText(/Paid, before refunds: \$125\.50/u);
     const payments = within(screen.getByRole('heading', { name: 'Payments' }).closest('section')!);
     fireEvent.click(payments.getByRole('button', { name: 'Authorised' }));
     await waitFor(() =>
@@ -426,7 +426,7 @@ describe('the Money tab export', () => {
         .mockResolvedValueOnce(new Response('﻿order,amount\r\n'));
       vi.stubGlobal('fetch', fetchMock);
       render(wrap(<CustomerMoney {...props()} keys={new Set([VIEW, EXPORT, PAY])} />));
-      await screen.findByText('Paid, before refunds: $125.50');
+      await screen.findByText(/Paid, before refunds: \$125\.50/u);
       const payments = within(
         screen.getByRole('heading', { name: 'Payments' }).closest('section')!,
       );

@@ -234,7 +234,10 @@ describe('Blog posts list: page numbers', () => {
     mount({ zone });
     await postLink();
     expect(within(screen.getByRole('table')).getByText(stamp)).toBeTruthy();
-    expect(screen.getByText(`Dates are shown in ${zone}.`)).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
   });
 
   it('has the optional columns of the go-live and published times, in the list zone', async () => {

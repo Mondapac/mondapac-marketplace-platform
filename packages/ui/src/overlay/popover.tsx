@@ -31,7 +31,7 @@ export interface PopoverProps {
   readonly width?: keyof typeof WIDTH;
   /**
    * `control` (default) is the bordered 36 px list-toolbar button. `icon` is a borderless 16 px
-   * icon with a 44 px touch area on a phone, for a hint beside a heading (see `PageInfo`).
+   * icon with a 44 px touch area on a phone, for a hint beside a heading.
    */
   readonly variant?: 'control' | 'icon';
   /** Id of text that describes the trigger for assistive technology without opening the panel. */

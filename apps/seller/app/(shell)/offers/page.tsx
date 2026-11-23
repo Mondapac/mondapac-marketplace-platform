@@ -1,3 +1,4 @@
+import { PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { catalogStateFor } from '../../../src/catalog/catalog-states.tsx';
@@ -35,7 +36,7 @@ export default async function OffersPage() {
   const { session } = page;
   return (
     <SellerShell session={session} activeId="s_offers" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       <OffersList
         initial={page.body}
         paging={paging}

@@ -26,6 +26,8 @@ import { getTranslations } from 'next-intl/server';
 import { cookies, headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import { UserMenu } from '../auth/user-menu.tsx';
+import { AdminHelpButton, AdminHelpPanel, AdminHelpProvider } from '../help/admin-help.tsx';
+import { localZone } from '../shared/format.ts';
 import { adminNav } from '../nav.ts';
 import { adminGoShortcuts, adminPaletteEntries } from '../palette.ts';
 import { AdminNotifications } from '../notifications/admin-notifications.tsx';
@@ -86,6 +88,7 @@ export async function AdminShell({
   const items = visibleNavItems(adminNav, new Set(session.permissionKeys));
   const bell = showsNoticeBell(session.permissionKeys);
   const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
+  const zone = localZone(session.timezone, session.marketTimezone);
   const entries = adminPaletteEntries(session.permissionKeys, (key) => t(key));
   return (
     <PanelTools
@@ -97,61 +100,70 @@ export async function AdminShell({
       labels={panelToolsLabels((key) => t.raw(key) as string)}
     >
       <StepUpProvider>
-        <NavBadgeProvider>
-          {/* No view permission, no call: the menu item is hidden and the count is never read. */}
-          <SystemRequestsNavBadge enabled={session.permissionKeys.includes(SYSTEM_REQUESTS_VIEW)} />
-          <PanelNavigationProgress />
-          <AppShell
-            labels={{
-              menu: t('nav.menu'),
-              close: t('nav.close'),
-              more: t('nav.more'),
-              main: t('nav.main'),
-              collapse: t('nav.collapse'),
-              expand: t('nav.expand'),
-              toasts: { region: t('toast.region'), close: t('toast.close') },
-            }}
-            collapsed={collapsed}
-            sidebar={
-              <Sidebar
-                panelName={t('panel.name')}
-                items={items}
-                groups={adminNav.groups}
-                activeId={activeId}
-                label={(key) => t(key)}
-                openGroups={openGroups}
-                settings={settings}
-              />
-            }
-            topbar={
-              <Topbar
-                pageTitle={title}
-                trail={trail ?? navTrail(items, activeId, title, (key) => t(key), adminNav.groups)}
-                trailLabel={t('nav.breadcrumb')}
-                phoneTitle={<PageTitle fallback={title} />}
-                titleAction={<PinButton />}
-                actions={
-                  <>
-                    <ShortcutsButton />
-                    <PaletteSearchButton />
-                    {session.permissionKeys.includes(SECURITY_VIEW) ? (
-                      <CriticalAlertsBadge />
-                    ) : null}
-                    {bell ? <AdminNotifications csrfToken={session.csrfToken} /> : null}
-                    <UserMenu
-                      name={session.displayName}
-                      email={session.email}
-                      theme={themeChoice(jar.get(THEME_COOKIE)?.value)}
-                      csrfToken={session.csrfToken}
-                    />
-                  </>
-                }
-              />
-            }
-          >
-            {children}
-          </AppShell>
-        </NavBadgeProvider>
+        <AdminHelpProvider zone={zone}>
+          <NavBadgeProvider>
+            {/* No view permission, no call: the menu item is hidden and the count is never read. */}
+            <SystemRequestsNavBadge
+              enabled={session.permissionKeys.includes(SYSTEM_REQUESTS_VIEW)}
+            />
+            <PanelNavigationProgress />
+            <AppShell
+              labels={{
+                menu: t('nav.menu'),
+                close: t('nav.close'),
+                more: t('nav.more'),
+                main: t('nav.main'),
+                collapse: t('nav.collapse'),
+                expand: t('nav.expand'),
+                toasts: { region: t('toast.region'), close: t('toast.close') },
+              }}
+              collapsed={collapsed}
+              sidebar={
+                <Sidebar
+                  panelName={t('panel.name')}
+                  items={items}
+                  groups={adminNav.groups}
+                  activeId={activeId}
+                  label={(key) => t(key)}
+                  openGroups={openGroups}
+                  settings={settings}
+                />
+              }
+              topbar={
+                <Topbar
+                  pageTitle={title}
+                  trail={
+                    trail ?? navTrail(items, activeId, title, (key) => t(key), adminNav.groups)
+                  }
+                  trailLabel={t('nav.breadcrumb')}
+                  phoneTitle={<PageTitle fallback={title} />}
+                  titleAction={<PinButton />}
+                  actions={
+                    <>
+                      <AdminHelpButton />
+                      <ShortcutsButton />
+                      <PaletteSearchButton />
+                      {session.permissionKeys.includes(SECURITY_VIEW) ? (
+                        <CriticalAlertsBadge />
+                      ) : null}
+                      {bell ? <AdminNotifications csrfToken={session.csrfToken} /> : null}
+                      <UserMenu
+                        name={session.displayName}
+                        email={session.email}
+                        theme={themeChoice(jar.get(THEME_COOKIE)?.value)}
+                        csrfToken={session.csrfToken}
+                        zone={zone}
+                      />
+                    </>
+                  }
+                />
+              }
+            >
+              {children}
+              <AdminHelpPanel zone={zone} />
+            </AppShell>
+          </NavBadgeProvider>
+        </AdminHelpProvider>
       </StepUpProvider>
     </PanelTools>
   );

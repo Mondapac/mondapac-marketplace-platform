@@ -429,8 +429,6 @@ export function ModerationList({
   return (
     <SuperList
       heading={{
-        info: t('intro'),
-        note: t('zone-note', { zone }),
         actions: (
           <ModerationBulk
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}

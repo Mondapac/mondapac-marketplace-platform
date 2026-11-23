@@ -363,8 +363,6 @@ export function PostsList({
   return (
     <SuperList
       heading={{
-        info: t('intro'),
-        note: t('zone-note', { zone }),
         actions: (
           <>
             <LinkButton variant="secondary" href={TAXONOMY_PATH}>

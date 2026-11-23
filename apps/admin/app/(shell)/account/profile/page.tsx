@@ -1,4 +1,4 @@
-import { Badge, Card, DataList, EmailText, LoadError } from '@mondapac/ui';
+import { Badge, Card, DataList, EmailText, LoadError, PageHeader } from '@mondapac/ui';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { PasswordCard } from '../../../../src/profile/password-card.tsx';
 import { PANEL_LANGUAGES } from '../../../../src/profile/languages.ts';
@@ -34,7 +34,7 @@ export default async function ProfilePage() {
   );
   return (
     <AdminShell session={session} activeId="account" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       <Card title={t('profile.details')}>
         <DataList
           missing={t('profile.missing')}

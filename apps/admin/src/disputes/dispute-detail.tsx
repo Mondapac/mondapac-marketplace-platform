@@ -9,6 +9,7 @@ import {
   DataList,
   toast,
   type DataListRow,
+  PageHeader,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
@@ -160,16 +161,11 @@ export function DisputeDetailView({
   return (
     <div className="flex flex-col gap-4">
       <BackLink href="/disputes" label={t('title')} />
-      <div className="flex min-w-0 flex-wrap items-center gap-3">
-        <h1
-          ref={headingRef}
-          tabIndex={-1}
-          className="min-w-0 break-words text-2xl font-semibold outline-none"
-        >
-          {t('detail.title', { id: shortId(detail.orderId) })}
-        </h1>
-        <BucketBadge bucket={detail.bucket} />
-      </div>
+      <PageHeader
+        title={t('detail.title', { id: shortId(detail.orderId) })}
+        headingRef={headingRef}
+        badges={<BucketBadge bucket={detail.bucket} />}
+      />
       {detail.needsReview ? (
         <Banner tone="attention">
           <p className="flex flex-wrap items-center gap-2">
@@ -185,7 +181,6 @@ export function DisputeDetailView({
       )}
       <Card title={t('summary.title')}>
         <DataList missing="-" rows={summary} />
-        <p className="text-sm text-fg-muted">{t('zone-note', { zone })}</p>
       </Card>
       <Card title={t('part.title')}>
         <p className="text-sm text-fg-muted">{t('footnote')}</p>

@@ -318,7 +318,7 @@ export function AccountSecurity({
   }
 
   return (
-    <SettingsPage title={t('title')} description={t('description')}>
+    <SettingsPage title={t('title')}>
       {step.kind === 'done' ? (
         <div ref={doneBanner} tabIndex={-1} className="outline-none">
           <Banner tone="success">{t('replace.done')}</Banner>

@@ -1,4 +1,4 @@
-import { BackLink, EmptyState, LoadError } from '@mondapac/ui';
+import { BackLink, EmptyState, LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { OrderDetail } from '../../../../src/orders/order-detail.tsx';
@@ -32,7 +32,7 @@ export default async function OrderPage({
   if (page.kind === 'unavailable') {
     return (
       <div className="p-6">
-        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} className="mb-4" />
         <LoadError
           message={t('orders.error.unavailable')}
           retryLabel={t('load.retry')}

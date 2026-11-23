@@ -1,4 +1,4 @@
-import { Badge, Banner, Card } from '@mondapac/ui';
+import { Badge, Banner, Card, PageHeader } from '@mondapac/ui';
 import { useFormatter, useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { REVIEW_HREF, SETUP_STEPS, type SetupStepKey } from './steps.ts';
@@ -152,7 +152,7 @@ export function SetupHub({
     <div className="flex max-w-(--mp-size-form-max) flex-col gap-5">
       <RefreshOnFocus />
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold text-fg">{t('account.title')}</h1>
+        <PageHeader title={t('account.title')} />
         <Badge tone={BADGE_TONE[state]}>{t(`account.badge.${state}`)}</Badge>
       </div>
       <Banner tone={BANNER_TONE[state]} title={t(`account.banner.${state}.title`)}>

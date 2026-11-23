@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { CategoryPageView } from '../../../../../src/categories/category-page-view.tsx';
@@ -33,7 +33,7 @@ export default async function CategoryPage({
   const { permissionKeys } = gate.session;
   return (
     <AdminShell session={gate.session} activeId="categories" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       {permissionKeys.includes(READ_PERMISSION) ? (
         <CategoryPageView
           id={id}

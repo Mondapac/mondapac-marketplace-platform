@@ -1,6 +1,6 @@
 'use client';
 
-import { Badge, Banner, Card } from '@mondapac/ui';
+import { Badge, Banner, Card, PageHeader } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { formatInstant } from '../../shared/format.ts';
@@ -77,7 +77,7 @@ export function VersionReview({
   return (
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-3">
-        <h1 className="break-words text-2xl font-semibold">{name}</h1>
+        <PageHeader title={name} />
         <dl className="grid grid-cols-1 gap-x-6 gap-y-1 text-sm sm:grid-cols-2 lg:grid-cols-4">
           <Fact label={t('summary.seller')}>{read.storeName ?? tq('filter.seller-unnamed')}</Fact>
           <Fact label={t('summary.code')}>{read.productCode}</Fact>

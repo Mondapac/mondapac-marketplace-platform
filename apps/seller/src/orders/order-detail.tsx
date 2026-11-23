@@ -1,6 +1,16 @@
 'use client';
 
-import { BackLink, Badge, Banner, Button, Card, CARD_TABLE, DataList, toast } from '@mondapac/ui';
+import {
+  BackLink,
+  Badge,
+  Banner,
+  Button,
+  Card,
+  CARD_TABLE,
+  DataList,
+  toast,
+  PageHeader,
+} from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useEffect, useId, useRef, useState } from 'react';
 import { OrderNotes } from './order-notes.tsx';
@@ -139,25 +149,27 @@ export function OrderDetail({
     <div className="flex flex-col gap-6">
       <div className="flex flex-col items-start gap-2">
         <BackLink href="/orders" label={t('back')} />
-        <div className="flex min-w-0 flex-wrap items-center gap-3">
-          <h1 className="min-w-0 break-words text-2xl font-semibold">
-            {t('detail-title', { id: reference })}
-          </h1>
-          <Badge tone={TONE[statusOf(order)]}>{t(`status.${statusOf(order)}`)}</Badge>
-          <Button variant="secondary" onClick={() => void copyReference()}>
-            {t('copy-id')}
-          </Button>
-          {packingSlipAvailable(order) ? (
-            <a
-              href={`/orders/${order.sellerOrderId}/packing-slip`}
-              target="_blank"
-              rel="noopener"
-              className="inline-flex items-center rounded-md border border-line-control bg-surface px-3 py-2 text-sm font-medium text-fg hover:bg-muted"
-            >
-              {t('slip.open')}
-            </a>
-          ) : null}
-        </div>
+        <PageHeader
+          title={t('detail-title', { id: reference })}
+          badges={
+            <>
+              <Badge tone={TONE[statusOf(order)]}>{t(`status.${statusOf(order)}`)}</Badge>
+              <Button variant="secondary" onClick={() => void copyReference()}>
+                {t('copy-id')}
+              </Button>
+              {packingSlipAvailable(order) ? (
+                <a
+                  href={`/orders/${order.sellerOrderId}/packing-slip`}
+                  target="_blank"
+                  rel="noopener"
+                  className="inline-flex items-center rounded-md border border-line-control bg-surface px-3 py-2 text-sm font-medium text-fg hover:bg-muted"
+                >
+                  {t('slip.open')}
+                </a>
+              ) : null}
+            </>
+          }
+        />
         <p className="text-sm text-fg-muted">
           {t('paid-line', { when: formatInstant(order.paidAt, locale, zone) })}
           {' · '}

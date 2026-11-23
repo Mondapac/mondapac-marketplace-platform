@@ -140,7 +140,10 @@ describe('slides list', () => {
     expect(within(storm).getByText('Pinned')).toBeTruthy();
     // 2026-10-23T20:00Z is 6:00 am on 24 Oct in Brisbane (UTC+10).
     expect(storm.textContent).toMatch(/24 Oct, 6:00 am – 26 Oct, 11:59 pm/);
-    expect(screen.getByText(/Times in Australia\/Brisbane/)).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
     const draft = rowOf('Black Friday teaser');
     expect(within(draft).getByText('No position')).toBeTruthy();
     expect(within(draft).getByText('Not placed yet')).toBeTruthy();
@@ -152,7 +155,10 @@ describe('slides list', () => {
   it('reads a time in UTC when the holder has no zone of their own', async () => {
     mount([SLIDE_READ_PERMISSION], 'UTC');
     await screen.findByRole('table');
-    expect(screen.getByText(/Times in UTC/)).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
     expect(rowOf('Storm delivery delays').textContent).toMatch(/23 Oct, 8:00 pm/);
   });
 

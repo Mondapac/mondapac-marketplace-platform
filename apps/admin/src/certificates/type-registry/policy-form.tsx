@@ -235,7 +235,6 @@ export function PolicyForm({
 
   return (
     <form onSubmit={review} className="flex flex-col gap-4" noValidate>
-      <p className="text-fg-muted">{t('form.intro')}</p>
       {rows.length === 0 ? <p className="text-fg-muted">{t('form.no-rows')}</p> : null}
       <ul className="flex flex-col gap-3">
         {rows.map((row, index) => {

@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { headers } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { ModerationList } from '../../../../src/reviews/moderation-list/moderation-list.tsx';
@@ -37,7 +37,7 @@ export default async function ReviewModerationPage({
     // No session, so no shell; the page still has its heading.
     return (
       <div className="flex flex-col gap-4 p-4">
-        <h1 className="text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} />
         <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
       </div>
     );
@@ -45,7 +45,7 @@ export default async function ReviewModerationPage({
   const keys = gate.session.permissionKeys;
   const shell = (body: React.ReactNode) => (
     <AdminShell session={gate.session} activeId="review-moderation" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       {body}
     </AdminShell>
   );

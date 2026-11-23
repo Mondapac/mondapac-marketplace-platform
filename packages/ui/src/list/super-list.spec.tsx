@@ -198,25 +198,26 @@ describe('SuperList', () => {
     expect(html).not.toContain('>Columns<');
   });
 
-  it('keeps a static intro in the info icon, and a live subtitle on the page', () => {
+  it('has no info icon or intro line: the title row has the h1, a live status and the actions', () => {
     const titled = list({
-      heading: { title: 'People', info: 'Everyone who bought.', subtitle: '5 people' },
+      heading: {
+        title: 'People',
+        status: 'Live · every 30 s',
+        subtitle: '5 people',
+        actions: <button>Bulk</button>,
+      },
     });
-    expect(titled).toContain('aria-label="About People"');
+    expect(titled.match(/<h1/g)).toHaveLength(1);
+    expect(titled).not.toContain('About ');
+    expect(titled).toContain('Live · every 30 s');
     expect(titled).toContain('5 people');
-    // The intro is only in the screen-reader description until the icon is opened.
-    expect(titled).toContain('class="sr-only">Everyone who bought.</span>');
-    expect(titled).not.toMatch(/<p[^>]*>Everyone who bought\./);
-    const bare = list({ heading: { info: 'Everyone who bought.' } });
-    expect(bare).toContain('aria-label="About this page"');
-    expect(list({ heading: { subtitle: '5 people' } })).not.toContain(
-      '<button aria-haspopup="dialog"',
-    );
+    expect(titled).toContain('<button>Bulk</button>');
+    expect(list({ heading: { subtitle: '5 people' } })).not.toContain('<h1');
   });
 
-  it('puts a page note under the subtitle, and anything the page gives after the search box', () => {
+  it('puts anything the page gives after the search box', () => {
     const html = list({
-      heading: { subtitle: '143 people', note: 'Times are in Brisbane.' },
+      heading: { subtitle: '143 people' },
       search: {
         label: 'Search',
         placeholder: 'Search people',
@@ -227,8 +228,6 @@ describe('SuperList', () => {
         extra: <span>SCOPE</span>,
       },
     });
-    expect(html).toContain('Times are in Brisbane.');
-    expect(html.indexOf('143 people')).toBeLessThan(html.indexOf('Times are in Brisbane.'));
     expect(html.indexOf('Search people')).toBeLessThan(html.indexOf('SCOPE'));
     expect(list()).not.toContain('SCOPE');
   });

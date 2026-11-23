@@ -136,7 +136,6 @@ export function PagesList({ canEdit, zone }: { readonly canEdit: boolean; readon
             {t('count', { count: shown.length })}
           </p>
           <PagesTable rows={shown} zone={zone} />
-          <p className="text-sm text-fg-muted">{t('footnote', { zone })}</p>
         </>
       ) : null}
       {trulyEmpty ? (

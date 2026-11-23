@@ -165,12 +165,11 @@ describe('Invoices tabs and page numbers', () => {
     expect(urls()[0]).toBe(
       'ordering/admin/documents?kind=order-confirmation&page=1&pageSize=25&sort=issued&direction=desc',
     );
+    expect(screen.getByText('These are not tax invoices.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
     expect(
-      screen.getByText(
-        'Order confirmations and credit notes issued in this Market. These are not tax invoices.',
-      ),
-    ).toBeTruthy();
-    expect(screen.getByText('Times and days are in Australia/Brisbane.')).toBeTruthy();
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
     expect(screen.getByText('Sorted by Issued: Newest first')).toBeTruthy();
     expect(screen.getByText('1 to 1 of 143')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Manage filters' })).toBeNull();
@@ -547,7 +546,10 @@ describe('Invoices Issued filter', () => {
     );
     mount({ locale: 'de-DE', zone: 'Europe/Berlin', marketId: 'DE' });
     await screen.findByText('Cedar Lane Halal Meats');
-    expect(screen.getByText('Times and days are in Europe/Berlin.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
     expect(screen.getByText(/125,50\s€/)).toBeTruthy();
     expect(screen.queryByText(/\$/)).toBeNull();
     await applyFilter('today');

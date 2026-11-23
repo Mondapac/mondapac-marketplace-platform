@@ -11,6 +11,7 @@ import {
   SaveBar,
   toast,
   useUnsavedChangesGuard,
+  PageHeader,
 } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
@@ -493,12 +494,10 @@ export function EditForm({
       {guard.dialog}
       <BackLink href="/products" label={t('catalog.create.back')} />
       <div className="flex flex-col gap-1">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="min-w-0 break-words text-2xl font-semibold">
-            {adding ? t('catalog.create.title') : shownTitle}
-          </h1>
-          {adding ? null : <StatusBadge status={product.status} />}
-        </div>
+        <PageHeader
+          title={adding ? t('catalog.create.title') : shownTitle}
+          {...(adding ? {} : { badges: <StatusBadge status={product.status} /> })}
+        />
         <p className="text-sm text-fg-muted">
           {adding
             ? t('catalog.add.subtitle', { market: marketName })

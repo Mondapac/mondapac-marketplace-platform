@@ -161,7 +161,7 @@ describe('the Shopping tab', () => {
     expect(await screen.findByText('$12.50')).toBeTruthy();
     expect(await screen.findByText('Reminder 2')).toBeTruthy();
     expect(await screen.findByText('1,200')).toBeTruthy();
-    expect(await screen.findByText('7 conversations in all')).toBeTruthy();
+    expect(await screen.findByText(/7 conversations in all/u)).toBeTruthy();
     // Times are in the admin's zone, with its name (Brisbane has no daylight saving).
     expect((await screen.findAllByText(/10 Nov 2026.*AEST/)).length).toBeGreaterThan(0);
   });

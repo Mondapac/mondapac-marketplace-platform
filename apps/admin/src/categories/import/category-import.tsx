@@ -209,7 +209,6 @@ export function CategoryImport({ csrfToken }: { readonly csrfToken: string }) {
   return (
     <div className="flex max-w-5xl flex-col gap-6">
       <BackLink href="/catalog/categories" label={t('back')} />
-      <p className="max-w-prose text-fg-muted">{t('intro')}</p>
 
       {problem === null ? null : (
         <ProblemBanner

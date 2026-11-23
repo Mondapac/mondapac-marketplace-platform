@@ -425,8 +425,6 @@ export function CreditRequestsList({
     <>
       <SuperList
         heading={{
-          info: t('intro'),
-          note: t('zone-note', { zone }),
           actions: (
             <CreditRequestsBulk
               selection={{

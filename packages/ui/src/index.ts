@@ -323,8 +323,19 @@ export {
   type ActionMenuLink,
   type ActionMenuProps,
 } from './overlay/action-menu.tsx';
-export { PageInfo, type PageInfoProps } from './overlay/page-info.tsx';
-export { HelpProvider, useHelp, type HelpProviderProps } from './help/help-context.tsx';
+export { HelpProvider, HelpTab, useHelp, type HelpProviderProps } from './help/help-context.tsx';
+export {
+  bestRoute,
+  resolveHelp,
+  routeScore,
+  type HelpPageEntry,
+  type HelpPageText,
+  type HelpRegistry,
+  type HelpTabbedEntry,
+  type HelpTabbedText,
+  type HelpTextSource,
+  type ResolveHelpInput,
+} from './help/help-resolve.ts';
 export { HelpButton, type HelpButtonProps } from './help/help-button.tsx';
 export {
   HelpPanel,

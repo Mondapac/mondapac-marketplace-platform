@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { revisionHref } from '../../../../../../../src/catalog/review-queue-params.ts';
@@ -52,7 +52,7 @@ export default async function VersionReviewPage({
   const title = t('catalog.version.title');
   const shell = (body: React.ReactNode, heading = true) => (
     <AdminShell session={gate.session} activeId="review-queue" title={title}>
-      {heading ? <h1 className="mb-4 text-2xl font-semibold">{title}</h1> : null}
+      {heading ? <PageHeader title={title} className="mb-4" /> : null}
       {body}
     </AdminShell>
   );

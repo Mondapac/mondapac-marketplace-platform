@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
@@ -49,7 +49,7 @@ export default async function ReviewPageRoute({
   const title = t('certificates.review.title');
   const shell = (body: React.ReactNode) => (
     <AdminShell session={gate.session} activeId="certificates" title={t('certificates.title')}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       {body}
     </AdminShell>
   );

@@ -1,4 +1,4 @@
-import { Badge } from '@mondapac/ui';
+import { Badge, PageHeader } from '@mondapac/ui';
 import { getLocale, getTimeZone, getTranslations } from 'next-intl/server';
 import { FieldList } from './field-list.tsx';
 import { formatInstant, known, PRODUCT_STATUSES } from './format.ts';
@@ -61,7 +61,7 @@ export async function ProductDetail({
   return (
     <div className="flex flex-col gap-6">
       <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold">{product.productCode}</h1>
+        <PageHeader title={product.productCode} />
         <Badge tone="neutral">{t(`catalog.products.status.${status}`)}</Badge>
         {product.pending !== null ? (
           <Badge tone="attention">{t('catalog.products.pending')}</Badge>

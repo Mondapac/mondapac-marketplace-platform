@@ -436,7 +436,6 @@ export function LedgerCard({
       <SuperList
         heading={{
           subtitle: filtered ? tl('intro-filtered') : tl('intro'),
-          note: tl('zone-note', { zone }),
           actions: (
             <LedgerBulk
               sellerId={sellerId}

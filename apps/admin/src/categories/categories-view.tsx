@@ -210,7 +210,6 @@ export function CategoriesView({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="max-w-prose text-fg-muted">{canEdit ? t('intro-edit') : t('intro')}</p>
       {canImport ? <TreeFileActions /> : null}
       {canEdit ? null : <Banner tone="info">{t('view-only')}</Banner>}
       {tree.complete ? null : <Banner tone="info">{t('counts-partial')}</Banner>}

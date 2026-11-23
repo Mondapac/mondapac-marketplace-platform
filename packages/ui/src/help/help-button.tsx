@@ -21,10 +21,11 @@ export function HelpButton({ label }: HelpButtonProps) {
       ref={trigger}
       type="button"
       aria-expanded={open}
+      aria-pressed={open}
       aria-controls={open ? panelId : undefined}
       aria-label={label}
       onClick={() => setOpen(!open)}
-      className={`inline-flex h-(--mp-size-control) min-w-11 items-center justify-center gap-2 rounded-md px-2 text-sm font-medium hover:bg-muted focus-visible:outline-2 focus-visible:outline-focus sm:px-3 ${open ? 'bg-muted text-fg' : 'text-fg-secondary'}`}
+      className={`inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-md border-line-control px-2 text-sm font-medium hover:text-fg focus-visible:outline-2 focus-visible:outline-focus sm:px-3 md:min-h-10 md:border ${open ? 'border border-line-input bg-selected text-fg' : 'text-fg-secondary hover:bg-muted md:bg-subtle'}`}
     >
       <Icon name="help" />
       <span className="hidden sm:inline">{label}</span>

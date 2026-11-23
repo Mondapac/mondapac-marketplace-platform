@@ -62,7 +62,6 @@ export function NewPostForm({ csrfToken }: { readonly csrfToken: string }) {
         void create();
       }}
     >
-      <p className="text-fg-muted">{t('new.intro')}</p>
       <Select
         label={t('side.type')}
         value={kind}

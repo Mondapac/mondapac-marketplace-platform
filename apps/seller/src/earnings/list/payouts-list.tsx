@@ -405,8 +405,6 @@ export function PayoutsList({
   return (
     <SuperList
       heading={{
-        info: t('intro'),
-        note: t('zone-note', { zone }),
         actions: (
           <PayoutsBulk
             selection={{

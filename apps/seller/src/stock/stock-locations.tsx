@@ -133,7 +133,6 @@ export function StockLocations({
   return (
     <SettingsPage
       title={t('stock.title')}
-      description={t('stock.intro', { max: view.max })}
       // Always shown: the drawer is modal, and the button must still exist for focus to return to it.
       actions={
         canEdit ? (

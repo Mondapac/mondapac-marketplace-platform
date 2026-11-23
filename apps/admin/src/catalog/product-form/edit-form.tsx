@@ -16,6 +16,7 @@ import {
   useUnsavedChangesGuard,
   FormSkeleton,
   type SearchSelectLabels,
+  PageHeader,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
@@ -759,12 +760,10 @@ export function EditForm({
       </Dialog>
       <BackLink href="/catalog/products" label={t('back')} />
       <div className="flex flex-col gap-1">
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="min-w-0 break-words text-2xl font-semibold">
-            {adding ? t('create.title') : shownTitle}
-          </h1>
-          {adding ? null : <StatusBadge status={status} />}
-        </div>
+        <PageHeader
+          title={adding ? t('create.title') : shownTitle}
+          {...(adding ? {} : { badges: <StatusBadge status={status} /> })}
+        />
         <p className="text-sm text-fg-muted">
           {adding
             ? t('page.subtitle-add', { market: marketName })

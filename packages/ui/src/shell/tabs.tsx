@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useHelpTab } from '../help/help-context.tsx';
 
 export interface TabItem {
   readonly id: string;
@@ -11,6 +12,8 @@ export interface TabItem {
   readonly href?: string;
   /** `critical` draws the label in the danger colour (an Overdue count); the text still says it. */
   readonly tone?: 'critical';
+  /** The tab's name in the Help text, when it is not its label (a count in the label, say). While this tab is active the Help panel shows that tab's part. */
+  readonly help?: string;
 }
 
 export interface TabsProps {
@@ -45,6 +48,7 @@ export function Tabs({ label, items, activeId, onSelect, panelId }: TabsProps) {
   // A div (tablist) or a nav: one ref type serves both.
   const row = useRef<HTMLDivElement>(null);
   const aria = panelId !== undefined && items.every((item) => item.href === undefined);
+  useHelpTab(items.find((item) => item.id === activeId)?.help);
 
   // Arrow keys move between tabs (and select, as the panel is on the same page); Home and End
   // go to the first and last.

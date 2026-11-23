@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { BrandsView } from '../../../../src/brands/brands-view.tsx';
 import { EDIT_PERMISSION, READ_PERMISSION } from '../../../../src/brands/types.ts';
@@ -29,9 +29,9 @@ export default async function BrandsPage() {
   const { permissionKeys, csrfToken } = gate.session;
   return (
     <AdminShell session={gate.session} activeId="brands" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
       {permissionKeys.includes(READ_PERMISSION) ? (
         <BrandsView
+          title={title}
           canEdit={permissionKeys.includes(EDIT_PERMISSION)}
           csrfToken={csrfToken}
           paging={paging}
@@ -41,6 +41,7 @@ export default async function BrandsPage() {
         />
       ) : (
         <>
+          <PageHeader title={title} className="mb-4" />
           <p className="text-fg-muted">{t('brands.no-access')}</p>
           <p className="mt-4">
             <a className="font-medium text-link underline" href="/">
