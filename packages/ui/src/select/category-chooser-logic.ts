@@ -9,6 +9,8 @@ export interface CategoryChoice {
   readonly name: string;
   /** The names from the department down to the choice. */
   readonly path: readonly string[];
+  /** The id of the choice's department, when the picker sends it (older payloads do not). */
+  readonly departmentId?: string;
   /** The level-3 node itself, offered after its children: the product sits on it directly. */
   readonly general: boolean;
   readonly status: 'active' | 'hidden';
@@ -68,9 +70,15 @@ export function addCategory(
   return [...ids, id];
 }
 
-/** The department (level 1 name) of a choice; null when its path is unknown. */
+/**
+ * The department of a choice: its id when the picker sends one, else the level 1 name (path[0]);
+ * null when unknown. Limitation of the name fallback: two departments with the same name count as
+ * one here. That only affects this client; the server compares real ancestor ids and is the
+ * authority at submit.
+ */
 export function departmentOfChoice(choice: CategoryChoice | undefined): string | null {
-  return choice?.path[0] ?? null;
+  if (choice === undefined) return null;
+  return choice.departmentId ?? choice.path[0] ?? null;
 }
 
 /**

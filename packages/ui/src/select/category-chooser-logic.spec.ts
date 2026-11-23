@@ -95,4 +95,14 @@ describe('same-branch rules', () => {
     expect(dropOutOfBranch(['a1', 'a2', 'x'], all)).toEqual({ ids: ['a1', 'a2', 'x'], dropped: 0 });
     expect(dropOutOfBranch([], all)).toEqual({ ids: [], dropped: 0 });
   });
+  it('prefers the department id over the name, and falls back to the name', () => {
+    const d1 = { ...at('c1', 'Same', 'Rice'), departmentId: 'dep-1' };
+    const d2 = { ...at('c2', 'Same', 'Tea'), departmentId: 'dep-2' };
+    expect(choicesInBranch([d1, d2], ['c1']).map((c) => c.id)).toEqual(['c1']);
+    expect(dropOutOfBranch(['c1', 'c2'], [d1, d2])).toEqual({ ids: ['c1'], dropped: 1 });
+    // Without ids two departments of one name count as one (client only; the API is the authority).
+    const n1 = at('n1', 'Same', 'Rice');
+    const n2 = at('n2', 'Same', 'Tea');
+    expect(dropOutOfBranch(['n1', 'n2'], [n1, n2])).toEqual({ ids: ['n1', 'n2'], dropped: 0 });
+  });
 });

@@ -32,7 +32,11 @@ describe('categoryPicker', () => {
       ['c2', false],
       ['c3', false],
     ]);
-    expect(list[0]).toMatchObject({ level: 4, path: ['D', 'G', 'C1', 'S1'] });
+    expect(list[0]).toMatchObject({
+      level: 4,
+      path: ['D', 'G', 'C1', 'S1'],
+      departmentId: 'd',
+    });
     expect(list.some((c) => c.level < 3)).toBe(false);
   });
   it('hides hidden nodes and anything under them from a seller, including an active child', () => {
