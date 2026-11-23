@@ -135,8 +135,9 @@ export interface SubmitProductDependencies {
   /**
    * A seller's activity scope (owner decision 2026-10-31): read before the first unit, then every
    * category of the seller's submit outside it is `category.not-in-activity`. A scope that cannot
-   * be read refuses the submit with `access.unavailable`. The module wires it; a caller without it
-   * skips only this check (as `FreezeRevision` does without its category reader).
+   * be read refuses the submit with `access.unavailable`, and so does a seller's submit built
+   * without it (fail closed: a missing wiring never skips the check). An admin's submit does not
+   * use it. The module wires it.
    */
   readonly sellerCategories?: Pick<SellerCategoryScope, 'allowedCategoryIdsForSeller'>;
 }
@@ -207,8 +208,14 @@ export class SubmitProduct {
     }
 
     // The seller's activity scope, before any unit: it asks `sellers` and opens a unit of its own.
+    // Fail closed: a seller's submit without the scope dependency is refused, never unchecked.
+    // Accepted TOCTOU window: the scope is read once, here, and both freezes (the read-only one and
+    // the one inside the write unit) use that same set. A change of the seller's business
+    // activities between this read and the commit is not seen by this submit; the next submit
+    // reads it afresh (the scope gates new submits only, never a stored revision).
     let freezeOptions: FreezeOptions = {};
-    if (author.kind === 'seller' && this.deps.sellerCategories !== undefined) {
+    if (author.kind === 'seller') {
+      if (this.deps.sellerCategories === undefined) return err({ code: 'access.unavailable' });
       const allowed = await this.deps.sellerCategories.allowedCategoryIdsForSeller(
         context,
         author.sellerId,
