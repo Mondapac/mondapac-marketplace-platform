@@ -128,7 +128,6 @@ export function DonutChart({
     e.currentTarget.querySelectorAll<SVGElement>('[data-segment]')[next]?.focus();
   };
   const shown = active === null ? undefined : slices[active];
-  const mid = active === null ? 0 : (arcs[active]!.from + arcs[active]!.to) / 2;
 
   return (
     <div className="flex flex-col gap-3">
