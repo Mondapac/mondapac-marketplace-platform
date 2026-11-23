@@ -1,0 +1,11 @@
+{
+  "id": "FE-073",
+  "area": "admin",
+  "title": "بازهٔ دلخواه (Custom) در داشبورد",
+  "desc": "انتخاب بازهٔ تاریخ دلخواه علاوه بر امروز، ۷ روز، ۳۰ روز و این ماه.",
+  "src": "design/admin/dashboards-upgrade/dashboards-upgrade-fa.html (هادی)",
+  "date": "2026-11-22",
+  "trig": "بعد از فاز ۵ داشبورد",
+  "prio": "پایین",
+  "status": "موکول"
+}

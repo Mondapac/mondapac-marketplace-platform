@@ -1,0 +1,11 @@
+{
+  "id": "FE-067",
+  "area": "seller",
+  "title": "بخش گزارش‌ها در پنل فروشنده (گزینهٔ ج داشبورد)",
+  "desc": "گزارش فروش، محصولات، مشتریان و بازپرداخت فروشگاه خود به‌صورت سوپر لیست با خروجی CSV و XLSX.",
+  "src": "design/admin/dashboards-upgrade/dashboards-upgrade-fa.html",
+  "date": "2026-11-22",
+  "trig": "بعد از پایان گزینهٔ ب",
+  "prio": "متوسط",
+  "status": "موکول"
+}

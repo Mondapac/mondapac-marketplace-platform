@@ -1,0 +1,11 @@
+{
+  "id": "FE-021",
+  "area": "orders",
+  "title": "ایندکس (market_id, order_id) روی dispute_cases",
+  "desc": "وقتی حجم اختلاف‌ها زیاد شد ایندکس اضافه و در سند طراحی ثبت شود.",
+  "src": "handoffs/super-list/phase4-followups.md (#948)",
+  "date": "2026-11-21",
+  "trig": "رشد حجم اختلاف‌ها",
+  "prio": "پایین",
+  "status": "موکول"
+}

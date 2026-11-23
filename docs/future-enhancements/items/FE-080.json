@@ -1,0 +1,11 @@
+{
+  "id": "FE-080",
+  "area": "infra",
+  "title": "شمارش صف‌های داشبورد از read model",
+  "desc": "اگر p95 مسیر work-queue در ساعت اوج بالا رفت، شمارش‌ها از read model رویدادمحور بیایند.",
+  "src": "design/admin/dashboards-upgrade/dashboards-upgrade-fa.html (محمد)",
+  "date": "2026-11-22",
+  "trig": "وقتی p95 از حد گذشت",
+  "prio": "پایین",
+  "status": "موکول"
+}

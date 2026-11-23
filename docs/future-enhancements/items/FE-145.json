@@ -1,0 +1,11 @@
+{
+  "id": "FE-145",
+  "area": "catalog",
+  "title": "اسکن دوبارهٔ متن‌ها بعد از تغییر واژه‌های ادعا",
+  "desc": "catalog رویداد certification-type-revised.v1 را مصرف نمی‌کند، پس متن‌های منتشرشده با واژهٔ تازه دوباره چک نمی‌شوند.",
+  "src": "design/certificates-types/new-type-design-fa.html (۹)؛ docs/modules/certification/notes.md",
+  "date": "2026-11-22",
+  "trig": "بعد از ساخت نوع گواهی از ادمین",
+  "prio": "متوسط",
+  "status": "موکول"
+}

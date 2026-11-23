@@ -22,3 +22,7 @@ coverage/
 apps/api/src/generated/
 .local/
 .object-store/
+
+# Generated views of the future-enhancements register (docs/future-enhancements/README.md)
+docs/future-enhancements/_generated/
+__pycache__/

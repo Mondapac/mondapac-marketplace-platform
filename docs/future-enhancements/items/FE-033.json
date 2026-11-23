@@ -1,0 +1,11 @@
+{
+  "id": "FE-033",
+  "area": "storefront",
+  "title": "فید Merchant Center",
+  "desc": "فید محصول از catalog هم‌خوان با JSON-LD برای Shopping و پاسخ‌های AI.",
+  "src": "plans/buyer-seo-plan.md (بستهٔ ۹)",
+  "date": "2026-11-21",
+  "trig": "بعد از عرضه؛ پیش‌نیاز: پرداخت واقعی، سیاست بازگشت و ارسال",
+  "prio": "پایین",
+  "status": "موکول"
+}

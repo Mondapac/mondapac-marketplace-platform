@@ -1,0 +1,11 @@
+{
+  "id": "FE-084",
+  "area": "infra",
+  "title": "گسترش نگهبان «صفحهٔ سرور و ماژول client» به alias و barrel",
+  "desc": "قانون جدید check-panel-boundaries (PR 1222) فقط import نسبی را دنبال می‌کند؛ import با alias (@/) و فایل barrel که از ماژول client دوباره export می‌کند، و نام PascalCase که کامپوننت نیست را نمی‌گیرد. فایل‌های سرور بیرون از app/ و src/server/ هم بررسی نمی‌شوند.",
+  "src": "بازبینی سجاد (QA) روی PR 1222",
+  "date": "2026-11-22",
+  "trig": "اگر این الگو در کد پیدا شد",
+  "prio": "پایین",
+  "status": "موکول"
+}

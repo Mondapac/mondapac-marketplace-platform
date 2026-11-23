@@ -1,0 +1,11 @@
+{
+  "id": "FE-091",
+  "area": "catalog",
+  "title": "ساخت نوع گواهی و واژگان ادعا از ادمین",
+  "desc": "در ۲۲ نوامبر ۲۰۲۶ با PRهای ۱۲۶۹، ۱۲۷۵، ۱۲۷۶ و ۱۲۷۷ ساخته شد: ادمین نوع را پیشنهاد می‌دهد و ادمین دوم تأیید می‌کند.",
+  "src": "design/certificates-types/new-type-design-fa.html؛ design/areas/infra/operational-test-data/operational-test-data-fa.html (مجتبی)",
+  "date": "2026-11-22",
+  "trig": "طرح ۲۲ نوامبر توسط john تأیید شد؛ ساخت در رشتهٔ جدید",
+  "prio": "متوسط",
+  "status": "انجام‌شد"
+}
