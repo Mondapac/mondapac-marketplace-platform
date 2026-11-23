@@ -38,11 +38,14 @@ export function HoldsList({
   accountId,
   marketId,
   csrfToken,
+  zone,
 }: {
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
   readonly csrfToken: string;
+  /** The IANA zone of the Submitted times (ADR-0005). */
+  readonly zone: string;
 }) {
   const t = useTranslations('pricing.holds.list');
   const locale = useLocale();
@@ -144,11 +147,11 @@ export function HoldsList({
             id,
             header,
             skeleton: 'date',
-            cell: (row) => <When iso={row.submittedAt} missing="—" />,
+            cell: (row) => <When iso={row.submittedAt} missing="—" zone={zone} />,
           };
       }
     },
-    [t, locale],
+    [t, locale, zone],
   );
 
   const config: PagedListConfig<PriceHoldListRow> = useMemo(
