@@ -1,5 +1,6 @@
 import 'server-only';
-import { cookies } from 'next/headers';
+import { REQUESTED_PATH_HEADER, withReturnTo } from '@mondapac/panel-server/return-to';
+import { cookies, headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { cache } from 'react';
 import { serverGet } from './server-fetch.ts';
@@ -59,7 +60,9 @@ export async function requireSession(): Promise<
   if (read.kind === 'signed-out') {
     const jar = await cookies();
     const hadSession = jar.getAll().some((c) => c.name.startsWith('__Host-session-admin-'));
-    redirect(hadSession ? '/session-ended' : '/sign-in');
+    // Keeps the page asked for, so sign-in can open it again (checked again on the way back).
+    const requested = (await headers()).get(REQUESTED_PATH_HEADER);
+    redirect(withReturnTo(hadSession ? '/session-ended' : '/sign-in', requested));
   }
   return read.kind === 'signed-in'
     ? { kind: 'ok', session: read.session }

@@ -1,4 +1,5 @@
 import { MissingClientAddressError } from '@mondapac/panel-server';
+import { RETURN_TO_PARAM, safeReturnTo, withReturnTo } from '@mondapac/panel-server/return-to';
 import { panelConfig } from '../../src/server/config.ts';
 import { panelHostFor, upstreamHeaders } from '../../src/server/bff.ts';
 
@@ -12,7 +13,10 @@ export async function GET(request: Request): Promise<Response> {
   const config = panelConfig();
   const host = panelHostFor(config, request.headers.get('host'));
   if (host === undefined) return new Response(null, { status: 404 });
-  const headers = new Headers({ location: `${host.origin}/sign-in?notice=session-ended` });
+  const next = new URL(request.url).searchParams.get(RETURN_TO_PARAM);
+  const headers = new Headers({
+    location: `${host.origin}${withReturnTo('/sign-in?notice=session-ended', next)}`,
+  });
   headers.set('cache-control', 'private, no-store');
   try {
     const upstream = await fetch(`${config.apiBaseUrl}/identity/seller/session`, {
@@ -25,7 +29,10 @@ export async function GET(request: Request): Promise<Response> {
     if (upstream.ok && cookies.length === 0) {
       return new Response(null, {
         status: 303,
-        headers: { location: `${host.origin}/`, 'cache-control': 'private, no-store' },
+        headers: {
+          location: `${host.origin}${safeReturnTo(next) ?? '/'}`,
+          'cache-control': 'private, no-store',
+        },
       });
     }
     for (const cookie of cookies) headers.append('set-cookie', cookie);

@@ -16,7 +16,14 @@ export type SignInNotice =
   'session-ended' | 'signed-out' | 'password-changed' | 'two-step-enabled' | null;
 
 /** The password step, then (an account with two-step verification) the code step. */
-export function SignInForm({ notice }: { readonly notice: SignInNotice }) {
+export function SignInForm({
+  notice,
+  returnTo = null,
+}: {
+  readonly notice: SignInNotice;
+  /** The page to open after sign-in; checked by the server page (`safeReturnTo`). */
+  readonly returnTo?: string | null;
+}) {
   const [step, setStep] = useState<{ token: string; keepSignedIn: boolean } | null>(null);
   const [ended, setEnded] = useState<ApiFailure | null>(null);
   if (step !== null) {
@@ -24,6 +31,7 @@ export function SignInForm({ notice }: { readonly notice: SignInNotice }) {
       <CodeStep
         challengeToken={step.token}
         keepSignedIn={step.keepSignedIn}
+        returnTo={returnTo}
         onBack={() => setStep(null)}
         onEnded={(failure) => {
           setEnded(failure);
@@ -35,6 +43,7 @@ export function SignInForm({ notice }: { readonly notice: SignInNotice }) {
   return (
     <PasswordForm
       notice={notice}
+      returnTo={returnTo}
       endedBy={ended}
       onCode={(token, keepSignedIn) => {
         setEnded(null);
@@ -46,10 +55,12 @@ export function SignInForm({ notice }: { readonly notice: SignInNotice }) {
 
 function PasswordForm({
   notice,
+  returnTo,
   endedBy,
   onCode,
 }: {
   readonly notice: SignInNotice;
+  readonly returnTo: string | null;
   /** Why the code step ended, when it did: the message and any wait show here. */
   readonly endedBy: ApiFailure | null;
   readonly onCode: (token: string, keepSignedIn: boolean) => void;
@@ -97,7 +108,7 @@ function PasswordForm({
         onCode(result.body.challengeToken, keepSignedIn);
         return;
       }
-      router.replace('/');
+      router.replace(returnTo ?? '/');
       router.refresh();
       return;
     }
@@ -192,11 +203,13 @@ function PasswordForm({
 function CodeStep({
   challengeToken,
   keepSignedIn,
+  returnTo,
   onBack,
   onEnded,
 }: {
   readonly challengeToken: string;
   readonly keepSignedIn: boolean;
+  readonly returnTo: string | null;
   readonly onBack: () => void;
   readonly onEnded: (failure: ApiFailure) => void;
 }) {
@@ -232,7 +245,7 @@ function CodeStep({
       { challengeToken, code: code.replace(/[\s-]/g, ''), keepSignedIn },
     );
     if (result.ok) {
-      router.replace('/');
+      router.replace(returnTo ?? '/');
       router.refresh();
       return;
     }

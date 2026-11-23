@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { REQUESTED_PATH_HEADER } from '@mondapac/panel-server/return-to';
 import { securityHeaders } from './src/server/security-headers.ts';
 
 // Runs before every page and route (Next 16 "proxy"): sets the nonce and the security headers.
@@ -12,6 +13,8 @@ export function proxy(request: NextRequest) {
   const headers = securityHeaders(nonce, process.env.NODE_ENV !== 'production');
   const forwarded = new Headers(request.headers);
   forwarded.set('x-nonce', nonce);
+  // The page asked for, so sign-in can return to it (always set here, never taken from the browser).
+  forwarded.set(REQUESTED_PATH_HEADER, `${request.nextUrl.pathname}${request.nextUrl.search}`);
   forwarded.set('content-security-policy', headers['content-security-policy'] ?? '');
   const response = NextResponse.next({ request: { headers: forwarded } });
   for (const [name, value] of Object.entries(headers)) response.headers.set(name, value);
