@@ -46,15 +46,15 @@ describe('page header', () => {
   });
 
   it('writes no "Times are in <zone>" sentence on a page: the zone is in the Help panel and the account menu', () => {
+    // Field help beside a form field may name the zone (the field's own time); nothing else does.
+    const FIELD_HELP = new Set(['account-menu.zone', 'price.special.start-help']);
     const offenders: string[] = [];
     const walk = (value: unknown, path: string) => {
       if (typeof value === 'string') {
         if (
           path.split('.')[0] !== 'help' &&
-          // The account menu and the scheduling form's own field help keep their zone line.
-          path !== 'account-menu.zone' &&
-          path !== 'content.slides.placement.zone' &&
-          /^(Times|Dates|Times and days)( are shown| are)? in \{zone\}\./u.test(value)
+          !FIELD_HELP.has(path) &&
+          /\b(Times|Dates)\b[^.]*\b(in|shown in)\b[^.]*\{zone\}/u.test(value)
         ) {
           offenders.push(path);
         }

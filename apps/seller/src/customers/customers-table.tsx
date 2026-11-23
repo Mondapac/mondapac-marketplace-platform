@@ -22,7 +22,7 @@ export function CodeText({ code }: { readonly code: string }) {
  * The customers of one page from one column definition (`SuperTable`): a box to select the row (so
  * "select all matching" can feed the export), the code (a link to the customer), the columns the
  * seller chose, and the row Actions menu last. Below 1024 px each customer is a card. Times are in
- * the seller's zone with its name; money is in the currency the API gives, never a default.
+ * the seller's zone (named in the Help panel and the account menu, not on the page); money is in the currency the API gives, never a default.
  */
 export function CustomersTable({
   rows,
