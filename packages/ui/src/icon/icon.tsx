@@ -274,6 +274,13 @@ const ICONS = {
       <path d="M12 8h.01" />
     </>
   ),
+  help: (
+    <>
+      <circle cx="12" cy="12" r="10" />
+      <path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" />
+      <path d="M12 17h.01" />
+    </>
+  ),
   'arrow-down': (
     <>
       <path d="M12 5v14" />
