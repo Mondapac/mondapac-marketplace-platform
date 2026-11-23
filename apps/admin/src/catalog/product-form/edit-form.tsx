@@ -764,11 +764,6 @@ export function EditForm({
           title={adding ? t('create.title') : shownTitle}
           {...(adding ? {} : { badges: <StatusBadge status={status} /> })}
         />
-        <p className="text-sm text-fg-muted">
-          {adding
-            ? t('page.subtitle-add', { market: marketName })
-            : t('page.subtitle-edit', { market: marketName, code: product.productCode })}
-        </p>
       </div>
       {justPublished ? (
         <Banner tone="success" title={t('banner.published-title', { title: shownTitle })}>

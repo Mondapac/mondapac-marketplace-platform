@@ -96,7 +96,7 @@ describe('SuperTable', () => {
 const list = (over: Partial<SuperListProps> = {}) =>
   renderToStaticMarkup(
     <SuperList
-      heading={{ subtitle: '143 people' }}
+      heading={{ embedded: true, note: '143 people' }}
       views={{
         label: 'Views',
         activeId: 'all',
@@ -187,7 +187,7 @@ describe('SuperList', () => {
 
   it('shows a page title and a notice, and a page-made toolbar in place of the three tools', () => {
     const html = list({
-      heading: { title: 'People', subtitle: '143 people' },
+      heading: { title: 'People' },
       notice: <p>View only</p>,
       toolbar: <fieldset>OWN TOOLS</fieldset>,
     });
@@ -203,21 +203,22 @@ describe('SuperList', () => {
       heading: {
         title: 'People',
         status: 'Live · every 30 s',
-        subtitle: '5 people',
+        note: '5 people',
         actions: <button>Bulk</button>,
       },
     });
     expect(titled.match(/<h1/g)).toHaveLength(1);
     expect(titled).not.toContain('About ');
     expect(titled).toContain('Live · every 30 s');
-    expect(titled).toContain('5 people');
+    // A page's list draws no line under its title, even when a note is given.
+    expect(titled).not.toContain('5 people');
     expect(titled).toContain('<button>Bulk</button>');
-    expect(list({ heading: { subtitle: '5 people' } })).not.toContain('<h1');
+    expect(list({ heading: { embedded: true, note: '5 people' } })).not.toContain('<h1');
   });
 
   it('puts anything the page gives after the search box', () => {
     const html = list({
-      heading: { subtitle: '143 people' },
+      heading: { embedded: true, note: '143 people' },
       search: {
         label: 'Search',
         placeholder: 'Search people',

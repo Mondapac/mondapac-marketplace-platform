@@ -29,6 +29,27 @@ const sources = [join(root, 'src'), join(root, 'app')].flatMap((dir) => files(di
 const REDIRECT_ONLY = new Set(['/security', '/offer-reviews']);
 
 describe('page header', () => {
+  it('puts no line of text under the page title (what a page is for lives in the Help panel)', () => {
+    // A line right after the title row, a `subtitle` on a list heading, or a `subtitle` prop on
+    // PageHeader brings the subtitle back. A warning is a Banner or the list's `notice`.
+    const offenders = sources.filter((file) => {
+      const text = source(file).replace(/\/\/.*$|\/\*[\s\S]*?\*\//gmu, '');
+      return (
+        /<PageHeader\b[^>]*\/>\s*<p\b[^>]*>\s*\{\s*t\(\s*['"`][^'"`]*(intro|subtitle|description)/u.test(
+          text,
+        ) || /\bheading=\{\{[^}]*\bsubtitle\s*:/u.test(text)
+      );
+    });
+    expect(offenders.map((file) => relative(root, file))).toEqual([]);
+  });
+
+  it('gives PageHeader and the list heading no subtitle prop', () => {
+    const kit = ['help/page-header.tsx', 'list/super-list.tsx'].map((name) =>
+      source(join(root, '../../packages/ui/src', name)).replace(/\/\/.*$|\/\*[\s\S]*?\*\//gmu, ''),
+    );
+    expect(kit.filter((text) => /\bsubtitle\b/u.test(text))).toEqual([]);
+  });
+
   it('has no hand-written h1 (a page uses PageHeader); only a screen-reader-only one is allowed', () => {
     const offenders = sources.filter((file) => {
       const text = source(file);
