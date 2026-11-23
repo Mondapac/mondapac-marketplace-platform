@@ -506,7 +506,7 @@ export function PinButton() {
       label={name}
       aria-pressed={pinned}
       pressedFill={false}
-      className={pinned ? 'text-attention-solid hover:text-attention-solid' : ''}
+      className={pinned ? 'text-attention-solid! hover:text-attention-solid!' : ''}
       onClick={() => tools.toggle(page.id)}
     >
       <Icon name="star" className={pinned ? 'fill-current' : ''} />
