@@ -140,6 +140,9 @@ export async function AdminShell({
                   titleAction={<PinButton />}
                   actions={
                     <>
+                      <span className="hidden md:inline-flex">
+                        <PinButton />
+                      </span>
                       <AdminHelpButton />
                       <ShortcutsButton />
                       <PaletteSearchButton />

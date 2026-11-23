@@ -44,7 +44,7 @@ export function NoticeCenter<N extends FeedNotice>({
         }
       : { kind: page.state };
   return (
-    <div className="me-3 flex items-center gap-1">
+    <div className="flex items-center gap-1">
       {feed.sound.on && feed.sound.blocked ? (
         <button
           type="button"

@@ -7,6 +7,11 @@ export {
   type SettingsMenuGroup,
   type SettingsMenuLink,
 } from './shell/settings-menu.ts';
+export {
+  TopbarIconButton,
+  TOPBAR_ICON_CLASS,
+  type TopbarIconButtonProps,
+} from './shell/topbar-icon-button.tsx';
 export { Topbar, type Crumb, type TopbarProps } from './shell/topbar.tsx';
 export {
   AccountMenu,

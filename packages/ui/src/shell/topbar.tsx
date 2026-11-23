@@ -17,7 +17,7 @@ export interface TopbarProps {
   readonly trailLabel?: string;
   /** Replaces the page name in the phone bar (the name of the page the star pins). */
   readonly phoneTitle?: ReactNode;
-  /** Next to the page name: the pin star. */
+  /** Next to the page name on phones only; from tablets up the pin star sits in `actions`. */
   readonly titleAction?: ReactNode;
   /** Right-hand slot: Market chip, notifications, user menu. */
   readonly actions?: ReactNode;
@@ -69,9 +69,8 @@ export function Topbar({
             </li>
           </ol>
         </nav>
-        <div className="hidden md:block">{titleAction}</div>
       </div>
-      <div className="flex shrink-0 items-center gap-3">{actions}</div>
+      <div className="flex shrink-0 items-center gap-1">{actions}</div>
     </header>
   );
 }

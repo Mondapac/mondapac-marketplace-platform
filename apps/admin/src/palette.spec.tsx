@@ -362,7 +362,9 @@ describe('PanelTools', () => {
     expect(screen.queryByText('Pinned')).toBeNull();
     const star = screen.getByRole('button', { name: 'Pin Orders' });
     expect(star.getAttribute('aria-pressed')).toBe('false');
-    expect(star.getAttribute('title')).toBe('Pin Orders');
+    expect(document.getElementById(star.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
+      'Pin Orders',
+    );
     fireEvent.click(star);
     expect(JSON.parse(window.localStorage.getItem('mp:admin:AU:acc-1:pins')!)).toEqual([
       'page:orders',
