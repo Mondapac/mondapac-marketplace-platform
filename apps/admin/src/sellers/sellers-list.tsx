@@ -110,6 +110,7 @@ export function SellersList({
   paging,
   accountId,
   marketId,
+  zone,
   initialTab = 'all',
 }: {
   readonly csrfToken: string;
@@ -117,6 +118,8 @@ export function SellersList({
   readonly paging: 'pages' | 'prev-next';
   readonly accountId: string;
   readonly marketId: string;
+  /** The IANA zone of the Submitted and Last changed times (ADR-0005). */
+  readonly zone: string;
   /** Sellers opens on All, Inbox › Seller requests on the review view. */
   readonly initialTab?: Tab;
 }) {
@@ -378,13 +381,13 @@ export function SellersList({
         return {
           id,
           header: t('col.submitted'),
-          cell: (row) => <When iso={row.submittedAt} missing={t('not-given')} />,
+          cell: (row) => <When iso={row.submittedAt} missing={t('not-given')} zone={zone} />,
         };
       case 'changed':
         return {
           id,
           header: t('col.changed'),
-          cell: (row) => <When iso={row.lastChangedAt} missing={t('not-given')} />,
+          cell: (row) => <When iso={row.lastChangedAt} missing={t('not-given')} zone={zone} />,
         };
       case 'seller-id':
         return {

@@ -165,7 +165,17 @@ describe('WorkQueueList', () => {
     };
   });
   const list = (view: 'needs-action' | 'review' = 'needs-action') =>
-    render(wrap(<WorkQueueList answer={answer} initialView={view} accountId="a" marketId="AU" />));
+    render(
+      wrap(
+        <WorkQueueList
+          zone="Australia/Brisbane"
+          answer={answer}
+          initialView={view}
+          accountId="a"
+          marketId="AU"
+        />,
+      ),
+    );
 
   it('lists every queue that needs action with its count, age and status, linked to its list', () => {
     list();

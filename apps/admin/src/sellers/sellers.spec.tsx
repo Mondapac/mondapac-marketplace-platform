@@ -96,6 +96,7 @@ function mount(options: { paging?: 'pages' | 'prev-next'; initialTab?: Tab } = {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
       <SellersList
+        zone="Australia/Brisbane"
         csrfToken="csrf-1"
         paging={options.paging ?? 'pages'}
         accountId="acc-1"
@@ -833,7 +834,13 @@ describe('Sellers list: saved filter tabs', () => {
     serve(() => pageOf([row(1)]), savedWith([item('awaiting-review')]));
     render(
       <NextIntlClientProvider locale="en-NZ" messages={messages}>
-        <SellersList csrfToken="csrf-1" paging="pages" accountId="acc-1" marketId="ZZ" />
+        <SellersList
+          zone="Australia/Brisbane"
+          csrfToken="csrf-1"
+          paging="pages"
+          accountId="acc-1"
+          marketId="ZZ"
+        />
       </NextIntlClientProvider>,
     );
     await screen.findByText('Store 1');

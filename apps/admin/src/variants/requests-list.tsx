@@ -103,7 +103,7 @@ export function RequestsList({
             id,
             header,
             skeleton: 'date',
-            cell: (row) => <When iso={row.createdAt} missing="" />,
+            cell: (row) => <When iso={row.createdAt} missing="" zone={zone} />,
           };
         default:
           return {
@@ -120,7 +120,7 @@ export function RequestsList({
           };
       }
     },
-    [t],
+    [t, zone],
   );
 
   const config: PagedListConfig<RequestItem> = useMemo(

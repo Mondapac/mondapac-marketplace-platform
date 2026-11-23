@@ -21,12 +21,15 @@ export function ReviewQueueView({
   accountId,
   marketId,
   csrfToken,
+  zone,
 }: {
   readonly tab: QueueTab;
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
   readonly csrfToken: string;
+  /** The IANA zone of the queue's times (ADR-0005). */
+  readonly zone: string;
 }) {
   const t = useTranslations('catalog.queue');
   const [totals, setTotals] = useState<Totals | null>(null);
@@ -47,6 +50,7 @@ export function ReviewQueueView({
           accountId={accountId}
           marketId={marketId}
           csrfToken={csrfToken}
+          zone={zone}
           onTotals={setTotals}
         />
       ) : (
@@ -55,6 +59,7 @@ export function ReviewQueueView({
           accountId={accountId}
           marketId={marketId}
           csrfToken={csrfToken}
+          zone={zone}
           onTotals={setTotals}
         />
       )}

@@ -5,6 +5,7 @@ import { panelHostFor } from '../../../src/server/bff.ts';
 import { panelConfig } from '../../../src/server/config.ts';
 import { AdminShell } from '../../../src/server/admin-shell.tsx';
 import { serverGet } from '../../../src/server/server-fetch.ts';
+import { localZone } from '../../../src/shared/format.ts';
 import { requireSession } from '../../../src/server/session.ts';
 import { HoldsList } from '../../../src/pricing/holds-list.tsx';
 import { VIEW_PERMISSION } from '../../../src/pricing/types.ts';
@@ -58,6 +59,7 @@ export default async function PriceHoldsPage() {
       accountId={gate.session.accountId}
       marketId={marketId}
       csrfToken={gate.session.csrfToken}
+      zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
     />,
   );
 }

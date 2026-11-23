@@ -36,7 +36,7 @@ export function BottomSheet({ open, title, closeLabel, onClose, children }: Bott
         // The backdrop: the panel inside fills the dialog, so only a tap outside targets it.
         if (event.target === ref.current) onClose();
       }}
-      className="m-0 mt-auto max-h-none w-full max-w-none bg-transparent p-0 text-start text-fg backdrop:bg-scrim"
+      className="m-0 mt-auto max-h-none w-full max-w-none overflow-hidden bg-transparent p-0 text-start text-fg backdrop:bg-scrim"
     >
       {open ? (
         <div className="flex max-h-[85dvh] flex-col rounded-t-xl border-t border-line bg-surface shadow-(--mp-shadow-elevation-floating)">

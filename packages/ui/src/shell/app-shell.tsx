@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Toaster, type ToasterProps } from '../feedback/toaster.tsx';
 import { Icon, type IconName } from '../icon/icon.tsx';
+import { useModal } from '../overlay/dialog.tsx';
 import { SIDEBAR_COLLAPSED, SIDEBAR_COOKIE } from './nav.ts';
 
 export interface BottomTab {
@@ -69,12 +70,7 @@ export function AppShell({
   const drawer = useRef<HTMLDialogElement>(null);
   const hasBar = bottomTabs !== undefined && bottomTabs.length > 0;
 
-  useEffect(() => {
-    const dialog = drawer.current;
-    if (dialog === null) return;
-    if (open && !dialog.open) dialog.showModal();
-    if (!open && dialog.open) dialog.close();
-  }, [open]);
+  useModal(drawer, open);
 
   useEffect(() => {
     // The drawer is a phone control: widening the window past 760 px closes it.
@@ -189,7 +185,7 @@ export function AppShell({
           // A click on the backdrop targets the dialog element itself; the panel inside fills it.
           if (event.target === drawer.current) setOpen(false);
         }}
-        className="m-0 h-full max-h-none w-[min(20rem,85vw)] max-w-none bg-transparent p-0 text-fg backdrop:bg-scrim md:hidden"
+        className="m-0 h-full max-h-none w-[min(20rem,85vw)] max-w-none overflow-hidden bg-transparent p-0 text-fg backdrop:bg-scrim md:hidden"
       >
         <div className="relative flex h-full flex-col bg-surface">
           <button

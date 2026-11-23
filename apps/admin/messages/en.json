@@ -1261,7 +1261,7 @@
       "col": {
         "seller": "Seller ID",
         "access": "Access",
-        "created": "Created (UTC)",
+        "created": "Created",
         "actions": "Actions"
       },
       "actions-for": "Actions for seller {id}",
@@ -1772,7 +1772,7 @@
         "type": "Type",
         "state": "State",
         "accreditation": "Accreditation number",
-        "changed": "State changed (UTC)"
+        "changed": "State changed"
       },
       "filter": {
         "label": "Filter by state",
@@ -1835,7 +1835,7 @@
         "unavailable": "This issuer could not be loaded.",
         "type": "Type",
         "accreditation": "Accreditation number",
-        "changed": "State changed (UTC)",
+        "changed": "State changed",
         "expert": "Expert approval",
         "affected": "Approved certificates naming this issuer",
         "by": {
@@ -5869,7 +5869,7 @@
         "seller": "Seller",
         "reasons": "Reasons",
         "checks": "Checks",
-        "waiting": "Waiting since (UTC)",
+        "waiting": "Waiting since",
         "action": "Review"
       },
       "change": {
@@ -5935,7 +5935,7 @@
           "seller": "Seller",
           "reasons": "Reasons",
           "checks": "Checks",
-          "waiting": "Waiting since (UTC)"
+          "waiting": "Waiting since"
         },
         "chip-search": "Search: {text}",
         "loading": "Loading revisions",
@@ -6028,7 +6028,7 @@
           "condition": "Condition",
           "handling": "Handling",
           "seller": "Seller",
-          "waiting": "Waiting since (UTC)"
+          "waiting": "Waiting since"
         },
         "chip-search": "Search: {text}",
         "loading": "Loading offers",
@@ -9065,7 +9065,7 @@
     "name-saved": "Your name was updated.",
     "name-same": "That is already your name.",
     "prefs-title": "Time zone and language",
-    "prefs-intro-admin": "These are your own display choices. Without a time zone of your own, the Orders list shows times and days in the Market's time zone; other lists and reports keep showing UTC.",
+    "prefs-intro-admin": "These are your own display choices. Without a time zone of your own, lists and reports show times and days in the Market's time zone.",
     "prefs-intro-seller": "These are your own display choices. Lists and reports keep showing times in your store's time zone.",
     "timezone": "Time zone",
     "timezone-label": "Time zone",
@@ -16609,9 +16609,7 @@
       "certificates-issuer-requests-issuerRequestId": {
         "title": "Issuer request",
         "about": "One seller's request to add an issuer, with the documents they sent.",
-        "good": [
-          "Dates and times are in your time zone ({zone}). Change it in My profile."
-        ],
+        "good": ["Dates and times are in your time zone ({zone}). Change it in My profile."],
         "related": [
           {
             "label": "Issuers",
@@ -16622,9 +16620,7 @@
       "certificates-types-typeId": {
         "title": "Certificate type",
         "about": "One certificate type: its name, the words sellers may use for it, and its review policy.",
-        "good": [
-          "A new type proposed by an admin needs a second admin to approve it."
-        ],
+        "good": ["A new type proposed by an admin needs a second admin to approve it."],
         "related": [
           {
             "label": "Review queue",
@@ -16635,9 +16631,7 @@
       "certificates-types-new": {
         "title": "New certificate type",
         "about": "Propose a new certificate type. It goes live after another admin approves it.",
-        "good": [
-          "A new type proposed by an admin needs a second admin to approve it."
-        ],
+        "good": ["A new type proposed by an admin needs a second admin to approve it."],
         "related": [
           {
             "label": "Review queue",
@@ -16648,9 +16642,7 @@
       "certificates-types-typeId-edit": {
         "title": "Edit certificate type",
         "about": "Change a certificate type's name, description or claim words.",
-        "good": [
-          "A new type proposed by an admin needs a second admin to approve it."
-        ],
+        "good": ["A new type proposed by an admin needs a second admin to approve it."],
         "related": [
           {
             "label": "Review queue",
@@ -16661,9 +16653,7 @@
       "certificates-types-typeId-policy": {
         "title": "Review policy",
         "about": "How certificates of this type are reviewed and how long an approval lasts.",
-        "good": [
-          "A new type proposed by an admin needs a second admin to approve it."
-        ],
+        "good": ["A new type proposed by an admin needs a second admin to approve it."],
         "related": [
           {
             "label": "Review queue",
@@ -16692,9 +16682,7 @@
       "price-holds": {
         "title": "Held prices",
         "about": "Price changes held back because they moved more than the allowed amount. Approve or reject each one.",
-        "good": [
-          "Search by the full record ID or Offer ID."
-        ],
+        "good": ["Search by the full record ID or Offer ID."],
         "related": [
           {
             "label": "Catalogue requests",
@@ -16733,9 +16721,7 @@
       "orders": {
         "title": "Orders",
         "about": "Every order in this Market. Open one to see its payment, delivery and notes.",
-        "good": [
-          "Dates and times are in your time zone ({zone}). Change it in My profile."
-        ],
+        "good": ["Dates and times are in your time zone ({zone}). Change it in My profile."],
         "related": [
           {
             "label": "Shipments",
@@ -16754,9 +16740,7 @@
       "orders-orderId": {
         "title": "Order",
         "about": "One order: what was bought from each seller, the payment, the delivery, refunds and internal notes.",
-        "good": [
-          "Dates and times are in your time zone ({zone}). Change it in My profile."
-        ],
+        "good": ["Dates and times are in your time zone ({zone}). Change it in My profile."],
         "related": [
           {
             "label": "Shipments",
@@ -16775,9 +16759,7 @@
       "orders-orderId-document": {
         "title": "Order confirmation",
         "about": "The order confirmation the buyer received, ready to print or save as PDF.",
-        "good": [
-          "Dates and times are in your time zone ({zone}). Change it in My profile."
-        ],
+        "good": ["Dates and times are in your time zone ({zone}). Change it in My profile."],
         "related": [
           {
             "label": "Shipments",
@@ -16914,9 +16896,7 @@
       "payout-accounts": {
         "title": "Seller accounts",
         "about": "The Stripe payout accounts of the sellers. Read only.",
-        "good": [
-          "Bank details live on Stripe; MondaPac never sees them."
-        ],
+        "good": ["Bank details live on Stripe; MondaPac never sees them."],
         "related": [
           {
             "label": "Payouts",
@@ -16931,9 +16911,7 @@
       "payout-accounts-sellerId": {
         "title": "Seller account",
         "about": "One seller's Stripe account: whether it can receive payouts and what Stripe still needs.",
-        "good": [
-          "Bank details live on Stripe; MondaPac never sees them."
-        ],
+        "good": ["Bank details live on Stripe; MondaPac never sees them."],
         "related": [
           {
             "label": "Payouts",
@@ -17036,9 +17014,7 @@
       "catalog-products-import": {
         "title": "Import products",
         "about": "Add many products to this Market's catalogue from one file.",
-        "good": [
-          "A check shows what each row would do before anything is written."
-        ],
+        "good": ["A check shows what each row would do before anything is written."],
         "related": [
           {
             "label": "Catalogue requests",
@@ -17079,9 +17055,7 @@
       "catalog-business-activities": {
         "title": "Business activities",
         "about": "A business activity, such as Grocery or Butcher, decides which categories and platform products a seller can reach.",
-        "good": [
-          "Sellers choose their activities at sign-up."
-        ],
+        "good": ["Sellers choose their activities at sign-up."],
         "related": [
           {
             "label": "Categories",
@@ -17392,9 +17366,7 @@
       "content-blog": {
         "title": "Blog",
         "about": "Posts on the buyer site for this Market.",
-        "good": [
-          "A published post stays live while a new version is in review."
-        ],
+        "good": ["A published post stays live while a new version is in review."],
         "related": [
           {
             "label": "Blog categories and tags",
@@ -17405,9 +17377,7 @@
       "content-blog-new": {
         "title": "New post",
         "about": "Choose the type and give the post a title. The draft opens in the editor.",
-        "good": [
-          "A published post stays live while a new version is in review."
-        ],
+        "good": ["A published post stays live while a new version is in review."],
         "related": [
           {
             "label": "Blog categories and tags",
@@ -17418,9 +17388,7 @@
       "content-blog-postId": {
         "title": "Edit post",
         "about": "Write and edit a post. Send it for review when it is ready.",
-        "good": [
-          "A published post stays live while a new version is in review."
-        ],
+        "good": ["A published post stays live while a new version is in review."],
         "related": [
           {
             "label": "Blog categories and tags",
@@ -17431,9 +17399,7 @@
       "content-blog-postId-review": {
         "title": "Review post",
         "about": "Read a post sent for review, then publish it or ask for changes.",
-        "good": [
-          "A published post stays live while a new version is in review."
-        ],
+        "good": ["A published post stays live while a new version is in review."],
         "related": [
           {
             "label": "Blog categories and tags",
@@ -17444,9 +17410,7 @@
       "content-blog-taxonomy": {
         "title": "Blog categories and tags",
         "about": "The vocabulary editors choose from.",
-        "good": [
-          "A category or tag that a post uses cannot be deleted."
-        ],
+        "good": ["A category or tag that a post uses cannot be deleted."],
         "related": [
           {
             "label": "Blog categories and tags",
@@ -17482,9 +17446,7 @@
       "settings-support": {
         "title": "Support contact",
         "about": "The address customers and sellers are told to write to when they need help.",
-        "good": [
-          "A change applies from now on."
-        ],
+        "good": ["A change applies from now on."],
         "related": []
       },
       "settings-service-areas": {
@@ -17520,9 +17482,7 @@
       "settings-fleets": {
         "title": "Delivery fleets",
         "about": "How the platform picks a fleet for every seller order, and how reliable each fleet is.",
-        "good": [
-          "Sellers never choose a method or a fleet."
-        ],
+        "good": ["Sellers never choose a method or a fleet."],
         "related": [
           {
             "label": "Delivery rules",
@@ -17644,9 +17604,7 @@
       "settings-ai": {
         "title": "Write with AI",
         "about": "Turn AI features on or off for this Market and choose the model tier.",
-        "good": [
-          "Changes apply at once."
-        ],
+        "good": ["Changes apply at once."],
         "related": []
       },
       "settings-account-deletion": {
@@ -17663,17 +17621,13 @@
       "settings-ship-to-retention": {
         "title": "Order address retention",
         "about": "Permanently deletes the delivery address, phone and buyer note of orders completed at least the chosen number of months ago.",
-        "good": [
-          "Deleted addresses cannot be brought back."
-        ],
+        "good": ["Deleted addresses cannot be brought back."],
         "related": []
       },
       "account-profile": {
         "title": "My profile",
         "about": "Your name, time zone and language in this panel.",
-        "good": [
-          "Your time zone decides how dates and times show in your lists."
-        ],
+        "good": ["Your time zone decides how dates and times show in your lists."],
         "related": []
       },
       "account-security": {
@@ -17695,9 +17649,7 @@
       "t-certificates": {
         "page": "Certification",
         "about": "Everything about the certificates sellers show on their products: the certificates to review, who issues them and which kinds we accept.",
-        "good": [
-          "Dates and times are in your time zone ({zone}). Change it in My profile."
-        ],
+        "good": ["Dates and times are in your time zone ({zone}). Change it in My profile."],
         "tabs": [
           {
             "label": "Review queue",
@@ -17742,9 +17694,7 @@
           {
             "label": "Types",
             "text": "The kinds of certificate the platform accepts, such as Halal or Organic, and the rules for each.",
-            "points": [
-              "A new type proposed by an admin needs a second admin to approve it."
-            ],
+            "points": ["A new type proposed by an admin needs a second admin to approve it."],
             "related": [
               {
                 "label": "Review queue",
@@ -17757,9 +17707,7 @@
       "t-security": {
         "page": "Security",
         "about": "Alerts from the security rules, and who responds to them.",
-        "good": [
-          "Dates and times are in your time zone ({zone}). Change it in My profile."
-        ],
+        "good": ["Dates and times are in your time zone ({zone}). Change it in My profile."],
         "tabs": [
           {
             "label": "Alerts",
@@ -17840,9 +17788,7 @@
           {
             "label": "Suggestions",
             "text": "Tags sellers asked for. Add one to the list, match it to an existing tag, or refuse it.",
-            "points": [
-              "The seller is emailed the answer."
-            ],
+            "points": ["The seller is emailed the answer."],
             "related": [
               {
                 "label": "Tags",
@@ -17855,9 +17801,7 @@
       "t-review": {
         "page": "Catalogue requests",
         "about": "Changes sellers sent that wait for a review before buyers see them.",
-        "good": [
-          "Dates and times are in your time zone ({zone}). Change it in My profile."
-        ],
+        "good": ["Dates and times are in your time zone ({zone}). Change it in My profile."],
         "tabs": [
           {
             "label": "Product revisions",
@@ -17976,9 +17920,7 @@
       "t-invoices": {
         "page": "Invoices",
         "about": "Order confirmations and credit notes issued in this Market. These are not tax invoices.",
-        "good": [
-          "Dates and times are in your time zone ({zone}). Change it in My profile."
-        ],
+        "good": ["Dates and times are in your time zone ({zone}). Change it in My profile."],
         "tabs": [
           {
             "label": "Order confirmations",

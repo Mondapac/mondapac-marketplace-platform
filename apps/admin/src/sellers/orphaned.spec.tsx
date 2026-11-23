@@ -39,7 +39,7 @@ const fail = (status: number, code: string, details?: object) => ({
 function mount() {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <OrphanedList csrfToken="csrf-1" />
+      <OrphanedList zone="Australia/Brisbane" csrfToken="csrf-1" />
       <Toaster labels={{ region: messages.toast.region, close: messages.toast.close }} />
     </NextIntlClientProvider>,
   );
@@ -90,7 +90,8 @@ describe('sellers without an owner', () => {
     expect(within(table).getByText('0000A001').getAttribute('title')).toBe(A);
     expect(within(table).getByText('Pending')).toBeTruthy();
     expect(within(table).getByText('Suspended')).toBeTruthy();
-    expect(within(table).getByText(/1 Oct/)).toBeTruthy();
+    // Created is read on the admin's own clock (Brisbane, UTC+10): 03:30 UTC is 1:30 pm.
+    expect(within(table).getByText(/1 Oct, 1:30\s?pm/)).toBeTruthy();
     expect(within(table).getByText(/2 Jan 2025/)).toBeTruthy();
     expect(table.querySelector('time')?.getAttribute('datetime')).toBe('2026-10-01T03:30:00.000Z');
     expect(within(table).getAllByRole('columnheader')).toHaveLength(4);

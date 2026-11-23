@@ -137,11 +137,11 @@ export function ProposalsList({
             id,
             header,
             skeleton: 'date',
-            cell: (row) => <When iso={row.createdAt} missing="" />,
+            cell: (row) => <When iso={row.createdAt} missing="" zone={zone} />,
           };
       }
     },
-    [t, nameOf, storeOf, tree],
+    [t, nameOf, storeOf, tree, zone],
   );
 
   const bulkRun = (action: ProposalDecision) => (rows: readonly ProposalRow[]) => {

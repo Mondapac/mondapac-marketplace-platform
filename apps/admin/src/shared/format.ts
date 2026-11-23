@@ -52,6 +52,28 @@ export function formatInstantInZone(iso: string | null, locale: string, zone: st
   }
 }
 
+/**
+ * A full instant on a zone's clock without the zone's name ("9 Oct 2026, 11:30 pm"): the user menu
+ * and the date filter say which zone the times are in. A zone this runtime does not know reads in UTC.
+ */
+export function instantInZone(iso: string | null, locale: string, zone: string): string {
+  if (iso === null) return '-';
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return '-';
+  const options: Intl.DateTimeFormatOptions = {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  };
+  try {
+    return dateFormat(locale, { ...options, timeZone: zone }).format(date);
+  } catch {
+    return dateFormat(locale, { ...options, timeZone: 'UTC' }).format(date);
+  }
+}
+
 /** The year of an instant on a zone's clock; UTC's for a zone this runtime does not know. */
 function yearIn(date: Date, zone: string): string {
   try {

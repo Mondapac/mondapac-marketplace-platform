@@ -11,7 +11,7 @@ import type {
   PagedFilterField,
   PagedListConfig,
 } from '../shared/paged-list/types.ts';
-import { shortInstant } from '../shared/format.ts';
+import { shortInstantInZone } from '../shared/format.ts';
 import { ReviewBulkDialog, type ReviewBulk } from './review-bulk.tsx';
 import { OfferDecisionDialog, type OfferDecision } from './offer-decision-dialog.tsx';
 import { revisionHref } from './review-queue-params.ts';
@@ -38,12 +38,6 @@ const SORTS = (t: (key: string) => string) =>
   ] as const;
 
 /**
- * The queue's times (Waiting since) are shown in UTC, so a Submitted preset reads its day on the UTC
- * clock too: "Today" then keeps exactly the rows whose shown date is today's.
- */
-const QUEUE_ZONE = 'UTC';
-
-/**
  * The pending product revisions as a super list (super list phase 2, list 14): oldest submitted
  * first, filtered by change (new or update) and photos, with page numbers or Previous and next.
  * The decision itself needs the named checks, so a row's Actions menu opens its version review.
@@ -53,12 +47,15 @@ export function RevisionsList({
   accountId,
   marketId,
   csrfToken,
+  zone,
   onTotals,
 }: {
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
   readonly csrfToken: string;
+  /** The IANA zone of the Waiting since times and of the Submitted presets (ADR-0005). */
+  readonly zone: string;
   readonly onTotals: (totals: Totals) => void;
 }) {
   const t = useTranslations('catalog.queue');
@@ -145,11 +142,11 @@ export function RevisionsList({
             id,
             header,
             skeleton: 'date',
-            cell: (row) => shortInstant(row.submittedAt, locale),
+            cell: (row) => shortInstantInZone(row.submittedAt, locale, zone, true),
           };
       }
     },
-    [t, locale],
+    [t, locale, zone],
   );
   const config: PagedListConfig<RevisionListRow> = useMemo(
     () => ({
@@ -194,7 +191,7 @@ export function RevisionsList({
     id: 'submitted',
     label: tl('filter.name.submitted'),
     range: { from: 'submittedFrom', to: 'submittedTo' },
-    zone: QUEUE_ZONE,
+    zone,
   });
   const fields: readonly PagedFilterField[] = useMemo(
     () => [
@@ -251,12 +248,15 @@ export function OffersList({
   accountId,
   marketId,
   csrfToken,
+  zone,
   onTotals,
 }: {
   readonly paging: ListPagingMode;
   readonly accountId: string;
   readonly marketId: string;
   readonly csrfToken: string;
+  /** The IANA zone of the Waiting since times and of the Submitted presets (ADR-0005). */
+  readonly zone: string;
   readonly onTotals: (totals: Totals) => void;
 }) {
   const t = useTranslations('catalog.review');
@@ -317,11 +317,11 @@ export function OffersList({
             id,
             header,
             skeleton: 'date',
-            cell: (row) => shortInstant(row.submittedAt, locale),
+            cell: (row) => shortInstantInZone(row.submittedAt, locale, zone, true),
           };
       }
     },
-    [t, nameOf, locale],
+    [t, nameOf, locale, zone],
   );
   const config: PagedListConfig<OfferListRow> = useMemo(
     () => ({
@@ -361,7 +361,7 @@ export function OffersList({
     id: 'submitted',
     label: tl('filter.name.submitted'),
     range: { from: 'submittedFrom', to: 'submittedTo' },
-    zone: QUEUE_ZONE,
+    zone,
   });
   const fields = useMemo(() => [submitted.field], [submitted.field]);
   return (
