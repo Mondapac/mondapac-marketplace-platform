@@ -164,7 +164,7 @@ export function AccountMenu({
         aria-controls={open ? panelId : undefined}
         aria-label={labels.trigger}
         onClick={() => setOpen((value) => !value)}
-        className="inline-flex size-(--mp-size-control) items-center justify-center rounded-full focus-visible:outline-2 focus-visible:outline-focus"
+        className="inline-flex size-11 items-center justify-center rounded-full transition-colors hover:bg-muted focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus aria-expanded:bg-selected md:size-10"
       >
         <Avatar name={name} />
       </button>

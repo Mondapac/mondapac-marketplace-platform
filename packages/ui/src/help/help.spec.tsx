@@ -275,28 +275,30 @@ describe('Help panel as an overlay drawer', () => {
     expect(panel.className).toContain('xl:w-(--mp-size-sheet-wide)');
   });
 
-  it('gives the Help button a 44 px hit area on phones and the search button border from tablets', () => {
+  it('makes the Help button a round icon-only button with a 44 px phone and 40 px tablet size', () => {
     render(<Harness />);
-    const className = screen.getByRole('button', { name: 'Help' }).className;
-    expect(className).toContain('min-h-11');
-    expect(className).toContain('min-w-11');
-    expect(className).toContain('md:border');
-    expect(className).toContain('border-line-control');
-    expect(className).toContain('md:bg-subtle');
+    const button = screen.getByRole('button', { name: 'Help' });
+    expect(button.className).toContain('rounded-full');
+    expect(button.className).toContain('size-11');
+    expect(button.className).toContain('md:size-10');
+    expect(button.textContent).toBe('');
+    expect(screen.getByRole('tooltip', { hidden: true }).textContent).toBe('Help');
+    expect(button.getAttribute('aria-describedby')).toBe(
+      screen.getByRole('tooltip', { hidden: true }).id,
+    );
   });
 });
 
 describe('Help button pressed state and title row', () => {
-  it('is pressed (aria-pressed) with a visible fill and stronger border only while open', async () => {
+  it('is pressed (aria-pressed) with a visible fill only while open', async () => {
     const user = userEvent.setup();
     render(<Harness />);
     const button = screen.getByRole('button', { name: 'Help' });
     expect(button.getAttribute('aria-pressed')).toBe('false');
-    expect(button.className).not.toContain('bg-selected');
+    // The pressed fill comes from the aria-pressed variant, so the class list is the same.
+    expect(button.className).toContain('aria-pressed:bg-selected');
     await user.click(button);
     expect(button.getAttribute('aria-pressed')).toBe('true');
-    expect(button.className).toContain('bg-selected');
-    expect(button.className).toContain('border-line-input');
   });
 
   it('keeps a fixed minimum height on the title row, so the h1 does not move', () => {
