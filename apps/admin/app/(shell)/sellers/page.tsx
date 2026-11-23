@@ -7,6 +7,7 @@ import { panelConfig } from '../../../src/server/config.ts';
 import { serverGet } from '../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../src/server/session.ts';
 import { localZone } from '../../../src/shared/format.ts';
+import { SellersQueuesMenu } from '../../../src/sellers/sellers-queues-menu.tsx';
 import { SellersList } from '../../../src/sellers/sellers-list.tsx';
 import { ORPHANED_VIEW_PERMISSION } from '../../../src/sellers/orphaned-types.ts';
 import { SELLER_VIEW_PERMISSION } from '../../../src/sellers/health-types.ts';
@@ -49,25 +50,19 @@ export default async function SellersPage({
       activeId={requests ? 'seller-requests' : 'sellers'}
       title={title}
     >
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-        <PageHeader title={title} />
-        {gate.session.permissionKeys.includes(SELLER_VIEW_PERMISSION) ? (
-          <a
-            className="inline-flex min-h-12 items-center font-medium text-link underline"
-            href="/sellers/needs-a-look"
-          >
-            {t('sellers.health-queue.link')}
-          </a>
-        ) : null}
-        {gate.session.permissionKeys.includes(ORPHANED_VIEW_PERMISSION) ? (
-          <a
-            className="inline-flex min-h-12 items-center font-medium text-link underline"
-            href="/sellers/without-owner"
-          >
-            {t('sellers.orphaned.link')}
-          </a>
-        ) : null}
-      </div>
+      <PageHeader
+        title={title}
+        className="mb-4"
+        actions={
+          allowed ? (
+            <SellersQueuesMenu
+              current="all"
+              canHealth={gate.session.permissionKeys.includes(SELLER_VIEW_PERMISSION)}
+              canOrphaned={gate.session.permissionKeys.includes(ORPHANED_VIEW_PERMISSION)}
+            />
+          ) : undefined
+        }
+      />
       {allowed ? (
         <SellersList
           key={requests ? 'requests' : 'all'}

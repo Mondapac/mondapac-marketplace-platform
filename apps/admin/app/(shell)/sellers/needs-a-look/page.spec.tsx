@@ -40,6 +40,13 @@ vi.mock('../../../../src/sellers/health-queue.tsx', () => ({
     />
   ),
 }));
+vi.mock('../../../../src/sellers/sellers-queues-menu.tsx', () => ({
+  SellersQueuesMenu: (props: { readonly current: string; readonly canOrphaned: boolean }) => (
+    <p>
+      queues menu on {props.current} owner {String(props.canOrphaned)}
+    </p>
+  ),
+}));
 vi.mock('../../../../src/server/session.ts', () => ({ requireSession: mocks.session }));
 vi.mock('../../../../src/server/server-fetch.ts', () => ({ serverGet: mocks.get }));
 vi.mock('../../../../src/server/admin-shell.tsx', () => ({
@@ -85,6 +92,8 @@ describe('the sellers that need a look page', () => {
     expect(list.getAttribute('data-account')).toBe('a');
     expect(list.getAttribute('data-market')).toBe('AU');
     expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1);
+    expect(screen.getByText('queues menu on needs-a-look owner false')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Back to sellers' })).toBeNull();
   });
 
   it('falls back to Previous and next when the paging setting cannot be read', async () => {
