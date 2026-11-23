@@ -125,7 +125,24 @@ function mount(
     </NextIntlClientProvider>,
   );
 }
-const firstRow = () => screen.findByRole('checkbox', { name: `Select ${NAME}` });
+/**
+ * Waits until the first row is on screen. The wait polls a plain attribute selector, not
+ * `findByRole`: a role query with a name computes the accessible name of every checkbox on
+ * every poll and on every DOM mutation, so on a CI worker already busy with hundreds of other
+ * files it starved the very render it was waiting for and gave up after the default 1 s. The
+ * role query then runs once, on a DOM that is already complete.
+ */
+const firstRow = async () => {
+  await waitFor(
+    () => {
+      if (!document.querySelector(`input[type="checkbox"][aria-label="Select ${NAME}"]`)) {
+        throw new Error(`The row "${NAME}" is not on screen yet.`);
+      }
+    },
+    { timeout: 10_000 },
+  );
+  return screen.getByRole('checkbox', { name: `Select ${NAME}` });
+};
 const openMenu = async (name = NAME) => {
   fireEvent.click(await screen.findByRole('button', { name: `Actions for ${name}` }));
   return screen.findByRole('menu');
