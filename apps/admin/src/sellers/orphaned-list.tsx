@@ -14,7 +14,13 @@ type Failure = 'first' | 'more' | 'denied' | null;
  * Sellers that have no owner account yet (identity design 8.6 row 8), oldest first, paged by
  * cursor with "Show more". "Invite owner" opens the dialog for one seller.
  */
-export function OrphanedList({ csrfToken }: { readonly csrfToken: string }) {
+export function OrphanedList({
+  csrfToken,
+  zone,
+}: {
+  readonly csrfToken: string;
+  readonly zone: string;
+}) {
   const t = useTranslations('sellers.orphaned');
   const tl = useTranslations('load');
   const [rows, setRows] = useState<readonly OrphanRow[]>([]);
@@ -84,7 +90,7 @@ export function OrphanedList({ csrfToken }: { readonly csrfToken: string }) {
           onRetry={() => void load(null)}
         />
       ) : null}
-      {rows.length > 0 ? <OrphanedTable rows={rows} onInvite={setInviting} /> : null}
+      {rows.length > 0 ? <OrphanedTable rows={rows} onInvite={setInviting} zone={zone} /> : null}
       {!loading && failed === null && rows.length === 0 ? (
         <div className="rounded-lg border border-line p-6">
           <p className="font-medium">{t('empty.title')}</p>

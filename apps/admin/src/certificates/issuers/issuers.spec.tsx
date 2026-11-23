@@ -80,6 +80,7 @@ describe('issuers list', () => {
   it('shows name, type name, state in words, accreditation number and a link to the issuer', () => {
     wrap(
       <IssuersTable
+        zone="Australia/Brisbane"
         rows={[row(), row({ issuerId: 'b', state: 'derecognised', accreditationNumber: null })]}
         typeNames={names}
         morePages={false}
@@ -97,7 +98,9 @@ describe('issuers list', () => {
   });
 
   it('opens an issuer from its Actions menu', () => {
-    wrap(<IssuersTable rows={[row()]} typeNames={names} morePages={false} />);
+    wrap(
+      <IssuersTable zone="Australia/Brisbane" rows={[row()]} typeNames={names} morePages={false} />,
+    );
     fireEvent.click(
       screen.getByRole('button', { name: 'Actions for Halal Certification Authority' }),
     );
@@ -106,14 +109,15 @@ describe('issuers list', () => {
   });
 
   it('tells an empty registry from an empty page, and renders names as plain text', () => {
-    wrap(<IssuersTable rows={[]} typeNames={names} morePages={false} />);
+    wrap(<IssuersTable zone="Australia/Brisbane" rows={[]} typeNames={names} morePages={false} />);
     expect(screen.getByText(/No issuers yet/)).toBeTruthy();
     cleanup();
-    wrap(<IssuersTable rows={[]} typeNames={names} morePages />);
+    wrap(<IssuersTable zone="Australia/Brisbane" rows={[]} typeNames={names} morePages />);
     expect(screen.getByText('Nothing on this page. Go back to the first page.')).toBeTruthy();
     cleanup();
     wrap(
       <IssuersTable
+        zone="Australia/Brisbane"
         rows={[row({ displayName: '<img src=x onerror=alert(1)>' })]}
         typeNames={names}
         morePages={false}

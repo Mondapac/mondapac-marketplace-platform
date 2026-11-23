@@ -23,7 +23,7 @@ import { formatMoney, percentChange } from '../pricing/format.ts';
 import type { PriceHoldRow } from '../pricing/types.ts';
 import { areaName, known } from '../sellers/format.ts';
 import type { SellerRow } from '../sellers/types.ts';
-import { shortInstant } from '../shared/format.ts';
+import { shortInstantInZone } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
 import { NeedsAction } from '../work-queue/needs-action.tsx';
 import {
@@ -58,9 +58,9 @@ const ACTIONS = [
   { id: 'find-customer', href: '/customers', anyOf: ['customers.customers.view'] },
 ] as const;
 
-function Time({ iso }: { readonly iso: string | null }) {
+function Time({ iso, zone }: { readonly iso: string | null; readonly zone: string }) {
   const locale = useLocale();
-  return <span className="whitespace-nowrap">{shortInstant(iso, locale)}</span>;
+  return <span className="whitespace-nowrap">{shortInstantInZone(iso, locale, zone, true)}</span>;
 }
 
 function Name({
@@ -132,7 +132,7 @@ function ActivitySection<T, Row>({
   );
 }
 
-function useApplicationColumns(): ActivityColumn<SellerRow>[] {
+function useApplicationColumns(zone: string): ActivityColumn<SellerRow>[] {
   const ts = useTranslations('sellers.list');
   return [
     {
@@ -166,14 +166,20 @@ function useApplicationColumns(): ActivityColumn<SellerRow>[] {
       header: ts('col.submitted'),
       kind: 'labelled',
       size: 'date',
-      cell: (row) => <Time iso={row.submittedAt} />,
+      cell: (row) => <Time iso={row.submittedAt} zone={zone} />,
     },
   ];
 }
 
-function Applications({ data }: { readonly data: AdminDashboardSources }) {
+function Applications({
+  data,
+  zone,
+}: {
+  readonly data: AdminDashboardSources;
+  readonly zone: string;
+}) {
   const t = useTranslations('dashboard');
-  const columns = useApplicationColumns();
+  const columns = useApplicationColumns(zone);
   if (data.sellers === null) return null;
   const frame: Frame = {
     id: 'dash-applications',
@@ -208,7 +214,7 @@ function Applications({ data }: { readonly data: AdminDashboardSources }) {
   );
 }
 
-function useHoldColumns(): ActivityColumn<PriceHoldRow>[] {
+function useHoldColumns(zone: string): ActivityColumn<PriceHoldRow>[] {
   const t = useTranslations('dashboard');
   const tp = useTranslations('pricing.holds.list');
   const locale = useLocale();
@@ -254,14 +260,14 @@ function useHoldColumns(): ActivityColumn<PriceHoldRow>[] {
       header: tp('col.submitted'),
       kind: 'labelled',
       size: 'date',
-      cell: (row) => <Time iso={row.submittedAt} />,
+      cell: (row) => <Time iso={row.submittedAt} zone={zone} />,
     },
   ];
 }
 
-function Holds({ data }: { readonly data: AdminDashboardSources }) {
+function Holds({ data, zone }: { readonly data: AdminDashboardSources; readonly zone: string }) {
   const t = useTranslations('dashboard');
-  const columns = useHoldColumns();
+  const columns = useHoldColumns(zone);
   if (data.holds === null) return null;
   const frame: Frame = {
     id: 'dash-holds',
@@ -297,7 +303,7 @@ function Holds({ data }: { readonly data: AdminDashboardSources }) {
   );
 }
 
-function useOfferColumns(): ActivityColumn<ReviewRow>[] {
+function useOfferColumns(zone: string): ActivityColumn<ReviewRow>[] {
   const t = useTranslations('dashboard');
   return [
     {
@@ -325,14 +331,14 @@ function useOfferColumns(): ActivityColumn<ReviewRow>[] {
       header: t('offers.col.submitted'),
       kind: 'labelled',
       size: 'date',
-      cell: (row) => <Time iso={row.submittedAt} />,
+      cell: (row) => <Time iso={row.submittedAt} zone={zone} />,
     },
   ];
 }
 
-function Offers({ data }: { readonly data: AdminDashboardSources }) {
+function Offers({ data, zone }: { readonly data: AdminDashboardSources; readonly zone: string }) {
   const t = useTranslations('dashboard');
-  const columns = useOfferColumns();
+  const columns = useOfferColumns(zone);
   if (data.offers === null) return null;
   const frame: Frame = {
     id: 'dash-offers',
@@ -368,7 +374,7 @@ function Offers({ data }: { readonly data: AdminDashboardSources }) {
   );
 }
 
-function useAccountColumns(): ActivityColumn<ConnectedAccountRow>[] {
+function useAccountColumns(zone: string): ActivityColumn<ConnectedAccountRow>[] {
   const t = useTranslations('dashboard');
   const tp = useTranslations('payments.accounts');
   return [
@@ -416,14 +422,14 @@ function useAccountColumns(): ActivityColumn<ConnectedAccountRow>[] {
       header: t('accounts.col.checked'),
       kind: 'labelled',
       size: 'date',
-      cell: (row) => <Time iso={row.lastReadAt} />,
+      cell: (row) => <Time iso={row.lastReadAt} zone={zone} />,
     },
   ];
 }
 
-function Accounts({ data }: { readonly data: AdminDashboardSources }) {
+function Accounts({ data, zone }: { readonly data: AdminDashboardSources; readonly zone: string }) {
   const t = useTranslations('dashboard');
-  const columns = useAccountColumns();
+  const columns = useAccountColumns(zone);
   if (data.accounts === null) return null;
   const frame: Frame = {
     id: 'dash-accounts',
@@ -459,7 +465,7 @@ function Accounts({ data }: { readonly data: AdminDashboardSources }) {
   );
 }
 
-function useOrderColumns(): ActivityColumn<DashboardOrder>[] {
+function useOrderColumns(zone: string): ActivityColumn<DashboardOrder>[] {
   const t = useTranslations('dashboard');
   const locale = useLocale();
   return [
@@ -500,14 +506,14 @@ function useOrderColumns(): ActivityColumn<DashboardOrder>[] {
       header: t('orders.col.placed'),
       kind: 'labelled',
       size: 'date',
-      cell: (row) => <Time iso={row.createdAt} />,
+      cell: (row) => <Time iso={row.createdAt} zone={zone} />,
     },
   ];
 }
 
-function Orders({ data }: { readonly data: AdminDashboardSources }) {
+function Orders({ data, zone }: { readonly data: AdminDashboardSources; readonly zone: string }) {
   const t = useTranslations('dashboard');
-  const columns = useOrderColumns();
+  const columns = useOrderColumns(zone);
   if (data.orders === null) return null;
   const frame: Frame = {
     id: 'dash-orders',
@@ -623,9 +629,12 @@ function allRefused(data: AdminDashboardSources): DashboardSource<boolean> {
 export function AdminDashboard({
   data,
   permissionKeys,
+  zone,
 }: {
   readonly data: AdminDashboardSources;
   readonly permissionKeys: readonly string[];
+  /** The IANA zone of the activity times (ADR-0005). */
+  readonly zone: string;
 }) {
   const t = useTranslations('dashboard');
   const keys = new Set(permissionKeys);
@@ -649,11 +658,11 @@ export function AdminDashboard({
         </DashboardSlot>
       )}
       <NeedsAction source={data.workQueue} />
-      <Applications data={data} />
-      <Holds data={data} />
-      <Offers data={data} />
-      <Accounts data={data} />
-      <Orders data={data} />
+      <Applications data={data} zone={zone} />
+      <Holds data={data} zone={zone} />
+      <Offers data={data} zone={zone} />
+      <Accounts data={data} zone={zone} />
+      <Orders data={data} zone={zone} />
       <div className="grid items-start gap-4 lg:grid-cols-2">
         <SellerStates data={data} />
         <QuickActions keys={keys} />
