@@ -7,7 +7,8 @@
 //
 //   node scripts/demo-seed/claim-vocabulary.mjs
 //
-// Local PostgreSQL only (guard.mjs). Idempotent: a type that exists is left as it is.
+// Local PostgreSQL only (guard.mjs). Idempotent: a type that exists is left as it is, also one
+// that the worker's seed job writes while this runs.
 import { randomBytes } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { resolve } from 'node:path';
@@ -218,19 +219,22 @@ try {
   const repaired = await repairTypeIds(client);
   let created = 0;
   for (const type of TYPES) {
-    const exists = await client.query(
-      'SELECT 1 FROM certification.certification_types WHERE market_id = $1 AND code = $2',
-      [MARKET, type.code],
-    );
-    if (exists.rowCount > 0) continue;
     const typeId = uuidv7();
     const revisionId = uuidv7();
-    await client.query(
+    // One statement claims the code: the worker's certification.seed-certification-types job
+    // (runAtStart) writes the same codes of config/certification-seed at the same moment, so a
+    // SELECT first and an INSERT after would race it (duplicate (market_id, code)). ON CONFLICT
+    // waits for a concurrent insert of the code to commit and then writes nothing; the type that
+    // is there is left as it is.
+    const claimed = await client.query(
       `INSERT INTO certification.certification_types
          (id, market_id, tenant_id, code, verification_mode, status, published_revision_id, version, created_at)
-       VALUES ($1, $2, $3, $4, $5, 'active', NULL, 1, now())`,
+       VALUES ($1, $2, $3, $4, $5, 'active', NULL, 1, now())
+       ON CONFLICT (market_id, code) DO NOTHING
+       RETURNING id`,
       [typeId, MARKET, TENANT, type.code, type.mode],
     );
+    if (claimed.rowCount === 0) continue;
     await client.query(
       `INSERT INTO certification.certification_type_revisions
          (id, market_id, tenant_id, type_id, revision_no, verification_mode, requires_issuer_registry,
