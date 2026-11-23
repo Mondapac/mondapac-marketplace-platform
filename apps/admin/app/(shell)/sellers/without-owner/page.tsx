@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { requireSession } from '../../../../src/server/session.ts';
@@ -28,12 +28,12 @@ export default async function SellersWithoutOwnerPage() {
       </a>
       {allowed ? (
         <>
-          <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+          <PageHeader title={title} className="mb-4" />
           <OrphanedList csrfToken={gate.session.csrfToken} />
         </>
       ) : (
         <div className="flex flex-col items-start gap-3 rounded-lg border border-line p-6">
-          <h1 className="text-xl font-semibold">{t('sellers.orphaned.no-access.title')}</h1>
+          <PageHeader title={t('sellers.orphaned.no-access.title')} />
           <p className="text-fg-muted">{t('sellers.orphaned.no-access.body')}</p>
           <a className="inline-flex min-h-12 items-center font-medium text-link underline" href="/">
             {t('sellers.orphaned.no-access.action')}

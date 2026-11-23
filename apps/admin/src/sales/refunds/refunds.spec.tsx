@@ -153,10 +153,12 @@ describe('Refunds page numbers', () => {
     expect(urls()[0]).toBe(
       'ordering/admin/refunds?page=1&pageSize=25&sort=requested&direction=desc',
     );
+    // What the page is for is in the Help panel, not under the title.
+    expect(screen.queryByText(/Every refund in this Market/u)).toBeNull();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
     expect(
-      screen.getByText('Every refund in this Market. To refund an order, open the order.'),
-    ).toBeTruthy();
-    expect(screen.getByText('Times and days are in Australia/Brisbane.')).toBeTruthy();
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
     expect(screen.getByText('Sorted by Requested: Newest first')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Sort' })).toBeTruthy();
     expect(screen.getByText('1 to 1 of 143')).toBeTruthy();
@@ -644,7 +646,10 @@ describe('Refunds filters', () => {
     );
     mount({ locale: 'de-DE', zone: 'Europe/Berlin', marketId: 'DE' });
     await screen.findByText(STORE);
-    expect(screen.getByText('Times and days are in Europe/Berlin.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
     expect(screen.getByText(/125,50\s€/)).toBeTruthy();
     expect(screen.queryByText(/\$/)).toBeNull();
     apply(await addCondition('requested', 'today'));
@@ -790,7 +795,10 @@ describe('Refunds rows', () => {
     await screen.findByText(STORE);
     // 2026-11-10 01:30 UTC is 9 Nov 5:30 pm in Los Angeles.
     expect(screen.getByText('9 Nov, 5:30 pm')).toBeTruthy();
-    expect(screen.getByText('Times and days are in America/Los_Angeles.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
   });
 
   it('words the three states as the order page does, with a tone each', async () => {

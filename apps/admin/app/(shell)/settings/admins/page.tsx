@@ -65,7 +65,6 @@ export default async function TeamPageRoute({
     <SettingsShell session={gate.session} linkId="admins" title={title}>
       <SettingsPage
         title={title}
-        description={t('settings.admins.description')}
         actions={
           result.kind === 'ok' && canInvite && roles !== undefined ? (
             <InviteAdminButton

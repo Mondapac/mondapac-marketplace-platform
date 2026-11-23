@@ -1,4 +1,4 @@
-import { LoadError, NoAccess } from '@mondapac/ui';
+import { LoadError, NoAccess, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { QueueList } from '../../../src/system-requests/queue-list.tsx';
@@ -51,7 +51,7 @@ export default async function SystemRequestsPage({
   }
   return (
     <AdminShell session={gate.session} activeId="system-requests" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       <QueueList
         accountId={gate.session.accountId}
         marketId={marketId}

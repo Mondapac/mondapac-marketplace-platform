@@ -210,7 +210,6 @@ export function AccountDeletionSettingsPanel({
   return (
     <SettingsPage
       title={t(`${P}.settings.card`)}
-      description={t(`${P}.settings.intro`)}
       lastChanged={{
         text:
           form.saved.version === 0

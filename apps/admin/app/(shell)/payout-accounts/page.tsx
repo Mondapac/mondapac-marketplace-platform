@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { AccountsList } from '../../../src/payments/accounts-list.tsx';
@@ -26,7 +26,7 @@ export default async function PayoutAccountsPage() {
   if (gate.kind === 'unavailable') {
     return (
       <div className="flex flex-col gap-4 p-4">
-        <h1 className="text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} />
         <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
       </div>
     );
@@ -35,7 +35,7 @@ export default async function PayoutAccountsPage() {
   if (!session.permissionKeys.includes(VIEW_PERMISSION)) {
     return (
       <AdminShell session={session} activeId="payout-accounts" title={title}>
-        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} className="mb-4" />
         <p className="text-fg-muted">{t('payments.accounts.no-access')}</p>
         <p className="mt-4">
           <a className="font-medium text-link underline" href="/">
@@ -55,7 +55,7 @@ export default async function PayoutAccountsPage() {
   const marketId = panelHostFor(panelConfig(), host.get('host'))?.marketId ?? '';
   return (
     <AdminShell session={session} activeId="payout-accounts" title={title}>
-      <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-2" />
       <AccountsList
         paging={paging}
         accountId={session.accountId}

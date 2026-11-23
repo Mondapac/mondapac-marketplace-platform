@@ -477,8 +477,6 @@ export function RefundsList({
   return (
     <SuperList
       heading={{
-        info: t('intro'),
-        note: to('zone-note', { zone }),
         actions: (
           <RefundsBulk
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}

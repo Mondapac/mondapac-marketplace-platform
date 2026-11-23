@@ -1,6 +1,6 @@
 'use client';
 
-import { BackLink, Badge, Banner, Tabs, toast } from '@mondapac/ui';
+import { BackLink, Badge, Banner, Tabs, toast, PageHeader } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import { SlideHeaderActions } from './slide-actions.tsx';
 import { STATUS_TONE } from './slide-labels.tsx';
@@ -49,9 +49,7 @@ export function SlideEditorHeader({
       <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-3">
         <div className="flex min-w-0 flex-col items-start gap-1">
           <BackLink href={SLIDES_PATH} label={t('back')} />
-          <h1 className="break-words text-2xl font-semibold">
-            {slide === null ? t('title-new') : slide.internalName}
-          </h1>
+          <PageHeader title={slide === null ? t('title-new') : slide.internalName} />
           {slide === null ? null : (
             <div
               className="flex flex-wrap items-center gap-2"

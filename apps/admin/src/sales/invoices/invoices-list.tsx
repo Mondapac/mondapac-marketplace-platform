@@ -467,7 +467,6 @@ export function InvoicesList({
     <SuperList
       heading={{
         subtitle: t('intro'),
-        note: to('zone-note', { zone }),
         actions: (
           <InvoicesBulk
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}

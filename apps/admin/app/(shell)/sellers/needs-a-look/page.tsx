@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
@@ -33,7 +33,7 @@ export default async function SellersNeedingALookPage() {
   if (!gate.session.permissionKeys.includes(SELLER_VIEW_PERMISSION)) {
     body = (
       <div className="flex flex-col items-start gap-3 rounded-lg border border-line p-6">
-        <h1 className="text-xl font-semibold">{t('sellers.health-queue.no-access.title')}</h1>
+        <PageHeader title={t('sellers.health-queue.no-access.title')} />
         <p className="text-fg-muted">{t('sellers.health-queue.no-access.body')}</p>
       </div>
     );
@@ -45,7 +45,7 @@ export default async function SellersNeedingALookPage() {
     const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
     body = (
       <>
-        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} className="mb-4" />
         <HealthQueue
           csrfToken={gate.session.csrfToken}
           paging={paging}

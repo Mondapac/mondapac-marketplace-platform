@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { AttributionsList } from '../../../../src/customers/attributions-list.tsx';
@@ -27,7 +27,7 @@ export default async function AttributionsPage() {
   if (!keys.includes(VIEW_PERMISSION)) {
     return (
       <AdminShell session={gate.session} activeId="customer-attributions" title={title}>
-        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} className="mb-4" />
         <p className="text-fg-muted">{t('customers.no-access')}</p>
       </AdminShell>
     );
@@ -39,7 +39,7 @@ export default async function AttributionsPage() {
   const marketId = panelHostFor(config, (await headers()).get('host'))?.marketId ?? '';
   return (
     <AdminShell session={gate.session} activeId="customer-attributions" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       <AttributionsList
         accountId={gate.session.accountId}
         marketId={marketId}

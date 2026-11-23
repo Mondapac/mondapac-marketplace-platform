@@ -895,6 +895,9 @@ describe('Deletion requests list: review follow-ups', () => {
     expect(within(table).queryByRole('columnheader', { name: 'Requested by' })).toBeNull();
     expect(within(table).getAllByText(/11 Nov/).length).toBeGreaterThan(0);
     expect(within(table).queryByText(/10 Nov/)).toBeNull();
-    expect(screen.getByText('Dates are shown in Pacific/Auckland.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
   });
 });

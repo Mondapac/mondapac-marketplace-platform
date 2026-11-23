@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { panelHostFor } from '../../../../src/server/bff.ts';
 import { panelConfig } from '../../../../src/server/config.ts';
@@ -61,7 +61,7 @@ export default async function VariantsPage({
   const { permissionKeys, csrfToken } = gate.session;
   return (
     <AdminShell session={gate.session} activeId="variants" title={title}>
-      <h1 className="text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} />
       {permissionKeys.includes(VIEW_PERMISSION) ? (
         <VariantsView
           canEdit={

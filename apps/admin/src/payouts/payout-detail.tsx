@@ -8,6 +8,7 @@ import {
   CARD_TABLE,
   DataList,
   type DataListRow,
+  PageHeader,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useRef, useState } from 'react';
@@ -145,12 +146,10 @@ export function PayoutDetailView({
   return (
     <div className="flex flex-col gap-4">
       <BackLink href="/payouts" label={t('title')} />
-      <div className="flex min-w-0 flex-wrap items-center gap-3">
-        <h1 className="min-w-0 break-words text-2xl font-semibold">
-          {t('detail.title', { id: shortId(detail.payoutId) })}
-        </h1>
-        <StateBadge state={detail.state} />
-      </div>
+      <PageHeader
+        title={t('detail.title', { id: shortId(detail.payoutId) })}
+        badges={<StateBadge state={detail.state} />}
+      />
       {notice === null ? null : (
         <div ref={noticeRef} tabIndex={-1}>
           <Banner tone={notice === 'approved' ? 'success' : 'attention'}>
@@ -163,7 +162,6 @@ export function PayoutDetailView({
       ) : null}
       <Card title={t('summary.title')}>
         <DataList missing="-" rows={summary} />
-        <p className="text-sm text-fg-muted">{t('zone-note', { zone })}</p>
         {waiting && canApprove ? (
           <div>
             <Button

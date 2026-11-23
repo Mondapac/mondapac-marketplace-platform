@@ -11,11 +11,14 @@ export function UserMenu({
   email,
   theme,
   csrfToken,
+  zone,
 }: {
   readonly name: string;
   readonly email: string;
   readonly theme: ThemeChoice;
   readonly csrfToken: string;
+  /** The time zone times are shown in: the account's own, else the Market's. */
+  readonly zone: string;
 }) {
   const t = useTranslations('account-menu');
   const themeT = useTranslations('theme');
@@ -43,6 +46,14 @@ export function UserMenu({
       name={name}
       email={email}
       links={links}
+      zone={t.rich('zone', {
+        zone,
+        change: (chunks) => (
+          <a href="/account/profile" className="text-link underline-offset-2 hover:underline">
+            {chunks}
+          </a>
+        ),
+      })}
       theme={theme}
       labels={{
         trigger: t('trigger', { name }),

@@ -320,7 +320,6 @@ export function TypeRevisionForm({
     : [];
   return (
     <form onSubmit={review} className="flex flex-col gap-6" noValidate>
-      <p className="text-fg-muted">{t('intro')}</p>
       <ErrorSummary items={summaryItems} focusKey={focusKey} />
       <RulesFields
         variant="edit"

@@ -238,7 +238,6 @@ export function TypeNewForm({
   const codeError = errors.code ?? codeRefusal ?? undefined;
   return (
     <form onSubmit={review} className="flex flex-col gap-6 pb-20 min-[760px]:pb-0" noValidate>
-      <p className="text-fg-muted">{t('intro')}</p>
       <ErrorSummary items={summary} focusKey={focusKey} />
       <fieldset className="flex flex-col gap-4 rounded-lg border border-line bg-surface p-4">
         <legend className="px-1 text-base font-semibold">{t('basics')}</legend>

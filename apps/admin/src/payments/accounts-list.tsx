@@ -349,8 +349,6 @@ export function AccountsList({
   return (
     <SuperList
       heading={{
-        subtitle: ta('intro'),
-        note: t('zone-note', { zone }),
         actions: (
           <AccountsBulk
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}

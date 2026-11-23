@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { notFound } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AttributeDetailPage } from '../../../../../src/attributes/attribute-detail-page.tsx';
@@ -37,7 +37,7 @@ export default async function AttributePage({
   const { permissionKeys, csrfToken } = gate.session;
   return (
     <AdminShell session={gate.session} activeId="attributes" title={title}>
-      <h1 className="text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} />
       {permissionKeys.includes(VIEW_PERMISSION) ? (
         <AttributeDetailPage
           attributeId={attributeId}

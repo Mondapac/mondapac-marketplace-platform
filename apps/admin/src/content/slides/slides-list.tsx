@@ -149,7 +149,6 @@ export function SlidesList({
             onChanged={changed}
             onStale={stale}
           />
-          <p className="text-sm text-fg-muted">{t('footnote', { zone })}</p>
         </>
       ) : null}
       {trulyEmpty ? (

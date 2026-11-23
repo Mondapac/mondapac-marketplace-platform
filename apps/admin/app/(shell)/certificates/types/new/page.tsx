@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../../../src/server/admin-shell.tsx';
@@ -28,7 +28,7 @@ export default async function TypeNewPage() {
   const keys = gate.session.permissionKeys;
   const shell = (body: React.ReactNode) => (
     <AdminShell session={gate.session} activeId="certificates" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       <p className="mb-4">
         <a className="font-medium text-link underline" href="/certificates/types">
           {t('certificates.types.detail.back')}

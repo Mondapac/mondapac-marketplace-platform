@@ -1,4 +1,4 @@
-import { EmptyState, LoadError } from '@mondapac/ui';
+import { EmptyState, LoadError, PageHeader } from '@mondapac/ui';
 import { headers } from 'next/headers';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
@@ -213,7 +213,7 @@ export default async function SellerReviewPage({
           <div>
             <BackToSellers label={t('sellers.review.back')} />
           </div>
-          <h1 className="text-2xl font-semibold">{t('sellers.review.unavailable.title')}</h1>
+          <PageHeader title={t('sellers.review.unavailable.title')} />
           <LoadError
             className="flex flex-col items-start gap-3"
             message={t('sellers.review.unavailable.body')}

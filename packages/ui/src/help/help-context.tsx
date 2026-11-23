@@ -76,6 +76,11 @@ export function HelpProvider({
   return <HelpContext.Provider value={value}>{children}</HelpContext.Provider>;
 }
 
+/** The Help state, or null when there is no provider (a page outside the panel shell). */
+export function useHelpOptional(): HelpState | null {
+  return useContext(HelpContext);
+}
+
 export function useHelp(): HelpState {
   const state = useContext(HelpContext);
   if (state === null) throw new Error('Help components need a HelpProvider above them.');
@@ -83,14 +88,24 @@ export function useHelp(): HelpState {
 }
 
 /**
- * Put one on a page whose section tabs have no route of their own: it tells the Help panel which
- * tab is open, by the tab's label in the help text. It renders nothing.
+ * Tells the Help panel which tab is open, by the tab's name in the help text; nothing when the
+ * label is undefined or there is no provider. Used by `Tabs` and by `HelpTab`.
+ */
+export function useHelpTab(label: string | undefined): void {
+  const help = useHelpOptional();
+  const setTab = help?.setTab;
+  useEffect(() => {
+    if (label === undefined) return undefined;
+    setTab?.(label);
+    return () => setTab?.(undefined);
+  }, [label, setTab]);
+}
+
+/**
+ * Put one on a page whose section tabs have no route of their own and are not drawn by `Tabs`:
+ * it tells the Help panel which tab is open. It renders nothing.
  */
 export function HelpTab({ label }: { readonly label: string }) {
-  const { setTab } = useHelp();
-  useEffect(() => {
-    setTab(label);
-    return () => setTab(undefined);
-  }, [label, setTab]);
+  useHelpTab(label);
   return null;
 }

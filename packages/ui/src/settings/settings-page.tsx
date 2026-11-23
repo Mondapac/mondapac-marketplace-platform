@@ -1,15 +1,12 @@
 'use client';
 
 import type { FormEvent, ReactNode } from 'react';
-import { PageInfo } from '../overlay/page-info.tsx';
 import { SettingsTitle } from './settings-title.tsx';
 import { useUnsavedChangesGuard, type LeaveLabels } from './unsaved-changes-guard.tsx';
 
 export interface SettingsPageProps {
   /** The page's h1. */
   readonly title: string;
-  /** One sentence about the page; shown in the info icon (ⓘ) beside the title, not under it. */
-  readonly description?: string;
   /** "Last changed by Sara K. · 2 days ago": the caller writes the text. */
   readonly lastChanged?: {
     readonly text: string;
@@ -43,13 +40,12 @@ export interface SettingsPageProps {
 }
 
 /**
- * The one frame of a settings page: header (title, description, last change, actions), a banner
+ * The one frame of a settings page: header (title, last change, actions), a banner
  * slot, the sections, and the save bar. It also guards the page against being left with unsaved
  * changes. The path above the title is the shell's own breadcrumb.
  */
 export function SettingsPage({
   title,
-  description,
   lastChanged,
   actions,
   banner,
@@ -78,7 +74,6 @@ export function SettingsPage({
         <div className="min-w-0">
           <div className="flex min-w-0 items-center gap-2">
             <SettingsTitle>{title}</SettingsTitle>
-            {description ? <PageInfo page={title}>{description}</PageInfo> : null}
           </div>
           {lastChanged ? (
             <p className="mt-1 text-xs text-fg-muted" data-testid="last-changed">

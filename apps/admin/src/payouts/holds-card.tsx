@@ -401,14 +401,14 @@ export function PayoutHoldsCard({
     <Card title={t('title')}>
       <SuperList
         heading={{
-          subtitle:
+          subtitle: `${
             answer === null
               ? tl('intro')
               : tl('intro-counts', {
                   active: answer.counts.active,
                   released: answer.counts.released,
-                }),
-          note: tl('note', { zone }),
+                })
+          } ${tl('note')}`,
           actions: (
             <>
               {canPlace ? (

@@ -155,8 +155,11 @@ describe('Shipments page numbers', () => {
     mount();
     expect(await screen.findByRole('link', { name: /Order 000000D1|Order 00000001/ })).toBeTruthy();
     expect(urls()[0]).toBe('ordering/admin/shipments?page=1&pageSize=25&sort=paid&direction=desc');
-    expect(screen.getByText(/One row for each seller in each paid order\./)).toBeTruthy();
-    expect(screen.getByText('Times and days are in Australia/Brisbane.')).toBeTruthy();
+    expect(screen.queryByText(/One row for each seller in each paid order\./u)).toBeNull();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
     expect(screen.getByText('Sorted by Paid: Newest first')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Sort' })).toBeTruthy();
     expect(screen.getByText('1 to 1 of 143')).toBeTruthy();
@@ -739,7 +742,10 @@ describe('Shipments filters', () => {
     serve(() => pageOf([row({ total: money('12550', 'EUR'), shipping: money('990', 'EUR') })]));
     mount({ locale: 'de-DE', zone: 'Europe/Berlin', marketId: 'DE' });
     await screen.findByText('Cedar Lane Halal Meats');
-    expect(screen.getByText('Times and days are in Europe/Berlin.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
     expect(screen.getByText(/125,50\s€/)).toBeTruthy();
     expect(screen.queryByText(/\$/)).toBeNull();
     await applyFilter('paid', 'today');
@@ -850,7 +856,10 @@ describe('Shipments rows', () => {
     await screen.findByText('Cedar Lane Halal Meats');
     // 2026-11-10 01:30 UTC is 9 Nov 5:30 pm in Los Angeles.
     expect(screen.getByText('9 Nov, 5:30 pm')).toBeTruthy();
-    expect(screen.getByText('Times and days are in America/Los_Angeles.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
   });
 
   it('shows the stage badge, and under it the delivery problem with its long text as the title', async () => {

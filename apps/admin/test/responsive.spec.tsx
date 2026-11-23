@@ -120,7 +120,7 @@ describe('products page title', () => {
       join(__dirname, '..', 'app/(shell)/catalog/products/page.tsx'),
       'utf8',
     );
-    expect(page).toContain('<h1 className="mb-4 text-2xl font-semibold">{title}</h1>');
+    expect(page).toContain('<PageHeader title={title} className="mb-4" />');
     expect(page).not.toContain('sr-only');
   });
 });

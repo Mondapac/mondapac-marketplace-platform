@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { BusinessActivitiesView } from '../../../../src/business-activities/business-activities-view.tsx';
 import { EDIT_PERMISSION, READ_PERMISSION } from '../../../../src/business-activities/types.ts';
@@ -29,7 +29,7 @@ export default async function BusinessActivitiesPage() {
   const { permissionKeys, csrfToken } = gate.session;
   return (
     <AdminShell session={gate.session} activeId="business-activities" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       {permissionKeys.includes(READ_PERMISSION) ? (
         <BusinessActivitiesView
           canEdit={permissionKeys.includes(EDIT_PERMISSION)}

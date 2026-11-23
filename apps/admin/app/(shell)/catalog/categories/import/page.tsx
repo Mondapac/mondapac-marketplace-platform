@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { CategoryImport } from '../../../../../src/categories/import/category-import.tsx';
 import { IMPORT_PERMISSION } from '../../../../../src/categories/import/import-model.ts';
@@ -19,7 +19,7 @@ export default async function CategoryImportPage() {
   const title = t('categories.import.title');
   return (
     <AdminShell session={gate.session} activeId="categories" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       {gate.session.permissionKeys.includes(IMPORT_PERMISSION) ? (
         <CategoryImport csrfToken={gate.session.csrfToken} />
       ) : (

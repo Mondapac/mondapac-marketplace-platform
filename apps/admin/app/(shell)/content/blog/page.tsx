@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { isView, type View } from '../../../../src/blog/list/posts-list-types.ts';
@@ -52,7 +52,7 @@ export default async function BlogPage({
   const title = t('blog.title');
   return (
     <AdminShell session={gate.session} activeId="blog" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       <PostsList
         // A link to another view is a fresh list.
         key={view}

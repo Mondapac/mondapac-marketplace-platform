@@ -303,8 +303,7 @@ export function WorkQueueList({
   return (
     <SuperList
       heading={{
-        info: t('intro'),
-        note: t('note', { time: shortInstant(answer.generatedAt, locale) }),
+        subtitle: t('note', { time: shortInstant(answer.generatedAt, locale) }),
         actions: (
           <Button variant="secondary" disabled={shown.length === 0} onClick={() => setDialog(true)}>
             {t('export.button')}

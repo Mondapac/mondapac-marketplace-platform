@@ -433,8 +433,6 @@ export function RequestsList({
     <>
       <SuperList
         heading={{
-          info: t('intro'),
-          note: t('zone-note', { zone }),
           actions: (
             <RequestsBulk
               selection={{

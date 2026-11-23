@@ -480,8 +480,6 @@ export function OrdersList({
   return (
     <SuperList
       heading={{
-        info: t(customerAccountId === undefined ? 'intro' : 'customer-intro'),
-        note: t('zone-note', { zone }),
         actions: (
           <OrdersBulk
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}

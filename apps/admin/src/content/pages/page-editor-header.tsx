@@ -1,6 +1,6 @@
 'use client';
 
-import { BackLink, Badge, Banner, Tabs } from '@mondapac/ui';
+import { BackLink, Badge, Banner, Tabs, PageHeader } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
 import { shortInstantInZone } from '../../shared/format.ts';
@@ -59,7 +59,7 @@ export function PageEditorHeader({
       <div className="flex min-w-0 flex-col items-start gap-1">
         <BackLink href={PAGES_PATH} label={t('back')} />
         <div className="flex w-full flex-wrap items-start justify-between gap-x-4 gap-y-2">
-          <h1 className="min-w-0 break-words text-2xl font-semibold">{page.title}</h1>
+          <PageHeader title={page.title} />
           {actions === undefined ? null : (
             <div className="flex flex-wrap items-center justify-end gap-2">{actions}</div>
           )}

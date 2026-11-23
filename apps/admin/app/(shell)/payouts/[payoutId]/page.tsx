@@ -1,4 +1,4 @@
-import { BackLink, LoadError } from '@mondapac/ui';
+import { BackLink, LoadError, PageHeader } from '@mondapac/ui';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { PayoutDetailView } from '../../../../src/payouts/payout-detail.tsx';
@@ -32,7 +32,7 @@ export default async function PayoutPage({
     // No session, so no shell; the page still has its heading.
     return (
       <div className="flex flex-col gap-4 p-4">
-        <h1 className="text-2xl font-semibold">{t('payouts.detail.page-title')}</h1>
+        <PageHeader title={t('payouts.detail.page-title')} />
         <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
       </div>
     );
@@ -48,7 +48,7 @@ export default async function PayoutPage({
     shell(
       <div className="flex flex-col gap-4">
         <BackLink href="/payouts" label={title} />
-        <h1 className="text-2xl font-semibold">{t(`payouts.${key}-title`)}</h1>
+        <PageHeader title={t(`payouts.${key}-title`)} />
         <p className="text-fg-muted">{t(`payouts.${key}`)}</p>
       </div>,
     );
@@ -61,7 +61,7 @@ export default async function PayoutPage({
     return shell(
       <div className="flex flex-col gap-4">
         <BackLink href="/payouts" label={title} />
-        <h1 className="text-2xl font-semibold">{t('payouts.detail.page-title')}</h1>
+        <PageHeader title={t('payouts.detail.page-title')} />
         <LoadError message={t('payouts.error.unavailable')} retryLabel={t('load.retry')} />
       </div>,
     );

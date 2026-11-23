@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { DisputesList } from '../../../src/disputes/disputes-list.tsx';
@@ -43,7 +43,7 @@ export default async function DisputesPage({
     // No session, so no shell; the page still has its heading.
     return (
       <div className="flex flex-col gap-4 p-4">
-        <h1 className="text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} />
         <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />
       </div>
     );
@@ -52,7 +52,7 @@ export default async function DisputesPage({
   if (!session.permissionKeys.includes(VIEW_PERMISSION)) {
     return (
       <AdminShell session={session} activeId="disputes" title={title}>
-        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} className="mb-4" />
         <p className="text-fg-muted">{t('disputes.no-access')}</p>
         <p className="mt-4">
           <a className="font-medium text-link underline" href="/">
@@ -78,7 +78,7 @@ export default async function DisputesPage({
   const marketId = panelHostFor(panelConfig(), host.get('host'))?.marketId ?? '';
   return (
     <AdminShell session={session} activeId="disputes" title={title}>
-      <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-2" />
       <div className="flex flex-col gap-4">
         <DisputesList
           // A link to another view or seller is a fresh list.

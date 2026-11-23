@@ -124,10 +124,9 @@ export function SettingsForm({
   }, [loading.stalled]);
 
   const title = t('settings.title');
-  const intro = t('settings.intro');
   if (loadFailed) {
     return (
-      <SettingsPage title={title} description={intro}>
+      <SettingsPage title={title}>
         <LoadError
           className="flex flex-col items-start gap-3"
           message={t('load-failed')}
@@ -139,7 +138,7 @@ export function SettingsForm({
   }
   if (settings === null || loading.visible) {
     return (
-      <SettingsPage title={title} description={intro}>
+      <SettingsPage title={title}>
         <SettingsSkeleton
           label={root('route.loading-page', { page: title })}
           header={false}
@@ -292,7 +291,6 @@ export function SettingsForm({
   return (
     <SettingsPage
       title={title}
-      description={intro}
       lastChanged={changeHistory.line}
       overlay={changeHistory.drawer}
       banner={

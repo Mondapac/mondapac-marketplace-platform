@@ -192,7 +192,10 @@ describe('Ledger list: page numbers', () => {
     expect(screen.queryByText('Manage filters')).toBeNull();
     // The times are on the list's zone: 2026-10-14 10:05 UTC is the 14th, 20:05 in Brisbane.
     expect(within(table).getAllByText(/14 Oct/).length).toBeGreaterThan(0);
-    expect(screen.getByText('Dates are shown in Australia/Brisbane.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
   });
 
   it('shows refund totals, the kinds and a balance below zero, from each answer', async () => {
@@ -851,7 +854,10 @@ describe('Ledger list: columns and Markets', () => {
     // Whole yen: no decimals, no dollars.
     expect(within(table).getByText(/3,000/).textContent).not.toMatch(/\$|\./);
     expect(within(table).getAllByText(/15 Oct/).length).toBeGreaterThan(0);
-    expect(screen.getByText('Dates are shown in Pacific/Auckland.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
     // The filter's amounts are whole yen, sent as they are.
     fireEvent.click(screen.getByRole('button', { name: /^Filter/ }));
     const panel = await screen.findByRole('dialog', { name: 'Filter' });

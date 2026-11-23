@@ -1,4 +1,4 @@
-import { Banner, LoadError } from '@mondapac/ui';
+import { Banner, LoadError, PageHeader } from '@mondapac/ui';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { getLocale, getTranslations } from 'next-intl/server';
@@ -46,7 +46,7 @@ export default async function CertificatesPage({
   const title = t('certificates.title');
   const shell = (body: React.ReactNode) => (
     <AdminShell session={gate.session} activeId="certificates" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       {body}
     </AdminShell>
   );

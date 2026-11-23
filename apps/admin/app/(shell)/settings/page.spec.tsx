@@ -46,7 +46,7 @@ afterEach(cleanup);
 const groups = () => screen.queryAllByRole('heading', { level: 2 }).map((h) => h.textContent);
 
 describe('settings hub page', () => {
-  it('shows the title, the description and every group to a super admin', async () => {
+  it('shows the title and every group to a super admin', async () => {
     await show([
       'notifications.support-contact.view',
       'notifications.support-contact.manage',
@@ -64,7 +64,6 @@ describe('settings hub page', () => {
       'identity.platform-role.create',
     ]);
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Settings');
-    expect(screen.getByText(messages.settings.hub.description)).toBeTruthy();
     expect(groups()).toEqual(['General', 'Delivery', 'Money & tax', 'AI', 'Team & access']);
     expect(screen.getAllByRole('link')).toHaveLength(7);
     expect(screen.queryByText('View only')).toBeNull();
@@ -95,7 +94,6 @@ describe('settings hub page', () => {
       messages.settings.hub['no-access-title'],
     );
     expect(screen.getByRole('link', { name: 'Back to dashboard' }).getAttribute('href')).toBe('/');
-    expect(screen.queryByText(messages.settings.hub.description)).toBeNull();
   });
 
   it('marks a view-only page with the chip', async () => {

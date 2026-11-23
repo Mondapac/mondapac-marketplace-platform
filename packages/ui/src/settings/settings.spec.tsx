@@ -178,11 +178,10 @@ describe('SettingsSection', () => {
 });
 
 describe('SettingsPage', () => {
-  it('has one h1, the description, the last change with its history link, banner and actions', () => {
+  it('has one h1, the last change with its history link, banner and actions', () => {
     const out = html(
       <SettingsPage
         title="Delivery rules"
-        description="When delivery is offered."
         lastChanged={{
           text: 'Last changed by Sara K. · 2 days ago',
           historyHref: '/h',
@@ -195,7 +194,6 @@ describe('SettingsPage', () => {
       </SettingsPage>,
     );
     expect(out.match(/<h1/g)).toHaveLength(1);
-    expect(out).toContain('When delivery is offered.');
     expect(out).toContain('Last changed by Sara K. · 2 days ago');
     expect(out).toContain('<a href="/h"');
     expect(out).toContain('Pin');

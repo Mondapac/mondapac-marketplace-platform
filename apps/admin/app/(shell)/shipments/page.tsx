@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { toId } from '../../../src/sales/search-route.ts';
@@ -37,7 +37,7 @@ export default async function ShipmentsPage({
   const seller = typeof sellerId === 'string' ? toId(sellerId) : null;
   return (
     <AdminShell session={gate.session} activeId="shipments" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       {gate.session.permissionKeys.includes(VIEW_PERMISSION) ? (
         <ShipmentsList
           paging={paging}

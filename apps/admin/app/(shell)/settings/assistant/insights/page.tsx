@@ -51,11 +51,7 @@ export default async function AssistantInsightsPage() {
   const paging = mode.kind === 'ok' && mode.body.listPaging === 'pages' ? 'pages' : 'prev-next';
   const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
   return shell(
-    <SettingsPage
-      title={title}
-      description={t('settings.assistant.insights-intro')}
-      banner={<AssistantTabs active="insights" />}
-    >
+    <SettingsPage title={title} banner={<AssistantTabs active="insights" />}>
       <AssistantInsights
         paging={paging}
         zone={localZone(gate.session.timezone, gate.session.marketTimezone)}

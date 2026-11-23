@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { CustomerGroups } from '../../../../src/customers/customer-groups.tsx';
 import { VIEW_PERMISSION } from '../../../../src/customers/types.ts';
@@ -30,7 +30,7 @@ export default async function CustomerGroupsPage() {
         />
       ) : (
         <>
-          <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+          <PageHeader title={title} className="mb-4" />
           <p className="text-fg-muted">{t('customers.no-access')}</p>
         </>
       )}

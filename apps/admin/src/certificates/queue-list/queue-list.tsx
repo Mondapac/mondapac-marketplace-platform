@@ -427,8 +427,6 @@ export function QueueList({
   return (
     <SuperList
       heading={{
-        info: t('intro'),
-        note: t('zone-note', { zone }),
         actions: (
           <QueueBulk
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}

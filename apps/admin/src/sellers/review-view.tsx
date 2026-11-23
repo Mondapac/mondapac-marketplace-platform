@@ -1,4 +1,4 @@
-import { BackLink, Badge, Card, DataList, type BadgeTone } from '@mondapac/ui';
+import { BackLink, Badge, Card, DataList, type BadgeTone, PageHeader } from '@mondapac/ui';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { formatInstant } from '../shared/format.ts';
 import { addressLines, areaName, known } from './format.ts';
@@ -197,7 +197,7 @@ export async function ReviewView({
       <div className="flex flex-col items-start gap-2">
         <BackToSellers label={t('sellers.review.back')} />
         <div className="flex flex-wrap items-center gap-3">
-          <h1 className="break-words text-2xl font-semibold">{review.current.content.storeName}</h1>
+          <PageHeader title={review.current.content.storeName} />
           <Badge tone={ACCESS_TONE[access] ?? 'neutral'}>
             {t(`sellers.review.access.${access}`)}
           </Badge>

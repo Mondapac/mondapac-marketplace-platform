@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { notFound, redirect } from 'next/navigation';
 import { getTranslations } from 'next-intl/server';
 import { AccountDetail } from '../../../../src/payments/account-detail.tsx';
@@ -35,7 +35,7 @@ export default async function PayoutAccountPage({
   const message = (key: 'no-access' | 'not-found') =>
     shell(
       <>
-        <h1 className="mb-2 text-2xl font-semibold">{t(`payments.accounts.${key}-title`)}</h1>
+        <PageHeader title={t(`payments.accounts.${key}-title`)} className="mb-2" />
         <p className="text-fg-muted">{t(`payments.accounts.${key}`)}</p>
         <p className="mt-4">
           <a className="font-medium text-link underline" href="/payout-accounts">

@@ -93,7 +93,8 @@
     "security": "Account security",
     "sign-out": "Sign out",
     "signing-out": "Signing out…",
-    "sign-out-failed": "We couldn't sign you out. Check your connection and try again."
+    "sign-out-failed": "We couldn't sign you out. Check your connection and try again.",
+    "zone": "Times are in {zone}. <change>Change</change>"
   },
   "nav": {
     "menu": "Open navigation menu",
@@ -407,7 +408,6 @@
     "page": {
       "title": "Work queue",
       "back": "Back to the dashboard",
-      "intro": "Every queue you can work on, with how many items wait and for how long. Open a queue to work on its items.",
       "note": "Counted at {time}. Counts can be up to a minute old; reload the page for new ones.",
       "error": "The work queue could not be loaded. Try again. If it keeps happening, tell support.",
       "no-access": {
@@ -1012,7 +1012,6 @@
         "no-match-help": "Change or clear the search and filters to see more sellers."
       },
       "not-given": "Not given",
-      "intro": "Every seller on the platform. Open a seller to review its file and decide.",
       "search": {
         "label": "Search",
         "placeholder": "Store name or shop address",
@@ -1236,7 +1235,6 @@
     },
     "orphaned": {
       "title": "Sellers without an owner",
-      "intro": "Sellers that have no owner account yet, oldest first. Invite an owner so they can sign in and manage the store.",
       "back": "Back to sellers",
       "link": "Sellers without an owner",
       "loading": "Loading sellers...",
@@ -1388,7 +1386,6 @@
       "title": "Sellers that need a look",
       "link": "Sellers that need a look",
       "back": "Back to sellers",
-      "intro": "Sellers whose latest health is Unhealthy, worst score first. Pick a measure to see the sellers it set, or open a seller to see the measures and the trend.",
       "col": {
         "seller": "Seller",
         "score": "Score",
@@ -1637,8 +1634,6 @@
       "unavailable": "Certificates could not be loaded.",
       "more": "Next page",
       "first-page": "First page",
-      "intro": "Seller certificates waiting for a decision. Open one to review it and decide.",
-      "zone-note": "Times are shown in {zone}.",
       "views": "Queue views",
       "view": {
         "all": "All",
@@ -2470,7 +2465,6 @@
         "title": "Change a certificate type",
         "heading": "Change {code}",
         "back": "Back to the type",
-        "intro": "This saves a new revision. The check method cannot change. A change that makes a rule weaker, or removes a claim term or a language, waits for a second admin before it is published.",
         "settings": "Settings",
         "mode-fixed": "cannot be changed",
         "auto-help": "Only for self-declared types. Turning this on needs a second admin.",
@@ -2629,7 +2623,6 @@
           "sent": "Sent for review as SR-{number}."
         },
         "form": {
-          "intro": "One row says which basis a claim needs for a platform category or a handling type. Each category and each handling type can have one row.",
           "no-rows": "There are no rows yet.",
           "row": "Row {n}",
           "category": "Platform category",
@@ -2700,7 +2693,6 @@
         "title": "New certificate type",
         "page": "New certificate type",
         "unavailable": "The form could not be loaded.",
-        "intro": "Another admin has to approve a new type before sellers and customers see it.",
         "basics": "Basics",
         "code": "Code (required)",
         "code-placeholder": "organic",
@@ -3035,7 +3027,6 @@
         "empty-note": "Without slides, the home page shows its title only.",
         "none-title": "No slides match",
         "none-body": "Change or clear the filters to see more slides.",
-        "footnote": "Live and scheduled first, then waiting, drafts, paused, ended and archived. Times in {zone}.",
         "caption": "Slides",
         "col": {
           "slide": "Slide",
@@ -3427,7 +3418,6 @@
         "moved": "{name} moved to place {place} of {total}.",
         "over-limit": "Over the limit, waits for a free place",
         "note": "Order changes go live at once for slides already approved. Buyers see the new order within a minute; the change is recorded in the history.",
-        "footnote": "Times in {zone}.",
         "save": "Save order",
         "saved": "Order saved. Buyers see the new order within a minute.",
         "read-only": "You can view the order but not change it.",
@@ -3498,7 +3488,6 @@
         "none-body": "Change or clear the filters to see more pages.",
         "count": "{count, plural, one {# page} other {# pages}}",
         "read-only": "You can view pages but not change them. Ask a platform administrator for edit access.",
-        "footnote": "Dates are shown in {zone}.",
         "system": "System page",
         "unpublished-changes": "Unpublished changes",
         "actions-for": "Actions for {name}",
@@ -3516,7 +3505,6 @@
       },
       "new": {
         "title": "New page",
-        "intro": "Create a landing page from a template. It starts as a draft; buyers see nothing until a platform administrator publishes it.",
         "back": "Back to pages",
         "form": "New page",
         "loading": "Loading templates",
@@ -3857,7 +3845,6 @@
     },
     "navigation": {
       "page-title": "Navigation",
-      "intro": "The left menu and Browse lists of the buyer site, for this Market.",
       "read-only": "You can view the navigation but not change it. Ask a platform administrator for edit access.",
       "never-approved": "Not approved yet",
       "approved-version": "Approved: version {n}",
@@ -3956,12 +3943,9 @@
       "title": "Danger zone"
     },
     "admins": {
-      "description": "The people who can sign in to this admin panel, and the invitations that have not been accepted yet.",
       "section": "Admin accounts"
     },
-    "roles": {
-      "description": "A role is a set of permissions. Give each admin the role that matches their work."
-    },
+    "roles": {},
     "no-access": "You don't have access to settings.",
     "no-access-title": "You don't have access to this page",
     "no-access-needs": "{page} needs the permission \"{permission}\". An admin who manages roles can add it.",
@@ -4012,7 +3996,6 @@
       "none": "Not set",
       "permission-view": "Support email: view",
       "read-only": "You can view the support email. To change it you need the \"Support email: manage\" permission.",
-      "intro": "The address customers and sellers are told to write to when they need help. A change applies from now on.",
       "not-set": "No support email is set yet.",
       "current": "Current address",
       "field": "Support email address",
@@ -4031,7 +4014,6 @@
       }
     },
     "hub": {
-      "description": "Set up how the marketplace works. Changes here apply to every seller and customer.",
       "view-only": "View only",
       "no-access-title": "You don't have access to settings",
       "no-access-body": "Your role doesn't include any settings page. Ask an admin who manages roles to add one.",
@@ -4247,8 +4229,7 @@
         "settings": "Settings",
         "insights": "Insights"
       },
-      "insights-title": "Shopping assistant insights",
-      "insights-intro": "How buyers use the shopping assistant, what it costs, how they rate its answers, and the questions it could not answer."
+      "insights-title": "Shopping assistant insights"
     },
     "view-only": {
       "title": "View only",
@@ -4497,7 +4478,6 @@
       "list": {
         "intro": "Every row of this seller's ledger. The totals above cover all of them.",
         "intro-filtered": "Only the rows that match are listed. The totals above still cover every row of this seller.",
-        "zone-note": "Dates are shown in {zone}.",
         "loading": "Loading the ledger",
         "no-access": "You do not have access to this ledger.",
         "none": "None",
@@ -4969,7 +4949,6 @@
     },
     "import": {
       "title": "Import products",
-      "subtitle": "Add many products to this market’s catalog from one file.",
       "back": "Products",
       "cancel": "Cancel",
       "loading": "Loading the import",
@@ -6325,7 +6304,6 @@
     },
     "page-title": "Orders",
     "intro": "The Market's orders. Open one to see its payment, delivery and notes.",
-    "zone-note": "Times and days are in {zone}.",
     "no-access": "You don't have access to orders.",
     "no-access-title": "You don't have access to this page",
     "not-found": "We couldn't find this order.",
@@ -6782,7 +6760,6 @@
   "payments": {
     "accounts": {
       "title": "Seller accounts",
-      "intro": "The Stripe payout accounts of the sellers. Read only.",
       "no-access": "You don't have access to seller accounts.",
       "no-access-title": "You don't have access to this page",
       "not-found": "We couldn't find a connected account for this seller.",
@@ -6838,7 +6815,6 @@
         "past-due-title": "Requirements past due"
       },
       "list": {
-        "zone-note": "Times are shown in {zone}.",
         "col": {
           "seller": "Seller",
           "status": "Status",
@@ -7633,7 +7609,6 @@
     "groups": {
       "title": "Customer groups",
       "page-title": "Customer group",
-      "intro": "Manual groups of customers, for promotions and follow-up. A group is a label for admins: do not put personal details in its name or description.",
       "views": "Groups",
       "view": {
         "live": "Live",
@@ -8002,7 +7977,6 @@
       "consent-history": {
         "title": "Consent history",
         "subtitle": "Every change of this customer’s marketing consent.",
-        "zone": "Times in {zone}.",
         "views": "Consent history",
         "view": {
           "all": "All changes"
@@ -8048,7 +8022,6 @@
       },
       "sign-ins": {
         "subtitle": "Sign-in attempts of the last 90 days. The full IP address is shown only per row, and every reveal is recorded.",
-        "zone": "Times in {zone}.",
         "views": "Sign-in results",
         "view": {
           "all": "All sign-ins",
@@ -8919,9 +8892,7 @@
       "unknown": "Something went wrong. Try again."
     },
     "list": {
-      "intro": "Requests to delete a buyer account. A waiting request can be cancelled until the deletion starts.",
       "views-label": "Deletion request views",
-      "zone-note": "Dates are shown in {zone}.",
       "loading": "Loading the requests",
       "no-access": "You do not have access to this list.",
       "view": {
@@ -9522,7 +9493,6 @@
     },
     "settings": {
       "title": "Customer wallet",
-      "intro": "Controls store credit for every customer in this Market.",
       "permission-view": "Customer wallet: view",
       "view-only": "View only. You can see the state of the wallet but not change it. Ask an admin who manages roles to add the wallet change permission.",
       "state": "State",
@@ -9643,9 +9613,7 @@
     },
     "list": {
       "title": "Credit approvals",
-      "intro": "Credit above an admin's limit waits here for a second admin to approve or reject it.",
       "views-label": "Credit request views",
-      "zone-note": "Dates are shown in {zone}.",
       "view": {
         "pending": "Pending",
         "decided": "Decided",
@@ -9851,7 +9819,6 @@
   },
   "disputes": {
     "title": "Disputes",
-    "intro": "Card disputes (chargebacks) on paid orders. Open a case to decide who bears a lost dispute.",
     "filters": "Filter by stage",
     "filter": {
       "needs-response": "Needs response",
@@ -9861,7 +9828,6 @@
       "closed": "Closed",
       "unknown": "Unknown"
     },
-    "zone-note": "Dates are shown in {zone}.",
     "footnote": "An inquiry does not move money. Only that order's seller share is held while a dispute is open.",
     "loading": "Loading disputes",
     "error": {
@@ -9987,7 +9953,6 @@
       }
     },
     "list": {
-      "zone-note": "Dates are shown in {zone}.",
       "view": {
         "all": "All",
         "needs-response": "Needs response",
@@ -10124,7 +10089,6 @@
   },
   "payouts": {
     "title": "Payouts",
-    "intro": "The money sent to sellers. A seller's first payout, and any payout the seller's terms say so for, waits here until an admin approves it.",
     "no-access-title": "No access",
     "no-access": "You do not have access to payouts.",
     "not-found-title": "Payout not found",
@@ -10135,8 +10099,7 @@
       "line": "Transfers sent today: {total} of {level} alert level.",
       "over": "Above the alert level"
     },
-    "footnote": "Times are shown in {zone}. Amounts are what is transferred to the seller, after any amount kept against what the seller owes.",
-    "zone-note": "Times are shown in {zone}.",
+    "footnote": "Amounts are what is transferred to the seller, after any amount kept against what the seller owes.",
     "loading": "Loading payouts",
     "error": {
       "unavailable": "The payouts could not be loaded. Try again."
@@ -10247,7 +10210,6 @@
       "limit": "Limit per transfer",
       "today": "Sent today",
       "today-value": "{total} of {level} alert level",
-      "zone-note": "Times are shown in {zone}.",
       "not-ready": "The seller's payout account is not ready, so this payout cannot be sent. It cannot be approved now.",
       "above-limit": "This transfer is above the limit of {limit} per transfer, so it would not be sent. It cannot be approved.",
       "over-level": "Today's total is above the daily alert level. You can still approve; the platform will be alerted.",
@@ -10419,7 +10381,7 @@
         "list": {
           "intro": "Holds stop the money they cover from being paid out.",
           "intro-counts": "{active, plural, one {# active hold} other {# active holds}} and {released, plural, one {# released hold} other {# released holds}}. A hold stops the money it covers from being paid out.",
-          "note": "Times are shown in {zone}. A dispute, refund or bank-change hold is released by the system when it ends. A suspended seller's hold is released only by an admin.",
+          "note": "A dispute, refund or bank-change hold is released by the system when it ends. A suspended seller's hold is released only by an admin.",
           "loading": "Loading the holds",
           "no-access": "You do not have access to these holds.",
           "none": "None",
@@ -10540,7 +10502,6 @@
       "load-failed": "The payout terms and holds could not be loaded."
     },
     "list": {
-      "zone-note": "Times are shown in {zone}.",
       "view": {
         "all": "All",
         "awaiting-approval": "Awaiting approval",
@@ -10684,7 +10645,6 @@
   },
   "security": {
     "title": "Account security",
-    "description": "How you sign in to the admin panel. This page is only about your own account.",
     "unavailable": "We couldn't load your account security. Try again.",
     "two-step": {
       "title": "Two-step verification",
@@ -10736,7 +10696,6 @@
   },
   "categories": {
     "title": "Categories",
-    "intro": "The category tree of this Market. Products and Offers sit in the categories below it; this page only reads them.",
     "view-only": "Your role can't change categories.",
     "counts-partial": "The counts are still being worked out, so they show as at least.",
     "at-least": "at least {n}",
@@ -10848,7 +10807,6 @@
       },
       "kind-unknown": "Changed"
     },
-    "intro-edit": "The category tree of this Market. Products and Offers sit in the categories below it. New categories start hidden until you show them.",
     "missing-label": "Missing a name",
     "missing-none": "All languages",
     "missing-option": "Missing: {language} ({count})",
@@ -11158,7 +11116,6 @@
       "title": "Import categories",
       "back": "Categories",
       "no-access": "Your role cannot import categories.",
-      "intro": "Add new categories and change the names, descriptions and search text of existing ones from a CSV or XLSX file. A check shows what each row would do and writes nothing. Moving a category to another parent is not done from a file: use Move on the tree page.",
       "upload": {
         "title": "Choose a file",
         "sub": "Start from an export of the current tree: each row is one category, matched by its slug.",
@@ -11537,7 +11494,6 @@
   },
   "brands": {
     "title": "Brands",
-    "intro": "Brands are shared by all markets. Products link to a brand instead of typing its name.",
     "new": "New brand…",
     "tabs": "Brand lists",
     "tab": {
@@ -11924,8 +11880,6 @@
     "policy-note": "Choose a reason from the list. There is no reason for a negative review: a true negative review is never hidden.",
     "list": {
       "title": "Reviews to moderate",
-      "intro": "Reviews waiting for a person, reviews a shop has reported, and reviews already hidden or removed. A review is moderated as a whole: its text is never edited, and a true negative review is never hidden for being negative. Every change needs a reason and a fresh two-step code. Hiding can be undone; removing cannot.",
-      "zone-note": "Times are shown in {zone}.",
       "no-access": "You do not have access to the buyer review queue.",
       "back-home": "Back to the dashboard",
       "views": "Moderation views",
@@ -12626,7 +12580,6 @@
       },
       "new": {
         "title": "New post",
-        "intro": "Choose the type and give the post a title. The draft is created and opens in the editor.",
         "create": "Create draft",
         "cancel": "Cancel"
       }
@@ -12648,9 +12601,7 @@
       "news": "News"
     },
     "list": {
-      "intro": "Posts on the buyer site for this market. A published post stays live while a new version is in review.",
       "views-label": "Post views",
-      "zone-note": "Dates are shown in {zone}.",
       "loading": "Loading the posts",
       "no-access": "You do not have access to this list.",
       "view": {
@@ -13156,7 +13107,6 @@
     "title": "Attributes",
     "no-access": "You do not have access to attributes. Ask a Platform Administrator if you need it.",
     "back-home": "Back to the home page",
-    "intro": "Attributes are the fields a product carries, such as size or flavour. Feature sets group them for a kind of product.",
     "tabs": "Attribute sections",
     "view-only": {
       "title": "View only",
@@ -14388,7 +14338,6 @@
   "ai-settings": {
     "title": "Write with AI",
     "permission-view": "Write with AI settings: view",
-    "intro": "Turn AI features on or off for this Market and choose the model tier. Changes apply at once.",
     "section-review": "Review",
     "review-intro": "Changes here are reviewed. Write the note first, then change a setting; it is sent with that change.",
     "load-failed": "Couldn't load the Write with AI settings.",
@@ -14469,7 +14418,6 @@
   },
   "variants": {
     "title": "Variants",
-    "intro": "Sizes, flavours and colours across the Market: how buyers choose each variant type, and every variant of the live products.",
     "no-access": "You need the catalog.variant.view permission to see variants.",
     "back-home": "Back to the dashboard",
     "tabs": "Variant views",
@@ -15309,7 +15257,6 @@
     "policy": {
       "title": "Approval rules",
       "permission-view": "View approval rules",
-      "intro": "Decide which kinds of changes need another admin's review. Changes still go live at once; a reviewer approves them or puts the previous value back.",
       "always-reviewed": "Changes to this policy are always reviewed, at high risk, by the people reviewers.",
       "reviewer-key": "Reviewer permission:",
       "view-only": "You can view the policy but not change it.",
@@ -15418,7 +15365,6 @@
     "not-found-title": "Alert not found",
     "not-found": "This alert does not exist in this Market.",
     "back-home": "Go to the dashboard",
-    "zone-note": "Times are in {zone}.",
     "rules-ran": "Rules ran {when}",
     "rules-never": "The rules have not run yet",
     "updates": "Updates every 30 seconds",
@@ -15624,7 +15570,6 @@
     "retrying": "Trying again in 30 seconds.",
     "list": {
       "title": "Security alerts",
-      "intro": "IP addresses are masked in the list; open an alert to see one in full.",
       "no-access": "You do not have access to security alerts.",
       "back-home": "Back to the dashboard",
       "views": "Alert views",
@@ -15885,7 +15830,6 @@
   "shipments": {
     "title": "Shipments",
     "page-title": "Shipments",
-    "intro": "One row for each seller in each paid order. Add the Carrier progress column to see what the delivery fleet last reported; open the order for details.",
     "no-access": "You don't have access to shipments.",
     "back-home": "Back to home",
     "tabs": "Shipment views",
@@ -16075,7 +16019,6 @@
   "refunds": {
     "title": "Refunds",
     "page-title": "Refunds",
-    "intro": "Every refund in this Market. To refund an order, open the order.",
     "no-access": "You don't have access to refunds.",
     "back-home": "Back to home",
     "tabs": "Refund views",
@@ -16212,7 +16155,6 @@
   "invoices": {
     "title": "Invoices",
     "page-title": "Invoices",
-    "intro": "Order confirmations and credit notes issued in this Market. These are not tax invoices.",
     "no-access": "You don't have access to invoices.",
     "back-home": "Back to home",
     "tabs": "Invoice views",
@@ -16314,7 +16256,8 @@
         "title": "No credit notes yet",
         "body": "One is issued for each completed refund."
       }
-    }
+    },
+    "intro": "These are not tax invoices."
   },
   "assistant-insights": {
     "loading": "Loading insights…",
@@ -16492,6 +16435,1673 @@
       "invalid": "Check the fields and try again.",
       "unavailable": "Could not reach the server. Nothing was decided. Try again.",
       "unknown": "Something went wrong. Nothing was decided."
+    }
+  },
+  "help": {
+    "button": "Help",
+    "close": "Close",
+    "about": "About",
+    "this-tab": "This tab",
+    "good-to-know": "Good to know",
+    "related": "Related",
+    "learn-more": "Learn more",
+    "pages": {
+      "home": {
+        "title": "Dashboard",
+        "about": "What needs your attention today, and the latest activity you are allowed to see.",
+        "good": [
+          "Each card shows only what your role can open.",
+          "Key numbers show how many minutes ago they were updated."
+        ],
+        "related": [
+          {
+            "label": "Work queue",
+            "href": "/work-queue"
+          },
+          {
+            "label": "Orders",
+            "href": "/orders"
+          }
+        ]
+      },
+      "work-queue": {
+        "title": "Work queue",
+        "about": "Every queue you can work on, with how many items wait and for how long. Open a queue to work on its items.",
+        "good": [
+          "You see only the queues your role can act on.",
+          "The oldest waiting item sets how late a queue is."
+        ],
+        "related": [
+          {
+            "label": "Sellers",
+            "href": "/sellers"
+          },
+          {
+            "label": "Catalogue requests",
+            "href": "/review"
+          },
+          {
+            "label": "System requests",
+            "href": "/system-requests"
+          }
+        ]
+      },
+      "sellers": {
+        "title": "Sellers",
+        "about": "Every seller on the platform. Open a seller to review its file and decide.",
+        "good": [
+          "A new seller cannot sell until an admin approves the application.",
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "related": [
+          {
+            "label": "Sellers that need a look",
+            "href": "/sellers/needs-a-look"
+          },
+          {
+            "label": "Sellers without an owner",
+            "href": "/sellers/without-owner"
+          },
+          {
+            "label": "Payout accounts",
+            "href": "/payout-accounts"
+          }
+        ]
+      },
+      "sellers-sellerId": {
+        "title": "Seller application",
+        "about": "One seller's file: business details, documents, activities and history. Approve, ask for changes or refuse from here.",
+        "good": [
+          "A new seller cannot sell until an admin approves the application.",
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "related": [
+          {
+            "label": "Sellers that need a look",
+            "href": "/sellers/needs-a-look"
+          },
+          {
+            "label": "Sellers without an owner",
+            "href": "/sellers/without-owner"
+          },
+          {
+            "label": "Payout accounts",
+            "href": "/payout-accounts"
+          }
+        ]
+      },
+      "sellers-sellerId-customers": {
+        "title": "Seller customers",
+        "about": "Customers who bought from this seller, follow it or joined through its invite link.",
+        "good": [
+          "A new seller cannot sell until an admin approves the application.",
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "related": [
+          {
+            "label": "Sellers that need a look",
+            "href": "/sellers/needs-a-look"
+          },
+          {
+            "label": "Sellers without an owner",
+            "href": "/sellers/without-owner"
+          },
+          {
+            "label": "Payout accounts",
+            "href": "/payout-accounts"
+          }
+        ]
+      },
+      "sellers-needs-a-look": {
+        "title": "Sellers that need a look",
+        "about": "Sellers whose latest health is Unhealthy, worst score first.",
+        "good": [
+          "Pick a measure to see the sellers it flagged.",
+          "Open a seller to see each measure and its trend."
+        ],
+        "related": [
+          {
+            "label": "Sellers",
+            "href": "/sellers"
+          }
+        ]
+      },
+      "sellers-without-owner": {
+        "title": "Sellers without an owner",
+        "about": "Sellers that have no owner account yet, oldest first. Invite an owner so they can sign in and manage the store.",
+        "good": [],
+        "related": [
+          {
+            "label": "Sellers",
+            "href": "/sellers"
+          }
+        ]
+      },
+      "certificates-certificateId": {
+        "title": "Review a certificate",
+        "about": "One certificate a seller sent: the file, the issuer and the products it covers. Approve it or refuse it with a reason the seller sees.",
+        "good": [
+          "Renewals come first, then the oldest.",
+          "A seller's certificate badge shows on listings only after the certificate is approved here."
+        ],
+        "related": [
+          {
+            "label": "Issuers",
+            "href": "/certificates/issuers"
+          },
+          {
+            "label": "Certificate types",
+            "href": "/certificates/types"
+          }
+        ]
+      },
+      "certificates-issuers-issuerId": {
+        "title": "Issuer",
+        "about": "One issuer's details and the certificate types it can issue.",
+        "good": [],
+        "related": [
+          {
+            "label": "Issuer requests",
+            "href": "/certificates/issuer-requests"
+          }
+        ]
+      },
+      "certificates-issuer-requests-issuerRequestId": {
+        "title": "Issuer request",
+        "about": "One seller's request to add an issuer, with the documents they sent.",
+        "good": [
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "related": [
+          {
+            "label": "Issuers",
+            "href": "/certificates/issuers"
+          }
+        ]
+      },
+      "certificates-types-typeId": {
+        "title": "Certificate type",
+        "about": "One certificate type: its name, the words sellers may use for it, and its review policy.",
+        "good": [
+          "A new type proposed by an admin needs a second admin to approve it."
+        ],
+        "related": [
+          {
+            "label": "Review queue",
+            "href": "/certificates"
+          }
+        ]
+      },
+      "certificates-types-new": {
+        "title": "New certificate type",
+        "about": "Propose a new certificate type. It goes live after another admin approves it.",
+        "good": [
+          "A new type proposed by an admin needs a second admin to approve it."
+        ],
+        "related": [
+          {
+            "label": "Review queue",
+            "href": "/certificates"
+          }
+        ]
+      },
+      "certificates-types-typeId-edit": {
+        "title": "Edit certificate type",
+        "about": "Change a certificate type's name, description or claim words.",
+        "good": [
+          "A new type proposed by an admin needs a second admin to approve it."
+        ],
+        "related": [
+          {
+            "label": "Review queue",
+            "href": "/certificates"
+          }
+        ]
+      },
+      "certificates-types-typeId-policy": {
+        "title": "Review policy",
+        "about": "How certificates of this type are reviewed and how long an approval lasts.",
+        "good": [
+          "A new type proposed by an admin needs a second admin to approve it."
+        ],
+        "related": [
+          {
+            "label": "Review queue",
+            "href": "/certificates"
+          }
+        ]
+      },
+      "review-products-productId-revisions-revisionId": {
+        "title": "Version review",
+        "about": "Compare a product's new version with the live one, then approve it or send it back with a reason.",
+        "good": [
+          "Search by product code, name or store.",
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "related": [
+          {
+            "label": "Products",
+            "href": "/catalog/products"
+          },
+          {
+            "label": "Tag suggestions",
+            "href": "/catalog/tags/suggestions"
+          }
+        ]
+      },
+      "price-holds": {
+        "title": "Held prices",
+        "about": "Price changes held back because they moved more than the allowed amount. Approve or reject each one.",
+        "good": [
+          "Search by the full record ID or Offer ID."
+        ],
+        "related": [
+          {
+            "label": "Catalogue requests",
+            "href": "/review"
+          }
+        ]
+      },
+      "system-requests": {
+        "title": "System requests",
+        "about": "Changes already live on the platform that another admin must review.",
+        "good": [
+          "The change is live now: approve it to keep it, or put the previous value back.",
+          "Which changes need a review is set in Approval rules."
+        ],
+        "related": [
+          {
+            "label": "Approval rules",
+            "href": "/settings/review-policy"
+          }
+        ]
+      },
+      "system-requests-requestId": {
+        "title": "System request",
+        "about": "One live change: what changed, who made it, and the value before. Approve it or put the previous value back.",
+        "good": [
+          "The change is live now: approve it to keep it, or put the previous value back.",
+          "Which changes need a review is set in Approval rules."
+        ],
+        "related": [
+          {
+            "label": "Approval rules",
+            "href": "/settings/review-policy"
+          }
+        ]
+      },
+      "orders": {
+        "title": "Orders",
+        "about": "Every order in this Market. Open one to see its payment, delivery and notes.",
+        "good": [
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "related": [
+          {
+            "label": "Shipments",
+            "href": "/shipments"
+          },
+          {
+            "label": "Refunds",
+            "href": "/refunds"
+          },
+          {
+            "label": "Invoices",
+            "href": "/invoices"
+          }
+        ]
+      },
+      "orders-orderId": {
+        "title": "Order",
+        "about": "One order: what was bought from each seller, the payment, the delivery, refunds and internal notes.",
+        "good": [
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "related": [
+          {
+            "label": "Shipments",
+            "href": "/shipments"
+          },
+          {
+            "label": "Refunds",
+            "href": "/refunds"
+          },
+          {
+            "label": "Invoices",
+            "href": "/invoices"
+          }
+        ]
+      },
+      "orders-orderId-document": {
+        "title": "Order confirmation",
+        "about": "The order confirmation the buyer received, ready to print or save as PDF.",
+        "good": [
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "related": [
+          {
+            "label": "Shipments",
+            "href": "/shipments"
+          },
+          {
+            "label": "Refunds",
+            "href": "/refunds"
+          },
+          {
+            "label": "Invoices",
+            "href": "/invoices"
+          }
+        ]
+      },
+      "shipments": {
+        "title": "Shipments",
+        "about": "One row for each seller in each paid order.",
+        "good": [
+          "Add the Carrier progress column to see what the delivery fleet last reported.",
+          "The platform picks the fleet; sellers never choose one.",
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "related": [
+          {
+            "label": "Orders",
+            "href": "/orders"
+          },
+          {
+            "label": "Delivery fleets",
+            "href": "/settings/fleets"
+          }
+        ]
+      },
+      "refunds": {
+        "title": "Refunds",
+        "about": "Every refund in this Market, and where each one is with Stripe.",
+        "good": [
+          "To refund an order, open the order.",
+          "A refund refused by Stripe needs a person: open it to see why.",
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "related": [
+          {
+            "label": "Orders",
+            "href": "/orders"
+          },
+          {
+            "label": "Seller refund limits",
+            "href": "/settings/refund-limits"
+          },
+          {
+            "label": "Disputes",
+            "href": "/disputes"
+          }
+        ]
+      },
+      "disputes": {
+        "title": "Disputes",
+        "about": "Card disputes (chargebacks) on paid orders. Open a case to decide who bears a lost dispute.",
+        "good": [
+          "An open dispute holds the seller's money for that order until the case closes.",
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "related": [
+          {
+            "label": "Payouts",
+            "href": "/payouts"
+          },
+          {
+            "label": "Refunds",
+            "href": "/refunds"
+          }
+        ]
+      },
+      "disputes-disputeId": {
+        "title": "Dispute",
+        "about": "One dispute: the order, the evidence, the Stripe status and who bears the loss.",
+        "good": [
+          "An open dispute holds the seller's money for that order until the case closes.",
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "related": [
+          {
+            "label": "Payouts",
+            "href": "/payouts"
+          },
+          {
+            "label": "Refunds",
+            "href": "/refunds"
+          }
+        ]
+      },
+      "payouts": {
+        "title": "Payouts",
+        "about": "The money sent to sellers.",
+        "good": [
+          "A seller's first payout waits here for an admin when the Market requires it.",
+          "Amounts are what is transferred to the seller, after any amount kept against what the seller owes.",
+          "Dispute and refund holds end by themselves. Holds an admin placed, and a suspended seller's hold, are released only by an admin.",
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "related": [
+          {
+            "label": "Seller accounts",
+            "href": "/payout-accounts"
+          },
+          {
+            "label": "Disputes",
+            "href": "/disputes"
+          }
+        ]
+      },
+      "payouts-payoutId": {
+        "title": "Payout",
+        "about": "One payout: the orders in it, what was kept back, and its Stripe status.",
+        "good": [
+          "A seller's first payout waits here for an admin when the Market requires it.",
+          "Amounts are what is transferred to the seller, after any amount kept against what the seller owes.",
+          "Dispute and refund holds end by themselves. Holds an admin placed, and a suspended seller's hold, are released only by an admin.",
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "related": [
+          {
+            "label": "Seller accounts",
+            "href": "/payout-accounts"
+          },
+          {
+            "label": "Disputes",
+            "href": "/disputes"
+          }
+        ]
+      },
+      "payout-accounts": {
+        "title": "Seller accounts",
+        "about": "The Stripe payout accounts of the sellers. Read only.",
+        "good": [
+          "Bank details live on Stripe; MondaPac never sees them."
+        ],
+        "related": [
+          {
+            "label": "Payouts",
+            "href": "/payouts"
+          },
+          {
+            "label": "Sellers",
+            "href": "/sellers"
+          }
+        ]
+      },
+      "payout-accounts-sellerId": {
+        "title": "Seller account",
+        "about": "One seller's Stripe account: whether it can receive payouts and what Stripe still needs.",
+        "good": [
+          "Bank details live on Stripe; MondaPac never sees them."
+        ],
+        "related": [
+          {
+            "label": "Payouts",
+            "href": "/payouts"
+          },
+          {
+            "label": "Sellers",
+            "href": "/sellers"
+          }
+        ]
+      },
+      "wallet-credits": {
+        "title": "Issue credit",
+        "about": "Give a customer store credit.",
+        "good": [
+          "Credit above the per-credit or daily limit waits for a second admin in Credit approvals."
+        ],
+        "related": [
+          {
+            "label": "Credit approvals",
+            "href": "/wallet/credit-requests"
+          },
+          {
+            "label": "Customer wallet",
+            "href": "/settings/wallet"
+          }
+        ]
+      },
+      "wallet-credit-requests": {
+        "title": "Credit approvals",
+        "about": "Credit above an admin's limit waits here for a second admin to approve or reject it.",
+        "good": [
+          "You cannot approve credit you asked for yourself.",
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "related": [
+          {
+            "label": "Issue credit",
+            "href": "/wallet/credits"
+          }
+        ]
+      },
+      "catalog-products": {
+        "title": "Products",
+        "about": "Every product in this Market's catalogue. Open one to see its versions, offers and details.",
+        "good": [],
+        "related": [
+          {
+            "label": "Catalogue requests",
+            "href": "/review"
+          },
+          {
+            "label": "Import products",
+            "href": "/catalog/products/import"
+          },
+          {
+            "label": "Categories",
+            "href": "/catalog/categories"
+          }
+        ]
+      },
+      "catalog-products-new": {
+        "title": "Add product",
+        "about": "Add a platform product that sellers can then offer.",
+        "good": [],
+        "related": [
+          {
+            "label": "Catalogue requests",
+            "href": "/review"
+          },
+          {
+            "label": "Import products",
+            "href": "/catalog/products/import"
+          },
+          {
+            "label": "Categories",
+            "href": "/catalog/categories"
+          }
+        ]
+      },
+      "catalog-products-id-edit": {
+        "title": "Edit product",
+        "about": "Change a product's details. Live changes may need a review, as set in Approval rules.",
+        "good": [],
+        "related": [
+          {
+            "label": "Catalogue requests",
+            "href": "/review"
+          },
+          {
+            "label": "Import products",
+            "href": "/catalog/products/import"
+          },
+          {
+            "label": "Categories",
+            "href": "/catalog/categories"
+          }
+        ]
+      },
+      "catalog-products-import": {
+        "title": "Import products",
+        "about": "Add many products to this Market's catalogue from one file.",
+        "good": [
+          "A check shows what each row would do before anything is written."
+        ],
+        "related": [
+          {
+            "label": "Catalogue requests",
+            "href": "/review"
+          },
+          {
+            "label": "Import products",
+            "href": "/catalog/products/import"
+          },
+          {
+            "label": "Categories",
+            "href": "/catalog/categories"
+          }
+        ]
+      },
+      "catalog-categories-import": {
+        "title": "Import categories",
+        "about": "Add categories and change names, descriptions and search text from a CSV or XLSX file.",
+        "good": [
+          "A check shows what each row would do and writes nothing.",
+          "Moving a category to another parent is not done from a file."
+        ],
+        "related": [
+          {
+            "label": "Import categories",
+            "href": "/catalog/categories/import"
+          },
+          {
+            "label": "Attributes",
+            "href": "/catalog/attributes"
+          },
+          {
+            "label": "Business activities",
+            "href": "/catalog/business-activities"
+          }
+        ]
+      },
+      "catalog-business-activities": {
+        "title": "Business activities",
+        "about": "A business activity, such as Grocery or Butcher, decides which categories and platform products a seller can reach.",
+        "good": [
+          "Sellers choose their activities at sign-up."
+        ],
+        "related": [
+          {
+            "label": "Categories",
+            "href": "/catalog/categories"
+          },
+          {
+            "label": "Sellers",
+            "href": "/sellers"
+          }
+        ]
+      },
+      "customers": {
+        "title": "Customers",
+        "about": "Every buyer account in this Market. Open a customer to see orders, wallet, sign-ins and consent.",
+        "good": [],
+        "related": [
+          {
+            "label": "Customer groups",
+            "href": "/customers/groups"
+          },
+          {
+            "label": "Account deletion requests",
+            "href": "/customers/deletion-requests"
+          }
+        ]
+      },
+      "customers-groups": {
+        "title": "Customer groups",
+        "about": "Manual groups of customers, for promotions and follow-up.",
+        "good": [
+          "A group is a label for admins: do not put personal details in its name or description."
+        ],
+        "related": [
+          {
+            "label": "Customers",
+            "href": "/customers"
+          },
+          {
+            "label": "Promotion rules",
+            "href": "/settings/promotions"
+          }
+        ]
+      },
+      "customers-groups-groupId": {
+        "title": "Customer group",
+        "about": "One group and its members. Add or remove customers here.",
+        "good": [
+          "A group is a label for admins: do not put personal details in its name or description."
+        ],
+        "related": [
+          {
+            "label": "Customers",
+            "href": "/customers"
+          },
+          {
+            "label": "Promotion rules",
+            "href": "/settings/promotions"
+          }
+        ]
+      },
+      "customers-attributions": {
+        "title": "Suspicious attributions",
+        "about": "Customers who joined through a seller's invite link. It opens on flagged and rejected ones; reject or restore each link.",
+        "good": [],
+        "related": [
+          {
+            "label": "Customers",
+            "href": "/customers"
+          }
+        ]
+      },
+      "customers-deletion-requests": {
+        "title": "Account deletion requests",
+        "about": "Requests to delete a buyer account.",
+        "good": [
+          "A waiting request can be cancelled until the deletion starts.",
+          "How long a request waits is set in Account deletion settings."
+        ],
+        "related": [
+          {
+            "label": "Account deletion settings",
+            "href": "/settings/account-deletion"
+          }
+        ]
+      },
+      "reviews-moderation": {
+        "title": "Reviews",
+        "about": "Reviews waiting for a person, reviews a shop has reported, and reviews already hidden or removed.",
+        "good": [
+          "A review is moderated as a whole: its text is never edited.",
+          "A true negative review is never hidden."
+        ],
+        "related": [
+          {
+            "label": "Customers",
+            "href": "/customers"
+          }
+        ]
+      },
+      "content": {
+        "title": "Pages",
+        "about": "Pages on the buyer site, for this Market.",
+        "good": [],
+        "related": [
+          {
+            "label": "Slides",
+            "href": "/content/slides"
+          },
+          {
+            "label": "Menus",
+            "href": "/content/navigation"
+          },
+          {
+            "label": "Blog",
+            "href": "/content/blog"
+          }
+        ]
+      },
+      "content-pages-new": {
+        "title": "New page",
+        "about": "Create a page for the buyer site. It starts as a draft.",
+        "good": [],
+        "related": [
+          {
+            "label": "Slides",
+            "href": "/content/slides"
+          },
+          {
+            "label": "Menus",
+            "href": "/content/navigation"
+          },
+          {
+            "label": "Blog",
+            "href": "/content/blog"
+          }
+        ]
+      },
+      "content-pages-page": {
+        "title": "Page editor",
+        "about": "Edit a page's content. Publish when it is ready, or schedule it.",
+        "good": [],
+        "related": [
+          {
+            "label": "Slides",
+            "href": "/content/slides"
+          },
+          {
+            "label": "Menus",
+            "href": "/content/navigation"
+          },
+          {
+            "label": "Blog",
+            "href": "/content/blog"
+          }
+        ]
+      },
+      "content-pages-page-settings": {
+        "title": "Page settings",
+        "about": "A page's address, search text and who can see it.",
+        "good": [],
+        "related": [
+          {
+            "label": "Slides",
+            "href": "/content/slides"
+          },
+          {
+            "label": "Menus",
+            "href": "/content/navigation"
+          },
+          {
+            "label": "Blog",
+            "href": "/content/blog"
+          }
+        ]
+      },
+      "content-pages-page-versions": {
+        "title": "Page versions",
+        "about": "Earlier versions of a page. Open one to compare or bring it back.",
+        "good": [],
+        "related": [
+          {
+            "label": "Slides",
+            "href": "/content/slides"
+          },
+          {
+            "label": "Menus",
+            "href": "/content/navigation"
+          },
+          {
+            "label": "Blog",
+            "href": "/content/blog"
+          }
+        ]
+      },
+      "content-slides": {
+        "title": "Slides",
+        "about": "Slides on the buyer site, for this Market.",
+        "good": [
+          "Live and scheduled slides come first, then waiting, drafts, paused, ended and archived."
+        ],
+        "related": [
+          {
+            "label": "Order by position",
+            "href": "/content/slides/order"
+          },
+          {
+            "label": "Pages",
+            "href": "/content"
+          }
+        ]
+      },
+      "content-slides-new": {
+        "title": "New slide",
+        "about": "Create a slide. Choose where it shows and when.",
+        "good": [
+          "Live and scheduled slides come first, then waiting, drafts, paused, ended and archived."
+        ],
+        "related": [
+          {
+            "label": "Order by position",
+            "href": "/content/slides/order"
+          },
+          {
+            "label": "Pages",
+            "href": "/content"
+          }
+        ]
+      },
+      "content-slides-slideId": {
+        "title": "Slide",
+        "about": "Edit one slide's image, text and link.",
+        "good": [
+          "Live and scheduled slides come first, then waiting, drafts, paused, ended and archived."
+        ],
+        "related": [
+          {
+            "label": "Order by position",
+            "href": "/content/slides/order"
+          },
+          {
+            "label": "Pages",
+            "href": "/content"
+          }
+        ]
+      },
+      "content-slides-slideId-placement": {
+        "title": "Slide placement",
+        "about": "Where on the buyer site this slide shows, and for whom.",
+        "good": [
+          "Live and scheduled slides come first, then waiting, drafts, paused, ended and archived."
+        ],
+        "related": [
+          {
+            "label": "Order by position",
+            "href": "/content/slides/order"
+          },
+          {
+            "label": "Pages",
+            "href": "/content"
+          }
+        ]
+      },
+      "content-slides-slideId-versions": {
+        "title": "Slide versions",
+        "about": "Earlier versions of this slide.",
+        "good": [
+          "Live and scheduled slides come first, then waiting, drafts, paused, ended and archived."
+        ],
+        "related": [
+          {
+            "label": "Order by position",
+            "href": "/content/slides/order"
+          },
+          {
+            "label": "Pages",
+            "href": "/content"
+          }
+        ]
+      },
+      "content-slides-order": {
+        "title": "Order by position",
+        "about": "Drag slides to set the order they show in each position.",
+        "good": [
+          "Live and scheduled slides come first, then waiting, drafts, paused, ended and archived."
+        ],
+        "related": [
+          {
+            "label": "Order by position",
+            "href": "/content/slides/order"
+          },
+          {
+            "label": "Pages",
+            "href": "/content"
+          }
+        ]
+      },
+      "content-navigation": {
+        "title": "Menus",
+        "about": "The menus of the buyer site: header, footer and mobile menu.",
+        "good": [],
+        "related": [
+          {
+            "label": "Pages",
+            "href": "/content"
+          }
+        ]
+      },
+      "content-blog": {
+        "title": "Blog",
+        "about": "Posts on the buyer site for this Market.",
+        "good": [
+          "A published post stays live while a new version is in review."
+        ],
+        "related": [
+          {
+            "label": "Blog categories and tags",
+            "href": "/content/blog/taxonomy"
+          }
+        ]
+      },
+      "content-blog-new": {
+        "title": "New post",
+        "about": "Choose the type and give the post a title. The draft opens in the editor.",
+        "good": [
+          "A published post stays live while a new version is in review."
+        ],
+        "related": [
+          {
+            "label": "Blog categories and tags",
+            "href": "/content/blog/taxonomy"
+          }
+        ]
+      },
+      "content-blog-postId": {
+        "title": "Edit post",
+        "about": "Write and edit a post. Send it for review when it is ready.",
+        "good": [
+          "A published post stays live while a new version is in review."
+        ],
+        "related": [
+          {
+            "label": "Blog categories and tags",
+            "href": "/content/blog/taxonomy"
+          }
+        ]
+      },
+      "content-blog-postId-review": {
+        "title": "Review post",
+        "about": "Read a post sent for review, then publish it or ask for changes.",
+        "good": [
+          "A published post stays live while a new version is in review."
+        ],
+        "related": [
+          {
+            "label": "Blog categories and tags",
+            "href": "/content/blog/taxonomy"
+          }
+        ]
+      },
+      "content-blog-taxonomy": {
+        "title": "Blog categories and tags",
+        "about": "The vocabulary editors choose from.",
+        "good": [
+          "A category or tag that a post uses cannot be deleted."
+        ],
+        "related": [
+          {
+            "label": "Blog categories and tags",
+            "href": "/content/blog/taxonomy"
+          }
+        ]
+      },
+      "security-alerts-alertId": {
+        "title": "Security alert",
+        "about": "One alert: the events behind it, the response so far, and its state. Acknowledge it when someone is on it; resolve it when it is handled.",
+        "good": [
+          "The list updates itself every 30 seconds.",
+          "IP addresses are masked in the list; open an alert to see one in full.",
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "related": [
+          {
+            "label": "On call",
+            "href": "/security/on-call"
+          },
+          {
+            "label": "Signed-in devices",
+            "href": "/account/sessions"
+          }
+        ]
+      },
+      "settings": {
+        "title": "Settings",
+        "about": "Every setting of this Market, grouped by area. Search to find one quickly.",
+        "good": [],
+        "related": []
+      },
+      "settings-support": {
+        "title": "Support contact",
+        "about": "The address customers and sellers are told to write to when they need help.",
+        "good": [
+          "A change applies from now on."
+        ],
+        "related": []
+      },
+      "settings-service-areas": {
+        "title": "Service areas",
+        "about": "The names buyers and sellers see for each service area.",
+        "good": [
+          "The code, postcodes and switches come from configuration and do not change here."
+        ],
+        "related": []
+      },
+      "settings-lists": {
+        "title": "List paging",
+        "about": "How lists move between pages, in the admin and seller panels.",
+        "good": [
+          "Page numbers work up to the first 10,000 rows; Previous and next works for any length."
+        ],
+        "related": []
+      },
+      "settings-delivery": {
+        "title": "Delivery rules",
+        "about": "Which delivery methods the Market offers and when same-day orders close.",
+        "good": [
+          "Also sets how far ahead buyers can schedule, and what the platform adds on top of the fleet quote.",
+          "Which methods each seller supports is set on the seller page."
+        ],
+        "related": [
+          {
+            "label": "Delivery fleets",
+            "href": "/settings/fleets"
+          }
+        ]
+      },
+      "settings-fleets": {
+        "title": "Delivery fleets",
+        "about": "How the platform picks a fleet for every seller order, and how reliable each fleet is.",
+        "good": [
+          "Sellers never choose a method or a fleet."
+        ],
+        "related": [
+          {
+            "label": "Delivery rules",
+            "href": "/settings/delivery"
+          },
+          {
+            "label": "Shipments",
+            "href": "/shipments"
+          }
+        ]
+      },
+      "settings-tax": {
+        "title": "Tax",
+        "about": "How the tax of an order line is worked out.",
+        "good": [
+          "A new strategy applies to new orders only; tax already frozen on an order never changes."
+        ],
+        "related": [
+          {
+            "label": "Invoices",
+            "href": "/invoices"
+          }
+        ]
+      },
+      "settings-wallet": {
+        "title": "Customer wallet",
+        "about": "Controls store credit for every customer in this Market.",
+        "good": [],
+        "related": [
+          {
+            "label": "Issue credit",
+            "href": "/wallet/credits"
+          },
+          {
+            "label": "Credit approvals",
+            "href": "/wallet/credit-requests"
+          }
+        ]
+      },
+      "settings-refund-limits": {
+        "title": "Seller refund limits",
+        "about": "How many refunds, and how much money, a seller may refund in any 24 hours. Above the limit the refund is refused.",
+        "good": [],
+        "related": [
+          {
+            "label": "Refunds",
+            "href": "/refunds"
+          }
+        ]
+      },
+      "settings-promotions": {
+        "title": "Promotion rules",
+        "about": "Whether discounts reach carts in this Market, the first-order discount and the free-delivery threshold per zone.",
+        "good": [],
+        "related": [
+          {
+            "label": "Customer groups",
+            "href": "/customers/groups"
+          }
+        ]
+      },
+      "settings-review-policy": {
+        "title": "Approval rules",
+        "about": "Which kinds of changes need another admin's review.",
+        "good": [
+          "Changes still go live at once; a reviewer approves them or puts the previous value back."
+        ],
+        "related": [
+          {
+            "label": "System requests",
+            "href": "/system-requests"
+          }
+        ]
+      },
+      "settings-admins": {
+        "title": "Admins",
+        "about": "The people who can sign in to this admin panel, and their roles.",
+        "good": [],
+        "related": [
+          {
+            "label": "Roles & permissions",
+            "href": "/settings/roles"
+          }
+        ]
+      },
+      "settings-roles": {
+        "title": "Roles & permissions",
+        "about": "Roles decide what each admin can see and do.",
+        "good": [],
+        "related": [
+          {
+            "label": "Admins",
+            "href": "/settings/admins"
+          }
+        ]
+      },
+      "settings-roles-new": {
+        "title": "New role",
+        "about": "Create a role and choose its permissions.",
+        "good": [],
+        "related": [
+          {
+            "label": "Admins",
+            "href": "/settings/admins"
+          }
+        ]
+      },
+      "settings-roles-roleId": {
+        "title": "Role",
+        "about": "One role's permissions and the admins who have it.",
+        "good": [],
+        "related": [
+          {
+            "label": "Admins",
+            "href": "/settings/admins"
+          }
+        ]
+      },
+      "settings-ai": {
+        "title": "Write with AI",
+        "about": "Turn AI features on or off for this Market and choose the model tier.",
+        "good": [
+          "Changes apply at once."
+        ],
+        "related": []
+      },
+      "settings-account-deletion": {
+        "title": "Account deletion",
+        "about": "Let buyers delete their own account, and set how long a request waits before the account is erased.",
+        "good": [],
+        "related": [
+          {
+            "label": "Account deletion requests",
+            "href": "/customers/deletion-requests"
+          }
+        ]
+      },
+      "settings-ship-to-retention": {
+        "title": "Order address retention",
+        "about": "Permanently deletes the delivery address, phone and buyer note of orders completed at least the chosen number of months ago.",
+        "good": [
+          "Deleted addresses cannot be brought back."
+        ],
+        "related": []
+      },
+      "account-profile": {
+        "title": "My profile",
+        "about": "Your name, time zone and language in this panel.",
+        "good": [
+          "Your time zone decides how dates and times show in your lists."
+        ],
+        "related": []
+      },
+      "account-security": {
+        "title": "Security",
+        "about": "How you sign in to the admin panel. This page is only about your own account.",
+        "good": [],
+        "related": []
+      },
+      "account-sessions": {
+        "title": "Signed-in devices",
+        "about": "The browsers and devices signed in to your account now.",
+        "good": [
+          "If you don't recognise one, sign out of all other devices and change your password."
+        ],
+        "related": []
+      }
+    },
+    "tabbed": {
+      "t-certificates": {
+        "page": "Certification",
+        "about": "Everything about the certificates sellers show on their products: the certificates to review, who issues them and which kinds we accept.",
+        "good": [
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "tabs": [
+          {
+            "label": "Review queue",
+            "text": "Seller certificates waiting for a decision. Open one to review it and decide.",
+            "points": [
+              "Renewals come first, then the oldest.",
+              "A seller's certificate badge shows on listings only after the certificate is approved here."
+            ],
+            "related": [
+              {
+                "label": "Issuers",
+                "href": "/certificates/issuers"
+              },
+              {
+                "label": "Certificate types",
+                "href": "/certificates/types"
+              }
+            ]
+          },
+          {
+            "label": "Issuers",
+            "text": "The bodies that issue certificates, such as a halal authority. Sellers choose an issuer from this list.",
+            "points": [],
+            "related": [
+              {
+                "label": "Issuer requests",
+                "href": "/certificates/issuer-requests"
+              }
+            ]
+          },
+          {
+            "label": "Issuer requests",
+            "text": "Sellers ask to add an issuer that is not in the list yet. Approve to add it to Issuers, or refuse with a reason the seller sees.",
+            "points": [],
+            "related": [
+              {
+                "label": "Issuers",
+                "href": "/certificates/issuers"
+              }
+            ]
+          },
+          {
+            "label": "Types",
+            "text": "The kinds of certificate the platform accepts, such as Halal or Organic, and the rules for each.",
+            "points": [
+              "A new type proposed by an admin needs a second admin to approve it."
+            ],
+            "related": [
+              {
+                "label": "Review queue",
+                "href": "/certificates"
+              }
+            ]
+          }
+        ]
+      },
+      "t-security": {
+        "page": "Security",
+        "about": "Alerts from the security rules, and who responds to them.",
+        "good": [
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "tabs": [
+          {
+            "label": "Alerts",
+            "text": "Alerts from the security rules about sign-ins, money movements and admin actions.",
+            "points": [
+              "The list updates itself every 30 seconds.",
+              "IP addresses are masked in the list; open an alert to see one in full."
+            ],
+            "related": [
+              {
+                "label": "On call",
+                "href": "/security/on-call"
+              },
+              {
+                "label": "Signed-in devices",
+                "href": "/account/sessions"
+              }
+            ]
+          },
+          {
+            "label": "On call",
+            "text": "Who responds to security alerts, and when.",
+            "points": [],
+            "related": [
+              {
+                "label": "Alerts",
+                "href": "/security/alerts"
+              }
+            ]
+          }
+        ]
+      },
+      "t-settings-assistant": {
+        "page": "Shopping assistant",
+        "about": "The shopping assistant buyers chat with: its settings and what shoppers ask it.",
+        "good": [],
+        "tabs": [
+          {
+            "label": "Settings",
+            "text": "Whether the shopping assistant is on, who sees it, what it answers and what it may spend.",
+            "points": [],
+            "related": [
+              {
+                "label": "Assistant insights",
+                "href": "/settings/assistant/insights"
+              }
+            ]
+          },
+          {
+            "label": "Insights",
+            "text": "What shoppers asked the assistant, and the questions it could not answer.",
+            "points": [],
+            "related": [
+              {
+                "label": "Assistant insights",
+                "href": "/settings/assistant/insights"
+              }
+            ]
+          }
+        ]
+      },
+      "t-catalog-tags": {
+        "page": "Tags",
+        "about": "The tags shoppers use to find products, and the tags sellers ask for.",
+        "good": [],
+        "tabs": [
+          {
+            "label": "Tags",
+            "text": "The tags shoppers can use to find products, such as Gluten free.",
+            "points": [],
+            "related": [
+              {
+                "label": "Tag suggestions",
+                "href": "/catalog/tags/suggestions"
+              }
+            ]
+          },
+          {
+            "label": "Suggestions",
+            "text": "Tags sellers asked for. Add one to the list, match it to an existing tag, or refuse it.",
+            "points": [
+              "The seller is emailed the answer."
+            ],
+            "related": [
+              {
+                "label": "Tags",
+                "href": "/catalog/tags"
+              }
+            ]
+          }
+        ]
+      },
+      "t-review": {
+        "page": "Catalogue requests",
+        "about": "Changes sellers sent that wait for a review before buyers see them.",
+        "good": [
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "tabs": [
+          {
+            "label": "Product revisions",
+            "text": "New or changed products. Compare the new version with the live one, then approve it or send it back.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Offers",
+            "text": "Offers waiting for their first publication, oldest first.",
+            "points": [],
+            "related": []
+          }
+        ]
+      },
+      "t-catalog-categories": {
+        "page": "Categories",
+        "about": "How products are organised in this Market.",
+        "good": [],
+        "tabs": [
+          {
+            "label": "Category tree",
+            "text": "The category tree. Products and offers sit in its categories.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Category proposals",
+            "text": "Shop shelves sellers suggested. Approve one to add it to that seller's shop.",
+            "points": [],
+            "related": []
+          }
+        ]
+      },
+      "t-catalog-attributes": {
+        "page": "Attributes",
+        "about": "The fields products carry, such as size or flavour, and how they are grouped.",
+        "good": [],
+        "tabs": [
+          {
+            "label": "Attributes",
+            "text": "Every attribute and its values.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Feature sets",
+            "text": "Groups of attributes for a kind of product, linked to categories.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Brands",
+            "text": "The brand field shared by all Markets.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Waiting for you",
+            "text": "Values sellers asked for on a product form. Approving adds the value for every seller.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Missing details",
+            "text": "Live products that lack a required attribute. Email their sellers from here.",
+            "points": [],
+            "related": []
+          }
+        ]
+      },
+      "t-catalog-variants": {
+        "page": "Variants",
+        "about": "Sizes, flavours and colours across the Market.",
+        "good": [],
+        "tabs": [
+          {
+            "label": "Variant types",
+            "text": "How buyers choose each variant type.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Variants",
+            "text": "Every variant of the live products, with checks such as Missing GTIN.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Waiting for you",
+            "text": "Sellers asking to add a variant, such as a size, to a product. Approve it or map it to an existing variant.",
+            "points": [],
+            "related": []
+          }
+        ]
+      },
+      "t-catalog-brands": {
+        "page": "Brands",
+        "about": "Brands are shared by all Markets. Products link to a brand instead of typing its name.",
+        "good": [],
+        "tabs": [
+          {
+            "label": "Brands",
+            "text": "Every brand: active, proposed and archived.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Duplicates",
+            "text": "Brand values that look like one brand. Merge them so products point to one.",
+            "points": [],
+            "related": []
+          }
+        ]
+      },
+      "t-invoices": {
+        "page": "Invoices",
+        "about": "Order confirmations and credit notes issued in this Market. These are not tax invoices.",
+        "good": [
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "tabs": [
+          {
+            "label": "Order confirmations",
+            "text": "The confirmation each buyer received for a paid order.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Credit notes",
+            "text": "One is issued for each completed refund.",
+            "points": [],
+            "related": []
+          }
+        ]
+      },
+      "t-customers-accountId": {
+        "page": "Customer",
+        "about": "One customer: profile, orders, money, sign-ins and reviews.",
+        "good": [
+          "Every personal detail you reveal is recorded.",
+          "Dates and times are in your time zone ({zone}). Change it in My profile."
+        ],
+        "tabs": [
+          {
+            "label": "Overview",
+            "text": "The customer's profile and a summary of recent activity.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Orders",
+            "text": "Every order this customer placed.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Money",
+            "text": "Payments, refunds, disputes and the wallet balance of this customer.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Account & security",
+            "text": "Sign-ins, devices and consent history.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Shopping",
+            "text": "Cart, saved items, reminders and what the customer did while shopping.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Reviews",
+            "text": "Reviews this customer wrote.",
+            "points": [],
+            "related": []
+          }
+        ]
+      },
+      "t-catalog-categories-id": {
+        "page": "Category",
+        "about": "One category of this Market.",
+        "good": [],
+        "tabs": [
+          {
+            "label": "Details",
+            "text": "Name, description and place in the tree.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Attribute links",
+            "text": "The attributes products in this category carry.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Products",
+            "text": "Products in this category.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "History",
+            "text": "Who changed what, and when.",
+            "points": [],
+            "related": []
+          }
+        ]
+      },
+      "t-catalog-attributes-attributeId": {
+        "page": "Attribute",
+        "about": "One attribute and where it is used.",
+        "good": [],
+        "tabs": [
+          {
+            "label": "Details",
+            "text": "Name, type and rules.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Values",
+            "text": "The values sellers can choose.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "Used in",
+            "text": "Feature sets and categories that use it.",
+            "points": [],
+            "related": []
+          },
+          {
+            "label": "History",
+            "text": "Who changed what, and when.",
+            "points": [],
+            "related": []
+          }
+        ]
+      }
     }
   }
 }

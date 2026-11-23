@@ -1,4 +1,4 @@
-import { LoadError, Tabs } from '@mondapac/ui';
+import { LoadError, Tabs, PageHeader } from '@mondapac/ui';
 import { headers } from 'next/headers';
 import { getTranslations } from 'next-intl/server';
 import { REVIEW_PERMISSION, SUGGESTIONS_PATH } from '../../../../src/tags/suggestion-types.ts';
@@ -30,7 +30,7 @@ export default async function TagsPage() {
   const { permissionKeys, csrfToken } = gate.session;
   return (
     <AdminShell session={gate.session} activeId="tags" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       {permissionKeys.includes(READ_PERMISSION) && permissionKeys.includes(REVIEW_PERMISSION) ? (
         <div className="mb-4">
           <Tabs

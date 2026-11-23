@@ -148,7 +148,10 @@ describe('Certificate queue: page numbers', () => {
       direction: 'asc',
     });
     expect(urls()[0]!.startsWith(`${LIST}?`)).toBe(true);
-    expect(screen.getByText('Times are shown in Australia/Brisbane.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
     expect(screen.getByText('Sorted by Review order: Renewals first, then oldest')).toBeTruthy();
     expect(screen.getByText('1-1 of 143')).toBeTruthy();
     expect(screen.getByText('Halal')).toBeTruthy();
@@ -221,7 +224,10 @@ describe('Certificate queue: second fixture ZZ', () => {
     mount({ marketId: 'ZZ', zone: 'Pacific/Auckland', paging: 'prev-next' });
     await screen.findByText(STORE);
     expect(paramsOf(urls()[0]!)).toMatchObject({ paging: 'prev-next', page: '1' });
-    expect(screen.getByText('Times are shown in Pacific/Auckland.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
     expect(screen.queryByText(/ of /)).toBeNull();
     expect(screen.getByRole('button', { name: 'Next' })).toHaveProperty('disabled', false);
   });
@@ -231,7 +237,10 @@ describe('Certificate queue: second fixture ZZ', () => {
     mount({ marketId: 'ZZ', zone: 'Pacific/Auckland' });
     await screen.findByText(STORE);
     expect(screen.getByText('1-1 of 60')).toBeTruthy();
-    expect(screen.getByText('Times are shown in Pacific/Auckland.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
   });
 });
 

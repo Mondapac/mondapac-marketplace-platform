@@ -46,6 +46,7 @@ import { useAttributeCall } from './use-attribute-call.ts';
 import {
   API_ATTRIBUTES,
   CHOICE_TYPES,
+  ATTRIBUTE_TAB_HELP,
   DETAIL_TABS,
   directionOf,
   languageName,
@@ -399,7 +400,11 @@ export function AttributeDetailPanel({
             <>
               <Tabs
                 label={t('tabs')}
-                items={DETAIL_TABS.map((id) => ({ id, label: t(`tab.${id}`) }))}
+                items={DETAIL_TABS.map((id) => ({
+                  id,
+                  label: t(`tab.${id}`),
+                  help: ATTRIBUTE_TAB_HELP[id],
+                }))}
                 activeId={tab}
                 onSelect={(id) => setTab(id as DetailTab)}
               />

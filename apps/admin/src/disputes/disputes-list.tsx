@@ -423,8 +423,6 @@ export function DisputesList({
   return (
     <SuperList
       heading={{
-        info: tp('intro'),
-        note: t('zone-note', { zone }),
         actions: (
           <DisputesBulk
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}

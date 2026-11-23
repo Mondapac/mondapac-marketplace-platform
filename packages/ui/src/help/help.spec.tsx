@@ -4,7 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it } from 'vitest';
 import { HelpButton } from './help-button.tsx';
-import { HelpProvider } from './help-context.tsx';
+import { HelpProvider, useHelp } from './help-context.tsx';
+import { Tabs } from '../shell/tabs.tsx';
 import { HelpPanel, type HelpContent } from './help-panel.tsx';
 import { PageHeader } from './page-header.tsx';
 import { AccountMenu } from '../shell/account-menu.tsx';
@@ -219,5 +220,38 @@ describe('Account menu zone line', () => {
     render(<AccountMenu {...props} />);
     await user.click(screen.getByRole('button', { name: 'Account menu' }));
     expect(screen.queryByText(/Times are in/u)).toBeNull();
+  });
+});
+
+describe('Tabs that name their Help part', () => {
+  it('tells the panel which tab is open', () => {
+    function Page({ active }: { readonly active: string }) {
+      const { tab } = useHelp();
+      return (
+        <>
+          <Tabs
+            label="Sections"
+            activeId={active}
+            items={[
+              { id: 'a', label: 'Brands (12)', help: 'Brands' },
+              { id: 'b', label: 'Duplicates (3)', help: 'Duplicates' },
+            ]}
+          />
+          <p data-testid="open">{tab ?? 'none'}</p>
+        </>
+      );
+    }
+    const view = render(
+      <HelpProvider>
+        <Page active="b" />
+      </HelpProvider>,
+    );
+    expect(screen.getByTestId('open').textContent).toBe('Duplicates');
+    view.rerender(
+      <HelpProvider>
+        <Page active="a" />
+      </HelpProvider>,
+    );
+    expect(screen.getByTestId('open').textContent).toBe('Brands');
   });
 });

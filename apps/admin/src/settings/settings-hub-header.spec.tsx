@@ -34,7 +34,7 @@ describe('SettingsHubHeader', () => {
         goShortcuts={adminGoShortcuts(entries, text)}
         labels={panelToolsLabels(text)}
       >
-        <SettingsHubHeader title="Settings" description={text('settings.hub.description')} />
+        <SettingsHubHeader title="Settings" />
       </PanelTools>,
     );
   }

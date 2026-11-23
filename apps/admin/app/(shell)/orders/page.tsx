@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { OrdersList } from '../../../src/orders/orders-list.tsx';
@@ -29,7 +29,7 @@ export default async function OrdersPage() {
   const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
   return (
     <AdminShell session={gate.session} activeId="orders" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       {gate.session.permissionKeys.includes(VIEW_PERMISSION) ? (
         <OrdersList
           paging={paging}

@@ -139,7 +139,10 @@ describe('Issuer requests list: page numbers', () => {
       'certification/admin/issuer-requests/list?sort=submitted&direction=asc&paging=pages&page=1&pageSize=25',
     );
     expect(screen.getByText('12 requests are open, oldest first.')).toBeTruthy();
-    expect(screen.getByText('Times and days are in Australia/Brisbane.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
     expect(screen.getByText('Sorted by Submitted: Oldest first')).toBeTruthy();
     expect(screen.getByText('1 to 1 of 143')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'All (12)' }).getAttribute('aria-pressed')).toBe(
@@ -269,7 +272,10 @@ describe('Issuer requests list: second fixture ZZ', () => {
     mount({ marketId: 'ZZ', zone: 'Pacific/Auckland', paging: 'prev-next' });
     await screen.findByText(STORE);
     expect(paramsOf(urls()[0]!)).toMatchObject({ paging: 'prev-next', page: '1' });
-    expect(screen.getByText('Times and days are in Pacific/Auckland.')).toBeTruthy();
+    // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
+    expect(
+      screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
+    ).toBeNull();
     expect(screen.queryByText(/ of /)).toBeNull();
     expect(screen.getByRole('button', { name: 'Next' })).toHaveProperty('disabled', false);
   });

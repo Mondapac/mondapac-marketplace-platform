@@ -11,6 +11,7 @@ import { CategoryToolbar } from './category-toolbar.tsx';
 import { directionOf, indexOf } from './tree-model.ts';
 import {
   API_CATEGORIES,
+  CATEGORY_TAB_HELP,
   DETAIL_TABS,
   type CategoryStatus,
   type DetailBody,
@@ -133,7 +134,11 @@ export function CategoryDetails({
       ) : null}
       <Tabs
         label={t('details.tabs')}
-        items={DETAIL_TABS.map((value) => ({ id: value, label: t(`details.tab.${value}`) }))}
+        items={DETAIL_TABS.map((value) => ({
+          id: value,
+          label: t(`details.tab.${value}`),
+          help: CATEGORY_TAB_HELP[value],
+        }))}
         activeId={tab}
         onSelect={(value) => setTab(value as DetailTab)}
       />

@@ -163,6 +163,14 @@ export interface DetailBody {
 export const DETAIL_TABS = ['details', 'attribute-links', 'products', 'history'] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
 
+/** The tabs' names in the Help text. */
+export const CATEGORY_TAB_HELP: Readonly<Record<DetailTab, string>> = {
+  details: 'Details',
+  'attribute-links': 'Attribute links',
+  products: 'Products',
+  history: 'History',
+};
+
 export interface ImpactBody {
   readonly products: number;
   readonly directProducts: number;

@@ -401,8 +401,8 @@ export function SectionList<R>(props: SectionListProps<R>) {
     <Card title={t('title')}>
       <SuperList
         heading={{
-          subtitle: t('subtitle', { zone }),
-          ...(aside_ === null ? {} : { note: aside_ }),
+          subtitle:
+            aside_ === null ? t('subtitle', { zone }) : `${t('subtitle', { zone })} ${aside_}`,
           actions: keys.has(EXPORT_PERMISSION) ? (
             <Button
               variant="secondary"

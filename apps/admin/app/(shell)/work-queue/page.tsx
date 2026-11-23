@@ -1,4 +1,4 @@
-import { LoadError, workQueueRows } from '@mondapac/ui';
+import { LoadError, workQueueRows, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
@@ -62,14 +62,14 @@ export default async function WorkQueuePage({
   if (answer.kind === 'forbidden' || (answer.kind === 'ok' && !known)) {
     body = (
       <div className="flex flex-col items-start gap-3 rounded-lg border border-line p-6">
-        <h1 className="text-xl font-semibold">{t('work-queue.page.no-access.title')}</h1>
+        <PageHeader title={t('work-queue.page.no-access.title')} />
         <p className="text-fg-muted">{t('work-queue.page.no-access.body')}</p>
       </div>
     );
   } else if (answer.kind !== 'ok') {
     body = (
       <>
-        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} className="mb-4" />
         <LoadError className="" message={t('work-queue.page.error')} retryLabel={t('load.retry')} />
       </>
     );
@@ -77,7 +77,7 @@ export default async function WorkQueuePage({
     const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
     body = (
       <>
-        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} className="mb-4" />
         <WorkQueueList
           answer={answer.body}
           initialView={view}

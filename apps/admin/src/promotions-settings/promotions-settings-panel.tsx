@@ -346,7 +346,6 @@ export function PromotionsSettingsPanel({
   return (
     <SettingsPage
       title={t(`${P}.title`)}
-      description={t(`${P}.intro`)}
       lastChanged={lastChanged}
       banner={
         banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>

@@ -231,6 +231,14 @@ export type Tab = (typeof TABS)[number];
 export const DETAIL_TABS = ['details', 'values', 'used-in', 'history'] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number];
 
+/** The tabs' names in the Help text. */
+export const ATTRIBUTE_TAB_HELP: Readonly<Record<DetailTab, string>> = {
+  details: 'Details',
+  values: 'Values',
+  'used-in': 'Used in',
+  history: 'History',
+};
+
 /**
  * The English name of a locale's language ("Persian"), or the tag itself. The region shows only
  * when another of the Market's locales has the same language ("English (Australia)" next to

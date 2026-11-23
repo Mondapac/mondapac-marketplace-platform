@@ -1,4 +1,4 @@
-import { Banner, Card } from '@mondapac/ui';
+import { Banner, Card, PageHeader } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { formatInstant } from '../shared/format.ts';
 import { known } from '../sellers/format.ts';
@@ -27,7 +27,7 @@ export function AccountDetail({ account }: { readonly account: ConnectedAccountD
         {t('detail.back')}
       </a>
       <div>
-        <h1 className="text-2xl font-semibold break-words">{account.sellerName ?? t('unnamed')}</h1>
+        <PageHeader title={account.sellerName ?? t('unnamed')} />
         <p className="mt-1 text-sm text-fg-muted wrap-anywhere">{account.sellerId}</p>
       </div>
       <Card title={t('detail.title')}>

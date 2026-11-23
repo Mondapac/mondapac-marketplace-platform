@@ -65,16 +65,15 @@ export function AttributesView({
   }, [tab, selected]);
 
   const items = [
-    { id: 'attributes', label: t('tab.attributes') },
-    { id: 'feature-sets', label: t('tab.feature-sets') },
+    { id: 'attributes', label: t('tab.attributes'), help: 'Attributes' },
+    { id: 'feature-sets', label: t('tab.feature-sets'), help: 'Feature sets' },
     ...(canSeeBrands ? [{ id: 'brands', label: t('tab.brands'), href: BRANDS_PATH }] : []),
-    { id: 'waiting', label: t('tab.waiting') },
-    { id: 'missing-details', label: t('tab.missing-details') },
+    { id: 'waiting', label: t('tab.waiting'), help: 'Waiting for you' },
+    { id: 'missing-details', label: t('tab.missing-details'), help: 'Missing details' },
   ];
 
   return (
     <div className="mt-1 flex flex-col gap-4">
-      <p className="max-w-prose text-fg-muted">{t('intro')}</p>
       <Tabs
         label={t('tabs')}
         items={items}

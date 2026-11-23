@@ -89,9 +89,10 @@ export function BrandsView({
       <Tabs
         label={t('tabs')}
         items={[
-          { id: 'brands', label: t('tab.brands') },
+          { id: 'brands', label: t('tab.brands'), help: 'Brands' },
           {
             id: 'duplicates',
+            help: 'Duplicates',
             label: `${t('tab.duplicates')}${queueLoad === 'ready' ? ` ${groups.length}` : ''}`,
           },
         ]}
@@ -114,7 +115,6 @@ export function BrandsView({
           />
         ) : (
           <>
-            <p className="max-w-prose text-fg-muted">{t('intro')}</p>
             <MergeQueue
               groups={groups}
               canEdit={canEdit}

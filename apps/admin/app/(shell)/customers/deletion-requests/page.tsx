@@ -1,4 +1,4 @@
-import { LoadError, NoAccess } from '@mondapac/ui';
+import { LoadError, NoAccess, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { RequestsList } from '../../../../src/account-deletion/requests-list.tsx';
@@ -55,7 +55,7 @@ export default async function DeletionRequestsPage({
     host === null ? '' : (panelHostFor(panelConfig(), host.get('host'))?.marketId ?? '');
   return (
     <AdminShell session={gate.session} activeId="deletion-requests" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       {allowed ? (
         <RequestsList
           // A link to another view is a fresh list.
