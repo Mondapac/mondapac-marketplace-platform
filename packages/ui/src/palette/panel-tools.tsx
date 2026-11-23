@@ -505,11 +505,8 @@ export function PinButton() {
     <TopbarIconButton
       label={name}
       aria-pressed={pinned}
-      className={
-        pinned
-          ? 'text-attention-solid hover:text-attention-solid aria-pressed:text-attention-solid'
-          : ''
-      }
+      pressedFill={false}
+      className={pinned ? 'text-attention-solid hover:text-attention-solid' : ''}
       onClick={() => tools.toggle(page.id)}
     >
       <Icon name="star" className={pinned ? 'fill-current' : ''} />

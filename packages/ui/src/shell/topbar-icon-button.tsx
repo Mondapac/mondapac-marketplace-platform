@@ -8,7 +8,11 @@ import { forwardRef, useId, useState, type ButtonHTMLAttributes, type ReactNode 
  * or open, a 2 px focus ring.
  */
 export const TOPBAR_ICON_CLASS =
-  'relative inline-flex size-11 shrink-0 items-center justify-center rounded-full text-icon transition-colors hover:bg-muted hover:text-fg focus-visible:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus aria-pressed:bg-selected aria-pressed:text-fg aria-expanded:bg-selected aria-expanded:text-fg md:size-10';
+  'relative inline-flex size-11 shrink-0 items-center justify-center rounded-full text-icon transition-colors hover:bg-muted hover:text-fg focus-visible:text-fg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus md:size-10';
+
+/** The filled look of a pressed or open button. A toggle that shows its state another way (the pin star) opts out. */
+const PRESSED_CLASS =
+  'aria-pressed:bg-selected aria-pressed:text-fg aria-expanded:bg-selected aria-expanded:text-fg';
 
 export interface TopbarIconButtonProps extends Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,
@@ -22,6 +26,8 @@ export interface TopbarIconButtonProps extends Omit<
   readonly children: ReactNode;
   /** A badge on the top right corner; the button's name must carry its meaning. */
   readonly badge?: ReactNode;
+  /** False when the pressed state is shown by the icon itself, so no pressed fill is added. */
+  readonly pressedFill?: boolean;
   /** Extra classes for the button, such as a colour for the pinned state. */
   readonly className?: string;
 }
@@ -32,7 +38,18 @@ export interface TopbarIconButtonProps extends Omit<
  */
 export const TopbarIconButton = forwardRef<HTMLButtonElement, TopbarIconButtonProps>(
   function TopbarIconButton(
-    { label, hint, children, badge, className = '', onKeyDown, onPointerLeave, onBlur, ...rest },
+    {
+      label,
+      hint,
+      children,
+      badge,
+      pressedFill = true,
+      className = '',
+      onKeyDown,
+      onPointerLeave,
+      onBlur,
+      ...rest
+    },
     ref,
   ) {
     const tipId = useId();
@@ -45,7 +62,7 @@ export const TopbarIconButton = forwardRef<HTMLButtonElement, TopbarIconButtonPr
           type="button"
           aria-label={label}
           aria-describedby={tipId}
-          className={`${TOPBAR_ICON_CLASS} ${className}`}
+          className={`${TOPBAR_ICON_CLASS} ${pressedFill ? PRESSED_CLASS : ''} ${className}`}
           onKeyDown={(event) => {
             if (event.key === 'Escape') setDismissed(true);
             onKeyDown?.(event);
