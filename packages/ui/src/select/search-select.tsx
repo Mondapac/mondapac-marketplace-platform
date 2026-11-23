@@ -301,7 +301,7 @@ export function SearchSelect(props: SearchSelectProps) {
   const body: ReactNode = (
     <>
       {searchable ? (
-        <div className="flex items-center gap-2 border-b border-line px-3">
+        <div className="flex items-center gap-2 border-b border-line px-3 focus-within:border-focus">
           <Icon name="search" className="text-icon" />
           <input
             ref={input}
@@ -317,7 +317,7 @@ export function SearchSelect(props: SearchSelectProps) {
             placeholder={labels.search}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={onKeyDown}
-            className="h-(--mp-size-control) min-w-0 flex-1 bg-transparent text-fg focus-visible:-outline-offset-2"
+            className="h-(--mp-size-control) min-w-0 flex-1 bg-transparent text-fg focus-visible:outline-none"
           />
         </div>
       ) : null}
