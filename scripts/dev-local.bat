@@ -104,6 +104,12 @@ start "MondaPac worker" /d "%CD%" cmd /k "timeout /t 60 /nobreak && pnpm dev:wor
 echo [5/5] Starting the seller and admin panels and the buyer site in their own windows
 start "MondaPac seller panel" /d "%CD%" cmd /k "pnpm dev:seller"
 start "MondaPac admin panel" /d "%CD%" cmd /k "pnpm dev:admin"
+rem The operational test data lives in the database, so the buyer site reads the local API (the panels'
+rem .env.example already does). A process variable wins over apps\web\.env and .env.local, where
+rem API_BASE_URL is empty by default (sample data). The plain demo keeps its sample data.
+rem STOREFRONT_HOSTS is required with it; set here so an older apps\web\.env.local cannot stop start-up.
+if "%OPS%"=="1" set "API_BASE_URL=http://localhost:3000"
+if "%OPS%"=="1" set "STOREFRONT_HOSTS=%STOREFRONT_ORIGIN%=%MARKET%"
 start "MondaPac buyer site" /d "%CD%" cmd /k "pnpm dev:web"
 
 if "%OPS%"=="1" if not "%OPS_LOADER_ARGS%"=="skip" (

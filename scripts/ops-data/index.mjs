@@ -14,6 +14,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import { connect } from './db.mjs';
 import {
   ROOT,
@@ -86,14 +87,14 @@ assertStripeTestKey(process.env.STRIPE_SECRET_KEY);
 const scenarioFile = resolve(ROOT, 'scripts/ops-data/scenarios', market, 'index.mjs');
 if (!existsSync(scenarioFile))
   throw new Error(`no scenario for Market ${market} (${scenarioFile})`);
-const { SCENARIO: FULL_SCENARIO } = await import(scenarioFile);
+const { SCENARIO: FULL_SCENARIO } = await import(pathToFileURL(scenarioFile).href);
 let SCENARIO = FULL_SCENARIO;
 let CI_PACKS = PACKS;
 if (ci) {
   const profileFile = resolve(ROOT, 'scripts/ops-data/scenarios', market, 'ci.mjs');
   if (!existsSync(profileFile))
     throw new Error(`Market ${market} has no ci profile (${profileFile})`);
-  const profile = await import(profileFile);
+  const profile = await import(pathToFileURL(profileFile).href);
   SCENARIO = profile.ciProfile(FULL_SCENARIO);
   CI_PACKS = profile.CI_PACKS;
   // The orders pack pays with Stripe and the content pack is large: neither runs in the profile,

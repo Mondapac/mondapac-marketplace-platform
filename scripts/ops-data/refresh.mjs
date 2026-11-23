@@ -12,6 +12,7 @@
 import { existsSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
+import { pathToFileURL } from 'node:url';
 import { connect } from './db.mjs';
 import {
   ROOT,
@@ -58,7 +59,7 @@ const withOrders = orders > 0 && Boolean(process.env.STRIPE_SECRET_KEY);
 const scenarioFile = resolve(ROOT, 'scripts/ops-data/scenarios', market, 'index.mjs');
 if (!existsSync(scenarioFile))
   throw new Error(`no scenario for Market ${market} (${scenarioFile})`);
-const { SCENARIO } = await import(scenarioFile);
+const { SCENARIO } = await import(pathToFileURL(scenarioFile).href);
 
 const state = readState(market);
 if (state.dataVersion !== DATA_VERSION || state.packs?.products !== 'done') {
