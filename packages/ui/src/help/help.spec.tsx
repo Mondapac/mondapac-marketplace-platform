@@ -122,19 +122,44 @@ describe('Help button and panel', () => {
     expect(screen.getByText('Refunds returns money to buyers.')).toBeTruthy();
   });
 
-  it('toggles with ? but not while typing or with a modifier', async () => {
+  it('closes on Escape pressed anywhere on the page and returns focus', async () => {
     const user = userEvent.setup();
     render(<Harness />);
+    const button = screen.getByRole('button', { name: 'Help' });
+    await user.click(button);
     await user.click(screen.getByLabelText('Search box'));
-    await user.keyboard('?');
+    await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).toBeNull();
-    (document.activeElement as HTMLElement).blur();
-    fireEvent.keyDown(document.body, { key: '?', ctrlKey: true });
-    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(button);
+  });
+
+  it('does not use the ? key, which opens the shortcuts list', () => {
+    render(<Harness />);
     fireEvent.keyDown(document.body, { key: '?' });
-    expect(screen.getByRole('dialog')).toBeTruthy();
-    fireEvent.keyDown(document.body, { key: '?' });
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('shows no button on a page without help text', () => {
+    render(
+      <HelpProvider hasContent={false}>
+        <HelpButton label="Help" />
+      </HelpProvider>,
+    );
+    expect(screen.queryByRole('button', { name: 'Help' })).toBeNull();
+  });
+
+  it('shows the open tab with its own points', async () => {
+    const user = userEvent.setup();
+    render(
+      <Harness
+        page={{
+          ...content,
+          tab: { name: 'Types', text: 'Kinds.', points: ['Needs a second admin.'] },
+        }}
+      />,
+    );
+    await user.click(screen.getByRole('button', { name: 'Help' }));
+    expect(screen.getByText('Needs a second admin.')).toBeTruthy();
   });
 
   it('shows nothing when the page has no content', async () => {

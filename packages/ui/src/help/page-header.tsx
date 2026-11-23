@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { Badge } from '../form/badge.tsx';
 
 export interface PageHeaderProps {
   /** The page's one h1. */
@@ -19,11 +20,7 @@ export function PageHeader({ title, status, actions }: PageHeaderProps) {
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
       <div className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
         <h1 className="min-w-0 break-words text-2xl font-semibold">{title}</h1>
-        {status === undefined ? null : (
-          <span className="inline-flex items-center rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-fg-secondary">
-            {status}
-          </span>
-        )}
+        {status === undefined ? null : <Badge tone="neutral">{status}</Badge>}
       </div>
       {actions === undefined ? null : (
         <div className="flex flex-wrap items-center gap-2">{actions}</div>

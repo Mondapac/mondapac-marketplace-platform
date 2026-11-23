@@ -14,7 +14,8 @@ export interface HelpButtonProps {
  * touch target.
  */
 export function HelpButton({ label }: HelpButtonProps) {
-  const { open, setOpen, trigger, panelId } = useHelp();
+  const { open, setOpen, trigger, panelId, hasContent } = useHelp();
+  if (!hasContent) return null;
   return (
     <button
       ref={trigger}
