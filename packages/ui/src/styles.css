@@ -63,6 +63,20 @@
   --color-chart-tooltip: var(--mp-color-chart-tooltip-bg);
   --color-chart-tooltip-fg: var(--mp-color-chart-tooltip-fg);
   --color-chart-tooltip-muted: var(--mp-color-chart-tooltip-muted);
+  --color-chart-cat-1: var(--mp-color-chart-cat-1);
+  --color-chart-cat-2: var(--mp-color-chart-cat-2);
+  --color-chart-cat-3: var(--mp-color-chart-cat-3);
+  --color-chart-cat-4: var(--mp-color-chart-cat-4);
+  --color-chart-cat-5: var(--mp-color-chart-cat-5);
+  --color-chart-cat-other: var(--mp-color-chart-cat-other);
+  --color-kpi-blue-bg: var(--mp-color-kpi-blue-bg);
+  --color-kpi-blue-fg: var(--mp-color-kpi-blue-fg);
+  --color-kpi-aqua-bg: var(--mp-color-kpi-aqua-bg);
+  --color-kpi-aqua-fg: var(--mp-color-kpi-aqua-fg);
+  --color-kpi-violet-bg: var(--mp-color-kpi-violet-bg);
+  --color-kpi-violet-fg: var(--mp-color-kpi-violet-fg);
+  --color-kpi-slate-bg: var(--mp-color-kpi-slate-bg);
+  --color-kpi-slate-fg: var(--mp-color-kpi-slate-fg);
 }
 
 @source './';
