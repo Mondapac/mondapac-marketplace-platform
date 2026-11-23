@@ -642,7 +642,6 @@ describe('the Customers list order number search', () => {
   const listProps = {
     accountId: 'admin-1',
     marketId: 'AU',
-    marketName: 'Test',
     zone: 'Australia/Brisbane',
     paging: 'pages' as const,
     csrfToken: 'csrf',

@@ -401,6 +401,7 @@ export function PayoutHoldsCard({
     <Card title={t('title')}>
       <SuperList
         heading={{
+          embedded: true,
           subtitle: `${
             answer === null
               ? tl('intro')

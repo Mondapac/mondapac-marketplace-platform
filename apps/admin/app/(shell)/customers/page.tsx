@@ -48,7 +48,6 @@ export default async function CustomersPage() {
       <CustomersList
         accountId={gate.session.accountId}
         marketId={marketId}
-        marketName={config.marketName}
         zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
         paging={paging}
         permissionKeys={keys}

@@ -1,6 +1,9 @@
 import type { ReactNode, Ref } from 'react';
 import { Badge } from '../form/badge.tsx';
 
+/** The element a list's buttons are placed in, so they sit on the title's row on every page. */
+export const PAGE_ACTIONS_ID = 'mp-page-actions';
+
 export interface PageHeaderProps {
   /** The page's one h1. */
   readonly title: ReactNode;
@@ -45,9 +48,10 @@ export function PageHeader({
         {status === undefined ? null : <Badge tone="neutral">{status}</Badge>}
         {badges}
       </div>
-      {actions === undefined ? null : (
-        <div className="flex flex-wrap items-center gap-2">{actions}</div>
-      )}
+      {/* Always present: a list on this page (SuperList) puts its bulk action and page buttons here. */}
+      <div id={PAGE_ACTIONS_ID} className="flex flex-wrap items-center gap-2">
+        {actions}
+      </div>
     </div>
   );
 }

@@ -92,7 +92,6 @@ export async function copyText(text: string, done: string, failed: string) {
 export function CustomersList({
   accountId,
   marketId,
-  marketName,
   zone,
   paging,
   permissionKeys,
@@ -102,7 +101,6 @@ export function CustomersList({
 }: {
   readonly accountId: string;
   readonly marketId: string;
-  readonly marketName: string;
   /**
    * A group page's members (phase 2a): the list is scoped to this group, whose filter is fixed
    * (no chip, not in the filter panel). Saved filters belong to the whole list and are left out.
@@ -507,12 +505,6 @@ export function CustomersList({
   return (
     <SuperList
       heading={{
-        subtitle:
-          counts === null
-            ? ''
-            : group !== null
-              ? t('group-subtitle', { count: counts.all, group: group.name })
-              : t('subtitle', { count: counts.all, market: marketName }),
         actions: (
           <CustomersBulk
             selection={{

@@ -53,7 +53,6 @@ export default async function CustomerGroupPage({
         groupId={groupId.toLowerCase()}
         accountId={gate.session.accountId}
         marketId={marketId}
-        marketName={config.marketName}
         zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
         paging={paging}
         permissionKeys={keys}

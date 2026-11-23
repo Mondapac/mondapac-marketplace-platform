@@ -435,6 +435,7 @@ export function LedgerCard({
       <LedgerTotals items={totalItems(totals, t, money)} />
       <SuperList
         heading={{
+          embedded: true,
           subtitle: filtered ? tl('intro-filtered') : tl('intro'),
           actions: (
             <LedgerBulk

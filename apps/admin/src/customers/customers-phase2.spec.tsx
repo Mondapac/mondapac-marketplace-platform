@@ -114,7 +114,6 @@ const listPage = (items: readonly CustomerRow[], total = items.length): Customer
 const listProps = {
   accountId: 'admin-1',
   marketId: 'NZ',
-  marketName: 'New Zealand',
   zone: 'Pacific/Auckland',
   paging: 'pages' as const,
   csrfToken: 'csrf',
@@ -220,7 +219,7 @@ describe('the Customers list with groups', () => {
       call.mock.calls.some((args) => args[1].startsWith('customers/admin/saved-filters')),
     ).toBe(false);
     expect(screen.queryByText(/Group: /)).toBeNull();
-    expect(screen.getByText('3 members of Ramadan regulars')).toBeTruthy();
+    expect(screen.queryByText(/members of/)).toBeNull();
   });
 });
 

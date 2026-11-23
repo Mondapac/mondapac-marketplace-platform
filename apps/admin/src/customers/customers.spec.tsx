@@ -91,7 +91,6 @@ function route(list: ApiResult<unknown> = ok(page([row()], 120))) {
 const listProps = {
   accountId: 'admin-1',
   marketId: 'AU',
-  marketName: 'Test',
   zone: 'Australia/Brisbane',
   paging: 'pages' as const,
   csrfToken: 'csrf',
@@ -161,7 +160,8 @@ describe('CustomersList', () => {
   it('loads the first page with the tab counts, and a row links to the customer page', async () => {
     route();
     render(wrap(<CustomersList {...listProps} permissionKeys={[VIEW]} />));
-    expect(await screen.findByText('120 customers in the Test market')).toBeTruthy();
+    expect(await screen.findByRole('button', { name: 'Never ordered (50)' })).toBeTruthy();
+    expect(screen.queryByText(/customers in the/)).toBeNull();
     expect(screen.getByRole('button', { name: 'Never ordered (50)' })).toBeTruthy();
     const link = screen.getByRole('link', { name: 'Sara Ahmadi' });
     expect(link.getAttribute('href')).toBe(`/customers/${ID}`);
@@ -771,13 +771,12 @@ describe('a second Market (NZD, Pacific/Auckland)', () => {
         <CustomersList
           {...listProps}
           marketId="NZ"
-          marketName="New Zealand"
           zone="Pacific/Auckland"
           permissionKeys={[VIEW]}
         />,
       ),
     );
-    expect(await screen.findByText('120 customers in the New Zealand market')).toBeTruthy();
+    expect(await screen.findByText('Sara Ahmadi')).toBeTruthy();
     await screen.findByText('Sara Ahmadi');
     expect(screen.getByText('NZD 99.00')).toBeTruthy();
   });

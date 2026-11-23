@@ -122,12 +122,7 @@ const listCalls = () =>
   call.mock.calls
     .map((entry) => entry[1])
     .filter((path) => !path.startsWith('catalog/seller/saved-filters'));
-// The one-off read of the whole store's size (the subtitle on a filtered address) is not a list read.
-const STORE_SIZE = 'catalog/seller/products?view=all&page=1';
-const lastList = () =>
-  listCalls()
-    .filter((path) => path !== STORE_SIZE)
-    .at(-1)!;
+const lastList = () => listCalls().at(-1)!;
 const address = () => nav.state.search.toString();
 
 const ALL_KEYS = ['catalog.own-product.view', 'catalog.own-product.edit', 'catalog.own-import.run'];
@@ -191,7 +186,7 @@ describe('seller product list', () => {
     mount();
     expect(await screen.findByText('Olive oil 1L')).toBeTruthy();
     expect(screen.getByRole('heading', { level: 1, name: 'Products' })).toBeTruthy();
-    expect(screen.getByText('143 products in your store')).toBeTruthy();
+    expect(screen.queryByText(/products in your store/)).toBeNull();
     expect(lastList()).toBe(
       'catalog/seller/products?view=all&sort=updated&direction=desc&page=1&pageSize=25',
     );
@@ -862,21 +857,6 @@ describe('seller product list', () => {
     fireEvent.click(screen.getAllByRole('button', { name: 'Clear all' })[1]!);
     expect(await screen.findByText('Olive oil 1L')).toBeTruthy();
     expect(address()).toBe('');
-  });
-
-  it('counts the whole store in the subtitle even on a filtered address', async () => {
-    open('status=draft');
-    serve((url) =>
-      url.includes('status=draft')
-        ? page([row()], {
-            total: 12,
-            counts: { all: 12, drafts: 12, live: 0, inactive: 0, inReview: 1 },
-          })
-        : page([row()]),
-    );
-    mount();
-    expect(await screen.findByText('143 products in your store')).toBeTruthy();
-    expect(call.mock.calls.filter((entry) => entry[1] === STORE_SIZE)).toHaveLength(1);
   });
 
   it('is cards with Filter and Sort in a bottom sheet, and no Columns control, below 1024 px', async () => {

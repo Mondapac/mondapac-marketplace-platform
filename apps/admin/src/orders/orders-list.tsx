@@ -484,6 +484,8 @@ export function OrdersList({
     <SuperList
       heading={{
         ...(title === undefined ? {} : { title }),
+        // Inside a customer's tab the page's own header is the customer's, not this list's.
+        ...(customerAccountId === undefined ? {} : { embedded: true }),
         actions: (
           <OrdersBulk
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}

@@ -176,7 +176,6 @@ const body =
       paging="pages"
       accountId="acc-1"
       marketId="AU"
-      marketName="Australia"
       timeZone="Australia/Brisbane"
       permissionKeys={['catalog.product.view']}
       csrfToken="tok"

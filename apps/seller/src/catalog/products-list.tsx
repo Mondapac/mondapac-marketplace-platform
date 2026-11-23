@@ -139,7 +139,6 @@ export function ProductsList({
   const [answer, setAnswer] = useState<ProductsPage | null>(null);
   const [loading, setLoading] = useState(true);
   const [failure, setFailure] = useState<Failure | null>(null);
-  const [storeTotal, setStoreTotal] = useState<number | null>(null);
   const [columns, setColumns] = useState<readonly OptionalColumn[]>(cleanColumns(undefined));
   const [sheet, setSheet] = useState<'filter' | 'sort' | null>(null);
   // The saved filters (catalog design 9.2d): null until they load, and when they cannot (the page
@@ -147,7 +146,6 @@ export function ProductsList({
   const [saved, setSaved] = useState<SavedFiltersAnswer | null>(null);
   const [dialog, setDialog] = useState<'save' | 'manage' | null>(null);
   const latest = useRef(0);
-  const askedTotal = useRef(false);
   const storageKey = prefsKey('seller', marketId, accountId, 'products-columns');
   const canEdit = permissionKeys.includes(EDIT_PERMISSION);
 
@@ -206,16 +204,6 @@ export function ProductsList({
       return;
     }
     setAnswer(result.body);
-    // The subtitle counts the whole store, which a search or a filter narrows in `counts`: it is
-    // taken from an unfiltered answer, or asked once when the page opens on a filtered address.
-    if (!isFiltered(parseQuery(new URLSearchParams(text)))) {
-      setStoreTotal(result.body.counts.all);
-    } else if (!askedTotal.current) {
-      askedTotal.current = true;
-      void callApi<ProductsPage>('GET', 'catalog/seller/products?view=all&page=1').then((whole) => {
-        if (whole.ok) setStoreTotal((current) => current ?? whole.body.counts.all);
-      });
-    }
   }, []);
 
   useEffect(() => {
@@ -429,7 +417,6 @@ export function ProductsList({
       <SuperList
         heading={{
           title: t('title'),
-          subtitle: storeTotal === null ? '' : t('subtitle', { count: storeTotal }),
           actions: (
             <>
               <ProductsExport

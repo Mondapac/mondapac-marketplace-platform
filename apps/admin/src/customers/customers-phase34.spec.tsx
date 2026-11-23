@@ -533,7 +533,6 @@ describe('review fixes', () => {
         <CustomersList
           accountId="admin-1"
           marketId="AU"
-          marketName="Australia"
           zone="Australia/Brisbane"
           paging="pages"
           permissionKeys={[VIEW]}
