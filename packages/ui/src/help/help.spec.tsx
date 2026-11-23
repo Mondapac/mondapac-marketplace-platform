@@ -144,7 +144,7 @@ describe('Help button and panel', () => {
     render(<Harness />);
     const button = screen.getByRole('button', { name: 'Help' });
     await user.click(button);
-    await user.click(screen.getByLabelText('Search box'));
+    screen.getByLabelText('Search box').focus();
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).toBeNull();
     expect(document.activeElement).toBe(button);
@@ -208,7 +208,7 @@ describe('Help button and panel', () => {
   });
 });
 
-describe('Help panel below and above 1280 px', () => {
+describe('Help panel as an overlay drawer', () => {
   it('has no modal semantics and the close button is its first focusable element', async () => {
     const user = userEvent.setup();
     render(<Harness />);
@@ -244,16 +244,16 @@ describe('Help panel below and above 1280 px', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('stays open on a press outside the panel from 1280 px', async () => {
+  it('closes on a press outside the panel from 1280 px too, as an overlay drawer', async () => {
     setViewport(true);
     const user = userEvent.setup();
     render(<Harness />);
     await user.click(screen.getByRole('button', { name: 'Help' }));
     await user.click(screen.getByLabelText('Search box'));
-    expect(screen.getByRole('dialog')).toBeTruthy();
+    expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('reserves the panel column on the shell while it is open', async () => {
+  it('is sized as the notices drawer and never narrows the page', async () => {
     const user = userEvent.setup();
     render(
       <HelpProvider>
@@ -276,10 +276,13 @@ describe('Help panel below and above 1280 px', () => {
       </HelpProvider>,
     );
     const main = screen.getByRole('main');
-    expect(main.className).not.toContain('xl:pe-96');
     await user.click(screen.getAllByRole('button', { name: 'Help' })[0] as HTMLElement);
-    expect(main.className).toContain('xl:pe-96');
-    expect(main.getAttribute('data-help-open')).toBe('true');
+    expect(main.className).not.toContain('pe-96');
+    expect(main.getAttribute('data-help-open')).toBeNull();
+    const panel = screen.getByRole('dialog');
+    expect(panel.className).toContain('fixed');
+    expect(panel.className).toContain('sm:w-(--mp-size-sheet)');
+    expect(panel.className).toContain('xl:w-(--mp-size-sheet-wide)');
   });
 
   it('gives the Help button a 44 px hit area on phones and the search button border from tablets', () => {
