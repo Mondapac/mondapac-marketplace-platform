@@ -5,9 +5,11 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BarList, Funnel } from './bar-list.tsx';
 import { compactNumber, labelIndexes, niceTicks, niceTicksRange } from './chart-scale.ts';
 import { ChartEmpty, ChartError, ChartSkeleton } from './chart-states.tsx';
-import { DonutChart, sliceSegments } from './donut-chart.tsx';
+import { assignColorKeys } from './chart-palette.ts';
+import { DonutChart, MIN_ARC, arcWidths, sliceSegments } from './donut-chart.tsx';
+import { ShareBar, type ShareBarItem } from './share-bar.tsx';
 import { StackedBarChart, stackSeries } from './stacked-bar-chart.tsx';
-import { splitTop } from './chart-scale.ts';
+import { fitFontSize, splitTop, strideIndexes, truncateText } from './chart-scale.ts';
 import { StatCard } from './dashboard.tsx';
 import { LineAreaChart } from './line-chart.tsx';
 import { PeriodSelector } from './period-selector.tsx';
@@ -310,50 +312,145 @@ const dLabels = {
   valueColumn: 'Sales',
   shareColumn: 'Share',
 };
-const cats = (n: number) =>
+type Seg = {
+  id: string;
+  label: string;
+  value: number;
+  colorKey?: 'cat-1' | 'cat-2' | 'cat-3' | 'cat-4' | 'cat-5' | 'status-success' | 'status-danger';
+};
+const cats = (n: number): Seg[] =>
   Array.from({ length: n }, (_, i) => ({
     id: `c${i + 1}`,
     label: `Cat ${i + 1}`,
     value: (n - i) * 10,
   }));
-const donut = (segments: ReturnType<typeof cats>) => (
+const donut = (segments: Seg[], extra: Record<string, unknown> = {}) => (
   <DonutChart
     title="Sales by category"
     segments={segments}
     formatValue={money}
     otherLabel="Other"
     totalLabel="Total"
-    emptyMessage="Not enough data"
     labels={dLabels}
+    {...extra}
   />
 );
 
-describe('splitTop', () => {
-  it('ranks by size, keeps input order on ties and ignores non-positive or non-finite values', () => {
+describe('chart helpers', () => {
+  it('splitTop ranks by size, keeps input order on ties and ignores non-positive or non-finite values', () => {
     const r = splitTop([5, 0, Number.NaN, 9, 5, -3, 7], 3);
     expect(r.top).toEqual([3, 6, 0]);
     expect(r.rest).toEqual([4]);
+  });
+  it('assigns requested colours first, then free slots in order, then Other; duplicates fall back', () => {
+    expect(assignColorKeys(['cat-3', undefined, undefined])).toEqual(['cat-3', 'cat-1', 'cat-2']);
+    expect(assignColorKeys(['cat-1', 'cat-1'])).toEqual(['cat-1', 'cat-2']);
+    expect(assignColorKeys(['cat-other', undefined])).toEqual(['cat-1', 'cat-2']);
+    expect(assignColorKeys(Array(7).fill(undefined)).slice(5)).toEqual(['cat-other', 'cat-other']);
+    expect(assignColorKeys(['status-danger', undefined])).toEqual(['status-danger', 'cat-1']);
+  });
+  it('strides x labels evenly and fits text', () => {
+    expect(strideIndexes(14, 30, 64)).toEqual([0, 3, 6, 9, 12]);
+    expect(strideIndexes(3, 200)).toEqual([0, 1, 2]);
+    expect(fitFontSize('A$12,345,678', 100, 20)).toBeLessThan(20);
+    expect(fitFontSize('A$1', 100, 20)).toBe(20);
+    expect(truncateText('A very long category name', 10)).toBe('A very lo…');
+  });
+  it('gives a tiny slice at least 2 degrees and keeps the circle whole', () => {
+    const w = arcWidths([0.9995, 0.0005]);
+    expect(w[1]).toBeGreaterThanOrEqual(MIN_ARC - 1e-9);
+    expect(w.reduce((a, b) => a + b, 0)).toBeCloseTo(Math.PI * 2);
   });
 });
 
 describe('DonutChart', () => {
   it('draws one focusable segment per category with a label that says value and share', () => {
     const { container } = render(donut(cats(3)));
-    const segs = container.querySelectorAll('[data-segment]');
-    expect(segs).toHaveLength(3);
+    expect(container.querySelectorAll('[data-segment]')).toHaveLength(3);
     expect(screen.getByRole('img', { name: 'Cat 1: A$30, 50%' })).toBeTruthy();
-    segs.forEach((s) => expect(s.getAttribute('tabindex')).toMatch(/^-?\d$/));
     expect(container.querySelector('.stroke-chart-cat-1')).not.toBeNull();
     expect(container.querySelector('.stroke-chart-cat-3')).not.toBeNull();
     expect(screen.getByRole('group', { name: 'Sales by category' })).toBeTruthy();
   });
-  it('shows the total in the centre and a legend with value and share', () => {
+  it('keeps a category colour when ranks swap (colorKey)', () => {
+    const colourOf = (c: HTMLElement, id: string) =>
+      c.querySelector(`[data-segment="${id}"] path`)?.getAttribute('class');
+    const a = render(
+      donut([
+        { id: 'x', label: 'X', value: 10, colorKey: 'cat-4' },
+        { id: 'y', label: 'Y', value: 5, colorKey: 'cat-2' },
+      ]),
+    );
+    const before = [colourOf(a.container, 'x'), colourOf(a.container, 'y')];
+    a.unmount();
+    const b = render(
+      donut([
+        { id: 'x', label: 'X', value: 5, colorKey: 'cat-4' },
+        { id: 'y', label: 'Y', value: 10, colorKey: 'cat-2' },
+      ]),
+    );
+    expect([colourOf(b.container, 'x'), colourOf(b.container, 'y')]).toEqual(before);
+    expect(before).toEqual(['stroke-chart-cat-4', 'stroke-chart-cat-2']);
+  });
+  it('uses a status colour for an order-status series', () => {
+    const { container } = render(
+      donut([
+        { id: 'ok', label: 'Delivered', value: 8, colorKey: 'status-success' },
+        { id: 'bad', label: 'Failed', value: 2, colorKey: 'status-danger' },
+      ]),
+    );
+    expect(container.querySelector('.stroke-success-fg')).not.toBeNull();
+    expect(container.querySelector('.stroke-critical-solid')).not.toBeNull();
+  });
+  it('shows the total in the centre and a right-aligned legend with value and share', () => {
     const { container } = render(donut(cats(3)));
-    expect(container.querySelector('svg text')?.textContent).toBe('A$60');
-    const legend = container.querySelector('ul')!;
-    expect(legend.textContent).toContain('Cat 2');
-    expect(legend.textContent).toContain('A$20');
-    expect(legend.textContent).toContain('33.3%');
+    expect(container.querySelector('[data-centre] text')?.textContent).toBe('A$60');
+    const row = container.querySelector('[data-legend="c2"]')!;
+    expect(row.textContent).toContain('A$20');
+    expect(row.textContent).toContain('33.3%');
+    expect(row.querySelector('.tabular-nums.text-end')).not.toBeNull();
+  });
+  it('replaces the centre text with the active slice and has no floating tooltip', () => {
+    const { container } = render(donut(cats(3)));
+    fireEvent.focus(container.querySelector('[data-segment="c1"]')!);
+    const centre = container.querySelector('[data-centre]')!.textContent;
+    expect(centre).toContain('A$30');
+    expect(centre).toContain('Cat 1');
+    expect(centre).toContain('50%');
+    expect(container.querySelector('[data-donut-tooltip]')).toBeNull();
+    expect(screen.getByRole('status').textContent).toBe('Cat 1: A$30, 50%');
+    fireEvent.keyDown(container.querySelector('[data-segment="c1"]')!, { key: 'ArrowRight' });
+    expect(screen.getByRole('status').textContent).toContain('Cat 2');
+    fireEvent.keyDown(container.querySelector('[data-segment="c1"]')!, { key: 'Escape' });
+    expect(container.querySelector('[data-centre]')!.textContent).toContain('Total');
+  });
+  it('highlights the legend row and its segment on hover', () => {
+    const { container } = render(donut(cats(3)));
+    fireEvent.pointerEnter(container.querySelector('[data-legend="c2"]')!);
+    expect(container.querySelector('[data-legend="c2"]')!.className).toContain('bg-muted');
+    expect(container.querySelector('[data-centre]')!.textContent).toContain('Cat 2');
+  });
+  it('shrinks the centre figure so a long amount fits', () => {
+    const { container } = render(
+      donut([{ id: 'a', label: 'A', value: 12_345_678 }], {
+        formatValue: (v: number) => `A$${v.toLocaleString('en-AU')}`,
+      }),
+    );
+    const size = Number(container.querySelector('[data-centre] text')?.getAttribute('font-size'));
+    expect(size).toBeLessThan(18);
+    expect(size).toBeGreaterThanOrEqual(11);
+  });
+  it('truncates a long category name in the centre and the legend, keeping the full name in a title', () => {
+    const long = 'Halal certified fresh produce and chilled goods';
+    const { container } = render(
+      donut([
+        { id: 'a', label: long, value: 5 },
+        { id: 'b', label: 'B', value: 4 },
+      ]),
+    );
+    fireEvent.focus(container.querySelector('[data-segment="a"]')!);
+    expect(container.querySelector('[data-centre] text:last-child')?.textContent).toContain('…');
+    expect(container.querySelector('[data-legend="a"] [title]')?.getAttribute('title')).toBe(long);
   });
   it('buckets everything past the fifth category into a neutral Other', () => {
     const slices = sliceSegments(cats(8), 'Other');
@@ -365,54 +462,77 @@ describe('DonutChart', () => {
       'Cat 5',
       'Other',
     ]);
-    expect(slices[5]!.value).toBe(30 + 20 + 10);
-    expect(slices[5]!.color).toBe(-1);
-    expect(slices.reduce((s, x) => s + x.share, 0)).toBeCloseTo(1);
+    expect(slices[5]!.value).toBe(60);
+    expect(slices[5]!.colorKey).toBe('cat-other');
     const { container } = render(donut(cats(8)));
     expect(container.querySelectorAll('[data-segment]')).toHaveLength(6);
     expect(container.querySelector('.stroke-chart-cat-other')).not.toBeNull();
-    expect(screen.getByRole('img', { name: /^Other: A\$60/ })).toBeTruthy();
   });
-  it('keeps exactly five categories without an Other bucket', () => {
+  it('keeps exactly five categories without Other and puts a sixth into Other', () => {
     expect(sliceSegments(cats(5), 'Other')).toHaveLength(5);
+    expect(sliceSegments(cats(6), 'Other')).toHaveLength(6);
+    expect(sliceSegments(cats(6), 'Other')[5]!.isOther).toBe(true);
   });
-  it('shows a tooltip on focus and arrow keys move between segments', () => {
-    const { container } = render(donut(cats(3)));
-    const first = container.querySelector('[data-segment="c1"]')!;
-    fireEvent.focus(first);
-    expect(container.querySelector('[data-donut-tooltip]')?.textContent).toContain('Cat 1');
-    expect(screen.getByRole('status').textContent).toBe('Cat 1: A$30, 50%');
-    fireEvent.keyDown(first, { key: 'ArrowRight' });
-    expect(screen.getByRole('status').textContent).toContain('Cat 2');
-    fireEvent.keyDown(first, { key: 'Escape' });
-    expect(container.querySelector('[data-donut-tooltip]')).toBeNull();
-  });
-  it('switches to a table with value and share and back', () => {
-    render(donut(cats(8)));
+  it('switches to a table with swatches, value and share and back; the toggle sits next to the legend', () => {
+    const { container } = render(donut(cats(8)));
+    expect(
+      container
+        .querySelector('[data-legend="c1"]')!
+        .parentElement!.parentElement!.contains(
+          screen.getByRole('button', { name: 'View as table' }),
+        ),
+    ).toBe(true);
     fireEvent.click(screen.getByRole('button', { name: 'View as table' }));
     const table = screen.getByRole('table', { name: 'Sales by category' });
     expect(table.querySelectorAll('tbody tr')).toHaveLength(6);
-    expect(screen.getByText('Other', { selector: 'th' })).toBeTruthy();
+    expect(table.querySelectorAll('[data-swatch]')).toHaveLength(6);
     fireEvent.click(screen.getByRole('button', { name: 'View as chart' }));
     expect(screen.queryByRole('table')).toBeNull();
   });
-  it('says there is not enough data when nothing is above zero', () => {
+  it('says Nothing in this period for no usable value and Not enough data yet only when the caller says so', () => {
     for (const segments of [
       [],
       [{ id: 'a', label: 'A', value: 0 }],
+      [{ id: 'a', label: 'A', value: -4 }],
       [{ id: 'a', label: 'A', value: Number.NaN }],
     ]) {
       const { container, unmount } = render(donut(segments));
-      expect(screen.getByText('Not enough data')).toBeTruthy();
+      expect(screen.getByText('Nothing in this period')).toBeTruthy();
       expect(container.querySelector('svg')).toBeNull();
-      expect(screen.queryByRole('button')).toBeNull();
       unmount();
     }
+    const a = render(donut(cats(3), { state: 'insufficient' }));
+    expect(screen.getByText('Not enough data yet')).toBeTruthy();
+    expect(a.container.querySelector('svg')).toBeNull();
+    a.unmount();
+    render(donut([], { state: 'insufficient', emptyLabels: { insufficient: 'Too few orders' } }));
+    expect(screen.getByText('Too few orders')).toBeTruthy();
   });
-  it('draws a single category as a full ring', () => {
-    const { container } = render(donut([{ id: 'a', label: 'Only', value: 5 }]));
-    expect(container.querySelector('[data-segment] circle')).not.toBeNull();
-    expect(screen.getByRole('img', { name: 'Only: A$5, 100%' })).toBeTruthy();
+  it('drops negative and non-finite values and says how many in the footnote', () => {
+    const { container } = render(
+      donut(
+        [
+          { id: 'a', label: 'A', value: 10 },
+          { id: 'b', label: 'B', value: -5 },
+          { id: 'c', label: 'C', value: Number.NaN },
+        ],
+        { droppedNote: (n: number) => `${n} values left out` },
+      ),
+    );
+    expect(container.querySelectorAll('[data-segment]')).toHaveLength(1);
+    expect(container.querySelector('[data-dropped-note]')?.textContent).toBe('2 values left out');
+  });
+  it('draws a single category as a full ring and a tiny one at its minimum arc', () => {
+    const one = render(donut([{ id: 'a', label: 'Only', value: 5 }]));
+    expect(one.container.querySelector('[data-segment] circle')).not.toBeNull();
+    one.unmount();
+    const { container } = render(
+      donut([
+        { id: 'a', label: 'Big', value: 10000 },
+        { id: 'b', label: 'Tiny', value: 1 },
+      ]),
+    );
+    expect(container.querySelector('[data-segment="b"] path')).not.toBeNull();
   });
 });
 
@@ -425,7 +545,15 @@ describe('StackedBarChart', () => {
     label: `D${d}`,
     values: Object.fromEntries(series.map((s, i) => [s.id, (7 - i) * d])),
   }));
-  const stacked = (p = days, s = series) => (
+  const stacked = (
+    p = days,
+    s: {
+      id: string;
+      label: string;
+      colorKey?: 'status-success' | 'status-danger' | 'cat-4';
+    }[] = series,
+    extra: Record<string, unknown> = {},
+  ) => (
     <StackedBarChart
       title="Orders by source"
       series={s}
@@ -433,8 +561,8 @@ describe('StackedBarChart', () => {
       formatValue={(v) => `${v} orders`}
       otherLabel="Other"
       totalLabel="Total"
-      emptyMessage="Not enough data"
       labels={labels}
+      {...extra}
     />
   );
   it('stacks five named series and an Other bucket in the palette order, with a legend', () => {
@@ -452,42 +580,139 @@ describe('StackedBarChart', () => {
     expect(screen.getByRole('img', { name: 'Orders by source' })).toBeTruthy();
     expect(container.querySelectorAll('rect.fill-chart-cat-1')).toHaveLength(3);
     expect(container.querySelectorAll('rect.fill-chart-cat-other')).toHaveLength(3);
-    expect(container.querySelector('ul')!.textContent).toContain('Other');
     expect(container.querySelector('ul .bg-chart-cat-5')).not.toBeNull();
   });
-  it('reads a period with arrow keys: tooltip and status list every category and the total', () => {
+  it('keeps a series colour when ranks swap (colorKey, including status colours)', () => {
+    const s = [
+      { id: 'a', label: 'Delivered', colorKey: 'status-success' as const },
+      { id: 'b', label: 'Failed', colorKey: 'status-danger' as const },
+    ];
+    const one = stackSeries(s, [{ label: 'D1', values: { a: 9, b: 1 } }], 'Other');
+    const two = stackSeries(s, [{ label: 'D1', values: { a: 1, b: 9 } }], 'Other');
+    expect(one.map((c) => [c.id, c.colorKey]).sort()).toEqual(
+      two.map((c) => [c.id, c.colorKey]).sort(),
+    );
+    const { container } = render(stacked([{ label: 'D1', values: { a: 9, b: 1 } }], s));
+    expect(container.querySelector('rect.fill-success-fg')).not.toBeNull();
+    expect(container.querySelector('rect.fill-critical-solid')).not.toBeNull();
+  });
+  it('reads a period in a band above the plot with every category and the total, never a floating box', () => {
     const { container } = render(stacked());
     const svg = screen.getByRole('img', { name: 'Orders by source' });
     fireEvent.keyDown(svg, { key: 'ArrowRight' });
     expect(screen.getByRole('status').textContent).toContain('D1: Source 1 7 orders');
-    expect(screen.getByRole('status').textContent).toContain('Total 28 orders');
-    expect(container.querySelector('[data-stacked-tooltip]')?.textContent).toContain('Other');
-    fireEvent.keyDown(svg, { key: 'ArrowRight' });
-    expect(screen.getByRole('status').textContent).toContain('D2: Source 1 14 orders');
+    const band = container.querySelector('[data-stacked-tooltip]')!;
+    expect(band.textContent).toContain('Other');
+    expect(band.className).not.toContain('absolute');
+    expect(band.compareDocumentPosition(svg) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.keyDown(svg, { key: 'Escape' });
-    expect(container.querySelector('[data-stacked-tooltip]')).toBeNull();
+    expect(band.textContent?.trim()).toBe('');
   });
-  it('switches to a table with a column per category and a total, and back', () => {
+  it('prints x labels at an even stride', () => {
+    const many = Array.from({ length: 14 }, (_, d) => ({ label: `L${d}`, values: { s1: d + 1 } }));
+    const { container } = render(stacked(many, series.slice(0, 1)));
+    const printed = [...container.querySelectorAll('svg text')]
+      .map((t) => t.textContent)
+      .filter((t) => /^L\d+$/.test(t ?? ''))
+      .map((t) => Number(t.slice(1)));
+    const gaps = new Set(printed.slice(1).map((v, i) => v - printed[i]!));
+    expect(printed[0]).toBe(0);
+    expect(gaps.size).toBe(1);
+  });
+  it('truncates long series names in the legend with the full name in a title', () => {
+    const long = 'Seller invite links and referral partners';
+    const { container } = render(stacked(days.slice(0, 1), [{ id: 's1', label: long }]));
+    const item = container.querySelector('ul li [title]');
+    expect(item?.getAttribute('title')).toBe(long);
+    expect(item?.className).toContain('truncate');
+  });
+  it('switches to a table with swatches, a column per category and a total, and back', () => {
     render(stacked());
     fireEvent.click(screen.getByRole('button', { name: 'View as table' }));
     const table = screen.getByRole('table', { name: 'Orders by source' });
     expect(table.querySelectorAll('thead th')).toHaveLength(8);
+    expect(table.querySelectorAll('[data-swatch]')).toHaveLength(6);
     expect(screen.getByText('56 orders')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'View as chart' }));
     expect(screen.queryByRole('table')).toBeNull();
   });
-  it('treats missing, negative and non-finite values as zero', () => {
+  it('treats missing, negative and non-finite values as zero and reports the dropped ones', () => {
     const { container } = render(
-      stacked([{ label: 'D1', values: { s1: 4, s2: -2, s3: Number.NaN } }], series.slice(0, 4)),
+      stacked([{ label: 'D1', values: { s1: 4, s2: -2, s3: Number.NaN } }], series.slice(0, 4), {
+        droppedNote: (n: number) => `${n} left out`,
+      }),
     );
     expect(container.querySelectorAll('rect')).toHaveLength(1);
+    expect(container.querySelector('[data-dropped-note]')?.textContent).toBe('2 left out');
   });
-  it('says there is not enough data without periods or without any value', () => {
-    for (const p of [[], [{ label: 'D1', values: {} }]]) {
+  it('distinguishes empty from insufficient only by the caller state', () => {
+    for (const p of [[], [{ label: 'D1', values: {} }], [{ label: 'D1', values: { s1: 0 } }]]) {
       const { container, unmount } = render(stacked(p));
-      expect(screen.getByText('Not enough data')).toBeTruthy();
+      expect(screen.getByText('Nothing in this period')).toBeTruthy();
       expect(container.querySelector('svg')).toBeNull();
       unmount();
     }
+    render(stacked(days, series, { state: 'insufficient' }));
+    expect(screen.getByText('Not enough data yet')).toBeTruthy();
+  });
+});
+
+describe('ShareBar', () => {
+  const parts: ShareBarItem[] = [
+    { id: 'new', label: 'New customers', value: 320, colorKey: 'cat-2' },
+    { id: 'ret', label: 'Returning customers', value: 680, colorKey: 'cat-1' },
+  ];
+  const bar = (items = parts, extra: Record<string, unknown> = {}) => (
+    <ShareBar
+      title="New and returning customers"
+      items={items}
+      formatValue={(v) => `${v}`}
+      otherLabel="Other"
+      labels={dLabels}
+      {...extra}
+    />
+  );
+  it('draws one part per item in the caller colours, with a legend of value and share', () => {
+    const { container } = render(bar());
+    expect(
+      screen.getByRole('img', {
+        name: /New and returning customers: Returning customers 68%, New customers 32%/,
+      }),
+    ).toBeTruthy();
+    expect(container.querySelector('[data-part="new"]')!.className).toContain('bg-chart-cat-2');
+    expect(container.querySelector('[data-part="ret"]')!.className).toContain('bg-chart-cat-1');
+    const row = container.querySelector('[data-legend="ret"]')!;
+    expect(row.textContent).toContain('680');
+    expect(row.textContent).toContain('68%');
+  });
+  it('buckets past five into Other, highlights on hover, and toggles a table with swatches', () => {
+    const items = cats(7).map((c) => ({ ...c }));
+    const { container } = render(bar(items));
+    expect(container.querySelectorAll('[data-part]')).toHaveLength(6);
+    expect(container.querySelector('[data-part="__other"]')!.className).toContain(
+      'bg-chart-cat-other',
+    );
+    fireEvent.pointerEnter(container.querySelector('[data-legend="c2"]')!);
+    expect(container.querySelector('[data-part="c1"]')!.className).toContain('opacity-50');
+    fireEvent.click(screen.getByRole('button', { name: 'View as table' }));
+    expect(
+      screen
+        .getByRole('table', { name: 'New and returning customers' })
+        .querySelectorAll('[data-swatch]'),
+    ).toHaveLength(6);
+  });
+  it('says empty or insufficient as the caller decides, and reports dropped values', () => {
+    render(bar([{ id: 'a', label: 'A', value: 0 }]));
+    expect(screen.getByText('Nothing in this period')).toBeTruthy();
+    cleanup();
+    render(bar(parts, { state: 'insufficient' }));
+    expect(screen.getByText('Not enough data yet')).toBeTruthy();
+    cleanup();
+    const { container } = render(
+      bar([...parts, { id: 'x', label: 'X', value: -1 }], {
+        droppedNote: (n: number) => `${n} left out`,
+      }),
+    );
+    expect(container.querySelector('[data-dropped-note]')?.textContent).toBe('1 left out');
   });
 });

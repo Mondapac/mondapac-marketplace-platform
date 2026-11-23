@@ -485,7 +485,7 @@
       },
       "cat-other": {
         "$type": "color",
-        "$value": "{color.neutral.260}",
+        "$value": "{color.neutral.340}",
         "$description": "Categorical 'Other' bucket (neutral)"
       }
     },

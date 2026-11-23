@@ -282,7 +282,9 @@ export {
 } from './dashboard/line-chart.tsx';
 export {
   DonutChart,
+  arcWidths,
   sliceSegments,
+  MIN_ARC,
   type DonutChartProps,
   type DonutSegment,
 } from './dashboard/donut-chart.tsx';
@@ -293,6 +295,13 @@ export {
   type StackedPoint,
   type StackedSeries,
 } from './dashboard/stacked-bar-chart.tsx';
+export { ShareBar, type ShareBarItem, type ShareBarProps } from './dashboard/share-bar.tsx';
+export {
+  assignColorKeys,
+  type CategoryKey,
+  type ColorKey,
+  type StatusKey,
+} from './dashboard/chart-palette.ts';
 export { BarList, Funnel, type BarListItem, type FunnelStep } from './dashboard/bar-list.tsx';
 export {
   PeriodSelector,
@@ -303,6 +312,8 @@ export {
   ChartEmpty,
   ChartError,
   ChartSkeleton,
+  type ChartDataState,
+  type ChartEmptyLabels,
   type ChartStateProps,
 } from './dashboard/chart-states.tsx';
 export { compactNumber, labelIndexes, niceTicks } from './dashboard/chart-scale.ts';

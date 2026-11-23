@@ -375,10 +375,6 @@
    "hex": "#C3C9D3"
   },
   {
-   "name": "neutral/260",
-   "hex": "#A3ABB8"
-  },
-  {
    "name": "neutral/295",
    "hex": "#98A1B0"
   },
@@ -1804,10 +1800,10 @@
   },
   {
    "name": "chart/cat-other",
-   "light": "neutral/260",
-   "dark": "neutral/500",
-   "lightHex": "#A3ABB8",
-   "darkHex": "#5B6475",
+   "light": "neutral/340",
+   "dark": "neutral/440",
+   "lightHex": "#8A93A3",
+   "darkHex": "#6B7586",
    "scopes": [
     "SHAPE_FILL",
     "FRAME_FILL",

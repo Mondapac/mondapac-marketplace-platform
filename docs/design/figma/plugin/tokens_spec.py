@@ -110,7 +110,7 @@ C = {
  "chart/cat-3": ("#6250D6", "#9085E9", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical series 3 (violet)"),
  "chart/cat-4": ("#EDA100", "#C98500", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical series 4 (amber)"),
  "chart/cat-5": ("#E87BA4", "#D55181", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical series 5 (pink)"),
- "chart/cat-other": ("#A3ABB8", "#5B6475", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical 'Other' bucket (neutral)"),
+ "chart/cat-other": ("#8A93A3", "#6B7586", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical 'Other' bucket (neutral)"),
  "kpi/blue-bg": ("#1D4FD7", "#3D68E6", "FRAME_FILL,SHAPE_FILL", "KPI icon tile, blue (sales, orders)"),
  "kpi/blue-fg": ("#FFFFFF", "#FFFFFF", "SHAPE_FILL,STROKE_COLOR", "Icon on the blue KPI tile"),
  "kpi/aqua-bg": ("#128A60", "#16865F", "FRAME_FILL,SHAPE_FILL", "KPI icon tile, aqua (fulfilment, health)"),
@@ -135,7 +135,7 @@ fam("teal", ["#1BAF7A","#199E70","#128A60","#16865F"])
 fam("purple", ["#6250D6","#9085E9","#6D5FD8"])
 fam("honey", ["#EDA100","#C98500"])
 fam("pink", ["#E87BA4","#D55181"])
-fam("neutral", ["#A3ABB8","#475467"])
+fam("neutral", ["#475467"])
 fam("blue", ["#5F86F5"])
 fam("lime", ["#3F6212","#F5FAEF","#C8DDB0","#9DBB7A","#A9D570","#1A2812","#35511F","#6E8F45"])
 fam("purple", ["#F1ECFF","#5B3CC4","#271E47","#B9A6FF"])
@@ -170,7 +170,7 @@ prim = {}   # hex -> name
 used = set()
 # Primitives added after 1.0.0 are named after the existing ones, so an existing name never changes
 # (a rename would be a MAJOR change). A new hex that lands on a taken step takes the next free step.
-NEW_PRIMITIVES = ["#0B1D2E", "#06352E", "#5F86F5", "#1BAF7A", "#199E70", "#128A60", "#16865F", "#6250D6", "#9085E9", "#6D5FD8", "#EDA100", "#C98500", "#E87BA4", "#D55181", "#A3ABB8", "#475467"]  # 1.7.0: Auth brand panel; 1.11.0: categorical chart palette and KPI tiles
+NEW_PRIMITIVES = ["#0B1D2E", "#06352E", "#5F86F5", "#1BAF7A", "#199E70", "#128A60", "#16865F", "#6250D6", "#9085E9", "#6D5FD8", "#EDA100", "#C98500", "#E87BA4", "#D55181", "#475467"]  # 1.7.0: Auth brand panel; 1.11.0: categorical chart palette and KPI tiles
 for h in sorted([x for x in allhex if x not in NEW_PRIMITIVES], key=lambda x: (FAM[x], -oklab_L(x))) + NEW_PRIMITIVES:
     step = int(round((1 - oklab_L(h)) * 1000 / 5.0) * 5)
     if h == '#FFFFFF': step = 0
@@ -216,6 +216,7 @@ need('chart/tooltip-muted', ['chart/tooltip-bg'], 4.5, 'text')
 # 1.11.0: white icon on each KPI tile (non-text graphic, 3:1); chart categories are graphics identified by label, value and table, see README
 for k in ['blue','aqua','violet','slate']:
     need('kpi/%s-fg' % k, ['kpi/%s-bg' % k], 3.0, 'icon')
+need('chart/cat-other', ['bg/surface'], 3.0, 'graphic')
 need('icon/default', ['bg/surface'], 3.0, 'icon')
 need('icon/muted', ['bg/surface'], 3.0, 'icon')
 # 1.7.0: brand line on the Auth brand panel (both panel colours are the same in both themes)

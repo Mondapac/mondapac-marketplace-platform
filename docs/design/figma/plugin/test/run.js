@@ -669,12 +669,12 @@ function explained190(n) {
   }
   return false;
 }
-// What Update library reports for 1.11.0 (Dashboards v2 tokens: 14 new primitives, 14 colour variables), first in the report: primitives, then colours.
-const PRIMS_1110 = ['blue/355', 'honey/235', 'honey/330', 'neutral/260', 'neutral/560', 'pink/285', 'pink/380', 'purple/330', 'purple/440', 'purple/475', 'teal/330', 'teal/380', 'teal/440', 'teal/450'];
+// What Update library reports for 1.11.0 (Dashboards v2 tokens: 13 new primitives, 14 colour variables), first in the report: primitives, then colours.
+const PRIMS_1110 = ['blue/355', 'honey/235', 'honey/330', 'neutral/560', 'pink/285', 'pink/380', 'purple/330', 'purple/440', 'purple/475', 'teal/330', 'teal/380', 'teal/440', 'teal/450'];
 const COLORS_1110 = ['chart/cat-1', 'chart/cat-2', 'chart/cat-3', 'chart/cat-4', 'chart/cat-5', 'chart/cat-other', 'kpi/blue-bg', 'kpi/blue-fg', 'kpi/aqua-bg', 'kpi/aqua-fg', 'kpi/violet-bg', 'kpi/violet-fg', 'kpi/slate-bg', 'kpi/slate-fg'];
 const ADDED_1110 = (opts) => PRIMS_1110.map((p) => 'primitive ' + p).concat(COLORS_1110.map((c) => 'variable ' + c + (opts.maxModes > 1 ? ' (Light and Dark modes)' : ' (Color and Color · Dark)')));
-// Variables a 1.11.0 update adds: 14 primitives and 14 colours (one variable per collection: two collections without modes).
-const VARS_1110 = (opts) => 14 * (1 + (opts.maxModes > 1 ? 1 : 2));
+// Variables a 1.11.0 update adds: 13 primitives and 14 colours (one variable per collection: two collections without modes).
+const VARS_1110 = (opts) => 13 + 14 * (opts.maxModes > 1 ? 1 : 2);
 // What Update library reports for 1.9.0 on a 1.8.x file, in report order: tokens and icons first, then the components and the in-place
 // properties, then the templates (after the 1.8.3 ones), then the size table row (before the changelog rows).
 const ADDED_190_HEAD = (opts) => ['variable size/form-max ' + (opts.maxModes > 1 ? '(Desktop and Touch modes)' : '(Dimension and Dimension · Touch)'), 'icon pencil', 'icon refresh-cw', 'icon globe'];

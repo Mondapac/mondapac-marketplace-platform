@@ -70,3 +70,23 @@ export function splitTop(
     rest: ranked.slice(max).map((x) => x.i),
   };
 }
+
+/** Every `stride`-th index from 0, with the stride set so labels keep `minPx` of room. */
+export function strideIndexes(length: number, slotPx: number, minPx = 64): readonly number[] {
+  if (length <= 0) return [];
+  const stride = Math.max(1, Math.ceil(minPx / Math.max(slotPx, 1)));
+  const out: number[] = [];
+  for (let i = 0; i < length; i += stride) out.push(i);
+  return out;
+}
+
+/** A font size (px) that lets `text` fit `maxWidth`, between `min` and `max` (about 0.58 em per character). */
+export function fitFontSize(text: string, maxWidth: number, max: number, min = 11): number {
+  const size = maxWidth / (Math.max(text.length, 1) * 0.58);
+  return Math.max(min, Math.min(max, Math.floor(size)));
+}
+
+/** `text` cut to `maxChars` with an ellipsis. */
+export function truncateText(text: string, maxChars: number): string {
+  return text.length <= maxChars ? text : `${text.slice(0, Math.max(maxChars - 1, 1))}…`;
+}
