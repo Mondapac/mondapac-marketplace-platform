@@ -6,11 +6,9 @@ import {
   DashboardCard,
   DashboardSlot,
   EmptyState,
-  LineAreaChart,
   StatCard,
   StatCardSkeleton,
   StatGrid,
-  compactNumber,
   formatCount,
   type BadgeTone,
   type BarListItem,
@@ -24,10 +22,11 @@ import type { ReactNode } from 'react';
 import { shortInstant } from '../../catalog/format.ts';
 import type { CategoryTree } from '../../catalog/products-list-types.ts';
 import type { HealthBand, OwnHealth } from '../../performance/types.ts';
-import { exponentOf, formatMinor } from '../../price/money.ts';
+import { formatMinor } from '../../price/money.ts';
 import type { Widget } from '../types.ts';
 import type { SellerKpiSources } from './load.ts';
 import { PeriodSwitch } from './period-switch.tsx';
+import { SalesLineChart } from './sales-line-chart.tsx';
 import { PERIODS, type Period, type SellerKpis } from './types.ts';
 import { deltasOf, percent } from './view.ts';
 
@@ -203,7 +202,6 @@ function SalesChart({
       {(widget) => {
         const kpis = okOf(widget);
         if (kpis === null) return <DashboardCard {...frame} error={stalled} />;
-        const exp = 10 ** exponentOf(kpis.currency);
         const updated =
           kpis.refreshedAt === null ? null : shortInstant(kpis.refreshedAt, locale, kpis.timezone);
         const scope = [
@@ -227,14 +225,14 @@ function SalesChart({
             {empty ? (
               <ChartEmpty message={t('chart.empty')} />
             ) : (
-              <LineAreaChart
+              <SalesLineChart
                 title={t('chart.alt', { period: t(`scope.${period}`) })}
                 points={points}
                 compare={compare}
                 seriesLabel={t('chart.series')}
                 compareLabel={t('chart.compare')}
-                formatValue={(v) => formatMinor(String(Math.round(v)), kpis.currency, locale)}
-                formatTick={(v) => compactNumber(v / exp)}
+                currency={kpis.currency}
+                locale={locale}
                 labels={{
                   viewAsTable: t('chart.table'),
                   viewAsChart: t('chart.chart'),

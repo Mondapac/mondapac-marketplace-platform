@@ -7,7 +7,6 @@ import {
   DashboardCard,
   DashboardSlot,
   Funnel,
-  LineAreaChart,
   StatCard,
   StatCardSkeleton,
   StatGrid,
@@ -19,11 +18,11 @@ import {
   type StatCardProps,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
+import { GmvLineChart } from './gmv-line-chart.tsx';
 import { KpiPeriodSwitch } from './kpi-period-switch.tsx';
 import {
   kpiDayLabel,
   kpiDelta,
-  kpiMajor,
   kpiMoney,
   kpiRate,
   kpiSentiment,
@@ -237,13 +236,14 @@ function GmvChart({
       {empty ? (
         <ChartEmpty message={t('chart.empty')} />
       ) : (
-        <LineAreaChart
+        <GmvLineChart
           title={t('chart.alt', { period: t(`period.${PERIOD_KEY[period]}`) })}
           points={points}
           compare={previousSeries.map(point)}
           seriesLabel={t('chart.this')}
           compareLabel={t('chart.previous')}
-          formatValue={(v) => kpiMajor(v, currency, locale)}
+          currency={currency}
+          locale={locale}
           labels={{
             viewAsTable: t('chart.table'),
             viewAsChart: t('chart.chart'),
