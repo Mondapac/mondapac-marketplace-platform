@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getLocale, getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { formatInstant } from '../../../../src/catalog/format.ts';
@@ -52,7 +52,7 @@ export default async function SessionsPage() {
       : [];
   return (
     <SellerShell session={session} activeId="account" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       {result.kind === 'ok' ? (
         <SessionsCard rows={rows} csrfToken={session.csrfToken} />
       ) : (

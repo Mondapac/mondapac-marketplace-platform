@@ -1,3 +1,4 @@
+import { PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { catalogStateFor } from '../../../../src/catalog/catalog-states.tsx';
 import { blankProduct } from '../../../../src/catalog/blank-product.ts';
@@ -35,7 +36,7 @@ export default async function NewProductPage() {
         />
       ) : (
         <>
-          <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
+          <PageHeader title={title} className="mb-2" />
           <p className="text-fg-muted">{t('catalog.create.closed')}</p>
         </>
       )}

@@ -24,6 +24,7 @@ import { getTranslations } from 'next-intl/server';
 import { cookies, headers } from 'next/headers';
 import type { ReactNode } from 'react';
 import { UserMenu } from '../auth/user-menu.tsx';
+import { SellerHelpButton, SellerHelpPanel, SellerHelpProvider } from '../help/seller-help.tsx';
 import { sellerNav, sellerNavItems } from '../nav.ts';
 import { sellerGoShortcuts, sellerPaletteEntries } from '../palette.ts';
 import { settingEntries, visibleSettings } from '../settings/settings-nav.ts';
@@ -105,56 +106,60 @@ export async function SellerShell({
       labels={panelToolsLabels((key) => t.raw(key) as string)}
     >
       <PanelNavigationProgress />
-      <AppShell
-        bottomTabs={bottomTabs}
-        moreActive={bottomTabs?.every((tab) => !tab.active)}
-        labels={{
-          menu: t('nav.menu'),
-          close: t('nav.close'),
-          more: t('nav.more'),
-          main: t('nav.main'),
-          collapse: t('nav.collapse'),
-          expand: t('nav.expand'),
-          toasts: { region: t('toast.region'), close: t('toast.close') },
-        }}
-        collapsed={collapsed}
-        sidebar={
-          <Sidebar
-            panelName={t('panel.name')}
-            items={items}
-            groups={sellerNav.groups}
-            activeId={activeId}
-            label={(key) => t(key)}
-            openGroups={openGroups}
-            settings={settings}
-          />
-        }
-        topbar={
-          <Topbar
-            pageTitle={title}
-            trail={trail ?? navTrail(items, activeId, title, (key) => t(key), sellerNav.groups)}
-            trailLabel={t('nav.breadcrumb')}
-            phoneTitle={<PageTitle fallback={title} />}
-            titleAction={<PinButton />}
-            actions={
-              <>
-                <ShortcutsButton />
-                <PaletteSearchButton />
-                {bell ? <SellerNotifications csrfToken={session.csrfToken} /> : null}
-                <UserMenu
-                  name={session.displayName}
-                  email={session.email}
-                  theme={themeChoice(jar.get(THEME_COOKIE)?.value)}
-                  approved={session.sellerAccessState === 'approved'}
-                  csrfToken={session.csrfToken}
-                />
-              </>
-            }
-          />
-        }
-      >
-        <StepUpProvider>{children}</StepUpProvider>
-      </AppShell>
+      <SellerHelpProvider>
+        <AppShell
+          bottomTabs={bottomTabs}
+          moreActive={bottomTabs?.every((tab) => !tab.active)}
+          labels={{
+            menu: t('nav.menu'),
+            close: t('nav.close'),
+            more: t('nav.more'),
+            main: t('nav.main'),
+            collapse: t('nav.collapse'),
+            expand: t('nav.expand'),
+            toasts: { region: t('toast.region'), close: t('toast.close') },
+          }}
+          collapsed={collapsed}
+          sidebar={
+            <Sidebar
+              panelName={t('panel.name')}
+              items={items}
+              groups={sellerNav.groups}
+              activeId={activeId}
+              label={(key) => t(key)}
+              openGroups={openGroups}
+              settings={settings}
+            />
+          }
+          topbar={
+            <Topbar
+              pageTitle={title}
+              trail={trail ?? navTrail(items, activeId, title, (key) => t(key), sellerNav.groups)}
+              trailLabel={t('nav.breadcrumb')}
+              phoneTitle={<PageTitle fallback={title} />}
+              titleAction={<PinButton />}
+              actions={
+                <>
+                  <SellerHelpButton />
+                  <ShortcutsButton />
+                  <PaletteSearchButton />
+                  {bell ? <SellerNotifications csrfToken={session.csrfToken} /> : null}
+                  <UserMenu
+                    name={session.displayName}
+                    email={session.email}
+                    theme={themeChoice(jar.get(THEME_COOKIE)?.value)}
+                    approved={session.sellerAccessState === 'approved'}
+                    csrfToken={session.csrfToken}
+                  />
+                </>
+              }
+            />
+          }
+        >
+          <StepUpProvider>{children}</StepUpProvider>
+          <SellerHelpPanel />
+        </AppShell>
+      </SellerHelpProvider>
     </PanelTools>
   );
 }

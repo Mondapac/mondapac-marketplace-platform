@@ -1,3 +1,4 @@
+import { PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { catalogStateFor } from '../../../../../src/catalog/catalog-states.tsx';
@@ -33,7 +34,7 @@ export default async function EditOfferPage({
   if (page.body.status === 'published') {
     return (
       <SellerShell session={page.session} activeId="s_offers" title={title}>
-        <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} className="mb-2" />
         <p className="text-fg-muted">{t('catalog.offer-edit.error.not-editable')}</p>
         <p className="mt-4">
           <a className="font-medium text-link underline" href={`/offers/${offerId}`}>
@@ -50,7 +51,7 @@ export default async function EditOfferPage({
   if (options.kind !== 'ok') return catalogStateFor(options, 's_offers', title);
   return (
     <SellerShell session={page.session} activeId="s_offers" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{page.body.sellerSku}</h1>
+      <PageHeader title={page.body.sellerSku} className="mb-4" />
       <div className="max-w-(--mp-size-form-max)">
         <OfferEditForm
           offer={page.body}

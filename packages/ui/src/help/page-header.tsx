@@ -3,7 +3,7 @@ import { Badge } from '../form/badge.tsx';
 
 export interface PageHeaderProps {
   /** The page's one h1. */
-  readonly title: string;
+  readonly title: ReactNode;
   /** A live-state label beside the title, such as "Live · every 30 s" or "Default". */
   readonly status?: string;
   /** The record's own badges beside the title (its state, its risk), already built by the page. */

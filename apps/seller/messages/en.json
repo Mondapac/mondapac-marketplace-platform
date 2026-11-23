@@ -73,6 +73,7 @@
   "account-menu": {
     "trigger": "Account menu for {name}",
     "pages": "Your account",
+    "zone": "Times are in {zone}. <change>Change</change>",
     "profile": "My profile",
     "sessions": "Signed-in devices",
     "security": "Security",
@@ -1284,7 +1285,6 @@
         "unknown": "Unknown"
       },
       "list": {
-        "intro": "Your offers to sell products, from drafts to live. Open one to change its prices, stock and details.",
         "tabs": "Offer stages",
         "tab": {
           "all": "All",
@@ -2395,7 +2395,6 @@
     },
     "import": {
       "title": "Import products",
-      "subtitle": "Add or update many products and offers from one file.",
       "back": "Products",
       "cancel": "Cancel",
       "loading": "Loading the import",
@@ -2885,7 +2884,6 @@
     "title": "Stock locations",
     "section": "Your locations",
     "view-only": "You can see your stock locations but not change them. The store owner can give you access.",
-    "intro": "Where you keep stock, in the order we use it to fill orders. You can have up to {max} locations.",
     "optional": "optional",
     "default": "Default",
     "no-address": "No address",
@@ -3306,7 +3304,6 @@
       }
     },
     "list": {
-      "zone-note": "Times and days are in {zone}.",
       "chip": "{field} is {value}",
       "chip-search": "Order: {text}",
       "chip-remove": "Remove filter {filter}",
@@ -3611,7 +3608,6 @@
   },
   "payout": {
     "title": "Payout account",
-    "intro": "Your payouts go to the bank account you add on Stripe. MondaPac never sees your bank details.",
     "no-access": {
       "title": "You don't have access to this page",
       "body": "Payout account needs the permission \"View payouts\". The store owner can add it."
@@ -3900,7 +3896,6 @@
       "unknown": "Something went wrong. Try again."
     },
     "list": {
-      "intro": "What customers wrote about your products. You can answer each review once in public and report one that breaks the rules. Only the platform can hide or remove a review.",
       "tabs": "Review views",
       "tab": {
         "all": "All",
@@ -4213,7 +4208,6 @@
   },
   "store-profile": {
     "title": "Store profile",
-    "intro": "What buyers see on your store page. Changes are public as soon as you save them.",
     "loading": "Loading the store profile",
     "view-only": "You can see the store profile but not change it. The store owner can give you access.",
     "error": {
@@ -4391,8 +4385,6 @@
       "col": {}
     },
     "list": {
-      "intro": "Every payout we planned or sent, by payout day.",
-      "zone-note": "Dates and days are in {zone}, your store's time zone.",
       "views": "Payout status",
       "view": {
         "all": "All",
@@ -4603,7 +4595,6 @@
       "subject-store-profile": "the store profile"
     },
     "hub": {
-      "description": "Set up how your store works. Changes here apply to your whole store.",
       "view-only": "View only",
       "no-access-title": "You don't have access to settings",
       "no-access-body": "Your role doesn't include any settings page. Ask the account owner to add one.",
@@ -4875,8 +4866,6 @@
   },
   "customers": {
     "title": "Customers",
-    "intro": "People who bought from your store, follow it or joined through your invite link. You see a code and a first name only.",
-    "zone-note": "Times and days are in {zone}.",
     "none": "None",
     "loading": "Loading customers…",
     "clear-all": "Clear all",
@@ -5385,6 +5374,471 @@
         "move-down": "Move {name} down"
       },
       "summary-sort": "Sorted by {field}"
+    }
+  },
+  "help": {
+    "button": "Help",
+    "close": "Close",
+    "about": "About",
+    "this-tab": "This tab",
+    "good-to-know": "Good to know",
+    "related": "Related",
+    "learn-more": "Learn more",
+    "pages": {
+      "home": {
+        "title": "Dashboard",
+        "about": "What needs attention in your shop today, and your latest activity.",
+        "good": [],
+        "related": [
+          {
+            "label": "Orders",
+            "href": "/orders"
+          },
+          {
+            "label": "Offers",
+            "href": "/offers"
+          }
+        ]
+      },
+      "orders": {
+        "title": "Orders",
+        "about": "Paid orders for your store, newest first.",
+        "good": [
+          "Open an order and mark it ready when it is packed. MondaPac arranges the delivery.",
+          "Dates and times are in your store's time zone ({zone})."
+        ],
+        "related": [
+          {
+            "label": "Packing slips",
+            "href": "/orders/packing-slips"
+          }
+        ]
+      },
+      "orders-sellerOrderId": {
+        "title": "Order",
+        "about": "One order: what to pack, the delivery window and the customer's note. Mark it ready when it is packed.",
+        "good": [
+          "Open an order and mark it ready when it is packed. MondaPac arranges the delivery.",
+          "Dates and times are in your store's time zone ({zone})."
+        ],
+        "related": [
+          {
+            "label": "Packing slips",
+            "href": "/orders/packing-slips"
+          }
+        ]
+      },
+      "orders-sellerOrderId-packing-slip": {
+        "title": "Packing slip",
+        "about": "The slip to print and put in the parcel.",
+        "good": [
+          "Open an order and mark it ready when it is packed. MondaPac arranges the delivery.",
+          "Dates and times are in your store's time zone ({zone})."
+        ],
+        "related": [
+          {
+            "label": "Packing slips",
+            "href": "/orders/packing-slips"
+          }
+        ]
+      },
+      "orders-packing-slips": {
+        "title": "Packing slips",
+        "about": "Print the slips of several orders at once.",
+        "good": [
+          "Open an order and mark it ready when it is packed. MondaPac arranges the delivery.",
+          "Dates and times are in your store's time zone ({zone})."
+        ],
+        "related": [
+          {
+            "label": "Packing slips",
+            "href": "/orders/packing-slips"
+          }
+        ]
+      },
+      "offers": {
+        "title": "Offers",
+        "about": "Your offers to sell products, from drafts to live. Open one to change its prices, stock and details.",
+        "good": [],
+        "related": [
+          {
+            "label": "Products",
+            "href": "/products"
+          },
+          {
+            "label": "Stock locations",
+            "href": "/settings/stock-locations"
+          }
+        ]
+      },
+      "offers-offerId-edit": {
+        "title": "Edit offer",
+        "about": "Change the details of this offer.",
+        "good": [],
+        "related": [
+          {
+            "label": "Products",
+            "href": "/products"
+          },
+          {
+            "label": "Stock locations",
+            "href": "/settings/stock-locations"
+          }
+        ]
+      },
+      "products": {
+        "title": "Products",
+        "about": "The products in your store. Open one to see its details and offers.",
+        "good": [],
+        "related": [
+          {
+            "label": "Import products",
+            "href": "/products/import"
+          },
+          {
+            "label": "Offers",
+            "href": "/offers"
+          }
+        ]
+      },
+      "products-new": {
+        "title": "Add product",
+        "about": "Add a product to your store. A new product is checked before it goes live.",
+        "good": [],
+        "related": [
+          {
+            "label": "Import products",
+            "href": "/products/import"
+          },
+          {
+            "label": "Offers",
+            "href": "/offers"
+          }
+        ]
+      },
+      "products-productId": {
+        "title": "Product",
+        "about": "One product's details, versions and offers.",
+        "good": [],
+        "related": [
+          {
+            "label": "Import products",
+            "href": "/products/import"
+          },
+          {
+            "label": "Offers",
+            "href": "/offers"
+          }
+        ]
+      },
+      "products-productId-edit": {
+        "title": "Edit product",
+        "about": "Change a product's details. Changes are checked before they go live.",
+        "good": [],
+        "related": [
+          {
+            "label": "Import products",
+            "href": "/products/import"
+          },
+          {
+            "label": "Offers",
+            "href": "/offers"
+          }
+        ]
+      },
+      "products-import": {
+        "title": "Import products",
+        "about": "Add or update many products and offers from one file.",
+        "good": [],
+        "related": [
+          {
+            "label": "Import products",
+            "href": "/products/import"
+          },
+          {
+            "label": "Offers",
+            "href": "/offers"
+          }
+        ]
+      },
+      "customers": {
+        "title": "Customers",
+        "about": "People who bought from your store, follow it or joined through your invite link.",
+        "good": ["You see a code and a first name only."],
+        "related": [
+          {
+            "label": "Invite customers",
+            "href": "/settings/invite-customers"
+          },
+          {
+            "label": "Exclusive perks",
+            "href": "/settings/exclusive-perks"
+          }
+        ]
+      },
+      "customers-code": {
+        "title": "Customer",
+        "about": "One customer's orders from your store.",
+        "good": ["You see a code and a first name only."],
+        "related": [
+          {
+            "label": "Invite customers",
+            "href": "/settings/invite-customers"
+          },
+          {
+            "label": "Exclusive perks",
+            "href": "/settings/exclusive-perks"
+          }
+        ]
+      },
+      "reviews": {
+        "title": "Reviews",
+        "about": "What customers wrote about your products.",
+        "good": [
+          "You can answer each review once in public.",
+          "Report a review that breaks the rules. Only the platform can hide or remove a review."
+        ],
+        "related": []
+      },
+      "earnings": {
+        "title": "Earnings",
+        "about": "What your store sold on paid orders, the delivery fees, the platform commission, what refunds took back and your balance.",
+        "good": [
+          "A refund can take your balance below zero.",
+          "The payouts tab lists every payout, planned or sent, by payout day.",
+          "Dates and times are in your store's time zone ({zone})."
+        ],
+        "related": [
+          {
+            "label": "Payout account",
+            "href": "/accounting/payout-account"
+          }
+        ]
+      },
+      "accounting-payout-account": {
+        "title": "Payout account",
+        "about": "Where your payouts go.",
+        "good": ["You add your bank account on Stripe. MondaPac never sees your bank details."],
+        "related": [
+          {
+            "label": "Earnings",
+            "href": "/earnings"
+          }
+        ]
+      },
+      "performance": {
+        "title": "Performance",
+        "about": "How your store is doing for customers.",
+        "good": ["This is information for you: nothing here changes your store by itself."],
+        "related": []
+      },
+      "category-proposals": {
+        "title": "Suggest a category",
+        "about": "A suggested category becomes a shelf in your own shop once the platform approves it.",
+        "good": [
+          "It groups your products on your shop page. It does not change search, filters or badges."
+        ],
+        "related": []
+      },
+      "tag-suggestions": {
+        "title": "Tag suggestions",
+        "about": "Ask for a tag the list does not have.",
+        "good": ["We review each one and email you the result."],
+        "related": []
+      },
+      "tag-suggestions-new": {
+        "title": "Suggest a tag",
+        "about": "Suggest a tag only if you cannot find it in the Tags field. Once approved, add it to your product yourself.",
+        "good": ["We review each one and email you the result."],
+        "related": []
+      },
+      "value-suggestions": {
+        "title": "Value suggestions",
+        "about": "When a field of your product does not have the value you need, suggest it here.",
+        "good": [
+          "A reviewer adds it for everyone, matches it to a value already on the list, or tells you why not. We also email you the answer."
+        ],
+        "related": []
+      },
+      "value-suggestions-new": {
+        "title": "Suggest a value",
+        "about": "Say the value you need in a few words.",
+        "good": [
+          "A reviewer adds it for everyone, matches it to a value already on the list, or tells you why not. We also email you the answer."
+        ],
+        "related": []
+      },
+      "settings": {
+        "title": "Settings",
+        "about": "Your store's settings, grouped by area.",
+        "good": [],
+        "related": []
+      },
+      "settings-store-profile": {
+        "title": "Store profile",
+        "about": "What buyers see on your store page.",
+        "good": ["Changes are public as soon as you save them."],
+        "related": []
+      },
+      "settings-stock-locations": {
+        "title": "Stock locations",
+        "about": "Where you keep stock, in the order we use it to fill orders.",
+        "good": [],
+        "related": []
+      },
+      "settings-team": {
+        "title": "Members",
+        "about": "The people who can sign in to your store, and what each can do.",
+        "good": [],
+        "related": []
+      },
+      "settings-invite-customers": {
+        "title": "Invite customers",
+        "about": "Share your link or QR code. People who sign up through it become your exclusive customers.",
+        "good": [],
+        "related": [
+          {
+            "label": "Exclusive perks",
+            "href": "/settings/exclusive-perks"
+          }
+        ]
+      },
+      "settings-exclusive-perks": {
+        "title": "Exclusive perks",
+        "about": "Perks for customers who joined through your invite link.",
+        "good": [
+          "You choose the discount and the cashback; the lower commission is applied automatically."
+        ],
+        "related": []
+      },
+      "account-setup": {
+        "title": "Set up your store",
+        "about": "The steps to finish before your store can sell. Each step is saved when you press Save and continue.",
+        "good": [],
+        "related": []
+      },
+      "account-setup-business-details": {
+        "title": "Business details",
+        "about": "Your business name and type, as on your registration.",
+        "good": [],
+        "related": []
+      },
+      "account-setup-business-number": {
+        "title": "Business number",
+        "about": "Your ABN. We check it when we review your application.",
+        "good": [],
+        "related": []
+      },
+      "account-setup-address": {
+        "title": "Address",
+        "about": "Where your store is. It also sets your store's time zone.",
+        "good": [],
+        "related": []
+      },
+      "account-setup-web-address": {
+        "title": "Web address",
+        "about": "The address of your store page on MondaPac.",
+        "good": [],
+        "related": []
+      },
+      "account-setup-review": {
+        "title": "Review and send",
+        "about": "Check your answers and send your application. We email you the decision.",
+        "good": [],
+        "related": []
+      },
+      "account-profile": {
+        "title": "My profile",
+        "about": "Your name and language.",
+        "good": [],
+        "related": []
+      },
+      "account-security": {
+        "title": "Security",
+        "about": "Two-step verification asks for a code from your phone each time you sign in.",
+        "good": ["It is optional, and we recommend it."],
+        "related": []
+      },
+      "account-sessions": {
+        "title": "Signed-in devices",
+        "about": "The browsers and devices signed in to your account now.",
+        "good": [
+          "If you don't recognise one, sign out of all other devices and change your password."
+        ],
+        "related": []
+      }
+    },
+    "tabbed": {
+      "t-offers-offerId": {
+        "page": "Offer",
+        "about": "One offer to sell a product: its details, price, stock and variants.",
+        "good": [],
+        "tabs": [
+          {
+            "label": "Details",
+            "text": "One offer: its status, price, stock and variants.",
+            "points": [],
+            "related": [
+              {
+                "label": "Products",
+                "href": "/products"
+              },
+              {
+                "label": "Stock locations",
+                "href": "/settings/stock-locations"
+              }
+            ]
+          },
+          {
+            "label": "Prices",
+            "text": "Set this offer's price, and schedule price changes.",
+            "points": [
+              "Dates and times are in your store's time zone ({zone}).",
+              "A large price change waits for review. The current price stays until it is approved."
+            ],
+            "related": [
+              {
+                "label": "Products",
+                "href": "/products"
+              },
+              {
+                "label": "Stock locations",
+                "href": "/settings/stock-locations"
+              }
+            ]
+          },
+          {
+            "label": "Stock",
+            "text": "How many you have in each stock location.",
+            "points": [],
+            "related": [
+              {
+                "label": "Products",
+                "href": "/products"
+              },
+              {
+                "label": "Stock locations",
+                "href": "/settings/stock-locations"
+              }
+            ]
+          },
+          {
+            "label": "Variants",
+            "text": "The sizes, flavours or colours you sell of this product.",
+            "points": [],
+            "related": [
+              {
+                "label": "Products",
+                "href": "/products"
+              },
+              {
+                "label": "Stock locations",
+                "href": "/settings/stock-locations"
+              }
+            ]
+          }
+        ]
+      }
     }
   }
 }

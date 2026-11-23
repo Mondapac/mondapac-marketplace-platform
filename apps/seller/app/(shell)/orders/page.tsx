@@ -1,4 +1,4 @@
-import { LoadError } from '@mondapac/ui';
+import { LoadError, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { headers } from 'next/headers';
 import { panelHostFor } from '../../../src/server/bff.ts';
@@ -24,7 +24,7 @@ export default async function OrdersPage({
   if (page.kind === 'unavailable') {
     return (
       <div className="p-6">
-        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} className="mb-4" />
         <LoadError
           message={t('orders.error.unavailable')}
           retryLabel={t('load.retry')}
@@ -36,7 +36,7 @@ export default async function OrdersPage({
   if (page.kind === 'no-access') {
     return (
       <SellerShell session={page.session} activeId="s_orders" title={title}>
-        <h1 className="mb-2 text-2xl font-semibold">{t('catalog.no-access.title')}</h1>
+        <PageHeader title={t('catalog.no-access.title')} className="mb-2" />
         <p className="text-fg-muted">{t('catalog.no-access.body')}</p>
       </SellerShell>
     );
@@ -44,7 +44,7 @@ export default async function OrdersPage({
   const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
   return (
     <SellerShell session={page.session} activeId="s_orders" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       <SellerOrders
         initial={page.page}
         paging={page.paging}

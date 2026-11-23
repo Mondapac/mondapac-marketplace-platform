@@ -58,7 +58,7 @@ afterEach(() => {
 const groups = () => screen.queryAllByRole('heading', { level: 2 }).map((h) => h.textContent);
 
 describe('seller settings hub page', () => {
-  it('shows the title, the description and every group to the owner', async () => {
+  it('shows the title and every group to the owner', async () => {
     await show([
       'sellers.store-profile.view',
       'sellers.store-profile.edit',
@@ -70,7 +70,7 @@ describe('seller settings hub page', () => {
       'identity.team-member.invite',
     ]);
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Settings');
-    expect(screen.getByText(messages.settings.hub.description)).toBeTruthy();
+    expect(screen.queryByText(/Set up how your store works/)).toBeNull();
     expect(groups()).toEqual(['Store', 'Team']);
     expect(screen.getAllByRole('link')).toHaveLength(3);
     expect(screen.queryByText('View only')).toBeNull();
@@ -95,7 +95,6 @@ describe('seller settings hub page', () => {
       messages.settings.hub['no-access-title'],
     );
     expect(screen.getByRole('link', { name: 'Back to Dashboard' }).getAttribute('href')).toBe('/');
-    expect(screen.queryByText(messages.settings.hub.description)).toBeNull();
   });
 
   it('marks a view-only page with the chip', async () => {

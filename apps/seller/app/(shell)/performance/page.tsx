@@ -1,4 +1,4 @@
-import { EmptyState } from '@mondapac/ui';
+import { EmptyState, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { Performance } from '../../../src/performance/performance.tsx';
 import { HEALTH_PATH, type OwnHealth } from '../../../src/performance/types.ts';
@@ -40,7 +40,7 @@ export default async function PerformancePage() {
   }
   return (
     <SellerShell session={page.session} activeId="s_performance" title={title}>
-      <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-4" />
       <Performance initial={page.body} csrfToken={page.session.csrfToken} />
     </SellerShell>
   );

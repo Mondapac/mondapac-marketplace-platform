@@ -34,7 +34,7 @@ export default async function SettingsHubPage() {
         />
       ) : (
         <div className="flex flex-col gap-6">
-          <SettingsHubHeader title={title} description={t('settings.hub.description')} />
+          <SettingsHubHeader title={title} />
           <RecentPages heading={t('palette.recent-heading')} />
           <SettingsHub
             groups={groups}

@@ -1,4 +1,4 @@
-import { BackLink, Banner, Card } from '@mondapac/ui';
+import { BackLink, Banner, Card, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { catalogStateFor } from '../../../../src/catalog/catalog-states.tsx';
 import { SuggestProductPicker } from '../../../../src/catalog/suggest-product-picker.tsx';
@@ -52,7 +52,7 @@ export default async function NewValueSuggestionPage({
     return (
       <SellerShell session={page.session} activeId="s_suggestions" title={title}>
         <div className="mb-4">{back}</div>
-        <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
+        <PageHeader title={title} className="mb-4" />
         <div className="max-w-(--mp-size-form-max)">
           <Card>
             {products.length === 0 ? (
@@ -93,7 +93,7 @@ export default async function NewValueSuggestionPage({
   return (
     <SellerShell session={page.session} activeId="s_suggestions" title={title}>
       <div className="mb-4">{back}</div>
-      <h1 className="mb-1 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-1" />
       <p className="mb-4 text-sm text-fg-muted" data-testid="chosen-product">
         {t('catalog.suggestions.new.for', { product: name ?? product.productCode })}{' '}
         <a

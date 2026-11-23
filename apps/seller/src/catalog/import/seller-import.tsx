@@ -10,7 +10,7 @@ import {
   Icon,
   RadioGroup,
   FormSkeleton,
-  PageInfo,
+  PageHeader,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -320,10 +320,7 @@ export function SellerImport({
     <div className="flex flex-col gap-4">
       <div>
         <BackLink href={LIST_PATH} label={t('back')} />
-        <div className="flex items-center gap-2">
-          <h1 className="text-2xl font-semibold text-fg">{t('title')}</h1>
-          <PageInfo page={t('title')}>{t('subtitle')}</PageInfo>
-        </div>
+        <PageHeader title={t('title')} />
       </div>
       <ImportSteps active={active} />
       {actionFailed === null ? null : (

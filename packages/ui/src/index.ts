@@ -323,7 +323,6 @@ export {
   type ActionMenuLink,
   type ActionMenuProps,
 } from './overlay/action-menu.tsx';
-export { PageInfo, type PageInfoProps } from './overlay/page-info.tsx';
 export { HelpProvider, HelpTab, useHelp, type HelpProviderProps } from './help/help-context.tsx';
 export {
   bestRoute,

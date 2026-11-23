@@ -402,7 +402,6 @@ export function OffersList({
   return (
     <SuperList
       heading={{
-        info: ts('intro'),
         actions: (
           <OffersBulk
             selection={{

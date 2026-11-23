@@ -158,7 +158,6 @@ export function PayoutAccountView({
   return (
     <SettingsPage
       title={t('title')}
-      description={t('intro')}
       banner={
         banners.length === 0 ? undefined : <div className="flex flex-col gap-3">{banners}</div>
       }

@@ -10,6 +10,7 @@ import {
   LoadError,
   Spinner,
   toast,
+  PageHeader,
 } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
@@ -176,14 +177,14 @@ export function CustomerDetail({ code }: { readonly code: string }) {
     <div className="flex flex-col gap-6">
       <div className="flex flex-col items-start gap-3">
         {back}
-        <div className="flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold">
-            <CodeText code={customer.code} />
-          </h1>
-          <Button variant="secondary" onClick={() => void copy()}>
-            {t('detail.copy')}
-          </Button>
-        </div>
+        <PageHeader
+          title={<CodeText code={customer.code} />}
+          badges={
+            <Button variant="secondary" onClick={() => void copy()}>
+              {t('detail.copy')}
+            </Button>
+          }
+        />
         <p className="text-fg-muted">{customer.firstName ?? t('detail.no-name')}</p>
         <CustomerBadges customer={customer} />
         <p className="text-sm text-fg-muted">{t('detail.since', { date: day(customer.since) })}</p>

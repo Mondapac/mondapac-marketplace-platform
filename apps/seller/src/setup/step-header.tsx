@@ -1,3 +1,4 @@
+import { PageHeader } from '@mondapac/ui';
 import { useTranslations } from 'next-intl';
 import Link from 'next/link';
 import { SETUP_ROOT, SETUP_STEPS, stepNumber, type SetupStepKey } from './steps.ts';
@@ -13,7 +14,7 @@ export function StepHeader({ step }: { readonly step: SetupStepKey }) {
       <p className="text-sm text-fg-muted">
         {t('step.counter', { current: stepNumber(step), total: SETUP_STEPS.length })}
       </p>
-      <h1 className="text-2xl font-semibold text-fg">{t(`steps.${step}`)}</h1>
+      <PageHeader title={t(`steps.${step}`)} />
     </header>
   );
 }

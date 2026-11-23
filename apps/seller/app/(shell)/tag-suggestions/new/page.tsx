@@ -1,4 +1,4 @@
-import { BackLink, EmptyState, LinkButton } from '@mondapac/ui';
+import { BackLink, EmptyState, LinkButton, PageHeader } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { catalogStateFor } from '../../../../src/catalog/catalog-states.tsx';
 import {
@@ -83,7 +83,7 @@ export default async function NewTagSuggestionPage({
       <div className="mb-4">
         <BackLink href="/tag-suggestions" label={t('catalog.tagSuggestions.back')} />
       </div>
-      <h1 className="mb-2 text-2xl font-semibold">{title}</h1>
+      <PageHeader title={title} className="mb-2" />
       {choices.length === 0 ? (
         <EmptyState
           size="page"
