@@ -5,7 +5,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { bestRoute } from '@mondapac/ui';
+import { bestRoute, resolveHelp, type HelpTextSource } from '@mondapac/ui';
 import messages from '../messages/en.json';
 import { HELP_REGISTRY } from '../src/help/help-registry.ts';
 
@@ -45,16 +45,21 @@ describe('page header', () => {
     expect(offenders.map((file) => relative(root, file))).toEqual([]);
   });
 
-  it('writes no "Times are in <zone>" sentence on a page: the zone is in the Help panel and the account menu', () => {
+  it('writes no "Times ... in <zone>" sentence on a page: the zone is in the Help panel and the account menu', () => {
+    // Field help beside a form field may name the zone (the field's own time); nothing else does.
+    const FIELD_HELP = new Set([
+      'account-menu.zone',
+      'content.slides.placement.zone',
+      'content.pages.new.window-help',
+      'content.pages.settings.window-help',
+    ]);
     const offenders: string[] = [];
     const walk = (value: unknown, path: string) => {
       if (typeof value === 'string') {
         if (
           path.split('.')[0] !== 'help' &&
-          // The account menu and the scheduling form's own field help keep their zone line.
-          path !== 'account-menu.zone' &&
-          path !== 'content.slides.placement.zone' &&
-          /^(Times|Dates|Times and days)( are shown| are)? in \{zone\}\./u.test(value)
+          !FIELD_HELP.has(path) &&
+          /\b(Times|Dates)\b[^.]*\b(in|shown in)\b[^.]*\{zone\}/u.test(value)
         ) {
           offenders.push(path);
         }
@@ -66,6 +71,31 @@ describe('page header', () => {
     };
     walk(messages, '');
     expect(offenders).toEqual([]);
+  });
+
+  it('hard-codes no zone sentence in the source either', () => {
+    const offenders = sources.filter((file) =>
+      /\b(Times|Dates)\b[^.'"`\n]*\b(in|shown in)\b[^.'"`\n]*(\{zone\}|\$\{zone\})/u.test(
+        source(file).replace(/\/\/.*$|\/\*[\s\S]*?\*\//gmu, ''),
+      ),
+    );
+    expect(offenders.map((file) => relative(root, file))).toEqual([]);
+  });
+
+  it('has no hand-written h1 in the shared kit either (PageHeader, SettingsTitle and the route states are the ones)', () => {
+    const kit = files(join(root, '../../packages/ui/src'), isSource).filter(
+      (file) =>
+        !file.endsWith('help/page-header.tsx') && !file.endsWith('settings/settings-title.tsx'),
+    );
+    const offenders = kit.filter((file) =>
+      [...source(file).matchAll(/<h1\b[^>]*>/gu)].some((match) => !match[0].includes('sr-only')),
+    );
+    // Auth screens, the route error states and the no-access page own their own single h1.
+    expect(offenders.map((file) => relative(join(root, '../..'), file)).sort()).toEqual([
+      'packages/ui/src/auth/auth-layout.tsx',
+      'packages/ui/src/settings/no-access.tsx',
+      'packages/ui/src/shell/route-states.tsx',
+    ]);
   });
 });
 
@@ -112,5 +142,67 @@ describe('help registry', () => {
         .map((tab) => `${entry.slug}:${tab.label}`);
     });
     expect(wrong).toEqual([]);
+  });
+
+  // The Related links the page-level entry of help-texts.json gives a page that now has tabs
+  // (own routes and tabs left out: the tab strip leads there). A tabbed page must keep them.
+  const PAGE_RELATED: Record<string, string[]> = {
+    '/security/alerts': ['/account/sessions'],
+    '/review': ['/catalog/products', '/catalog/tags/suggestions'],
+    '/catalog/categories': [
+      '/catalog/categories/import',
+      '/catalog/attributes',
+      '/catalog/business-activities',
+    ],
+    '/catalog/attributes': ['/catalog/categories', '/catalog/variants'],
+    '/catalog/variants': ['/catalog/attributes'],
+    '/catalog/brands': ['/catalog/products'],
+    '/invoices': ['/orders', '/settings/tax'],
+  };
+  const help = messages.help as unknown as {
+    pages: Record<string, never>;
+    tabbed: Record<string, never>;
+  };
+  const text: HelpTextSource = {
+    page: (slug) => help.pages[slug],
+    tabbed: (slug) => help.tabbed[slug],
+  };
+
+  it('keeps the page-level Related of every tabbed page that also has a page entry in help-texts', () => {
+    const missing = Object.entries(PAGE_RELATED).flatMap(([route, hrefs]) => {
+      const got = new Set(
+        resolveHelp({ pathname: route, registry: HELP_REGISTRY, text, zone: 'UTC' })?.related?.map(
+          (link) => link.href,
+        ),
+      );
+      return hrefs.filter((href) => !got.has(href)).map((href) => `${route} -> ${href}`);
+    });
+    expect(missing).toEqual([]);
+  });
+
+  it("lists no link to a tabbed page's own routes or tabs, and no link twice", () => {
+    const bad = HELP_REGISTRY.tabbed.flatMap((entry) => {
+      const own = new Set([...entry.routes, ...entry.tabs.flatMap((tab) => tab.route ?? [])]);
+      return entry.routes.flatMap((route) =>
+        entry.tabs.flatMap((tab) => {
+          const related =
+            resolveHelp({
+              pathname: route,
+              registry: HELP_REGISTRY,
+              text,
+              zone: 'UTC',
+              activeTab: tab.label,
+            })?.related ?? [];
+          const hrefs = related.map((link) => link.href);
+          return [
+            ...hrefs.filter((href) => own.has(href)).map((href) => `${route}: own ${href}`),
+            ...hrefs
+              .filter((href, i) => hrefs.indexOf(href) !== i)
+              .map((href) => `${route}: twice ${href}`),
+          ];
+        }),
+      );
+    });
+    expect(bad).toEqual([]);
   });
 });

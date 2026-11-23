@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Toaster, type ToasterProps } from '../feedback/toaster.tsx';
 import { Icon, type IconName } from '../icon/icon.tsx';
 import { useModal } from '../overlay/dialog.tsx';
+import { useHelpOptional } from '../help/help-context.tsx';
 import { SIDEBAR_COLLAPSED, SIDEBAR_COOKIE } from './nav.ts';
 
 export interface BottomTab {
@@ -68,6 +69,9 @@ export function AppShell({
   // After Escape the rail stays closed until focus leaves it and comes back.
   const dismissed = useRef(false);
   const drawer = useRef<HTMLDialogElement>(null);
+  // While the Help panel is open from 1024 px its 360 px column is reserved, so the page shrinks.
+  const help = useHelpOptional();
+  const helpOpen = help !== null && help.open && help.hasContent;
   const hasBar = bottomTabs !== undefined && bottomTabs.length > 0;
 
   useModal(drawer, open);
@@ -169,7 +173,10 @@ export function AppShell({
           </button>
           <div className="min-w-0 flex-1">{topbar}</div>
         </div>
-        <main className={`min-w-0 flex-1 p-4 sm:p-6 ${hasBar ? 'pb-24 md:pb-6' : ''}`}>
+        <main
+          data-help-open={helpOpen ? 'true' : undefined}
+          className={`min-w-0 flex-1 p-4 sm:p-6 ${helpOpen ? 'lg:pe-96' : ''} ${hasBar ? 'pb-24 md:pb-6' : ''}`}
+        >
           {children}
         </main>
       </div>

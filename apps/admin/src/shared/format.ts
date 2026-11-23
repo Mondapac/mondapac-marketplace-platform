@@ -87,7 +87,7 @@ function yearIn(date: Date, zone: string): string {
 
 /**
  * A compact instant in an IANA zone for a table cell ("23 Oct, 6:00 am"), without the zone name:
- * the page says once which zone its times are in. A zone this runtime does not know reads in UTC.
+ * the Help panel and the account menu name the zone, not the page. A zone this runtime does not know reads in UTC.
  */
 export function shortInstantInZone(
   iso: string | null,

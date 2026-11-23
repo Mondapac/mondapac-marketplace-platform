@@ -7773,7 +7773,7 @@
       "empty": "No activity yet.",
       "empty-filtered": "No activity matches",
       "by-at": "{actor} · {time}",
-      "subtitle": "What happened to this account, and what admins did on it. Times in {zone}.",
+      "subtitle": "What happened to this account, and what admins did on it.",
       "views": "Activity type",
       "view": {
         "all": "All",
@@ -8147,7 +8147,7 @@
       },
       "saved": {
         "title": "Saved for later",
-        "subtitle": "Items the customer saved for later. Times in {zone}.",
+        "subtitle": "Items the customer saved for later.",
         "caption": "Saved for later",
         "empty": "Nothing saved for later.",
         "export-title": "Export saved for later",
@@ -8226,7 +8226,7 @@
       "open-moderation": "Open moderation queue",
       "reviews": {
         "title": "Reviews written",
-        "subtitle": "Reviews this customer wrote, with their status. The text is never shown here. Times in {zone}.",
+        "subtitle": "Reviews this customer wrote, with their status. The text is never shown here.",
         "caption": "Reviews written",
         "empty": "This customer has not written a review.",
         "export-title": "Export reviews",
@@ -8252,7 +8252,7 @@
       },
       "ratings": {
         "title": "Seller ratings given",
-        "subtitle": "Ratings this customer gave sellers after an order. Times in {zone}.",
+        "subtitle": "Ratings this customer gave sellers after an order.",
         "caption": "Seller ratings given",
         "empty": "This customer has not rated a seller.",
         "export-title": "Export seller ratings",
@@ -11663,7 +11663,6 @@
     "not-set": "Not set",
     "list": {
       "title": "Brands",
-      "intro": "Brands are shared by all markets. Products link to a brand instead of typing its name.",
       "tabs": "Brand views",
       "tab": {
         "active": "Active",
@@ -17802,6 +17801,10 @@
         "page": "Catalogue requests",
         "about": "Changes sellers sent that wait for a review before buyers see them.",
         "good": ["Dates and times are in your time zone ({zone}). Change it in My profile."],
+        "related": [
+          { "label": "Products", "href": "/catalog/products" },
+          { "label": "Tag suggestions", "href": "/catalog/tags/suggestions" }
+        ],
         "tabs": [
           {
             "label": "Product revisions",
@@ -17821,6 +17824,11 @@
         "page": "Categories",
         "about": "How products are organised in this Market.",
         "good": [],
+        "related": [
+          { "label": "Import categories", "href": "/catalog/categories/import" },
+          { "label": "Attributes", "href": "/catalog/attributes" },
+          { "label": "Business activities", "href": "/catalog/business-activities" }
+        ],
         "tabs": [
           {
             "label": "Category tree",
@@ -17840,6 +17848,10 @@
         "page": "Attributes",
         "about": "The fields products carry, such as size or flavour, and how they are grouped.",
         "good": [],
+        "related": [
+          { "label": "Categories", "href": "/catalog/categories" },
+          { "label": "Variants", "href": "/catalog/variants" }
+        ],
         "tabs": [
           {
             "label": "Attributes",
@@ -17877,6 +17889,7 @@
         "page": "Variants",
         "about": "Sizes, flavours and colours across the Market.",
         "good": [],
+        "related": [{ "label": "Attributes", "href": "/catalog/attributes" }],
         "tabs": [
           {
             "label": "Variant types",
@@ -17902,6 +17915,7 @@
         "page": "Brands",
         "about": "Brands are shared by all Markets. Products link to a brand instead of typing its name.",
         "good": [],
+        "related": [{ "label": "Products", "href": "/catalog/products" }],
         "tabs": [
           {
             "label": "Brands",
@@ -17921,6 +17935,10 @@
         "page": "Invoices",
         "about": "Order confirmations and credit notes issued in this Market. These are not tax invoices.",
         "good": ["Dates and times are in your time zone ({zone}). Change it in My profile."],
+        "related": [
+          { "label": "Orders", "href": "/orders" },
+          { "label": "Tax", "href": "/settings/tax" }
+        ],
         "tabs": [
           {
             "label": "Order confirmations",

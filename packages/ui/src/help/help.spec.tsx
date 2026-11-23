@@ -2,15 +2,30 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HelpButton } from './help-button.tsx';
 import { HelpProvider, useHelp } from './help-context.tsx';
 import { Tabs } from '../shell/tabs.tsx';
 import { HelpPanel, type HelpContent } from './help-panel.tsx';
 import { PageHeader } from './page-header.tsx';
 import { AccountMenu } from '../shell/account-menu.tsx';
+import { AppShell } from '../shell/app-shell.tsx';
 
-afterEach(cleanup);
+/** Stubs the viewport: `wide` is true from 1024 px. */
+function setViewport(wide: boolean) {
+  vi.stubGlobal('matchMedia', (query: string) => ({
+    matches: query.includes('1024') ? wide : false,
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  }));
+}
+
+beforeEach(() => setViewport(true));
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 const labels = {
   about: 'About',
@@ -189,6 +204,91 @@ describe('Help button and panel', () => {
     );
     await user.click(screen.getByRole('button', { name: 'Help' }));
     expect(screen.queryByRole('dialog')).toBeNull();
+  });
+});
+
+describe('Help panel below and above 1024 px', () => {
+  it('has no modal semantics and the close button is its first focusable element', async () => {
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByRole('button', { name: 'Help' }));
+    const dialog = screen.getByRole('dialog');
+    expect(dialog.getAttribute('aria-modal')).toBe('false');
+    expect(dialog.querySelector('button, a[href]')).toBe(
+      screen.getByRole('button', { name: 'Close' }),
+    );
+    expect(screen.getByRole('button', { name: 'Close' }).className).toContain('size-11');
+    expect(dialog.querySelector('div')?.className).toContain('items-center');
+  });
+
+  it('closes on a press outside the panel below 1024 px, without taking focus', async () => {
+    setViewport(false);
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByRole('button', { name: 'Help' }));
+    await user.click(screen.getByLabelText('Search box'));
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByLabelText('Search box'));
+  });
+
+  it('stays open on a press inside the panel and on the Help button itself below 1024 px', async () => {
+    setViewport(false);
+    const user = userEvent.setup();
+    render(<Harness />);
+    const button = screen.getByRole('button', { name: 'Help' });
+    await user.click(button);
+    await user.click(screen.getByText('Refunds returns money to buyers.'));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+    await user.click(button);
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
+  it('stays open on a press outside the panel from 1024 px', async () => {
+    setViewport(true);
+    const user = userEvent.setup();
+    render(<Harness />);
+    await user.click(screen.getByRole('button', { name: 'Help' }));
+    await user.click(screen.getByLabelText('Search box'));
+    expect(screen.getByRole('dialog')).toBeTruthy();
+  });
+
+  it('reserves the panel column on the shell while it is open', async () => {
+    const user = userEvent.setup();
+    render(
+      <HelpProvider>
+        <AppShell
+          labels={{
+            menu: 'Menu',
+            close: 'Close menu',
+            more: 'More',
+            main: 'Main',
+            collapse: 'Collapse',
+            expand: 'Expand',
+            toasts: { region: 'Notifications', close: 'Dismiss' },
+          }}
+          sidebar={<nav>Side</nav>}
+          topbar={<HelpButton label="Help" />}
+        >
+          <p>Page</p>
+          <HelpPanel content={content} labels={labels} />
+        </AppShell>
+      </HelpProvider>,
+    );
+    const main = screen.getByRole('main');
+    expect(main.className).not.toContain('lg:pe-96');
+    await user.click(screen.getAllByRole('button', { name: 'Help' })[0] as HTMLElement);
+    expect(main.className).toContain('lg:pe-96');
+    expect(main.getAttribute('data-help-open')).toBe('true');
+  });
+
+  it('gives the Help button a 44 px hit area on phones and the search button border from tablets', () => {
+    render(<Harness />);
+    const className = screen.getByRole('button', { name: 'Help' }).className;
+    expect(className).toContain('min-h-11');
+    expect(className).toContain('min-w-11');
+    expect(className).toContain('md:border');
+    expect(className).toContain('border-line-control');
+    expect(className).toContain('md:bg-subtle');
   });
 });
 

@@ -62,9 +62,21 @@ const text = {
             page: 'Brands',
             about: 'Brand list.',
             good: [],
+            related: [
+              { label: 'Products', href: '/catalog/products' },
+              { label: 'Brands', href: '/catalog/brands' },
+            ],
             tabs: [
               { label: 'Brands', text: 'The brands.', points: [], related: [] },
-              { label: 'Duplicates', text: 'Possible duplicates.', points: [], related: [] },
+              {
+                label: 'Duplicates',
+                text: 'Possible duplicates.',
+                points: [],
+                related: [
+                  { label: 'Products', href: '/catalog/products' },
+                  { label: 'Attributes', href: '/catalog/attributes' },
+                ],
+              },
             ],
           }
         : undefined,
@@ -109,6 +121,16 @@ describe('resolveHelp', () => {
   it('uses the marked tab when the tabs have no route', () => {
     expect(resolve('/catalog/brands', 'Duplicates')?.tab?.text).toBe('Possible duplicates.');
     expect(resolve('/catalog/brands')?.tab).toBeUndefined();
+  });
+
+  it("merges the page's Related with the open tab's, once each and never to the page itself", () => {
+    expect(resolve('/catalog/brands')?.related).toEqual([
+      { label: 'Products', href: '/catalog/products' },
+    ]);
+    expect(resolve('/catalog/brands', 'Duplicates')?.related).toEqual([
+      { label: 'Products', href: '/catalog/products' },
+      { label: 'Attributes', href: '/catalog/attributes' },
+    ]);
   });
 
   it('returns null for an unknown path or missing text', () => {

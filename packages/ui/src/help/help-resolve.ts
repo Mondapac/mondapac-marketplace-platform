@@ -33,6 +33,8 @@ export interface HelpTabbedText {
   readonly page: string;
   readonly about: string;
   readonly good: readonly string[];
+  /** The page's own Related links, shown on every tab, before the open tab's. */
+  readonly related?: readonly HelpLink[];
   readonly tabs: readonly {
     readonly label: string;
     readonly text: string;
@@ -140,6 +142,15 @@ export function resolveHelp({
           const tabRoutes = new Set(
             entry.tabs.flatMap((tab) => (tab.route === undefined ? [] : [tab.route])),
           );
+          // The page's Related and the open tab's, once each, and never a link to one of the page's
+          // own routes or tabs (the tab strip is how the user gets there).
+          const own = new Set([...entry.routes, ...tabRoutes]);
+          const seen = new Set<string>();
+          const related = [...(body.related ?? []), ...(open?.related ?? [])].filter((link) => {
+            if (own.has(link.href) || seen.has(link.href)) return false;
+            seen.add(link.href);
+            return true;
+          });
           return {
             page: body.page,
             about: body.about,
@@ -153,8 +164,7 @@ export function resolveHelp({
                   },
                 }),
             goodToKnow: body.good.map((line) => fill(line, zone)),
-            related:
-              open === undefined ? [] : open.related.filter((link) => !tabRoutes.has(link.href)),
+            related,
           };
         },
       });

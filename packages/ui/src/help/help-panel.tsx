@@ -65,7 +65,9 @@ function Links({ links }: { readonly links: readonly HelpLink[] }) {
 /**
  * The side panel the Help button opens: a non-modal dialog at the inline-end edge, 360 px wide and
  * the full width on phones. The page stays usable beside it, and it stays open while the user
- * moves between tabs; its text follows `content`. Escape or the close button closes it and gives
+ * moves between tabs; its text follows `content`. From 1024 px the shell reserves its column
+ * (`AppShell`), so the page shrinks instead of being covered; below that it is an overlay that a
+ * press outside it also closes. Escape or the close button closes it and gives
  * focus back to the Help button.
  */
 export function HelpPanel({ content, labels }: HelpPanelProps) {
@@ -93,7 +95,7 @@ export function HelpPanel({ content, labels }: HelpPanelProps) {
       tabIndex={-1}
       className="fixed inset-y-0 end-0 z-40 flex w-full flex-col border-line bg-surface text-fg shadow-(--mp-shadow-elevation-floating) focus:outline-none sm:w-90 sm:border-s md:top-(--mp-size-topbar)"
     >
-      <div className="flex items-start gap-2 border-b border-line px-4 py-3">
+      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
         <h2 id={titleId} className="min-w-0 flex-1 break-words text-lg font-semibold">
           {labels.about} {content.page}
         </h2>
@@ -101,7 +103,7 @@ export function HelpPanel({ content, labels }: HelpPanelProps) {
           type="button"
           aria-label={labels.close}
           onClick={close}
-          className="flex size-11 shrink-0 items-center justify-center rounded-md text-fg-secondary hover:bg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-focus sm:size-(--mp-size-control)"
+          className="flex size-11 shrink-0 items-center justify-center rounded-md text-fg-secondary hover:bg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-focus "
         >
           <Icon name="x" />
         </button>

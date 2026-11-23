@@ -62,8 +62,8 @@ window.fetch = ((input: string) => {
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages}>
     <main className="mx-auto max-w-7xl p-4 md:p-6">
-      <h1 className="text-2xl font-semibold">{messages.brands.title}</h1>
       <BrandsView
+        title={messages.brands.title}
         canEdit
         csrfToken="tok"
         paging="pages"
