@@ -56,6 +56,8 @@ export function HelpProvider({
     if (!open) return undefined;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.defaultPrevented) return;
+      // Escape inside a modal dialog or side panel belongs to that dialog.
+      if (event.target instanceof Element && event.target.closest('dialog') !== null) return;
       close();
     };
     document.addEventListener('keydown', onKey);

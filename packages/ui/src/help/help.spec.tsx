@@ -133,6 +133,22 @@ describe('Help button and panel', () => {
     expect(document.activeElement).toBe(button);
   });
 
+  it('leaves Escape inside a modal dialog and an open account menu to them', async () => {
+    const user = userEvent.setup();
+    render(
+      <>
+        <Harness />
+        <dialog open>
+          <button>Inside dialog</button>
+        </dialog>
+      </>,
+    );
+    await user.click(screen.getByRole('button', { name: 'Help' }));
+    await user.click(screen.getByText('Inside dialog'));
+    await user.keyboard('{Escape}');
+    expect(screen.getByRole('dialog', { name: 'About Refunds' })).toBeTruthy();
+  });
+
   it('does not use the ? key, which opens the shortcuts list', () => {
     render(<Harness />);
     fireEvent.keyDown(document.body, { key: '?' });

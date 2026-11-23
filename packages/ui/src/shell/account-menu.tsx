@@ -148,6 +148,7 @@ export function AccountMenu({
       className="relative"
       onKeyDown={(event) => {
         if (event.key === 'Escape' && open) {
+          event.preventDefault();
           setOpen(false);
           trigger.current?.focus();
         }
