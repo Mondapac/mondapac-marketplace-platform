@@ -66,3 +66,25 @@ export function ChartSkeleton({ height = 240 }: ChartStateProps) {
     </div>
   );
 }
+
+export type ChartDataState = 'empty' | 'insufficient';
+
+export interface ChartEmptyLabels {
+  /** The period holds no data ("Nothing in this period"). */
+  readonly empty: string;
+  /** There is data but too little to draw a meaningful chart ("Not enough data yet"). */
+  readonly insufficient: string;
+}
+
+export const DEFAULT_EMPTY_LABELS: ChartEmptyLabels = {
+  empty: 'Nothing in this period',
+  insufficient: 'Not enough data yet',
+};
+
+/** The words for a chart that has nothing to draw. The caller decides which state it is. */
+export function chartStateMessage(
+  state: ChartDataState,
+  labels: Partial<ChartEmptyLabels> | undefined,
+): string {
+  return labels?.[state] ?? DEFAULT_EMPTY_LABELS[state];
+}
