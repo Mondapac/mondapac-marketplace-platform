@@ -235,7 +235,7 @@ describe('seller orders list', () => {
       </NextIntlClientProvider>,
     );
     expect(screen.getByText(/14 Oct.*8:00 pm AEST/)).toBeTruthy();
-    expect(screen.getByText('Times and days are in Australia/Brisbane.')).toBeTruthy();
+    expect(screen.queryByText(/Times and days are in/)).toBeNull();
   });
 });
 

@@ -130,7 +130,7 @@ describe('payout list rows', () => {
     expect(within(table).getByText(/27 Oct.*12:00 pm.*NZDT/)).toBeTruthy();
     expect(within(table).getByText('Paid')).toBeTruthy();
     expect(within(table).getByText('$1,204.10')).toBeTruthy();
-    expect(screen.getByText(/Dates and days are in Pacific\/Auckland/)).toBeTruthy();
+    expect(screen.queryByText(/Dates and days are in/)).toBeNull();
     // The server's page is the first answer: the list asks for nothing more.
     expect(asked()).toHaveLength(0);
   });
