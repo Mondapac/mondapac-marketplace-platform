@@ -301,7 +301,7 @@ export function SearchSelect(props: SearchSelectProps) {
   const body: ReactNode = (
     <>
       {searchable ? (
-        <div className="flex items-center gap-2 border-b border-line px-3">
+        <div className="flex items-center gap-2 border-b border-line px-3 focus-within:border-focus">
           <Icon name="search" className="text-icon" />
           <input
             ref={input}
