@@ -209,3 +209,59 @@ still answers.
   of verified halal listings, sellers with orders out of approved sellers, out of stock everywhere
   and products missing details need new owner counts (FE-148, FE-149). The KPI strip loads only for
   a session with the orders or the money key, so the card needs one of them too (FE-150).
+
+## Ledger facts, net revenue and net earnings (dashboards v2, phase 1, PR 4)
+
+- What reporting reads: `COMMISSION_PAYOUTS_REPORTING_FACADE`
+  (`commission-payouts/contracts/commission-payouts-reporting.facade.ts`), rule `system`, not over
+  HTTP, read only: `ledgerReportEntries` (the rows of at most 100 seller orders) and
+  `ledgerEntriesRecorded` (rows recorded in a window, keyset by entry id, at most 500). Only the
+  kinds `commission`, `refund-commission`, `cashback-seller` and `refund-cashback-seller`, and only
+  ids and money: entry, seller order, seller, kind, amount, commission base, currency, occurred at.
+  No order, line, rate, source (refund, credit), customer or name.
+- Worker: `commission-payouts.ledger-recorded.v1` (subscriber `reporting.ledger-recorded`, inbox)
+  hands the posting's seller order to `reporting.record-ledger-facts`, which reads every reportable
+  row of that seller order again (not only the posting), then records them in one `runOnce` unit,
+  serializable. A redelivery is stopped by the inbox; a late or repeated event of the same seller
+  order writes nothing new.
+- Facts: `reporting.ledger_entries` (migration `20261123120000_reporting_ledger_facts`), one row
+  per ledger row, insert-only (no UPDATE grant), amounts as stored (never negative, the kind gives
+  the direction), `market_day` of `occurred_at` in the Market's zone. A row read again that differs
+  from the stored one throws `ReportingLedgerConflict` (never overwritten); a row in another
+  currency, or malformed, is a `RangeError`. Rollup: `reporting.daily_ledger`, one row per Market
+  day, seller, currency and kind (entries, distinct seller orders, amount, base), rebuilt per seller
+  day by delete and insert (no UPDATE grant), like the sales rollups.
+- Backfill: `reporting.backfill-ledger` (job, every 5 minutes and at worker start) reads every
+  reportable row recorded before its own first start, pages of 200, at most 20 pages or 60 s a run,
+  cursor on the `ledger` row of `reporting.backfill_progress` (its own `until`, apart from the sales
+  kinds; the migration adds the kind to the CHECK). Same rules as the sales backfill: a failed read
+  or a write that may pass stops before the cursor; a refused row is logged
+  (`reporting.fact-write-failed`, `kind: ledger`), counted and passed over. Reset: delete the
+  Market's `ledger` row as the migration role. There is no nightly ledger reconcile (FE-170).
+- Net revenue (`reporting.view-marketplace-net-revenue`, key `commission-payouts.settlement.view`,
+  platform admin acting as themselves): commission + delivery margin − platform-funded discounts −
+  platform-funded cashback − fleet fees, without GST. Only the commission has a source: commission
+  charged less what seller-borne refunds gave back (the base is goods without GST, so the commission
+  carries none). Delivery margin, platform-funded discounts and cashback are `not-available`
+  (`not-reported`: ordering and promotions hold them, no facade carries them; FE-167, FE-168), fleet
+  fees `not-recorded` (FE-169). `total` adds the available ones and lists the missing: never a
+  silent 0. A seller's own cashback is the seller's money and never lowers it.
+- Seller net earnings (`reporting.view-seller-net-earnings`, key `commission-payouts.earnings.view`,
+  the session's seller only, allowed while not approved like its ledger): commission base of the
+  range's goods − base of its seller-borne refunds − net commission − net seller cashback. A refund
+  the platform bears takes nothing from the seller, so it is not in it; delivery fees are not
+  goods and are left out. The base uses the ledger's provisional GST until the tax module gives each
+  line's tax, so it can differ slightly from GMV without GST of the sales rollups.
+- Readiness ("one week of matching ledger", design: FE-066 of the dashboards upgrade): ready when
+  the ledger backfill has finished AND each of the 7 Market days ending yesterday matches: every
+  seller order the sales facts hold as paid that day with goods above 0 has a `commission` fact that
+  day, and every seller order with a `commission` fact that day is held as paid that day (or held as
+  never seen paid, a seller order first read after it was cancelled). Chosen over "the subscription
+  has been live 7 days" because it detects a lost event, a failed backfill page and a day-boundary
+  bug, and it needs no new state. Amounts are not compared: the ledger's base uses the provisional
+  tax rate, the sales facts the line's tax. Today is never in the window (rows still arriving). Both
+  reads answer the figure as null until ready; the admin answer carries the day counts, the seller
+  answer only the flag.
+- Both reads take a range of Market days (at most 13 months, ending today at the latest) and are
+  on the KPI facade (`marketplaceNetRevenue`, `sellerNetEarnings`) for PR 6 and PR 8. No HTTP
+  endpoint yet.

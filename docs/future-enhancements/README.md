@@ -5,15 +5,15 @@
 | بخش | تعداد | فایل بخش |
 |---|---|---|
 | سایت فروشگاه | 13 | `docs/future-enhancements/storefront/README.md` |
-| پنل ادمین | 75 | `docs/future-enhancements/admin/README.md` |
+| پنل ادمین | 78 | `docs/future-enhancements/admin/README.md` |
 | پنل فروشنده | 20 | `docs/future-enhancements/seller/README.md` |
 | دستیار هوشمند | 4 | `docs/future-enhancements/assistant/README.md` |
 | کاتالوگ | 15 | `docs/future-enhancements/catalog/README.md` |
 | سفارش و پرداخت | 6 | `docs/future-enhancements/orders/README.md` |
 | کاربران و دسترسی | 6 | `docs/future-enhancements/users/README.md` |
 | محتوا و اعلان | 1 | `docs/future-enhancements/content/README.md` |
-| زیرساخت | 26 | `docs/future-enhancements/infra/README.md` |
-| جمع | 166 | |
+| زیرساخت | 27 | `docs/future-enhancements/infra/README.md` |
+| جمع | 170 | |
 
 ## سایت فروشگاه
 
@@ -112,6 +112,9 @@
 | FE-164 | قفل اسکرول صفحه پشت drawerها در iOS Safari | PR 1286 اسکرول صفحه را با overflow:hidden روی html پشت modalها قفل می‌کند؛ در iOS Safari این همیشه جلوی اسکرول لمسی صفحهٔ پشت drawer را نمی‌گیرد. راه: قفل با position:fixed روی body و برگرداندن موقعیت اسکرول هنگام بستن، یا overscroll-behavior: contain روی بدنهٔ drawerها. همچنین scrim منوی انتخاب جستجوپذیر در گوشی (search-select) modal نیست و صفحه زیرش اسکرول می‌شود. | `PR 1286 (بازبینی رضا، UI/UX)` | اگر کاربر iPhone اسکرول صفحه پشت drawer را دید (مهدی، رضا) | پایین | موکول | 2026-11-23 |
 | FE-165 | منوی حساب موبایل با Pin، Help و میانبرها | در نمونهٔ هدر آیکونی، Pin و Help و میانبرها روی موبایل به منوی حساب می‌روند؛ طراحی خود منو باید هنگام ساخت انجام شود. تا آن زمان روی گوشی Pin (کنار عنوان)، Help، جستجو و زنگ به‌صورت آیکون دایره‌ای می‌مانند و میانبرها دکمه ندارند. | `design/admin/header-icons (رضا، جعفر)` | ساخت منوی حساب موبایل | متوسط | موکول | 2026-11-23 |
 | FE-166 | tooltip لمسی و جابه‌جایی خودکار کنار لبهٔ صفحه | tooltip آیکون‌های هدر فقط با نشانگر و فوکوس صفحه‌کلید کار می‌کند و زیر ۷۶۸ پیکسل پنهان است (نام در aria-label می‌ماند). اگر بازخورد گوشی خواست: نگه‌داشتن لمسی، و جابه‌جایی tooltip وقتی به لبهٔ صفحه می‌رسد. | `PR آیکون‌های دایره‌ای هدر (مهدی، رضا)` | اگر کاربر گوشی نام آیکون را خواست | پایین | موکول | 2026-11-23 |
+| FE-167 | حاشیهٔ تحویل در درآمد خالص Mondapac | درآمد خالص (PR 4 داشبوردهای v2) حاشیهٔ تحویل را «not-available» برمی‌گرداند: ordering حاشیهٔ پلتفرم را روی quote تحویل هر سفارش فروشنده نگه می‌دارد (deliveryQuote.marginAmount) ولی facade گزارش‌گیری ordering آن را نمی‌دهد. نیاز: یک فیلد حاشیه (با مالیاتش) در sellerOrderReportFacts، ستون در reporting.seller_orders و بازسازی تاریخچه. | `docs/modules/reporting/notes.md (داشبوردهای v2، PR 4)` | بعد از ادغام PR 3 (روش تحویل در seller_orders)؛ حسین و مجتبی | متوسط | موکول | 2026-11-23 |
+| FE-168 | تخفیف و cashback پرداخت‌شده توسط پلتفرم در درآمد خالص Mondapac | درآمد خالص این دو جزء را «not-available» برمی‌گرداند: سهم پلتفرم از تخفیف هر خط (discountAmount − discountSellerShare) و تخفیف تحویل در ordering، و credit های cashback با تأمین پلتفرم در promotions هستند ولی هیچ facade یا رویدادی آن‌ها را به reporting نمی‌دهد. نیاز: یک خواندن system در facade گزارش‌گیری ordering و promotions و جدول fact در reporting. | `docs/modules/reporting/notes.md (داشبوردهای v2، PR 4)` | پیش از نمایش درآمد خالص کامل؛ حسین، مجتبی، حسن | متوسط | موکول | 2026-11-23 |
+| FE-169 | هزینهٔ ناوگان در درآمد خالص Mondapac | آنچه پلتفرم جدا از quote به ناوگان تحویل می‌پردازد (هزینهٔ اضافه، تحویل ناموفق) در هیچ ماژولی ثبت نمی‌شود؛ درآمد خالص آن را «not-recorded» برمی‌گرداند. | `docs/modules/reporting/notes.md (داشبوردهای v2، PR 4)` | وقتی صورت‌حساب ناوگان در shipping ثبت شد | پایین | موکول | 2026-11-23 |
 
 ## پنل فروشنده
 
@@ -225,3 +228,4 @@
 | FE-143 | کوتاه‌تر کردن اجرای CI بارگذار و اجرای دوباره برای هم‌گرایی | اجرای نمایهٔ ci حدود سه دقیقه است که بیشترش ساخت ۱۴۴ دسته و بازبینی آن‌هاست. ایده‌ها: نمایهٔ کوچک‌تر درخت دسته‌ها فقط برای CI، و یک اجرای دوم که ثابت کند «دوباره اجرا چیزی عوض نمی‌کند» (هم‌گرایی هر بسته). هر دو زمان CI را بالا یا پایین می‌برند و باید با ظرفیت CI سنجیده شوند. | `PR اجرای کوچک بارگذار در CI (دادهٔ عملیاتی، فاز ۳)` | اگر زمان این job از ۵ دقیقه گذشت یا هم‌گرایی بسته‌ای در عمل شکست | پایین | موکول | 2026-11-22 |
 | FE-156 | سنجش EXPLAIN برای جستجوی صف بازبینی کاتالوگ | شرط‌های جستجو در Prisma به زیرپرس‌وجوی همبستگی‌نداشته تبدیل می‌شوند و ممکن است جدول کامل products و product_revision_texts اسکن شود؛ تا امروز اندازه‌گیری نشده. اگر کند بود، $queryRaw با EXISTS همبسته و market_id. | `docs/modules/catalog/notes.md؛ PR 1267 (مجتبی)` | پیش از حدود ۱۰۰ هزار محصول یا اولین گزارش کندی | پایین | موکول | 2026-11-22 |
 | FE-162 | فهرست خرید دفتر کمیسیون: انتظار ردیف اول با جستجوی role و name | ledger-list.spec.tsx همان کمکی firstRow را دارد که holds-list.spec.tsx داشت (findByRole با name زیر سقف ۱ ثانیه)؛ زیر بار CI می‌تواند همان‌طور ناپایدار شود. هنوز شکستی دیده نشده. اگر دیده شد همان اصلاح (انتظار با انتخابگر ساده، سپس یک بار getByRole) اعمال شود. | `PR 1288 (سجاد)` | اگر ledger-list.spec در CI شکست خورد؛ یا در بازبینی بعدی تست‌های فهرست | پایین | موکول | 2026-11-23 |
+| FE-170 | reconcile شبانهٔ fact های دفتر کمیسیون در reporting | fact های دفتر فقط از رویداد ledger-recorded و backfill یک‌باره می‌آیند؛ رویدادی که dead-letter شود ردیفش را تا reset دستی backfill (حذف ردیف ledger در reporting.backfill_progress) از دست می‌دهد. شاخص آمادگی درآمد خالص کمیسیون گمشده را می‌بیند ولی cashback گمشده را نه. نیاز: خواندن ردیف‌های ۷ روز اخیر با ایندکس (market_id, recorded_at, id) روی commission_payouts.ledger_entries. | `docs/modules/reporting/notes.md (داشبوردهای v2، PR 4، مجتبی)` | اگر رویداد ledger-recorded dead-letter شد یا پیش از حدود ۱۰۰ هزار ردیف دفتر در یک Market | پایین | موکول | 2026-11-23 |
