@@ -34,6 +34,88 @@ export function StatGrid({
   );
 }
 
+export type GridSpan = 3 | 4 | 6 | 8 | 12;
+/** Where an item sits when the grid is one column wide: KPIs first, the tasks card next, then the rest. */
+export type MobileOrder = 'kpi' | 'tasks' | 'rest';
+
+export interface GridLayout {
+  /** Columns of 12 from the desktop width (lg) up. Default 12. */
+  readonly span?: GridSpan;
+  /** Columns of 12 at the tablet width (md). Default: the desktop span. */
+  readonly tabletSpan?: GridSpan;
+  /** Columns of 12 on a phone: 6 puts two items side by side (KPI cards). Default 12. */
+  readonly phoneSpan?: 6 | 12;
+  /** Phone order; from the tablet width the order is the order in the page. Default 'rest'. */
+  readonly mobileOrder?: MobileOrder;
+}
+
+// Whole class names, so Tailwind finds them.
+const LG_SPAN: Record<GridSpan, string> = {
+  3: 'lg:col-span-3',
+  4: 'lg:col-span-4',
+  6: 'lg:col-span-6',
+  8: 'lg:col-span-8',
+  12: 'lg:col-span-12',
+};
+const MD_SPAN: Record<GridSpan, string> = {
+  3: 'md:col-span-3',
+  4: 'md:col-span-4',
+  6: 'md:col-span-6',
+  8: 'md:col-span-8',
+  12: 'md:col-span-12',
+};
+const PHONE_SPAN: Record<6 | 12, string> = { 6: 'col-span-6', 12: 'col-span-12' };
+const ORDER: Record<MobileOrder, string> = {
+  kpi: 'order-1 md:order-none',
+  tasks: 'order-2 md:order-none',
+  rest: 'order-3 md:order-none',
+};
+
+/** The classes of one grid item (exported for tests and for items that are not a plain div). */
+export function gridItemClass({
+  span = 12,
+  tabletSpan = span,
+  phoneSpan = 12,
+  mobileOrder = 'rest',
+}: GridLayout = {}): string {
+  return `min-w-0 ${PHONE_SPAN[phoneSpan]} ${MD_SPAN[tabletSpan]} ${LG_SPAN[span]} ${ORDER[mobileOrder]}`;
+}
+
+/**
+ * The 12-column grid of a dashboard: one column on a phone (two for items with phoneSpan 6).
+ * Known trade-off: the phone order is made with CSS `order`, so it changes what is seen, not the
+ * DOM order that keyboard focus and screen readers follow (page order). Items are stretched to the
+ * row's height so cards side by side match.
+ */
+export function DashboardGrid({
+  className = '',
+  children,
+}: {
+  readonly className?: string;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div
+      data-dashboard-grid=""
+      className={`grid grid-cols-12 items-stretch gap-4 ${className}`.trim()}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
+ * One item of the grid; declares its spans and phone order. The item is a flex row so its child
+ * fills it and matches the row's height: a child that is not a DashboardCard needs `flex-1`.
+ */
+export function GridItem({
+  as: Tag = 'div',
+  children,
+  ...layout
+}: GridLayout & { readonly as?: 'div' | 'li'; readonly children: ReactNode }) {
+  return <Tag className={`flex ${gridItemClass(layout)}`}>{children}</Tag>;
+}
+
 export interface StatCardProps {
   readonly icon: IconName;
   /** What is counted ("Sellers awaiting review"). */
@@ -117,6 +199,8 @@ export interface DashboardCardProps {
   readonly error?: string;
   /** The body is a table that fills the card's width (no padding of its own). */
   readonly flush?: boolean;
+  /** Controls on the header's right, in the same row as the title (a view toggle). */
+  readonly headerRight?: ReactNode;
   readonly children?: ReactNode;
 }
 
@@ -128,10 +212,14 @@ export function DashboardCard({
   scope,
   error,
   flush = false,
+  headerRight,
   children,
 }: DashboardCardProps) {
   return (
-    <section aria-labelledby={id} className="min-w-0 rounded-lg border border-line bg-surface">
+    <section
+      aria-labelledby={id}
+      className="flex h-full min-w-0 flex-1 flex-col rounded-lg border border-line bg-surface"
+    >
       <div className="flex items-baseline justify-between gap-x-4 px-4 pt-4">
         <div className="flex min-w-0 flex-col gap-0.5">
           <h2 id={id} className="break-words text-lg font-semibold text-fg">
@@ -139,16 +227,19 @@ export function DashboardCard({
           </h2>
           {scope === undefined ? null : <p className="text-xs text-fg-muted">{scope}</p>}
         </div>
+        {headerRight === undefined || error !== undefined ? null : (
+          <div className="shrink-0">{headerRight}</div>
+        )}
         {action === undefined || error !== undefined ? null : (
           <a
-            className="shrink-0 whitespace-nowrap text-sm font-medium text-link underline"
+            className="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap text-sm font-medium text-link underline lg:min-h-0"
             href={action.href}
           >
             {action.label}
           </a>
         )}
       </div>
-      <div className={flush && error === undefined ? 'pt-3' : 'p-4'}>
+      <div className={`flex flex-1 flex-col ${flush && error === undefined ? 'pt-3' : 'p-4'}`}>
         {error === undefined ? (
           children
         ) : (
