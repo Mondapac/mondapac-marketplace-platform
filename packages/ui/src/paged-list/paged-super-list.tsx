@@ -127,6 +127,7 @@ export function PagedSuperList<Row>({
   fields = [],
   loadCounts,
   heading,
+  embedded = false,
   dialogs,
   refreshKey = 0,
   onAnswer,
@@ -145,6 +146,8 @@ export function PagedSuperList<Row>({
     filters: Readonly<Record<string, string>>,
   ) => Promise<Readonly<Record<string, number>> | null>;
   readonly heading?: React.ReactNode;
+  /** A list inside a record's tab or card: its buttons stay in the list's own row. */
+  readonly embedded?: boolean;
   /** Dialogs the row actions open (a decision, a merge); the page owns them. */
   readonly dialogs?: React.ReactNode;
   /** Changes when the page changed rows (a decision was made): the list is read again. */
@@ -547,6 +550,7 @@ export function PagedSuperList<Row>({
   return (
     <SuperList
       heading={{
+        ...(embedded ? { embedded: true } : {}),
         // A list whose page has the Help panel needs no line here: `intro` is optional.
         ...(t.has('intro') ? { subtitle: t('intro') } : {}),
         actions: (

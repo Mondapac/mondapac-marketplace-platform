@@ -405,6 +405,8 @@ export function PayoutsList({
   return (
     <SuperList
       heading={{
+        // It sits in the earnings page's history section, under the page's own header.
+        embedded: true,
         actions: (
           <PayoutsBulk
             selection={{

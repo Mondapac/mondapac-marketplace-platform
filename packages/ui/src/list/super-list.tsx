@@ -152,6 +152,7 @@ function ListHeading({ heading }: { readonly heading: SuperListProps['heading'] 
       <div className="flex min-w-0 flex-col gap-1">
         <PageHeader
           title={heading.title}
+          actionsSlot={false}
           {...(heading.status === undefined ? {} : { status: heading.status })}
           {...(heading.actions === undefined ? {} : { actions: heading.actions })}
         />
