@@ -11,10 +11,10 @@ import { PageHeader } from './page-header.tsx';
 import { AccountMenu } from '../shell/account-menu.tsx';
 import { AppShell } from '../shell/app-shell.tsx';
 
-/** Stubs the viewport: `wide` is true from 1024 px. */
+/** Stubs the viewport: `wide` is true from 1280 px. */
 function setViewport(wide: boolean) {
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: query.includes('1024') ? wide : false,
+    matches: query.includes('1280') ? wide : false,
     media: query,
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
@@ -207,7 +207,7 @@ describe('Help button and panel', () => {
   });
 });
 
-describe('Help panel below and above 1024 px', () => {
+describe('Help panel below and above 1280 px', () => {
   it('has no modal semantics and the close button is its first focusable element', async () => {
     const user = userEvent.setup();
     render(<Harness />);
@@ -221,7 +221,7 @@ describe('Help panel below and above 1024 px', () => {
     expect(dialog.querySelector('div')?.className).toContain('items-center');
   });
 
-  it('closes on a press outside the panel below 1024 px, without taking focus', async () => {
+  it('closes on a press outside the panel below 1280 px, without taking focus', async () => {
     setViewport(false);
     const user = userEvent.setup();
     render(<Harness />);
@@ -231,7 +231,7 @@ describe('Help panel below and above 1024 px', () => {
     expect(document.activeElement).toBe(screen.getByLabelText('Search box'));
   });
 
-  it('stays open on a press inside the panel and on the Help button itself below 1024 px', async () => {
+  it('stays open on a press inside the panel and on the Help button itself below 1280 px', async () => {
     setViewport(false);
     const user = userEvent.setup();
     render(<Harness />);
@@ -243,7 +243,7 @@ describe('Help panel below and above 1024 px', () => {
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
-  it('stays open on a press outside the panel from 1024 px', async () => {
+  it('stays open on a press outside the panel from 1280 px', async () => {
     setViewport(true);
     const user = userEvent.setup();
     render(<Harness />);
@@ -275,9 +275,9 @@ describe('Help panel below and above 1024 px', () => {
       </HelpProvider>,
     );
     const main = screen.getByRole('main');
-    expect(main.className).not.toContain('lg:pe-96');
+    expect(main.className).not.toContain('xl:pe-96');
     await user.click(screen.getAllByRole('button', { name: 'Help' })[0] as HTMLElement);
-    expect(main.className).toContain('lg:pe-96');
+    expect(main.className).toContain('xl:pe-96');
     expect(main.getAttribute('data-help-open')).toBe('true');
   });
 

@@ -27,8 +27,8 @@ interface HelpState {
   readonly panelId: string;
 }
 
-/** From this width the open panel has its own column beside the page (Tailwind `lg`). */
-const WIDE_QUERY = '(min-width: 1024px)';
+/** From this width the open panel has its own column beside the page (Tailwind `xl`). */
+const WIDE_QUERY = '(min-width: 1280px)';
 
 function isWideViewport(): boolean {
   return typeof window.matchMedia === 'function' && window.matchMedia(WIDE_QUERY).matches;
@@ -75,7 +75,7 @@ export function HelpProvider({
     return () => document.removeEventListener('keydown', onKey);
   }, [open, close]);
 
-  // Below 1024 px the panel covers the page, so a tap outside it closes it; from 1024 px the page
+  // Below 1280 px the panel covers the page, so a tap outside it closes it; from 1280 px the page
   // gives the panel its own column and stays usable beside it. The Help button is outside the
   // panel but toggles it by itself, so it is not an "outside" press.
   useEffect(() => {

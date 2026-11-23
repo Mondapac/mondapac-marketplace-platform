@@ -65,7 +65,7 @@ function Links({ links }: { readonly links: readonly HelpLink[] }) {
 /**
  * The side panel the Help button opens: a non-modal dialog at the inline-end edge, 360 px wide and
  * the full width on phones. The page stays usable beside it, and it stays open while the user
- * moves between tabs; its text follows `content`. From 1024 px the shell reserves its column
+ * moves between tabs; its text follows `content`. From 1280 px the shell reserves its column
  * (`AppShell`), so the page shrinks instead of being covered; below that it is an overlay that a
  * press outside it also closes. Escape or the close button closes it and gives
  * focus back to the Help button.

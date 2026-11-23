@@ -69,7 +69,7 @@ export function AppShell({
   // After Escape the rail stays closed until focus leaves it and comes back.
   const dismissed = useRef(false);
   const drawer = useRef<HTMLDialogElement>(null);
-  // While the Help panel is open from 1024 px its 360 px column is reserved, so the page shrinks.
+  // While the Help panel is open from 1280 px its 360 px column is reserved, so the page shrinks.
   const help = useHelpOptional();
   const helpOpen = help !== null && help.open && help.hasContent;
   const hasBar = bottomTabs !== undefined && bottomTabs.length > 0;
@@ -175,7 +175,7 @@ export function AppShell({
         </div>
         <main
           data-help-open={helpOpen ? 'true' : undefined}
-          className={`min-w-0 flex-1 p-4 sm:p-6 ${helpOpen ? 'lg:pe-96' : ''} ${hasBar ? 'pb-24 md:pb-6' : ''}`}
+          className={`min-w-0 flex-1 p-4 sm:p-6 ${helpOpen ? 'xl:pe-96' : ''} ${hasBar ? 'pb-24 md:pb-6' : ''}`}
         >
           {children}
         </main>
