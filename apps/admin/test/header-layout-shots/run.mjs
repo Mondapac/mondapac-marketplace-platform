@@ -38,6 +38,7 @@ const browser = await chromium.launch();
 const views = [
   ['header-layout-products', 'column', 'Lamb cutlets 500 g', null, 'page'],
   ['header-layout-invoices', 'invoices', 'Cedar Lane Halal Meats', null, 'page'],
+  ['header-layout-live-status', 'live', 'Cedar Lane Halal Meats', null, 'page'],
 ];
 for (const scheme of ['light', 'dark']) {
   for (const width of [1280, 768, 375]) {

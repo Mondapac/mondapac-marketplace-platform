@@ -203,9 +203,13 @@ const body =
       csrfToken="tok"
       nextHref={null}
     />
-  ) : scenario === 'invoices' ? (
+  ) : scenario === 'invoices' || scenario === 'live' ? (
     <>
-      <PageHeader title="Invoices" className="mb-4" />
+      <PageHeader
+        title={scenario === 'live' ? 'Security' : 'Invoices'}
+        {...(scenario === 'live' ? { status: 'Live · every 30 s' } : {})}
+        className="mb-4"
+      />
       <InvoicesList
         paging="pages"
         accountId="acc-1"
