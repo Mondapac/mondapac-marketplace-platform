@@ -1,4 +1,4 @@
-/* MondaPac design tokens v1.10.1. Source of truth: the Figma file 'MondaPac Design System'.
+/* MondaPac design tokens v1.11.0. Source of truth: the Figma file 'MondaPac Design System'.
  * Do not edit by hand. Change the Figma variables, run the plugin command Export tokens and commit these files. */
 :root {
   --mp-color-bg-page: #F5F6F8;
@@ -96,6 +96,20 @@
   --mp-color-bg-auth-showcase-seller: #06352E;
   --mp-color-text-on-showcase: #FFFFFF;
   --mp-color-text-on-showcase-muted: #FFFFFFBD;
+  --mp-color-chart-cat-1: #1D4FD7;
+  --mp-color-chart-cat-2: #1BAF7A;
+  --mp-color-chart-cat-3: #6250D6;
+  --mp-color-chart-cat-4: #EDA100;
+  --mp-color-chart-cat-5: #E87BA4;
+  --mp-color-chart-cat-other: #8A93A3;
+  --mp-color-kpi-blue-bg: #1D4FD7;
+  --mp-color-kpi-blue-fg: #FFFFFF;
+  --mp-color-kpi-aqua-bg: #128A60;
+  --mp-color-kpi-aqua-fg: #FFFFFF;
+  --mp-color-kpi-violet-bg: #6250D6;
+  --mp-color-kpi-violet-fg: #FFFFFF;
+  --mp-color-kpi-slate-bg: #475467;
+  --mp-color-kpi-slate-fg: #FFFFFF;
   --mp-space-0-5: 2px;
   --mp-space-1: 4px;
   --mp-space-1-5: 6px;
@@ -266,6 +280,20 @@
   --mp-color-bg-auth-showcase-seller: #06352E;
   --mp-color-text-on-showcase: #FFFFFF;
   --mp-color-text-on-showcase-muted: #FFFFFFBD;
+  --mp-color-chart-cat-1: #5F86F5;
+  --mp-color-chart-cat-2: #199E70;
+  --mp-color-chart-cat-3: #9085E9;
+  --mp-color-chart-cat-4: #C98500;
+  --mp-color-chart-cat-5: #D55181;
+  --mp-color-chart-cat-other: #6B7586;
+  --mp-color-kpi-blue-bg: #3D68E6;
+  --mp-color-kpi-blue-fg: #FFFFFF;
+  --mp-color-kpi-aqua-bg: #16865F;
+  --mp-color-kpi-aqua-fg: #FFFFFF;
+  --mp-color-kpi-violet-bg: #6D5FD8;
+  --mp-color-kpi-violet-fg: #FFFFFF;
+  --mp-color-kpi-slate-bg: #5B6475;
+  --mp-color-kpi-slate-fg: #FFFFFF;
   --mp-shadow-focus-ring: 0px 0px 0px 2px rgba(22,26,33,1), 0px 0px 0px 4px rgba(143,176,255,1);
   --mp-shadow-ring-urgent: 0px 0px 0px 3px rgba(59,21,18,1);
 }
