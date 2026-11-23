@@ -34,7 +34,6 @@ export function GroupPage({
   groupId,
   accountId,
   marketId,
-  marketName,
   zone,
   paging,
   permissionKeys,
@@ -43,7 +42,6 @@ export function GroupPage({
   readonly groupId: string;
   readonly accountId: string;
   readonly marketId: string;
-  readonly marketName: string;
   readonly zone: string;
   readonly paging: 'pages' | 'prev-next';
   readonly permissionKeys: readonly string[];
@@ -171,7 +169,6 @@ export function GroupPage({
         key={group.groupId}
         accountId={accountId}
         marketId={marketId}
-        marketName={marketName}
         zone={zone}
         paging={paging}
         permissionKeys={permissionKeys}

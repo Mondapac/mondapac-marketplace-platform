@@ -82,7 +82,6 @@ function failureOf(
 export function ProductsList({
   accountId,
   marketId,
-  marketName,
   timeZone,
   permissionKeys,
   csrfToken,
@@ -91,7 +90,6 @@ export function ProductsList({
   readonly accountId: string;
   readonly marketId: string;
   /** The Market's display name for the subtitle (configuration, never a code). */
-  readonly marketName: string;
   readonly timeZone: string;
   readonly permissionKeys: readonly string[];
   readonly csrfToken: string;
@@ -328,7 +326,6 @@ export function ProductsList({
   return (
     <SuperList
       heading={{
-        subtitle: counts === null ? '' : t('subtitle', { count: counts.all, market: marketName }),
         actions: (
           <>
             <ProductsBulk

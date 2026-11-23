@@ -1,6 +1,9 @@
 import type { ReactNode, Ref } from 'react';
 import { Badge } from '../form/badge.tsx';
 
+/** The element a list's buttons are placed in, so they sit on the title's row on every page. */
+export const PAGE_ACTIONS_ID = 'mp-page-actions';
+
 export interface PageHeaderProps {
   /** The page's one h1. */
   readonly title: ReactNode;
@@ -10,6 +13,11 @@ export interface PageHeaderProps {
   readonly badges?: ReactNode;
   /** The page's buttons (a bulk action), at the end of the same row. */
   readonly actions?: ReactNode;
+  /**
+   * Whether the row holds the slot a list's buttons move into. A header drawn by a list itself
+   * (`SuperList` with a title) turns it off so a page never has two slots with one id.
+   */
+  readonly actionsSlot?: boolean;
   /** Extra classes for the row, for example the space below it (`mb-4`). */
   readonly className?: string;
   /** For a page that moves focus to its heading after an action: the heading is then focusable. */
@@ -26,6 +34,7 @@ export function PageHeader({
   status,
   badges,
   actions,
+  actionsSlot = true,
   className,
   headingRef,
 }: PageHeaderProps) {
@@ -45,9 +54,15 @@ export function PageHeader({
         {status === undefined ? null : <Badge tone="neutral">{status}</Badge>}
         {badges}
       </div>
-      {actions === undefined ? null : (
-        <div className="flex flex-wrap items-center gap-2">{actions}</div>
-      )}
+      {/* Always present: a list on this page (SuperList) puts its bulk action and page buttons here. */}
+      {actionsSlot || actions !== undefined ? (
+        <div
+          {...(actionsSlot ? { id: PAGE_ACTIONS_ID } : {})}
+          className="flex flex-wrap items-center gap-2"
+        >
+          {actions}
+        </div>
+      ) : null}
     </div>
   );
 }

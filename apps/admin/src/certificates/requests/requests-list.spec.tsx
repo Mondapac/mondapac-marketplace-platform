@@ -138,7 +138,7 @@ describe('Issuer requests list: page numbers', () => {
     expect(urls()[0]).toBe(
       'certification/admin/issuer-requests/list?sort=submitted&direction=asc&paging=pages&page=1&pageSize=25',
     );
-    expect(screen.getByText('12 requests are open, oldest first.')).toBeTruthy();
+    expect(screen.queryByText(/requests are open/)).toBeNull();
     // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
     expect(
       screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),

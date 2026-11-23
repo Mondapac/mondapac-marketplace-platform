@@ -276,7 +276,7 @@ export function CustomerSignIns({
   return (
     <>
       <SuperList
-        heading={{ subtitle: t('subtitle') }}
+        heading={{ embedded: true, subtitle: t('subtitle') }}
         views={{
           label: t('views'),
           activeId: viewOf(query),

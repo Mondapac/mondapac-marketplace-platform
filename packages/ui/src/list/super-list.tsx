@@ -1,12 +1,13 @@
 'use client';
 
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Banner } from '../form/banner.tsx';
 import { Button } from '../form/button.tsx';
 import { LoadError } from '../form/load-error.tsx';
 import { SearchField } from '../form/search-field.tsx';
 import type { IconName } from '../icon/icon.tsx';
-import { PageHeader } from '../help/page-header.tsx';
+import { PAGE_ACTIONS_ID, PageHeader } from '../help/page-header.tsx';
 import { Popover, type PopoverProps } from '../overlay/popover.tsx';
 import { FilterChipRow, type FilterChipRowProps } from './filter-chip-row.tsx';
 import { ListPagination, type ListPaginationProps } from './list-pagination.tsx';
@@ -25,9 +26,21 @@ export interface SuperListTool {
 export interface SuperListProps {
   /** Above the tabs: what the list holds in words, then the bulk action menu and page actions. */
   readonly heading: {
-    /** A page title (h1) above the subtitle; omit it when the shell's top bar already names the page. */
+    /**
+     * The page's h1 row. A page list leaves it out when the page draws its own `PageHeader`: the
+     * buttons then move into that row (the Orders layout) so no page can put them on a row of
+     * their own. Give it only when the list draws the page's header itself.
+     */
     readonly title?: string;
-    /** A live line (a count, a filter state); empty or absent when the list has none. */
+    /**
+     * A list inside a record's tab or card, below a page header that is not this list's: its
+     * buttons stay in the list's own row.
+     */
+    readonly embedded?: boolean;
+    /**
+     * A notice about the list (a truncation, what the list is based on), not a count: counts live
+     * in the tabs. Shown as a muted line under the header row; empty or absent when none.
+     */
     readonly subtitle?: string;
     /** A live-state label beside the title ("Live · every 30 s", "Default"). */
     readonly status?: string;
@@ -115,6 +128,57 @@ function Tool({
   );
 }
 
+/** The buttons of a list that sits under its page's own `PageHeader`: placed in that row. */
+function PageRowActions({ children }: { readonly children: ReactNode }) {
+  // Pending until the page's header is found: nothing is drawn in a row of its own meanwhile.
+  const [target, setTarget] = useState<HTMLElement | null | 'none'>(null);
+  useLayoutEffect(() => {
+    setTarget(document.getElementById(PAGE_ACTIONS_ID) ?? 'none');
+  }, []);
+  if (target === null) return null;
+  if (target === 'none') {
+    return <div className="flex flex-wrap items-center justify-end gap-2">{children}</div>;
+  }
+  return createPortal(children, target);
+}
+
+function ListHeading({ heading }: { readonly heading: SuperListProps['heading'] }) {
+  const note =
+    heading.subtitle === undefined || heading.subtitle === '' ? null : (
+      <p className="min-w-0 text-sm text-fg-muted">{heading.subtitle}</p>
+    );
+  if (heading.title !== undefined) {
+    return (
+      <div className="flex min-w-0 flex-col gap-1">
+        <PageHeader
+          title={heading.title}
+          actionsSlot={false}
+          {...(heading.status === undefined ? {} : { status: heading.status })}
+          {...(heading.actions === undefined ? {} : { actions: heading.actions })}
+        />
+        {note}
+      </div>
+    );
+  }
+  if (heading.embedded === true) {
+    if (note === null && heading.actions === undefined) return null;
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
+        <div className="min-w-0">{note}</div>
+        {heading.actions === undefined ? null : (
+          <div className="flex flex-wrap items-center gap-2">{heading.actions}</div>
+        )}
+      </div>
+    );
+  }
+  return (
+    <>
+      {heading.actions === undefined ? null : <PageRowActions>{heading.actions}</PageRowActions>}
+      {note}
+    </>
+  );
+}
+
 /**
  * One list for every table over 50 rows ("super list"): heading and bulk actions, view tabs with
  * saved filters, search, the filter, sort and column panels, the chips, the table, and the footer
@@ -148,29 +212,7 @@ export function SuperList({
   const hasTools = filter !== undefined || sort !== undefined || columns !== undefined;
   return (
     <div className="flex flex-col gap-4">
-      {heading.title === undefined ? (
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-3">
-          <div className="min-w-0">
-            {heading.subtitle ? (
-              <p className="min-w-0 text-sm text-fg-muted">{heading.subtitle}</p>
-            ) : null}
-          </div>
-          {heading.actions === undefined ? null : (
-            <div className="flex flex-wrap items-center gap-2">{heading.actions}</div>
-          )}
-        </div>
-      ) : (
-        <div className="flex min-w-0 flex-col gap-1">
-          <PageHeader
-            title={heading.title}
-            {...(heading.status === undefined ? {} : { status: heading.status })}
-            {...(heading.actions === undefined ? {} : { actions: heading.actions })}
-          />
-          {heading.subtitle === undefined ? null : (
-            <p className="min-h-5 text-sm text-fg-muted">{heading.subtitle}</p>
-          )}
-        </div>
-      )}
+      <ListHeading heading={heading} />
       {notice}
       {views === undefined ? null : <ListViewsBar {...views} />}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2">

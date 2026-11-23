@@ -437,7 +437,6 @@ export function RequestsList({
   return (
     <SuperList
       heading={{
-        subtitle: tabCounts === null ? '' : t('total', { count: tabCounts.all }),
         actions: (
           <RequestsBulk
             selection={{

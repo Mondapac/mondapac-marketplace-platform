@@ -93,7 +93,6 @@ describe('Customers list page', () => {
       expect.objectContaining({
         paging: 'pages',
         marketId: 'AU',
-        marketName: 'Test',
         csrfToken: 'c',
       }),
     );

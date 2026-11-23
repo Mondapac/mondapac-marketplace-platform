@@ -432,7 +432,6 @@ export function AttributionsList({
   return (
     <SuperList
       heading={{
-        subtitle: counts === null ? '' : t('subtitle', { count: counts.all }),
         actions: (
           <AttributionsBulk
             selection={{

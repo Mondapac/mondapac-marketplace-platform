@@ -309,7 +309,6 @@ export function SellerCustomersList({
     <SuperList
       heading={{
         title: t('title'),
-        subtitle: counts === null ? '' : t('subtitle', { count: counts.all }),
       }}
       views={{
         label: t('tabs'),
