@@ -19,6 +19,9 @@ interface HelpState {
   readonly close: () => void;
   /** False when the page has no help text: the button is not shown. */
   readonly hasContent: boolean;
+  /** The open tab of a page whose tabs have no route (set by `HelpTab`). */
+  readonly tab: string | undefined;
+  readonly setTab: (label: string | undefined) => void;
   /** The Help button, so closing the panel can return focus to it. */
   readonly trigger: RefObject<HTMLButtonElement | null>;
   readonly panelId: string;
@@ -45,6 +48,7 @@ export function HelpProvider({
   hasContent = true,
 }: HelpProviderProps) {
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<string | undefined>(undefined);
   const trigger = useRef<HTMLButtonElement | null>(null);
 
   const close = useCallback(() => {
@@ -66,8 +70,8 @@ export function HelpProvider({
 
   const set = useCallback((next: boolean) => setOpen(next), []);
   const value = useMemo(
-    () => ({ open, setOpen: set, close, hasContent, trigger, panelId }),
-    [open, set, close, hasContent, panelId],
+    () => ({ open, setOpen: set, close, hasContent, tab, setTab, trigger, panelId }),
+    [open, set, close, hasContent, tab, panelId],
   );
   return <HelpContext.Provider value={value}>{children}</HelpContext.Provider>;
 }
@@ -76,4 +80,17 @@ export function useHelp(): HelpState {
   const state = useContext(HelpContext);
   if (state === null) throw new Error('Help components need a HelpProvider above them.');
   return state;
+}
+
+/**
+ * Put one on a page whose section tabs have no route of their own: it tells the Help panel which
+ * tab is open, by the tab's label in the help text. It renders nothing.
+ */
+export function HelpTab({ label }: { readonly label: string }) {
+  const { setTab } = useHelp();
+  useEffect(() => {
+    setTab(label);
+    return () => setTab(undefined);
+  }, [label, setTab]);
+  return null;
 }
