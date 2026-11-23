@@ -98,9 +98,6 @@ export default async function NewTagSuggestionPage({
         />
       ) : (
         <>
-          <p className="mb-4 max-w-(--mp-size-form-max) text-sm text-fg-muted">
-            {t('catalog.tagSuggestions.new.intro')}
-          </p>
           <div className="max-w-(--mp-size-form-max)">
             <SuggestTagForm
               products={choices}

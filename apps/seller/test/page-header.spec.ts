@@ -35,7 +35,7 @@ describe('page header', () => {
     const offenders = sources.filter((file) => {
       const text = source(file).replace(/\/\/.*$|\/\*[\s\S]*?\*\//gmu, '');
       return (
-        /<PageHeader\b[^>]*\/>\s*<p\b[^>]*>\s*\{\s*t\(\s*['"`][^'"`]*(intro|subtitle|description)/u.test(
+        /<PageHeader\b[\s\S]*?\/>\s*<(p|div)\b[^>]*>\s*\{\s*\w+\(\s*['"`][^'"`]*(intro|subtitle|description|lede)/u.test(
           text,
         ) || /\bheading=\{\{[^}]*\bsubtitle\s*:/u.test(text)
       );
