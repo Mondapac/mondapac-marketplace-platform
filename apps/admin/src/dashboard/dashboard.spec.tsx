@@ -273,6 +273,11 @@ describe('admin dashboard', () => {
     // The held-price table lists five rows, not the 50 counted.
     const holds = within(screen.getByRole('region', { name: 'Held prices' }));
     expect(holds.getAllByRole('row')).toHaveLength(1 + 5);
+    // Column headers come from the held-prices list messages, not raw keys.
+    for (const name of ['Product', 'Held price', 'Submitted']) {
+      expect(holds.getByRole('columnheader', { name })).toBeTruthy();
+    }
+    expect(holds.getAllByText(/^Increase/).length).toBeGreaterThan(0);
   });
 
   it('formats money and counts with the locale of the Market, not a fixed one', () => {
