@@ -37,7 +37,8 @@ export function useRequestRowActions(): (row: ListRow) => readonly MenuItem[] {
  * row, the seller (one link to the request), the type, when it was submitted, then the columns the
  * admin chose, and the row Actions menu last. From 1024 px a table; below it each request is a
  * card with labelled lines. A seller that is not approved yet shows the fallback word and its short
- * id. Times are in `zone`, which the page names once.
+ * id. Times are in `zone`, the viewer's own zone (named in the
+ * Help panel and the account menu, not on the page).
  */
 export function RequestsTable({
   rows,

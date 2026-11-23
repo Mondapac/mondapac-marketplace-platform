@@ -292,12 +292,11 @@ export function AssistantSettingsPanel({
   const status = <StatusCard answer={answer} zone={zone} averageCostUsd={averageCostUsd} />;
   // The error summary names the fields, so the generic "fix" line is left out.
   const shownProblem = problem === 'fix' ? null : problem;
-  const lastChanged = changeHistory.line ?? {
-    text:
-      answer.version === 0
-        ? t(`${P}.version-defaults`)
-        : t(`${P}.version`, { version: answer.version }),
-  };
+  // The saved version is the pill beside the title; "last changed by" stays a line under it.
+  const versionLabel =
+    answer.version === 0
+      ? t(`${P}.version-defaults`)
+      : t(`${P}.version`, { version: answer.version });
   const banners = [
     tabs === null ? null : <div key="tabs">{tabs}</div>,
     canManage ? null : (
@@ -336,7 +335,8 @@ export function AssistantSettingsPanel({
   const frame = {
     title: t(`${P}.title`),
     description: t(`${P}.intro`),
-    lastChanged,
+    status: versionLabel,
+    ...(changeHistory.line === undefined ? {} : { lastChanged: changeHistory.line }),
     overlay: changeHistory.drawer,
     banner,
   };

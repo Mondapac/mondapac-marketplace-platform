@@ -29,9 +29,9 @@ export default async function OrdersPage() {
   const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
   return (
     <AdminShell session={gate.session} activeId="orders" title={title}>
-      <PageHeader title={title} className="mb-4" />
       {gate.session.permissionKeys.includes(VIEW_PERMISSION) ? (
         <OrdersList
+          title={title}
           paging={paging}
           accountId={gate.session.accountId}
           marketId={marketId}
@@ -40,6 +40,7 @@ export default async function OrdersPage() {
         />
       ) : (
         <>
+          <PageHeader title={title} className="mb-4" />
           <p className="text-fg-muted">{t('orders.no-access')}</p>
           <p className="mt-4">
             <a className="font-medium text-link underline" href="/">

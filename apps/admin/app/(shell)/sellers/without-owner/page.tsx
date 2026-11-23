@@ -30,7 +30,10 @@ export default async function SellersWithoutOwnerPage() {
       {allowed ? (
         <>
           <PageHeader title={title} className="mb-4" />
-          <OrphanedList csrfToken={gate.session.csrfToken} />
+          <OrphanedList
+            csrfToken={gate.session.csrfToken}
+            zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
+          />
         </>
       ) : (
         <div className="flex flex-col items-start gap-3 rounded-lg border border-line p-6">

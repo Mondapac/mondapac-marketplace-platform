@@ -39,17 +39,20 @@ vi.mock('../../../../src/server/admin-shell.tsx', () => ({
 }));
 vi.mock('../../../../src/brands/brands-view.tsx', () => ({
   BrandsView: ({
+    title,
     canEdit,
     csrfToken,
     paging,
     marketId,
   }: {
+    readonly title: string;
     readonly canEdit: boolean;
     readonly csrfToken: string;
     readonly paging: string;
     readonly marketId: string;
   }) => (
     <p
+      data-title={title}
       data-testid="view"
       data-can-edit={String(canEdit)}
       data-csrf={csrfToken}
@@ -72,7 +75,7 @@ describe('admin brands page', () => {
   it('shows the screen read-only to a holder of catalog.brand.read', async () => {
     mocks.session.mockResolvedValue({ kind: 'ok', session: session(['catalog.brand.read']) });
     await open();
-    expect(screen.getByRole('heading', { name: 'Brands' })).toBeTruthy();
+    expect(screen.getByTestId('view').getAttribute('data-title')).toBe('Brands');
     expect(screen.getByTestId('view').getAttribute('data-can-edit')).toBe('false');
     expect(screen.getByTestId('view').getAttribute('data-csrf')).toBe('csrf-9');
     expect(screen.getByTestId('view').getAttribute('data-paging')).toBe('pages');

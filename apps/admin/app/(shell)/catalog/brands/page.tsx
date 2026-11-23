@@ -29,9 +29,9 @@ export default async function BrandsPage() {
   const { permissionKeys, csrfToken } = gate.session;
   return (
     <AdminShell session={gate.session} activeId="brands" title={title}>
-      <PageHeader title={title} className="mb-4" />
       {permissionKeys.includes(READ_PERMISSION) ? (
         <BrandsView
+          title={title}
           canEdit={permissionKeys.includes(EDIT_PERMISSION)}
           csrfToken={csrfToken}
           paging={paging}
@@ -41,6 +41,7 @@ export default async function BrandsPage() {
         />
       ) : (
         <>
+          <PageHeader title={title} className="mb-4" />
           <p className="text-fg-muted">{t('brands.no-access')}</p>
           <p className="mt-4">
             <a className="font-medium text-link underline" href="/">

@@ -102,6 +102,7 @@ function mount(canEdit = true) {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
       <BrandsView
+        title="Brands"
         canEdit={canEdit}
         csrfToken="csrf-1"
         paging="pages"
@@ -318,7 +319,7 @@ describe('admin brands', () => {
         }),
       });
       mount(false);
-      fireEvent.click(await screen.findByRole('button', { name: 'Duplicates 1' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Duplicates (1)' }));
       expect(
         await screen.findByText('Your role can read this list but not merge brands.'),
       ).toBeTruthy();
@@ -671,7 +672,7 @@ describe('admin brands', () => {
         'POST catalog/admin/brands/': ok({ brand: brand(1), merged: [], aliasesAdded: [] }),
       });
       mount();
-      fireEvent.click(await screen.findByRole('button', { name: 'Duplicates 1' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Duplicates (1)' }));
       expect(await screen.findByText('“Saffron and Co”')).toBeTruthy();
       expect(screen.getByText('11 products')).toBeTruthy();
       expect(screen.getByLabelText('Merge into')).toBeTruthy();
@@ -692,7 +693,7 @@ describe('admin brands', () => {
     it('keeps the brands apart with "Not the same"', async () => {
       withQueue({ 'POST catalog/admin/brands/merge-queue/dismiss': ok({ resolved: 3 }) });
       mount();
-      fireEvent.click(await screen.findByRole('button', { name: 'Duplicates 1' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'Duplicates (1)' }));
       fireEvent.click(await screen.findByRole('button', { name: 'Not the same' }));
       await expectToast('These brands will stay apart.');
       expect(call).toHaveBeenCalledWith(
