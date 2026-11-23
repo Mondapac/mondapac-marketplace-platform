@@ -1,6 +1,6 @@
 import { Badge, CARD_TABLE, Menu, type BadgeTone } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { shortInstant } from '../shared/format.ts';
+import { shortInstantInZone } from '../shared/format.ts';
 import { known } from './format.ts';
 import { ORPHAN_STATES, shortSellerId, type OrphanRow } from './orphaned-types.ts';
 
@@ -23,8 +23,11 @@ function helpKey(code: string | null): string {
 export function OrphanedTable({
   rows,
   onInvite,
+  zone,
 }: {
   readonly rows: readonly OrphanRow[];
+  /** The IANA zone of the Created times (ADR-0005). */
+  readonly zone: string;
   readonly onInvite: (row: OrphanRow) => void;
 }) {
   const t = useTranslations('sellers.orphaned');
@@ -62,7 +65,9 @@ export function OrphanedTable({
                   <Badge tone={TONE[state] ?? 'neutral'}>{t(`state.${state}`)}</Badge>
                 </td>
                 <td className={CARD_TABLE.labelled} data-label={t('col.created')}>
-                  <time dateTime={row.createdAt}>{shortInstant(row.createdAt, locale)}</time>
+                  <time dateTime={row.createdAt}>
+                    {shortInstantInZone(row.createdAt, locale, zone, true)}
+                  </time>
                 </td>
                 <td className={CARD_TABLE.actions}>
                   <Menu

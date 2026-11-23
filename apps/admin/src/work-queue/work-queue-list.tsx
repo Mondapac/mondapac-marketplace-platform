@@ -32,7 +32,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { toCsv, toXlsx, type Cell } from '../assistant-insights/export-file.ts';
-import { shortInstant } from '../shared/format.ts';
+import { shortInstantInZone } from '../shared/format.ts';
 import { useLevelText, useQueueDefinitions, useStatusText } from './labels.ts';
 import {
   DEFAULT_COLUMNS,
@@ -80,11 +80,14 @@ export function WorkQueueList({
   initialView,
   accountId,
   marketId,
+  zone,
 }: {
   readonly answer: WorkQueueAnswer;
   readonly initialView: View;
   readonly accountId: string;
   readonly marketId: string;
+  /** The IANA zone of the queue's times (ADR-0005). */
+  readonly zone: string;
 }) {
   const t = useTranslations('work-queue.page');
   const ts = useTranslations('sales-lists');
@@ -157,7 +160,7 @@ export function WorkQueueList({
           cell: (row) => {
             const at = oldestOf(row);
             if (at === null) return '-';
-            const when = shortInstant(at, locale);
+            const when = shortInstantInZone(at, locale, zone, true);
             // A dispute's time is its nearest response deadline, not when it came in.
             return (
               <time dateTime={at}>

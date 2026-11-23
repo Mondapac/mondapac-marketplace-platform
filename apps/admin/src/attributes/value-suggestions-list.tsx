@@ -121,11 +121,11 @@ export function ValueSuggestionsList({
             id,
             header,
             skeleton: 'date',
-            cell: (row) => <When iso={row.createdAt} missing="" />,
+            cell: (row) => <When iso={row.createdAt} missing="" zone={zone} />,
           };
       }
     },
-    [t],
+    [t, zone],
   );
 
   const config: PagedListConfig<ValueSuggestionRow> = useMemo(

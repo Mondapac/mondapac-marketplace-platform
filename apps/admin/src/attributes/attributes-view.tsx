@@ -122,6 +122,7 @@ export function AttributesView({
           marketId={marketId}
           canEdit={canEdit}
           csrfToken={csrfToken}
+          zone={zone}
         />
       ) : null}
       {tab === 'waiting' && canDecide ? (

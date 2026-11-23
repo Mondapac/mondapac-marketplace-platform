@@ -7,6 +7,7 @@ import { DEFAULT_KPI_PERIOD, isKpiPeriod } from '../../src/dashboard/kpi-types.t
 import { startAdminDashboard } from '../../src/dashboard/load.ts';
 import { AdminShell } from '../../src/server/admin-shell.tsx';
 import { requireSession } from '../../src/server/session.ts';
+import { localZone } from '../../src/shared/format.ts';
 
 export async function generateMetadata() {
   const t = await getTranslations();
@@ -36,7 +37,11 @@ export default async function HomePage({
           <p className="text-fg-muted">{t('home.intro', { name: gate.session.displayName })}</p>
         </div>
         <AdminKpiStrip source={kpis} period={period} permissionKeys={gate.session.permissionKeys} />
-        <AdminDashboard data={data} permissionKeys={gate.session.permissionKeys} />
+        <AdminDashboard
+          data={data}
+          permissionKeys={gate.session.permissionKeys}
+          zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
+        />
       </div>
     </AdminShell>
   );

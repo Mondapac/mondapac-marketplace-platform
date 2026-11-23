@@ -60,6 +60,7 @@ function mount(canEdit = false) {
   return render(
     <NextIntlClientProvider locale="en" messages={messages}>
       <MissingDetailsList
+        zone="Australia/Brisbane"
         paging="pages"
         accountId="acct"
         marketId="AU"

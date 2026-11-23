@@ -7,6 +7,7 @@ import { panelHostFor } from '../../../src/server/bff.ts';
 import { panelConfig } from '../../../src/server/config.ts';
 import { serverGet } from '../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../src/server/session.ts';
+import { localZone } from '../../../src/shared/format.ts';
 import { WorkQueueList } from '../../../src/work-queue/work-queue-list.tsx';
 import { isView } from '../../../src/work-queue/work-queue-query.ts';
 import {
@@ -83,6 +84,7 @@ export default async function WorkQueuePage({
           initialView={view}
           accountId={gate.session.accountId}
           marketId={marketId}
+          zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
         />
       </>
     );

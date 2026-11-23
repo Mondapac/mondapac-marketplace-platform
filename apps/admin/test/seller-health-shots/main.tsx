@@ -64,7 +64,13 @@ window.fetch = () =>
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages} timeZone="UTC">
     <main className="mx-auto max-w-7xl p-4 md:p-6">
-      <SellersList csrfToken="tok" paging="pages" accountId="acc" marketId="AU" />
+      <SellersList
+        zone="Australia/Brisbane"
+        csrfToken="tok"
+        paging="pages"
+        accountId="acc"
+        marketId="AU"
+      />
     </main>
   </NextIntlClientProvider>,
 );

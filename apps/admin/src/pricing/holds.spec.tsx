@@ -118,7 +118,13 @@ const listCalls = () =>
 function mount(m: (typeof MARKETS)[number]) {
   return render(
     <NextIntlClientProvider locale={m.locale} messages={messages}>
-      <HoldsList paging="pages" accountId={id(99)} marketId={m.name} csrfToken="csrf-1" />
+      <HoldsList
+        zone="Australia/Brisbane"
+        paging="pages"
+        accountId={id(99)}
+        marketId={m.name}
+        csrfToken="csrf-1"
+      />
     </NextIntlClientProvider>,
   );
 }

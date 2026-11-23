@@ -93,6 +93,7 @@ function mount(tab: 'offer' | 'revision' = 'offer') {
         accountId="0190a000-0000-7000-8000-000000000099"
         marketId="AU"
         csrfToken="csrf-1"
+        zone="Australia/Brisbane"
       />
     </NextIntlClientProvider>,
   );
@@ -215,7 +216,7 @@ describe('review queue lists', () => {
     ['offer', 'Olive oil'],
     ['revision', 'Dates'],
   ] as const)(
-    'filters the %s list by when it was submitted, as instants on the UTC day, and takes it off again',
+    'filters the %s list by when it was submitted, as instants on the Brisbane day, and takes it off again',
     async (tab, name) => {
       call.mockResolvedValue(tab === 'offer' ? offerAnswer() : answer([revision()]));
       mount(tab);
@@ -227,16 +228,17 @@ describe('review queue lists', () => {
       const asked = () =>
         queueCalls().map(([, path]) => new URLSearchParams(String(path).split('?')[1]));
       await waitFor(() => expect(asked().some((p) => p.has('submittedFrom'))).toBe(true));
-      // The queue shows UTC times, so Today is the UTC day: midnight to midnight, one day long.
-      const utcDay = (q: URLSearchParams) => {
-        expect(q.get('submittedFrom')).toMatch(/T00:00:00(\.000)?Z$/);
-        expect(q.get('submittedTo')).toMatch(/T00:00:00(\.000)?Z$/);
+      // The queue shows times on the admin's own clock, so Today is the Brisbane day (UTC+10, no
+      // daylight saving): 14:00 UTC to 14:00 UTC, one day long.
+      const localDay = (q: URLSearchParams) => {
+        expect(q.get('submittedFrom')).toMatch(/T14:00:00(\.000)?Z$/);
+        expect(q.get('submittedTo')).toMatch(/T14:00:00(\.000)?Z$/);
         expect(
           Date.parse(q.get('submittedTo') ?? '') - Date.parse(q.get('submittedFrom') ?? ''),
         ).toBe(24 * 3600 * 1000);
         expect(q.has('submitted')).toBe(false);
       };
-      utcDay(asked().find((p) => p.has('submittedFrom')) as URLSearchParams);
+      localDay(asked().find((p) => p.has('submittedFrom')) as URLSearchParams);
       fireEvent.click(await screen.findByRole('button', { name: /Remove filter Submitted is/ }));
       await waitFor(() => expect(asked().at(-1)?.has('submittedFrom')).toBe(false));
     },
@@ -274,8 +276,8 @@ describe('review queue lists', () => {
     expect(url.startsWith('/api/catalog/admin/review-queue/export?')).toBe(true);
     const query = new URLSearchParams(url.split('?')[1]);
     expect(query.get('kind')).toBe('offer-first-publication');
-    expect(query.get('submittedFrom')).toMatch(/T00:00:00(\.000)?Z$/);
-    expect(query.get('submittedTo')).toMatch(/T00:00:00(\.000)?Z$/);
+    expect(query.get('submittedFrom')).toMatch(/T14:00:00(\.000)?Z$/);
+    expect(query.get('submittedTo')).toMatch(/T14:00:00(\.000)?Z$/);
     expect(query.has('submitted')).toBe(false);
     vi.unstubAllGlobals();
   });
