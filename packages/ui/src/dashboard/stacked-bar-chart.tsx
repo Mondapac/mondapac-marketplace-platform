@@ -45,6 +45,8 @@ export interface StackedBarChartProps {
     readonly viewAsTable: string;
     readonly viewAsChart: string;
     readonly dateColumn: string;
+    /** Muted hint in the readout band while no column is active. */
+    readonly readoutHint?: string;
   };
 }
 
@@ -232,10 +234,12 @@ export function StackedBarChart({
             <div
               aria-hidden="true"
               data-stacked-tooltip=""
-              className="flex min-h-10 flex-wrap items-center gap-x-4 gap-y-1 rounded-md bg-subtle px-3 py-1.5 text-xs text-fg-secondary"
+              className={`flex min-h-10 flex-wrap items-center gap-x-4 gap-y-1 rounded-md px-3 py-1.5 text-xs text-fg-secondary ${active === null ? '' : 'bg-subtle'}`}
             >
               {shown === undefined || active === null ? (
-                <span className="text-fg-muted">&nbsp;</span>
+                <span className="text-fg-muted">
+                  {labels.readoutHint ?? 'Hover or focus a day for details'}
+                </span>
               ) : (
                 <>
                   <span className="font-semibold text-fg">{shown.label}</span>

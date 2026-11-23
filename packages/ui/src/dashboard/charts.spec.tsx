@@ -606,7 +606,7 @@ describe('StackedBarChart', () => {
     expect(band.className).not.toContain('absolute');
     expect(band.compareDocumentPosition(svg) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.keyDown(svg, { key: 'Escape' });
-    expect(band.textContent?.trim()).toBe('');
+    expect(band.textContent?.trim()).toBe('Hover or focus a day for details');
   });
   it('prints x labels at an even stride', () => {
     const many = Array.from({ length: 14 }, (_, d) => ({ label: `L${d}`, values: { s1: d + 1 } }));
