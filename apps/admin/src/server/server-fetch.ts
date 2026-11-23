@@ -27,6 +27,8 @@ export async function serverGet<T>(
      * session's CSRF token, which an unsafe method needs although nothing changes.
      */
     readonly post?: { readonly body: unknown; readonly csrfToken: string };
+    /** Gives up after this many milliseconds and answers `unavailable`; no limit when left out. */
+    readonly timeoutMs?: number;
   } = {},
 ): Promise<ServerGet<T>> {
   const config = panelConfig();
@@ -61,6 +63,9 @@ export async function serverGet<T>(
       ...(options.post === undefined ? {} : { body: JSON.stringify(options.post.body) }),
       cache: 'no-store',
       redirect: 'manual',
+      ...(options.timeoutMs === undefined
+        ? {}
+        : { signal: AbortSignal.timeout(options.timeoutMs) }),
     });
     if (response.status === 401) return { kind: 'signed-out' };
     if (response.status === 403) return { kind: 'forbidden' };
@@ -78,6 +83,9 @@ export async function serverGet<T>(
   } catch (error) {
     if (error instanceof MissingClientAddressError) {
       console.log(JSON.stringify({ msg: 'panel.server-get.client-address-missing' }));
+    }
+    if (error instanceof DOMException && error.name === 'TimeoutError') {
+      console.log(JSON.stringify({ msg: 'panel.server-get.timeout', path: path.split('?')[0] }));
     }
     return { kind: 'unavailable' };
   }

@@ -22,6 +22,13 @@ export interface AdminSession {
   readonly csrfToken: string;
 }
 
+/**
+ * The session read runs before anything of the panel is sent (the `(shell)` layout), so a slow API
+ * would leave a blank tab. After this long the read counts as `unavailable` and the page shows its
+ * error with a retry. The read is one indexed lookup; 5 s is far above its normal time.
+ */
+export const SESSION_READ_TIMEOUT_MS = 5_000;
+
 export type SessionRead =
   | { readonly kind: 'signed-in'; readonly session: AdminSession }
   | { readonly kind: 'signed-out' }
@@ -33,7 +40,9 @@ export type SessionRead =
  * the relay by `/session-ended`. One read per request: the `(shell)` layout and the page share it.
  */
 export const readSession = cache(async (): Promise<SessionRead> => {
-  const read = await serverGet<AdminSession>('identity/admin/session');
+  const read = await serverGet<AdminSession>('identity/admin/session', {
+    timeoutMs: SESSION_READ_TIMEOUT_MS,
+  });
   if (read.kind === 'ok') return { kind: 'signed-in', session: read.body };
   return read.kind === 'signed-out' ? { kind: 'signed-out' } : { kind: 'unavailable' };
 });
