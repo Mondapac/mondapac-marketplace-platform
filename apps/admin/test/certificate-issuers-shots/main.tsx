@@ -55,7 +55,7 @@ function Body() {
           csrfToken="t"
         />
       </div>
-      <IssuersTable rows={rows} typeNames={names} morePages={false} />
+      <IssuersTable zone="Australia/Brisbane" rows={rows} typeNames={names} morePages={false} />
     </div>
   );
 }

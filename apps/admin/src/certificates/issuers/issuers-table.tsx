@@ -10,11 +10,14 @@ export function IssuersTable({
   rows,
   typeNames,
   morePages,
+  zone,
 }: {
   readonly rows: readonly IssuerRow[];
   readonly typeNames: ReadonlyMap<string, string>;
   /** A next page exists, so an empty list here does not mean an empty registry. */
   readonly morePages: boolean;
+  /** The IANA zone of the State changed times (ADR-0005). */
+  readonly zone: string;
 }) {
   const t = useTranslations('certificates.issuers');
   if (rows.length === 0) {
@@ -60,7 +63,7 @@ export function IssuersTable({
                 {row.accreditationNumber ?? <span className="text-fg-muted">-</span>}
               </td>
               <td className={CARD_TABLE.labelled} data-label={t('col.changed')}>
-                <When iso={row.stateChangedAt} missing="-" />
+                <When iso={row.stateChangedAt} missing="-" zone={zone} />
               </td>
               <td className={CARD_TABLE.actions}>
                 <IssuerRowActions issuerId={row.issuerId} name={row.displayName} />

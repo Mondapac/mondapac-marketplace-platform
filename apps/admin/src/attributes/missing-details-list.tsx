@@ -3,7 +3,7 @@
 import { Badge, Banner, toast, type MenuItem, type SuperColumn } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useMemo, useState } from 'react';
-import { formatInstant } from '../shared/format.ts';
+import { instantInZone } from '../shared/format.ts';
 import { PagedSuperList } from '../shared/paged-list/paged-super-list.tsx';
 import type { ListPagingMode, PagedAnswer, PagedListConfig } from '../shared/paged-list/types.ts';
 import { EmailSellersDialog, emailable } from './email-sellers-dialog.tsx';
@@ -59,6 +59,7 @@ export function MissingDetailsList({
   marketId,
   canEdit,
   csrfToken,
+  zone,
 }: {
   readonly paging: ListPagingMode;
   readonly accountId: string;
@@ -66,6 +67,8 @@ export function MissingDetailsList({
   /** `catalog.attribute.edit`: shows Email sellers…. */
   readonly canEdit: boolean;
   readonly csrfToken: string;
+  /** The IANA zone of the Last emailed times (ADR-0005). */
+  readonly zone: string;
 }) {
   const t = useTranslations('attributes.missing-details');
   const tl = useTranslations('attributes.missing-details.list');
@@ -150,13 +153,13 @@ export function MissingDetailsList({
               <span className="text-fg-muted">
                 {row.lastEmailedAt === null
                   ? t('never-emailed')
-                  : formatInstant(row.lastEmailedAt, locale)}
+                  : instantInZone(row.lastEmailedAt, locale, zone)}
               </span>
             ),
           };
       }
     },
-    [t, locale],
+    [t, locale, zone],
   );
 
   const config: PagedListConfig<MissingDetailsRow> = useMemo(

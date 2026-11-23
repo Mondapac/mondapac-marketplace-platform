@@ -6,6 +6,7 @@ import { panelHostFor } from '../../../src/server/bff.ts';
 import { panelConfig } from '../../../src/server/config.ts';
 import { serverGet } from '../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../src/server/session.ts';
+import { localZone } from '../../../src/shared/format.ts';
 import { parseQueueTab } from '../../../src/catalog/review-queue-params.ts';
 import { ReviewQueueView } from '../../../src/catalog/review-queue-view.tsx';
 import { VIEW_PERMISSION } from '../../../src/catalog/types.ts';
@@ -63,6 +64,7 @@ export default async function ReviewQueuePage({
       accountId={gate.session.accountId}
       marketId={marketId}
       csrfToken={gate.session.csrfToken}
+      zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
     />,
   );
 }

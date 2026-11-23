@@ -4,6 +4,7 @@ import { getLocale, getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
+import { localZone } from '../../../../src/shared/format.ts';
 import { typeNames } from '../../../../src/certificates/format.ts';
 import { CertificatesTabs } from '../../../../src/certificates/tabs.tsx';
 import { StateFilter } from '../../../../src/certificates/issuers/filters.tsx';
@@ -113,7 +114,12 @@ export default async function IssuersPage({
           <NewIssuer types={typeList} typeNames={names} csrfToken={gate.session.csrfToken} />
         ) : null}
       </div>
-      <IssuersTable rows={result.body.items} typeNames={names} morePages={next !== null} />
+      <IssuersTable
+        rows={result.body.items}
+        typeNames={names}
+        morePages={next !== null}
+        zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
+      />
       <div className="flex gap-4">
         {after === null ? null : (
           <a

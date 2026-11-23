@@ -1263,7 +1263,7 @@
       "col": {
         "seller": "Seller ID",
         "access": "Access",
-        "created": "Created (UTC)",
+        "created": "Created",
         "actions": "Actions"
       },
       "actions-for": "Actions for seller {id}",
@@ -1777,7 +1777,7 @@
         "type": "Type",
         "state": "State",
         "accreditation": "Accreditation number",
-        "changed": "State changed (UTC)"
+        "changed": "State changed"
       },
       "filter": {
         "label": "Filter by state",
@@ -1840,7 +1840,7 @@
         "unavailable": "This issuer could not be loaded.",
         "type": "Type",
         "accreditation": "Accreditation number",
-        "changed": "State changed (UTC)",
+        "changed": "State changed",
         "expert": "Expert approval",
         "affected": "Approved certificates naming this issuer",
         "by": {
@@ -5890,7 +5890,7 @@
         "seller": "Seller",
         "reasons": "Reasons",
         "checks": "Checks",
-        "waiting": "Waiting since (UTC)",
+        "waiting": "Waiting since",
         "action": "Review"
       },
       "change": {
@@ -5956,7 +5956,7 @@
           "seller": "Seller",
           "reasons": "Reasons",
           "checks": "Checks",
-          "waiting": "Waiting since (UTC)"
+          "waiting": "Waiting since"
         },
         "chip-search": "Search: {text}",
         "loading": "Loading revisions",
@@ -6049,7 +6049,7 @@
           "condition": "Condition",
           "handling": "Handling",
           "seller": "Seller",
-          "waiting": "Waiting since (UTC)"
+          "waiting": "Waiting since"
         },
         "chip-search": "Search: {text}",
         "loading": "Loading offers",
@@ -9094,7 +9094,7 @@
     "name-saved": "Your name was updated.",
     "name-same": "That is already your name.",
     "prefs-title": "Time zone and language",
-    "prefs-intro-admin": "These are your own display choices. Without a time zone of your own, the Orders list shows times and days in the Market's time zone; other lists and reports keep showing UTC.",
+    "prefs-intro-admin": "These are your own display choices. Without a time zone of your own, lists and reports show times and days in the Market's time zone.",
     "prefs-intro-seller": "These are your own display choices. Lists and reports keep showing times in your store's time zone.",
     "timezone": "Time zone",
     "timezone-label": "Time zone",

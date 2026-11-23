@@ -1,6 +1,7 @@
 import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { AdminShell } from '../../../../src/server/admin-shell.tsx';
+import { localZone } from '../../../../src/shared/format.ts';
 import { requireSession } from '../../../../src/server/session.ts';
 import { OrphanedList } from '../../../../src/sellers/orphaned-list.tsx';
 import { ORPHANED_VIEW_PERMISSION } from '../../../../src/sellers/orphaned-types.ts';
@@ -29,7 +30,10 @@ export default async function SellersWithoutOwnerPage() {
       {allowed ? (
         <>
           <h1 className="mb-4 text-2xl font-semibold">{title}</h1>
-          <OrphanedList csrfToken={gate.session.csrfToken} />
+          <OrphanedList
+            csrfToken={gate.session.csrfToken}
+            zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
+          />
         </>
       ) : (
         <div className="flex flex-col items-start gap-3 rounded-lg border border-line p-6">

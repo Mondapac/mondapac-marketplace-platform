@@ -6,10 +6,14 @@ import { When } from './when.tsx';
 
 afterEach(cleanup);
 
-const show = (locale: string) =>
+const show = (locale: string, zone?: string) =>
   render(
     <NextIntlClientProvider locale={locale} messages={{}}>
-      <When iso="2026-10-09T23:30:00.000Z" missing="none" />
+      <When
+        iso="2026-10-09T23:30:00.000Z"
+        missing="none"
+        {...(zone === undefined ? {} : { zone })}
+      />
     </NextIntlClientProvider>,
   );
 
@@ -24,5 +28,12 @@ describe('When', () => {
     show('de-DE');
     expect(screen.getByText('09.10.2026')).toBeTruthy();
     expect(screen.getByText('23:30 UTC')).toBeTruthy();
+  });
+
+  it('reads the instant on the given zone clock, without naming the zone', () => {
+    show('en-AU', 'Australia/Brisbane');
+    expect(screen.getByText('10 Oct 2026')).toBeTruthy();
+    expect(screen.getByText(/9:30\s?am/i)).toBeTruthy();
+    expect(screen.queryByText(/UTC/)).toBeNull();
   });
 });
