@@ -12,17 +12,15 @@ import { AccountMenu } from '../shell/account-menu.tsx';
 import { AppShell } from '../shell/app-shell.tsx';
 import { Topbar } from '../shell/topbar.tsx';
 
-/** Stubs the viewport: `wide` is true from 1280 px. */
-function setViewport(wide: boolean) {
+// AppShell reads matchMedia; the Help panel itself no longer depends on the viewport width.
+beforeEach(() =>
   vi.stubGlobal('matchMedia', (query: string) => ({
-    matches: query.includes('1280') ? wide : false,
+    matches: false,
     media: query,
     addEventListener: () => undefined,
     removeEventListener: () => undefined,
-  }));
-}
-
-beforeEach(() => setViewport(true));
+  })),
+);
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -144,6 +142,7 @@ describe('Help button and panel', () => {
     render(<Harness />);
     const button = screen.getByRole('button', { name: 'Help' });
     await user.click(button);
+    // Focus, not a click: a press outside would close the panel before Escape is sent.
     screen.getByLabelText('Search box').focus();
     await user.keyboard('{Escape}');
     expect(screen.queryByRole('dialog')).toBeNull();
@@ -222,8 +221,7 @@ describe('Help panel as an overlay drawer', () => {
     expect(dialog.querySelector('div')?.className).toContain('items-center');
   });
 
-  it('closes on a press outside the panel below 1280 px, without taking focus', async () => {
-    setViewport(false);
+  it('closes on a press outside the panel at any width, without taking focus', async () => {
     const user = userEvent.setup();
     render(<Harness />);
     await user.click(screen.getByRole('button', { name: 'Help' }));
@@ -232,8 +230,7 @@ describe('Help panel as an overlay drawer', () => {
     expect(document.activeElement).toBe(screen.getByLabelText('Search box'));
   });
 
-  it('stays open on a press inside the panel and on the Help button itself below 1280 px', async () => {
-    setViewport(false);
+  it('stays open on a press inside the panel and on the Help button itself', async () => {
     const user = userEvent.setup();
     render(<Harness />);
     const button = screen.getByRole('button', { name: 'Help' });
@@ -241,15 +238,6 @@ describe('Help panel as an overlay drawer', () => {
     await user.click(screen.getByText('Refunds returns money to buyers.'));
     expect(screen.getByRole('dialog')).toBeTruthy();
     await user.click(button);
-    expect(screen.queryByRole('dialog')).toBeNull();
-  });
-
-  it('closes on a press outside the panel from 1280 px too, as an overlay drawer', async () => {
-    setViewport(true);
-    const user = userEvent.setup();
-    render(<Harness />);
-    await user.click(screen.getByRole('button', { name: 'Help' }));
-    await user.click(screen.getByLabelText('Search box'));
     expect(screen.queryByRole('dialog')).toBeNull();
   });
 
@@ -281,6 +269,8 @@ describe('Help panel as an overlay drawer', () => {
     expect(main.getAttribute('data-help-open')).toBeNull();
     const panel = screen.getByRole('dialog');
     expect(panel.className).toContain('fixed');
+    // Below the sticky top bar (z-30) and the toasts (z-30) from tablets, so menus and toasts stay on top.
+    expect(panel.className).toContain('md:z-20');
     expect(panel.className).toContain('sm:w-(--mp-size-sheet)');
     expect(panel.className).toContain('xl:w-(--mp-size-sheet-wide)');
   });

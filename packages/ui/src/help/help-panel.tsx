@@ -92,9 +92,9 @@ export function HelpPanel({ content, labels }: HelpPanelProps) {
       aria-modal="false"
       aria-labelledby={titleId}
       tabIndex={-1}
-      className="fixed inset-y-0 end-0 z-40 flex w-full flex-col border-line bg-surface text-fg shadow-(--mp-shadow-elevation-floating) focus:outline-none sm:w-(--mp-size-sheet) sm:border-s xl:w-(--mp-size-sheet-wide) md:top-(--mp-size-topbar)"
+      className="fixed inset-y-0 end-0 z-40 flex md:z-20 w-full flex-col border-line bg-surface text-fg shadow-(--mp-shadow-elevation-floating) focus:outline-none sm:w-(--mp-size-sheet) sm:border-s xl:w-(--mp-size-sheet-wide) md:top-(--mp-size-topbar)"
     >
-      <div className="flex items-center gap-2 border-b border-line px-4 py-3">
+      <div className="flex items-center gap-2 border-b border-line px-4 py-3 sm:px-6">
         <h2 id={titleId} className="min-w-0 flex-1 break-words text-lg font-semibold">
           {labels.about} {content.page}
         </h2>
@@ -102,12 +102,12 @@ export function HelpPanel({ content, labels }: HelpPanelProps) {
           type="button"
           aria-label={labels.close}
           onClick={close}
-          className="flex size-11 shrink-0 items-center justify-center rounded-md text-fg-secondary hover:bg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-focus "
+          className="flex size-11 shrink-0 items-center justify-center rounded-md text-fg-secondary hover:bg-muted hover:text-fg focus-visible:outline-2 focus-visible:outline-focus"
         >
           <Icon name="x" />
         </button>
       </div>
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-4 py-4">
+      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto overscroll-contain px-4 py-4 sm:px-6">
         <p className="text-sm text-fg">{content.about}</p>
         {content.tab === undefined ? null : (
           <section
