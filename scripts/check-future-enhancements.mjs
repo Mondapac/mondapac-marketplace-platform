@@ -4,7 +4,11 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const script = fileURLToPath(new URL('../docs/future-enhancements/generate.py', import.meta.url));
-for (const [cmd, pre] of [['python3', []], ['python', []], ['py', ['-3']]]) {
+for (const [cmd, pre] of [
+  ['python3', []],
+  ['python', []],
+  ['py', ['-3']],
+]) {
   const r = spawnSync(cmd, [...pre, script, '--check'], { stdio: 'inherit' });
   if (r.error?.code === 'ENOENT') continue;
   process.exit(r.status ?? 1);
