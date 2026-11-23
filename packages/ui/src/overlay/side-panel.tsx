@@ -47,7 +47,7 @@ export function SidePanel({
       onClick={(event) => {
         if (event.target === ref.current) onClose();
       }}
-      className="m-0 ms-auto h-dvh max-h-none w-full max-w-none bg-transparent p-0 text-start text-fg backdrop:bg-scrim backdrop:backdrop-blur-sm motion-reduce:backdrop:backdrop-blur-none lg:w-[min(64rem,calc(100vw-4rem))]"
+      className="m-0 ms-auto h-dvh max-h-none w-full max-w-none overflow-hidden bg-transparent p-0 text-start text-fg backdrop:bg-scrim backdrop:backdrop-blur-sm motion-reduce:backdrop:backdrop-blur-none lg:w-[min(64rem,calc(100vw-4rem))]"
     >
       {open ? (
         <div className="flex h-full flex-col border-line bg-surface shadow-(--mp-shadow-elevation-floating) lg:border-s">

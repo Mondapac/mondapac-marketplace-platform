@@ -84,7 +84,7 @@ export function SettingsHistoryDrawer({
       onClick={(event) => {
         if (event.target === ref.current) onClose();
       }}
-      className="m-0 ms-auto h-dvh max-h-none w-full max-w-none bg-transparent p-0 text-start text-fg backdrop:bg-scrim backdrop:backdrop-blur-sm motion-reduce:backdrop:backdrop-blur-none sm:w-(--mp-size-sheet) xl:w-(--mp-size-sheet-wide)"
+      className="m-0 ms-auto h-dvh max-h-none w-full max-w-none overflow-hidden bg-transparent p-0 text-start text-fg backdrop:bg-scrim backdrop:backdrop-blur-sm motion-reduce:backdrop:backdrop-blur-none sm:w-(--mp-size-sheet) xl:w-(--mp-size-sheet-wide)"
     >
       {open ? (
         <div className="flex h-full flex-col border-line bg-surface shadow-(--mp-shadow-elevation-floating) sm:border-s">
