@@ -15366,7 +15366,6 @@
     "back-home": "Go to the dashboard",
     "rules-ran": "Rules ran {when}",
     "rules-never": "The rules have not run yet",
-    "updates": "Updates every 30 seconds",
     "refresh-failed": "Couldn't refresh. Showing alerts as of {time}.",
     "banner": {
       "no-roster-title": "No on-call roster is set up. Alerts are not being sent.",
