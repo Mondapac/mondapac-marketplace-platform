@@ -1,4 +1,5 @@
 import { Suspense, use, type ReactNode } from 'react';
+import { GridItem, type GridLayout } from './dashboard.tsx';
 
 /**
  * What a dashboard section reads: the answer itself, or a promise of it while the page streams.
@@ -34,15 +35,24 @@ export function DashboardSlot<T>({
   source,
   fallback,
   children,
+  layout,
 }: {
   readonly source: DashboardSource<T>;
   readonly fallback: ReactNode;
   readonly children: (value: T) => ReactNode;
+  /**
+   * Places the slot in a DashboardGrid: desktop span, tablet span, phone order. The slot is then
+   * wrapped in one grid item (the skeleton sits in it too, so nothing jumps). Without it the slot
+   * adds no wrapper and the page keeps its own layout.
+   */
+  readonly layout?: GridLayout;
 }) {
-  if (!isPromise(source)) return <>{children(source)}</>;
-  return (
+  const body = isPromise(source) ? (
     <Suspense fallback={fallback}>
       <Resolved source={source}>{children}</Resolved>
     </Suspense>
+  ) : (
+    <>{children(source)}</>
   );
+  return layout === undefined ? body : <GridItem {...layout}>{body}</GridItem>;
 }
