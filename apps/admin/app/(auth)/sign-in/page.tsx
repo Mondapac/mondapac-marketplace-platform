@@ -1,3 +1,4 @@
+import { safeReturnTo } from '@mondapac/panel-server/return-to';
 import { getTranslations } from 'next-intl/server';
 import { AuthFrame } from '../../../src/auth/auth-frame.tsx';
 import { SignInFlow, type SignInNotice } from '../../../src/auth/sign-in-flow.tsx';
@@ -20,11 +21,11 @@ export default async function SignInPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const t = await getTranslations('identity.sign-in');
-  const { notice } = await searchParams;
+  const { notice, next } = await searchParams;
   const shown = NOTICES.find((candidate) => candidate === notice) ?? null;
   return (
     <AuthFrame title={t('title')}>
-      <SignInFlow notice={shown} />
+      <SignInFlow notice={shown} returnTo={safeReturnTo(next)} />
     </AuthFrame>
   );
 }

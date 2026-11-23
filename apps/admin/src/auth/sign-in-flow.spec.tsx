@@ -73,6 +73,22 @@ describe('admin sign-in', () => {
     });
   });
 
+  it('opens the page asked for before sign-in once the code is accepted', async () => {
+    call
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        body: { code: 'second-factor-required', challengeToken: 'tok' },
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, body: { code: 'signed-in' } });
+    render(wrap(<SignInFlow notice={null} returnTo="/orders?view=late" />));
+    signIn();
+    await screen.findByText('Enter your 6-digit code');
+    typeCode('123456');
+    fireEvent.click(screen.getByRole('button', { name: 'Verify' }));
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/orders?view=late'));
+  });
+
   it('shows a rejected code and switches to a backup code', async () => {
     call.mockResolvedValueOnce({
       ok: true,

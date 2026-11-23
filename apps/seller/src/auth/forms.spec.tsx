@@ -175,6 +175,13 @@ describe('SignInForm', () => {
     await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/'));
   });
 
+  it('opens the page asked for before sign-in', async () => {
+    call.mockResolvedValue({ ok: true, status: 200, body: { code: 'signed-in' } });
+    render(wrap(<SignInForm notice={null} returnTo="/orders" />));
+    fillSignIn('a@example.com', 'secret');
+    await waitFor(() => expect(router.replace).toHaveBeenCalledWith('/orders'));
+  });
+
   it('focuses the first invalid field after a validation failure', async () => {
     call.mockResolvedValue({
       ok: false,

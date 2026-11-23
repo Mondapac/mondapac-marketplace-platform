@@ -21,7 +21,14 @@ type PasswordStep = { code: string; challengeToken?: string };
  * that a link to set up two-step verification again was mailed (A3, F6 step 6). The challenge
  * token lives in this component's memory only: never in the URL or in browser storage.
  */
-export function SignInFlow({ notice }: { readonly notice: SignInNotice | null }) {
+export function SignInFlow({
+  notice,
+  returnTo = null,
+}: {
+  readonly notice: SignInNotice | null;
+  /** The page to open after sign-in; checked by the server page (`safeReturnTo`). */
+  readonly returnTo?: string | null;
+}) {
   const [challenge, setChallenge] = useState<string | null>(null);
   const [ended, setEnded] = useState<ApiFailure | null>(null);
   const [reEnrol, setReEnrol] = useState<string | null>(null);
@@ -46,6 +53,7 @@ export function SignInFlow({ notice }: { readonly notice: SignInNotice | null })
     return (
       <CodeStep
         challengeToken={challenge}
+        returnTo={returnTo}
         onEnded={(failure) => {
           setEnded(failure);
           setChallenge(null);
@@ -174,9 +182,11 @@ function PasswordForm({
 
 function CodeStep({
   challengeToken,
+  returnTo,
   onEnded,
 }: {
   readonly challengeToken: string;
+  readonly returnTo: string | null;
   readonly onEnded: (failure: ApiFailure) => void;
 }) {
   const t = useTranslations('identity');
@@ -214,7 +224,7 @@ function CodeStep({
       code: entered.replace(/[\s-]/g, ''),
     });
     if (result.ok) {
-      router.replace('/');
+      router.replace(returnTo ?? '/');
       router.refresh();
       return;
     }
