@@ -5,7 +5,12 @@ import type { AccessDenied } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import { fillDays, type DayTotals } from '../domain/admin-kpi';
 import { marketDayOf } from '../domain/facts';
-import { resolvePeriod, type PeriodId, type ResolvedPeriod } from '../domain/period';
+import {
+  resolvePeriodRequest,
+  type PeriodRefused,
+  type PeriodRequest,
+  type ResolvedPeriod,
+} from '../domain/period';
 import type { AdminKpiReader } from './ports/admin-kpi-reader';
 import type { MarketZone } from './ports/market-zone';
 
@@ -17,7 +22,28 @@ export interface AdminKpiDependencies {
 }
 
 export interface KpiInput {
-  readonly period: PeriodId;
+  /** A preset, or a custom range whose shape the caller checked (`parsePeriodQuery`). */
+  readonly period: PeriodRequest;
+}
+
+/** Why a KPI read refused: access, or a period that ends after the Market's today. */
+export type KpiFailure = AccessDenied | PeriodRefused;
+
+/**
+ * The period of a request on the Market's day of `now` (its zone from Market configuration, never
+ * UTC). A custom range that ends after that day is `validation.failed`.
+ */
+export function resolveKpiPeriod(
+  deps: Pick<AdminKpiDependencies, 'zone'>,
+  context: CallContext,
+  request: PeriodRequest,
+  now: Temporal.Instant,
+): Result<ResolvedPeriod, PeriodRefused> {
+  const resolved = resolvePeriodRequest(
+    request,
+    marketDayOf(now, deps.zone.zoneOf(context.market)),
+  );
+  return resolved.ok ? resolved : err({ code: 'validation.failed', fields: resolved.error });
 }
 
 /** What both KPI reads start from: the period, in Market days, and its two filled ranges. */
@@ -42,9 +68,11 @@ export async function readKpiRanges(
   deps: AdminKpiDependencies,
   context: CallContext,
   input: KpiInput,
-): Promise<Result<KpiRanges, AccessDenied>> {
+): Promise<Result<KpiRanges, KpiFailure>> {
   const now = deps.clock.now();
-  const period = resolvePeriod(input.period, marketDayOf(now, deps.zone.zoneOf(context.market)));
+  const resolved = resolveKpiPeriod(deps, context, input.period, now);
+  if (!resolved.ok) return resolved;
+  const period = resolved.value;
   const currency = deps.zone.currencyOf(context.market);
   try {
     const unit = await deps.unitOfWork.run(

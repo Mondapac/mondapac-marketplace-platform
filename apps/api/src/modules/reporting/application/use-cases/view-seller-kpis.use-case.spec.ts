@@ -33,6 +33,7 @@ describe.each(TEST_MARKETS)('ViewSellerKpis in market %s', (code) => {
       asked.push({ seller, currency, from: current.from, to: current.to });
       return Promise.resolve({ daily: [], categories: [] });
     },
+    daily: () => Promise.resolve([]),
   };
   const unitOfWork = {
     run: (_m: unknown, work: () => Promise<unknown>, options?: { readOnly?: boolean }) => {
@@ -100,6 +101,43 @@ describe.each(TEST_MARKETS)('ViewSellerKpis in market %s', (code) => {
     });
     const result = await failing.execute(as('seller'), { period: '7d' });
     expect(result).toMatchObject({ ok: false, error: { code: 'access.unavailable' } });
+  });
+
+  it('reads a custom range against as many days before it (dashboards v2, PR 5)', async () => {
+    const result = await build().execute(as('seller'), { from: '2026-10-01', to: '2026-10-31' });
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        period: {
+          id: 'custom',
+          current: { from: '2026-10-01', to: '2026-10-31' },
+          previous: { from: '2026-08-31', to: '2026-09-30' },
+          days: 31,
+        },
+      },
+    });
+    expect(asked).toEqual([{ seller: OWN, currency: 'XXX', from: '2026-10-01', to: '2026-10-31' }]);
+  });
+
+  it("refuses a range past the Market's today, judged in the Market zone", async () => {
+    // 2026-11-21T23:30Z: already the 22nd in Brisbane, still the 21st in Honolulu.
+    const range = { from: '2026-11-20', to: '2026-11-22' };
+    expect((await build().execute(as('seller'), range)).ok).toBe(true);
+    asked.length = 0;
+    expect(await build('Pacific/Honolulu').execute(as('seller'), range)).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'to', code: 'future' }] },
+    });
+    expect(asked).toEqual([]);
+  });
+
+  it('refuses a range over 13 months before any read', async () => {
+    const result = await build().execute(as('seller'), { from: '2025-10-22', to: '2026-11-22' });
+    expect(result).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'from', code: 'too-long' }] },
+    });
+    expect(asked).toEqual([]);
   });
 
   it.each(['customer', 'admin'] as const)('refuses a %s session before any read', async (who) => {

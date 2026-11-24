@@ -24,6 +24,14 @@ export interface SellerKpiReader {
     current: DayRange,
     previous: DayRange,
   ): Promise<SellerKpiRead>;
+
+  /** The daily rows of `sellerId` in `range`, oldest first; a day with no fact has no row. */
+  daily(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    currency: string,
+    range: DayRange,
+  ): Promise<readonly SellerKpiDayRow[]>;
 }
 
 export const SELLER_KPI_READER = Symbol('reporting.SellerKpiReader');

@@ -3220,6 +3220,36 @@
     }
   },
   {
+    "action": "reporting.marketplace-daily.exported",
+    "targetType": "reporting.marketplace-report",
+    "targetId": "enumOf(marketplace-daily)",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "period": "enumOf(today|last-7-days|last-30-days|month-to-date|custom)",
+      "rangeStart": "instant",
+      "rangeEnd": "instant",
+      "days": "integer",
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer"
+    }
+  },
+  {
+    "action": "reporting.seller-daily.exported",
+    "targetType": "reporting.seller-report",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "period": "enumOf(today|last-7-days|last-30-days|month-to-date|custom)",
+      "rangeStart": "instant",
+      "rangeEnd": "instant",
+      "days": "integer",
+      "format": "enumOf(csv|xlsx)",
+      "rowCount": "integer"
+    }
+  },
+  {
     "action": "reviews.market-status.changed",
     "targetType": "reviews.market-settings",
     "targetId": "enumOf(reviews-settings)",
