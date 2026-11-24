@@ -1,6 +1,6 @@
 import { err, money, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
-import type { CommissionRateMap } from '../../commission-payouts';
+import { lineCommission, type CommissionRateMap } from '../../commission-payouts';
 import type {
   DiscountSummary,
   PromotionsFacade,
@@ -9,7 +9,7 @@ import type {
 } from '../../promotions';
 import { discountSummaryOf } from '../../promotions';
 import type { TaxAnswer, TaxFacade } from '../../tax';
-import { lineCommission, NO_DISCOUNT, type LineDiscount } from '../domain/discounts';
+import { NO_DISCOUNT, type LineDiscount } from '../domain/discounts';
 import type { DeliveryMethod } from '../domain/delivery-method';
 import type { Plan, PlannedLine } from '../domain/order';
 
@@ -65,7 +65,6 @@ export interface PricingInput {
   readonly code: string | null;
   /** From ordering's own history only: the account has no paid order in the Market. */
   readonly isFirstOrder: boolean;
-  readonly provisionalTaxBps: number;
 }
 
 /** The discounts of the order, as quoted, and the request they were quoted with. */
@@ -114,6 +113,7 @@ export async function quoteDiscounts(
   deps: PricingDependencies,
   context: CallContext,
   input: PricingInput,
+  lineTaxRates: readonly number[],
 ): Promise<Result<OrderDiscounts, PricingFailure>> {
   const { plan } = input;
   const planLines = plan.sellers.flatMap((seller) =>
@@ -163,15 +163,15 @@ export async function quoteDiscounts(
     planLines.reduce(
       (sum, { seller, line }, index) =>
         sum +
-        lineCommission(
-          {
-            lineAmount: line.unitPrice.amount * BigInt(line.quantity),
-            sellerShare: sellerShares.get(`line-${index}`) ?? 0n,
-            taxInclusive: line.taxInclusive,
-            rateBps: input.rates.get(seller)!.rateBps,
-          },
-          input.provisionalTaxBps,
-        ),
+        lineCommission({
+          amount:
+            line.unitPrice.amount * BigInt(line.quantity) -
+            (sellerShares.get(`line-${index}`) ?? 0n),
+          taxInclusive: line.taxInclusive,
+          // The line's own tax rate by its category (0 when GST-free), as the ledger takes it out.
+          taxBps: lineTaxRates[index]!,
+          rateBps: input.rates.get(seller)!.rateBps,
+        }).commission,
       0n,
     );
   let commission = commissionOf(new Map());
@@ -260,6 +260,35 @@ function readQuote(
 }
 
 /**
+ * The tax rate of each product line of the plan, in plan order, from the strategy in force: a
+ * rate depends only on the line's tax category, so the commission the discount quote is capped by
+ * is the ledger's (a GST-free line keeps its whole amount as base). Asked once, before the quote.
+ */
+async function lineTaxRates(
+  deps: PricingDependencies,
+  context: CallContext,
+  input: PricingInput,
+): Promise<Result<readonly number[], PricingFailure>> {
+  const planLines = input.plan.sellers.flatMap((seller) => seller.lines);
+  const answer = await deps.tax.calculateTax(
+    context,
+    planLines.map((line) => ({
+      amount: line.unitPrice.amount * BigInt(line.quantity),
+      taxInclusive: line.taxInclusive,
+      categoryCode: input.categories.get(line.offerId)!,
+    })),
+  );
+  if (!answer.ok || answer.value.lines.length !== planLines.length) {
+    return err(
+      !answer.ok && answer.error.code === 'access.denied'
+        ? { code: 'access.denied' }
+        : { code: 'ordering.check-unavailable' },
+    );
+  }
+  return ok(answer.value.lines.map((line) => line.rateBps));
+}
+
+/**
  * The checkout's prices: the discounts, then the tax of every line and delivery on what the
  * buyer pays after them (ADR-0039 decision 4), then each seller's total and the order's.
  */
@@ -269,7 +298,9 @@ export async function priceOrder(
   input: PricingInput,
 ): Promise<Result<PricedOrder, PricingFailure>> {
   const { plan } = input;
-  const discounts = await quoteDiscounts(deps, context, input);
+  const rates = await lineTaxRates(deps, context, input);
+  if (!rates.ok) return rates;
+  const discounts = await quoteDiscounts(deps, context, input, rates.value);
   if (!discounts.ok) return discounts;
   const lineDiscount = (line: PlannedLine): LineDiscount =>
     discounts.value.lines.get(lineKeyOf(line)) ?? NO_DISCOUNT;
