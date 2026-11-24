@@ -15,7 +15,6 @@ export default async function WalletSwitchPage() {
       activeId="settings"
       settingsLinkId="wallet"
       title={t('wallet.settings.title')}
-      intro={t('wallet.settings.intro')}
       anyOf={[SETTINGS_VIEW]}
       permissionLabel={t('wallet.settings.permission-view')}
       stepUpNote

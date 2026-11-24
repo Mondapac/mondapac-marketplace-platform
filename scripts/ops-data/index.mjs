@@ -11,7 +11,7 @@
 // Mailpit. Runs the scenario packs of the Market in order; each pack creates only what is missing,
 // so a rerun changes nothing. Refuses to run unless every guard in guard.mjs holds.
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
@@ -128,6 +128,32 @@ const reachable = (url) => async () => {
   }
 };
 
+/**
+ * The worker's start-up seeds that the loader depends on: the Platform Administrator role
+ * (`identity.seed-roles`; the first admin invitation refuses with `roles.not-seeded` without it)
+ * and the certification types of `config/certification-seed/<Market>.json`
+ * (`certification.seed-certification-types`). Both jobs run when the worker starts, which is
+ * often the moment the loader starts too (CI starts the API and the worker, then waits only for
+ * the API). The loader waits for them, so the claim vocabulary step below never races the seed
+ * for a code and the seeded types always come from the seed file.
+ */
+const certificationSeedFile = resolve(ROOT, 'config/certification-seed', `${market}.json`);
+const seededCodes = existsSync(certificationSeedFile)
+  ? JSON.parse(readFileSync(certificationSeedFile, 'utf8')).types.map((type) => type.code)
+  : [];
+const workerSeeded = (client) => async () => {
+  const role = await client.query(
+    `SELECT 1 FROM identity.roles WHERE market_id = $1 AND scope = 'platform' AND kind = 'system'`,
+    [market],
+  );
+  if (role.rowCount === 0) return false;
+  const types = await client.query(
+    'SELECT count(*)::int AS n FROM certification.certification_types WHERE market_id = $1 AND code = ANY($2)',
+    [market, seededCodes],
+  );
+  return types.rows[0].n === seededCodes.length;
+};
+
 const releaseLock = acquireRun(STATE_DIR, 'the loader', { withinReset: values['within-reset'] });
 const db = await connect(DB_URL);
 try {
@@ -147,6 +173,7 @@ try {
   log(
     `Operational test data for ${market} (data version ${DATA_VERSION}${ci ? ', ci profile' : ''}): ${only.join(', ')}`,
   );
+  await waitFor("the worker's start-up seeds (is the worker running?)", workerSeeded(db), 120);
   // The claim vocabulary stand-in: catalog refuses every name while the Market has no published
   // certification type, and certification types cannot be created in the admin yet.
   const vocabulary = spawnSync(

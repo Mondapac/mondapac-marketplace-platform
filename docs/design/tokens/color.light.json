@@ -457,6 +457,36 @@
         "$type": "color",
         "$value": "{color.neutral.130}",
         "$description": "Chart tooltip label"
+      },
+      "cat-1": {
+        "$type": "color",
+        "$value": "{color.blue.510}",
+        "$description": "Categorical series 1 (blue)"
+      },
+      "cat-2": {
+        "$type": "color",
+        "$value": "{color.teal.330}",
+        "$description": "Categorical series 2 (aqua)"
+      },
+      "cat-3": {
+        "$type": "color",
+        "$value": "{color.purple.475}",
+        "$description": "Categorical series 3 (violet)"
+      },
+      "cat-4": {
+        "$type": "color",
+        "$value": "{color.honey.235}",
+        "$description": "Categorical series 4 (amber)"
+      },
+      "cat-5": {
+        "$type": "color",
+        "$value": "{color.pink.285}",
+        "$description": "Categorical series 5 (pink)"
+      },
+      "cat-other": {
+        "$type": "color",
+        "$value": "{color.neutral.340}",
+        "$description": "Categorical 'Other' bucket (neutral)"
       }
     },
     "map": {
@@ -516,6 +546,48 @@
         "$type": "color",
         "$value": "{color.green.95}",
         "$description": "Ready column border"
+      }
+    },
+    "kpi": {
+      "blue-bg": {
+        "$type": "color",
+        "$value": "{color.blue.510}",
+        "$description": "KPI icon tile, blue (sales, orders)"
+      },
+      "blue-fg": {
+        "$type": "color",
+        "$value": "{color.neutral.0}",
+        "$description": "Icon on the blue KPI tile"
+      },
+      "aqua-bg": {
+        "$type": "color",
+        "$value": "{color.teal.440}",
+        "$description": "KPI icon tile, aqua (fulfilment, health)"
+      },
+      "aqua-fg": {
+        "$type": "color",
+        "$value": "{color.neutral.0}",
+        "$description": "Icon on the aqua KPI tile"
+      },
+      "violet-bg": {
+        "$type": "color",
+        "$value": "{color.purple.475}",
+        "$description": "KPI icon tile, violet (customers, growth)"
+      },
+      "violet-fg": {
+        "$type": "color",
+        "$value": "{color.neutral.0}",
+        "$description": "Icon on the violet KPI tile"
+      },
+      "slate-bg": {
+        "$type": "color",
+        "$value": "{color.neutral.560}",
+        "$description": "KPI icon tile, slate (neutral counts)"
+      },
+      "slate-fg": {
+        "$type": "color",
+        "$value": "{color.neutral.0}",
+        "$description": "Icon on the slate KPI tile"
       }
     }
   }

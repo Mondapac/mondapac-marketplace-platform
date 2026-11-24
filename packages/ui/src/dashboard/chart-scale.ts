@@ -51,3 +51,42 @@ export function niceTicksRange(min: number, max: number, count = 4): readonly nu
     ticks.push(Number((ticks[ticks.length - 1]! + step).toPrecision(12)));
   return ticks;
 }
+
+/**
+ * Splits `values` into the `max` largest (indexes, largest first, ties in input order) and the
+ * rest. Used to show at most five named categories and one "Other" bucket. Values that are not
+ * finite or not above zero are ignored.
+ */
+export function splitTop(
+  values: readonly number[],
+  max: number,
+): { readonly top: readonly number[]; readonly rest: readonly number[] } {
+  const ranked = values
+    .map((v, i) => ({ v, i }))
+    .filter((x) => Number.isFinite(x.v) && x.v > 0)
+    .sort((a, b) => b.v - a.v || a.i - b.i);
+  return {
+    top: ranked.slice(0, max).map((x) => x.i),
+    rest: ranked.slice(max).map((x) => x.i),
+  };
+}
+
+/** Every `stride`-th index from 0, with the stride set so labels keep `minPx` of room. */
+export function strideIndexes(length: number, slotPx: number, minPx = 64): readonly number[] {
+  if (length <= 0) return [];
+  const stride = Math.max(1, Math.ceil(minPx / Math.max(slotPx, 1)));
+  const out: number[] = [];
+  for (let i = 0; i < length; i += stride) out.push(i);
+  return out;
+}
+
+/** A font size (px) that lets `text` fit `maxWidth`, between `min` and `max` (about 0.58 em per character). */
+export function fitFontSize(text: string, maxWidth: number, max: number, min = 11): number {
+  const size = maxWidth / (Math.max(text.length, 1) * 0.58);
+  return Math.max(min, Math.min(max, Math.floor(size)));
+}
+
+/** `text` cut to `maxChars` with an ellipsis. */
+export function truncateText(text: string, maxChars: number): string {
+  return text.length <= maxChars ? text : `${text.slice(0, Math.max(maxChars - 1, 1))}…`;
+}

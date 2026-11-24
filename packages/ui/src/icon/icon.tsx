@@ -4,9 +4,24 @@ import type { ReactNode } from 'react';
 // grid, 1.75 stroke, lucide-like shapes. The size is the `size/icon` token (18 px, 20 px in the
 // touch density) and the colour is inherited, so a caller sets it with a text colour token.
 // Add an icon here, never inline an SVG in a page; `tag`, `receipt`, `chevron-down`, `user`, `log-out`, `bell`,
-// `volume`, `volume-off`, `layout`, `link`, `chevron-up`, `chevron-left`, `chevron-right`, `pin`, `star`, `keyboard`, `alert-circle`, `alert-triangle`, `info`, `arrow-down`, `columns`, `ban`, `download`, `file`, `trash` and `zap` are new in code and wait to be back-ported to the
+// `volume`, `volume-off`, `layout`, `link`, `chevron-up`, `chevron-left`, `chevron-right`, `pin`, `star`, `keyboard`, `alert-circle`, `alert-triangle`, `info`, `arrow-down`, `columns`, `ban`, `download`, `file`, `trash`, `zap`, `flag` and `list-checks` are new in code and wait to be back-ported to the
 // Figma library (speed mode).
 const ICONS = {
+  flag: (
+    <>
+      <path d="M4 22V4" />
+      <path d="M4 4h13l-2 4 2 4H4" />
+    </>
+  ),
+  'list-checks': (
+    <>
+      <path d="m3 7 2 2 4-4" />
+      <path d="m3 17 2 2 4-4" />
+      <path d="M13 6h8" />
+      <path d="M13 12h8" />
+      <path d="M13 18h8" />
+    </>
+  ),
   home: <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z" />,
   inbox: (
     <>

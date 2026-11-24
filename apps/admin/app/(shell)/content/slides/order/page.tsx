@@ -46,7 +46,6 @@ export default async function SlideOrderPage({
     <AdminShell session={gate.session} activeId="slides" title={title}>
       <div className="mb-4">
         <PageHeader title={title} />
-        <p className="text-fg-muted">{t('content.slides.intro')}</p>
       </div>
       <div className="mb-4">
         <SlidesViewSwitch

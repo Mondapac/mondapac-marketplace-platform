@@ -40,6 +40,18 @@ vi.mock('../../../src/sellers/sellers-list.tsx', () => ({
     </p>
   ),
 }));
+vi.mock('../../../src/sellers/sellers-queues-menu.tsx', () => ({
+  SellersQueuesMenu: (props: {
+    readonly current: string;
+    readonly canHealth: boolean;
+    readonly canOrphaned: boolean;
+  }) => (
+    <p>
+      queues menu on {props.current} health {String(props.canHealth)} owner{' '}
+      {String(props.canOrphaned)}
+    </p>
+  ),
+}));
 vi.mock('../../../src/sellers/orphaned-list.tsx', () => ({
   OrphanedList: () => <p>orphaned list</p>,
 }));
@@ -82,34 +94,28 @@ describe('the sellers pages and identity.seller-access.view', () => {
     expect(screen.getByText('sellers list on all paging pages')).not.toBeNull();
   });
 
-  it('shows the "Sellers without an owner" link on /sellers only with the key', async () => {
+  it('puts the Queues menu in the header, each queue behind its own permission', async () => {
     signedIn('sellers.seller.view', 'identity.seller-access.view');
     render(await SellersPage({ searchParams: Promise.resolve({}) }));
-    const link = screen.getByRole('link', { name: 'Sellers without an owner' });
-    expect(link.getAttribute('href')).toBe('/sellers/without-owner');
+    expect(screen.getByText('queues menu on all health true owner true')).not.toBeNull();
+    expect(screen.queryByRole('link', { name: 'Sellers without an owner' })).toBeNull();
+    expect(screen.queryByRole('link', { name: 'Sellers that need a look' })).toBeNull();
     cleanup();
     signedIn('sellers.seller.view');
     render(await SellersPage({ searchParams: Promise.resolve({}) }));
-    expect(screen.queryByRole('link', { name: 'Sellers without an owner' })).toBeNull();
-  });
-
-  it('shows the "Sellers that need a look" link only with sellers.seller.view', async () => {
-    signedIn('sellers.seller.view');
-    render(await SellersPage({ searchParams: Promise.resolve({}) }));
-    expect(
-      screen.getByRole('link', { name: 'Sellers that need a look' }).getAttribute('href'),
-    ).toBe('/sellers/needs-a-look');
+    expect(screen.getByText('queues menu on all health true owner false')).not.toBeNull();
     cleanup();
     signedIn('identity.seller-access.view');
     render(await SellersPage({ searchParams: Promise.resolve({}) }));
-    expect(screen.queryByRole('link', { name: 'Sellers that need a look' })).toBeNull();
+    expect(screen.queryByText(/queues menu/)).toBeNull();
   });
 
   it('renders the list on the new page with the key, and the no-access text without it', async () => {
     signedIn('identity.seller-access.view');
     render(await SellersWithoutOwnerPage());
     expect(screen.getByText('orphaned list')).toBeTruthy();
-    expect(screen.getByRole('link', { name: 'Back to sellers' })).toBeTruthy();
+    expect(screen.getByText('queues menu on without-owner health false owner true')).toBeTruthy();
+    expect(screen.queryByRole('link', { name: 'Back to sellers' })).toBeNull();
     cleanup();
     signedIn('sellers.seller.view');
     render(await SellersWithoutOwnerPage());

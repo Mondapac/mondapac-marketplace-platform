@@ -26,7 +26,6 @@ export default async function BlogTaxonomyPage() {
     <AdminShell session={gate.session} activeId="blog" title={title}>
       <div className="mb-4">
         <PageHeader title={title} />
-        <p className="text-fg-muted">{t('blog.taxonomy.intro')}</p>
       </div>
       <TaxonomyView
         canEdit={permissionKeys.includes(BLOG_TAXONOMY_PERMISSION)}

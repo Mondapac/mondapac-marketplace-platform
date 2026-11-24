@@ -163,7 +163,10 @@ the webhook secret, and uses Stripe's test payment methods (`pm_card_*`), never 
 - **Claim vocabulary**: catalog refuses every name while a Market has no published certification
   type, and certification types cannot be created in the admin yet, so the loader runs
   `scripts/demo-seed/claim-vocabulary.mjs` (SQL, the migration role) first. It goes when the
-  certification type editor lands (future enhancements register).
+  certification type editor lands (future enhancements register). Before that step the loader
+  waits (up to 120 s) for the worker's start-up seeds: the Platform Administrator role and the
+  types of `config/certification-seed/<Market>.json`, so the step never races the seed job and the
+  seeded types always come from that file.
 
 ## The ci profile (pull request checks)
 

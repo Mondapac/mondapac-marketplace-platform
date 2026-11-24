@@ -421,7 +421,6 @@ export function SellerOrders({
   if (view === 'board') {
     return (
       <div className="flex flex-col gap-4">
-        <p className="text-fg-muted">{t('intro')}</p>
         {toggle}
         <OrdersBoard />
       </div>

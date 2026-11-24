@@ -696,6 +696,9 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   ProductCategoryIssue: {
     noCustomerText: 'a path and a closed code of a refused product category; no text',
   },
+  ProductCategoryOptions: {
+    noCustomerText: 'switches of the product category check (same-branch); no text',
+  },
   LiveCategory: {
     noCustomerText:
       'public tree view: ids, slug and one published category name, already claim-checked when written, with numbers',
