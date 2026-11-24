@@ -54,13 +54,8 @@ export type CommissionRateMap = ReadonlyMap<Id<'Seller'>, CommissionRate>;
 export interface OwnCommissionPreview {
   readonly rateBps: number;
   readonly source: 'seller' | 'market';
-  /** The tax rate taken off an amount that includes tax, in basis points. */
+  /** The tax rate taken off an amount that includes tax (the one the caller passed), basis points. */
   readonly taxRateBps: number;
-  /**
-   * `line`: the rate the caller supplied (the line's own, looked up on the server). `provisional`:
-   * none was supplied, so the Market's provisional rate was used; the answer is an estimate.
-   */
-  readonly taxRateSource: 'line' | 'provisional';
   /** The amount the rate is applied to: the amount, less its tax when it includes tax. */
   readonly commissionBase: bigint;
   /** `commissionBase × rate`, rounded the way the ledger rounds. */
@@ -256,8 +251,8 @@ export interface CommissionPayoutsFacade {
     request: {
       readonly amount: bigint;
       readonly taxInclusive: boolean;
-      /** The line's own tax rate (0..5000), looked up on the server; absent = provisional rate. */
-      readonly taxRateBps?: number;
+      /** The line's own tax rate (0..5000), looked up on the server. Required: no fallback. */
+      readonly taxRateBps: number;
     },
   ): Promise<Result<OwnCommissionPreview, CommissionPayoutsFailure>>;
 

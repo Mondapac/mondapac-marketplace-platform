@@ -35,8 +35,6 @@ export interface TaxAnswer {
 
 /** The rate of each asked tax category under the strategy in force (see `categoryRates`). */
 export interface CategoryRatesAnswer {
-  /** The strategy used: its id, or null for the Market's built-in one. */
-  readonly strategyId: Id<'TaxStrategy'> | null;
   /** One rate per asked code, in the same order, in basis points. */
   readonly ratesBps: readonly number[];
 }

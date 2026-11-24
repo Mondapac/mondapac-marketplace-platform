@@ -303,8 +303,9 @@ place) and the promotions module.
   never from the request. With `offerId` and `variantId` of the seller's own sell unit, the rate is that Offer's
   published tax category under the strategy in force (catalog `offerTaxCategories`, then tax `categoryRates`), the
   rate checkout freezes on the line. Without an Offer it is the strategy's rate for a line in no category, and
-  `taxRateEstimated` is true. An Offer without a published category, an unknown category or a tax refusal is
-  `promotions.unavailable`. The ownership check runs before any rate is read.
+  `taxRateEstimated` is true. An Offer without a published category (for example a product never published),
+  an unknown category or a tax refusal is `promotions.unavailable`; before this change such an Offer got a
+  preview on the provisional rate. Checkout refuses such a line too. The ownership check runs before any rate is read.
 - Two seller amounts: `sellerGetsMinor` = commission base − commission (before delivery and GST), and
   `sellerReceivesMinor` = price − seller-funded part − commission, the number the ledger credits (it holds the GST
   the seller owes when prices include tax). A seller screen that says "You receive" uses `sellerReceivesMinor`.

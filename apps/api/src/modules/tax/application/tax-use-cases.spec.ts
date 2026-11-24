@@ -319,7 +319,7 @@ describe.each([['AU'], ['ZZ']] as const)('tax strategies in market %s', (code) =
 
     it('answers the built-in rate for every code while no strategy is active', async () => {
       expect(await rates([free, standard, null])).toEqual(
-        ok({ strategyId: null, ratesBps: [builtIn, builtIn, builtIn] }),
+        ok({ ratesBps: [builtIn, builtIn, builtIn] }),
       );
     });
 
@@ -328,17 +328,24 @@ describe.each([['AU'], ['ZZ']] as const)('tax strategies in market %s', (code) =
       if (!made.ok) throw new Error('create failed');
       await activate(made.value.id);
       const answer = await rates([free, standard, null]);
-      expect(answer).toEqual(ok({ strategyId: made.value.id, ratesBps: [0, builtIn, builtIn] }));
+      expect(answer).toEqual(ok({ ratesBps: [0, builtIn, builtIn] }));
+      // One rate per code, in the order asked.
+      expect(await rates([standard, null, free])).toEqual(ok({ ratesBps: [builtIn, builtIn, 0] }));
       // The same rates checkout freezes on a line.
       const calc = await calculate([line(1000n, free), line(1000n, standard)]);
       expect(calc.ok && calc.value.lines.map((l) => l.rateBps)).toEqual([0, builtIn]);
       expect(await rates([free], customer)).toMatchObject({ ok: true });
     });
 
-    it('refuses an admin and an anonymous caller, and writes no audit', async () => {
+    it('refuses an admin, an anonymous caller and an acting-as session, and writes no audit', async () => {
       expect(await rates([null], admin)).toEqual(err({ code: 'access.denied' }));
       const anonymous = testCallContext(market, 'anonymous', 'tax-anon-abcd');
       expect((await rates([null], anonymous)).ok).toBe(false);
+      const acting = {
+        ...seller,
+        actor: { ...seller.actor, actingAs: { adminAccountId: ADMIN } },
+      } as unknown as CallContext;
+      expect(await rates([null], acting)).toEqual(err({ code: 'access.denied' }));
       expect(audit.entries).toEqual([]);
     });
 

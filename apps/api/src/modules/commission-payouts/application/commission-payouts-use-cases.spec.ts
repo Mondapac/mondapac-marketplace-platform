@@ -852,31 +852,29 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
     const own = (input: unknown, context: CallContext = sellerA) =>
       new OwnCommissionOn(gate, deps).execute(
         context,
-        input as { amount: bigint; taxInclusive: boolean; taxRateBps?: number },
+        input as { amount: bigint; taxInclusive: boolean; taxRateBps: number },
       );
     const provisional = config.commissionPayouts!.provisionalTaxRateBps;
 
     it('uses the Market rate, then the seller rate, and the ledger rules for base and rounding', async () => {
-      const first = await own({ amount: 2000n, taxInclusive: true });
+      const first = await own({ amount: 2000n, taxInclusive: true, taxRateBps: provisional });
       const base = commissionBase(2000n, true, provisional);
       expect(first).toEqual(
         ok({
           rateBps: marketRate,
           source: 'market',
           taxRateBps: provisional,
-          taxRateSource: 'provisional',
           commissionBase: base,
           commission: commissionOn(base, marketRate),
           sellerReceives: 2000n - commissionOn(base, marketRate),
         }),
       );
       await setRate(SELLER_A, 1000);
-      expect(await own({ amount: 2000n, taxInclusive: false })).toEqual(
+      expect(await own({ amount: 2000n, taxInclusive: false, taxRateBps: provisional })).toEqual(
         ok({
           rateBps: 1000,
           source: 'seller',
           taxRateBps: provisional,
-          taxRateSource: 'provisional',
           commissionBase: 2000n,
           commission: 200n,
           sellerReceives: 1800n,
@@ -893,7 +891,6 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
           rateBps: 1500,
           source: 'seller',
           taxRateBps: 0,
-          taxRateSource: 'line',
           ...(() => {
             const line = lineCommission({
               amount: 1590n,
@@ -929,13 +926,18 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
 
     it('answers only about the signed-in seller: it takes no seller id and shows nobody else', async () => {
       await setRate(SELLER_A, 1000);
-      const b = await own({ amount: 1000n, taxInclusive: false, sellerId: SELLER_A }, sellerB);
+      const b = await own(
+        { amount: 1000n, taxInclusive: false, taxRateBps: 0, sellerId: SELLER_A },
+        sellerB,
+      );
       expect(b.ok && b.value.source).toBe('market');
     });
 
     it('refuses everyone but a seller, and an acting-as session', async () => {
       for (const other of [admin, customer, system]) {
-        expect(await own({ amount: 1000n, taxInclusive: false }, other)).toMatchObject({
+        expect(
+          await own({ amount: 1000n, taxInclusive: false, taxRateBps: 0 }, other),
+        ).toMatchObject({
           ok: false,
           error: { code: 'access.denied' },
         });
@@ -944,7 +946,9 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
         ...sellerA,
         actor: { ...sellerA.actor, actingAs: { adminAccountId: ADMIN } },
       } as unknown as CallContext;
-      expect(await own({ amount: 1000n, taxInclusive: false }, acting)).toMatchObject({
+      expect(
+        await own({ amount: 1000n, taxInclusive: false, taxRateBps: 0 }, acting),
+      ).toMatchObject({
         ok: false,
       });
     });
@@ -960,6 +964,8 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
         { amount: 100n, taxInclusive: true, taxRateBps: 10.5 },
         { amount: 100n, taxInclusive: true, taxRateBps: '0' },
         { amount: 100n, taxInclusive: true, taxRateBps: null },
+        // Required: a preview never falls back to the provisional rate.
+        { amount: 100n, taxInclusive: true },
         {},
       ]) {
         expect(await own(bad)).toMatchObject({ ok: false, error: { code: 'validation.failed' } });

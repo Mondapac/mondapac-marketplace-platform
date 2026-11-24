@@ -4,7 +4,6 @@ import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
 import { COMMISSION_PAYOUTS_FACADE, type CommissionPayoutsFacade } from '../../commission-payouts';
-import { TAX_FACADE, type TaxFacade } from '../../tax';
 import { CUSTOMERS_READ_FACADE, type CustomersReadFacade } from '../../customers';
 import { ENGAGEMENT_FACADE, type EngagementFacade } from '../../engagement';
 import { FacadeStoreFollows } from './facade-store-follows';
@@ -15,6 +14,7 @@ import {
 } from './facade-customer-order-history';
 import { PRICING_FACADE, type PricingFacade } from '../../pricing';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
+import { TAX_FACADE, type TaxFacade } from '../../tax';
 import { WALLET_FACADE, type WalletFacade } from '../../wallet';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import { BATCH_CODE_CRYPTO, type BatchCodeCrypto } from '../application/ports/batch-code-crypto';

@@ -87,9 +87,15 @@ export async function categoryRates(
   input: { readonly codes: unknown },
 ): Promise<Result<CategoryRatesAnswer, TaxFailure>> {
   const caller = context.actor;
+  // Customer access stays for a storefront estimate of the same rule; an acting-as session (an
+  // admin signed in as a seller) is refused, as commission-payouts' own preview refuses it.
+  const actingAs =
+    Object.hasOwn(caller, 'actingAs') &&
+    (caller as { readonly actingAs?: unknown }).actingAs != null;
   if (
     caller.kind !== 'authenticated' ||
-    (caller.population !== 'customer' && caller.population !== 'seller')
+    (caller.population !== 'customer' && caller.population !== 'seller') ||
+    actingAs
   ) {
     return err({ code: 'access.denied' });
   }
@@ -122,7 +128,6 @@ export async function categoryRates(
         rateBps: settings.defaultRateBps,
       };
       return ok({
-        strategyId: active?.id ?? null,
         ratesBps: codes.map((code) => rateFor(params, code)),
       });
     },

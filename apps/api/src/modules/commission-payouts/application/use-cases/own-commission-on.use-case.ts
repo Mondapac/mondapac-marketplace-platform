@@ -10,7 +10,7 @@ import { ownCommissionOn, type RatesFailure } from '../rate-flow';
  * field). For `promotions`' payout preview; not exposed over HTTP.
  */
 export class OwnCommissionOn extends UseCase<
-  { readonly amount: bigint; readonly taxInclusive: boolean; readonly taxRateBps?: number },
+  { readonly amount: bigint; readonly taxInclusive: boolean; readonly taxRateBps: number },
   OwnCommissionPreview,
   RatesFailure
 > {
@@ -32,7 +32,7 @@ export class OwnCommissionOn extends UseCase<
     input: {
       readonly amount: bigint;
       readonly taxInclusive: boolean;
-      readonly taxRateBps?: number;
+      readonly taxRateBps: number;
     },
   ) {
     return ownCommissionOn(this.deps, context, input);
