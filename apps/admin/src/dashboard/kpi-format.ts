@@ -1,5 +1,13 @@
 import { dateFormat, numberFormat } from '../shared/intl.ts';
-import type { KpiDelta, KpiMoney } from './kpi-types.ts';
+import type { KpiDelta, KpiMoney, KpiPeriod } from './kpi-types.ts';
+
+/** The message key of a period preset ("7d" is `days7`). */
+export const PERIOD_KEY: Record<KpiPeriod, string> = {
+  today: 'today',
+  '7d': 'days7',
+  '30d': 'days30',
+  month: 'month',
+};
 
 /** Minor units as a string, shown in the currency; a bad value shows as a dash. */
 export function kpiMoney(money: KpiMoney, locale: string): string {

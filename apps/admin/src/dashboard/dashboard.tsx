@@ -5,10 +5,13 @@ import {
   DashboardCard,
   DashboardLoading,
   DashboardSlot,
+  DashboardGrid,
   DistributionBar,
   DistributionCardSkeleton,
   EmptyState,
+  GridItem,
   LinkButton,
+  PageHeader,
   activitySkeletonColumns,
   type ActivityColumn,
   type BadgeTone,
@@ -26,6 +29,15 @@ import type { SellerRow } from '../sellers/types.ts';
 import { shortInstantInZone } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
 import { NeedsAction } from '../work-queue/needs-action.tsx';
+import { PERIOD_KEY } from './kpi-format.ts';
+import {
+  DEFAULT_KPI_PERIOD,
+  KPI_PERIODS,
+  type AdminKpiSource,
+  type KpiPeriod,
+} from './kpi-types.ts';
+import { KpiItems } from './kpis.tsx';
+import { PeriodSwitch } from './period-switch.tsx';
 import {
   ORDER_STATUSES,
   RECENT,
@@ -620,34 +632,85 @@ function allRefused(data: AdminDashboardSources): DashboardSource<boolean> {
   return Promise.all(values).then((answers) => answers.every((answer) => answer === null));
 }
 
+const KPI_QUEUE_LAYOUT = { span: 4, tabletSpan: 12 } as const;
+
 /**
- * The admin dashboard (the home page): every widget is present only when the session holds the
- * key its read needs. Order: the work queue ("Needs action"), the latest activity, then quick
- * actions. Given
- * promises (the page), each card shows its skeleton until its own read answers (panel loading L4).
+ * The admin dashboard (the home page) on the 12-column grid. Order: the four headline cards, the
+ * revenue chart beside "Needs action", sales by category, orders by status, supply and health, the
+ * top sellers, then the latest activity and the quick actions. Every widget is present only when
+ * the session holds the key its read needs; a refused section is left out, a failed one says so in
+ * place. Given promises (the page), each card shows its skeleton until its own read answers (panel
+ * loading L4). The period switch sits in the title row and lives in the address (`?period=`).
  */
 export function AdminDashboard({
+  title,
   data,
   permissionKeys,
   zone,
+  kpis = null,
+  period = DEFAULT_KPI_PERIOD,
 }: {
+  /** The page title (the h1 of the title row, which holds the period switch). */
+  readonly title: string;
   readonly data: AdminDashboardSources;
   readonly permissionKeys: readonly string[];
   /** The IANA zone of the activity times (ADR-0005). */
   readonly zone: string;
+  /** The KPI read; null when the session holds no key of any KPI section. */
+  readonly kpis?: AdminKpiSource | null;
+  readonly period?: KpiPeriod;
 }) {
   const t = useTranslations('dashboard');
+  const tk = useTranslations('dashboard.kpis');
   const keys = new Set(permissionKeys);
+  const actionable = ACTIONS.some((action) => action.anyOf.every((key) => keys.has(key)));
   const nothing =
-    Object.values(data).every((widget) => widget === null) &&
-    !ACTIONS.some((action) => action.anyOf.every((key) => keys.has(key)));
+    kpis === null && Object.values(data).every((widget) => widget === null) && !actionable;
   if (nothing) {
-    return <EmptyState size="card" icon="home" title={t('none.title')} body={t('none.body')} />;
+    return (
+      <div className="flex flex-col gap-4">
+        <PageHeader title={title} />
+        <EmptyState size="card" icon="home" title={t('none.title')} body={t('none.body')} />
+      </div>
+    );
   }
-  const actions = ACTIONS.some((action) => action.anyOf.every((key) => keys.has(key)));
+  const queue = (
+    <NeedsAction source={data.workQueue} layout={kpis === null ? { span: 12 } : KPI_QUEUE_LAYOUT} />
+  );
+  const grid = (
+    <DashboardGrid>
+      {kpis === null ? (
+        queue
+      ) : (
+        <KpiItems source={kpis} period={period} permissionKeys={permissionKeys} before={queue} />
+      )}
+      <GridItem span={12}>
+        <Applications data={data} zone={zone} />
+      </GridItem>
+      <GridItem span={12}>
+        <Holds data={data} zone={zone} />
+      </GridItem>
+      <GridItem span={12}>
+        <Offers data={data} zone={zone} />
+      </GridItem>
+      <GridItem span={12}>
+        <Accounts data={data} zone={zone} />
+      </GridItem>
+      <GridItem span={12}>
+        <Orders data={data} zone={zone} />
+      </GridItem>
+      <GridItem span={6} tabletSpan={12}>
+        <SellerStates data={data} />
+      </GridItem>
+      <GridItem span={6} tabletSpan={12}>
+        <QuickActions keys={keys} />
+      </GridItem>
+    </DashboardGrid>
+  );
   return (
     <DashboardLoading label={t('loading')} className="flex flex-col gap-4">
-      {actions ? null : (
+      {kpis === null ? <PageHeader title={title} /> : null}
+      {actionable || kpis !== null ? null : (
         // Every read the session may ask for came back refused: say so, as for a role with none.
         <DashboardSlot source={allRefused(data)} fallback={null}>
           {(refused) =>
@@ -657,16 +720,18 @@ export function AdminDashboard({
           }
         </DashboardSlot>
       )}
-      <NeedsAction source={data.workQueue} />
-      <Applications data={data} zone={zone} />
-      <Holds data={data} zone={zone} />
-      <Offers data={data} zone={zone} />
-      <Accounts data={data} zone={zone} />
-      <Orders data={data} zone={zone} />
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <SellerStates data={data} />
-        <QuickActions keys={keys} />
-      </div>
+      {kpis === null ? (
+        grid
+      ) : (
+        <PeriodSwitch
+          title={title}
+          label={tk('period.label')}
+          options={KPI_PERIODS.map((id) => ({ id, label: tk(`period.${PERIOD_KEY[id]}`) }))}
+          value={period}
+        >
+          {grid}
+        </PeriodSwitch>
+      )}
     </DashboardLoading>
   );
 }

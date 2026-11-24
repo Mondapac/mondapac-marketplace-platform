@@ -223,10 +223,10 @@
       "find-customer": "Find a customer"
     },
     "kpis": {
-      "title": "Marketplace performance",
       "market-time": "Market days",
       "updated": "updated {minutes} min ago",
       "no-data-yet": "no sales data yet",
+      "range": "{from} - {to}",
       "period": {
         "label": "Period",
         "today": "Today",
@@ -240,62 +240,87 @@
         "days30": "vs previous 30 days",
         "month": "vs same days last month"
       },
+      "def": {
+        "what": "What is {name}?",
+        "gmv": "Goods of paid orders on the day they were paid, with GST and without delivery fees. Refunds are shown separately. Days are Market days.",
+        "orders": "Seller orders paid in the period. A cart bought from three stores is three seller orders. Orders cancelled later are still counted.",
+        "net": "Commission plus delivery margin, minus discounts and cashback the platform paid and fleet fees, without GST. It is shown once the commission ledger has matched a week of sales, and never as a total while a part is not recorded.",
+        "aov": "GMV divided by the seller orders paid in the period, with GST.",
+        "chart": "One point per Market day, against the same number of days before. Refunded is goods refunded on their refund day.",
+        "categories": "Goods sold with GST, before refunds, grouped by category. The five biggest are named; the rest are one Other slice.",
+        "sellers": "Stores ranked by goods sold with GST in the period. On time is shipped orders shipped on time; refunds is the share of goods refunded.",
+        "status": "Seller orders paid in the period, by where they are now. Cancelled and refunded orders were paid first. Same-day share is paid orders whose buyer chose same-day delivery.",
+        "health": "Counts right now, except sellers with orders and the dispute rate, which follow the period."
+      },
+      "delta": {
+        "na": "Too little in the previous period to compare."
+      },
       "gmv": {
         "label": "GMV (incl. GST)",
         "scope": "Goods of paid orders · {excl} excl. GST"
       },
+      "orders": {
+        "label": "Seller orders paid",
+        "scope": "Seller orders paid in the period"
+      },
       "net": {
-        "label": "Net sales (incl. GST)",
-        "scope": "GMV minus refunds of the period"
+        "label": "Mondapac net revenue",
+        "scope": "Take rate {rate} of GMV excl. GST",
+        "scope-partial": "Take rate {rate}, from {basis} only",
+        "scope-none": "Take rate: no sales in the period",
+        "scope-empty": "Without GST, from the commission ledger",
+        "not-ready": "Shown after a week of matching ledger records.",
+        "partial": "Not complete yet: {missing} not recorded.",
+        "failed": "Net revenue could not be loaded. GMV still shows."
       },
       "aov": {
         "label": "Average order (incl. GST)",
-        "scope": "GMV ÷ paid orders"
+        "scope": "GMV ÷ seller orders paid",
+        "none": "No seller orders were paid in this period."
       },
-      "refunded": {
-        "label": "Refunded (incl. GST)",
-        "scope": "Goods refunded in the period · {rate} of GMV"
+      "component": {
+        "commission": "commission",
+        "deliveryMargin": "delivery margin",
+        "platformFundedDiscounts": "platform-funded discounts",
+        "platformFundedCashback": "platform-funded cashback",
+        "fleetFees": "fleet fees"
       },
-      "orders": {
-        "label": "Paid orders",
-        "scope": "Seller orders paid in the period"
-      },
-      "cancel": {
-        "label": "Cancel rate",
-        "scope": "{count} cancelled ÷ paid orders"
-      },
-      "on-time": {
-        "label": "Shipped on time",
-        "scope": "{count} shipped · late unshipped orders not counted yet"
-      },
-      "refunds": {
-        "label": "Refunds",
-        "scope": "Refunds that succeeded in the period"
-      },
-      "health": {
-        "title": "Marketplace health",
-        "scope": "Live counts, except sellers with orders, which follow the period.",
-        "incident": "Incident",
-        "watch": "Watch",
-        "clear": "All clear",
-        "active": {
-          "label": "Sellers with orders",
-          "hint": "At least one paid order in the period"
+      "chart": {
+        "title": "Revenue analytics",
+        "action": "View orders",
+        "this": "This period",
+        "previous": "Previous period",
+        "alt": "{measure}, {period}, against the previous period",
+        "empty": "No sales in this period or the one before.",
+        "insufficient": "Not enough data yet",
+        "insufficient-hint": "The line appears once there are two or more days to draw.",
+        "table": "View as table",
+        "chart": "View as chart",
+        "date": "Day",
+        "measure": {
+          "label": "Measure",
+          "gmv": "GMV",
+          "orders": "Orders",
+          "refunded": "Refunded"
         },
-        "listings": {
-          "label": "Listings with a lapsed certificate",
-          "hint": "A certification tag is still on after its certificate ended"
-        },
-        "risk": {
-          "label": "Sellers at risk",
-          "hint": "Sellers in the health queue"
-        }
+        "measure-failed": "{measure} could not be loaded."
       },
       "categories": {
-        "title": "Top categories",
-        "scope": "By goods sold (incl. GST) in the period, before refunds",
+        "title": "Sales by category",
+        "scope": "Top 5 + other · incl. GST · before refunds",
         "empty": "No sales in this period yet.",
-        "other": "Uncategorised",
+        "insufficient": "Not enough data yet",
+        "insufficient-hint": "Categories are ranked once there are {count} or more orders.",
+        "other": "Other",
+        "uncategorised": "Uncategorised",
+        "total": "Total sales",
+        "table": "View as table",
+        "chart": "View as chart",
+        "col": {
+          "name": "Category",
+          "sales": "Sales",
+          "share": "Share"
+        },
         "orders": "{count, plural, one {# seller order} other {# seller orders}}"
       },
       "sellers": {
@@ -312,26 +337,80 @@
           "refunds": "Refunds"
         }
       },
-      "flow": {
-        "title": "Order flow",
-        "scope": "Counts of the period; shipped and delivered orders may have been paid earlier",
-        "action": "View orders",
-        "empty": "No paid orders in this period yet.",
-        "paid": "Paid",
-        "shipped": "Shipped",
-        "delivered": "Delivered",
-        "leaks": "Cancelled {cancelled} ({cancelRate} of paid) · Refunds {refunds}"
-      },
-      "chart": {
-        "title": "GMV (incl. GST)",
-        "action": "View orders",
-        "this": "This period",
-        "previous": "Previous period",
-        "alt": "GMV incl. GST, {period}",
-        "empty": "No sales in this period yet.",
+      "status": {
+        "title": "Orders by status",
+        "scope": "Seller orders paid in the period",
+        "action": "Orders",
+        "empty": "No seller orders were paid in this period.",
+        "insufficient": "Not enough data yet",
+        "insufficient-hint": "The split is shown once {count} or more orders were paid.",
+        "total": "Paid",
         "table": "View as table",
         "chart": "View as chart",
-        "date": "Day"
+        "col": {
+          "status": "Status",
+          "orders": "Orders",
+          "share": "Share"
+        },
+        "delivered": "Delivered",
+        "shipped": "Shipped",
+        "to-ship": "To ship",
+        "cancelled": "Cancelled",
+        "refunded": "Refunded",
+        "other": "Other",
+        "on-time": {
+          "label": "Shipped on time",
+          "value": "{count} shipped"
+        },
+        "same-day": {
+          "label": "Same-day share",
+          "of": "{sameDay} of {paid} paid orders",
+          "not-enough": "Not enough data",
+          "not-enough-hint": "Needs {minimum} or more paid orders; {paid} so far.",
+          "unavailable": "Not available yet",
+          "unavailable-hint": "{count, plural, one {# paid order has} other {# paid orders have}} no delivery method recorded."
+        }
+      },
+      "health": {
+        "title": "Supply and health",
+        "scope": "Live counts, except sellers with orders and dispute rate, which follow the period.",
+        "incident": "Incident",
+        "watch": "Watch",
+        "clear": "All clear",
+        "failed": "Could not be loaded.",
+        "active": {
+          "label": "Sellers with orders",
+          "hint": "At least one paid order in the period"
+        },
+        "listings": {
+          "label": "Active listings",
+          "hint": "Offers a shopper can buy now"
+        },
+        "stock": {
+          "label": "Out of stock",
+          "hint": "Of active listings"
+        },
+        "expiring": {
+          "label": "Certificates expiring",
+          "hint": "Approved seller certificates ending in the next {days} days"
+        },
+        "lapsed": {
+          "label": "Listings with a lapsed certificate",
+          "hint": "A certification tag is still on after its certificate ended"
+        },
+        "risk": {
+          "label": "Sellers at risk",
+          "hint": "Sellers in the health queue"
+        },
+        "holds": {
+          "label": "Payouts on hold",
+          "hint": "Active payout holds",
+          "amount": "Amount held is not recorded yet"
+        },
+        "disputes": {
+          "label": "Dispute rate",
+          "hint": "{disputes} opened of {paid} paid seller orders"
+        }
       }
     }
   },
@@ -17806,8 +17885,14 @@
         "about": "Changes sellers sent that wait for a review before buyers see them.",
         "good": ["Dates and times are in your time zone ({zone}). Change it in My profile."],
         "related": [
-          { "label": "Products", "href": "/catalog/products" },
-          { "label": "Tag suggestions", "href": "/catalog/tags/suggestions" }
+          {
+            "label": "Products",
+            "href": "/catalog/products"
+          },
+          {
+            "label": "Tag suggestions",
+            "href": "/catalog/tags/suggestions"
+          }
         ],
         "tabs": [
           {
@@ -17829,9 +17914,18 @@
         "about": "How products are organised in this Market.",
         "good": [],
         "related": [
-          { "label": "Import categories", "href": "/catalog/categories/import" },
-          { "label": "Attributes", "href": "/catalog/attributes" },
-          { "label": "Business activities", "href": "/catalog/business-activities" }
+          {
+            "label": "Import categories",
+            "href": "/catalog/categories/import"
+          },
+          {
+            "label": "Attributes",
+            "href": "/catalog/attributes"
+          },
+          {
+            "label": "Business activities",
+            "href": "/catalog/business-activities"
+          }
         ],
         "tabs": [
           {
@@ -17853,8 +17947,14 @@
         "about": "The fields products carry, such as size or flavour, and how they are grouped.",
         "good": [],
         "related": [
-          { "label": "Categories", "href": "/catalog/categories" },
-          { "label": "Variants", "href": "/catalog/variants" }
+          {
+            "label": "Categories",
+            "href": "/catalog/categories"
+          },
+          {
+            "label": "Variants",
+            "href": "/catalog/variants"
+          }
         ],
         "tabs": [
           {
@@ -17893,7 +17993,12 @@
         "page": "Variants",
         "about": "Sizes, flavours and colours across the Market.",
         "good": [],
-        "related": [{ "label": "Attributes", "href": "/catalog/attributes" }],
+        "related": [
+          {
+            "label": "Attributes",
+            "href": "/catalog/attributes"
+          }
+        ],
         "tabs": [
           {
             "label": "Variant types",
@@ -17919,7 +18024,12 @@
         "page": "Brands",
         "about": "Brands are shared by all Markets. Products link to a brand instead of typing its name.",
         "good": [],
-        "related": [{ "label": "Products", "href": "/catalog/products" }],
+        "related": [
+          {
+            "label": "Products",
+            "href": "/catalog/products"
+          }
+        ],
         "tabs": [
           {
             "label": "Brands",
@@ -17940,8 +18050,14 @@
         "about": "Order confirmations and credit notes issued in this Market. These are not tax invoices.",
         "good": ["Dates and times are in your time zone ({zone}). Change it in My profile."],
         "related": [
-          { "label": "Orders", "href": "/orders" },
-          { "label": "Tax", "href": "/settings/tax" }
+          {
+            "label": "Orders",
+            "href": "/orders"
+          },
+          {
+            "label": "Tax",
+            "href": "/settings/tax"
+          }
         ],
         "tabs": [
           {
