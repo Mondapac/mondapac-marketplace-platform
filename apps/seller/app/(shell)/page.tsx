@@ -1,9 +1,8 @@
-import { LoadError, PageHeader } from '@mondapac/ui';
+import { LoadError } from '@mondapac/ui';
 import { getTranslations } from 'next-intl/server';
 import { redirect } from 'next/navigation';
 import { SellerDashboard } from '../../src/dashboard/dashboard.tsx';
 import { startSellerDashboard } from '../../src/dashboard/load.ts';
-import { KpiSection } from '../../src/dashboard/kpis/kpi-section.tsx';
 import { startSellerKpis } from '../../src/dashboard/kpis/load.ts';
 import { DEFAULT_PERIOD, isPeriod } from '../../src/dashboard/kpis/types.ts';
 import { SETUP_ROOT } from '../../src/setup/steps.ts';
@@ -35,15 +34,12 @@ export default async function HomePage({
   return (
     <SellerShell session={gate.session} activeId="s_home" title={t('home.title')}>
       <div className="flex flex-col gap-6">
-        <div className="flex flex-col gap-1">
-          <PageHeader title={t('home.title')} />
-        </div>
         <SellerDashboard
+          title={t('home.title')}
           data={data}
           permissionKeys={gate.session.permissionKeys}
-          {...(kpiSources === null
-            ? {}
-            : { kpis: <KpiSection sources={kpiSources} period={period} /> })}
+          kpis={kpiSources}
+          period={period}
         />
       </div>
     </SellerShell>

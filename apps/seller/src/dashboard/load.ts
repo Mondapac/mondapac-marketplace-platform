@@ -1,8 +1,6 @@
 import 'server-only';
 import { workQueueRows } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
-import { VIEW_PERMISSION as OFFERS_VIEW, type OfferView, type Page } from '../catalog/types.ts';
-import { EARNINGS_VIEW_PERMISSION, type Ledger } from '../earnings/types.ts';
 import { ORDER_VIEW_PERMISSION, type SellerOrderCursorPage } from '../orders/types.ts';
 import { PAYOUT_VIEW_PERMISSION, type PayoutAccount } from '../payout/types.ts';
 import { serverGet, type ServerGet } from '../server/server-fetch.ts';
@@ -64,13 +62,7 @@ export function startSellerDashboard(session: SellerSession): SellerDashboardSou
         ).length > 0,
     ),
     orders: widget<SellerOrderCursorPage>(keys.has(ORDER_VIEW_PERMISSION), () =>
-      serverGet<SellerOrderCursorPage>(`ordering/seller/orders?limit=${COUNT_LIMIT}`),
-    ),
-    offers: widget<Page<OfferView>>(keys.has(OFFERS_VIEW), () =>
-      serverGet<Page<OfferView>>(`catalog/seller/offers?limit=${COUNT_LIMIT}`),
-    ),
-    ledger: widget<Ledger>(keys.has(EARNINGS_VIEW_PERMISSION), () =>
-      serverGet<Ledger>(`commission-payouts/seller/ledger?limit=${RECENT}`),
+      serverGet<SellerOrderCursorPage>(`ordering/seller/orders?limit=${RECENT}`),
     ),
     payout: widget<PayoutAccount>(keys.has(PAYOUT_VIEW_PERMISSION), () =>
       serverGet<PayoutAccount>('payments/seller/payout-account'),

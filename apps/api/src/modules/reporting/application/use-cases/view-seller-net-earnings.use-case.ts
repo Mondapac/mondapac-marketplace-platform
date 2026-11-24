@@ -4,13 +4,20 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { sessionSellerOf } from '../../../../platform/work-queue/count-work-queue';
 import { COMMISSION_PAYOUTS_EARNINGS_VIEW } from '../../../commission-payouts';
 import { sellerNetEarningsOf, type SellerNetEarnings } from '../../domain/ledger';
-import type { DayRange } from '../../domain/period';
+import { marketDayOf } from '../../domain/facts';
+import { isPeriodId, resolvePeriod, type DayRange } from '../../domain/period';
 import {
   readNetFigures,
   type LedgerKpiDependencies,
   type NetFiguresFailure,
   type NetFiguresInput,
 } from '../ledger-kpi-flow';
+
+/**
+ * A range of Market days, or a dashboard period (`today`, `7d`, `30d`, `month`) that the use case
+ * turns into the Market's current range of that period (the one the KPI strip shows).
+ */
+export type SellerNetEarningsInput = NetFiguresInput | { readonly period: unknown };
 
 export interface SellerNetEarningsAnswer {
   readonly range: DayRange;
@@ -33,7 +40,7 @@ export interface SellerNetEarningsAnswer {
  * Market's ledger has matched for a week; the seller sees only that flag.
  */
 export class ViewSellerNetEarnings extends UseCase<
-  NetFiguresInput,
+  SellerNetEarningsInput,
   SellerNetEarningsAnswer,
   NetFiguresFailure
 > {
@@ -52,11 +59,22 @@ export class ViewSellerNetEarnings extends UseCase<
 
   protected async handle(
     context: CallContext,
-    input: NetFiguresInput,
+    input: SellerNetEarningsInput,
   ): Promise<Result<SellerNetEarningsAnswer, NetFiguresFailure>> {
     const sellerId = sessionSellerOf(context);
     if (sellerId === null) return err({ code: 'access.denied' });
-    const read = await readNetFigures(this.deps, context, input, sellerId);
+    let range: NetFiguresInput;
+    if (input !== null && typeof input === 'object' && 'period' in input) {
+      if (!isPeriodId(input.period)) {
+        return err({ code: 'validation.failed', fields: [{ path: 'period', code: 'enum' }] });
+      }
+      const today = marketDayOf(this.deps.clock.now(), this.deps.zone.zoneOf(context.market));
+      const { current } = resolvePeriod(input.period, today);
+      range = { range: { from: current.from, to: current.to } };
+    } else {
+      range = input;
+    }
+    const read = await readNetFigures(this.deps, context, range, sellerId);
     if (!read.ok) return read;
     const figures = read.value;
     const ready = figures.readiness.ready;

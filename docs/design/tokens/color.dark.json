@@ -34,7 +34,7 @@
       },
       "row-attention": {
         "$type": "color",
-        "$value": "{color.amber.780}",
+        "$value": "{color.amber.770}",
         "$description": "Rows that need action"
       },
       "info-banner": {
@@ -201,32 +201,32 @@
       "attention": {
         "bg": {
           "$type": "color",
-          "$value": "{color.amber.725}",
+          "$value": "{color.amber.715}",
           "$description": "Attention badge background"
         },
         "fg": {
           "$type": "color",
-          "$value": "{color.amber.180}",
+          "$value": "{color.amber.155}",
           "$description": "Attention text and icon"
         },
         "solid": {
           "$type": "color",
-          "$value": "{color.amber.290}",
+          "$value": "{color.amber.255}",
           "$description": "Attention meter fill, pips"
         },
         "track": {
           "$type": "color",
-          "$value": "{color.amber.655}",
+          "$value": "{color.amber.640}",
           "$description": "Attention meter track"
         },
         "border": {
           "$type": "color",
-          "$value": "{color.amber.565}",
+          "$value": "{color.amber.540}",
           "$description": "Attention card border"
         },
         "surface": {
           "$type": "color",
-          "$value": "{color.amber.775}",
+          "$value": "{color.amber.765}",
           "$description": "Attention panel background"
         }
       },
@@ -519,12 +519,12 @@
     "board": {
       "action-bg": {
         "$type": "color",
-        "$value": "{color.amber.780}",
+        "$value": "{color.amber.770}",
         "$description": "Needs action column"
       },
       "action-border": {
         "$type": "color",
-        "$value": "{color.amber.655}",
+        "$value": "{color.amber.640}",
         "$description": "Needs action column border"
       },
       "prep-bg": {

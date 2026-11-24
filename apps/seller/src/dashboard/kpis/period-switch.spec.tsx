@@ -21,10 +21,11 @@ const options = [
 describe('PeriodSwitch', () => {
   it('puts the choice in the address and shows the figures below it', () => {
     render(
-      <PeriodSwitch label="Period" options={options} value="30d" note="vs previous 30 days">
+      <PeriodSwitch title="Dashboard" label="Period" options={options} value="30d">
         <p>figures</p>
       </PeriodSwitch>,
     );
+    expect(screen.getByRole('heading', { name: 'Dashboard' })).toBeTruthy();
     fireEvent.click(screen.getByRole('radio', { name: '7 days' }));
     expect(replace).toHaveBeenCalledWith('/?period=7d', { scroll: false });
     expect(screen.getByText('figures')).toBeTruthy();
