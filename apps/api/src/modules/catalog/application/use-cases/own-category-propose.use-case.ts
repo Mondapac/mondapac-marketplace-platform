@@ -15,6 +15,7 @@ import {
   refuseClaimTexts,
   requiredCategoryLocales,
 } from '../categories/category-editor';
+import type { SellerCategoryScope } from '../business-activities/allowed-category-ids';
 import { sellerOf } from '../own-reads/own-reads.shared';
 import { reserveForAccount, type ReserveFailure } from '../platform-import/reserve';
 import type {
@@ -66,6 +67,8 @@ export interface OwnCategoryProposeDependencies
   readonly eligibility: SellerEligibilityReader;
   readonly counters: RateCounterRepository;
   readonly counterKeys: RateCounterKeys;
+  /** The seller's activity scope: the parent must be inside it (`category.not-in-activity`). */
+  readonly sellerCategories: Pick<SellerCategoryScope, 'allowedCategoryIdsForSeller'>;
 }
 
 const KEYS = ['platformParentId', 'texts'] as const;
@@ -78,7 +81,9 @@ const KEYS = ['platformParentId', 'texts'] as const;
  * `category-proposal.not-allowed`) and the seller must be eligible to sell. Every name and
  * description passes the claim-text check in its own locale, failing closed. A seller may have at
  * most the Market's `maxPendingCategoryProposals` waiting (exact, under the seller's shelf lock) and 20
- * proposals a day; a
+ * proposals a day; the parent must be inside the seller's business activities
+ * (`allowedCategoryIdsForSeller`; outside is `validation.failed` with `platformParentId`
+ * `category.not-in-activity`, a scope that cannot be read is `access.unavailable`); a
  * name already waiting or already a live shelf of the seller under the same parent (NFKC, case
  * folded, yeh and kaf unified) is `category-proposal.duplicate`.
  */
@@ -152,6 +157,11 @@ export class OwnCategoryPropose extends UseCase<
     }
     if (!(await deps.eligibility.isEligible(context, sellerId))) {
       return err({ code: 'seller.not-eligible' });
+    }
+    const allowed = await deps.sellerCategories.allowedCategoryIdsForSeller(context, sellerId);
+    if (!allowed.ok) return err({ code: 'access.unavailable' });
+    if (!allowed.value.has(parent.value)) {
+      return invalid('platformParentId', 'category.not-in-activity');
     }
     const normalisedName = normaliseShelfName(defaultNameOf(texts.value, defaultLocale));
     // A name that NFKC widens past the column's 120 characters (U+FDFA and the like).
