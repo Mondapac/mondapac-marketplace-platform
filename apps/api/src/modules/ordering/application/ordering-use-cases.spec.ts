@@ -3678,6 +3678,36 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(promotions.redeems).toEqual([]);
     });
 
+    it('caps by each line’s own rate: a GST-free line keeps its whole amount as base', async () => {
+      const free = code === 'AU' ? 'gst_free' : 'zz_zero';
+      taxCategories.byOffer.set(OFFER_1, free);
+      tax.categoryRatesBps.set(free, 0);
+      await placed();
+      const { request } = promotions.quotes[0]!;
+      const halfUp = (n: bigint, d: bigint) => (n * 2n + d) / (d * 2n);
+      const taxed = (amount: bigint) =>
+        halfUp(halfUp(amount * 10_000n, 10_000n + BigInt(tax.rateBps)) * 1500n, 10_000n);
+      // Offer 1 (2000) at rate 0: 15 % of 2000 = 300, not 15 % of 2000 / 1.1.
+      expect(request.orderCommission).toEqual(
+        money(halfUp(2000n * 1500n, 10_000n) + taxed(750n) + taxed(99n), currency),
+      );
+    });
+
+    it('opens no order when the rates change between the cap and the tax (fail closed)', async () => {
+      tax.rateAfterFirstCall = tax.rateBps + 500;
+      expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
+      expect(tax.calls).toHaveLength(2);
+      expect(orders.rows.size).toBe(0);
+      expect(inventory.reserved).toEqual([]);
+    });
+
+    it('opens no order when only the second tax answer fails (fail closed)', async () => {
+      tax.failAfterCalls = 1;
+      expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
+      expect(tax.calls).toHaveLength(2);
+      expect(orders.rows.size).toBe(0);
+    });
+
     it('freezes the discount on the line, taxes and charges the net amount, then redeems it', async () => {
       sellerFundedOnOffer1();
       const started = await start();

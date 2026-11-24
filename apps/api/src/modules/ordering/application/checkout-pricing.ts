@@ -331,6 +331,12 @@ export async function priceOrder(
         : { code: 'ordering.check-unavailable' },
     );
   }
+  // The discount quote was capped with the rates of the first answer; a strategy changed in
+  // between would freeze other rates on the lines (and the ledger would post another commission),
+  // so the check fails rather than place an order whose cap no longer holds.
+  if (planLines.some((_, index) => taxed.value.lines[index]!.rateBps !== rates.value[index])) {
+    return err({ code: 'ordering.check-unavailable' });
+  }
   const lineTax = new Map(
     planLines.map((line, index) => [lineKeyOf(line), taxed.value.lines[index]!]),
   );
