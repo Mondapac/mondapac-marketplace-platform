@@ -54,10 +54,13 @@ describe('sellers without an owner', () => {
         expect(link, `${file}: ${link}`).toContain('min-h-12');
       }
     }
-    // The header link on the sellers page.
-    const header = read('app/(shell)/sellers/page.tsx');
-    const entry = header.match(/<a\b[^>]*href="\/sellers\/without-owner"[^>]*>/s);
-    expect(entry?.[0]).toContain('min-h-12');
+    // The Queues menu (button and rows) is at least one control high (48px on a phone).
+    const menu = readFileSync(
+      join(__dirname, '../../../packages/ui/src/overlay/link-menu.tsx'),
+      'utf8',
+    );
+    expect(menu.match(/(?<!min-)h-\(--mp-size-control\)/g)).toHaveLength(1);
+    expect(menu.match(/min-h-\(--mp-size-control\)/g)).toHaveLength(1);
     for (const file of ['src/sellers/orphaned-table.tsx', 'src/sellers/invite-owner-dialog.tsx']) {
       for (const button of read(file).match(/<Button\b[^>]*>/gs) ?? []) {
         expect(button, `${file}: ${button}`).toContain('min-h-12');

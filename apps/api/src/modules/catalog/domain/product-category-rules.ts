@@ -22,7 +22,33 @@ export interface ProductCategoryIssue {
     | 'duplicate'
     | 'unknown'
     | 'category.not-available'
-    | 'category.level-not-allowed';
+    | 'category.level-not-allowed'
+    | 'category.not-same-branch';
+}
+
+export interface ProductCategoryOptions {
+  /**
+   * Seller products only: every category after the primary (the first id) must sit under the
+   * same department (level 1 ancestor) as the primary. Off by default (platform products, bulk
+   * moves and imports keep their rules).
+   */
+  readonly sameBranch?: boolean;
+}
+
+/** The level 1 ancestor (department) of a node; null when the chain is broken or loops. */
+export function departmentOf(
+  byId: ReadonlyMap<string, ProductCategoryNode>,
+  id: string,
+): string | null {
+  let cursor: string = id;
+  const seen = new Set<string>();
+  for (;;) {
+    const node = byId.get(cursor);
+    if (node === undefined || seen.has(cursor)) return null;
+    seen.add(cursor);
+    if (node.parentId === null) return node.id;
+    cursor = node.parentId;
+  }
 }
 
 /** Level of a node, 1 for a department; 0 when the chain is broken or loops. */
@@ -48,6 +74,7 @@ export function checkProductCategories(
   nodes: readonly ProductCategoryNode[],
   categoryIds: readonly string[],
   maxLevel: number,
+  options: ProductCategoryOptions = {},
 ): readonly ProductCategoryIssue[] {
   if (categoryIds.length === 0) return [{ path: 'categoryIds', code: 'required' }];
   const issues: ProductCategoryIssue[] = [];
@@ -56,6 +83,9 @@ export function checkProductCategories(
   }
   const byId = new Map(nodes.map((node) => [node.id, node]));
   const seen = new Set<string>();
+  const primaryId = categoryIds[0];
+  const primaryDepartment =
+    options.sameBranch === true && primaryId !== undefined ? departmentOf(byId, primaryId) : null;
   categoryIds.forEach((id, index) => {
     const path = `categoryIds.${index}`;
     if (seen.has(id)) {
@@ -75,6 +105,15 @@ export function checkProductCategories(
     const level = levelOf(byId, id);
     if (level < LOWEST_PRODUCT_CATEGORY_LEVEL || level > maxLevel) {
       issues.push({ path, code: 'category.level-not-allowed' });
+      return;
+    }
+    if (
+      options.sameBranch === true &&
+      index > 0 &&
+      primaryDepartment !== null &&
+      departmentOf(byId, id) !== primaryDepartment
+    ) {
+      issues.push({ path, code: 'category.not-same-branch' });
     }
   });
   return issues;

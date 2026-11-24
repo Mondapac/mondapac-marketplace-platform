@@ -369,6 +369,7 @@ export {
   type ActionMenuLink,
   type ActionMenuProps,
 } from './overlay/action-menu.tsx';
+export { LinkMenu, type LinkMenuItem, type LinkMenuProps } from './overlay/link-menu.tsx';
 export { HelpProvider, HelpTab, useHelp, type HelpProviderProps } from './help/help-context.tsx';
 export {
   bestRoute,

@@ -57,3 +57,39 @@ describe('checkProductCategories', () => {
     ]);
   });
 });
+
+describe('checkProductCategories sameBranch (seller products)', () => {
+  // Two departments: d (g, c, c2, s, h) and e (f, k)
+  const forest = [...tree, n('e', null), n('f', 'e'), n('k', 'f')];
+  it('is off by default: another department is accepted', () => {
+    expect(checkProductCategories(forest, ['c', 'k'], 4)).toEqual([]);
+    expect(checkProductCategories(forest, ['c', 'k'], 4, { sameBranch: false })).toEqual([]);
+  });
+  it('refuses a non-primary category under another department, at its own index', () => {
+    expect(checkProductCategories(forest, ['c', 'c2', 'k'], 4, { sameBranch: true })).toEqual([
+      { path: 'categoryIds.2', code: 'category.not-same-branch' },
+    ]);
+    expect(checkProductCategories(forest, ['k', 'c', 's'], 4, { sameBranch: true })).toEqual([
+      { path: 'categoryIds.1', code: 'category.not-same-branch' },
+      { path: 'categoryIds.2', code: 'category.not-same-branch' },
+    ]);
+  });
+  it('accepts the same department at any depth, for a depth-3 and a depth-4 Market', () => {
+    expect(checkProductCategories(forest, ['c', 's', 'h'], 4, { sameBranch: true })).toEqual([]);
+    expect(checkProductCategories(forest, ['c', 'c2'], 3, { sameBranch: true })).toEqual([]);
+    expect(checkProductCategories(forest, ['c', 'k'], 3, { sameBranch: true })).toEqual([
+      { path: 'categoryIds.1', code: 'category.not-same-branch' },
+    ]);
+  });
+  it('keeps the other issue of a category instead of adding a branch one', () => {
+    expect(checkProductCategories(forest, ['c', 'zz', 'a'], 4, { sameBranch: true })).toEqual([
+      { path: 'categoryIds.1', code: 'unknown' },
+      { path: 'categoryIds.2', code: 'category.not-available' },
+    ]);
+  });
+  it('does not judge the branch when the primary is itself unknown', () => {
+    expect(checkProductCategories(forest, ['zz', 'k'], 4, { sameBranch: true })).toEqual([
+      { path: 'categoryIds.0', code: 'unknown' },
+    ]);
+  });
+});
