@@ -42,6 +42,8 @@ function paidFacts(record: SellerOrderRecord) {
       // T2). The platform's share comes out of the platform's commission, never the seller's pay.
       lineAmount: ledgerLineAmount(line),
       taxInclusive: line.taxInclusive,
+      // Frozen by the product's tax category (0 when GST-free): the commission base takes it out.
+      taxRateBps: line.taxRateBps,
       commissionRateBps: line.commissionRateBps!,
       commissionStandardRateBps: line.commissionStandardRateBps ?? null,
     })),

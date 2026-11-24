@@ -19,6 +19,8 @@ import type { PaidSellerOrder, RefundedSellerOrder } from '../contracts';
 import { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from '../domain/audit';
 import {
   commissionBase,
+  lineCommission,
+  lineTaxBps,
   commissionOn,
   exclusiveRateBps,
   exclusiveWindowOpen,
@@ -207,6 +209,28 @@ describe('commission arithmetic', () => {
     // $3.35 with GST inside: 335 / 1.1 = 304.545… -> 305; 15 % = 45.75 -> 46.
     expect(commissionBase(335n, true, 1000)).toBe(305n);
     expect(commissionOn(305n, 1500)).toBe(46n);
+  });
+
+  it('takes out the line’s own tax rate: a GST-free line keeps its whole amount as base', () => {
+    // $15.90 of GST-free meat at 15 %: base $15.90, commission $2.39 (not $2.17 on 15.90 / 1.1).
+    expect(lineCommission({ amount: 1590n, taxInclusive: true, taxBps: 0, rateBps: 1500 })).toEqual(
+      { base: 1590n, commission: 239n, sellerReceives: 1351n },
+    );
+    // A taxable $11.00 line: base $10.00, commission $1.50; the seller keeps the $1.00 GST too.
+    expect(
+      lineCommission({ amount: 1100n, taxInclusive: true, taxBps: 1000, rateBps: 1500 }),
+    ).toEqual({ base: 1000n, commission: 150n, sellerReceives: 950n });
+    // An exclusive line is its own base whatever its rate.
+    expect(
+      lineCommission({ amount: 1000n, taxInclusive: false, taxBps: 1000, rateBps: 1500 }),
+    ).toEqual({ base: 1000n, commission: 150n, sellerReceives: 850n });
+  });
+
+  it('falls back to the provisional rate only for a line with no frozen rate', () => {
+    expect(lineTaxBps(0, 1000)).toBe(0);
+    expect(lineTaxBps(1500, 1000)).toBe(1500);
+    expect(lineTaxBps(null, 1000)).toBe(1000);
+    expect(lineTaxBps(undefined, 1000)).toBe(1000);
   });
 
   it('uses an exclusive line as it is, and a zero rate gives zero', () => {
@@ -899,6 +923,35 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       expect(ledger.rows.every((r) => r.occurredAt.equals(T0) && r.sellerId === SELLER_A)).toBe(
         true,
       );
+    });
+
+    it('takes each line’s frozen tax rate out of its base, so a GST-free line is not reduced', async () => {
+      const lines = paid().lines;
+      expect(
+        await record(
+          paid({
+            lines: [
+              { ...lines[0]!, lineAmount: 1590n, taxRateBps: 0 },
+              { ...lines[1]!, lineAmount: 1100n, taxRateBps: 1000 },
+            ],
+          }),
+        ),
+      ).toEqual(ok('recorded'));
+      const commissions = ledger.rows.filter((r) => r.kind === 'commission');
+      expect(commissions.map((r) => [r.orderLineId, r.baseAmount, r.amount])).toEqual([
+        [LINE_1, 1590n, money(239n, currency)],
+        [LINE_2, inclusive ? 1000n : 1100n, money(inclusive ? 150n : 165n, currency)],
+      ]);
+    });
+
+    it.each([-1, 5001, 1.5, '0'])('refuses a line tax rate of %p', async (taxRateBps) => {
+      const lines = paid().lines;
+      expect(
+        await record(
+          paid({ lines: [{ ...lines[0]!, taxRateBps: taxRateBps as number }, lines[1]!] }),
+        ),
+      ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+      expect(ledger.rows).toEqual([]);
     });
 
     it('writes a paid seller order once, and no delivery row for a free delivery', async () => {

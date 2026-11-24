@@ -66,6 +66,12 @@ export interface PaidLine {
   /** Unit price × quantity after discounts, in minor units of the order currency. */
   readonly lineAmount: bigint;
   readonly taxInclusive: boolean;
+  /**
+   * The line's tax rate in basis points, frozen at placement by its tax category (0 for a
+   * GST-free product). The commission base takes out this rate, never a flat one. Null or absent
+   * only for a line placed before the rate was frozen: the Market's provisional rate is used.
+   */
+  readonly taxRateBps?: number | null;
   readonly commissionRateBps: number;
   /**
    * A line whose rate was lowered for the buyer's exclusive seller: the rate it would have carried
