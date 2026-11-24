@@ -7,6 +7,7 @@ import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { ViewSellerKpis } from '../src/modules/reporting/application/use-cases/view-seller-kpis.use-case';
+import { ViewSellerNetEarnings } from '../src/modules/reporting/application/use-cases/view-seller-net-earnings.use-case';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
@@ -47,6 +48,14 @@ describe.each(TEST_MARKETS)('the seller KPIs over HTTP in market %s', (code) => 
           .override(builder)
           .overrideProvider(CLOCK)
           .useValue(new FixedClock(START))
+          .overrideProvider(ViewSellerNetEarnings)
+          .useValue({
+            execute: (context: { actor: unknown }, input: unknown) => {
+              actors.push(context.actor);
+              inputs.push(input);
+              return Promise.resolve(next);
+            },
+          })
           .overrideProvider(ViewSellerKpis)
           .useValue({
             execute: (context: { actor: unknown }, input: unknown) => {
@@ -219,5 +228,39 @@ describe.each(TEST_MARKETS)('the seller KPIs over HTTP in market %s', (code) => 
     next = err({ code: 'access.unauthenticated' });
     expect((await get(sessionOf('admin'))).status).toBe(401);
     expect(actors[0]).toMatchObject({ kind: 'anonymous' });
+  });
+
+  it('answers the net earnings of the period as a string, null while not ready, never an id from input', async () => {
+    await boot();
+    const base = {
+      range: { from: '2026-11-16', to: '2026-11-22' },
+      timezone: 'Australia/Brisbane',
+      currency: 'AUD',
+      generatedAt: START,
+      refreshedAt: START,
+    };
+    next = ok({ ...base, ready: true, earnings: { netEarnings: 7450n } });
+    const ready = await http()
+      .get('/reporting/seller/net-earnings')
+      .query({ period: '7d', sellerId: 'other' })
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...sessionOf('seller') });
+    expect(ready.status).toBe(200);
+    expect(ready.headers['cache-control']).toBe('no-store');
+    expect(ready.body).toEqual({
+      range: base.range,
+      timezone: 'Australia/Brisbane',
+      currency: 'AUD',
+      ready: true,
+      netEarnings: '7450',
+      refreshedAt: START.toString(),
+    });
+    expect(inputs[0]).toEqual({ period: '7d' });
+    expect(actors[0]).toMatchObject({ population: 'seller', sellerId: SELLER });
+    next = ok({ ...base, ready: false, earnings: null });
+    const early = await http()
+      .get('/reporting/seller/net-earnings')
+      .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...sessionOf('seller') });
+    expect(early.body).toMatchObject({ ready: false, netEarnings: null });
+    expect(inputs[1]).toEqual({ period: '30d' });
   });
 });

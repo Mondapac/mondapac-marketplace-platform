@@ -105,7 +105,7 @@ export function DashboardGrid({
 }
 
 /**
- * One item of the grid; declares its spans and phone order. The item is a flex row so its child
+ * One item of the grid; declares its spans and phone order. The item is a flex row (hidden while it has no content, so a card that turns out absent leaves no hole) so its child
  * fills it and matches the row's height: a child that is not a DashboardCard needs `flex-1`.
  */
 export function GridItem({
@@ -113,7 +113,7 @@ export function GridItem({
   children,
   ...layout
 }: GridLayout & { readonly as?: 'div' | 'li'; readonly children: ReactNode }) {
-  return <Tag className={`flex ${gridItemClass(layout)}`}>{children}</Tag>;
+  return <Tag className={`flex empty:hidden ${gridItemClass(layout)}`}>{children}</Tag>;
 }
 
 export interface StatCardProps {

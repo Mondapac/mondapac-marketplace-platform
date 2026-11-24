@@ -72,17 +72,24 @@ export interface StatCardSkeletonProps {
   readonly label: string;
   /** Shown in place of the figure after 30 s, like a figure whose read failed. */
   readonly stalledLabel: string;
+  /** The element it is: a list item in a StatGrid (default), a plain div as a KpiCard's twin. */
+  readonly as?: 'li' | 'div';
 }
 
 /**
  * The placeholder of one StatCard: the same frame, icon and label, with bars for the figure and
  * its scope line. Nothing but the frame and label shows for the first 200 ms.
  */
-export function StatCardSkeleton({ icon, label, stalledLabel }: StatCardSkeletonProps) {
+export function StatCardSkeleton({
+  icon,
+  label,
+  stalledLabel,
+  as: Tag = 'li',
+}: StatCardSkeletonProps) {
   const loading = useCardLoading();
   const bars = loading.visible && !loading.stalled;
   return (
-    <li className="flex" data-skeleton="stat">
+    <Tag className="flex w-full" data-skeleton="stat">
       <div className="flex w-full min-w-0 flex-col gap-1 rounded-lg border border-line bg-surface p-3 sm:gap-2 sm:p-4">
         <span className="flex items-start gap-2 text-sm font-medium text-fg-secondary">
           <span className="flex h-5 items-center text-icon">
@@ -104,7 +111,7 @@ export function StatCardSkeleton({ icon, label, stalledLabel }: StatCardSkeleton
           <Bar visible={bars} line="h-4" className="h-3 w-28" />
         </span>
       </div>
-    </li>
+    </Tag>
   );
 }
 

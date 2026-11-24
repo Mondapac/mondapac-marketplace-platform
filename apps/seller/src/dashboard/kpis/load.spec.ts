@@ -37,6 +37,30 @@ describe('startSellerKpis', () => {
     expect(mocks.get).toHaveBeenCalledWith('catalog/categories', { anonymous: true });
   });
 
+  it('reads the net earnings and the next payout only with the earnings key, never with an id', async () => {
+    const without = startSellerKpis(session(['ordering.seller-order.view']), '7d');
+    expect(without?.netEarnings).toBeNull();
+    expect(without?.nextPayout).toBeNull();
+    mocks.get.mockClear();
+    const sources = startSellerKpis(
+      session(['ordering.seller-order.view', 'commission-payouts.earnings.view']),
+      '7d',
+    );
+    await Promise.all([sources?.netEarnings, sources?.nextPayout]);
+    expect(mocks.get).toHaveBeenCalledWith('reporting/seller/net-earnings?period=7d');
+    expect(mocks.get).toHaveBeenCalledWith('commission-payouts/seller/payouts/next');
+  });
+
+  it('leaves the earnings cards out when the API refuses them', async () => {
+    mocks.get.mockResolvedValue({ kind: 'forbidden' });
+    const sources = startSellerKpis(
+      session(['ordering.seller-order.view', 'commission-payouts.earnings.view']),
+      '7d',
+    );
+    expect(await sources?.netEarnings).toBeNull();
+    expect(await sources?.nextPayout).toBeNull();
+  });
+
   it('turns a failed read into an error widget and no category names', async () => {
     mocks.get.mockResolvedValue({ kind: 'unavailable' });
     const sources = startSellerKpis(session(['ordering.seller-order.view']), '7d');

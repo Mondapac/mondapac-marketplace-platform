@@ -294,7 +294,7 @@ describe('dashboard grid', () => {
     );
     expect(html).toContain('grid-cols-12');
     expect(html).toContain('lg:col-span-8');
-    expect(html).toContain('<li class="flex min-w-0');
+    expect(html).toContain('<li class="flex empty:hidden min-w-0');
   });
   it('wraps a slot only when it has a layout (old pages keep their markup)', () => {
     const plain = renderToStaticMarkup(

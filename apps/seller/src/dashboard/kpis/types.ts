@@ -54,3 +54,16 @@ export interface SellerKpis {
 }
 
 export const KPIS_PATH = 'reporting/seller/kpis';
+
+/** The answer of GET reporting/seller/net-earnings: minor units as a string, null until `ready`. */
+export interface SellerNetEarnings {
+  readonly range: { readonly from: string; readonly to: string };
+  readonly timezone: string;
+  readonly currency: string;
+  /** False until a week of matching ledger exists (FE-066): no figure is then sent. */
+  readonly ready: boolean;
+  readonly netEarnings: string | null;
+  readonly refreshedAt: string | null;
+}
+
+export const NET_EARNINGS_PATH = 'reporting/seller/net-earnings';

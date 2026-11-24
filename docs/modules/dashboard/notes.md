@@ -262,3 +262,18 @@ for the ordering facade (FE-061), and the cancel rate and refund count were adde
 come from the same rollup. Marketplace health, top sellers and categories and the order flow are
 separate PRs. The period is the `?period=` query of the home page; the skeleton and the error
 state show only the figures the session's keys allow.
+
+### Seller dashboard v2 (dashboards v2, phase 1, PR 8)
+
+The seller home page is one `DashboardGrid` (12 columns; phone order KPI cards, tasks, the rest).
+Shared pieces: `KpiCard` in `packages/ui/src/dashboard` (coloured icon tile, "?" definition,
+`note` for a figure that is withheld, `highlight` for the one main card), `GridItem` hides itself
+while it has no content, `StatCardSkeleton as="div"` is the KPI card's twin. Cards and sources:
+Sales and Seller orders paid (`reporting/seller/kpis`), Net earnings (`reporting/seller/net-earnings`,
+earnings key; no number until a week of ledger records, FE-066), Next payout
+(`commission-payouts/seller/payouts/next`), sales chart with a Sales/Orders switch (same KPI read),
+store health ring (`sellers/own-health`), top categories (KPI read; per-product ranking FE-178),
+stock watch (`inventory/seller/low-stock`; best sellers first FE-179), today's tasks and recent
+orders (existing reads). `GET reporting/seller/net-earnings?period=` is new: session seller only,
+key `commission-payouts.earnings.view`, `ready:false` with `netEarnings:null` until ready, money as
+a minor-unit string. Screenshots: `apps/seller/test/dashboard-shots` (not part of CI).

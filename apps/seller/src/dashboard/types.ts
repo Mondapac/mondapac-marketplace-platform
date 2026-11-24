@@ -2,8 +2,6 @@
 // loader asks for a widget only when the session holds that key, so a staff member with a few
 // keys gets a smaller dashboard and never a refused call.
 
-import type { OfferView, Page } from '../catalog/types.ts';
-import type { Ledger } from '../earnings/types.ts';
 import type { SellerOrderCursorPage } from '../orders/types.ts';
 import type { PayoutAccount } from '../payout/types.ts';
 import type { SourcesView } from '../stock/types.ts';
@@ -41,8 +39,6 @@ export interface SellerDashboardData {
   /** A widget is null when the session does not hold the permission its read needs. */
   readonly tasks: Widget<WorkQueueAnswer> | null;
   readonly orders: Widget<SellerOrderCursorPage> | null;
-  readonly offers: Widget<Page<OfferView>> | null;
-  readonly ledger: Widget<Ledger> | null;
   readonly payout: Widget<PayoutAccount> | null;
   readonly sources: Widget<SourcesView> | null;
   /** Needs the same key as `sources` (inventory.stock.view). */

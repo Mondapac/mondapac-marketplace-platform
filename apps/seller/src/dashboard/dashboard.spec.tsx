@@ -3,7 +3,6 @@ import { act, cleanup, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
-import type { OfferView } from '../catalog/types.ts';
 import type { SellerOrderView } from '../orders/types.ts';
 import type { SellerSession } from '../server/session.ts';
 import { SellerDashboard } from './dashboard.tsx';
@@ -24,16 +23,14 @@ import { startSellerDashboard } from './load.ts';
 /** Every read of the dashboard, awaited. */
 async function loadSellerDashboard(session: SellerSession): Promise<SellerDashboardData> {
   const sources = startSellerDashboard(session);
-  const [tasks, orders, offers, ledger, payout, sourcesView, lowStock] = await Promise.all([
+  const [tasks, orders, payout, sourcesView, lowStock] = await Promise.all([
     sources.tasks,
     sources.orders,
-    sources.offers,
-    sources.ledger,
     sources.payout,
     sources.sources,
     sources.lowStock,
   ]);
-  return { tasks, orders, offers, ledger, payout, sources: sourcesView, lowStock };
+  return { tasks, orders, payout, sources: sourcesView, lowStock };
 }
 
 const wrap = (node: React.ReactNode, locale = 'en-AU') => (
@@ -66,24 +63,6 @@ const order = (n: number, fulfilment: SellerOrderView['fulfilment']): SellerOrde
   deliveryAttention: null,
   lines: [],
 });
-const offer = (n: number, status: string): OfferView => ({
-  offerId: ID(n),
-  productId: ID(900 + n),
-  product: { productCode: `P${n}`, typeCode: 'food', name: `Product ${n}` },
-  sellerSku: `SKU-${n}`,
-  conditionCode: 'new',
-  description: {},
-  status,
-  listed: status === 'published',
-  offSaleCauses: [],
-  handling: null,
-  attestationRecorded: true,
-  submittedAt: '2026-10-12T01:00:00.000Z',
-  firstPublishedAt: null,
-  createdAt: '2026-10-01T00:00:00.000Z',
-  version: 1,
-});
-
 const NOW = '2026-11-22T03:00:00.000Z';
 const hoursAgo = (h: number) => new Date(Date.parse(NOW) - h * 3_600_000).toISOString();
 const tasks: WorkQueueAnswer = {
@@ -162,50 +141,6 @@ const full: SellerDashboardData = {
     sellerOrders: [order(1, 'to-ship'), order(2, 'to-ship'), order(3, 'shipped')],
     nextCursor: null,
   }),
-  offers: ok({
-    items: [
-      offer(10, 'published'),
-      offer(11, 'pending-first-publish'),
-      offer(12, 'changes-needed'),
-      offer(13, 'draft'),
-    ],
-    nextAfterId: null,
-  }),
-  ledger: ok({
-    sellerId: ID(1),
-    currency: 'AUD',
-    totals: {
-      sales: '100000',
-      shipping: '5000',
-      commission: '10000',
-      refundedSales: '0',
-      refundedShipping: '0',
-      refundedCommission: '0',
-      disputeDebits: '0',
-      disputeReinstated: '0',
-      sellerCashback: '0',
-      balance: '123450',
-    },
-    entries: [
-      {
-        entryId: ID(70),
-        orderId: ID(1),
-        kind: 'sale',
-        direction: 'credit',
-        amount: '4000',
-        occurredAt: '2026-10-14T01:00:00.000Z',
-      },
-      {
-        entryId: ID(71),
-        orderId: ID(1),
-        kind: 'commission',
-        direction: 'debit',
-        amount: '400',
-        occurredAt: '2026-10-14T01:00:00.000Z',
-      },
-    ],
-    nextCursor: null,
-  }),
   payout: ok({
     status: 'enabled',
     ready: true,
@@ -261,8 +196,6 @@ const full: SellerDashboardData = {
 const none: SellerDashboardData = {
   tasks: null,
   orders: null,
-  offers: null,
-  ledger: null,
   payout: null,
   sources: null,
   lowStock: null,
@@ -395,85 +328,11 @@ describe('seller dashboard', () => {
     }
   });
 
-  it('counts what needs attention and says what each figure covers', () => {
-    render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />));
-    const stats = within(screen.getByRole('list', { name: 'Needs attention' }));
-    const toShip = stats.getByRole('link', { name: /Orders to ship/ });
-    expect(toShip.getAttribute('href')).toBe('/orders');
-    expect(toShip.textContent).toContain('2');
-    expect(toShip.textContent).toContain('All your paid orders');
-    expect(stats.getByRole('link', { name: /Offers waiting for review/ }).textContent).toContain(
-      '1',
-    );
-    expect(stats.getByRole('link', { name: /Offers needing changes/ }).textContent).toContain('1');
-    // The balance is the backend's number, formatted in the Market locale and currency.
-    expect(stats.getByRole('link', { name: /Your balance/ }).textContent).toContain('$1,234.50');
-  });
-
-  it('shows 50+ and its scope, never an exact count, when more pages exist', () => {
-    const more: SellerDashboardData = {
-      ...full,
-      orders: ok({
-        sellerOrders: Array.from({ length: 50 }, (_, i) => order(i + 1, 'to-ship')),
-        nextCursor: ID(999),
-      }),
-    };
-    render(wrap(<SellerDashboard data={more} permissionKeys={KEYS} />));
-    const card = screen.getByRole('link', { name: /Orders to ship(?! today)/ });
-    expect(card.textContent).toContain('50+');
-    expect(card.textContent).toContain('Among your latest 50 paid orders');
-  });
-
-  it.each(['AUD', 'JPY'])(
-    'labels a seller cashback ledger row in %s instead of calling it Other',
-    (currency) => {
-      const base = full.ledger;
-      if (base?.kind !== 'ok') throw new Error('fixture');
-      const data: SellerDashboardData = {
-        ...full,
-        ledger: ok({
-          ...base.value,
-          currency,
-          entries: [
-            {
-              entryId: ID(72),
-              orderId: ID(1),
-              kind: 'cashback-seller',
-              direction: 'debit',
-              amount: '500',
-              occurredAt: '2026-10-14T01:00:00.000Z',
-            },
-          ],
-        }),
-      };
-      render(wrap(<SellerDashboard data={data} permissionKeys={KEYS} />));
-      expect(screen.getByText('Cashback to exclusive customers')).toBeTruthy();
-      expect(screen.queryByText('Other')).toBeNull();
-    },
-  );
-
-  it('formats money with the Market locale, not a fixed one', () => {
-    render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />, 'de-DE'));
-    expect(screen.getByRole('link', { name: /Your balance/ }).textContent).toMatch(/1\.234,50/);
-  });
-
-  it('links recent orders and waiting offers to their pages', () => {
+  it('links recent orders to their pages', () => {
     render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />));
     expect(
       screen.getByRole('link', { name: ID(1).slice(-8).toUpperCase() }).getAttribute('href'),
     ).toBe(`/orders/${ID(1)}`);
-    const offers = within(screen.getByRole('region', { name: /Offers waiting on you/ }));
-    expect(offers.getByRole('link', { name: 'Product 12' }).getAttribute('href')).toBe(
-      `/offers/${ID(12)}`,
-    );
-    expect(offers.queryByText('Product 10')).toBeNull();
-  });
-
-  it('draws the offers-by-status chart with every part as text', () => {
-    render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />));
-    const card = within(screen.getByRole('region', { name: 'Offers by status' }));
-    expect(card.getByText('Published').closest('li')?.textContent).toBe('Published1');
-    expect(card.getByText('Draft').closest('li')?.textContent).toBe('Draft1');
   });
 
   it('warns about an unready payout account and a missing stock location', () => {
@@ -510,49 +369,41 @@ describe('seller dashboard', () => {
   });
 
   it('fails one widget in place and renders the rest', () => {
-    const partly: SellerDashboardData = {
-      ...full,
-      orders: { kind: 'error' },
-      ledger: { kind: 'error' },
-    };
+    const partly: SellerDashboardData = { ...full, orders: { kind: 'error' } };
     render(wrap(<SellerDashboard data={partly} permissionKeys={KEYS} />));
-    expect(screen.getAllByText(/This could not be loaded/).length).toBe(4);
-    expect(screen.queryByRole('link', { name: /Orders to ship(?! today)/ })).toBeNull();
-    expect(screen.getByRole('link', { name: /Offers needing changes/ })).toBeTruthy();
+    const orders = within(screen.getByRole('region', { name: 'Recent orders' }));
+    expect(orders.getByText(/This could not be loaded/)).toBeTruthy();
+    expect(screen.getByRole('region', { name: "Today's tasks" })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Stock watch' })).toBeTruthy();
   });
 
   it('says a list is empty instead of showing an empty table', () => {
     const empty: SellerDashboardData = {
       ...none,
       orders: ok({ sellerOrders: [], nextCursor: null }),
-      offers: ok({ items: [], nextAfterId: null }),
     };
     render(wrap(<SellerDashboard data={empty} permissionKeys={[]} />));
     expect(screen.getByText('No paid orders yet.')).toBeTruthy();
-    expect(screen.getByText('No offers are waiting for review or changes.')).toBeTruthy();
     expect(screen.queryAllByRole('table')).toHaveLength(0);
   });
 
   it('lists low and out-of-stock items, each linking to its stock page', () => {
     render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />));
-    const card = within(screen.getByRole('region', { name: 'Low stock' }));
+    const card = within(screen.getByRole('region', { name: 'Stock watch' }));
     const lamb = card.getByRole('link', { name: 'Lamb mince · 500 g' });
     expect(lamb.getAttribute('href')).toBe(`/offers/${ID(20)}/stock`);
-    const row = lamb.closest('tr') ?? lamb.closest('li') ?? lamb.parentElement;
-    expect(row?.textContent).toContain('Low');
-    expect(row?.textContent).toContain('1,200');
+    expect(lamb.closest('li')?.textContent).toContain('1,200 left');
     // A missing name falls back; an out-of-stock unit shows no count.
     const unnamed = card.getByRole('link', { name: 'Unnamed product' });
     expect(unnamed.getAttribute('href')).toBe(`/offers/${ID(22)}/stock`);
-    expect(unnamed.closest('tr')?.textContent).toContain('None left');
-    expect(screen.queryByRole('link', { name: /Low stock/ })).toBeNull();
+    expect(unnamed.closest('li')?.textContent).toContain('Out of stock');
   });
 
   it('formats units in the Market locale', () => {
     render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />, 'de-DE'));
-    const card = within(screen.getByRole('region', { name: 'Low stock' }));
-    expect(card.getByRole('link', { name: /Lamb mince/ }).closest('tr')?.textContent).toContain(
-      '1.200',
+    const card = within(screen.getByRole('region', { name: 'Stock watch' }));
+    expect(card.getByRole('link', { name: /Lamb mince/ }).closest('li')?.textContent).toContain(
+      '1.200 left',
     );
   });
 
@@ -568,14 +419,14 @@ describe('seller dashboard', () => {
         <SellerDashboard data={{ ...full, lowStock: { kind: 'error' } }} permissionKeys={KEYS} />,
       ),
     );
-    const card = within(screen.getByRole('region', { name: 'Low stock' }));
+    const card = within(screen.getByRole('region', { name: 'Stock watch' }));
     expect(card.getByText(/This could not be loaded/)).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Recent orders' })).toBeTruthy();
   });
 
   it('hides the low-stock card when the session lacks the key or the API refuses', () => {
     render(wrap(<SellerDashboard data={{ ...full, lowStock: null }} permissionKeys={KEYS} />));
-    expect(screen.queryByRole('region', { name: 'Low stock' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Stock watch' })).toBeNull();
   });
 
   it('shows a staff member only the widgets and actions their keys allow', () => {
@@ -589,8 +440,6 @@ describe('seller dashboard', () => {
       ),
     );
     expect(screen.getByRole('region', { name: 'Recent orders' })).toBeTruthy();
-    expect(screen.queryByRole('region', { name: 'Latest earnings entries' })).toBeNull();
-    expect(screen.queryByRole('link', { name: /Your balance/ })).toBeNull();
     const actions = within(screen.getByRole('region', { name: 'Quick actions' }));
     expect(actions.getAllByRole('link').map((a) => a.textContent)).toEqual(['Stock locations']);
   });
@@ -625,8 +474,6 @@ describe('seller dashboard while it streams', () => {
             data={{
               tasks: null,
               orders: Promise.resolve(null),
-              offers: Promise.resolve(null),
-              ledger: null,
               payout: null,
               sources: null,
               lowStock: null,
@@ -673,12 +520,10 @@ describe('startSellerDashboard', () => {
     mocks.get.mockResolvedValue({ kind: 'ok', body: {} });
     await loadSellerDashboard(session(KEYS));
     expect(mocks.get.mock.calls.map((call) => call[0] as string).sort()).toEqual([
-      'catalog/seller/offers?limit=50',
-      'commission-payouts/seller/ledger?limit=5',
       'dashboard/seller/tasks',
       'inventory/seller/low-stock?limit=50',
       'inventory/seller/sources',
-      'ordering/seller/orders?limit=50',
+      'ordering/seller/orders?limit=5',
       'payments/seller/payout-account',
     ]);
   });
@@ -735,17 +580,19 @@ describe('startSellerDashboard', () => {
     );
     const data = await loadSellerDashboard(session(KEYS));
     expect(data.orders).toEqual({ kind: 'error' });
-    expect(data.offers?.kind).toBe('ok');
+    expect(data.lowStock?.kind).toBe('ok');
   });
 
   it('hides a widget the API refuses instead of showing an error', async () => {
     mocks.get.mockImplementation((path: string) =>
       Promise.resolve(
-        path.startsWith('commission-payouts') ? { kind: 'forbidden' } : { kind: 'ok', body: {} },
+        path.startsWith('inventory/seller/low-stock')
+          ? { kind: 'forbidden' }
+          : { kind: 'ok', body: {} },
       ),
     );
     const data = await loadSellerDashboard(session(KEYS));
-    expect(data.ledger).toBeNull();
+    expect(data.lowStock).toBeNull();
     expect(data.orders?.kind).toBe('ok');
   });
 

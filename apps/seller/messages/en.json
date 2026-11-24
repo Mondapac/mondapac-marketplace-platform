@@ -129,13 +129,7 @@
       "body": "Your role has no dashboard widgets. Use the menu to open the sections you can use."
     },
     "scope": {
-      "latest": "Latest {count}",
-      "orders-all": "All your paid orders",
-      "orders-latest": "Among your latest {count} paid orders",
-      "offers-all": "All your offers",
-      "offers-latest": "Among your latest {count} offers",
-      "offers-open": "Waiting offers among your latest {count}",
-      "changed-latest": "Most recently changed first"
+      "latest": "Latest {count}"
     },
     "notice": {
       "payout-unreadable": "We could not check your payout account just now.",
@@ -148,22 +142,6 @@
         "title": "Add a stock location",
         "body": "Stock is held at a location. Add one before you set stock for your offers.",
         "action": "Add a location"
-      }
-    },
-    "attention": {
-      "title": "Needs attention",
-      "to-ship": {
-        "label": "Orders to ship"
-      },
-      "in-review": {
-        "label": "Offers waiting for review"
-      },
-      "changes": {
-        "label": "Offers needing changes"
-      },
-      "balance": {
-        "label": "Your balance",
-        "scope": "All time, as in your earnings"
       }
     },
     "orders": {
@@ -182,53 +160,16 @@
         "unknown": "Unknown"
       }
     },
-    "offers": {
-      "title": "Offers waiting on you or on review",
-      "empty": "No offers are waiting for review or changes.",
-      "col": {
-        "status": "Status"
-      }
-    },
     "low-stock": {
-      "title": "Low stock",
+      "title": "Stock watch",
       "empty": "Nothing is low or out of stock.",
-      "none-left": "None left",
-      "col": {
-        "item": "Item",
-        "status": "Stock",
-        "left": "Units left",
-        "changed": "Changed"
-      },
       "status": {
         "low": "Low",
         "out": "Out of stock",
         "unknown": "Unknown"
-      }
-    },
-    "earnings": {
-      "title": "Latest earnings entries",
-      "empty": "No ledger entries yet.",
-      "col": {
-        "entry": "Entry",
-        "amount": "Amount",
-        "when": "When"
       },
-      "kind": {
-        "sale": "Sale",
-        "shipping": "Delivery fee",
-        "commission": "Commission",
-        "refund-sale": "Refund of sale",
-        "refund-shipping": "Refund of shipping",
-        "refund-commission": "Commission returned",
-        "dispute-debit": "Dispute debit",
-        "dispute-reinstate": "Dispute reinstated",
-        "cashback-seller": "Cashback to exclusive customers",
-        "unknown": "Other"
-      }
-    },
-    "states": {
-      "title": "Offers by status",
-      "empty": "No offers yet."
+      "scope": "Low or out of stock · latest change first",
+      "left": "{count} left"
     },
     "actions": {
       "title": "Quick actions",
@@ -262,17 +203,13 @@
       },
       "card": {
         "sales": "Sales (incl. GST)",
-        "orders": "Paid orders",
-        "aov": "Average order value",
-        "refunded": "Refunded (incl. GST)",
-        "refund-rate": "Refund rate",
-        "on-time": "Shipped on time",
-        "units": "Units sold",
-        "cancelled": "Cancelled orders"
+        "orders": "Seller orders paid",
+        "earnings": "Net earnings",
+        "payout": "Next payout"
       },
       "chart": {
-        "title": "Sales trend (incl. GST)",
-        "alt": "Sales including GST, {period}, against the previous period",
+        "title": "Sales",
+        "alt": "{measure}, {period}, against the previous period",
         "series": "This period",
         "compare": "Previous period",
         "table": "View as table",
@@ -280,11 +217,18 @@
         "date": "Day",
         "empty": "No paid orders in this period or the one before.",
         "zone": "Market time ({zone})",
-        "updated": "updated {time}"
+        "updated": "updated {time}",
+        "measure": {
+          "label": "Measure",
+          "sales": "Sales",
+          "orders": "Orders"
+        },
+        "insufficient": "Not enough data yet",
+        "insufficient-hint": "A line needs at least two days. Pick a longer period."
       },
       "categories": {
         "title": "Top categories",
-        "scope": "By sales after refunds, this period",
+        "scope": "By sales after refunds, this period. Products are not ranked yet.",
         "empty": "No sales in this period.",
         "other": "Other categories",
         "detail": "{orders, plural, one {# order} other {# orders}} · {units, plural, one {# unit} other {# units}}",
@@ -301,7 +245,37 @@
           "at-risk": "At risk",
           "unhealthy": "Unhealthy"
         },
-        "out-of": "/ 100"
+        "out-of": "/100",
+        "scope": "Updated daily · score out of 100",
+        "measures": "Scored measures"
+      },
+      "def": {
+        "what": "What is {name}?",
+        "sales": "Goods of paid orders, with GST, in the period. Delivery fees are not included. Days are counted in your Market time.",
+        "orders": "The number of your seller orders that were paid in the period. Cancelled orders are not taken out.",
+        "earnings": "What you keep from your sales after commission, refunds and cashback you fund, without GST. It comes from your earnings ledger and is shown once a week of ledger records is in.",
+        "payout": "The estimated amount of your next payout and the day it is looked at. It can change before payout day if an order is refunded or disputed."
+      },
+      "earnings": {
+        "scope": "after commission, excl. GST",
+        "not-ready": "Available after a week of payout records"
+      },
+      "payout": {
+        "estimated": "Estimated",
+        "scheduled": "Scheduled for {when}",
+        "looked-at": "Looked at again on {when}",
+        "no-slot": "Date not set yet",
+        "nothing": "Nothing to pay out yet",
+        "block": {
+          "below-minimum": "Under the minimum payout",
+          "awaiting-approval": "Waiting for our check",
+          "account-not-ready": "Payout account not ready",
+          "cooling-off": "Bank account changed recently",
+          "payouts-paused": "Payouts paused",
+          "zone-missing": "Store time zone not set",
+          "second-factor-required": "Two-step sign-in needed",
+          "unknown": "Not on its way yet"
+        }
       }
     }
   },
@@ -5567,7 +5541,9 @@
       "customers": {
         "title": "Customers",
         "about": "People who bought from your store, follow it or joined through your invite link.",
-        "good": ["You see a code and a first name only."],
+        "good": [
+          "You see a code and a first name only."
+        ],
         "related": [
           {
             "label": "Invite customers",
@@ -5582,7 +5558,9 @@
       "customers-code": {
         "title": "Customer",
         "about": "One customer's orders from your store.",
-        "good": ["You see a code and a first name only."],
+        "good": [
+          "You see a code and a first name only."
+        ],
         "related": [
           {
             "label": "Invite customers",
@@ -5621,7 +5599,9 @@
       "accounting-payout-account": {
         "title": "Payout account",
         "about": "Where your payouts go.",
-        "good": ["You add your bank account on Stripe. MondaPac never sees your bank details."],
+        "good": [
+          "You add your bank account on Stripe. MondaPac never sees your bank details."
+        ],
         "related": [
           {
             "label": "Earnings",
@@ -5632,7 +5612,9 @@
       "performance": {
         "title": "Performance",
         "about": "How your store is doing for customers.",
-        "good": ["This is information for you: nothing here changes your store by itself."],
+        "good": [
+          "This is information for you: nothing here changes your store by itself."
+        ],
         "related": []
       },
       "category-proposals": {
@@ -5646,13 +5628,17 @@
       "tag-suggestions": {
         "title": "Tag suggestions",
         "about": "Ask for a tag the list does not have.",
-        "good": ["We review each one and email you the result."],
+        "good": [
+          "We review each one and email you the result."
+        ],
         "related": []
       },
       "tag-suggestions-new": {
         "title": "Suggest a tag",
         "about": "Suggest a tag only if you cannot find it in the Tags field. Once approved, add it to your product yourself.",
-        "good": ["We review each one and email you the result."],
+        "good": [
+          "We review each one and email you the result."
+        ],
         "related": []
       },
       "value-suggestions": {
@@ -5680,7 +5666,9 @@
       "settings-store-profile": {
         "title": "Store profile",
         "about": "What buyers see on your store page.",
-        "good": ["Changes are public as soon as you save them."],
+        "good": [
+          "Changes are public as soon as you save them."
+        ],
         "related": []
       },
       "settings-stock-locations": {
@@ -5759,7 +5747,9 @@
       "account-security": {
         "title": "Security",
         "about": "Two-step verification asks for a code from your phone each time you sign in.",
-        "good": ["It is optional, and we recommend it."],
+        "good": [
+          "It is optional, and we recommend it."
+        ],
         "related": []
       },
       "account-sessions": {

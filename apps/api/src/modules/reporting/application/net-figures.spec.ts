@@ -217,4 +217,14 @@ describe.each(TEST_MARKETS)('the net figures in market %s', (code) => {
     const early = await new ViewSellerNetEarnings(gate, deps).execute(seller, { range });
     expect(early.ok && early.value).toMatchObject({ ready: false, earnings: null });
   });
+  it("reads a dashboard period as the Market's own current range", async () => {
+    const out = await new ViewSellerNetEarnings(gate, deps).execute(seller, { period: '7d' });
+    if (!out.ok) throw new Error(out.error.code);
+    expect(reader.calls).toEqual([{ currency, range, sellerId }]);
+    expect(out.value.range).toEqual(range);
+    expect(out.value.earnings?.netEarnings).toBe(7450n);
+    const bad = await new ViewSellerNetEarnings(gate, deps).execute(seller, { period: 'year' });
+    expect(bad).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    expect(reader.calls).toHaveLength(1);
+  });
 });

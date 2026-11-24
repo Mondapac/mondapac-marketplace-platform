@@ -279,6 +279,7 @@ export {
   type StatCardProps,
   type StatTone,
 } from './dashboard/dashboard.tsx';
+export { KpiCard, type KpiCardProps, type KpiTile } from './dashboard/kpi-card.tsx';
 export { Sparkline } from './dashboard/sparkline.tsx';
 export { StatDelta, type StatDeltaProps } from './dashboard/stat-delta.tsx';
 export {
