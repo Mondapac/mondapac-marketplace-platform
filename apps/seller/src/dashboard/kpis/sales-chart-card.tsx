@@ -11,7 +11,7 @@ import {
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { exponentOf, formatMinor } from '../../price/money.ts';
-import type { Period } from './types.ts';
+import type { ShownPeriod } from './types.ts';
 
 /** The measures the chart can switch between; each is a series the KPI endpoint already sends. */
 export const MEASURES = ['sales', 'orders'] as const;
@@ -47,7 +47,7 @@ export function SalesChartCard({
   readonly currency: string;
   readonly locale: string;
   /** "Last 30 days", for the text alternative. */
-  readonly period: Period;
+  readonly period: ShownPeriod;
   readonly periodLabel: string;
   readonly days: readonly ChartDay[];
   readonly previousDays: readonly ChartDay[];

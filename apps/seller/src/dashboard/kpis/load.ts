@@ -1,5 +1,5 @@
 import 'server-only';
-import type { DashboardSource } from '@mondapac/ui';
+import { validateRange, type DashboardSource } from '@mondapac/ui';
 import { redirect } from 'next/navigation';
 import type { CategoryTree } from '../../catalog/products-list-types.ts';
 import { EARNINGS_VIEW_PERMISSION } from '../../earnings/types.ts';
@@ -9,15 +9,15 @@ import { HEALTH_PATH, type OwnHealth } from '../../performance/types.ts';
 import { serverGet, type ServerGet } from '../../server/server-fetch.ts';
 import type { SellerSession } from '../../server/session.ts';
 import type { Widget } from '../types.ts';
-import {
-  KPIS_PATH,
-  NET_EARNINGS_PATH,
-  type Period,
-  type SellerKpis,
-  type SellerNetEarnings,
-} from './types.ts';
+import { periodQuery, type Selection } from './range.ts';
+import { KPIS_PATH, NET_EARNINGS_PATH, type SellerKpis, type SellerNetEarnings } from './types.ts';
 
 export interface SellerKpiSources {
+  /**
+   * The custom range in the address is not valid: no figure of the period is read, and the page
+   * says so in one line (the reason is under the field in the header).
+   */
+  readonly refused: boolean;
   /** The sales figures (key `ordering.seller-order.view`); null without it. */
   readonly kpis: DashboardSource<Widget<SellerKpis>> | null;
   /** The public category tree, to name the top categories; a failure leaves the ids unnamed. */
@@ -48,24 +48,36 @@ function optionalWidgetOf<T>(answer: ServerGet<T>): Widget<T> | null {
  * Starts the reads of the KPI section, or null when the session holds neither the orders key (the
  * sales figures are sums of the orders) nor the earnings key (net earnings and the next payout).
  * Each group is asked for on its own key: a member with only the earnings key still gets the
- * earnings cards. One call each; the cards stream in on their own.
+ * earnings cards. One call each; the cards stream in on their own. A custom range that is not
+ * valid reads no figure of the period (the API would refuse it too). The net earnings read takes a
+ * preset only (the API does not take a custom range there yet), so a custom range leaves that
+ * card out.
  */
-export function startSellerKpis(session: SellerSession, period: Period): SellerKpiSources | null {
+export function startSellerKpis(
+  session: SellerSession,
+  selection: Selection,
+  today: string,
+): SellerKpiSources | null {
   const orders = session.permissionKeys.includes(ORDER_VIEW_PERMISSION);
   const earnings = session.permissionKeys.includes(EARNINGS_VIEW_PERMISSION);
   if (!orders && !earnings) return null;
-  const kpis = orders
-    ? serverGet<SellerKpis>(`${KPIS_PATH}?period=${period}`).then(widgetOf)
-    : null;
+  const refused =
+    selection.id === 'custom' &&
+    validateRange({ from: selection.from, to: selection.to, today }).length > 0;
+  const query = periodQuery(selection).toString();
+  const kpis =
+    orders && !refused ? serverGet<SellerKpis>(`${KPIS_PATH}?${query}`).then(widgetOf) : null;
   const health = serverGet<OwnHealth>(HEALTH_PATH).then(widgetOf);
-  const categories = orders
-    ? serverGet<CategoryTree>('catalog/categories', { anonymous: true }).then((answer) =>
-        answer.kind === 'ok' ? answer.body : null,
-      )
-    : null;
-  const netEarnings = earnings
-    ? serverGet<SellerNetEarnings>(`${NET_EARNINGS_PATH}?period=${period}`).then(optionalWidgetOf)
-    : null;
+  const categories =
+    orders && !refused
+      ? serverGet<CategoryTree>('catalog/categories', { anonymous: true }).then((answer) =>
+          answer.kind === 'ok' ? answer.body : null,
+        )
+      : null;
+  const netEarnings =
+    earnings && selection.id !== 'custom'
+      ? serverGet<SellerNetEarnings>(`${NET_EARNINGS_PATH}?${query}`).then(optionalWidgetOf)
+      : null;
   const nextPayout = earnings
     ? serverGet<NextPayout>('commission-payouts/seller/payouts/next').then(optionalWidgetOf)
     : null;
@@ -73,5 +85,5 @@ export function startSellerKpis(session: SellerSession, period: Period): SellerK
   for (const read of [kpis, health, categories, netEarnings, nextPayout]) {
     read?.catch(() => undefined);
   }
-  return { kpis, categories, health, netEarnings, nextPayout };
+  return { refused, kpis, categories, health, netEarnings, nextPayout };
 }

@@ -8,6 +8,9 @@ export const DEFAULT_PERIOD: Period = '30d';
 export const isPeriod = (value: unknown): value is Period =>
   typeof value === 'string' && (PERIODS as readonly string[]).includes(value);
 
+/** What the figures cover: a preset, or a range of the seller's own choice. */
+export type ShownPeriod = Period | 'custom';
+
 export interface KpiTotals {
   readonly salesInclTax: string;
   readonly salesExclTax: string;
@@ -38,7 +41,7 @@ export interface KpiCategory {
 
 export interface SellerKpis {
   readonly period: {
-    readonly id: Period;
+    readonly id: ShownPeriod;
     readonly current: { readonly from: string; readonly to: string };
     readonly previous: { readonly from: string; readonly to: string };
     readonly days: number;

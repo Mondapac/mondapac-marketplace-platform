@@ -4,11 +4,20 @@ import messages from '../../messages/en.json';
 import '../../app/globals.css';
 import { SellerDashboard } from '../../src/dashboard/dashboard.tsx';
 import type { SellerKpiSources } from '../../src/dashboard/kpis/load.ts';
+import type { Selection } from '../../src/dashboard/kpis/range.ts';
 import type { SellerKpis } from '../../src/dashboard/kpis/types.ts';
 import type { SellerDashboardData } from '../../src/dashboard/types.ts';
 import type { WorkQueueAnswer } from '../../src/work-queue/queues.ts';
 
 const scenario = new URLSearchParams(window.location.search).get('s') ?? 'full';
+// A custom range shows as many days as its inputs say (1 Sep to 23 Nov is 84 days).
+const selection: Selection =
+  scenario === 'custom'
+    ? { id: 'custom', from: '2026-09-01', to: '2026-11-23' }
+    : scenario === 'custom-bad'
+      ? { id: 'custom', from: '2024-01-01', to: '2026-11-23' }
+      : { id: '30d' };
+const N = scenario === 'custom' ? 84 : 30;
 const ok = <T,>(value: T) => ({ kind: 'ok' as const, value });
 const NOW = '2026-11-23T03:00:00.000Z';
 const ago = (h: number) => new Date(Date.parse(NOW) - h * 3_600_000).toISOString();
@@ -50,14 +59,14 @@ const totals = (rows: ReturnType<typeof series>) => {
     shippedOnTimeBps: 9600,
   };
 };
-const cur = series(30, 66000, 0);
-const prev = series(30, 60000, 3).map((r, i) => ({ ...r, day: dayStr(59 - i) }));
+const cur = series(N, 66000, 0);
+const prev = series(N, 60000, 3).map((r, i) => ({ ...r, day: dayStr(2 * N - 1 - i) }));
 const kpis: SellerKpis = {
   period: {
-    id: '30d',
-    current: { from: dayStr(29), to: dayStr(0) },
-    previous: { from: dayStr(59), to: dayStr(30) },
-    days: 30,
+    id: selection.id,
+    current: { from: dayStr(N - 1), to: dayStr(0) },
+    previous: { from: dayStr(2 * N - 1), to: dayStr(N) },
+    days: N,
   },
   timezone: 'Australia/Brisbane',
   currency: 'AUD',
@@ -204,6 +213,7 @@ const tree = {
   ],
 };
 const sources: SellerKpiSources = {
+  refused: false,
   kpis: ok(kpis),
   categories: tree,
   health: ok(health),
@@ -247,7 +257,24 @@ const empty: SellerKpiSources = {
     topCategories: [],
   }),
 };
-const pick = scenario === 'sparse' ? sparse : scenario === 'empty' ? empty : sources;
+const refused: SellerKpiSources = {
+  ...sources,
+  refused: true,
+  kpis: null,
+  categories: null,
+  netEarnings: null,
+};
+const custom: SellerKpiSources = { ...sources, netEarnings: null };
+const pick =
+  scenario === 'sparse'
+    ? sparse
+    : scenario === 'empty'
+      ? empty
+      : scenario === 'custom-bad'
+        ? refused
+        : scenario === 'custom'
+          ? custom
+          : sources;
 
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages} timeZone="Australia/Brisbane">
@@ -260,9 +287,11 @@ createRoot(document.getElementById('root')!).render(
           'commission-payouts.earnings.view',
           'inventory.stock.view',
           'catalog.own-product.view',
+          'reporting.seller-report.export',
         ]}
         kpis={pick}
-        period="30d"
+        selection={selection}
+        today="2026-11-23"
       />
     </main>
   </NextIntlClientProvider>,

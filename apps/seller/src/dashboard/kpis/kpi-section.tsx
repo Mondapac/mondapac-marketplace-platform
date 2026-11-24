@@ -6,6 +6,7 @@ import {
   DashboardCard,
   DashboardSlot,
   EmptyState,
+  GridItem,
   InsightCard,
   KpiCard,
   Ring,
@@ -30,7 +31,7 @@ import { formatMinor } from '../../price/money.ts';
 import type { Widget } from '../types.ts';
 import type { SellerKpiSources } from './load.ts';
 import { SalesChartCard, type ChartDay } from './sales-chart-card.tsx';
-import type { Period, SellerKpis, SellerNetEarnings } from './types.ts';
+import type { SellerKpis, SellerNetEarnings, ShownPeriod } from './types.ts';
 import { deltasOf, MIN_BASE_ORDERS } from './view.ts';
 
 type Source<T> = DashboardSource<Widget<T> | null>;
@@ -95,7 +96,7 @@ function SalesCard({
   period,
 }: {
   readonly source: Source<SellerKpis>;
-  readonly period: Period;
+  readonly period: ShownPeriod;
 }) {
   const t = useTranslations('dashboard.kpi');
   const locale = useLocale();
@@ -139,7 +140,7 @@ function OrdersCard({
   period,
 }: {
   readonly source: Source<SellerKpis>;
-  readonly period: Period;
+  readonly period: ShownPeriod;
 }) {
   const t = useTranslations('dashboard.kpi');
   const locale = useLocale();
@@ -186,7 +187,7 @@ function NetEarningsCard({
   period,
 }: {
   readonly source: Source<SellerNetEarnings>;
-  readonly period: Period;
+  readonly period: ShownPeriod;
 }) {
   const t = useTranslations('dashboard.kpi');
   const locale = useLocale();
@@ -302,7 +303,7 @@ function SalesChart({
   period,
 }: {
   readonly source: Source<SellerKpis>;
-  readonly period: Period;
+  readonly period: ShownPeriod;
 }) {
   const t = useTranslations('dashboard.kpi');
   const locale = useLocale();
@@ -324,7 +325,9 @@ function SalesChart({
         const updated =
           kpis.refreshedAt === null ? null : shortInstant(kpis.refreshedAt, locale, kpis.timezone);
         const scope = [
-          t(`scope.${period}`),
+          period === 'custom'
+            ? `${dayLabel(kpis.period.current.from, locale)} - ${dayLabel(kpis.period.current.to, locale)}`
+            : t(`scope.${period}`),
           t('chart.zone', { zone: kpis.timezone }),
           updated === null ? null : t('chart.updated', { time: updated }),
         ]
@@ -367,7 +370,7 @@ function TopCategories({
 }: {
   readonly source: Source<SellerKpis>;
   readonly categories: DashboardSource<CategoryTree | null>;
-  readonly period: Period;
+  readonly period: ShownPeriod;
 }) {
   const t = useTranslations('dashboard.kpi');
   const locale = useLocale();
@@ -559,6 +562,24 @@ function StoreHealth({ source }: { readonly source: Source<OwnHealth> }) {
 }
 
 /**
+ * In place of the figures when the custom range is refused: one line with the way out. The reason
+ * is under the field in the page header, so it is not said twice.
+ */
+function InvalidRangeNote() {
+  const t = useTranslations('dashboard.kpi.range');
+  return (
+    <GridItem span={12} mobileOrder="kpi">
+      <p className="w-full min-w-0 rounded-lg border border-line bg-surface p-4 text-sm text-fg-secondary">
+        {t('choose')}{' '}
+        <a className="font-medium text-link underline" href="/?period=30d">
+          {t('back')}
+        </a>
+      </p>
+    </GridItem>
+  );
+}
+
+/**
  * The KPI part of the seller dashboard as items of its DashboardGrid: the four headline cards
  * (Sales, Orders paid, Net earnings, Next payout), the sales chart with its measure switch, the
  * best-selling categories and the store health. Each group is present only when its read was
@@ -570,10 +591,11 @@ export function KpiItems({
   period,
 }: {
   readonly sources: SellerKpiSources;
-  readonly period: Period;
+  readonly period: ShownPeriod;
 }) {
   return (
     <>
+      {sources.refused ? <InvalidRangeNote /> : null}
       {sources.kpis === null ? null : (
         <>
           <SalesCard source={sources.kpis} period={period} />

@@ -316,6 +316,22 @@ export {
   type ColorKey,
   type StatusKey,
 } from './dashboard/chart-palette.ts';
+export {
+  MAX_RANGE_MONTHS,
+  earliestFrom,
+  isMarketDay,
+  marketToday,
+  validateRange,
+  type RangeCode,
+  type RangeField,
+} from './dashboard/report-range.ts';
+export { RangeForm, type RangeFormLabels } from './dashboard/range-form.tsx';
+export { ReportExportMenu, type ReportExportLabels } from './dashboard/report-export-menu.tsx';
+export {
+  downloadReport,
+  ReportDownloadError,
+  type ReportFormat,
+} from './dashboard/report-download.ts';
 export { Gauge, type GaugeProps } from './dashboard/gauge.tsx';
 export { Ring, type RingProps } from './dashboard/ring.tsx';
 export {

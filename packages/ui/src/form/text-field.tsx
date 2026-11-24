@@ -24,6 +24,8 @@ export interface TextFieldProps extends Omit<
   readonly hideLabel?: string;
   /** Id of text outside the field that describes it (a step's instructions); read before help. */
   readonly describedBy?: string;
+  /** Announces the error text as it appears (`role="alert"`): for a form that shows its errors after Apply. */
+  readonly announceError?: boolean;
 }
 
 /** A labelled input with help and error text wired through aria-describedby (WCAG 2.2 AA). */
@@ -38,6 +40,7 @@ export function TextField({
   optionalLabel,
   headAction,
   describedBy: describedByOutside,
+  announceError = false,
   type = 'text',
   className,
   ...rest
@@ -119,7 +122,11 @@ export function TextField({
       ) : null}
       {status ? <div id={statusId}>{status}</div> : null}
       {error ? (
-        <p id={errorId} className="text-sm text-critical-fg">
+        <p
+          id={errorId}
+          {...(announceError ? { role: 'alert' } : {})}
+          className="text-sm text-critical-fg"
+        >
           {error}
         </p>
       ) : null}

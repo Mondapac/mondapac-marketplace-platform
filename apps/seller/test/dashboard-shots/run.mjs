@@ -39,9 +39,13 @@ const views = [
   ['seller-dashboard-withheld', 'withheld', [1280]],
   ['seller-dashboard-sparse', 'sparse', [1280]],
   ['seller-dashboard-empty', 'empty', [1280]],
+  ['seller-dashboard-custom', 'custom', [1280, 768, 375, 360]],
+  ['seller-dashboard-custom-refused', 'custom-bad', [1280, 768, 375, 360]],
+  // The Export menu open on the full dashboard.
+  ['seller-dashboard-export-menu', 'full', [1280, 768, 375, 360], 'export'],
 ];
 for (const scheme of ['light', 'dark']) {
-  for (const [name, scenario, widths] of views) {
+  for (const [name, scenario, widths, action] of views) {
     for (const width of widths) {
       const ctx = await browser.newContext({
         viewport: { width, height: 900 },
@@ -56,6 +60,10 @@ for (const scheme of ['light', 'dark']) {
       );
       await page.getByRole('heading', { name: 'Dashboard' }).waitFor();
       await page.waitForTimeout(500);
+      if (action === 'export') {
+        await page.getByRole('button', { name: 'Export' }).click();
+        await page.waitForTimeout(200);
+      }
       const over = await page.evaluate(
         () => globalThis.document.documentElement.scrollWidth > globalThis.innerWidth,
       );

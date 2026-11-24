@@ -187,20 +187,23 @@
         "today": "Today",
         "7d": "7 days",
         "30d": "30 days",
-        "month": "This month"
+        "month": "This month",
+        "custom": "Custom"
       },
       "compared": {
         "today": "vs yesterday",
         "7d": "vs previous 7 days",
         "30d": "vs previous 30 days",
-        "month": "vs same days last month"
+        "month": "vs same days last month",
+        "custom": "vs the days just before"
       },
       "scope": {
         "today": "Today",
         "7d": "Last 7 days",
         "30d": "Last 30 days",
         "month": "This month so far",
-        "on-time": "Shipped orders only"
+        "on-time": "Shipped orders only",
+        "custom": "Custom range"
       },
       "card": {
         "sales": "Sales (incl. GST)",
@@ -304,6 +307,41 @@
       "delta": {
         "na": "Too few orders in the previous period to compare.",
         "no-sales": "No sales to compare"
+      },
+      "range": {
+        "label": "Custom range",
+        "from": "From",
+        "to": "To",
+        "apply": "Apply",
+        "help": "Market days. At most 13 months, ending by today ({today}).",
+        "error": {
+          "required": "Choose a day.",
+          "format": "Enter a real day.",
+          "after-to": "The start day is after the end day.",
+          "too-long": "Start no earlier than {earliest}.",
+          "future": "The latest end day is {today}.",
+          "enum": "This period is not known.",
+          "unknown": "This value is not accepted.",
+          "general": "This range is not accepted. Check both days and try again."
+        },
+        "choose": "Choose a valid range to see figures, or",
+        "back": "go back to 30 days",
+        "showing": "Showing {period} until you apply."
+      },
+      "export": {
+        "label": "Export",
+        "title": "Figures for the shown period",
+        "csv": "CSV",
+        "csv-help": "Daily figures per Market day, not the categories list. Plain text.",
+        "xlsx": "XLSX",
+        "xlsx-help": "Daily figures per Market day, not the categories list. An Excel workbook.",
+        "done": "Your file is ready.",
+        "invalid-range": "Choose a valid range to export it.",
+        "error": {
+          "invalid": "This period can't be exported. Check the range and try again.",
+          "unavailable": "Export failed. Try again."
+        },
+        "denied": "You can't export this report."
       }
     }
   },

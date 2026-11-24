@@ -30,7 +30,8 @@ import type { SellerOrderView } from '../orders/types.ts';
 import type { SellerKpiSources } from './kpis/load.ts';
 import { KpiItems } from './kpis/kpi-section.tsx';
 import { PeriodSwitch } from './kpis/period-switch.tsx';
-import { DEFAULT_PERIOD, PERIODS, type Period } from './kpis/types.ts';
+import { mayExport, type Selection } from './kpis/range.ts';
+import { DEFAULT_PERIOD, PERIODS } from './kpis/types.ts';
 import { RECENT, type SellerDashboardSources, type Widget } from './types.ts';
 
 const FULFILMENTS = ['to-ship', 'shipped', 'delivered'] as const;
@@ -394,7 +395,9 @@ export function SellerDashboard({
   data,
   permissionKeys,
   kpis,
-  period = DEFAULT_PERIOD,
+  selection = { id: DEFAULT_PERIOD },
+  today,
+  zone = null,
 }: {
   /** The page title (the h1 of the title row, which holds the period switch). */
   readonly title: string;
@@ -402,7 +405,12 @@ export function SellerDashboard({
   readonly permissionKeys: readonly string[];
   /** The KPI reads; absent without the orders key (the figures are sums of the orders). */
   readonly kpis?: SellerKpiSources | null;
-  readonly period?: Period;
+  /** What the address asks for: a preset or a custom range. */
+  readonly selection?: Selection;
+  /** The day now (`YYYY-MM-DD`): the last day a custom range may end on. */
+  readonly today: string;
+  /** The IANA zone the file name's day is read in. */
+  readonly zone?: string | null;
 }) {
   const t = useTranslations('dashboard');
   const tk = useTranslations('dashboard.kpi');
@@ -420,7 +428,7 @@ export function SellerDashboard({
   }
   const grid = (
     <DashboardGrid>
-      {kpis == null ? null : <KpiItems sources={kpis} period={period} />}
+      {kpis == null ? null : <KpiItems sources={kpis} period={selection.id} />}
       <TodaysTasks source={data.tasks} layout={{ span: 4, tabletSpan: 6, mobileOrder: 'tasks' }} />
       <LowStock data={data} canOpenOffers={keys.has('catalog.own-product.view')} />
       <Orders data={data} />
@@ -452,8 +460,14 @@ export function SellerDashboard({
         <PeriodSwitch
           title={title}
           label={tk('period.label')}
-          options={PERIODS.map((id) => ({ id, label: tk(`period.${id}`) }))}
-          value={period}
+          options={[...PERIODS, 'custom' as const].map((id) => ({
+            id,
+            label: tk(`period.${id}`),
+          }))}
+          selection={selection}
+          today={today}
+          zone={zone}
+          canExport={mayExport(permissionKeys)}
         >
           {body}
         </PeriodSwitch>
