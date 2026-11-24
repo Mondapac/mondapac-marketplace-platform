@@ -145,8 +145,9 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
   pass (logged with `refused: false`, every run) holds the backfill at its page: look it up by id
   in `reporting.fact-write-failed`.
 - Recovery for a refused fact older than the reconcile's seven days, or to run the backfill again
-  after a recorder fix: an operator deletes all of the Market's rows of
-  `reporting.backfill_progress` as the migration role (all, so the kinds keep one window end); the next tick starts again with a new `until`. There is no admin screen for
+  after a recorder fix: an operator deletes the Market's sales rows of
+  `reporting.backfill_progress` (`seller-orders`, `refunds` and `delivery`; the `ledger` row has its
+  own reset, below) as the migration role (all three, so the kinds keep one window end); the next tick starts again with a new `until`. There is no admin screen for
   this yet (FE register, «پیشرفت backfill گزارش در پنل ادمین»).
 - The nightly reconcile's counter is now `failedFacts` (it always counted facts, not batches).
 - Follow-up (Hassan, PR 12 L3): `isFactRefusal` treats any `RangeError` or `TypeError` as a
@@ -158,7 +159,7 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
 
 - `seller_orders.delivery_method` (pickup, instant, same_day, scheduled; CHECK) and
   `seller_orders.delivery_state` (`VARCHAR(3)`, 1 to 3 capital letters or digits; CHECK, and only with
-  a method), migration `20261123120000_reporting_seller_orders_delivery`. Attributes of the fact,
+  a method), migration `20261124010000_reporting_seller_orders_delivery`. Attributes of the fact,
   not rollup keys: no rollup or index changes. The application role may UPDATE both (they are
   measures of the fact, not its keys).
 - Unknown is NULL, the same as `shipped_on_time` (no sentinel such as `UNK`): a delivery placed
@@ -175,12 +176,12 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
 - `shipping.postcodeRegions` is Market configuration (`platform/market-config/postcode-regions.ts`):
   closed ranges per region code; a postcode matches a range of its own length; ranges of one length
   must not overlap; every code must be in `customers.address.regions`. AU has the main Australia Post
-  ranges (border postcodes go to the range's state, repo register FE-173); the synthetic Market has
+  ranges (border postcodes go to the range's state, repo register FE-179); the synthetic Market has
   its own. No country is named in code.
 - Once known, a state is kept as first recorded (`keepKnownInstants`): a later read may no longer
   know it (shipping removes a buyer's expired quotes 24 hours later) or may give the store's new
   region after a move. The method is ordering's and never changes. A state that stays unknown
-  because the quote was removed before the first record: repo register FE-172.
+  because the quote was removed before the first record: repo register FE-178.
 - All three writers fill the columns (the event worker, the nightly reconcile, the history backfill),
   since they share `ReportSources.sellerOrders`. A shipping failure fails the read like a catalog
   failure: the delivery or the page is tried again.
@@ -191,7 +192,8 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
   cursor after each page, so it resumes after a stop. Every fact it writes gets a method, so the pass
   ends even when the state stays unknown. On a Market whose backfill finished before this PR, the
   first tick adds the `delivery` row (with its own `until`, which the pass does not use). The reset
-  procedure above now deletes all of the Market's rows.
+  procedure above deletes it with the other sales rows. The CHECK swap keeps every kind before it
+  (`seller-orders`, `refunds`, `ledger`) and adds `delivery`.
 
 ## Admin KPIs (phase 5, PR 14)
 
@@ -248,3 +250,80 @@ still answers.
   of verified halal listings, sellers with orders out of approved sellers, out of stock everywhere
   and products missing details need new owner counts (FE-148, FE-149). The KPI strip loads only for
   a session with the orders or the money key, so the card needs one of them too (FE-150).
+
+## Ledger facts, net revenue and net earnings (dashboards v2, phase 1, PR 4)
+
+- What reporting reads: `COMMISSION_PAYOUTS_REPORTING_FACADE`
+  (`commission-payouts/contracts/commission-payouts-reporting.facade.ts`), rule `system`, not over
+  HTTP, read only: `ledgerReportEntries` (the rows of at most 100 seller orders) and
+  `ledgerEntriesRecorded` (rows recorded in a window, keyset by entry id, at most 500). Only the
+  kinds `commission`, `refund-commission`, `cashback-seller` and `refund-cashback-seller`, and only
+  ids and money: entry, seller order, seller, kind, amount, commission base, currency, occurred at.
+  No order, line, rate, source (refund, credit), customer or name.
+- Worker: `commission-payouts.ledger-recorded.v1` (subscriber `reporting.ledger-recorded`, inbox)
+  hands the posting's seller order to `reporting.record-ledger-facts`, which reads every reportable
+  row of that seller order again (not only the posting), then records them in one `runOnce` unit,
+  serializable. A redelivery is stopped by the inbox; a late or repeated event of the same seller
+  order writes nothing new.
+- Facts: `reporting.ledger_entries` (migration `20261123120000_reporting_ledger_facts`), one row
+  per ledger row, insert-only (no UPDATE grant), amounts as stored (never negative, the kind gives
+  the direction), `market_day` of `occurred_at` in the Market's zone. A row read again that differs
+  from the stored one throws `ReportingLedgerConflict` (never overwritten); a row in another
+  currency, or malformed, is a `RangeError`. Rollup: `reporting.daily_ledger`, one row per Market
+  day, seller, currency and kind (entries, distinct seller orders, amount, base), rebuilt per seller
+  day by delete and insert (no UPDATE grant), like the sales rollups.
+- Backfill: `reporting.backfill-ledger` (job, every 5 minutes and at worker start) reads every
+  reportable row recorded before its own first start, pages of 200, at most 20 pages or 60 s a run,
+  cursor on the `ledger` row of `reporting.backfill_progress` (its own `until`, apart from the sales
+  kinds; the migration adds the kind to the CHECK). Same rules as the sales backfill: a failed read
+  or a write that may pass stops before the cursor; a refused row is logged
+  (`reporting.fact-write-failed`, `kind: ledger`), counted and passed over. Reset: delete the
+  Market's `ledger` row as the migration role. There is no nightly ledger reconcile (FE-170).
+- Net revenue (`reporting.view-marketplace-net-revenue`, key `commission-payouts.settlement.view`,
+  platform admin acting as themselves): commission + delivery margin − platform-funded discounts −
+  platform-funded cashback − fleet fees, without GST. Only the commission has a source: commission
+  charged less what seller-borne refunds gave back (the base is goods without GST, so the commission
+  carries none). Delivery margin, platform-funded discounts and cashback are `not-available`
+  (`not-reported`: ordering and promotions hold them, no facade carries them; FE-167, FE-168), fleet
+  fees `not-recorded` (FE-169). `total` is `{status: 'complete', amount}` only when every component
+  is available; otherwise `{status: 'partial', missing}` with NO amount, so a partial sum can never
+  be shown as the total (Ali, PR 4 review). Each available component keeps its own amount, so the
+  screen shows the commission under its own label. A seller's own cashback is the seller's money
+  and never lowers it.
+- Seller net earnings (`reporting.view-seller-net-earnings`, key `commission-payouts.earnings.view`,
+  the session's seller only, allowed while not approved like its ledger): commission base of the
+  range's goods − base of its seller-borne refunds − net commission − net seller cashback. A refund
+  the platform bears takes nothing from the seller, so it is not in it; delivery fees are not
+  goods and are left out. The base uses the ledger's provisional GST until the tax module gives each
+  line's tax, so it can differ slightly from GMV without GST of the sales rollups.
+- Readiness ("one week of matching ledger", design: FE-066 of the dashboards upgrade): ready when
+  the ledger backfill has finished without refusing a row (`failed_facts = 0`, else
+  `backfill-refused-rows`: a refused row is a hole the days may not show), at least
+  `READINESS_MIN_MATCHED_SELLER_ORDERS` = 7 seller orders matched across the window (else
+  `insufficient-activity`), AND each of the 7 Market days ending yesterday matches. The minimum is
+  one a day on average: an empty week matches trivially (0 = 0) and proves nothing, while seven
+  matched orders show the subscriber kept up on real traffic. A quiet Market keeps the figures
+  withheld (fail-closed) rather than showing them unproven; the constant is in `domain/ledger.ts`.
+  The match: every
+  seller order the sales facts hold as paid that day with goods above 0 has a `commission` fact that
+  day, and every seller order with a `commission` fact that day is held as paid that day (or held as
+  never seen paid, a seller order first read after it was cancelled). Chosen over "the subscription
+  has been live 7 days" because it detects a lost event, a failed backfill page and a day-boundary
+  bug, and it needs no new state. Amounts are not compared: the ledger's base uses the provisional
+  tax rate, the sales facts the line's tax. Today is never in the window (rows still arriving). Both
+  reads answer the figure as null until ready; the admin answer carries the day counts, the seller
+  answer only the flag. The readiness checks the `commission` rows only: `refund-commission` and
+  the cashback kinds are trusted to travel with them (same ledger table, same event, same
+  backfill), so a lost refund or cashback row is not detected by it (the reconcile, FE-170, would).
+- Indexes and growth (Mojtaba, PR 4 review): the backfill pages commission-payouts' ledger by
+  `(market_id, id)`; that ledger has no such index today, so its next migration (in its own module)
+  should add `(market_id, id)` before the history grows. `reporting.ledger_entries` needs no
+  partitioning below about 5M rows; above that, partition by `market_day` month.
+- The readiness reads filter by Market, tenant and currency (the known-unpaid lookup too) and
+  dedupe the commission (seller order, day) pairs in memory, with no `DISTINCT` in the query.
+- Both reads take a range of Market days (at most 13 months, ending today at the latest) and are
+  on the KPI facade (`marketplaceNetRevenue`, `sellerNetEarnings`) for PR 6 and PR 8. No HTTP
+  endpoint yet.
+- Deferred from the PR 4 review: a shared `sessionSellerOf` in `platform/authz` (FE-171) and a
+  boundaries rule that lets only `modules/reporting` import `COMMISSION_PAYOUTS_REPORTING_FACADE`
+  (FE-172; today the facade's rule `system` is the control, tested per use case).

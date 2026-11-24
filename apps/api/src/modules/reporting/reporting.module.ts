@@ -8,6 +8,26 @@ import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { CATALOG_FACADE, CatalogModule, type CatalogFacade } from '../catalog';
 import {
+  COMMISSION_PAYOUTS_REPORTING_FACADE,
+  CommissionPayoutsModule,
+  type CommissionPayoutsReportingFacade,
+} from '../commission-payouts';
+import { LedgerRecorder } from './application/ledger-recorder';
+import type {
+  LedgerBackfillDependencies,
+  LedgerFactsDependencies,
+} from './application/ledger-facts-sync';
+import type { LedgerKpiDependencies } from './application/ledger-kpi-flow';
+import { LEDGER_KPI_READER, type LedgerKpiReader } from './application/ports/ledger-kpi-reader';
+import { LEDGER_SOURCES, type LedgerSources } from './application/ports/ledger-sources';
+import { BackfillLedger } from './application/use-cases/backfill-ledger.use-case';
+import { RecordLedgerFacts } from './application/use-cases/record-ledger-facts.use-case';
+import { ViewMarketplaceNetRevenue } from './application/use-cases/view-marketplace-net-revenue.use-case';
+import { ViewSellerNetEarnings } from './application/use-cases/view-seller-net-earnings.use-case';
+import { FacadeLedgerSources } from './infrastructure/facade-ledger-sources';
+import { backfillLedgerJob } from './presentation/jobs/backfill-ledger.job';
+import { ledgerFactsSubscriptions } from './presentation/subscribers/ledger-facts.subscriptions';
+import {
   ORDERING_REPORTING_FACADE,
   OrderingModule,
   type OrderingReportingFacade,
@@ -52,17 +72,26 @@ import { reportFactsSubscriptions } from './presentation/subscribers/report-fact
 
 const REPORT_FACTS_DEPENDENCIES = Symbol('REPORT_FACTS_DEPENDENCIES');
 const ADMIN_KPI_DEPENDENCIES = Symbol('ADMIN_KPI_DEPENDENCIES');
+const LEDGER_FACTS_DEPENDENCIES = Symbol('LEDGER_FACTS_DEPENDENCIES');
+const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
 
 /**
  * The reporting module (dashboards upgrade, option B, phase 3): the facts behind the dashboard
  * numbers and their daily rollups. It reads no table of another module: the facts come from
  * ordering's reporting facade and catalog's `offerPrimaryCategories`, through the event worker
- * (ordering's order and refund events) and the nightly reconcile. No module imports it. It
+ * (ordering's order and refund events) and the nightly reconcile; the ledger facts come from
+ * commission-payouts' reporting facade (its `ledger-recorded` event and the ledger backfill). No module imports it. It
  * publishes no event and holds no permission yet (the KPI reads of phases 5 and 6 add them). The history backfill job brings
  * the facts recorded before the module was deployed in, once.
  */
 @Module({
-  imports: [PersistenceModule, OrderingModule, CatalogModule, ShippingModule],
+  imports: [
+    PersistenceModule,
+    OrderingModule,
+    CatalogModule,
+    ShippingModule,
+    CommissionPayoutsModule,
+  ],
   controllers: [SellerKpisController],
   providers: [
     ...reportingProviders,
@@ -144,6 +173,51 @@ const ADMIN_KPI_DEPENDENCIES = Symbol('ADMIN_KPI_DEPENDENCIES');
       inject: [USE_CASE_GATE, ADMIN_KPI_DEPENDENCIES],
       useFactory: (gate: UseCaseGate, deps: AdminKpiDependencies) => new type(gate, deps),
     })),
+    // The ledger facts (dashboards v2, phase 1, PR 4).
+    {
+      provide: LEDGER_SOURCES,
+      inject: [COMMISSION_PAYOUTS_REPORTING_FACADE],
+      useFactory: (ledger: CommissionPayoutsReportingFacade): LedgerSources =>
+        new FacadeLedgerSources(ledger),
+    },
+    {
+      provide: LEDGER_FACTS_DEPENDENCIES,
+      inject: [UNIT_OF_WORK, LEDGER_SOURCES, LedgerRecorder, CLOCK, BACKFILL_PROGRESS_STORE],
+      useFactory: (
+        unitOfWork: UnitOfWork,
+        sources: LedgerSources,
+        recorder: LedgerRecorder,
+        clock: Clock,
+        progress: BackfillProgressStore,
+      ): LedgerBackfillDependencies => ({ unitOfWork, sources, recorder, clock, progress }),
+    },
+    {
+      provide: RecordLedgerFacts,
+      inject: [USE_CASE_GATE, LEDGER_FACTS_DEPENDENCIES],
+      useFactory: (gate: UseCaseGate, deps: LedgerFactsDependencies) =>
+        new RecordLedgerFacts(gate, deps),
+    },
+    {
+      provide: BackfillLedger,
+      inject: [USE_CASE_GATE, LEDGER_FACTS_DEPENDENCIES],
+      useFactory: (gate: UseCaseGate, deps: LedgerBackfillDependencies) =>
+        new BackfillLedger(gate, deps),
+    },
+    {
+      provide: LEDGER_KPI_DEPENDENCIES,
+      inject: [UNIT_OF_WORK, LEDGER_KPI_READER, MARKET_ZONE, CLOCK],
+      useFactory: (
+        unitOfWork: UnitOfWork,
+        reader: LedgerKpiReader,
+        zone: MarketZone,
+        clock: Clock,
+      ): LedgerKpiDependencies => ({ unitOfWork, reader, zone, clock }),
+    },
+    ...[ViewMarketplaceNetRevenue, ViewSellerNetEarnings].map((type) => ({
+      provide: type,
+      inject: [USE_CASE_GATE, LEDGER_KPI_DEPENDENCIES],
+      useFactory: (gate: UseCaseGate, deps: LedgerKpiDependencies) => new type(gate, deps),
+    })),
     {
       provide: REPORTING_KPI_FACADE,
       inject: [
@@ -151,23 +225,41 @@ const ADMIN_KPI_DEPENDENCIES = Symbol('ADMIN_KPI_DEPENDENCIES');
         ViewMarketplaceFinanceKpis,
         ViewMarketplaceTopSellers,
         ViewMarketplaceTopCategories,
+        ViewMarketplaceNetRevenue,
+        ViewSellerNetEarnings,
       ],
       useFactory: (
         operations: ViewMarketplaceOperationsKpis,
         finance: ViewMarketplaceFinanceKpis,
         topSellers: ViewMarketplaceTopSellers,
         topCategories: ViewMarketplaceTopCategories,
-      ) => new ReportingKpiFacadeImplementation(operations, finance, topSellers, topCategories),
+        netRevenue: ViewMarketplaceNetRevenue,
+        netEarnings: ViewSellerNetEarnings,
+      ) =>
+        new ReportingKpiFacadeImplementation(
+          operations,
+          finance,
+          topSellers,
+          topCategories,
+          netRevenue,
+          netEarnings,
+        ),
     },
-    registerSubscriptionsFrom('reporting', [RecordReportFacts], (record: RecordReportFacts) =>
-      reportFactsSubscriptions(record),
+    registerSubscriptionsFrom(
+      'reporting',
+      [RecordReportFacts, RecordLedgerFacts],
+      (record: RecordReportFacts, ledger: RecordLedgerFacts) => [
+        ...reportFactsSubscriptions(record),
+        ...ledgerFactsSubscriptions(ledger),
+      ],
     ),
     registerJobsFrom(
       'reporting',
-      [ReconcileReportFacts, BackfillHistory],
-      (reconcile: ReconcileReportFacts, backfill: BackfillHistory) => [
+      [ReconcileReportFacts, BackfillHistory, BackfillLedger],
+      (reconcile: ReconcileReportFacts, backfill: BackfillHistory, ledger: BackfillLedger) => [
         reconcileReportFactsJob(reconcile),
         backfillHistoryJob(backfill),
+        backfillLedgerJob(ledger),
       ],
     ),
   ],

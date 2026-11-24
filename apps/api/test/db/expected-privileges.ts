@@ -951,6 +951,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'reporting.daily_seller_sales': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'reporting.daily_category_sales': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'reporting.inbox': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Dashboards v2, phase 1, PR 4: ledger facts are insert-only; the rollup is delete and insert.
+    'reporting.ledger_entries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'reporting.daily_ledger': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     // The backfill's cursor: its Market, kind, window end and start time stay.
     'reporting.backfill_progress': {
       table: ['INSERT', 'SELECT'],

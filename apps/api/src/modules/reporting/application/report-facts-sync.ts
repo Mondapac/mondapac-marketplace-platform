@@ -7,6 +7,7 @@ import { TransactionConflictError } from '../../../platform/unit-of-work/errors'
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { FactRecorder } from './fact-recorder';
 import { ReportingFactConflict } from './ports/fact-store';
+import { ReportingLedgerConflict } from './ports/ledger-fact-store';
 import {
   SOURCE_BATCH,
   type RefundSource,
@@ -123,12 +124,12 @@ export const FACT_KINDS = ['seller-orders', 'refunds'] as const;
 export type FactKind = (typeof FACT_KINDS)[number];
 
 /**
- * The passes of the history backfill, in the order they run: the two kinds of fact, then
+ * The passes of the sales history backfill (the ledger backfill has its own row), in the order they run: the two kinds of fact, then
  * `delivery`, which records again the seller orders reporting holds without a delivery method (rows
  * recorded before the delivery columns; dashboards v2).
  */
-export const BACKFILL_KINDS = [...FACT_KINDS, 'delivery'] as const;
-export type BackfillKind = (typeof BACKFILL_KINDS)[number];
+export const SALES_BACKFILL_KINDS = [...FACT_KINDS, 'delivery'] as const;
+export type SalesBackfillKind = (typeof SALES_BACKFILL_KINDS)[number];
 
 /** The name the nightly reconcile's logs carry (its job's name). */
 const RECONCILE_JOB = 'reporting.reconcile-facts';
@@ -168,6 +169,7 @@ const REFUSING_PRISMA_CODES = new Set(['P2000', 'P2003', 'P2004', 'P2011']);
 export function isFactRefusal(error: unknown): boolean {
   if (
     error instanceof ReportingFactConflict ||
+    error instanceof ReportingLedgerConflict ||
     error instanceof RangeError ||
     error instanceof TypeError
   ) {
@@ -234,7 +236,7 @@ export async function writePage(
 export async function recordPage(
   deps: ReportFactsDependencies,
   context: CallContext,
-  kind: BackfillKind,
+  kind: SalesBackfillKind,
   after: string | null,
   page: { readonly next: string | null; readonly request: RecordRequest },
   job: string,

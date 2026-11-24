@@ -292,6 +292,8 @@
     "rule": "permissions",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "commission-payouts.ledger-entries-recorded", "rule": "system" },
+  { "name": "commission-payouts.ledger-report-entries", "rule": "system" },
   {
     "name": "commission-payouts.list-own-disputes",
     "rule": "own-resources",
@@ -873,8 +875,15 @@
   },
   { "name": "promotions.view-store-follow-gift", "rule": "anonymous" },
   { "name": "reporting.backfill-history", "rule": "system" },
+  { "name": "reporting.backfill-ledger", "rule": "system" },
   { "name": "reporting.reconcile-report-facts", "rule": "system" },
+  { "name": "reporting.record-ledger-facts", "rule": "system" },
   { "name": "reporting.record-report-facts", "rule": "system" },
+  {
+    "name": "reporting.view-seller-net-earnings",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   {
     "name": "reviews.cast-helpful-vote",
     "rule": "own-resources",

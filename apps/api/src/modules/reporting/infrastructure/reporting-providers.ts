@@ -19,6 +19,11 @@ import { SELLER_KPI_READER, type SellerKpiReader } from '../application/ports/se
 import { PrismaSellerKpiReader } from './prisma-seller-kpi-reader';
 import { PrismaRollupStore } from './prisma-rollup-store';
 import { RegistryMarketZone } from './registry-market-zone';
+import { LedgerRecorder } from '../application/ledger-recorder';
+import { LEDGER_FACT_STORE, type LedgerFactStore } from '../application/ports/ledger-fact-store';
+import { LEDGER_KPI_READER, type LedgerKpiReader } from '../application/ports/ledger-kpi-reader';
+import { PrismaLedgerFactStore } from './prisma-ledger-fact-store';
+import { PrismaLedgerKpiReader } from './prisma-ledger-kpi-reader';
 
 /** Binds the ports of reporting. Only this layer may reach `PrismaService`. */
 export const reportingProviders: readonly FactoryProvider[] = [
@@ -60,5 +65,22 @@ export const reportingProviders: readonly FactoryProvider[] = [
     inject: [FACT_STORE, ROLLUP_STORE, MARKET_ZONE],
     useFactory: (facts: FactStore, rollups: RollupStore, zone: MarketZone): FactRecorder =>
       new FactRecorder({ facts, rollups, zone }),
+  },
+  {
+    provide: LEDGER_FACT_STORE,
+    inject: [PrismaService, CLOCK],
+    useFactory: (prisma: PrismaService, clock: Clock): LedgerFactStore =>
+      new PrismaLedgerFactStore(prisma, () => clock.now()),
+  },
+  {
+    provide: LEDGER_KPI_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): LedgerKpiReader => new PrismaLedgerKpiReader(prisma),
+  },
+  {
+    provide: LedgerRecorder,
+    inject: [LEDGER_FACT_STORE, MARKET_ZONE],
+    useFactory: (store: LedgerFactStore, zone: MarketZone): LedgerRecorder =>
+      new LedgerRecorder({ store, zone }),
   },
 ];

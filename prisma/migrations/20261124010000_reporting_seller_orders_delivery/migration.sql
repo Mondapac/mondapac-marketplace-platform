@@ -24,7 +24,7 @@ ALTER TABLE "reporting"."seller_orders" VALIDATE CONSTRAINT "seller_orders_deliv
 -- The backfill's third kind: the pass that fills the two columns on rows recorded before them.
 ALTER TABLE "reporting"."backfill_progress" DROP CONSTRAINT "backfill_progress_kind_check";
 ALTER TABLE "reporting"."backfill_progress"
-  ADD CONSTRAINT "backfill_progress_kind_check" CHECK ("kind" IN ('seller-orders', 'refunds', 'delivery'));
+  ADD CONSTRAINT "backfill_progress_kind_check" CHECK ("kind" IN ('seller-orders', 'refunds', 'ledger', 'delivery'));
 
 -- The application role writes the two columns again with the fact (they are measures of the fact,
 -- not its keys); SELECT and INSERT are already table-wide.

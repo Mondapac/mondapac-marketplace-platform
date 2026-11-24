@@ -197,7 +197,7 @@ model ReportingInbox {
 model ReportingBackfillProgress {
   marketId    String    @map("market_id") @db.VarChar(8)
   tenantId    String    @map("tenant_id")
-  /// "seller-orders" or "refunds".
+  /// "seller-orders", "refunds" or "ledger" (the ledger backfill, its own window end).
   kind        String    @db.VarChar(16)
   until       DateTime  @db.Timestamptz(6)
   after       String?   @db.Uuid
@@ -210,5 +210,56 @@ model ReportingBackfillProgress {
 
   @@id([marketId, kind])
   @@map("backfill_progress")
+  @@schema("reporting")
+}
+
+/// One row of commission-payouts' seller ledger of a kind reporting reads (dashboards v2, phase 1,
+/// PR 4): `commission`, `refund-commission`, `cashback-seller` or `refund-cashback-seller`, read
+/// through its reporting facade. Insert-only, like the ledger row it copies: the amount is never
+/// negative and the kind gives the direction. `market_day` is the day of `occurred_at` in the
+/// Market's zone. Ids and money only.
+model ReportingLedgerEntry {
+  marketId      String   @map("market_id") @db.VarChar(8)
+  tenantId      String   @map("tenant_id")
+  /// The ledger row's id (plain, no foreign key across schemas).
+  entryId       String   @map("entry_id") @db.Uuid
+  sellerOrderId String   @map("seller_order_id") @db.Uuid
+  sellerId      String   @map("seller_id") @db.Uuid
+  kind          String   @db.VarChar(24)
+  currency      String   @db.Char(3)
+  amount        BigInt
+  /// The commission base (goods without GST) of the two commission kinds; null for cashback.
+  baseAmount    BigInt?  @map("base_amount")
+  occurredAt    DateTime @map("occurred_at") @db.Timestamptz(6)
+  marketDay     DateTime @map("market_day") @db.Date
+  recordedAt    DateTime @map("recorded_at") @db.Timestamptz(6)
+
+  @@id([marketId, entryId])
+  @@index([marketId, marketDay, sellerId])
+  @@index([marketId, sellerOrderId])
+  @@map("ledger_entries")
+  @@schema("reporting")
+}
+
+/// The daily ledger rollup: one row per Market day, seller, currency and ledger kind, rebuilt from
+/// `ledger_entries` (delete and insert) whenever a fact of that day and seller arrives.
+model ReportingDailyLedger {
+  marketId     String   @map("market_id") @db.VarChar(8)
+  tenantId     String   @map("tenant_id")
+  marketDay    DateTime @map("market_day") @db.Date
+  sellerId     String   @map("seller_id") @db.Uuid
+  currency     String   @db.Char(3)
+  kind         String   @db.VarChar(24)
+  entries      Int
+  /// Distinct seller orders with a row of the kind on the day.
+  sellerOrders Int      @map("seller_orders")
+  amount       BigInt
+  /// The sum of the commission bases; 0 for the cashback kinds.
+  baseAmount   BigInt   @map("base_amount")
+  refreshedAt  DateTime @map("refreshed_at") @db.Timestamptz(6)
+
+  @@id([marketId, marketDay, sellerId, currency, kind])
+  @@index([marketId, sellerId, marketDay])
+  @@map("daily_ledger")
   @@schema("reporting")
 }

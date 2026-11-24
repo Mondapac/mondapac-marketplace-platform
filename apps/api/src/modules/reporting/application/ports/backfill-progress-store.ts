@@ -1,9 +1,13 @@
 import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { BackfillKind } from '../report-facts-sync';
+import type { SalesBackfillKind } from '../report-facts-sync';
+
+/** The kind of the ledger history backfill (dashboards v2, phase 1, PR 4). */
+export const LEDGER_BACKFILL_KIND = 'ledger';
+export type BackfillKind = SalesBackfillKind | typeof LEDGER_BACKFILL_KIND;
 
 /** Where the history backfill of one kind of fact stands in one Market. */
-export interface BackfillProgress {
-  readonly kind: BackfillKind;
+export interface BackfillProgress<K extends BackfillKind = SalesBackfillKind> {
+  readonly kind: K;
   /**
    * The window's end, fixed when the backfill started; later facts come from the worker. The
    * `delivery` pass reads reporting's own rows instead and does not use it; on a Market whose
@@ -31,20 +35,29 @@ export interface BackfillStep {
  */
 export interface BackfillProgressStore {
   /**
-   * The progress of every kind, in the order of `BACKFILL_KINDS`. A kind with none yet is started
+   * The progress of every kind, in the order of `SALES_BACKFILL_KINDS`. A kind with none yet is started
    * with `until`, all in one unit so every kind shares one window end (a concurrent start keeps the
    * first). Once every kind has a row it only reads.
    */
   startAll(market: MarketContext, until: Temporal.Instant): Promise<readonly BackfillProgress[]>;
   /**
+   * The progress of the ledger backfill, started with `until` when it has none (a concurrent start
+   * keeps the first). Its window end is its own: the ledger backfill starts when it is deployed,
+   * not with the sales backfill.
+   */
+  startLedger(
+    market: MarketContext,
+    until: Temporal.Instant,
+  ): Promise<BackfillProgress<typeof LEDGER_BACKFILL_KIND>>;
+  /**
    * Moves the progress on from `from` to `to`, only while it is still at `from` and unfinished: a
    * late overlapping run that wrote the same page finds it moved and stops. Null when it had moved.
    */
-  advance(
+  advance<K extends BackfillKind>(
     market: MarketContext,
-    from: BackfillProgress,
+    from: BackfillProgress<K>,
     to: BackfillStep,
-  ): Promise<BackfillProgress | null>;
+  ): Promise<BackfillProgress<K> | null>;
 }
 
 export const BACKFILL_PROGRESS_STORE = Symbol('reporting.BackfillProgressStore');
