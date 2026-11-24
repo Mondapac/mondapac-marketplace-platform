@@ -43,9 +43,9 @@ export function PeriodSelector({ label, options, value, onChange, note }: Period
       </label>
       <fieldset className="hidden min-w-0 sm:block">
         <legend className="sr-only">{label}</legend>
-        <div className="inline-flex h-(--mp-size-control) max-w-full rounded-md border border-line-control bg-surface p-0.5">
+        <div className="inline-flex h-(--mp-size-control) max-w-full overflow-x-auto rounded-md border border-line-control bg-surface p-0.5">
           {options.map((option) => (
-            <label key={option.id} className="relative flex">
+            <label key={option.id} className="relative flex shrink-0">
               <input
                 type="radio"
                 name={name}
