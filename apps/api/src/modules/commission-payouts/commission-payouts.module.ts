@@ -1,6 +1,7 @@
 import { CountFailedPayouts } from './application/use-cases/count-failed-payouts.use-case';
 import { CountPayoutHolds } from './application/use-cases/count-payout-holds.use-case';
 import { CountDisputesDue } from './application/use-cases/count-disputes-due.use-case';
+import { CountDisputesOpened } from './application/use-cases/count-disputes-opened.use-case';
 import { CountSellerDisputesNeedingReply } from './application/use-cases/count-seller-disputes-needing-reply.use-case';
 import { CountSellerPayoutHolds } from './application/use-cases/count-seller-payout-holds.use-case';
 import {
@@ -470,6 +471,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       CountDisputesDue,
       CountSellerDisputesNeedingReply,
       CountSellerPayoutHolds,
+      CountDisputesOpened,
     ].map((type) => ({
       provide: type,
       inject: [USE_CASE_GATE, UNIT_OF_WORK, COMMISSION_PAYOUTS_WORK_QUEUE_COUNT_READER],
@@ -487,6 +489,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         CountDisputesDue,
         CountSellerDisputesNeedingReply,
         CountSellerPayoutHolds,
+        CountDisputesOpened,
       ],
       useFactory: (
         failedPayouts: CountFailedPayouts,
@@ -494,6 +497,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         disputesDue: CountDisputesDue,
         sellerDisputes: CountSellerDisputesNeedingReply,
         sellerHolds: CountSellerPayoutHolds,
+        disputesOpened: CountDisputesOpened,
       ) =>
         new CommissionPayoutsWorkQueueFacadeImplementation(
           failedPayouts,
@@ -501,6 +505,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           disputesDue,
           sellerDisputes,
           sellerHolds,
+          disputesOpened,
         ),
     },
     // Reporting's reads of the ledger (dashboards v2, phase 1, PR 4): rule `system`, read only.

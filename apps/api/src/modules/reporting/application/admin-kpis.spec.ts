@@ -16,7 +16,10 @@ import { loadMarketConfigs } from '../../../platform/market-config/market-config
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../../../platform/market-context/tenant';
 import { emptyDay, type DayTotals } from '../domain/admin-kpi';
-import type { DayRange } from '../domain/period';
+import type { OrderStatusTallies } from '../domain/admin-health';
+import type { MarketDay } from '../domain/facts';
+import { EMPTY_LEDGER_SUMS, type LedgerKindSums } from '../domain/ledger';
+import { windowOf, type DayRange } from '../domain/period';
 import { RegistryMarketZone } from '../infrastructure/registry-market-zone';
 import type { AdminKpiDependencies } from './admin-kpi-flow';
 import type {
@@ -25,7 +28,12 @@ import type {
   DailyTotals,
   SellerTotals,
 } from './ports/admin-kpi-reader';
-import { ViewMarketplaceFinanceKpis } from './use-cases/view-marketplace-finance-kpis.use-case';
+import type { LedgerKpiReader, LedgerMatchFacts } from './ports/ledger-kpi-reader';
+import {
+  ViewMarketplaceFinanceKpis,
+  type FinanceKpiDependencies,
+} from './use-cases/view-marketplace-finance-kpis.use-case';
+import { ViewMarketplaceOrderStatus } from './use-cases/view-marketplace-order-status.use-case';
 import { ViewMarketplaceOperationsKpis } from './use-cases/view-marketplace-operations-kpis.use-case';
 import { ViewMarketplaceTopCategories } from './use-cases/view-marketplace-top-categories.use-case';
 import { ViewMarketplaceTopSellers } from './use-cases/view-marketplace-top-sellers.use-case';
@@ -54,6 +62,23 @@ class FakeReader implements AdminKpiReader {
   categories: CategoryTotals[] = [];
   sellerCount = 0;
   sellerCountCalls = 0;
+  tallies: OrderStatusTallies = {
+    paid: 0,
+    cancelled: 0,
+    delivered: 0,
+    shipped: 0,
+    refunded: { delivered: 0, shipped: 0, toShip: 0 },
+  };
+  readonly tallyCalls: { currency: string; range: DayRange; marketId: string }[] = [];
+
+  orderStatusTallies(
+    market: { marketId: string },
+    currency: string,
+    range: DayRange,
+  ): Promise<OrderStatusTallies> {
+    this.tallyCalls.push({ currency, range, marketId: market.marketId });
+    return Promise.resolve(this.tallies);
+  }
 
   sellersWithOrders(): Promise<number> {
     this.sellerCountCalls += 1;
@@ -93,6 +118,44 @@ class FakeReader implements AdminKpiReader {
   }
 }
 
+/** The ledger reads of the finance answer's net figures (dashboards v2 PR 6). */
+class FakeLedger implements LedgerKpiReader {
+  readonly ranges: DayRange[] = [];
+  finished = true;
+  failing = false;
+  match: LedgerMatchFacts = { paid: [], commission: [], knownUnpaid: new Set() };
+  sums: (range: DayRange) => LedgerKindSums = () => EMPTY_LEDGER_SUMS;
+
+  rangeSums(_market: unknown, _currency: string, range: DayRange) {
+    this.ranges.push(range);
+    if (this.failing) return Promise.reject(new TypeError('down'));
+    return Promise.resolve({ sums: this.sums(range), refreshedAt: null });
+  }
+  matchFacts() {
+    return Promise.resolve(this.match);
+  }
+  backfillState() {
+    return Promise.resolve({ finished: this.finished, failedFacts: 0 });
+  }
+}
+
+/** A week with one matched seller order a day ending yesterday: the readiness minimum. */
+const busyWeek = (today: string): LedgerMatchFacts => {
+  const rows = Array.from({ length: 7 }, (_, n) => ({
+    sellerOrderId: `so-${n}`,
+    day: Temporal.PlainDate.from(today)
+      .subtract({ days: n + 1 })
+      .toString() as MarketDay,
+  }));
+  return { paid: rows, commission: rows, knownUnpaid: new Set() };
+};
+
+const commissionSums = (charged: bigint, refunded: bigint): LedgerKindSums => ({
+  ...EMPTY_LEDGER_SUMS,
+  commission: { amount: charged, baseAmount: 0n },
+  'refund-commission': { amount: refunded, baseAmount: 0n },
+});
+
 describe.each(TEST_MARKETS)('the admin KPIs in market %s', (code) => {
   const market = testMarketContext(code, PLATFORM_TENANT_ID);
   const zone = new RegistryMarketZone(markets);
@@ -115,11 +178,13 @@ describe.each(TEST_MARKETS)('the admin KPIs in market %s', (code) => {
     }),
   );
   let reader: FakeReader;
-  let deps: AdminKpiDependencies;
+  let ledger: FakeLedger;
+  let deps: FinanceKpiDependencies;
   const today = (): string => NOW.toZonedDateTimeISO(zone.zoneOf(market)).toPlainDate().toString();
 
   beforeEach(() => {
     reader = new FakeReader();
+    ledger = new FakeLedger();
     deps = {
       unitOfWork: {
         run: (_market: unknown, work: () => Promise<unknown>) => work(),
@@ -127,7 +192,118 @@ describe.each(TEST_MARKETS)('the admin KPIs in market %s', (code) => {
       reader,
       zone,
       clock: new FixedClock(NOW),
+      ledger,
     };
+  });
+
+  it('withholds net revenue and take rate until the ledger is ready (FE-066)', async () => {
+    ledger.finished = false;
+    const out = await new ViewMarketplaceFinanceKpis(gate, deps).execute(admin, { period: '7d' });
+    expect(out.ok && out.value.net).toMatchObject({
+      readiness: { ready: false, reason: 'backfill-not-finished' },
+      current: null,
+      previous: null,
+      takeRate: { current: null, previous: null },
+      deltas: { total: { state: 'na' }, commission: { state: 'na' } },
+    });
+  });
+
+  it('answers net revenue of both ranges once ready: partial, no total, take rate from the commission only', async () => {
+    ledger.match = busyWeek(today());
+    const out = await new ViewMarketplaceFinanceKpis(gate, deps).execute(admin, { period: '7d' });
+    if (!out.ok) throw new Error('expected an answer');
+    const period = out.value.period;
+    ledger.ranges.length = 0;
+    reader.rows = [
+      { ...emptyDay(today() as never), ordersPaid: 3, goodsAmount: 110_000n, goodsTax: 10_000n },
+      {
+        ...emptyDay(period.previous.to),
+        ordersPaid: 3,
+        goodsAmount: 110_000n,
+        goodsTax: 10_000n,
+      },
+    ];
+    ledger.sums = (range) =>
+      range.from === period.current.from
+        ? commissionSums(13_500n, 300n)
+        : commissionSums(12_000n, 0n);
+    const again = await new ViewMarketplaceFinanceKpis(gate, deps).execute(admin, {
+      period: '7d',
+    });
+    if (!again.ok || again.value.net === null) throw new Error('expected net figures');
+    const net = again.value.net;
+    expect(ledger.ranges).toEqual([period.current, period.previous]);
+    expect(net.readiness.ready).toBe(true);
+    expect(net.current?.currency).toBe(zone.currencyOf(market));
+    expect(net.current?.components.commission).toEqual({ status: 'available', amount: 13_200n });
+    expect(net.current?.total).toEqual({
+      status: 'partial',
+      missing: ['deliveryMargin', 'platformFundedDiscounts', 'platformFundedCashback', 'fleetFees'],
+    });
+    expect(net.current?.total).not.toHaveProperty('amount');
+    // 13,200 of 100,000 GMV without GST; the previous range 12,000 of 100,000.
+    expect(net.takeRate.current).toMatchObject({
+      status: 'partial',
+      rateBp: 1320,
+      basis: ['commission'],
+    });
+    expect(net.takeRate.previous).toMatchObject({ status: 'partial', rateBp: 1200 });
+    expect(net.deltas.commission).toEqual({ value: 1000, direction: 'up', state: 'ok' });
+    expect(net.deltas.total.state).toBe('na');
+    expect(net.deltas.takeRateBp).toEqual({ value: 120, direction: 'up', state: 'ok' });
+  });
+
+  it('keeps GMV when only the ledger read fails (net is null)', async () => {
+    ledger.failing = true;
+    reader.rows = [{ ...emptyDay(today() as never), ordersPaid: 1, goodsAmount: 1_000n }];
+    const out = await new ViewMarketplaceFinanceKpis(gate, deps).execute(admin, { period: '7d' });
+    expect(out.ok && out.value.net).toBeNull();
+    expect(out.ok && out.value.current.gmvWithTax).toBe(1_000n);
+  });
+
+  it('answers the orders by status of the Market days, refunded apart, same-day not available', async () => {
+    reader.tallies = {
+      paid: 20,
+      cancelled: 1,
+      delivered: 10,
+      shipped: 5,
+      refunded: { delivered: 1, shipped: 0, toShip: 1 },
+    };
+    const out = await new ViewMarketplaceOrderStatus(gate, deps).execute(admin, {
+      period: '30d',
+    });
+    if (!out.ok) throw new Error('expected an answer');
+    expect(out.value.period.current.to).toBe(today());
+    expect(reader.tallyCalls).toEqual([
+      {
+        currency: zone.currencyOf(market),
+        range: out.value.period.current,
+        marketId: market.marketId,
+      },
+    ]);
+    expect(out.value.counts).toEqual({
+      paid: 20,
+      toShip: 3,
+      shipped: 5,
+      delivered: 9,
+      cancelled: 1,
+      refunded: 2,
+      cancelledRateBp: 500,
+      refundedRateBp: 1000,
+    });
+    expect(out.value.sameDayShare).toEqual({ status: 'not-available', reason: 'not-reported' });
+    expect(out.value.timezone).toBe(zone.zoneOf(market));
+    expect(out.value.window).toEqual(windowOf(out.value.period.current, zone.zoneOf(market)));
+  });
+
+  it('answers the order status read as unavailable when the store fails, and refuses a seller', async () => {
+    reader.orderStatusTallies = () => Promise.reject(new TypeError('down'));
+    const useCase = new ViewMarketplaceOrderStatus(gate, deps);
+    expect(await useCase.execute(admin, { period: '7d' })).toEqual({
+      ok: false,
+      error: { code: 'access.unavailable' },
+    });
+    expect((await useCase.execute(seller, { period: '7d' })).ok).toBe(false);
   });
 
   it('counts today in the Market day and reads the Market currency, current and previous', async () => {

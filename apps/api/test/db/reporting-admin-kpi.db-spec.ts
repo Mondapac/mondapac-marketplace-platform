@@ -276,4 +276,94 @@ describe.each(TEST_MARKETS)('the admin KPI reader in market %s (database)', (cod
     expect((await readTop(currency, 1)).map((row) => row.categoryId)).toEqual([meat]);
     expect(await readTop('XXX', 5)).toEqual([]);
   });
+
+  it('tallies the seller orders paid in the range by where they stand, refunded apart', async () => {
+    // Months no other reporting spec uses, so the refunds of other specs fall outside the range.
+    const N = code === TEST_MARKETS[0] ? '05' : '08';
+    const a = idOf<'Seller'>();
+    const b = idOf<'Seller'>();
+    const paid = (seller: Id<'Seller'>, overrides: Partial<SellerOrderFact> = {}) =>
+      order(seller, `2026-${N}-10T03:00:00Z`, 11_000n, overrides);
+    const toShip = paid(a);
+    const shipped = paid(a, { shippedAt: at(`2026-${N}-11T03:00:00Z`), shippedOnTime: true });
+    const delivered = paid(b, {
+      shippedAt: at(`2026-${N}-11T03:00:00Z`),
+      shippedOnTime: true,
+      deliveredAt: at(`2026-${N}-12T03:00:00Z`),
+    });
+    const refundedDelivered = paid(b, {
+      shippedAt: at(`2026-${N}-11T03:00:00Z`),
+      shippedOnTime: true,
+      deliveredAt: at(`2026-${N}-12T03:00:00Z`),
+    });
+    const refundedToShip = paid(a);
+    const cancelled = paid(a, { cancelledAt: at(`2026-${N}-10T05:00:00Z`) });
+    const before = order(a, `2026-${N}-01T03:00:00Z`, 11_000n); // paid before the range
+    for (const fact of [
+      toShip,
+      shipped,
+      delivered,
+      refundedDelivered,
+      refundedToShip,
+      cancelled,
+      before,
+    ]) {
+      await record(market, fact);
+    }
+    const refund = (fact: SellerOrderFact, refundedAt: string) =>
+      within(market, () =>
+        recorder.recordRefund(
+          market,
+          {
+            refundId: idOf<'Refund'>(),
+            orderId: fact.orderId,
+            sellerOrderId: fact.sellerOrderId,
+            sellerId: fact.sellerId,
+            currency,
+            total: { amount: 1_100n, tax: 100n },
+            shipping: { amount: 0n, tax: 0n },
+            refundedAt: at(refundedAt),
+          },
+          [{ categoryId: UNKNOWN_CATEGORY, goods: { amount: 1_100n, tax: 100n }, units: 1 }],
+        ),
+      );
+    await refund(refundedDelivered, `2026-${N}-13T03:00:00Z`);
+    // Two refunds of one seller order count it once.
+    await refund(refundedToShip, `2026-${N}-10T06:00:00Z`);
+    await refund(refundedToShip, `2026-${N}-14T06:00:00Z`);
+    // A refund of a seller order paid before the range, inside the range: not counted.
+    await refund(before, `2026-${N}-11T06:00:00Z`);
+    // A refund of a cancelled seller order: it stays cancelled.
+    await refund(cancelled, `2026-${N}-10T07:00:00Z`);
+    // The other Market's seller order on the same day is never read.
+    await record(
+      other,
+      order(a, `2026-${N}-10T03:00:00Z`, 1_000n, {}, CURRENCIES[otherMarketOf(code)]),
+    );
+
+    const range = { from: day(`2026-${N}-05`), to: day(`2026-${N}-20`) };
+    const read = async (target: MarketContext, rowCurrency: string) => {
+      const unit = await db.unitOfWork.run(
+        target,
+        async () => ok(await reader.orderStatusTallies(target, rowCurrency, range)),
+        { readOnly: true },
+      );
+      if (!unit.ok) throw new Error('read failed');
+      return unit.value;
+    };
+    expect(await read(market, currency)).toEqual({
+      paid: 6,
+      cancelled: 1,
+      delivered: 2,
+      shipped: 1,
+      refunded: { delivered: 1, shipped: 0, toShip: 1 },
+    });
+    expect(await read(market, 'XXX')).toEqual({
+      paid: 0,
+      cancelled: 0,
+      delivered: 0,
+      shipped: 0,
+      refunded: { delivered: 0, shipped: 0, toShip: 0 },
+    });
+  });
 });

@@ -286,3 +286,62 @@ still answers.
 - Deferred from the PR 4 review: a shared `sessionSellerOf` in `platform/authz` (FE-171) and a
   boundaries rule that lets only `modules/reporting` import `COMMISSION_PAYOUTS_REPORTING_FACADE`
   (FE-172; today the facade's rule `system` is the control, tested per use case).
+
+## Admin KPI and finance additions (dashboards v2, phase 1, PR 6)
+
+The dashboard composes these into `GET dashboard/admin/kpis` (docs/modules/dashboard/notes.md).
+Days are the Market's days (its IANA zone), the period is the existing `period` query (`today`,
+`7d`, `30d`, `month`). Rates are basis points (1320 is 13.2%), rounded half up, null when the
+denominator is 0.
+
+- Net revenue and take rate (`FinanceAnswer.net`, use case `reporting.view-marketplace-finance-kpis`,
+  key `commission-payouts.settlement.view`): the PR 4 net revenue of the period's range and of the
+  previous range, read from `daily_ledger` in a second read-only unit (when it fails, `net` is null
+  and GMV still answers). Behind the same readiness as PR 4: until `readiness.ready` both figures
+  and both take rates are null. Take rate = net revenue ÷ GMV without GST of the same range (the
+  sales rollup's `goods_amount - goods_tax_amount`, gross of refunds, as GMV is defined). It is
+  `complete` only when net revenue's total is complete; while a component is missing it is
+  `partial`: computed from the available components only, with their sign (`basis`, today only
+  `commission`), and the `missing` ones named, so the screen labels it "commission only" and never
+  shows it as the take rate. `no-sales` with no GMV. A partial total still has no amount. Deltas:
+  `commission` (minimum base 100.00), `total` (`na` unless both periods are complete), and
+  `takeRateBp` in basis points of difference (`na` unless both rates have the same status and
+  basis).
+- Orders by status (`reporting.view-marketplace-order-status`, key `ordering.order.view`, platform
+  admin acting as themselves, counts only): the seller orders with `paid_day` in the period
+  (`seller_orders` only, Market currency), each in one bucket by where it stands now, by priority
+  cancelled (`cancelled_at` set) > refunded (not cancelled, at least one succeeded refund in
+  `refunds`, partial or whole) > delivered > shipped (not delivered) > to ship. The buckets add up
+  to `paid`; `cancelledRateBp` and `refundedRateBp` are of `paid`. The answer carries the period's
+  instant window (`windowOf`: start of its first Market day to the start of the day after its
+  last) for the dashboard's dispute rate.
+- Query shape (Mojtaba): four `count`s of `seller_orders` on `(market_id, paid_day, seller_id)`
+  with the state columns filtered on the rows; one `groupBy seller_order_id` of `refunds` with
+  `refund_day >= range.from` on `(market_id, refund_day, seller_id)` (a refund is never before its
+  payment, so none paid in the range is missed); then the states of those seller orders paid in the
+  range by primary key, 1 000 ids per `IN` list. No join, no raw SQL. The refunds read grows with
+  the refunds since the range's first day (at most 13 months of them).
+- Same-day share (`sameDayShare`): same-day deliveries ÷ seller orders paid in the period. It needs
+  the delivery method on `seller_orders`, which reporting does not hold yet, so it answers
+  `{status: 'not-available', reason: 'not-reported'}`, never 0. `sameDayShareOf` already takes the
+  two counts; it is wired once the delivery method column lands (dashboards v2, phase 1, PR 3).
+- Supply and health numbers come from their owners' facades, counts only, each a new use case with
+  a permission rule, platform admins acting as themselves, in one read-only unit, `access.unavailable`
+  when the dashboard stopped waiting or the store failed:
+  - `search.count-live-listings` (key `catalog.product.view`): active listings = documents of
+    `search.offer_documents` in the Market (published, listed, the seller may sell: what a shopper
+    can find); out of stock = those with no `offer_variant_documents` row in stock (inventory's
+    `in-stock` or `low`). Out-of-stock rate = out of stock ÷ active, computed in the dashboard. Two
+    counts side by side with no transaction, so a write between them can move them slightly.
+  - `certification.count-expiring-certificates` (key `certification.seller-certificate.view`):
+    approved seller certificates whose validity boundary is after now and no later than the start
+    of the Market day after the 30th Market day from today (`expiringWindowEnd`), on the partial
+    index `seller_certifications_market_id_approved_boundary_at_idx`. Product certificates are not
+    counted yet (FE-179).
+  - `commission-payouts.count-payout-holds` (existing, key `commission-payouts.settlement.view`):
+    the active holds. Their amount is `not-available` (`not-recorded`): a hold carries no amount and
+    no module records what it keeps (FE-178).
+  - `commission-payouts.count-disputes-opened` (key `commission-payouts.dispute.view`): chargebacks
+    (not a Stripe inquiry) opened in the window, on `dispute_cases_bucket_idx` with all five buckets
+    listed. Dispute rate = chargebacks opened in the period ÷ seller orders paid in the period (a
+    case is per order, the denominator per seller order, as the KPI defines it).

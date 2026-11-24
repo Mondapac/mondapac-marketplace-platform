@@ -123,6 +123,11 @@ import {
 } from '../application/ports/reindex';
 import { FacadeIndexStamp } from './facade-index-stamp';
 import { PrismaReindexProgress } from './prisma-reindex-progress';
+import { PrismaLiveListingCounter } from './prisma-live-listing-counter';
+import {
+  LIVE_LISTING_COUNTER,
+  type LiveListingCounter,
+} from '../application/ports/live-listing-counter';
 
 /**
  * Binds the ports of search. Only this layer may reach `PrismaService`, the module's own raw read
@@ -130,6 +135,11 @@ import { PrismaReindexProgress } from './prisma-reindex-progress';
  * other modules.
  */
 export const searchProviders: readonly FactoryProvider[] = [
+  {
+    provide: LIVE_LISTING_COUNTER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): LiveListingCounter => new PrismaLiveListingCounter(prisma),
+  },
   {
     provide: OFFER_DOCUMENT_REPOSITORY,
     inject: [PrismaService],

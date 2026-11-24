@@ -8,7 +8,16 @@ import {
   type AccessDenied,
   type UseCaseGate,
 } from '../../../../platform/authz';
-import { COMMISSION_PAYOUTS_SETTLEMENT_VIEW } from '../../../commission-payouts';
+import {
+  COMMISSION_PAYOUTS_DISPUTE_VIEW,
+  COMMISSION_PAYOUTS_SETTLEMENT_VIEW,
+  type CommissionPayoutsWorkQueueFacade,
+} from '../../../commission-payouts';
+import {
+  CERTIFICATION_SELLER_CERTIFICATE_VIEW,
+  type CertificationWorkQueueFacade,
+} from '../../../certification';
+import type { SearchSupplyFacade } from '../../../search';
 import { ORDERING_ORDER_VIEW } from '../../../ordering';
 import type { Id } from '@mondapac/shared-kernel';
 import {
@@ -24,6 +33,7 @@ import {
 import type {
   FinanceAnswer,
   OperationsAnswer,
+  OrderStatusAnswer,
   PeriodId,
   ReportingKpiFacade,
   TopCategoriesAnswer,
@@ -76,15 +86,59 @@ export interface NamedTopCategories {
 export type HealthCount =
   { readonly status: 'ok'; readonly count: number } | { readonly status: 'error' };
 
+/** A number of the supply and health card: its values, or `error` when its owner failed or was slow. */
+export type HealthMetric<T> = ({ readonly status: 'ok' } & T) | { readonly status: 'error' };
+
 /**
- * The marketplace health numbers that need no new owner query: the owners' work-queue counts. A
- * metric the viewer holds no key for is null; the other still answers.
+ * The live listings (search's read model: published, listed, the seller may sell) and how many of
+ * them have no sell unit in stock. `outOfStockRateBp` is out of stock ÷ active, basis points; null
+ * with no active listing.
+ */
+export type ListingsHealth = HealthMetric<{
+  readonly active: number;
+  readonly outOfStock: number;
+  readonly outOfStockRateBp: number | null;
+}>;
+
+/**
+ * The active payout holds. `amount` is what the holds keep from sellers: no module records it per
+ * hold today (`not-recorded`), so it is never shown as 0.
+ */
+export type PayoutHoldsHealth = HealthMetric<{
+  readonly count: number;
+  readonly amount: { readonly status: 'not-available'; readonly reason: 'not-recorded' };
+}>;
+
+/**
+ * The dispute rate of the period: chargebacks opened in the period's Market days (Stripe
+ * inquiries left out) ÷ seller orders paid in the same days, basis points; null with none paid.
+ */
+export type DisputeRateHealth = HealthMetric<{
+  readonly disputes: number;
+  readonly paidSellerOrders: number;
+  readonly rateBp: number | null;
+}>;
+
+/**
+ * The marketplace health numbers: the owners' counts, each under its owner's key. A metric the
+ * viewer holds no key for is null; the others still answer.
  */
 export interface MarketHealth {
   /** Offer certification tags still active after their certificate lapsed (an incident). */
   readonly uncertifiedListings: HealthCount | null;
   /** Sellers in the health queue. */
   readonly sellersAtRisk: HealthCount | null;
+  /** Key `catalog.product.view` (search's `count-live-listings`). */
+  readonly listings: ListingsHealth | null;
+  /** Approved seller certificates expiring in the next 30 Market days; key `certification.seller-certificate.view`. */
+  readonly certificatesExpiring: HealthMetric<{
+    readonly count: number;
+    readonly withinDays: number;
+  }> | null;
+  /** Key `commission-payouts.settlement.view`. */
+  readonly payoutsOnHold: PayoutHoldsHealth | null;
+  /** Keys `commission-payouts.dispute.view` and `ordering.order.view` (its denominator). */
+  readonly disputeRate: DisputeRateHealth | null;
 }
 
 export interface AdminKpisAnswer {
@@ -94,11 +148,13 @@ export interface AdminKpisAnswer {
   readonly operations: KpiSection<OperationsAnswer> | null;
   /** Null when the viewer does not hold `commission-payouts.settlement.view`. */
   readonly finance: KpiSection<FinanceAnswer> | null;
+  /** Seller orders paid in the period by where they stand now; null without `ordering.order.view`. */
+  readonly ordersByStatus: KpiSection<OrderStatusAnswer> | null;
   /** Null without `commission-payouts.settlement.view` (it shows each seller's money). */
   readonly topSellers: KpiSection<NamedTopSellers> | null;
   /** Null without `commission-payouts.settlement.view` (it shows money). */
   readonly topCategories: KpiSection<NamedTopCategories> | null;
-  /** Null when the viewer holds neither `catalog.product.view` nor `sellers.seller.view`. */
+  /** Null when the viewer holds none of the keys of its numbers ({@link MarketHealth}). */
   readonly health: MarketHealth | null;
 }
 
@@ -110,6 +166,12 @@ export interface AdminKpisDependencies {
   readonly queues: {
     readonly catalog: Pick<CatalogWorkQueueFacade, 'claimsWithoutCertificate'>;
     readonly sellers: Pick<SellersWorkQueueFacade, 'unhealthySellers'>;
+    readonly certification: Pick<CertificationWorkQueueFacade, 'expiringCertificates'>;
+    readonly commissionPayouts: Pick<
+      CommissionPayoutsWorkQueueFacade,
+      'payoutHolds' | 'disputesOpened'
+    >;
+    readonly search: Pick<SearchSupplyFacade, 'liveListings'>;
   };
   readonly clock: Clock;
   /** {@link KPI_TIMEOUT_MS} outside tests. */
@@ -117,6 +179,12 @@ export interface AdminKpisDependencies {
 }
 
 const logger = new Logger('AdminKpis');
+
+/** A ratio in basis points (1250 is 12.5%), rounded half up; null when the denominator is 0. */
+export function rateBp(numerator: number, denominator: number): number | null {
+  if (!(denominator > 0)) return null;
+  return Math.round((numerator * 10_000) / denominator);
+}
 
 /** The class name of a thrown value (never its message). */
 const nameOf = (error: unknown): string => {
@@ -163,11 +231,12 @@ async function section<T>(
 }
 
 /**
- * `GET dashboard/admin/kpis` (dashboards upgrade, phase 5): the admin KPI strip and trend. Rule
+ * `GET dashboard/admin/kpis` (dashboards upgrade, phase 5; dashboards v2 PR 6): the admin KPI
+ * strip and trend, orders by status, net revenue and the supply and health numbers. Rule
  * `own-resources` and a platform admin acting as themselves, like the work queue. Each section is
- * asked only when the viewer holds its key (operations: `ordering.order.view`; money:
- * `commission-payouts.settlement.view`) and its owner checks the key again. Nothing is cached
- * here: the numbers are the daily rollups, one grouped read each.
+ * asked only when the viewer holds its key (operations and orders by status:
+ * `ordering.order.view`; money: `commission-payouts.settlement.view`; each health number its
+ * owner's key) and its owner checks the key again. Nothing is cached here.
  */
 export class ViewAdminKpis extends UseCase<
   { readonly period: PeriodId },
@@ -197,7 +266,15 @@ export class ViewAdminKpis extends UseCase<
     if (viewer.value.population !== 'admin') return err({ code: 'access.denied' });
     const held = new Set(viewer.value.permissionKeys);
     const { reporting, timeoutMs } = this.deps;
-    const [operations, finance, topSellers, topCategories, health] = await Promise.all([
+    // Asked once: the orders card shows it, and the dispute rate divides by its paid count.
+    const ordersByStatus: Promise<KpiSection<OrderStatusAnswer> | null> = held.has(
+      ORDERING_ORDER_VIEW.key,
+    )
+      ? section('orders-by-status', timeoutMs, () =>
+          reporting.marketplaceOrderStatus(context, input),
+        )
+      : Promise.resolve(null);
+    const [operations, finance, topSellers, topCategories, health, orders] = await Promise.all([
       held.has(ORDERING_ORDER_VIEW.key)
         ? section('operations', timeoutMs, () => reporting.marketplaceOperations(context, input))
         : null,
@@ -210,29 +287,43 @@ export class ViewAdminKpis extends UseCase<
       held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
         ? section('top-categories', timeoutMs, () => this.namedTopCategories(context, input))
         : null,
-      this.marketHealth(context, held),
+      this.marketHealth(context, held, ordersByStatus),
+      ordersByStatus,
     ]);
     return ok({
       generatedAt: this.deps.clock.now(),
       period: input.period,
       operations,
       finance,
+      ordersByStatus: orders,
       topSellers,
       topCategories,
       health,
     });
   }
 
-  /** The health counts the viewer may see; null when they may see none. */
+  /** The health numbers the viewer may see; null when they may see none. */
   private async marketHealth(
     context: CallContext,
     held: ReadonlySet<string>,
+    ordersByStatus: Promise<KpiSection<OrderStatusAnswer> | null>,
   ): Promise<MarketHealth | null> {
     const canListings = held.has(CATALOG_PRODUCT_VIEW.key);
     const canSellers = held.has(SELLERS_SELLER_VIEW.key);
-    if (!canListings && !canSellers) return null;
+    const canCertificates = held.has(CERTIFICATION_SELLER_CERTIFICATE_VIEW.key);
+    const canHolds = held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key);
+    const canDisputes =
+      held.has(COMMISSION_PAYOUTS_DISPUTE_VIEW.key) && held.has(ORDERING_ORDER_VIEW.key);
+    if (!canListings && !canSellers && !canCertificates && !canHolds && !canDisputes) return null;
     const { queues } = this.deps;
-    const [uncertifiedListings, sellersAtRisk] = await Promise.all([
+    const [
+      uncertifiedListings,
+      sellersAtRisk,
+      listings,
+      certificatesExpiring,
+      payoutsOnHold,
+      disputeRate,
+    ] = await Promise.all([
       canListings
         ? this.healthCount('uncertified-listings', (query) =>
             queues.catalog.claimsWithoutCertificate(context, query),
@@ -243,8 +334,98 @@ export class ViewAdminKpis extends UseCase<
             queues.sellers.unhealthySellers(context, query),
           )
         : null,
+      canListings ? this.listingsHealth(context) : null,
+      canCertificates
+        ? this.healthNumber('certificates-expiring', (signal, now) =>
+            queues.certification.expiringCertificates(context, { now, signal }),
+          ).then((answer) =>
+            answer.status === 'ok'
+              ? { status: 'ok' as const, count: answer.count, withinDays: answer.withinDays }
+              : answer,
+          )
+        : null,
+      canHolds
+        ? this.healthCount('payouts-on-hold', (query) =>
+            queues.commissionPayouts.payoutHolds(context, query),
+          ).then((answer): PayoutHoldsHealth =>
+            answer.status === 'ok'
+              ? {
+                  status: 'ok',
+                  count: answer.count,
+                  amount: { status: 'not-available', reason: 'not-recorded' },
+                }
+              : answer,
+          )
+        : null,
+      canDisputes ? this.disputeRate(context, ordersByStatus) : null,
     ]);
-    return { uncertifiedListings, sellersAtRisk };
+    return {
+      uncertifiedListings,
+      sellersAtRisk,
+      listings,
+      certificatesExpiring,
+      payoutsOnHold,
+      disputeRate,
+    };
+  }
+
+  private async listingsHealth(context: CallContext): Promise<ListingsHealth> {
+    const answer = await this.healthNumber('listings', (signal) =>
+      this.deps.queues.search.liveListings(context, { signal }),
+    );
+    if (answer.status !== 'ok') return answer;
+    return {
+      status: 'ok',
+      active: answer.active,
+      outOfStock: answer.outOfStock,
+      outOfStockRateBp: rateBp(answer.outOfStock, answer.active),
+    };
+  }
+
+  /**
+   * Chargebacks opened in the period ÷ seller orders paid in it. The window of instants and the
+   * paid count both come from the orders-by-status answer, so both sides cover the same Market
+   * days; when that answer failed the rate is `error`.
+   */
+  private async disputeRate(
+    context: CallContext,
+    ordersByStatus: Promise<KpiSection<OrderStatusAnswer> | null>,
+  ): Promise<DisputeRateHealth> {
+    const orders = await ordersByStatus;
+    if (orders === null || orders.status !== 'ok') return { status: 'error' };
+    const { window, counts } = orders.value;
+    const answer = await this.healthNumber('dispute-rate', (signal) =>
+      this.deps.queues.commissionPayouts.disputesOpened(context, {
+        from: window.from,
+        to: window.to,
+        signal,
+      }),
+    );
+    if (answer.status !== 'ok') return answer;
+    return {
+      status: 'ok',
+      disputes: answer.count,
+      paidSellerOrders: counts.paid,
+      rateBp: rateBp(answer.count, counts.paid),
+    };
+  }
+
+  /**
+   * One owner number under the time limit (like {@link healthCount}, for an owner's own shape). The
+   * owner checks its own key again; a refusal, a failure, a slow answer or a throw is `error`.
+   */
+  private async healthNumber<T extends object>(
+    name: string,
+    read: (signal: AbortSignal, now: Temporal.Instant) => Promise<Result<T, AccessDenied>>,
+  ): Promise<HealthMetric<T>> {
+    const controller = new AbortController();
+    const now = this.deps.clock.now();
+    const timer = setTimeout(() => controller.abort(), this.deps.timeoutMs);
+    timer.unref();
+    const result = await section(name, this.deps.timeoutMs, () => read(controller.signal, now));
+    clearTimeout(timer);
+    if (result === null || result.status === 'error') return { status: 'error' };
+    return { status: 'ok', ...result.value };
   }
 
   /**

@@ -8,6 +8,7 @@ import type {
   ViewMarketplaceNetRevenue,
 } from '../application/use-cases/view-marketplace-net-revenue.use-case';
 import type { ViewSellerNetEarnings } from '../application/use-cases/view-seller-net-earnings.use-case';
+import type { ViewMarketplaceOrderStatus } from '../application/use-cases/view-marketplace-order-status.use-case';
 import type { PeriodId, ReportingKpiFacade } from '../contracts';
 
 /** Passes the caller's `CallContext` unchanged to the use case, so the gate runs. */
@@ -19,7 +20,12 @@ export class ReportingKpiFacadeImplementation implements ReportingKpiFacade {
     private readonly topCategories: ViewMarketplaceTopCategories,
     private readonly netRevenue: ViewMarketplaceNetRevenue,
     private readonly netEarnings: ViewSellerNetEarnings,
+    private readonly orderStatus: ViewMarketplaceOrderStatus,
   ) {}
+
+  marketplaceOrderStatus(context: CallContext, input: { readonly period: PeriodId }) {
+    return this.orderStatus.execute(context, input);
+  }
 
   marketplaceOperations(context: CallContext, input: { readonly period: PeriodId }) {
     return this.operations.execute(context, input);

@@ -215,17 +215,20 @@ export function netRevenueOf(sums: LedgerKindSums, currency: string): NetRevenue
   };
 }
 
+/** How each component enters net revenue: added (+1) or taken away (-1). */
+export const NET_REVENUE_SIGN: Readonly<Record<NetRevenueComponent, bigint>> = {
+  commission: 1n,
+  deliveryMargin: 1n,
+  platformFundedDiscounts: -1n,
+  platformFundedCashback: -1n,
+  fleetFees: -1n,
+};
+
 /** The total of the components: complete with its amount, or partial with what is missing. */
 export function netRevenueTotalOf(
   components: Readonly<Record<NetRevenueComponent, LedgerComponent>>,
 ): NetRevenueTotal {
-  const sign: Record<NetRevenueComponent, bigint> = {
-    commission: 1n,
-    deliveryMargin: 1n,
-    platformFundedDiscounts: -1n,
-    platformFundedCashback: -1n,
-    fleetFees: -1n,
-  };
+  const sign = NET_REVENUE_SIGN;
   let amount = 0n;
   const missing: NetRevenueComponent[] = [];
   for (const name of NET_REVENUE_COMPONENTS) {

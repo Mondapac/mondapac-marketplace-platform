@@ -11,6 +11,8 @@ import type {
 } from '../application/use-cases/view-marketplace-net-revenue.use-case';
 import type { NetRevenueAnswer } from '../application/use-cases/view-marketplace-net-revenue.use-case';
 import type { SellerNetEarningsAnswer } from '../application/use-cases/view-seller-net-earnings.use-case';
+import type { OrderStatusAnswer } from '../application/use-cases/view-marketplace-order-status.use-case';
+import type { FinanceNet } from '../application/use-cases/view-marketplace-finance-kpis.use-case';
 
 export type {
   FinanceKpis,
@@ -40,6 +42,9 @@ export {
   READINESS_MIN_MATCHED_SELLER_ORDERS,
 } from '../domain/ledger';
 export type { NetFiguresFailure, NetFiguresInput, NetRevenueAnswer, SellerNetEarningsAnswer };
+export type { FinanceNet, OrderStatusAnswer };
+export type { OrderStatusCounts, SameDayShare, TakeRate } from '../domain/admin-health';
+export type { InstantWindow } from '../domain/period';
 
 /**
  * The marketplace KPIs of the admin dashboard (dashboards upgrade, phase 5). Each method runs one
@@ -57,6 +62,16 @@ export interface ReportingKpiFacade {
     context: CallContext,
     input: { readonly period: PeriodId },
   ): Promise<Result<FinanceAnswer, AccessDenied>>;
+
+  /**
+   * The seller orders paid in the period, by where they stand now (one bucket each), and the
+   * same-day share (`not-available` until reporting holds the delivery method). Counts only: key
+   * `ordering.order.view`, platform admin only.
+   */
+  marketplaceOrderStatus(
+    context: CallContext,
+    input: { readonly period: PeriodId },
+  ): Promise<Result<OrderStatusAnswer, AccessDenied>>;
 
   /** The five sellers with the most goods sold in the period (money: the finance key). */
   marketplaceTopSellers(

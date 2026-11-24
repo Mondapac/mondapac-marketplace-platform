@@ -24,4 +24,15 @@ export interface CertificationWorkQueueCountReader {
     now: Temporal.Instant,
     staleBefore: Temporal.Instant,
   ): Promise<WorkQueueCount>;
+
+  /**
+   * The approved seller certificates whose validity boundary is after `now` and no later than
+   * `until` (the admin dashboard's "certificates expiring in 30 days"). One indexed count over the
+   * partial index `seller_certifications_market_id_approved_boundary_at_idx` (`status = 'approved'`).
+   */
+  expiringSellerCertificates(
+    market: MarketContext,
+    now: Temporal.Instant,
+    until: Temporal.Instant,
+  ): Promise<number>;
 }

@@ -10,3 +10,8 @@ export {
   type AssistantSpecial,
   type SearchAssistantFacade,
 } from './search-assistant.facade';
+export {
+  SEARCH_SUPPLY_FACADE,
+  type LiveListingCounts,
+  type SearchSupplyFacade,
+} from './search-supply.facade';

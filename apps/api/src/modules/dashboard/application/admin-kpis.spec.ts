@@ -19,6 +19,7 @@ import { PLATFORM_TENANT_ID } from '../../../platform/market-context/tenant';
 import type {
   FinanceAnswer,
   OperationsAnswer,
+  OrderStatusAnswer,
   ReportingKpiFacade,
   TopCategoriesAnswer,
   TopSellersAnswer,
@@ -74,6 +75,58 @@ const finance = {
   deltas: {},
   series: [{ day: '2026-11-22', gmvWithTax: 5n, gmvWithoutTax: 4n, refundedWithTax: 1n }],
   previousSeries: [],
+  net: {
+    readiness: {
+      ready: true,
+      reason: 'ready',
+      backfillFinished: true,
+      backfillFailedFacts: 0,
+      matchedSellerOrders: 9,
+      window: { from: '2026-11-15', to: '2026-11-21' },
+      days: [],
+    },
+    current: {
+      currency: 'AUD',
+      commissionCharged: 15_000n,
+      commissionRefunded: 184n,
+      components: {
+        commission: { status: 'available', amount: 14_816n },
+        deliveryMargin: { status: 'not-available', reason: 'not-reported' },
+        platformFundedDiscounts: { status: 'not-available', reason: 'not-reported' },
+        platformFundedCashback: { status: 'not-available', reason: 'not-reported' },
+        fleetFees: { status: 'not-available', reason: 'not-recorded' },
+      },
+      total: {
+        status: 'partial',
+        missing: [
+          'deliveryMargin',
+          'platformFundedDiscounts',
+          'platformFundedCashback',
+          'fleetFees',
+        ],
+      },
+    },
+    previous: null,
+    takeRate: {
+      current: {
+        status: 'partial',
+        rateBp: 1320,
+        basis: ['commission'],
+        missing: [
+          'deliveryMargin',
+          'platformFundedDiscounts',
+          'platformFundedCashback',
+          'fleetFees',
+        ],
+      },
+      previous: { status: 'no-sales' },
+    },
+    deltas: {
+      commission: { value: 0, direction: 'flat', state: 'na' },
+      total: { value: 0, direction: 'flat', state: 'na' },
+      takeRateBp: { value: 0, direction: 'flat', state: 'na' },
+    },
+  },
 } as unknown as FinanceAnswer;
 
 const topSellers = {
@@ -109,16 +162,44 @@ const topCategories = {
   ],
 } as unknown as TopCategoriesAnswer;
 
+const orderStatus: OrderStatusAnswer = {
+  period: finance.period,
+  timezone: 'Australia/Brisbane',
+  window: {
+    from: Temporal.Instant.from('2026-11-15T14:00:00Z'),
+    to: Temporal.Instant.from('2026-11-22T14:00:00Z'),
+  },
+  generatedAt: NOW,
+  counts: {
+    paid: 400,
+    toShip: 20,
+    shipped: 60,
+    delivered: 300,
+    cancelled: 12,
+    refunded: 8,
+    cancelledRateBp: 300,
+    refundedRateBp: 200,
+  },
+  sameDayShare: { status: 'not-available', reason: 'not-reported' },
+};
+
 const CATALOG_VIEW = 'catalog.product.view' as PermissionKey;
 const SELLERS_VIEW = 'sellers.seller.view' as PermissionKey;
+const CERTS_VIEW = 'certification.seller-certificate.view' as PermissionKey;
+const DISPUTES_VIEW = 'commission-payouts.dispute.view' as PermissionKey;
 const queueCount = (count: number) =>
   ok({ count, overdue: 0, oldestAt: null }) as ReturnType<
     typeof ok<{ count: number; overdue: number; oldestAt: null }>
   >;
+let disputeQueries: { from: Temporal.Instant; to: Temporal.Instant }[] = [];
 const queues = (
   overrides: {
     claims?: () => Promise<unknown>;
     unhealthy?: () => Promise<unknown>;
+    listings?: () => Promise<unknown>;
+    expiring?: () => Promise<unknown>;
+    holds?: () => Promise<unknown>;
+    disputes?: () => Promise<unknown>;
   } = {},
 ): AdminKpisDependencies['queues'] =>
   ({
@@ -127,6 +208,25 @@ const queues = (
     },
     sellers: {
       unhealthySellers: overrides.unhealthy ?? (() => Promise.resolve(queueCount(14))),
+    },
+    search: {
+      liveListings:
+        overrides.listings ?? (() => Promise.resolve(ok({ active: 8_412, outOfStock: 261 }))),
+    },
+    certification: {
+      expiringCertificates:
+        overrides.expiring ??
+        ((_context: unknown, query: { now: Temporal.Instant }) =>
+          Promise.resolve(ok({ count: 6, withinDays: 30, until: query.now.add({ hours: 744 }) }))),
+    },
+    commissionPayouts: {
+      payoutHolds: overrides.holds ?? (() => Promise.resolve(queueCount(5))),
+      disputesOpened:
+        overrides.disputes ??
+        ((_context: unknown, query: { from: Temporal.Instant; to: Temporal.Instant }) => {
+          disputeQueries.push({ from: query.from, to: query.to });
+          return Promise.resolve(ok({ count: 2 }));
+        }),
     },
   }) as unknown as AdminKpisDependencies['queues'];
 
@@ -180,7 +280,12 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
 
   beforeEach(() => {
     asked = [];
+    disputeQueries = [];
     facade = {
+      marketplaceOrderStatus: () => {
+        asked.push('orders-by-status');
+        return Promise.resolve(ok(orderStatus));
+      },
       marketplaceOperations: () => {
         asked.push('operations');
         return Promise.resolve(ok(operations));
@@ -222,7 +327,7 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     asked.length = 0;
     const ordersOnly = await build([ORDERS]).execute(admin, { period: '7d' });
     expect(ordersOnly.ok && ordersOnly.value.topSellers).toBeNull();
-    expect(asked).toEqual(['operations']);
+    expect(asked.sort()).toEqual(['operations', 'orders-by-status']);
   });
 
   it('names the top categories from the live tree, null for a category it does not have', async () => {
@@ -238,19 +343,109 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     expect(ordersOnly.ok && ordersOnly.value.topCategories).toBeNull();
   });
 
+  const NO_HEALTH = {
+    uncertifiedListings: null,
+    sellersAtRisk: null,
+    listings: null,
+    certificatesExpiring: null,
+    payoutsOnHold: null,
+    disputeRate: null,
+  };
+
   it('answers the health counts the viewer may see, each under its own key', async () => {
     const both = await build([CATALOG_VIEW, SELLERS_VIEW]).execute(admin, { period: '7d' });
     expect(both.ok && both.value.health).toEqual({
+      ...NO_HEALTH,
       uncertifiedListings: { status: 'ok', count: 2 },
       sellersAtRisk: { status: 'ok', count: 14 },
+      listings: { status: 'ok', active: 8_412, outOfStock: 261, outOfStockRateBp: 310 },
     });
     const one = await build([SELLERS_VIEW]).execute(admin, { period: '7d' });
     expect(one.ok && one.value.health).toEqual({
-      uncertifiedListings: null,
+      ...NO_HEALTH,
       sellersAtRisk: { status: 'ok', count: 14 },
     });
-    const none = await build([ORDERS, MONEY]).execute(admin, { period: '7d' });
-    expect(none.ok && none.value.health).toBeNull();
+    const ordersOnly = await build([ORDERS]).execute(admin, { period: '7d' });
+    expect(ordersOnly.ok && ordersOnly.value.health).toBeNull();
+  });
+
+  it('answers certificates expiring, payout holds (amount not available) and the dispute rate', async () => {
+    // The operations fixture is partial; this test reads the body of the other sections.
+    facade.marketplaceOperations = () => Promise.resolve(err({ code: 'access.denied' as const }));
+    const out = await build([CERTS_VIEW, MONEY, DISPUTES_VIEW, ORDERS]).execute(admin, {
+      period: '7d',
+    });
+    expect(out.ok && out.value.health).toEqual({
+      ...NO_HEALTH,
+      certificatesExpiring: { status: 'ok', count: 6, withinDays: 30 },
+      payoutsOnHold: {
+        status: 'ok',
+        count: 5,
+        amount: { status: 'not-available', reason: 'not-recorded' },
+      },
+      // 2 chargebacks over the 400 seller orders paid in the same Market days.
+      disputeRate: { status: 'ok', disputes: 2, paidSellerOrders: 400, rateBp: 50 },
+    });
+    // The chargebacks are counted over the orders-by-status answer's own window.
+    expect(disputeQueries).toEqual([orderStatus.window]);
+    const body = out.ok ? adminKpisBody(out.value) : null;
+    expect(body?.health?.payoutsOnHold?.amount).toEqual({
+      status: 'not-available',
+      reason: 'not-recorded',
+    });
+  });
+
+  it('needs the orders key for the dispute rate, and answers error when its denominator failed', async () => {
+    const disputesOnly = await build([DISPUTES_VIEW]).execute(admin, { period: '7d' });
+    expect(disputesOnly.ok && disputesOnly.value.health).toBeNull();
+    facade.marketplaceOrderStatus = () => Promise.reject(new TypeError('boom'));
+    const out = await build([DISPUTES_VIEW, ORDERS]).execute(admin, { period: '7d' });
+    expect(out.ok && out.value.ordersByStatus).toEqual({ status: 'error' });
+    expect(out.ok && out.value.health?.disputeRate).toEqual({ status: 'error' });
+    expect(disputeQueries).toEqual([]);
+  });
+
+  it('answers orders by status under the orders key, with the same-day share not available', async () => {
+    // The operations fixture is partial; this test reads the body of the other sections.
+    facade.marketplaceOperations = () => Promise.resolve(err({ code: 'access.denied' as const }));
+    const out = await build([ORDERS]).execute(admin, { period: '7d' });
+    const body = out.ok ? adminKpisBody(out.value) : null;
+    expect(body?.ordersByStatus).toEqual({
+      status: 'ok',
+      kpis: {
+        ...orderStatus.counts,
+        sameDayShare: { status: 'not-available', reason: 'not-reported' },
+      },
+    });
+    const moneyOnly = await build([MONEY]).execute(admin, { period: '7d' });
+    expect(moneyOnly.ok && moneyOnly.value.ordersByStatus).toBeNull();
+  });
+
+  it('marks the new health numbers as error when they fail, are refused or are slow', async () => {
+    const deps: AdminKpisDependencies = {
+      viewer: {
+        describe: () =>
+          Promise.resolve(ok(viewer([CATALOG_VIEW, CERTS_VIEW, MONEY, DISPUTES_VIEW, ORDERS]))),
+      },
+      reporting: facade,
+      sellers: { sellerSummaries: () => Promise.resolve(ok([])) },
+      catalog: { categoryTree: () => Promise.resolve(ok([])) },
+      queues: queues({
+        listings: () => Promise.reject(new TypeError('boom')),
+        expiring: () => Promise.resolve(err({ code: 'access.denied' as const })),
+        holds: () => new Promise(() => undefined),
+        disputes: () => Promise.resolve(err({ code: 'access.unavailable' as const })),
+      }),
+      clock: new FixedClock(NOW),
+      timeoutMs: 20,
+    };
+    const out = await new ViewAdminKpis(gate, deps).execute(admin, { period: '7d' });
+    expect(out.ok && out.value.health).toMatchObject({
+      listings: { status: 'error' },
+      certificatesExpiring: { status: 'error' },
+      payoutsOnHold: { status: 'error' },
+      disputeRate: { status: 'error' },
+    });
   });
 
   it('marks a health count that fails, is refused or is slow as error, never zero', async () => {
@@ -269,8 +464,10 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     const out = await new ViewAdminKpis(gate, deps).execute(admin, { period: '7d' });
     const body = out.ok ? adminKpisBody(out.value) : null;
     expect(body?.health).toEqual({
+      ...NO_HEALTH,
       uncertifiedListings: { status: 'error' },
       sellersAtRisk: { status: 'error' },
+      listings: { status: 'ok', active: 8_412, outOfStock: 261, outOfStockRateBp: 310 },
     });
   });
 
@@ -345,6 +542,32 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     expect(body.finance?.kpis?.series[0]).toMatchObject({ gmvWithTax: '5' });
     expect(body.operations).toBeNull();
     expect(() => JSON.stringify(body)).not.toThrow();
+  });
+
+  it('writes net revenue with its components, a partial total with no amount, and a labelled take rate', async () => {
+    const out = await build([MONEY]).execute(admin, { period: '7d' });
+    if (!out.ok) throw new Error('expected ok');
+    const net = adminKpisBody(out.value).finance?.kpis?.net;
+    expect(net?.readiness).toMatchObject({ ready: true, reason: 'ready' });
+    expect(net?.current?.components.commission).toEqual({
+      status: 'available',
+      amount: { amountMinor: '14816', currency: 'AUD' },
+    });
+    expect(net?.current?.components.fleetFees).toEqual({
+      status: 'not-available',
+      reason: 'not-recorded',
+    });
+    expect(net?.current?.total).toEqual({
+      status: 'partial',
+      missing: ['deliveryMargin', 'platformFundedDiscounts', 'platformFundedCashback', 'fleetFees'],
+    });
+    expect(net?.takeRate.current).toMatchObject({
+      status: 'partial',
+      rateBp: 1320,
+      basis: ['commission'],
+    });
+    expect(net?.takeRate.previous).toEqual({ status: 'no-sales' });
+    expect(net?.previous).toBeNull();
   });
   it('refuses a seller session and a viewer of another population, and asks nobody', async () => {
     const seller = testCallContext(

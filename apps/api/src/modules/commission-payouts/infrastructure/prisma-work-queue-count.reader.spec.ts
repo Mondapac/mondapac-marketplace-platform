@@ -98,6 +98,26 @@ describe.each(TEST_MARKETS)('payout count statements in market %s', (code) => {
     ]);
   });
 
+  it('counts the chargebacks opened in a window, every bucket listed, inquiries left out', async () => {
+    const from = NOW.subtract({ hours: 24 * 30 });
+    expect(await reader.disputesOpened(market, from, NOW)).toBe(1);
+    expect(calls).toEqual([
+      {
+        table: 'disputes',
+        op: 'count',
+        args: {
+          where: {
+            marketId: market.marketId,
+            bucket: { in: ['needs-response', 'decision-needed', 'under-review', 'won', 'closed'] },
+            openedAt: { gte: date(from), lt: date(NOW) },
+            inquiry: false,
+          },
+        },
+      },
+    ]);
+    await expect(reader.disputesOpened(market, NOW, NOW)).rejects.toThrow(RangeError);
+  });
+
   it('answers no oldest when a queue is empty', async () => {
     total = 0;
     const empty = { count: 0, overdue: 0, oldestAt: null };

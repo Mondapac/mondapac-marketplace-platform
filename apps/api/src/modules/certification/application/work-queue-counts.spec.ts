@@ -25,6 +25,8 @@ import {
 import type { CertificationWorkQueueCountReader } from './ports/work-queue-count.reader';
 import { CountSellerCertificateReviews } from './use-cases/count-seller-certificate-reviews.use-case';
 import { CountProductCertificateReviews } from './use-cases/count-product-certificate-reviews.use-case';
+import { CountExpiringCertificates } from './use-cases/count-expiring-certificates.use-case';
+import { expiringWindowEnd } from '../domain/expiring-window';
 
 // The certification counts of the dashboard's work queue (dashboards upgrade, phase 1), on both Market
 // fixtures: each use case's key, platform admins only, the query's times passed to the reader in
@@ -67,6 +69,10 @@ const counts: CertificationWorkQueueCountReader = {
   productCertificates: (m, now, staleBefore) => {
     reads.push({ method: 'productCertificates', market: m, times: [now, staleBefore] });
     return failing ? Promise.reject(new Error('down')) : Promise.resolve(COUNT);
+  },
+  expiringSellerCertificates: (m, now, until) => {
+    reads.push({ method: 'expiringSellerCertificates', market: m, times: [now, until] });
+    return failing ? Promise.reject(new Error('down')) : Promise.resolve(6);
   },
 };
 const USE_CASES = [
@@ -142,5 +148,58 @@ describe.each(TEST_MARKETS)('certification work-queue counts in market %s', (cod
         err({ code: 'access.unavailable' }),
       );
     });
+  });
+});
+
+describe.each(TEST_MARKETS)('certification expiring-certificates count in market %s', (code) => {
+  const market = testMarketContext(code, PLATFORM_TENANT_ID);
+  const zone = markets.get(market.marketId).timezone;
+  const useCase = new CountExpiringCertificates(gate, {
+    unitOfWork,
+    counts,
+    zoneOf: (m) => markets.get(m.marketId).timezone,
+  });
+  const admin = (): CallContext =>
+    testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'admin',
+        accountId: id(0xa1),
+        sessionId: id(0xa2),
+        sellerId: null,
+      }),
+    );
+  const query = (signal: AbortSignal = new AbortController().signal) => ({ now: NOW, signal });
+
+  it("counts the next 30 Market days of the caller's Market, behind the seller certificate key", async () => {
+    const until = expiringWindowEnd(NOW, zone);
+    expect(await useCase.execute(admin(), query())).toEqual(
+      ok({ count: 6, withinDays: 30, until }),
+    );
+    expect(declarations.map((d) => d.rule)).toEqual([
+      { kind: 'permissions', allOf: [CERTIFICATION_SELLER_CERTIFICATE_VIEW.key] },
+    ]);
+    expect(reads).toEqual([{ method: 'expiringSellerCertificates', market, times: [NOW, until] }]);
+  });
+
+  it('refuses a seller session before any read, and answers unavailable when stopped or failing', async () => {
+    const seller = testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population: 'seller',
+        accountId: id(0xa1),
+        sessionId: id(0xa2),
+        sellerId: id(0xa3),
+      }),
+    );
+    expect(await useCase.execute(seller, query())).toEqual(err({ code: 'access.denied' }));
+    const stopped = new AbortController();
+    stopped.abort();
+    expect(await useCase.execute(admin(), query(stopped.signal))).toEqual(
+      err({ code: 'access.unavailable' }),
+    );
+    expect(reads).toHaveLength(0);
+    failing = true;
+    expect(await useCase.execute(admin(), query())).toEqual(err({ code: 'access.unavailable' }));
   });
 });

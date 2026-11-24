@@ -262,3 +262,24 @@ for the ordering facade (FE-061), and the cancel rate and refund count were adde
 come from the same rollup. Marketplace health, top sellers and categories and the order flow are
 separate PRs. The period is the `?period=` query of the home page; the skeleton and the error
 state show only the figures the session's keys allow.
+
+## Admin KPI and finance additions (dashboards v2, phase 1, PR 6)
+
+`GET dashboard/admin/kpis` gains, under the same rule (`own-resources`, a platform admin acting as
+themselves) and the same 1.5 s limit and `error` state per number:
+
+- `ordersByStatus` (key `ordering.order.view`): reporting's `marketplaceOrderStatus`.
+- `finance.kpis.net`: net revenue and take rate of the period and the period before it, inside the
+  finance section (key `commission-payouts.settlement.view`).
+- `health` (the supply and health card), each number asked only under its owner's key and checked
+  again by its owner: `listings` (search `liveListings`, `catalog.product.view`),
+  `certificatesExpiring` (certification `expiringCertificates`,
+  `certification.seller-certificate.view`), `payoutsOnHold` (commission-payouts `payoutHolds`,
+  `commission-payouts.settlement.view`), `disputeRate` (commission-payouts `disputesOpened`,
+  `commission-payouts.dispute.view`, AND `ordering.order.view` for its denominator). `health` is
+  null only when the viewer holds none of these keys.
+- The dispute rate waits for the orders-by-status answer: its chargebacks are counted over that
+  answer's instant window and divided by its paid count, so both sides cover the same Market days.
+  When orders by status failed the rate is `error`. Worst case the two waits add up (2 x 1.5 s).
+- Every owner answer is a count; no id, name, amount or reason of another module reaches the
+  dashboard. The definitions are in `docs/modules/reporting/notes.md` (dashboards v2, PR 6).

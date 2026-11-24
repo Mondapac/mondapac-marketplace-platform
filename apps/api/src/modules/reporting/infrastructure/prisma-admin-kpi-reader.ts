@@ -6,8 +6,12 @@ import type {
   SellerTotals,
   CategoryTotals,
 } from '../application/ports/admin-kpi-reader';
+import type { OrderStatusTallies } from '../domain/admin-health';
 import type { DayRange } from '../domain/period';
 import { dateToDay, dayToDate } from './prisma-fact-store';
+
+/** How many refunded seller order ids one `IN` list carries (the order-status read). */
+export const REFUNDED_ID_CHUNK = 1_000;
 
 /**
  * {@link AdminKpiReader} on `reporting.daily_seller_sales`: one grouped read of the range over the
@@ -69,6 +73,55 @@ export class PrismaAdminKpiReader implements AdminKpiReader {
       refreshedAt:
         newest === null ? null : Temporal.Instant.fromEpochMilliseconds(newest.getTime()),
     };
+  }
+
+  /**
+   * Four counts of `seller_orders` over `(market_id, paid_day, seller_id)` (paid, cancelled,
+   * delivered, shipped not delivered), then the distinct seller orders refunded on or after the
+   * range's first day (`refunds` on `(market_id, refund_day, seller_id)`, grouped in the database),
+   * then where those of them paid in the range stand (by primary key, {@link REFUNDED_ID_CHUNK} ids
+   * a read). A refund is never before its payment, so none paid in the range is missed. No join.
+   */
+  async orderStatusTallies(
+    market: MarketContext,
+    currency: string,
+    range: DayRange,
+  ): Promise<OrderStatusTallies> {
+    const tx = this.prisma.tx(market);
+    const scope = { marketId: market.marketId, tenantId: market.tenantId, currency };
+    const where = { ...scope, paidDay: { gte: dayToDate(range.from), lte: dayToDate(range.to) } };
+    const [paid, cancelled, delivered, shipped, refunds] = await Promise.all([
+      tx.reportingSellerOrder.count({ where }),
+      tx.reportingSellerOrder.count({ where: { ...where, cancelledAt: { not: null } } }),
+      tx.reportingSellerOrder.count({
+        where: { ...where, cancelledAt: null, deliveredAt: { not: null } },
+      }),
+      tx.reportingSellerOrder.count({
+        where: { ...where, cancelledAt: null, deliveredAt: null, shippedAt: { not: null } },
+      }),
+      tx.reportingRefund.groupBy({
+        by: ['sellerOrderId'],
+        where: { ...scope, refundDay: { gte: dayToDate(range.from) } },
+      }),
+    ]);
+    const ids = refunds.map((row) => row.sellerOrderId);
+    const refunded = { delivered: 0, shipped: 0, toShip: 0 };
+    for (let start = 0; start < ids.length; start += REFUNDED_ID_CHUNK) {
+      const rows = await tx.reportingSellerOrder.findMany({
+        where: {
+          ...where,
+          cancelledAt: null,
+          sellerOrderId: { in: ids.slice(start, start + REFUNDED_ID_CHUNK) },
+        },
+        select: { shippedAt: true, deliveredAt: true },
+      });
+      for (const row of rows) {
+        if (row.deliveredAt !== null) refunded.delivered += 1;
+        else if (row.shippedAt !== null) refunded.shipped += 1;
+        else refunded.toShip += 1;
+      }
+    }
+    return { paid, cancelled, delivered, shipped, refunded };
   }
 
   async sellersWithOrders(

@@ -47,6 +47,7 @@ import { ViewMarketplaceFinanceKpis } from './application/use-cases/view-marketp
 import { ViewMarketplaceTopCategories } from './application/use-cases/view-marketplace-top-categories.use-case';
 import { ViewMarketplaceTopSellers } from './application/use-cases/view-marketplace-top-sellers.use-case';
 import { ViewMarketplaceOperationsKpis } from './application/use-cases/view-marketplace-operations-kpis.use-case';
+import { ViewMarketplaceOrderStatus } from './application/use-cases/view-marketplace-order-status.use-case';
 import { BackfillHistory } from './application/use-cases/backfill-history.use-case';
 import { ReconcileReportFacts } from './application/use-cases/reconcile-report-facts.use-case';
 import { RecordReportFacts } from './application/use-cases/record-report-facts.use-case';
@@ -147,9 +148,15 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         clock: Clock,
       ): AdminKpiDependencies => ({ unitOfWork, reader, zone, clock }),
     },
+    {
+      provide: ViewMarketplaceFinanceKpis,
+      inject: [USE_CASE_GATE, ADMIN_KPI_DEPENDENCIES, LEDGER_KPI_READER],
+      useFactory: (gate: UseCaseGate, deps: AdminKpiDependencies, ledger: LedgerKpiReader) =>
+        new ViewMarketplaceFinanceKpis(gate, { ...deps, ledger }),
+    },
     ...[
       ViewMarketplaceOperationsKpis,
-      ViewMarketplaceFinanceKpis,
+      ViewMarketplaceOrderStatus,
       ViewMarketplaceTopSellers,
       ViewMarketplaceTopCategories,
     ].map((type) => ({
@@ -211,6 +218,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         ViewMarketplaceTopCategories,
         ViewMarketplaceNetRevenue,
         ViewSellerNetEarnings,
+        ViewMarketplaceOrderStatus,
       ],
       useFactory: (
         operations: ViewMarketplaceOperationsKpis,
@@ -219,6 +227,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         topCategories: ViewMarketplaceTopCategories,
         netRevenue: ViewMarketplaceNetRevenue,
         netEarnings: ViewSellerNetEarnings,
+        orderStatus: ViewMarketplaceOrderStatus,
       ) =>
         new ReportingKpiFacadeImplementation(
           operations,
@@ -227,6 +236,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
           topCategories,
           netRevenue,
           netEarnings,
+          orderStatus,
         ),
     },
     registerSubscriptionsFrom(
