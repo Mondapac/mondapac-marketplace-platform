@@ -5,14 +5,17 @@ import {
   isPlatformAdminActor,
   UseCase,
   type AccessDeclaration,
-  type AccessDenied,
   type UseCaseGate,
 } from '../../../../platform/authz';
 import { COMMISSION_PAYOUTS_SETTLEMENT_VIEW } from '../../../commission-payouts';
-import { marketDayOf } from '../../domain/facts';
 import { topSellerRowOf, type TopSellerRow } from '../../domain/admin-kpi';
-import { resolvePeriod, type ResolvedPeriod } from '../../domain/period';
-import type { AdminKpiDependencies, KpiInput } from '../admin-kpi-flow';
+import type { ResolvedPeriod } from '../../domain/period';
+import {
+  resolveKpiPeriod,
+  type AdminKpiDependencies,
+  type KpiFailure,
+  type KpiInput,
+} from '../admin-kpi-flow';
 
 /** The dashboard table never shows more than five rows (design section 6). */
 export const TOP_SELLERS_LIMIT = 5;
@@ -34,7 +37,7 @@ const logger = new Logger('ViewMarketplaceTopSellers');
  * only a platform admin acting as themselves. Seller ids only: the dashboard joins the public
  * store names through `sellers`.
  */
-export class ViewMarketplaceTopSellers extends UseCase<KpiInput, TopSellersAnswer, AccessDenied> {
+export class ViewMarketplaceTopSellers extends UseCase<KpiInput, TopSellersAnswer, KpiFailure> {
   static override readonly access: AccessDeclaration = {
     name: 'reporting.view-marketplace-top-sellers',
     rule: { kind: 'permissions', allOf: [COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key] },
@@ -50,11 +53,13 @@ export class ViewMarketplaceTopSellers extends UseCase<KpiInput, TopSellersAnswe
   protected async handle(
     context: CallContext,
     input: KpiInput,
-  ): Promise<Result<TopSellersAnswer, AccessDenied>> {
+  ): Promise<Result<TopSellersAnswer, KpiFailure>> {
     if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
     const { deps } = this;
     const now = deps.clock.now();
-    const period = resolvePeriod(input.period, marketDayOf(now, deps.zone.zoneOf(context.market)));
+    const resolved = resolveKpiPeriod(deps, context, input.period, now);
+    if (!resolved.ok) return resolved;
+    const period = resolved.value;
     const currency = deps.zone.currencyOf(context.market);
     try {
       const unit = await deps.unitOfWork.run(

@@ -1,6 +1,9 @@
 import { Module } from '@nestjs/common';
 import type { Clock } from '@mondapac/shared-kernel';
-import { USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
+import { AUDIT_WRITER, type AuditWriter } from '../../platform/audit/audit-writer';
+import { registerPermissions, USE_CASE_GATE, type UseCaseGate } from '../../platform/authz';
+import { ExceljsSheetWriter, SHEET_WRITER, type SheetWriter } from '../../platform/list-export';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerSubscriptionsFrom } from '../../platform/events/event-subscriptions';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
@@ -35,7 +38,12 @@ import {
   ViewSellerKpis,
   type ViewSellerKpisDependencies,
 } from './application/use-cases/view-seller-kpis.use-case';
+import { ExportMarketplaceDaily } from './application/use-cases/export-marketplace-daily.use-case';
+import { ExportSellerDaily } from './application/use-cases/export-seller-daily.use-case';
 import { REPORTING_KPI_FACADE } from './contracts';
+import { REPORTING_PERMISSIONS } from './contracts/permissions';
+import { REPORTING_AUDIT_ACTIONS } from './domain/audit';
+import { AdminReportsController } from './presentation/admin-reports.controller';
 import { FacadeReportSources } from './infrastructure/facade-report-sources';
 import { reportingProviders } from './infrastructure/reporting-providers';
 import { ReportingKpiFacadeImplementation } from './presentation/reporting-kpi.facade';
@@ -52,14 +60,61 @@ const ADMIN_KPI_DEPENDENCIES = Symbol('ADMIN_KPI_DEPENDENCIES');
  * numbers and their daily rollups. It reads no table of another module: the facts come from
  * ordering's reporting facade and catalog's `offerPrimaryCategories`, through the event worker
  * (ordering's order and refund events) and the nightly reconcile. No module imports it. It
- * publishes no event and holds no permission yet (the KPI reads of phases 5 and 6 add them). The history backfill job brings
- * the facts recorded before the module was deployed in, once.
+ * publishes no event. Its own keys are the two daily exports' (dashboards v2, PR 5), each audited.
+ * The history backfill job brings the facts recorded before the module was deployed in, once.
  */
 @Module({
   imports: [PersistenceModule, OrderingModule, CatalogModule],
-  controllers: [SellerKpisController],
+  controllers: [SellerKpisController, AdminReportsController],
   providers: [
     ...reportingProviders,
+    PersistenceModule.auditWriterFor('reporting'),
+    registerAuditActions('reporting', REPORTING_AUDIT_ACTIONS),
+    registerPermissions('reporting', REPORTING_PERMISSIONS),
+    { provide: SHEET_WRITER, useFactory: (): SheetWriter => new ExceljsSheetWriter() },
+    {
+      provide: ExportSellerDaily,
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        SELLER_KPI_READER,
+        MARKET_ZONE,
+        CLOCK,
+        AUDIT_WRITER,
+        SHEET_WRITER,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        reader: SellerKpiReader,
+        zone: MarketZone,
+        clock: Clock,
+        audit: AuditWriter,
+        sheetWriter: SheetWriter,
+      ) => new ExportSellerDaily(gate, { unitOfWork, reader, zone, clock, audit, sheetWriter }),
+    },
+    {
+      provide: ExportMarketplaceDaily,
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        ADMIN_KPI_READER,
+        MARKET_ZONE,
+        CLOCK,
+        AUDIT_WRITER,
+        SHEET_WRITER,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        reader: AdminKpiReader,
+        zone: MarketZone,
+        clock: Clock,
+        audit: AuditWriter,
+        sheetWriter: SheetWriter,
+      ) =>
+        new ExportMarketplaceDaily(gate, { unitOfWork, reader, zone, clock, audit, sheetWriter }),
+    },
     {
       provide: ViewSellerKpis,
       inject: [USE_CASE_GATE, UNIT_OF_WORK, SELLER_KPI_READER, MARKET_ZONE, CLOCK],
@@ -141,13 +196,21 @@ const ADMIN_KPI_DEPENDENCIES = Symbol('ADMIN_KPI_DEPENDENCIES');
         ViewMarketplaceFinanceKpis,
         ViewMarketplaceTopSellers,
         ViewMarketplaceTopCategories,
+        MARKET_ZONE,
+        CLOCK,
       ],
       useFactory: (
         operations: ViewMarketplaceOperationsKpis,
         finance: ViewMarketplaceFinanceKpis,
         topSellers: ViewMarketplaceTopSellers,
         topCategories: ViewMarketplaceTopCategories,
-      ) => new ReportingKpiFacadeImplementation(operations, finance, topSellers, topCategories),
+        zone: MarketZone,
+        clock: Clock,
+      ) =>
+        new ReportingKpiFacadeImplementation(operations, finance, topSellers, topCategories, {
+          zone,
+          clock,
+        }),
     },
     registerSubscriptionsFrom('reporting', [RecordReportFacts], (record: RecordReportFacts) =>
       reportFactsSubscriptions(record),
