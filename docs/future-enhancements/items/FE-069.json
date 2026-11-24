@@ -1,0 +1,11 @@
+{
+  "id": "FE-069",
+  "area": "admin",
+  "title": "کوهورت خریداران، خرید دوباره و ارزش طول عمر",
+  "desc": "نرخ خرید دوبارهٔ ۳۰/۹۰ روزه و LTV هر کوهورت ماهانه طبق فرهنگ شاخص‌های Mondapac.",
+  "src": "design/admin/dashboards-upgrade/dashboards-upgrade-fa.html",
+  "date": "2026-11-22",
+  "trig": "با بخش گزارش‌ها",
+  "prio": "پایین",
+  "status": "موکول"
+}

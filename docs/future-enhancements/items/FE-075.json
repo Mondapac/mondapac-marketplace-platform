@@ -1,0 +1,11 @@
+{
+  "id": "FE-075",
+  "area": "seller",
+  "title": "نقشهٔ حرارتی ساعت و روز سفارش‌ها",
+  "desc": "کارت «سفارش‌ها کی می‌رسند» در داشبورد فروشنده با پله‌های رنگ گسسته و عدد در tooltip (نظر جعفر).",
+  "src": "design/admin/dashboards-upgrade/dashboards-upgrade-fa.html (هادی، جعفر)",
+  "date": "2026-11-22",
+  "trig": "بعد از فاز ۶ داشبورد",
+  "prio": "پایین",
+  "status": "موکول"
+}

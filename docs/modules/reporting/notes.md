@@ -368,8 +368,8 @@ denominator is 0.
   plans in the design folder's `shots-build/pr6-admin-kpis/query-plans.md`): a whole admin
   dashboard load of a 30-day period takes about 0.4 s, 25 statements through the 10-connection
   pool, every section well inside its 1.5 s limit, so no index was added. The counts read the heap
-  (a covering index is FE-192), the out-of-stock count is a NOT EXISTS anti join (partial index
-  FE-193), and a `first_refunded_at` column would replace the refunds read (FE-191). The read-only
+  (a covering index is FE-20261124-seller-orders-covering-index), the out-of-stock count is a NOT EXISTS anti join (partial index
+  FE-20261124-offer-variant-in-stock-partial-index), and a `first_refunded_at` column would replace the refunds read (FE-20261124-reporting-first-refunded-at). The read-only
   unit opens no transaction, so the counts are separate snapshots and may drift by a few orders.
   A derived bucket that drifts below zero is clamped to 0 (`orderStatusOfDrifted`) and logged as
   `reporting.order-status.drift-clamped` with the shortfall per bucket and `paid` (counts only); the
@@ -391,10 +391,10 @@ denominator is 0.
     approved seller certificates whose validity boundary is after now and no later than the start
     of the Market day after the 30th Market day from today (`expiringWindowEnd`), on the partial
     index `seller_certifications_market_id_approved_boundary_at_idx`. Product certificates are not
-    counted yet (FE-190).
+    counted yet (FE-20261124-admin-expiring-product-certificates).
   - `commission-payouts.count-payout-holds` (existing, key `commission-payouts.settlement.view`):
     the active holds. Their amount is `not-available` (`not-recorded`): a hold carries no amount and
-    no module records what it keeps (FE-189).
+    no module records what it keeps (FE-20261124-admin-payout-hold-amount).
   - `commission-payouts.count-disputes-opened` (key `commission-payouts.dispute.view`): chargebacks
     (not a Stripe inquiry) opened in the window, on `dispute_cases_bucket_idx` with all five buckets
     listed. Dispute rate = chargebacks opened in the period ÷ seller orders paid in the period (a

@@ -1,0 +1,11 @@
+{
+  "id": "FE-019",
+  "area": "orders",
+  "title": "دسترسی فهرست پرداخت‌های فروشنده",
+  "desc": "آیا فهرست Payouts فروشنده، payouts/next و payout-holds هم مثل خروجی به commission-payouts.earnings.view نیاز دارند؟ فعلاً own-resources.",
+  "src": "handoffs/super-list/phase4-followups.md (۱)",
+  "date": "2026-11-21",
+  "trig": "تصمیم CTO",
+  "prio": "متوسط",
+  "status": "موکول"
+}

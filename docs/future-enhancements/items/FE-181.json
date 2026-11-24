@@ -1,0 +1,11 @@
+{
+  "id": "FE-181",
+  "area": "infra",
+  "title": "قاعدهٔ dependency-cruiser برای COMMISSION_PAYOUTS_REPORTING_FACADE",
+  "desc": "facade گزارش‌گیری commission-payouts قاعدهٔ system دارد و فقط reporting باید آن را import کند؛ یک قاعدهٔ boundaries (dependency-cruiser) import این توکن را به modules/reporting محدود کند تا ماژول دیگری از مسیر system به ردیف‌های دفتر نرسد.",
+  "src": "بازبینی PR ۱۳۰۶ داشبوردهای v2، PR 4 (حسن، ۳)",
+  "date": "2026-11-24",
+  "trig": "PR جدا در ابزار boundaries (فایل مشترک، اعلام روی board)",
+  "prio": "متوسط",
+  "status": "موکول"
+}

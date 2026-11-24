@@ -1,0 +1,11 @@
+{
+  "id": "FE-078",
+  "area": "admin",
+  "title": "تنظیم آستانه‌های هشدار تأخیر صف‌ها",
+  "desc": "آستانهٔ «گذشته از مهلت» هر صف در Settings ادمین قابل تنظیم شود (فعلاً پیش‌فرض ثابت).",
+  "src": "design/admin/dashboards-upgrade/dashboards-upgrade-fa.html (هادی، محمد)",
+  "date": "2026-11-22",
+  "trig": "بعد از فاز ۲ داشبورد",
+  "prio": "پایین",
+  "status": "موکول"
+}

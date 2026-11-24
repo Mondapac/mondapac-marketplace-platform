@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261124-offer-variant-in-stock-partial-index",
+  "area": "infra",
+  "title": "ایندکس جزئی search.offer_variant_documents (market_id, offer_id) WHERE in_stock",
+  "desc": "شمارش «بدون موجودی» (Prisma none = NOT EXISTS) امروز hash anti join با seq scan موازی روی واریانت‌های موجود است (حدود ۱۱۰ تا ۱۴۵ms با ۲۰۰ هزار سند و ۶۰۰ هزار واریانت). ایندکس جزئی آن را کوچک‌تر می‌کند؛ در PR 6 اضافه نشد چون در بودجه است. برآورد planner برای این anti join غلط است (۶۲۹ ردیف پیش‌بینی در برابر ۱۶ هزار ردیف واقعی)؛ هنگام اجرای این مورد آمار یا شکل پرس‌وجو هم بررسی شود.",
+  "src": "query-plans.md داشبوردهای v2، PR 6 (بازبینی مجتبی)",
+  "date": "2026-11-24",
+  "trig": "اگر شمارش فهرست‌های زنده از حدود ۷۵۰ms گذشت یا یک Market از حدود ۱ میلیون واریانت گذشت",
+  "prio": "پایین",
+  "status": "موکول"
+}

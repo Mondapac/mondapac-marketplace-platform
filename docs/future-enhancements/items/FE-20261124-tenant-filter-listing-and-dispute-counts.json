@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261124-tenant-filter-listing-and-dispute-counts",
+  "area": "infra",
+  "title": "فیلتر tenant_id یکسان در PrismaLiveListingCounter و disputesOpened",
+  "desc": "خواندن‌های جدید PR 6 در search (شمارش فهرست‌های زنده) و commission-payouts (اختلاف‌های بازشده) فقط market_id را فیلتر می‌کنند ولی خواندن reporting، tenant_id را هم فیلتر می‌کند. برای یکدستی درز tenant (ADR-0001) همه tenant_id بازار را هم فیلتر کنند؛ امروز یک tenant است و اثری ندارد.",
+  "src": "بازبینی PR ۱۳۱۱ داشبوردهای v2، PR 6 (مجتبی)",
+  "date": "2026-11-24",
+  "trig": "همراه اولین کار روی جداسازی tenant یا PR کوچک جدا",
+  "prio": "پایین",
+  "status": "موکول"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "FE-177",
+  "area": "admin",
+  "title": "تخفیف و cashback پرداخت‌شده توسط پلتفرم در درآمد خالص Mondapac",
+  "desc": "درآمد خالص این دو جزء را «not-available» برمی‌گرداند: سهم پلتفرم از تخفیف هر خط (discountAmount − discountSellerShare) و تخفیف تحویل در ordering، و credit های cashback با تأمین پلتفرم در promotions هستند ولی هیچ facade یا رویدادی آن‌ها را به reporting نمی‌دهد. نیاز: یک خواندن system در facade گزارش‌گیری ordering و promotions و جدول fact در reporting.",
+  "src": "docs/modules/reporting/notes.md (داشبوردهای v2، PR 4)",
+  "date": "2026-11-23",
+  "trig": "پیش از نمایش درآمد خالص کامل؛ حسین، مجتبی، حسن",
+  "prio": "متوسط",
+  "status": "موکول"
+}
