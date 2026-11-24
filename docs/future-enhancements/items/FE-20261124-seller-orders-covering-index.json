@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261124-seller-orders-covering-index",
+  "area": "infra",
+  "title": "ایندکس پوششی seller_orders (market_id, paid_day) INCLUDE (cancelled_at, shipped_at, delivered_at)",
+  "desc": "چهار شمارش وضعیت سفارش امروز bitmap heap scan روی (market_id, paid_day, seller_id) هستند و هزینه‌شان خواندن heap است (۲۹ هزار بلاک برای ۹۱ هزار ردیف در ۳۰ روز، هر کدام حدود ۱۱۰ تا ۱۹۰ms با ۱٫۲ میلیون ردیف). با ایندکس پوششی index-only می‌شوند. در PR 6 اضافه نشد چون همه در بودجهٔ ۱٫۵ ثانیه‌اند. آزمایش روی پایگاه دور‌ریختنی: ایندکس بدون tenant_id و currency استفاده نمی‌شود (این دو روی ردیف فیلتر می‌شوند)، پس INCLUDE باید (tenant_id, currency, cancelled_at, shipped_at, delivered_at) باشد (۷۷MB برای ۱٫۲ میلیون ردیف)؛ با آن شمارش ۳۰ روزه از ۹۷ به ۱۰ms می‌رسد ولی برای ۱۳ ماه سودی ندارد (حدود ۹۰٪ جدول خوانده می‌شود). migration دستی با down.sql و امضای مجتبی.",
+  "src": "query-plans.md داشبوردهای v2، PR 6 (بازبینی مجتبی)",
+  "date": "2026-11-24",
+  "trig": "اگر «سفارش‌ها بر اساس وضعیت» در بارگذاری ۳۰ روزه از حدود ۷۵۰ms (نصف بودجه) گذشت؛ برای بازهٔ ۱۳ماهه FE-20261124-reporting-first-refunded-at را ببینید",
+  "prio": "پایین",
+  "status": "موکول"
+}

@@ -24,14 +24,16 @@ export interface WorkQueueCountDependencies<Reader> {
  * case's gate: a platform admin acting as themselves only (`access.denied` otherwise, so an
  * acting-as session or a seller never reads a platform-wide count), `access.unavailable` once the
  * dashboard stopped waiting (its signal) or when the store fails, and the read in one read-only
- * unit (ADR-0025: no transaction, so the reader's counts run side by side).
+ * unit (ADR-0025: no transaction, so the reader's counts run side by side). The answer is a
+ * {@link WorkQueueCount} for a queue, or the owner's own count shape for a dashboard number
+ * (dashboards v2: the supply and health card).
  */
-export async function countAdminWorkQueue<Reader>(
+export async function countAdminWorkQueue<Reader, Answer = WorkQueueCount>(
   deps: WorkQueueCountDependencies<Reader>,
   context: CallContext,
-  query: WorkQueueCountQuery,
-  read: (counts: Reader) => Promise<WorkQueueCount>,
-): Promise<Result<WorkQueueCount, AccessDenied>> {
+  query: Pick<WorkQueueCountQuery, 'signal'>,
+  read: (counts: Reader) => Promise<Answer>,
+): Promise<Result<Answer, AccessDenied>> {
   if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
   if (query.signal.aborted) return err({ code: 'access.unavailable' });
   try {

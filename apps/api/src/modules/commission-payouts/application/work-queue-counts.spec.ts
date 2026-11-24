@@ -27,6 +27,7 @@ import type { CommissionPayoutsWorkQueueCountReader } from './ports/work-queue-c
 import { CountDisputesDue } from './use-cases/count-disputes-due.use-case';
 import { CountFailedPayouts } from './use-cases/count-failed-payouts.use-case';
 import { CountPayoutHolds } from './use-cases/count-payout-holds.use-case';
+import { CountDisputesOpened } from './use-cases/count-disputes-opened.use-case';
 
 // The commission-payouts counts of the dashboard's work queue (dashboards upgrade, phase 1), on both Market
 // fixtures: each use case's key, platform admins only, the query's times passed to the reader in
@@ -72,6 +73,10 @@ const counts: CommissionPayoutsWorkQueueCountReader = {
   // The seller tasks have their own spec (seller-work-queue-counts.spec.ts).
   sellerDisputesNeedingReply: () => Promise.reject(new Error('not an admin count')),
   sellerPayoutHolds: () => Promise.reject(new Error('not an admin count')),
+  disputesOpened: (m, from, to) => {
+    reads.push({ method: 'disputesOpened', market: m, times: [from, to] });
+    return failing ? Promise.reject(new Error('down')) : Promise.resolve(4);
+  },
 };
 const USE_CASES = [
   {
@@ -155,5 +160,58 @@ describe.each(TEST_MARKETS)('commission-payouts work-queue counts in market %s',
         err({ code: 'access.unavailable' }),
       );
     });
+  });
+});
+
+describe.each(TEST_MARKETS)('commission-payouts disputes-opened count in market %s', (code) => {
+  const market = testMarketContext(code, PLATFORM_TENANT_ID);
+  const useCase = new CountDisputesOpened(gate, { unitOfWork, counts });
+  const FROM = Temporal.Instant.from('2026-10-25T14:00:00Z');
+  const TO = Temporal.Instant.from('2026-11-24T14:00:00Z');
+  const actor = (population: 'admin' | 'seller'): CallContext =>
+    testCallContext(
+      market,
+      testAuthenticatedActor(market, {
+        population,
+        accountId: id(0xa1),
+        sessionId: id(0xa2),
+        sellerId: population === 'seller' ? id(0xa3) : null,
+      }),
+    );
+  const query = (signal: AbortSignal = new AbortController().signal) => ({
+    from: FROM,
+    to: TO,
+    signal,
+  });
+
+  it("counts the window behind the dispute key, in the caller's Market", async () => {
+    expect(await useCase.execute(actor('admin'), query())).toEqual(ok({ count: 4 }));
+    expect(declarations.map((d) => d.rule)).toEqual([
+      { kind: 'permissions', allOf: [COMMISSION_PAYOUTS_DISPUTE_VIEW.key] },
+    ]);
+    expect(reads).toEqual([{ method: 'disputesOpened', market, times: [FROM, TO] }]);
+  });
+
+  /** The admin acting as a seller (Login as Seller): never a platform-wide count. */
+  const actingAs = (): CallContext => {
+    const own = actor('admin');
+    return Object.assign(Object.create(Object.getPrototypeOf(own) as object) as object, own, {
+      actor: { ...own.actor, actingAs: { sellerId: id(0xa4) } },
+    });
+  };
+
+  it('refuses a seller and an acting-as session before any read; unavailable when stopped or failing', async () => {
+    expect(await useCase.execute(actor('seller'), query())).toEqual(err({ code: 'access.denied' }));
+    expect(await useCase.execute(actingAs(), query())).toEqual(err({ code: 'access.denied' }));
+    const stopped = new AbortController();
+    stopped.abort();
+    expect(await useCase.execute(actor('admin'), query(stopped.signal))).toEqual(
+      err({ code: 'access.unavailable' }),
+    );
+    expect(reads).toHaveLength(0);
+    failing = true;
+    expect(await useCase.execute(actor('admin'), query())).toEqual(
+      err({ code: 'access.unavailable' }),
+    );
   });
 });

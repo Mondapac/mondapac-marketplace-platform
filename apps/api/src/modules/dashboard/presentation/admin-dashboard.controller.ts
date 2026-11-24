@@ -82,11 +82,17 @@ export class AdminDashboardController {
   @ApiOperation({
     summary: "The admin's marketplace KPIs for a period, against the period before it",
     description:
-      'Two sections, each asked only when the admin holds its key: `operations` (orders, cancel ' +
-      'rate, on-time shipping, refund count; key `ordering.order.view`) and `finance` (GMV with ' +
-      'and without GST, refunded goods, net sales, average order; key ' +
-      '`commission-payouts.settlement.view`). A section the admin holds no key for is null. One ' +
-      'that fails or takes over 1.5 s is `status: error` and the other still answers. Days are ' +
+      'Sections, each asked only when the admin holds its key: `operations` (orders, cancel ' +
+      'rate, on-time shipping, refund count; key `ordering.order.view`), `ordersByStatus` (seller ' +
+      'orders paid in the period by where they stand now, one bucket each, and the same-day ' +
+      'share of them, `not-enough-data` below 5 paid; key ' +
+      '`ordering.order.view`), `finance` (GMV with and without GST, refunded goods, net sales, ' +
+      'average order, and `net`: Mondapac net revenue and take rate, null until a week of ' +
+      'matching ledger, a partial total never carries an amount; key ' +
+      '`commission-payouts.settlement.view`), and `health` (live listings and out of stock, ' +
+      'certificates expiring in 30 Market days, payout holds, dispute rate; each under its ' +
+      "owner's key). A section the admin holds no key for is null. One that fails or takes over " +
+      '1.5 s is `status: error` and the others still answer. Days are ' +
       "the Market's days, never UTC. Only a platform admin acting as themselves. A custom range " +
       '(`from` and `to`, Market days, both included) is at most 13 calendar months and ends by ' +
       "the Market's today; it is compared with as many days just before it.",

@@ -118,6 +118,29 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       topSellers: null,
       topCategories: null,
       health: null,
+      ordersByStatus: {
+        status: 'ok',
+        value: {
+          period,
+          timezone: 'Australia/Brisbane',
+          window: {
+            from: Temporal.Instant.from('2026-10-23T14:00:00Z'),
+            to: Temporal.Instant.from('2026-11-22T14:00:00Z'),
+          },
+          generatedAt: START,
+          counts: {
+            paid: 10,
+            toShip: 1,
+            shipped: 2,
+            delivered: 5,
+            cancelled: 1,
+            refunded: 1,
+            cancelledRateBp: 1000,
+            refundedRateBp: 1000,
+          },
+          sameDayShare: { status: 'available', sameDay: 3, paid: 10, rateBp: 3000 },
+        },
+      },
       finance: {
         status: 'ok',
         value: {
@@ -144,6 +167,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
           deltas: { gmvWithTax: zero },
           series: [{ day: '2026-11-22', gmvWithTax: 5n, gmvWithoutTax: 4n, refundedWithTax: 1n }],
           previousSeries: [],
+          net: null,
         },
       },
     });
@@ -169,6 +193,17 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
           },
           previous: { averageOrderWithTax: null },
           series: [{ day: '2026-11-22', gmvWithTax: '5' }],
+          net: null,
+        },
+      },
+      ordersByStatus: {
+        status: 'ok',
+        kpis: {
+          paid: 10,
+          toShip: 1,
+          delivered: 5,
+          refundedRateBp: 1000,
+          sameDayShare: { status: 'available', sameDay: 3, paid: 10, rateBp: 3000 },
         },
       },
     });
@@ -183,6 +218,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       generatedAt: START,
       period: '7d',
       operations: { status: 'error' },
+      ordersByStatus: { status: 'error' },
       topSellers: null,
       topCategories: null,
       health: null,
@@ -192,6 +228,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
     expect(answer.body).toMatchObject({
       period: null,
       operations: { status: 'error' },
+      ordersByStatus: { status: 'error' },
       finance: null,
     });
     expect((answer.body as { operations: unknown }).operations).toEqual({ status: 'error' });

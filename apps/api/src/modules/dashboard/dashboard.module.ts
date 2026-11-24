@@ -71,6 +71,7 @@ import {
   type SellersWorkQueueFacade,
 } from '../sellers';
 import { REPORTING_KPI_FACADE, ReportingModule, type ReportingKpiFacade } from '../reporting';
+import { SEARCH_SUPPLY_FACADE, SearchModule, type SearchSupplyFacade } from '../search';
 import { VIEWER_PERMISSIONS, type ViewerPermissions } from './application/ports/viewer-permissions';
 import {
   ViewAdminWorkQueue,
@@ -352,6 +353,7 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
     CommissionPayoutsModule,
     ReviewsModule,
     ReportingModule,
+    SearchModule,
   ],
   controllers: [AdminDashboardController, SellerDashboardController],
   providers: [
@@ -409,6 +411,9 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
         CATALOG_INDEX_FACADE,
         CATALOG_WORK_QUEUE_FACADE,
         SELLERS_WORK_QUEUE_FACADE,
+        CERTIFICATION_WORK_QUEUE_FACADE,
+        COMMISSION_PAYOUTS_WORK_QUEUE_FACADE,
+        SEARCH_SUPPLY_FACADE,
         CLOCK,
       ],
       useFactory: (
@@ -419,6 +424,9 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
         catalog: CatalogIndexFacade,
         catalogQueues: CatalogWorkQueueFacade,
         sellerQueues: SellersWorkQueueFacade,
+        certificationQueues: CertificationWorkQueueFacade,
+        payoutQueues: CommissionPayoutsWorkQueueFacade,
+        search: SearchSupplyFacade,
         clock: Clock,
       ) => {
         const deps: AdminKpisDependencies = {
@@ -426,7 +434,13 @@ export function workQueueSources(owners: WorkQueueOwners): readonly WorkQueueSou
           reporting,
           sellers,
           catalog,
-          queues: { catalog: catalogQueues, sellers: sellerQueues },
+          queues: {
+            catalog: catalogQueues,
+            sellers: sellerQueues,
+            certification: certificationQueues,
+            commissionPayouts: payoutQueues,
+            search,
+          },
           clock,
           timeoutMs: KPI_TIMEOUT_MS,
         };

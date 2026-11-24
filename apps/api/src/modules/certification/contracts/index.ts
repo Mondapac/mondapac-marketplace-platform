@@ -69,4 +69,6 @@ export {
 export {
   CERTIFICATION_WORK_QUEUE_FACADE,
   type CertificationWorkQueueFacade,
+  type ExpiringCertificates,
+  type ExpiringCertificatesQuery,
 } from './certification-work-queue.facade';

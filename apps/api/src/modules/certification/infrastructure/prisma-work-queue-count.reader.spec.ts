@@ -21,6 +21,10 @@ describe.each(TEST_MARKETS)('certificate review count statements in market %s', 
       calls.push({ model, args });
       return Promise.resolve(rows);
     },
+    count: (args: Record<string, unknown>) => {
+      calls.push({ model, args });
+      return Promise.resolve(6);
+    },
   });
   const prisma = {
     tx: () => ({
@@ -83,5 +87,25 @@ describe.each(TEST_MARKETS)('certificate review count statements in market %s', 
       overdue: 0,
       oldestAt: null,
     });
+  });
+
+  it('counts the approved seller certificates whose boundary falls in (now, until]', async () => {
+    const until = NOW.add({ hours: 24 * 31 });
+    expect(await reader.expiringSellerCertificates(market, NOW, until)).toBe(6);
+    expect(calls).toEqual([
+      {
+        model: 'seller',
+        args: {
+          where: {
+            marketId: market.marketId,
+            status: 'approved',
+            approvedBoundaryAt: {
+              gt: new Date(NOW.epochMilliseconds),
+              lte: new Date(until.epochMilliseconds),
+            },
+          },
+        },
+      },
+    ]);
   });
 });
