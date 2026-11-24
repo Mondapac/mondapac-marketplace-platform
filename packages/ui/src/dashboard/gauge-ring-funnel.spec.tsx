@@ -232,7 +232,7 @@ describe('44px touch targets up to lg', () => {
     );
     expect(screen.getByRole('button', { name: 'View as table' }).className).toContain('min-h-11');
   });
-  it('keeps segments 44px to lg and puts the phone select on its own line', () => {
+  it('sizes segments by the control token and puts the phone select on its own line', () => {
     const { container } = render(
       <PeriodSelector
         label="Period"
@@ -242,8 +242,8 @@ describe('44px touch targets up to lg', () => {
         note="n"
       />,
     );
-    expect(container.innerHTML).toContain('min-h-11 items-center');
-    expect(container.innerHTML).toContain('lg:min-h-10');
+    expect(container.innerHTML).toContain('h-full items-center');
+    expect(container.innerHTML).toContain('h-(--mp-size-control)');
     expect(screen.getByRole('combobox').parentElement?.className).toContain('w-full');
   });
 });
@@ -339,11 +339,11 @@ describe('PeriodSelector on a phone', () => {
     { id: '7d', label: '7 days' },
     { id: '30d', label: '30 days' },
   ];
-  it('offers a native select of the same options, 44px tall, shown below sm only', () => {
+  it('offers a native select of the same options, control-token tall, shown below sm only', () => {
     const onChange = vi.fn();
     render(<PeriodSelector label="Period" options={options} value="7d" onChange={onChange} />);
     const select = screen.getByRole('combobox', { name: 'Period' });
-    expect(select.className).toContain('min-h-11');
+    expect(select.className).toContain('h-(--mp-size-control)');
     expect(select.parentElement?.className).toContain('sm:hidden');
     const group = screen.getByRole('group', { name: 'Period' }).className.split(' ');
     expect(group).toContain('hidden');
