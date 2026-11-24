@@ -1,5 +1,5 @@
 import { Temporal } from '@mondapac/shared-kernel';
-import { orderStatusOf, sameDayShareOf, takeRateOf } from './admin-health';
+import { orderStatusOf, orderStatusOfDrifted, sameDayShareOf, takeRateOf } from './admin-health';
 import { EMPTY_LEDGER_SUMS, netRevenueOf, netRevenueTotalOf, type NetRevenue } from './ledger';
 import { windowOf, type DayRange } from './period';
 import type { MarketDay } from './facts';
@@ -49,6 +49,80 @@ describe('orderStatusOf (dashboards v2: orders by status)', () => {
         cancelled: 1,
         delivered: 2,
         shipped: 1,
+        refunded: { delivered: 0, shipped: 0, toShip: 0 },
+      }),
+    ).toThrow(RangeError);
+  });
+});
+
+describe('orderStatusOfDrifted (tallies read as separate snapshots)', () => {
+  it('answers the strict buckets and no shortfall when the tallies are one consistent set', () => {
+    const tallies = {
+      paid: 100,
+      cancelled: 5,
+      delivered: 60,
+      shipped: 20,
+      refunded: { delivered: 3, shipped: 1, toShip: 2 },
+    };
+    expect(orderStatusOfDrifted(tallies)).toEqual({
+      counts: orderStatusOf(tallies),
+      shortfall: null,
+    });
+  });
+
+  it('clamps a derived bucket that drifted below zero and reports by how much', () => {
+    // An order moved shipped -> delivered between the two counts: counted in both.
+    expect(
+      orderStatusOfDrifted({
+        paid: 3,
+        cancelled: 1,
+        delivered: 2,
+        shipped: 1,
+        refunded: { delivered: 0, shipped: 0, toShip: 0 },
+      }),
+    ).toEqual({
+      counts: {
+        paid: 3,
+        toShip: 0,
+        shipped: 1,
+        delivered: 2,
+        cancelled: 1,
+        refunded: 0,
+        cancelledRateBp: 3333,
+        refundedRateBp: 0,
+      },
+      shortfall: { toShip: 1, shipped: 0, delivered: 0 },
+    });
+  });
+
+  it('clamps delivered and shipped when the refund read saw more than the counts', () => {
+    const out = orderStatusOfDrifted({
+      paid: 10,
+      cancelled: 0,
+      delivered: 1,
+      shipped: 0,
+      refunded: { delivered: 2, shipped: 1, toShip: 0 },
+    });
+    expect(out.counts).toMatchObject({ delivered: 0, shipped: 0, toShip: 9, refunded: 3 });
+    expect(out.shortfall).toEqual({ toShip: 0, shipped: 1, delivered: 1 });
+  });
+
+  it('still refuses tallies that no drift explains (a negative or fractional count read)', () => {
+    expect(() =>
+      orderStatusOfDrifted({
+        paid: -1,
+        cancelled: 0,
+        delivered: 0,
+        shipped: 0,
+        refunded: { delivered: 0, shipped: 0, toShip: 0 },
+      }),
+    ).toThrow(RangeError);
+    expect(() =>
+      orderStatusOfDrifted({
+        paid: 2.5,
+        cancelled: 0,
+        delivered: 0,
+        shipped: 0,
         refunded: { delivered: 0, shipped: 0, toShip: 0 },
       }),
     ).toThrow(RangeError);

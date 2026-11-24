@@ -283,3 +283,7 @@ themselves) and the same 1.5 s limit and `error` state per number:
   When orders by status failed the rate is `error`. Worst case the two waits add up (2 x 1.5 s).
 - Every owner answer is a count; no id, name, amount or reason of another module reaches the
   dashboard. The definitions are in `docs/modules/reporting/notes.md` (dashboards v2, PR 6).
+- Load (measured in Mojtaba's review): one admin dashboard load sends about 25 statements over 12
+  read-only units and fills the shared 10-connection pool (`DATABASE_POOL_MAX`) for about 0.4 s.
+  If many admins use it at once, the fix is to queue or share the dashboard's reads (single-flight
+  per Market and period), not to add indexes.

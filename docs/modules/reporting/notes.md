@@ -328,6 +328,10 @@ denominator is 0.
   (a covering index is FE-181), the out-of-stock count is a NOT EXISTS anti join (partial index
   FE-182), and a `first_refunded_at` column would replace the refunds read (FE-180). The read-only
   unit opens no transaction, so the counts are separate snapshots and may drift by a few orders.
+  A derived bucket that drifts below zero is clamped to 0 (`orderStatusOfDrifted`) and logged as
+  `reporting.order-status.drift-clamped` with the shortfall per bucket and `paid` (counts only); the
+  answer is never an error for drift (Mojtaba's ruling). `orderStatusOf` stays strict for a
+  consistent set.
 - Same-day share (`sameDayShare`): same-day deliveries ÷ seller orders paid in the period. It needs
   the delivery method on `seller_orders`, which reporting does not hold yet, so it answers
   `{status: 'not-available', reason: 'not-reported'}`, never 0. `sameDayShareOf` already takes the

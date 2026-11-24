@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import {
@@ -304,6 +305,48 @@ describe.each(TEST_MARKETS)('the admin KPIs in market %s', (code) => {
       error: { code: 'access.unavailable' },
     });
     expect((await useCase.execute(seller, { period: '7d' })).ok).toBe(false);
+  });
+
+  it('clamps buckets the separate snapshots drifted below zero and logs the shortfall, never an error', async () => {
+    // One order moved shipped -> delivered between the counts: counted in both.
+    reader.tallies = {
+      paid: 3,
+      cancelled: 1,
+      delivered: 2,
+      shipped: 1,
+      refunded: { delivered: 0, shipped: 0, toShip: 0 },
+    };
+    const warnings = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    try {
+      const out = await new ViewMarketplaceOrderStatus(gate, deps).execute(admin, {
+        period: '7d',
+      });
+      if (!out.ok) throw new Error('expected an answer, not an error state');
+      expect(out.value.counts).toMatchObject({ paid: 3, toShip: 0, shipped: 1, delivered: 2 });
+      expect(warnings.mock.calls.map(([entry]) => entry as unknown)).toEqual([
+        {
+          msg: 'reporting.order-status.drift-clamped',
+          shortfall: { toShip: 1, shipped: 0, delivered: 0 },
+          paid: 3,
+          marketId: market.marketId,
+          correlationId: admin.correlationId,
+        },
+      ]);
+    } finally {
+      warnings.mockRestore();
+    }
+  });
+
+  it('logs nothing for a consistent set of tallies', async () => {
+    const warnings = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+    try {
+      expect(
+        (await new ViewMarketplaceOrderStatus(gate, deps).execute(admin, { period: '7d' })).ok,
+      ).toBe(true);
+      expect(warnings).not.toHaveBeenCalled();
+    } finally {
+      warnings.mockRestore();
+    }
   });
 
   it('refuses an acting-as session (Login as Seller) the order status, before any read', async () => {

@@ -10,7 +10,7 @@ import {
 } from '../../../../platform/authz';
 import { ORDERING_ORDER_VIEW } from '../../../ordering';
 import {
-  orderStatusOf,
+  orderStatusOfDrifted,
   sameDayShareOf,
   type OrderStatusCounts,
   type SameDayShare,
@@ -43,7 +43,8 @@ export interface OrderStatusAnswer {
  * paid in the period's Market days, by where they stand now (to ship, shipped, delivered,
  * cancelled, refunded; one bucket each), from `reporting.seller_orders` and `reporting.refunds`
  * only, and the same-day share. Counts, no money: the key `ordering.order.view`, a platform admin
- * acting as themselves. One read-only unit (ADR-0025).
+ * acting as themselves. One read-only unit (ADR-0025), so the counts are separate snapshots: a
+ * bucket that drifted below zero is clamped to 0 and the shortfall logged, never an error.
  */
 export class ViewMarketplaceOrderStatus extends UseCase<KpiInput, OrderStatusAnswer, AccessDenied> {
   static override readonly access: AccessDeclaration = {
@@ -75,12 +76,24 @@ export class ViewMarketplaceOrderStatus extends UseCase<KpiInput, OrderStatusAns
         { readOnly: true },
       );
       if (!unit.ok) return err({ code: 'access.unavailable' });
+      const { counts, shortfall } = orderStatusOfDrifted(unit.value);
+      if (shortfall !== null) {
+        // The counts are separate snapshots (no transaction in a read-only unit): a bucket that
+        // drifted below zero is shown as 0. Counts only, never an amount.
+        logger.warn({
+          msg: 'reporting.order-status.drift-clamped',
+          shortfall,
+          paid: counts.paid,
+          marketId: market.marketId,
+          correlationId: context.correlationId,
+        });
+      }
       return ok({
         period,
         timezone,
         window: windowOf(period.current, timezone),
         generatedAt: now,
-        counts: orderStatusOf(unit.value),
+        counts,
         sameDayShare: sameDayShareOf(null),
       });
     } catch (error) {

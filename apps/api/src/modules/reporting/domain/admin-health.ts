@@ -73,6 +73,57 @@ export function orderStatusOf(tallies: OrderStatusTallies): OrderStatusCounts {
   };
 }
 
+/** By how many orders each derived bucket went below zero before it was clamped. */
+export interface OrderStatusShortfall {
+  readonly toShip: number;
+  readonly shipped: number;
+  readonly delivered: number;
+}
+
+/**
+ * {@link orderStatusOf} for tallies read as separate snapshots (the dashboard's read-only unit opens
+ * no transaction, ADR-0025): an order that changes state while the counts run can be counted twice
+ * or not at all, so a derived bucket near zero can go negative. Such a bucket is clamped to 0 and
+ * the shortfall is returned for the caller to log; the buckets then may not add up to `paid` by
+ * that many orders (Mojtaba's ruling, PR 6 review). Tallies no drift explains (a negative or
+ * fractional count read) still throw. A consistent set answers exactly {@link orderStatusOf}.
+ */
+export function orderStatusOfDrifted(tallies: OrderStatusTallies): {
+  readonly counts: OrderStatusCounts;
+  readonly shortfall: OrderStatusShortfall | null;
+} {
+  const { paid, cancelled, refunded } = tallies;
+  const read = [paid, cancelled, tallies.delivered, tallies.shipped];
+  const reads = read.concat(refunded.delivered, refunded.shipped, refunded.toShip);
+  if (!reads.every((n) => Number.isSafeInteger(n) && n >= 0)) {
+    throw new RangeError('reporting: order status tallies do not add up');
+  }
+  const delivered = tallies.delivered - refunded.delivered;
+  const shipped = tallies.shipped - refunded.shipped;
+  const toShip = paid - cancelled - tallies.delivered - tallies.shipped - refunded.toShip;
+  const shortfall = {
+    toShip: Math.max(0, -toShip),
+    shipped: Math.max(0, -shipped),
+    delivered: Math.max(0, -delivered),
+  };
+  const drifted = shortfall.toShip + shortfall.shipped + shortfall.delivered > 0;
+  if (!drifted) return { counts: orderStatusOf(tallies), shortfall: null };
+  const refundedTotal = refunded.delivered + refunded.shipped + refunded.toShip;
+  return {
+    counts: {
+      paid,
+      toShip: Math.max(0, toShip),
+      shipped: Math.max(0, shipped),
+      delivered: Math.max(0, delivered),
+      cancelled,
+      refunded: refundedTotal,
+      cancelledRateBp: ratioBp(cancelled, paid),
+      refundedRateBp: ratioBp(refundedTotal, paid),
+    },
+    shortfall,
+  };
+}
+
 /**
  * The share of the range's paid seller orders delivered by a same-day method. It needs the
  * delivery method of each seller order in `reporting.seller_orders`, which reporting does not hold

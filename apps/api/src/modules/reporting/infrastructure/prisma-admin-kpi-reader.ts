@@ -88,9 +88,9 @@ export class PrismaAdminKpiReader implements AdminKpiReader {
    *
    * The unit is read-only, so it opens no transaction (ADR-0025): each count below is its own
    * snapshot and the buckets may drift by the few orders that change state while they run.
-   * Acceptable for a dashboard figure. A drift that would make a derived bucket negative (only
-   * possible when that bucket is about zero) is refused by `orderStatusOf`, and that one load shows
-   * the card's error state rather than a wrong number.
+   * Acceptable for a dashboard figure. A derived bucket that drifts below zero (only possible when
+   * it is about zero) is clamped to 0 by the use case (`orderStatusOfDrifted`), which logs the
+   * shortfall.
    *
    * `tenant_id` and `currency` are checked on the row, not in an index (the indexes lead with
    * `market_id` and the day): fine while each has one value per Market, as both do today.
