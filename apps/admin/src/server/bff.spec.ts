@@ -5450,3 +5450,70 @@ describe('relay of the phase 4 money and account exports (strict queries)', () =
     expect(bad.url).toBeUndefined();
   });
 });
+
+describe('relay of the dashboard report download', () => {
+  const get = async (query: string, method = 'GET') => {
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(new Response('a,b\n', { headers: { 'content-type': 'text/csv' } })),
+    );
+    const response = await relay(
+      config,
+      new Request(`http://admin.localhost:3002/api/reporting/admin/daily/export${query}`, {
+        method,
+        headers: sameOrigin,
+      }),
+      ['reporting', 'admin', 'daily', 'export'],
+      upstream,
+    );
+    return { response, url: upstream.mock.calls[0]?.[0] as string | undefined };
+  };
+
+  it('relays a preset and a custom range with the format', async () => {
+    expect((await get('?period=7d&format=csv')).url).toBe(
+      'http://api.test/reporting/admin/daily/export?period=7d&format=csv',
+    );
+    const custom = await get('?period=custom&from=2026-09-01&to=2026-11-23&format=xlsx');
+    expect(custom.response.status).toBe(200);
+    expect(custom.url).toBe(
+      'http://api.test/reporting/admin/daily/export?period=custom&from=2026-09-01&to=2026-11-23&format=xlsx',
+    );
+  });
+
+  it('refuses a malformed period, day or format instead of exporting the default', async () => {
+    for (const query of [
+      '?period=year&format=csv',
+      '?period=custom&from=2026-9-1&to=2026-11-23&format=csv',
+      '?period=7d&format=pdf',
+    ]) {
+      const bad = await get(query);
+      expect([query, bad.response.status]).toEqual([query, 400]);
+      expect(bad.url).toBeUndefined();
+    }
+  });
+
+  it('refuses a repeated key and an over-long value', async () => {
+    for (const query of [
+      '?period=7d&period=30d&format=csv',
+      `?period=7d&format=csv&from=${'1'.repeat(300)}`,
+    ]) {
+      const bad = await get(query);
+      expect([query.slice(0, 40), bad.response.status]).toEqual([query.slice(0, 40), 400]);
+      expect(bad.url).toBeUndefined();
+    }
+  });
+
+  it('relays a custom period without its days as it is: the API refuses it, never the relay', async () => {
+    const lone = await get('?period=custom&format=csv');
+    expect(lone.url).toBe('http://api.test/reporting/admin/daily/export?period=custom&format=csv');
+  });
+
+  it('drops a key it does not know', async () => {
+    expect((await get('?period=7d&format=csv&extra=1')).url).toBe(
+      'http://api.test/reporting/admin/daily/export?period=7d&format=csv',
+    );
+  });
+
+  it('is a read: no other method reaches it', async () => {
+    expect((await get('?period=7d&format=csv', 'POST')).url).toBeUndefined();
+  });
+});

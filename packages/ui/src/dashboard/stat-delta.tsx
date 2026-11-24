@@ -40,8 +40,8 @@ export function StatDelta({
       {...(hint === undefined ? {} : { title: hint })}
       className={`flex flex-wrap items-center gap-x-1.5 text-xs font-medium ${COLOUR[sentiment]}`}
     >
-      {plain === true ? null : (
-        <span aria-hidden="true">{value === 'n/a' ? '' : ARROW[direction]}</span>
+      {plain === true || value === 'n/a' ? null : (
+        <span aria-hidden="true">{ARROW[direction]}</span>
       )}
       <span>{value}</span>
       <span className="sr-only">

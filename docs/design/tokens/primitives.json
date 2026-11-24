@@ -249,6 +249,16 @@
         "$value": "#3A1A16"
       }
     },
+    "cyan": {
+      "275": {
+        "$type": "color",
+        "$value": "#22B8D9"
+      },
+      "390": {
+        "$type": "color",
+        "$value": "#0891B2"
+      }
+    },
     "green": {
       "30": {
         "$type": "color",

@@ -78,9 +78,11 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'PAYOUT_RUN');
   await createCopy(name, 'SELLERS_LIST');
   await createCopy(name, 'ORDERING_ORDERS');
+  await createCopy(name, 'DASHBOARD_PAYMENTS_QUEUE');
   await createCopy(name, 'SEARCH_DOCUMENTS');
   await createCopy(name, 'SEARCH_FILTERS');
   await createCopy(name, 'SEARCH_RATINGS');
+  await createCopy(name, 'CATALOG_TREE');
 }
 
 /**
@@ -152,10 +154,16 @@ export default async function globalSetup(): Promise<void> {
  *   Markets (its own and the other fixture) before and after inserting its own orders, and other
  *   files (pickup codes, paid outbox, offer pairs, storefront reads) insert and confirm orders in
  *   both Markets in parallel, so no other file's order lives there.
+ * - `dashboard_payments_queue`: dashboard-payments-queue-counts.db-spec.ts counts whole-Market work
+ *   queues (restricted accounts, holds, disputes, failed webhooks and payouts) and expects exact
+ *   overdue numbers, while other files seed old rows in the same tables, so none live there.
  * - `search_documents`, `search_filters`, `search_ratings`: search-offer-documents, search-attribute-filters
  *   and search-product-ratings db-specs each empty whole search tables (`DELETE FROM search.offer_documents`,
  *   `search.product_ratings`) in `beforeAll`/`beforeEach` and then expect only their own rows, so one file's
  *   cleanup removed another's seeded documents (searches returned []). Each keeps its own copy.
+ * - `catalog_tree`: catalog-category-tree.db-spec.ts runs the Market seed use case and then counts the
+ *   categories and `platform-category-created` outbox events of whole Markets (AU must stay empty),
+ *   while other files seed or insert categories in both Markets in parallel, so none of them lives there.
  * Copied before any test connects, since a template must have no other session.
  */
 async function createCopy(
@@ -190,9 +198,11 @@ async function createCopy(
     | 'PAYOUT_RUN'
     | 'SELLERS_LIST'
     | 'ORDERING_ORDERS'
+    | 'DASHBOARD_PAYMENTS_QUEUE'
     | 'SEARCH_DOCUMENTS'
     | 'SEARCH_FILTERS'
-    | 'SEARCH_RATINGS',
+    | 'SEARCH_RATINGS'
+    | 'CATALOG_TREE',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });

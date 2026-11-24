@@ -8,6 +8,7 @@ import {
   needsAction,
   workQueueRows,
   type DashboardSource,
+  type GridLayout,
   type WorkQueueAnswer,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -52,8 +53,11 @@ function Card({ widget }: { readonly widget: Widget<WorkQueueAnswer> }) {
  */
 export function NeedsAction({
   source,
+  layout,
 }: {
   readonly source: DashboardSource<Widget<WorkQueueAnswer> | null> | null;
+  /** Places the card in a DashboardGrid; without it the card adds no wrapper. */
+  readonly layout?: GridLayout;
 }) {
   const t = useTranslations('work-queue');
   const tr = useTranslations();
@@ -61,6 +65,7 @@ export function NeedsAction({
   return (
     <DashboardSlot
       source={source}
+      {...(layout === undefined ? {} : { layout })}
       fallback={
         <ChartCardSkeleton
           id={ID}

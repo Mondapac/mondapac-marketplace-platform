@@ -214,6 +214,11 @@ export interface DashboardCardProps {
   readonly headerRight?: ReactNode;
   /** Sits right after the title (a "?" definition). */
   readonly titleAdornment?: ReactNode;
+  /**
+   * With `headerRight`: on a phone the header stacks as title, controls, scope line; from the sm
+   * width the controls sit on the title row (right) and the scope directly under the title.
+   */
+  readonly stackedHeader?: boolean;
   readonly children?: ReactNode;
 }
 
@@ -227,35 +232,56 @@ export function DashboardCard({
   flush = false,
   headerRight,
   titleAdornment,
+  stackedHeader = false,
   children,
 }: DashboardCardProps) {
+  const stacked = stackedHeader && error === undefined;
   return (
     <section
       aria-labelledby={id}
       className="flex h-full min-w-0 flex-1 flex-col rounded-lg border border-line bg-surface"
     >
-      <div className="flex items-baseline justify-between gap-x-4 px-4 pt-4">
-        <div className="flex min-w-0 flex-col gap-0.5">
-          <div className="flex min-w-0 items-center gap-1">
+      {stacked ? (
+        <div className="grid grid-cols-1 items-center gap-x-4 gap-y-2 px-4 pt-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:gap-y-0.5">
+          <div className="order-1 flex min-w-0 items-center gap-1 sm:col-start-1 sm:row-start-1">
             <h2 id={id} className="break-words text-lg font-semibold text-fg">
               {title}
             </h2>
-            {titleAdornment === undefined || error !== undefined ? null : titleAdornment}
+            {titleAdornment}
           </div>
-          {scope === undefined ? null : <p className="text-xs text-fg-muted">{scope}</p>}
+          {headerRight === undefined ? null : (
+            <div className="order-2 min-w-0 sm:col-start-2 sm:row-start-1 sm:justify-self-end">
+              {headerRight}
+            </div>
+          )}
+          {scope === undefined ? null : (
+            <p className="order-3 text-xs text-fg-muted sm:col-start-1 sm:row-start-2">{scope}</p>
+          )}
         </div>
-        {headerRight === undefined || error !== undefined ? null : (
-          <div className="shrink-0">{headerRight}</div>
-        )}
-        {action === undefined || error !== undefined ? null : (
-          <a
-            className="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap text-sm font-medium text-link underline lg:min-h-0"
-            href={action.href}
-          >
-            {action.label}
-          </a>
-        )}
-      </div>
+      ) : (
+        <div className="flex items-baseline justify-between gap-x-4 px-4 pt-4">
+          <div className="flex min-w-0 flex-col gap-0.5">
+            <div className="flex min-w-0 items-center gap-1">
+              <h2 id={id} className="break-words text-lg font-semibold text-fg">
+                {title}
+              </h2>
+              {titleAdornment === undefined || error !== undefined ? null : titleAdornment}
+            </div>
+            {scope === undefined ? null : <p className="text-xs text-fg-muted">{scope}</p>}
+          </div>
+          {headerRight === undefined || error !== undefined ? null : (
+            <div className="shrink-0">{headerRight}</div>
+          )}
+          {action === undefined || error !== undefined ? null : (
+            <a
+              className="inline-flex min-h-11 shrink-0 items-center whitespace-nowrap text-sm font-medium text-link underline lg:min-h-0"
+              href={action.href}
+            >
+              {action.label}
+            </a>
+          )}
+        </div>
+      )}
       <div className={`flex flex-1 flex-col ${flush && error === undefined ? 'pt-3' : 'p-4'}`}>
         {error === undefined ? (
           children

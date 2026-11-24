@@ -1,4 +1,4 @@
-/* MondaPac design tokens v1.11.1. Source of truth: the Figma file 'MondaPac Design System'.
+/* MondaPac design tokens v1.11.2. Source of truth: the Figma file 'MondaPac Design System'.
  * Do not edit by hand. Change the Figma variables, run the plugin command Export tokens and commit these files. */
 :root {
   --mp-color-bg-page: #F5F6F8;
@@ -99,7 +99,7 @@
   --mp-color-chart-cat-1: #1D4FD7;
   --mp-color-chart-cat-2: #1BAF7A;
   --mp-color-chart-cat-3: #6250D6;
-  --mp-color-chart-cat-4: #EDA100;
+  --mp-color-chart-cat-4: #0891B2;
   --mp-color-chart-cat-5: #E87BA4;
   --mp-color-chart-cat-other: #8A93A3;
   --mp-color-kpi-blue-bg: #1D4FD7;
@@ -283,7 +283,7 @@
   --mp-color-chart-cat-1: #5F86F5;
   --mp-color-chart-cat-2: #199E70;
   --mp-color-chart-cat-3: #9085E9;
-  --mp-color-chart-cat-4: #C98500;
+  --mp-color-chart-cat-4: #22B8D9;
   --mp-color-chart-cat-5: #D55181;
   --mp-color-chart-cat-other: #6B7586;
   --mp-color-kpi-blue-bg: #3D68E6;

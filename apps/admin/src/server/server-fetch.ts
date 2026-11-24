@@ -11,6 +11,11 @@ export type ServerGet<T> =
   /** `details` is the `details` object of the API's refusal, when it sent one. */
   | { readonly kind: 'not-found'; readonly details?: Readonly<Record<string, unknown>> }
   | { readonly kind: 'conflict' }
+  /** A 400 `validation.failed`: the refused fields, as the API names them (`path` and `code`). */
+  | {
+      readonly kind: 'invalid';
+      readonly fields: readonly { readonly path: string; readonly code: string }[];
+    }
   | { readonly kind: 'unavailable' };
 
 /**
@@ -78,6 +83,21 @@ export async function serverGet<T>(
         : { kind: 'not-found', details: refusal.details };
     }
     if (response.status === 409) return { kind: 'conflict' };
+    if (response.status === 400) {
+      const refusal = (await response.json().catch((): unknown => null)) as {
+        code?: string;
+        details?: { fields?: { path?: unknown; code?: unknown }[] };
+      } | null;
+      if (refusal?.code === 'validation.failed') {
+        const fields = (refusal.details?.fields ?? []).flatMap((field) =>
+          typeof field.path === 'string' && typeof field.code === 'string'
+            ? [{ path: field.path, code: field.code }]
+            : [],
+        );
+        return { kind: 'invalid', fields };
+      }
+      return { kind: 'unavailable' };
+    }
     if (!response.ok) return { kind: 'unavailable' };
     return { kind: 'ok', body: (await response.json()) as T };
   } catch (error) {
