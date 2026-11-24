@@ -203,11 +203,16 @@ const base: AdminKpis = {
 };
 const empty: AdminKpis = {
   ...base,
+  health: {
+    ...health,
+    disputeRate: { status: 'ok', disputes: 0, paidSellerOrders: 0, rateBp: null },
+  },
   operations: {
     ...operations,
     kpis: {
       ...operations.kpis,
-      current: ops(0),
+      sellersWithOrders: 0,
+      current: { ...ops(0), ordersShipped: 0, onTimeRateBp: null, ordersDelivered: 0, refunds: 0 },
       previous: ops(0),
       series: counts(N, 0, 0).map((r) => ({ ...r, ordersPaid: 0 })),
       previousSeries: counts(N, 0, 0).map((r) => ({ ...r, ordersPaid: 0 })),

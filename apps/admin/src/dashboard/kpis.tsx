@@ -854,7 +854,10 @@ function SupplyHealth({ source, allowed }: CardProps) {
               key="disputes"
               label={t('health.disputes.label')}
               hint={
-                d.status === 'ok' && d.disputes !== undefined && d.paidSellerOrders !== undefined
+                d.status === 'ok' &&
+                d.disputes !== undefined &&
+                d.paidSellerOrders !== undefined &&
+                d.paidSellerOrders > 0
                   ? t('health.disputes.hint', {
                       disputes: count(d.disputes),
                       paid: count(d.paidSellerOrders),
@@ -863,7 +866,11 @@ function SupplyHealth({ source, allowed }: CardProps) {
               }
             >
               {d.status === 'ok' ? (
-                <Figure>{kpiRate(d.rateBp ?? null, locale)}</Figure>
+                d.rateBp === null || d.rateBp === undefined || d.paidSellerOrders === 0 ? (
+                  <span className={WORDS}>{t('health.disputes.none')}</span>
+                ) : (
+                  <Figure>{kpiRate(d.rateBp, locale)}</Figure>
+                )
               ) : (
                 <Failed />
               )}

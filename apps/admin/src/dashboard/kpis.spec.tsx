@@ -578,6 +578,21 @@ describe('the admin KPI cards', () => {
       expect(within(region()).getByText('Amount held is not recorded yet')).toBeTruthy();
     });
 
+    it('says "Not enough data" for a dispute rate with no paid orders, never 0%', () => {
+      page(
+        answer({
+          operations,
+          health: {
+            ...health,
+            disputeRate: { status: 'ok', disputes: 0, paidSellerOrders: 0, rateBp: null },
+          },
+        }),
+      );
+      const row = within(region()).getByText('Dispute rate').closest('li')!;
+      expect(row.textContent).toContain('Not enough data');
+      expect(row.textContent).not.toMatch(/%|of 0/);
+    });
+
     it('leaves out a count the viewer has no key for and shows a failed one in place', () => {
       page(
         answer({

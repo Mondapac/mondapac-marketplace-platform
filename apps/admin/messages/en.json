@@ -433,6 +433,7 @@
         },
         "disputes": {
           "label": "Dispute rate",
+          "none": "Not enough data",
           "hint": "{disputes} opened of {paid} paid seller orders"
         }
       },
