@@ -538,7 +538,7 @@ function ActivityList({
     <SuperList
       heading={{
         embedded: true,
-        subtitle: t('subtitle', { zone }),
+        note: t('subtitle', { zone }),
         actions: keys.has(EXPORT_PERMISSION) ? (
           <Button
             variant="secondary"

@@ -120,6 +120,8 @@ describe.each(['AU', 'ZZ'] as const)('seller category use cases in market %s', (
   let reserved: number;
   let capabilityAsks: number;
   let ids: SequenceIdGenerator;
+  /** The seller's activity scope: every category, a set, or unreadable. */
+  let activityScope: 'all' | 'down' | ReadonlySet<Id<'Category'>>;
   const clock = new FixedClock(T0);
   const englishVocabulary = code === 'AU' ? 'en-AU' : 'en-US';
 
@@ -222,6 +224,18 @@ describe.each(['AU', 'ZZ'] as const)('seller category use cases in market %s', (
         eligibility: { isEligible: () => Promise.resolve(eligible) },
         counters,
         counterKeys,
+        sellerCategories: {
+          allowedCategoryIdsForSeller: () =>
+            Promise.resolve(
+              activityScope === 'down'
+                ? err({ code: 'access.unavailable' as const })
+                : ok(
+                    activityScope === 'all'
+                      ? ({ has: () => true, size: 1 } as unknown as ReadonlySet<Id<'Category'>>)
+                      : activityScope,
+                  ),
+            ),
+        },
       }),
       cancel: new OwnCategoryProposalCancel(gate, write),
       own: new OwnCategoryProposalsList(gate, {
@@ -315,6 +329,7 @@ describe.each(['AU', 'ZZ'] as const)('seller category use cases in market %s', (
     matcherDown = false;
     reserved = 0;
     capabilityAsks = 0;
+    activityScope = 'all';
     ids = new SequenceIdGenerator(clock);
     chain(maxDepth);
   });
@@ -443,6 +458,25 @@ describe.each(['AU', 'ZZ'] as const)('seller category use cases in market %s', (
       expect(await build().propose.execute(sellerContext(), body('Spices'))).toEqual(
         err({ code: 'seller.not-eligible' }),
       );
+    });
+
+    it("refuses a parent outside the seller's business activities, and fails closed", async () => {
+      activityScope = new Set([cat(1)]);
+      expect(await build().propose.execute(sellerContext(), body('Spices', 2))).toEqual(
+        err({
+          code: 'validation.failed',
+          fields: [{ path: 'platformParentId', code: 'category.not-in-activity' }],
+        }),
+      );
+      activityScope = new Set();
+      expect((await build().propose.execute(sellerContext(), body('Spices', 2))).ok).toBe(false);
+      activityScope = 'down';
+      expect(await build().propose.execute(sellerContext(), body('Spices', 2))).toEqual(
+        err({ code: 'access.unavailable' }),
+      );
+      expect(shelves.proposals.size).toBe(0);
+      activityScope = new Set([cat(1), cat(2)]);
+      await proposeOk('Spices', 2);
     });
 
     it('claim-checks every name and description in its own locale and fails closed', async () => {

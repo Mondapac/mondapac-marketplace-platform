@@ -1,3 +1,4 @@
+import { ALL_CATEGORIES_IN_SCOPE } from '../support/seller-scope-allow-all';
 import { randomUUID } from 'node:crypto';
 import { Temporal, ok, uuidV7 } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
@@ -220,6 +221,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       clock,
     });
     submit = new SubmitProduct({
+      sellerCategories: ALL_CATEGORIES_IN_SCOPE,
       unitOfWork: persistence.unitOfWork,
       products,
       workingCopies: copies,

@@ -165,7 +165,8 @@ describe('Invoices tabs and page numbers', () => {
     expect(urls()[0]).toBe(
       'ordering/admin/documents?kind=order-confirmation&page=1&pageSize=25&sort=issued&direction=desc',
     );
-    expect(screen.getByText('These are not tax invoices.')).toBeTruthy();
+    // No line under the title: the "not tax invoices" note is in the Help panel.
+    expect(screen.queryByText('These are not tax invoices.')).toBeNull();
     // The zone is no longer written on the page: it is in the Help panel, the account menu and the row times.
     expect(
       screen.queryByText(/(Times|Dates)( and days)?( are shown)?( are)? in [A-Z]/u),
@@ -767,7 +768,7 @@ describe('Invoices rows', () => {
     expect(screen.getAllByText('000000C1').length).toBeGreaterThan(0);
   });
 
-  it('never calls a row a tax invoice: only the intro says they are not', async () => {
+  it('never calls a row a tax invoice: no row says it is a tax invoice', async () => {
     window.localStorage.setItem(
       'mp:admin:AU:acc-1:invoices-columns',
       JSON.stringify([...OPTIONAL_COLUMNS]),
@@ -778,7 +779,6 @@ describe('Invoices rows', () => {
     const strip = (text: string) =>
       text.replace('These are not tax invoices.', '').replace(/\s+/g, ' ');
     expect(strip(container.textContent ?? '')).not.toMatch(/tax invoice/i);
-    expect(container.textContent).toContain('These are not tax invoices.');
     fireEvent.click(screen.getByRole('button', { name: /^Credit notes/ }));
     await screen.findByText('Damaged');
     expect(strip(container.textContent ?? '')).not.toMatch(/tax invoice/i);

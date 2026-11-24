@@ -234,6 +234,8 @@ describe('event catalogue and registries of the booted application (P 5.3, 8)', 
       'promotions.qualify-referral-on-delivery',
       'promotions.release-cancelled-redemptions',
       // Dashboards upgrade phase 3: reporting records the facts of ordering's events.
+      // Dashboards v2 phase 1 (PR 4): reporting records the ledger's postings.
+      'reporting.ledger-recorded',
       'reporting.order-cancelled',
       'reporting.order-paid',
       'reporting.order-shipped',

@@ -286,6 +286,28 @@ export {
   type ChartPoint,
   type LineAreaChartProps,
 } from './dashboard/line-chart.tsx';
+export {
+  DonutChart,
+  arcWidths,
+  sliceSegments,
+  MIN_ARC,
+  type DonutChartProps,
+  type DonutSegment,
+} from './dashboard/donut-chart.tsx';
+export {
+  StackedBarChart,
+  stackSeries,
+  type StackedBarChartProps,
+  type StackedPoint,
+  type StackedSeries,
+} from './dashboard/stacked-bar-chart.tsx';
+export { ShareBar, type ShareBarItem, type ShareBarProps } from './dashboard/share-bar.tsx';
+export {
+  assignColorKeys,
+  type CategoryKey,
+  type ColorKey,
+  type StatusKey,
+} from './dashboard/chart-palette.ts';
 export { Gauge, type GaugeProps } from './dashboard/gauge.tsx';
 export { Ring, type RingProps } from './dashboard/ring.tsx';
 export {
@@ -307,6 +329,8 @@ export {
   ChartEmpty,
   ChartError,
   ChartSkeleton,
+  type ChartDataState,
+  type ChartEmptyLabels,
   type ChartStateProps,
 } from './dashboard/chart-states.tsx';
 export { compactNumber, labelIndexes, niceTicks } from './dashboard/chart-scale.ts';
@@ -345,6 +369,7 @@ export {
   type ActionMenuLink,
   type ActionMenuProps,
 } from './overlay/action-menu.tsx';
+export { LinkMenu, type LinkMenuItem, type LinkMenuProps } from './overlay/link-menu.tsx';
 export { HelpProvider, HelpTab, useHelp, type HelpProviderProps } from './help/help-context.tsx';
 export {
   bestRoute,

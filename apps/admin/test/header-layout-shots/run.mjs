@@ -35,7 +35,11 @@ const { chromium } = process.env.PLAYWRIGHT_PATH
 const browser = await chromium.launch();
 // name, scenario, text to wait for, action, what to shoot: the Category and tags card, the open
 // list in the viewport, a named card, or the full page
-const views = [['header-layout-products', 'column', 'Lamb cutlets 500 g', null, 'page']];
+const views = [
+  ['header-layout-products', 'column', 'Lamb cutlets 500 g', null, 'page'],
+  ['header-layout-invoices', 'invoices', 'Cedar Lane Halal Meats', null, 'page'],
+  ['header-layout-live-status', 'live', 'Cedar Lane Halal Meats', null, 'page'],
+];
 for (const scheme of ['light', 'dark']) {
   for (const width of [1280, 768, 375]) {
     for (const [name, scenario, waitFor, action, shoot] of views) {

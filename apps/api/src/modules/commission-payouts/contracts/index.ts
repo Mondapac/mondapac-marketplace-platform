@@ -22,6 +22,18 @@ export {
   type CommissionPayoutsWorkQueueFacade,
 } from './commission-payouts-work-queue.facade';
 export {
+  COMMISSION_PAYOUTS_REPORTING_FACADE,
+  LEDGER_REPORT_KINDS,
+  MAX_LEDGER_REPORT_PAGE,
+  MAX_LEDGER_REPORT_SELLER_ORDERS,
+  type CommissionPayoutsReportingFacade,
+  type LedgerReportEntry,
+  type LedgerReportFailure,
+  type LedgerReportKind,
+  type LedgerReportPage,
+  type LedgerReportWindow,
+} from './commission-payouts-reporting.facade';
+export {
   COMMISSION_PAYOUTS_FACADE,
   type CommissionPayoutsFacade,
   type CommissionPayoutsFailure,

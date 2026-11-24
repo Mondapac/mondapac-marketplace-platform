@@ -241,4 +241,83 @@ describe('CategoryChooser', () => {
     expect(onValue).toHaveBeenLastCalledWith(['zz-leaf']);
     expect(screen.getByRole('button', { name: 'Remove Zorbia › Plinkus › Quuxen' })).toBeTruthy();
   });
+
+  describe('sameBranch', () => {
+    const branchLabels: CategoryChooserLabels = {
+      ...labels,
+      sameBranchHint: 'Other categories must be in the same department as the primary one.',
+      droppedOthers: (count) => `${count} dropped.`,
+    };
+
+    it('offers only the primary department and shows the hint', async () => {
+      render(<Harness sameBranch labels={branchLabels} initial={['basmati']} />);
+      expect(screen.getByText(branchLabels.sameBranchHint as string)).toBeTruthy();
+      open();
+      expect(await screen.findByRole('option', { name: /^Pantry › Oils/ })).toBeTruthy();
+      expect(screen.queryByRole('option', { name: /^Drinks/ })).toBeNull();
+    });
+
+    it('drops others and announces it when Make primary or Remove changes the department', () => {
+      const seen = vi.fn();
+      render(
+        <Harness
+          sameBranch
+          labels={branchLabels}
+          initial={['basmati', 'oils', 'tea']}
+          onValue={seen}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Remove Pantry › Rice › Basmati' }));
+      // oils is next primary; tea (Drinks) is dropped
+      expect(seen).toHaveBeenLastCalledWith(['oils']);
+      expect(screen.getByRole('status').textContent).toContain('1 dropped.');
+    });
+
+    it('drops on Make primary into another department', () => {
+      const seen = vi.fn();
+      render(
+        <Harness
+          sameBranch
+          labels={branchLabels}
+          initial={['basmati', 'oils', 'tea']}
+          onValue={seen}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Make primary: Drinks › Tea' }));
+      expect(seen).toHaveBeenLastCalledWith(['tea']);
+      expect(screen.getByRole('status').textContent).toContain('2 dropped.');
+    });
+
+    it('clears the dropped note on the next change', () => {
+      render(<Harness sameBranch labels={branchLabels} initial={['basmati', 'oils', 'tea']} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Make primary: Drinks › Tea' }));
+      expect(screen.getByRole('status').textContent).toContain('2 dropped.');
+      fireEvent.click(screen.getByRole('button', { name: 'Remove Drinks › Tea' }));
+      expect(screen.getByRole('status').textContent ?? '').not.toContain('dropped');
+    });
+
+    it('keeps a chosen id the choices do not describe on Make primary', () => {
+      const seen = vi.fn();
+      render(
+        <Harness
+          sameBranch
+          labels={branchLabels}
+          initial={['basmati', 'mystery', 'tea']}
+          onValue={seen}
+        />,
+      );
+      fireEvent.click(screen.getByRole('button', { name: 'Make primary: Drinks › Tea' }));
+      // tea (Drinks) leads; basmati (Pantry) is dropped; the unknown id stays (the API refuses at submit)
+      expect(seen).toHaveBeenLastCalledWith(['tea', 'mystery']);
+      expect(screen.getByRole('status').textContent).toContain('1 dropped.');
+    });
+
+    it('stays unrestricted without the prop (admin)', () => {
+      const seen = vi.fn();
+      render(<Harness initial={['basmati', 'tea']} onValue={seen} />);
+      expect(screen.queryByText(/same department/)).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Make primary: Drinks › Tea' }));
+      expect(seen).toHaveBeenLastCalledWith(['tea', 'basmati']);
+    });
+  });
 });

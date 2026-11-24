@@ -29,7 +29,12 @@ import type { OfferRepository } from '../ports/offer.repository';
 import type { TagReevaluationRequestRepository } from '../ports/tag-reevaluation-requests';
 import { markProductForReevaluation } from '../tags/publish-fan-out';
 import { refusalOf, type RefusedField } from '../working-copy/save-draft.service';
-import type { FreezeRevision, FreezeRevisionFailure } from './freeze-revision.service';
+import type { SellerCategoryScope } from '../business-activities/allowed-category-ids';
+import type {
+  FreezeOptions,
+  FreezeRevision,
+  FreezeRevisionFailure,
+} from './freeze-revision.service';
 
 export interface SubmitProductInput {
   readonly productId: Id<'Product'>;
@@ -127,6 +132,14 @@ export interface SubmitProductDependencies {
    * Optional so a caller that builds the service without brands still publishes as before.
    */
   readonly brandAssigner?: BrandAssigner;
+  /**
+   * A seller's activity scope (owner decision 2026-10-31): read before the first unit, then every
+   * category of the seller's submit outside it is `category.not-in-activity`. A scope that cannot
+   * be read refuses the submit with `access.unavailable`, and so does a seller's submit built
+   * without it (fail closed: a missing wiring never skips the check). An admin's submit does not
+   * use it. The module wires it.
+   */
+  readonly sellerCategories?: Pick<SellerCategoryScope, 'allowedCategoryIdsForSeller'>;
 }
 
 /** A PLATFORM publish marks every Offer of the product in its unit: room for a large product. */
@@ -194,6 +207,23 @@ export class SubmitProduct {
       return err({ code: 'access.unavailable' });
     }
 
+    // The seller's activity scope, before any unit: it asks `sellers` and opens a unit of its own.
+    // Fail closed: a seller's submit without the scope dependency is refused, never unchecked.
+    // Accepted TOCTOU window: the scope is read once, here, and both freezes (the read-only one and
+    // the one inside the write unit) use that same set. A change of the seller's business
+    // activities between this read and the commit is not seen by this submit; the next submit
+    // reads it afresh (the scope gates new submits only, never a stored revision).
+    let freezeOptions: FreezeOptions = {};
+    if (author.kind === 'seller') {
+      if (this.deps.sellerCategories === undefined) return err({ code: 'access.unavailable' });
+      const allowed = await this.deps.sellerCategories.allowedCategoryIdsForSeller(
+        context,
+        author.sellerId,
+      );
+      if (!allowed.ok) return err({ code: 'access.unavailable' });
+      freezeOptions = { allowedCategoryIds: allowed.value };
+    }
+
     // 1. Freeze, in a read-only unit. The claim check below runs after this unit has closed:
     // units do not nest and the matcher opens its own (certification's note on #197).
     const first = await unitOfWork.run<
@@ -208,7 +238,12 @@ export class SubmitProduct {
       async () => {
         const loaded = await this.#load(context, input, author);
         if (!loaded.ok) return loaded;
-        const frozen = await freeze.freeze(market, loaded.value.product, loaded.value.copy);
+        const frozen = await freeze.freeze(
+          market,
+          loaded.value.product,
+          loaded.value.copy,
+          freezeOptions,
+        );
         if (!frozen.ok) return frozen;
         return ok({
           product: loaded.value.product,
@@ -273,7 +308,7 @@ export class SubmitProduct {
           const loaded = await this.#load(context, input, author);
           if (!loaded.ok) return loaded;
           const { product, copy } = loaded.value;
-          const frozen = await freeze.freeze(market, product, copy);
+          const frozen = await freeze.freeze(market, product, copy, freezeOptions);
           if (!frozen.ok) return frozen;
           if (frozen.value.contentHash !== checkedHash) return err({ code: 'conflict.stale' });
           const now = this.deps.clock.now();

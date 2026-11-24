@@ -262,7 +262,8 @@ describe('the add page', () => {
     mount();
     // The loading state already shows the "Add product" heading, so wait for the loaded form
     // (its subtitle) before asserting anything that only the form renders.
-    expect(await screen.findByText('Platform product · Australia')).toBeTruthy();
+    await screen.findByRole('heading', { level: 1 });
+    expect(screen.queryByText('Platform product · Australia')).toBeNull();
     expect(screen.getByRole('heading', { level: 1, name: 'Add product' })).toBeTruthy();
     expect(call).toHaveBeenCalledTimes(1);
     expect(call.mock.calls[0]?.slice(0, 2)).toEqual([
@@ -645,7 +646,7 @@ describe('the edit form', () => {
     mountEdit();
     expect((await screen.findByLabelText<HTMLInputElement>('Title')).value).toBe('Sella rice');
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Sella rice');
-    expect(screen.getByText('Platform product · Australia · P00000001')).toBeTruthy();
+    expect(screen.queryByText('Platform product · Australia · P00000001')).toBeNull();
     expect(screen.getByLabelText<HTMLTextAreaElement>(/Description/).value).toBe('Long grain');
     expect(screen.queryByRole('combobox', { name: /language/i })).toBeNull();
     expect(screen.getByText('One size')).toBeTruthy();
@@ -665,7 +666,7 @@ describe('the edit form', () => {
     );
     mountEdit();
     expect(await screen.findByRole('heading', { level: 1, name: 'Add product' })).toBeTruthy();
-    expect(screen.getByText('Platform product · Australia')).toBeTruthy();
+    expect(screen.queryByText('Platform product · Australia')).toBeNull();
     expect(screen.queryByRole('region', { name: 'Unsaved changes' })).toBeNull();
     const publish = screen.getByRole<HTMLButtonElement>('button', { name: 'Publish' });
     expect(publish.disabled).toBe(false);

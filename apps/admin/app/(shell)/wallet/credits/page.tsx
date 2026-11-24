@@ -24,7 +24,6 @@ export default async function IssueCreditPage({
     <WalletPage
       activeId="wallet-credits"
       title={t('wallet.credit.title')}
-      intro={t('wallet.credit.intro')}
       anyOf={[CREDIT_VIEW]}
       stepUpNote
       body={(session, keys) =>

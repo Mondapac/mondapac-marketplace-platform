@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Banner,
   Card,
   CategoryChooser,
   Select,
@@ -70,6 +71,8 @@ export function ClassificationSection({
     added: (name) => t('categories-added', { name }),
     removed: (name) => t('categories-removed', { name }),
     madePrimary: (name) => t('categories-made-primary', { name }),
+    sameBranchHint: t('categories-same-branch-hint'),
+    droppedOthers: (count) => t('categories-dropped-others', { count }),
   };
   // Before the picker is read, a chosen category is named by its path from the form's own list.
   const nameOf = (id: string) => {
@@ -89,6 +92,9 @@ export function ClassificationSection({
   const issueText = (code: string) => t(`categories-error.${code}`);
   return (
     <Card title={t('classification')}>
+      {choices.state === 'ready' && choices.noActivity ? (
+        <Banner tone="attention">{t('categories-no-activity')}</Banner>
+      ) : null}
       <CategoryChooser
         choices={choiceList}
         value={categoryIds}
@@ -106,6 +112,7 @@ export function ClassificationSection({
           ]),
         )}
         announcement={announcement}
+        sameBranch
         onChange={(ids) => {
           const added = ids.find((id) => !categoryIds.includes(id));
           const removed = categoryIds.find((id) => !ids.includes(id));

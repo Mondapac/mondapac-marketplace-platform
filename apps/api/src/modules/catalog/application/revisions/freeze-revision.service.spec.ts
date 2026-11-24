@@ -182,6 +182,9 @@ describe.each(MARKETS)(
         node('c3', 'g'),
         node('ch', 'g', 'hidden'),
         node('ca', 'g', 'archived'),
+        node('e', null),
+        node('f', 'e'),
+        node('k1', 'f'),
       ];
       const withTree = (nodes: readonly unknown[]): FreezeRevision =>
         new FreezeRevision({
@@ -221,12 +224,80 @@ describe.each(MARKETS)(
           { path: 'categoryIds.0', code: 'category.level-not-allowed' },
         ]);
       });
+      it('refuses a seller product category 2 or 3 under another department (category.not-same-branch)', async () => {
+        expect(await issuesOf(['c1', 'c2', 'k1'])).toEqual([
+          { path: 'categoryIds.2', code: 'category.not-same-branch' },
+        ]);
+        expect(await issuesOf(['k1', 'c1'])).toEqual([
+          { path: 'categoryIds.1', code: 'category.not-same-branch' },
+        ]);
+        expect(await issuesOf(['c1', 'c2', 'c3'])).toEqual([]);
+      });
+      it('leaves a platform product free of the same-branch rule', async () => {
+        const created = Product.create({
+          id: 'p1' as Id<'Product'>,
+          marketId: code as MarketId,
+          scope: 'PLATFORM',
+          sellerId: null,
+          handler: simpleProductType,
+          familyCode: 'default',
+          productCode: 'P00000001',
+          variantId: v(1),
+          now: T0,
+        });
+        if (!created.ok) throw new Error(created.error.code);
+        const result = await withTree(tree).freeze(
+          market,
+          created.value,
+          copyOf(ready({ categoryIds: ['c1', 'k1'] })),
+        );
+        expect(result.ok).toBe(true);
+      });
       it('refuses four categories and an unknown category', async () => {
         expect(await issuesOf(['c1', 's1', 'c2', 'c3'])).toContainEqual({
           path: 'categoryIds',
           code: 'too-many',
         });
         expect(await issuesOf(['nope'])).toEqual([{ path: 'categoryIds.0', code: 'unknown' }]);
+      });
+    });
+
+    describe('seller activity scope (owner decision 2026-10-31)', () => {
+      const scoped = (
+        categoryIds: string[],
+        allowed: readonly string[],
+        target = product('simple'),
+      ) =>
+        service.freeze(market, target, copyOf(ready({ categoryIds })), {
+          allowedCategoryIds: new Set(allowed),
+        });
+      const issuesOf = (result: Awaited<ReturnType<typeof scoped>>) =>
+        result.ok ? [] : result.error.code === 'revision.not-ready' ? result.error.issues : [];
+
+      it('refuses a seller product category outside the activities (category.not-in-activity)', async () => {
+        expect(issuesOf(await scoped(['c1', 'c2', 'c3'], ['c1', 'c3']))).toEqual([
+          { path: 'categoryIds.1', code: 'category.not-in-activity' },
+        ]);
+        expect(issuesOf(await scoped(['c1'], []))).toEqual([
+          { path: 'categoryIds.0', code: 'category.not-in-activity' },
+        ]);
+        expect((await scoped(['c1', 'c2'], ['c1', 'c2'])).ok).toBe(true);
+      });
+      it('checks nothing without a scope, and never a platform product', async () => {
+        expect((await service.freeze(market, product('simple'), copyOf(ready()))).ok).toBe(true);
+        const created = Product.create({
+          id: 'p1' as Id<'Product'>,
+          marketId: code as MarketId,
+          scope: 'PLATFORM',
+          sellerId: null,
+          handler: simpleProductType,
+          familyCode: 'default',
+          productCode: 'P00000001',
+          variantId: v(1),
+          now: T0,
+        });
+        if (!created.ok) throw new Error(created.error.code);
+        expect((await scoped(['c1'], [], created.value)).ok).toBe(true);
       });
     });
 

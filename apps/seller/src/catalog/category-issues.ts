@@ -8,10 +8,12 @@ export interface CategoryIssues {
 
 const LIST_CODES = new Set(['required', 'too-many']);
 const ITEM_CODES = new Set([
+  'category.not-in-activity',
   'duplicate',
   'unknown',
   'category.not-available',
   'category.level-not-allowed',
+  'category.not-same-branch',
 ]);
 
 /** The issues at `categoryIds` and `categoryIds.<n>`, as a message key suffix per place. */

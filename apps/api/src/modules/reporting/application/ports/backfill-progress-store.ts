@@ -1,9 +1,13 @@
 import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { FactKind } from '../report-facts-sync';
 
+/** The kind of the ledger history backfill (dashboards v2, phase 1, PR 4). */
+export const LEDGER_BACKFILL_KIND = 'ledger';
+export type BackfillKind = FactKind | typeof LEDGER_BACKFILL_KIND;
+
 /** Where the history backfill of one kind of fact stands in one Market. */
-export interface BackfillProgress {
-  readonly kind: FactKind;
+export interface BackfillProgress<K extends BackfillKind = FactKind> {
+  readonly kind: K;
   /** The window's end, fixed when the backfill started; later facts come from the worker. */
   readonly until: Temporal.Instant;
   /** The id cursor of the last page written; null before the first. */
@@ -33,14 +37,23 @@ export interface BackfillProgressStore {
    */
   startAll(market: MarketContext, until: Temporal.Instant): Promise<readonly BackfillProgress[]>;
   /**
+   * The progress of the ledger backfill, started with `until` when it has none (a concurrent start
+   * keeps the first). Its window end is its own: the ledger backfill starts when it is deployed,
+   * not with the sales backfill.
+   */
+  startLedger(
+    market: MarketContext,
+    until: Temporal.Instant,
+  ): Promise<BackfillProgress<typeof LEDGER_BACKFILL_KIND>>;
+  /**
    * Moves the progress on from `from` to `to`, only while it is still at `from` and unfinished: a
    * late overlapping run that wrote the same page finds it moved and stops. Null when it had moved.
    */
-  advance(
+  advance<K extends BackfillKind>(
     market: MarketContext,
-    from: BackfillProgress,
+    from: BackfillProgress<K>,
     to: BackfillStep,
-  ): Promise<BackfillProgress | null>;
+  ): Promise<BackfillProgress<K> | null>;
 }
 
 export const BACKFILL_PROGRESS_STORE = Symbol('reporting.BackfillProgressStore');
