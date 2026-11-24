@@ -1,13 +1,15 @@
 'use client';
 
-import { useEffect, useId, useRef } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { Badge } from '../form/badge.tsx';
 import { Button } from '../form/button.tsx';
 import {
   MAX_PRODUCT_CATEGORIES,
   addCategory,
+  choicesInBranch,
   choiceLabel,
   choiceParts,
+  dropOutOfBranch,
   focusAfterRemove,
   makePrimary,
   removeCategory,
@@ -46,6 +48,10 @@ export interface CategoryChooserLabels {
   readonly added: (name: string) => string;
   readonly removed: (name: string) => string;
   readonly madePrimary: (name: string) => string;
+  /** With `sameBranch`: the line under the list saying other categories follow the primary's department. */
+  readonly sameBranchHint?: string;
+  /** With `sameBranch`: said when a change to the primary dropped other categories (a live region). */
+  readonly droppedOthers?: (count: number) => string;
 }
 
 export interface CategoryChooserProps {
@@ -72,6 +78,12 @@ export interface CategoryChooserProps {
   readonly disabled?: boolean;
   /** A note after the last add, remove or Make primary, for screen readers. */
   readonly announcement?: string;
+  /**
+   * Seller products: categories after the primary must sit under the primary's department. Add
+   * offers only those, and a change of the primary drops the others that no longer fit. Off keeps
+   * the unrestricted chooser (admin).
+   */
+  readonly sameBranch?: boolean;
 }
 
 /**
@@ -95,14 +107,28 @@ export function CategoryChooser({
   max = MAX_PRODUCT_CATEGORIES,
   disabled = false,
   announcement,
+  sameBranch = false,
 }: CategoryChooserProps) {
+  const [droppedNote, setDroppedNote] = useState('');
   const base = useId();
   const byId = new Map(choices.map((choice) => [choice.id, choice]));
   const nameFor = (id: string): string => {
     const choice = byId.get(id);
     return choice === undefined ? (nameOf?.(id) ?? id) : choiceLabel(choice, labels.general);
   };
-  const free = choices.filter((choice) => !value.includes(choice.id));
+  const offered = sameBranch ? choicesInBranch(choices, value) : choices;
+  const free = offered.filter((choice) => !value.includes(choice.id));
+  // A change of the primary (Make primary, or removing the primary) may leave others in another branch.
+  const change = (next: string[]) => {
+    if (!sameBranch || next[0] === value[0]) {
+      setDroppedNote('');
+      onChange(next);
+      return;
+    }
+    const pruned = dropOutOfBranch(next, choices);
+    setDroppedNote(pruned.dropped > 0 ? (labels.droppedOthers?.(pruned.dropped) ?? '') : '');
+    onChange(pruned.ids);
+  };
   const full = value.length >= max;
   const selectLabels: Partial<SearchSelectLabels> = {
     search: labels.search,
@@ -182,7 +208,7 @@ export function CategoryChooser({
                     aria-describedby={describedBy}
                     onClick={() => {
                       pendingFocus.current = { kind: 'row', id };
-                      onChange(makePrimary(value, id));
+                      change(makePrimary(value, id));
                     }}
                   >
                     {labels.makePrimaryText}
@@ -200,7 +226,7 @@ export function CategoryChooser({
                   aria-describedby={describedBy}
                   onClick={() => {
                     pendingFocus.current = focusAfterRemove(value, id);
-                    onChange(removeCategory(value, id));
+                    change(removeCategory(value, id));
                   }}
                 >
                   {labels.removeText}
@@ -220,6 +246,9 @@ export function CategoryChooser({
           {error}
         </p>
       )}
+      {sameBranch && labels.sameBranchHint !== undefined && value.length > 0 ? (
+        <p className="m-0 text-sm text-fg-muted">{labels.sameBranchHint}</p>
+      ) : null}
       {full ? (
         <p ref={limitNote} tabIndex={-1} className="m-0 text-sm text-fg-muted">
           {labels.limitReached}
@@ -248,13 +277,13 @@ export function CategoryChooser({
               if (next.length >= max && next.length > value.length) {
                 pendingFocus.current = { kind: 'limit' };
               }
-              onChange(next);
+              change(next);
             }}
           />
         </div>
       )}
       <p className="sr-only" role="status" aria-live="polite">
-        {announcement ?? ''}
+        {[announcement, droppedNote].filter((note) => note).join(' ')}
       </p>
     </fieldset>
   );

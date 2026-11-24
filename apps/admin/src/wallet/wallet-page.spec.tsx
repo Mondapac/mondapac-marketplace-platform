@@ -35,7 +35,6 @@ async function show(keys: string[]) {
   const page = await WalletPage({
     activeId: 'wallet-settings',
     title: 'Wallet switch',
-    intro: 'Intro line',
     anyOf: ['wallet.settings.view'],
     stepUpNote: true,
     body: (_session, held) => <p>body for {[...held].join(',')}</p>,
@@ -45,10 +44,9 @@ async function show(keys: string[]) {
 afterEach(cleanup);
 
 describe('WalletPage', () => {
-  it('shows the intro, the code-wait note and the body to an admin who may see it', async () => {
+  it('shows the code-wait note and the body, and no line under the title to an admin who may see it', async () => {
     await show(['wallet.settings.view']);
     expect(screen.getByRole('heading', { name: 'Wallet switch' })).toBeTruthy();
-    expect(screen.getByText('Intro line')).toBeTruthy();
     expect(screen.getByText(/Wait for your authenticator app to show a new code/)).toBeTruthy();
     expect(screen.getByText('body for wallet.settings.view')).toBeTruthy();
   });
@@ -66,7 +64,6 @@ describe('WalletPage', () => {
         activeId: 'settings',
         settingsLinkId: 'wallet',
         title: 'Customer wallet',
-        intro: 'Intro line',
         anyOf: ['wallet.settings.view'],
         stepUpNote: true,
         body: () => <p>settings body</p>,
@@ -99,7 +96,6 @@ describe('WalletPage', () => {
     const page = await WalletPage({
       activeId: 'x',
       title: 't',
-      intro: 'i',
       anyOf: [],
       stepUpNote: false,
       body: () => null,

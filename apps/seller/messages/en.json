@@ -1607,6 +1607,8 @@
       "categories-added": "Added {name}.",
       "categories-removed": "Removed {name}.",
       "categories-made-primary": "{name} is now the primary category.",
+      "categories-same-branch-hint": "Other categories must be in the same department as the primary one.",
+      "categories-dropped-others": "{count, plural, one {# other category was removed because it is in a different department.} other {# other categories were removed because they are in a different department.}}",
       "categories-error": {
         "not-in-activity": "This category isn't part of your business activity. Remove it and choose another.",
         "required": "Choose at least one category.",
@@ -1614,7 +1616,8 @@
         "duplicate": "You chose this category twice. Remove one.",
         "unknown": "This category isn't available any more. Remove it and choose another.",
         "not-available": "This category isn't available any more. Remove it and choose another.",
-        "level-not-allowed": "Choose a more specific category. Products can't go on a department or group."
+        "level-not-allowed": "Choose a more specific category. Products can't go on a department or group.",
+        "not-same-branch": "Choose a category under the same department as the primary one."
       },
       "tax-category": "Tax category",
       "tax-category-placeholder": "Choose a tax category",

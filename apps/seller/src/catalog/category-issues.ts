@@ -13,6 +13,7 @@ const ITEM_CODES = new Set([
   'unknown',
   'category.not-available',
   'category.level-not-allowed',
+  'category.not-same-branch',
 ]);
 
 /** The issues at `categoryIds` and `categoryIds.<n>`, as a message key suffix per place. */

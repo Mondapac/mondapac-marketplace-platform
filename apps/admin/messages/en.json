@@ -15366,7 +15366,6 @@
     "back-home": "Go to the dashboard",
     "rules-ran": "Rules ran {when}",
     "rules-never": "The rules have not run yet",
-    "updates": "Updates every 30 seconds",
     "refresh-failed": "Couldn't refresh. Showing alerts as of {time}.",
     "banner": {
       "no-roster-title": "No on-call roster is set up. Alerts are not being sent.",
@@ -16468,7 +16467,8 @@
         "about": "Every queue you can work on, with how many items wait and for how long. Open a queue to work on its items.",
         "good": [
           "You see only the queues your role can act on.",
-          "The oldest waiting item sets how late a queue is."
+          "The oldest waiting item sets how late a queue is.",
+          "Counts can be up to a minute old; reload the page for new ones."
         ],
         "related": [
           {
@@ -16556,7 +16556,8 @@
         "about": "Sellers whose latest health is Unhealthy, worst score first.",
         "good": [
           "Pick a measure to see the sellers it flagged.",
-          "Open a seller to see each measure and its trend."
+          "Open a seller to see each measure and its trend.",
+          "Health only informs. Nothing happens to a seller because of its score."
         ],
         "related": [
           {

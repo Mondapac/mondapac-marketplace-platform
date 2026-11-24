@@ -33,7 +33,6 @@ export default async function SlidesPage() {
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <PageHeader title={title} />
-          <p className="text-fg-muted">{t('content.slides.intro')}</p>
         </div>
         {permissionKeys.includes(SLIDE_EDIT_PERMISSION) ? (
           <LinkButton href={NEW_SLIDE_PATH}>{t('content.slides.new')}</LinkButton>

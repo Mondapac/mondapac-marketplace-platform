@@ -9,6 +9,8 @@ export interface CategoryChoice {
   readonly name: string;
   /** The names from the department down to the choice. */
   readonly path: readonly string[];
+  /** The id of the choice's department, when the picker sends it (older payloads do not). */
+  readonly departmentId?: string;
   /** The level-3 node itself, offered after its children: the product sits on it directly. */
   readonly general: boolean;
   readonly status: 'active' | 'hidden';
@@ -66,4 +68,51 @@ export function addCategory(
 ): string[] {
   if (ids.includes(id) || ids.length >= max) return [...ids];
   return [...ids, id];
+}
+
+/**
+ * The department of a choice: its id when the picker sends one, else the level 1 name (path[0]);
+ * null when unknown. Limitation of the name fallback: two departments with the same name count as
+ * one here. That only affects this client; the server compares real ancestor ids and is the
+ * authority at submit.
+ */
+export function departmentOfChoice(choice: CategoryChoice | undefined): string | null {
+  if (choice === undefined) return null;
+  return choice.departmentId ?? choice.path[0] ?? null;
+}
+
+/**
+ * Same-branch rule of a seller's product: the choices an Add control may offer. Without a primary
+ * (or one the picker does not describe) nothing is restricted.
+ */
+export function choicesInBranch(
+  choices: readonly CategoryChoice[],
+  ids: readonly string[],
+): readonly CategoryChoice[] {
+  const primary = ids[0];
+  const department =
+    primary === undefined ? null : departmentOfChoice(choices.find((c) => c.id === primary));
+  return department === null
+    ? choices
+    : choices.filter((choice) => departmentOfChoice(choice) === department);
+}
+
+/**
+ * Drops the non-primary ids that are known to sit in another department than the primary. A
+ * chosen id the picker does not describe is kept (the API still checks it at submit).
+ */
+export function dropOutOfBranch(
+  ids: readonly string[],
+  choices: readonly CategoryChoice[],
+): { readonly ids: string[]; readonly dropped: number } {
+  const byId = new Map(choices.map((choice) => [choice.id, choice]));
+  const primary = ids[0];
+  const department = primary === undefined ? null : departmentOfChoice(byId.get(primary));
+  if (primary === undefined || department === null) return { ids: [...ids], dropped: 0 };
+  const kept = ids.filter((id, index) => {
+    if (index === 0) return true;
+    const other = departmentOfChoice(byId.get(id));
+    return other === null || other === department;
+  });
+  return { ids: kept, dropped: ids.length - kept.length };
 }
