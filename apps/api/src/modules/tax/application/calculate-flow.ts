@@ -2,6 +2,7 @@ import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { CategoryRatesAnswer, TaxAnswer, TaxFailure } from '../contracts/tax.facade';
 import { computeLineTax, rateFor, type TaxStrategyParams } from '../domain/strategy';
+import { isActingAsSession } from './acting-as';
 import type { TaxDependencies } from './tax-dependencies';
 
 // The tax of order lines under the Market's strategy in force (the active one, else the built-in
@@ -89,13 +90,10 @@ export async function categoryRates(
   const caller = context.actor;
   // Customer access stays for a storefront estimate of the same rule; an acting-as session (an
   // admin signed in as a seller) is refused, as commission-payouts' own preview refuses it.
-  const actingAs =
-    Object.hasOwn(caller, 'actingAs') &&
-    (caller as { readonly actingAs?: unknown }).actingAs != null;
   if (
     caller.kind !== 'authenticated' ||
     (caller.population !== 'customer' && caller.population !== 'seller') ||
-    actingAs
+    isActingAsSession(caller)
   ) {
     return err({ code: 'access.denied' });
   }

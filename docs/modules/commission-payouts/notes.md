@@ -10,16 +10,16 @@ Insert-only (a trigger refuses UPDATE, DELETE and TRUNCATE for every role; the a
 holds only SELECT and INSERT). One row per money fact of a seller, with a non-negative `amount` in
 minor units; the kind gives the direction. `market_id` and `tenant_id` are on every row.
 
-| Kind | Direction | Line | Source | Written by |
-|---|---|---|---|---|
-| `sale` | credit | yes | none | paid seller order (package 5) |
-| `shipping` | credit | no | none | paid seller order, non-zero fee |
-| `commission` | debit | yes | none | paid seller order; carries `rate_bps` and `base_amount` |
-| `refund-sale` | debit | yes | refund id | succeeded refund the seller bears (package 6a) |
-| `refund-shipping` | debit | no | refund id | same, for a shipping part |
-| `refund-commission` | credit | yes | refund id | same; carries the original `rate_bps` and the base reversed |
-| `dispute-debit` | debit | no | dispute id | not written yet: allowed by the CHECK for the disputes package |
-| `dispute-reinstate` | credit | no | dispute id | not written yet |
+| Kind                | Direction | Line | Source     | Written by                                                     |
+| ------------------- | --------- | ---- | ---------- | -------------------------------------------------------------- |
+| `sale`              | credit    | yes  | none       | paid seller order (package 5)                                  |
+| `shipping`          | credit    | no   | none       | paid seller order, non-zero fee                                |
+| `commission`        | debit     | yes  | none       | paid seller order; carries `rate_bps` and `base_amount`        |
+| `refund-sale`       | debit     | yes  | refund id  | succeeded refund the seller bears (package 6a)                 |
+| `refund-shipping`   | debit     | no   | refund id  | same, for a shipping part                                      |
+| `refund-commission` | credit    | yes  | refund id  | same; carries the original `rate_bps` and the base reversed    |
+| `dispute-debit`     | debit     | no   | dispute id | not written yet: allowed by the CHECK for the disputes package |
+| `dispute-reinstate` | credit    | no   | dispute id | not written yet                                                |
 
 Balance = sales + shipping − commission − refunded sales − refunded shipping + refunded
 commission − dispute debits + dispute reinstated. It may be negative. The seller and admin ledger
@@ -63,6 +63,7 @@ The ledger step also caps itself: the `refund-*` rows of other refunds plus this
 Design: G2 section 3.6 (state machine), 4.5 to 4.7 (planning, gate, run), 11 (reconciliation).
 
 **Jobs** (one pass per hosted Market, rule `system`)
+
 - `commission-payouts.payout-run`, every 15 minutes. Revalidates the payouts that wait
   (AWAITING_APPROVAL, APPROVED), then evaluates the sellers whose slot is due (at most 5 batches of
   100). Each write unit locks the seller's cursor first and plans again from the committed state.
@@ -75,6 +76,7 @@ Design: G2 section 3.6 (state machine), 4.5 to 4.7 (planning, gate, run), 11 (re
 - Consumer of `payments.transfer-changed.v1`: a trigger only; the payout follows the state read by key.
 
 **Routes**
+
 - Admin (`commission-payouts/admin/payouts`): list, view, and `POST :payoutId/approve` (protected,
   step-up, echoes the transfer amount; approval binds the amount).
 - Seller (`commission-payouts/seller`): `payouts/next`, `payouts`, `payout-holds`. The seller id comes
@@ -88,6 +90,7 @@ Design: G2 section 3.6 (state machine), 4.5 to 4.7 (planning, gate, run), 11 (re
   keeps the creation instant.
 
 **Rules worth knowing**
+
 - One live payout per seller (partial unique index). One unfreed item per seller order.
 - An APPROVED payout is planned again before it is instructed and voided when a hold, a lower
   seller order, a failed check or a different transfer amount (receivable grew) is found.
@@ -104,6 +107,7 @@ Design: G2 section 3.6 (state machine), 4.5 to 4.7 (planning, gate, run), 11 (re
   nothing until a real second-factor / business-id adapter exists.
 
 **Open items** (also in the pull request)
+
 1. No facade for the owner's second factor or the business-id re-check; the adapter answers ok in
    test mode (closed against the live provider). Hard gate before live money.
 2. `lastBankChangeAt` is null (payments' cooling-off covers the money path).
@@ -195,6 +199,6 @@ shipping). A $15.90 GST-free line posted $2.17 instead of $2.39.
   shows the under-charged commission per seller and how much of it is in payouts already sent.
 - Not in this change (future-enhancements register): GST on the platform's commission, and lines
   without a frozen rate.
-- PR 3 (promotions preview): `ownCommissionOn` takes an optional `taxRateBps` (0..5000) that the caller
-  read on the server (the Offer's category rate from tax `categoryRates`), applies `lineCommission`, and
-  answers `taxRateBps`, `taxRateSource` (`line` or `provisional` when none was given) and `sellerReceives`.
+- PR 3 (promotions preview): `ownCommissionOn` requires `taxRateBps` (0..5000), which the caller read on
+  the server (the Offer's category rate from tax `categoryRates`); there is no provisional fallback in a
+  preview. It applies `lineCommission` and answers `taxRateBps` and `sellerReceives`.
