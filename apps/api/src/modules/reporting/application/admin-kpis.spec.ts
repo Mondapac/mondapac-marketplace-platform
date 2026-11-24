@@ -17,7 +17,7 @@ import { loadMarketConfigs } from '../../../platform/market-config/market-config
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../../../platform/market-context/tenant';
 import { emptyDay, type DayTotals } from '../domain/admin-kpi';
-import type { OrderStatusTallies } from '../domain/admin-health';
+import type { OrderStatusRead, OrderStatusTallies } from '../domain/admin-health';
 import type { MarketDay } from '../domain/facts';
 import { EMPTY_LEDGER_SUMS, type LedgerKindSums } from '../domain/ledger';
 import { windowOf, type DayRange } from '../domain/period';
@@ -70,15 +70,16 @@ class FakeReader implements AdminKpiReader {
     shipped: 0,
     refunded: { delivered: 0, shipped: 0, toShip: 0 },
   };
+  delivery = { sameDay: 0, unknownMethod: 0 };
   readonly tallyCalls: { currency: string; range: DayRange; marketId: string }[] = [];
 
   orderStatusTallies(
     market: { marketId: string },
     currency: string,
     range: DayRange,
-  ): Promise<OrderStatusTallies> {
+  ): Promise<OrderStatusRead> {
     this.tallyCalls.push({ currency, range, marketId: market.marketId });
-    return Promise.resolve(this.tallies);
+    return Promise.resolve({ ...this.tallies, delivery: this.delivery });
   }
 
   sellersWithOrders(): Promise<number> {
@@ -262,7 +263,8 @@ describe.each(TEST_MARKETS)('the admin KPIs in market %s', (code) => {
     expect(out.ok && out.value.current.gmvWithTax).toBe(1_000n);
   });
 
-  it('answers the orders by status of the Market days, refunded apart, same-day not available', async () => {
+  it('answers the orders by status of the Market days, refunded apart, and the same-day share of paid', async () => {
+    reader.delivery = { sameDay: 4, unknownMethod: 0 };
     reader.tallies = {
       paid: 20,
       cancelled: 1,
@@ -292,9 +294,36 @@ describe.each(TEST_MARKETS)('the admin KPIs in market %s', (code) => {
       cancelledRateBp: 500,
       refundedRateBp: 1000,
     });
-    expect(out.value.sameDayShare).toEqual({ status: 'not-available', reason: 'not-reported' });
+    expect(out.value.sameDayShare).toEqual({
+      status: 'available',
+      sameDay: 4,
+      paid: 20,
+      rateBp: 2000,
+    });
     expect(out.value.timezone).toBe(zone.zoneOf(market));
     expect(out.value.window).toEqual(windowOf(out.value.period.current, zone.zoneOf(market)));
+  });
+
+  it('answers the same-day share as not-enough-data below 5 paid, and not-available while a method is unknown', async () => {
+    const useCase = new ViewMarketplaceOrderStatus(gate, deps);
+    reader.tallies = { ...reader.tallies, paid: 4 };
+    reader.delivery = { sameDay: 4, unknownMethod: 0 };
+    const few = await useCase.execute(admin, { period: '7d' });
+    expect(few.ok && few.value.sameDayShare).toEqual({
+      status: 'not-enough-data',
+      paid: 4,
+      minimum: 5,
+    });
+    reader.tallies = { ...reader.tallies, paid: 40 };
+    reader.delivery = { sameDay: 10, unknownMethod: 2 };
+    const pending = await useCase.execute(admin, { period: '7d' });
+    expect(pending.ok && pending.value.sameDayShare).toEqual({
+      status: 'not-available',
+      reason: 'method-unknown',
+      unknownMethod: 2,
+    });
+    // The orders card still answers: only the share is withheld.
+    expect(pending.ok && pending.value.counts.paid).toBe(40);
   });
 
   it('reads a custom range of the order status as asked, and refuses one ending after the Market today', async () => {

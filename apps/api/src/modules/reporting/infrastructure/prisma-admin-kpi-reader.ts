@@ -6,7 +6,7 @@ import type {
   SellerTotals,
   CategoryTotals,
 } from '../application/ports/admin-kpi-reader';
-import type { OrderStatusTallies } from '../domain/admin-health';
+import type { OrderStatusRead } from '../domain/admin-health';
 import type { DayRange } from '../domain/period';
 import { dateToDay, dayToDate } from './prisma-fact-store';
 
@@ -80,8 +80,10 @@ export class PrismaAdminKpiReader implements AdminKpiReader {
   }
 
   /**
-   * Four counts of `seller_orders` over `(market_id, paid_day, seller_id)` (paid, cancelled,
-   * delivered, shipped not delivered), then the distinct seller orders refunded on or after the
+   * Four reads of `seller_orders` over `(market_id, paid_day, seller_id)`: the paid ones grouped by
+   * `delivery_method` (their sum is `paid`; the `same_day` and the null groups feed the same-day
+   * share, so the share adds no statement), and three counts (cancelled, delivered, shipped not
+   * delivered); then the distinct seller orders refunded on or after the
    * range's first day (`refunds` on `(market_id, refund_day, seller_id)`, grouped in the database),
    * then where those of them paid in the range stand (by primary key, {@link REFUNDED_ID_CHUNK} ids
    * a read). A refund is never before its payment, so none paid in the range is missed. No join.
@@ -99,12 +101,12 @@ export class PrismaAdminKpiReader implements AdminKpiReader {
     market: MarketContext,
     currency: string,
     range: DayRange,
-  ): Promise<OrderStatusTallies> {
+  ): Promise<OrderStatusRead> {
     const tx = this.prisma.tx(market);
     const scope = { marketId: market.marketId, tenantId: market.tenantId, currency };
     const where = { ...scope, paidDay: { gte: dayToDate(range.from), lte: dayToDate(range.to) } };
-    const [paid, cancelled, delivered, shipped, refunds] = await Promise.all([
-      tx.reportingSellerOrder.count({ where }),
+    const [methods, cancelled, delivered, shipped, refunds] = await Promise.all([
+      tx.reportingSellerOrder.groupBy({ by: ['deliveryMethod'], where, _count: { _all: true } }),
       tx.reportingSellerOrder.count({ where: { ...where, cancelledAt: { not: null } } }),
       tx.reportingSellerOrder.count({
         where: { ...where, cancelledAt: null, deliveredAt: { not: null } },
@@ -117,6 +119,13 @@ export class PrismaAdminKpiReader implements AdminKpiReader {
         where: { ...scope, refundDay: { gte: dayToDate(range.from) } },
       }),
     ]);
+    let paid = 0;
+    const delivery = { sameDay: 0, unknownMethod: 0 };
+    for (const group of methods) {
+      paid += group._count._all;
+      if (group.deliveryMethod === 'same_day') delivery.sameDay += group._count._all;
+      else if (group.deliveryMethod === null) delivery.unknownMethod += group._count._all;
+    }
     const ids = refunds.map((row) => row.sellerOrderId);
     const refunded = { delivered: 0, shipped: 0, toShip: 0 };
     for (let start = 0; start < ids.length; start += REFUNDED_ID_CHUNK) {
@@ -134,7 +143,7 @@ export class PrismaAdminKpiReader implements AdminKpiReader {
         else refunded.toShip += 1;
       }
     }
-    return { paid, cancelled, delivered, shipped, refunded };
+    return { paid, cancelled, delivered, shipped, refunded, delivery };
   }
 
   async sellersWithOrders(

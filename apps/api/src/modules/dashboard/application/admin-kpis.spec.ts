@@ -180,7 +180,7 @@ const orderStatus: OrderStatusAnswer = {
     cancelledRateBp: 300,
     refundedRateBp: 200,
   },
-  sameDayShare: { status: 'not-available', reason: 'not-reported' },
+  sameDayShare: { status: 'available', sameDay: 80, paid: 400, rateBp: 2000 },
 };
 
 const CATALOG_VIEW = 'catalog.product.view' as PermissionKey;
@@ -440,9 +440,25 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
       status: 'ok',
       kpis: {
         ...orderStatus.counts,
-        sameDayShare: { status: 'not-available', reason: 'not-reported' },
+        sameDayShare: { status: 'available', sameDay: 80, paid: 400, rateBp: 2000 },
       },
     });
+    for (const [share, body] of [
+      [
+        { status: 'not-enough-data', paid: 3, minimum: 5 },
+        { status: 'not-enough-data', paid: 3, minimum: 5 },
+      ],
+      [
+        { status: 'not-available', reason: 'method-unknown', unknownMethod: 2 },
+        { status: 'not-available', reason: 'method-unknown', unknownMethod: 2 },
+      ],
+    ] as const) {
+      facade.marketplaceOrderStatus = () =>
+        Promise.resolve(ok({ ...orderStatus, sameDayShare: share }));
+      const again = await build([ORDERS]).execute(admin, { period: '7d' });
+      const sent = again.ok ? adminKpisBody(again.value) : null;
+      expect(sent?.ordersByStatus?.kpis?.sameDayShare).toEqual(body);
+    }
     const moneyOnly = await build([MONEY]).execute(admin, { period: '7d' });
     expect(moneyOnly.ok && moneyOnly.value.ordersByStatus).toBeNull();
   });

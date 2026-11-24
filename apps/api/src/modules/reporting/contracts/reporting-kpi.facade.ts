@@ -101,7 +101,8 @@ export interface ReportingKpiFacade {
 
   /**
    * The seller orders paid in the period, by where they stand now (one bucket each), and the
-   * same-day share (`not-available` until reporting holds the delivery method). Counts only: key
+   * same-day share (paid with the `same_day` method ÷ paid; `not-enough-data` below 5 paid,
+   * `not-available` while a paid one has no method recorded yet). Counts only: key
    * `ordering.order.view`, platform admin only.
    */
   marketplaceOrderStatus(

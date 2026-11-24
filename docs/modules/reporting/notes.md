@@ -417,10 +417,14 @@ denominator is 0.
   `reporting.order-status.drift-clamped` with the shortfall per bucket and `paid` (counts only); the
   answer is never an error for drift (Mojtaba's ruling). `orderStatusOf` stays strict for a
   consistent set.
-- Same-day share (`sameDayShare`): same-day deliveries ÷ seller orders paid in the period. It needs
-  the delivery method on `seller_orders`, which reporting does not hold yet, so it answers
-  `{status: 'not-available', reason: 'not-reported'}`, never 0. `sameDayShareOf` already takes the
-  two counts; it is wired once the delivery method column lands (dashboards v2, phase 1, PR 3).
+- Same-day share (`sameDayShare`): seller orders paid on a Market day of the period (`paid_day`, the
+  Market's zone) whose buyer chose `delivery_method = 'same_day'` (#1310), ÷ every seller order
+  paid in it, cancelled and refunded ones included; basis points. Below 5 paid (`MIN_COUNT_BASE`)
+  it is `{status: 'not-enough-data', paid, minimum: 5}`. While a paid seller order of the period
+  has no method yet (recorded before the column, until the backfill's delivery pass) it is
+  `{status: 'not-available', reason: 'method-unknown', unknownMethod}`, never a share that counts
+  it as not same-day. It comes from the same read as `paid` (a `groupBy delivery_method`), so it
+  adds no statement (measured in query-plans.md: not slower than the old count, 13 months 115 ms).
 - Supply and health numbers come from their owners' facades, counts only, each a new use case with
   a permission rule, platform admins acting as themselves, in one read-only unit, `access.unavailable`
   when the dashboard stopped waiting or the store failed:

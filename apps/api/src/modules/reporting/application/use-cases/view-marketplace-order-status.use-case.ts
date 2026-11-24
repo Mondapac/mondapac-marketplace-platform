@@ -32,7 +32,10 @@ export interface OrderStatusAnswer {
   readonly window: InstantWindow;
   readonly generatedAt: Temporal.Instant;
   readonly counts: OrderStatusCounts;
-  /** Same-day deliveries ÷ paid; `not-available` until reporting holds the delivery method. */
+  /**
+   * Paid with the `same_day` delivery method ÷ paid (the same `paid`); `not-enough-data` below 5
+   * paid, `not-available` while a paid seller order has no method recorded yet.
+   */
   readonly sameDayShare: SameDayShare;
 }
 
@@ -96,7 +99,7 @@ export class ViewMarketplaceOrderStatus extends UseCase<KpiInput, OrderStatusAns
         window: windowOf(period.current, timezone),
         generatedAt: now,
         counts,
-        sameDayShare: sameDayShareOf(null),
+        sameDayShare: sameDayShareOf({ paid: unit.value.paid, ...unit.value.delivery }),
       });
     } catch (error) {
       logger.warn({

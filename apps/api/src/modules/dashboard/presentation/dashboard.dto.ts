@@ -296,14 +296,47 @@ export class FinanceSectionBody {
 
 export class SameDayShareBody {
   @ApiProperty({
-    enum: ['available', 'not-available'],
-    description: '`not-available` until reporting holds the delivery method; never show 0.',
+    enum: ['available', 'not-enough-data', 'not-available'],
+    description:
+      'Seller orders paid on a Market day of the period whose buyer chose the same-day delivery ' +
+      'method, of all seller orders paid in it (cancelled and refunded included). ' +
+      '`not-enough-data`: fewer than `minimum` paid, show "Not enough data", never a percentage. ' +
+      '`not-available` (`method-unknown`): some paid seller orders have no delivery method ' +
+      'recorded yet; never show 0.',
   })
   status!: string;
-  @ApiProperty({ required: false, enum: ['not-reported', 'not-recorded'] }) reason?: string;
-  @ApiProperty({ required: false, type: Number }) sameDay?: number;
-  @ApiProperty({ required: false, type: Number }) paid?: number;
-  @ApiProperty({ required: false, nullable: true, type: Number }) rateBp?: number | null;
+  @ApiProperty({
+    required: false,
+    enum: ['method-unknown'],
+    description: 'Only when not-available.',
+  })
+  reason?: string;
+  @ApiProperty({ required: false, type: Number, description: 'Only when available.' })
+  sameDay?: number;
+  @ApiProperty({
+    required: false,
+    type: Number,
+    description: 'Seller orders paid in the period. When available or not-enough-data.',
+  })
+  paid?: number;
+  @ApiProperty({
+    required: false,
+    type: Number,
+    description: 'sameDay ÷ paid in basis points. Only when available.',
+  })
+  rateBp?: number;
+  @ApiProperty({
+    required: false,
+    type: Number,
+    description: 'The smallest paid count that gets a share (5). Only when not-enough-data.',
+  })
+  minimum?: number;
+  @ApiProperty({
+    required: false,
+    type: Number,
+    description: 'Paid seller orders with no delivery method yet. Only when not-available.',
+  })
+  unknownMethod?: number;
 }
 
 export class OrdersByStatusKpiBody {
@@ -607,9 +640,19 @@ function financeNetBody(net: FinanceNet | null): FinanceNetBody | null {
 }
 
 function sameDayShareBody(share: SameDayShare): SameDayShareBody {
-  return share.status === 'available'
-    ? { status: 'available', sameDay: share.sameDay, paid: share.paid, rateBp: share.rateBp }
-    : { status: 'not-available', reason: share.reason };
+  switch (share.status) {
+    case 'available':
+      return {
+        status: 'available',
+        sameDay: share.sameDay,
+        paid: share.paid,
+        rateBp: share.rateBp,
+      };
+    case 'not-enough-data':
+      return { status: 'not-enough-data', paid: share.paid, minimum: share.minimum };
+    case 'not-available':
+      return { status: 'not-available', reason: share.reason, unknownMethod: share.unknownMethod };
+  }
 }
 
 function ordersByStatusSection(

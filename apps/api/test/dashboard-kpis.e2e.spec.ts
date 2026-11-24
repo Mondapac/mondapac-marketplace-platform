@@ -138,7 +138,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
             cancelledRateBp: 1000,
             refundedRateBp: 1000,
           },
-          sameDayShare: { status: 'not-available', reason: 'not-reported' },
+          sameDayShare: { status: 'available', sameDay: 3, paid: 10, rateBp: 3000 },
         },
       },
       finance: {
@@ -203,7 +203,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
           toShip: 1,
           delivered: 5,
           refundedRateBp: 1000,
-          sameDayShare: { status: 'not-available', reason: 'not-reported' },
+          sameDayShare: { status: 'available', sameDay: 3, paid: 10, rateBp: 3000 },
         },
       },
     });

@@ -3,6 +3,7 @@ import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { FactRecorder } from '../../src/modules/reporting/application/fact-recorder';
 import { UNKNOWN_CATEGORY, type SellerOrderFact } from '../../src/modules/reporting/domain/facts';
 import type { MarketDay } from '../../src/modules/reporting/domain/facts';
+import { sameDayShareOf } from '../../src/modules/reporting/domain/admin-health';
 import { PrismaAdminKpiReader } from '../../src/modules/reporting/infrastructure/prisma-admin-kpi-reader';
 import { PrismaFactStore } from '../../src/modules/reporting/infrastructure/prisma-fact-store';
 import { PrismaRollupStore } from '../../src/modules/reporting/infrastructure/prisma-rollup-store';
@@ -358,6 +359,7 @@ describe.each(TEST_MARKETS)('the admin KPI reader in market %s (database)', (cod
       delivered: 2,
       shipped: 1,
       refunded: { delivered: 1, shipped: 0, toShip: 1 },
+      delivery: { sameDay: 0, unknownMethod: 0 },
     });
     expect(await read(market, 'XXX')).toEqual({
       paid: 0,
@@ -365,6 +367,68 @@ describe.each(TEST_MARKETS)('the admin KPI reader in market %s (database)', (cod
       delivered: 0,
       shipped: 0,
       refunded: { delivered: 0, shipped: 0, toShip: 0 },
+      delivery: { sameDay: 0, unknownMethod: 0 },
+    });
+  });
+
+  it('counts the paid seller orders of the Market days by delivery method for the same-day share', async () => {
+    // Months no other reporting spec uses.
+    const N = code === TEST_MARKETS[0] ? '06' : '07';
+    const a = idOf<'Seller'>();
+    const method = (m: SellerOrderFact['delivery']['method'], paidAt = `2026-${N}-10T03:00:00Z`) =>
+      order(a, paidAt, 11_000n, { delivery: { method: m, state: null } });
+    // 2026-<N>-04T15:30Z is already the 5th in Brisbane (UTC+10) and in Tokyo (UTC+9): inside the
+    // range. 13:30Z is still the 4th in both: outside. The day is the Market's, never UTC.
+    const facts = [
+      method('same_day', `2026-${N}-04T15:30:00Z`),
+      method('same_day'),
+      { ...method('same_day'), cancelledAt: at(`2026-${N}-10T05:00:00Z`) }, // still paid
+      method('instant'),
+      method('pickup'),
+      method('scheduled'),
+      method('same_day', `2026-${N}-04T13:30:00Z`), // the Market's 4th: before the range
+    ];
+    for (const fact of facts) await record(market, fact);
+    // The other Market's same-day seller order on the same day is never read.
+    await record(
+      other,
+      order(
+        a,
+        `2026-${N}-10T03:00:00Z`,
+        1_000n,
+        { delivery: { method: 'same_day', state: null } },
+        CURRENCIES[otherMarketOf(code)],
+      ),
+    );
+    const range = { from: day(`2026-${N}-05`), to: day(`2026-${N}-20`) };
+    const read = async () => {
+      const unit = await db.unitOfWork.run(
+        market,
+        async () => ok(await reader.orderStatusTallies(market, currency, range)),
+        { readOnly: true },
+      );
+      if (!unit.ok) throw new Error('read failed');
+      return unit.value;
+    };
+    const first = await read();
+    expect({ paid: first.paid, delivery: first.delivery }).toEqual({
+      paid: 6,
+      delivery: { sameDay: 3, unknownMethod: 0 },
+    });
+    expect(sameDayShareOf({ paid: first.paid, ...first.delivery })).toEqual({
+      status: 'available',
+      sameDay: 3,
+      paid: 6,
+      rateBp: 5000,
+    });
+    // A seller order recorded before the method column (backfill pending) withholds the share.
+    await record(market, method(null));
+    const pending = await read();
+    expect(pending.delivery).toEqual({ sameDay: 3, unknownMethod: 1 });
+    expect(sameDayShareOf({ paid: pending.paid, ...pending.delivery })).toEqual({
+      status: 'not-available',
+      reason: 'method-unknown',
+      unknownMethod: 1,
     });
   });
 });

@@ -1,6 +1,6 @@
 import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { DayTotals } from '../../domain/admin-kpi';
-import type { OrderStatusTallies } from '../../domain/admin-health';
+import type { OrderStatusRead } from '../../domain/admin-health';
 import type { DayRange } from '../../domain/period';
 
 /**
@@ -17,13 +17,14 @@ export interface AdminKpiReader {
   /**
    * The seller orders PAID on a day of `range` (`seller_orders` by `paid_day`), in `currency` only,
    * tallied by where they stand now, with those that have a succeeded refund (`refunds`, this
-   * module's own table) set apart. Counts only.
+   * module's own table) set apart, and the paid ones by delivery method (same-day, unknown).
+   * Counts only.
    */
   orderStatusTallies(
     market: MarketContext,
     currency: string,
     range: DayRange,
-  ): Promise<OrderStatusTallies>;
+  ): Promise<OrderStatusRead>;
 
   /** How many sellers had at least one paid seller order in `range`, in `currency` only. */
   sellersWithOrders(market: MarketContext, currency: string, range: DayRange): Promise<number>;

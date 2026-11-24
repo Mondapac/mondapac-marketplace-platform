@@ -1,10 +1,9 @@
-import { ratioBp } from './admin-kpi';
+import { MIN_COUNT_BASE, ratioBp } from './admin-kpi';
 import {
   NET_REVENUE_COMPONENTS,
   NET_REVENUE_SIGN,
   type NetRevenue,
   type NetRevenueComponent,
-  type NotAvailableReason,
 } from './ledger';
 
 /**
@@ -29,6 +28,15 @@ export interface OrderStatusTallies {
     readonly shipped: number;
     readonly toShip: number;
   };
+}
+
+/**
+ * The reader's one answer for the orders card: the status tallies and, from the same `paid` read
+ * (grouped by delivery method), how many of those paid seller orders chose `same_day` and how many
+ * have no method recorded yet.
+ */
+export interface OrderStatusRead extends OrderStatusTallies {
+  readonly delivery: { readonly sameDay: number; readonly unknownMethod: number };
 }
 
 /**
@@ -125,30 +133,47 @@ export function orderStatusOfDrifted(tallies: OrderStatusTallies): {
 }
 
 /**
- * The share of the range's paid seller orders delivered by a same-day method. It needs the
- * delivery method of each seller order in `reporting.seller_orders`, which reporting does not hold
- * yet (`not-reported`: ordering holds it on the seller order); until then it is `not-available`,
- * never 0. Same-day ÷ paid seller orders, basis points, null with none paid.
+ * The same-day share of the orders card (dashboards v2, phase 1, PR 6): the seller orders paid on
+ * a Market day of the period (`paid_day`, the Market's zone) whose buyer chose the `same_day`
+ * delivery method (`reporting.seller_orders.delivery_method`), ÷ every seller order paid in the
+ * period, cancelled or refunded ones included. Basis points.
+ * - `not-enough-data` below {@link MIN_COUNT_BASE} paid seller orders (the dashboards' minimum).
+ * - `not-available` (`method-unknown`) while a paid seller order of the period has no method yet
+ *   (recorded before the column, until the backfill's delivery pass): never a share that silently
+ *   counts it as not same-day.
  */
 export type SameDayShare =
   | {
       readonly status: 'available';
       readonly sameDay: number;
       readonly paid: number;
-      readonly rateBp: number | null;
+      readonly rateBp: number;
     }
-  | { readonly status: 'not-available'; readonly reason: NotAvailableReason };
+  | { readonly status: 'not-enough-data'; readonly paid: number; readonly minimum: number }
+  | {
+      readonly status: 'not-available';
+      readonly reason: 'method-unknown';
+      readonly unknownMethod: number;
+    };
 
-export function sameDayShareOf(
-  source: { readonly sameDay: number; readonly paid: number } | null,
-): SameDayShare {
-  if (source === null) return { status: 'not-available', reason: 'not-reported' };
-  return {
-    status: 'available',
-    sameDay: source.sameDay,
-    paid: source.paid,
-    rateBp: ratioBp(source.sameDay, source.paid),
-  };
+/** What the reader counts for the share: paid in the period, by delivery method. */
+export interface DeliveryMethodTallies {
+  readonly paid: number;
+  readonly sameDay: number;
+  /** Paid with no delivery method recorded yet. */
+  readonly unknownMethod: number;
+}
+
+export function sameDayShareOf(tallies: DeliveryMethodTallies): SameDayShare {
+  const { paid, sameDay, unknownMethod } = tallies;
+  const counts = [paid, sameDay, unknownMethod];
+  if (!counts.every((n) => Number.isSafeInteger(n) && n >= 0) || sameDay + unknownMethod > paid) {
+    throw new RangeError('reporting: delivery method tallies do not add up');
+  }
+  if (unknownMethod > 0)
+    return { status: 'not-available', reason: 'method-unknown', unknownMethod };
+  if (paid < MIN_COUNT_BASE) return { status: 'not-enough-data', paid, minimum: MIN_COUNT_BASE };
+  return { status: 'available', sameDay, paid, rateBp: ratioBp(sameDay, paid) ?? 0 };
 }
 
 /**

@@ -129,19 +129,46 @@ describe('orderStatusOfDrifted (tallies read as separate snapshots)', () => {
   });
 });
 
-describe('sameDayShareOf', () => {
-  it('is not-available, never 0, until reporting holds the delivery method', () => {
-    expect(sameDayShareOf(null)).toEqual({ status: 'not-available', reason: 'not-reported' });
-  });
-
-  it('is same-day ÷ paid once it has a source', () => {
-    expect(sameDayShareOf({ sameDay: 31, paid: 100 })).toEqual({
+describe('sameDayShareOf (seller orders paid in the period by a same-day method)', () => {
+  it('is same-day ÷ paid, in basis points, from the minimum paid count up', () => {
+    expect(sameDayShareOf({ sameDay: 31, paid: 100, unknownMethod: 0 })).toEqual({
       status: 'available',
       sameDay: 31,
       paid: 100,
       rateBp: 3100,
     });
-    expect(sameDayShareOf({ sameDay: 0, paid: 0 })).toMatchObject({ rateBp: null });
+    expect(sameDayShareOf({ sameDay: 0, paid: 5, unknownMethod: 0 })).toEqual({
+      status: 'available',
+      sameDay: 0,
+      paid: 5,
+      rateBp: 0,
+    });
+  });
+
+  it('is not-enough-data below the minimum paid count (never a percentage of a handful)', () => {
+    expect(sameDayShareOf({ sameDay: 2, paid: 4, unknownMethod: 0 })).toEqual({
+      status: 'not-enough-data',
+      paid: 4,
+      minimum: 5,
+    });
+    expect(sameDayShareOf({ sameDay: 0, paid: 0, unknownMethod: 0 })).toEqual({
+      status: 'not-enough-data',
+      paid: 0,
+      minimum: 5,
+    });
+  });
+
+  it('is not-available while a paid seller order of the period has no delivery method yet (backfill)', () => {
+    expect(sameDayShareOf({ sameDay: 10, paid: 100, unknownMethod: 3 })).toEqual({
+      status: 'not-available',
+      reason: 'method-unknown',
+      unknownMethod: 3,
+    });
+  });
+
+  it('refuses counts that cannot be one range', () => {
+    expect(() => sameDayShareOf({ sameDay: 6, paid: 5, unknownMethod: 0 })).toThrow(RangeError);
+    expect(() => sameDayShareOf({ sameDay: 1, paid: 5, unknownMethod: -1 })).toThrow(RangeError);
   });
 });
 
