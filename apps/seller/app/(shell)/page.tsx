@@ -37,7 +37,6 @@ export default async function HomePage({
       <div className="flex flex-col gap-6">
         <div className="flex flex-col gap-1">
           <PageHeader title={t('home.title')} />
-          <p className="text-fg-muted">{t('home.intro', { name: gate.session.displayName })}</p>
         </div>
         <SellerDashboard
           data={data}

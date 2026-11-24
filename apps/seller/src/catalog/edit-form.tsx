@@ -498,11 +498,6 @@ export function EditForm({
           title={adding ? t('catalog.create.title') : shownTitle}
           {...(adding ? {} : { badges: <StatusBadge status={product.status} /> })}
         />
-        <p className="text-sm text-fg-muted">
-          {adding
-            ? t('catalog.add.subtitle', { market: marketName })
-            : t('catalog.edit.page.subtitle', { market: marketName, code: product.productCode })}
-        </p>
         {adding ? null : (
           <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-fg-muted">
             <span>

@@ -53,7 +53,6 @@ export default async function CreditRequestsPage({
     <WalletPage
       activeId="wallet-requests"
       title={t('wallet.list.title')}
-      intro={t('wallet.list.intro')}
       anyOf={[CREDIT_VIEW]}
       stepUpNote
       body={(session) => (

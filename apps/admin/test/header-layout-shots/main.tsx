@@ -3,6 +3,7 @@ import { PageHeader } from '@mondapac/ui';
 import { createRoot } from 'react-dom/client';
 import messages from '../../messages/en.json';
 import '../../app/globals.css';
+import { InvoicesList } from '../../src/sales/invoices/invoices-list.tsx';
 import { ProductsList } from '../../src/catalog/products-list.tsx';
 import { ProductEdit } from '../../src/catalog/product-form/edit-form.tsx';
 import type { TopicChoice, TopicRef } from '../../src/catalog/product-form/types.ts';
@@ -147,6 +148,36 @@ window.fetch = ((input: string, init?: RequestInit) => {
       422,
     );
   }
+  if (path === 'ordering/admin/documents') {
+    const doc = (n: number) => ({
+      kind: 'order-confirmation',
+      documentId: id(500 + n),
+      documentNumber: null,
+      orderId: id(600 + n),
+      sellerOrderId: id(500 + n),
+      sellerId: id(900),
+      storeName: 'Cedar Lane Halal Meats',
+      accountId: id(700),
+      customer: { displayName: 'Ada Lovelace', email: 'ada@example.com' },
+      issuedAt: '2026-11-10T01:30:00.000Z',
+      total: { amount: '12550', currency: 'AUD' },
+      tax: { amount: '1141', currency: 'AUD' },
+      shipping: { amount: '990', currency: 'AUD' },
+      refundId: null,
+      refundReason: null,
+      actions: ['view-order'],
+    });
+    return json({
+      documents: [doc(1), doc(2), doc(3)],
+      counts: { orderConfirmations: 3, creditNotes: 0 },
+      total: 3,
+      page: 1,
+      pageSize: 25,
+      nextCursor: null,
+      searchCapped: false,
+      searchScope: null,
+    });
+  }
   if (path === 'catalog/admin/products') return json(listPage);
   if (path === 'catalog/categories') {
     return json({ categories: [{ id: id(10), name: 'Pantry', depth: 0 }] });
@@ -172,6 +203,21 @@ const body =
       csrfToken="tok"
       nextHref={null}
     />
+  ) : scenario === 'invoices' || scenario === 'live' ? (
+    <>
+      <PageHeader
+        title={scenario === 'live' ? 'Security' : 'Invoices'}
+        {...(scenario === 'live' ? { status: 'Live · every 30 s' } : {})}
+        className="mb-4"
+      />
+      <InvoicesList
+        paging="pages"
+        accountId="acc-1"
+        marketId="AU"
+        zone="Australia/Brisbane"
+        csrfToken="tok"
+      />
+    </>
   ) : scenario === 'column' ? (
     <>
       <PageHeader title="Products" className="mb-4" />

@@ -104,8 +104,6 @@ export function AlertsList({
             : summary.rulesLastRanAt === null
               ? t('rules-never')
               : t('rules-ran', { when: ago(summary.rulesLastRanAt, now) })}
-          {summary === null ? null : ' · '}
-          {t('updates')}
         </span>
       </div>
       {noRoster ? (

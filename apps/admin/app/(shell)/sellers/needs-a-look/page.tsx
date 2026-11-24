@@ -7,6 +7,8 @@ import { panelConfig } from '../../../../src/server/config.ts';
 import { serverGet } from '../../../../src/server/server-fetch.ts';
 import { requireSession } from '../../../../src/server/session.ts';
 import { HealthQueue } from '../../../../src/sellers/health-queue.tsx';
+import { ORPHANED_VIEW_PERMISSION } from '../../../../src/sellers/orphaned-types.ts';
+import { SellersQueuesMenu } from '../../../../src/sellers/sellers-queues-menu.tsx';
 import { SELLER_VIEW_PERMISSION } from '../../../../src/sellers/health-types.ts';
 
 export async function generateMetadata() {
@@ -21,14 +23,6 @@ export default async function SellersNeedingALookPage() {
     return <LoadError message={t('identity.error.unknown')} retryLabel={t('load.retry')} />;
   }
   const title = t('sellers.health-queue.title');
-  const back = (
-    <a
-      className="mb-1 inline-flex min-h-12 items-center font-medium text-link underline"
-      href="/sellers"
-    >
-      {t('sellers.health-queue.back')}
-    </a>
-  );
   let body: React.ReactNode;
   if (!gate.session.permissionKeys.includes(SELLER_VIEW_PERMISSION)) {
     body = (
@@ -45,7 +39,17 @@ export default async function SellersNeedingALookPage() {
     const marketId = panelHostFor(panelConfig(), (await headers()).get('host'))?.marketId ?? '';
     body = (
       <>
-        <PageHeader title={title} className="mb-4" />
+        <PageHeader
+          title={title}
+          className="mb-4"
+          actions={
+            <SellersQueuesMenu
+              current="needs-a-look"
+              canHealth
+              canOrphaned={gate.session.permissionKeys.includes(ORPHANED_VIEW_PERMISSION)}
+            />
+          }
+        />
         <HealthQueue
           csrfToken={gate.session.csrfToken}
           paging={paging}
@@ -57,7 +61,6 @@ export default async function SellersNeedingALookPage() {
   }
   return (
     <AdminShell session={gate.session} activeId="sellers" title={title}>
-      {back}
       {body}
     </AdminShell>
   );

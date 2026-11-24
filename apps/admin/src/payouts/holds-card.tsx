@@ -402,7 +402,7 @@ export function PayoutHoldsCard({
       <SuperList
         heading={{
           embedded: true,
-          subtitle: `${
+          note: `${
             answer === null
               ? tl('intro')
               : tl('intro-counts', {

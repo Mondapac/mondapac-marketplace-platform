@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useId, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useId, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { useWidth } from './use-width.ts';
 import { compactNumber, labelIndexes, niceTicksRange } from './chart-scale.ts';
 
 export interface ChartPoint {
@@ -34,24 +35,6 @@ export interface LineAreaChartProps {
 
 const AXIS_W = 52;
 const PAD = { top: 8, right: 8, bottom: 22 };
-
-/** The width of the box, read with a ResizeObserver; a callback ref follows the box when it remounts. */
-function useWidth() {
-  const [el, setEl] = useState<HTMLDivElement | null>(null);
-  const [width, setWidth] = useState(0);
-  useEffect(() => {
-    if (el === null) return;
-    setWidth(el.clientWidth);
-    if (typeof ResizeObserver === 'undefined') return;
-    const ro = new ResizeObserver((entries) => {
-      const w = entries[0]?.contentRect.width;
-      if (w !== undefined) setWidth(Math.floor(w));
-    });
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [el]);
-  return [setEl, width] as const;
-}
 
 /**
  * A line or area chart of one period with an optional dashed line for the previous one. It is
@@ -134,7 +117,7 @@ export function LineAreaChart({
           type="button"
           aria-controls={tableId}
           onClick={() => setTable((v) => !v)}
-          className="text-sm font-medium text-link underline"
+          className="inline-flex min-h-11 items-center text-sm font-medium text-link underline lg:min-h-0"
         >
           {table ? labels.viewAsChart : labels.viewAsTable}
         </button>

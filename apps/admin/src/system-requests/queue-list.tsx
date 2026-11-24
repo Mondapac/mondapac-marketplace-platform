@@ -485,7 +485,6 @@ export function QueueList({
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-fg-muted">{t('subtitle')}</p>
       {invalid ? <Banner tone="attention">{t('invalid-filters')}</Banner> : null}
       {refusal === null ? null : (
         <RefusalBanner

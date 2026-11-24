@@ -19,6 +19,8 @@ export interface PickerChoice {
   readonly level: number;
   readonly name: string;
   readonly path: readonly string[];
+  /** The id of the department (level 1 ancestor) the choice sits under; the forms compare it. */
+  readonly departmentId?: string;
   readonly general: boolean;
   readonly status: 'active' | 'hidden';
 }
@@ -55,31 +57,43 @@ export function categoryPicker(
     (node.status === 'active' && (!hiddenAbove || includeHidden)) ||
     (node.status === 'hidden' && includeHidden);
   const out: PickerChoice[] = [];
-  const choice = (node: PickerNode, path: readonly string[], general: boolean): PickerChoice => ({
+  const choice = (
+    node: PickerNode,
+    path: readonly string[],
+    general: boolean,
+    departmentId: string,
+  ): PickerChoice => ({
     id: node.id,
     level: levelOf(byId, node.id),
     name: nameOf(node, locale),
     path,
+    departmentId,
     general,
     status: node.status === 'hidden' ? 'hidden' : 'active',
   });
-  const walk = (parentId: string | null, path: readonly string[], hiddenAbove: boolean): void => {
+  const walk = (
+    parentId: string | null,
+    path: readonly string[],
+    hiddenAbove: boolean,
+    departmentId: string,
+  ): void => {
     for (const node of children.get(parentId) ?? []) {
       // Merged and archived nodes end the walk: nothing under them is offered.
       if (node.status !== 'active' && node.status !== 'hidden') continue;
       const here = [...path, nameOf(node, locale)];
+      const department = parentId === null ? node.id : departmentId;
       const below = hiddenAbove || node.status === 'hidden';
       const level = levelOf(byId, node.id);
       if (level < LOWEST_PRODUCT_CATEGORY_LEVEL) {
-        walk(node.id, here, below);
+        walk(node.id, here, below, department);
         continue;
       }
       const start = out.length;
-      if (level < maxLevel) walk(node.id, here, below);
+      if (level < maxLevel) walk(node.id, here, below, department);
       const hasChildren = out.length > start;
-      if (offered(node, hiddenAbove)) out.push(choice(node, here, hasChildren));
+      if (offered(node, hiddenAbove)) out.push(choice(node, here, hasChildren, department));
     }
   };
-  walk(null, [], false);
+  walk(null, [], false, '');
   return out;
 }

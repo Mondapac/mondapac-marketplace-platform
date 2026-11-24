@@ -212,7 +212,7 @@ describe('EditForm', () => {
     expect(headings.indexOf('Photos')).toBeLessThan(headings.indexOf('Organisation'));
     expect(screen.queryByLabelText(/^(price|stock|cost)/i)).toBeNull();
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Olive oil');
-    expect(screen.getByText('Your product · Australia · P00000001')).toBeTruthy();
+    expect(screen.queryByText('Your product · Australia · P00000001')).toBeNull();
     expect(screen.getByText('Your product')).toBeTruthy();
   });
 

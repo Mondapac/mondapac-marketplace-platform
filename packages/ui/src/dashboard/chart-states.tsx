@@ -6,15 +6,17 @@ export interface ChartStateProps {
 /** A chart whose period holds no data. Said in words ("All clear" style), never an empty axis. */
 export function ChartEmpty({
   message,
+  hint,
   height = 240,
-}: ChartStateProps & { readonly message: string }) {
+}: ChartStateProps & { readonly message: string; readonly hint?: string }) {
   return (
-    <p
+    <div
       style={{ minHeight: height }}
-      className="flex items-center justify-center rounded-md border border-dashed border-line text-sm text-fg-muted"
+      className="flex flex-col items-center justify-center gap-1 rounded-md border border-dashed border-line p-3 text-center text-sm text-fg-muted"
     >
-      {message}
-    </p>
+      <p>{message}</p>
+      {hint === undefined ? null : <p className="text-xs">{hint}</p>}
+    </div>
   );
 }
 
@@ -37,7 +39,11 @@ export function ChartError({
     >
       <p>{message}</p>
       {onRetry === undefined || retryLabel === undefined ? null : (
-        <button type="button" onClick={onRetry} className="font-medium text-link underline">
+        <button
+          type="button"
+          onClick={onRetry}
+          className="inline-flex min-h-11 items-center font-medium text-link underline lg:min-h-0"
+        >
           {retryLabel}
         </button>
       )}
@@ -59,4 +65,26 @@ export function ChartSkeleton({ height = 240 }: ChartStateProps) {
       ))}
     </div>
   );
+}
+
+export type ChartDataState = 'empty' | 'insufficient';
+
+export interface ChartEmptyLabels {
+  /** The period holds no data ("Nothing in this period"). */
+  readonly empty: string;
+  /** There is data but too little to draw a meaningful chart ("Not enough data yet"). */
+  readonly insufficient: string;
+}
+
+export const DEFAULT_EMPTY_LABELS: ChartEmptyLabels = {
+  empty: 'Nothing in this period',
+  insufficient: 'Not enough data yet',
+};
+
+/** The words for a chart that has nothing to draw. The caller decides which state it is. */
+export function chartStateMessage(
+  state: ChartDataState,
+  labels: Partial<ChartEmptyLabels> | undefined,
+): string {
+  return labels?.[state] ?? DEFAULT_EMPTY_LABELS[state];
 }

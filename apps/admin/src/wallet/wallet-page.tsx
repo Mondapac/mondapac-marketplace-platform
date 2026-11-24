@@ -6,14 +6,13 @@ import { requireSession, type AdminSession } from '../server/session.ts';
 import { SettingsShell } from '../server/settings-shell.tsx';
 
 /**
- * The frame of a wallet page: session gate, shell, title and the intro lines, and the no-access
+ * The frame of a wallet page: session gate, shell, title and the code-wait note, and the no-access
  * message when the admin holds none of `anyOf` (the pattern of the held prices page). The body is
  * built only for an admin who may see the page.
  */
 export async function WalletPage({
   activeId,
   title,
-  intro,
   anyOf,
   permissionLabel,
   stepUpNote,
@@ -25,7 +24,6 @@ export async function WalletPage({
   /** Set for a page under Settings (the wallet switch): it then uses the settings shell. */
   readonly settingsLinkId?: string;
   readonly title: string;
-  readonly intro: string;
   readonly anyOf: readonly string[];
   /** The permission named in the no-access block of a settings page (what the caller needs). */
   readonly permissionLabel?: string;
@@ -77,7 +75,6 @@ export async function WalletPage({
       {allowed ? (
         <div className="flex flex-col gap-4">
           <div className="flex max-w-(--mp-size-form-max) flex-col gap-1 text-fg-muted">
-            <p>{intro}</p>
             {stepUpNote ? <p className="text-sm">{t('step-up.wait-note')}</p> : null}
           </div>
           {body(gate.session, keys)}

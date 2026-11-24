@@ -552,7 +552,7 @@ export function PagedSuperList<Row>({
       heading={{
         ...(embedded ? { embedded: true } : {}),
         // A list whose page has the Help panel needs no line here: `intro` is optional.
-        ...(t.has('intro') ? { subtitle: t('intro') } : {}),
+        ...(embedded && t.has('intro') ? { note: t('intro') } : {}),
         actions: (
           <>
             {heading}

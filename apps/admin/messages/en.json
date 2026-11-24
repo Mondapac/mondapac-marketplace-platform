@@ -943,6 +943,14 @@
     }
   },
   "sellers": {
+    "queues": {
+      "button": "Queues",
+      "button-count": "Queues, {count, plural, one {# item needs} other {# items need}} attention",
+      "button-count-more": "Queues, at least {count} items need attention",
+      "all": "All sellers",
+      "needs-a-look-hint": "Health problems, newest first",
+      "without-owner-hint": "Invite or assign an owner"
+    },
     "list": {
       "title": "Sellers",
       "no-access": "You don't have access to the seller list.",
@@ -1235,8 +1243,6 @@
     },
     "orphaned": {
       "title": "Sellers without an owner",
-      "back": "Back to sellers",
-      "link": "Sellers without an owner",
       "loading": "Loading sellers...",
       "empty": {
         "title": "Every seller has an owner",
@@ -1384,8 +1390,6 @@
     },
     "health-queue": {
       "title": "Sellers that need a look",
-      "link": "Sellers that need a look",
-      "back": "Back to sellers",
       "col": {
         "seller": "Seller",
         "score": "Score",
@@ -1423,7 +1427,6 @@
         "title": "You don't have access to this page",
         "body": "Ask an administrator for the permission to view sellers."
       },
-      "informs": "Health only informs. Nothing happens to a seller because of its score.",
       "back-home": "Back to home",
       "views": "Seller health views",
       "view": {
@@ -15366,7 +15369,6 @@
     "back-home": "Go to the dashboard",
     "rules-ran": "Rules ran {when}",
     "rules-never": "The rules have not run yet",
-    "updates": "Updates every 30 seconds",
     "refresh-failed": "Couldn't refresh. Showing alerts as of {time}.",
     "banner": {
       "no-roster-title": "No on-call roster is set up. Alerts are not being sent.",
@@ -16468,7 +16470,8 @@
         "about": "Every queue you can work on, with how many items wait and for how long. Open a queue to work on its items.",
         "good": [
           "You see only the queues your role can act on.",
-          "The oldest waiting item sets how late a queue is."
+          "The oldest waiting item sets how late a queue is.",
+          "Counts can be up to a minute old; reload the page for new ones."
         ],
         "related": [
           {
@@ -16556,7 +16559,8 @@
         "about": "Sellers whose latest health is Unhealthy, worst score first.",
         "good": [
           "Pick a measure to see the sellers it flagged.",
-          "Open a seller to see each measure and its trend."
+          "Open a seller to see each measure and its trend.",
+          "Health only informs. Nothing happens to a seller because of its score."
         ],
         "related": [
           {

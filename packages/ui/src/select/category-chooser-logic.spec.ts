@@ -4,6 +4,8 @@ import {
   addCategory,
   choiceLabel,
   choiceParts,
+  choicesInBranch,
+  dropOutOfBranch,
   focusAfterRemove,
   splitLabel,
   makePrimary,
@@ -69,5 +71,38 @@ describe('parts and focus', () => {
     expect(focusAfterRemove(['a', 'b', 'c'], 'b')).toEqual({ kind: 'row', id: 'c' });
     expect(focusAfterRemove(['a', 'b'], 'b')).toEqual({ kind: 'row', id: 'a' });
     expect(focusAfterRemove(['a'], 'a')).toEqual({ kind: 'add' });
+  });
+});
+
+describe('same-branch rules', () => {
+  const at = (id: string, ...path: string[]): CategoryChoice => ({
+    id,
+    level: path.length,
+    name: path[path.length - 1] ?? '',
+    path,
+    general: false,
+    status: 'active',
+  });
+  const all = [at('a1', 'Pantry', 'Rice'), at('a2', 'Pantry', 'Oils'), at('b1', 'Drinks', 'Tea')];
+  it('offers only the primary department once there is a primary', () => {
+    expect(choicesInBranch(all, []).map((c) => c.id)).toEqual(['a1', 'a2', 'b1']);
+    expect(choicesInBranch(all, ['b1']).map((c) => c.id)).toEqual(['b1']);
+    expect(choicesInBranch(all, ['a1', 'b1']).map((c) => c.id)).toEqual(['a1', 'a2']);
+    expect(choicesInBranch(all, ['unknown']).map((c) => c.id)).toEqual(['a1', 'a2', 'b1']);
+  });
+  it('drops the others that left the primary department and keeps unknown ids', () => {
+    expect(dropOutOfBranch(['b1', 'a1', 'a2'], all)).toEqual({ ids: ['b1'], dropped: 2 });
+    expect(dropOutOfBranch(['a1', 'a2', 'x'], all)).toEqual({ ids: ['a1', 'a2', 'x'], dropped: 0 });
+    expect(dropOutOfBranch([], all)).toEqual({ ids: [], dropped: 0 });
+  });
+  it('prefers the department id over the name, and falls back to the name', () => {
+    const d1 = { ...at('c1', 'Same', 'Rice'), departmentId: 'dep-1' };
+    const d2 = { ...at('c2', 'Same', 'Tea'), departmentId: 'dep-2' };
+    expect(choicesInBranch([d1, d2], ['c1']).map((c) => c.id)).toEqual(['c1']);
+    expect(dropOutOfBranch(['c1', 'c2'], [d1, d2])).toEqual({ ids: ['c1'], dropped: 1 });
+    // Without ids two departments of one name count as one (client only; the API is the authority).
+    const n1 = at('n1', 'Same', 'Rice');
+    const n2 = at('n2', 'Same', 'Tea');
+    expect(dropOutOfBranch(['n1', 'n2'], [n1, n2])).toEqual({ ids: ['n1', 'n2'], dropped: 0 });
   });
 });
