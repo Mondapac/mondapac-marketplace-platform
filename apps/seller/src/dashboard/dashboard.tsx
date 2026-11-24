@@ -30,7 +30,8 @@ import type { SellerOrderView } from '../orders/types.ts';
 import type { SellerKpiSources } from './kpis/load.ts';
 import { KpiItems } from './kpis/kpi-section.tsx';
 import { PeriodSwitch } from './kpis/period-switch.tsx';
-import { DEFAULT_PERIOD, PERIODS, type Period } from './kpis/types.ts';
+import { mayExport, type Selection } from './kpis/range.ts';
+import { DEFAULT_PERIOD, PERIODS } from './kpis/types.ts';
 import { RECENT, type SellerDashboardSources, type Widget } from './types.ts';
 
 const FULFILMENTS = ['to-ship', 'shipped', 'delivered'] as const;
@@ -285,10 +286,13 @@ const byUrgency = (a: { readonly status: string }, b: { readonly status: string 
 function LowStock({
   data,
   canOpenOffers,
+  wide,
 }: {
   readonly data: SellerDashboardSources;
   /** The session may open the offers list (the "View all" link). */
   readonly canOpenOffers: boolean;
+  /** Takes the whole row at the desktop width (no sales cards beside it to pair with). */
+  readonly wide: boolean;
 }) {
   const t = useTranslations('dashboard');
   const locale = useLocale();
@@ -303,7 +307,7 @@ function LowStock({
   };
   return (
     <DashboardSlot
-      layout={{ span: 4, tabletSpan: 6 }}
+      layout={{ span: wide ? 12 : 4, tabletSpan: 6 }}
       source={data.lowStock}
       fallback={<ChartCardSkeleton {...frame} height={160} {...text} />}
     >
@@ -394,7 +398,9 @@ export function SellerDashboard({
   data,
   permissionKeys,
   kpis,
-  period = DEFAULT_PERIOD,
+  selection = { id: DEFAULT_PERIOD },
+  today,
+  zone = null,
 }: {
   /** The page title (the h1 of the title row, which holds the period switch). */
   readonly title: string;
@@ -402,7 +408,12 @@ export function SellerDashboard({
   readonly permissionKeys: readonly string[];
   /** The KPI reads; absent without the orders key (the figures are sums of the orders). */
   readonly kpis?: SellerKpiSources | null;
-  readonly period?: Period;
+  /** What the address asks for: a preset or a custom range. */
+  readonly selection?: Selection;
+  /** The day now (`YYYY-MM-DD`): the last day a custom range may end on. */
+  readonly today: string;
+  /** The IANA zone the file name's day is read in. */
+  readonly zone?: string | null;
 }) {
   const t = useTranslations('dashboard');
   const tk = useTranslations('dashboard.kpi');
@@ -420,9 +431,13 @@ export function SellerDashboard({
   }
   const grid = (
     <DashboardGrid>
-      {kpis == null ? null : <KpiItems sources={kpis} period={period} />}
+      {kpis == null ? null : <KpiItems sources={kpis} period={selection.id} />}
       <TodaysTasks source={data.tasks} layout={{ span: 4, tabletSpan: 6, mobileOrder: 'tasks' }} />
-      <LowStock data={data} canOpenOffers={keys.has('catalog.own-product.view')} />
+      <LowStock
+        data={data}
+        canOpenOffers={keys.has('catalog.own-product.view')}
+        wide={kpis?.refused === true}
+      />
       <Orders data={data} />
       <QuickActions keys={keys} />
     </DashboardGrid>
@@ -452,8 +467,14 @@ export function SellerDashboard({
         <PeriodSwitch
           title={title}
           label={tk('period.label')}
-          options={PERIODS.map((id) => ({ id, label: tk(`period.${id}`) }))}
-          value={period}
+          options={[...PERIODS, 'custom' as const].map((id) => ({
+            id,
+            label: tk(`period.${id}`),
+          }))}
+          selection={selection}
+          today={today}
+          zone={zone}
+          canExport={mayExport(permissionKeys)}
         >
           {body}
         </PeriodSwitch>

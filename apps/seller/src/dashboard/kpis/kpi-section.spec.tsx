@@ -15,6 +15,7 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/',
 }));
 
+import type { Selection } from './range.ts';
 import { SellerDashboard } from '../dashboard.tsx';
 
 afterEach(cleanup);
@@ -108,8 +109,10 @@ const mount = (sources: Partial<SellerKpiSources> = {}, locale = 'en-AU') =>
         title="Dashboard"
         data={NONE}
         permissionKeys={KEYS}
-        period="7d"
+        selection={{ id: '7d' }}
+        today="2026-11-23"
         kpis={{
+          refused: false,
           kpis: ok(kpis),
           categories: { categories: [{ id: CAT_A, name: 'Fresh meat', depth: 3 }] },
           health: ok(health),
@@ -291,8 +294,10 @@ describe('the seller sales chart', () => {
           title="Dashboard"
           data={NONE}
           permissionKeys={KEYS}
-          period={id}
+          selection={{ id }}
+          today="2026-11-23"
           kpis={{
+            refused: false,
             kpis: ok(one),
             categories: { categories: [] },
             health: ok(health),
@@ -417,10 +422,81 @@ describe('the seller dashboard layout', () => {
     expect(chart?.className).toContain('lg:col-span-8');
   });
 
-  it('offers the four periods with the chosen one checked', () => {
+  it('offers the four periods and Custom with the chosen one checked', () => {
     mount();
     const group = screen.getByRole('group', { name: 'Period' });
-    expect(within(group).getAllByRole('radio')).toHaveLength(4);
+    expect(within(group).getAllByRole('radio')).toHaveLength(5);
     expect(within(group).getByRole('radio', { name: '7 days' })).toHaveProperty('checked', true);
+  });
+});
+
+describe('a custom range', () => {
+  const mountRange = (
+    selection: Selection,
+    sources: Partial<SellerKpiSources>,
+    keys: readonly string[] = KEYS,
+  ) =>
+    render(
+      <NextIntlClientProvider locale="en-AU" messages={messages}>
+        <SellerDashboard
+          title="Dashboard"
+          data={NONE}
+          permissionKeys={keys}
+          selection={selection}
+          today="2026-11-23"
+          kpis={{
+            refused: false,
+            kpis: ok({
+              ...kpis,
+              period: { ...kpis.period, id: 'custom' },
+            }),
+            categories: { categories: [] },
+            health: ok(health),
+            netEarnings: null,
+            nextPayout: ok(payout()),
+            ...sources,
+          }}
+        />
+      </NextIntlClientProvider>,
+    );
+
+  it('says "Custom range" and compares with the days just before', () => {
+    mountRange({ id: 'custom', from: '2026-09-01', to: '2026-11-23' }, {});
+    expect(card('Sales').getAllByText(/vs the days just before/).length).toBeGreaterThan(0);
+    expect(card('Sales').getByText(/Custom range/)).toBeTruthy();
+  });
+
+  it('shows the net earnings card for the range', () => {
+    mountRange(
+      { id: 'custom', from: '2026-09-01', to: '2026-11-23' },
+      { netEarnings: ok(net({ range: { from: '2026-09-01', to: '2026-11-23' } })) },
+    );
+    expect(document.querySelectorAll('[data-kpi-card]')).toHaveLength(4);
+    expect(card('Net earnings').getByText(/Custom range/)).toBeTruthy();
+  });
+
+  it('shows the net earnings card in its error state when that read fails, never a vanished card', () => {
+    mountRange(
+      { id: 'custom', from: '2026-09-01', to: '2026-11-23' },
+      { netEarnings: { kind: 'error' } },
+    );
+    expect(document.querySelectorAll('[data-kpi-card]')).toHaveLength(4);
+    expect(card('Net earnings').getByRole('alert').textContent).toBe(messages.dashboard.error.card);
+  });
+
+  it('shows one line with the way out, and no figures, when the range is refused', () => {
+    mountRange(
+      { id: 'custom', from: '2024-01-01', to: '2026-11-23' },
+      { refused: true, kpis: null, categories: null, netEarnings: null },
+    );
+    expect(screen.getByText('Choose a valid range to see figures, or').textContent).toContain(
+      'go back to 30 days',
+    );
+    expect(screen.getByRole('link', { name: 'go back to 30 days' }).getAttribute('href')).toBe(
+      '/?period=30d',
+    );
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.getByRole('alert').textContent).toBe('Start no earlier than 24 Oct 2025.');
+    expect(document.querySelectorAll('[data-kpi-card]').length).toBe(1);
   });
 });

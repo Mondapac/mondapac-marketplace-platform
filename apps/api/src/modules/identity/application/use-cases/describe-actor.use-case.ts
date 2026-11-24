@@ -46,8 +46,8 @@ export interface ActorSummary {
   readonly locale: string | null;
   /**
    * The Market's IANA zone (ADR-0005): a fallback only, for a holder with no zone of their own.
-   * Only the admin session answer carries it: the admin Orders list reads local days in it.
-   * The seller and customer session answers leave it out.
+   * The admin and seller session answers carry it (the admin Orders list and the seller
+   * dashboard read local days in it); the customer session answer leaves it out.
    */
   readonly marketTimezone: string;
   /** A customer's kept storefront look, or null when none was chosen (always null otherwise). */

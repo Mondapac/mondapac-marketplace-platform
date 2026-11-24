@@ -4,8 +4,9 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { sessionSellerOf } from '../../../../platform/work-queue/count-work-queue';
 import { COMMISSION_PAYOUTS_EARNINGS_VIEW } from '../../../commission-payouts';
 import { sellerNetEarningsOf, type SellerNetEarnings } from '../../domain/ledger';
-import { marketDayOf } from '../../domain/facts';
-import { isPeriodId, resolvePeriod, type DayRange } from '../../domain/period';
+import { parsePeriodQuery, type DayRange } from '../../domain/period';
+import { resolveKpiPeriod } from '../admin-kpi-flow';
+import { DEFAULT_PERIOD } from './view-seller-kpis.use-case';
 import {
   readNetFigures,
   type LedgerKpiDependencies,
@@ -14,10 +15,19 @@ import {
 } from '../ledger-kpi-flow';
 
 /**
- * A range of Market days, or a dashboard period (`today`, `7d`, `30d`, `month`) that the use case
- * turns into the Market's current range of that period (the one the KPI strip shows).
+ * The query as it came, as the KPI strip's (`ViewSellerKpisInput`): a preset `period`
+ * (`today`, `7d`, `30d`, `month`; default the strip's {@link DEFAULT_PERIOD}) that the use case
+ * turns into the Market's current range of that period, or a custom range `from` and `to`
+ * (Market days, both included, `period` absent or `custom`).
  */
-export type SellerNetEarningsInput = NetFiguresInput | { readonly period: unknown };
+export interface SellerNetEarningsQuery {
+  readonly period?: unknown;
+  readonly from?: unknown;
+  readonly to?: unknown;
+}
+
+/** A range of Market days (the facade's shape), or the query of the dashboard. */
+export type SellerNetEarningsInput = NetFiguresInput | SellerNetEarningsQuery;
 
 export interface SellerNetEarningsAnswer {
   readonly range: DayRange;
@@ -64,15 +74,20 @@ export class ViewSellerNetEarnings extends UseCase<
     const sellerId = sessionSellerOf(context);
     if (sellerId === null) return err({ code: 'access.denied' });
     let range: NetFiguresInput;
-    if (input !== null && typeof input === 'object' && 'period' in input) {
-      if (!isPeriodId(input.period)) {
-        return err({ code: 'validation.failed', fields: [{ path: 'period', code: 'enum' }] });
-      }
-      const today = marketDayOf(this.deps.clock.now(), this.deps.zone.zoneOf(context.market));
-      const { current } = resolvePeriod(input.period, today);
-      range = { range: { from: current.from, to: current.to } };
-    } else {
+    if (input !== null && typeof input === 'object' && 'range' in input) {
       range = input;
+    } else {
+      // The same rules as the KPI strip: shape first, then "ends by the Market's today".
+      const query: SellerNetEarningsQuery | null | undefined = input;
+      const asked = parsePeriodQuery(
+        { period: query?.period, from: query?.from, to: query?.to },
+        DEFAULT_PERIOD,
+      );
+      if (!asked.ok) return err({ code: 'validation.failed', fields: asked.error });
+      const resolved = resolveKpiPeriod(this.deps, context, asked.value, this.deps.clock.now());
+      if (!resolved.ok) return resolved;
+      const { current } = resolved.value;
+      range = { range: { from: current.from, to: current.to } };
     }
     const read = await readNetFigures(this.deps, context, range, sellerId);
     if (!read.ok) return read;

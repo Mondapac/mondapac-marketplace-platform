@@ -191,7 +191,9 @@ export class SellerSessionController {
     const result = await this.describeActor.execute(context, {});
     this.log('identity.seller-session', context, result.ok ? 'described' : result.error.code);
     if (!result.ok) throw this.denied(result.error);
-    const summary = result.value;
+    // A customer's storefront look is not a seller field (the DTO names none): left out.
+    const { appearance: _customerOnly, ...summary } = result.value;
+    void _customerOnly;
     if (
       csrfToken === null ||
       summary.population !== 'seller' ||
@@ -202,11 +204,9 @@ export class SellerSessionController {
       throw fail(ACCESS_DENIED_STATUS['access.denied'], 'access.denied');
     }
     response.setHeader('Cache-Control', 'no-store');
-    // The Market zone is for the admin panel only; the seller panel reads the seller's own zone.
-    const { marketTimezone: _adminOnly, ...sellerSummary } = summary;
-    void _adminOnly;
+    // The Market zone too: the dashboard judges a custom range in Market days, as the API does.
     return {
-      ...sellerSummary,
+      ...summary,
       population: 'seller',
       sellerId: summary.sellerId,
       displayName: summary.displayName,

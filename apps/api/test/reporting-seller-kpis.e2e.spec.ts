@@ -261,6 +261,7 @@ describe.each(TEST_MARKETS)('the seller KPIs over HTTP in market %s', (code) => 
       .get('/reporting/seller/net-earnings')
       .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...sessionOf('seller') });
     expect(early.body).toMatchObject({ ready: false, netEarnings: null });
-    expect(inputs[1]).toEqual({ period: '30d' });
+    // No period: the query goes as it came, and the use case applies the strip's default (30d).
+    expect(inputs[1]).toEqual({});
   });
 });

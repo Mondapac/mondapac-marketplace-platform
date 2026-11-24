@@ -19,6 +19,11 @@ export interface SellerSession {
   readonly timezone: string | null;
   /** The holder's panel language code, or null when none was chosen. */
   readonly locale: string | null;
+  /**
+   * The Market's IANA zone (ADR-0005): the zone the API counts report days in. Optional: an API
+   * that does not send it yet leaves the dashboard on the seller's own zone.
+   */
+  readonly marketTimezone?: string;
   readonly csrfToken: string;
 }
 

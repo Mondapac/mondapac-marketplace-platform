@@ -242,6 +242,44 @@ describe.each(TEST_MARKETS)('the net figures in market %s', (code) => {
     expect(reader.calls).toHaveLength(1);
   });
 
+  it('gives a call with neither range nor period the strip’s default (30 days)', async () => {
+    const thirty = { from: today.subtract({ days: 29 }).toString(), to: today.toString() };
+    for (const input of [{}, { period: undefined }, null as never]) {
+      reader.calls.length = 0;
+      const out = await new ViewSellerNetEarnings(gate, deps).execute(seller, input);
+      if (!out.ok) throw new Error(out.error.code);
+      expect(out.value.range).toEqual(thirty);
+      expect(reader.calls).toEqual([{ currency, range: thirty, sellerId }]);
+    }
+  });
+
+  it('reads a custom range query as the KPI strip does, and refuses it by field', async () => {
+    const out = await new ViewSellerNetEarnings(gate, deps).execute(seller, {
+      period: 'custom',
+      from: range.from,
+      to: range.to,
+    });
+    if (!out.ok) throw new Error(out.error.code);
+    expect(out.value.range).toEqual(range);
+    const tomorrow = today.add({ days: 1 }).toString();
+    const refusals: [Record<string, unknown>, unknown][] = [
+      [{ from: range.from, to: tomorrow }, [{ path: 'to', code: 'future' }]],
+      [{ from: range.to, to: range.from }, [{ path: 'from', code: 'after-to' }]],
+      [
+        { from: today.subtract({ months: 14 }).toString(), to: range.to },
+        [{ path: 'from', code: 'too-long' }],
+      ],
+      [{ period: 'custom', from: range.from }, [{ path: 'to', code: 'required' }]],
+    ];
+    for (const [query, fields] of refusals) {
+      expect(await new ViewSellerNetEarnings(gate, deps).execute(seller, query)).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields },
+      });
+    }
+    expect(reader.calls).toHaveLength(1);
+  });
+
   it("counts a period in the Market's local day, not the UTC day, near midnight", async () => {
     const tz = zone.zoneOf(market);
     // 00:30 local on 22 Nov: in UTC that is the 21st for a zone ahead of UTC, the 22nd for UTC itself.

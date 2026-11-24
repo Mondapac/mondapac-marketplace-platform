@@ -54,6 +54,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/seller/offers/export',
     // The export of the order list as a CSV file (ordering): the list's own filter.
     'ordering/seller/orders/export',
+    // The dashboard's daily figures of the shown period or custom range as CSV or XLSX (reporting;
+    // query: `period`, `from`, `to`, `format`; keys ordering.seller-order.view and
+    // reporting.seller-report.export, judged by the API). A bad value refuses, never the default.
+    'reporting/seller/daily/export',
     // The saved views of the order list (ordering; query: `listKey`).
     'ordering/seller/saved-filters',
     'commission-payouts/seller/ledger',
@@ -316,6 +320,12 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     pageSize: /^(25|50)$/,
     paging: /^(pages|prev-next)$/,
   },
+  'reporting/seller/daily/export': {
+    period: /^(today|7d|30d|month|custom)$/,
+    from: /^\d{4}-\d{2}-\d{2}$/,
+    to: /^\d{4}-\d{2}-\d{2}$/,
+    format: /^(csv|xlsx)$/,
+  },
   'ordering/seller/orders/export': {
     format: /^(csv|xlsx)$/,
     columns:
@@ -473,6 +483,8 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
  * a wider file than the one asked for, and dropping `ids` would send every payout.
  */
 const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
+  // A bad period or day refuses: the file is never the default period when a range was asked.
+  'reporting/seller/daily/export',
   'commission-payouts/seller/payouts/export',
 ]);
 
