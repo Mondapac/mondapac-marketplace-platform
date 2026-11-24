@@ -466,9 +466,13 @@ describe('a custom range', () => {
     expect(card('Sales').getByText(/Custom range/)).toBeTruthy();
   });
 
-  it('leaves the net earnings card out (the API reads a preset only there)', () => {
-    mountRange({ id: 'custom', from: '2026-09-01', to: '2026-11-23' }, {});
-    expect(document.querySelectorAll('[data-kpi-card]')).toHaveLength(3);
+  it('shows the net earnings card for the range', () => {
+    mountRange(
+      { id: 'custom', from: '2026-09-01', to: '2026-11-23' },
+      { netEarnings: ok(net({ range: { from: '2026-09-01', to: '2026-11-23' } })) },
+    );
+    expect(document.querySelectorAll('[data-kpi-card]')).toHaveLength(4);
+    expect(card('Net earnings').getByText(/Custom range/)).toBeTruthy();
   });
 
   it('shows one line with the way out, and no figures, when the range is refused', () => {

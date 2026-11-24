@@ -49,9 +49,8 @@ function optionalWidgetOf<T>(answer: ServerGet<T>): Widget<T> | null {
  * sales figures are sums of the orders) nor the earnings key (net earnings and the next payout).
  * Each group is asked for on its own key: a member with only the earnings key still gets the
  * earnings cards. One call each; the cards stream in on their own. A custom range that is not
- * valid reads no figure of the period (the API would refuse it too). The net earnings read takes a
- * preset only (the API does not take a custom range there yet), so a custom range leaves that
- * card out.
+ * valid reads no figure of the period (the API would refuse it too). The net earnings read takes
+ * the same period query as the sales figures, a custom range included.
  */
 export function startSellerKpis(
   session: SellerSession,
@@ -75,7 +74,7 @@ export function startSellerKpis(
         )
       : null;
   const netEarnings =
-    earnings && selection.id !== 'custom'
+    earnings && !refused
       ? serverGet<SellerNetEarnings>(`${NET_EARNINGS_PATH}?${query}`).then(optionalWidgetOf)
       : null;
   const nextPayout = earnings

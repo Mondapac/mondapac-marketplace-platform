@@ -20,6 +20,15 @@ export function selectionOf(params: SearchParams, fallback: Period): Selection {
   return { id: isPeriod(period) ? period : fallback };
 }
 
+/**
+ * The zone whose "today" a range may end on: the Market's, as the API judges a range in Market
+ * days. Without it (an older session summary) the seller's own working zone, then UTC.
+ */
+export function rangeZoneOf(marketTimezone: string | undefined, sellerZone: string | null): string {
+  if (typeof marketTimezone === 'string' && marketTimezone !== '') return marketTimezone;
+  return sellerZone ?? 'UTC';
+}
+
 /** The address of a selection on the home page. */
 export function selectionHref(selection: Selection): string {
   if (selection.id !== 'custom') return `/?period=${selection.id}`;

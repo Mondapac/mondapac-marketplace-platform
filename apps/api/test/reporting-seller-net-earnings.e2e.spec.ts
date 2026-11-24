@@ -8,6 +8,10 @@ import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { LEDGER_KPI_READER } from '../src/modules/reporting/application/ports/ledger-kpi-reader';
+import {
+  MARKET_ZONE,
+  type MarketZone,
+} from '../src/modules/reporting/application/ports/market-zone';
 import { EMPTY_LEDGER_SUMS } from '../src/modules/reporting/domain/ledger';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
@@ -18,7 +22,8 @@ import { panelHeaders, TEST_MARKETS } from './support/test-config';
 // GET reporting/seller/net-earnings over HTTP with the REAL guards, gate, role seed and use case;
 // only the ledger reader (a fixed answer) and the clock are fakes. Proved in both Market
 // fixtures: the seller owner reads it; a member whose role lacks `commission-payouts.earnings.view`
-// is 403 access.denied; an unknown period and a repeated `period` are 400 with `no-store`; an
+// is 403 access.denied; an unknown period and a repeated `period` are 400 with `no-store`; a
+// custom range follows the KPI strip's rules (too long, future, from after to: 400 by field); an
 // admin cookie and no cookie are 401.
 
 const START = Temporal.Instant.from('2026-11-22T01:00:00Z');
@@ -208,7 +213,61 @@ describe.each(TEST_MARKETS)(
         const reply = await get(query, cookieOf(OWNER, 'seller', 3));
         expect(reply.status).toBe(400);
         expect(reply.headers['cache-control']).toBe('no-store');
-        expect(reply.body).toEqual({ statusCode: 400, code: 'validation.failed' });
+        expect(reply.body).toEqual({
+          statusCode: 400,
+          code: 'validation.failed',
+          details: { fields: [{ path: 'period', code: 'enum' }] },
+        });
+        expect(reads).toEqual([]);
+      },
+    );
+
+    // The Market's today at START, in its own zone (never the UTC day).
+    const today = () =>
+      START.toZonedDateTimeISO(app!.get<MarketZone>(MARKET_ZONE).zoneOf(marketOf())).toPlainDate();
+
+    it('reads a custom range of Market days, the same as the KPI strip', async () => {
+      await boot();
+      const to = today().subtract({ days: 1 }).toString();
+      const from = today().subtract({ days: 40 }).toString();
+      const reply = await get(`?period=custom&from=${from}&to=${to}`, cookieOf(OWNER, 'seller', 5));
+      expect(reply.status).toBe(200);
+      expect(reply.headers['cache-control']).toBe('no-store');
+      expect(reply.body).toMatchObject({ range: { from, to }, ready: true, netEarnings: '8500' });
+      expect(reads).toEqual([{ range: { from, to }, sellerId: SELLER }]);
+    });
+
+    it('keeps a preset as the current range of that period', async () => {
+      await boot();
+      const reply = await get('?period=today', cookieOf(OWNER, 'seller', 6));
+      expect(reply.status).toBe(200);
+      const day = today().toString();
+      expect(reply.body).toMatchObject({ range: { from: day, to: day } });
+      expect(reads).toEqual([{ range: { from: day, to: day }, sellerId: SELLER }]);
+    });
+
+    type Days = (t: Temporal.PlainDate) => readonly [Temporal.PlainDate, Temporal.PlainDate];
+    const cases: readonly (readonly [string, Days, string, string])[] = [
+      ['too long', (t) => [t.subtract({ months: 14 }), t], 'from', 'too-long'],
+      ['in the future', (t) => [t, t.add({ days: 1 })], 'to', 'future'],
+      ['from after to', (t) => [t, t.subtract({ days: 2 })], 'from', 'after-to'],
+    ];
+    it.each(cases)(
+      'refuses a custom range %s with 400 and the field at fault',
+      async (_label, days, path, fieldCode) => {
+        await boot();
+        const [from, to] = days(today());
+        const reply = await get(
+          `?period=custom&from=${from.toString()}&to=${to.toString()}`,
+          cookieOf(OWNER, 'seller', 7),
+        );
+        expect(reply.status).toBe(400);
+        expect(reply.headers['cache-control']).toBe('no-store');
+        expect(reply.body).toEqual({
+          statusCode: 400,
+          code: 'validation.failed',
+          details: { fields: [{ path, code: fieldCode }] },
+        });
         expect(reads).toEqual([]);
       },
     );

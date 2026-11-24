@@ -4,7 +4,7 @@ import { redirect } from 'next/navigation';
 import { SellerDashboard } from '../../src/dashboard/dashboard.tsx';
 import { startSellerDashboard } from '../../src/dashboard/load.ts';
 import { startSellerKpis } from '../../src/dashboard/kpis/load.ts';
-import { selectionOf } from '../../src/dashboard/kpis/range.ts';
+import { rangeZoneOf, selectionOf } from '../../src/dashboard/kpis/range.ts';
 import { DEFAULT_PERIOD } from '../../src/dashboard/kpis/types.ts';
 import { SETUP_ROOT } from '../../src/setup/steps.ts';
 import { readSellerZone } from '../../src/server/seller-zone.ts';
@@ -35,10 +35,10 @@ export default async function HomePage({
   // Not awaited: each card streams in with its own read (panel loading L4).
   const data = startSellerDashboard(gate.session);
   const selection = selectionOf(await searchParams, DEFAULT_PERIOD);
-  // The day now in the seller's working zone (UTC when it cannot be read): a range may end today
-  // at the latest. The API judges the range in the Market's days and is the last word.
+  // The Market's day now, the day the API judges a range on: a range may end today at the latest.
+  // Without the Market zone in the session, the seller's working zone (UTC when it cannot be read).
   const zone = await readSellerZone();
-  const today = marketToday(zone ?? 'UTC');
+  const today = marketToday(rangeZoneOf(gate.session.marketTimezone, zone));
   const kpiSources = startSellerKpis(gate.session, selection, today);
   return (
     <SellerShell session={gate.session} activeId="s_home" title={t('home.title')}>

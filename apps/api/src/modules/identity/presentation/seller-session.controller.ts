@@ -202,11 +202,9 @@ export class SellerSessionController {
       throw fail(ACCESS_DENIED_STATUS['access.denied'], 'access.denied');
     }
     response.setHeader('Cache-Control', 'no-store');
-    // The Market zone is for the admin panel only; the seller panel reads the seller's own zone.
-    const { marketTimezone: _adminOnly, ...sellerSummary } = summary;
-    void _adminOnly;
+    // The Market zone too: the dashboard judges a custom range in Market days, as the API does.
     return {
-      ...sellerSummary,
+      ...summary,
       population: 'seller',
       sellerId: summary.sellerId,
       displayName: summary.displayName,

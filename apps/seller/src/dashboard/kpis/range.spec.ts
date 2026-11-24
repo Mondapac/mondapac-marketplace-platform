@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { dailyExportQuery, mayExport, periodQuery, selectionHref, selectionOf } from './range.ts';
+import {
+  dailyExportQuery,
+  mayExport,
+  periodQuery,
+  rangeZoneOf,
+  selectionHref,
+  selectionOf,
+} from './range.ts';
 
 describe('the dashboard selection', () => {
   it('reads a preset, a custom range and the default from the address', () => {
@@ -36,5 +43,18 @@ describe('the dashboard selection', () => {
     expect(mayExport(['ordering.seller-order.view', 'reporting.seller-report.export'])).toBe(true);
     expect(mayExport(['ordering.seller-order.view'])).toBe(false);
     expect(mayExport(['reporting.seller-report.export'])).toBe(false);
+  });
+});
+
+describe("the zone of the range's today", () => {
+  it("is the Market's zone, as the API judges a range in Market days", () => {
+    expect(rangeZoneOf('Australia/Brisbane', 'Australia/Perth')).toBe('Australia/Brisbane');
+    expect(rangeZoneOf('Asia/Tokyo', null)).toBe('Asia/Tokyo');
+  });
+
+  it("falls back to the seller's zone, then UTC, only when the session has no Market zone", () => {
+    expect(rangeZoneOf(undefined, 'Australia/Perth')).toBe('Australia/Perth');
+    expect(rangeZoneOf('', 'Australia/Perth')).toBe('Australia/Perth');
+    expect(rangeZoneOf(undefined, null)).toBe('UTC');
   });
 });

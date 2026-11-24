@@ -225,6 +225,13 @@ export class SellerSessionSummary {
   })
   locale!: string | null;
 
+  @ApiProperty({
+    description:
+      "The Market's IANA time zone (ADR-0005): the zone the API counts its report days in, so " +
+      "the panel judges a dashboard range against the Market's today, not the seller's.",
+  })
+  marketTimezone!: string;
+
   @ApiProperty({ type: SellerSessionTimes })
   session!: SellerSessionTimes;
 

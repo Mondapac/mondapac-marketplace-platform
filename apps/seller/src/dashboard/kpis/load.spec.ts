@@ -105,7 +105,7 @@ describe('startSellerKpis', () => {
     await expect(sources?.kpis).rejects.toThrow('redirect:/session-ended');
   });
 
-  it('reads a valid custom range with its days, and leaves the net earnings out (preset only)', async () => {
+  it('reads a valid custom range with its days, the net earnings too', async () => {
     const sources = startSellerKpis(
       session(['ordering.seller-order.view', 'commission-payouts.earnings.view']),
       { id: 'custom', from: '2026-09-01', to: '2026-11-23' },
@@ -116,13 +116,16 @@ describe('startSellerKpis', () => {
     expect(mocks.get).toHaveBeenCalledWith(
       'reporting/seller/kpis?period=custom&from=2026-09-01&to=2026-11-23',
     );
-    expect(sources?.netEarnings).toBeNull();
+    expect(mocks.get).toHaveBeenCalledWith(
+      'reporting/seller/net-earnings?period=custom&from=2026-09-01&to=2026-11-23',
+    );
+    expect(sources?.netEarnings).not.toBeNull();
     expect(sources?.nextPayout).not.toBeNull();
   });
 
   it('reads no figure for a custom range that is not valid', async () => {
     const sources = startSellerKpis(
-      session(['ordering.seller-order.view']),
+      session(['ordering.seller-order.view', 'commission-payouts.earnings.view']),
       { id: 'custom', from: '2024-01-01', to: '2026-11-23' },
       TODAY,
     );
@@ -132,5 +135,7 @@ describe('startSellerKpis', () => {
     expect(sources?.categories).toBeNull();
     const paths = mocks.get.mock.calls.map((call) => call[0] as string);
     expect(paths.some((path) => path.startsWith('reporting/seller/kpis'))).toBe(false);
+    expect(sources?.netEarnings).toBeNull();
+    expect(paths.some((path) => path.startsWith('reporting/seller/net-earnings'))).toBe(false);
   });
 });

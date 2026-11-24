@@ -222,9 +222,9 @@ describe('seller accounts over HTTP (integration)', () => {
         .get('/identity/seller/session')
         .set({ 'x-market-id': code, cookie });
       expect(session.status).toBe(200);
-      // The Market zone is for the admin panel only (ADR-0005).
-      expect(session.body).not.toHaveProperty('marketTimezone');
       expect(session.body).toMatchObject({
+        // The Market's own zone: the seller dashboard judges a range in Market days (ADR-0005).
+        marketTimezone: code === 'AU' ? 'Australia/Brisbane' : 'Asia/Tokyo',
         population: 'seller',
         sellerId: seller!.sellerId,
         roleId: role!.id,
