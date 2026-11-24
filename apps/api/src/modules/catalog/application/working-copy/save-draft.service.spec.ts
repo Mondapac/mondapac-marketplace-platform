@@ -124,6 +124,17 @@ describe.each(['AU', 'ZZ'])('SaveDraft in market %s', (code) => {
     });
   });
 
+  it("saves a draft whose category is outside the seller's business activities (the scope applies at submit only)", async () => {
+    // The draft save has no activity scope: a stored out-of-scope category stays savable.
+    const outside = { ...content('Lamb'), categoryIds: ['c-outside-activity'] };
+    const r = rig({ ...content('Old name'), categoryIds: ['c-outside-activity'] });
+    const saved = await r.draft.execute(context, { ...input(), content: outside });
+    expect(saved).toMatchObject({ ok: true });
+    expect(saved.ok && saved.value.refusedFields).toHaveLength(0);
+    expect(r.saves).toHaveLength(1);
+    expect(r.saves[0]!.content).toEqual(outside);
+  });
+
   it('writes nothing at all when any text is refused (all or nothing)', async () => {
     const r = rig({ texts: { en: { name: 'Old name', description: 'Old description' } } });
     const refused = await r.draft.executeAllOrNothing(context, {

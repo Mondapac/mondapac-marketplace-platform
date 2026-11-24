@@ -545,7 +545,7 @@ describe.each(TEST_MARKETS)('reporting ledger facts in market %s (database)', (c
           { range: { from: '2030-01-01', to: '2031-03-01' } },
           null,
         ),
-      ).toEqual(err({ code: 'validation.failed' }));
+      ).toEqual(err({ code: 'validation.failed', fields: [{ path: 'from', code: 'too-long' }] }));
       expect(
         await readNetFigures(
           kpiDeps(),
@@ -553,7 +553,7 @@ describe.each(TEST_MARKETS)('reporting ledger facts in market %s (database)', (c
           { range: { from: '2031-03-01', to: '2031-03-11' } },
           null,
         ),
-      ).toEqual(err({ code: 'validation.failed' }));
+      ).toEqual(err({ code: 'validation.failed', fields: [{ path: 'to', code: 'future' }] }));
     });
   });
 });

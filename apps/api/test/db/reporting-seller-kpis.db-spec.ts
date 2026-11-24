@@ -109,4 +109,30 @@ describe.each(TEST_MARKETS)('the seller KPI reader in market %s (database)', (co
     ]);
     expect(read.value.categories.map((row) => row.salesAmount)).toEqual([1100n]);
   });
+
+  it("reads one seller's days of an export range, never another seller's or Market's", async () => {
+    const mine = idOf<'Seller'>();
+    const canary = idOf<'Seller'>();
+    await pay(mine, market, '2026-10-01T03:00:00Z', 1100n);
+    await pay(mine, market, '2026-09-30T03:00:00Z', 5500n); // before the range
+    await pay(canary, market, '2026-10-01T03:00:00Z', 9900n);
+    await pay(mine, other, '2026-10-01T03:00:00Z', 7700n); // same seller id, other Market
+
+    const reader = new PrismaSellerKpiReader(db.service);
+    const read = await db.unitOfWork.run(
+      market,
+      async () =>
+        ok(
+          await reader.daily(market, mine, currency, {
+            from: day('2026-10-01'),
+            to: day('2026-10-31'),
+          }),
+        ),
+      { readOnly: true },
+    );
+    if (!read.ok) throw new Error('read failed');
+    expect(read.value.map((row) => [row.marketDay, row.goodsAmount])).toEqual([
+      ['2026-10-01', 1100n],
+    ]);
+  });
 });

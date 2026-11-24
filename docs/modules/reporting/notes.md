@@ -327,3 +327,47 @@ still answers.
 - Deferred from the PR 4 review: a shared `sessionSellerOf` in `platform/authz` (FE-171) and a
   boundaries rule that lets only `modules/reporting` import `COMMISSION_PAYOUTS_REPORTING_FACADE`
   (FE-172; today the facade's rule `system` is the control, tested per use case).
+
+## Custom range and daily export (dashboards v2, PR 5)
+
+- Every KPI read (admin `dashboard/admin/kpis`, the four marketplace reads behind it, seller
+  `reporting/seller/kpis`) takes a preset `period` or a custom range `from` and `to`: Market days
+  `YYYY-MM-DD`, both included, `period` absent or `custom` (`domain/period.ts`,
+  `parsePeriodQuery` for the shape, `resolvePeriodRequest` on the Market's today).
+- Rules: real calendar days (2026-02-30 is `format`), `from` not after `to` (`after-to`), `to` not
+  after the Market's today in the Market zone (`future`), and at most 13 calendar months both ends
+  included: `from` is no earlier than `to` minus 13 months plus one day, a month end clamped
+  (31 March gives 1 March of the year before), so at most 397 days (`too-long`). Each is a 400
+  `validation.failed` with `details.fields` `{ path, code }`.
+- The previous period of a custom range is as many days just before `from`; `period.id` is
+  `custom`. The admin dashboard checks the range once through the facade's `resolvePeriod` (no data
+  read) before it asks any section, so a future range is one 400, never a section `error`.
+- Exports: `GET reporting/admin/daily/export` (`reporting.export-marketplace-daily`: keys
+  `commission-payouts.settlement.view`, `ordering.order.view` and the new
+  `reporting.marketplace-report.export`; a platform admin acting as themselves) and
+  `GET reporting/seller/daily/export` (`reporting.export-seller-daily`: `ordering.seller-order.view`
+  and the new seller key `reporting.seller-report.export`; the session's own seller only, an
+  unapproved seller denied). Query: `period` (admin default `7d`, seller `30d`) or `from`/`to`, and
+  `format` `csv` (default) or `xlsx`; any other key, `sellerId` included, is `unknown-field`.
+- The file is the shared list export's (`platform/list-export`): CSV in UTF-8 with a byte order
+  mark, a header row, CRLF, the formula guard on every text cell; XLSX with every cell as text. One
+  row per Market day of the range (a day with no fact is zeros), ISO days, money as minor units
+  with the currency in its own column. A safe-integer amount is written as a number so a negative
+  net is not quoted as a formula. The admin file: GMV with and without tax, refunded goods
+  (positive, on the refund day), net sales and the order counts; the seller file: the figures of
+  its KPI cards.
+- Each download writes one audit row (`reporting.marketplace-daily.exported`, target
+  `marketplace-daily`; `reporting.seller-daily.exported`, target the seller) with the period kind,
+  the range as the instants of its first day's start and of the day after its last in the Market
+  zone, the days, the format and the row count; never a figure. The rows are read and the audit
+  row written in one read-write unit (READ COMMITTED), so a refused audit row sends no file
+  (`access.unavailable`). No step-up and no rate limit: the files hold daily sums only (FE-178).
+- Reads: admin, the existing grouped `daily_seller_sales` read by `(market_id, market_day)`; seller,
+  `findMany` on `(market_id, seller_id, market_day)` with `tenant_id` and `currency`. At most 397
+  days. No table, migration or index is added.
+- The net revenue and net earnings reads of PR 4 (`marketplaceNetRevenue`, `sellerNetEarnings`)
+  check their `range` by the same rules (`checkDayRangeFields` calls `parsePeriodQuery` and
+  `resolvePeriodRequest`), and their refusal now names the fields too; `MAX_RANGE_MONTHS` has one
+  definition, in `period.ts`.
+- Days are the Market's, not the seller's own zone (FE-179). Only the daily series is exported
+  (FE-180).

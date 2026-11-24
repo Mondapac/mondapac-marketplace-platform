@@ -4,7 +4,6 @@ import {
   isPlatformAdminActor,
   UseCase,
   type AccessDeclaration,
-  type AccessDenied,
   type UseCaseGate,
 } from '../../../../platform/authz';
 import { COMMISSION_PAYOUTS_SETTLEMENT_VIEW } from '../../../commission-payouts';
@@ -16,7 +15,12 @@ import {
   type KpiDeltas,
 } from '../../domain/admin-kpi';
 import type { ResolvedPeriod } from '../../domain/period';
-import { readKpiRanges, type AdminKpiDependencies, type KpiInput } from '../admin-kpi-flow';
+import {
+  readKpiRanges,
+  type AdminKpiDependencies,
+  type KpiFailure,
+  type KpiInput,
+} from '../admin-kpi-flow';
 
 export interface FinancePoint {
   readonly day: string;
@@ -51,7 +55,7 @@ const point = (row: DayTotals): FinancePoint => ({
  * (design section 4: the finance permission), and only a platform admin acting as themselves.
  * Net revenue and take rate wait for a week of matching commission ledger (FE-066).
  */
-export class ViewMarketplaceFinanceKpis extends UseCase<KpiInput, FinanceAnswer, AccessDenied> {
+export class ViewMarketplaceFinanceKpis extends UseCase<KpiInput, FinanceAnswer, KpiFailure> {
   static override readonly access: AccessDeclaration = {
     name: 'reporting.view-marketplace-finance-kpis',
     rule: { kind: 'permissions', allOf: [COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key] },
@@ -67,7 +71,7 @@ export class ViewMarketplaceFinanceKpis extends UseCase<KpiInput, FinanceAnswer,
   protected async handle(
     context: CallContext,
     input: KpiInput,
-  ): Promise<Result<FinanceAnswer, AccessDenied>> {
+  ): Promise<Result<FinanceAnswer, KpiFailure>> {
     if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
     const read = await readKpiRanges(this.deps, context, input);
     if (!read.ok) return read;
