@@ -1,0 +1,11 @@
+{
+  "id": "FE-135",
+  "area": "infra",
+  "title": "ops-local برای macOS و Linux",
+  "desc": "فایل ops-local.bat فقط برای ویندوز است (مثل dev-local.bat). فرمان‌های reset و fast (scripts/ops-data/ops.mjs) مستقل از سیستم‌عامل‌اند، ولی راه‌اندازی پنجره‌ها و بستن آن‌ها فقط در .bat نوشته شده است. نیاز: معادل shell یا یک راه‌انداز Node.",
+  "src": "PR فاز ۳ دادهٔ عملیاتی (ops-local.bat)",
+  "date": "2026-11-22",
+  "trig": "وقتی عضوی از تیم روی macOS یا Linux به محیط عملیاتی محلی نیاز داشت",
+  "prio": "پایین",
+  "status": "موکول"
+}

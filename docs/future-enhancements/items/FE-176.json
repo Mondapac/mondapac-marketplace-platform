@@ -1,0 +1,11 @@
+{
+  "id": "FE-176",
+  "area": "admin",
+  "title": "حاشیهٔ تحویل در درآمد خالص Mondapac",
+  "desc": "درآمد خالص (PR 4 داشبوردهای v2) حاشیهٔ تحویل را «not-available» برمی‌گرداند: ordering حاشیهٔ پلتفرم را روی quote تحویل هر سفارش فروشنده نگه می‌دارد (deliveryQuote.marginAmount) ولی facade گزارش‌گیری ordering آن را نمی‌دهد. نیاز: یک فیلد حاشیه (با مالیاتش) در sellerOrderReportFacts، ستون در reporting.seller_orders و بازسازی تاریخچه.",
+  "src": "docs/modules/reporting/notes.md (داشبوردهای v2، PR 4)",
+  "date": "2026-11-23",
+  "trig": "بعد از ادغام PR 3 (روش تحویل در seller_orders)؛ حسین و مجتبی",
+  "prio": "متوسط",
+  "status": "موکول"
+}

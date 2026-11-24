@@ -1,0 +1,11 @@
+{
+  "id": "FE-017",
+  "area": "catalog",
+  "title": "جدول ذخیرهٔ «جزئیات ناقص» محصولات",
+  "desc": "اسکن فعلی تا ۱۰٬۰۰۰ محصول است (بیشتر: complete=false و خروجی رد می‌شود).",
+  "src": "handoffs/super-list/phase2-design-gaps.md (۶)",
+  "date": "2026-11-21",
+  "trig": "وقتی یک Market به ۱۰ هزار محصول نزدیک شد",
+  "prio": "پایین",
+  "status": "موکول"
+}

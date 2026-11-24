@@ -356,7 +356,7 @@ function SalesChart({
 const SIDE_LAYOUT: GridLayout = { span: 4, tabletSpan: 6 };
 
 /**
- * The best-selling part of the dashboard. There is no per-product sales read yet (FE-178), so the
+ * The best-selling part of the dashboard. There is no per-product sales read yet (FE-20261124-seller-top-products-per-offer), so the
  * card ranks the seller's categories, which the KPI endpoint does send. With fewer than
  * MIN_BASE_ORDERS paid orders a ranking says nothing, so the card says "not enough data" instead.
  */

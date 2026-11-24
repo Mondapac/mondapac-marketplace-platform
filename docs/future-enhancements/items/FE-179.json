@@ -1,0 +1,11 @@
+{
+  "id": "FE-179",
+  "area": "infra",
+  "title": "reconcile شبانهٔ fact های دفتر کمیسیون در reporting",
+  "desc": "fact های دفتر فقط از رویداد ledger-recorded و backfill یک‌باره می‌آیند؛ رویدادی که dead-letter شود ردیفش را تا reset دستی backfill (حذف ردیف ledger در reporting.backfill_progress) از دست می‌دهد. شاخص آمادگی درآمد خالص کمیسیون گمشده را می‌بیند ولی cashback گمشده را نه. نیاز: خواندن ردیف‌های ۷ روز اخیر با ایندکس (market_id, recorded_at, id) روی commission_payouts.ledger_entries.",
+  "src": "docs/modules/reporting/notes.md (داشبوردهای v2، PR 4، مجتبی)",
+  "date": "2026-11-23",
+  "trig": "اگر رویداد ledger-recorded dead-letter شد یا پیش از حدود ۱۰۰ هزار ردیف دفتر در یک Market",
+  "prio": "پایین",
+  "status": "موکول"
+}

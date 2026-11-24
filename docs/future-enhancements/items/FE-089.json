@@ -1,0 +1,11 @@
+{
+  "id": "FE-089",
+  "area": "infra",
+  "title": "سناریوی دادهٔ عملیاتی برای Market دوم",
+  "desc": "بارگذار برای هر Market یک فایل سناریو دارد؛ امروز فقط استرالیا.",
+  "src": "design/areas/infra/operational-test-data/operational-test-data-fa.html (محمد)",
+  "date": "2026-11-22",
+  "trig": "وقتی Market دوم اضافه شد",
+  "prio": "پایین",
+  "status": "موکول"
+}

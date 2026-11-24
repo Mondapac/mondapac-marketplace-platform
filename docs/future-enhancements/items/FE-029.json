@@ -1,0 +1,11 @@
+{
+  "id": "FE-029",
+  "area": "admin",
+  "title": "بهبودهای مرکز امنیت (SOC): نمایش و آزمون",
+  "desc": "سبک هشدار برای «On call now» بدون roster (و اصلاح fixture)، برچسب منطقهٔ زمانی ساده‌تر، «تلاش مجدد تا ۳۰ ثانیه»، آزمون لاگ نام‌ها بدون شناسه و آزمون ترتیب merge، CSS.escape برای شناسهٔ هشدار.",
+  "src": "design/soc/security-centre-follow-ups.md",
+  "date": "2026-11-21",
+  "trig": "PR پیگیری",
+  "prio": "پایین",
+  "status": "موکول"
+}

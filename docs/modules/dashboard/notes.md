@@ -272,8 +272,8 @@ while it has no content, `StatCardSkeleton as="div"` is the KPI card's twin. Car
 Sales and Seller orders paid (`reporting/seller/kpis`), Net earnings (`reporting/seller/net-earnings`,
 earnings key; no number until a week of ledger records, FE-066), Next payout
 (`commission-payouts/seller/payouts/next`), sales chart with a Sales/Orders switch (same KPI read),
-store health ring (`sellers/own-health`), top categories (KPI read; per-product ranking FE-178),
-stock watch (`inventory/seller/low-stock`; best sellers first FE-179), today's tasks and recent
+store health ring (`sellers/own-health`), top categories (KPI read; per-product ranking FE-20261124-seller-top-products-per-offer),
+stock watch (`inventory/seller/low-stock`; best sellers first FE-20261124-seller-stock-watch-best-sellers-first), today's tasks and recent
 orders (existing reads). `GET reporting/seller/net-earnings?period=` is new: session seller only,
 key `commission-payouts.earnings.view`, `ready:false` with `netEarnings:null` until ready, money as
 a minor-unit string. Screenshots: `apps/seller/test/dashboard-shots` (not part of CI).

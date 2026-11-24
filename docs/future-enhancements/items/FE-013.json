@@ -1,0 +1,11 @@
+{
+  "id": "FE-013",
+  "area": "assistant",
+  "title": "قابلیت AIG-05 دستیار",
+  "desc": "طبق تصمیم مالک بعد از MVP و با اولویت P3 بماند.",
+  "src": "knowledge/claude/adr-0019-follow-ups.md",
+  "date": "2026-11-21",
+  "trig": "بعد از MVP",
+  "prio": "پایین",
+  "status": "موکول"
+}

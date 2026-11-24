@@ -1,0 +1,11 @@
+{
+  "id": "FE-171",
+  "area": "admin",
+  "title": "رسم DonutChart، StackedBarChart، ShareBar و کاشی آیکون KPI در Figma",
+  "desc": "توکن‌های رنگ طبقه‌ای (chart/cat-*) و کاشی آیکون KPI در 1.11.0 به Figma اضافه شدند، ولی کامپوننت‌های DonutChart و StackedBarChart و کاشی KPI در کد ساخته شدند (حالت سرعت: اول کد). نیاز: رضا آن‌ها را در Figma رسم کند و در فایل Figma «Update library» برای 1.11.0 اجرا شود.",
+  "src": "PR 1 داشبوردهای نسخهٔ ۲ (palette و donut)",
+  "date": "2026-11-23",
+  "trig": "بعد از ادغام فاز ۱ داشبوردها",
+  "prio": "متوسط",
+  "status": "موکول"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "FE-058",
+  "area": "admin",
+  "title": "صفحه‌بندی فهرست‌ها به‌عنوان ترجیح شخصی",
+  "desc": "List paging در اصل ترجیح نمایش پنل است؛ می‌تواند ترجیح شخصی هر کاربر شود و از تنظیمات بازار بیرون برود.",
+  "src": "design/admin/settings-navigation/settings-navigation-fa.html (بازبینی رضا و جعفر)",
+  "date": "2026-11-21",
+  "trig": "به خواست john",
+  "prio": "پایین",
+  "status": "موکول"
+}

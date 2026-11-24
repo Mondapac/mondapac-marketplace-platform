@@ -1,0 +1,11 @@
+{
+  "id": "FE-023",
+  "area": "infra",
+  "title": "جایگزینی writeChunks محلی پرداخت‌ها با نسخهٔ platform",
+  "desc": "پس از ادغام #927 و #943 نسخهٔ محلی حذف شود.",
+  "src": "handoffs/super-list/phase4-followups.md (۸)",
+  "date": "2026-11-21",
+  "trig": "پس از ادغام هر دو",
+  "prio": "پایین",
+  "status": "موکول"
+}

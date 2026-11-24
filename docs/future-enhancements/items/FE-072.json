@@ -1,0 +1,11 @@
+{
+  "id": "FE-072",
+  "area": "admin",
+  "title": "هدف‌گذاری شاخص‌ها و هشدار دورشدن از هدف",
+  "desc": "تعریف Target برای هر شاخص داشبورد و هشدار وقتی شاخص از هدف دور شد.",
+  "src": "design/admin/dashboards-upgrade/dashboards-upgrade-fa.html",
+  "date": "2026-11-22",
+  "trig": "بعد از گزینهٔ ب",
+  "prio": "پایین",
+  "status": "موکول"
+}

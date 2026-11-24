@@ -279,7 +279,7 @@ const byUrgency = (a: { readonly status: string }, b: { readonly status: string 
 
 /**
  * The stock watch: sell units that are low or out of stock, each opening that offer's stock page.
- * Best sellers first needs a per-offer sales read that does not exist yet (FE-179), so the order
+ * Best sellers first needs a per-offer sales read that does not exist yet (FE-20261124-seller-stock-watch-best-sellers-first), so the order
  * is out of stock first, then low stock, each by latest change.
  */
 function LowStock({
@@ -298,7 +298,7 @@ function LowStock({
     id: 'dash-low-stock',
     title: t('low-stock.title'),
     scope: t('low-stock.scope'),
-    // No low-stock filter on the offers list yet (FE-182): the link opens the list itself.
+    // No low-stock filter on the offers list yet (FE-20261124-offers-list-low-stock-filter): the link opens the list itself.
     ...(canOpenOffers ? { action: { href: '/offers', label: t('view-all') } } : {}),
   };
   return (

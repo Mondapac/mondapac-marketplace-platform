@@ -1,0 +1,11 @@
+{
+  "id": "FE-004",
+  "area": "infra",
+  "title": "ایندکس pg_trgm برای جستجوی درخواست‌های سیستم",
+  "desc": "جستجوی ILIKE روی یادداشت و موضوع در هر Market اسکن کامل است؛ ایندکس GIN اضافه شود.",
+  "src": "handoffs/system-requests/follow-ups.md (مجتبی)",
+  "date": "2026-11-21",
+  "trig": "یک Market از حدود ۱۰۰ هزار درخواست یا p95 از ۲۰۰ms گذشت",
+  "prio": "پایین",
+  "status": "موکول"
+}
