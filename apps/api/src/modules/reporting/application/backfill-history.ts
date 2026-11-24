@@ -1,17 +1,22 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
 import type { BackfillProgress, BackfillProgressStore } from './ports/backfill-progress-store';
-import type { SourceUnavailable } from './ports/report-sources';
+import type { FactStore } from './ports/fact-store';
+import { SOURCE_BATCH, type SourceUnavailable } from './ports/report-sources';
 import {
   addCounts,
   NO_COUNTS,
+  recordPage,
   writePage,
   type ReconcileCounts,
   type ReportFactsDependencies,
+  type WrittenPage,
 } from './report-facts-sync';
 
 export interface BackfillDependencies extends ReportFactsDependencies {
   readonly progress: BackfillProgressStore;
+  /** reporting's own facts, read by the `delivery` pass for the rows still without a delivery. */
+  readonly facts: FactStore;
 }
 
 /** The name the backfill's logs carry (its job's name). */
@@ -78,14 +83,17 @@ export async function backfillHistory(
     let progress: BackfillProgress | null = initial;
     while (progress !== null && progress.finishedAt === null && !outOfBudget()) {
       const from: BackfillProgress = progress;
-      const page = await writePage(
-        deps,
-        context,
-        from.kind,
-        { from: null, to: from.until },
-        from.after,
-        BACKFILL_JOB,
-      );
+      const page =
+        from.kind === 'delivery'
+          ? await deliveryPage(deps, context, from.after)
+          : await writePage(
+              deps,
+              context,
+              from.kind,
+              { from: null, to: from.until },
+              from.after,
+              BACKFILL_JOB,
+            );
       if (!page.ok) return page;
       counts = addCounts(counts, page.value.counts);
       if (page.value.transientFacts > 0) {
@@ -116,4 +124,43 @@ export async function backfillHistory(
     }
   }
   return ok({ ...counts, pages, finished: true });
+}
+
+/**
+ * One page of the `delivery` pass (dashboards v2): the seller orders reporting recorded before the
+ * delivery columns (no method), after `after` in id order (reporting's own table, read in a read-only
+ * unit), read again from their owners and recorded through the same writer as the other kinds.
+ * A state shipping cannot tell (a delivery placed before quotes were kept, a quote removed, a
+ * postcode in no range) stays null and the pass moves on, so it ends. Rows recorded after the
+ * pass are written with both columns by the worker.
+ */
+async function deliveryPage(
+  deps: BackfillDependencies,
+  context: CallContext,
+  after: string | null,
+): Promise<Result<WrittenPage, SourceUnavailable>> {
+  const read = await deps.unitOfWork.run(
+    context.market,
+    async () =>
+      ok(await deps.facts.sellerOrdersMissingDelivery(context.market, after, SOURCE_BATCH)),
+    { readOnly: true },
+  );
+  if (!read.ok) return read;
+  return recordPage(
+    deps,
+    context,
+    'delivery',
+    after,
+    {
+      next: read.value.next,
+      request: {
+        sellerOrders: read.value.items.map((item) => ({
+          orderId: item.orderId,
+          sellerOrderId: item.sellerOrderId,
+        })),
+        refundIds: [],
+      },
+    },
+    BACKFILL_JOB,
+  );
 }

@@ -111,7 +111,10 @@ describe.each(TEST_MARKETS)('reporting facts and rollups in market %s (database)
       )
     ).rows;
 
-  const sellerOrder = (sellerId: Id<'Seller'>, overrides: Partial<SellerOrderFact> = {}) => ({
+  const sellerOrder = (
+    sellerId: Id<'Seller'>,
+    overrides: Partial<SellerOrderFact> = {},
+  ): SellerOrderFact => ({
     sellerOrderId: idOf<'SellerOrder'>(),
     orderId: idOf<'Order'>(),
     sellerId,
@@ -125,6 +128,7 @@ describe.each(TEST_MARKETS)('reporting facts and rollups in market %s (database)
     shippedAt: null,
     shippedOnTime: null,
     deliveredAt: null,
+    delivery: { method: 'instant', state: null },
     ...overrides,
   });
 
@@ -340,5 +344,84 @@ describe.each(TEST_MARKETS)('reporting facts and rollups in market %s (database)
       within(market, () => recorder.recordSellerOrder(market, order, allGoods(order))),
     ).rejects.toThrow(ReportingFactConflict);
     expect(await sellerDays(sellerId)).toEqual([]);
+  });
+
+  describe('delivery method and state (dashboards v2)', () => {
+    // A region of this Market's `shipping.postcodeRegions` (AU QLD, ZZ ZA).
+    const state = code === 'AU' ? 'QLD' : 'ZA';
+    const deliveryOf = async (sellerOrderId: string) =>
+      (
+        await owner.query<{ method: string | null; state: string | null }>(
+          `SELECT delivery_method AS method, delivery_state AS state
+             FROM reporting.seller_orders WHERE seller_order_id = $1`,
+          [sellerOrderId],
+        )
+      ).rows;
+
+    it('records a delivery and a pickup with their state, again idempotently, outside the rollups', async () => {
+      const sellerId = idOf<'Seller'>();
+      const delivered = sellerOrder(sellerId, { delivery: { method: 'same_day', state } });
+      const pickup = sellerOrder(sellerId, { delivery: { method: 'pickup', state } });
+      for (let round = 0; round < 2; round += 1) {
+        await within(market, () =>
+          recorder.recordBatch(market, {
+            sellerOrders: [delivered, pickup].map((order) => ({ order, goods: allGoods(order) })),
+            refunds: [],
+          }),
+        );
+      }
+      expect(await deliveryOf(delivered.sellerOrderId)).toEqual([{ method: 'same_day', state }]);
+      expect(await deliveryOf(pickup.sellerOrderId)).toEqual([{ method: 'pickup', state }]);
+      // Not a rollup key: one seller day, both orders in it.
+      expect((await sellerDays(sellerId)).map((row) => row.orders_paid)).toEqual([2]);
+    });
+
+    it('keeps an unknown state null and a known state as first recorded', async () => {
+      const sellerId = idOf<'Seller'>();
+      const unknown = sellerOrder(sellerId, { delivery: { method: 'instant', state: null } });
+      await within(market, () => recorder.recordSellerOrder(market, unknown, allGoods(unknown)));
+      expect(await deliveryOf(unknown.sellerOrderId)).toEqual([{ method: 'instant', state: null }]);
+
+      const known = sellerOrder(sellerId, { delivery: { method: 'pickup', state } });
+      await within(market, () => recorder.recordSellerOrder(market, known, allGoods(known)));
+      // A later read no longer knows it (a removed quote), or gives another (the store moved).
+      const later = code === 'AU' ? 'NSW' : 'ZB';
+      for (const read of [null, later]) {
+        const again = { ...known, delivery: { method: 'pickup' as const, state: read } };
+        await within(market, () => recorder.recordSellerOrder(market, again, allGoods(again)));
+        expect(await deliveryOf(known.sellerOrderId)).toEqual([{ method: 'pickup', state }]);
+      }
+    });
+
+    it('refuses a malformed state in the recorder and in the CHECK, and lets the role write both', async () => {
+      const sellerId = idOf<'Seller'>();
+      const bad = sellerOrder(sellerId, { delivery: { method: 'instant', state: '4000' } });
+      await expect(
+        within(market, () => recorder.recordSellerOrder(market, bad, allGoods(bad))),
+      ).rejects.toThrow(RangeError);
+      const order = sellerOrder(sellerId);
+      await within(market, () => recorder.recordSellerOrder(market, order, allGoods(order)));
+      for (const [method, value] of [
+        ['instant', 'q1'],
+        ['instant', 'Q-1'],
+        ['courier', null],
+        [null, state],
+      ] as const) {
+        await expect(
+          owner.query(
+            `UPDATE reporting.seller_orders SET delivery_method = $1, delivery_state = $2
+              WHERE seller_order_id = $3`,
+            [method, value, order.sellerOrderId],
+          ),
+        ).rejects.toMatchObject({ code: CHECK });
+      }
+      const updated = await app.query(
+        `UPDATE reporting.seller_orders SET delivery_method = 'scheduled', delivery_state = $1
+          WHERE seller_order_id = $2`,
+        [state, order.sellerOrderId],
+      );
+      expect(updated.rowCount).toBe(1);
+      expect(await deliveryOf(order.sellerOrderId)).toEqual([{ method: 'scheduled', state }]);
+    });
   });
 });

@@ -17,9 +17,11 @@ import {
   type ReportFactsDependencies,
 } from '../../src/modules/reporting/application/report-facts-sync';
 import {
+  deliveryOf,
   refundSource,
   sellerOrderSource,
 } from '../../src/modules/reporting/infrastructure/facade-report-sources';
+import type { DeliveryRegions } from '../../src/modules/shipping';
 import { PrismaBackfillProgressStore } from '../../src/modules/reporting/infrastructure/prisma-backfill-progress-store';
 import { PrismaFactStore } from '../../src/modules/reporting/infrastructure/prisma-fact-store';
 import { PrismaRollupStore } from '../../src/modules/reporting/infrastructure/prisma-rollup-store';
@@ -63,6 +65,11 @@ class FakeOwners implements ReportSources {
   orders: SellerOrderReportFacts[] = [];
   refundFacts: RefundReportFacts[] = [];
   categories = new Map<Id<'Offer'>, Id<'Category'>>();
+  /** What shipping answers: region codes by quote id and by pickup seller. */
+  regions: { quotes: Map<string, string>; pickups: Map<Id<'Seller'>, string> } = {
+    quotes: new Map(),
+    pickups: new Map(),
+  };
   reads = 0;
 
   sellerOrders(_context: CallContext, refs: readonly SellerOrderSourceRef[]) {
@@ -72,7 +79,13 @@ class FakeOwners implements ReportSources {
       ok(
         this.orders
           .filter((order) => wanted.has(order.sellerOrderId))
-          .map((order) => sellerOrderSource(order, this.categories)),
+          .map((order) =>
+            sellerOrderSource(
+              order,
+              this.categories,
+              deliveryOf(order, this.regions as DeliveryRegions),
+            ),
+          ),
       ),
     );
   }
@@ -173,6 +186,8 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
     shippedAt: null,
     shippedOnTime: null,
     deliveredAt: null,
+    deliveryQuoteId: null,
+    deliveryMethod: 'instant',
   });
   const days = async (sellerId: string) =>
     (
@@ -410,6 +425,7 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
           },
         },
         progress: new PrismaBackfillProgressStore(db.service, () => Temporal.Now.instant()),
+        facts: new PrismaFactStore(db.service, () => Temporal.Now.instant()),
       };
     });
 
@@ -430,6 +446,7 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
       expect(await progressOf()).toEqual([
         { kind: 'seller-orders', after: orderIds[199], pages: 2, failed: 0, done: false },
         { kind: 'refunds', after: null, pages: 0, failed: 0, done: false },
+        { kind: 'delivery', after: null, pages: 0, failed: 0, done: false },
       ]);
 
       // A later run keeps the window end fixed at the first start, for both kinds.
@@ -440,7 +457,8 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
       );
       const third = await backfillHistory(backfill, system(), limits(2));
       expect(third).toEqual(
-        ok({ sellerOrders: 0, refunds: 20, failedFacts: 0, pages: 1, finished: true }),
+        // The last refund page, then the delivery pass: every row here already has its method.
+        ok({ sellerOrders: 0, refunds: 20, failedFacts: 0, pages: 2, finished: true }),
       );
       expect(windows.length).toBe(5);
       expect(windows.every((window) => window.from === null && window.to.equals(T0))).toBe(true);
@@ -453,6 +471,7 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
           failed: 0,
           done: true,
         },
+        { kind: 'delivery', after: null, pages: 1, failed: 0, done: true },
       ]);
       expect(await stored(sellerId)).toEqual({ orders: '250', refunds: '120' });
 
@@ -496,16 +515,18 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
       expect(await progressOf()).toEqual([
         { kind: 'seller-orders', after: null, pages: 0, failed: 0, done: false },
         { kind: 'refunds', after: null, pages: 0, failed: 0, done: false },
+        { kind: 'delivery', after: null, pages: 0, failed: 0, done: false },
       ]);
 
       // The connection is back: the page is written again, and the refused refund is counted.
       const done = await backfillHistory(backfill, system(), limits(5));
       expect(done).toEqual(
-        ok({ sellerOrders: 3, refunds: 1, failedFacts: 1, pages: 2, finished: true }),
+        ok({ sellerOrders: 3, refunds: 1, failedFacts: 1, pages: 3, finished: true }),
       );
       expect(await progressOf()).toEqual([
         { kind: 'seller-orders', after: null, pages: 1, failed: 0, done: true },
         { kind: 'refunds', after: null, pages: 1, failed: 1, done: true },
+        { kind: 'delivery', after: null, pages: 1, failed: 0, done: true },
       ]);
       expect(await stored(sellerId)).toEqual({ orders: '3', refunds: '1' });
     });
@@ -571,8 +592,95 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
           done: true,
         },
         { kind: 'refunds', after: null, pages: 1, failed: 0, done: true },
+        { kind: 'delivery', after: null, pages: 1, failed: 0, done: true },
       ]);
       expect(await stored(sellerId)).toEqual({ orders: '250', refunds: '0' });
+    });
+
+    it('fills the delivery of rows recorded before the columns, resuming from its cursor', async () => {
+      const sellerId = idOf<'Seller'>();
+      const offer = idOf<'Offer'>();
+      const [north, south] = code === 'AU' ? ['QLD', 'VIC'] : ['ZA', 'ZB'];
+      // 150 seller orders: deliveries with a quote, one without (placed before quotes were kept),
+      // and pickups whose state is the store's.
+      for (let i = 0; i < 150; i += 1) {
+        const base = sellerOrder(sellerId, offer, T0.subtract({ hours: 720 }));
+        const quoteId = idOf<'DeliveryQuote'>();
+        const order: SellerOrderReportFacts =
+          i % 3 === 0
+            ? { ...base, deliveryMethod: 'pickup', deliveryQuoteId: null }
+            : i === 1
+              ? { ...base, deliveryMethod: 'scheduled', deliveryQuoteId: null }
+              : { ...base, deliveryMethod: 'same_day', deliveryQuoteId: quoteId };
+        owners.orders.push(order);
+        owners.regions.quotes.set(quoteId, north);
+      }
+      owners.regions.pickups.set(sellerId, south);
+      // The history backfill had finished before the delivery pass existed.
+      await reconcileWindow(deps, system(), window);
+      await owner.query(
+        `INSERT INTO reporting.backfill_progress (market_id, tenant_id, kind, until, after, pages,
+           failed_facts, started_at, updated_at, finished_at)
+         SELECT $1, $2, kind, $3, NULL, 1, 0, $3, $3, $3
+           FROM unnest(ARRAY['seller-orders', 'refunds']) AS kind`,
+        [market.marketId, market.tenantId, new Date(T0.epochMilliseconds)],
+      );
+      // Rows as an earlier release recorded them: no method, no state.
+      await owner.query(
+        `UPDATE reporting.seller_orders SET delivery_method = NULL, delivery_state = NULL
+          WHERE seller_id = $1`,
+        [sellerId],
+      );
+      const ids = idsOf(owners.orders, (order) => order.sellerOrderId);
+
+      const first = await backfillHistory(backfill, system(), limits(1));
+      expect(first).toEqual(
+        ok({ sellerOrders: 100, refunds: 0, failedFacts: 0, pages: 1, finished: false }),
+      );
+      expect((await progressOf()).find((row) => row.kind === 'delivery')).toEqual({
+        kind: 'delivery',
+        after: ids[99],
+        pages: 1,
+        failed: 0,
+        done: false,
+      });
+      const second = await backfillHistory(backfill, system(), limits(5));
+      expect(second).toEqual(
+        ok({ sellerOrders: 50, refunds: 0, failedFacts: 0, pages: 1, finished: true }),
+      );
+
+      const rows = (
+        await owner.query<{ id: string; method: string | null; state: string | null }>(
+          `SELECT seller_order_id::text AS id, delivery_method AS method, delivery_state AS state
+             FROM reporting.seller_orders WHERE seller_id = $1`,
+          [sellerId],
+        )
+      ).rows;
+      const expected = new Map(
+        owners.orders.map((order) => [
+          order.sellerOrderId as string,
+          {
+            method: order.deliveryMethod,
+            state:
+              order.deliveryMethod === 'pickup'
+                ? south
+                : order.deliveryQuoteId === null
+                  ? null
+                  : north,
+          },
+        ]),
+      );
+      expect(rows).toHaveLength(150);
+      for (const row of rows) {
+        expect({ method: row.method, state: row.state }).toEqual(expected.get(row.id));
+      }
+      // The unknown state stays null, and the pass does not visit the row again.
+      expect(rows.filter((row) => row.state === null)).toHaveLength(1);
+      const reads = owners.reads;
+      await backfillHistory(backfill, system(), limits(5));
+      expect(owners.reads).toBe(reads);
+      // Nothing about the delivery is in the rollups: one day, 150 orders, as before.
+      expect((await days(sellerId)).map((row) => row.orders_paid)).toEqual([150]);
     });
   });
 });

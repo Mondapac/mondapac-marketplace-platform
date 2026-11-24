@@ -20,6 +20,7 @@ import { ApprovedSellerZonesReaderImplementation } from '../../presentation/appr
 import { ApprovedSellerZonesSystem } from './approved-seller-zones-system.use-case';
 import { ApprovedSellerZones } from './approved-seller-zones.use-case';
 import { OperatingZones } from './operating-zones.use-case';
+import { PickupPostcodesSystem } from './pickup-postcodes-system.use-case';
 import { PickupPostcodes } from './pickup-postcodes.use-case';
 
 // The contract of approvedSellerZones (sellers design 7.1a; certification #124): one entry per
@@ -372,6 +373,37 @@ describe.each(['AU', 'ZZ'])('pickupPostcodes, Market %s', (code) => {
     expect(
       (await postcodes.execute(testCallContext(market(), 'system'), { sellerIds: [] })).ok,
     ).toBe(false);
+  });
+
+  // The system twin (dashboards v2: shipping's pickup region for reporting) answers the same.
+  const jobs = new PickupPostcodesSystem(gate, deps);
+
+  it('answers the same approved postcode to the system actor, and refuses request actors', async () => {
+    const approved = ids.next<'Seller'>();
+    const pending = ids.next<'Seller'>();
+    revision(code, approved, 'approved', zone, postcode);
+    revision(code, pending, 'pending', zone, '9999');
+    const system = testCallContext(market(), 'system');
+
+    expect(await jobs.execute(system, { sellerIds: [approved, pending] })).toEqual({
+      ok: true,
+      value: new Map([[approved, postcode]]),
+    });
+    const other = testCallContext(
+      testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default'),
+      'system',
+    );
+    expect(await jobs.execute(other, { sellerIds: [approved] })).toEqual({
+      ok: true,
+      value: new Map(),
+    });
+    for (const context of [anonymous(), customer()]) {
+      expect((await jobs.execute(context, { sellerIds: [approved] })).ok).toBe(false);
+    }
+    expect(await jobs.execute(system, { sellerIds: ['nope'] })).toMatchObject({
+      ok: false,
+      error: { code: 'validation.failed' },
+    });
   });
 });
 

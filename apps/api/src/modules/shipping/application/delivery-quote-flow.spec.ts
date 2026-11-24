@@ -164,6 +164,7 @@ describe.each([
         deliversTo: () => true,
         fleetFallbackCapMinor: () => capMinor,
         quoteBounds: () => bounds,
+        regionOfPostcode: () => null,
       },
       sellers: undefined as never,
       audit: undefined as never,

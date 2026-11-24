@@ -434,12 +434,14 @@ describe.each(TEST_MARKETS)('reporting ledger facts in market %s (database)', (c
       await backfillLedger({ ...deps, sources: fakeLedger([]) }, system());
 
       const sellerId = idOf<'Seller'>();
+      // A method, as every fact recorded since the delivery columns has: a row without one is the
+      // backfill's `delivery` pass's to fill, and would join another spec's pass of the Market.
       const salesFact = (sellerOrderId: string, goods: bigint, paidAt = PAID_IN_WINDOW) =>
         owner.query(
           `INSERT INTO reporting.seller_orders (market_id, tenant_id, seller_order_id, order_id,
              seller_id, currency, goods_amount, goods_tax_amount, units, shipping_amount,
-             shipping_tax_amount, paid_at, paid_day, recorded_at, updated_at)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 1, 0, 0, $8, $9, $10, $10)`,
+             shipping_tax_amount, paid_at, paid_day, recorded_at, updated_at, delivery_method)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 1, 0, 0, $8, $9, $10, $10, 'instant')`,
           [
             code,
             market.tenantId,

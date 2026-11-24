@@ -123,6 +123,14 @@ export interface ReconcileCounts extends RecordCounts {
 export const FACT_KINDS = ['seller-orders', 'refunds'] as const;
 export type FactKind = (typeof FACT_KINDS)[number];
 
+/**
+ * The passes of the sales history backfill (the ledger backfill has its own row), in the order they run: the two kinds of fact, then
+ * `delivery`, which records again the seller orders reporting holds without a delivery method (rows
+ * recorded before the delivery columns; dashboards v2).
+ */
+export const SALES_BACKFILL_KINDS = [...FACT_KINDS, 'delivery'] as const;
+export type SalesBackfillKind = (typeof SALES_BACKFILL_KINDS)[number];
+
 /** The name the nightly reconcile's logs carry (its job's name). */
 const RECONCILE_JOB = 'reporting.reconcile-facts';
 
@@ -216,6 +224,23 @@ export async function writePage(
   after: string | null,
   job: string,
 ): Promise<Result<WrittenPage, SourceUnavailable>> {
+  const read = await readPage(deps, context, kind, window, after);
+  if (!read.ok) return read;
+  return recordPage(deps, context, kind, after, read.value, job);
+}
+
+/**
+ * Records one page already read: the refs of `request`, read again from their owners and written
+ * as {@link writePage} describes. `next` is the page's cursor, checked to move on from `after`.
+ */
+export async function recordPage(
+  deps: ReportFactsDependencies,
+  context: CallContext,
+  kind: SalesBackfillKind,
+  after: string | null,
+  page: { readonly next: string | null; readonly request: RecordRequest },
+  job: string,
+): Promise<Result<WrittenPage, SourceUnavailable>> {
   let sellerOrders = 0;
   let refunds = 0;
   let failedFacts = 0;
@@ -279,9 +304,7 @@ export async function writePage(
     }
   };
 
-  const read = await readPage(deps, context, kind, window, after);
-  if (!read.ok) return read;
-  const { next, request } = read.value;
+  const { next, request } = page;
   // A cursor that does not move on stops the run (Hassan, PR 10b finding 2).
   if (next !== null && (next === after || (after !== null && next <= after))) {
     return err(unavailable(`ordering ${kind} cursor`));

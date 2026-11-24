@@ -1,5 +1,6 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { MarketRegistry } from '../../../platform/market-config/market-registry';
+import { regionOfPostcode } from '../../../platform/market-config/postcode-regions';
 import type { ServiceAreaDirectory } from '../../../platform/market-config/service-area-directory';
 import type { ShippingPolicy } from '../application/ports/shipping-policy';
 
@@ -32,5 +33,9 @@ export class ConfigShippingPolicy implements ShippingPolicy {
 
   quoteBounds(market: MarketContext) {
     return this.markets.get(market.marketId).shipping?.realTimeCarrier?.quoteBounds ?? null;
+  }
+
+  regionOfPostcode(market: MarketContext, postcode: string): string | null {
+    return regionOfPostcode(this.markets.get(market.marketId).shipping?.postcodeRegions, postcode);
   }
 }

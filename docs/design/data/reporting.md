@@ -16,6 +16,12 @@ notes: `docs/modules/reporting/notes.md`.
 | `ledger_entries` | `(market_id, entry_id)` | one per commission, refund-commission and seller-cashback ledger row (PR 4 of dashboards v2) | about 160k (1.5 lines per seller order, plus refunds and cashback) |
 | `daily_ledger` | `(market_id, market_day, seller_id, currency, kind)` | one per active seller, day and ledger kind | about 1.2 × `daily_seller_sales` (commission every day, the other kinds rarely) |
 
+`seller_orders` also holds `delivery_method` and `delivery_state` (a region code of at most 3
+characters, never a postcode; migration `20261124010000_reporting_seller_orders_delivery`): nullable
+attributes added without a default (catalog-only change, CHECKs added NOT VALID then validated), not
+rollup keys, with no index until a read needs one (the orders-by-state card of phase 2 reads a range
+of paid days already served by `(market_id, paid_day, seller_id)`).
+
 All rows are small (under 200 bytes), so even 10x this volume stays under a few GB with indexes.
 
 ## Access paths
@@ -39,7 +45,7 @@ All rows are small (under 200 bytes), so even 10x this volume stays under a few 
 - `ledger_entries` and `daily_ledger` hold ids and money only; like the rest, derived data the
   ledger backfill rebuilds (reset its `backfill_progress` row).
 - The rollups and facts are derived data: kept as long as the dashboards show history, rebuilt by
-  the backfill if lost. No personal data is stored (no customer, account or address id).
+  the backfill if lost. No personal data is stored (no customer, account or address id, no postcode; the delivery state is a region code only).
 - `inbox` rows have no purge yet, the same as the other modules' inboxes; the shared inbox
   retention, when it is added, covers this one too.
 - Revisit partitioning `sales_entries` and the rollups by `market_day` when a table passes about

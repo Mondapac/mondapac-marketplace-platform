@@ -35,6 +35,11 @@ import {
   OrderingModule,
   type OrderingReportingFacade,
 } from '../ordering';
+import {
+  SHIPPING_REPORTING_FACADE,
+  ShippingModule,
+  type ShippingReportingFacade,
+} from '../shipping';
 import type { AdminKpiDependencies } from './application/admin-kpi-flow';
 import type { BackfillDependencies } from './application/backfill-history';
 import { FactRecorder } from './application/fact-recorder';
@@ -43,6 +48,7 @@ import {
   BACKFILL_PROGRESS_STORE,
   type BackfillProgressStore,
 } from './application/ports/backfill-progress-store';
+import { FACT_STORE, type FactStore } from './application/ports/fact-store';
 import { MARKET_ZONE, type MarketZone } from './application/ports/market-zone';
 import { REPORT_SOURCES, type ReportSources } from './application/ports/report-sources';
 import type { ReportFactsDependencies } from './application/report-facts-sync';
@@ -88,7 +94,13 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
  * deployed in, once.
  */
 @Module({
-  imports: [PersistenceModule, OrderingModule, CatalogModule, CommissionPayoutsModule],
+  imports: [
+    PersistenceModule,
+    OrderingModule,
+    CatalogModule,
+    ShippingModule,
+    CommissionPayoutsModule,
+  ],
   controllers: [SellerKpisController, AdminReportsController],
   providers: [
     ...reportingProviders,
@@ -158,9 +170,12 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
     },
     {
       provide: REPORT_SOURCES,
-      inject: [ORDERING_REPORTING_FACADE, CATALOG_FACADE],
-      useFactory: (ordering: OrderingReportingFacade, catalog: CatalogFacade): ReportSources =>
-        new FacadeReportSources(ordering, catalog),
+      inject: [ORDERING_REPORTING_FACADE, CATALOG_FACADE, SHIPPING_REPORTING_FACADE],
+      useFactory: (
+        ordering: OrderingReportingFacade,
+        catalog: CatalogFacade,
+        shipping: ShippingReportingFacade,
+      ): ReportSources => new FacadeReportSources(ordering, catalog, shipping),
     },
     {
       provide: REPORT_FACTS_DEPENDENCIES,
@@ -186,12 +201,13 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
     },
     {
       provide: BackfillHistory,
-      inject: [USE_CASE_GATE, REPORT_FACTS_DEPENDENCIES, BACKFILL_PROGRESS_STORE],
+      inject: [USE_CASE_GATE, REPORT_FACTS_DEPENDENCIES, BACKFILL_PROGRESS_STORE, FACT_STORE],
       useFactory: (
         gate: UseCaseGate,
         deps: ReportFactsDependencies,
         progress: BackfillProgressStore,
-      ) => new BackfillHistory(gate, { ...deps, progress } satisfies BackfillDependencies),
+        facts: FactStore,
+      ) => new BackfillHistory(gate, { ...deps, progress, facts } satisfies BackfillDependencies),
     },
     {
       provide: ADMIN_KPI_DEPENDENCIES,

@@ -997,6 +997,7 @@
   { "name": "sellers.operating-zones", "rule": "anonymous" },
   { "name": "sellers.own-zone-read", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "sellers.pickup-postcodes", "rule": "anonymous" },
+  { "name": "sellers.pickup-postcodes-system", "rule": "system" },
   { "name": "sellers.published-store-cards", "rule": "anonymous" },
   { "name": "sellers.published-store-image-read", "rule": "anonymous" },
   { "name": "sellers.published-store-list", "rule": "anonymous" },
@@ -1069,6 +1070,7 @@
   { "name": "shipping.delivery-area", "rule": "anonymous" },
   { "name": "shipping.delivery-availability", "rule": "anonymous" },
   { "name": "shipping.delivery-choice", "rule": "anonymous" },
+  { "name": "shipping.delivery-regions", "rule": "system" },
   {
     "name": "shipping.pickup-availability",
     "rule": "own-resources",

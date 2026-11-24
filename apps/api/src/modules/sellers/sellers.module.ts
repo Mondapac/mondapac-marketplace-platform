@@ -114,6 +114,7 @@ import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.
 import { CarrierPickupRead } from './application/use-cases/carrier-pickup.use-case';
 import { OperatingZones } from './application/use-cases/operating-zones.use-case';
 import { PickupPostcodes } from './application/use-cases/pickup-postcodes.use-case';
+import { PickupPostcodesSystem } from './application/use-cases/pickup-postcodes-system.use-case';
 import { ReviewerBusinessDetailsRead } from './application/use-cases/reviewer-business-details.use-case';
 import { ReviewRead } from './application/use-cases/review-read.use-case';
 import { ReviewRegisterCheckRead } from './application/use-cases/review-register-check-read.use-case';
@@ -1001,6 +1002,8 @@ const REVIEW_DECISION_PORTS = {
     }),
     // The pickup postcode the real-time carrier quotes from at checkout: a clear column, no audit.
     useCaseProvider(PickupPostcodes, { unitOfWork: true, revisions: true }),
+    // The same read under the system actor (reporting's pickup region, through shipping).
+    useCaseProvider(PickupPostcodesSystem, { unitOfWork: true, revisions: true }),
     // The seller's approved operating zone, for shipping's cut-off and windows: a clear column.
     useCaseProvider(OperatingZones, { unitOfWork: true, revisions: true }),
     {
@@ -1031,6 +1034,7 @@ const REVIEW_DECISION_PORTS = {
         PublishedStoreRead,
         CarrierPickupRead,
         PickupPostcodes,
+        PickupPostcodesSystem,
         OperatingZones,
         ApplySignupCultures,
         CultureApprovedMembers,
@@ -1063,6 +1067,7 @@ const REVIEW_DECISION_PORTS = {
         publishedStoreRead: PublishedStoreRead,
         carrierPickup: CarrierPickupRead,
         pickupPostcodes: PickupPostcodes,
+        pickupPostcodesSystem: PickupPostcodesSystem,
         operatingZones: OperatingZones,
         applySignupCultures: ApplySignupCultures,
         cultureApprovedMembers: CultureApprovedMembers,
@@ -1095,6 +1100,7 @@ const REVIEW_DECISION_PORTS = {
           publishedStoreRead,
           carrierPickup,
           pickupPostcodes,
+          pickupPostcodesSystem,
           operatingZones,
           applySignupCultures,
           cultureApprovedMembers,

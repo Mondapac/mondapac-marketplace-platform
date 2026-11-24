@@ -8,7 +8,7 @@ import {
   type BackfillProgressStore,
   type BackfillStep,
 } from '../application/ports/backfill-progress-store';
-import { FACT_KINDS } from '../application/report-facts-sync';
+import { SALES_BACKFILL_KINDS } from '../application/report-facts-sync';
 
 const toDate = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 const toInstant = (date: Date): Temporal.Instant =>
@@ -57,18 +57,20 @@ export class PrismaBackfillProgressStore implements BackfillProgressStore {
     const read = async () =>
       (
         await client.reportingBackfillProgress.findMany({
-          // The sales kinds only: the ledger backfill has its own row and window end.
-          where: { marketId: market.marketId, kind: { in: [...FACT_KINDS] } },
+          // The sales kinds (and the delivery pass) only: the ledger backfill has its own row and window end.
+          where: { marketId: market.marketId, kind: { in: [...SALES_BACKFILL_KINDS] } },
         })
       )
-        .map((row) => toProgress(row, FACT_KINDS))
-        .sort((a, b) => FACT_KINDS.indexOf(a.kind) - FACT_KINDS.indexOf(b.kind));
+        .map((row) => toProgress(row, SALES_BACKFILL_KINDS))
+        .sort(
+          (a, b) => SALES_BACKFILL_KINDS.indexOf(a.kind) - SALES_BACKFILL_KINDS.indexOf(b.kind),
+        );
     const stored = await read();
-    if (stored.length === FACT_KINDS.length) return stored;
+    if (stored.length === SALES_BACKFILL_KINDS.length) return stored;
     const now = toDate(this.now());
     // `ON CONFLICT DO NOTHING`: a concurrent or earlier start keeps its own `until`.
     await client.reportingBackfillProgress.createMany({
-      data: FACT_KINDS.map((kind) => ({
+      data: SALES_BACKFILL_KINDS.map((kind) => ({
         marketId: market.marketId,
         tenantId: market.tenantId,
         kind,
@@ -83,7 +85,7 @@ export class PrismaBackfillProgressStore implements BackfillProgressStore {
       skipDuplicates: true,
     });
     const started = await read();
-    if (started.length !== FACT_KINDS.length) {
+    if (started.length !== SALES_BACKFILL_KINDS.length) {
       throw new Error('reporting.backfill_progress: rows not written');
     }
     return started;

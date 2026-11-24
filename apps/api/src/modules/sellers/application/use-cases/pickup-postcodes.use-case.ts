@@ -42,30 +42,38 @@ export class PickupPostcodes extends UseCase<
     super(gate);
   }
 
-  protected async handle(
+  protected handle(
     context: CallContext,
     input: PickupPostcodesInput,
   ): Promise<Result<ReadonlyMap<Id<'Seller'>, string>, PickupPostcodesFailure>> {
-    const ids = parseSellerIds(input?.sellerIds);
-    if (!ids.ok) return ids;
-    const distinct = [...ids.value];
-    if (distinct.length === 0) return ok(new Map());
-    const { market } = context;
-    try {
-      const read = await this.deps.unitOfWork.run(
-        market,
-        async () => ok(await this.deps.revisions.approvedZones(market, distinct)),
-        { readOnly: true },
-      );
-      if (!read.ok) return err({ code: 'sellers.unavailable' });
-      const postcodes = new Map<Id<'Seller'>, string>();
-      for (const [sellerId, approved] of read.value) {
-        if (approved.operatingPostcode !== null)
-          postcodes.set(sellerId, approved.operatingPostcode);
-      }
-      return ok(postcodes);
-    } catch {
-      return err({ code: 'sellers.unavailable' });
+    return pickupPostcodesFor(this.deps, context, input);
+  }
+}
+
+/** The read behind {@link PickupPostcodes} and {@link PickupPostcodesSystem}. */
+export async function pickupPostcodesFor(
+  deps: PickupPostcodesDependencies,
+  context: CallContext,
+  input: PickupPostcodesInput,
+): Promise<Result<ReadonlyMap<Id<'Seller'>, string>, PickupPostcodesFailure>> {
+  const ids = parseSellerIds(input?.sellerIds);
+  if (!ids.ok) return ids;
+  const distinct = [...ids.value];
+  if (distinct.length === 0) return ok(new Map());
+  const { market } = context;
+  try {
+    const read = await deps.unitOfWork.run(
+      market,
+      async () => ok(await deps.revisions.approvedZones(market, distinct)),
+      { readOnly: true },
+    );
+    if (!read.ok) return err({ code: 'sellers.unavailable' });
+    const postcodes = new Map<Id<'Seller'>, string>();
+    for (const [sellerId, approved] of read.value) {
+      if (approved.operatingPostcode !== null) postcodes.set(sellerId, approved.operatingPostcode);
     }
+    return ok(postcodes);
+  } catch {
+    return err({ code: 'sellers.unavailable' });
   }
 }

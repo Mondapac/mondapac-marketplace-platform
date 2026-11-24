@@ -47,6 +47,40 @@ export function withTax(price: bigint, tax: bigint | null, taxInclusive: boolean
 /** The nil UUID: the category of goods whose category could not be read. */
 export const UNKNOWN_CATEGORY = '00000000-0000-0000-0000-000000000000' as Id<'Category'>;
 
+/** The buyer's delivery method of a seller order, as ordering reports it. */
+export const DELIVERY_METHODS = ['pickup', 'instant', 'same_day', 'scheduled'] as const;
+export type DeliveryMethod = (typeof DELIVERY_METHODS)[number];
+
+/** A region (state) code as stored: 1 to 3 capital letters or digits (`delivery_state`). */
+const REGION_CODE = /^[A-Z0-9]{1,3}$/u;
+
+/**
+ * Where a seller order was delivered, for the dashboards' orders-by-state (dashboards v2). Not a
+ * rollup key. `state` is the region of the drop-off postcode of the quote charged, or for a pickup
+ * the region of the seller's store; null when unknown (a delivery placed before quotes were kept,
+ * a quote already removed, a postcode in no configured range). Never the postcode itself.
+ */
+export interface DeliveryFact {
+  readonly method: DeliveryMethod | null;
+  readonly state: string | null;
+}
+
+export const UNKNOWN_DELIVERY: DeliveryFact = { method: null, state: null };
+
+/** A delivery fact checked: a known method and a well-formed region code, or it throws. */
+export function checkedDelivery(delivery: DeliveryFact): DeliveryFact {
+  if (delivery.method !== null && !DELIVERY_METHODS.includes(delivery.method)) {
+    throw new RangeError(`reporting: unknown delivery method ${String(delivery.method)}`);
+  }
+  if (delivery.state !== null && !REGION_CODE.test(delivery.state)) {
+    throw new RangeError('reporting: a delivery state is 1 to 3 capital letters or digits');
+  }
+  if (delivery.state !== null && delivery.method === null) {
+    throw new RangeError('reporting: a delivery state without its method');
+  }
+  return delivery;
+}
+
 /** One seller order as reporting records it (table `reporting.seller_orders`). */
 export interface SellerOrderFact {
   readonly sellerOrderId: Id<'SellerOrder'>;
@@ -63,12 +97,16 @@ export interface SellerOrderFact {
   /** Null until it ships or its delivery promise passes unshipped. */
   readonly shippedOnTime: boolean | null;
   readonly deliveredAt: Temporal.Instant | null;
+  readonly delivery: DeliveryFact;
 }
 
-/** The instants of a stored seller order, as {@link keepKnownInstants} compares them. */
+/**
+ * The instants and the delivery of a stored seller order, as {@link keepKnownInstants} compares
+ * them.
+ */
 export type SellerOrderInstants = Pick<
   SellerOrderFact,
-  'paidAt' | 'cancelledAt' | 'shippedAt' | 'shippedOnTime' | 'deliveredAt'
+  'paidAt' | 'cancelledAt' | 'shippedAt' | 'shippedOnTime' | 'deliveredAt' | 'delivery'
 >;
 
 /**
@@ -76,6 +114,11 @@ export type SellerOrderInstants = Pick<
  * delivered; on time once it shipped or its promise passed). A fact read before a later one but
  * written after it would put an instant back to null (Hassan, PR 10b finding 1): an instant the
  * stored fact knows and the new one does not is kept.
+ *
+ * The delivery state, once known, is kept as it was first recorded (dashboards v2): a later read
+ * may no longer know it (shipping removes a buyer's expired quotes a day later) or may give the
+ * store's new region after the seller moved, and a past order's state must not change. The method
+ * never changes after checkout; the read one wins when known.
  */
 export function keepKnownInstants(
   fact: SellerOrderFact,
@@ -89,6 +132,10 @@ export function keepKnownInstants(
     shippedAt: fact.shippedAt ?? stored.shippedAt,
     shippedOnTime: fact.shippedOnTime ?? stored.shippedOnTime,
     deliveredAt: fact.deliveredAt ?? stored.deliveredAt,
+    delivery: {
+      method: fact.delivery.method ?? stored.delivery.method,
+      state: stored.delivery.state ?? fact.delivery.state,
+    },
   };
 }
 

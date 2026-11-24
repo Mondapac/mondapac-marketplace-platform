@@ -7,7 +7,12 @@ import type {
   SellerOrderReportFacts,
   RefundReportFacts,
 } from '../../ordering';
-import { UNKNOWN_CATEGORY, type CategoryGoods } from '../domain/facts';
+import {
+  MAX_REPORT_REGIONS,
+  type DeliveryRegions,
+  type ShippingReportingFacade,
+} from '../../shipping';
+import { UNKNOWN_CATEGORY, type CategoryGoods, type DeliveryFact } from '../domain/facts';
 import type {
   RefundSource,
   ReportSources,
@@ -41,6 +46,7 @@ export class FacadeReportSources implements ReportSources {
   constructor(
     private readonly ordering: OrderingReportingFacade,
     private readonly catalog: CatalogFacade,
+    private readonly shipping: ShippingReportingFacade,
   ) {}
 
   async sellerOrders(
@@ -59,7 +65,49 @@ export class FacadeReportSources implements ReportSources {
       facts.value.flatMap((fact) => fact.lines),
     );
     if (!categories.ok) return categories;
-    return ok(facts.value.map((fact) => sellerOrderSource(fact, categories.value)));
+    const regions = await this.regionsOf(context, facts.value);
+    if (!regions.ok) return regions;
+    return ok(
+      facts.value.map((fact) =>
+        sellerOrderSource(fact, categories.value, deliveryOf(fact, regions.value)),
+      ),
+    );
+  }
+
+  /**
+   * The region of each seller order's delivery, in one shipping call: the charged quote's drop-off
+   * for a delivery, the seller's store for a pickup. Shipping answers region codes only; the
+   * postcode never reaches reporting.
+   */
+  private async regionsOf(
+    context: CallContext,
+    facts: readonly SellerOrderReportFacts[],
+  ): Promise<Result<DeliveryRegions, SourceUnavailable>> {
+    const quoteIds = new Set<string>();
+    const pickupSellerIds = new Set<Id<'Seller'>>();
+    for (const fact of facts) {
+      if (fact.deliveryMethod === 'pickup') pickupSellerIds.add(fact.sellerId);
+      else if (fact.deliveryQuoteId !== null) quoteIds.add(fact.deliveryQuoteId);
+    }
+    const quotes = new Map<string, string>();
+    const pickups = new Map<Id<'Seller'>, string>();
+    const quoteList = [...quoteIds];
+    const sellerList = [...pickupSellerIds];
+    // An order asked for whole can hold more seller orders than one call takes.
+    for (
+      let start = 0;
+      start < Math.max(quoteList.length, sellerList.length);
+      start += MAX_REPORT_REGIONS
+    ) {
+      const answer = await this.shipping.deliveryRegions(context, {
+        quoteIds: quoteList.slice(start, start + MAX_REPORT_REGIONS),
+        pickupSellerIds: sellerList.slice(start, start + MAX_REPORT_REGIONS),
+      });
+      if (!answer.ok) return err(unavailable(`shipping ${answer.error.code}`));
+      for (const [id, region] of answer.value.quotes) quotes.set(id, region);
+      for (const [id, region] of answer.value.pickups) pickups.set(id, region);
+    }
+    return ok({ quotes, pickups });
   }
 
   async refunds(
@@ -148,9 +196,25 @@ const sum = (lines: readonly SourceLine[]): ReportAmount =>
     { amount: 0n, tax: 0n },
   );
 
+/**
+ * The delivery of a seller order: its method as ordering reports it, and the region shipping gave
+ * for its quote (a delivery) or its seller's store (a pickup). No quote (a delivery placed before
+ * quotes were kept) or no answer is an unknown state.
+ */
+export function deliveryOf(fact: SellerOrderReportFacts, regions: DeliveryRegions): DeliveryFact {
+  const state =
+    fact.deliveryMethod === 'pickup'
+      ? regions.pickups.get(fact.sellerId)
+      : fact.deliveryQuoteId === null
+        ? undefined
+        : regions.quotes.get(fact.deliveryQuoteId);
+  return { method: fact.deliveryMethod, state: state ?? null };
+}
+
 export function sellerOrderSource(
   fact: SellerOrderReportFacts,
   categories: ReadonlyMap<Id<'Offer'>, Id<'Category'>>,
+  delivery: DeliveryFact,
 ): SellerOrderSource {
   return {
     order: {
@@ -166,6 +230,7 @@ export function sellerOrderSource(
       shippedAt: fact.shippedAt,
       shippedOnTime: fact.shippedOnTime,
       deliveredAt: fact.deliveredAt,
+      delivery,
     },
     goods: goodsOf(fact.lines, categories),
   };

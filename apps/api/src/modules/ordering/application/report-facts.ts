@@ -77,6 +77,8 @@ export function sellerOrderReportFacts(
     shippedAt: sellerOrder.shippedAt,
     shippedOnTime: order.status === 'confirmed' ? shippedOnTimeOf(order, sellerOrder, now) : null,
     deliveredAt: sellerOrder.deliveredAt,
+    deliveryMethod: sellerOrder.deliveryMethod,
+    deliveryQuoteId: sellerOrder.deliveryQuote?.quoteId ?? null,
   };
 }
 
