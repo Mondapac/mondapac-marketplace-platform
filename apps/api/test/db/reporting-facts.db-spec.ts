@@ -527,7 +527,7 @@ describe.each(TEST_MARKETS)('reporting facts and rollups in market %s (database)
       const columns = await owner.query<{ table_name: string; column_name: string }>(
         `SELECT table_name, column_name FROM information_schema.columns
           WHERE table_schema = 'reporting'
-            AND (column_name ~ '(account|customer|buyer|shopper)' AND column_name !~ '^buyer_first_')`,
+            AND (column_name ~ '(account|customer|buyer|shopper)' AND column_name NOT IN ('buyer_first_order', 'buyer_first_with_seller'))`,
       );
       expect(columns.rows).toEqual([]);
     });

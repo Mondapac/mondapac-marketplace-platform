@@ -487,3 +487,23 @@ denominator is 0.
     (not a Stripe inquiry) opened in the window, on `dispute_cases_bucket_idx` with all five buckets
     listed. Dispute rate = chargebacks opened in the period ÷ seller orders paid in the period (a
     case is per order, the denominator per seller order, as the KPI defines it).
+
+### Buyer-first flags: rules for what reads them (Hassan, 24 Nov 2026, PR 1323)
+
+`seller_orders.buyer_first_order` and `buyer_first_with_seller` sit beside the order ids, and a seller
+knows the buyer behind each of its own orders. Hard rules for the dashboards that read them (the
+new/returning card, phase 2 cards PR):
+
+- Seller-facing counts use `buyer_first_with_seller` only. `buyer_first_order` appears only in
+  admin Market-wide totals, never in a seller's view (it would tell a seller that a named buyer has
+  bought elsewhere).
+- Counts below a minimum group size (5, to be confirmed by the product owner) are hidden on any
+  section that breaks down by seller.
+- A per-order flag never appears in an order detail, a list or an export.
+- The reads return counts only. The flags are statistics: never an input to a promotion
+  eligibility, fraud or access decision (a buyer can look new again with another account).
+- Erasure and retention: both claim tables (`ordering.buyer_first_orders`,
+  `ordering.buyer_first_seller_orders`) hold the same account id as `orders.account_id`; list them in
+  the retention inventory. Their foreign keys are `ON DELETE RESTRICT`: an order-pruning job must
+  delete the claims first (it needs a DELETE grant), and deleting a claim would make a later order
+  wrongly "first".

@@ -692,7 +692,12 @@ export class PrismaOrderRepository implements OrderRepository {
     // simply this order: one paid by the previous release after the backfill has no claim yet, and
     // it, not this one, is the buyer's first. Payment time, then order id, as the backfill.
     const earliest = await tx.orderingOrder.findFirst({
-      where: { marketId: market.marketId, accountId: order.accountId, status: 'confirmed' },
+      where: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        accountId: order.accountId,
+        status: 'confirmed',
+      },
       orderBy: [{ confirmedAt: 'asc' }, { id: 'asc' }],
       select: { id: true, confirmedAt: true },
     });
@@ -718,6 +723,7 @@ export class PrismaOrderRepository implements OrderRepository {
       const earliestWith = await tx.orderingSellerOrder.findFirst({
         where: {
           marketId: market.marketId,
+          tenantId: market.tenantId,
           sellerId: sellerOrder.sellerId,
           order: { is: { accountId: order.accountId, status: 'confirmed' } },
         },
