@@ -20,6 +20,7 @@ import type {
   FinanceAnswer,
   OperationsAnswer,
   OrderStatusAnswer,
+  OrdersByStateAnswer,
   ReportingKpiFacade,
   TopCategoriesAnswer,
   TopSellersAnswer,
@@ -162,6 +163,18 @@ const topCategories = {
   ],
 } as unknown as TopCategoriesAnswer;
 
+const ordersByState = {
+  period: finance.period,
+  generatedAt: NOW,
+  byState: {
+    status: 'available',
+    paid: 400,
+    states: [{ state: 'QLD', orders: 300, shareBp: 7500 }],
+    other: null,
+    unknown: { orders: 100, shareBp: 2500 },
+  },
+} as unknown as OrdersByStateAnswer;
+
 const orderStatus: OrderStatusAnswer = {
   period: finance.period,
   timezone: 'Australia/Brisbane',
@@ -293,6 +306,10 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
         asked.push('orders-by-status');
         return Promise.resolve(ok(orderStatus));
       },
+      marketplaceOrdersByState: () => {
+        asked.push('orders-by-state');
+        return Promise.resolve(ok(ordersByState));
+      },
       marketplaceOperations: (_context, input) => {
         asked.push('operations');
         inputs.push(input);
@@ -353,7 +370,11 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     asked.length = 0;
     const ordersOnly = await build([ORDERS]).execute(admin, { period: '7d' });
     expect(ordersOnly.ok && ordersOnly.value.topSellers).toBeNull();
-    expect(asked.sort()).toEqual(['operations', 'orders-by-status']);
+    expect(asked.sort()).toEqual(['operations', 'orders-by-state', 'orders-by-status']);
+    expect(ordersOnly.ok && ordersOnly.value.ordersByState).toEqual({
+      status: 'ok',
+      value: ordersByState,
+    });
   });
 
   it('names the top categories from the live tree, null for a category it does not have', async () => {

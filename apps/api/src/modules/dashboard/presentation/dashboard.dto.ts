@@ -358,6 +358,54 @@ export class OrdersByStatusSectionBody {
   @ApiProperty({ required: false, type: OrdersByStatusKpiBody }) kpis?: OrdersByStatusKpiBody;
 }
 
+export class StateShareBody {
+  @ApiProperty({ description: 'Region code of the delivery address (pickup: the store).' })
+  state!: string;
+  @ApiProperty() orders!: number;
+  @ApiProperty({ description: 'orders ÷ paid in basis points.' }) shareBp!: number;
+}
+
+export class OtherShareBody {
+  @ApiProperty() orders!: number;
+  @ApiProperty() shareBp!: number;
+}
+
+export class OrdersByStateKpiBody {
+  @ApiProperty({
+    enum: ['available', 'not-enough-data'],
+    description: '`not-enough-data`: fewer than `minimum` paid, show no shares.',
+  })
+  status!: string;
+  @ApiProperty({ description: 'Seller orders paid on a Market day of the period.' }) paid!: number;
+  @ApiProperty({ required: false, type: Number, description: 'Only when not-enough-data.' })
+  minimum?: number;
+  @ApiProperty({
+    required: false,
+    type: [StateShareBody],
+    description: 'Only when available: biggest first, at most eight.',
+  })
+  states?: StateShareBody[];
+  @ApiProperty({
+    required: false,
+    type: OtherShareBody,
+    nullable: true,
+    description: 'Paid orders of the states beyond the listed ones.',
+  })
+  other?: OtherShareBody | null;
+  @ApiProperty({
+    required: false,
+    type: OtherShareBody,
+    nullable: true,
+    description: 'Paid orders with no state recorded yet; never fold them into a state.',
+  })
+  unknown?: OtherShareBody | null;
+}
+
+export class OrdersByStateSectionBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: OrdersByStateKpiBody }) kpis?: OrdersByStateKpiBody;
+}
+
 export class TopSellerBody {
   @ApiProperty({ format: 'uuid' }) sellerId!: string;
   @ApiProperty({ nullable: true, type: String, description: 'The public store name.' })
@@ -516,6 +564,12 @@ export class AdminKpisBody {
   })
   ordersByStatus!: OrdersByStatusSectionBody | null;
   @ApiProperty({
+    type: OrdersByStateSectionBody,
+    nullable: true,
+    description: 'Null without `ordering.order.view`: leave the card out.',
+  })
+  ordersByState!: OrdersByStateSectionBody | null;
+  @ApiProperty({
     type: TopSellersSectionBody,
     nullable: true,
     description: 'Null without `commission-payouts.settlement.view`: leave the card out.',
@@ -664,6 +718,30 @@ function ordersByStatusSection(
   return { status: 'ok', kpis: { ...counts, sameDayShare: sameDayShareBody(sameDayShare) } };
 }
 
+function ordersByStateSection(
+  section: AdminKpisAnswer['ordersByState'],
+): OrdersByStateSectionBody | null {
+  if (section === null) return null;
+  if (section.status === 'error') return { status: 'error' };
+  const { byState } = section.value;
+  if (byState.status === 'not-enough-data') {
+    return {
+      status: 'ok',
+      kpis: { status: byState.status, paid: byState.paid, minimum: byState.minimum },
+    };
+  }
+  return {
+    status: 'ok',
+    kpis: {
+      status: byState.status,
+      paid: byState.paid,
+      states: byState.states.map((row) => ({ ...row })),
+      other: byState.other === null ? null : { ...byState.other },
+      unknown: byState.unknown === null ? null : { ...byState.unknown },
+    },
+  };
+}
+
 function financeSection(section: AdminKpisAnswer['finance']): FinanceSectionBody | null {
   if (section === null) return null;
   if (section.status === 'error') return { status: 'error' };
@@ -727,6 +805,7 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     answer.operations,
     answer.finance,
     answer.ordersByStatus,
+    answer.ordersByState,
     answer.topSellers,
     answer.topCategories,
   ].find((section) => section !== null && section.status === 'ok');
@@ -740,6 +819,7 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     operations: operationsSection(answer.operations),
     finance: financeSection(answer.finance),
     ordersByStatus: ordersByStatusSection(answer.ordersByStatus),
+    ordersByState: ordersByStateSection(answer.ordersByState),
     topSellers: topSellersSection(answer.topSellers),
     topCategories: topCategoriesSection(answer.topCategories),
     health:

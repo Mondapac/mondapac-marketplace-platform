@@ -17,6 +17,7 @@ import type {
 } from '../application/use-cases/view-marketplace-net-revenue.use-case';
 import type { NetRevenueAnswer } from '../application/use-cases/view-marketplace-net-revenue.use-case';
 import type { SellerNetEarningsAnswer } from '../application/use-cases/view-seller-net-earnings.use-case';
+import type { OrdersByStateAnswer } from '../application/use-cases/view-marketplace-orders-by-state.use-case';
 import type { OrderStatusAnswer } from '../application/use-cases/view-marketplace-order-status.use-case';
 import type { FinanceNet } from '../application/use-cases/view-marketplace-finance-kpis.use-case';
 
@@ -71,7 +72,8 @@ export {
   READINESS_MIN_MATCHED_SELLER_ORDERS,
 } from '../domain/ledger';
 export type { NetFiguresFailure, NetFiguresInput, NetRevenueAnswer, SellerNetEarningsAnswer };
-export type { FinanceNet, OrderStatusAnswer };
+export type { FinanceNet, OrderStatusAnswer, OrdersByStateAnswer };
+export type { OrdersByState, StateShare } from '../domain/orders-by-state';
 export type { OrderStatusCounts, SameDayShare, TakeRate } from '../domain/admin-health';
 export type { InstantWindow } from '../domain/period';
 
@@ -109,6 +111,17 @@ export interface ReportingKpiFacade {
     context: CallContext,
     input: KpiPeriodInput,
   ): Promise<Result<OrderStatusAnswer, KpiFailure>>;
+
+  /**
+   * The seller orders paid in the period by the state they were delivered to (a pickup counts in
+   * the store's state), with `unknown` for those with no state recorded and `other` beyond the
+   * eight biggest; `not-enough-data` below five paid orders. Counts only: key
+   * `ordering.order.view`, platform admin only.
+   */
+  marketplaceOrdersByState(
+    context: CallContext,
+    input: KpiPeriodInput,
+  ): Promise<Result<OrdersByStateAnswer, KpiFailure>>;
 
   /** The five sellers with the most goods sold in the period (money: the finance key). */
   marketplaceTopSellers(

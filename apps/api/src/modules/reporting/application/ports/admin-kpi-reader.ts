@@ -1,6 +1,7 @@
 import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { DayTotals } from '../../domain/admin-kpi';
 import type { OrderStatusRead } from '../../domain/admin-health';
+import type { StateTallies } from '../../domain/orders-by-state';
 import type { DayRange } from '../../domain/period';
 
 /**
@@ -25,6 +26,12 @@ export interface AdminKpiReader {
     currency: string,
     range: DayRange,
   ): Promise<OrderStatusRead>;
+
+  /**
+   * The seller orders PAID on a day of `range` (`seller_orders` by `paid_day`), in `currency` only,
+   * counted per recorded `delivery_state`. Counts only; no postcode or address is ever read.
+   */
+  ordersByState(market: MarketContext, currency: string, range: DayRange): Promise<StateTallies>;
 
   /** How many sellers had at least one paid seller order in `range`, in `currency` only. */
   sellersWithOrders(market: MarketContext, currency: string, range: DayRange): Promise<number>;

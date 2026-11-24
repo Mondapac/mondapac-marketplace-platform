@@ -118,6 +118,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       topSellers: null,
       topCategories: null,
       health: null,
+      ordersByState: null,
       ordersByStatus: {
         status: 'ok',
         value: {
@@ -218,6 +219,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       generatedAt: START,
       period: '7d',
       operations: { status: 'error' },
+      ordersByState: { status: 'error' },
       ordersByStatus: { status: 'error' },
       topSellers: null,
       topCategories: null,
