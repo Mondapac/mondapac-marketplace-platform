@@ -1232,6 +1232,12 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
       // price after the seller part, with the Market's price convention.
       const asked = (deps.sellerCommission as FakeSellerCommission).asked;
       expect(asked.map((a) => a.amount)).toEqual([2000n, 1800n]);
+      expect(asked.map((a) => a.taxRateBps)).toEqual([1000, 1000]);
+      expect(result.value).toMatchObject({
+        taxRateBps: 1000,
+        taxRateEstimated: true,
+        sellerReceives: 1800n - commissionOf(base),
+      });
       expect(asked.every((a) => a.taxInclusive === policy.settings(market)!.pricesIncludeTax)).toBe(
         true,
       );
@@ -1317,6 +1323,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
 
     it('says whether the was-price shows, only for the seller own sell unit', async () => {
       const u = unit(1);
+      commission().offerTaxBps.set(u.offerId, 1000);
       const input = { discountBps: 1000, priceMinor: '1000', ...u };
       history.days = rules.wasPrice.minDaysAtPrice;
       const yes = await preview(input);
@@ -1327,10 +1334,108 @@ describe.each([['AU'], ['ZZ']] as const)('promotions core in market %s', (code) 
       history.days = null;
       const unknown = await preview(input);
       expect(unknown.ok && unknown.value.wasPrice).toEqual({ eligible: false });
-      // Someone else's Offer is "not found", and the history is not even asked.
+      // Someone else's Offer is "not found", and neither its tax rate nor the history is asked.
       catalogue().owns = false;
       history.days = 90;
+      const taxAsked = commission().taxAsked.length;
       expect(await preview(input)).toEqual({ ok: false, error: { code: 'promotions.not-found' } });
+      expect(commission().taxAsked).toHaveLength(taxAsked);
+    });
+
+    describe("on the line's own tax rate", () => {
+      const inclusive = () => policy.settings(market)!.pricesIncludeTax;
+      // The ledger's rule at a given rate: tax off an inclusive amount, then the commission.
+      const ledger = (amount: bigint, taxBps: number) => {
+        const base = inclusive()
+          ? (amount * 20000n + (10000n + BigInt(taxBps))) / ((10000n + BigInt(taxBps)) * 2n)
+          : amount;
+        const fee = commissionOf(base);
+        return { base, fee, receives: amount - fee };
+      };
+
+      it('takes nothing off a GST-free Offer: the commission the ledger posts (15.90 -> 2.39)', async () => {
+        const u = unit(2);
+        commission().offerTaxBps.set(u.offerId, 0);
+        const result = await preview({ discountBps: 100, priceMinor: '1606', ...u });
+        if (!result.ok) throw new Error('preview failed');
+        // 16.06 less the seller's 1 % (0.16) = 15.90, with no tax taken off.
+        const { fee } = ledger(1590n, 0);
+        expect(fee).toBe(239n);
+        expect(result.value).toMatchObject({
+          taxRateBps: 0,
+          taxRateEstimated: false,
+          commissionBase: 1590n,
+          commission: 239n,
+          sellerGets: 1590n - 239n,
+          sellerReceives: 1590n - 239n,
+        });
+        expect(commission().taxAsked).toEqual([u.offerId]);
+        expect(commission().asked.map((a) => a.taxRateBps)).toEqual([0, 0]);
+      });
+
+      it("uses a taxable Offer's own rate, above the provisional one, for both commissions", async () => {
+        const u = unit(3);
+        commission().offerTaxBps.set(u.offerId, 1500);
+        const id = await create();
+        const result = await preview({ promotionId: id, priceMinor: '2300', ...u });
+        if (!result.ok) throw new Error('preview failed');
+        const net = 2300n - result.value.sellerFunded;
+        const { base, fee, receives } = ledger(net, 1500);
+        expect(result.value).toMatchObject({
+          taxRateBps: 1500,
+          taxRateEstimated: false,
+          commissionBase: base,
+          commission: fee,
+          sellerGets: base - fee,
+          sellerReceives: receives,
+        });
+        // sellerReceives includes the tax the seller owes; sellerGets does not.
+        expect(result.value.sellerReceives - result.value.sellerGets).toBe(net - base);
+        expect(commission().asked.map((a) => [a.amount, a.taxRateBps])).toEqual([
+          [2300n, 1500],
+          [net, 1500],
+        ]);
+      });
+
+      it('without an Offer uses the rate of a line in no category and marks it an estimate', async () => {
+        commission().taxBps = 700;
+        const result = await preview({ discountBps: 1000, priceMinor: '1000' });
+        if (!result.ok) throw new Error('preview failed');
+        const { base, fee, receives } = ledger(900n, 700);
+        expect(result.value).toMatchObject({
+          taxRateBps: 700,
+          taxRateEstimated: true,
+          commissionBase: base,
+          commission: fee,
+          sellerReceives: receives,
+        });
+        expect(commission().taxAsked).toEqual([null]);
+      });
+
+      it('fails closed when the rate cannot be read: no category, or tax refused', async () => {
+        // The seller's own Offer whose product has no published tax category.
+        const u = unit(4);
+        expect(await preview({ discountBps: 1000, priceMinor: '1000', ...u })).toEqual({
+          ok: false,
+          error: { code: 'promotions.unavailable' },
+        });
+        commission().taxBps = null;
+        expect(await preview({ discountBps: 1000, priceMinor: '1000' })).toEqual({
+          ok: false,
+          error: { code: 'promotions.unavailable' },
+        });
+        // No commission was asked without a tax rate.
+        expect(commission().asked).toEqual([]);
+      });
+
+      it('never takes a tax rate from the request', async () => {
+        const result = await preview({
+          discountBps: 1000,
+          priceMinor: '1000',
+          taxRateBps: 0,
+        });
+        expect(result.ok && result.value.taxRateBps).toBe(1000);
+      });
     });
   });
 

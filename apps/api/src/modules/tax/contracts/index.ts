@@ -4,6 +4,7 @@ export { TAX_AUDIT_ACTIONS } from '../domain/audit';
 export { TAX_PERMISSIONS, TAX_STRATEGY_MANAGE, TAX_STRATEGY_VIEW } from './permissions';
 export {
   TAX_FACADE,
+  type CategoryRatesAnswer,
   type TaxAnswer,
   type TaxFacade,
   type RefundChargeInput,

@@ -24,6 +24,7 @@ import { CommissionPayoutsModule } from '../commission-payouts';
 import { changeActorSourceOf, IDENTITY_FACADE, IdentityModule } from '../identity';
 import { PricingModule } from '../pricing';
 import { SellersModule } from '../sellers';
+import { TaxModule } from '../tax';
 import { WalletModule } from '../wallet';
 import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { BATCH_CODE_CRYPTO } from './application/ports/batch-code-crypto';
@@ -200,6 +201,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     IdentityModule,
     PricingModule,
     SellersModule,
+    TaxModule,
     WalletModule,
   ],
   controllers: [

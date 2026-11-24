@@ -14,6 +14,7 @@ import {
 } from './facade-customer-order-history';
 import { PRICING_FACADE, type PricingFacade } from '../../pricing';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
+import { TAX_FACADE, type TaxFacade } from '../../tax';
 import { WALLET_FACADE, type WalletFacade } from '../../wallet';
 import { PrismaService } from '../../../platform/persistence/prisma.service';
 import { BATCH_CODE_CRYPTO, type BatchCodeCrypto } from '../application/ports/batch-code-crypto';
@@ -176,9 +177,12 @@ export const promotionsProviders: readonly FactoryProvider[] = [
   },
   {
     provide: SELLER_COMMISSION,
-    inject: [COMMISSION_PAYOUTS_FACADE],
-    useFactory: (payouts: CommissionPayoutsFacade): SellerCommission =>
-      new FacadeSellerCommission(payouts),
+    inject: [COMMISSION_PAYOUTS_FACADE, CATALOG_FACADE, TAX_FACADE],
+    useFactory: (
+      payouts: CommissionPayoutsFacade,
+      catalog: CatalogFacade,
+      tax: TaxFacade,
+    ): SellerCommission => new FacadeSellerCommission(payouts, catalog, tax),
   },
   {
     provide: SELLER_CATALOGUE,
