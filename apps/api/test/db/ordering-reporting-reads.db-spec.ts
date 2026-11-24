@@ -277,6 +277,9 @@ describe.each(TEST_MARKETS)('ordering reporting reads in market %s (database)', 
       shippedAt: null,
       shippedOnTime: null,
       deliveredAt: null,
+      // The method and shipping's quote id only (dashboards v2): never the ship-to address.
+      deliveryMethod: 'instant',
+      deliveryQuoteId: null,
     });
     expect(fact.paidAt).not.toBeNull();
     expect(fact.lines.map((line) => [line.quantity, line.goods])).toEqual([
@@ -291,6 +294,8 @@ describe.each(TEST_MARKETS)('ordering reporting reads in market %s (database)', 
         'cancelledAt',
         'currency',
         'deliveredAt',
+        'deliveryMethod',
+        'deliveryQuoteId',
         'lines',
         'orderId',
         'paidAt',

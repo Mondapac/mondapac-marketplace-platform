@@ -1,28 +1,18 @@
-import { ledgerLineAmount, lineCommission, netGoodsOf } from './discounts';
+import { lineCommission } from '../../commission-payouts';
+import { ledgerLineAmount, netGoodsOf } from './discounts';
 
 describe('order discounts (promotions package T2)', () => {
-  it("takes commission on the line after the seller's share, without the provisional tax", () => {
+  it("takes commission on the line after the seller's share, without the line's own tax", () => {
+    const of = (amount: bigint, taxInclusive: boolean, taxBps: number, rateBps: number) =>
+      lineCommission({ amount, taxInclusive, taxBps, rateBps }).commission;
     // 2000 inclusive of 10%: base 1818 (half-up), 15% of it is 273 (half-up).
-    expect(
-      lineCommission(
-        { lineAmount: 2000n, sellerShare: 0n, taxInclusive: true, rateBps: 1500 },
-        1000,
-      ),
-    ).toBe(273n);
+    expect(of(2000n, true, 1000, 1500)).toBe(273n);
     // The seller funds 200: base of 1800 is 1636, 15% is 245. The platform's share never counts.
-    expect(
-      lineCommission(
-        { lineAmount: 2000n, sellerShare: 200n, taxInclusive: true, rateBps: 1500 },
-        1000,
-      ),
-    ).toBe(245n);
+    expect(of(2000n - 200n, true, 1000, 1500)).toBe(245n);
+    // A GST-free line (rate 0) is its own base: 15% of 2000.
+    expect(of(2000n, true, 0, 1500)).toBe(300n);
     // A price without tax is its own base (ZZ-like, 12%).
-    expect(
-      lineCommission(
-        { lineAmount: 1000n, sellerShare: 100n, taxInclusive: false, rateBps: 1200 },
-        1500,
-      ),
-    ).toBe(108n);
+    expect(of(1000n - 100n, false, 1500, 1200)).toBe(108n);
   });
 
   it('pays the seller the line less only its own share', () => {

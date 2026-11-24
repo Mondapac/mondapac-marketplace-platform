@@ -391,6 +391,10 @@
     "manufacturerBasisEnabled": true
   },
   "shipping": {
+    "postcodeRegions": {
+      "ZA": [["0000000", "4999999"]],
+      "ZB": [["5000000", "9999999"]]
+    },
     "fleetFallbackAbsorbCapMinor": 500,
     "fleets": {
       "fake_test": {

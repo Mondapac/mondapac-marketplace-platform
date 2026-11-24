@@ -1,14 +1,18 @@
 import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { FactKind } from '../report-facts-sync';
+import type { SalesBackfillKind } from '../report-facts-sync';
 
 /** The kind of the ledger history backfill (dashboards v2, phase 1, PR 4). */
 export const LEDGER_BACKFILL_KIND = 'ledger';
-export type BackfillKind = FactKind | typeof LEDGER_BACKFILL_KIND;
+export type BackfillKind = SalesBackfillKind | typeof LEDGER_BACKFILL_KIND;
 
 /** Where the history backfill of one kind of fact stands in one Market. */
-export interface BackfillProgress<K extends BackfillKind = FactKind> {
+export interface BackfillProgress<K extends BackfillKind = SalesBackfillKind> {
   readonly kind: K;
-  /** The window's end, fixed when the backfill started; later facts come from the worker. */
+  /**
+   * The window's end, fixed when the backfill started; later facts come from the worker. The
+   * `delivery` pass reads reporting's own rows instead and does not use it; on a Market whose
+   * backfill started before that pass existed, its row is added later with its own `until`.
+   */
   readonly until: Temporal.Instant;
   /** The id cursor of the last page written; null before the first. */
   readonly after: string | null;
@@ -31,8 +35,8 @@ export interface BackfillStep {
  */
 export interface BackfillProgressStore {
   /**
-   * The progress of every kind, in the order of `FACT_KINDS`. A kind with none yet is started with
-   * `until`, all in one unit so every kind shares one window end (a concurrent start keeps the
+   * The progress of every kind, in the order of `SALES_BACKFILL_KINDS`. A kind with none yet is started
+   * with `until`, all in one unit so every kind shares one window end (a concurrent start keeps the
    * first). Once every kind has a row it only reads.
    */
   startAll(market: MarketContext, until: Temporal.Instant): Promise<readonly BackfillProgress[]>;

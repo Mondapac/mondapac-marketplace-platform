@@ -201,27 +201,27 @@
       "attention": {
         "bg": {
           "$type": "color",
-          "$value": "{color.amber.35}",
+          "$value": "{color.amber.30}",
           "$description": "Attention badge background"
         },
         "fg": {
           "$type": "color",
-          "$value": "{color.amber.515}",
+          "$value": "{color.amber.555}",
           "$description": "Attention text and icon"
         },
         "solid": {
           "$type": "color",
-          "$value": "{color.amber.385}",
+          "$value": "{color.amber.360}",
           "$description": "Attention meter fill, pips"
         },
         "track": {
           "$type": "color",
-          "$value": "{color.amber.75}",
+          "$value": "{color.amber.60}",
           "$description": "Attention meter track"
         },
         "border": {
           "$type": "color",
-          "$value": "{color.amber.145}",
+          "$value": "{color.amber.150}",
           "$description": "Attention card border"
         },
         "surface": {

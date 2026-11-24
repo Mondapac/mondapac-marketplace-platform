@@ -321,7 +321,8 @@ export interface SellersFacade {
   /**
    * `pickupPostcodes` (SHP-02/03): the postcode of each seller's **approved** operating address,
    * for shipping to quote the real-time carrier at checkout. A clear column copied at submission
-   * (like the ServiceArea code): no decryption and no audit row. Rule `anonymous`. A seller with
+   * (like the ServiceArea code): no decryption and no audit row. Rule `anonymous`, or `system`
+   * under the system actor (shipping's pickup region for reporting, dashboards v2). A seller with
    * no approved revision, of another Market, or whose revision predates the column is absent from
    * the map. At most 100 ids. Not exposed over HTTP.
    */

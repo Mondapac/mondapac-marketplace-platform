@@ -1,7 +1,10 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import {
+  checkedDelivery,
   keepKnownInstants,
+  UNKNOWN_DELIVERY,
+  type DeliveryFact,
   marketDayOf,
   refundEntries,
   saleEntries,
@@ -60,6 +63,7 @@ describe.each(MARKETS)('reporting facts in market $name', ({ zone, currency }) =
     shippedAt: null,
     shippedOnTime: null,
     deliveredAt: null,
+    delivery: { method: 'instant', state: null },
     ...overrides,
   });
 
@@ -266,6 +270,7 @@ describe('keepKnownInstants', () => {
       shippedAt: null,
       shippedOnTime: null,
       deliveredAt: null,
+      delivery: { method: 'instant' as const, state: null },
     };
     const later = at.add({ hours: 1 });
     expect(keepKnownInstants(read, null)).toBe(read);
@@ -276,8 +281,62 @@ describe('keepKnownInstants', () => {
         shippedAt: later,
         shippedOnTime: false,
         deliveredAt: later,
+        delivery: { method: null, state: null },
       }),
     ).toEqual({ ...read, shippedAt: later, shippedOnTime: false, deliveredAt: later });
+  });
+});
+
+describe.each(MARKETS)('delivery facts in market $name', ({ currency }) => {
+  const order = (overrides: Partial<SellerOrderFact> = {}): SellerOrderFact => ({
+    sellerOrderId: SELLER_ORDER,
+    orderId: ORDER,
+    sellerId: SELLER,
+    currency,
+    goods: { amount: 1100n, tax: 100n },
+    units: 1,
+    shipping: { amount: 0n, tax: 0n },
+    paidAt: Temporal.Instant.from('2026-11-20T00:00:00Z'),
+    cancelledAt: null,
+    shippedAt: null,
+    shippedOnTime: null,
+    deliveredAt: null,
+    delivery: UNKNOWN_DELIVERY,
+    ...overrides,
+  });
+
+  it('keeps a delivery state as first recorded, and takes a known method from the read', () => {
+    // Region codes of each fixture's `shipping.postcodeRegions` (AU QLD and NSW, ZZ ZA and ZB).
+    const [first, moved] = currency === 'AUD' ? ['QLD', 'NSW'] : ['ZA', 'ZB'];
+    const stored = { ...order(), delivery: { method: 'pickup' as const, state: first } };
+    for (const state of [null, moved]) {
+      const read = order({ delivery: { method: 'pickup', state } });
+      expect(keepKnownInstants(read, stored).delivery).toEqual({ method: 'pickup', state: first });
+    }
+    // A row recorded before the columns learns both from the read.
+    const legacy = { ...order(), delivery: UNKNOWN_DELIVERY };
+    const read = order({ delivery: { method: 'same_day', state: first } });
+    expect(keepKnownInstants(read, legacy).delivery).toEqual({ method: 'same_day', state: first });
+    // An unknown state stays unknown: never guessed.
+    const unknown = order({ delivery: { method: 'scheduled', state: null } });
+    expect(keepKnownInstants(unknown, legacy).delivery).toEqual({
+      method: 'scheduled',
+      state: null,
+    });
+  });
+
+  it('checks a delivery: a known method and a region code of 1 to 3 characters', () => {
+    const state = currency === 'AUD' ? 'VIC' : 'ZB';
+    expect(checkedDelivery({ method: 'instant', state })).toEqual({ method: 'instant', state });
+    expect(checkedDelivery(UNKNOWN_DELIVERY)).toEqual(UNKNOWN_DELIVERY);
+    for (const bad of [
+      { method: 'instant', state: '4000' },
+      { method: 'instant', state: 'qld' },
+      { method: null, state },
+      { method: 'courier', state: null },
+    ]) {
+      expect(() => checkedDelivery(bad as DeliveryFact)).toThrow(RangeError);
+    }
   });
 });
 

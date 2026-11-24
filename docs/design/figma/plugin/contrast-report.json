@@ -131,7 +131,7 @@
    "text",
    "text/secondary",
    "bg/row-attention",
-   9.13,
+   9.1,
    4.5,
    true
   ],
@@ -176,7 +176,7 @@
    "text",
    "text/secondary",
    "bg/row-attention",
-   10.34,
+   10.19,
    4.5,
    true
   ],
@@ -365,7 +365,7 @@
    "badge",
    "status/attention/fg",
    "status/attention/bg",
-   6.01,
+   6.91,
    4.5,
    true
   ],
@@ -374,7 +374,7 @@
    "badge",
    "status/attention/fg",
    "status/attention/bg",
-   8.38,
+   8.97,
    4.5,
    true
   ],
@@ -419,7 +419,7 @@
    "text",
    "status/attention/fg",
    "status/attention/surface",
-   6.33,
+   7.2,
    4.5,
    true
   ],
@@ -428,7 +428,7 @@
    "text",
    "status/attention/fg",
    "bg/surface",
-   6.67,
+   7.57,
    4.5,
    true
   ],
@@ -437,7 +437,7 @@
    "text",
    "status/attention/fg",
    "status/attention/surface",
-   9.55,
+   10.36,
    4.5,
    true
   ],
@@ -446,7 +446,7 @@
    "text",
    "status/attention/fg",
    "bg/surface",
-   9.74,
+   10.89,
    4.5,
    true
   ],
@@ -779,7 +779,7 @@
    "graphic",
    "status/attention/solid",
    "bg/surface",
-   3.88,
+   3.38,
    3.0,
    true
   ],
@@ -788,7 +788,7 @@
    "graphic",
    "status/attention/solid",
    "bg/surface",
-   6.5,
+   7.59,
    3.0,
    true
   ],

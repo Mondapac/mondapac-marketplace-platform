@@ -16,12 +16,6 @@ export interface OrderingPolicy {
    * T2): the code of the Market's ServiceArea that holds it; null when none does.
    */
   deliveryZone(market: MarketContext, postcode: string): string | null;
-  /**
-   * The provisional tax rate the seller ledger takes out of a tax-inclusive line before commission
-   * (Market config `commissionPayouts`), so checkout tells promotions the order's commission as
-   * the ledger will post it; null when the Market has no commission settings (no order then).
-   */
-  provisionalTaxBps(market: MarketContext): number | null;
   /** The most lines one order takes (the cart's own limit). */
   maxLines(): number;
   /**

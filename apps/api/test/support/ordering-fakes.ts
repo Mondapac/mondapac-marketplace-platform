@@ -1523,11 +1523,18 @@ export class FakeTaxCategories implements OrderTaxCategories {
 }
 
 /**
- * The tax facade as checkout uses it: one flat rate for every line (half-up, inclusive or
- * exclusive as the line says), the strategy id it answers, and a switch to fail.
+ * The tax facade as checkout uses it: one flat rate for every line unless its category has its own
+ * (half-up, inclusive or exclusive as the line says), the strategy id it answers, and switches to
+ * fail or to change the rate between calls.
  */
 export class FakeTax implements TaxFacade {
   rateBps = 1000;
+  /** A rate of its own for a category (a GST-free category at 0); others take `rateBps`. */
+  readonly categoryRatesBps = new Map<string, number>();
+  /** When set, the rate in force changes to this after the first call (a strategy activated). */
+  rateAfterFirstCall: number | null = null;
+  /** When set, calls after this many fail with `failure` (or tax.unavailable). */
+  failAfterCalls: number | null = null;
   strategyId: TaxAnswer['strategyId'] = null;
   failure: TaxFailure | null = null;
   /** Answer one line fewer than asked, as a broken tax module would. */
@@ -1559,19 +1566,32 @@ export class FakeTax implements TaxFacade {
     lines: readonly TaxLineInput[],
   ): Promise<Result<TaxAnswer, TaxFailure>> {
     this.calls.push(lines);
-    if (this.failure !== null) return Promise.resolve(err(this.failure));
-    const rate = BigInt(this.rateBps);
+    if (this.failure !== null && this.failAfterCalls === null) {
+      return Promise.resolve(err(this.failure));
+    }
+    if (this.failAfterCalls !== null && this.calls.length > this.failAfterCalls) {
+      return Promise.resolve(err(this.failure ?? { code: 'tax.unavailable' }));
+    }
+    const flat = this.rateBps;
+    if (this.rateAfterFirstCall !== null && this.calls.length === 1) {
+      this.rateBps = this.rateAfterFirstCall;
+    }
     const halfUp = (n: bigint, d: bigint) => (n * 2n + d) / (d * 2n);
     return Promise.resolve(
       ok({
         strategyId: this.strategyId,
         lines: (this.dropLast ? lines.slice(0, -1) : lines).map((line) => {
+          const rateBps =
+            (line.categoryCode === null
+              ? undefined
+              : this.categoryRatesBps.get(line.categoryCode)) ?? flat;
+          const rate = BigInt(rateBps);
           const tax = line.taxInclusive
             ? halfUp(line.amount * rate, 10_000n + rate)
             : halfUp(line.amount * rate, 10_000n);
           return line.taxInclusive
-            ? { rateBps: this.rateBps, tax, net: line.amount - tax, gross: line.amount }
-            : { rateBps: this.rateBps, tax, net: line.amount, gross: line.amount + tax };
+            ? { rateBps, tax, net: line.amount - tax, gross: line.amount }
+            : { rateBps, tax, net: line.amount, gross: line.amount + tax };
         }),
       }),
     );

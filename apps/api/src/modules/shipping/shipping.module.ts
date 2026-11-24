@@ -76,13 +76,15 @@ import { BookCarrierDelivery } from './application/use-cases/book-carrier-delive
 import { CancelCarrierDelivery } from './application/use-cases/cancel-carrier-delivery.use-case';
 import { CarrierTrackingLinks } from './application/use-cases/carrier-tracking-links.use-case';
 import { CarrierProgressOf } from './application/use-cases/carrier-progress-of.use-case';
+import { DeliveryRegionsQuery } from './application/use-cases/delivery-regions.use-case';
 import { CarrierShipmentQuery } from './application/use-cases/carrier-shipment.use-case';
 import { DeliveryArea } from './application/use-cases/delivery-area.use-case';
 import { PickupAvailability } from './application/use-cases/pickup-availability.use-case';
 import { PollFleetStatus } from './application/use-cases/poll-fleet-status.use-case';
 import { ReceiveUberWebhook } from './application/use-cases/receive-uber-webhook.use-case';
 import { ReceiveCarrierWebhook } from './application/use-cases/receive-carrier-webhook.use-case';
-import { SHIPPING_FACADE, SHIPPING_PERMISSIONS } from './contracts';
+import { SHIPPING_FACADE, SHIPPING_PERMISSIONS, SHIPPING_REPORTING_FACADE } from './contracts';
+import { ShippingReportingFacadeImplementation } from './presentation/shipping-reporting.facade';
 import { SHIPPING_AUDIT_ACTIONS } from './domain/audit';
 import { SHIPPING_EVENTS } from './domain/events';
 import { shippingProviders } from './infrastructure/shipping-providers';
@@ -268,6 +270,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       QuoteDeliveries,
       ChargeDelivery,
       RecordFleetFee,
+      DeliveryRegionsQuery,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     {
       provide: SHIPPING_FACADE,
@@ -317,7 +320,14 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           fee,
         }),
     },
+    // What reporting reads (dashboards v2): region codes only, never a postcode.
+    {
+      provide: SHIPPING_REPORTING_FACADE,
+      inject: [DeliveryRegionsQuery],
+      useFactory: (regions: DeliveryRegionsQuery) =>
+        new ShippingReportingFacadeImplementation(regions),
+    },
   ],
-  exports: [SHIPPING_FACADE],
+  exports: [SHIPPING_FACADE, SHIPPING_REPORTING_FACADE],
 })
 export class ShippingModule {}

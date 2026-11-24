@@ -1,66 +1,66 @@
 {
- "version": "1.11.0",
- "generated": "2026-11-23",
+ "version": "1.11.1",
+ "generated": "2026-11-24",
  "primitives": [
   {
    "name": "amber/10",
-   "hex": "#FFFCF7"
+   "hex": "#FFFCF2"
   },
   {
    "name": "amber/20",
-   "hex": "#FFF8EF"
+   "hex": "#FFF9E8"
   },
   {
-   "name": "amber/35",
-   "hex": "#FFF1E0"
+   "name": "amber/30",
+   "hex": "#FFF4D6"
   },
   {
-   "name": "amber/75",
-   "hex": "#FBE3C4"
+   "name": "amber/60",
+   "hex": "#FBEBB8"
   },
   {
    "name": "amber/105",
-   "hex": "#F3D7B0"
+   "hex": "#EBDDA8"
   },
   {
-   "name": "amber/145",
-   "hex": "#F2C894"
+   "name": "amber/150",
+   "hex": "#E8CB7C"
   },
   {
-   "name": "amber/180",
-   "hex": "#F5B65C"
+   "name": "amber/155",
+   "hex": "#F0C85A"
   },
   {
-   "name": "amber/290",
-   "hex": "#E08A1E"
+   "name": "amber/255",
+   "hex": "#D9A21A"
   },
   {
-   "name": "amber/385",
-   "hex": "#C46A00"
+   "name": "amber/360",
+   "hex": "#B58300"
   },
   {
-   "name": "amber/515",
-   "hex": "#8F4A00"
+   "name": "amber/540",
+   "hex": "#6B5420"
   },
   {
-   "name": "amber/565",
-   "hex": "#6B4A1F"
+   "name": "amber/555",
+   "hex": "#6B5000"
   },
   {
-   "name": "amber/655",
-   "hex": "#4A3418"
+   "name": "amber/640",
+   "hex": "#4A3C14"
   },
   {
-   "name": "amber/725",
-   "hex": "#33240D"
+   "name": "amber/715",
+   "hex": "#33290B"
   },
   {
-   "name": "amber/775",
-   "hex": "#241A0D"
+   "name": "amber/765",
+   "hex": "#241E0C"
   },
   {
-   "name": "amber/780",
-   "hex": "#211A10"
+   "name": "amber/770",
+   "hex": "#211C10"
   },
   {
    "name": "blue/20",
@@ -687,9 +687,9 @@
   {
    "name": "bg/row-attention",
    "light": "amber/10",
-   "dark": "amber/780",
-   "lightHex": "#FFFCF7",
-   "darkHex": "#211A10",
+   "dark": "amber/770",
+   "lightHex": "#FFFCF2",
+   "darkHex": "#211C10",
    "scopes": [
     "FRAME_FILL"
    ],
@@ -975,10 +975,10 @@
   },
   {
    "name": "status/attention/bg",
-   "light": "amber/35",
-   "dark": "amber/725",
-   "lightHex": "#FFF1E0",
-   "darkHex": "#33240D",
+   "light": "amber/30",
+   "dark": "amber/715",
+   "lightHex": "#FFF4D6",
+   "darkHex": "#33290B",
    "scopes": [
     "FRAME_FILL",
     "SHAPE_FILL"
@@ -987,10 +987,10 @@
   },
   {
    "name": "status/attention/fg",
-   "light": "amber/515",
-   "dark": "amber/180",
-   "lightHex": "#8F4A00",
-   "darkHex": "#F5B65C",
+   "light": "amber/555",
+   "dark": "amber/155",
+   "lightHex": "#6B5000",
+   "darkHex": "#F0C85A",
    "scopes": [
     "TEXT_FILL",
     "SHAPE_FILL",
@@ -1000,10 +1000,10 @@
   },
   {
    "name": "status/attention/solid",
-   "light": "amber/385",
-   "dark": "amber/290",
-   "lightHex": "#C46A00",
-   "darkHex": "#E08A1E",
+   "light": "amber/360",
+   "dark": "amber/255",
+   "lightHex": "#B58300",
+   "darkHex": "#D9A21A",
    "scopes": [
     "SHAPE_FILL",
     "STROKE_COLOR"
@@ -1012,10 +1012,10 @@
   },
   {
    "name": "status/attention/track",
-   "light": "amber/75",
-   "dark": "amber/655",
-   "lightHex": "#FBE3C4",
-   "darkHex": "#4A3418",
+   "light": "amber/60",
+   "dark": "amber/640",
+   "lightHex": "#FBEBB8",
+   "darkHex": "#4A3C14",
    "scopes": [
     "SHAPE_FILL",
     "STROKE_COLOR"
@@ -1024,10 +1024,10 @@
   },
   {
    "name": "status/attention/border",
-   "light": "amber/145",
-   "dark": "amber/565",
-   "lightHex": "#F2C894",
-   "darkHex": "#6B4A1F",
+   "light": "amber/150",
+   "dark": "amber/540",
+   "lightHex": "#E8CB7C",
+   "darkHex": "#6B5420",
    "scopes": [
     "STROKE_COLOR"
    ],
@@ -1036,9 +1036,9 @@
   {
    "name": "status/attention/surface",
    "light": "amber/20",
-   "dark": "amber/775",
-   "lightHex": "#FFF8EF",
-   "darkHex": "#241A0D",
+   "dark": "amber/765",
+   "lightHex": "#FFF9E8",
+   "darkHex": "#241E0C",
    "scopes": [
     "FRAME_FILL"
    ],
@@ -1597,9 +1597,9 @@
   {
    "name": "board/action-bg",
    "light": "amber/20",
-   "dark": "amber/780",
-   "lightHex": "#FFF8EF",
-   "darkHex": "#211A10",
+   "dark": "amber/770",
+   "lightHex": "#FFF9E8",
+   "darkHex": "#211C10",
    "scopes": [
     "FRAME_FILL"
    ],
@@ -1608,9 +1608,9 @@
   {
    "name": "board/action-border",
    "light": "amber/105",
-   "dark": "amber/655",
-   "lightHex": "#F3D7B0",
-   "darkHex": "#4A3418",
+   "dark": "amber/640",
+   "lightHex": "#EBDDA8",
+   "darkHex": "#4A3C14",
    "scopes": [
     "STROKE_COLOR"
    ],

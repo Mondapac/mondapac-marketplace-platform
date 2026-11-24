@@ -145,13 +145,55 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
   pass (logged with `refused: false`, every run) holds the backfill at its page: look it up by id
   in `reporting.fact-write-failed`.
 - Recovery for a refused fact older than the reconcile's seven days, or to run the backfill again
-  after a recorder fix: an operator deletes both of the Market's rows of
-  `reporting.backfill_progress` as the migration role (both, so the kinds keep one window end); the next tick starts again with a new `until`. There is no admin screen for
+  after a recorder fix: an operator deletes the Market's sales rows of
+  `reporting.backfill_progress` (`seller-orders`, `refunds` and `delivery`; the `ledger` row has its
+  own reset, below) as the migration role (all three, so the kinds keep one window end); the next tick starts again with a new `until`. There is no admin screen for
   this yet (FE register, «پیشرفت backfill گزارش در پنل ادمین»).
 - The nightly reconcile's counter is now `failedFacts` (it always counted facts, not batches).
 - Follow-up (Hassan, PR 12 L3): `isFactRefusal` treats any `RangeError` or `TypeError` as a
   refusal; a reporting-owned refusal error class would keep a future programming error from being
   passed over (FE register, «خطای ردّ ویژهٔ reporting»).
+
+
+## Delivery method and state (dashboards v2, phase 1, PR 3)
+
+- `seller_orders.delivery_method` (pickup, instant, same_day, scheduled; CHECK) and
+  `seller_orders.delivery_state` (`VARCHAR(3)`, 1 to 3 capital letters or digits; CHECK, and only with
+  a method), migration `20261124010000_reporting_seller_orders_delivery`. Attributes of the fact,
+  not rollup keys: no rollup or index changes. The application role may UPDATE both (they are
+  measures of the fact, not its keys).
+- Unknown is NULL, the same as `shipped_on_time` (no sentinel such as `UNK`): a delivery placed
+  before quotes were kept (delivery models, package 5), a quote shipping no longer holds, a seller
+  without an approved pickup postcode, or a postcode in no configured range. A NULL method only
+  marks a row recorded before the columns.
+- Sources: ordering's reporting facade now gives `deliveryMethod` and `deliveryQuoteId` (shipping's
+  quote id, a plain id). Shipping's new `SHIPPING_REPORTING_FACADE.deliveryRegions` (use case
+  `shipping.delivery-regions`, rule `system`, at most 100 quotes and 100 sellers) reads the quote's
+  `dropoff_postcode`, or for a pickup the seller's approved pickup postcode (sellers'
+  `pickupPostcodes`, now also answering the system actor as `sellers.pickup-postcodes-system`), and
+  maps it with the Market's `shipping.postcodeRegions`. Only the region code leaves shipping:
+  reporting never receives, logs or stores a postcode, an address or ship-to ciphertext.
+- `shipping.postcodeRegions` is Market configuration (`platform/market-config/postcode-regions.ts`):
+  closed ranges per region code; a postcode matches a range of its own length; ranges of one length
+  must not overlap; every code must be in `customers.address.regions`. AU has the main Australia Post
+  ranges (border postcodes go to the range's state, repo register FE-20261123-au-postcode-state-table); the synthetic Market has
+  its own. No country is named in code.
+- Once known, a state is kept as first recorded (`keepKnownInstants`): a later read may no longer
+  know it (shipping removes a buyer's expired quotes 24 hours later) or may give the store's new
+  region after a move. The method is ordering's and never changes. A state that stays unknown
+  because the quote was removed before the first record: repo register FE-20261123-delivery-region-at-checkout.
+- All three writers fill the columns (the event worker, the nightly reconcile, the history backfill),
+  since they share `ReportSources.sellerOrders`. A shipping failure fails the read like a catalog
+  failure: the delivery or the page is tried again.
+- Rows recorded before the columns: the backfill's third kind `delivery` (after `seller-orders` and
+  `refunds`; the kind CHECK of `backfill_progress` allows it). It walks reporting's own
+  `seller_orders` of the Market with `delivery_method IS NULL` by `(market_id, seller_order_id)`
+  (primary key), pages of 100, records each page again through the same writer, and saves its
+  cursor after each page, so it resumes after a stop. Every fact it writes gets a method, so the pass
+  ends even when the state stays unknown. On a Market whose backfill finished before this PR, the
+  first tick adds the `delivery` row (with its own `until`, which the pass does not use). The reset
+  procedure above deletes it with the other sales rows. The CHECK swap keeps every kind before it
+  (`seller-orders`, `refunds`, `ledger`) and adds `delivery`.
 
 ## Admin KPIs (phase 5, PR 14)
 

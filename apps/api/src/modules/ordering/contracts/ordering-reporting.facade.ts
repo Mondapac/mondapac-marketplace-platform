@@ -41,6 +41,14 @@ export interface SellerOrderReportFacts {
   readonly shippedAt: Temporal.Instant | null;
   readonly shippedOnTime: boolean | null;
   readonly deliveredAt: Temporal.Instant | null;
+  /** The buyer's delivery method, chosen at checkout (dashboards v2). */
+  readonly deliveryMethod: 'pickup' | 'instant' | 'same_day' | 'scheduled';
+  /**
+   * Shipping's id of the delivery quote charged (a plain id): null for a pickup and for a seller
+   * order placed before quotes were kept (delivery models, package 5). Reporting asks shipping for
+   * its region; ordering never hands over the ship-to address.
+   */
+  readonly deliveryQuoteId: string | null;
 }
 
 /** One goods line of a refund, with the Offer of the order line it refunds. */

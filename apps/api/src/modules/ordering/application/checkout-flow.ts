@@ -608,8 +608,6 @@ export async function placeOrder<T>(
   if (planLines.some((line) => !categories.has(line.offerId) || !products.has(line.offerId))) {
     return err({ code: 'ordering.check-unavailable' });
   }
-  const provisionalTaxBps = deps.policy.provisionalTaxBps(context.market);
-  if (provisionalTaxBps === null) return err({ code: 'ordering.check-unavailable' });
   // Whether this is the customer's first order comes from ordering's own paid orders only.
   const history = await deps.unitOfWork.run<boolean, never>(
     context.market,
@@ -627,7 +625,6 @@ export async function placeOrder<T>(
     zone: deps.policy.deliveryZone(context.market, address.value.postcode),
     code: code.code,
     isFirstOrder: !history.value,
-    provisionalTaxBps,
   };
   // The discounts, the tax on what the buyer pays after them, and the totals (package T2).
   const prices = await priceOrder(deps, context, pricing);

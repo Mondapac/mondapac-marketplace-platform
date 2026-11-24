@@ -205,6 +205,7 @@ describe.each([
       publishedStoreSellerId: undefined as never,
       carrierPickup: undefined as never,
       pickupPostcodes: undefined as never,
+      pickupPostcodesSystem: undefined as never,
       operatingZones: undefined as never,
       applySignupCultures: undefined as never,
       cultureApprovedMembers: undefined as never,

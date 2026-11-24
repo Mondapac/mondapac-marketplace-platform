@@ -7,6 +7,7 @@ import {
   WorkQueueCard,
   workQueueRows,
   type DashboardSource,
+  type GridLayout,
   type WorkQueueCardLabels,
   type WorkQueueDefinition,
   type WorkQueueLevel,
@@ -108,8 +109,11 @@ function Card({ widget }: { readonly widget: Widget<WorkQueueAnswer> }) {
  */
 export function TodaysTasks({
   source,
+  layout,
 }: {
   readonly source: DashboardSource<Widget<WorkQueueAnswer> | null> | null;
+  /** Places the card in a DashboardGrid (span, phone order). */
+  readonly layout?: GridLayout;
 }) {
   const t = useTranslations('tasks');
   const tr = useTranslations();
@@ -117,6 +121,7 @@ export function TodaysTasks({
   return (
     <DashboardSlot
       source={source}
+      {...(layout === undefined ? {} : { layout })}
       fallback={
         <ChartCardSkeleton
           id={ID}

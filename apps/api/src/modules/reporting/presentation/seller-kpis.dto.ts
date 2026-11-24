@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import type { SellerNetEarningsAnswer } from '../application/use-cases/view-seller-net-earnings.use-case';
 import type { SellerKpiAnswer } from '../application/use-cases/view-seller-kpis.use-case';
 import type { SellerKpiTotals } from '../domain/seller-kpis';
 
@@ -118,5 +119,44 @@ export function sellerKpisBody(answer: SellerKpiAnswer): SellerKpisBody {
       units: row.units,
     })),
     refreshedAt: kpis.refreshedAt === null ? null : kpis.refreshedAt.toString(),
+  };
+}
+
+export class SellerNetEarningsBody {
+  @ApiProperty({ type: SellerKpiRangeBody, description: 'The Market days the figure covers.' })
+  range!: SellerKpiRangeBody;
+  @ApiProperty({ description: 'The IANA zone the Market counts its days in.' }) timezone!: string;
+  @ApiProperty({ description: 'ISO 4217.' }) currency!: string;
+  @ApiProperty({
+    description:
+      "False until the Market's ledger has matched for a week of paid orders (FE-066); the figure " +
+      'is then withheld, never sent early and never as 0.',
+  })
+  ready!: boolean;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description:
+      'Net earnings in minor units, without GST: sales after refunds, minus commission (net of ' +
+      'returned commission) and seller-funded cashback. Null while not `ready`.',
+  })
+  netEarnings!: string | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'date-time',
+    description: 'When the newest ledger rollup behind the figure was rebuilt; null with none.',
+  })
+  refreshedAt!: string | null;
+}
+
+export function sellerNetEarningsBody(answer: SellerNetEarningsAnswer): SellerNetEarningsBody {
+  return {
+    range: { from: answer.range.from, to: answer.range.to },
+    timezone: answer.timezone,
+    currency: answer.currency,
+    ready: answer.ready,
+    netEarnings: answer.earnings === null ? null : answer.earnings.netEarnings.toString(),
+    refreshedAt: answer.refreshedAt === null ? null : answer.refreshedAt.toString(),
   };
 }
