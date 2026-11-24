@@ -147,7 +147,7 @@ function RangeForm({
   readonly fields: readonly RangeField[];
   readonly busy: boolean;
   /** What the figures show now, named for the "until you apply" note. */
-  readonly showing: string;
+  readonly showing: string | null;
   /** Changes after every refused Apply, so focus goes to the first invalid field. */
   readonly focusSignal: number;
   readonly onChange: (next: { from: string; to: string }) => void;
@@ -204,7 +204,9 @@ function RangeForm({
         </p>
       )}
       <p className="w-full text-xs text-fg-muted">{t('help', { today })}</p>
-      <p className="w-full text-xs text-fg-muted">{t('showing', { period: showing })}</p>
+      {showing === null ? null : (
+        <p className="w-full text-xs text-fg-muted">{t('showing', { period: showing })}</p>
+      )}
     </form>
   );
 }
@@ -255,8 +257,13 @@ export function PeriodSwitch({
 
   const tp = useTranslations('dashboard.kpis.period');
   const locale = useLocale();
-  const showing =
-    selection.id === 'custom'
+  // A refused range in the address shows no figures, so there is nothing to say is "shown".
+  const refused =
+    selection.id === 'custom' &&
+    validateRange({ from: selection.from, to: selection.to, today }).length > 0;
+  const showing = refused
+    ? null
+    : selection.id === 'custom'
       ? `${longDay(selection.from, locale)} to ${longDay(selection.to, locale)}`
       : tp(PERIOD_KEY[selection.id] as 'today');
 

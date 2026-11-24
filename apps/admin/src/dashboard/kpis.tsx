@@ -1038,7 +1038,7 @@ export function InvalidRangeNote({ source }: { readonly source: Source }) {
     <DashboardSlot layout={{ span: 12, mobileOrder: 'kpi' }} source={source} fallback={null}>
       {(result) =>
         result === null || result.kind !== 'invalid' ? null : (
-          <p className="rounded-lg border border-line bg-surface p-4 text-sm text-fg-secondary">
+          <p className="w-full min-w-0 rounded-lg border border-line bg-surface p-4 text-sm text-fg-secondary">
             {t('choose')}{' '}
             <a className="font-medium text-link underline" href="/?period=30d">
               {t('back')}

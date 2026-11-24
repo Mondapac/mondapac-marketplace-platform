@@ -119,6 +119,11 @@ describe('PeriodSwitch', () => {
     expect(screen.queryByLabelText('From')).toBeNull();
   });
 
+  it('says nothing is shown when the range in the address is refused', () => {
+    shown({ id: 'custom', from: '2024-01-01', to: '2026-11-23' });
+    expect(screen.queryByText(/until you apply/)).toBeNull();
+  });
+
   it('names the preset being shown while the pickers are open', () => {
     shown({ id: '7d' });
     fireEvent.click(screen.getByRole('radio', { name: 'custom' }));

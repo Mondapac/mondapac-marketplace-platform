@@ -325,6 +325,20 @@ describe('the admin KPI cards', () => {
     expect(container.querySelectorAll('[data-kpi-card]')).toHaveLength(0);
   });
 
+  it('lets a single card of the middle row take the whole row', () => {
+    page(answer({ ordersByStatus: orderStatus }), ['ordering.order.view']);
+    expect(screen.getByRole('region', { name: 'Orders by status' })).toBeTruthy();
+    expect(screen.queryByRole('region', { name: 'Sales by category' })).toBeNull();
+    expect(screen.queryByRole('region', { name: 'Supply and health' })).toBeNull();
+    const row = screen.getByRole('region', { name: 'Orders by status' }).parentElement!
+      .parentElement!;
+    // Absent cards leave empty cells, hidden by CSS; the one card is flex-1 (fills the row).
+    const filled = [...row.children].filter((cell) => cell.childElementCount > 0);
+    expect(filled).toHaveLength(1);
+    expect(filled[0]!.className).toContain('lg:flex-1');
+    expect(row.className).toContain('lg:flex');
+  });
+
   describe('a change that must agree with its figures', () => {
     const withCurrent = (gmv: string, previousGmv: string) =>
       answer({
