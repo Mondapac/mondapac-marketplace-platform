@@ -261,6 +261,7 @@ describe('category issues of a refused submit', () => {
         'duplicate',
         'level-not-allowed',
         'not-available',
+        'not-in-activity',
         'not-same-branch',
         'required',
         'too-many',
@@ -312,5 +313,33 @@ describe('category issues of a refused submit', () => {
     expect(saved).toContain('Plinkus');
     fireEvent.click(screen.getByRole('combobox', { name: 'Add a category' }));
     expect(await screen.findByRole('option', { name: /^Zorbia › Vex/ })).toBeTruthy();
+  });
+});
+
+describe("the seller's business activity scope (owner decision 2026-10-31)", () => {
+  const noActivity = 'Ask the team to set your business activity before choosing categories.';
+
+  it('says to ask the team when the picker answers no-activity, and offers nothing', async () => {
+    call.mockResolvedValue(picker({ locale: 'en-AU', choices: [], notice: 'no-activity' }));
+    mount();
+    expect(screen.queryByText(noActivity)).toBeNull();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Add a category' }));
+    expect(await screen.findByText(noActivity)).toBeTruthy();
+    expect(screen.queryByRole('option', { name: /Pantry/ })).toBeNull();
+  });
+
+  it('shows no such notice when the picker offers choices', async () => {
+    call.mockResolvedValue(picker());
+    mount();
+    fireEvent.click(screen.getByRole('combobox', { name: 'Add a category' }));
+    expect(await screen.findByRole('option', { name: /^Pantry › Oils/ })).toBeTruthy();
+    expect(screen.queryByText(noActivity)).toBeNull();
+  });
+
+  it('tells a category outside the activity next to it', () => {
+    expect(categoryIssuesOf([{ path: 'categoryIds.1', code: 'category.not-in-activity' }])).toEqual(
+      { items: { 1: 'not-in-activity' } },
+    );
+    expect(isCategoryIssue({ path: 'categoryIds.0', code: 'category.not-in-activity' })).toBe(true);
   });
 });

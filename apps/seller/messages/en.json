@@ -1602,6 +1602,7 @@
       "categories-limit": "A product can be in up to 3 categories. Remove one to add another.",
       "categories-loading": "Loading categories…",
       "categories-load-error": "We couldn't load the categories.",
+      "categories-no-activity": "Ask the team to set your business activity before choosing categories.",
       "categories-retry": "Try again",
       "categories-search": "Search categories",
       "categories-no-results": "No category matches.",
@@ -1611,6 +1612,7 @@
       "categories-same-branch-hint": "Other categories must be in the same department as the primary one.",
       "categories-dropped-others": "{count, plural, one {# other category was removed because it is in a different department.} other {# other categories were removed because they are in a different department.}}",
       "categories-error": {
+        "not-in-activity": "This category isn't part of your business activity. Remove it and choose another.",
         "required": "Choose at least one category.",
         "too-many": "A product can be in at most 3 categories.",
         "duplicate": "You chose this category twice. Remove one.",
@@ -4825,6 +4827,7 @@
         "duplicate": "You already have a suggestion or a shelf with this name under this category.",
         "limit": "You have {max} suggestions waiting. Withdraw one or wait for a decision.",
         "parent-not-found": "That category is no longer available. Choose another.",
+        "parent-not-in-activity": "That category isn't part of your business activity. Choose another.",
         "claim-word": "Some text uses a word that is not allowed. Change the wording and try again.",
         "locale-uncheckable": "Some text is in a language that cannot be checked yet. Remove it or try again later.",
         "required-locale-missing": "A name in the required language is needed.",
