@@ -34,10 +34,6 @@ export class ConfigOrderingPolicy implements OrderingPolicy {
     };
   }
 
-  provisionalTaxBps(market: MarketContext): number | null {
-    return this.markets.get(market.marketId).commissionPayouts?.provisionalTaxRateBps ?? null;
-  }
-
   sessionTtlMs(): number {
     return SESSION_TTL_MS;
   }

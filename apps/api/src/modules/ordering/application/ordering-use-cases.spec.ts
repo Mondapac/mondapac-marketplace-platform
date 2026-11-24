@@ -3619,7 +3619,6 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
     // A postcode in a ServiceArea of the Market under test: its code is the promotions zone.
     const postcode = code === 'AU' ? '4109' : '1000001';
     const zone = code === 'AU' ? 'greater-brisbane' : 'zz-central';
-    const provisional = markets.get(market.marketId).commissionPayouts!.provisionalTaxRateBps;
     const lineKey = (l: { offerId: string }) => l.offerId;
     const emptyQuote = (): QuoteRequest => ({
       lines: [],
@@ -3667,15 +3666,46 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(request.shipping.map((c) => [c.sellerId, c.zoneCode, c.amount])).toEqual([
         [SELLER_A, zone, money(500n, currency)],
       ]);
-      // The commission as the ledger posts it: the provisional tax out of each inclusive line.
+      // The commission as the ledger posts it: each line's own tax rate (from the strategy in
+      // force, not the Market's provisional rate) out of each inclusive line.
       const halfUp = (n: bigint, d: bigint) => (n * 2n + d) / (d * 2n);
       const commissionOf = (amount: bigint) =>
-        halfUp(halfUp(amount * 10_000n, 10_000n + BigInt(provisional)) * 1500n, 10_000n);
+        halfUp(halfUp(amount * 10_000n, 10_000n + BigInt(tax.rateBps)) * 1500n, 10_000n);
       expect(request.orderCommission).toEqual(
         money(commissionOf(2000n) + commissionOf(750n) + commissionOf(99n), currency),
       );
       // Nothing was discounted, so nothing is redeemed.
       expect(promotions.redeems).toEqual([]);
+    });
+
+    it('caps by each line’s own rate: a GST-free line keeps its whole amount as base', async () => {
+      const free = code === 'AU' ? 'gst_free' : 'zz_zero';
+      taxCategories.byOffer.set(OFFER_1, free);
+      tax.categoryRatesBps.set(free, 0);
+      await placed();
+      const { request } = promotions.quotes[0]!;
+      const halfUp = (n: bigint, d: bigint) => (n * 2n + d) / (d * 2n);
+      const taxed = (amount: bigint) =>
+        halfUp(halfUp(amount * 10_000n, 10_000n + BigInt(tax.rateBps)) * 1500n, 10_000n);
+      // Offer 1 (2000) at rate 0: 15 % of 2000 = 300, not 15 % of 2000 / 1.1.
+      expect(request.orderCommission).toEqual(
+        money(halfUp(2000n * 1500n, 10_000n) + taxed(750n) + taxed(99n), currency),
+      );
+    });
+
+    it('opens no order when the rates change between the cap and the tax (fail closed)', async () => {
+      tax.rateAfterFirstCall = tax.rateBps + 500;
+      expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
+      expect(tax.calls).toHaveLength(2);
+      expect(orders.rows.size).toBe(0);
+      expect(inventory.reserved).toEqual([]);
+    });
+
+    it('opens no order when only the second tax answer fails (fail closed)', async () => {
+      tax.failAfterCalls = 1;
+      expect(await start()).toEqual(err({ code: 'ordering.check-unavailable' }));
+      expect(tax.calls).toHaveLength(2);
+      expect(orders.rows.size).toBe(0);
     });
 
     it('freezes the discount on the line, taxes and charges the net amount, then redeems it', async () => {
@@ -3697,7 +3727,8 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       ).toBe(true);
       // The tax of the line is the tax of what the buyer pays for it: 1900 holding 10% is 173.
       expect(discounted.taxAmount).toBe(173n);
-      expect(tax.calls[0]![0]!.amount).toBe(1900n);
+      // The first call only asks each line's rate (for the commission cap); the second taxes it.
+      expect(tax.calls.at(-1)![0]!.amount).toBe(1900n);
       const sellerA = order.sellerOrders.find((s) => s.sellerId === SELLER_A)!;
       expect([sellerA.subtotal, sellerA.discount, sellerA.shipping, sellerA.total]).toEqual([
         2099n,
@@ -4024,14 +4055,18 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(order.taxStrategyId).toBe(tax.strategyId);
       expect(order.total.amount).toBe(2000n + 750n + 99n + 500n);
       expect(gateway.sessions[0]!.packages.map((p) => p.amount)).toEqual([2099n, 500n, 750n]);
-      // One call for the whole cart, as the customer, with the category of each line's product.
-      expect(tax.calls).toHaveLength(1);
-      const productCalls = tax.calls[0]!.slice(0, order.lines.length);
+      // Two calls as the customer, each with the category of each line's product: the rates of the
+      // product lines first (the commission cap of the discount quote), then the whole cart.
+      expect(tax.calls).toHaveLength(2);
+      expect(tax.calls[0]!.map((l) => [l.amount, l.categoryCode])).toEqual(
+        tax.calls[1]!.slice(0, order.lines.length).map((l) => [l.amount, l.categoryCode]),
+      );
+      const productCalls = tax.calls[1]!.slice(0, order.lines.length);
       expect(productCalls.every((l) => l.categoryCode === category && l.taxInclusive)).toBe(true);
       // The delivery fee of each seller follows, with no category (the strategy's default rate)
       // and the price basis of that seller's goods: 500 inclusive at 10% holds 45 (half-up).
       expect(
-        tax.calls[0]!.slice(order.lines.length).map((l) => [l.amount, l.categoryCode]),
+        tax.calls[1]!.slice(order.lines.length).map((l) => [l.amount, l.categoryCode]),
       ).toEqual([
         [500n, null],
         [0n, null],
