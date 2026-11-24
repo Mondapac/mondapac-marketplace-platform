@@ -19,6 +19,8 @@ import type { PaidSellerOrder, RefundedSellerOrder } from '../contracts';
 import { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from '../domain/audit';
 import {
   commissionBase,
+  lineCommission,
+  lineTaxBps,
   commissionOn,
   exclusiveRateBps,
   exclusiveWindowOpen,
@@ -209,6 +211,28 @@ describe('commission arithmetic', () => {
     expect(commissionOn(305n, 1500)).toBe(46n);
   });
 
+  it('takes out the line’s own tax rate: a GST-free line keeps its whole amount as base', () => {
+    // $15.90 of GST-free meat at 15 %: base $15.90, commission $2.39 (not $2.17 on 15.90 / 1.1).
+    expect(lineCommission({ amount: 1590n, taxInclusive: true, taxBps: 0, rateBps: 1500 })).toEqual(
+      { base: 1590n, commission: 239n, sellerReceives: 1351n },
+    );
+    // A taxable $11.00 line: base $10.00, commission $1.50; the seller keeps the $1.00 GST too.
+    expect(
+      lineCommission({ amount: 1100n, taxInclusive: true, taxBps: 1000, rateBps: 1500 }),
+    ).toEqual({ base: 1000n, commission: 150n, sellerReceives: 950n });
+    // An exclusive line is its own base whatever its rate.
+    expect(
+      lineCommission({ amount: 1000n, taxInclusive: false, taxBps: 1000, rateBps: 1500 }),
+    ).toEqual({ base: 1000n, commission: 150n, sellerReceives: 850n });
+  });
+
+  it('falls back to the provisional rate only for a line with no frozen rate', () => {
+    expect(lineTaxBps(0, 1000)).toBe(0);
+    expect(lineTaxBps(1500, 1000)).toBe(1500);
+    expect(lineTaxBps(null, 1000)).toBe(1000);
+    expect(lineTaxBps(undefined, 1000)).toBe(1000);
+  });
+
   it('uses an exclusive line as it is, and a zero rate gives zero', () => {
     expect(commissionBase(1000n, false, 1000)).toBe(1000n);
     expect(commissionOn(1000n, 1200)).toBe(120n);
@@ -319,8 +343,20 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
     shipping: 500n,
     paidAt: T0,
     lines: [
-      { orderLineId: LINE_1, lineAmount: 1100n, taxInclusive: inclusive, commissionRateBps: 1500 },
-      { orderLineId: LINE_2, lineAmount: 335n, taxInclusive: inclusive, commissionRateBps: 1500 },
+      {
+        orderLineId: LINE_1,
+        lineAmount: 1100n,
+        taxInclusive: inclusive,
+        taxRateBps: null,
+        commissionRateBps: 1500,
+      },
+      {
+        orderLineId: LINE_2,
+        lineAmount: 335n,
+        taxInclusive: inclusive,
+        taxRateBps: null,
+        commissionRateBps: 1500,
+      },
     ],
     ...overrides,
   });
@@ -901,6 +937,40 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       );
     });
 
+    it('takes each line’s frozen tax rate out of its base, so a GST-free line is not reduced', async () => {
+      const lines = paid().lines;
+      expect(
+        await record(
+          paid({
+            lines: [
+              { ...lines[0]!, lineAmount: 1590n, taxRateBps: 0 },
+              // A frozen rate unlike the Market's provisional one: the frozen one is taken out.
+              { ...lines[1]!, lineAmount: 1100n, taxRateBps: 1500 },
+            ],
+          }),
+        ),
+      ).toEqual(ok('recorded'));
+      const commissions = ledger.rows.filter((r) => r.kind === 'commission');
+      expect(commissions.map((r) => [r.orderLineId, r.baseAmount, r.amount])).toEqual([
+        [LINE_1, 1590n, money(239n, currency)],
+        // 1100 / 1.15 = 956.52 -> 957; 15 % = 143.55 -> 144.
+        [LINE_2, inclusive ? 957n : 1100n, money(inclusive ? 144n : 165n, currency)],
+      ]);
+    });
+
+    it.each([-1, 5001, 1.5, '0', undefined])(
+      'refuses a line tax rate of %p',
+      async (taxRateBps) => {
+        const lines = paid().lines;
+        expect(
+          await record(
+            paid({ lines: [{ ...lines[0]!, taxRateBps: taxRateBps as number }, lines[1]!] }),
+          ),
+        ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+        expect(ledger.rows).toEqual([]);
+      },
+    );
+
     it('writes a paid seller order once, and no delivery row for a free delivery', async () => {
       expect(await record(paid({ shipping: 0n }))).toEqual(ok('recorded'));
       expect(await record(paid({ shipping: 0n }))).toEqual(ok('already-recorded'));
@@ -911,7 +981,13 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
     it('writes no rows for a fully discounted line, and still records the order', async () => {
       const free = paid({
         lines: [
-          { orderLineId: LINE_1, lineAmount: 0n, taxInclusive: true, commissionRateBps: 1500 },
+          {
+            orderLineId: LINE_1,
+            lineAmount: 0n,
+            taxInclusive: true,
+            taxRateBps: null,
+            commissionRateBps: 1500,
+          },
         ],
       });
       expect(await record(free)).toEqual(ok('recorded'));
@@ -930,15 +1006,33 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       await refused(
         paid({
           lines: [
-            { orderLineId: LINE_1, lineAmount: 100n, taxInclusive: true, commissionRateBps: 3001 },
+            {
+              orderLineId: LINE_1,
+              lineAmount: 100n,
+              taxInclusive: true,
+              taxRateBps: null,
+              commissionRateBps: 3001,
+            },
           ],
         }),
       );
       await refused(
         paid({
           lines: [
-            { orderLineId: LINE_1, lineAmount: 100n, taxInclusive: true, commissionRateBps: 1500 },
-            { orderLineId: LINE_1, lineAmount: 100n, taxInclusive: true, commissionRateBps: 1500 },
+            {
+              orderLineId: LINE_1,
+              lineAmount: 100n,
+              taxInclusive: true,
+              taxRateBps: null,
+              commissionRateBps: 1500,
+            },
+            {
+              orderLineId: LINE_1,
+              lineAmount: 100n,
+              taxInclusive: true,
+              taxRateBps: null,
+              commissionRateBps: 1500,
+            },
           ],
         }),
       );
@@ -951,6 +1045,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
                 orderLineId: LINE_1,
                 lineAmount: 100n,
                 taxInclusive: true,
+                taxRateBps: null,
                 commissionRateBps: 1500,
                 commissionStandardRateBps,
               },
@@ -1043,6 +1138,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
             orderLineId: LINE_1,
             lineAmount: 1100n,
             taxInclusive: inclusive,
+            taxRateBps: null,
             commissionRateBps: lowered,
             commissionStandardRateBps: marketRate,
           },
@@ -1050,6 +1146,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
             orderLineId: LINE_2,
             lineAmount: 335n,
             taxInclusive: inclusive,
+            taxRateBps: null,
             commissionRateBps: marketRate,
             commissionStandardRateBps: null,
           },
@@ -1717,7 +1814,13 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
           sellerOrderId: tiny,
           shipping: 0n,
           lines: [
-            { orderLineId: line, lineAmount: 1n, taxInclusive: false, commissionRateBps: 1500 },
+            {
+              orderLineId: line,
+              lineAmount: 1n,
+              taxInclusive: false,
+              taxRateBps: null,
+              commissionRateBps: 1500,
+            },
           ],
         }),
       );
@@ -1741,7 +1844,13 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
         paid({
           sellerOrderId: free,
           lines: [
-            { orderLineId: LINE_1, lineAmount: 0n, taxInclusive: true, commissionRateBps: 1500 },
+            {
+              orderLineId: LINE_1,
+              lineAmount: 0n,
+              taxInclusive: true,
+              taxRateBps: null,
+              commissionRateBps: 1500,
+            },
           ],
         }),
       );
