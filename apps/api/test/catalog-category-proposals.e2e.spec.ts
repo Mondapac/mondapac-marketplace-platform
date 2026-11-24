@@ -3,6 +3,7 @@ import { parseId, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
+import { SellerCategoryScope } from '../src/modules/catalog/application/business-activities/allowed-category-ids';
 import { CATEGORY_EDIT_STORE } from '../src/modules/catalog/application/ports/category-edit.store';
 import { CATEGORY_PROPOSAL_CAPABILITY } from '../src/modules/catalog/application/ports/category-proposal-capability';
 import { CLAIM_TERM_LOCALES } from '../src/modules/catalog/application/ports/claim-term-locales';
@@ -138,6 +139,12 @@ describe.each(TEST_MARKETS)(
             .useValue({ allows: () => Promise.resolve(mayPropose) })
             .overrideProvider(SELLER_ELIGIBILITY_READER)
             .useValue({ isEligible: () => Promise.resolve(eligible) })
+            // The seller's activity scope allows every category here (its rules are unit-tested).
+            .overrideProvider(SellerCategoryScope)
+            .useValue({
+              allowedCategoryIdsForSeller: () =>
+                Promise.resolve({ ok: true, value: { has: () => true, size: 1 } }),
+            })
             .overrideProvider(SELLER_NAMES_READER)
             .useValue({
               storeNames: (_c: unknown, ids: readonly string[]) =>

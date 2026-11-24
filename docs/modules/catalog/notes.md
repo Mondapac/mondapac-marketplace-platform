@@ -175,3 +175,32 @@ terms the matcher cannot use are refused with `details.fields`), `access.denied`
 `claim-text.check-unavailable` 503 ("We couldn't count"; never a zero). Not yet counted: category
 names and descriptions (seller and platform), attribute definition names and option labels,
 category-proposal texts; they join with the rescan job (design 6.4, slice 18).
+
+## Seller category scope by business activity (owner decision of 31 Oct 2026)
+
+A seller may pick and save only categories inside the business activities assigned to them.
+One helper decides it: `SellerCategoryScope.allowedCategoryIdsForSeller(context, sellerId)`
+(`application/business-activities/allowed-category-ids.ts`, a Nest service of `CatalogModule`).
+It answers the ids of every category at or below the categories linked to the seller's ACTIVE
+activities (links are level 1-2; children inherit; the structure is `liveCategoryTree`'s, a hidden
+node counting as a link of the chain). No activity, inactive ones only or no link: the empty set.
+The assignment comes from `sellers.sellerBusinessActivities` through the port
+`SellerActivityReader` (adapter `SellersSellerActivityReader`); any refusal or fault, and a tree that
+cannot be built, is `access.unavailable` (fail closed, never "every category"). It opens its own
+read-only unit, so callers ask it before theirs.
+
+Where it applies (SELLER scope only; platform and admin paths are unchanged):
+- seller picker `GET /catalog/seller/products/category-picker`: only choices inside the scope; an
+  empty scope answers `choices: []` with `notice: "no-activity"` (the form says "Ask the team to set
+  your business activity before choosing categories."); an unreadable scope is 503.
+- seller submit (`SubmitProduct` passes the set to `FreezeRevision.freeze` options): a category
+  outside is the issue `category.not-in-activity` at `categoryIds.<n>` of `revision.not-ready`
+  (unless that place already has another issue); an unreadable scope is `access.unavailable`.
+  Saved drafts and published revisions are never changed or deleted; the rule bites at the next
+  submit, so seller-import drafts meet it when they are submitted.
+- category proposal: a parent outside is `validation.failed` with `platformParentId`
+  `category.not-in-activity`.
+
+Deferred (docs/future-enhancements, FE-167 to FE-170): admin per-seller exceptions; the scope in
+admin bulk moves, seller import check time and the seller's platform-product search; an impact
+count before an activity or link is removed; the proposal form's parent list.

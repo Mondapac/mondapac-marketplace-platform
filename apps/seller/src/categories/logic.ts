@@ -133,6 +133,11 @@ export function proposalProblemOf(failure: ApiFailure): ProposeProblem {
     };
   }
   if (failure.code === 'validation.failed') {
+    // The parent is outside the seller's business activities (owner decision 2026-10-31).
+    const outside = failure.details?.fields?.some(
+      (entry) => entry.path === 'platformParentId' && entry.code === 'category.not-in-activity',
+    );
+    if (outside === true) return { form: 'parent-not-in-activity', fields: [] };
     const fields = fieldProblems(failure);
     return { form: fields.length > 0 ? 'validation-fields' : 'validation', fields };
   }

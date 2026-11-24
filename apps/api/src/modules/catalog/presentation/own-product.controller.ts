@@ -384,7 +384,7 @@ export class OwnProductController {
   @ApiOperation({
     summary: 'Category choices for the seller product form',
     description:
-      'Needs catalog.own-product.edit. Levels 3 and 4 only; children first and the level-3 node itself as General when it has children; hidden nodes are never offered to a seller.',
+      "Needs catalog.own-product.edit. Levels 3 and 4 only; children first and the level-3 node itself as General when it has children; hidden nodes are never offered to a seller. Only categories inside the seller's business activities are offered; when they allow none, choices is empty and notice is no-activity.",
   })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
   @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })

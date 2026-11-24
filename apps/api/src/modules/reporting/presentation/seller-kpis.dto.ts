@@ -50,7 +50,7 @@ export class SellerKpiRangeBody {
 }
 
 export class SellerKpiPeriodBody {
-  @ApiProperty({ enum: ['today', '7d', '30d', 'month'] }) id!: string;
+  @ApiProperty({ enum: ['today', '7d', '30d', 'month', 'custom'] }) id!: string;
   @ApiProperty({ type: SellerKpiRangeBody }) current!: SellerKpiRangeBody;
   @ApiProperty({ type: SellerKpiRangeBody }) previous!: SellerKpiRangeBody;
   @ApiProperty() days!: number;

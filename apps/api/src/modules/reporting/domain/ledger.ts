@@ -1,7 +1,14 @@
-import { Temporal } from '@mondapac/shared-kernel';
-import type { Id } from '@mondapac/shared-kernel';
+import { err, ok, Temporal } from '@mondapac/shared-kernel';
+import type { Id, Result } from '@mondapac/shared-kernel';
 import type { MarketDay } from './facts';
-import { daysOf, type DayRange } from './period';
+import {
+  daysOf,
+  MAX_RANGE_MONTHS,
+  parsePeriodQuery,
+  resolvePeriodRequest,
+  type DayRange,
+  type PeriodFieldRefusal,
+} from './period';
 
 // The ledger facts of reporting (dashboards v2, phase 1, PR 4): the commission and seller-cashback
 // rows of commission-payouts' seller ledger, as read through its reporting facade, their daily
@@ -423,30 +430,34 @@ export function ledgerReadinessOf(
   };
 }
 
-/** The longest range a net figure is read for: 13 months (the dashboards' custom range cap). */
-export const MAX_RANGE_MONTHS = 13;
+/** The longest range a net figure is read for: the dashboards' custom range cap (`period.ts`). */
+export { MAX_RANGE_MONTHS };
 
 /**
- * A requested range of Market days, checked: two `YYYY-MM-DD` days, `from` not after `to`, `to` not
- * after `today`, and at most {@link MAX_RANGE_MONTHS} months long. Null when it is not.
+ * A requested range of Market days, checked by the dashboards' custom range rules
+ * (`parsePeriodQuery` and `resolvePeriodRequest`): two real `YYYY-MM-DD` days, `from` not after
+ * `to`, `to` not after `today`, and at most {@link MAX_RANGE_MONTHS} calendar months, both ends
+ * included. The range, or the fields at fault.
  */
-export function checkDayRange(value: unknown, today: MarketDay): DayRange | null {
-  if (typeof value !== 'object' || value === null) return null;
+export function checkDayRangeFields(
+  value: unknown,
+  today: MarketDay,
+): Result<DayRange, readonly PeriodFieldRefusal[]> {
+  if (typeof value !== 'object' || value === null) {
+    return err([
+      { path: 'from', code: 'required' },
+      { path: 'to', code: 'required' },
+    ]);
+  }
   const { from, to } = value as { from?: unknown; to?: unknown };
-  const parse = (day: unknown): Temporal.PlainDate | null => {
-    if (typeof day !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(day)) return null;
-    try {
-      return Temporal.PlainDate.from(day, { overflow: 'reject' });
-    } catch {
-      return null;
-    }
-  };
-  const start = parse(from);
-  const end = parse(to);
-  if (start === null || end === null) return null;
-  if (Temporal.PlainDate.compare(start, end) > 0) return null;
-  if (Temporal.PlainDate.compare(end, Temporal.PlainDate.from(today)) > 0) return null;
-  if (Temporal.PlainDate.compare(start, end.subtract({ months: MAX_RANGE_MONTHS })) <= 0)
-    return null;
-  return { from: start.toString() as MarketDay, to: end.toString() as MarketDay };
+  const asked = parsePeriodQuery({ from, to, period: 'custom' }, '30d');
+  if (!asked.ok) return asked;
+  const resolved = resolvePeriodRequest(asked.value, today);
+  return resolved.ok ? ok(resolved.value.current) : resolved;
+}
+
+/** {@link checkDayRangeFields} without the reasons: the range, or null. */
+export function checkDayRange(value: unknown, today: MarketDay): DayRange | null {
+  const checked = checkDayRangeFields(value, today);
+  return checked.ok ? checked.value : null;
 }
