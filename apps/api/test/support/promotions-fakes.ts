@@ -483,18 +483,34 @@ export class FakePriceHistory implements PriceHistory {
 export class FakeSellerCommission implements SellerCommission {
   /** Null = unreadable. */
   rate: number | null = 1500;
-  /** The provisional tax taken out of a tax-inclusive amount, basis points. */
-  taxBps = 1000;
-  readonly asked: { amount: bigint; taxInclusive: boolean }[] = [];
-  commissionOn(_context: CallContext, amount: bigint, taxInclusive: boolean) {
-    this.asked.push({ amount, taxInclusive });
+  /** The tax rate of a line in no category (no Offer named), basis points; null = unreadable. */
+  taxBps: number | null = 1000;
+  /** An Offer's own category rate; an Offer not listed has no published category (null). */
+  readonly offerTaxBps = new Map<Id<'Offer'>, number>();
+  readonly taxAsked: (Id<'Offer'> | null)[] = [];
+  readonly asked: { amount: bigint; taxInclusive: boolean; taxRateBps: number }[] = [];
+  lineTaxRate(_context: CallContext, offerId: Id<'Offer'> | null) {
+    this.taxAsked.push(offerId);
+    if (offerId === null) {
+      return Promise.resolve(
+        this.taxBps === null ? null : { rateBps: this.taxBps, estimated: true },
+      );
+    }
+    const own = this.offerTaxBps.get(offerId);
+    return Promise.resolve(own === undefined ? null : { rateBps: own, estimated: false });
+  }
+  commissionOn(_context: CallContext, amount: bigint, taxInclusive: boolean, taxRateBps: number) {
+    this.asked.push({ amount, taxInclusive, taxRateBps });
     if (this.rate === null) return Promise.resolve(null);
     const half = (n: bigint, d: bigint) => (n * 2n + d) / (d * 2n);
-    const base = taxInclusive ? half(amount * 10000n, 10000n + BigInt(this.taxBps)) : amount;
+    // The ledger's rule (`lineCommission`): tax off an inclusive amount at the line's own rate.
+    const base = taxInclusive ? half(amount * 10000n, 10000n + BigInt(taxRateBps)) : amount;
+    const commission = half(base * BigInt(this.rate), 10000n);
     return Promise.resolve({
       rateBps: this.rate,
       commissionBase: base,
-      commission: half(base * BigInt(this.rate), 10000n),
+      commission,
+      sellerReceives: amount - commission,
     });
   }
 }

@@ -11,6 +11,7 @@ import { TAX_POLICY } from './application/ports/tax-policy';
 import type { TaxDependencies } from './application/tax-dependencies';
 import { ActivateTaxStrategy } from './application/use-cases/activate-tax-strategy.use-case';
 import { CalculateTax } from './application/use-cases/calculate-tax.use-case';
+import { CategoryRates } from './application/use-cases/category-rates.use-case';
 import { CreateTaxStrategy } from './application/use-cases/create-tax-strategy.use-case';
 import { DeleteTaxStrategy } from './application/use-cases/delete-tax-strategy.use-case';
 import { ReverseRefundTax } from './application/use-cases/reverse-refund-tax.use-case';
@@ -65,6 +66,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     ...taxProviders,
     ...[
       CalculateTax,
+      CategoryRates,
       ListTaxStrategies,
       CreateTaxStrategy,
       UpdateTaxStrategy,
@@ -78,9 +80,9 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     },
     {
       provide: TAX_FACADE,
-      inject: [CalculateTax, ReverseRefundTax],
-      useFactory: (calculate: CalculateTax, reverse: ReverseRefundTax) =>
-        new TaxFacadeImplementation(calculate, reverse),
+      inject: [CalculateTax, ReverseRefundTax, CategoryRates],
+      useFactory: (calculate: CalculateTax, reverse: ReverseRefundTax, rates: CategoryRates) =>
+        new TaxFacadeImplementation(calculate, reverse, rates),
     },
   ],
   exports: [TAX_FACADE],
