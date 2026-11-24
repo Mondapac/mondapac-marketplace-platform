@@ -7,6 +7,7 @@ import { TransactionConflictError } from '../../../platform/unit-of-work/errors'
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { FactRecorder } from './fact-recorder';
 import { ReportingFactConflict } from './ports/fact-store';
+import { ReportingLedgerConflict } from './ports/ledger-fact-store';
 import {
   SOURCE_BATCH,
   type RefundSource,
@@ -160,6 +161,7 @@ const REFUSING_PRISMA_CODES = new Set(['P2000', 'P2003', 'P2004', 'P2011']);
 export function isFactRefusal(error: unknown): boolean {
   if (
     error instanceof ReportingFactConflict ||
+    error instanceof ReportingLedgerConflict ||
     error instanceof RangeError ||
     error instanceof TypeError
   ) {

@@ -6,6 +6,11 @@ import {
   type CommissionPayoutsWorkQueueCountReader,
 } from '../application/ports/work-queue-count.reader';
 import { PrismaCommissionPayoutsWorkQueueCountReader } from './prisma-work-queue-count.reader';
+import {
+  LEDGER_REPORT_READER,
+  type LedgerReportReader,
+} from '../application/ports/ledger-report.reader';
+import { PrismaLedgerReportReader } from './prisma-ledger-report.reader';
 import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { COMMISSION_POLICY, type CommissionPolicy } from '../application/ports/commission-policy';
 import { LEDGER_REPOSITORY, type LedgerRepository } from '../application/ports/ledger.repository';
@@ -86,6 +91,11 @@ import { SellersSellerDirectory } from './sellers-seller-directory';
 
 /** Binds the ports of commission-payouts. Only this layer may reach `PrismaService`. */
 export const commissionPayoutsProviders: readonly FactoryProvider[] = [
+  {
+    provide: LEDGER_REPORT_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): LedgerReportReader => new PrismaLedgerReportReader(prisma),
+  },
   {
     provide: COMMISSION_PAYOUTS_WORK_QUEUE_COUNT_READER,
     inject: [PrismaService],

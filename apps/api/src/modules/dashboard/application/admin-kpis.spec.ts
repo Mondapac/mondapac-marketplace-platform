@@ -205,6 +205,9 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
         asked.push('top-sellers');
         return Promise.resolve(ok(topSellers));
       },
+      // Not composed by the dashboard yet (dashboards v2, PR 6 and PR 8).
+      marketplaceNetRevenue: () => Promise.reject(new Error('not used')),
+      sellerNetEarnings: () => Promise.reject(new Error('not used')),
     };
   });
 

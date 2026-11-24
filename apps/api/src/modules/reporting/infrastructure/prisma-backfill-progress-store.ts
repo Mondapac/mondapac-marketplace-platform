@@ -1,10 +1,12 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
-import type {
-  BackfillProgress,
-  BackfillProgressStore,
-  BackfillStep,
+import {
+  LEDGER_BACKFILL_KIND,
+  type BackfillKind,
+  type BackfillProgress,
+  type BackfillProgressStore,
+  type BackfillStep,
 } from '../application/ports/backfill-progress-store';
 import { FACT_KINDS } from '../application/report-facts-sync';
 
@@ -21,8 +23,11 @@ interface ProgressRow {
   readonly finishedAt: Date | null;
 }
 
-const toProgress = (row: ProgressRow): BackfillProgress => {
-  const kind = FACT_KINDS.find((known) => known === row.kind);
+const toProgress = <K extends BackfillKind>(
+  row: ProgressRow,
+  kinds: readonly K[],
+): BackfillProgress<K> => {
+  const kind = kinds.find((known) => known === row.kind);
   if (kind === undefined) throw new Error(`reporting.backfill_progress: unknown kind ${row.kind}`);
   return {
     kind,
@@ -50,8 +55,13 @@ export class PrismaBackfillProgressStore implements BackfillProgressStore {
   ): Promise<readonly BackfillProgress[]> {
     const client = this.prisma.tx(market);
     const read = async () =>
-      (await client.reportingBackfillProgress.findMany({ where: { marketId: market.marketId } }))
-        .map(toProgress)
+      (
+        await client.reportingBackfillProgress.findMany({
+          // The sales kinds only: the ledger backfill has its own row and window end.
+          where: { marketId: market.marketId, kind: { in: [...FACT_KINDS] } },
+        })
+      )
+        .map((row) => toProgress(row, FACT_KINDS))
         .sort((a, b) => FACT_KINDS.indexOf(a.kind) - FACT_KINDS.indexOf(b.kind));
     const stored = await read();
     if (stored.length === FACT_KINDS.length) return stored;
@@ -79,11 +89,43 @@ export class PrismaBackfillProgressStore implements BackfillProgressStore {
     return started;
   }
 
-  async advance(
+  async startLedger(
     market: MarketContext,
-    from: BackfillProgress,
+    until: Temporal.Instant,
+  ): Promise<BackfillProgress<typeof LEDGER_BACKFILL_KIND>> {
+    const client = this.prisma.tx(market);
+    const where = { marketId: market.marketId, kind: LEDGER_BACKFILL_KIND };
+    const stored = await client.reportingBackfillProgress.findFirst({ where });
+    if (stored !== null) return toProgress(stored, [LEDGER_BACKFILL_KIND]);
+    const now = toDate(this.now());
+    // `ON CONFLICT DO NOTHING`: a concurrent start keeps its own `until`.
+    await client.reportingBackfillProgress.createMany({
+      data: [
+        {
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          kind: LEDGER_BACKFILL_KIND,
+          until: toDate(until),
+          after: null,
+          pages: 0,
+          failedFacts: 0,
+          startedAt: now,
+          updatedAt: now,
+          finishedAt: null,
+        },
+      ],
+      skipDuplicates: true,
+    });
+    const started = await client.reportingBackfillProgress.findFirst({ where });
+    if (started === null) throw new Error('reporting.backfill_progress: ledger row not written');
+    return toProgress(started, [LEDGER_BACKFILL_KIND]);
+  }
+
+  async advance<K extends BackfillKind>(
+    market: MarketContext,
+    from: BackfillProgress<K>,
     to: BackfillStep,
-  ): Promise<BackfillProgress | null> {
+  ): Promise<BackfillProgress<K> | null> {
     const client = this.prisma.tx(market);
     const now = toDate(this.now());
     const moved = await client.reportingBackfillProgress.updateMany({
