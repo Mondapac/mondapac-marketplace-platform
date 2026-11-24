@@ -286,6 +286,20 @@ describe('PeriodSelector', () => {
     expect(onChange).toHaveBeenCalledWith('today');
     expect(screen.getByRole('group', { name: 'Period' })).toBeTruthy();
   });
+
+  it('is as tall as the control size token, like the Export button beside it', () => {
+    const { container } = render(
+      <PeriodSelector
+        label="Period"
+        value="today"
+        onChange={() => undefined}
+        options={[{ id: 'today', label: 'Today' }]}
+      />,
+    );
+    expect(container.querySelector('fieldset > div')?.className).toContain('h-(--mp-size-control)');
+    expect(container.querySelector('select')?.className).toContain('h-(--mp-size-control)');
+    expect(container.innerHTML).not.toContain('min-h-11');
+  });
 });
 
 describe('chart states', () => {
