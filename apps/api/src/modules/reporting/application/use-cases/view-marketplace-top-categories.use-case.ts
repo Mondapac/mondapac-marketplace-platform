@@ -5,14 +5,17 @@ import {
   isPlatformAdminActor,
   UseCase,
   type AccessDeclaration,
-  type AccessDenied,
   type UseCaseGate,
 } from '../../../../platform/authz';
 import { COMMISSION_PAYOUTS_SETTLEMENT_VIEW } from '../../../commission-payouts';
-import { marketDayOf } from '../../domain/facts';
 import { topCategoryRowOf, type TopCategoryRow } from '../../domain/admin-kpi';
-import { resolvePeriod, type ResolvedPeriod } from '../../domain/period';
-import type { AdminKpiDependencies, KpiInput } from '../admin-kpi-flow';
+import type { ResolvedPeriod } from '../../domain/period';
+import {
+  resolveKpiPeriod,
+  type AdminKpiDependencies,
+  type KpiFailure,
+  type KpiInput,
+} from '../admin-kpi-flow';
 
 /** The dashboard table never shows more than five rows (design section 6). */
 export const TOP_CATEGORIES_LIMIT = 5;
@@ -37,7 +40,7 @@ const logger = new Logger('ViewMarketplaceTopCategories');
 export class ViewMarketplaceTopCategories extends UseCase<
   KpiInput,
   TopCategoriesAnswer,
-  AccessDenied
+  KpiFailure
 > {
   static override readonly access: AccessDeclaration = {
     name: 'reporting.view-marketplace-top-categories',
@@ -54,11 +57,13 @@ export class ViewMarketplaceTopCategories extends UseCase<
   protected async handle(
     context: CallContext,
     input: KpiInput,
-  ): Promise<Result<TopCategoriesAnswer, AccessDenied>> {
+  ): Promise<Result<TopCategoriesAnswer, KpiFailure>> {
     if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
     const { deps } = this;
     const now = deps.clock.now();
-    const period = resolvePeriod(input.period, marketDayOf(now, deps.zone.zoneOf(context.market)));
+    const resolved = resolveKpiPeriod(deps, context, input.period, now);
+    if (!resolved.ok) return resolved;
+    const period = resolved.value;
     const currency = deps.zone.currencyOf(context.market);
     try {
       const unit = await deps.unitOfWork.run(

@@ -51,7 +51,8 @@ const SNAPSHOT = path.join(__dirname, 'audit-action-catalogue.snapshot.json');
  * settings, promotions package T1; customers: the account deletion setting change, package 5a;
  * settings: the change of an admin-editable Market setting, ADR-0026 and ADR-0042; system-requests:
  * the review requests and the review policy, Admin Inbox › System requests; lists: the sharing,
- * changing and deleting of a saved filter shared with everyone, super list B0-1b).
+ * changing and deleting of a saved filter shared with everyone, super list B0-1b; reporting: the
+ * daily exports of the dashboards, dashboards v2 PR 5).
  */
 const AUDITING_MODULES = [
   'AssistantModule',
@@ -67,6 +68,7 @@ const AUDITING_MODULES = [
   'PaymentsModule',
   'PricingModule',
   'PromotionsModule',
+  'ReportingModule',
   'ReviewsModule',
   'SecurityModule',
   'SellersModule',
@@ -527,6 +529,7 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['PaymentsModule', 'payments'],
       ['PricingModule', 'pricing'],
       ['PromotionsModule', 'promotions'],
+      ['ReportingModule', 'reporting'],
       ['ReviewsModule', 'reviews'],
       ['SecurityModule', 'security'],
       ['SellersModule', 'sellers'],
@@ -583,6 +586,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       ['PricingModule', 'writer'],
       ['PromotionsModule', 'actions'],
       ['PromotionsModule', 'writer'],
+      ['ReportingModule', 'actions'],
+      ['ReportingModule', 'writer'],
       ['ReviewsModule', 'actions'],
       ['ReviewsModule', 'writer'],
       ['SecurityModule', 'actions'],
@@ -706,6 +711,8 @@ describe('only the auditing modules bind an audit writer, each its own (Ali, con
       `${path.join('modules', 'pricing', 'pricing.module.ts')}: registerAuditActions('pricing')`,
       `${path.join('modules', 'promotions', 'promotions.module.ts')}: auditWriterFor('promotions')`,
       `${path.join('modules', 'promotions', 'promotions.module.ts')}: registerAuditActions('promotions')`,
+      `${path.join('modules', 'reporting', 'reporting.module.ts')}: auditWriterFor('reporting')`,
+      `${path.join('modules', 'reporting', 'reporting.module.ts')}: registerAuditActions('reporting')`,
       `${path.join('modules', 'reviews', 'reviews.module.ts')}: auditWriterFor('reviews')`,
       `${path.join('modules', 'reviews', 'reviews.module.ts')}: registerAuditActions('reviews')`,
       `${path.join('modules', 'security', 'security.module.ts')}: auditWriterFor('security')`,

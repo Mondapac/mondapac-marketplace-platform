@@ -149,6 +149,7 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
   });
   let asked: string[];
   let facade: ReportingKpiFacade;
+  let inputs: unknown[] = [];
   const build = (keys: readonly PermissionKey[], timeoutMs = 50): ViewAdminKpis => {
     const deps: AdminKpisDependencies = {
       viewer: { describe: () => Promise.resolve(ok(viewer(keys))) },
@@ -180,9 +181,16 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
 
   beforeEach(() => {
     asked = [];
+    inputs = [];
     facade = {
-      marketplaceOperations: () => {
+      // The Market's today in the fake is 2026-11-22: a range past it is refused.
+      resolvePeriod: (_context, period) =>
+        typeof period !== 'string' && period.to > '2026-11-22'
+          ? err({ code: 'validation.failed', fields: [{ path: 'to', code: 'future' }] })
+          : ok(finance.period),
+      marketplaceOperations: (_context, input) => {
         asked.push('operations');
+        inputs.push(input);
         return Promise.resolve(ok(operations));
       },
       marketplaceFinance: () => {
@@ -201,6 +209,24 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
       marketplaceNetRevenue: () => Promise.reject(new Error('not used')),
       sellerNetEarnings: () => Promise.reject(new Error('not used')),
     };
+  });
+
+  it('passes a custom range to the sections and names it custom (dashboards v2, PR 5)', async () => {
+    const range = { from: '2026-10-01', to: '2026-10-31' } as const;
+    const out = await build([ORDERS]).execute(admin, { period: range as never });
+    expect(out.ok && out.value.period).toBe('custom');
+    expect(inputs).toEqual([{ period: range }]);
+  });
+
+  it('refuses a range that ends after the Market today once, before any section is asked', async () => {
+    const out = await build([ORDERS, MONEY]).execute(admin, {
+      period: { from: '2026-11-20', to: '2026-11-23' } as never,
+    });
+    expect(out).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'to', code: 'future' }] },
+    });
+    expect(asked).toEqual([]);
   });
 
   it('asks only the sections whose keys the viewer holds', async () => {

@@ -22,6 +22,7 @@ import { SELLERS_PERMISSIONS } from '../../src/modules/sellers/contracts/permiss
 import { SHIPPING_PERMISSIONS } from '../../src/modules/shipping/contracts/permissions';
 import { STOREFRONT_PERMISSIONS } from '../../src/modules/storefront/contracts/permissions';
 import { PROMOTIONS_PERMISSIONS } from '../../src/modules/promotions/contracts/permissions';
+import { REPORTING_PERMISSIONS } from '../../src/modules/reporting/contracts/permissions';
 import { REVIEWS_PERMISSIONS } from '../../src/modules/reviews/contracts/permissions';
 import { SECURITY_PERMISSIONS } from '../../src/modules/security/contracts/permissions';
 import { SETTINGS_PERMISSIONS } from '../../src/modules/settings/contracts/permissions';
@@ -63,6 +64,7 @@ export function realPermissionRegistry(): PermissionRegistry {
   registry.register('cart', CART_PERMISSIONS);
   registry.register('engagement', ENGAGEMENT_PERMISSIONS);
   registry.register('legal', LEGAL_PERMISSIONS);
+  registry.register('reporting', REPORTING_PERMISSIONS);
   registry.seal();
   return registry;
 }
