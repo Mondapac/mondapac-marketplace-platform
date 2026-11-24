@@ -81,6 +81,7 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'SEARCH_DOCUMENTS');
   await createCopy(name, 'SEARCH_FILTERS');
   await createCopy(name, 'SEARCH_RATINGS');
+  await createCopy(name, 'CATALOG_TREE');
 }
 
 /**
@@ -156,6 +157,9 @@ export default async function globalSetup(): Promise<void> {
  *   and search-product-ratings db-specs each empty whole search tables (`DELETE FROM search.offer_documents`,
  *   `search.product_ratings`) in `beforeAll`/`beforeEach` and then expect only their own rows, so one file's
  *   cleanup removed another's seeded documents (searches returned []). Each keeps its own copy.
+ * - `catalog_tree`: catalog-category-tree.db-spec.ts runs the Market seed use case and then counts the
+ *   categories and `platform-category-created` outbox events of whole Markets (AU must stay empty),
+ *   while other files seed or insert categories in both Markets in parallel, so none of them lives there.
  * Copied before any test connects, since a template must have no other session.
  */
 async function createCopy(
@@ -192,7 +196,8 @@ async function createCopy(
     | 'ORDERING_ORDERS'
     | 'SEARCH_DOCUMENTS'
     | 'SEARCH_FILTERS'
-    | 'SEARCH_RATINGS',
+    | 'SEARCH_RATINGS'
+    | 'CATALOG_TREE',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });
