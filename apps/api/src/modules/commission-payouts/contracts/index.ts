@@ -1,5 +1,6 @@
-// Public contracts of the commission-payouts module (ADR-0008): the facade interface and the
-// permission keys. Other modules may import only what this file exports, through ../index.ts.
+// Public contracts of the commission-payouts module (ADR-0008): the facade interface, the
+// permission keys and the pure commission rule of a line (`lineCommission`, `lineTaxBps`). Other
+// modules may import only what this file exports, through ../index.ts.
 export { COMMISSION_PAYOUTS_AUDIT_ACTIONS } from '../domain/audit';
 // The one rule for a line's commission base and the seller's share (pure, no I/O).
 export { lineCommission, lineTaxBps, type LineCommission } from '../domain/commission';

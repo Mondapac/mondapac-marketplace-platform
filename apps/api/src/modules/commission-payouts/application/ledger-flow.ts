@@ -205,13 +205,18 @@ const isAmount = (value: unknown): value is bigint =>
 const standardRateFits = (standard: unknown, rateBps: number): boolean =>
   standard === undefined || standard === null || (isRateBps(standard) && standard >= rateBps);
 
-/** Checks the facts ordering sends; anything malformed refuses the whole seller order. */
-/** A frozen line tax rate: absent, null, or a whole number of basis points from 0 to 50 %. */
-const taxRateFits = (value: unknown): boolean =>
-  value === undefined ||
-  value === null ||
-  (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= 5000);
+/** The highest tax rate a line may carry: the tax module's own bound (50 %). */
+const MAX_LINE_TAX_BPS = 5000;
 
+/** A frozen line tax rate: null (a line placed before rates were frozen) or 0 to 50 % in bps. */
+const taxRateFits = (value: unknown): boolean =>
+  value === null ||
+  (typeof value === 'number' &&
+    Number.isSafeInteger(value) &&
+    value >= 0 &&
+    value <= MAX_LINE_TAX_BPS);
+
+/** Checks the facts ordering sends; anything malformed refuses the whole seller order. */
 function checkPaid(paid: PaidSellerOrder, currency: string): readonly string[] {
   const bad: string[] = [];
   if (idOf(paid?.orderId) === null) bad.push('orderId');

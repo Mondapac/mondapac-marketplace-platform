@@ -241,8 +241,8 @@ export function netRevenueTotalOf(
  * (design: dashboards v2 KPI definitions), all from the seller's own ledger rows, so they agree
  * with what its payouts are built from.
  * - `salesWithoutTax` is the commission base of the range's paid goods: the goods the seller is
- *   paid for (after the seller's share of discounts), without GST (the ledger's provisional tax
- *   until the tax module gives each line's exact tax).
+ *   paid for (after the seller's share of discounts), without GST (each line's own frozen tax
+ *   rate; rows posted before 2026-11-24 took a flat provisional rate off GST-free lines too).
  * - `refundedSalesWithoutTax` is the base of the range's seller-borne refunds; a refund the
  *   platform bears takes nothing from the seller, so it is not here.
  * - `commission` is net of what refunds gave back; `sellerCashback` is net of what refunds

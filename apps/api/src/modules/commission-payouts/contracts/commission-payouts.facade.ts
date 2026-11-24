@@ -68,10 +68,11 @@ export interface PaidLine {
   readonly taxInclusive: boolean;
   /**
    * The line's tax rate in basis points, frozen at placement by its tax category (0 for a
-   * GST-free product). The commission base takes out this rate, never a flat one. Null or absent
-   * only for a line placed before the rate was frozen: the Market's provisional rate is used.
+   * GST-free product). The commission base takes out this rate, never a flat one. Null only for
+   * a line placed before the rate was frozen: the Market's provisional rate is used. Required, so
+   * a caller can never leave it out and fall back to the flat rate by accident.
    */
-  readonly taxRateBps?: number | null;
+  readonly taxRateBps: number | null;
   readonly commissionRateBps: number;
   /**
    * A line whose rate was lowered for the buyer's exclusive seller: the rate it would have carried

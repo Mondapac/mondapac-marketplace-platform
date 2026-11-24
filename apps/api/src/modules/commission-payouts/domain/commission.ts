@@ -61,8 +61,8 @@ export interface LineCommission {
 }
 
 /**
- * The single rule for a line's commission and the seller's share of it (ledger, checkout cap and
- * promotions preview all use it): `amount` is what the seller is paid for the line before
+ * The single rule for a line's commission and the seller's share of it. The ledger uses it; the
+ * checkout's platform-share cap and the seller's promotions preview move onto it next: `amount` is what the seller is paid for the line before
  * commission (after the seller's share of any discount, never shipping), `taxBps` the line's own
  * tax rate ({@link lineTaxBps}).
  */

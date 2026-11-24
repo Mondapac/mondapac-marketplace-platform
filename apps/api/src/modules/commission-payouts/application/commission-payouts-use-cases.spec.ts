@@ -343,8 +343,20 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
     shipping: 500n,
     paidAt: T0,
     lines: [
-      { orderLineId: LINE_1, lineAmount: 1100n, taxInclusive: inclusive, commissionRateBps: 1500 },
-      { orderLineId: LINE_2, lineAmount: 335n, taxInclusive: inclusive, commissionRateBps: 1500 },
+      {
+        orderLineId: LINE_1,
+        lineAmount: 1100n,
+        taxInclusive: inclusive,
+        taxRateBps: null,
+        commissionRateBps: 1500,
+      },
+      {
+        orderLineId: LINE_2,
+        lineAmount: 335n,
+        taxInclusive: inclusive,
+        taxRateBps: null,
+        commissionRateBps: 1500,
+      },
     ],
     ...overrides,
   });
@@ -932,7 +944,8 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
           paid({
             lines: [
               { ...lines[0]!, lineAmount: 1590n, taxRateBps: 0 },
-              { ...lines[1]!, lineAmount: 1100n, taxRateBps: 1000 },
+              // A frozen rate unlike the Market's provisional one: the frozen one is taken out.
+              { ...lines[1]!, lineAmount: 1100n, taxRateBps: 1500 },
             ],
           }),
         ),
@@ -940,19 +953,23 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       const commissions = ledger.rows.filter((r) => r.kind === 'commission');
       expect(commissions.map((r) => [r.orderLineId, r.baseAmount, r.amount])).toEqual([
         [LINE_1, 1590n, money(239n, currency)],
-        [LINE_2, inclusive ? 1000n : 1100n, money(inclusive ? 150n : 165n, currency)],
+        // 1100 / 1.15 = 956.52 -> 957; 15 % = 143.55 -> 144.
+        [LINE_2, inclusive ? 957n : 1100n, money(inclusive ? 144n : 165n, currency)],
       ]);
     });
 
-    it.each([-1, 5001, 1.5, '0'])('refuses a line tax rate of %p', async (taxRateBps) => {
-      const lines = paid().lines;
-      expect(
-        await record(
-          paid({ lines: [{ ...lines[0]!, taxRateBps: taxRateBps as number }, lines[1]!] }),
-        ),
-      ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
-      expect(ledger.rows).toEqual([]);
-    });
+    it.each([-1, 5001, 1.5, '0', undefined])(
+      'refuses a line tax rate of %p',
+      async (taxRateBps) => {
+        const lines = paid().lines;
+        expect(
+          await record(
+            paid({ lines: [{ ...lines[0]!, taxRateBps: taxRateBps as number }, lines[1]!] }),
+          ),
+        ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+        expect(ledger.rows).toEqual([]);
+      },
+    );
 
     it('writes a paid seller order once, and no delivery row for a free delivery', async () => {
       expect(await record(paid({ shipping: 0n }))).toEqual(ok('recorded'));
@@ -964,7 +981,13 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
     it('writes no rows for a fully discounted line, and still records the order', async () => {
       const free = paid({
         lines: [
-          { orderLineId: LINE_1, lineAmount: 0n, taxInclusive: true, commissionRateBps: 1500 },
+          {
+            orderLineId: LINE_1,
+            lineAmount: 0n,
+            taxInclusive: true,
+            taxRateBps: null,
+            commissionRateBps: 1500,
+          },
         ],
       });
       expect(await record(free)).toEqual(ok('recorded'));
@@ -983,15 +1006,33 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       await refused(
         paid({
           lines: [
-            { orderLineId: LINE_1, lineAmount: 100n, taxInclusive: true, commissionRateBps: 3001 },
+            {
+              orderLineId: LINE_1,
+              lineAmount: 100n,
+              taxInclusive: true,
+              taxRateBps: null,
+              commissionRateBps: 3001,
+            },
           ],
         }),
       );
       await refused(
         paid({
           lines: [
-            { orderLineId: LINE_1, lineAmount: 100n, taxInclusive: true, commissionRateBps: 1500 },
-            { orderLineId: LINE_1, lineAmount: 100n, taxInclusive: true, commissionRateBps: 1500 },
+            {
+              orderLineId: LINE_1,
+              lineAmount: 100n,
+              taxInclusive: true,
+              taxRateBps: null,
+              commissionRateBps: 1500,
+            },
+            {
+              orderLineId: LINE_1,
+              lineAmount: 100n,
+              taxInclusive: true,
+              taxRateBps: null,
+              commissionRateBps: 1500,
+            },
           ],
         }),
       );
@@ -1004,6 +1045,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
                 orderLineId: LINE_1,
                 lineAmount: 100n,
                 taxInclusive: true,
+                taxRateBps: null,
                 commissionRateBps: 1500,
                 commissionStandardRateBps,
               },
@@ -1096,6 +1138,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
             orderLineId: LINE_1,
             lineAmount: 1100n,
             taxInclusive: inclusive,
+            taxRateBps: null,
             commissionRateBps: lowered,
             commissionStandardRateBps: marketRate,
           },
@@ -1103,6 +1146,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
             orderLineId: LINE_2,
             lineAmount: 335n,
             taxInclusive: inclusive,
+            taxRateBps: null,
             commissionRateBps: marketRate,
             commissionStandardRateBps: null,
           },
@@ -1770,7 +1814,13 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
           sellerOrderId: tiny,
           shipping: 0n,
           lines: [
-            { orderLineId: line, lineAmount: 1n, taxInclusive: false, commissionRateBps: 1500 },
+            {
+              orderLineId: line,
+              lineAmount: 1n,
+              taxInclusive: false,
+              taxRateBps: null,
+              commissionRateBps: 1500,
+            },
           ],
         }),
       );
@@ -1794,7 +1844,13 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
         paid({
           sellerOrderId: free,
           lines: [
-            { orderLineId: LINE_1, lineAmount: 0n, taxInclusive: true, commissionRateBps: 1500 },
+            {
+              orderLineId: LINE_1,
+              lineAmount: 0n,
+              taxInclusive: true,
+              taxRateBps: null,
+              commissionRateBps: 1500,
+            },
           ],
         }),
       );
