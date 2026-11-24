@@ -197,7 +197,21 @@ describe.each(TEST_MARKETS)('the net figures in market %s', (code) => {
     const future = { from: range.from, to: today.add({ days: 1 }).toString() };
     expect(
       await new ViewMarketplaceNetRevenue(gate, deps).execute(admin, { range: future }),
-    ).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
+    ).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'to', code: 'future' }] },
+    });
+    // The dashboards' 13-month cap, by calendar months (PR 5).
+    const tooLong = {
+      from: today.subtract({ months: 13 }).toString(),
+      to: today.toString(),
+    };
+    expect(
+      await new ViewMarketplaceNetRevenue(gate, deps).execute(admin, { range: tooLong }),
+    ).toEqual({
+      ok: false,
+      error: { code: 'validation.failed', fields: [{ path: 'from', code: 'too-long' }] },
+    });
     expect(reader.calls).toEqual([]);
   });
 

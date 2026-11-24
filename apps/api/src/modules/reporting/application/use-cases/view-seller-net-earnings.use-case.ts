@@ -65,7 +65,9 @@ export class ViewSellerNetEarnings extends UseCase<
     if (sellerId === null) return err({ code: 'access.denied' });
     let range: NetFiguresInput;
     if (input !== null && typeof input === 'object' && 'period' in input) {
-      if (!isPeriodId(input.period)) return err({ code: 'validation.failed' });
+      if (!isPeriodId(input.period)) {
+        return err({ code: 'validation.failed', fields: [{ path: 'period', code: 'enum' }] });
+      }
       const today = marketDayOf(this.deps.clock.now(), this.deps.zone.zoneOf(context.market));
       const { current } = resolvePeriod(input.period, today);
       range = { range: { from: current.from, to: current.to } };

@@ -4,7 +4,6 @@ import {
   isPlatformAdminActor,
   UseCase,
   type AccessDeclaration,
-  type AccessDenied,
   type UseCaseGate,
 } from '../../../../platform/authz';
 import { ORDERING_ORDER_VIEW } from '../../../ordering';
@@ -16,7 +15,12 @@ import {
   type KpiDeltas,
 } from '../../domain/admin-kpi';
 import type { ResolvedPeriod } from '../../domain/period';
-import { readKpiRanges, type AdminKpiDependencies, type KpiInput } from '../admin-kpi-flow';
+import {
+  readKpiRanges,
+  type AdminKpiDependencies,
+  type KpiFailure,
+  type KpiInput,
+} from '../admin-kpi-flow';
 
 export interface OperationsPoint {
   readonly day: string;
@@ -55,11 +59,7 @@ const point = (row: DayTotals): OperationsPoint => ({
  * themselves. Read-only; the numbers are the daily rollups (up to a few minutes old, the answer
  * says when they were rebuilt).
  */
-export class ViewMarketplaceOperationsKpis extends UseCase<
-  KpiInput,
-  OperationsAnswer,
-  AccessDenied
-> {
+export class ViewMarketplaceOperationsKpis extends UseCase<KpiInput, OperationsAnswer, KpiFailure> {
   static override readonly access: AccessDeclaration = {
     name: 'reporting.view-marketplace-operations-kpis',
     rule: { kind: 'permissions', allOf: [ORDERING_ORDER_VIEW.key] },
@@ -75,7 +75,7 @@ export class ViewMarketplaceOperationsKpis extends UseCase<
   protected async handle(
     context: CallContext,
     input: KpiInput,
-  ): Promise<Result<OperationsAnswer, AccessDenied>> {
+  ): Promise<Result<OperationsAnswer, KpiFailure>> {
     if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
     const read = await readKpiRanges(this.deps, context, input);
     if (!read.ok) return read;
