@@ -96,9 +96,7 @@ function exported(
     | 'TEST_REPORTING_WORKER_DATABASE_URL'
     | 'TEST_REPORTING_WORKER_OWNER_DATABASE_URL'
     | 'TEST_REPORTING_ADMIN_KPI_DATABASE_URL'
-    | 'TEST_REPORTING_ADMIN_KPI_OWNER_DATABASE_URL'
-    | 'TEST_REPORTING_SELLER_KPIS_DATABASE_URL'
-    | 'TEST_REPORTING_SELLER_KPIS_OWNER_DATABASE_URL',
+    | 'TEST_REPORTING_SELLER_KPIS_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -494,7 +492,7 @@ export function reportingWorkerOwnerTestDatabaseUrl(): string {
 
 /**
  * The copy that reporting-admin-kpi.db-spec.ts records reporting facts and rollups on in SERIALIZABLE units
- * (global-setup.ts), as the application login and as its owner: no other file's unit meets its
+ * (global-setup.ts), as the application login: no other file's unit meets its
  * predicate locks on the reporting tables.
  */
 export function reportingAdminKpiTestDatabaseUrl(): string {
@@ -503,7 +501,7 @@ export function reportingAdminKpiTestDatabaseUrl(): string {
 
 /**
  * The copy that reporting-seller-kpis.db-spec.ts records reporting facts and rollups on in SERIALIZABLE units
- * (global-setup.ts), as the application login and as its owner: no other file's unit meets its
+ * (global-setup.ts), as the application login: no other file's unit meets its
  * predicate locks on the reporting tables.
  */
 export function reportingSellerKpisTestDatabaseUrl(): string {

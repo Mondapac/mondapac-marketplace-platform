@@ -165,9 +165,9 @@ export default async function globalSetup(): Promise<void> {
  *   `reporting_seller_kpis`: the reporting db-spec of that name records facts and replaces seller
  *   days in SERIALIZABLE units (the projector's isolation). Each unit reads and rewrites whole
  *   seller days of `reporting.daily_seller_sales`, `reporting.daily_category_sales` and the fact
- *   tables; under parallel files the SIREAD locks on those small tables are promoted to page and
- *   relation locks, so units of different files on different sellers and days met as rw-conflicts
- *   and failed with 40001 at random (each file passed alone). Each file keeps its own copy, so
+ *   tables. On these near-empty test tables the predicate (SIREAD) locks are relation-level (a
+ *   sequential scan) or cover the single index page that holds every key, so under parallel files
+ *   units of different files on different sellers and days met as rw-conflicts and failed with 40001 at random (each file passed alone). Each file keeps its own copy, so
  *   only its own units meet; the isolation level stays SERIALIZABLE.
  * Copied before any test connects, since a template must have no other session.
  */
