@@ -215,7 +215,7 @@ afterEach(cleanup);
 
 describe('seller dashboard', () => {
   it("shows today's tasks first, each in words and linked to where it is done", () => {
-    render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />));
+    render(wrap(<SellerDashboard title="Dashboard" data={full} permissionKeys={KEYS} />));
     const card = within(screen.getByRole('region', { name: "Today's tasks" }));
     const late = card.getByRole('link', { name: 'Orders past their delivery promise' });
     expect(late.getAttribute('href')).toBe('/orders');
@@ -237,14 +237,20 @@ describe('seller dashboard', () => {
 
   it("says today's tasks could not be loaded in their card", () => {
     render(
-      wrap(<SellerDashboard data={{ ...full, tasks: { kind: 'error' } }} permissionKeys={KEYS} />),
+      wrap(
+        <SellerDashboard
+          title="Dashboard"
+          data={{ ...full, tasks: { kind: 'error' } }}
+          permissionKeys={KEYS}
+        />,
+      ),
     );
     const card = within(screen.getByRole('region', { name: "Today's tasks" }));
     expect(card.getByText('This could not be loaded. Reload the page to try again.')).toBeTruthy();
   });
 
   it("gives no age for today's orders to ship: when they were paid is not what the seller acts on", () => {
-    render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />));
+    render(wrap(<SellerDashboard title="Dashboard" data={full} permissionKeys={KEYS} />));
     const card = within(screen.getByRole('region', { name: "Today's tasks" }));
     const row = card.getByRole('link', { name: 'Orders to ship today' }).closest('li');
     expect(row?.textContent).toContain('9');
@@ -280,7 +286,15 @@ describe('seller dashboard', () => {
         { key: 'payments.payouts-blocked', level: 'critical', status: 'ok', count: 0, overdue: 0 },
       ],
     };
-    render(wrap(<SellerDashboard data={{ ...full, tasks: ok(answer) }} permissionKeys={KEYS} />));
+    render(
+      wrap(
+        <SellerDashboard
+          title="Dashboard"
+          data={{ ...full, tasks: ok(answer) }}
+          permissionKeys={KEYS}
+        />,
+      ),
+    );
     const card = within(screen.getByRole('region', { name: "Today's tasks" }));
     expect(
       card.getByRole('link', { name: 'Orders past their delivery promise' }).closest('li')
@@ -304,7 +318,15 @@ describe('seller dashboard', () => {
         { key: 'reviews.unanswered', level: 'review', status: 'ok', count: 0, overdue: 0 },
       ],
     };
-    render(wrap(<SellerDashboard data={{ ...full, tasks: ok(answer) }} permissionKeys={KEYS} />));
+    render(
+      wrap(
+        <SellerDashboard
+          title="Dashboard"
+          data={{ ...full, tasks: ok(answer) }}
+          permissionKeys={KEYS}
+        />,
+      ),
+    );
     const card = within(screen.getByRole('region', { name: "Today's tasks" }));
     expect(card.getByText('All clear: nothing needs you right now.')).toBeTruthy();
   });
@@ -316,6 +338,7 @@ describe('seller dashboard', () => {
       render(
         wrap(
           <SellerDashboard
+            title="Dashboard"
             data={{ ...full, tasks: ok({ ...tasks, generatedAt: 'not a time' }) }}
             permissionKeys={KEYS}
           />,
@@ -329,7 +352,7 @@ describe('seller dashboard', () => {
   });
 
   it('links recent orders to their pages', () => {
-    render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />));
+    render(wrap(<SellerDashboard title="Dashboard" data={full} permissionKeys={KEYS} />));
     expect(
       screen.getByRole('link', { name: ID(1).slice(-8).toUpperCase() }).getAttribute('href'),
     ).toBe(`/orders/${ID(1)}`);
@@ -353,7 +376,7 @@ describe('seller dashboard', () => {
       }),
       sources: ok({ version: 1, max: 5, sources: [] }),
     };
-    render(wrap(<SellerDashboard data={data} permissionKeys={KEYS} />));
+    render(wrap(<SellerDashboard title="Dashboard" data={data} permissionKeys={KEYS} />));
     expect(screen.getByRole('link', { name: 'Set up payouts' }).getAttribute('href')).toBe(
       '/accounting/payout-account',
     );
@@ -363,14 +386,14 @@ describe('seller dashboard', () => {
   });
 
   it('shows no banner when payout and stock are in order', () => {
-    render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />));
+    render(wrap(<SellerDashboard title="Dashboard" data={full} permissionKeys={KEYS} />));
     expect(screen.queryByRole('link', { name: 'Set up payouts' })).toBeNull();
     expect(screen.queryByRole('link', { name: 'Add a location' })).toBeNull();
   });
 
   it('fails one widget in place and renders the rest', () => {
     const partly: SellerDashboardData = { ...full, orders: { kind: 'error' } };
-    render(wrap(<SellerDashboard data={partly} permissionKeys={KEYS} />));
+    render(wrap(<SellerDashboard title="Dashboard" data={partly} permissionKeys={KEYS} />));
     const orders = within(screen.getByRole('region', { name: 'Recent orders' }));
     expect(orders.getByText(/This could not be loaded/)).toBeTruthy();
     expect(screen.getByRole('region', { name: "Today's tasks" })).toBeTruthy();
@@ -382,13 +405,13 @@ describe('seller dashboard', () => {
       ...none,
       orders: ok({ sellerOrders: [], nextCursor: null }),
     };
-    render(wrap(<SellerDashboard data={empty} permissionKeys={[]} />));
+    render(wrap(<SellerDashboard title="Dashboard" data={empty} permissionKeys={[]} />));
     expect(screen.getByText('No paid orders yet.')).toBeTruthy();
     expect(screen.queryAllByRole('table')).toHaveLength(0);
   });
 
   it('lists low and out-of-stock items, each linking to its stock page', () => {
-    render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />));
+    render(wrap(<SellerDashboard title="Dashboard" data={full} permissionKeys={KEYS} />));
     const card = within(screen.getByRole('region', { name: 'Stock watch' }));
     const lamb = card.getByRole('link', { name: 'Lamb mince · 500 g' });
     expect(lamb.getAttribute('href')).toBe(`/offers/${ID(20)}/stock`);
@@ -399,8 +422,49 @@ describe('seller dashboard', () => {
     expect(unnamed.closest('li')?.textContent).toContain('Out of stock');
   });
 
+  it('lists out of stock first, then low stock, and links View all to the offers', () => {
+    const item = (n: number, status: string, hours: number) => ({
+      offerId: ID(300 + n),
+      variantId: ID(400 + n),
+      status,
+      onlyLeft: status === 'low' ? n : null,
+      changedAt: new Date(Date.parse(NOW) - hours * 3_600_000).toISOString(),
+      productName: `Item ${n}`,
+      variantLabel: null,
+    });
+    const data: SellerDashboardData = {
+      ...full,
+      lowStock: ok({
+        items: [item(1, 'low', 1), item(2, 'out', 5), item(3, 'low', 2), item(4, 'out', 9)],
+        nextCursor: null,
+      }),
+    };
+    render(wrap(<SellerDashboard title="Dashboard" data={data} permissionKeys={KEYS} />));
+    const card = within(screen.getByRole('region', { name: 'Stock watch' }));
+    const names = card.getAllByRole('link').map((a) => a.textContent);
+    expect(names).toEqual(['View all', 'Item 2', 'Item 4', 'Item 1', 'Item 3']);
+    expect(card.getByRole('link', { name: 'View all' }).getAttribute('href')).toBe('/offers');
+  });
+
+  it('has no View all link without the key of the offers list', () => {
+    render(
+      wrap(
+        <SellerDashboard title="Dashboard" data={full} permissionKeys={['inventory.stock.view']} />,
+      ),
+    );
+    const card = within(screen.getByRole('region', { name: 'Stock watch' }));
+    expect(card.queryByRole('link', { name: 'View all' })).toBeNull();
+  });
+
+  it('shows an order to ship as a routine status, not an attention (amber) one', () => {
+    render(wrap(<SellerDashboard title="Dashboard" data={full} permissionKeys={KEYS} />));
+    const orders = within(screen.getByRole('region', { name: 'Recent orders' }));
+    const badge = orders.getAllByText('To ship')[0]!;
+    expect(badge.className).not.toMatch(/attention/);
+  });
+
   it('formats units in the Market locale', () => {
-    render(wrap(<SellerDashboard data={full} permissionKeys={KEYS} />, 'de-DE'));
+    render(wrap(<SellerDashboard title="Dashboard" data={full} permissionKeys={KEYS} />, 'de-DE'));
     const card = within(screen.getByRole('region', { name: 'Stock watch' }));
     expect(card.getByRole('link', { name: /Lamb mince/ }).closest('li')?.textContent).toContain(
       '1.200 left',
@@ -409,14 +473,18 @@ describe('seller dashboard', () => {
 
   it('says nothing is low or out of stock when the list is empty', () => {
     const data: SellerDashboardData = { ...none, lowStock: ok({ items: [], nextCursor: null }) };
-    render(wrap(<SellerDashboard data={data} permissionKeys={[]} />));
+    render(wrap(<SellerDashboard title="Dashboard" data={data} permissionKeys={[]} />));
     expect(screen.getByText('Nothing is low or out of stock.')).toBeTruthy();
   });
 
   it('fails the low-stock card in place while the others render', () => {
     render(
       wrap(
-        <SellerDashboard data={{ ...full, lowStock: { kind: 'error' } }} permissionKeys={KEYS} />,
+        <SellerDashboard
+          title="Dashboard"
+          data={{ ...full, lowStock: { kind: 'error' } }}
+          permissionKeys={KEYS}
+        />,
       ),
     );
     const card = within(screen.getByRole('region', { name: 'Stock watch' }));
@@ -425,7 +493,15 @@ describe('seller dashboard', () => {
   });
 
   it('hides the low-stock card when the session lacks the key or the API refuses', () => {
-    render(wrap(<SellerDashboard data={{ ...full, lowStock: null }} permissionKeys={KEYS} />));
+    render(
+      wrap(
+        <SellerDashboard
+          title="Dashboard"
+          data={{ ...full, lowStock: null }}
+          permissionKeys={KEYS}
+        />,
+      ),
+    );
     expect(screen.queryByRole('region', { name: 'Stock watch' })).toBeNull();
   });
 
@@ -434,6 +510,7 @@ describe('seller dashboard', () => {
     render(
       wrap(
         <SellerDashboard
+          title="Dashboard"
           data={staff}
           permissionKeys={['ordering.seller-order.view', 'inventory.stock.view']}
         />,
@@ -445,7 +522,15 @@ describe('seller dashboard', () => {
   });
 
   it('needs both keys of the page a quick action opens', () => {
-    render(wrap(<SellerDashboard data={none} permissionKeys={['identity.team-member.invite']} />));
+    render(
+      wrap(
+        <SellerDashboard
+          title="Dashboard"
+          data={none}
+          permissionKeys={['identity.team-member.invite']}
+        />,
+      ),
+    );
     expect(screen.queryByRole('link', { name: 'Invite a team member' })).toBeNull();
     expect(screen.getByText('Nothing to show here yet')).toBeTruthy();
   });
@@ -471,6 +556,7 @@ describe('seller dashboard while it streams', () => {
       render(
         wrap(
           <SellerDashboard
+            title="Dashboard"
             data={{
               tasks: null,
               orders: Promise.resolve(null),
@@ -478,7 +564,7 @@ describe('seller dashboard while it streams', () => {
               sources: null,
               lowStock: null,
             }}
-            permissionKeys={['ordering.seller-order.view', 'catalog.own-product.view']}
+            permissionKeys={['ordering.seller-order.view']}
           />,
         ),
       );
@@ -494,6 +580,7 @@ describe("today's tasks while they are read", () => {
     render(
       wrap(
         <SellerDashboard
+          title="Dashboard"
           data={{ ...none, tasks: new Promise<never>(() => undefined) }}
           permissionKeys={['reviews.seller.view']}
         />,

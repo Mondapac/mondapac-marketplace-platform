@@ -1,18 +1,18 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { KpiCard, type KpiCardProps } from './kpi-card.tsx';
+import { KpiCard } from './kpi-card.tsx';
 
 afterEach(cleanup);
 
-const base: KpiCardProps = {
+const base = {
   icon: 'wallet',
   tile: 'blue',
   label: 'Sales',
   definition: 'Goods of paid orders.',
   definitionLabel: 'What is Sales?',
   scope: 'Last 30 days',
-};
+} as const;
 
 describe('KpiCard', () => {
   it('shows the figure, its scope and the change, and links the label to the list', () => {
@@ -57,5 +57,11 @@ describe('KpiCard', () => {
       </>,
     );
     expect(container.querySelectorAll('[data-highlight]')).toHaveLength(1);
+  });
+
+  it('requires a note or an error when there is no figure', () => {
+    // @ts-expect-error a card without a figure must say why: `note` (or `error`) is required
+    render(<KpiCard {...base} />);
+    expect(screen.getByText('Last 30 days')).toBeTruthy();
   });
 });

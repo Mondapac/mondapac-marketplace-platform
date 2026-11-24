@@ -18,9 +18,10 @@ import {
 } from './types.ts';
 
 export interface SellerKpiSources {
-  readonly kpis: DashboardSource<Widget<SellerKpis>>;
+  /** The sales figures (key `ordering.seller-order.view`); null without it. */
+  readonly kpis: DashboardSource<Widget<SellerKpis>> | null;
   /** The public category tree, to name the top categories; a failure leaves the ids unnamed. */
-  readonly categories: DashboardSource<CategoryTree | null>;
+  readonly categories: DashboardSource<CategoryTree | null> | null;
   /** The seller's own health (no key: every approved seller sees it). */
   readonly health: DashboardSource<Widget<OwnHealth>>;
   /**
@@ -44,17 +45,24 @@ function optionalWidgetOf<T>(answer: ServerGet<T>): Widget<T> | null {
 }
 
 /**
- * Starts the reads of the KPI section, or null when the session may not read the seller's orders
- * (the figures are sums of them). One call each; the cards stream in on their own.
+ * Starts the reads of the KPI section, or null when the session holds neither the orders key (the
+ * sales figures are sums of the orders) nor the earnings key (net earnings and the next payout).
+ * Each group is asked for on its own key: a member with only the earnings key still gets the
+ * earnings cards. One call each; the cards stream in on their own.
  */
 export function startSellerKpis(session: SellerSession, period: Period): SellerKpiSources | null {
-  if (!session.permissionKeys.includes(ORDER_VIEW_PERMISSION)) return null;
-  const kpis = serverGet<SellerKpis>(`${KPIS_PATH}?period=${period}`).then(widgetOf);
-  const health = serverGet<OwnHealth>(HEALTH_PATH).then(widgetOf);
-  const categories = serverGet<CategoryTree>('catalog/categories', { anonymous: true }).then(
-    (answer) => (answer.kind === 'ok' ? answer.body : null),
-  );
+  const orders = session.permissionKeys.includes(ORDER_VIEW_PERMISSION);
   const earnings = session.permissionKeys.includes(EARNINGS_VIEW_PERMISSION);
+  if (!orders && !earnings) return null;
+  const kpis = orders
+    ? serverGet<SellerKpis>(`${KPIS_PATH}?period=${period}`).then(widgetOf)
+    : null;
+  const health = serverGet<OwnHealth>(HEALTH_PATH).then(widgetOf);
+  const categories = orders
+    ? serverGet<CategoryTree>('catalog/categories', { anonymous: true }).then((answer) =>
+        answer.kind === 'ok' ? answer.body : null,
+      )
+    : null;
   const netEarnings = earnings
     ? serverGet<SellerNetEarnings>(`${NET_EARNINGS_PATH}?period=${period}`).then(optionalWidgetOf)
     : null;

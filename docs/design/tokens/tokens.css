@@ -1,4 +1,4 @@
-/* MondaPac design tokens v1.11.0. Source of truth: the Figma file 'MondaPac Design System'.
+/* MondaPac design tokens v1.11.1. Source of truth: the Figma file 'MondaPac Design System'.
  * Do not edit by hand. Change the Figma variables, run the plugin command Export tokens and commit these files. */
 :root {
   --mp-color-bg-page: #F5F6F8;
@@ -7,7 +7,7 @@
   --mp-color-bg-muted: #EEF0F3;
   --mp-color-bg-selected: #EDF2FF;
   --mp-color-bg-row-selected: #F7F9FF;
-  --mp-color-bg-row-attention: #FFFCF7;
+  --mp-color-bg-row-attention: #FFFCF2;
   --mp-color-bg-info-banner: #EEF3FD;
   --mp-color-border-default: #E3E6EB;
   --mp-color-border-row: #EEF0F3;
@@ -31,12 +31,12 @@
   --mp-color-status-success-track: #DDF2E5;
   --mp-color-status-info-bg: #EAF1FB;
   --mp-color-status-info-fg: #1F4E8C;
-  --mp-color-status-attention-bg: #FFF1E0;
-  --mp-color-status-attention-fg: #8F4A00;
-  --mp-color-status-attention-solid: #C46A00;
-  --mp-color-status-attention-track: #FBE3C4;
-  --mp-color-status-attention-border: #F2C894;
-  --mp-color-status-attention-surface: #FFF8EF;
+  --mp-color-status-attention-bg: #FFF4D6;
+  --mp-color-status-attention-fg: #6B5000;
+  --mp-color-status-attention-solid: #B58300;
+  --mp-color-status-attention-track: #FBEBB8;
+  --mp-color-status-attention-border: #E8CB7C;
+  --mp-color-status-attention-surface: #FFF9E8;
   --mp-color-status-critical-bg: #FDEBEA;
   --mp-color-status-critical-fg: #A8231A;
   --mp-color-status-critical-solid: #D92D20;
@@ -84,8 +84,8 @@
   --mp-color-map-road: #E3E6EB;
   --mp-color-map-seller-pin: #1D4FD7;
   --mp-color-map-courier: #0B6B5C;
-  --mp-color-board-action-bg: #FFF8EF;
-  --mp-color-board-action-border: #F3D7B0;
+  --mp-color-board-action-bg: #FFF9E8;
+  --mp-color-board-action-border: #EBDDA8;
   --mp-color-board-prep-bg: #F3F6FC;
   --mp-color-board-prep-border: #D6E0F2;
   --mp-color-board-ready-bg: #F1F8F3;
@@ -191,7 +191,7 @@
   --mp-color-bg-muted: #232933;
   --mp-color-bg-selected: #1B2645;
   --mp-color-bg-row-selected: #18213A;
-  --mp-color-bg-row-attention: #211A10;
+  --mp-color-bg-row-attention: #211C10;
   --mp-color-bg-info-banner: #15213A;
   --mp-color-border-default: #2A303B;
   --mp-color-border-row: #222833;
@@ -215,12 +215,12 @@
   --mp-color-status-success-track: #1C4A30;
   --mp-color-status-info-bg: #13284A;
   --mp-color-status-info-fg: #8DB5F2;
-  --mp-color-status-attention-bg: #33240D;
-  --mp-color-status-attention-fg: #F5B65C;
-  --mp-color-status-attention-solid: #E08A1E;
-  --mp-color-status-attention-track: #4A3418;
-  --mp-color-status-attention-border: #6B4A1F;
-  --mp-color-status-attention-surface: #241A0D;
+  --mp-color-status-attention-bg: #33290B;
+  --mp-color-status-attention-fg: #F0C85A;
+  --mp-color-status-attention-solid: #D9A21A;
+  --mp-color-status-attention-track: #4A3C14;
+  --mp-color-status-attention-border: #6B5420;
+  --mp-color-status-attention-surface: #241E0C;
   --mp-color-status-critical-bg: #3B1512;
   --mp-color-status-critical-fg: #F79A90;
   --mp-color-status-critical-solid: #F04438;
@@ -268,8 +268,8 @@
   --mp-color-map-road: #2A303B;
   --mp-color-map-seller-pin: #7096FF;
   --mp-color-map-courier: #5BCFB8;
-  --mp-color-board-action-bg: #211A10;
-  --mp-color-board-action-border: #4A3418;
+  --mp-color-board-action-bg: #211C10;
+  --mp-color-board-action-border: #4A3C14;
   --mp-color-board-prep-bg: #141B2C;
   --mp-color-board-prep-border: #2B3F6B;
   --mp-color-board-ready-bg: #10221A;

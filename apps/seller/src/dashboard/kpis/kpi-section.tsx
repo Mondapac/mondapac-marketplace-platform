@@ -1,10 +1,12 @@
 import {
   Badge,
   BarList,
+  ChartEmpty,
   ChartSkeleton,
   DashboardCard,
   DashboardSlot,
   EmptyState,
+  InsightCard,
   KpiCard,
   Ring,
   StatCardSkeleton,
@@ -14,6 +16,8 @@ import {
   type DashboardSource,
   type GridLayout,
   type IconName,
+  type InsightTable,
+  type StatDeltaProps,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import type { ReactNode } from 'react';
@@ -21,12 +25,13 @@ import { shortInstant } from '../../catalog/format.ts';
 import type { CategoryTree } from '../../catalog/products-list-types.ts';
 import type { NextPayout } from '../../earnings/payout-types.ts';
 import type { HealthBand, OwnHealth } from '../../performance/types.ts';
+import { PAYOUT_ACCOUNT_PATH } from '../../payout/types.ts';
 import { formatMinor } from '../../price/money.ts';
 import type { Widget } from '../types.ts';
 import type { SellerKpiSources } from './load.ts';
 import { SalesChartCard, type ChartDay } from './sales-chart-card.tsx';
 import type { Period, SellerKpis, SellerNetEarnings } from './types.ts';
-import { deltasOf } from './view.ts';
+import { deltasOf, MIN_BASE_ORDERS } from './view.ts';
 
 type Source<T> = DashboardSource<Widget<T> | null>;
 
@@ -57,6 +62,18 @@ const dayLabel = (day: string, locale: string): string =>
 const okOf = <T,>(widget: Widget<T> | null): T | null =>
   widget?.kind === 'ok' ? widget.value : null;
 
+/** Where the seller fixes why a payout is not on its way; the earnings page when there is no fix page. */
+const BLOCK_FIX: Record<string, string> = {
+  'account-not-ready': PAYOUT_ACCOUNT_PATH,
+  'cooling-off': PAYOUT_ACCOUNT_PATH,
+  'second-factor-required': '/account/security',
+};
+
+/** A change with no figure ("n/a") says why: the previous period had too few orders. */
+function withHint(delta: StatDeltaProps, hint: string): StatDeltaProps {
+  return delta.value === 'n/a' ? { ...delta, hint } : delta;
+}
+
 function useStalled() {
   return useTranslations('dashboard')('error.card');
 }
@@ -76,7 +93,7 @@ function SalesCard({
   const t = useTranslations('dashboard.kpi');
   const locale = useLocale();
   const stalled = useStalled();
-  const scope = t(`scope.${period}`);
+  const scope = `${t(`scope.${period}`)} · ${t('sales.basis')}`;
   return (
     <DashboardSlot
       layout={KPI_LAYOUT}
@@ -101,7 +118,7 @@ function SalesCard({
           <KpiCard
             {...common}
             value={formatMinor(kpis.current.salesInclTax, kpis.currency, locale)}
-            delta={delta.sales}
+            delta={withHint(delta.sales, t('delta.na'))}
             sparkline={kpis.series.map((day) => Number(day.salesInclTax))}
           />
         );
@@ -143,7 +160,7 @@ function OrdersCard({
           <KpiCard
             {...common}
             value={formatCount(kpis.current.orders, false, locale)}
-            delta={delta.orders}
+            delta={withHint(delta.orders, t('delta.na'))}
             sparkline={kpis.series.map((day) => day.orders)}
           />
         );
@@ -188,7 +205,9 @@ function NetEarningsCard({
           return <KpiCard {...common} scope={t(`scope.${period}`)} error={stalled} />;
         }
         if (!earnings.ready || earnings.netEarnings === null) {
-          return <KpiCard {...common} scope={t('earnings.scope')} note={t('earnings.not-ready')} />;
+          return (
+            <KpiCard {...common} scope={t(`scope.${period}`)} note={t('earnings.not-ready')} />
+          );
         }
         return (
           <KpiCard
@@ -237,6 +256,7 @@ function NextPayoutCard({ source }: { readonly source: Source<NextPayout> }) {
           return (
             <KpiCard
               {...common}
+              href={BLOCK_FIX[reason] ?? common.href}
               note={t(`payout.block.${reason}` as 'payout.block.unknown')}
               scope={slot === null ? t('payout.no-slot') : t('payout.looked-at', { when: slot })}
             />
@@ -315,6 +335,7 @@ function SalesChart({
             scope={scope}
             currency={kpis.currency}
             locale={locale}
+            period={period}
             periodLabel={t(`scope.${period}`)}
             days={days(kpis.series)}
             previousDays={days(kpis.previousSeries)}
@@ -329,14 +350,17 @@ const SIDE_LAYOUT: GridLayout = { span: 4, tabletSpan: 6 };
 
 /**
  * The best-selling part of the dashboard. There is no per-product sales read yet (FE-178), so the
- * card ranks the seller's categories, which the KPI endpoint does send.
+ * card ranks the seller's categories, which the KPI endpoint does send. With fewer than
+ * MIN_BASE_ORDERS paid orders a ranking says nothing, so the card says "not enough data" instead.
  */
 function TopCategories({
   source,
   categories,
+  period,
 }: {
   readonly source: Source<SellerKpis>;
   readonly categories: DashboardSource<CategoryTree | null>;
+  readonly period: Period;
 }) {
   const t = useTranslations('dashboard.kpi');
   const locale = useLocale();
@@ -344,7 +368,7 @@ function TopCategories({
   const frame = {
     id: 'dash-kpi-categories',
     title: t('categories.title'),
-    scope: t('categories.scope'),
+    scope: `${t(`scope.${period}`)} · ${t('categories.basis')}`,
   };
   const fallback = (
     <DashboardCard {...frame}>
@@ -360,24 +384,60 @@ function TopCategories({
           <DashboardSlot source={categories} fallback={fallback}>
             {(tree) => {
               const names = new Map((tree?.categories ?? []).map((c) => [c.id, c.name]));
-              const items: BarListItem[] = kpis.topCategories.map((row, index) => ({
-                id: row.categoryId,
-                label:
+              const rows = kpis.topCategories.map((row, index) => ({
+                row,
+                name:
                   tree === null
                     ? t('categories.numbered', { n: index + 1 })
                     : (names.get(row.categoryId) ?? t('categories.other')),
+                money: formatMinor(row.netSalesInclTax, kpis.currency, locale),
+              }));
+              const items: BarListItem[] = rows.map(({ row, name, money }) => ({
+                id: row.categoryId,
+                label: name,
                 value: Number(row.netSalesInclTax),
-                display: formatMinor(row.netSalesInclTax, kpis.currency, locale),
+                display: money,
                 detail: t('categories.detail', { orders: row.orders, units: row.units }),
               }));
+              const table: InsightTable = {
+                caption: t('categories.table'),
+                columns: [
+                  { id: 'name', header: t('categories.col.name') },
+                  { id: 'sales', header: t('categories.col.sales'), align: 'end' },
+                  { id: 'orders', header: t('categories.col.orders'), align: 'end' },
+                  { id: 'units', header: t('categories.col.units'), align: 'end' },
+                ],
+                rows: rows.map(({ row, name, money }) => [
+                  name,
+                  money,
+                  String(row.orders),
+                  String(row.units),
+                ]),
+              };
+              const insufficient = kpis.current.orders > 0 && kpis.current.orders < MIN_BASE_ORDERS;
+              const none = items.length === 0 || kpis.current.orders === 0;
               return (
-                <DashboardCard {...frame}>
-                  {items.length === 0 ? (
-                    <EmptyState size="compact" icon="inbox" title={t('categories.empty')} />
-                  ) : (
-                    <BarList label={t('categories.title')} items={items} />
-                  )}
-                </DashboardCard>
+                <InsightCard
+                  {...frame}
+                  definition={t('def.categories')}
+                  definitionLabel={t('def.what', { name: t('categories.title') })}
+                  viewAsTable={t('chart.table')}
+                  viewAsChart={t('chart.chart')}
+                  chart={
+                    none ? (
+                      <EmptyState size="compact" icon="inbox" title={t('categories.empty')} />
+                    ) : insufficient ? (
+                      <ChartEmpty
+                        height={160}
+                        message={t('categories.insufficient')}
+                        hint={t('categories.insufficient-hint', { count: MIN_BASE_ORDERS })}
+                      />
+                    ) : (
+                      <BarList label={t('categories.title')} items={items} />
+                    )
+                  }
+                  {...(none || insufficient ? {} : { table })}
+                />
               );
             }}
           </DashboardSlot>
@@ -387,7 +447,10 @@ function TopCategories({
   );
 }
 
-/** Store health out of 100 as a ring, with the scored measures beside it. */
+/**
+ * Store health out of 100 as a ring, with the scored measures beside it and as a table. A store
+ * that is still New (too few orders to score) or has no score says so as "not enough data".
+ */
 function StoreHealth({ source }: { readonly source: Source<OwnHealth> }) {
   const t = useTranslations('dashboard.kpi');
   const tm = useTranslations('performance.metric');
@@ -413,51 +476,76 @@ function StoreHealth({ source }: { readonly source: Source<OwnHealth> }) {
         const health = okOf(widget);
         if (health === null) return <DashboardCard {...frame} error={stalled} />;
         const card = health.current;
-        let body: ReactNode;
+        const common = {
+          ...frame,
+          definition: t('def.health'),
+          definitionLabel: t('def.what', { name: t('health.title') }),
+          viewAsTable: t('chart.table'),
+          viewAsChart: t('chart.chart'),
+        };
         if (card === null || card.kind !== 'scored' || card.score === null) {
-          body = (
-            <p className="text-sm text-fg-muted">
-              {t(card?.kind === 'new' ? 'health.new' : 'health.none')}
-            </p>
-          );
-        } else {
-          const scored = card.metrics.filter((m) => m.kind === 'scored' && m.score !== undefined);
-          body = (
-            <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
-              <Ring
-                label={t('health.title')}
-                percent={card.score}
-                display={String(card.score)}
-                caption={
-                  card.band === null
-                    ? t('health.out-of')
-                    : `${t('health.out-of')} · ${t(`health.band.${card.band}`)}`
-                }
-                size={128}
-                emptyLabel={t('health.none')}
-              />
-              <ul aria-label={t('health.measures')} className="flex min-w-40 flex-1 flex-col gap-2">
-                {scored.map((m) => (
-                  <li key={m.metric} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="text-fg-secondary">
-                      {tm(`${m.metric}.name` as 'late-ready.name')}
-                    </span>
-                    <span className="flex items-center gap-2 font-medium tabular-nums text-fg">
-                      {m.score}
-                      {m.band == null ? null : (
-                        <Badge tone={BAND_TONE[m.band]}>{tm(`band.${m.band}`)}</Badge>
-                      )}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <p className="w-full text-xs text-fg-muted">
-                {t('health.orders', { count: card.orders })}
-              </p>
-            </div>
+          return (
+            <InsightCard
+              {...common}
+              chart={
+                <ChartEmpty
+                  height={140}
+                  message={t('health.insufficient')}
+                  hint={t(card?.kind === 'new' ? 'health.new' : 'health.none')}
+                />
+              }
+            />
           );
         }
-        return <DashboardCard {...frame}>{body}</DashboardCard>;
+        const scored = card.metrics.filter((m) => m.kind === 'scored' && m.score !== undefined);
+        const table: InsightTable = {
+          caption: t('health.table'),
+          columns: [
+            { id: 'measure', header: t('health.col.measure') },
+            { id: 'score', header: t('health.col.score'), align: 'end' },
+            { id: 'status', header: t('health.col.status') },
+          ],
+          rows: scored.map((m) => [
+            tm(`${m.metric}.name` as 'late-ready.name'),
+            String(m.score),
+            m.band == null ? '-' : tm(`band.${m.band}`),
+          ]),
+        };
+        const chart: ReactNode = (
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+            <Ring
+              label={t('health.title')}
+              percent={card.score}
+              display={String(card.score)}
+              caption={
+                card.band === null
+                  ? t('health.out-of')
+                  : `${t('health.out-of')} · ${t(`health.band.${card.band}`)}`
+              }
+              size={128}
+              emptyLabel={t('health.none')}
+            />
+            <ul aria-label={t('health.measures')} className="flex min-w-40 flex-1 flex-col gap-2">
+              {scored.map((m) => (
+                <li key={m.metric} className="flex items-center justify-between gap-3 text-sm">
+                  <span className="text-fg-secondary">
+                    {tm(`${m.metric}.name` as 'late-ready.name')}
+                  </span>
+                  <span className="flex items-center gap-2 font-medium tabular-nums text-fg">
+                    {m.score}
+                    {m.band == null ? null : (
+                      <Badge tone={BAND_TONE[m.band]}>{tm(`band.${m.band}`)}</Badge>
+                    )}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            <p className="w-full text-xs text-fg-muted">
+              {t('health.orders', { count: card.orders })}
+            </p>
+          </div>
+        );
+        return <InsightCard {...common} chart={chart} table={table} />;
       }}
     </DashboardSlot>
   );
@@ -465,9 +553,10 @@ function StoreHealth({ source }: { readonly source: Source<OwnHealth> }) {
 
 /**
  * The KPI part of the seller dashboard as items of its DashboardGrid: the four headline cards
- * (Sales, Seller orders paid, Net earnings, Next payout), the sales chart with its measure
- * switch, the best-selling categories and the store health. Every block reads on its own and
- * says so in place when its read fails; sales figures never show a zero for a failed read.
+ * (Sales, Orders paid, Net earnings, Next payout), the sales chart with its measure switch, the
+ * best-selling categories and the store health. Each group is present only when its read was
+ * started (its key). Every block reads on its own and says so in place when its read fails; sales
+ * figures never show a zero for a failed read.
  */
 export function KpiItems({
   sources,
@@ -478,15 +567,21 @@ export function KpiItems({
 }) {
   return (
     <>
-      <SalesCard source={sources.kpis} period={period} />
-      <OrdersCard source={sources.kpis} period={period} />
+      {sources.kpis === null ? null : (
+        <>
+          <SalesCard source={sources.kpis} period={period} />
+          <OrdersCard source={sources.kpis} period={period} />
+        </>
+      )}
       {sources.netEarnings === null ? null : (
         <NetEarningsCard source={sources.netEarnings} period={period} />
       )}
       {sources.nextPayout === null ? null : <NextPayoutCard source={sources.nextPayout} />}
-      <SalesChart source={sources.kpis} period={period} />
+      {sources.kpis === null ? null : <SalesChart source={sources.kpis} period={period} />}
       <StoreHealth source={sources.health} />
-      <TopCategories source={sources.kpis} categories={sources.categories} />
+      {sources.kpis === null || sources.categories === null ? null : (
+        <TopCategories source={sources.kpis} categories={sources.categories} period={period} />
+      )}
     </>
   );
 }

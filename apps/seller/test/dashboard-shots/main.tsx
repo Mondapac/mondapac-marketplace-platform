@@ -212,7 +212,7 @@ const sources: SellerKpiSources = {
     timezone: 'Australia/Brisbane',
     currency: 'AUD',
     ready: scenario !== 'withheld',
-    netEarnings: scenario === 'withheld' ? null : '1419000',
+    netEarnings: scenario === 'withheld' ? null : scenario === 'empty' ? '0' : '1419000',
     refreshedAt: ago(1),
   }),
   nextPayout: ok({
@@ -234,7 +234,14 @@ const empty: SellerKpiSources = {
   ...sources,
   kpis: ok({
     ...kpis,
-    current: totals(cur.map((r) => ({ ...r, orders: 1, salesInclTax: '0' }))),
+    current: {
+      ...totals(cur),
+      salesInclTax: '0',
+      salesExclTax: '0',
+      orders: 0,
+      units: 0,
+      averageOrderValue: null,
+    },
     series: cur.map((r) => ({ ...r, orders: 0, salesInclTax: '0' })),
     previousSeries: prev.map((r) => ({ ...r, orders: 0, salesInclTax: '0' })),
     topCategories: [],
@@ -245,8 +252,8 @@ const pick = scenario === 'sparse' ? sparse : scenario === 'empty' ? empty : sou
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages} timeZone="Australia/Brisbane">
     <main className="mx-auto max-w-[1200px] p-4 md:p-6">
-      <h1 className="mb-4 text-2xl font-semibold">Dashboard</h1>
       <SellerDashboard
+        title="Dashboard"
         data={data}
         permissionKeys={[
           'ordering.seller-order.view',

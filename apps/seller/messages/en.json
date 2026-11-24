@@ -176,7 +176,8 @@
       "add-product": "Add a product",
       "stock-locations": "Stock locations",
       "payout-account": "Payout account",
-      "invite-team": "Invite a team member"
+      "invite-team": "Invite a team member",
+      "offers": "Offers"
     },
     "kpi": {
       "title": "Sales and performance",
@@ -203,7 +204,7 @@
       },
       "card": {
         "sales": "Sales (incl. GST)",
-        "orders": "Seller orders paid",
+        "orders": "Orders paid",
         "earnings": "Net earnings",
         "payout": "Next payout"
       },
@@ -224,15 +225,26 @@
           "orders": "Orders"
         },
         "insufficient": "Not enough data yet",
-        "insufficient-hint": "A line needs at least two days. Pick a longer period."
+        "insufficient-hint": "The line appears once you have orders on two or more days.",
+        "empty-current": "No paid orders in this period.",
+        "insufficient-today": "The chart needs two or more days. Choose 7 days or longer."
       },
       "categories": {
         "title": "Top categories",
-        "scope": "By sales after refunds, this period. Products are not ranked yet.",
         "empty": "No sales in this period.",
         "other": "Other categories",
         "detail": "{orders, plural, one {# order} other {# orders}} · {units, plural, one {# unit} other {# units}}",
-        "numbered": "Category {n}"
+        "numbered": "Category {n}",
+        "basis": "after refunds, incl. GST",
+        "table": "Top categories as a table",
+        "col": {
+          "name": "Category",
+          "sales": "Sales",
+          "orders": "Orders",
+          "units": "Units"
+        },
+        "insufficient": "Not enough data yet",
+        "insufficient-hint": "A ranking needs at least {count} paid orders in the period."
       },
       "health": {
         "title": "Store health",
@@ -247,18 +259,27 @@
         },
         "out-of": "/100",
         "scope": "Updated daily · score out of 100",
-        "measures": "Scored measures"
+        "measures": "Scored measures",
+        "insufficient": "Not enough data yet",
+        "table": "Store health measures as a table",
+        "col": {
+          "measure": "Measure",
+          "score": "Score",
+          "status": "Status"
+        }
       },
       "def": {
         "what": "What is {name}?",
-        "sales": "Goods of paid orders, with GST, in the period. Delivery fees are not included. Days are counted in your Market time.",
-        "orders": "The number of your seller orders that were paid in the period. Cancelled orders are not taken out.",
+        "sales": "Gross sales: goods of paid orders with GST, before refunds. Delivery fees are not included. Days are counted in your Market time.",
+        "orders": "The number of your orders that were paid in the period. Orders later cancelled are still counted.",
         "earnings": "What you keep from your sales after commission, refunds and cashback you fund, without GST. It comes from your earnings ledger and is shown once a week of ledger records is in.",
-        "payout": "The estimated amount of your next payout and the day it is looked at. It can change before payout day if an order is refunded or disputed."
+        "payout": "The estimated amount of your next payout and the day it is looked at. It can change before payout day if an order is refunded or disputed.",
+        "categories": "Your categories ranked by net sales: goods of paid orders with GST after refunds, so the figures can be lower than Sales. Products are not ranked yet.",
+        "health": "Your store health is the lowest of five measures, each scored 0 to 100 (cancellations, late orders, rating, disputes, reports). 67 or more is healthy. It is updated daily and needs enough orders to be scored."
       },
       "earnings": {
         "scope": "after commission, excl. GST",
-        "not-ready": "Available after a week of payout records"
+        "not-ready": "Shown once a week of earnings records is in"
       },
       "payout": {
         "estimated": "Estimated",
@@ -276,6 +297,12 @@
           "second-factor-required": "Two-step sign-in needed",
           "unknown": "Not on its way yet"
         }
+      },
+      "sales": {
+        "basis": "before refunds"
+      },
+      "delta": {
+        "na": "Too few orders in the previous period to compare."
       }
     }
   },
@@ -5541,9 +5568,7 @@
       "customers": {
         "title": "Customers",
         "about": "People who bought from your store, follow it or joined through your invite link.",
-        "good": [
-          "You see a code and a first name only."
-        ],
+        "good": ["You see a code and a first name only."],
         "related": [
           {
             "label": "Invite customers",
@@ -5558,9 +5583,7 @@
       "customers-code": {
         "title": "Customer",
         "about": "One customer's orders from your store.",
-        "good": [
-          "You see a code and a first name only."
-        ],
+        "good": ["You see a code and a first name only."],
         "related": [
           {
             "label": "Invite customers",
@@ -5599,9 +5622,7 @@
       "accounting-payout-account": {
         "title": "Payout account",
         "about": "Where your payouts go.",
-        "good": [
-          "You add your bank account on Stripe. MondaPac never sees your bank details."
-        ],
+        "good": ["You add your bank account on Stripe. MondaPac never sees your bank details."],
         "related": [
           {
             "label": "Earnings",
@@ -5612,9 +5633,7 @@
       "performance": {
         "title": "Performance",
         "about": "How your store is doing for customers.",
-        "good": [
-          "This is information for you: nothing here changes your store by itself."
-        ],
+        "good": ["This is information for you: nothing here changes your store by itself."],
         "related": []
       },
       "category-proposals": {
@@ -5628,17 +5647,13 @@
       "tag-suggestions": {
         "title": "Tag suggestions",
         "about": "Ask for a tag the list does not have.",
-        "good": [
-          "We review each one and email you the result."
-        ],
+        "good": ["We review each one and email you the result."],
         "related": []
       },
       "tag-suggestions-new": {
         "title": "Suggest a tag",
         "about": "Suggest a tag only if you cannot find it in the Tags field. Once approved, add it to your product yourself.",
-        "good": [
-          "We review each one and email you the result."
-        ],
+        "good": ["We review each one and email you the result."],
         "related": []
       },
       "value-suggestions": {
@@ -5666,9 +5681,7 @@
       "settings-store-profile": {
         "title": "Store profile",
         "about": "What buyers see on your store page.",
-        "good": [
-          "Changes are public as soon as you save them."
-        ],
+        "good": ["Changes are public as soon as you save them."],
         "related": []
       },
       "settings-stock-locations": {
@@ -5747,9 +5760,7 @@
       "account-security": {
         "title": "Security",
         "about": "Two-step verification asks for a code from your phone each time you sign in.",
-        "good": [
-          "It is optional, and we recommend it."
-        ],
+        "good": ["It is optional, and we recommend it."],
         "related": []
       },
       "account-sessions": {

@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../messages/en.json';
@@ -105,6 +105,7 @@ const mount = (sources: Partial<SellerKpiSources> = {}, locale = 'en-AU') =>
   render(
     <NextIntlClientProvider locale={locale} messages={messages}>
       <SellerDashboard
+        title="Dashboard"
         data={NONE}
         permissionKeys={KEYS}
         period="7d"
@@ -134,7 +135,7 @@ describe('the seller KPI cards', () => {
     const sales = card('Sales (incl. GST)');
     expect(sales.getByText(/\$2,200\.00/)).toBeTruthy();
     expect(sales.getByText('+100.0%')).toBeTruthy();
-    expect(card('Seller orders paid').getByText('20')).toBeTruthy();
+    expect(card('Orders paid').getByText('20')).toBeTruthy();
     expect(card('Net earnings').getByText(/\$1,800\.00/)).toBeTruthy();
     const next = card('Next payout');
     expect(next.getByText(/\$2,310\.00/)).toBeTruthy();
@@ -150,7 +151,7 @@ describe('the seller KPI cards', () => {
   it('withholds net earnings until a week of ledger records, never as a number', () => {
     mount({ netEarnings: ok(net({ ready: false, netEarnings: null })) });
     const earnings = card('Net earnings');
-    expect(earnings.getByText('Available after a week of payout records')).toBeTruthy();
+    expect(earnings.getByText('Shown once a week of earnings records is in')).toBeTruthy();
     expect(earnings.queryByText(/\$/)).toBeNull();
   });
 
@@ -169,7 +170,7 @@ describe('the seller KPI cards', () => {
 
   it('says a failed read in place and never shows a zero for it', () => {
     mount({ kpis: { kind: 'error' as const }, netEarnings: { kind: 'error' as const } });
-    for (const name of ['Sales (incl. GST)', 'Seller orders paid', 'Net earnings']) {
+    for (const name of ['Sales (incl. GST)', 'Orders paid', 'Net earnings']) {
       expect(card(name).getByRole('alert').textContent).toMatch(/could not be loaded/i);
     }
     expect(screen.queryByText('$0.00')).toBeNull();
@@ -185,7 +186,120 @@ describe('the seller KPI cards', () => {
   });
 });
 
+describe('the seller KPI cards, more', () => {
+  it('opens a definition from the question mark of every card', () => {
+    mount();
+    for (const name of ['Sales (incl. GST)', 'Orders paid', 'Net earnings', 'Next payout']) {
+      const button = screen.getByRole('button', { name: `What is ${name}?` });
+      expect(button.getAttribute('aria-expanded')).toBe('false');
+      fireEvent.click(button);
+      expect(button.getAttribute('aria-expanded')).toBe('true');
+      const id = button.getAttribute('aria-controls') ?? '';
+      expect(document.getElementById(id)?.textContent?.length).toBeGreaterThan(20);
+    }
+    expect(screen.getByText(/Orders later cancelled are still counted\./)).toBeTruthy();
+    expect(screen.getByText(/before refunds/, { selector: 'p' })).toBeTruthy();
+  });
+
+  it('drops the commission fragment and shows a clock while net earnings are withheld', () => {
+    mount({ netEarnings: ok(net({ ready: false, netEarnings: null })) });
+    const earnings = card('Net earnings');
+    expect(earnings.getByText('Shown once a week of earnings records is in')).toBeTruthy();
+    expect(earnings.queryByText(/after commission/)).toBeNull();
+    expect(document.querySelector('[data-kpi-card] svg')).toBeTruthy();
+  });
+
+  it('says why a change has no figure', () => {
+    mount({ kpis: ok({ ...kpis, previous: totals({ orders: 3, salesInclTax: '0' }) }) });
+    expect(
+      screen.getAllByTitle('Too few orders in the previous period to compare.').length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('links a blocked payout to the page that fixes it, else to the earnings page', () => {
+    const link = (reason: string) => {
+      mount({ nextPayout: ok(payout({ blockReason: reason, estimatedAmount: null })) });
+      const href = card('Next payout')
+        .getByRole('link', { name: 'Next payout' })
+        .getAttribute('href');
+      cleanup();
+      return href;
+    };
+    expect(link('account-not-ready')).toBe('/accounting/payout-account');
+    expect(link('cooling-off')).toBe('/accounting/payout-account');
+    expect(link('second-factor-required')).toBe('/account/security');
+    expect(link('below-minimum')).toBe('/earnings');
+  });
+
+  it('gives a member with only the earnings key the earnings cards and the health, no sales', () => {
+    mount({ kpis: null, categories: null });
+    expect(document.querySelectorAll('[data-kpi-card]')).toHaveLength(2);
+    expect(screen.queryByRole('region', { name: 'Sales' })).toBeNull();
+    expect(screen.getByRole('region', { name: 'Store health' })).toBeTruthy();
+  });
+});
+
 describe('the seller sales chart', () => {
+  it('shows the same figures as a table with both periods when asked', () => {
+    mount();
+    const chart = within(screen.getByRole('region', { name: 'Sales' }));
+    fireEvent.click(chart.getByRole('button', { name: 'View as table' }));
+    const grid = chart.getByRole('table');
+    const header = within(grid)
+      .getAllByRole('columnheader')
+      .map((th) => th.textContent);
+    expect(header).toEqual(['Day', 'This period', 'Previous period']);
+    // One row per day of the series, plus the header row.
+    expect(within(grid).getAllByRole('row')).toHaveLength(3);
+    expect(within(grid).getByText('$1,000.00')).toBeTruthy();
+    expect(within(grid).getByText('$500.00')).toBeTruthy();
+  });
+
+  it('says only the current period is empty, and only says "or the one before" when both are', () => {
+    const zero = (rows: SellerKpis['series']) =>
+      rows.map((d) => ({ ...d, orders: 0, salesInclTax: '0' }));
+    mount({
+      kpis: ok({
+        ...kpis,
+        current: totals({ orders: 0, salesInclTax: '0' }),
+        series: zero(kpis.series),
+      }),
+    });
+    expect(screen.getByText('No paid orders in this period.')).toBeTruthy();
+    cleanup();
+    mount({
+      kpis: ok({ ...kpis, series: zero(kpis.series), previousSeries: zero(kpis.previousSeries) }),
+    });
+    expect(screen.getByText('No paid orders in this period or the one before.')).toBeTruthy();
+  });
+
+  it.each([
+    ['today', 'The chart needs two or more days. Choose 7 days or longer.'],
+    ['30d', 'The line appears once you have orders on two or more days.'],
+  ] as const)('says what a one-day chart needs on %s, never "pick a longer period"', (id, hint) => {
+    const one = { ...kpis, series: kpis.series.slice(0, 1), previousSeries: [] };
+    render(
+      <NextIntlClientProvider locale="en-AU" messages={messages}>
+        <SellerDashboard
+          title="Dashboard"
+          data={NONE}
+          permissionKeys={KEYS}
+          period={id}
+          kpis={{
+            kpis: ok(one),
+            categories: { categories: [] },
+            health: ok(health),
+            netEarnings: null,
+            nextPayout: null,
+          }}
+        />
+      </NextIntlClientProvider>,
+    );
+    expect(screen.getByText('Not enough data yet', { selector: 'p' })).toBeTruthy();
+    expect(screen.getByText(hint)).toBeTruthy();
+    expect(screen.queryByText(/Pick a longer period/)).toBeNull();
+  });
+
   it('switches the measure from sales to orders', () => {
     mount();
     const chart = () => screen.getByRole('img', { name: /against the previous period/ });
@@ -229,6 +343,30 @@ describe('the seller sales chart', () => {
 });
 
 describe('the seller store health and categories', () => {
+  it('shows each as a table too, with a definition', () => {
+    mount();
+    const health = within(screen.getByRole('region', { name: 'Store health' }));
+    fireEvent.click(health.getByRole('button', { name: 'View as table' }));
+    const grid = health.getByRole('table', { name: 'Store health measures as a table' });
+    expect(within(grid).getByText('Ready late')).toBeTruthy();
+    expect(within(grid).getByText('92')).toBeTruthy();
+    fireEvent.click(health.getByRole('button', { name: 'What is Store health?' }));
+    expect(health.getByText(/lowest of five measures/)).toBeTruthy();
+    const cats = within(screen.getByRole('region', { name: 'Top categories' }));
+    fireEvent.click(cats.getByRole('button', { name: 'View as table' }));
+    const list = cats.getByRole('table', { name: 'Top categories as a table' });
+    expect(within(list).getByText('Fresh meat')).toBeTruthy();
+    expect(within(list).getByText('$1,500.00')).toBeTruthy();
+    expect(cats.getByRole('button', { name: 'What is Top categories?' })).toBeTruthy();
+  });
+
+  it('says not enough data for a ranking of fewer than five orders', () => {
+    mount({ kpis: ok({ ...kpis, current: totals({ orders: 3 }) }) });
+    const cats = within(screen.getByRole('region', { name: 'Top categories' }));
+    expect(cats.getByText('Not enough data yet')).toBeTruthy();
+    expect(cats.queryByRole('button', { name: 'View as table' })).toBeNull();
+  });
+
   it('shows the score out of 100 as a ring with the scored measures only', () => {
     mount();
     const region = within(screen.getByRole('region', { name: 'Store health' }));
@@ -237,17 +375,22 @@ describe('the seller store health and categories', () => {
     expect(region.queryByText('Customer rating')).toBeNull();
   });
 
-  it('says a new store has no score yet', () => {
+  it('says a new store, below the minimum orders, has not enough data yet', () => {
     mount({ health: ok({ ...health, current: { ...health.current, kind: 'new', score: null } }) });
-    expect(screen.getByText('Your score appears after your first orders.')).toBeTruthy();
+    const card = within(screen.getByRole('region', { name: 'Store health' }));
+    expect(card.getByText('Not enough data yet')).toBeTruthy();
+    expect(card.getByText('Your score appears after your first orders.')).toBeTruthy();
   });
 
-  it('names categories, and numbers the bars when the category tree failed', () => {
+  it('names categories, and numbers the bars when the category tree failed', async () => {
     mount();
     expect(screen.getByText('Fresh meat')).toBeTruthy();
     cleanup();
-    mount({ categories: null });
-    expect(screen.getByText('Category 1')).toBeTruthy();
+    await act(async () => {
+      mount({ categories: Promise.resolve(null) });
+      await Promise.resolve();
+    });
+    expect(await screen.findByText('Category 1')).toBeTruthy();
   });
 });
 

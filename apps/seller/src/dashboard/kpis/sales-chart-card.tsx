@@ -11,6 +11,7 @@ import {
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { exponentOf, formatMinor } from '../../price/money.ts';
+import type { Period } from './types.ts';
 
 /** The measures the chart can switch between; each is a series the KPI endpoint already sends. */
 export const MEASURES = ['sales', 'orders'] as const;
@@ -35,6 +36,7 @@ export function SalesChartCard({
   scope,
   currency,
   locale,
+  period,
   periodLabel,
   days,
   previousDays,
@@ -45,6 +47,7 @@ export function SalesChartCard({
   readonly currency: string;
   readonly locale: string;
   /** "Last 30 days", for the text alternative. */
+  readonly period: Period;
   readonly periodLabel: string;
   readonly days: readonly ChartDay[];
   readonly previousDays: readonly ChartDay[];
@@ -52,8 +55,10 @@ export function SalesChartCard({
   const t = useTranslations('dashboard.kpi');
   const [measure, setMeasure] = useState<Measure>('sales');
   const exp = 10 ** exponentOf(currency);
-  const noOrders =
-    days.every((day) => day.orders === 0) && previousDays.every((day) => day.orders === 0);
+  const currentEmpty = days.every((day) => day.orders === 0);
+  const bothEmpty = currentEmpty && previousDays.every((day) => day.orders === 0);
+  // A line needs orders on two or more days; before that there is a point, not a trend.
+  const insufficient = days.length < 2 || days.filter((day) => day.orders > 0).length < 2;
   const points = (rows: readonly ChartDay[]): ChartPoint[] =>
     rows.map((day) => ({ label: day.label, value: day[measure] }));
   const count = new Intl.NumberFormat(locale);
@@ -73,10 +78,15 @@ export function SalesChartCard({
         />
       }
     >
-      {noOrders ? (
+      {bothEmpty ? (
         <ChartEmpty message={t('chart.empty')} />
-      ) : days.length < 2 ? (
-        <ChartEmpty message={t('chart.insufficient')} hint={t('chart.insufficient-hint')} />
+      ) : currentEmpty ? (
+        <ChartEmpty message={t('chart.empty-current')} />
+      ) : insufficient ? (
+        <ChartEmpty
+          message={t('chart.insufficient')}
+          hint={t(period === 'today' ? 'chart.insufficient-today' : 'chart.insufficient-hint')}
+        />
       ) : (
         <LineAreaChart
           title={t('chart.alt', { measure: t(`chart.measure.${measure}`), period: periodLabel })}

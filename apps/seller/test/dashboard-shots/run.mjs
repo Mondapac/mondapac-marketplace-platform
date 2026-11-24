@@ -35,7 +35,7 @@ const { chromium } = process.env.PLAYWRIGHT_PATH
 const browser = await chromium.launch();
 // name, scenario: the dashboard with every card, a withheld net earnings, one day of data, no sales
 const views = [
-  ['seller-dashboard', 'full', [1280, 768, 375]],
+  ['seller-dashboard', 'full', [1280, 768, 375, 360]],
   ['seller-dashboard-withheld', 'withheld', [1280]],
   ['seller-dashboard-sparse', 'sparse', [1280]],
   ['seller-dashboard-empty', 'empty', [1280]],

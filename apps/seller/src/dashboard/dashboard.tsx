@@ -11,6 +11,7 @@ import {
   EmptyState,
   GridItem,
   LinkButton,
+  PageHeader,
   activitySkeletonColumns,
   formatCount,
   type ActivityColumn,
@@ -33,9 +34,10 @@ import { DEFAULT_PERIOD, PERIODS, type Period } from './kpis/types.ts';
 import { RECENT, type SellerDashboardSources, type Widget } from './types.ts';
 
 const FULFILMENTS = ['to-ship', 'shipped', 'delivered'] as const;
+// A routine status is not a warning: no attention (amber) tone for an order to ship.
 const FULFILMENT_TONE: Record<string, BadgeTone> = {
-  'to-ship': 'attention',
-  shipped: 'info',
+  'to-ship': 'info',
+  shipped: 'neutral',
   delivered: 'success',
 };
 const STOCK_STATUSES = ['low', 'out'] as const;
@@ -43,6 +45,7 @@ const STOCK_TONE: Record<string, BadgeTone> = { low: 'attention', out: 'critical
 /** Quick actions: each needs the keys of the page it opens (the same as that page checks). */
 const ACTIONS = [
   { id: 'add-product', href: '/products/new', anyOf: ['catalog.own-product.edit'] },
+  { id: 'offers', href: '/offers', anyOf: ['catalog.own-product.view'] },
   { id: 'stock-locations', href: '/settings/stock-locations', anyOf: ['inventory.stock.view'] },
   {
     id: 'payout-account',
@@ -270,12 +273,23 @@ function Orders({ data }: { readonly data: SellerDashboardSources }) {
   );
 }
 
+/** Out of stock first, then low stock; the API's order (latest change first) holds within each. */
+const byUrgency = (a: { readonly status: string }, b: { readonly status: string }): number =>
+  Number(b.status === 'out') - Number(a.status === 'out');
+
 /**
  * The stock watch: sell units that are low or out of stock, each opening that offer's stock page.
  * Best sellers first needs a per-offer sales read that does not exist yet (FE-179), so the order
- * is the API's: latest change first.
+ * is out of stock first, then low stock, each by latest change.
  */
-function LowStock({ data }: { readonly data: SellerDashboardSources }) {
+function LowStock({
+  data,
+  canOpenOffers,
+}: {
+  readonly data: SellerDashboardSources;
+  /** The session may open the offers list (the "View all" link). */
+  readonly canOpenOffers: boolean;
+}) {
   const t = useTranslations('dashboard');
   const locale = useLocale();
   const text = useSkeletonText();
@@ -284,6 +298,8 @@ function LowStock({ data }: { readonly data: SellerDashboardSources }) {
     id: 'dash-low-stock',
     title: t('low-stock.title'),
     scope: t('low-stock.scope'),
+    // No low-stock filter on the offers list yet (FE-182): the link opens the list itself.
+    ...(canOpenOffers ? { action: { href: '/offers', label: t('view-all') } } : {}),
   };
   return (
     <DashboardSlot
@@ -294,7 +310,7 @@ function LowStock({ data }: { readonly data: SellerDashboardSources }) {
       {(widget) => {
         if (widget === null) return null;
         const page = ok(widget);
-        const rows = page?.items.slice(0, RECENT) ?? [];
+        const rows = [...(page?.items ?? [])].sort(byUrgency).slice(0, RECENT);
         return (
           <DashboardCard {...frame} {...(page === null ? { error: t('error.card') } : {})}>
             {rows.length === 0 ? (
@@ -374,11 +390,14 @@ function allRefused(data: SellerDashboardSources): DashboardSource<boolean> {
  * The period switch drives the figures and the chart; it lives in the address (`?period=`).
  */
 export function SellerDashboard({
+  title,
   data,
   permissionKeys,
   kpis,
   period = DEFAULT_PERIOD,
 }: {
+  /** The page title (the h1 of the title row, which holds the period switch). */
+  readonly title: string;
   readonly data: SellerDashboardSources;
   readonly permissionKeys: readonly string[];
   /** The KPI reads; absent without the orders key (the figures are sums of the orders). */
@@ -392,19 +411,31 @@ export function SellerDashboard({
   const nothing =
     kpis == null && Object.values(data).every((widget) => widget === null) && !actions;
   if (nothing) {
-    return <EmptyState size="card" icon="home" title={t('none.title')} body={t('none.body')} />;
+    return (
+      <div className="flex flex-col gap-4">
+        <PageHeader title={title} />
+        <EmptyState size="card" icon="home" title={t('none.title')} body={t('none.body')} />
+      </div>
+    );
   }
   const grid = (
     <DashboardGrid>
       {kpis == null ? null : <KpiItems sources={kpis} period={period} />}
       <TodaysTasks source={data.tasks} layout={{ span: 4, tabletSpan: 6, mobileOrder: 'tasks' }} />
-      <LowStock data={data} />
+      <LowStock data={data} canOpenOffers={keys.has('catalog.own-product.view')} />
       <Orders data={data} />
       <QuickActions keys={keys} />
     </DashboardGrid>
   );
+  const body = (
+    <>
+      <Notices data={data} />
+      {grid}
+    </>
+  );
   return (
     <DashboardLoading label={t('loading')} className="flex flex-col gap-4">
+      {kpis == null ? <PageHeader title={title} /> : null}
       {actions || kpis != null ? null : (
         // Every read the session may ask for came back refused: say so, as for a role with none.
         <DashboardSlot source={allRefused(data)} fallback={null}>
@@ -415,17 +446,16 @@ export function SellerDashboard({
           }
         </DashboardSlot>
       )}
-      <Notices data={data} />
       {kpis == null ? (
-        grid
+        body
       ) : (
         <PeriodSwitch
+          title={title}
           label={tk('period.label')}
           options={PERIODS.map((id) => ({ id, label: tk(`period.${id}`) }))}
           value={period}
-          note={tk(`compared.${period}`)}
         >
-          {grid}
+          {body}
         </PeriodSwitch>
       )}
     </DashboardLoading>

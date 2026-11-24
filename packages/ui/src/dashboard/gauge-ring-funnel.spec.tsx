@@ -276,7 +276,27 @@ describe('dashboard grid', () => {
     const cls = gridItemClass({ span: 3, tabletSpan: 6, phoneSpan: 6 });
     expect(cls).toContain('lg:col-span-3');
     expect(cls).toContain('md:col-span-6');
-    expect(cls.split(' ')).toContain('col-span-6');
+    // Two across from 400 px; a narrower phone gets one column, so labels never take three lines.
+    expect(cls.split(' ')).toContain('min-[400px]:col-span-6');
+    expect(cls.split(' ')).toContain('col-span-12');
+  });
+  it('hides a grid item with no content, and keeps one that shows a loading fallback', () => {
+    const { container } = render(
+      <DashboardGrid>
+        <GridItem span={4}>{null}</GridItem>
+        <GridItem span={4}>
+          <DashboardSlot source={new Promise<never>(() => undefined)} fallback={<p>Loading</p>}>
+            {() => null}
+          </DashboardSlot>
+        </GridItem>
+      </DashboardGrid>,
+    );
+    const items = [...container.querySelectorAll('[data-dashboard-grid] > *')];
+    expect(items).toHaveLength(2);
+    expect(items[0]?.className).toContain('empty:hidden');
+    expect(items[0]?.matches(':empty')).toBe(true);
+    expect(items[1]?.matches(':empty')).toBe(false);
+    expect(screen.getByText('Loading')).toBeTruthy();
   });
   it('orders KPIs, then tasks, then the rest on a phone and keeps page order from tablet up', () => {
     expect(gridItemClass({ mobileOrder: 'kpi' })).toContain('order-1 md:order-none');

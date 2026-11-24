@@ -43,7 +43,10 @@ export interface GridLayout {
   readonly span?: GridSpan;
   /** Columns of 12 at the tablet width (md). Default: the desktop span. */
   readonly tabletSpan?: GridSpan;
-  /** Columns of 12 on a phone: 6 puts two items side by side (KPI cards). Default 12. */
+  /**
+   * Columns of 12 on a phone: 6 puts two items side by side (KPI cards) from 400 px; a narrower
+   * phone gets one column, so labels never wrap to three lines. Default 12.
+   */
   readonly phoneSpan?: 6 | 12;
   /** Phone order; from the tablet width the order is the order in the page. Default 'rest'. */
   readonly mobileOrder?: MobileOrder;
@@ -64,7 +67,10 @@ const MD_SPAN: Record<GridSpan, string> = {
   8: 'md:col-span-8',
   12: 'md:col-span-12',
 };
-const PHONE_SPAN: Record<6 | 12, string> = { 6: 'col-span-6', 12: 'col-span-12' };
+const PHONE_SPAN: Record<6 | 12, string> = {
+  6: 'col-span-12 min-[400px]:col-span-6',
+  12: 'col-span-12',
+};
 const ORDER: Record<MobileOrder, string> = {
   kpi: 'order-1 md:order-none',
   tasks: 'order-2 md:order-none',
@@ -105,8 +111,10 @@ export function DashboardGrid({
 }
 
 /**
- * One item of the grid; declares its spans and phone order. The item is a flex row (hidden while it has no content, so a card that turns out absent leaves no hole) so its child
- * fills it and matches the row's height: a child that is not a DashboardCard needs `flex-1`.
+ * One item of the grid; declares its spans and phone order. The item is a flex row, so its child
+ * fills it and matches the row's height: a child that is not a DashboardCard needs `flex-1`. It is
+ * hidden while it has no content (`empty:hidden`), so a card that turns out absent leaves no hole;
+ * a Suspense fallback is content, so a loading card keeps its place.
  */
 export function GridItem({
   as: Tag = 'div',

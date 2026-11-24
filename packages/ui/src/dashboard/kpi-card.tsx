@@ -16,7 +16,16 @@ const TILE: Record<KpiTile, string> = {
   slate: 'bg-kpi-slate-bg text-kpi-slate-fg',
 };
 
-export interface KpiCardProps {
+/**
+ * What the card shows in place of nothing: a figure, a note saying in words why there is none, or
+ * an error. A card without a figure must say why, so `note` or `error` is required without `value`.
+ */
+type KpiBody =
+  | { readonly value: string; readonly note?: undefined; readonly error?: undefined }
+  | { readonly value?: undefined; readonly note: string; readonly error?: undefined }
+  | { readonly value?: undefined; readonly note?: undefined; readonly error: string };
+
+interface KpiCardBase {
   readonly icon: IconName;
   readonly tile: KpiTile;
   /** What is shown ("Sales (incl. GST)"). */
@@ -25,15 +34,6 @@ export interface KpiCardProps {
   readonly definition: string;
   /** Names the "?" button ("What is Net earnings?"). */
   readonly definitionLabel: string;
-  /** The figure as shown. Not used with `note` or `error`. */
-  readonly value?: string;
-  /**
-   * Said instead of a figure when there is none to show ("Available after a week of payout
-   * records"). A withheld figure is never drawn as a number, a zero or a partial total.
-   */
-  readonly note?: string;
-  /** Shown instead of the figure when it could not be read. */
-  readonly error?: string;
   /** What the figure covers ("Last 30 days"). Always shown. */
   readonly scope: string;
   /** The page that lists what is counted; the label is then the link of the whole card. */
@@ -41,11 +41,13 @@ export interface KpiCardProps {
   /** Only one card of a strip is highlighted (the main figure). */
   readonly highlight?: boolean;
   readonly delta?: StatDeltaProps;
-  /** A small trend (values in time order); decoration, the figure is the text. */
+  /** A small trend (values in time order), right of the figure from the sm width; decoration. */
   readonly sparkline?: readonly number[];
-  /** A small status next to the change line ("Scheduled"). */
+  /** A small status next to the change line ("Estimated"). */
   readonly badge?: ReactNode;
 }
+
+export type KpiCardProps = KpiCardBase & KpiBody;
 
 /**
  * One headline figure of a dashboard: a coloured icon tile, the label with a "?" definition,
@@ -70,7 +72,6 @@ export function KpiCard({
 }: KpiCardProps) {
   const [open, setOpen] = useState(false);
   const definitionId = useId();
-  const withheld = error === undefined && value === undefined;
   return (
     <div
       data-kpi-card=""
@@ -82,11 +83,11 @@ export function KpiCard({
       <div className="flex items-start justify-between gap-2">
         <span className="flex min-w-0 items-center gap-1 text-sm font-medium text-fg-secondary">
           {href === undefined || error !== undefined ? (
-            <span className="min-w-0 break-words">{label}</span>
+            <span className="line-clamp-2 min-w-0 break-words">{label}</span>
           ) : (
             <a
               href={href}
-              className="min-w-0 break-words after:absolute after:inset-0 after:rounded-lg hover:underline"
+              className="line-clamp-2 min-w-0 break-words after:absolute after:inset-0 after:rounded-lg hover:underline"
             >
               {label}
             </a>
@@ -118,12 +119,24 @@ export function KpiCard({
         <span role="alert" className="text-sm text-critical-fg">
           {error}
         </span>
-      ) : withheld ? (
-        <span className="text-sm text-fg-muted">{note}</span>
+      ) : value === undefined ? (
+        <span className="flex items-center gap-1.5 text-sm text-fg-muted">
+          <span aria-hidden="true" className="shrink-0 text-icon-muted">
+            <Icon name="clock" />
+          </span>
+          {note}
+        </span>
       ) : (
-        <span className="flex flex-wrap items-end justify-between gap-x-3 gap-y-1">
-          <span className="text-2xl font-semibold tabular-nums text-fg sm:text-3xl">{value}</span>
-          {sparkline === undefined ? null : <Sparkline values={sparkline} />}
+        // One row: the figure on the left, the trend on its right, so every card is as tall.
+        <span className="flex min-h-8 items-end justify-between gap-2">
+          <span className="min-w-0 break-words text-2xl font-semibold tabular-nums text-fg">
+            {value}
+          </span>
+          {sparkline === undefined ? null : (
+            <span className="hidden sm:block">
+              <Sparkline values={sparkline} />
+            </span>
+          )}
         </span>
       )}
       {error !== undefined || (delta === undefined && badge === undefined) ? null : (

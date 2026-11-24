@@ -11,7 +11,7 @@ C = {
  "bg/muted": ("#EEF0F3", "#232933", "FRAME_FILL,SHAPE_FILL", "Document viewer, neutral fills"),
  "bg/selected": ("#EDF2FF", "#1B2645", "FRAME_FILL,SHAPE_FILL", "Active nav item, applied filter, selected segment"),
  "bg/row-selected": ("#F7F9FF", "#18213A", "FRAME_FILL", "Selected table row"),
- "bg/row-attention": ("#FFFCF7", "#211A10", "FRAME_FILL", "Rows that need action"),
+ "bg/row-attention": ("#FFFCF2", "#211C10", "FRAME_FILL", "Rows that need action"),
  "bg/info-banner": ("#EEF3FD", "#15213A", "FRAME_FILL", "Info banner"),
  "border/default": ("#E3E6EB", "#2A303B", "STROKE_COLOR,SHAPE_FILL", "Card and section borders"),
  "border/row": ("#EEF0F3", "#222833", "STROKE_COLOR,SHAPE_FILL", "Row dividers"),
@@ -35,12 +35,12 @@ C = {
  "status/success/track": ("#DDF2E5", "#1C4A30", "SHAPE_FILL,STROKE_COLOR", "Success ring track"),
  "status/info/bg": ("#EAF1FB", "#13284A", "FRAME_FILL,SHAPE_FILL", "Info badge background"),
  "status/info/fg": ("#1F4E8C", "#8DB5F2", "TEXT_FILL,SHAPE_FILL,STROKE_COLOR", "Info text and icon"),
- "status/attention/bg": ("#FFF1E0", "#33240D", "FRAME_FILL,SHAPE_FILL", "Attention badge background"),
- "status/attention/fg": ("#8F4A00", "#F5B65C", "TEXT_FILL,SHAPE_FILL,STROKE_COLOR", "Attention text and icon"),
- "status/attention/solid": ("#C46A00", "#E08A1E", "SHAPE_FILL,STROKE_COLOR", "Attention meter fill, pips"),
- "status/attention/track": ("#FBE3C4", "#4A3418", "SHAPE_FILL,STROKE_COLOR", "Attention meter track"),
- "status/attention/border": ("#F2C894", "#6B4A1F", "STROKE_COLOR", "Attention card border"),
- "status/attention/surface": ("#FFF8EF", "#241A0D", "FRAME_FILL", "Attention panel background"),
+ "status/attention/bg": ("#FFF4D6", "#33290B", "FRAME_FILL,SHAPE_FILL", "Attention badge background"),
+ "status/attention/fg": ("#6B5000", "#F0C85A", "TEXT_FILL,SHAPE_FILL,STROKE_COLOR", "Attention text and icon"),
+ "status/attention/solid": ("#B58300", "#D9A21A", "SHAPE_FILL,STROKE_COLOR", "Attention meter fill, pips"),
+ "status/attention/track": ("#FBEBB8", "#4A3C14", "SHAPE_FILL,STROKE_COLOR", "Attention meter track"),
+ "status/attention/border": ("#E8CB7C", "#6B5420", "STROKE_COLOR", "Attention card border"),
+ "status/attention/surface": ("#FFF9E8", "#241E0C", "FRAME_FILL", "Attention panel background"),
  "status/critical/bg": ("#FDEBEA", "#3B1512", "FRAME_FILL,SHAPE_FILL", "Critical badge background"),
  "status/critical/fg": ("#A8231A", "#F79A90", "TEXT_FILL,SHAPE_FILL,STROKE_COLOR", "Critical text and icon"),
  "status/critical/solid": ("#D92D20", "#F04438", "SHAPE_FILL,STROKE_COLOR", "Urgent card border, red ring"),
@@ -88,8 +88,8 @@ C = {
  "map/road": ("#E3E6EB", "#2A303B", "STROKE_COLOR", "Map roads"),
  "map/seller-pin": ("#1D4FD7", "#7096FF", "SHAPE_FILL", "Seller with open orders"),
  "map/courier": ("#0B6B5C", "#5BCFB8", "SHAPE_FILL", "Courier position"),
- "board/action-bg": ("#FFF8EF", "#211A10", "FRAME_FILL", "Needs action column"),
- "board/action-border": ("#F3D7B0", "#4A3418", "STROKE_COLOR", "Needs action column border"),
+ "board/action-bg": ("#FFF9E8", "#211C10", "FRAME_FILL", "Needs action column"),
+ "board/action-border": ("#EBDDA8", "#4A3C14", "STROKE_COLOR", "Needs action column border"),
  "board/prep-bg": ("#F3F6FC", "#141B2C", "FRAME_FILL", "Preparing column"),
  "board/prep-border": ("#D6E0F2", "#2B3F6B", "STROKE_COLOR", "Preparing column border"),
  "board/ready-bg": ("#F1F8F3", "#10221A", "FRAME_FILL", "Ready column"),
@@ -127,7 +127,7 @@ def fam(name, hexes):
     for h in hexes: FAM.setdefault(h.upper(), name)
 fam("neutral", ["#FFFFFF","#F9FAFB","#F5F6F8","#EEF0F3","#E3E6EB","#D0D5DD","#98A1B0","#8A93A3","#7C8698","#5B6475","#3F4756","#111827","#0E1116","#161A21","#1B2029","#232933","#2A303B","#222833","#3A4250","#6B7586","#E8EBF0","#C3C9D3","#8B95A6","#262C36","#EBEEF2","#4A525E","#232830","#181C24"])
 fam("blue", ["#0B1D2E","#EDF2FF","#F7F9FF","#EEF3FD","#C9D7F5","#1B45BD","#173FB0","#1D4FD7","#1A45BF","#C7D4F5","#EAF1FB","#1F4E8C","#B9C9F2","#9DB4F0","#DCE6FB","#DDE7F3","#F3F6FC","#D6E0F2","#1B2645","#18213A","#15213A","#2B3F6B","#8FB0FF","#B3C8FF","#3D68E6","#3159D4","#26345A","#13284A","#8DB5F2","#7096FF","#2C3F73","#4A68B8","#22305A","#17263A","#141B2C","#F3F5F8"])
-fam("amber", ["#FFFCF7","#FFF1E0","#8F4A00","#C46A00","#FBE3C4","#F2C894","#FFF8EF","#F3D7B0","#211A10","#33240D","#F5B65C","#E08A1E","#4A3418","#6B4A1F","#241A0D"])
+fam("amber", ["#FFFCF2","#FFF4D6","#6B5000","#B58300","#FBEBB8","#E8CB7C","#FFF9E8","#EBDDA8","#211C10","#33290B","#F0C85A","#D9A21A","#4A3C14","#6B5420","#241E0C"])
 fam("green", ["#E7F6EC","#12663A","#DDF2E5","#F1F8F3","#CFE6D7","#0F2E1D","#6CD49A","#1C4A30","#10221A","#1F4A33"])
 fam("red", ["#FDEBEA","#A8231A","#D92D20","#B42318","#F6C9C5","#F3C4C0","#3B1512","#F79A90","#F04438","#4F201C","#7A2E28"])
 fam("teal", ["#06352E","#0B6B5C","#F2FAF8","#B7DDD5","#E6F4F1","#DCEFEA","#5BCFB8","#0F2925","#1F4D45","#123430","#143A34"])
@@ -281,7 +281,7 @@ EFFECTS = [
 MOTION = {"duration/fast": 120, "duration/base": 160, "duration/slow": 240}
 
 spec = {
- "version": "1.11.0", "generated": "2026-11-23",
+ "version": "1.11.1", "generated": "2026-11-24",
  "primitives": [{"name": n, "hex": h} for n, h in primitives],
  "color": [{"name": k, "light": None if literal(v[0]) else prim[v[0].upper()], "dark": None if literal(v[1]) else prim[v[1].upper()], "lightHex": v[0].upper(), "darkHex": v[1].upper(), "scopes": v[2].split(','), "description": v[3]} for k, v in C.items()],
  "dimension": [{"name": k, "desktop": v[0], "touch": v[1], "scopes": DSCOPE[k.split('/')[0]].split(',')} for k, v in D.items()],

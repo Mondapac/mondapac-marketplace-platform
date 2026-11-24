@@ -24,7 +24,7 @@ beforeEach(() => {
 });
 
 describe('startSellerKpis', () => {
-  it('reads nothing without the orders key', () => {
+  it('reads nothing without the orders key or the earnings key', () => {
     expect(startSellerKpis(session(['catalog.offer.view']), '7d')).toBeNull();
     expect(mocks.get).not.toHaveBeenCalled();
   });
@@ -49,6 +49,26 @@ describe('startSellerKpis', () => {
     await Promise.all([sources?.netEarnings, sources?.nextPayout]);
     expect(mocks.get).toHaveBeenCalledWith('reporting/seller/net-earnings?period=7d');
     expect(mocks.get).toHaveBeenCalledWith('commission-payouts/seller/payouts/next');
+  });
+
+  it('gives a member with only the earnings key the earnings cards, and no sales read', async () => {
+    const sources = startSellerKpis(session(['commission-payouts.earnings.view']), '30d');
+    expect(sources?.kpis).toBeNull();
+    expect(sources?.categories).toBeNull();
+    await Promise.all([sources?.netEarnings, sources?.nextPayout, sources?.health]);
+    const paths = mocks.get.mock.calls.map((call) => call[0] as string).sort();
+    expect(paths).toEqual([
+      'commission-payouts/seller/payouts/next',
+      'reporting/seller/net-earnings?period=30d',
+      'sellers/own-health',
+    ]);
+  });
+
+  it('gives a member with only the orders key the sales cards and no earnings read', () => {
+    const sources = startSellerKpis(session(['ordering.seller-order.view']), '30d');
+    expect(sources?.kpis).not.toBeNull();
+    expect(sources?.netEarnings).toBeNull();
+    expect(sources?.nextPayout).toBeNull();
   });
 
   it('leaves the earnings cards out when the API refuses them', async () => {

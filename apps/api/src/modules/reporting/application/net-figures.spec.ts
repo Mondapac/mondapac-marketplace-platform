@@ -227,4 +227,32 @@ describe.each(TEST_MARKETS)('the net figures in market %s', (code) => {
     expect(bad).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
     expect(reader.calls).toHaveLength(1);
   });
+
+  it("counts a period in the Market's local day, not the UTC day, near midnight", async () => {
+    const tz = zone.zoneOf(market);
+    // 00:30 local on 22 Nov: in UTC that is the 21st for a zone ahead of UTC, the 22nd for UTC itself.
+    const local = Temporal.ZonedDateTime.from({
+      timeZone: tz,
+      year: 2026,
+      month: 11,
+      day: 22,
+      hour: 0,
+      minute: 30,
+    });
+    const nearMidnight = { ...deps, clock: new FixedClock(local.toInstant()) };
+    const localToday = '2026-11-22';
+    const week = Temporal.PlainDate.from(localToday);
+    const rows = Array.from({ length: 7 }, (_, n) => ({
+      sellerOrderId: `so-${n}`,
+      day: week.subtract({ days: n + 1 }).toString() as MarketDay,
+    }));
+    reader.match = { paid: rows, commission: rows, knownUnpaid: new Set() };
+    const out = await new ViewSellerNetEarnings(gate, nearMidnight).execute(seller, {
+      period: 'today',
+    });
+    if (!out.ok) throw new Error(out.error.code);
+    expect(out.value.range).toEqual({ from: localToday, to: localToday });
+    const utcDay = local.toInstant().toString().slice(0, 10);
+    if (tz !== 'UTC') expect(utcDay === localToday).toBe(local.offsetNanoseconds <= 0);
+  });
 });
