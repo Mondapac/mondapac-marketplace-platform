@@ -3557,11 +3557,15 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
         shipping: 500n,
       });
       expect(sent.paidAt.equals(stored.confirmedAt!)).toBe(true);
-      expect(sent.lines.map((l) => [l.lineAmount, l.taxInclusive, l.commissionRateBps])).toEqual(
+      expect(
+        sent.lines.map((l) => [l.lineAmount, l.taxInclusive, l.taxRateBps, l.commissionRateBps]),
+      ).toEqual(
         stored.lines
           .filter((l) => l.sellerOrderId === sellerA.id)
-          .map((l) => [l.lineAmount, l.taxInclusive, 1500]),
+          .map((l) => [l.lineAmount, l.taxInclusive, l.taxRateBps, 1500]),
       );
+      // The line's own frozen tax rate goes to the ledger (never the flat provisional one).
+      expect(sent.lines.every((l) => typeof l.taxRateBps === 'number')).toBe(true);
 
       // Marked, so the next run finds nothing; only the system actor may run it.
       expect(await record()).toEqual(ok({ recorded: 0, failed: [], stuck: [] }));
