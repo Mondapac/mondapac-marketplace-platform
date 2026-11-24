@@ -195,7 +195,7 @@ export function DonutChart({
                             data-swatch=""
                             className={`size-3 shrink-0 rounded-sm ${colorClasses(s.colorKey).bg}`}
                           />
-                          <span className="min-w-0 truncate" title={s.label}>
+                          <span className="min-w-0 break-words" title={s.label}>
                             {s.label}
                           </span>
                         </span>
@@ -329,7 +329,7 @@ export function DonutChart({
                       aria-hidden="true"
                       className={`size-3 shrink-0 rounded-sm ${colorClasses(s.colorKey).bg}`}
                     />
-                    <span className="truncate text-fg-secondary" title={s.label}>
+                    <span className="min-w-0 break-words text-fg-secondary" title={s.label}>
                       {s.label}
                     </span>
                     <span className="min-w-20 text-end font-medium text-fg tabular-nums">

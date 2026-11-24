@@ -18,6 +18,7 @@ describe('the custom range', () => {
     // A month end is clamped: 31 March less 13 months is 28 February, so the range starts 1 March.
     expect(earliestFrom('2026-03-31')).toBe('2025-03-01');
     expect(earliestFrom('2024-03-31')).toBe('2023-03-01');
+    expect(earliestFrom('2028-02-29')).toBe('2027-01-30');
   });
 
   it('validates with the API codes, in the API order', () => {
@@ -41,6 +42,9 @@ describe('the custom range', () => {
     expect(marketToday('Australia/Brisbane', instant)).toBe('2026-11-23');
     expect(marketToday('Pacific/Auckland', instant)).toBe('2026-11-23');
     expect(marketToday('America/Los_Angeles', instant)).toBe('2026-11-22');
+    const early = new Date('2026-11-22T05:00:00Z');
+    expect(marketToday('Pacific/Honolulu', early)).toBe('2026-11-21');
+    expect(marketToday('Australia/Brisbane', early)).toBe('2026-11-22');
   });
 
   it('keeps the selection in the address and reads it back', () => {

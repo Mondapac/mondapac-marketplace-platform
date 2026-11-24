@@ -1,5 +1,5 @@
 {
- "version": "1.11.1",
+ "version": "1.11.2",
  "generated": "2026-11-24",
  "primitives": [
   {
@@ -241,6 +241,14 @@
   {
    "name": "coral/735",
    "hex": "#3A1A16"
+  },
+  {
+   "name": "cyan/275",
+   "hex": "#22B8D9"
+  },
+  {
+   "name": "cyan/390",
+   "hex": "#0891B2"
   },
   {
    "name": "green/30",
@@ -1774,16 +1782,16 @@
   },
   {
    "name": "chart/cat-4",
-   "light": "honey/235",
-   "dark": "honey/330",
-   "lightHex": "#EDA100",
-   "darkHex": "#C98500",
+   "light": "cyan/390",
+   "dark": "cyan/275",
+   "lightHex": "#0891B2",
+   "darkHex": "#22B8D9",
    "scopes": [
     "SHAPE_FILL",
     "FRAME_FILL",
     "STROKE_COLOR"
    ],
-   "description": "Categorical series 4 (amber)"
+   "description": "Categorical series 4 (cyan)"
   },
   {
    "name": "chart/cat-5",

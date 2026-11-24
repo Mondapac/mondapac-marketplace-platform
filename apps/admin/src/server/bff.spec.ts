@@ -5491,6 +5491,22 @@ describe('relay of the dashboard report download', () => {
     }
   });
 
+  it('refuses a repeated key and an over-long value', async () => {
+    for (const query of [
+      '?period=7d&period=30d&format=csv',
+      `?period=7d&format=csv&from=${'1'.repeat(300)}`,
+    ]) {
+      const bad = await get(query);
+      expect([query.slice(0, 40), bad.response.status]).toEqual([query.slice(0, 40), 400]);
+      expect(bad.url).toBeUndefined();
+    }
+  });
+
+  it('relays a custom period without its days as it is: the API refuses it, never the relay', async () => {
+    const lone = await get('?period=custom&format=csv');
+    expect(lone.url).toBe('http://api.test/reporting/admin/daily/export?period=custom&format=csv');
+  });
+
   it('drops a key it does not know', async () => {
     expect((await get('?period=7d&format=csv&extra=1')).url).toBe(
       'http://api.test/reporting/admin/daily/export?period=7d&format=csv',

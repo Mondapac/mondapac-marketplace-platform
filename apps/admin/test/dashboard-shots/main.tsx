@@ -42,8 +42,10 @@ const counts = (days: number, base: number, shift: number) =>
     ordersCancelled: 1,
     refunds: 1,
   }));
-const cur = money(30, 610000, 0);
-const prev = money(30, 560000, 3);
+// A custom range shows as many days as its inputs say (1 Sep to 23 Nov is 84 days).
+const N = scenario === 'custom' ? 84 : 30;
+const cur = money(N, 610000, 0);
+const prev = money(N, 560000, 3);
 const gmvTotal = cur.reduce((n, r) => n + Number(r.gmvWithTax), 0);
 const values = (gmv: number) => ({
   gmvWithTax: aud(gmv),
@@ -115,8 +117,8 @@ const operations = {
       ordersDelivered: ok,
       refunds: down,
     },
-    series: counts(30, 80, 0),
-    previousSeries: counts(30, 74, 3),
+    series: counts(N, 80, 0),
+    previousSeries: counts(N, 74, 3),
   },
 };
 const sellerRows = [
@@ -186,11 +188,11 @@ const health = {
 };
 const base: AdminKpis = {
   generatedAt: NOW,
-  periodId: '30d',
+  periodId: selection.id,
   period: {
-    id: '30d',
-    current: { from: day(29), to: day(0) },
-    previous: { from: day(59), to: day(30) },
+    id: selection.id,
+    current: { from: day(N - 1), to: day(0) },
+    previous: { from: day(2 * N - 1), to: day(N) },
   },
   operations,
   finance: finance(scenario),
@@ -206,8 +208,9 @@ const empty: AdminKpis = {
     kpis: {
       ...operations.kpis,
       current: ops(0),
-      series: counts(30, 0, 0).map((r) => ({ ...r, ordersPaid: 0 })),
-      previousSeries: counts(30, 0, 0).map((r) => ({ ...r, ordersPaid: 0 })),
+      previous: ops(0),
+      series: counts(N, 0, 0).map((r) => ({ ...r, ordersPaid: 0 })),
+      previousSeries: counts(N, 0, 0).map((r) => ({ ...r, ordersPaid: 0 })),
     },
   },
   finance: {
@@ -215,6 +218,7 @@ const empty: AdminKpis = {
     kpis: {
       ...finance('full').kpis,
       current: { ...values(0), averageOrderWithTax: null },
+      previous: { ...values(0), averageOrderWithTax: null },
       series: cur.map((r) => ({ ...r, gmvWithTax: '0', refundedWithTax: '0' })),
       previousSeries: prev.map((r) => ({ ...r, gmvWithTax: '0', refundedWithTax: '0' })),
       net: {

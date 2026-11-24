@@ -9,29 +9,48 @@ import {
   toast,
   type PeriodOption,
 } from '@mondapac/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useOptimistic, useState, useTransition, type FormEvent, type ReactNode } from 'react';
+import {
+  useEffect,
+  useOptimistic,
+  useRef,
+  useState,
+  useTransition,
+  type FormEvent,
+  type ReactNode,
+} from 'react';
 import { downloadSalesExport, ExportFailure } from '../sales/sales-export.tsx';
 import {
   DAILY_EXPORT_PATH,
   dailyExportQuery,
+  earliestFrom,
   selectionHref,
   validateRange,
   type KpiSelection,
   type RangeField,
 } from './kpi-range.ts';
+import { longDay, PERIOD_KEY } from './kpi-format.ts';
 import { isKpiPeriod, type KpiPeriodId } from './kpi-types.ts';
 
-/** The message of one refused field of the range, in words. */
-function useFieldError(fields: readonly RangeField[]) {
+/** The message of one refused field of the range, in words (never the API's own path). */
+function useFieldError(fields: readonly RangeField[], today: string, to: string) {
   const t = useTranslations('dashboard.kpis.range');
-  return (path: 'from' | 'to'): string | undefined => {
-    const field = fields.find((f) => f.path === path);
-    if (field === undefined) return undefined;
-    return t.has(`error.${field.code}`)
-      ? t(`error.${field.code}` as 'error.required')
+  const locale = useLocale();
+  const message = (code: string): string =>
+    /^[a-z-]+$/.test(code) && t.has(`error.${code}`)
+      ? t(`error.${code}` as 'error.required', {
+          earliest: longDay(earliestFrom(to), locale),
+          today: longDay(today, locale),
+        })
       : t('error.unknown');
+  return {
+    field: (path: 'from' | 'to'): string | undefined => {
+      const found = fields.find((f) => f.path === path);
+      return found === undefined ? undefined : message(found.code);
+    },
+    /** A refusal that belongs to neither day (a code the API added, an unknown path). */
+    general: fields.some((f) => f.path !== 'from' && f.path !== 'to') ? t('error.general') : null,
   };
 }
 
@@ -71,6 +90,7 @@ function ReportExport({
       toast.success(t('done'), { id: 'dashboard-export' });
     } catch (reason) {
       if (reason instanceof ExportFailure && reason.reason === 'denied') {
+        toast.error(t('denied'), { id: 'dashboard-export' });
         setHidden(true);
       } else {
         const unavailable = !(reason instanceof ExportFailure) || reason.reason === 'unavailable';
@@ -116,6 +136,8 @@ function RangeForm({
   today,
   fields,
   busy,
+  showing,
+  focusSignal,
   onChange,
   onApply,
 }: {
@@ -124,17 +146,27 @@ function RangeForm({
   readonly today: string;
   readonly fields: readonly RangeField[];
   readonly busy: boolean;
+  /** What the figures show now, named for the "until you apply" note. */
+  readonly showing: string;
+  /** Changes after every refused Apply, so focus goes to the first invalid field. */
+  readonly focusSignal: number;
   readonly onChange: (next: { from: string; to: string }) => void;
   readonly onApply: () => void;
 }) {
   const t = useTranslations('dashboard.kpis.range');
-  const error = useFieldError(fields);
+  const { field, general } = useFieldError(fields, today, to);
+  const formRef = useRef<HTMLFormElement>(null);
+  useEffect(() => {
+    if (focusSignal === 0) return;
+    formRef.current?.querySelector<HTMLInputElement>('input[aria-invalid="true"]')?.focus();
+  }, [focusSignal]);
   const submit = (event: FormEvent) => {
     event.preventDefault();
     onApply();
   };
   return (
     <form
+      ref={formRef}
       aria-label={t('label')}
       onSubmit={submit}
       noValidate
@@ -145,8 +177,10 @@ function RangeForm({
         type="date"
         name="from"
         value={from}
+        min={earliestFrom(to)}
         max={today}
-        error={error('from')}
+        error={field('from')}
+        announceError
         onChange={(event) => onChange({ from: event.target.value, to })}
       />
       <TextField
@@ -155,7 +189,8 @@ function RangeForm({
         name="to"
         value={to}
         max={today}
-        error={error('to')}
+        error={field('to')}
+        announceError
         onChange={(event) => onChange({ from, to: event.target.value })}
       />
       <div className="flex flex-col gap-1.5 self-end">
@@ -163,7 +198,13 @@ function RangeForm({
           {t('apply')}
         </Button>
       </div>
+      {general === null ? null : (
+        <p role="alert" className="w-full text-sm text-critical-fg">
+          {general}
+        </p>
+      )}
       <p className="w-full text-xs text-fg-muted">{t('help', { today })}</p>
+      <p className="w-full text-xs text-fg-muted">{t('showing', { period: showing })}</p>
     </form>
   );
 }
@@ -209,12 +250,28 @@ export function PeriodSwitch({
     from: selection.id === 'custom' ? selection.from : '',
     to: selection.id === 'custom' ? selection.to : today,
   });
+  const [attempts, setAttempts] = useState(0);
   const [problems, setProblems] = useState<readonly RangeField[]>(fields);
+
+  const tp = useTranslations('dashboard.kpis.period');
+  const locale = useLocale();
+  const showing =
+    selection.id === 'custom'
+      ? `${longDay(selection.from, locale)} to ${longDay(selection.to, locale)}`
+      : tp(PERIOD_KEY[selection.id] as 'today');
 
   const apply = () => {
     const found = validateRange({ ...range, today });
     setProblems(found);
-    if (found.length > 0) return;
+    if (found.length > 0) {
+      setAttempts((n) => n + 1);
+      return;
+    }
+    if (selection.id === 'custom' && selection.from === range.from && selection.to === range.to) {
+      // Nothing changed: close the form, the figures already are this range.
+      setEditing(false);
+      return;
+    }
     start(() => {
       setShown('custom');
       router.replace(selectionHref({ id: 'custom', ...range }), { scroll: false });
@@ -256,6 +313,8 @@ export function PeriodSwitch({
           today={today}
           fields={problems}
           busy={pending}
+          showing={showing}
+          focusSignal={attempts}
           onChange={setRange}
           onApply={apply}
         />

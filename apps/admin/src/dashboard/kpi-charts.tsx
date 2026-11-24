@@ -80,29 +80,39 @@ export function RevenueChartCard({
   const points = (rows: readonly RevenueDay[]): ChartPoint[] =>
     rows.map((day) => ({ label: day.label, value: value(day) }));
   const name = t(`chart.measure.${measure}`);
+  const currentEmpty = days.every((day) => !(value(day) > 0));
   return (
     <DashboardCard
       id={id}
       title={t('chart.title')}
-      scope={scope}
-      action={{ href: actionHref, label: t('chart.action') }}
       titleAdornment={
         <DefinitionHint label={t('def.what', { name: t('chart.title') })} definition={definition} />
       }
-      headerRight={
-        measures.length > 1 ? (
-          <PeriodSelector
-            label={t('chart.measure.label')}
-            options={measures.map((m) => ({ id: m, label: t(`chart.measure.${m}`) }))}
-            value={measure}
-            onChange={(next) => {
-              if ((MEASURES as readonly string[]).includes(next)) setChosen(next as Measure);
-            }}
-          />
-        ) : undefined
-      }
     >
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-3">
+        {/* Title row above; then the controls; then the scope line. From the sm width the scope
+            sits left and the controls right on one row. */}
+        <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <p className="min-w-0 text-xs text-fg-muted">{scope}</p>
+          <div className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2">
+            {measures.length > 1 ? (
+              <PeriodSelector
+                label={t('chart.measure.label')}
+                options={measures.map((m) => ({ id: m, label: t(`chart.measure.${m}`) }))}
+                value={measure}
+                onChange={(next) => {
+                  if ((MEASURES as readonly string[]).includes(next)) setChosen(next as Measure);
+                }}
+              />
+            ) : null}
+            <a
+              href={actionHref}
+              className="inline-flex min-h-11 items-center whitespace-nowrap text-sm font-medium text-link underline lg:min-h-0"
+            >
+              {t('chart.action')}
+            </a>
+          </div>
+        </div>
         {failed.map((m) => (
           <p key={m} role="alert" className="text-sm text-critical-fg">
             {t('chart.measure-failed', { measure: t(`chart.measure.${m}`) })}
@@ -110,6 +120,8 @@ export function RevenueChartCard({
         ))}
         {bothEmpty ? (
           <ChartEmpty message={t('chart.empty')} height={CHART_HEIGHT} />
+        ) : currentEmpty ? (
+          <ChartEmpty message={t('chart.empty-current')} height={CHART_HEIGHT} />
         ) : insufficient ? (
           <ChartEmpty
             message={t('chart.insufficient')}

@@ -89,3 +89,42 @@ export function minutesBetween(from: string | null, to: string): number | null {
   if (Number.isNaN(start) || Number.isNaN(end)) return null;
   return Math.max(0, Math.floor((end - start) / 60000));
 }
+
+const NA: KpiDelta = { value: 0, direction: 'flat', state: 'na' };
+
+/** A figure as a number for comparing with zero only (never shown, never summed). */
+export function figureOf(value: KpiMoney | number | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  return typeof value === 'number' ? value : Number(value.amountMinor);
+}
+
+/**
+ * A change that cannot disagree with its own figures: with no previous figure, or a previous of
+ * zero, it is "n/a" (never a stale percentage); a figure that fell to zero from something is a
+ * fall, whatever the change said. Otherwise the API's change stands.
+ */
+export function guardDelta(
+  delta: KpiDelta | undefined,
+  current: KpiMoney | number | null | undefined,
+  previous: KpiMoney | number | null | undefined,
+): KpiDelta | undefined {
+  if (delta === undefined) return undefined;
+  const now = figureOf(current);
+  const before = figureOf(previous);
+  if (now === null || before === null || Number.isNaN(now) || Number.isNaN(before)) return NA;
+  if (before === 0) return NA;
+  if (now === 0 && before > 0) return { value: -10000, direction: 'down', state: 'ok' };
+  return delta;
+}
+
+/** "23 Nov 2026" for a Market day, read as that calendar day whatever the viewer's zone. */
+export function longDay(day: string, locale: string): string {
+  const date = new Date(`${day}T00:00:00Z`);
+  if (Number.isNaN(date.getTime())) return day;
+  return dateFormat(locale, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    timeZone: 'UTC',
+  }).format(date);
+}

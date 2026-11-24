@@ -54,6 +54,51 @@ describe('serverGet', () => {
     await expect(serverGet('x')).resolves.toEqual({ kind: 'forbidden' });
   });
 
+  describe('a 400 refusal', () => {
+    const refuse = (body: string) =>
+      mocks.fetch.mockResolvedValue(new Response(body, { status: 400 }));
+
+    it('reads validation.failed as invalid with its fields', async () => {
+      refuse(
+        JSON.stringify({
+          code: 'validation.failed',
+          details: { fields: [{ path: 'from', code: 'too-long' }] },
+        }),
+      );
+      await expect(serverGet('x')).resolves.toEqual({
+        kind: 'invalid',
+        fields: [{ path: 'from', code: 'too-long' }],
+      });
+    });
+
+    it('drops a malformed field entry', async () => {
+      refuse(
+        JSON.stringify({
+          code: 'validation.failed',
+          details: {
+            fields: [{ path: 1, code: 'x' }, { path: 'to' }, { path: 'to', code: 'future' }],
+          },
+        }),
+      );
+      await expect(serverGet('x')).resolves.toEqual({
+        kind: 'invalid',
+        fields: [{ path: 'to', code: 'future' }],
+      });
+    });
+
+    it('gives no fields when the details are missing', async () => {
+      refuse(JSON.stringify({ code: 'validation.failed' }));
+      await expect(serverGet('x')).resolves.toEqual({ kind: 'invalid', fields: [] });
+    });
+
+    it('is unavailable for another code or a body that is not JSON', async () => {
+      refuse(JSON.stringify({ code: 'something.else' }));
+      await expect(serverGet('x')).resolves.toEqual({ kind: 'unavailable' });
+      refuse('<html>');
+      await expect(serverGet('x')).resolves.toEqual({ kind: 'unavailable' });
+    });
+  });
+
   it('sets no deadline unless one is asked for', async () => {
     await serverGet('x');
     const [, init] = mocks.fetch.mock.calls[0] as [string, RequestInit];

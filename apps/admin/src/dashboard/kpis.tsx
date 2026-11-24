@@ -6,6 +6,7 @@ import {
   DashboardCard,
   DashboardSlot,
   DefinitionHint,
+  GridItem,
   KpiCard,
   StatCardSkeleton,
   formatCount,
@@ -29,6 +30,7 @@ import {
   kpiDelta,
   kpiMoney,
   kpiRate,
+  guardDelta,
   kpiSentiment,
   PERIOD_KEY,
   minorToMajor,
@@ -56,7 +58,6 @@ type Source = DashboardSource<KpiResult | null>;
 /** The four headline cards: four across on desktop, two by two on a tablet and wide phone. */
 const KPI_LAYOUT: GridLayout = { span: 3, tabletSpan: 6, phoneSpan: 6, mobileOrder: 'kpi' };
 const CHART_LAYOUT: GridLayout = { span: 8, tabletSpan: 12 };
-const THIRD_LAYOUT: GridLayout = { span: 4, tabletSpan: 6 };
 const WIDE_LAYOUT: GridLayout = { span: 12 };
 
 /** What one section of the read is for a card: left out, failed (in place), or its figures. */
@@ -94,12 +95,16 @@ function Slot({
   children,
 }: {
   readonly source: Source;
-  readonly layout: GridLayout;
+  readonly layout?: GridLayout;
   readonly fallback: ReactNode;
   readonly children: (result: KpiAnswer) => ReactNode;
 }) {
   return (
-    <DashboardSlot layout={layout} source={source} fallback={fallback}>
+    <DashboardSlot
+      {...(layout === undefined ? {} : { layout })}
+      source={source}
+      fallback={fallback}
+    >
       {(result) => (result === null || result.kind === 'invalid' ? null : children(result))}
     </DashboardSlot>
   );
@@ -198,7 +203,11 @@ function GmvCard({ source, allowed, period }: CardProps) {
           return <KpiCard {...base} scope={t(`compared.${PERIOD_KEY[period]}`)} error={stalled} />;
         }
         const { current, deltas, series, currency } = finance.kpis;
-        const change = delta(deltas.gmvWithTax, 'percent', 'better');
+        const change = delta(
+          guardDelta(deltas.gmvWithTax, current.gmvWithTax, finance.kpis.previous.gmvWithTax),
+          'percent',
+          'better',
+        );
         return (
           <KpiCard
             {...base}
@@ -241,7 +250,11 @@ function OrdersCard({ source, allowed, period }: CardProps) {
         if (operations.kind === 'hidden') return null;
         if (operations.kind === 'failed') return <KpiCard {...base} error={stalled} />;
         const { current, deltas, series } = operations.kpis;
-        const change = delta(deltas.ordersPaid, 'percent', 'better');
+        const change = delta(
+          guardDelta(deltas.ordersPaid, current.ordersPaid, operations.kpis.previous.ordersPaid),
+          'percent',
+          'better',
+        );
         return (
           <KpiCard
             {...base}
@@ -314,7 +327,12 @@ function NetCard({ source, allowed, period }: CardProps) {
                     )
                     .join(', '),
                 });
-        const change = delta(net.deltas.total, 'percent', 'better');
+        const before = net.previous?.total.status === 'complete' ? net.previous.total.amount : null;
+        const change = delta(
+          guardDelta(net.deltas.total, current.total.amount, before),
+          'percent',
+          'better',
+        );
         return (
           <KpiCard
             {...base}
@@ -355,7 +373,15 @@ function AovCard({ source, allowed, period }: CardProps) {
         if (current.averageOrderWithTax === null) {
           return <KpiCard {...base} note={t('aov.none')} />;
         }
-        const change = delta(deltas.averageOrderWithTax, 'percent', 'better');
+        const change = delta(
+          guardDelta(
+            deltas.averageOrderWithTax,
+            current.averageOrderWithTax,
+            finance.kpis.previous.averageOrderWithTax,
+          ),
+          'percent',
+          'better',
+        );
         return (
           <KpiCard
             {...base}
@@ -419,11 +445,21 @@ function RevenueChart({ source, allowed, period }: CardProps) {
             : operations.kind === 'ok'
               ? operations.value
               : null;
+        const refreshed = [value?.finance, value?.operations]
+          .map((section) => (section?.status === 'ok' ? section.refreshedAt : null))
+          .filter((at): at is string => at !== null && at !== undefined)
+          .sort()
+          .at(-1);
+        const minutes =
+          value === null || refreshed === undefined
+            ? null
+            : minutesBetween(refreshed, value.generatedAt);
         const scope = [
-          (value && range(value)) ?? t('compared.' + PERIOD_KEY[period]),
+          value === null ? null : range(value),
           t('market-time'),
+          minutes === null ? t('no-data-yet') : t('updated', { minutes }),
         ]
-          .filter(Boolean)
+          .filter((part): part is string => part !== null)
           .join(' · ');
         return (
           <RevenueChartCard
@@ -454,7 +490,7 @@ function SalesByCategory({ source, allowed }: CardProps) {
   const range = useRange();
   const frame = { id: 'dash-top-categories', title: t('categories.title') };
   return (
-    <Slot source={source} layout={THIRD_LAYOUT} fallback={<CardSkeleton {...frame} height={220} />}>
+    <Slot source={source} fallback={<CardSkeleton {...frame} height={220} />}>
       {(result) => {
         const categories = part(result, allowed.money, (v) => v.topCategories);
         if (categories.kind === 'hidden') return null;
@@ -560,7 +596,7 @@ function OrdersByStatus({ source, allowed }: CardProps) {
   const range = useRange();
   const frame = { id: 'dash-orders-status', title: t('status.title') };
   return (
-    <Slot source={source} layout={THIRD_LAYOUT} fallback={<CardSkeleton {...frame} height={220} />}>
+    <Slot source={source} fallback={<CardSkeleton {...frame} height={220} />}>
       {(result) => {
         const status = part(result, allowed.orders, (v) => v.ordersByStatus);
         if (status.kind === 'hidden') return null;
@@ -628,7 +664,7 @@ function OrdersByStatus({ source, allowed }: CardProps) {
                     })}
                   >
                     {operations.kpis.current.onTimeRateBp === null ? (
-                      <span className={WORDS}>-</span>
+                      <span className={WORDS}>{t('status.on-time.none')}</span>
                     ) : (
                       <span className={FIGURE}>
                         {kpiRate(operations.kpis.current.onTimeRateBp, locale)}
@@ -711,7 +747,7 @@ function SupplyHealth({ source, allowed }: CardProps) {
   const stalled = useStalled();
   const frame = { id: 'dash-market-health', title: t('health.title') };
   return (
-    <Slot source={source} layout={THIRD_LAYOUT} fallback={<CardSkeleton {...frame} height={220} />}>
+    <Slot source={source} fallback={<CardSkeleton {...frame} height={220} />}>
       {(result) => {
         if (!allowed.health && !allowed.orders) return null;
         if (result.kind === 'error') return <DashboardCard {...frame} error={stalled} />;
@@ -993,61 +1029,40 @@ interface CardProps {
 }
 
 /**
- * The context line of the KPI part: the days it covers, what the change is compared with, that
- * days are Market days, and how fresh the numbers are. It sits first in the grid.
+ * In place of the figures when the range is refused: one line with the way out. The reason is
+ * under the field in the page header, so it is not said twice.
  */
-export function KpiNote({
-  source,
-  period,
-}: {
-  readonly source: Source;
-  readonly period: KpiPeriodId;
-}) {
-  const t = useTranslations('dashboard.kpis');
-  const range = useRange();
+export function InvalidRangeNote({ source }: { readonly source: Source }) {
+  const t = useTranslations('dashboard.kpis.range');
   return (
     <DashboardSlot layout={{ span: 12, mobileOrder: 'kpi' }} source={source} fallback={null}>
-      {(result) => {
-        if (result === null) return null;
-        if (result.kind === 'invalid') {
-          // The API (or the page's own check) refused the range: say which field, in place.
-          return (
-            <ul role="alert" className="flex flex-col gap-1 text-sm text-critical-fg">
-              {result.fields.map((field) => (
-                <li key={`${field.path}-${field.code}`}>
-                  {t('range.refused', {
-                    field: t.has(`range.field.${field.path}`)
-                      ? t(`range.field.${field.path}` as 'range.field.from')
-                      : field.path,
-                    reason: t.has(`range.error.${field.code}`)
-                      ? t(`range.error.${field.code}` as 'range.error.required')
-                      : t('range.error.unknown'),
-                  })}
-                </li>
-              ))}
-            </ul>
-          );
-        }
-        const value = result.kind === 'ok' ? result.value : null;
-        const refreshed = [value?.operations, value?.finance]
-          .map((section) => (section?.status === 'ok' ? section.refreshedAt : null))
-          .filter((at): at is string => at !== null && at !== undefined)
-          .sort()
-          .at(-1);
-        const minutes =
-          value === null || refreshed === undefined
-            ? null
-            : minutesBetween(refreshed, value.generatedAt);
-        const days = value === null ? null : range(value);
-        const parts = [
-          days,
-          t(`compared.${PERIOD_KEY[period]}`),
-          t('market-time'),
-          minutes === null ? t('no-data-yet') : t('updated', { minutes }),
-        ].filter((p): p is string => p !== null);
-        return <p className="text-sm text-fg-muted">{parts.join(' · ')}</p>;
-      }}
+      {(result) =>
+        result === null || result.kind !== 'invalid' ? null : (
+          <p className="rounded-lg border border-line bg-surface p-4 text-sm text-fg-secondary">
+            {t('choose')}{' '}
+            <a className="font-medium text-link underline" href="/?period=30d">
+              {t('back')}
+            </a>
+          </p>
+        )
+      }
     </DashboardSlot>
+  );
+}
+
+function Cell({
+  wide = false,
+  children,
+}: {
+  readonly wide?: boolean;
+  readonly children: ReactNode;
+}) {
+  return (
+    <div
+      className={`flex min-w-0 empty:hidden lg:flex-1 ${wide ? 'md:col-span-2 lg:col-span-1' : ''}`}
+    >
+      {children}
+    </div>
   );
 }
 
@@ -1074,16 +1089,27 @@ export function KpiItems({
   const props = { source, allowed, period };
   return (
     <>
-      <KpiNote source={source} period={period} />
+      <InvalidRangeNote source={source} />
       <GmvCard {...props} />
       <OrdersCard {...props} />
       <NetCard {...props} />
       <AovCard {...props} />
       <RevenueChart {...props} />
       {before}
-      <SalesByCategory {...props} />
-      <OrdersByStatus {...props} />
-      <SupplyHealth {...props} />
+      <GridItem span={12}>
+        {/* Cards that are absent leave no hole: the rest share the row (and the tablet's two columns). */}
+        <div className="grid w-full min-w-0 gap-4 md:grid-cols-2 lg:flex">
+          <Cell>
+            <SalesByCategory {...props} />
+          </Cell>
+          <Cell>
+            <OrdersByStatus {...props} />
+          </Cell>
+          <Cell wide>
+            <SupplyHealth {...props} />
+          </Cell>
+        </div>
+      </GridItem>
       <TopSellers {...props} canOpenSellers={new Set(permissionKeys).has(KPI_SELLERS_PERMISSION)} />
     </>
   );

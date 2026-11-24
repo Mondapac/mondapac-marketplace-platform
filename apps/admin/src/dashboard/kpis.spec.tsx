@@ -325,6 +325,35 @@ describe('the admin KPI cards', () => {
     expect(container.querySelectorAll('[data-kpi-card]')).toHaveLength(0);
   });
 
+  describe('a change that must agree with its figures', () => {
+    const withCurrent = (gmv: string, previousGmv: string) =>
+      answer({
+        finance: {
+          ...finance,
+          kpis: {
+            ...finance.kpis,
+            current: { ...finance.kpis.current, gmvWithTax: money(gmv) },
+            previous: { ...finance.kpis.previous, gmvWithTax: money(previousGmv) },
+          },
+        },
+      });
+
+    it('shows a fall to nothing as a drop, never the API’s stale rise', () => {
+      page(withCurrent('0', '100000'));
+      const gmv = card('GMV (incl. GST)');
+      expect(within(gmv).getByText('$0.00')).toBeTruthy();
+      expect(within(gmv).queryByText('+12.5%')).toBeNull();
+      expect(within(gmv).getByText(/-100(\.0)?%/)).toBeTruthy();
+    });
+
+    it('shows n/a when there was nothing before, never a percentage', () => {
+      page(withCurrent('123456', '0'));
+      const gmv = card('GMV (incl. GST)');
+      expect(within(gmv).getByText('n/a')).toBeTruthy();
+      expect(within(gmv).queryByText('+12.5%')).toBeNull();
+    });
+  });
+
   describe('net revenue', () => {
     const net = (finance: unknown) => page(answer({ finance: finance as AdminKpis['finance'] }));
 
@@ -494,8 +523,10 @@ describe('the admin KPI cards', () => {
         sameDayShare: { status: 'not-available', reason: 'method-unknown', unknownMethod: 7 },
       });
       const tile = within(region()).getByText('Same-day share').parentElement!;
-      expect(tile.textContent).toContain('Not available yet');
-      expect(tile.textContent).toContain('7 paid orders have no delivery method recorded.');
+      expect(tile.textContent).toContain('Not enough data');
+      expect(tile.textContent).toContain(
+        'Shown once every paid order has a delivery method; 7 paid orders have none yet.',
+      );
       expect(tile.textContent).not.toMatch(/%/);
     });
 
@@ -581,9 +612,7 @@ describe('the admin KPI cards', () => {
 
   it('says in one line what the figures cover, in Market days, and how fresh they are', () => {
     page(FULL);
-    expect(
-      screen.getByText('16 Nov - 22 Nov · vs previous 7 days · Market days · updated 2 min ago'),
-    ).toBeTruthy();
+    expect(screen.getByText('16 Nov - 22 Nov · Market days · updated 2 min ago')).toBeTruthy();
   });
 });
 
@@ -600,7 +629,13 @@ describe('a custom range', () => {
         </DashboardGrid>,
       ),
     );
-    expect(screen.getByRole('alert').textContent).toBe('From: A range is at most 13 months.');
+    expect(screen.getByText('Choose a valid range to see figures, or').textContent).toContain(
+      'go back to 30 days',
+    );
+    expect(screen.getByRole('link', { name: 'go back to 30 days' }).getAttribute('href')).toBe(
+      '/?period=30d',
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
     expect(container.querySelectorAll('[data-kpi-card]')).toHaveLength(0);
   });
 

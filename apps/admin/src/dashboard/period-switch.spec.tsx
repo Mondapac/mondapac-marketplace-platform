@@ -87,8 +87,8 @@ describe('PeriodSwitch', () => {
 
   it.each([
     ['2026-11-10', '2026-11-01', 'The start day is after the end day.'],
-    ['2025-09-01', '2026-11-23', 'A range is at most 13 months.'],
-    ['2026-11-01', '2026-11-24', 'The end day cannot be after today.'],
+    ['2025-09-01', '2026-11-23', 'Start no earlier than 24 Oct 2025.'],
+    ['2026-11-01', '2026-11-24', 'The latest end day is 23 Nov 2026.'],
     ['', '2026-11-23', 'Choose a day.'],
   ])('refuses %s to %s under its field and does not change the address', (from, to, text) => {
     shown();
@@ -96,6 +96,44 @@ describe('PeriodSwitch', () => {
     pick(from, to);
     expect(screen.getByText(text)).toBeTruthy();
     expect(replace).not.toHaveBeenCalled();
+    // One message, announced once, and focus on the field that is wrong.
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(screen.getByRole('alert').textContent).toBe(text);
+    expect(document.activeElement).toBe(
+      screen.getByLabelText(from === '' || from > to || text.startsWith('Start') ? 'From' : 'To'),
+    );
+  });
+
+  it('limits the pickers to the 13 months and the Market today', () => {
+    shown({ id: 'custom', from: '2026-10-01', to: '2026-10-31' });
+    expect(screen.getByLabelText<HTMLInputElement>('From').min).toBe('2025-10-01');
+    expect(screen.getByLabelText<HTMLInputElement>('From').max).toBe(TODAY);
+    expect(screen.getByLabelText<HTMLInputElement>('To').max).toBe(TODAY);
+  });
+
+  it('says what is shown until Apply, and an unchanged Apply closes the form', () => {
+    shown({ id: 'custom', from: '2026-10-01', to: '2026-10-31' });
+    expect(screen.getByText('Showing 1 Oct 2026 to 31 Oct 2026 until you apply.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(replace).not.toHaveBeenCalled();
+    expect(screen.queryByLabelText('From')).toBeNull();
+  });
+
+  it('names the preset being shown while the pickers are open', () => {
+    shown({ id: '7d' });
+    fireEvent.click(screen.getByRole('radio', { name: 'custom' }));
+    expect(screen.getByText('Showing 7 days until you apply.')).toBeTruthy();
+  });
+
+  it('puts a refusal that belongs to neither day under the pair, never the API path', () => {
+    shown(
+      { id: 'custom', from: '2026-10-01', to: '2026-10-31' },
+      { fields: [{ path: 'secret.internal', code: 'weird' }] },
+    );
+    expect(screen.getByRole('alert').textContent).toBe(
+      'This range is not accepted. Check both days and try again.',
+    );
+    expect(document.body.textContent).not.toContain('secret.internal');
   });
 
   it('allows exactly 13 months and the Market today', () => {
@@ -112,7 +150,7 @@ describe('PeriodSwitch', () => {
         fields: [{ path: 'from', code: 'too-long' }],
       },
     );
-    expect(screen.getByText('A range is at most 13 months.')).toBeTruthy();
+    expect(screen.getByText('Start no earlier than 24 Oct 2025.')).toBeTruthy();
   });
 
   describe('export', () => {
@@ -158,15 +196,16 @@ describe('PeriodSwitch', () => {
     it('is disabled for a custom range that is not valid', () => {
       shown({ id: 'custom', from: '2024-01-01', to: '2026-11-23' });
       expect(screen.getByRole<HTMLButtonElement>('button', { name: 'Export' }).disabled).toBe(true);
+      expect(screen.getByTitle('Choose a valid range to export it.')).toBeTruthy();
     });
 
-    it('hides the button on a 403 and says nothing', async () => {
+    it('says once that the session cannot export, then hides the button', async () => {
       download.mockRejectedValue(new ExportFailure('denied'));
       shown();
       fireEvent.click(screen.getByRole('button', { name: 'Export' }));
       fireEvent.click(screen.getByRole('menuitem', { name: /CSV/ }));
       await waitFor(() => expect(screen.queryByRole('button', { name: 'Export' })).toBeNull());
-      expect(toasts.error).not.toHaveBeenCalled();
+      expect(toasts.error).toHaveBeenCalledWith("You can't export this report.", expect.anything());
     });
 
     it('shows a toast for any other failure and keeps the button', async () => {

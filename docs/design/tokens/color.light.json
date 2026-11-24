@@ -475,8 +475,8 @@
       },
       "cat-4": {
         "$type": "color",
-        "$value": "{color.honey.235}",
-        "$description": "Categorical series 4 (amber)"
+        "$value": "{color.cyan.390}",
+        "$description": "Categorical series 4 (cyan)"
       },
       "cat-5": {
         "$type": "color",
