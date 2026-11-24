@@ -39,6 +39,8 @@ const views = [
   ['admin-dashboard-partial', 'partial', [1280]],
   ['admin-dashboard-sparse', 'sparse', [1280]],
   ['admin-dashboard-empty', 'empty', [1280]],
+  ['admin-dashboard-custom', 'custom', [1280, 375]],
+  ['admin-dashboard-custom-refused', 'custom-bad', [1280, 375]],
 ];
 for (const scheme of ['light', 'dark']) {
   for (const [name, scenario, widths] of views) {

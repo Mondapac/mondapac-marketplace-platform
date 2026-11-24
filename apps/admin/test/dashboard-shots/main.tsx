@@ -3,11 +3,18 @@ import { createRoot } from 'react-dom/client';
 import messages from '../../messages/en.json';
 import '../../app/globals.css';
 import { AdminDashboard } from '../../src/dashboard/dashboard.tsx';
+import { validateRange, type KpiSelection } from '../../src/dashboard/kpi-range.ts';
 import type { AdminKpis, KpiResult, SameDayShare } from '../../src/dashboard/kpi-types.ts';
 import type { AdminDashboardData } from '../../src/dashboard/types.ts';
 import type { WorkQueueAnswer } from '../../src/work-queue/queues.ts';
 
 const scenario = new URLSearchParams(window.location.search).get('s') ?? 'full';
+const selection: KpiSelection =
+  scenario === 'custom'
+    ? { id: 'custom', from: '2026-09-01', to: '2026-11-23' }
+    : scenario === 'custom-bad'
+      ? { id: 'custom', from: '2024-01-01', to: '2026-11-23' }
+      : { id: '30d' };
 const NOW = '2026-11-23T03:00:00.000Z';
 const ago = (h: number) => new Date(Date.parse(NOW) - h * 3_600_000).toISOString();
 const ID = (n: number) => `0190a000-0000-7000-8000-${String(n).padStart(12, '0')}`;
@@ -268,7 +275,14 @@ const picked =
       : scenario === 'partial'
         ? partial
         : base;
-const kpis: KpiResult = { kind: 'ok', value: picked };
+const kpis: KpiResult =
+  selection.id === 'custom' &&
+  validateRange({ from: selection.from, to: selection.to, today: '2026-11-23' }).length > 0
+    ? {
+        kind: 'invalid',
+        fields: validateRange({ from: selection.from, to: selection.to, today: '2026-11-23' }),
+      }
+    : { kind: 'ok', value: picked };
 
 const q = (key: string, level: string, count: number, overdue: number, hours: number) => ({
   key,
@@ -315,9 +329,11 @@ createRoot(document.getElementById('root')!).render(
           'catalog.product.view',
           'commission-payouts.dispute.view',
           'certification.seller-certificate.view',
+          'reporting.marketplace-report.export',
         ]}
         kpis={kpis}
-        period="30d"
+        selection={selection}
+        today="2026-11-23"
       />
     </main>
   </NextIntlClientProvider>,

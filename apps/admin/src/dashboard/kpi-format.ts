@@ -1,8 +1,9 @@
 import { dateFormat, numberFormat } from '../shared/intl.ts';
-import type { KpiDelta, KpiMoney, KpiPeriod } from './kpi-types.ts';
+import type { KpiDelta, KpiMoney, KpiPeriodId } from './kpi-types.ts';
 
 /** The message key of a period preset ("7d" is `days7`). */
-export const PERIOD_KEY: Record<KpiPeriod, string> = {
+export const PERIOD_KEY: Record<KpiPeriodId, string> = {
+  custom: 'custom',
   today: 'today',
   '7d': 'days7',
   '30d': 'days30',

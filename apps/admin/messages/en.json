@@ -226,19 +226,42 @@
       "market-time": "Market days",
       "updated": "updated {minutes} min ago",
       "no-data-yet": "no sales data yet",
-      "range": "{from} - {to}",
+      "range": {
+        "label": "Custom range",
+        "from": "From",
+        "to": "To",
+        "apply": "Apply",
+        "help": "Market days. At most 13 months, ending by today ({today}).",
+        "refused": "{field}: {reason}",
+        "field": {
+          "from": "From",
+          "to": "To",
+          "period": "Period"
+        },
+        "error": {
+          "required": "Choose a day.",
+          "format": "Enter a real day.",
+          "after-to": "The start day is after the end day.",
+          "too-long": "A range is at most 13 months.",
+          "future": "The end day cannot be after today.",
+          "enum": "This period is not known.",
+          "unknown": "This value is not accepted."
+        }
+      },
       "period": {
         "label": "Period",
         "today": "Today",
         "days7": "7 days",
         "days30": "30 days",
-        "month": "This month"
+        "month": "This month",
+        "custom": "Custom"
       },
       "compared": {
         "today": "vs yesterday",
         "days7": "vs previous 7 days",
         "days30": "vs previous 30 days",
-        "month": "vs same days last month"
+        "month": "vs same days last month",
+        "custom": "vs the days just before"
       },
       "def": {
         "what": "What is {name}?",
@@ -410,6 +433,20 @@
         "disputes": {
           "label": "Dispute rate",
           "hint": "{disputes} opened of {paid} paid seller orders"
+        }
+      },
+      "export": {
+        "label": "Export",
+        "title": "Marketplace figures per Market day",
+        "csv": "CSV",
+        "csv-help": "Plain text. Opens in any spreadsheet or tool.",
+        "xlsx": "XLSX",
+        "xlsx-help": "An Excel workbook. Every cell is plain text.",
+        "done": "Your file is ready.",
+        "invalid-range": "Choose a valid range to export it.",
+        "error": {
+          "invalid": "This period can't be exported. Check the range and try again.",
+          "unavailable": "Export failed. Try again."
         }
       }
     }

@@ -42,7 +42,8 @@ import {
   type FinanceKpis,
   type HealthCount,
   type KpiDelta,
-  type KpiPeriod,
+  type KpiAnswer,
+  type KpiPeriodId,
   type KpiResult,
   type KpiSection,
   type OperationsKpis,
@@ -69,7 +70,7 @@ type Part<K> =
  * that failed for a session that holds the key, is an in-place error.
  */
 function part<K>(
-  result: KpiResult,
+  result: KpiAnswer,
   allowed: boolean,
   pick: (value: AdminKpis) => KpiSection<K> | null,
 ): Part<K> {
@@ -81,9 +82,9 @@ function part<K>(
   return { kind: 'ok', kpis: section.kpis, value: result.value };
 }
 
-const financeOf = (result: KpiResult, allowed: KpiAllowed) =>
+const financeOf = (result: KpiAnswer, allowed: KpiAllowed) =>
   part<FinanceKpis>(result, allowed.money, (v) => v.finance);
-const operationsOf = (result: KpiResult, allowed: KpiAllowed) =>
+const operationsOf = (result: KpiAnswer, allowed: KpiAllowed) =>
   part<OperationsKpis>(result, allowed.orders, (v) => v.operations);
 
 function Slot({
@@ -95,11 +96,11 @@ function Slot({
   readonly source: Source;
   readonly layout: GridLayout;
   readonly fallback: ReactNode;
-  readonly children: (result: KpiResult) => ReactNode;
+  readonly children: (result: KpiAnswer) => ReactNode;
 }) {
   return (
     <DashboardSlot layout={layout} source={source} fallback={fallback}>
-      {(result) => (result === null ? null : children(result))}
+      {(result) => (result === null || result.kind === 'invalid' ? null : children(result))}
     </DashboardSlot>
   );
 }
@@ -129,7 +130,7 @@ function CardSkeleton({
 }
 
 /** One figure's change line; "n/a" says why there is no figure. */
-function useDelta(period: KpiPeriod) {
+function useDelta(period: KpiPeriodId) {
   const t = useTranslations('dashboard.kpis');
   const locale = useLocale();
   const comparedWith = t(`compared.${PERIOD_KEY[period]}`);
@@ -988,7 +989,7 @@ function TopSellers({
 interface CardProps {
   readonly source: Source;
   readonly allowed: KpiAllowed;
-  readonly period: KpiPeriod;
+  readonly period: KpiPeriodId;
 }
 
 /**
@@ -1000,7 +1001,7 @@ export function KpiNote({
   period,
 }: {
   readonly source: Source;
-  readonly period: KpiPeriod;
+  readonly period: KpiPeriodId;
 }) {
   const t = useTranslations('dashboard.kpis');
   const range = useRange();
@@ -1008,6 +1009,25 @@ export function KpiNote({
     <DashboardSlot layout={{ span: 12, mobileOrder: 'kpi' }} source={source} fallback={null}>
       {(result) => {
         if (result === null) return null;
+        if (result.kind === 'invalid') {
+          // The API (or the page's own check) refused the range: say which field, in place.
+          return (
+            <ul role="alert" className="flex flex-col gap-1 text-sm text-critical-fg">
+              {result.fields.map((field) => (
+                <li key={`${field.path}-${field.code}`}>
+                  {t('range.refused', {
+                    field: t.has(`range.field.${field.path}`)
+                      ? t(`range.field.${field.path}` as 'range.field.from')
+                      : field.path,
+                    reason: t.has(`range.error.${field.code}`)
+                      ? t(`range.error.${field.code}` as 'range.error.required')
+                      : t('range.error.unknown'),
+                  })}
+                </li>
+              ))}
+            </ul>
+          );
+        }
         const value = result.kind === 'ok' ? result.value : null;
         const refreshed = [value?.operations, value?.finance]
           .map((section) => (section?.status === 'ok' ? section.refreshedAt : null))
@@ -1045,7 +1065,7 @@ export function KpiItems({
   before,
 }: {
   readonly source: Source;
-  readonly period: KpiPeriod;
+  readonly period: KpiPeriodId;
   readonly permissionKeys: readonly string[];
   /** Items placed after the chart in the same row (the work queue). */
   readonly before?: ReactNode;

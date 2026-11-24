@@ -30,12 +30,8 @@ import { shortInstantInZone } from '../shared/format.ts';
 import { shortId } from '../shared/short-id.ts';
 import { NeedsAction } from '../work-queue/needs-action.tsx';
 import { PERIOD_KEY } from './kpi-format.ts';
-import {
-  DEFAULT_KPI_PERIOD,
-  KPI_PERIODS,
-  type AdminKpiSource,
-  type KpiPeriod,
-} from './kpi-types.ts';
+import { DEFAULT_KPI_PERIOD, KPI_PERIODS, type AdminKpiSource } from './kpi-types.ts';
+import { mayExport, validateRange, type KpiSelection } from './kpi-range.ts';
 import { KpiItems } from './kpis.tsx';
 import { PeriodSwitch } from './period-switch.tsx';
 import {
@@ -648,7 +644,8 @@ export function AdminDashboard({
   permissionKeys,
   zone,
   kpis = null,
-  period = DEFAULT_KPI_PERIOD,
+  selection = { id: DEFAULT_KPI_PERIOD },
+  today = '',
 }: {
   /** The page title (the h1 of the title row, which holds the period switch). */
   readonly title: string;
@@ -658,7 +655,10 @@ export function AdminDashboard({
   readonly zone: string;
   /** The KPI read; null when the session holds no key of any KPI section. */
   readonly kpis?: AdminKpiSource | null;
-  readonly period?: KpiPeriod;
+  /** What the address asks for: a preset or a custom range. */
+  readonly selection?: KpiSelection;
+  /** The Market's day now (`YYYY-MM-DD`): the last day a custom range may end on. */
+  readonly today?: string;
 }) {
   const t = useTranslations('dashboard');
   const tk = useTranslations('dashboard.kpis');
@@ -682,7 +682,12 @@ export function AdminDashboard({
       {kpis === null ? (
         queue
       ) : (
-        <KpiItems source={kpis} period={period} permissionKeys={permissionKeys} before={queue} />
+        <KpiItems
+          source={kpis}
+          period={selection.id}
+          permissionKeys={permissionKeys}
+          before={queue}
+        />
       )}
       <GridItem span={12}>
         <Applications data={data} zone={zone} />
@@ -726,8 +731,19 @@ export function AdminDashboard({
         <PeriodSwitch
           title={title}
           label={tk('period.label')}
-          options={KPI_PERIODS.map((id) => ({ id, label: tk(`period.${PERIOD_KEY[id]}`) }))}
-          value={period}
+          options={[...KPI_PERIODS, 'custom' as const].map((id) => ({
+            id,
+            label: tk(`period.${PERIOD_KEY[id]}`),
+          }))}
+          selection={selection}
+          today={today}
+          zone={zone}
+          fields={
+            selection.id === 'custom'
+              ? validateRange({ from: selection.from, to: selection.to, today })
+              : []
+          }
+          canExport={mayExport(permissionKeys)}
         >
           {grid}
         </PeriodSwitch>

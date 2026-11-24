@@ -587,6 +587,37 @@ describe('the admin KPI cards', () => {
   });
 });
 
+describe('a custom range', () => {
+  it('shows the fields the API refused inline, with no figures', () => {
+    const { container } = render(
+      wrap(
+        <DashboardGrid>
+          <KpiItems
+            source={{ kind: 'invalid', fields: [{ path: 'from', code: 'too-long' }] }}
+            period="custom"
+            permissionKeys={ALL}
+          />
+        </DashboardGrid>,
+      ),
+    );
+    expect(screen.getByRole('alert').textContent).toBe('From: A range is at most 13 months.');
+    expect(container.querySelectorAll('[data-kpi-card]')).toHaveLength(0);
+  });
+
+  it('compares with the days just before', () => {
+    page(FULL, ALL);
+    cleanup();
+    render(
+      wrap(
+        <DashboardGrid>
+          <KpiItems source={FULL} period="custom" permissionKeys={ALL} />
+        </DashboardGrid>,
+      ),
+    );
+    expect(screen.getAllByText(/vs the days just before/).length).toBeGreaterThan(0);
+  });
+});
+
 describe('the KPI formats', () => {
   it('formats money, rates, changes and days', () => {
     expect(kpiMoney(money('123456'), 'en-AU')).toBe('$1,234.56');

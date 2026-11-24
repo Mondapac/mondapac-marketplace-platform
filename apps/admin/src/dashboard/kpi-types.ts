@@ -3,6 +3,8 @@
 
 export const KPI_PERIODS = ['today', '7d', '30d', 'month'] as const;
 export type KpiPeriod = (typeof KPI_PERIODS)[number];
+/** A preset, or `custom` (a from/to range in the address). */
+export type KpiPeriodId = KpiPeriod | 'custom';
 export const DEFAULT_KPI_PERIOD: KpiPeriod = '7d';
 
 export const isKpiPeriod = (value: unknown): value is KpiPeriod =>
@@ -269,6 +271,13 @@ export interface AdminKpis {
 }
 
 /** The KPI read as the page passes it: null when the session holds no key of it, or it is refused. */
-export type KpiResult =
+export type KpiAnswer =
   { readonly kind: 'ok'; readonly value: AdminKpis } | { readonly kind: 'error' };
+/** `invalid`: the range was refused (a 400 `validation.failed`); the fields say which. */
+export type KpiResult =
+  | KpiAnswer
+  | {
+      readonly kind: 'invalid';
+      readonly fields: readonly { readonly path: string; readonly code: string }[];
+    };
 export type AdminKpiSource = KpiResult | null | Promise<KpiResult | null>;
