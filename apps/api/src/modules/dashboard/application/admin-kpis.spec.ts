@@ -381,7 +381,7 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     const full = await build([ORDERS]).execute(admin, { period: '7d' });
     if (!full.ok) throw new Error('expected an answer');
     // The operations fixture is partial: map only the orders sections.
-    const base = { ...base, operations: null };
+    const base = { ...full.value, operations: null };
     expect(adminKpisBody(base).ordersByState).toEqual({
       status: 'ok',
       kpis: {
