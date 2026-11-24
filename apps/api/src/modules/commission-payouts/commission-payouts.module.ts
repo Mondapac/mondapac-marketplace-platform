@@ -9,6 +9,14 @@ import {
 } from './application/ports/work-queue-count.reader';
 import { CommissionPayoutsWorkQueueFacadeImplementation } from './presentation/commission-payouts-work-queue.facade';
 import { COMMISSION_PAYOUTS_WORK_QUEUE_FACADE } from './contracts/commission-payouts-work-queue.facade';
+import { COMMISSION_PAYOUTS_REPORTING_FACADE } from './contracts/commission-payouts-reporting.facade';
+import {
+  LEDGER_REPORT_READER,
+  type LedgerReportReader,
+} from './application/ports/ledger-report.reader';
+import { LedgerReportEntriesQuery } from './application/use-cases/ledger-report-entries.use-case';
+import { LedgerEntriesRecordedQuery } from './application/use-cases/ledger-entries-recorded.use-case';
+import { CommissionPayoutsReportingFacadeImplementation } from './presentation/commission-payouts-reporting.facade';
 import type { UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
@@ -495,6 +503,19 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           sellerHolds,
         ),
     },
+    // Reporting's reads of the ledger (dashboards v2, phase 1, PR 4): rule `system`, read only.
+    ...[LedgerReportEntriesQuery, LedgerEntriesRecordedQuery].map((type) => ({
+      provide: type,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, LEDGER_REPORT_READER],
+      useFactory: (gate: UseCaseGate, unitOfWork: UnitOfWork, reader: LedgerReportReader) =>
+        new type(gate, { unitOfWork, reader }),
+    })),
+    {
+      provide: COMMISSION_PAYOUTS_REPORTING_FACADE,
+      inject: [LedgerReportEntriesQuery, LedgerEntriesRecordedQuery],
+      useFactory: (entries: LedgerReportEntriesQuery, recorded: LedgerEntriesRecordedQuery) =>
+        new CommissionPayoutsReportingFacadeImplementation(entries, recorded),
+    },
     PersistenceModule.outboxWriterFor('commission-payouts'),
     PersistenceModule.securityEventsFor('commission-payouts'),
     registerEvents('commission-payouts', COMMISSION_PAYOUTS_EVENTS),
@@ -644,6 +665,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
   // part of the module's entry point).
   exports: [
     COMMISSION_PAYOUTS_FACADE,
+    COMMISSION_PAYOUTS_REPORTING_FACADE,
     COMMISSION_PAYOUTS_WORK_QUEUE_FACADE,
     SyncDispute,
     DISPUTE_SOURCE,
