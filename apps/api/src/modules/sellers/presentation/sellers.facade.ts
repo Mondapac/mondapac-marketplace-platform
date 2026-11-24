@@ -14,10 +14,8 @@ import type { AllowedProductTypesSystem } from '../application/use-cases/allowed
 import type { AllowedProductTypes } from '../application/use-cases/allowed-product-types.use-case';
 import type { CarrierPickupRead } from '../application/use-cases/carrier-pickup.use-case';
 import type { OperatingZones } from '../application/use-cases/operating-zones.use-case';
-import type {
-  PickupPostcodes,
-  PickupPostcodesSystem,
-} from '../application/use-cases/pickup-postcodes.use-case';
+import type { PickupPostcodes } from '../application/use-cases/pickup-postcodes.use-case';
+import type { PickupPostcodesSystem } from '../application/use-cases/pickup-postcodes-system.use-case';
 import type { PublishedStoreSellerId } from '../application/use-cases/published-store-seller-id.use-case';
 import type { PublishedStoreCards } from '../application/use-cases/published-store-cards.use-case';
 import type { PublishedStoreSlugs } from '../application/use-cases/published-store-slugs.use-case';

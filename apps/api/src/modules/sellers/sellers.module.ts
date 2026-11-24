@@ -113,10 +113,8 @@ import { MyFileValidateIdentifier } from './application/use-cases/my-file-valida
 import { MyFileSaveGeneral } from './application/use-cases/my-file-save-general.use-case';
 import { CarrierPickupRead } from './application/use-cases/carrier-pickup.use-case';
 import { OperatingZones } from './application/use-cases/operating-zones.use-case';
-import {
-  PickupPostcodes,
-  PickupPostcodesSystem,
-} from './application/use-cases/pickup-postcodes.use-case';
+import { PickupPostcodes } from './application/use-cases/pickup-postcodes.use-case';
+import { PickupPostcodesSystem } from './application/use-cases/pickup-postcodes-system.use-case';
 import { ReviewerBusinessDetailsRead } from './application/use-cases/reviewer-business-details.use-case';
 import { ReviewRead } from './application/use-cases/review-read.use-case';
 import { ReviewRegisterCheckRead } from './application/use-cases/review-register-check-read.use-case';
