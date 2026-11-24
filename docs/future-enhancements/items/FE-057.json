@@ -1,0 +1,11 @@
+{
+  "id": "FE-057",
+  "area": "admin",
+  "title": "گروه Markets & regions در تنظیمات",
+  "desc": "با آمدن بازار دوم، Service areas به گروه تازهٔ Markets & regions برود و تنظیمات وابسته به بازار (مالیات، ارسال، مناطق، ارز) انتخاب‌گر بازار روی همان صفحه بگیرند، نه یک صفحه برای هر بازار.",
+  "src": "design/admin/settings-navigation/settings-navigation-fa.html (بازبینی رضا و جعفر)",
+  "date": "2026-11-21",
+  "trig": "با راه‌اندازی بازار دوم",
+  "prio": "متوسط",
+  "status": "موکول"
+}

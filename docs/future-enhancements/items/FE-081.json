@@ -1,0 +1,11 @@
+{
+  "id": "FE-081",
+  "area": "infra",
+  "title": "عکس تاریخی سلامت بازار",
+  "desc": "ذخیرهٔ روزانهٔ موجودی، سلامت فروشنده و درصد حلال برای نمایش روند.",
+  "src": "design/admin/dashboards-upgrade/dashboards-upgrade-fa.html (محمد)",
+  "date": "2026-11-22",
+  "trig": "بعد از فاز ۵ داشبورد",
+  "prio": "پایین",
+  "status": "موکول"
+}

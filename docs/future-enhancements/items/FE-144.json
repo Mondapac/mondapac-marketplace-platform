@@ -1,0 +1,11 @@
+{
+  "id": "FE-144",
+  "area": "storefront",
+  "title": "نقش نشان برای Kosher، Vegan و Organic",
+  "desc": "امروز این نوع‌ها نشان متنی دارند؛ فقط Halal نقش دارد.",
+  "src": "design/certificates-types/new-type-design-fa.html (۹)",
+  "date": "2026-11-22",
+  "trig": "بعد از ساخت نوع گواهی از ادمین",
+  "prio": "پایین",
+  "status": "موکول"
+}

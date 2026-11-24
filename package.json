@@ -30,7 +30,8 @@
     "db:bootstrap": "docker compose exec -T postgres psql -U postgres -d mondapac -f /docker-entrypoint-initdb.d/10-bootstrap-dev.sql",
     "verify": "pnpm verify:without-test-db && pnpm test:db",
     "verify:without-test-db": "pnpm verify:static && pnpm test",
-    "verify:static": "pnpm db:generate && pnpm typecheck && pnpm lint && pnpm boundaries && pnpm db:check-reversible",
+    "verify:static": "pnpm db:generate && pnpm typecheck && pnpm lint && pnpm boundaries && pnpm docs:register:check && pnpm db:check-reversible",
+    "docs:register:check": "node scripts/check-future-enhancements.mjs",
     "boundaries": "pnpm --filter @mondapac/api boundaries && node scripts/check-prisma-boundaries.mjs && node scripts/check-panel-boundaries.mjs"
   },
   "devDependencies": {

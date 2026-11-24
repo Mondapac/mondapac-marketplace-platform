@@ -1,0 +1,11 @@
+{
+  "id": "FE-079",
+  "area": "infra",
+  "title": "منطقهٔ زمانی جدا برای هر بازار در خلاصه‌های reporting",
+  "desc": "روز بازار فعلاً از تنظیم یک بازار؛ با بازار دوم هر بازار منطقهٔ خود را بگیرد.",
+  "src": "design/admin/dashboards-upgrade/dashboards-upgrade-fa.html (محمد)",
+  "date": "2026-11-22",
+  "trig": "وقتی بازار دوم شروع شد",
+  "prio": "پایین",
+  "status": "موکول"
+}

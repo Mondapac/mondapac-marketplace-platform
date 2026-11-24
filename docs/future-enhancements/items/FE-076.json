@@ -1,0 +1,11 @@
+{
+  "id": "FE-076",
+  "area": "admin",
+  "title": "نقشهٔ سفارش‌ها بر اساس منطقه",
+  "desc": "نمایش پراکندگی سفارش‌ها روی نقشه در داشبورد ادمین.",
+  "src": "design/admin/dashboards-upgrade/dashboards-upgrade-fa.html",
+  "date": "2026-11-22",
+  "trig": "بعد از تصمیم توکن Mapbox",
+  "prio": "پایین",
+  "status": "موکول"
+}

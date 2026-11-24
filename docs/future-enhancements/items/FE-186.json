@@ -1,0 +1,11 @@
+{
+  "id": "FE-186",
+  "area": "admin",
+  "title": "برچسب وضعیت زنده کنار عنوان صفحه‌های زنده",
+  "desc": "هدر مشترک ورودی status دارد (مثل «Live · every 30 s») ولی هیچ صفحه‌ای استفاده نمی‌کند. صفحه‌های با بازخوانی خودکار (Security، Work queue، Sellers needing a look) می‌توانند آن را بگیرند. پیش‌نمایش: design/admin/page-subtitle-removal/shots/header-layout-live-status-*.png",
+  "src": "PR حذف زیرنویس صفحه‌ها (درخواست john)",
+  "date": "2026-11-24",
+  "trig": "به خواست john؛ فعلاً نیازی نیست",
+  "prio": "پایین",
+  "status": "موکول"
+}

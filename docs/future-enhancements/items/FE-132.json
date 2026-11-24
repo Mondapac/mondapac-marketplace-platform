@@ -1,0 +1,11 @@
+{
+  "id": "FE-132",
+  "area": "admin",
+  "title": "سطح دسترسی جدا برای شاخص‌های مالی داشبورد",
+  "desc": "شاخص‌های پولی (GMV، فروش خالص، بازپرداخت به مبلغ) فعلاً پشت کلید commission-payouts.settlement.view هستند، چون «مجوز مالی» طراحی همان دفتر کمیسیون است و کلید جدید بذر نقش‌ها و بازبینی امنیت می‌خواهد. اگر مالک خواست دسترسی جدا از دفتر کمیسیون داده شود، کلید reporting.finance-kpi.view و نسخهٔ جدید نقش Finance لازم است.",
+  "src": "apps/api/src/modules/reporting/application/use-cases/view-marketplace-finance-kpis.use-case.ts",
+  "date": "2026-11-22",
+  "trig": "اگر مالک خواست دسترسی به شاخص مالی از دفتر کمیسیون جدا شود (حسن و علی)",
+  "prio": "پایین",
+  "status": "موکول"
+}

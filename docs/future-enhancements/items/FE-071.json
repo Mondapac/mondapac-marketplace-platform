@@ -1,0 +1,11 @@
+{
+  "id": "FE-071",
+  "area": "admin",
+  "title": "چیدمان دلخواه کارت‌های داشبورد",
+  "desc": "هر کاربر ترتیب و نمایش کارت‌ها را تنظیم کند (هر دو پنل).",
+  "src": "design/admin/dashboards-upgrade/dashboards-upgrade-fa.html",
+  "date": "2026-11-22",
+  "trig": "بعد از گزینهٔ ب",
+  "prio": "پایین",
+  "status": "موکول"
+}

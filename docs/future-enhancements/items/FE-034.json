@@ -1,0 +1,11 @@
+{
+  "id": "FE-034",
+  "area": "storefront",
+  "title": "تحلیل (Analytics) و رویدادهای تجارت الکترونیک",
+  "desc": "دستهٔ Analytics در رضایت کوکی، Consent Mode v2 در صورت GA4، Search Console و رویدادهای مشاهده/افزودن به سبد/خرید.",
+  "src": "plans/buyer-seo-plan.md",
+  "date": "2026-11-21",
+  "trig": "بعد از سبد واقعی (Cart PR 2) و تصمیم GA4",
+  "prio": "پایین",
+  "status": "موکول"
+}
