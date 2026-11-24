@@ -45,6 +45,7 @@ import type { WorkingCopyRepository } from '../ports/working-copy.repository';
 import { OwnProductCreate } from './own-product-create.use-case';
 import { OwnProductSubmit, type OwnProductSubmitInput } from './own-product-submit.use-case';
 import type { AllowedProductTypes } from '../ports/allowed-product-types.reader';
+import { ALL_CATEGORIES_IN_SCOPE } from '../../../../../test/support/seller-scope-allow-all';
 import { fixedFamilyResolver } from '../../../../../test/support/family-resolver';
 
 // `own-product.create` and `own-product.submit` in memory (catalog design 4.2 row 1, 6; slice 6), on both Market
@@ -164,6 +165,11 @@ describe.each(FIXTURES)(
         unavailable?: boolean;
         /** Called before each read of the seller's Offer; may change it (another write). */
         onOfferRead?: (read: number, state: OfferState) => OfferState;
+        /**
+         * The seller's activity scope (allowedCategoryIdsForSeller); absent: every category is in
+         * scope; 'unwired': the submit service is built without the dependency.
+         */
+        activityScope?: 'down' | 'unwired' | readonly string[];
       } = {},
     ) {
       const evaluator = new FakeClaimEvaluator(
@@ -367,6 +373,24 @@ describe.each(FIXTURES)(
         ids,
         offers: NO_OFFERS_ON_PRODUCT,
         requests: fanOut,
+        ...(options.activityScope === 'unwired'
+          ? {}
+          : {
+              sellerCategories:
+                options.activityScope === undefined
+                  ? ALL_CATEGORIES_IN_SCOPE
+                  : {
+                      allowedCategoryIdsForSeller: () =>
+                        Promise.resolve(
+                          options.activityScope === 'down'
+                            ? { ok: false as const, error: { code: 'access.unavailable' as const } }
+                            : {
+                                ok: true as const,
+                                value: new Set(options.activityScope as readonly Id<'Category'>[]),
+                              },
+                        ),
+                    },
+            }),
       });
       const eligibility = { isEligible: () => Promise.resolve(options.eligible ?? true) };
       const allowedTypes = {
@@ -522,6 +546,76 @@ describe.each(FIXTURES)(
       );
       expect(replaced.ok && replaced.value.revisionNo).toBe(2);
       expect(r.revisions.size).toBe(2);
+    });
+
+    it("refuses a category outside the seller's business activities, failing closed", async () => {
+      const outside = rig(undefined, { activityScope: ['c9'] });
+      const product = newProduct();
+      outside.seed(product);
+      expect(await outside.useCase.execute(contextOf('seller'), request(product.state.id))).toEqual(
+        {
+          ok: false,
+          error: {
+            code: 'revision.not-ready',
+            issues: [{ path: 'categoryIds.0', code: 'category.not-in-activity' }],
+          },
+        },
+      );
+      const down = rig(undefined, { activityScope: 'down' });
+      down.seed(product);
+      expect(await down.useCase.execute(contextOf('seller'), request(product.state.id))).toEqual({
+        ok: false,
+        error: { code: 'access.unavailable' },
+      });
+      const inside = rig(undefined, { activityScope: ['c1'] });
+      inside.seed(product);
+      const submitted = await inside.useCase.execute(
+        contextOf('seller'),
+        request(product.state.id),
+      );
+      expect(submitted.ok).toBe(true);
+      expect(outside.revisions.size + down.revisions.size).toBe(0);
+    });
+
+    it('refuses a seller submit built without the activity scope, failing closed', async () => {
+      const unwired = rig(undefined, { activityScope: 'unwired' });
+      const product = newProduct();
+      unwired.seed(product);
+      expect(await unwired.useCase.execute(contextOf('seller'), request(product.state.id))).toEqual(
+        { ok: false, error: { code: 'access.unavailable' } },
+      );
+      expect(unwired.revisions.size).toBe(0);
+      expect(unwired.matched).toHaveLength(0);
+    });
+
+    it('refuses an out-of-scope category in the second freeze, inside the write unit', async () => {
+      // The first freeze passes (c1 is in scope). The draft then moves to c9 while the claim check
+      // runs outside any unit; the second freeze gets the same scope and refuses it.
+      let moveDraft: () => void = () => undefined;
+      const matcher: ClaimTextMatcher = {
+        match: (_c, texts) => {
+          moveDraft();
+          return Promise.resolve({ ok: true as const, value: texts.map(() => []) });
+        },
+      };
+      const r = rig(matcher, { activityScope: ['c1'] });
+      const product = newProduct();
+      r.seed(product);
+      moveDraft = () => {
+        const copy = r.copies.get(product.state.id)!;
+        r.copies.set(product.state.id, {
+          ...copy,
+          content: { ...copy.content, categoryIds: ['c9'] },
+        });
+      };
+      expect(await r.useCase.execute(contextOf('seller'), request(product.state.id))).toEqual({
+        ok: false,
+        error: {
+          code: 'revision.not-ready',
+          issues: [{ path: 'categoryIds.0', code: 'category.not-in-activity' }],
+        },
+      });
+      expect(r.revisions.size).toBe(0);
     });
 
     it('answers another seller’s product, a PLATFORM product and an unknown id alike', async () => {

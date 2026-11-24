@@ -1,4 +1,4 @@
-import { Temporal } from '@mondapac/shared-kernel';
+import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, Result } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -83,7 +83,24 @@ describe.each(FIXTURES)('category picker in market $code', ({ code, depth, ids: 
     maxCategoryDepth: () => depth,
   } as unknown as CatalogMarketPolicy;
   const deps = { unitOfWork, adminCategoryReader: reader, policy };
-  const own = new OwnCategoryPicker(gate, deps);
+  // The seller's activity scope (allowedCategoryIdsForSeller): the whole tree unless a test narrows it.
+  let scope: 'down' | readonly string[] = ['d', 'g', 'c1', 's1', 'ch'];
+  const asked: string[] = [];
+  const sellerCategories = {
+    allowedCategoryIdsForSeller: (_c: CallContext, sellerId: Id<'Seller'>) => {
+      asked.push(sellerId);
+      return Promise.resolve(
+        scope === 'down'
+          ? err({ code: 'access.unavailable' as const })
+          : ok(new Set(scope as readonly Id<'Category'>[])),
+      );
+    },
+  };
+  beforeEach(() => {
+    scope = ['d', 'g', 'c1', 's1', 'ch'];
+    asked.length = 0;
+  });
+  const own = new OwnCategoryPicker(gate, { ...deps, sellerCategories });
   const platform = new PlatformCategoryPicker(gate, deps);
   const contextOf = (population: 'admin' | 'seller'): CallContext =>
     testCallContext(
@@ -105,9 +122,33 @@ describe.each(FIXTURES)('category picker in market $code', ({ code, depth, ids: 
     expect(result.value.choices.find((c) => c.id === 'c1')?.general).toBe(depth === 4);
   });
 
+  it('offers a seller only the categories of their business activities, for that seller', async () => {
+    scope = ['c1'];
+    const context = contextOf('seller');
+    const result = await own.execute(context, {});
+    expect(result.ok && result.value.choices.map((c) => c.id)).toEqual(['c1']);
+    expect(result.ok && result.value.notice).toBeUndefined();
+    expect(asked).toEqual([context.actor.kind === 'authenticated' ? context.actor.sellerId : '']);
+  });
+
+  it('gives a seller with no activity no choice and the notice no-activity', async () => {
+    scope = [];
+    const result = await own.execute(contextOf('seller'), {});
+    expect(result).toEqual(ok({ locale: 'en', choices: [], notice: 'no-activity' }));
+  });
+
+  it('fails closed when the activity scope cannot be read', async () => {
+    scope = 'down';
+    expect(await own.execute(contextOf('seller'), {})).toEqual(
+      err({ code: 'catalog.categories-unavailable' }),
+    );
+  });
+
   it('gives an admin the hidden node too', async () => {
     const result = await platform.execute(contextOf('admin'), {});
     expect(result.ok && result.value.choices.map((c) => c.id)).toEqual(expected);
+    expect(result.ok && result.value.notice).toBeUndefined();
+    expect(asked).toEqual([]);
   });
 
   it("offers only this Market's categories, to a seller and to an admin", async () => {

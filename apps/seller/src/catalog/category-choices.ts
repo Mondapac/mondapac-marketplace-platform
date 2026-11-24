@@ -10,13 +10,20 @@ export const CATEGORY_PICKER = 'catalog/seller/products/category-picker';
 interface PickerBody {
   readonly locale: string;
   readonly choices: readonly CategoryChoice[];
+  /** `no-activity`: the seller's business activities allow no category (choices is empty). */
+  readonly notice?: 'no-activity';
 }
 
 export type CategoryChoices =
   | { readonly state: 'idle' }
   | { readonly state: 'loading' }
   | { readonly state: 'failed' }
-  | { readonly state: 'ready'; readonly choices: readonly CategoryChoice[] };
+  | {
+      readonly state: 'ready';
+      readonly choices: readonly CategoryChoice[];
+      /** No business activity is set for the seller, so no category can be chosen. */
+      readonly noActivity: boolean;
+    };
 
 /**
  * Reads the picker when `load` is first called (the seller opens the Add control), so a form that
@@ -40,7 +47,13 @@ export function useCategoryChoices(): { choices: CategoryChoices; load: () => vo
     void callApi<PickerBody>('GET', CATEGORY_PICKER).then((result) => {
       if (result.ok) {
         started.current = true;
-        if (mounted.current) setChoices({ state: 'ready', choices: result.body.choices });
+        if (mounted.current) {
+          setChoices({
+            state: 'ready',
+            choices: result.body.choices,
+            noActivity: result.body.notice === 'no-activity',
+          });
+        }
         return;
       }
       started.current = false;
