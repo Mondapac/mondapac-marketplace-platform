@@ -82,6 +82,16 @@ describe('category proposal logic', () => {
     expect(problem.fields).toEqual([{ locale: 'fa', field: 'name', kind: 'claim-word' }]);
   });
 
+  it("names a parent outside the seller's business activity", () => {
+    expect(
+      proposalProblemOf({
+        status: 422,
+        code: 'validation.failed',
+        details: { fields: [{ path: 'platformParentId', code: 'category.not-in-activity' }] },
+      }),
+    ).toEqual({ form: 'parent-not-in-activity', fields: [] });
+  });
+
   it('maps a blocked term of validation.failed per field', () => {
     const problem = proposalProblemOf({
       status: 400,
