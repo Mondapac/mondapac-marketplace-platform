@@ -57,4 +57,16 @@ export interface CommissionPayoutsWorkQueueCountReader {
     sellerId: Id<'Seller'>,
     staleBefore: Temporal.Instant,
   ): Promise<WorkQueueCount>;
+
+  /**
+   * The dashboard's dispute rate numerator (dashboards v2, phase 1, PR 6): the chargebacks (cases
+   * that are not a Stripe inquiry) opened at or after `from` and before `to`, in every bucket. A
+   * count only. Read on `dispute_cases_bucket_idx` with every bucket listed, so each bucket is one
+   * range of `opened_at`.
+   */
+  disputesOpened(
+    market: MarketContext,
+    from: Temporal.Instant,
+    to: Temporal.Instant,
+  ): Promise<number>;
 }

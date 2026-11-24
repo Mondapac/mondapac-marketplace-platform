@@ -67,6 +67,8 @@ describe('the bound work-queue sources', () => {
     certification: {
       sellerCertificates: record('certification.sellerCertificates'),
       productCertificates: record('certification.productCertificates'),
+      // A dashboard number of the KPI answer, not a work queue.
+      expiringCertificates: () => Promise.reject(new Error('not a queue')),
     },
     payments: {
       failedWebhooks: record('payments.failedWebhooks'),
@@ -79,6 +81,8 @@ describe('the bound work-queue sources', () => {
       disputesDue: record('commissionPayouts.disputesDue'),
       sellerDisputesNeedingReply: record('commissionPayouts.sellerDisputesNeedingReply'),
       sellerPayoutHolds: record('commissionPayouts.sellerPayoutHolds'),
+      // A dashboard number of the KPI answer, not a work queue.
+      disputesOpened: () => Promise.reject(new Error('not a queue')),
     },
     reviews: { sellerUnanswered: record('reviews.sellerUnanswered') },
   };

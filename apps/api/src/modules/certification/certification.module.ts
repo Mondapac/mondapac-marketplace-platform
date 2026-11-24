@@ -1,5 +1,6 @@
 import { Module, type FactoryProvider } from '@nestjs/common';
 import { CountSellerCertificateReviews } from './application/use-cases/count-seller-certificate-reviews.use-case';
+import { CountExpiringCertificates } from './application/use-cases/count-expiring-certificates.use-case';
 import { CountProductCertificateReviews } from './application/use-cases/count-product-certificate-reviews.use-case';
 import {
   CERTIFICATION_WORK_QUEUE_COUNT_READER,
@@ -208,12 +209,37 @@ const validTypesUseCases = [SellerValidCertificateTypes, SellerValidCertificateT
       ) => new type(gate, { unitOfWork, counts }),
     })),
     {
+      provide: CountExpiringCertificates,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, CERTIFICATION_WORK_QUEUE_COUNT_READER, MarketRegistry],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        counts: CertificationWorkQueueCountReader,
+        markets: MarketRegistry,
+      ) =>
+        new CountExpiringCertificates(gate, {
+          unitOfWork,
+          counts,
+          zoneOf: (market) => markets.get(market.marketId).timezone,
+        }),
+    },
+    {
       provide: CERTIFICATION_WORK_QUEUE_FACADE,
-      inject: [CountSellerCertificateReviews, CountProductCertificateReviews],
+      inject: [
+        CountSellerCertificateReviews,
+        CountProductCertificateReviews,
+        CountExpiringCertificates,
+      ],
       useFactory: (
         sellerCertificates: CountSellerCertificateReviews,
         productCertificates: CountProductCertificateReviews,
-      ) => new CertificationWorkQueueFacadeImplementation(sellerCertificates, productCertificates),
+        expiringCertificates: CountExpiringCertificates,
+      ) =>
+        new CertificationWorkQueueFacadeImplementation(
+          sellerCertificates,
+          productCertificates,
+          expiringCertificates,
+        ),
     },
     PersistenceModule.outboxWriterFor('certification'),
     registerEvents('certification', CERTIFICATION_EVENTS),

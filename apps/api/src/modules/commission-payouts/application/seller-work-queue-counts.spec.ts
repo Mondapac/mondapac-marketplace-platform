@@ -67,6 +67,7 @@ const counts: CommissionPayoutsWorkQueueCountReader = {
   failedPayouts: admin,
   payoutHolds: admin,
   disputesDue: admin,
+  disputesOpened: admin,
   sellerDisputesNeedingReply: (market, sellerId, now) =>
     record({ method: 'sellerDisputesNeedingReply', market, sellerId, times: [now] }),
   sellerPayoutHolds: (market, sellerId, staleBefore) =>

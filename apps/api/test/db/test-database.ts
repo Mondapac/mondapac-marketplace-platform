@@ -86,6 +86,7 @@ function exported(
     | 'TEST_SELLERS_LIST_OWNER_DATABASE_URL'
     | 'TEST_ORDERING_ORDERS_DATABASE_URL'
     | 'TEST_ORDERING_ORDERS_OWNER_DATABASE_URL'
+    | 'TEST_DASHBOARD_PAYMENTS_QUEUE_DATABASE_URL'
     | 'TEST_SEARCH_DOCUMENTS_DATABASE_URL'
     | 'TEST_SEARCH_FILTERS_DATABASE_URL'
     | 'TEST_SEARCH_RATINGS_DATABASE_URL'
@@ -96,7 +97,9 @@ function exported(
     | 'TEST_REPORTING_WORKER_DATABASE_URL'
     | 'TEST_REPORTING_WORKER_OWNER_DATABASE_URL'
     | 'TEST_REPORTING_ADMIN_KPI_DATABASE_URL'
-    | 'TEST_REPORTING_SELLER_KPIS_DATABASE_URL',
+    | 'TEST_REPORTING_SELLER_KPIS_DATABASE_URL'
+    | 'TEST_CATALOG_TREE_DATABASE_URL'
+    | 'TEST_CATALOG_TREE_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -423,6 +426,15 @@ export function orderingOrdersTestDatabaseUrl(): string {
   return exported('TEST_ORDERING_ORDERS_DATABASE_URL');
 }
 
+/**
+ * The copy of the run database that dashboard-payments-queue-counts.db-spec.ts counts in
+ * (global-setup.ts): the work-queue readers count the whole Market, so no other file's rows
+ * may be there.
+ */
+export function dashboardPaymentsQueueTestDatabaseUrl(): string {
+  return exported('TEST_DASHBOARD_PAYMENTS_QUEUE_DATABASE_URL');
+}
+
 export function orderingOrdersOwnerTestDatabaseUrl(): string {
   return exported('TEST_ORDERING_ORDERS_OWNER_DATABASE_URL');
 }
@@ -506,4 +518,16 @@ export function reportingAdminKpiTestDatabaseUrl(): string {
  */
 export function reportingSellerKpisTestDatabaseUrl(): string {
   return exported('TEST_REPORTING_SELLER_KPIS_DATABASE_URL');
+}
+
+/**
+ * The copy that catalog-category-tree.db-spec.ts seeds the Market tree on and counts the categories
+ * and events of whole Markets on (global-setup.ts), as the application login and as its owner.
+ */
+export function catalogTreeTestDatabaseUrl(): string {
+  return exported('TEST_CATALOG_TREE_DATABASE_URL');
+}
+
+export function catalogTreeOwnerTestDatabaseUrl(): string {
+  return exported('TEST_CATALOG_TREE_OWNER_DATABASE_URL');
 }

@@ -2,6 +2,7 @@ import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import type { WorkQueueCount } from '../../../platform/work-queue/work-queue-count';
+import { DISPUTE_BUCKETS } from '../domain/dispute';
 import {
   DISPUTE_DUE_WITHIN_HOURS,
   FAILED_PAYOUT_WINDOW_HOURS,
@@ -28,6 +29,8 @@ const toInstant = (date: Date | null, count: number): Temporal.Instant | null =>
  *   dispute holds (on `payout_holds_active_seller_idx`), then their cases in `needs-response` (on
  *   the cases' primary key). Two reads of this module's own tables, no join to another module.
  * - Seller payout holds (seller tasks): the seller's active holds, on the same partial index.
+ * - Disputes opened (dashboard dispute rate): the chargebacks opened in a window, inquiries left
+ *   out, on `dispute_cases_bucket_idx` with all five buckets listed (one `opened_at` range each).
  */
 export class PrismaCommissionPayoutsWorkQueueCountReader implements CommissionPayoutsWorkQueueCountReader {
   constructor(private readonly prisma: PrismaService) {}
@@ -130,5 +133,21 @@ export class PrismaCommissionPayoutsWorkQueueCountReader implements CommissionPa
     ]);
     const count = all._count._all;
     return { count, overdue, oldestAt: toInstant(all._min.placedAt, count) };
+  }
+
+  async disputesOpened(
+    market: MarketContext,
+    from: Temporal.Instant,
+    to: Temporal.Instant,
+  ): Promise<number> {
+    if (Temporal.Instant.compare(from, to) >= 0) throw new RangeError('an empty dispute window');
+    return this.prisma.tx(market).commissionPayoutsDisputeCase.count({
+      where: {
+        marketId: market.marketId,
+        bucket: { in: [...DISPUTE_BUCKETS] },
+        openedAt: { gte: toDate(from), lt: toDate(to) },
+        inquiry: false,
+      },
+    });
   }
 }

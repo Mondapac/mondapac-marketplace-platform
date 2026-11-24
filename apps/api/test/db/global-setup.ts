@@ -78,6 +78,7 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'PAYOUT_RUN');
   await createCopy(name, 'SELLERS_LIST');
   await createCopy(name, 'ORDERING_ORDERS');
+  await createCopy(name, 'DASHBOARD_PAYMENTS_QUEUE');
   await createCopy(name, 'SEARCH_DOCUMENTS');
   await createCopy(name, 'SEARCH_FILTERS');
   await createCopy(name, 'SEARCH_RATINGS');
@@ -86,6 +87,7 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'REPORTING_WORKER');
   await createCopy(name, 'REPORTING_ADMIN_KPI');
   await createCopy(name, 'REPORTING_SELLER_KPIS');
+  await createCopy(name, 'CATALOG_TREE');
 }
 
 /**
@@ -157,6 +159,9 @@ export default async function globalSetup(): Promise<void> {
  *   Markets (its own and the other fixture) before and after inserting its own orders, and other
  *   files (pickup codes, paid outbox, offer pairs, storefront reads) insert and confirm orders in
  *   both Markets in parallel, so no other file's order lives there.
+ * - `dashboard_payments_queue`: dashboard-payments-queue-counts.db-spec.ts counts whole-Market work
+ *   queues (restricted accounts, holds, disputes, failed webhooks and payouts) and expects exact
+ *   overdue numbers, while other files seed old rows in the same tables, so none live there.
  * - `search_documents`, `search_filters`, `search_ratings`: search-offer-documents, search-attribute-filters
  *   and search-product-ratings db-specs each empty whole search tables (`DELETE FROM search.offer_documents`,
  *   `search.product_ratings`) in `beforeAll`/`beforeEach` and then expect only their own rows, so one file's
@@ -167,8 +172,12 @@ export default async function globalSetup(): Promise<void> {
  *   seller days of `reporting.daily_seller_sales`, `reporting.daily_category_sales` and the fact
  *   tables. On these near-empty test tables the predicate (SIREAD) locks are relation-level (a
  *   sequential scan) or cover the single index page that holds every key, so under parallel files
- *   units of different files on different sellers and days met as rw-conflicts and failed with 40001 at random (each file passed alone). Each file keeps its own copy, so
- *   only its own units meet; the isolation level stays SERIALIZABLE.
+ *   units of different files on different sellers and days met as rw-conflicts and failed with
+ *   40001 at random (each file passed alone). Each file keeps its own copy, so only its own units
+ *   meet; the isolation level stays SERIALIZABLE.
+ * - `catalog_tree`: catalog-category-tree.db-spec.ts runs the Market seed use case and then counts the
+ *   categories and `platform-category-created` outbox events of whole Markets (AU must stay empty),
+ *   while other files seed or insert categories in both Markets in parallel, so none of them lives there.
  * Copied before any test connects, since a template must have no other session.
  */
 async function createCopy(
@@ -203,6 +212,7 @@ async function createCopy(
     | 'PAYOUT_RUN'
     | 'SELLERS_LIST'
     | 'ORDERING_ORDERS'
+    | 'DASHBOARD_PAYMENTS_QUEUE'
     | 'SEARCH_DOCUMENTS'
     | 'SEARCH_FILTERS'
     | 'SEARCH_RATINGS'
@@ -210,7 +220,8 @@ async function createCopy(
     | 'REPORTING_LEDGER'
     | 'REPORTING_WORKER'
     | 'REPORTING_ADMIN_KPI'
-    | 'REPORTING_SELLER_KPIS',
+    | 'REPORTING_SELLER_KPIS'
+    | 'CATALOG_TREE',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });

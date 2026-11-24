@@ -17,6 +17,7 @@ import { PrismaPaymentsWorkQueueCountReader } from '../../src/modules/payments/i
 import { UuidV7IdGenerator } from '../../src/platform/ids/uuid-v7-id-generator';
 import type { WorkQueueCount } from '../../src/platform/work-queue/work-queue-count';
 import { TEST_MARKETS } from '../support/test-config';
+import { dashboardPaymentsQueueTestDatabaseUrl } from './test-database';
 import { createPersistence, marketOf, randomUUID, type Persistence } from './persistence-support';
 
 // The payments and commission-payouts counts of the dashboard's work queue (dashboards upgrade,
@@ -51,7 +52,7 @@ describe.each(TEST_MARKETS)('dashboard payments queue counts in market %s (datab
   let commission: PrismaCommissionPayoutsWorkQueueCountReader;
 
   beforeAll(() => {
-    db = createPersistence();
+    db = createPersistence({ databaseUrl: dashboardPaymentsQueueTestDatabaseUrl() });
     inbox = new PrismaStripeEventInbox(db.service);
     accounts = new PrismaConnectedAccountStore(db.service);
     payouts = new PrismaPayoutRepository(db.service);

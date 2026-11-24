@@ -82,7 +82,14 @@ import { catalogIndexSubscriptions } from './presentation/subscribers/catalog-in
 import { namesIndexSubscriptions } from './presentation/subscribers/names-index.subscriptions';
 import { sellerAccessIndexSubscriptions } from './presentation/subscribers/seller-access-index.subscriptions';
 import { cultureIndexSubscriptions } from './presentation/subscribers/culture-index.subscriptions';
-import { SEARCH_ASSISTANT_FACADE } from './contracts';
+import { SEARCH_ASSISTANT_FACADE, SEARCH_SUPPLY_FACADE } from './contracts';
+import {
+  LIVE_LISTING_COUNTER,
+  type LiveListingCounter,
+} from './application/ports/live-listing-counter';
+import { CountLiveListings } from './application/use-cases/count-live-listings.use-case';
+import { SearchSupplyFacadeImplementation } from './presentation/search-supply.facade';
+import type { UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { SearchAssistantFacadeImplementation } from './presentation/search-assistant.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: SearchDependencies) => U;
@@ -346,6 +353,18 @@ function productDetailProvider<U>(
         stores: SearchStores,
       ) => new SearchAssistantFacadeImplementation(search, bestsellers, specials, detail, stores),
     },
+    {
+      provide: CountLiveListings,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, LIVE_LISTING_COUNTER],
+      useFactory: (gate: UseCaseGate, unitOfWork: UnitOfWork, counts: LiveListingCounter) =>
+        new CountLiveListings(gate, { unitOfWork, counts }),
+    },
+    {
+      provide: SEARCH_SUPPLY_FACADE,
+      inject: [CountLiveListings],
+      useFactory: (liveListings: CountLiveListings) =>
+        new SearchSupplyFacadeImplementation(liveListings),
+    },
     registerSubscriptionsFrom(
       'search',
       [SyncOfferDocuments, RequestOfferReindex],
@@ -366,6 +385,6 @@ function productDetailProvider<U>(
       ) => [rebuildIndexJob(rebuild), syncRatingsJob(ratings), reindexAttributesJob(reindex)],
     ),
   ],
-  exports: [SEARCH_ASSISTANT_FACADE],
+  exports: [SEARCH_ASSISTANT_FACADE, SEARCH_SUPPLY_FACADE],
 })
 export class SearchModule {}

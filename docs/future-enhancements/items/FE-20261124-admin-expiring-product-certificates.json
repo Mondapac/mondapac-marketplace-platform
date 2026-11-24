@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261124-admin-expiring-product-certificates",
+  "area": "admin",
+  "title": "گواهی محصول رو به انقضا در کارت عرضه و سلامت",
+  "desc": "شمار «گواهی رو به انقضا در ۳۰ روز» فقط گواهی‌های تأییدشدهٔ فروشنده را می‌شمارد (کلید certification.seller-certificate.view). گواهی‌های محصول (product_certifications، ایندکس approved_boundary_at دارد) با کلید certification.product-certificate.view جدا شمرده و کنار آن نشان داده شوند.",
+  "src": "docs/modules/reporting/notes.md (داشبوردهای v2، PR 6)",
+  "date": "2026-11-24",
+  "trig": "در فاز ۲ داشبوردهای v2 یا با درخواست تیم گواهی",
+  "prio": "پایین",
+  "status": "موکول"
+}

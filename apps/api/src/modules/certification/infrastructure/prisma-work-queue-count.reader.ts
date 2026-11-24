@@ -62,4 +62,21 @@ export class PrismaCertificationWorkQueueCountReader implements CertificationWor
       staleBefore,
     );
   }
+
+  async expiringSellerCertificates(
+    market: MarketContext,
+    now: Temporal.Instant,
+    until: Temporal.Instant,
+  ): Promise<number> {
+    return this.prisma.tx(market).certificationSellerCertification.count({
+      where: {
+        marketId: market.marketId,
+        status: 'approved',
+        approvedBoundaryAt: {
+          gt: new Date(now.epochMilliseconds),
+          lte: new Date(until.epochMilliseconds),
+        },
+      },
+    });
+  }
 }

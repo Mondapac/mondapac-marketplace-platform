@@ -32,6 +32,7 @@ export default async function globalTeardown(): Promise<void> {
     process.env.TEST_PAYOUT_RUN_DATABASE_NAME,
     process.env.TEST_SELLERS_LIST_DATABASE_NAME,
     process.env.TEST_ORDERING_ORDERS_DATABASE_NAME,
+    process.env.TEST_DASHBOARD_PAYMENTS_QUEUE_DATABASE_NAME,
     process.env.TEST_SEARCH_DOCUMENTS_DATABASE_NAME,
     process.env.TEST_SEARCH_FILTERS_DATABASE_NAME,
     process.env.TEST_SEARCH_RATINGS_DATABASE_NAME,
@@ -40,6 +41,7 @@ export default async function globalTeardown(): Promise<void> {
     process.env.TEST_REPORTING_WORKER_DATABASE_NAME,
     process.env.TEST_REPORTING_ADMIN_KPI_DATABASE_NAME,
     process.env.TEST_REPORTING_SELLER_KPIS_DATABASE_NAME,
+    process.env.TEST_CATALOG_TREE_DATABASE_NAME,
     process.env.TEST_DATABASE_NAME,
   ].filter((name): name is string => name !== undefined && name !== '');
   if (names.length === 0) return;

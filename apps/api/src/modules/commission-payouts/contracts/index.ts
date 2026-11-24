@@ -23,6 +23,8 @@ export { COMMISSION_PAYOUTS_STEP_UP_ACTIONS } from './step-up';
 export {
   COMMISSION_PAYOUTS_WORK_QUEUE_FACADE,
   type CommissionPayoutsWorkQueueFacade,
+  type DisputesOpened,
+  type DisputesOpenedQuery,
 } from './commission-payouts-work-queue.facade';
 export {
   COMMISSION_PAYOUTS_REPORTING_FACADE,

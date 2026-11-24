@@ -2,7 +2,15 @@ import { ApiProperty } from '@nestjs/swagger';
 import type { Temporal } from '@mondapac/shared-kernel';
 import type { WorkQueueAnswer } from '../application/use-cases/view-admin-work-queue.use-case';
 import type { AdminKpisAnswer } from '../application/use-cases/view-admin-kpis.use-case';
-import type { FinanceAnswer, FinanceKpis } from '../../reporting';
+import type {
+  FinanceAnswer,
+  FinanceKpis,
+  FinanceNet,
+  LedgerReadiness,
+  NetRevenue,
+  SameDayShare,
+  TakeRate,
+} from '../../reporting';
 
 export class WorkQueueItemBody {
   @ApiProperty({ description: '`<module>.<queue>`; the panel maps it to its label and link.' })
@@ -149,6 +157,112 @@ export class FinancePointBody {
   @ApiProperty() refundedWithTax!: string;
 }
 
+export class LedgerWindowBody {
+  @ApiProperty({ example: '2026-11-17' }) from!: string;
+  @ApiProperty({ example: '2026-11-23' }) to!: string;
+}
+
+export class LedgerMatchDayBody {
+  @ApiProperty() day!: string;
+  @ApiProperty() paidSellerOrders!: number;
+  @ApiProperty() ledgerSellerOrders!: number;
+  @ApiProperty() missingInLedger!: number;
+  @ApiProperty() missingInSales!: number;
+  @ApiProperty() matches!: boolean;
+}
+
+export class LedgerReadinessBody {
+  @ApiProperty({ description: 'Net figures show only when true (one week of matching ledger).' })
+  ready!: boolean;
+  @ApiProperty({
+    enum: [
+      'ready',
+      'backfill-not-finished',
+      'backfill-refused-rows',
+      'days-not-matching',
+      'insufficient-activity',
+    ],
+  })
+  reason!: string;
+  @ApiProperty() backfillFinished!: boolean;
+  @ApiProperty() backfillFailedFacts!: number;
+  @ApiProperty() matchedSellerOrders!: number;
+  @ApiProperty({ type: LedgerWindowBody, description: 'The 7 Market days ending yesterday.' })
+  window!: LedgerWindowBody;
+  @ApiProperty({ type: [LedgerMatchDayBody] }) days!: LedgerMatchDayBody[];
+}
+
+export class NetRevenueComponentBody {
+  @ApiProperty({ enum: ['available', 'not-available'] }) status!: string;
+  @ApiProperty({ required: false, type: MoneyBody, description: 'Only when available.' })
+  amount?: MoneyBody;
+  @ApiProperty({
+    required: false,
+    enum: ['not-reported', 'not-recorded'],
+    description: 'Only when not available: never show it as 0.',
+  })
+  reason?: string;
+}
+
+export class NetRevenueTotalBody {
+  @ApiProperty({
+    enum: ['complete', 'partial'],
+    description: '`partial`: no amount at all; show the components under their own labels.',
+  })
+  status!: string;
+  @ApiProperty({ required: false, type: MoneyBody, description: 'Only when complete.' })
+  amount?: MoneyBody;
+  @ApiProperty({ required: false, type: [String], description: 'Only when partial.' })
+  missing?: string[];
+}
+
+export class NetRevenueBody {
+  @ApiProperty() currency!: string;
+  @ApiProperty({ type: MoneyBody, description: 'Commission charged, without GST.' })
+  commissionCharged!: MoneyBody;
+  @ApiProperty({ type: MoneyBody, description: 'Commission given back by seller-borne refunds.' })
+  commissionRefunded!: MoneyBody;
+  @ApiProperty({
+    description:
+      'commission, deliveryMargin, platformFundedDiscounts, platformFundedCashback, fleetFees: ' +
+      'each a NetRevenueComponentBody.',
+  })
+  components!: Record<string, NetRevenueComponentBody>;
+  @ApiProperty({ type: NetRevenueTotalBody }) total!: NetRevenueTotalBody;
+}
+
+export class TakeRateBody {
+  @ApiProperty({
+    enum: ['complete', 'partial', 'no-sales'],
+    description:
+      'Net revenue ÷ GMV without GST. `partial`: from the `basis` components only (label it so); ' +
+      '`no-sales`: no GMV in the range.',
+  })
+  status!: string;
+  @ApiProperty({ required: false, type: Number, description: 'Basis points (1320 is 13.2%).' })
+  rateBp?: number;
+  @ApiProperty({ required: false, type: [String] }) basis?: string[];
+  @ApiProperty({ required: false, type: [String] }) missing?: string[];
+}
+
+export class TakeRatePairBody {
+  @ApiProperty({ type: TakeRateBody, nullable: true }) current!: TakeRateBody | null;
+  @ApiProperty({ type: TakeRateBody, nullable: true }) previous!: TakeRateBody | null;
+}
+
+export class FinanceNetBody {
+  @ApiProperty({ type: LedgerReadinessBody }) readiness!: LedgerReadinessBody;
+  @ApiProperty({ type: NetRevenueBody, nullable: true, description: 'Null until ready.' })
+  current!: NetRevenueBody | null;
+  @ApiProperty({ type: NetRevenueBody, nullable: true, description: 'Null until ready.' })
+  previous!: NetRevenueBody | null;
+  @ApiProperty({ type: TakeRatePairBody }) takeRate!: TakeRatePairBody;
+  @ApiProperty({
+    description: 'commission, total (na unless both complete) and takeRateBp (basis points).',
+  })
+  deltas!: Record<string, DeltaBody>;
+}
+
 export class FinanceKpiBody {
   @ApiProperty() currency!: string;
   @ApiProperty({ type: FinanceKpiValuesBody }) current!: FinanceKpiValuesBody;
@@ -158,6 +272,12 @@ export class FinanceKpiBody {
   @ApiProperty({ type: [FinancePointBody], description: 'Minor units as strings.' })
   series!: FinancePointBody[];
   @ApiProperty({ type: [FinancePointBody] }) previousSeries!: FinancePointBody[];
+  @ApiProperty({
+    type: FinanceNetBody,
+    nullable: true,
+    description: 'Net revenue and take rate; null when only this read failed (GMV still shows).',
+  })
+  net!: FinanceNetBody | null;
 }
 
 export class OperationsSectionBody {
@@ -172,6 +292,70 @@ export class FinanceSectionBody {
   @ApiProperty({ required: false, format: 'date-time', nullable: true, type: String })
   refreshedAt?: string | null;
   @ApiProperty({ required: false, type: FinanceKpiBody }) kpis?: FinanceKpiBody;
+}
+
+export class SameDayShareBody {
+  @ApiProperty({
+    enum: ['available', 'not-enough-data', 'not-available'],
+    description:
+      'Seller orders paid on a Market day of the period whose buyer chose the same-day delivery ' +
+      'method, of all seller orders paid in it (cancelled and refunded included). ' +
+      '`not-enough-data`: fewer than `minimum` paid, show "Not enough data", never a percentage. ' +
+      '`not-available` (`method-unknown`): some paid seller orders have no delivery method ' +
+      'recorded yet; never show 0.',
+  })
+  status!: string;
+  @ApiProperty({
+    required: false,
+    enum: ['method-unknown'],
+    description: 'Only when not-available.',
+  })
+  reason?: string;
+  @ApiProperty({ required: false, type: Number, description: 'Only when available.' })
+  sameDay?: number;
+  @ApiProperty({
+    required: false,
+    type: Number,
+    description: 'Seller orders paid in the period. When available or not-enough-data.',
+  })
+  paid?: number;
+  @ApiProperty({
+    required: false,
+    type: Number,
+    description: 'sameDay ÷ paid in basis points. Only when available.',
+  })
+  rateBp?: number;
+  @ApiProperty({
+    required: false,
+    type: Number,
+    description: 'The smallest paid count that gets a share (5). Only when not-enough-data.',
+  })
+  minimum?: number;
+  @ApiProperty({
+    required: false,
+    type: Number,
+    description: 'Paid seller orders with no delivery method yet. Only when not-available.',
+  })
+  unknownMethod?: number;
+}
+
+export class OrdersByStatusKpiBody {
+  @ApiProperty({ description: 'Seller orders paid on a Market day of the period.' }) paid!: number;
+  @ApiProperty({ description: 'Not shipped yet (not cancelled, no refund).' }) toShip!: number;
+  @ApiProperty({ description: 'Shipped, not delivered (not cancelled, no refund).' })
+  shipped!: number;
+  @ApiProperty({ description: 'Delivered (not cancelled, no refund).' }) delivered!: number;
+  @ApiProperty({ description: 'Cancelled after payment.' }) cancelled!: number;
+  @ApiProperty({ description: 'Not cancelled, with at least one succeeded refund.' })
+  refunded!: number;
+  @ApiProperty({ nullable: true, type: Number }) cancelledRateBp!: number | null;
+  @ApiProperty({ nullable: true, type: Number }) refundedRateBp!: number | null;
+  @ApiProperty({ type: SameDayShareBody }) sameDayShare!: SameDayShareBody;
+}
+
+export class OrdersByStatusSectionBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: OrdersByStatusKpiBody }) kpis?: OrdersByStatusKpiBody;
 }
 
 export class TopSellerBody {
@@ -232,6 +416,71 @@ export class MarketHealthBody {
     description: 'Sellers in the health queue. Null without `sellers.seller.view`.',
   })
   sellersAtRisk!: HealthCountBody | null;
+  @ApiProperty({
+    type: () => ListingsHealthBody,
+    nullable: true,
+    description: 'Live listings and out of stock. Null without `catalog.product.view`.',
+  })
+  listings!: ListingsHealthBody | null;
+  @ApiProperty({
+    type: () => CertificatesExpiringBody,
+    nullable: true,
+    description:
+      'Approved seller certificates expiring in the next 30 Market days. Null without ' +
+      '`certification.seller-certificate.view`.',
+  })
+  certificatesExpiring!: CertificatesExpiringBody | null;
+  @ApiProperty({
+    type: () => PayoutsOnHoldBody,
+    nullable: true,
+    description: 'Active payout holds. Null without `commission-payouts.settlement.view`.',
+  })
+  payoutsOnHold!: PayoutsOnHoldBody | null;
+  @ApiProperty({
+    type: () => DisputeRateBody,
+    nullable: true,
+    description:
+      'Chargebacks opened in the period ÷ seller orders paid in it. Null without both ' +
+      '`commission-payouts.dispute.view` and `ordering.order.view`.',
+  })
+  disputeRate!: DisputeRateBody | null;
+}
+
+export class ListingsHealthBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: Number }) active?: number;
+  @ApiProperty({ required: false, type: Number }) outOfStock?: number;
+  @ApiProperty({ required: false, nullable: true, type: Number, description: 'Of active.' })
+  outOfStockRateBp?: number | null;
+}
+
+export class CertificatesExpiringBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: Number }) count?: number;
+  @ApiProperty({ required: false, type: Number, example: 30 }) withinDays?: number;
+}
+
+export class NotAvailableBody {
+  @ApiProperty({ enum: ['not-available'] }) status!: string;
+  @ApiProperty({ enum: ['not-reported', 'not-recorded'] }) reason!: string;
+}
+
+export class PayoutsOnHoldBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: Number }) count?: number;
+  @ApiProperty({
+    required: false,
+    type: NotAvailableBody,
+    description: 'The money the holds keep is not recorded per hold yet: never show 0.',
+  })
+  amount?: NotAvailableBody;
+}
+
+export class DisputeRateBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: Number }) disputes?: number;
+  @ApiProperty({ required: false, type: Number }) paidSellerOrders?: number;
+  @ApiProperty({ required: false, nullable: true, type: Number }) rateBp?: number | null;
 }
 
 export class AdminKpisBody {
@@ -261,6 +510,12 @@ export class AdminKpisBody {
   })
   finance!: FinanceSectionBody | null;
   @ApiProperty({
+    type: OrdersByStatusSectionBody,
+    nullable: true,
+    description: 'Null without `ordering.order.view`: leave the card out.',
+  })
+  ordersByStatus!: OrdersByStatusSectionBody | null;
+  @ApiProperty({
     type: TopSellersSectionBody,
     nullable: true,
     description: 'Null without `commission-payouts.settlement.view`: leave the card out.',
@@ -275,8 +530,7 @@ export class AdminKpisBody {
   @ApiProperty({
     type: MarketHealthBody,
     nullable: true,
-    description:
-      'Null when the viewer holds neither `catalog.product.view` nor `sellers.seller.view`.',
+    description: 'Null when the viewer holds none of the keys of its numbers.',
   })
   health!: MarketHealthBody | null;
 }
@@ -326,6 +580,90 @@ function operationsSection(section: AdminKpisAnswer['operations']): OperationsSe
   };
 }
 
+function readinessBody(readiness: LedgerReadiness): LedgerReadinessBody {
+  return {
+    ready: readiness.ready,
+    reason: readiness.reason,
+    backfillFinished: readiness.backfillFinished,
+    backfillFailedFacts: readiness.backfillFailedFacts,
+    matchedSellerOrders: readiness.matchedSellerOrders,
+    window: { ...readiness.window },
+    days: readiness.days.map((day) => ({ ...day })),
+  };
+}
+
+function netRevenueBody(net: NetRevenue | null): NetRevenueBody | null {
+  if (net === null) return null;
+  const components: Record<string, NetRevenueComponentBody> = {};
+  for (const [name, component] of Object.entries(net.components)) {
+    components[name] =
+      component.status === 'available'
+        ? { status: 'available', amount: money(component.amount, net.currency) }
+        : { status: 'not-available', reason: component.reason };
+  }
+  return {
+    currency: net.currency,
+    commissionCharged: money(net.commissionCharged, net.currency),
+    commissionRefunded: money(net.commissionRefunded, net.currency),
+    components,
+    total:
+      net.total.status === 'complete'
+        ? { status: 'complete', amount: money(net.total.amount, net.currency) }
+        : { status: 'partial', missing: [...net.total.missing] },
+  };
+}
+
+function takeRateBody(rate: TakeRate | null): TakeRateBody | null {
+  if (rate === null) return null;
+  if (rate.status === 'no-sales') return { status: 'no-sales' };
+  if (rate.status === 'complete') return { status: 'complete', rateBp: rate.rateBp };
+  return {
+    status: 'partial',
+    rateBp: rate.rateBp,
+    basis: [...rate.basis],
+    missing: [...rate.missing],
+  };
+}
+
+function financeNetBody(net: FinanceNet | null): FinanceNetBody | null {
+  if (net === null) return null;
+  return {
+    readiness: readinessBody(net.readiness),
+    current: netRevenueBody(net.current),
+    previous: netRevenueBody(net.previous),
+    takeRate: {
+      current: takeRateBody(net.takeRate.current),
+      previous: takeRateBody(net.takeRate.previous),
+    },
+    deltas: { ...net.deltas },
+  };
+}
+
+function sameDayShareBody(share: SameDayShare): SameDayShareBody {
+  switch (share.status) {
+    case 'available':
+      return {
+        status: 'available',
+        sameDay: share.sameDay,
+        paid: share.paid,
+        rateBp: share.rateBp,
+      };
+    case 'not-enough-data':
+      return { status: 'not-enough-data', paid: share.paid, minimum: share.minimum };
+    case 'not-available':
+      return { status: 'not-available', reason: share.reason, unknownMethod: share.unknownMethod };
+  }
+}
+
+function ordersByStatusSection(
+  section: AdminKpisAnswer['ordersByStatus'],
+): OrdersByStatusSectionBody | null {
+  if (section === null) return null;
+  if (section.status === 'error') return { status: 'error' };
+  const { counts, sameDayShare } = section.value;
+  return { status: 'ok', kpis: { ...counts, sameDayShare: sameDayShareBody(sameDayShare) } };
+}
+
 function financeSection(section: AdminKpisAnswer['finance']): FinanceSectionBody | null {
   if (section === null) return null;
   if (section.status === 'error') return { status: 'error' };
@@ -340,6 +678,7 @@ function financeSection(section: AdminKpisAnswer['finance']): FinanceSectionBody
       deltas: { ...value.deltas },
       series: value.series.map(financePoint),
       previousSeries: value.previousSeries.map(financePoint),
+      net: financeNetBody(value.net),
     },
   };
 }
@@ -387,6 +726,7 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
   const resolved = [
     answer.operations,
     answer.finance,
+    answer.ordersByStatus,
     answer.topSellers,
     answer.topCategories,
   ].find((section) => section !== null && section.status === 'ok');
@@ -399,6 +739,7 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
       : null,
     operations: operationsSection(answer.operations),
     finance: financeSection(answer.finance),
+    ordersByStatus: ordersByStatusSection(answer.ordersByStatus),
     topSellers: topSellersSection(answer.topSellers),
     topCategories: topCategoriesSection(answer.topCategories),
     health:
@@ -407,6 +748,11 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
         : {
             uncertifiedListings: answer.health.uncertifiedListings,
             sellersAtRisk: answer.health.sellersAtRisk,
+            listings: answer.health.listings,
+            certificatesExpiring: answer.health.certificatesExpiring,
+            payoutsOnHold:
+              answer.health.payoutsOnHold === null ? null : { ...answer.health.payoutsOnHold },
+            disputeRate: answer.health.disputeRate,
           },
   };
 }

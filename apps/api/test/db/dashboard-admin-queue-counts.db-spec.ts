@@ -11,6 +11,7 @@ import {
   isWorkQueueCount,
   type WorkQueueCount,
 } from '../../src/platform/work-queue/work-queue-count';
+import { PrismaLiveListingCounter } from '../../src/modules/search/infrastructure/prisma-live-listing-counter';
 import { TEST_MARKETS } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
 
@@ -30,6 +31,9 @@ describe.each(TEST_MARKETS)('dashboard admin queue counts in market %s (database
   let claims: (now: Temporal.Instant) => Promise<WorkQueueCount>;
   let disputes: (now: Temporal.Instant) => Promise<WorkQueueCount>;
   let readers: Record<string, (staleBefore: Temporal.Instant) => Promise<WorkQueueCount>>;
+  let expiring: (now: Temporal.Instant, until: Temporal.Instant) => Promise<number>;
+  let opened: (from: Temporal.Instant, to: Temporal.Instant) => Promise<number>;
+  let listings: () => Promise<{ active: number; outOfStock: number }>;
 
   beforeAll(() => {
     db = createPersistence();
@@ -45,6 +49,10 @@ describe.each(TEST_MARKETS)('dashboard admin queue counts in market %s (database
     );
     claims = (now) => catalog.claimsWithoutCertificate(market, now);
     disputes = (now) => payouts.disputesDue(market, now);
+    expiring = (now, until) => certification.expiringSellerCertificates(market, now, until);
+    opened = (from, to) => payouts.disputesOpened(market, from, to);
+    const search = new PrismaLiveListingCounter(db.service);
+    listings = () => search.liveListings(market);
     readers = {
       'security.openAlerts': (stale) => security.openAlerts(market, NOW, stale),
       'certification.sellerCertificates': (stale) =>
@@ -124,5 +132,20 @@ describe.each(TEST_MARKETS)('dashboard admin queue counts in market %s (database
       overdue: 0,
       oldestAt: null,
     });
+  });
+
+  // The supply and health numbers of the KPI answer (dashboards v2, PR 6): each statement runs on
+  // the real schema and grants as the application role and answers a whole count; an empty window
+  // before any row counts nothing.
+  it('counts the certificates expiring, the chargebacks opened and the live listings', async () => {
+    const whole = (n: number) => Number.isSafeInteger(n) && n >= 0;
+    expect(whole(await read(() => expiring(NOW, NOW.add({ hours: 31 * 24 }))))).toBe(true);
+    expect(await read(() => expiring(BEFORE_ANY, BEFORE_ANY.add({ hours: 1 })))).toBe(0);
+    expect(whole(await read(() => opened(BEFORE_ANY, AFTER_ALL)))).toBe(true);
+    expect(await read(() => opened(BEFORE_ANY, BEFORE_ANY.add({ hours: 1 })))).toBe(0);
+    const live = await read(listings);
+    // Two counts side by side with no transaction: other files' writes may land between them,
+    // so only their shape is checked.
+    expect(whole(live.active) && whole(live.outOfStock)).toBe(true);
   });
 });

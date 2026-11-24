@@ -233,3 +233,19 @@ export function delta(
     state: 'ok',
   };
 }
+
+/** The instants a range of Market days covers: `from` included, `to` excluded. */
+export interface InstantWindow {
+  readonly from: Temporal.Instant;
+  readonly to: Temporal.Instant;
+}
+
+/**
+ * The instants of a range of Market days in the Market's IANA zone: from the start of its first
+ * day to the start of the day after its last (a DST day is as long as it is there). For a count
+ * another module keeps by instant (the dispute rate's chargebacks), so it covers the same days.
+ */
+export function windowOf(range: DayRange, zone: string): InstantWindow {
+  const start = (day: Temporal.PlainDate) => day.toZonedDateTime({ timeZone: zone }).toInstant();
+  return { from: start(plain(range.from)), to: start(plain(range.to).add({ days: 1 })) };
+}

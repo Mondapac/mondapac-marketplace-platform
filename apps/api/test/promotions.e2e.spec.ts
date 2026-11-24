@@ -1182,8 +1182,11 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
       shopperPays: 9000n,
       commissionRateBps: 1000,
       commissionBase: 8636n,
+      taxRateBps: 1000,
+      taxRateEstimated: true,
       commission: 864n,
-      sellerGets: 8636n,
+      sellerGets: 7772n,
+      sellerReceives: 8636n,
       wasPrice: null,
     };
 
@@ -1236,7 +1239,10 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
         commissionRateBps: 1000,
         commissionBaseMinor: '8636',
         commissionMinor: '864',
-        sellerGetsMinor: '8636',
+        sellerGetsMinor: '7772',
+        sellerReceivesMinor: '8636',
+        taxRateBps: 1000,
+        taxRateEstimated: true,
         wasPrice: null,
       });
       expect(calls[0]).toEqual({
@@ -1250,6 +1256,10 @@ describe.each(TEST_MARKETS)('promotions over HTTP in market %s', (code) => {
       next = ok(PREVIEW);
       const path = '/promotions/seller/payout-preview';
       expect((await call('seller', 'get', `${path}?priceMinor=1&x=1`, seller())).status).toBe(400);
+      // The tax rate is read on the server, never taken from the request.
+      expect(
+        (await call('seller', 'get', `${path}?priceMinor=1&taxRateBps=0`, seller())).status,
+      ).toBe(400);
       expect(calls).toEqual([]);
       // A repeated key is not text: the use case refuses it (its own spec), the route does not coerce it.
       await call('seller', 'get', `${path}?priceMinor=1&priceMinor=2`, seller());

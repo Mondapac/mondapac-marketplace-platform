@@ -1540,6 +1540,10 @@ export class FakeTax implements TaxFacade {
   /** Answer one line fewer than asked, as a broken tax module would. */
   dropLast = false;
   calls: (readonly TaxLineInput[])[] = [];
+  /** Checkout does not ask for bare rates; a call is a bug in the test. */
+  categoryRates(): ReturnType<TaxFacade['categoryRates']> {
+    return Promise.reject(new Error('categoryRates is not used by checkout'));
+  }
   /** The tax module's reversal arithmetic: per-unit shares, then cumulative half-up shares. */
   reverseRefundTax(
     _c: CallContext,
