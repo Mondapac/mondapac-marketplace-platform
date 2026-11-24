@@ -943,6 +943,14 @@
     }
   },
   "sellers": {
+    "queues": {
+      "button": "Queues",
+      "button-count": "Queues, {count, plural, one {# item needs} other {# items need}} attention",
+      "button-count-more": "Queues, at least {count} items need attention",
+      "all": "All sellers",
+      "needs-a-look-hint": "Health problems, newest first",
+      "without-owner-hint": "Invite or assign an owner"
+    },
     "list": {
       "title": "Sellers",
       "no-access": "You don't have access to the seller list.",
@@ -1235,8 +1243,6 @@
     },
     "orphaned": {
       "title": "Sellers without an owner",
-      "back": "Back to sellers",
-      "link": "Sellers without an owner",
       "loading": "Loading sellers...",
       "empty": {
         "title": "Every seller has an owner",
@@ -1384,8 +1390,6 @@
     },
     "health-queue": {
       "title": "Sellers that need a look",
-      "link": "Sellers that need a look",
-      "back": "Back to sellers",
       "col": {
         "seller": "Seller",
         "score": "Score",
@@ -1423,7 +1427,6 @@
         "title": "You don't have access to this page",
         "body": "Ask an administrator for the permission to view sellers."
       },
-      "informs": "Health only informs. Nothing happens to a seller because of its score.",
       "back-home": "Back to home",
       "views": "Seller health views",
       "view": {

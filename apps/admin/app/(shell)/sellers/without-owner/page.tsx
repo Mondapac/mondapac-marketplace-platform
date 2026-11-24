@@ -4,6 +4,8 @@ import { AdminShell } from '../../../../src/server/admin-shell.tsx';
 import { localZone } from '../../../../src/shared/format.ts';
 import { requireSession } from '../../../../src/server/session.ts';
 import { OrphanedList } from '../../../../src/sellers/orphaned-list.tsx';
+import { SellersQueuesMenu } from '../../../../src/sellers/sellers-queues-menu.tsx';
+import { SELLER_VIEW_PERMISSION } from '../../../../src/sellers/health-types.ts';
 import { ORPHANED_VIEW_PERMISSION } from '../../../../src/sellers/orphaned-types.ts';
 
 export async function generateMetadata() {
@@ -21,15 +23,19 @@ export default async function SellersWithoutOwnerPage() {
   const allowed = gate.session.permissionKeys.includes(ORPHANED_VIEW_PERMISSION);
   return (
     <AdminShell session={gate.session} activeId="sellers" title={title}>
-      <a
-        className="mb-1 inline-flex min-h-12 items-center font-medium text-link underline"
-        href="/sellers"
-      >
-        {t('sellers.orphaned.back')}
-      </a>
       {allowed ? (
         <>
-          <PageHeader title={title} className="mb-4" />
+          <PageHeader
+            title={title}
+            className="mb-4"
+            actions={
+              <SellersQueuesMenu
+                current="without-owner"
+                canHealth={gate.session.permissionKeys.includes(SELLER_VIEW_PERMISSION)}
+                canOrphaned
+              />
+            }
+          />
           <OrphanedList
             csrfToken={gate.session.csrfToken}
             zone={localZone(gate.session.timezone, gate.session.marketTimezone)}
