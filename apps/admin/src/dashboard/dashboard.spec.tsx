@@ -222,7 +222,14 @@ afterEach(cleanup);
 describe('admin dashboard', () => {
   it('shows the work queue first: critical queues, today queues, folded review queues', () => {
     render(
-      wrap(<AdminDashboard zone="Australia/Brisbane" data={full} permissionKeys={ALL_KEYS} />),
+      wrap(
+        <AdminDashboard
+          title="Dashboard"
+          zone="Australia/Brisbane"
+          data={full}
+          permissionKeys={ALL_KEYS}
+        />,
+      ),
     );
     const card = within(screen.getByRole('region', { name: 'Needs action' }));
     // A queue with no list yet is plain text; the status is in words, not only a colour.
@@ -251,6 +258,7 @@ describe('admin dashboard', () => {
     render(
       wrap(
         <AdminDashboard
+          title="Dashboard"
           zone="Australia/Brisbane"
           data={{ ...full, workQueue: { kind: 'error' } }}
           permissionKeys={ALL_KEYS}
@@ -264,7 +272,14 @@ describe('admin dashboard', () => {
 
   it('lists the latest rows with links to their details, money in the Market locale', () => {
     render(
-      wrap(<AdminDashboard zone="Australia/Brisbane" data={full} permissionKeys={ALL_KEYS} />),
+      wrap(
+        <AdminDashboard
+          title="Dashboard"
+          zone="Australia/Brisbane"
+          data={full}
+          permissionKeys={ALL_KEYS}
+        />,
+      ),
     );
     expect(screen.getByRole('link', { name: 'Cedar Lane Halal Meats' }).getAttribute('href')).toBe(
       `/sellers/${ID(1)}`,
@@ -288,7 +303,12 @@ describe('admin dashboard', () => {
   it('formats money and counts with the locale of the Market, not a fixed one', () => {
     render(
       wrap(
-        <AdminDashboard zone="Australia/Brisbane" data={full} permissionKeys={ALL_KEYS} />,
+        <AdminDashboard
+          title="Dashboard"
+          zone="Australia/Brisbane"
+          data={full}
+          permissionKeys={ALL_KEYS}
+        />,
         'de-DE',
       ),
     );
@@ -297,7 +317,14 @@ describe('admin dashboard', () => {
 
   it('draws the seller states chart with a text alternative', () => {
     render(
-      wrap(<AdminDashboard zone="Australia/Brisbane" data={full} permissionKeys={ALL_KEYS} />),
+      wrap(
+        <AdminDashboard
+          title="Dashboard"
+          zone="Australia/Brisbane"
+          data={full}
+          permissionKeys={ALL_KEYS}
+        />,
+      ),
     );
     const card = within(screen.getByRole('region', { name: 'Sellers by access state' }));
     expect(card.getByText('Approved').closest('li')?.textContent).toBe('Approved9');
@@ -307,7 +334,14 @@ describe('admin dashboard', () => {
   it('leaves out the chart when identity state is hidden', () => {
     const hidden = { ...full, sellers: ok({ ...sellers, stateCounts: null }) };
     render(
-      wrap(<AdminDashboard zone="Australia/Brisbane" data={hidden} permissionKeys={ALL_KEYS} />),
+      wrap(
+        <AdminDashboard
+          title="Dashboard"
+          zone="Australia/Brisbane"
+          data={hidden}
+          permissionKeys={ALL_KEYS}
+        />,
+      ),
     );
     expect(screen.queryByRole('region', { name: 'Sellers by access state' })).toBeNull();
   });
@@ -318,7 +352,16 @@ describe('admin dashboard', () => {
       holds: ok({ items: [], next: null }),
       offers: ok({ items: [], nextAfterId: null }),
     };
-    render(wrap(<AdminDashboard zone="Australia/Brisbane" data={empty} permissionKeys={[]} />));
+    render(
+      wrap(
+        <AdminDashboard
+          title="Dashboard"
+          zone="Australia/Brisbane"
+          data={empty}
+          permissionKeys={[]}
+        />,
+      ),
+    );
     expect(screen.getByText('No held prices are waiting for a decision.')).toBeTruthy();
     expect(screen.getByText('No offers are waiting for their first publication.')).toBeTruthy();
     expect(screen.queryAllByRole('table')).toHaveLength(0);
@@ -329,7 +372,16 @@ describe('admin dashboard', () => {
       ...none,
       offers: ok({ items: [{ kind: 'product-revision' as const }], nextAfterId: null }),
     };
-    render(wrap(<AdminDashboard zone="Australia/Brisbane" data={mixed} permissionKeys={[]} />));
+    render(
+      wrap(
+        <AdminDashboard
+          title="Dashboard"
+          zone="Australia/Brisbane"
+          data={mixed}
+          permissionKeys={[]}
+        />,
+      ),
+    );
     expect(screen.getByText('No offers are waiting for their first publication.')).toBeTruthy();
     expect(screen.queryAllByRole('table')).toHaveLength(0);
   });
@@ -341,7 +393,14 @@ describe('admin dashboard', () => {
       orders: { kind: 'error' },
     };
     render(
-      wrap(<AdminDashboard zone="Australia/Brisbane" data={partly} permissionKeys={ALL_KEYS} />),
+      wrap(
+        <AdminDashboard
+          title="Dashboard"
+          zone="Australia/Brisbane"
+          data={partly}
+          permissionKeys={ALL_KEYS}
+        />,
+      ),
     );
     const failed = 'This could not be loaded. Reload the page to try again.';
     expect(screen.getAllByText(failed).length).toBe(2); // the held-prices card, the orders card
@@ -354,6 +413,7 @@ describe('admin dashboard', () => {
     render(
       wrap(
         <AdminDashboard
+          title="Dashboard"
           zone="Australia/Brisbane"
           data={small}
           permissionKeys={['ordering.order.view', 'customers.customers.view']}
@@ -371,6 +431,7 @@ describe('admin dashboard', () => {
     render(
       wrap(
         <AdminDashboard
+          title="Dashboard"
           zone="Australia/Brisbane"
           data={none}
           permissionKeys={['identity.admin-account.invite']}
@@ -385,6 +446,7 @@ describe('admin dashboard', () => {
     render(
       wrap(
         <AdminDashboard
+          title="Dashboard"
           zone="Australia/Brisbane"
           data={none}
           permissionKeys={['notifications.support-contact.view']}
@@ -408,6 +470,7 @@ describe('admin dashboard', () => {
       render(
         wrap(
           <AdminDashboard
+            title="Dashboard"
             zone="Australia/Brisbane"
             data={{
               ...full,
@@ -445,6 +508,7 @@ describe('admin dashboard', () => {
       render(
         wrap(
           <AdminDashboard
+            title="Dashboard"
             zone="Australia/Brisbane"
             data={{ ...full, workQueue: Promise.resolve(null) }}
             permissionKeys={ALL_KEYS}
@@ -461,6 +525,7 @@ describe('admin dashboard', () => {
       render(
         wrap(
           <AdminDashboard
+            title="Dashboard"
             zone="Australia/Brisbane"
             data={{
               workQueue: null,
@@ -489,6 +554,7 @@ describe('admin dashboard', () => {
       render(
         wrap(
           <AdminDashboard
+            title="Dashboard"
             zone="Australia/Brisbane"
             data={{ ...full, holds: Promise.resolve(null) }}
             permissionKeys={ALL_KEYS}

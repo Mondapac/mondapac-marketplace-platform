@@ -108,7 +108,7 @@ C = {
  "chart/cat-1": ("#1D4FD7", "#5F86F5", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical series 1 (blue)"),
  "chart/cat-2": ("#1BAF7A", "#199E70", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical series 2 (aqua)"),
  "chart/cat-3": ("#6250D6", "#9085E9", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical series 3 (violet)"),
- "chart/cat-4": ("#EDA100", "#C98500", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical series 4 (amber)"),
+ "chart/cat-4": ("#0891B2", "#22B8D9", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical series 4 (cyan)"),
  "chart/cat-5": ("#E87BA4", "#D55181", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical series 5 (pink)"),
  "chart/cat-other": ("#8A93A3", "#6B7586", "SHAPE_FILL,FRAME_FILL,STROKE_COLOR", "Categorical 'Other' bucket (neutral)"),
  "kpi/blue-bg": ("#1D4FD7", "#3D68E6", "FRAME_FILL,SHAPE_FILL", "KPI icon tile, blue (sales, orders)"),
@@ -134,6 +134,7 @@ fam("teal", ["#06352E","#0B6B5C","#F2FAF8","#B7DDD5","#E6F4F1","#DCEFEA","#5BCFB
 fam("teal", ["#1BAF7A","#199E70","#128A60","#16865F"])
 fam("purple", ["#6250D6","#9085E9","#6D5FD8"])
 fam("honey", ["#EDA100","#C98500"])
+fam("cyan", ["#0891B2","#22B8D9"])
 fam("pink", ["#E87BA4","#D55181"])
 fam("neutral", ["#475467"])
 fam("blue", ["#5F86F5"])
@@ -281,7 +282,7 @@ EFFECTS = [
 MOTION = {"duration/fast": 120, "duration/base": 160, "duration/slow": 240}
 
 spec = {
- "version": "1.11.1", "generated": "2026-11-24",
+ "version": "1.11.2", "generated": "2026-11-24",
  "primitives": [{"name": n, "hex": h} for n, h in primitives],
  "color": [{"name": k, "light": None if literal(v[0]) else prim[v[0].upper()], "dark": None if literal(v[1]) else prim[v[1].upper()], "lightHex": v[0].upper(), "darkHex": v[1].upper(), "scopes": v[2].split(','), "description": v[3]} for k, v in C.items()],
  "dimension": [{"name": k, "desktop": v[0], "touch": v[1], "scopes": DSCOPE[k.split('/')[0]].split(',')} for k, v in D.items()],

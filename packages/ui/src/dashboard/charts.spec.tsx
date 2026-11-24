@@ -440,7 +440,7 @@ describe('DonutChart', () => {
     expect(size).toBeLessThan(18);
     expect(size).toBeGreaterThanOrEqual(11);
   });
-  it('truncates a long category name in the centre and the legend, keeping the full name in a title', () => {
+  it('truncates a long category name in the centre; the legend wraps it and keeps the full name in a title', () => {
     const long = 'Halal certified fresh produce and chilled goods';
     const { container } = render(
       donut([
@@ -451,6 +451,9 @@ describe('DonutChart', () => {
     fireEvent.focus(container.querySelector('[data-segment="a"]')!);
     expect(container.querySelector('[data-centre] text:last-child')?.textContent).toContain('…');
     expect(container.querySelector('[data-legend="a"] [title]')?.getAttribute('title')).toBe(long);
+    expect(container.querySelector('[data-legend="a"] [title]')?.className).toContain(
+      'break-words',
+    );
   });
   it('buckets everything past the fifth category into a neutral Other', () => {
     const slices = sliceSegments(cats(8), 'Other');

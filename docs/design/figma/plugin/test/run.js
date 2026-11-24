@@ -908,7 +908,7 @@ async function updateTo180(M, label, opts, from) {
   state1100(M, opts, 'updated');
   { const rep = r.done ? r.done.report : []; const ovs = overlapsOf(M); const un = ovs.filter((o) => { const parts = o.split(': ')[1].split(' / '); return !rep.some((l) => l.indexOf('\u2139 overlap: ' + parts[0] + ' and ' + parts[1]) === 0); });
     check(un.length === 0, 'updated: every overlap of top-level nodes (' + ovs.length + ', e.g. Starter sections that grew) is reported, none is fixed by moving' + (un.length ? ' (unreported: ' + un.slice(0, 3).join(' | ') + ')' : '')); }
-  check(M.ROOT.getPluginData('version') === SPEC_VERSION && SPEC_VERSION === '1.11.1', 'file version is ' + SPEC_VERSION);
+  check(M.ROOT.getPluginData('version') === SPEC_VERSION && SPEC_VERSION === '1.11.2', 'file version is ' + SPEC_VERSION);
   check(textCount(M, SPEC_VERSION) >= 2 && allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === SPEC_VERSION)).length === 1, 'one changelog row for ' + SPEC_VERSION + ' (and the cover shows it)');
   check(['size/dialog-sm', 'size/dialog-md'].every((v) => allNodes(M).filter((n) => n.type === 'FRAME' && n.name === 'Row' && n.findOne((x) => x.type === 'TEXT' && x.characters === v)).length === 1), 'one size table row each for size/dialog-sm and size/dialog-md');
   // the in-place edit of TableCell: nothing existing was renamed, moved, resized or changed
@@ -1276,7 +1276,7 @@ async function updateScenario(label, opts, from) {
     const rp11 = r.done ? r.done.report.concat(r.done.added) : []; console.log('    ' + rp11.join('\n    '));
     // The 1.8.2 layout fixes (Input, AuthShowcase, Starter sections) run in the same update; scenario 12 checks them.
     const own181 = r.done ? r.done.added.filter((l) => !/^(Input|AuthShowcase) (variants laid out|documentation block)|^section .* moved /.test(l)) : [];
-    check(r.done && own181.join('|') === ADDED_1110(opts).concat(ADDED_190_HEAD(opts), ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ['fix minimum height 900 px of Panel pages (18 frames)', 'fix Shared · Members · Admin (phone): 2 member cards that do not fit removed', 'fix CheckboxRow layout (Value in columns, State in rows)'], ADDED_183, ADDED_190_TPL, ADDED_1100_TPL, FIXED_184(ph11), ADDED_190_TAIL, ['changelog row 1.8.1', 'changelog row 1.8.2', 'changelog row 1.8.3', 'changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'changelog row 1.11.0', 'changelog row 1.11.1', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !rp11.some((l) => /^⚠|^ℹ (?!overlap:)/.test(l)), 'the report names the three fixes, the changelog row and the version, with no warning or skip (' + (r.done ? r.done.added.join(', ') : '') + ')');
+    check(r.done && own181.join('|') === ADDED_1110(opts).concat(ADDED_190_HEAD(opts), ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ['fix minimum height 900 px of Panel pages (18 frames)', 'fix Shared · Members · Admin (phone): 2 member cards that do not fit removed', 'fix CheckboxRow layout (Value in columns, State in rows)'], ADDED_183, ADDED_190_TPL, ADDED_1100_TPL, FIXED_184(ph11), ADDED_190_TAIL, ['changelog row 1.8.1', 'changelog row 1.8.2', 'changelog row 1.8.3', 'changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'changelog row 1.11.0', 'changelog row 1.11.1', 'changelog row 1.11.2', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !rp11.some((l) => /^⚠|^ℹ (?!overlap:)/.test(l)), 'the report names the three fixes, the changelog row and the version, with no warning or skip (' + (r.done ? r.done.added.join(', ') : '') + ')');
     state181(Q, '1.8.0 file repaired ' + tag11, true);
     state183(Q, '1.8.0 file updated ' + tag11);
     state190(Q, opts, '1.8.0 file updated ' + tag11);
@@ -1407,7 +1407,7 @@ async function updateScenario(label, opts, from) {
     check(!r.err && r.done, 'Update library finished on the 1.8.2 file ' + tag13 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
     const add13 = r.done ? r.done.added : []; console.log('    ' + add13.join('\n    '));
     const own13 = add13.filter((l) => !/^section .* moved /.test(l));
-    check(own13.join('|') === ADDED_1110(opts).concat(ADDED_190_HEAD(opts), ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ADDED_183, ADDED_190_TPL, ADDED_1100_TPL, FIXED_184(ph13), ADDED_190_TAIL, ['changelog row 1.8.3', 'changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'changelog row 1.11.0', 'changelog row 1.11.1', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the 1.8.3 frames, the 1.8.4 fixes, the changelog rows and the version, with no warning, skip or overlap (' + own13.join(', ') + ')');
+    check(own13.join('|') === ADDED_1110(opts).concat(ADDED_190_HEAD(opts), ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ADDED_183, ADDED_190_TPL, ADDED_1100_TPL, FIXED_184(ph13), ADDED_190_TAIL, ['changelog row 1.8.3', 'changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'changelog row 1.11.0', 'changelog row 1.11.1', 'changelog row 1.11.2', 'cover version', 'file version ' + SPEC_VERSION]).join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the 1.8.3 frames, the 1.8.4 fixes, the changelog rows and the version, with no warning, skip or overlap (' + own13.join(', ') + ')');
     state180(Q, opts, '1.8.2 file updated ' + tag13);
     state181(Q, '1.8.2 file updated ' + tag13);
     state183(Q, '1.8.2 file updated ' + tag13);
@@ -1502,7 +1502,7 @@ async function updateScenario(label, opts, from) {
     const pos0 = posOf(Q);
     r = await send(Q, { type: 'update' });
     const add14 = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : [];
-    const want14 = ADDED_1110(opts).concat(ADDED_190_HEAD(opts), ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ADDED_190_TPL, ADDED_1100_TPL, ['fix effect style Focus/Ring: spread 2 and 4 px', 'fix effect style Ring/Urgent: spread 3 px', 'fix phone screens: Main scrolls vertically (' + ph0 + ' frames)'], ADDED_190_TAIL, ['changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'changelog row 1.11.0', 'changelog row 1.11.1', 'cover version', 'file version ' + SPEC_VERSION]);
+    const want14 = ADDED_1110(opts).concat(ADDED_190_HEAD(opts), ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ADDED_190_TPL, ADDED_1100_TPL, ['fix effect style Focus/Ring: spread 2 and 4 px', 'fix effect style Ring/Urgent: spread 3 px', 'fix phone screens: Main scrolls vertically (' + ph0 + ' frames)'], ADDED_190_TAIL, ['changelog row 1.8.4', 'changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'changelog row 1.11.0', 'changelog row 1.11.1', 'changelog row 1.11.2', 'cover version', 'file version ' + SPEC_VERSION]);
     check(!r.err && add14.join('|') === want14.join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the two ring styles, the phone screens, the changelog row and the version, with no warning or skip (' + (r.err ? r.err.message : add14.join(', ')) + ')');
     state190(Q, opts, '1.8.3 file updated ' + tag14);
     state1100(Q, opts, '1.8.3 file updated ' + tag14);
@@ -1629,7 +1629,7 @@ async function updateScenario(label, opts, from) {
     r = await send(Q, { type: 'update' });
     check(!r.err && r.done, 'Update library finished on the 1.8.4 file ' + tag15 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
     const add15 = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : []; console.log('    ' + add15.join('\n    '));
-    const want15 = ADDED_1110(opts).concat(ADDED_190_HEAD(opts), ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ADDED_190_TPL, ADDED_1100_TPL, ADDED_190_TAIL, ['changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'changelog row 1.11.0', 'changelog row 1.11.1', 'cover version', 'file version ' + SPEC_VERSION]);
+    const want15 = ADDED_1110(opts).concat(ADDED_190_HEAD(opts), ADDED_190_MID, ADDED_1100_MID, ADDED_1101, ADDED_190_TPL, ADDED_1100_TPL, ADDED_190_TAIL, ['changelog row 1.9.0', 'changelog row 1.10.0', 'changelog row 1.10.1', 'changelog row 1.11.0', 'changelog row 1.11.1', 'changelog row 1.11.2', 'cover version', 'file version ' + SPEC_VERSION]);
     check(add15.join('|') === want15.join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the token, icons, components, properties, templates, size table row, changelog row and version, with no warning, skip or overlap (' + add15.join(', ') + ')');
     state180(Q, opts, '1.8.4 file updated ' + tag15);
     state181(Q, '1.8.4 file updated ' + tag15);
@@ -1769,7 +1769,7 @@ async function updateScenario(label, opts, from) {
     check(hostW(Q) === w0, 'Templates · Admin and Templates · Seller keep their width (' + w0 + ') ' + tag16);
     check(!r.err && r.done, 'Update library finished on the 1.9.0 file ' + tag16 + (r.err ? ': ' + r.err.message + '\n' + r.err.stack : ''));
     const add16 = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : []; console.log('    ' + add16.join('\n    '));
-    const want16 = ADDED_1110(opts).concat(ADDED_1100_MID, ADDED_1101, ADDED_1100_TPL, ['changelog row 1.10.0', 'changelog row 1.10.1', 'changelog row 1.11.0', 'changelog row 1.11.1', 'cover version', 'file version ' + SPEC_VERSION]);
+    const want16 = ADDED_1110(opts).concat(ADDED_1100_MID, ADDED_1101, ADDED_1100_TPL, ['changelog row 1.10.0', 'changelog row 1.10.1', 'changelog row 1.11.0', 'changelog row 1.11.1', 'changelog row 1.11.2', 'cover version', 'file version ' + SPEC_VERSION]);
     check(add16.join('|') === want16.join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names SettingRow, the CheckboxRow additions, the templates, the changelog row and the version, with no warning, skip or overlap (' + add16.join(', ') + ')');
     state180(Q, opts, '1.9.0 file updated ' + tag16);
     state181(Q, '1.9.0 file updated ' + tag16);
@@ -1889,7 +1889,7 @@ async function updateScenario(label, opts, from) {
     r = await send(Q, { type: 'update' });
     check(!r.err && r.done, 'Update library finished on the 1.10.0 file ' + tag17 + (r.err ? ': ' + r.err.message : ''));
     const add17 = r.done ? r.done.added.filter((l) => !/^section .* moved /.test(l)) : [];
-    const want17 = ADDED_1110(opts).concat(ADDED_1101, ['changelog row 1.10.1', 'changelog row 1.11.0', 'changelog row 1.11.1', 'cover version', 'file version ' + SPEC_VERSION]);
+    const want17 = ADDED_1110(opts).concat(ADDED_1101, ['changelog row 1.10.1', 'changelog row 1.11.0', 'changelog row 1.11.1', 'changelog row 1.11.2', 'cover version', 'file version ' + SPEC_VERSION]);
     check(add17.join('|') === want17.join('|') && !r.done.report.some((l) => /^(⚠|ℹ)/.test(l)), 'the report names the frame, the changelog row and the version, with no warning or skip ' + tag17 + ' (' + add17.join(', ') + ')');
     state180(Q, opts, '1.10.0 file updated ' + tag17);
     state1100(Q, opts, '1.10.0 file updated ' + tag17);

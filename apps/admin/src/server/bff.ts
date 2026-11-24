@@ -236,6 +236,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/variants',
     'catalog/admin/variants/issue-counts',
     'catalog/admin/variants/export',
+    // The marketplace's figures per Market day as a CSV or XLSX file (reporting; dashboard
+    // Export; query: `period`, `from`, `to`, `format`; keys settlement.view, order.view and
+    // reporting.marketplace-report.export, judged by the API).
+    'reporting/admin/daily/export',
     // The Brands list as a file (CSV or XLSX): the list's own filter (`status`, `q`).
     'catalog/admin/brands/export',
     // The report of published products missing a required detail (catalog, attributes A4;
@@ -1409,6 +1413,7 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   ],
   'catalog/admin/saved-filters': ['listKey'],
   'catalog/admin/category-tree/export': ['format', 'status', 'q'],
+  'reporting/admin/daily/export': ['period', 'from', 'to', 'format'],
   'catalog/admin/products/export': [
     'format',
     'columns',
@@ -2344,6 +2349,12 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     sort: /^created$/,
     direction: /^(asc|desc)$/,
   },
+  'reporting/admin/daily/export': {
+    period: /^(today|7d|30d|month|custom)$/,
+    from: /^\d{4}-\d{2}-\d{2}$/,
+    to: /^\d{4}-\d{2}-\d{2}$/,
+    format: /^(csv|xlsx)$/,
+  },
   'catalog/admin/category-tree/export': {
     format: /^(csv|xlsx)$/,
     status: /^(active|hidden|merged|archived)(,(active|hidden|merged|archived)){0,3}$/,
@@ -2806,6 +2817,8 @@ function badScope(method: string, target: string, requestUrl: string): boolean {
  * a wider file than the one asked for.
  */
 const STRICT_QUERY_TARGETS: ReadonlySet<string> = new Set([
+  // A bad period or day refuses: the file is never the default period when a range was asked.
+  'reporting/admin/daily/export',
   'payments/admin/connected-accounts/export',
   'security/admin/alerts/export',
   'certification/admin/issuer-requests/export',
