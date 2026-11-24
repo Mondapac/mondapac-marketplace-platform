@@ -103,8 +103,11 @@ export function PeriodSwitch({
   const errors = useRangeErrors(problems, today, range.to);
 
   // A refused range in the address shows no figures, so there is nothing to say is "shown".
+  const unchanged =
+    selection.id === 'custom' && range.from === selection.from && range.to === selection.to;
+  // Nothing to say while the pickers equal what is shown (or while nothing is shown at all).
   const showing =
-    refusedInAddress.length > 0
+    refusedInAddress.length > 0 || unchanged
       ? null
       : selection.id === 'custom'
         ? `${longDay(selection.from, locale)} to ${longDay(selection.to, locale)}`
@@ -188,7 +191,7 @@ export function PeriodSwitch({
           fromError={errors.from}
           toError={errors.to}
           generalError={errors.general}
-          help={t('help', { today })}
+          help={t('help', { today: longDay(today, locale) })}
           showing={showing === null ? null : t('showing', { period: showing })}
           busy={pending}
           focusSignal={attempts}

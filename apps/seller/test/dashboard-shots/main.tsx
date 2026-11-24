@@ -1,4 +1,5 @@
 import { NextIntlClientProvider } from 'next-intl';
+import { Toaster } from '@mondapac/ui';
 import { createRoot } from 'react-dom/client';
 import messages from '../../messages/en.json';
 import '../../app/globals.css';
@@ -12,12 +13,12 @@ import type { WorkQueueAnswer } from '../../src/work-queue/queues.ts';
 const scenario = new URLSearchParams(window.location.search).get('s') ?? 'full';
 // A custom range shows as many days as its inputs say (1 Sep to 23 Nov is 84 days).
 const selection: Selection =
-  scenario === 'custom'
+  scenario === 'custom' || scenario === 'custom-empty'
     ? { id: 'custom', from: '2026-09-01', to: '2026-11-23' }
     : scenario === 'custom-bad'
       ? { id: 'custom', from: '2024-01-01', to: '2026-11-23' }
       : { id: '30d' };
-const N = scenario === 'custom' ? 84 : 30;
+const N = selection.id === 'custom' ? 84 : 30;
 const ok = <T,>(value: T) => ({ kind: 'ok' as const, value });
 const NOW = '2026-11-23T03:00:00.000Z';
 const ago = (h: number) => new Date(Date.parse(NOW) - h * 3_600_000).toISOString();
@@ -222,7 +223,12 @@ const sources: SellerKpiSources = {
     timezone: 'Australia/Brisbane',
     currency: 'AUD',
     ready: scenario !== 'withheld',
-    netEarnings: scenario === 'withheld' ? null : scenario === 'empty' ? '0' : '1419000',
+    netEarnings:
+      scenario === 'withheld'
+        ? null
+        : scenario === 'empty' || scenario === 'custom-empty'
+          ? '0'
+          : '1419000',
     refreshedAt: ago(1),
   }),
   nextPayout: ok({
@@ -264,20 +270,23 @@ const refused: SellerKpiSources = {
   categories: null,
   netEarnings: null,
 };
-const custom: SellerKpiSources = { ...sources, netEarnings: null };
 const pick =
   scenario === 'sparse'
     ? sparse
-    : scenario === 'empty'
+    : scenario === 'empty' || scenario === 'custom-empty'
       ? empty
       : scenario === 'custom-bad'
         ? refused
-        : scenario === 'custom'
-          ? custom
-          : sources;
+        : sources;
+
+// The denied toast: the report download answers 403.
+if (scenario === 'denied') {
+  window.fetch = () => Promise.resolve(new Response('{}', { status: 403 }));
+}
 
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages} timeZone="Australia/Brisbane">
+    <Toaster labels={{ region: messages.toast.region, close: messages.toast.close }} />
     <main className="mx-auto max-w-[1200px] p-4 md:p-6">
       <SellerDashboard
         title="Dashboard"

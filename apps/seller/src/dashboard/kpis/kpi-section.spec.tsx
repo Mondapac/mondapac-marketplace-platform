@@ -475,6 +475,15 @@ describe('a custom range', () => {
     expect(card('Net earnings').getByText(/Custom range/)).toBeTruthy();
   });
 
+  it('shows the net earnings card in its error state when that read fails, never a vanished card', () => {
+    mountRange(
+      { id: 'custom', from: '2026-09-01', to: '2026-11-23' },
+      { netEarnings: { kind: 'error' } },
+    );
+    expect(document.querySelectorAll('[data-kpi-card]')).toHaveLength(4);
+    expect(card('Net earnings').getByRole('alert').textContent).toBe(messages.dashboard.error.card);
+  });
+
   it('shows one line with the way out, and no figures, when the range is refused', () => {
     mountRange(
       { id: 'custom', from: '2024-01-01', to: '2026-11-23' },

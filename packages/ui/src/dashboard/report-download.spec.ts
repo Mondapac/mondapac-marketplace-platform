@@ -45,6 +45,8 @@ describe('downloadReport', () => {
     await downloadReport(input);
     expect(fetchMock.mock.calls[0]![0]).toBe('/api/reporting/x/daily/export?period=7d&format=csv');
     expect(save).toHaveBeenCalledTimes(1);
+    // A redirect is never followed to another address.
+    expect((fetchMock.mock.calls[0]![1] as RequestInit).redirect).toBe('error');
   });
 
   it('maps 401 and 403 to denied, 400 to invalid and the rest to unavailable', async () => {

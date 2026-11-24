@@ -47,6 +47,8 @@ export async function downloadReport(input: {
     response = await fetch(`/api/${input.path}?${input.query}`, {
       credentials: 'same-origin',
       cache: 'no-store',
+      // The relay answers itself; a redirect is never followed to another address.
+      redirect: 'error',
     });
   } catch {
     throw new ReportDownloadError('unavailable');

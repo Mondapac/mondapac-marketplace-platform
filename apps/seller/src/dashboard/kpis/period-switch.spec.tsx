@@ -127,10 +127,22 @@ describe('PeriodSwitch', () => {
 
   it('says what is shown until Apply, and an unchanged Apply closes the form', () => {
     shown({ id: 'custom', from: '2026-10-01', to: '2026-10-31' });
+    // The pickers equal what is shown: nothing to say yet.
+    expect(screen.queryByText(/until you apply/)).toBeNull();
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-11-01' } });
     expect(screen.getByText('Showing 1 Oct 2026 to 31 Oct 2026 until you apply.')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('To'), { target: { value: '2026-10-31' } });
+    expect(screen.queryByText(/until you apply/)).toBeNull();
     fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
     expect(replace).not.toHaveBeenCalled();
     expect(screen.queryByLabelText('From')).toBeNull();
+  });
+
+  it('writes the help line with one human date, not an ISO one', () => {
+    shown({ id: 'custom', from: '2026-10-01', to: '2026-10-31' });
+    expect(
+      screen.getByText('Market days. At most 13 months, ending by today (23 Nov 2026).'),
+    ).toBeTruthy();
   });
 
   it('names the preset being shown while the pickers are open', () => {
@@ -198,7 +210,10 @@ describe('PeriodSwitch', () => {
       openExport(/CSV/);
       await waitFor(() => expect(screen.queryByRole('button', { name: 'Export' })).toBeNull());
       expect(toasts.error).toHaveBeenCalledTimes(1);
-      expect(toasts.error).toHaveBeenCalledWith("You can't export this report.", expect.anything());
+      expect(toasts.error).toHaveBeenCalledWith(
+        "You can't export this report. Ask the store owner for access.",
+        expect.anything(),
+      );
     });
 
     it('shows a toast for any other failure and keeps the button', async () => {

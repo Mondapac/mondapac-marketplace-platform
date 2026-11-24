@@ -138,4 +138,14 @@ describe('startSellerKpis', () => {
     expect(sources?.netEarnings).toBeNull();
     expect(paths.some((path) => path.startsWith('reporting/seller/net-earnings'))).toBe(false);
   });
+
+  it('turns a failed net earnings read of a custom range into an error widget, not a missing card', async () => {
+    mocks.get.mockResolvedValue({ kind: 'unavailable' });
+    const sources = startSellerKpis(
+      session(['ordering.seller-order.view', 'commission-payouts.earnings.view']),
+      { id: 'custom', from: '2026-09-01', to: '2026-11-23' },
+      TODAY,
+    );
+    expect(await sources?.netEarnings).toEqual({ kind: 'error' });
+  });
 });

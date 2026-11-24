@@ -50,6 +50,8 @@ export interface GridLayout {
   readonly phoneSpan?: 6 | 12;
   /** Phone order; from the tablet width the order is the order in the page. Default 'rest'. */
   readonly mobileOrder?: MobileOrder;
+  /** `start`: the item keeps its own height instead of stretching to the row's. */
+  readonly align?: 'start';
 }
 
 // Whole class names, so Tailwind finds them.
@@ -83,8 +85,9 @@ export function gridItemClass({
   tabletSpan = span,
   phoneSpan = 12,
   mobileOrder = 'rest',
+  align,
 }: GridLayout = {}): string {
-  return `min-w-0 ${PHONE_SPAN[phoneSpan]} ${MD_SPAN[tabletSpan]} ${LG_SPAN[span]} ${ORDER[mobileOrder]}`;
+  return `min-w-0 ${PHONE_SPAN[phoneSpan]} ${MD_SPAN[tabletSpan]} ${LG_SPAN[span]} ${ORDER[mobileOrder]}${align === 'start' ? ' self-start' : ''}`;
 }
 
 /**

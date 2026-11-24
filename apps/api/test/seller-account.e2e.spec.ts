@@ -7,6 +7,7 @@ import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import { SendLinkMail } from '../src/modules/identity/application/use-cases/send-link-mail.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
+import { SellerSessionSummary } from '../src/modules/identity/presentation/seller.dto';
 import { RandomLinkTokens } from '../src/modules/identity/infrastructure/links/random-link-tokens';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { realPermissionRegistry } from './support/permission-registry';
@@ -222,6 +223,14 @@ describe('seller accounts over HTTP (integration)', () => {
         .get('/identity/seller/session')
         .set({ 'x-market-id': code, cookie });
       expect(session.status).toBe(200);
+      // The exact key set: a field added to the shared actor summary cannot reach the seller panel
+      // unless the DTO names it (the controller spreads the summary).
+      const dtoFields = (
+        Reflect.getMetadata('swagger/apiModelPropertiesArray', SellerSessionSummary.prototype) as
+          string[] | undefined
+      )?.map((name) => name.replace(/^:/, ''));
+      expect(dtoFields).toBeDefined();
+      expect(Object.keys(session.body as object).sort()).toEqual([...dtoFields!].sort());
       expect(session.body).toMatchObject({
         // The Market's own zone: the seller dashboard judges a range in Market days (ADR-0005).
         marketTimezone: code === 'AU' ? 'Australia/Brisbane' : 'Asia/Tokyo',

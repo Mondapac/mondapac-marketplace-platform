@@ -341,7 +341,7 @@
           "invalid": "This period can't be exported. Check the range and try again.",
           "unavailable": "Export failed. Try again."
         },
-        "denied": "You can't export this report."
+        "denied": "You can't export this report. Ask the store owner for access."
       }
     }
   },

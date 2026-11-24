@@ -191,7 +191,9 @@ export class SellerSessionController {
     const result = await this.describeActor.execute(context, {});
     this.log('identity.seller-session', context, result.ok ? 'described' : result.error.code);
     if (!result.ok) throw this.denied(result.error);
-    const summary = result.value;
+    // A customer's storefront look is not a seller field (the DTO names none): left out.
+    const { appearance: _customerOnly, ...summary } = result.value;
+    void _customerOnly;
     if (
       csrfToken === null ||
       summary.population !== 'seller' ||

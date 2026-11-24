@@ -53,6 +53,14 @@ const BLOCK_REASONS = [
 ] as const;
 
 /** The four headline cards: four across on desktop, two by two on a tablet and a phone. */
+/** With no figures (a refused range) the payout card is one of the three cards of the first row. */
+const REFUSED_PAYOUT_LAYOUT: GridLayout = {
+  span: 4,
+  tabletSpan: 6,
+  phoneSpan: 12,
+  mobileOrder: 'kpi',
+  align: 'start',
+};
 const KPI_LAYOUT: GridLayout = { span: 3, tabletSpan: 6, phoneSpan: 6, mobileOrder: 'kpi' };
 
 const dayLabel = (day: string, locale: string): string =>
@@ -230,13 +238,20 @@ function NetEarningsCard({
 }
 
 /** Next payout: the estimate and the day it is looked at, or in words why nothing is on its way. */
-function NextPayoutCard({ source }: { readonly source: Source<NextPayout> }) {
+function NextPayoutCard({
+  source,
+  refused,
+}: {
+  readonly source: Source<NextPayout>;
+  /** The range is refused: it is not part of a four-card strip, so it sits beside the other cards at their width and keeps its own height. */
+  readonly refused: boolean;
+}) {
   const t = useTranslations('dashboard.kpi');
   const locale = useLocale();
   const stalled = useStalled();
   return (
     <DashboardSlot
-      layout={KPI_LAYOUT}
+      layout={refused ? REFUSED_PAYOUT_LAYOUT : KPI_LAYOUT}
       source={source}
       fallback={<CardSkeleton icon="clock" label={t('card.payout')} />}
     >
@@ -571,7 +586,7 @@ function InvalidRangeNote() {
     <GridItem span={12} mobileOrder="kpi">
       <p className="w-full min-w-0 rounded-lg border border-line bg-surface p-4 text-sm text-fg-secondary">
         {t('choose')}{' '}
-        <a className="font-medium text-link underline" href="/?period=30d">
+        <a className="whitespace-nowrap font-medium text-link underline" href="/?period=30d">
           {t('back')}
         </a>
       </p>
@@ -605,7 +620,9 @@ export function KpiItems({
       {sources.netEarnings === null ? null : (
         <NetEarningsCard source={sources.netEarnings} period={period} />
       )}
-      {sources.nextPayout === null ? null : <NextPayoutCard source={sources.nextPayout} />}
+      {sources.nextPayout === null ? null : (
+        <NextPayoutCard source={sources.nextPayout} refused={sources.refused} />
+      )}
       {sources.kpis === null ? null : <SalesChart source={sources.kpis} period={period} />}
       <StoreHealth source={sources.health} />
       {sources.kpis === null || sources.categories === null ? null : (

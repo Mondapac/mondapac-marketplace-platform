@@ -242,6 +242,17 @@ describe.each(TEST_MARKETS)('the net figures in market %s', (code) => {
     expect(reader.calls).toHaveLength(1);
   });
 
+  it('gives a call with neither range nor period the strip’s default (30 days)', async () => {
+    const thirty = { from: today.subtract({ days: 29 }).toString(), to: today.toString() };
+    for (const input of [{}, { period: undefined }, null as never]) {
+      reader.calls.length = 0;
+      const out = await new ViewSellerNetEarnings(gate, deps).execute(seller, input);
+      if (!out.ok) throw new Error(out.error.code);
+      expect(out.value.range).toEqual(thirty);
+      expect(reader.calls).toEqual([{ currency, range: thirty, sellerId }]);
+    }
+  });
+
   it('reads a custom range query as the KPI strip does, and refuses it by field', async () => {
     const out = await new ViewSellerNetEarnings(gate, deps).execute(seller, {
       period: 'custom',
