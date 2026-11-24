@@ -49,6 +49,14 @@ export interface SellerOrderReportFacts {
    * its region; ordering never hands over the ship-to address.
    */
   readonly deliveryQuoteId: string | null;
+  /**
+   * Whether the seller order was the buyer's first paid order in the Market, and the buyer's first
+   * paid order with this seller (dashboards v2: new and returning customers), frozen when the
+   * payment was confirmed. Both null when unknown: unpaid, or paid before ordering recorded them.
+   * A first order is always the first with its seller. The buyer is never named.
+   */
+  readonly buyerFirstOrder: boolean | null;
+  readonly buyerFirstWithSeller: boolean | null;
 }
 
 /** One goods line of a refund, with the Offer of the order line it refunds. */

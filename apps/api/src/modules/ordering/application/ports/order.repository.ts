@@ -242,6 +242,17 @@ export interface OrderRepository {
    */
   save(market: MarketContext, order: OrderState): Promise<'saved' | 'stale'>;
 
+  /**
+   * The buyer's first-order claims of a just-confirmed `order` (dashboards v2), in the unit that
+   * saved it as confirmed: one claim per buyer and one per buyer and seller, each inserted with
+   * `ON CONFLICT DO NOTHING` from the buyer's earliest paid order (this one included), then read
+   * back. The order a claim names decides the flags (`buyerFirstOf`), written once on the
+   * seller orders whose flags are still unknown. Two concurrent first payments of one buyer meet on
+   * the claim's key, so only one is first. Returns the order with the flags as stored. An order not
+   * confirmed is returned unchanged and claims nothing.
+   */
+  claimBuyerFirst(market: MarketContext, order: OrderState): Promise<OrderState>;
+
   /** The seller's paid seller orders (the order is `confirmed`), newest payment first. */
   listForSeller(
     market: MarketContext,

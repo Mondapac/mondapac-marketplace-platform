@@ -22,6 +22,13 @@ attributes added without a default (catalog-only change, CHECKs added NOT VALID 
 rollup keys, with no index until a read needs one (the orders-by-state card of phase 2 reads a range
 of paid days already served by `(market_id, paid_day, seller_id)`).
 
+`seller_orders` also holds `buyer_first_order` and `buyer_first_with_seller` (migration
+`20261124020100_reporting_seller_orders_buyer_first`, dashboards v2 phase 2): the two flags ordering
+freezes at payment, nullable without a default (catalog-only change, CHECK added NOT VALID then
+validated: both or neither, only with `paid_at`, a first order is the first with its seller), not
+rollup keys and with no index until the new-and-returning card reads them. No customer or account id
+is stored anywhere in reporting.
+
 All rows are small (under 200 bytes), so even 10x this volume stays under a few GB with indexes.
 
 ## Access paths

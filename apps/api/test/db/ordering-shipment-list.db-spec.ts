@@ -158,6 +158,7 @@ describe.each(TEST_MARKETS)('admin shipment list in market %s (database)', (code
           readyAt: null,
           readyPrepMinutes: null,
           deliveryAttention: null,
+          buyerFirst: null,
           deliveryQuote:
             options.fleet === undefined
               ? null

@@ -87,6 +87,7 @@ describe.each(TEST_MARKETS)('seller ship-to retention over HTTP in market %s', (
     readyAt: START.add({ minutes: 10 }),
     readyPrepMinutes: null,
     deliveryAttention: null,
+    buyerFirst: null,
     deliveryQuote: null,
     ...patch,
   });

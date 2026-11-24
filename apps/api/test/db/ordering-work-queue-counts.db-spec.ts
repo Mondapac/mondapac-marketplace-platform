@@ -114,6 +114,7 @@ describe.each(TEST_MARKETS)('ordering work-queue counts in market %s (database)'
           readyAt: null,
           readyPrepMinutes,
           deliveryAttention: null,
+          buyerFirst: null,
           deliveryQuote: null,
         },
       ],

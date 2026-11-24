@@ -79,6 +79,9 @@ export function sellerOrderReportFacts(
     deliveredAt: sellerOrder.deliveredAt,
     deliveryMethod: sellerOrder.deliveryMethod,
     deliveryQuoteId: sellerOrder.deliveryQuote?.quoteId ?? null,
+    // Frozen at payment; never an account id.
+    buyerFirstOrder: sellerOrder.buyerFirst?.order ?? null,
+    buyerFirstWithSeller: sellerOrder.buyerFirst?.withSeller ?? null,
   };
 }
 

@@ -11,6 +11,7 @@ import type {
   SellerOrderPage,
   SellerOrderRecord,
 } from '../application/ports/order.repository';
+import { buyerFirstOf } from '../domain/buyer-first';
 import type { DeliveryAttention, DeliveryMethod } from '../domain/delivery-method';
 import type {
   CancelReason,
@@ -78,6 +79,8 @@ interface OrderRow {
     readonly deliveryMarginAmount: bigint | null;
     readonly deliveryQuotedAt: Date | null;
     readonly deliveryQuoteExpiresAt: Date | null;
+    readonly buyerFirstOrder: boolean | null;
+    readonly buyerFirstWithSeller: boolean | null;
   }[];
   readonly lines: readonly {
     readonly id: string;
@@ -150,6 +153,11 @@ const toSellerOrder = (s: SellerOrderRow): SellerOrder => ({
           quotedAt: toInstant(s.deliveryQuotedAt),
           expiresAt: toInstant(s.deliveryQuoteExpiresAt),
         },
+  // The CHECK holds both or neither.
+  buyerFirst:
+    s.buyerFirstOrder === null || s.buyerFirstWithSeller === null
+      ? null
+      : { order: s.buyerFirstOrder, withSeller: s.buyerFirstWithSeller },
 });
 
 const toLine = (l: LineRow, currency: string): OrderLine => ({
@@ -673,6 +681,115 @@ export class PrismaOrderRepository implements OrderRepository {
       });
     }
     return 'saved';
+  }
+
+  async claimBuyerFirst(market: MarketContext, order: OrderState): Promise<OrderState> {
+    if (order.status !== 'confirmed' || order.confirmedAt === null) return order;
+    const tx = this.prisma.tx(market);
+    const scope = { marketId: market.marketId, tenantId: market.tenantId };
+    const buyer = { ...scope, accountId: order.accountId };
+    // The buyer's earliest paid order, this one included (saved as confirmed in this unit). Not
+    // simply this order: one paid by the previous release after the backfill has no claim yet, and
+    // it, not this one, is the buyer's first. Payment time, then order id, as the backfill.
+    const earliest = await tx.orderingOrder.findFirst({
+      where: { marketId: market.marketId, accountId: order.accountId, status: 'confirmed' },
+      orderBy: [{ confirmedAt: 'asc' }, { id: 'asc' }],
+      select: { id: true, confirmedAt: true },
+    });
+    const first =
+      earliest?.confirmedAt == null
+        ? { id: order.id, confirmedAt: toDate(order.confirmedAt) }
+        : { id: earliest.id, confirmedAt: earliest.confirmedAt };
+    // INSERT ... ON CONFLICT DO NOTHING: a concurrent first payment of the buyer waits here for the
+    // other unit and then finds its row; the row read back names the winner.
+    await tx.orderingBuyerFirstOrder.createMany({
+      data: [{ ...buyer, orderId: first.id, firstOrderAt: first.confirmedAt }],
+      skipDuplicates: true,
+    });
+    const claim = await tx.orderingBuyerFirstOrder.findFirst({
+      where: { marketId: market.marketId, tenantId: market.tenantId, accountId: order.accountId },
+      select: { orderId: true },
+    });
+    const firstWithSeller = new Map<Id<'Seller'>, Id<'Order'>>();
+    // One seller at a time in seller id order, after the buyer's claim: every unit takes the claim
+    // keys in one order, so two of them never wait on each other in a cycle.
+    const sellers = [...order.sellerOrders].sort((a, b) => a.sellerId.localeCompare(b.sellerId));
+    for (const sellerOrder of sellers) {
+      const earliestWith = await tx.orderingSellerOrder.findFirst({
+        where: {
+          marketId: market.marketId,
+          sellerId: sellerOrder.sellerId,
+          order: { is: { accountId: order.accountId, status: 'confirmed' } },
+        },
+        orderBy: [{ order: { confirmedAt: 'asc' } }, { orderId: 'asc' }],
+        select: { id: true, orderId: true, order: { select: { confirmedAt: true } } },
+      });
+      const firstWith =
+        earliestWith?.order.confirmedAt == null
+          ? {
+              sellerOrderId: sellerOrder.id,
+              orderId: order.id,
+              firstOrderAt: toDate(order.confirmedAt),
+            }
+          : {
+              sellerOrderId: earliestWith.id,
+              orderId: earliestWith.orderId,
+              firstOrderAt: earliestWith.order.confirmedAt,
+            };
+      await tx.orderingBuyerFirstSellerOrder.createMany({
+        data: [{ ...buyer, sellerId: sellerOrder.sellerId, ...firstWith }],
+        skipDuplicates: true,
+      });
+      const claimWith = await tx.orderingBuyerFirstSellerOrder.findFirst({
+        where: {
+          marketId: market.marketId,
+          tenantId: market.tenantId,
+          accountId: order.accountId,
+          sellerId: sellerOrder.sellerId,
+        },
+        select: { orderId: true },
+      });
+      if (claimWith !== null) {
+        firstWithSeller.set(sellerOrder.sellerId, claimWith.orderId as Id<'Order'>);
+      }
+    }
+    if (claim === null) return order;
+    const flags = buyerFirstOf(order, {
+      firstOrderId: claim.orderId as Id<'Order'>,
+      firstWithSeller,
+    });
+    for (const sellerOrder of sellers) {
+      const flag = flags.get(sellerOrder.id) ?? null;
+      if (flag === null) continue;
+      // Written once: a seller order whose flags are known keeps them.
+      await tx.orderingSellerOrder.updateMany({
+        where: {
+          marketId: market.marketId,
+          id: sellerOrder.id,
+          paidAt: { not: null },
+          buyerFirstOrder: null,
+        },
+        data: { buyerFirstOrder: flag.order, buyerFirstWithSeller: flag.withSeller },
+      });
+    }
+    const stored = await tx.orderingSellerOrder.findMany({
+      where: { marketId: market.marketId, orderId: order.id },
+      select: { id: true, buyerFirstOrder: true, buyerFirstWithSeller: true },
+    });
+    const storedOf = new Map(stored.map((row) => [row.id, row] as const));
+    return {
+      ...order,
+      sellerOrders: order.sellerOrders.map((sellerOrder) => {
+        const row = storedOf.get(sellerOrder.id);
+        return {
+          ...sellerOrder,
+          buyerFirst:
+            row?.buyerFirstOrder == null || row.buyerFirstWithSeller == null
+              ? null
+              : { order: row.buyerFirstOrder, withSeller: row.buyerFirstWithSeller },
+        };
+      }),
+    };
   }
 
   async listForSeller(

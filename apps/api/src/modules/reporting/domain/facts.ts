@@ -81,6 +81,40 @@ export function checkedDelivery(delivery: DeliveryFact): DeliveryFact {
   return delivery;
 }
 
+/**
+ * Whether a seller order was the buyer's first paid order in the Market (`order`) and the buyer's
+ * first paid order with its seller (`withSeller`), as ordering froze them at payment (dashboards
+ * v2: new and returning customers). Not a rollup key. Both null when unknown: unpaid, paid before
+ * ordering recorded them, or recorded here before the columns. No customer is ever named: the
+ * dashboards count new and returning customers from these flags alone.
+ */
+export interface BuyerFirstFact {
+  readonly order: boolean | null;
+  readonly withSeller: boolean | null;
+}
+
+export const UNKNOWN_BUYER_FIRST: BuyerFirstFact = { order: null, withSeller: null };
+
+/**
+ * A buyer-first fact checked: both flags or neither, only on a paid seller order, and a first order
+ * is always the first with its seller (the CHECK of `reporting.seller_orders`), or it throws.
+ */
+export function checkedBuyerFirst(
+  buyerFirst: BuyerFirstFact,
+  paidAt: Temporal.Instant | null,
+): BuyerFirstFact {
+  if ((buyerFirst.order === null) !== (buyerFirst.withSeller === null)) {
+    throw new RangeError('reporting: a buyer-first flag without the other');
+  }
+  if (buyerFirst.order !== null && paidAt === null) {
+    throw new RangeError('reporting: buyer-first flags on an unpaid seller order');
+  }
+  if (buyerFirst.order === true && buyerFirst.withSeller !== true) {
+    throw new RangeError("reporting: a buyer's first order that is not the first with its seller");
+  }
+  return buyerFirst;
+}
+
 /** One seller order as reporting records it (table `reporting.seller_orders`). */
 export interface SellerOrderFact {
   readonly sellerOrderId: Id<'SellerOrder'>;
@@ -98,15 +132,22 @@ export interface SellerOrderFact {
   readonly shippedOnTime: boolean | null;
   readonly deliveredAt: Temporal.Instant | null;
   readonly delivery: DeliveryFact;
+  readonly buyerFirst: BuyerFirstFact;
 }
 
 /**
- * The instants and the delivery of a stored seller order, as {@link keepKnownInstants} compares
- * them.
+ * The instants, the delivery and the buyer-first flags of a stored seller order, as
+ * {@link keepKnownInstants} compares them.
  */
 export type SellerOrderInstants = Pick<
   SellerOrderFact,
-  'paidAt' | 'cancelledAt' | 'shippedAt' | 'shippedOnTime' | 'deliveredAt' | 'delivery'
+  | 'paidAt'
+  | 'cancelledAt'
+  | 'shippedAt'
+  | 'shippedOnTime'
+  | 'deliveredAt'
+  | 'delivery'
+  | 'buyerFirst'
 >;
 
 /**
@@ -119,6 +160,10 @@ export type SellerOrderInstants = Pick<
  * may no longer know it (shipping removes a buyer's expired quotes a day later) or may give the
  * store's new region after the seller moved, and a past order's state must not change. The method
  * never changes after checkout; the read one wins when known.
+ *
+ * The buyer-first flags, once known, are kept as first recorded (dashboards v2): ordering freezes
+ * them at payment, so a later read that says otherwise (or nothing) never rewrites a past order's
+ * new-or-returning customer.
  */
 export function keepKnownInstants(
   fact: SellerOrderFact,
@@ -136,6 +181,7 @@ export function keepKnownInstants(
       method: fact.delivery.method ?? stored.delivery.method,
       state: stored.delivery.state ?? fact.delivery.state,
     },
+    buyerFirst: stored.buyerFirst.order === null ? fact.buyerFirst : stored.buyerFirst,
   };
 }
 

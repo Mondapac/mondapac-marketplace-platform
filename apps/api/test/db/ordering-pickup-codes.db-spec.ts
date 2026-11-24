@@ -101,6 +101,7 @@ describe.each(TEST_MARKETS)('pickup code store in market %s (database)', (code) 
           readyAt: null,
           readyPrepMinutes: null,
           deliveryAttention: null,
+          buyerFirst: null,
           deliveryQuote: null,
         },
       ],

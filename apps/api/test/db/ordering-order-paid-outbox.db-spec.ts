@@ -162,6 +162,7 @@ describe.each(TEST_MARKETS)(
           readyAt: null,
           readyPrepMinutes: null,
           deliveryAttention: null,
+          buyerFirst: null,
           deliveryQuote: null,
         })),
         lines: sellerOrderIds.map((sellerOrderId) => ({

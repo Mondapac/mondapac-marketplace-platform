@@ -1,8 +1,10 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import {
+  checkedBuyerFirst,
   checkedDelivery,
   keepKnownInstants,
+  UNKNOWN_BUYER_FIRST,
   UNKNOWN_DELIVERY,
   type DeliveryFact,
   marketDayOf,
@@ -64,6 +66,7 @@ describe.each(MARKETS)('reporting facts in market $name', ({ zone, currency }) =
     shippedOnTime: null,
     deliveredAt: null,
     delivery: { method: 'instant', state: null },
+    buyerFirst: { order: null, withSeller: null },
     ...overrides,
   });
 
@@ -271,6 +274,7 @@ describe('keepKnownInstants', () => {
       shippedOnTime: null,
       deliveredAt: null,
       delivery: { method: 'instant' as const, state: null },
+      buyerFirst: { order: null, withSeller: null },
     };
     const later = at.add({ hours: 1 });
     expect(keepKnownInstants(read, null)).toBe(read);
@@ -282,6 +286,7 @@ describe('keepKnownInstants', () => {
         shippedOnTime: false,
         deliveredAt: later,
         delivery: { method: null, state: null },
+        buyerFirst: { order: null, withSeller: null },
       }),
     ).toEqual({ ...read, shippedAt: later, shippedOnTime: false, deliveredAt: later });
   });
@@ -302,6 +307,7 @@ describe.each(MARKETS)('delivery facts in market $name', ({ currency }) => {
     shippedOnTime: null,
     deliveredAt: null,
     delivery: UNKNOWN_DELIVERY,
+    buyerFirst: { order: null, withSeller: null },
     ...overrides,
   });
 
@@ -345,5 +351,57 @@ describe('distinctSellerDays', () => {
     const a = { marketDay: '2026-11-22' as MarketDay, sellerId: id<'Seller'>('b') };
     const b = { marketDay: '2026-11-21' as MarketDay, sellerId: id<'Seller'>('z') };
     expect(distinctSellerDays([a, b, a])).toEqual([b, a]);
+  });
+});
+
+describe.each(MARKETS)('buyer-first facts in market $name', ({ currency }) => {
+  const PAID = Temporal.Instant.from('2026-11-20T00:00:00Z');
+  const FIRST = { order: true, withSeller: true };
+  const RETURNING = { order: false, withSeller: false };
+  const NEW_TO_SELLER = { order: false, withSeller: true };
+  const order = (overrides: Partial<SellerOrderFact> = {}): SellerOrderFact => ({
+    sellerOrderId: SELLER_ORDER,
+    orderId: ORDER,
+    sellerId: SELLER,
+    currency,
+    goods: { amount: 1100n, tax: 100n },
+    units: 1,
+    shipping: { amount: 0n, tax: 0n },
+    paidAt: PAID,
+    cancelledAt: null,
+    shippedAt: null,
+    shippedOnTime: null,
+    deliveredAt: null,
+    delivery: UNKNOWN_DELIVERY,
+    buyerFirst: UNKNOWN_BUYER_FIRST,
+    ...overrides,
+  });
+
+  it('keeps known flags as first recorded, and learns unknown ones from the read', () => {
+    const stored = order({ buyerFirst: FIRST });
+    for (const buyerFirst of [UNKNOWN_BUYER_FIRST, RETURNING, NEW_TO_SELLER]) {
+      expect(keepKnownInstants(order({ buyerFirst }), stored).buyerFirst).toEqual(FIRST);
+    }
+    const legacy = order();
+    expect(keepKnownInstants(order({ buyerFirst: RETURNING }), legacy).buyerFirst).toEqual(
+      RETURNING,
+    );
+    // Unknown on both sides stays unknown: never guessed.
+    expect(keepKnownInstants(order(), legacy).buyerFirst).toEqual(UNKNOWN_BUYER_FIRST);
+  });
+
+  it('checks the flags: both or neither, only when paid, a first order first with its seller', () => {
+    for (const ok of [UNKNOWN_BUYER_FIRST, FIRST, RETURNING, NEW_TO_SELLER]) {
+      expect(checkedBuyerFirst(ok, PAID)).toEqual(ok);
+    }
+    expect(checkedBuyerFirst(UNKNOWN_BUYER_FIRST, null)).toEqual(UNKNOWN_BUYER_FIRST);
+    for (const bad of [
+      { order: true, withSeller: null },
+      { order: null, withSeller: false },
+      { order: true, withSeller: false },
+    ]) {
+      expect(() => checkedBuyerFirst(bad, PAID)).toThrow(RangeError);
+    }
+    expect(() => checkedBuyerFirst(RETURNING, null)).toThrow(RangeError);
   });
 });

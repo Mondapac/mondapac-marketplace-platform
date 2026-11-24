@@ -91,6 +91,7 @@ import type {
   PickupKeyDestroyed,
 } from '../../src/modules/ordering/application/ports/pickup-code-vault';
 import type { ReadyRecord } from '../../src/modules/ordering/domain/seller-health-counts';
+import { buyerFirstOf } from '../../src/modules/ordering/domain/buyer-first';
 import type { PickupCodeRepository } from '../../src/modules/ordering/application/ports/pickup-code.repository';
 import {
   PICKUP_MAX_FAILED_ATTEMPTS,
@@ -539,6 +540,54 @@ export class MemoryOrders implements OrderRepository {
       version: order.version + 1,
     });
     return Promise.resolve('saved' as const);
+  }
+
+  /** The buyer's first-order claims (market, tenant, account) and per seller, as the database. */
+  readonly firstOrderClaims = new Map<string, Id<'Order'>>();
+  readonly firstWithSellerClaims = new Map<string, Id<'Order'>>();
+  claimBuyerFirst(market: MarketContext, order: OrderState) {
+    if (order.status !== 'confirmed' || order.confirmedAt === null) return Promise.resolve(order);
+    const buyer = `${market.marketId}|${market.tenantId}|${order.accountId}`;
+    const paid = [...this.rows.values()]
+      .filter(
+        (row) =>
+          row.marketId === market.marketId &&
+          row.accountId === order.accountId &&
+          row.status === 'confirmed' &&
+          row.confirmedAt !== null,
+      )
+      .sort(
+        (a, b) =>
+          Temporal.Instant.compare(a.confirmedAt!, b.confirmedAt!) || a.id.localeCompare(b.id),
+      );
+    // ON CONFLICT DO NOTHING: the first claim stays.
+    if (!this.firstOrderClaims.has(buyer)) {
+      this.firstOrderClaims.set(buyer, paid[0]?.id ?? order.id);
+    }
+    const firstWithSeller = new Map<Id<'Seller'>, Id<'Order'>>();
+    for (const sellerOrder of order.sellerOrders) {
+      const key = `${buyer}|${sellerOrder.sellerId}`;
+      if (!this.firstWithSellerClaims.has(key)) {
+        const earliest = paid.find((row) =>
+          row.sellerOrders.some((candidate) => candidate.sellerId === sellerOrder.sellerId),
+        );
+        this.firstWithSellerClaims.set(key, earliest?.id ?? order.id);
+      }
+      firstWithSeller.set(sellerOrder.sellerId, this.firstWithSellerClaims.get(key)!);
+    }
+    const flags = buyerFirstOf(order, {
+      firstOrderId: this.firstOrderClaims.get(buyer)!,
+      firstWithSeller,
+    });
+    const stored = this.rows.get(order.id);
+    if (stored === undefined) return Promise.resolve(order);
+    // Written once: known flags are kept.
+    const withFlags = (sellerOrder: SellerOrder): SellerOrder =>
+      sellerOrder.buyerFirst !== null
+        ? sellerOrder
+        : { ...sellerOrder, buyerFirst: flags.get(sellerOrder.id) ?? null };
+    this.rows.set(order.id, { ...stored, sellerOrders: stored.sellerOrders.map(withFlags) });
+    return Promise.resolve({ ...order, sellerOrders: order.sellerOrders.map(withFlags) });
   }
 
   private recordOf(order: OrderState, sellerOrder: SellerOrder): SellerOrderRecord {

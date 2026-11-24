@@ -52,6 +52,8 @@ export class PrismaFactStore implements FactStore {
         deliveredAt: true,
         deliveryMethod: true,
         deliveryState: true,
+        buyerFirstOrder: true,
+        buyerFirstWithSeller: true,
       },
     });
     if (row === null) return null;
@@ -68,6 +70,7 @@ export class PrismaFactStore implements FactStore {
         method: row.deliveryMethod as DeliveryMethod | null,
         state: row.deliveryState,
       },
+      buyerFirst: { order: row.buyerFirstOrder, withSeller: row.buyerFirstWithSeller },
     };
   }
 
@@ -109,6 +112,9 @@ export class PrismaFactStore implements FactStore {
       // Region code and method only: no postcode or address is ever stored here.
       deliveryMethod: fact.delivery.method,
       deliveryState: fact.delivery.state,
+      // Two flags only: no customer or account id is ever stored here.
+      buyerFirstOrder: fact.buyerFirst.order,
+      buyerFirstWithSeller: fact.buyerFirst.withSeller,
       updatedAt: at,
     };
     if (previous === null) {
@@ -278,6 +284,26 @@ export class PrismaFactStore implements FactStore {
         // Only a row recorded before the columns has no method: every fact written since carries
         // ordering's method, and its state was asked of shipping then (a null state is unknown).
         deliveryMethod: null,
+      },
+      orderBy: { sellerOrderId: 'asc' },
+      take: limit,
+      select: { orderId: true, sellerOrderId: true },
+    });
+    return {
+      items: rows,
+      next: rows.length === limit ? (rows[rows.length - 1]?.sellerOrderId ?? null) : null,
+    };
+  }
+
+  async sellerOrdersMissingBuyerFirst(market: MarketContext, after: string | null, limit: number) {
+    const rows = await this.prisma.tx(market).reportingSellerOrder.findMany({
+      where: {
+        marketId: market.marketId,
+        ...(after === null ? {} : { sellerOrderId: { gt: after } }),
+        // A paid row without the flags: recorded before the columns, or ordering did not know them
+        // (paid before it recorded them). An unpaid row gets them from the worker once paid.
+        paidAt: { not: null },
+        buyerFirstOrder: null,
       },
       orderBy: { sellerOrderId: 'asc' },
       take: limit,

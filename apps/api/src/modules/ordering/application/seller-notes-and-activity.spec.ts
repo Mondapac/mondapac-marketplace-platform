@@ -351,6 +351,7 @@ describe.each([['AU'], ['ZZ']] as const)('seller notes and order activity in mar
       readyAt: null,
       readyPrepMinutes: null,
       deliveryAttention: null,
+      buyerFirst: null,
       deliveryQuote: null,
       ...patch,
     });

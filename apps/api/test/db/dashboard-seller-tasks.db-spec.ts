@@ -131,6 +131,7 @@ describe.each(TEST_MARKETS)('dashboard seller tasks in market %s (database)', (c
           readyAt: null,
           readyPrepMinutes: placed.prep === undefined ? 30 : placed.prep,
           deliveryAttention: null,
+          buyerFirst: null,
           deliveryQuote: null,
         },
       ],

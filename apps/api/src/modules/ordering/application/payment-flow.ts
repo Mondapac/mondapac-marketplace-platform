@@ -35,6 +35,8 @@ async function update(
   change: (order: OrderState) => OrderState | null,
   /** Events to write to the outbox, in the same unit, once the change is saved. */
   events?: (saved: OrderState) => readonly PendingEvent[],
+  /** Further writes of the same unit, once the change is saved and before its events. */
+  afterSave?: (saved: OrderState) => Promise<OrderState>,
 ): Promise<Result<OrderState | null, PaymentFailure>> {
   return deps.unitOfWork.run<OrderState | null, PaymentFailure>(context.market, async () => {
     const order = await deps.orders.findById(context.market, orderId);
@@ -43,7 +45,8 @@ async function update(
     if (next === null) return ok(null);
     const saved = await deps.orders.save(context.market, next);
     if (saved !== 'saved') return RETRY;
-    const written = { ...next, version: next.version + 1 };
+    const versioned = { ...next, version: next.version + 1 };
+    const written = afterSave === undefined ? versioned : await afterSave(versioned);
     if (events !== undefined) {
       try {
         await deps.outbox.append(context, events(written));
@@ -218,6 +221,10 @@ export async function confirmPayment(
         },
       }),
     ],
+    // The buyer's first-order claims and the two flags (dashboards v2), in the confirming unit so
+    // that a paid order always has them and two concurrent first payments cannot both be first.
+    // Not in the event: reporting reads them through ordering's reporting facade.
+    (paid) => deps.orders.claimBuyerFirst(context.market, paid),
   );
   if (!confirmed.ok) {
     // The money is taken and the stock is ordered; the retry finds the order pending and

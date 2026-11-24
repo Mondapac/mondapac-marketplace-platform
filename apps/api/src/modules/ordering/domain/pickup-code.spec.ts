@@ -107,6 +107,7 @@ describe('markCollected', () => {
     readyAt: NOW,
     readyPrepMinutes: null,
     deliveryAttention: null,
+    buyerFirst: null,
     deliveryQuote: null,
   };
 

@@ -1,4 +1,5 @@
 import type { Id, MarketId, Money, Temporal } from '@mondapac/shared-kernel';
+import type { BuyerFirst } from './buyer-first';
 import type { DeliveryAttention, DeliveryMethod, DeliveryWindow } from './delivery-method';
 
 // The order aggregate and the pure rules around it (ordering design, simplified for speed mode).
@@ -162,6 +163,12 @@ export interface SellerOrder {
   readonly deliveryAttention: DeliveryAttention | null;
   /** The quote the buyer was charged for delivery; null for a pickup and for older orders. */
   readonly deliveryQuote: ChargedDeliveryQuote | null;
+  /**
+   * Whether this was the buyer's first paid order in the Market and with this seller (dashboards
+   * v2), frozen in the unit that confirms the payment. Null until paid, and on seller orders paid
+   * before the flags were recorded that the backfill could not see (unknown, never guessed).
+   */
+  readonly buyerFirst: BuyerFirst | null;
 }
 
 /**

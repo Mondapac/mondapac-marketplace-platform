@@ -99,7 +99,9 @@ function exported(
     | 'TEST_REPORTING_ADMIN_KPI_DATABASE_URL'
     | 'TEST_REPORTING_SELLER_KPIS_DATABASE_URL'
     | 'TEST_CATALOG_TREE_DATABASE_URL'
-    | 'TEST_CATALOG_TREE_OWNER_DATABASE_URL',
+    | 'TEST_CATALOG_TREE_OWNER_DATABASE_URL'
+    | 'TEST_BUYER_FIRST_DATABASE_URL'
+    | 'TEST_BUYER_FIRST_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -530,4 +532,16 @@ export function catalogTreeTestDatabaseUrl(): string {
 
 export function catalogTreeOwnerTestDatabaseUrl(): string {
   return exported('TEST_CATALOG_TREE_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that ordering-buyer-first.db-spec.ts confirms payments on and runs the buyer-first
+ * history backfill again on (global-setup.ts), as the application login and as its owner.
+ */
+export function buyerFirstTestDatabaseUrl(): string {
+  return exported('TEST_BUYER_FIRST_DATABASE_URL');
+}
+
+export function buyerFirstOwnerTestDatabaseUrl(): string {
+  return exported('TEST_BUYER_FIRST_OWNER_DATABASE_URL');
 }

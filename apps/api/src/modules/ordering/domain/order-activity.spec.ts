@@ -49,6 +49,7 @@ describe.each([
     readyAt: null,
     readyPrepMinutes: null,
     deliveryAttention: null,
+    buyerFirst: null,
     deliveryQuote: null,
     ...patch,
   });

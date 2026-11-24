@@ -519,10 +519,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       ],
     },
     // Phase 5 package 4: a seller order's fulfilment steps (to-ship, shipped, delivered) change
-    // the fulfilment columns only; the amounts never change.
+    // the fulfilment columns only; the amounts never change. The buyer-first flags (dashboards v2)
+    // are written once, by the unit that confirms the payment.
     'ordering.seller_orders': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
+        'buyer_first_order',
+        'buyer_first_with_seller',
         'carrier',
         'delivered_at',
         'delivery_attention',
@@ -916,6 +919,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     'reporting.seller_orders': {
       table: ['INSERT', 'SELECT'],
       columnUpdate: [
+        'buyer_first_order',
+        'buyer_first_with_seller',
         'cancelled_at',
         'cancelled_day',
         'delivered_at',
@@ -1340,6 +1345,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Order detail decision 3: a seller's own notes on its seller order, sealed under the customer;
     // written once, never changed or removed.
     'ordering.seller_order_notes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Buyer-first claims (dashboards v2): one row per buyer and per buyer and seller, inserted once
+    // by the confirming unit (ON CONFLICT DO NOTHING) and never changed or removed.
+    'ordering.buyer_first_orders': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'ordering.buyer_first_seller_orders': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Seller refund caps (owner decision 2026-11-11; ordering.md 3.12c): an admin sets, edits and
     // removes a cap (the id, Market and seller never change); the guard row per seller is
     // inserted once, then moves only its check time and alert bookkeeping. No guard is deleted.

@@ -49,6 +49,8 @@ describe.each(TEST_MARKETS)('reporting event worker in market %s', (code) => {
     deliveredAt: null,
     deliveryMethod: 'instant',
     deliveryQuoteId: null,
+    buyerFirstOrder: null,
+    buyerFirstWithSeller: null,
   });
 
   const setup = (sources: Partial<ReportSources>) => {
