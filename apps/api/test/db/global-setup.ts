@@ -82,6 +82,11 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'SEARCH_DOCUMENTS');
   await createCopy(name, 'SEARCH_FILTERS');
   await createCopy(name, 'SEARCH_RATINGS');
+  await createCopy(name, 'REPORTING_FACTS');
+  await createCopy(name, 'REPORTING_LEDGER');
+  await createCopy(name, 'REPORTING_WORKER');
+  await createCopy(name, 'REPORTING_ADMIN_KPI');
+  await createCopy(name, 'REPORTING_SELLER_KPIS');
   await createCopy(name, 'CATALOG_TREE');
 }
 
@@ -161,6 +166,15 @@ export default async function globalSetup(): Promise<void> {
  *   and search-product-ratings db-specs each empty whole search tables (`DELETE FROM search.offer_documents`,
  *   `search.product_ratings`) in `beforeAll`/`beforeEach` and then expect only their own rows, so one file's
  *   cleanup removed another's seeded documents (searches returned []). Each keeps its own copy.
+ * - `reporting_facts`, `reporting_ledger`, `reporting_worker`, `reporting_admin_kpi`,
+ *   `reporting_seller_kpis`: the reporting db-spec of that name records facts and replaces seller
+ *   days in SERIALIZABLE units (the projector's isolation). Each unit reads and rewrites whole
+ *   seller days of `reporting.daily_seller_sales`, `reporting.daily_category_sales` and the fact
+ *   tables. On these near-empty test tables the predicate (SIREAD) locks are relation-level (a
+ *   sequential scan) or cover the single index page that holds every key, so under parallel files
+ *   units of different files on different sellers and days met as rw-conflicts and failed with
+ *   40001 at random (each file passed alone). Each file keeps its own copy, so only its own units
+ *   meet; the isolation level stays SERIALIZABLE.
  * - `catalog_tree`: catalog-category-tree.db-spec.ts runs the Market seed use case and then counts the
  *   categories and `platform-category-created` outbox events of whole Markets (AU must stay empty),
  *   while other files seed or insert categories in both Markets in parallel, so none of them lives there.
@@ -202,6 +216,11 @@ async function createCopy(
     | 'SEARCH_DOCUMENTS'
     | 'SEARCH_FILTERS'
     | 'SEARCH_RATINGS'
+    | 'REPORTING_FACTS'
+    | 'REPORTING_LEDGER'
+    | 'REPORTING_WORKER'
+    | 'REPORTING_ADMIN_KPI'
+    | 'REPORTING_SELLER_KPIS'
     | 'CATALOG_TREE',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;

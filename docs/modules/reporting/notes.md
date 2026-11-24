@@ -45,6 +45,21 @@ day then conflict with a 40001 the platform retries, instead of one missing the 
 Seller days are rebuilt in a fixed order (day, then seller). Growth and retention:
 `docs/design/data/reporting.md`.
 
+Early warning (Mojtaba, 24 Nov 2026): units of DIFFERENT sellers and days can also meet. When the
+reporting db-specs shared one database and ran in parallel, their SERIALIZABLE units failed with
+40001 at random (3 of 3 local runs of the five reporting files): on near-empty tables the predicate
+(SIREAD) locks are relation-level (a sequential scan) or cover the single index page that holds
+every key, so unrelated seller days read as rw-conflicts. Each of those spec files now has its own
+database copy (`test/db/global-setup.ts`); the isolation level is unchanged. In production the
+tables are indexed on the deleted prefixes (primary keys from `market_id, market_day, seller_id` and
+`market_id, kind, source_id`), so index scans take tuple or leaf-page locks and such false conflicts
+between concurrent projector units (event worker, nightly reconcile, backfill) MAY still happen
+under load, much more rarely; the platform's retry absorbs them. Measure the 40001 and retry rate of
+reporting units first, then in this order: confirm with `EXPLAIN` that the unit's queries use index
+scans; check the granularity of `pg_locks` rows with `mode = 'SIReadLock'`; only then consider
+`max_pred_locks_per_relation` / `max_pred_locks_per_page` tuning or partitioning the events by seller
+day (FE-20261124-reporting-serializable-predicate-locks).
+
 ## Code
 
 - `application/fact-recorder.ts` (`FactRecorder`): the one write path. It writes the facts, then
