@@ -36,11 +36,14 @@ const id = <T extends string>(n: number): Id<T> => {
 let declarations: AccessDeclaration[];
 let reads: MarketContext[];
 let failing: boolean;
+let denied: boolean;
 
 const gate = createUseCaseGate(markets, {
   check: (_context, declaration) => {
     declarations.push(declaration);
-    return Promise.resolve({ allowed: true as const });
+    return Promise.resolve(
+      denied ? { allowed: false, denial: { code: 'access.denied' } } : { allowed: true },
+    );
   },
 });
 const unitOfWork = {
@@ -62,6 +65,7 @@ beforeEach(() => {
   declarations = [];
   reads = [];
   failing = false;
+  denied = false;
 });
 
 describe.each(TEST_MARKETS)('search.count-live-listings in market %s', (code) => {
@@ -77,6 +81,13 @@ describe.each(TEST_MARKETS)('search.count-live-listings in market %s', (code) =>
         sellerId: population === 'seller' ? id(0xa3) : null,
       }),
     );
+  /** The admin acting as a seller (Login as Seller): never a platform-wide count. */
+  const actingAs = (): CallContext => {
+    const own = actor('admin');
+    return Object.assign(Object.create(Object.getPrototypeOf(own) as object) as object, own, {
+      actor: { ...own.actor, actingAs: { sellerId: id(0xa4) } },
+    });
+  };
   const query = (signal: AbortSignal = new AbortController().signal) => ({ signal });
 
   it("counts behind the catalog key, in the caller's Market", async () => {
@@ -89,8 +100,18 @@ describe.each(TEST_MARKETS)('search.count-live-listings in market %s', (code) =>
     expect(reads).toEqual([market]);
   });
 
-  it('refuses a seller before any read; unavailable when stopped or failing', async () => {
+  it('refuses an admin without catalog.product.view, before any read', async () => {
+    denied = true;
+    expect(await useCase.execute(actor('admin'), query())).toEqual(err({ code: 'access.denied' }));
+    expect(declarations.map((d) => d.rule)).toEqual([
+      { kind: 'permissions', allOf: [CATALOG_PRODUCT_VIEW.key] },
+    ]);
+    expect(reads).toHaveLength(0);
+  });
+
+  it('refuses a seller and an acting-as session before any read; unavailable when stopped or failing', async () => {
     expect(await useCase.execute(actor('seller'), query())).toEqual(err({ code: 'access.denied' }));
+    expect(await useCase.execute(actingAs(), query())).toEqual(err({ code: 'access.denied' }));
     const stopped = new AbortController();
     stopped.abort();
     expect(await useCase.execute(actor('admin'), query(stopped.signal))).toEqual(

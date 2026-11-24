@@ -7,9 +7,11 @@ import type {
 
 /**
  * {@link LiveListingCounter} on `search.offer_documents`: every document of the Market, and those
- * with no `offer_variant_documents` row in stock (a NOT EXISTS on the variant table's primary key
- * `(market_id, offer_id, variant_id)`). The documents are read on the `(market_id, product_id)`
- * index; the read grows with the Market's live Offers (a full count, no page).
+ * with no `offer_variant_documents` row in stock (Prisma's `none` is a correlated NOT EXISTS).
+ * Measured on 200 k documents and 600 k variants (PR 6 query plans): the first count is an
+ * index-only scan, the second a hash anti join over the Market's in-stock variants (about 20 ms
+ * and 145 ms); the read grows with the Market's live Offers (a full count, no page). `tenant_id` is
+ * not filtered here (one tenant; ADR-0001 seam, FE row).
  */
 export class PrismaLiveListingCounter implements LiveListingCounter {
   constructor(private readonly prisma: PrismaService) {}

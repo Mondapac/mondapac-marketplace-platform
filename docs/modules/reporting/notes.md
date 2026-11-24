@@ -319,8 +319,15 @@ denominator is 0.
   with the state columns filtered on the rows; one `groupBy seller_order_id` of `refunds` with
   `refund_day >= range.from` on `(market_id, refund_day, seller_id)` (a refund is never before its
   payment, so none paid in the range is missed); then the states of those seller orders paid in the
-  range by primary key, 1 000 ids per `IN` list. No join, no raw SQL. The refunds read grows with
+  range by primary key, 5 000 ids per `IN` list. No join, no raw SQL. The refunds read grows with
   the refunds since the range's first day (at most 13 months of them).
+- Measured (Mojtaba's review, 1.2 M seller orders, 40 k refunds, 200 k listings with 600 k variants;
+  plans in the design folder's `shots-build/pr6-admin-kpis/query-plans.md`): a whole admin
+  dashboard load of a 30-day period takes about 0.4 s, 25 statements through the 10-connection
+  pool, every section well inside its 1.5 s limit, so no index was added. The counts read the heap
+  (a covering index is FE-181), the out-of-stock count is a NOT EXISTS anti join (partial index
+  FE-182), and a `first_refunded_at` column would replace the refunds read (FE-180). The read-only
+  unit opens no transaction, so the counts are separate snapshots and may drift by a few orders.
 - Same-day share (`sameDayShare`): same-day deliveries ÷ seller orders paid in the period. It needs
   the delivery method on `seller_orders`, which reporting does not hold yet, so it answers
   `{status: 'not-available', reason: 'not-reported'}`, never 0. `sameDayShareOf` already takes the

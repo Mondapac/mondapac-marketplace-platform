@@ -10,8 +10,12 @@ import type { OrderStatusTallies } from '../domain/admin-health';
 import type { DayRange } from '../domain/period';
 import { dateToDay, dayToDate } from './prisma-fact-store';
 
-/** How many refunded seller order ids one `IN` list carries (the order-status read). */
-export const REFUNDED_ID_CHUNK = 1_000;
+/**
+ * How many refunded seller order ids one `IN` list carries (the order-status read). Measured on
+ * 1.2 M seller orders (PR 6 query plans): a 5,000-id list stays a primary-key index scan, and a
+ * 31-day period's refunds (about 3,100 orders) take one read instead of four.
+ */
+export const REFUNDED_ID_CHUNK = 5_000;
 
 /**
  * {@link AdminKpiReader} on `reporting.daily_seller_sales`: one grouped read of the range over the
@@ -81,6 +85,15 @@ export class PrismaAdminKpiReader implements AdminKpiReader {
    * range's first day (`refunds` on `(market_id, refund_day, seller_id)`, grouped in the database),
    * then where those of them paid in the range stand (by primary key, {@link REFUNDED_ID_CHUNK} ids
    * a read). A refund is never before its payment, so none paid in the range is missed. No join.
+   *
+   * The unit is read-only, so it opens no transaction (ADR-0025): each count below is its own
+   * snapshot and the buckets may drift by the few orders that change state while they run.
+   * Acceptable for a dashboard figure. A drift that would make a derived bucket negative (only
+   * possible when that bucket is about zero) is refused by `orderStatusOf`, and that one load shows
+   * the card's error state rather than a wrong number.
+   *
+   * `tenant_id` and `currency` are checked on the row, not in an index (the indexes lead with
+   * `market_id` and the day): fine while each has one value per Market, as both do today.
    */
   async orderStatusTallies(
     market: MarketContext,

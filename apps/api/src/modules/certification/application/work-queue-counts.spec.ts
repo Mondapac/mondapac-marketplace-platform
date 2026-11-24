@@ -182,7 +182,7 @@ describe.each(TEST_MARKETS)('certification expiring-certificates count in market
     expect(reads).toEqual([{ method: 'expiringSellerCertificates', market, times: [NOW, until] }]);
   });
 
-  it('refuses a seller session before any read, and answers unavailable when stopped or failing', async () => {
+  it('refuses a seller and an acting-as session before any read, and answers unavailable when stopped or failing', async () => {
     const seller = testCallContext(
       market,
       testAuthenticatedActor(market, {
@@ -193,6 +193,15 @@ describe.each(TEST_MARKETS)('certification expiring-certificates count in market
       }),
     );
     expect(await useCase.execute(seller, query())).toEqual(err({ code: 'access.denied' }));
+    // The admin acting as a seller (Login as Seller): never a platform-wide count.
+    const own = admin();
+    const actingAs = Object.assign(
+      Object.create(Object.getPrototypeOf(own) as object) as object,
+      own,
+      { actor: { ...own.actor, actingAs: { sellerId: id(0xa4) } } },
+    ) as CallContext;
+    expect(await useCase.execute(actingAs, query())).toEqual(err({ code: 'access.denied' }));
+    expect(reads).toHaveLength(0);
     const stopped = new AbortController();
     stopped.abort();
     expect(await useCase.execute(admin(), query(stopped.signal))).toEqual(

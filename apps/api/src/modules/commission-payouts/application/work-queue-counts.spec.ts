@@ -192,8 +192,17 @@ describe.each(TEST_MARKETS)('commission-payouts disputes-opened count in market 
     expect(reads).toEqual([{ method: 'disputesOpened', market, times: [FROM, TO] }]);
   });
 
-  it('refuses a seller before any read; unavailable when stopped or failing', async () => {
+  /** The admin acting as a seller (Login as Seller): never a platform-wide count. */
+  const actingAs = (): CallContext => {
+    const own = actor('admin');
+    return Object.assign(Object.create(Object.getPrototypeOf(own) as object) as object, own, {
+      actor: { ...own.actor, actingAs: { sellerId: id(0xa4) } },
+    });
+  };
+
+  it('refuses a seller and an acting-as session before any read; unavailable when stopped or failing', async () => {
     expect(await useCase.execute(actor('seller'), query())).toEqual(err({ code: 'access.denied' }));
+    expect(await useCase.execute(actingAs(), query())).toEqual(err({ code: 'access.denied' }));
     const stopped = new AbortController();
     stopped.abort();
     expect(await useCase.execute(actor('admin'), query(stopped.signal))).toEqual(

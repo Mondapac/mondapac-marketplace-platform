@@ -306,6 +306,18 @@ describe.each(TEST_MARKETS)('the admin KPIs in market %s', (code) => {
     expect((await useCase.execute(seller, { period: '7d' })).ok).toBe(false);
   });
 
+  it('refuses an acting-as session (Login as Seller) the order status, before any read', async () => {
+    const actingAs = Object.assign(
+      Object.create(Object.getPrototypeOf(admin) as object) as object,
+      admin,
+      { actor: { ...admin.actor, actingAs: { sellerId: id(0x5e12) } } },
+    ) as typeof admin;
+    expect(
+      await new ViewMarketplaceOrderStatus(gate, deps).execute(actingAs, { period: '7d' }),
+    ).toEqual({ ok: false, error: { code: 'access.denied' } });
+    expect(reader.tallyCalls).toHaveLength(0);
+  });
+
   it('counts today in the Market day and reads the Market currency, current and previous', async () => {
     const out = await new ViewMarketplaceFinanceKpis(gate, deps).execute(admin, { period: '7d' });
     expect(out.ok).toBe(true);

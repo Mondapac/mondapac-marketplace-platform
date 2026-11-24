@@ -5,15 +5,15 @@
 | بخش | تعداد | فایل بخش |
 |---|---|---|
 | سایت فروشگاه | 13 | `docs/future-enhancements/storefront/README.md` |
-| پنل ادمین | 85 | `docs/future-enhancements/admin/README.md` |
+| پنل ادمین | 86 | `docs/future-enhancements/admin/README.md` |
 | پنل فروشنده | 20 | `docs/future-enhancements/seller/README.md` |
 | دستیار هوشمند | 4 | `docs/future-enhancements/assistant/README.md` |
 | کاتالوگ | 15 | `docs/future-enhancements/catalog/README.md` |
 | سفارش و پرداخت | 6 | `docs/future-enhancements/orders/README.md` |
 | کاربران و دسترسی | 6 | `docs/future-enhancements/users/README.md` |
 | محتوا و اعلان | 1 | `docs/future-enhancements/content/README.md` |
-| زیرساخت | 29 | `docs/future-enhancements/infra/README.md` |
-| جمع | 179 | |
+| زیرساخت | 32 | `docs/future-enhancements/infra/README.md` |
+| جمع | 183 | |
 
 ## سایت فروشگاه
 
@@ -122,6 +122,7 @@
 | FE-174 | هزینهٔ ناوگان در درآمد خالص Mondapac | آنچه پلتفرم جدا از quote به ناوگان تحویل می‌پردازد (هزینهٔ اضافه، تحویل ناموفق) در هیچ ماژولی ثبت نمی‌شود؛ درآمد خالص آن را «not-recorded» برمی‌گرداند. | `docs/modules/reporting/notes.md (داشبوردهای v2، PR 4)` | وقتی صورت‌حساب ناوگان در shipping ثبت شد | پایین | موکول | 2026-11-23 |
 | FE-178 | مبلغ پرداخت‌های معلق در کارت عرضه و سلامت | کارت «عرضه و سلامت» داشبورد ادمین تعداد توقف‌های فعال پرداخت را نشان می‌دهد ولی مبلغ آن not-available است، چون توقف (payout_holds) مبلغ ندارد و هیچ ماژولی مبلغ نگه‌داشته‌شده را جدا ثبت نمی‌کند. نیاز: commission-payouts مانده‌ی قابل پرداخت هر توقف (فروشنده یا سفارش فروشنده) را از دفتر حساب کند و در facade داشبورد به‌صورت جمع پول با ارز بدهد. | `docs/modules/reporting/notes.md (داشبوردهای v2، PR 6)` | پس از فاز ۱ داشبوردهای v2، اگر مالی مبلغ را خواست | متوسط | موکول | 2026-11-24 |
 | FE-179 | گواهی محصول رو به انقضا در کارت عرضه و سلامت | شمار «گواهی رو به انقضا در ۳۰ روز» فقط گواهی‌های تأییدشدهٔ فروشنده را می‌شمارد (کلید certification.seller-certificate.view). گواهی‌های محصول (product_certifications، ایندکس approved_boundary_at دارد) با کلید certification.product-certificate.view جدا شمرده و کنار آن نشان داده شوند. | `docs/modules/reporting/notes.md (داشبوردهای v2، PR 6)` | در فاز ۲ داشبوردهای v2 یا با درخواست تیم گواهی | پایین | موکول | 2026-11-24 |
+| FE-180 | ستون first_refunded_at روی reporting.seller_orders | خواندن «سفارش‌ها بر اساس وضعیت» امروز سفارش‌های فروشندهٔ بازپرداخت‌شده را با groupBy روی reporting.refunds و سپس خواندن تکه‌ای (هر بار ۵٬۰۰۰ شناسه) با کلید اصلی پیدا می‌کند. ستون first_refunded_at (و روز آن) که projector بازپرداخت می‌نویسد این دو خواندن را به یک شمارش روی همان ایندکس (market_id, paid_day) تبدیل می‌کند. نیاز: migration، نوشتن در projector، و backfill یک‌باره از refunds. | `docs/modules/reporting/notes.md و query-plans.md داشبوردهای v2، PR 6 (بازبینی مجتبی)` | وقتی بازه‌ی سفارشی تا ۱۳ ماه به KPI های ادمین رسید (اندازه‌گیری: ۶۵۰ms برای ۱۳ ماه به‌تنهایی) یا بازپرداخت‌های یک بازه از حدود ۲۰ هزار گذشت | متوسط | موکول | 2026-11-24 |
 
 ## پنل فروشنده
 
@@ -238,3 +239,6 @@
 | FE-175 | reconcile شبانهٔ fact های دفتر کمیسیون در reporting | fact های دفتر فقط از رویداد ledger-recorded و backfill یک‌باره می‌آیند؛ رویدادی که dead-letter شود ردیفش را تا reset دستی backfill (حذف ردیف ledger در reporting.backfill_progress) از دست می‌دهد. شاخص آمادگی درآمد خالص کمیسیون گمشده را می‌بیند ولی cashback گمشده را نه. نیاز: خواندن ردیف‌های ۷ روز اخیر با ایندکس (market_id, recorded_at, id) روی commission_payouts.ledger_entries. | `docs/modules/reporting/notes.md (داشبوردهای v2، PR 4، مجتبی)` | اگر رویداد ledger-recorded dead-letter شد یا پیش از حدود ۱۰۰ هزار ردیف دفتر در یک Market | پایین | موکول | 2026-11-23 |
 | FE-176 | انتقال sessionSellerOf به platform/authz | تابع sessionSellerOf (فروشندهٔ نشست، هرگز از ورودی) فعلاً در use case درآمد خالص فروشنده در reporting است و ماژول‌های دیگر نسخهٔ خود را دارند؛ باید یک نسخهٔ مشترک در platform/authz شود و همهٔ use case های فروشنده از آن استفاده کنند. | `بازبینی PR ۱۳۰۶ داشبوردهای v2، PR 4 (علی، ۶)` | PR جدا و کوچک، پس از ادغام ۱۳۰۶ | پایین | موکول | 2026-11-24 |
 | FE-177 | قاعدهٔ dependency-cruiser برای COMMISSION_PAYOUTS_REPORTING_FACADE | facade گزارش‌گیری commission-payouts قاعدهٔ system دارد و فقط reporting باید آن را import کند؛ یک قاعدهٔ boundaries (dependency-cruiser) import این توکن را به modules/reporting محدود کند تا ماژول دیگری از مسیر system به ردیف‌های دفتر نرسد. | `بازبینی PR ۱۳۰۶ داشبوردهای v2، PR 4 (حسن، ۳)` | PR جدا در ابزار boundaries (فایل مشترک، اعلام روی board) | متوسط | موکول | 2026-11-24 |
+| FE-181 | ایندکس پوششی seller_orders (market_id, paid_day) INCLUDE (cancelled_at, shipped_at, delivered_at) | چهار شمارش وضعیت سفارش امروز bitmap heap scan روی (market_id, paid_day, seller_id) هستند و هزینه‌شان خواندن heap است (۲۹ هزار بلاک برای ۹۱ هزار ردیف در ۳۰ روز، هر کدام حدود ۱۱۰ تا ۱۹۰ms با ۱٫۲ میلیون ردیف). با ایندکس پوششی index-only می‌شوند. در PR 6 اضافه نشد چون همه در بودجهٔ ۱٫۵ ثانیه‌اند. migration دستی با down.sql و امضای مجتبی. | `query-plans.md داشبوردهای v2، PR 6 (بازبینی مجتبی)` | اگر بخش «سفارش‌ها بر اساس وضعیت» از حدود ۷۵۰ms (نصف بودجه) گذشت یا بازهٔ ۱۳ماهه به داشبورد رسید | پایین | موکول | 2026-11-24 |
+| FE-182 | ایندکس جزئی search.offer_variant_documents (market_id, offer_id) WHERE in_stock | شمارش «بدون موجودی» (Prisma none = NOT EXISTS) امروز hash anti join با seq scan موازی روی واریانت‌های موجود است (حدود ۱۱۰ تا ۱۴۵ms با ۲۰۰ هزار سند و ۶۰۰ هزار واریانت). ایندکس جزئی آن را کوچک‌تر می‌کند؛ در PR 6 اضافه نشد چون در بودجه است. | `query-plans.md داشبوردهای v2، PR 6 (بازبینی مجتبی)` | اگر شمارش فهرست‌های زنده از حدود ۷۵۰ms گذشت یا یک Market از حدود ۱ میلیون واریانت گذشت | پایین | موکول | 2026-11-24 |
+| FE-183 | فیلتر tenant_id یکسان در PrismaLiveListingCounter و disputesOpened | خواندن‌های جدید PR 6 در search (شمارش فهرست‌های زنده) و commission-payouts (اختلاف‌های بازشده) فقط market_id را فیلتر می‌کنند ولی خواندن reporting، tenant_id را هم فیلتر می‌کند. برای یکدستی درز tenant (ADR-0001) همه tenant_id بازار را هم فیلتر کنند؛ امروز یک tenant است و اثری ندارد. | `بازبینی PR ۱۳۱۱ داشبوردهای v2، PR 6 (مجتبی)` | همراه اولین کار روی جداسازی tenant یا PR کوچک جدا | پایین | موکول | 2026-11-24 |
