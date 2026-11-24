@@ -1,0 +1,11 @@
+{
+  "id": "FE-164",
+  "area": "admin",
+  "title": "قفل اسکرول صفحه پشت drawerها در iOS Safari",
+  "desc": "PR 1286 اسکرول صفحه را با overflow:hidden روی html پشت modalها قفل می‌کند؛ در iOS Safari این همیشه جلوی اسکرول لمسی صفحهٔ پشت drawer را نمی‌گیرد. راه: قفل با position:fixed روی body و برگرداندن موقعیت اسکرول هنگام بستن، یا overscroll-behavior: contain روی بدنهٔ drawerها. همچنین scrim منوی انتخاب جستجوپذیر در گوشی (search-select) modal نیست و صفحه زیرش اسکرول می‌شود.",
+  "src": "PR 1286 (بازبینی رضا، UI/UX)",
+  "date": "2026-11-23",
+  "trig": "اگر کاربر iPhone اسکرول صفحه پشت drawer را دید (مهدی، رضا)",
+  "prio": "پایین",
+  "status": "موکول"
+}

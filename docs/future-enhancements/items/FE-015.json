@@ -1,0 +1,11 @@
+{
+  "id": "FE-015",
+  "area": "catalog",
+  "title": "ادغام و حذف برچسب‌ها (tags)",
+  "desc": "API ادغام/حذف ندارد و ردیف‌ها چنین عملی ندارند.",
+  "src": "handoffs/super-list/phase2-design-gaps.md (۳)",
+  "date": "2026-11-21",
+  "trig": "اگر ادمین‌ها لازم داشتند",
+  "prio": "پایین",
+  "status": "موکول"
+}

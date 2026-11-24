@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261123-au-postcode-state-table",
+  "area": "infra",
+  "title": "جدول کد پستی به ایالت دقیق‌تر برای AU",
+  "desc": "shipping.postcodeRegions در AU.json بازه‌های اصلی Australia Post را دارد؛ چند کد پستی مرزی (مثلاً Jervis Bay و چند کد مشترک NSW/VIC و NSW/QLD) به ایالت اصلی بازه می‌روند. اگر دقت بیشتر لازم شد، بازه‌های استثنا در پیکربندی بازار اضافه شود (کد نه).",
+  "src": "docs/modules/reporting/notes.md (داشبورد v2، PR 3)",
+  "date": "2026-11-23",
+  "trig": "اگر گزارش بر اساس ایالت برای مالیات یا تصمیم عملیاتی استفاده شد",
+  "prio": "پایین",
+  "status": "موکول"
+}

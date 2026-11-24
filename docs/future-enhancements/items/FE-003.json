@@ -1,0 +1,11 @@
+{
+  "id": "FE-003",
+  "area": "infra",
+  "title": "تقسیم جدول request_activity بر اساس زمان",
+  "desc": "وقتی حجم جدول زیاد شد partition زمانی اضافه شود.",
+  "src": "handoffs/system-requests/follow-ups.md (مجتبی)",
+  "date": "2026-11-21",
+  "trig": "وقتی حجم جدول زیاد شد",
+  "prio": "پایین",
+  "status": "موکول"
+}

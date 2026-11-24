@@ -1,0 +1,11 @@
+{
+  "id": "FE-022",
+  "area": "infra",
+  "title": "BFF سخت‌گیر برای همهٔ مسیرهای خروجی (export)",
+  "desc": "مقدار خارج از شکل باید رد شود، نه حذف؛ #943 برای پرداخت‌ها انجام داد و باید به همهٔ خروجی‌های ادمین و فروشنده تعمیم یابد (STRICT_QUERY_TARGETS) و پیش از دکمهٔ خروجی Credit requests ادغام شود.",
+  "src": "handoffs/super-list/phase4-followups.md (۲، #950)",
+  "date": "2026-11-21",
+  "trig": "یک PR جدا؛ پیش‌نیاز فرانت Credit requests",
+  "prio": "بالا",
+  "status": "موکول"
+}

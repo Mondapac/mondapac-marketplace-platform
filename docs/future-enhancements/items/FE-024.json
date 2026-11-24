@@ -1,0 +1,11 @@
+{
+  "id": "FE-024",
+  "area": "infra",
+  "title": "ثبت لاگ ردهای strict-query و رفع BOM خروجی CSV",
+  "desc": "لاگ ۴۰۰ strict-query در هر دو پنل، و حذف نشدن BOM در خروجی CSV ادمین (response.text()).",
+  "src": "handoffs/super-list/phase4-followups.md (فهرست ۳۳)",
+  "date": "2026-11-21",
+  "trig": "رفع مشترک",
+  "prio": "پایین",
+  "status": "موکول"
+}
