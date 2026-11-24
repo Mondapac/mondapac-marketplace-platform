@@ -131,6 +131,114 @@ body {
   --mp-color-bg-auth-showcase-card: var(--mp-color-bg-muted);
 }
 
+/* Sign-in showcase background (john 24 Nov: background only). Colours made in code first (speed
+ * mode), to be back-ported to the Figma tokens. Mesh colour fields on the base token, a fine dot
+ * grain, and a halo, ring and tilted glass card that sit top right. Pure CSS, decoration only. */
+.mp-auth-showcase {
+  --mp-showcase-halo: rgba(98, 80, 214, 0.22);
+  background-image:
+    radial-gradient(60% 55% at 0% 0%, rgba(98, 80, 214, 0.35), transparent 70%),
+    radial-gradient(55% 50% at 100% 100%, rgba(29, 79, 215, 0.6), transparent 70%),
+    radial-gradient(45% 40% at 10% 95%, rgba(8, 145, 178, 0.35), transparent 70%),
+    radial-gradient(50% 45% at 85% 5%, rgba(61, 104, 230, 0.3), transparent 70%);
+}
+.mp-auth-showcase[data-panel='seller'] {
+  --mp-showcase-halo: rgba(27, 175, 122, 0.22);
+  background-image:
+    radial-gradient(60% 55% at 0% 0%, rgba(18, 138, 96, 0.6), transparent 70%),
+    radial-gradient(55% 50% at 100% 100%, rgba(8, 145, 178, 0.5), transparent 70%),
+    radial-gradient(45% 40% at 10% 95%, rgba(11, 107, 92, 0.45), transparent 70%),
+    radial-gradient(50% 45% at 85% 5%, rgba(27, 175, 122, 0.3), transparent 70%);
+}
+.mp-auth-showcase::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(rgba(255, 255, 255, 0.05) 0.6px, transparent 0.7px),
+    radial-gradient(rgba(255, 255, 255, 0.035) 0.6px, transparent 0.7px);
+  background-size:
+    4px 4px,
+    7px 7px;
+  background-position:
+    0 0,
+    2px 3px;
+}
+.mp-auth-showcase-deco {
+  position: absolute;
+  top: 16px;
+  right: 28px;
+  width: 270px;
+  height: 300px;
+  pointer-events: none;
+  transform-origin: top right;
+}
+.mp-auth-showcase-halo {
+  position: absolute;
+  top: -30px;
+  right: -30px;
+  width: 280px;
+  height: 280px;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--mp-showcase-halo), transparent 65%);
+}
+.mp-auth-showcase-ring {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 220px;
+  height: 220px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background:
+    radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.05) 0 45%, transparent 46%),
+    radial-gradient(circle, var(--mp-showcase-halo), transparent 75%);
+}
+.mp-auth-showcase-ring::after {
+  content: '';
+  position: absolute;
+  inset: 40px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(0, 0, 0, 0.18), transparent 70%);
+}
+.mp-auth-showcase-glass {
+  position: absolute;
+  top: 116px;
+  right: 52px;
+  width: 250px;
+  height: 160px;
+  border-radius: 18px;
+  transform: rotate(-8deg);
+  background: linear-gradient(
+    200deg,
+    rgba(255, 255, 255, 0.22) 0%,
+    rgba(255, 255, 255, 0.1) 45%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow:
+    0 24px 48px -24px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  backdrop-filter: blur(6px);
+}
+@media (max-width: 99.94rem) {
+  .mp-auth-showcase-deco {
+    transform: scale(0.72);
+  }
+}
+@media (forced-colors: active) {
+  .mp-auth-showcase::before,
+  .mp-auth-showcase-deco {
+    display: none;
+  }
+}
+@media (prefers-reduced-transparency: reduce), (max-height: 760px) {
+  .mp-auth-showcase-deco {
+    display: none;
+  }
+}
+
 /* Sizes made in code first (speed mode), to be back-ported to the Figma tokens: the label
  * column of Figma DataRow, shared by detail cards and the labelled lines of phone table cards;
  * and the side sheet (the notifications drawer, plan 6c): 420 px on tablets, 480 px from 1280 px. */

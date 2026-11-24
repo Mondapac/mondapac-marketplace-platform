@@ -51,10 +51,16 @@ export function AuthLayout({
       </main>
       <aside
         aria-hidden="true"
-        className={`hidden flex-col justify-center gap-6 p-12 text-on-showcase lg:flex ${showcaseBackground}`}
+        data-panel={panel}
+        className={`mp-auth-showcase relative hidden flex-col justify-center gap-6 overflow-hidden p-12 text-on-showcase lg:flex print:hidden ${showcaseBackground}`}
       >
-        <p className="max-w-md text-3xl font-semibold">{showcaseTitle}</p>
-        <ul className="flex max-w-md flex-col gap-3">
+        <span className="mp-auth-showcase-deco">
+          <span className="mp-auth-showcase-halo" />
+          <span className="mp-auth-showcase-ring" />
+          <span className="mp-auth-showcase-glass" />
+        </span>
+        <p className="relative max-w-md text-3xl font-semibold">{showcaseTitle}</p>
+        <ul className="relative flex max-w-md flex-col gap-3">
           {showcaseCards.map((card) => (
             <li
               key={card.name}
