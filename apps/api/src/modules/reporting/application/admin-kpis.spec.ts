@@ -297,6 +297,21 @@ describe.each(TEST_MARKETS)('the admin KPIs in market %s', (code) => {
     expect(out.value.window).toEqual(windowOf(out.value.period.current, zone.zoneOf(market)));
   });
 
+  it('reads a custom range of the order status as asked, and refuses one ending after the Market today', async () => {
+    const to = Temporal.PlainDate.from(today());
+    const from = to.subtract({ months: 13 }).add({ days: 1 });
+    const range = { from: from.toString() as MarketDay, to: to.toString() as MarketDay };
+    const useCase = new ViewMarketplaceOrderStatus(gate, deps);
+    const out = await useCase.execute(admin, { period: range });
+    if (!out.ok) throw new Error('expected an answer');
+    expect(out.value.period.current).toEqual(range);
+    expect(reader.tallyCalls.map((call) => call.range)).toEqual([range]);
+    const future = { from: range.from, to: to.add({ days: 1 }).toString() as MarketDay };
+    const refused = await useCase.execute(admin, { period: future });
+    expect(refused.ok === false && refused.error.code).toBe('validation.failed');
+    expect(reader.tallyCalls).toHaveLength(1);
+  });
+
   it('answers the order status read as unavailable when the store fails, and refuses a seller', async () => {
     reader.orderStatusTallies = () => Promise.reject(new TypeError('down'));
     const useCase = new ViewMarketplaceOrderStatus(gate, deps);

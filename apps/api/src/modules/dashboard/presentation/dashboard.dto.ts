@@ -92,7 +92,7 @@ export class KpiRangeBody {
 }
 
 export class KpiPeriodBody {
-  @ApiProperty({ enum: ['today', '7d', '30d', 'month'] }) id!: string;
+  @ApiProperty({ enum: ['today', '7d', '30d', 'month', 'custom'] }) id!: string;
   @ApiProperty({ type: KpiRangeBody }) current!: KpiRangeBody;
   @ApiProperty({ type: KpiRangeBody }) previous!: KpiRangeBody;
 }
@@ -452,7 +452,10 @@ export class DisputeRateBody {
 
 export class AdminKpisBody {
   @ApiProperty({ format: 'date-time' }) generatedAt!: string;
-  @ApiProperty({ enum: ['today', '7d', '30d', 'month'], description: 'The period asked for.' })
+  @ApiProperty({
+    enum: ['today', '7d', '30d', 'month', 'custom'],
+    description: 'The period asked for (`custom`: a from/to range).',
+  })
   periodId!: string;
   @ApiProperty({
     type: KpiPeriodBody,

@@ -5,7 +5,6 @@ import {
   isPlatformAdminActor,
   UseCase,
   type AccessDeclaration,
-  type AccessDenied,
   type UseCaseGate,
 } from '../../../../platform/authz';
 import { ORDERING_ORDER_VIEW } from '../../../ordering';
@@ -15,14 +14,13 @@ import {
   type OrderStatusCounts,
   type SameDayShare,
 } from '../../domain/admin-health';
-import { marketDayOf } from '../../domain/facts';
+import { windowOf, type InstantWindow, type ResolvedPeriod } from '../../domain/period';
 import {
-  resolvePeriod,
-  windowOf,
-  type InstantWindow,
-  type ResolvedPeriod,
-} from '../../domain/period';
-import type { AdminKpiDependencies, KpiInput } from '../admin-kpi-flow';
+  resolveKpiPeriod,
+  type AdminKpiDependencies,
+  type KpiFailure,
+  type KpiInput,
+} from '../admin-kpi-flow';
 
 const logger = new Logger('ViewMarketplaceOrderStatus');
 
@@ -46,7 +44,7 @@ export interface OrderStatusAnswer {
  * acting as themselves. One read-only unit (ADR-0025), so the counts are separate snapshots: a
  * bucket that drifted below zero is clamped to 0 and the shortfall logged, never an error.
  */
-export class ViewMarketplaceOrderStatus extends UseCase<KpiInput, OrderStatusAnswer, AccessDenied> {
+export class ViewMarketplaceOrderStatus extends UseCase<KpiInput, OrderStatusAnswer, KpiFailure> {
   static override readonly access: AccessDeclaration = {
     name: 'reporting.view-marketplace-order-status',
     rule: { kind: 'permissions', allOf: [ORDERING_ORDER_VIEW.key] },
@@ -62,13 +60,17 @@ export class ViewMarketplaceOrderStatus extends UseCase<KpiInput, OrderStatusAns
   protected async handle(
     context: CallContext,
     input: KpiInput,
-  ): Promise<Result<OrderStatusAnswer, AccessDenied>> {
+  ): Promise<Result<OrderStatusAnswer, KpiFailure>> {
     if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
     const { market } = context;
     const now = this.deps.clock.now();
     const timezone = this.deps.zone.zoneOf(market);
     const currency = this.deps.zone.currencyOf(market);
-    const period = resolvePeriod(input.period, marketDayOf(now, timezone));
+    // A preset or a custom range of up to 13 months (dashboards v2, PR 5); one ending after the
+    // Market's today is `validation.failed`.
+    const resolved = resolveKpiPeriod(this.deps, context, input.period, now);
+    if (!resolved.ok) return resolved;
+    const period = resolved.value;
     try {
       const unit = await this.deps.unitOfWork.run(
         market,

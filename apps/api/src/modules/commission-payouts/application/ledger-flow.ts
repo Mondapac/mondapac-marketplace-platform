@@ -6,7 +6,7 @@ import type {
   SellerCashback,
   SellerCashbackReturn,
 } from '../contracts/commission-payouts.facade';
-import { commissionBase, commissionOn, isRateBps } from '../domain/commission';
+import { commissionOn, isRateBps, lineCommission, lineTaxBps } from '../domain/commission';
 import {
   isCredit,
   totalsOf,
@@ -205,6 +205,17 @@ const isAmount = (value: unknown): value is bigint =>
 const standardRateFits = (standard: unknown, rateBps: number): boolean =>
   standard === undefined || standard === null || (isRateBps(standard) && standard >= rateBps);
 
+/** The highest tax rate a line may carry: the tax module's own bound (50 %). */
+const MAX_LINE_TAX_BPS = 5000;
+
+/** A frozen line tax rate: null (a line placed before rates were frozen) or 0 to 50 % in bps. */
+const taxRateFits = (value: unknown): boolean =>
+  value === null ||
+  (typeof value === 'number' &&
+    Number.isSafeInteger(value) &&
+    value >= 0 &&
+    value <= MAX_LINE_TAX_BPS);
+
 /** Checks the facts ordering sends; anything malformed refuses the whole seller order. */
 function checkPaid(paid: PaidSellerOrder, currency: string): readonly string[] {
   const bad: string[] = [];
@@ -227,6 +238,7 @@ function checkPaid(paid: PaidSellerOrder, currency: string): readonly string[] {
       seen.has(lineId) ||
       !isAmount(line.lineAmount) ||
       typeof line.taxInclusive !== 'boolean' ||
+      !taxRateFits(line.taxRateBps) ||
       !isRateBps(line.commissionRateBps) ||
       !standardRateFits(line.commissionStandardRateBps, line.commissionRateBps)
     ) {
@@ -312,8 +324,13 @@ export async function recordSellerOrderPaid(
       baseAmount: null,
       sourceId: null,
     });
-    const base = commissionBase(line.lineAmount, line.taxInclusive, settings.provisionalTaxRateBps);
-    const commission = commissionOn(base, line.commissionRateBps);
+    // The line's own frozen tax rate (0 on a GST-free product), never a flat rate on every line.
+    const { base, commission } = lineCommission({
+      amount: line.lineAmount,
+      taxInclusive: line.taxInclusive,
+      taxBps: lineTaxBps(line.taxRateBps, settings.provisionalTaxRateBps),
+      rateBps: line.commissionRateBps,
+    });
     // A line lowered for the buyer's exclusive seller keeps what the seller saved: the commission
     // the standard rate would have taken on the same base, less what was taken.
     const standard = line.commissionStandardRateBps ?? null;

@@ -17,7 +17,7 @@ import {
   ReadsSession,
   RoutePopulation,
 } from '../../../platform/call-context/route-population.decorator';
-import { isPeriodId } from '../../reporting';
+import { MAX_RANGE_MONTHS, parsePeriodQuery } from '../../reporting';
 import { ViewAdminKpis } from '../application/use-cases/view-admin-kpis.use-case';
 import { ViewAdminWorkQueue } from '../application/use-cases/view-admin-work-queue.use-case';
 import { AdminKpisBody, adminKpisBody, WorkQueueBody, workQueueBody } from './dashboard.dto';
@@ -93,9 +93,21 @@ export class AdminDashboardController {
       'certificates expiring in 30 Market days, payout holds, dispute rate; each under its ' +
       "owner's key). A section the admin holds no key for is null. One that fails or takes over " +
       '1.5 s is `status: error` and the others still answer. Days are ' +
-      "the Market's days, never UTC. Only a platform admin acting as themselves.",
+      "the Market's days, never UTC. Only a platform admin acting as themselves. A custom range " +
+      '(`from` and `to`, Market days, both included) is at most 13 calendar months and ends by ' +
+      "the Market's today; it is compared with as many days just before it.",
   })
-  @ApiQuery({ name: 'period', required: false, enum: ['today', '7d', '30d', 'month'] })
+  @ApiQuery({ name: 'period', required: false, enum: ['today', '7d', '30d', 'month', 'custom'] })
+  @ApiQuery({
+    name: 'from',
+    required: false,
+    description: `First Market day (YYYY-MM-DD) of a custom range; with \`to\`, at most ${MAX_RANGE_MONTHS} months.`,
+  })
+  @ApiQuery({
+    name: 'to',
+    required: false,
+    description: "Last Market day (YYYY-MM-DD) of a custom range, not after the Market's today.",
+  })
   @ApiOkResponse({ type: AdminKpisBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
@@ -106,10 +118,11 @@ export class AdminDashboardController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<AdminKpisBody> {
     response.setHeader('Cache-Control', 'no-store');
-    const { period = '7d', ...rest } = query;
-    if (!isPeriodId(period) || Object.keys(rest).length > 0) {
+    const { period, from, to, ...rest } = query;
+    const parsed = parsePeriodQuery({ period, from, to }, '7d');
+    if (!parsed.ok || Object.keys(rest).length > 0) {
       const fields = [
-        ...(isPeriodId(period) ? [] : [{ path: 'period', code: 'enum' }]),
+        ...(parsed.ok ? [] : parsed.error),
         ...Object.keys(rest)
           .sort()
           .slice(0, 10)
@@ -120,15 +133,23 @@ export class AdminDashboardController {
         400,
       );
     }
-    const result = await this.kpis.execute(context, { period });
+    const result = await this.kpis.execute(context, { period: parsed.value });
     this.#logger.log({
       msg: 'dashboard.admin-kpis',
       outcome: result.ok ? 'ok' : result.error.code,
-      period,
+      period: typeof parsed.value === 'string' ? parsed.value : 'custom',
       marketId: context.market.marketId,
       correlationId: context.correlationId,
     });
-    if (!result.ok) throw dashboardRefusal(result.error);
+    if (!result.ok) {
+      if (result.error.code === 'validation.failed') {
+        throw new HttpException(
+          { statusCode: 400, code: 'validation.failed', details: { fields: result.error.fields } },
+          400,
+        );
+      }
+      throw dashboardRefusal(result.error);
+    }
     return adminKpisBody(result.value);
   }
 }

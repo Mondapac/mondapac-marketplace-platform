@@ -32,9 +32,12 @@ import {
 } from '../../../sellers';
 import type {
   FinanceAnswer,
+  KpiFailure,
   OperationsAnswer,
   OrderStatusAnswer,
   PeriodId,
+  PeriodRefused,
+  PeriodRequest,
   ReportingKpiFacade,
   TopCategoriesAnswer,
   TopSellersAnswer,
@@ -143,7 +146,8 @@ export interface MarketHealth {
 
 export interface AdminKpisAnswer {
   readonly generatedAt: Temporal.Instant;
-  readonly period: PeriodId;
+  /** The preset asked for, or `custom` for a range of the admin's choice. */
+  readonly period: PeriodId | 'custom';
   /** Null when the viewer does not hold `ordering.order.view` (the section is left out). */
   readonly operations: KpiSection<OperationsAnswer> | null;
   /** Null when the viewer does not hold `commission-payouts.settlement.view`. */
@@ -200,7 +204,7 @@ const nameOf = (error: unknown): string => {
 async function section<T>(
   name: string,
   timeoutMs: number,
-  read: () => Promise<Result<T, AccessDenied>>,
+  read: () => Promise<Result<T, KpiFailure>>,
 ): Promise<KpiSection<T> | null> {
   let timer: NodeJS.Timeout | undefined;
   const limit = new Promise<'timed-out'>((resolve) => {
@@ -239,9 +243,9 @@ async function section<T>(
  * owner's key) and its owner checks the key again. Nothing is cached here.
  */
 export class ViewAdminKpis extends UseCase<
-  { readonly period: PeriodId },
+  { readonly period: PeriodRequest },
   AdminKpisAnswer,
-  AccessDenied
+  AccessDenied | PeriodRefused
 > {
   static override readonly access: AccessDeclaration = {
     name: 'dashboard.view-admin-kpis',
@@ -258,12 +262,16 @@ export class ViewAdminKpis extends UseCase<
 
   protected async handle(
     context: CallContext,
-    input: { readonly period: PeriodId },
-  ): Promise<Result<AdminKpisAnswer, AccessDenied>> {
+    input: { readonly period: PeriodRequest },
+  ): Promise<Result<AdminKpisAnswer, AccessDenied | PeriodRefused>> {
     if (!isPlatformAdminActor(context.actor)) return err({ code: 'access.denied' });
     const viewer = await this.deps.viewer.describe(context);
     if (!viewer.ok) return err(viewer.error);
     if (viewer.value.population !== 'admin') return err({ code: 'access.denied' });
+    // A custom range that ends after the Market's today is one 400, not a section error each. A
+    // range checked now stays valid for the sections: today only moves forward.
+    const checked = this.deps.reporting.resolvePeriod(context, input.period);
+    if (!checked.ok) return checked;
     const held = new Set(viewer.value.permissionKeys);
     const { reporting, timeoutMs } = this.deps;
     // Asked once: the orders card shows it, and the dispute rate divides by its paid count.
@@ -292,7 +300,7 @@ export class ViewAdminKpis extends UseCase<
     ]);
     return ok({
       generatedAt: this.deps.clock.now(),
-      period: input.period,
+      period: typeof input.period === 'string' ? input.period : 'custom',
       operations,
       finance,
       ordersByStatus: orders,
@@ -457,8 +465,8 @@ export class ViewAdminKpis extends UseCase<
    */
   private async namedTopCategories(
     context: CallContext,
-    input: { readonly period: PeriodId },
-  ): Promise<Result<NamedTopCategories, AccessDenied>> {
+    input: { readonly period: PeriodRequest },
+  ): Promise<Result<NamedTopCategories, KpiFailure>> {
     const top = await this.deps.reporting.marketplaceTopCategories(context, input);
     if (!top.ok) return top;
     const names = new Map<string, string>();
@@ -491,8 +499,8 @@ export class ViewAdminKpis extends UseCase<
    */
   private async namedTopSellers(
     context: CallContext,
-    input: { readonly period: PeriodId },
-  ): Promise<Result<NamedTopSellers, AccessDenied>> {
+    input: { readonly period: PeriodRequest },
+  ): Promise<Result<NamedTopSellers, KpiFailure>> {
     const top = await this.deps.reporting.marketplaceTopSellers(context, input);
     if (!top.ok) return top;
     const ids = top.value.rows.map((row) => row.sellerId as Id<'Seller'>);

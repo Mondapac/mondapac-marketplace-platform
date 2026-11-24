@@ -5,14 +5,14 @@ import type { AccessDenied } from '../../../platform/authz';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import { marketDayOf, type MarketDay } from '../domain/facts';
 import {
-  checkDayRange,
+  checkDayRangeFields,
   ledgerReadinessOf,
   matchLedgerDays,
   readinessWindow,
   type LedgerKindSums,
   type LedgerReadiness,
 } from '../domain/ledger';
-import type { DayRange } from '../domain/period';
+import type { DayRange, PeriodRefused } from '../domain/period';
 import type { LedgerKpiReader } from './ports/ledger-kpi-reader';
 import type { MarketZone } from './ports/market-zone';
 
@@ -30,7 +30,8 @@ export interface NetFiguresInput {
   readonly range: { readonly from: string; readonly to: string };
 }
 
-export type NetFiguresFailure = AccessDenied | { readonly code: 'validation.failed' };
+/** A refused range names its fields, as every dashboard read does (`PeriodRefused`). */
+export type NetFiguresFailure = AccessDenied | PeriodRefused;
 
 /** What both net reads start from. */
 export interface NetFigures {
@@ -60,8 +61,9 @@ export async function readNetFigures(
   const timezone = deps.zone.zoneOf(market);
   const currency = deps.zone.currencyOf(market);
   const today = marketDayOf(now, timezone);
-  const range = checkDayRange(input?.range, today);
-  if (range === null) return err({ code: 'validation.failed' });
+  const checked = checkDayRangeFields(input?.range, today);
+  if (!checked.ok) return err({ code: 'validation.failed', fields: checked.error });
+  const range = checked.value;
   const window = readinessWindow(today);
   try {
     const unit = await deps.unitOfWork.run(
