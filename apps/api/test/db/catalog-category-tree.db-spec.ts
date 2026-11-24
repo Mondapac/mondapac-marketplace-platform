@@ -13,7 +13,7 @@ import { cleanClaimTextMatcher } from '../support/clean-claim-text-matcher.fake'
 import { createTestApp } from '../support/test-app';
 import { TEST_MARKETS } from '../support/test-config';
 import { marketOf } from './persistence-support';
-import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import { catalogTreeOwnerTestDatabaseUrl, catalogTreeTestDatabaseUrl } from './test-database';
 import { sqlState } from './sql-state';
 
 // Catalog slice 2 on PostgreSQL (catalog data design 3.4, 5.1, 7), for both Market fixtures: the
@@ -32,12 +32,12 @@ describe.each(TEST_MARKETS)('catalog category tree in market %s (database integr
   let owner: Client;
 
   beforeAll(async () => {
-    sql = new Client({ connectionString: testDatabaseUrl() });
-    owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+    sql = new Client({ connectionString: catalogTreeTestDatabaseUrl() });
+    owner = new Client({ connectionString: catalogTreeOwnerTestDatabaseUrl() });
     await sql.connect();
     await owner.connect();
     ({ app } = await createTestApp({
-      env: { DATABASE_URL: testDatabaseUrl() },
+      env: { DATABASE_URL: catalogTreeTestDatabaseUrl() },
       override: (builder) =>
         builder
           .overrideProvider(CLOCK)

@@ -88,7 +88,9 @@ function exported(
     | 'TEST_ORDERING_ORDERS_OWNER_DATABASE_URL'
     | 'TEST_SEARCH_DOCUMENTS_DATABASE_URL'
     | 'TEST_SEARCH_FILTERS_DATABASE_URL'
-    | 'TEST_SEARCH_RATINGS_DATABASE_URL',
+    | 'TEST_SEARCH_RATINGS_DATABASE_URL'
+    | 'TEST_CATALOG_TREE_DATABASE_URL'
+    | 'TEST_CATALOG_TREE_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -441,4 +443,16 @@ export function searchFiltersTestDatabaseUrl(): string {
  */
 export function searchRatingsTestDatabaseUrl(): string {
   return exported('TEST_SEARCH_RATINGS_DATABASE_URL');
+}
+
+/**
+ * The copy that catalog-category-tree.db-spec.ts seeds the Market tree on and counts the categories
+ * and events of whole Markets on (global-setup.ts), as the application login and as its owner.
+ */
+export function catalogTreeTestDatabaseUrl(): string {
+  return exported('TEST_CATALOG_TREE_DATABASE_URL');
+}
+
+export function catalogTreeOwnerTestDatabaseUrl(): string {
+  return exported('TEST_CATALOG_TREE_OWNER_DATABASE_URL');
 }
