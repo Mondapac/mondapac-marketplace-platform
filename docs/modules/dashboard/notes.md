@@ -311,4 +311,5 @@ state they were delivered to (a pickup counts in the store's state), from `repor
 delivery_state` only; no postcode is read. Up to eight states, biggest first (ties by code), the
 rest summed in `other`, orders with no state recorded (placed before delivery quotes were kept, or
 before the history backfill reached them) in `unknown`, never folded into a state. Below five paid
-orders no share is shown (`not-enough-data`). The card is built in the phase 2 cards PR.
+orders no share is shown (`not-enough-data`). "Paid" counts every paid seller order, cancelled ones
+included, like `ordersByStatus.paid`; the card must not read as live orders. The card is built in the phase 2 cards PR.

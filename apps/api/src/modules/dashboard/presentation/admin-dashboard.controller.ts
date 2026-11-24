@@ -86,7 +86,9 @@ export class AdminDashboardController {
       'rate, on-time shipping, refund count; key `ordering.order.view`), `ordersByStatus` (seller ' +
       'orders paid in the period by where they stand now, one bucket each, and the same-day ' +
       'share of them, `not-enough-data` below 5 paid; key ' +
-      '`ordering.order.view`), `finance` (GMV with and without GST, refunded goods, net sales, ' +
+      '`ordering.order.view`), `ordersByState` (the same paid seller orders, cancelled ones ' +
+      'included, by delivery state: biggest eight, `other`, and `unknown` for orders with no ' +
+      'state recorded; `not-enough-data` below 5 paid; key `ordering.order.view`), `finance` (GMV with and without GST, refunded goods, net sales, ' +
       'average order, and `net`: Mondapac net revenue and take rate, null until a week of ' +
       'matching ledger, a partial total never carries an amount; key ' +
       '`commission-payouts.settlement.view`), and `health` (live listings and out of stock, ' +

@@ -377,6 +377,47 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     });
   });
 
+  it('maps the orders-by-state section for the body: available, not-enough-data, error, and null without the key', async () => {
+    const full = await build([ORDERS]).execute(admin, { period: '7d' });
+    if (!full.ok) throw new Error('expected an answer');
+    // The operations fixture is partial: map only the orders sections.
+    const base = { ...base, operations: null };
+    expect(adminKpisBody(base).ordersByState).toEqual({
+      status: 'ok',
+      kpis: {
+        status: 'available',
+        paid: 400,
+        states: [{ state: 'QLD', orders: 300, shareBp: 7500 }],
+        other: null,
+        unknown: { orders: 100, shareBp: 2500 },
+      },
+    });
+    const few = {
+      ...base,
+      ordersByState: {
+        status: 'ok' as const,
+        value: {
+          ...ordersByState,
+          byState: { status: 'not-enough-data' as const, paid: 3, minimum: 5 },
+        },
+      },
+    };
+    expect(adminKpisBody(few).ordersByState).toEqual({
+      status: 'ok',
+      kpis: { status: 'not-enough-data', paid: 3, minimum: 5 },
+    });
+    expect(adminKpisBody({ ...base, ordersByState: { status: 'error' } }).ordersByState).toEqual({
+      status: 'error',
+    });
+    const none = await build([]).execute(admin, { period: '7d' });
+    expect(none.ok && none.value.ordersByState).toBeNull();
+    // A failing section leaves the others answering.
+    facade.marketplaceOrdersByState = () => Promise.reject(new TypeError('boom'));
+    const failed = await build([ORDERS]).execute(admin, { period: '7d' });
+    expect(failed.ok && failed.value.ordersByState).toEqual({ status: 'error' });
+    expect(failed.ok && failed.value.ordersByStatus?.status).toBe('ok');
+  });
+
   it('names the top categories from the live tree, null for a category it does not have', async () => {
     const out = await build([MONEY]).execute(admin, { period: '7d' });
     const body = out.ok ? adminKpisBody(out.value) : null;

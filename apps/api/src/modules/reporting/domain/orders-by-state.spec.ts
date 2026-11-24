@@ -50,4 +50,21 @@ describe('ordersByStateOf', () => {
     );
     expect(() => ordersByStateOf({ paid: -1, states: [] })).toThrow(RangeError);
   });
+
+  it('shows shares at exactly five paid orders and drops zero-count states', () => {
+    const out = ordersByStateOf({
+      paid: 5,
+      states: [
+        { state: 'QLD', orders: 5 },
+        { state: 'NSW', orders: 0 },
+      ],
+    });
+    expect(out).toEqual({
+      status: 'available',
+      paid: 5,
+      states: [{ state: 'QLD', orders: 5, shareBp: 10000 }],
+      other: null,
+      unknown: null,
+    });
+  });
 });
