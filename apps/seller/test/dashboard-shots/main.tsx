@@ -259,6 +259,7 @@ createRoot(document.getElementById('root')!).render(
           'ordering.seller-order.view',
           'commission-payouts.earnings.view',
           'inventory.stock.view',
+          'catalog.own-product.view',
         ]}
         kpis={pick}
         period="30d"

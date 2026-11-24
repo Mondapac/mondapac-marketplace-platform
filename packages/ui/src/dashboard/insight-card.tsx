@@ -98,7 +98,7 @@ export function DefinitionHint({
       {open ? (
         <span
           id={id}
-          className="absolute end-0 top-full z-20 mt-1 w-64 rounded-md border border-line bg-surface p-3 text-xs font-normal text-fg-secondary shadow-lg"
+          className="absolute start-0 top-full z-20 mt-1 w-64 max-w-[calc(100vw-3rem)] rounded-md border border-line bg-surface p-3 text-xs font-normal text-fg-secondary shadow-lg"
         >
           {definition}
         </span>
@@ -109,7 +109,7 @@ export function DefinitionHint({
 
 export interface InsightCardProps extends Omit<
   DashboardCardProps,
-  'children' | 'headerRight' | 'flush'
+  'children' | 'headerRight' | 'titleAdornment' | 'flush'
 > {
   /** What the "?" opens. */
   readonly definition: string;
@@ -140,10 +140,13 @@ export function InsightCard({
   return (
     <DashboardCard
       {...frame}
-      headerRight={<DefinitionHint label={definitionLabel} definition={definition} />}
+      titleAdornment={<DefinitionHint label={definitionLabel} definition={definition} />}
     >
+      <div id={tableId}>
+        {asTable && table !== undefined ? <InsightTableView table={table} /> : chart}
+      </div>
       {table === undefined ? null : (
-        <div className="mb-2 flex justify-end">
+        <div className="mt-2 flex justify-end">
           <button
             type="button"
             aria-controls={tableId}
@@ -155,9 +158,6 @@ export function InsightCard({
           </button>
         </div>
       )}
-      <div id={tableId}>
-        {asTable && table !== undefined ? <InsightTableView table={table} /> : chart}
-      </div>
     </DashboardCard>
   );
 }

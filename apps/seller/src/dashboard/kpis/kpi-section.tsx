@@ -70,6 +70,13 @@ const BLOCK_FIX: Record<string, string> = {
 };
 
 /** A change with no figure ("n/a") says why: the previous period had too few orders. */
+/** With no sales in the period there is nothing to compare: say so instead of a red -100.0%. */
+function noSalesOr(delta: StatDeltaProps, kpis: SellerKpis, text: string): StatDeltaProps {
+  return kpis.current.orders === 0 && delta.value !== 'n/a'
+    ? { ...delta, value: text, direction: 'flat', sentiment: 'neutral', plain: true }
+    : delta;
+}
+
 function withHint(delta: StatDeltaProps, hint: string): StatDeltaProps {
   return delta.value === 'n/a' ? { ...delta, hint } : delta;
 }
@@ -118,7 +125,7 @@ function SalesCard({
           <KpiCard
             {...common}
             value={formatMinor(kpis.current.salesInclTax, kpis.currency, locale)}
-            delta={withHint(delta.sales, t('delta.na'))}
+            delta={noSalesOr(withHint(delta.sales, t('delta.na')), kpis, t('delta.no-sales'))}
             sparkline={kpis.series.map((day) => Number(day.salesInclTax))}
           />
         );
@@ -160,7 +167,7 @@ function OrdersCard({
           <KpiCard
             {...common}
             value={formatCount(kpis.current.orders, false, locale)}
-            delta={withHint(delta.orders, t('delta.na'))}
+            delta={noSalesOr(withHint(delta.orders, t('delta.na')), kpis, t('delta.no-sales'))}
             sparkline={kpis.series.map((day) => day.orders)}
           />
         );

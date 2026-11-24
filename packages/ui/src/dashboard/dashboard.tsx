@@ -209,6 +209,8 @@ export interface DashboardCardProps {
   readonly flush?: boolean;
   /** Controls on the header's right, in the same row as the title (a view toggle). */
   readonly headerRight?: ReactNode;
+  /** Sits right after the title (a "?" definition). */
+  readonly titleAdornment?: ReactNode;
   readonly children?: ReactNode;
 }
 
@@ -221,6 +223,7 @@ export function DashboardCard({
   error,
   flush = false,
   headerRight,
+  titleAdornment,
   children,
 }: DashboardCardProps) {
   return (
@@ -230,9 +233,12 @@ export function DashboardCard({
     >
       <div className="flex items-baseline justify-between gap-x-4 px-4 pt-4">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <h2 id={id} className="break-words text-lg font-semibold text-fg">
-            {title}
-          </h2>
+          <div className="flex min-w-0 items-center gap-1">
+            <h2 id={id} className="break-words text-lg font-semibold text-fg">
+              {title}
+            </h2>
+            {titleAdornment === undefined || error !== undefined ? null : titleAdornment}
+          </div>
           {scope === undefined ? null : <p className="text-xs text-fg-muted">{scope}</p>}
         </div>
         {headerRight === undefined || error !== undefined ? null : (

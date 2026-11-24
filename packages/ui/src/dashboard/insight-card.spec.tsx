@@ -44,6 +44,15 @@ describe('InsightCard', () => {
     expect(screen.getByText('the chart')).toBeTruthy();
   });
 
+  it('puts the "?" next to the title and the toggle in the card', () => {
+    render(card());
+    const title = screen.getByRole('heading', { name: 'Top categories' });
+    expect(title.nextElementSibling?.querySelector('button')?.getAttribute('aria-label')).toBe(
+      'What is Top categories?',
+    );
+    expect(screen.getByRole('button', { name: 'View as table' })).toBeTruthy();
+  });
+
   it('has no table toggle for a state without a chart, but keeps the definition', () => {
     render(card({ table: undefined, chart: <p>Not enough data</p> }));
     expect(screen.queryByRole('button', { name: 'View as table' })).toBeNull();

@@ -168,7 +168,7 @@
         "out": "Out of stock",
         "unknown": "Unknown"
       },
-      "scope": "Low or out of stock · latest change first",
+      "scope": "Out of stock first, then low stock",
       "left": "{count} left"
     },
     "actions": {
@@ -279,7 +279,7 @@
       },
       "earnings": {
         "scope": "after commission, excl. GST",
-        "not-ready": "Shown once a week of earnings records is in"
+        "not-ready": "Shown after a week of earnings records"
       },
       "payout": {
         "estimated": "Estimated",
@@ -302,7 +302,8 @@
         "basis": "before refunds"
       },
       "delta": {
-        "na": "Too few orders in the previous period to compare."
+        "na": "Too few orders in the previous period to compare.",
+        "no-sales": "No sales to compare"
       }
     }
   },

@@ -151,7 +151,7 @@ describe('the seller KPI cards', () => {
   it('withholds net earnings until a week of ledger records, never as a number', () => {
     mount({ netEarnings: ok(net({ ready: false, netEarnings: null })) });
     const earnings = card('Net earnings');
-    expect(earnings.getByText('Shown once a week of earnings records is in')).toBeTruthy();
+    expect(earnings.getByText('Shown after a week of earnings records')).toBeTruthy();
     expect(earnings.queryByText(/\$/)).toBeNull();
   });
 
@@ -204,7 +204,7 @@ describe('the seller KPI cards, more', () => {
   it('drops the commission fragment and shows a clock while net earnings are withheld', () => {
     mount({ netEarnings: ok(net({ ready: false, netEarnings: null })) });
     const earnings = card('Net earnings');
-    expect(earnings.getByText('Shown once a week of earnings records is in')).toBeTruthy();
+    expect(earnings.getByText('Shown after a week of earnings records')).toBeTruthy();
     expect(earnings.queryByText(/after commission/)).toBeNull();
     expect(document.querySelector('[data-kpi-card] svg')).toBeTruthy();
   });
@@ -214,6 +214,13 @@ describe('the seller KPI cards, more', () => {
     expect(
       screen.getAllByTitle('Too few orders in the previous period to compare.').length,
     ).toBeGreaterThan(0);
+  });
+
+  it('says there is nothing to compare, not -100.0%, when the period has no sales', () => {
+    mount({ kpis: ok({ ...kpis, current: totals({ orders: 0, salesInclTax: '0' }) }) });
+    expect(card('Sales (incl. GST)').getByText('No sales to compare')).toBeTruthy();
+    expect(card('Orders paid').getByText('No sales to compare')).toBeTruthy();
+    expect(screen.queryByText('-100.0%')).toBeNull();
   });
 
   it('links a blocked payout to the page that fixes it, else to the earnings page', () => {
