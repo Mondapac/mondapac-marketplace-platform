@@ -175,3 +175,23 @@ seller-borne refund's reversal (`refund`, `sourceId` the refund), a seller-funde
 that inserts nothing, and a platform-borne refund, publish nothing. Ids and the cause only: no
 amount, rate or line. `reporting` will subscribe to it for net revenue and the take rate
 (phase 5) and read the posted rows back through the facade.
+
+## Commission base of GST-free lines (fix, 2026-11-24)
+
+The ledger took the Market's provisional tax rate (AU 10 %) out of every tax-inclusive line, so a
+GST-free product (rate 0) had its base cut by 1/11 and the platform charged less commission than
+the approved rule (15 % of the price after the seller's discount share, without GST, never on
+shipping). A $15.90 GST-free line posted $2.17 instead of $2.39.
+
+- One rule: `lineCommission` and `lineTaxBps` in `domain/commission.ts`, exported through the
+  contracts, give the base, the commission and what the seller receives for a line.
+- `PaidLine.taxRateBps` carries the rate `tax` froze on the order line at placement (by the
+  product's tax category). The base takes out that rate; only a line with no frozen rate (placed
+  before ADR-0039) falls back to `provisionalTaxRateBps`.
+- What the seller receives is the line amount less the commission. On a tax-inclusive line it still
+  holds the line's GST, which the seller owes to the tax office.
+- Rows already posted stay as they are (the ledger is insert-only). The owner decides whether past
+  orders get corrective rows; `scripts/db/reports/gst-free-commission-impact.sql` (read only)
+  shows the under-charged commission per seller and how much of it is in payouts already sent.
+- Not in this change (future-enhancements register): GST on the platform's commission, and lines
+  without a frozen rate.
