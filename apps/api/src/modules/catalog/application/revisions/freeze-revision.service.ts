@@ -233,7 +233,9 @@ export class FreezeRevision {
       });
     }
     if (frozen.ok && this.deps.categories !== undefined) {
-      issues.push(...(await this.#categoryIssues(market, frozen.value.categoryIds)));
+      issues.push(
+        ...(await this.#categoryIssues(market, frozen.value.categoryIds, state.scope === 'SELLER')),
+      );
     }
     if (frozen.ok && frozen.value.topicIds.length > 0) {
       issues.push(...(await this.#topicIssues(market, product, frozen.value.topicIds)));
@@ -256,10 +258,14 @@ export class FreezeRevision {
   async #categoryIssues(
     market: MarketContext,
     categoryIds: readonly string[],
+    sameBranch: boolean,
   ): Promise<readonly RevisionIssue[]> {
     const nodes = await this.deps.categories!.nodes(market, MAX_TREE_NODES + 1);
     if (nodes.length > MAX_TREE_NODES) return [{ path: 'categoryIds', code: 'unavailable' }];
-    return checkProductCategories(nodes, categoryIds, this.deps.policy.maxCategoryDepth(market));
+    // A seller's categories 2 and 3 stay in the primary's department; platform products do not.
+    return checkProductCategories(nodes, categoryIds, this.deps.policy.maxCategoryDepth(market), {
+      sameBranch,
+    });
   }
 
   async #topicIssues(
