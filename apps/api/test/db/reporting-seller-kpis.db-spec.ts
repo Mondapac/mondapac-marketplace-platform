@@ -13,6 +13,7 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
+import { reportingSellerKpisTestDatabaseUrl } from './test-database';
 
 // The seller KPI reader on PostgreSQL as the application role (dashboards upgrade phase 6, PR 16):
 // it returns the rows of the seller asked for and nobody else's (a canary seller and a canary
@@ -38,7 +39,7 @@ describe.each(TEST_MARKETS)('the seller KPI reader in market %s (database)', (co
   let recorder: FactRecorder;
 
   beforeAll(() => {
-    db = createPersistence();
+    db = createPersistence({ databaseUrl: reportingSellerKpisTestDatabaseUrl() });
     const now = () => Temporal.Now.instant();
     recorder = new FactRecorder({
       facts: new PrismaFactStore(db.service, now),

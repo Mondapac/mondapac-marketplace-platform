@@ -45,6 +45,17 @@ day then conflict with a 40001 the platform retries, instead of one missing the 
 Seller days are rebuilt in a fixed order (day, then seller). Growth and retention:
 `docs/design/data/reporting.md`.
 
+Early warning (Mojtaba, 24 Nov 2026): units of DIFFERENT sellers and days can also meet. When the
+reporting db-specs shared one database and ran in parallel, their SERIALIZABLE units failed with
+40001 at random (3 of 3 local runs of the five reporting files): the SIREAD locks on the small
+rollup and fact tables are promoted to page and relation locks, so unrelated seller days read as
+rw-conflicts. Each of those spec files now has its own database copy (`test/db/global-setup.ts`);
+the isolation level is unchanged. In production the same promotion will hit concurrent projector
+units (event worker, nightly reconcile, backfill) under load; the platform's retry absorbs it for
+now. Tuning `max_pred_locks_per_relation` / `max_pred_locks_per_page`, or partitioning the events
+by seller day, is decided only after measuring the 40001 and retry rate of reporting units
+(FE-20261124-reporting-serializable-predicate-locks).
+
 ## Code
 
 - `application/fact-recorder.ts` (`FactRecorder`): the one write path. It writes the facts, then

@@ -36,7 +36,10 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
-import { ownerTestDatabaseUrl } from './test-database';
+import {
+  reportingWorkerOwnerTestDatabaseUrl,
+  reportingWorkerTestDatabaseUrl,
+} from './test-database';
 
 // Reporting's nightly reconcile on PostgreSQL (dashboards upgrade phase 3, PR 10b), for both
 // Market fixtures, with the owners faked at the facade's shape: every page of changes is read and
@@ -143,8 +146,8 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
   const system = (target: MarketContext = market) => testCallContext(target, 'system');
 
   beforeAll(async () => {
-    db = createPersistence();
-    owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+    db = createPersistence({ databaseUrl: reportingWorkerTestDatabaseUrl() });
+    owner = new Client({ connectionString: reportingWorkerOwnerTestDatabaseUrl() });
     await owner.connect();
   });
   beforeEach(() => {

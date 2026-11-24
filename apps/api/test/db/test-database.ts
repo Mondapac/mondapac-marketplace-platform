@@ -88,7 +88,17 @@ function exported(
     | 'TEST_ORDERING_ORDERS_OWNER_DATABASE_URL'
     | 'TEST_SEARCH_DOCUMENTS_DATABASE_URL'
     | 'TEST_SEARCH_FILTERS_DATABASE_URL'
-    | 'TEST_SEARCH_RATINGS_DATABASE_URL',
+    | 'TEST_SEARCH_RATINGS_DATABASE_URL'
+    | 'TEST_REPORTING_FACTS_DATABASE_URL'
+    | 'TEST_REPORTING_FACTS_OWNER_DATABASE_URL'
+    | 'TEST_REPORTING_LEDGER_DATABASE_URL'
+    | 'TEST_REPORTING_LEDGER_OWNER_DATABASE_URL'
+    | 'TEST_REPORTING_WORKER_DATABASE_URL'
+    | 'TEST_REPORTING_WORKER_OWNER_DATABASE_URL'
+    | 'TEST_REPORTING_ADMIN_KPI_DATABASE_URL'
+    | 'TEST_REPORTING_ADMIN_KPI_OWNER_DATABASE_URL'
+    | 'TEST_REPORTING_SELLER_KPIS_DATABASE_URL'
+    | 'TEST_REPORTING_SELLER_KPIS_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -441,4 +451,61 @@ export function searchFiltersTestDatabaseUrl(): string {
  */
 export function searchRatingsTestDatabaseUrl(): string {
   return exported('TEST_SEARCH_RATINGS_DATABASE_URL');
+}
+
+/**
+ * The copy that reporting-facts.db-spec.ts records reporting facts and rollups on in SERIALIZABLE units
+ * (global-setup.ts), as the application login and as its owner: no other file's unit meets its
+ * predicate locks on the reporting tables.
+ */
+export function reportingFactsTestDatabaseUrl(): string {
+  return exported('TEST_REPORTING_FACTS_DATABASE_URL');
+}
+
+export function reportingFactsOwnerTestDatabaseUrl(): string {
+  return exported('TEST_REPORTING_FACTS_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that reporting-ledger.db-spec.ts records reporting facts and rollups on in SERIALIZABLE units
+ * (global-setup.ts), as the application login and as its owner: no other file's unit meets its
+ * predicate locks on the reporting tables.
+ */
+export function reportingLedgerTestDatabaseUrl(): string {
+  return exported('TEST_REPORTING_LEDGER_DATABASE_URL');
+}
+
+export function reportingLedgerOwnerTestDatabaseUrl(): string {
+  return exported('TEST_REPORTING_LEDGER_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that reporting-worker.db-spec.ts records reporting facts and rollups on in SERIALIZABLE units
+ * (global-setup.ts), as the application login and as its owner: no other file's unit meets its
+ * predicate locks on the reporting tables.
+ */
+export function reportingWorkerTestDatabaseUrl(): string {
+  return exported('TEST_REPORTING_WORKER_DATABASE_URL');
+}
+
+export function reportingWorkerOwnerTestDatabaseUrl(): string {
+  return exported('TEST_REPORTING_WORKER_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that reporting-admin-kpi.db-spec.ts records reporting facts and rollups on in SERIALIZABLE units
+ * (global-setup.ts), as the application login and as its owner: no other file's unit meets its
+ * predicate locks on the reporting tables.
+ */
+export function reportingAdminKpiTestDatabaseUrl(): string {
+  return exported('TEST_REPORTING_ADMIN_KPI_DATABASE_URL');
+}
+
+/**
+ * The copy that reporting-seller-kpis.db-spec.ts records reporting facts and rollups on in SERIALIZABLE units
+ * (global-setup.ts), as the application login and as its owner: no other file's unit meets its
+ * predicate locks on the reporting tables.
+ */
+export function reportingSellerKpisTestDatabaseUrl(): string {
+  return exported('TEST_REPORTING_SELLER_KPIS_DATABASE_URL');
 }

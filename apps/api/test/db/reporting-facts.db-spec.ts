@@ -17,7 +17,7 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
-import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
+import { reportingFactsOwnerTestDatabaseUrl, reportingFactsTestDatabaseUrl } from './test-database';
 
 // Reporting's facts and daily rollups on PostgreSQL as the application role (dashboards upgrade
 // phase 3, PR 9): a seller order counts on the day of each of its instants in the Market's zone,
@@ -49,9 +49,9 @@ describe.each(TEST_MARKETS)('reporting facts and rollups in market %s (database)
   let recorder: FactRecorder;
 
   beforeAll(async () => {
-    db = createPersistence();
-    owner = new Client({ connectionString: ownerTestDatabaseUrl() });
-    app = new Client({ connectionString: testDatabaseUrl() });
+    db = createPersistence({ databaseUrl: reportingFactsTestDatabaseUrl() });
+    owner = new Client({ connectionString: reportingFactsOwnerTestDatabaseUrl() });
+    app = new Client({ connectionString: reportingFactsTestDatabaseUrl() });
     await Promise.all([owner.connect(), app.connect()]);
     const now = () => Temporal.Now.instant();
     recorder = new FactRecorder({

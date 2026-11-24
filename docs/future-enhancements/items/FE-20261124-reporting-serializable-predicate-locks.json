@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261124-reporting-serializable-predicate-locks",
+  "area": "infra",
+  "title": "هشدار زودهنگام: تداخل قفل‌های پیش‌بینی (SIREAD) در واحدهای SERIALIZABLE گزارش‌گیری زیر بار",
+  "desc": "در تست‌های DB، واحدهای SERIALIZABLE گزارش‌گیری (FactRecorder: حذف و درج روز کامل فروشنده در reporting.daily_seller_sales و daily_category_sales و جدول‌های fact) وقتی چند فایل هم‌زمان روی یک دیتابیس می‌نوشتند، با فروشنده و روز متفاوت هم 40001 می‌گرفتند: قفل‌های SIREAD روی جدول‌های کوچک به قفل صفحه و جدول ارتقا می‌یابند. در تولید هم چند واحد projector هم‌زمان (worker رویداد، reconcile شبانه، backfill) زیر بار همین رفتار را خواهند داشت؛ بازآزمایی platform فعلاً آن را جذب می‌کند. گزینه‌ها فقط پس از اندازه‌گیری: تنظیم max_pred_locks_per_relation و max_pred_locks_per_page (و max_pred_locks_per_transaction)، یا بخش‌بندی رویدادها بر پایهٔ فروشنده-روز. سطح ایزوله کم نمی‌شود. اندازه‌گیری: نرخ 40001 و تعداد بازآزمایی هر واحد reporting و pg_stat_database.conflicts در بار واقعی.",
+  "src": "رفع تست ناپایدار سریال‌سازی گزارش‌ها (کاظم DevOps، مجتبی DB)؛ گزارش thread داشبوردهای v2 فاز ۱",
+  "date": "2026-11-24",
+  "trig": "وقتی نرخ 40001 یا بازآزمایی واحدهای reporting در تولید محسوس شد، یا پیش از افزایش هم‌زمانی worker",
+  "prio": "متوسط",
+  "status": "موکول"
+}

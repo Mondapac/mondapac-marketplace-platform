@@ -35,7 +35,10 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
-import { ownerTestDatabaseUrl } from './test-database';
+import {
+  reportingLedgerOwnerTestDatabaseUrl,
+  reportingLedgerTestDatabaseUrl,
+} from './test-database';
 
 // Reporting's ledger facts on PostgreSQL (dashboards v2, phase 1, PR 4), for both Market fixtures,
 // end to end from commission-payouts' real ledger table through its reporting facade: the
@@ -85,8 +88,8 @@ describe.each(TEST_MARKETS)('reporting ledger facts in market %s (database)', (c
   let kpis: PrismaLedgerKpiReader;
 
   beforeAll(async () => {
-    db = createPersistence();
-    owner = new Client({ connectionString: ownerTestDatabaseUrl() });
+    db = createPersistence({ databaseUrl: reportingLedgerTestDatabaseUrl() });
+    owner = new Client({ connectionString: reportingLedgerOwnerTestDatabaseUrl() });
     await owner.connect();
     ledger = new PrismaLedgerRepository(db.service);
     const reader = new PrismaLedgerReportReader(db.service);

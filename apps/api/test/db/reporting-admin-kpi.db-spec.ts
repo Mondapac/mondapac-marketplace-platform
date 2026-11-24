@@ -13,6 +13,7 @@ import {
   otherMarketOf,
   type Persistence,
 } from './persistence-support';
+import { reportingAdminKpiTestDatabaseUrl } from './test-database';
 
 // The admin KPI read on PostgreSQL as the application role (dashboards upgrade phase 5): the
 // daily rollups of every seller are summed per Market day, only inside the range, only in the
@@ -42,7 +43,7 @@ describe.each(TEST_MARKETS)('the admin KPI reader in market %s (database)', (cod
   let reader: PrismaAdminKpiReader;
 
   beforeAll(() => {
-    db = createPersistence();
+    db = createPersistence({ databaseUrl: reportingAdminKpiTestDatabaseUrl() });
     const now = () => Temporal.Now.instant();
     recorder = new FactRecorder({
       facts: new PrismaFactStore(db.service, now),
