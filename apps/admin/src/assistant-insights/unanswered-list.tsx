@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Banner,
   ActionMenu,
   Badge,
   Button,
@@ -395,8 +396,8 @@ export function UnansweredList({
 
   return (
     <SuperList
+      notice={truncated ? <Banner tone="attention">{t('truncated')}</Banner> : undefined}
       heading={{
-        ...(truncated ? { subtitle: t('truncated') } : {}),
         actions: (
           <ActionMenu
             label={t('bulk.button')}

@@ -123,7 +123,7 @@ export interface SectionListProps<R> {
   readonly keys: ReadonlySet<string>;
   /** The route under `customers/admin/customers/:id/` ("saved-items"). */
   readonly path: string;
-  /** The list's own words: title, subtitle, caption, empty, export-title, col.*, view.*. */
+  /** The list's own words: title, note, caption, empty, export-title, col.*, view.*. */
   readonly ns: string;
   readonly columns: readonly SectionColumn<R>[];
   /** Columns the picker may hide, in the order they show by default. */
@@ -402,8 +402,7 @@ export function SectionList<R>(props: SectionListProps<R>) {
       <SuperList
         heading={{
           embedded: true,
-          subtitle:
-            aside_ === null ? t('subtitle', { zone }) : `${t('subtitle', { zone })} ${aside_}`,
+          note: aside_ === null ? t('subtitle', { zone }) : `${t('subtitle', { zone })} ${aside_}`,
           actions: keys.has(EXPORT_PERMISSION) ? (
             <Button
               variant="secondary"

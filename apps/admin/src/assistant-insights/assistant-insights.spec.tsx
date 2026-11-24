@@ -213,6 +213,31 @@ describe('AssistantInsights', () => {
     );
   });
 
+  it('warns above the list when the answer was cut at 1,000 flagged turns', async () => {
+    call.mockImplementation((_m, path) =>
+      Promise.resolve(
+        path.startsWith('lists/')
+          ? ({ ok: false, failure: { status: 400, code: 'x' } } as never)
+          : ({
+              ok: true,
+              status: 200,
+              body: {
+                ...answer({}, ROWS),
+                unanswered: {
+                  total: ROWS.length,
+                  page: 1,
+                  pageSize: 100,
+                  truncated: true,
+                  rows: ROWS,
+                },
+              },
+            } as never),
+      ),
+    );
+    wrap();
+    expect(await screen.findByText(/only the newest 1,000 are grouped/)).toBeTruthy();
+  });
+
   it('keeps the first groups and says so when the second page fails', async () => {
     const big = {
       ...answer({}, ROWS.slice(0, 2)),

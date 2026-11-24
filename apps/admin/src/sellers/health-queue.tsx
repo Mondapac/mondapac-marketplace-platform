@@ -481,7 +481,6 @@ export function HealthQueue({
   return (
     <SuperList
       heading={{
-        subtitle: t('informs'),
         actions: (
           <HealthQueueBulk
             selection={{ ids: [...selection.selected], allMatching: selection.allMatching, total }}

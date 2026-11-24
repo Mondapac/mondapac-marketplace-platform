@@ -37,7 +37,6 @@ export default async function ContentPage() {
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <PageHeader title={title} />
-          <p className="text-fg-muted">{t('content.pages.intro')}</p>
         </div>
         {permissionKeys.includes(PAGE_CREATE_PERMISSION) ? (
           <LinkButton href={NEW_PAGE_PATH}>{t('content.pages.list.new')}</LinkButton>

@@ -38,10 +38,11 @@ export interface SuperListProps {
      */
     readonly embedded?: boolean;
     /**
-     * A notice about the list (a truncation, what the list is based on), not a count: counts live
-     * in the tabs. Shown as a muted line under the header row; empty or absent when none.
+     * A note for a list inside a card or tab (`embedded`), shown as a muted line beside its
+     * buttons. A page's list has none: no text sits under a page title (what a page is for lives
+     * in the Help panel, a warning goes in `notice`).
      */
-    readonly subtitle?: string;
+    readonly note?: string;
     /** A live-state label beside the title ("Live · every 30 s", "Default"). */
     readonly status?: string;
     readonly actions?: ReactNode;
@@ -144,20 +145,17 @@ function PageRowActions({ children }: { readonly children: ReactNode }) {
 
 function ListHeading({ heading }: { readonly heading: SuperListProps['heading'] }) {
   const note =
-    heading.subtitle === undefined || heading.subtitle === '' ? null : (
-      <p className="min-w-0 text-sm text-fg-muted">{heading.subtitle}</p>
-    );
+    heading.embedded === true && heading.note !== undefined && heading.note !== '' ? (
+      <p className="min-w-0 text-sm text-fg-muted">{heading.note}</p>
+    ) : null;
   if (heading.title !== undefined) {
     return (
-      <div className="flex min-w-0 flex-col gap-1">
-        <PageHeader
-          title={heading.title}
-          actionsSlot={false}
-          {...(heading.status === undefined ? {} : { status: heading.status })}
-          {...(heading.actions === undefined ? {} : { actions: heading.actions })}
-        />
-        {note}
-      </div>
+      <PageHeader
+        title={heading.title}
+        actionsSlot={false}
+        {...(heading.status === undefined ? {} : { status: heading.status })}
+        {...(heading.actions === undefined ? {} : { actions: heading.actions })}
+      />
     );
   }
   if (heading.embedded === true) {
@@ -172,10 +170,7 @@ function ListHeading({ heading }: { readonly heading: SuperListProps['heading'] 
     );
   }
   return (
-    <>
-      {heading.actions === undefined ? null : <PageRowActions>{heading.actions}</PageRowActions>}
-      {note}
-    </>
+    <>{heading.actions === undefined ? null : <PageRowActions>{heading.actions}</PageRowActions>}</>
   );
 }
 
