@@ -54,7 +54,11 @@ export class CommissionPayoutsFacadeImplementation implements CommissionPayoutsF
 
   ownCommissionOn(
     context: CallContext,
-    request: { readonly amount: bigint; readonly taxInclusive: boolean },
+    request: {
+      readonly amount: bigint;
+      readonly taxInclusive: boolean;
+      readonly taxRateBps?: number;
+    },
   ) {
     return this.ownCommission.execute(context, request);
   }

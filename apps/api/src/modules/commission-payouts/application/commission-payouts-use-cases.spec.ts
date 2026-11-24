@@ -852,7 +852,7 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
     const own = (input: unknown, context: CallContext = sellerA) =>
       new OwnCommissionOn(gate, deps).execute(
         context,
-        input as { amount: bigint; taxInclusive: boolean },
+        input as { amount: bigint; taxInclusive: boolean; taxRateBps?: number },
       );
     const provisional = config.commissionPayouts!.provisionalTaxRateBps;
 
@@ -863,14 +863,68 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
         ok({
           rateBps: marketRate,
           source: 'market',
+          taxRateBps: provisional,
+          taxRateSource: 'provisional',
           commissionBase: base,
           commission: commissionOn(base, marketRate),
+          sellerReceives: 2000n - commissionOn(base, marketRate),
         }),
       );
       await setRate(SELLER_A, 1000);
       expect(await own({ amount: 2000n, taxInclusive: false })).toEqual(
-        ok({ rateBps: 1000, source: 'seller', commissionBase: 2000n, commission: 200n }),
+        ok({
+          rateBps: 1000,
+          source: 'seller',
+          taxRateBps: provisional,
+          taxRateSource: 'provisional',
+          commissionBase: 2000n,
+          commission: 200n,
+          sellerReceives: 1800n,
+        }),
       );
+    });
+
+    it("takes the line's own tax rate: the same numbers the ledger posts for that line", async () => {
+      await setRate(SELLER_A, 1500);
+      // A GST-free line (rate 0): nothing is taken off an inclusive amount (15.90 -> 2.39).
+      const free = await own({ amount: 1590n, taxInclusive: true, taxRateBps: 0 });
+      expect(free).toEqual(
+        ok({
+          rateBps: 1500,
+          source: 'seller',
+          taxRateBps: 0,
+          taxRateSource: 'line',
+          ...(() => {
+            const line = lineCommission({
+              amount: 1590n,
+              taxInclusive: true,
+              taxBps: 0,
+              rateBps: 1500,
+            });
+            return {
+              commissionBase: line.base,
+              commission: line.commission,
+              sellerReceives: line.sellerReceives,
+            };
+          })(),
+        }),
+      );
+      expect(free.ok && free.value.commission).toBe(239n);
+      // A line rate above the provisional one takes more tax off an inclusive amount.
+      const high = await own({ amount: 1150n, taxInclusive: true, taxRateBps: 1500 });
+      expect(high.ok && high.value).toMatchObject({
+        taxRateBps: 1500,
+        commissionBase: 1000n,
+        commission: 150n,
+        sellerReceives: 1000n,
+      });
+      // An amount without tax: the rate changes nothing but is reported.
+      const exclusive = await own({ amount: 1000n, taxInclusive: false, taxRateBps: 0 });
+      expect(exclusive.ok && exclusive.value).toMatchObject({
+        commissionBase: 1000n,
+        commission: 150n,
+        sellerReceives: 850n,
+      });
     });
 
     it('answers only about the signed-in seller: it takes no seller id and shows nobody else', async () => {
@@ -895,12 +949,17 @@ describe.each([['AU'], ['ZZ']] as const)('commission and seller ledger in market
       });
     });
 
-    it('validates the amount and the tax flag', async () => {
+    it('validates the amount, the tax flag and the tax rate', async () => {
       for (const bad of [
         { amount: -1n, taxInclusive: true },
         { amount: 10n ** 12n + 1n, taxInclusive: true },
         { amount: 100, taxInclusive: true },
         { amount: 100n, taxInclusive: 'yes' },
+        { amount: 100n, taxInclusive: true, taxRateBps: -1 },
+        { amount: 100n, taxInclusive: true, taxRateBps: 5001 },
+        { amount: 100n, taxInclusive: true, taxRateBps: 10.5 },
+        { amount: 100n, taxInclusive: true, taxRateBps: '0' },
+        { amount: 100n, taxInclusive: true, taxRateBps: null },
         {},
       ]) {
         expect(await own(bad)).toMatchObject({ ok: false, error: { code: 'validation.failed' } });

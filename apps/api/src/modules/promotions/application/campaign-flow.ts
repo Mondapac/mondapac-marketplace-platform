@@ -141,11 +141,20 @@ export interface SellerPayoutPreviewView {
   readonly platformFunded: bigint;
   readonly shopperPays: bigint;
   readonly commissionRateBps: number;
-  /** The price less the seller-funded part, less provisional tax when prices include tax. */
+  /** The tax rate of the line, read on the server (the Offer's category under the strategy). */
+  readonly taxRateBps: number;
+  /** True when no Offer was named: the rate is the one for a line in no category, an estimate. */
+  readonly taxRateEstimated: boolean;
+  /** The price less the seller-funded part, less the line's tax when prices include tax. */
   readonly commissionBase: bigint;
   readonly commission: bigint;
-  /** Before delivery. */
+  /** `commissionBase − commission`: before delivery and before tax. */
   readonly sellerGets: bigint;
+  /**
+   * The price less the seller-funded part, less the commission: what the ledger credits the seller
+   * for the sale, before delivery (it includes the tax the seller owes when prices include tax).
+   */
+  readonly sellerReceives: bigint;
   /** Null when no Offer was asked about. */
   readonly wasPrice: { readonly eligible: boolean } | null;
 }
@@ -165,8 +174,9 @@ const MAX_PRICE = 10n ** 12n;
  * seller gets, with the seller's own commission rate. Either `promotionId` (a campaign the seller
  * may join) or `discountBps` (the seller's own percentage sale price). With `offerId` and
  * `variantId` of the seller's own sell unit it also says whether the price it has now may show as
- * a struck-through earlier price once the sale starts. Money is shown only when the commission
- * rate is known; a rate that cannot be read is `promotions.unavailable`.
+ * a struck-through earlier price once the sale starts, and the line's tax rate is that Offer's own
+ * (otherwise the rate of a line in no category, marked as an estimate). Money is shown only when
+ * the commission and tax rates are known; one that cannot be read is `promotions.unavailable`.
  */
 export async function previewSellerPayout(
   deps: PromotionsDependencies,
@@ -218,12 +228,36 @@ export async function previewSellerPayout(
     return err({ code: 'validation.failed', fields: issues });
   }
 
+  // The seller's own sell unit first: someone else's Offer, an unknown one and an unreadable
+  // catalogue are one answer, before any rate or money is read for it.
+  const unit =
+    askUnit && offerId !== null && offerId.ok && variantId !== null && variantId.ok
+      ? { offerId: offerId.value, variantId: variantId.value }
+      : null;
+  if (
+    unit !== null &&
+    !(await deps.sellerCatalogue.ownsSellUnit(
+      context,
+      seller.sellerId,
+      unit.offerId,
+      unit.variantId,
+    ))
+  ) {
+    return err({ code: 'promotions.not-found' });
+  }
+
+  // The line's own tax rate, read on the server (never from the request): the Offer's category
+  // under the strategy in force, or the rate of a line in no category when no Offer was named.
+  const tax = await deps.sellerCommission.lineTaxRate(context, unit?.offerId ?? null);
+  if (tax === null) return err({ code: 'promotions.unavailable' });
+
   // The seller's own commission on the full price: the order commission that limits what the
   // platform may pay of a discount (the engine's rule), and the check that a rate is readable.
   const gross = await deps.sellerCommission.commissionOn(
     context,
     price.value,
     settings.pricesIncludeTax,
+    tax.rateBps,
   );
   if (gross === null) return err({ code: 'promotions.unavailable' });
 
@@ -303,25 +337,18 @@ export async function previewSellerPayout(
           context,
           price.value - split.sellerFunded,
           settings.pricesIncludeTax,
+          tax.rateBps,
         );
   if (commission === null) return err({ code: 'promotions.unavailable' });
 
-  // The was-price verdict, only for the seller's own sell unit.
+  // The was-price verdict, only for the seller's own sell unit (checked above).
   let wasPrice: { readonly eligible: boolean } | null = null;
-  if (askUnit && offerId !== null && offerId.ok && variantId !== null && variantId.ok) {
-    const owns = await deps.sellerCatalogue.ownsSellUnit(
-      context,
-      seller.sellerId,
-      offerId.value,
-      variantId.value,
-    );
-    // Someone else's Offer, an unknown one and an unreadable catalogue are one answer.
-    if (!owns) return err({ code: 'promotions.not-found' });
+  if (unit !== null) {
     let days: number | null;
     try {
       days = await deps.priceHistory.daysSoldAtPrice(
         context,
-        { offerId: offerId.value, variantId: variantId.value },
+        unit,
         { amount: price.value, currency: settings.currency },
         settings.wasPrice.windowDays,
       );
@@ -339,9 +366,12 @@ export async function previewSellerPayout(
     platformFunded: split.platformFunded,
     shopperPays: price.value - split.discount,
     commissionRateBps: commission.rateBps,
+    taxRateBps: tax.rateBps,
+    taxRateEstimated: tax.estimated,
     commissionBase: commission.commissionBase,
     commission: commission.commission,
     sellerGets: commission.commissionBase - commission.commission,
+    sellerReceives: commission.sellerReceives,
     wasPrice,
   });
 }

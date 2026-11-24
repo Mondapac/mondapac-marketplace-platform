@@ -20,6 +20,7 @@ import { CLOCK } from '../../platform/clock/clock.module';
 import { ID_GENERATOR } from '../../platform/ids/ids.module';
 import { PersistenceModule } from '../../platform/persistence/persistence.module';
 import { CatalogModule } from '../catalog';
+import { TaxModule } from '../tax';
 import { CommissionPayoutsModule } from '../commission-payouts';
 import { changeActorSourceOf, IDENTITY_FACADE, IdentityModule } from '../identity';
 import { PricingModule } from '../pricing';
@@ -200,6 +201,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     IdentityModule,
     PricingModule,
     SellersModule,
+    TaxModule,
     WalletModule,
   ],
   controllers: [

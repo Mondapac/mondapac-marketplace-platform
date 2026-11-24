@@ -4,6 +4,7 @@ import type { AppConfig } from '../../../platform/config/app-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { CATALOG_FACADE, type CatalogFacade } from '../../catalog';
 import { COMMISSION_PAYOUTS_FACADE, type CommissionPayoutsFacade } from '../../commission-payouts';
+import { TAX_FACADE, type TaxFacade } from '../../tax';
 import { CUSTOMERS_READ_FACADE, type CustomersReadFacade } from '../../customers';
 import { ENGAGEMENT_FACADE, type EngagementFacade } from '../../engagement';
 import { FacadeStoreFollows } from './facade-store-follows';
@@ -176,9 +177,12 @@ export const promotionsProviders: readonly FactoryProvider[] = [
   },
   {
     provide: SELLER_COMMISSION,
-    inject: [COMMISSION_PAYOUTS_FACADE],
-    useFactory: (payouts: CommissionPayoutsFacade): SellerCommission =>
-      new FacadeSellerCommission(payouts),
+    inject: [COMMISSION_PAYOUTS_FACADE, CATALOG_FACADE, TAX_FACADE],
+    useFactory: (
+      payouts: CommissionPayoutsFacade,
+      catalog: CatalogFacade,
+      tax: TaxFacade,
+    ): SellerCommission => new FacadeSellerCommission(payouts, catalog, tax),
   },
   {
     provide: SELLER_CATALOGUE,

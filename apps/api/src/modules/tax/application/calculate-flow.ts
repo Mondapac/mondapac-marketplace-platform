@@ -1,7 +1,7 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Result } from '@mondapac/shared-kernel';
-import type { TaxAnswer, TaxFailure } from '../contracts/tax.facade';
-import { computeLineTax, type TaxStrategyParams } from '../domain/strategy';
+import type { CategoryRatesAnswer, TaxAnswer, TaxFailure } from '../contracts/tax.facade';
+import { computeLineTax, rateFor, type TaxStrategyParams } from '../domain/strategy';
 import type { TaxDependencies } from './tax-dependencies';
 
 // The tax of order lines under the Market's strategy in force (the active one, else the built-in
@@ -66,6 +66,64 @@ export async function calculateTax(
       return ok({
         strategyId: active?.id ?? null,
         lines: lines.map((line) => computeLineTax(line, params)),
+      });
+    },
+    { readOnly: true },
+  );
+}
+
+const MAX_CODES = 200;
+
+/**
+ * The rate of each tax category code (null = a line in no category) under the Market's strategy in
+ * force now. Rates only: no amount is taken or worked out. For a seller's preview of what a sale
+ * would leave it (promotions, through commission-payouts) and a customer's; the codes come from the
+ * catalog on the server, never from a request body. An unknown code is refused, as `calculateTax`
+ * refuses it, so a preview fails closed rather than guessing a rate.
+ */
+export async function categoryRates(
+  deps: TaxDependencies,
+  context: CallContext,
+  input: { readonly codes: unknown },
+): Promise<Result<CategoryRatesAnswer, TaxFailure>> {
+  const caller = context.actor;
+  if (
+    caller.kind !== 'authenticated' ||
+    (caller.population !== 'customer' && caller.population !== 'seller')
+  ) {
+    return err({ code: 'access.denied' });
+  }
+  const raw = input?.codes;
+  if (!Array.isArray(raw) || raw.length > MAX_CODES) {
+    return err({ code: 'validation.failed', fields: [{ path: 'codes', code: 'range' }] });
+  }
+  const settings = deps.policy.settings(context.market);
+  if (settings === null) return err({ code: 'tax.unavailable' });
+  const fields: { path: string; code: string }[] = [];
+  const codes = raw.map((code: unknown, index) => {
+    if (code !== null && !(typeof code === 'string' && settings.categoryCodes.includes(code))) {
+      fields.push({ path: `codes.${index}`, code: 'unknown-category' });
+    }
+    return code as string | null;
+  });
+  if (fields.length > 0) return err({ code: 'validation.failed', fields });
+
+  return deps.unitOfWork.run<CategoryRatesAnswer, TaxFailure>(
+    context.market,
+    async () => {
+      let active;
+      try {
+        active = await deps.strategies.findActive(context.market);
+      } catch {
+        return err({ code: 'tax.unavailable' } as const);
+      }
+      const params: TaxStrategyParams = active?.params ?? {
+        kind: 'flat-rate',
+        rateBps: settings.defaultRateBps,
+      };
+      return ok({
+        strategyId: active?.id ?? null,
+        ratesBps: codes.map((code) => rateFor(params, code)),
       });
     },
     { readOnly: true },

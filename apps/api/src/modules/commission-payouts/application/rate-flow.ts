@@ -7,9 +7,8 @@ import type {
 } from '../contracts/commission-payouts.facade';
 import { CommissionRateCleared, CommissionRateSet } from '../domain/audit';
 import {
-  commissionBase,
-  commissionOn,
   exclusiveRateBps,
+  lineCommission,
   exclusiveWindowOpen,
   parseRateBps,
 } from '../domain/commission';
@@ -296,16 +295,25 @@ export async function readCommissionRates(
 
 const MAX_PREVIEW_AMOUNT = 10n ** 12n;
 
+/** The highest tax rate a preview accepts, as the tax module's own limit (50 %). */
+const MAX_TAX_RATE_BPS = 5000;
+
 /**
  * The commission the signed-in seller would pay on an amount. The seller is the session's, never a
  * request field: a seller sees only its own rate. An acting-as session is refused. Reuses the
- * ledger's own rules (`commissionBase`, `commissionOn`), so the number is the one the ledger posts
- * for a line of that amount.
+ * ledger's own rule (`lineCommission`), so the number is the one the ledger posts for a line of that
+ * amount at that tax rate. `taxRateBps` is the line's own rate, which the caller looked up on the
+ * server (the Offer's tax category under the strategy in force); absent, the Market's provisional
+ * rate is used and the answer says so (`taxRateSource: 'provisional'`).
  */
 export async function ownCommissionOn(
   deps: CommissionPayoutsDependencies,
   context: CallContext,
-  input: { readonly amount?: unknown; readonly taxInclusive?: unknown },
+  input: {
+    readonly amount?: unknown;
+    readonly taxInclusive?: unknown;
+    readonly taxRateBps?: unknown;
+  },
 ): Promise<Result<OwnCommissionPreview, RatesFailure>> {
   const actor = context.actor;
   if (actor.kind !== 'authenticated' || actor.population !== 'seller' || isActingAs(context)) {
@@ -319,25 +327,42 @@ export async function ownCommissionOn(
     fields.push({ path: 'amount', code: 'range' });
   }
   if (typeof input?.taxInclusive !== 'boolean') fields.push({ path: 'taxInclusive', code: 'type' });
+  const taxRate = input?.taxRateBps;
+  if (
+    taxRate !== undefined &&
+    !(
+      typeof taxRate === 'number' &&
+      Number.isInteger(taxRate) &&
+      taxRate >= 0 &&
+      taxRate <= MAX_TAX_RATE_BPS
+    )
+  ) {
+    fields.push({ path: 'taxRateBps', code: 'range' });
+  }
   if (fields.length > 0 || typeof amount !== 'bigint')
     return err({ code: 'validation.failed', fields });
   const settings = deps.policy.settings(context.market);
   if (settings === null) return err({ code: 'commission-payouts.rate-unavailable' });
+  const taxBps = typeof taxRate === 'number' ? taxRate : settings.provisionalTaxRateBps;
   return deps.unitOfWork.run<OwnCommissionPreview, RatesFailure>(
     context.market,
     async () => {
       const [row] = await deps.rates.findMany(context.market, [sellerId]);
       const rateBps = row?.rateBps ?? settings.defaultRateBps;
-      const base = commissionBase(
+      const line = lineCommission({
         amount,
-        input.taxInclusive === true,
-        settings.provisionalTaxRateBps,
-      );
+        taxInclusive: input.taxInclusive === true,
+        taxBps,
+        rateBps,
+      });
       return ok({
         rateBps,
         source: row === undefined ? 'market' : 'seller',
-        commissionBase: base,
-        commission: commissionOn(base, rateBps),
+        taxRateBps: taxBps,
+        taxRateSource: typeof taxRate === 'number' ? 'line' : 'provisional',
+        commissionBase: line.base,
+        commission: line.commission,
+        sellerReceives: line.sellerReceives,
       });
     },
     { readOnly: true },

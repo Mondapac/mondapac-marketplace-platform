@@ -33,6 +33,14 @@ export interface TaxAnswer {
   readonly lines: readonly TaxLineAnswer[];
 }
 
+/** The rate of each asked tax category under the strategy in force (see `categoryRates`). */
+export interface CategoryRatesAnswer {
+  /** The strategy used: its id, or null for the Market's built-in one. */
+  readonly strategyId: Id<'TaxStrategy'> | null;
+  /** One rate per asked code, in the same order, in basis points. */
+  readonly ratesBps: readonly number[];
+}
+
 /** One refunded part of an order line: units at positions `[unitsBefore, unitsBefore + units)`. */
 export interface RefundLineInput {
   /** The line tax frozen at placement, in minor units. */
@@ -63,8 +71,8 @@ export interface RefundTaxAnswer {
 }
 
 /**
- * What `ordering` calls. The method takes the caller's `CallContext` unchanged and is not
- * exposed over HTTP.
+ * What `ordering` and `promotions` call. Each method takes the caller's `CallContext` unchanged and
+ * is not exposed over HTTP.
  */
 export interface TaxFacade {
   /** The tax of up to 200 lines under the Market's strategy in force now. */
@@ -72,6 +80,16 @@ export interface TaxFacade {
     context: CallContext,
     lines: readonly TaxLineInput[],
   ): Promise<Result<TaxAnswer, TaxFailure>>;
+
+  /**
+   * The rate of up to 200 tax category codes of the Market (null = no category) under the strategy
+   * in force now, for the signed-in customer or seller. Rates only. An unknown code is
+   * `validation.failed`; an unreadable strategy is `tax.unavailable`.
+   */
+  categoryRates(
+    context: CallContext,
+    codes: readonly (string | null)[],
+  ): Promise<Result<CategoryRatesAnswer, TaxFailure>>;
 
   /**
    * The tax a refund reverses (tax design 4.8), from the frozen values only: never from a current

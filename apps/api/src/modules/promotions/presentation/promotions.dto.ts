@@ -403,13 +403,28 @@ export class SellerPayoutPreviewBody {
   @ApiProperty({ description: "The seller's commission rate, basis points." })
   commissionRateBps!: number;
   @ApiProperty({
+    description:
+      "The line's tax rate, basis points, read on the server: the Offer's tax category under the strategy in force, or the rate of a line in no category when no Offer was named.",
+  })
+  taxRateBps!: number;
+  @ApiProperty({
+    description: 'True when no Offer was named, so `taxRateBps` is an estimate.',
+  })
+  taxRateEstimated!: boolean;
+  @ApiProperty({
     type: String,
     description:
-      'The price less the seller-funded part, less provisional tax when prices include tax.',
+      "The price less the seller-funded part, less the line's tax when prices include tax.",
   })
   commissionBaseMinor!: string;
   @ApiProperty({ type: String }) commissionMinor!: string;
   @ApiProperty({ type: String, description: 'Before delivery and GST.' }) sellerGetsMinor!: string;
+  @ApiProperty({
+    type: String,
+    description:
+      'What the ledger credits the seller for the sale, before delivery: the price less the seller-funded part, less the commission. It includes the GST the seller owes when prices include tax.',
+  })
+  sellerReceivesMinor!: string;
   @ApiProperty({
     nullable: true,
     type: Object,
@@ -665,6 +680,9 @@ export const sellerPayoutPreviewBody = (
   commissionBaseMinor: minor(view.commissionBase),
   commissionMinor: minor(view.commission),
   sellerGetsMinor: minor(view.sellerGets),
+  sellerReceivesMinor: minor(view.sellerReceives),
+  taxRateBps: view.taxRateBps,
+  taxRateEstimated: view.taxRateEstimated,
   wasPrice: view.wasPrice === null ? null : { eligible: view.wasPrice.eligible },
 });
 

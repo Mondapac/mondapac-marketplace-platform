@@ -19,6 +19,7 @@ import type { StrategyRecord, StrategyRepository } from './ports/strategy.reposi
 import type { TaxDependencies } from './tax-dependencies';
 import { ActivateTaxStrategy } from './use-cases/activate-tax-strategy.use-case';
 import { CalculateTax } from './use-cases/calculate-tax.use-case';
+import { CategoryRates } from './use-cases/category-rates.use-case';
 import { CreateTaxStrategy } from './use-cases/create-tax-strategy.use-case';
 import { DeleteTaxStrategy } from './use-cases/delete-tax-strategy.use-case';
 import { ListTaxStrategies } from './use-cases/list-tax-strategies.use-case';
@@ -310,6 +311,55 @@ describe.each([['AU'], ['ZZ']] as const)('tax strategies in market %s', (code) =
   it('fails closed with tax.unavailable when the stored strategy is damaged', async () => {
     strategies.findActive = () => Promise.reject(new Error('tax.stored-strategy-invalid'));
     expect(await calculate([line(1n)])).toEqual(err({ code: 'tax.unavailable' }));
+  });
+
+  describe('category rates', () => {
+    const rates = (codes: unknown, context: CallContext = seller) =>
+      new CategoryRates(gate, deps).execute(context, { codes });
+
+    it('answers the built-in rate for every code while no strategy is active', async () => {
+      expect(await rates([free, standard, null])).toEqual(
+        ok({ strategyId: null, ratesBps: [builtIn, builtIn, builtIn] }),
+      );
+    });
+
+    it("answers each category's own rate under the active strategy, the default for none", async () => {
+      const made = await create(byCategory);
+      if (!made.ok) throw new Error('create failed');
+      await activate(made.value.id);
+      const answer = await rates([free, standard, null]);
+      expect(answer).toEqual(ok({ strategyId: made.value.id, ratesBps: [0, builtIn, builtIn] }));
+      // The same rates checkout freezes on a line.
+      const calc = await calculate([line(1000n, free), line(1000n, standard)]);
+      expect(calc.ok && calc.value.lines.map((l) => l.rateBps)).toEqual([0, builtIn]);
+      expect(await rates([free], customer)).toMatchObject({ ok: true });
+    });
+
+    it('refuses an admin and an anonymous caller, and writes no audit', async () => {
+      expect(await rates([null], admin)).toEqual(err({ code: 'access.denied' }));
+      const anonymous = testCallContext(market, 'anonymous', 'tax-anon-abcd');
+      expect((await rates([null], anonymous)).ok).toBe(false);
+      expect(audit.entries).toEqual([]);
+    });
+
+    it('refuses an unknown code, a list that is not one or too long, and fails closed', async () => {
+      expect(await rates([null, 'alcohol', 7])).toEqual(
+        err({
+          code: 'validation.failed',
+          fields: [
+            { path: 'codes.1', code: 'unknown-category' },
+            { path: 'codes.2', code: 'unknown-category' },
+          ],
+        }),
+      );
+      for (const bad of ['gst_free', Array.from({ length: 201 }, () => null)]) {
+        expect(await rates(bad)).toEqual(
+          err({ code: 'validation.failed', fields: [{ path: 'codes', code: 'range' }] }),
+        );
+      }
+      strategies.findActive = () => Promise.reject(new Error('tax.stored-strategy-invalid'));
+      expect(await rates([null])).toEqual(err({ code: 'tax.unavailable' }));
+    });
   });
 
   it('refuses callers without the right actor and bad lines', async () => {

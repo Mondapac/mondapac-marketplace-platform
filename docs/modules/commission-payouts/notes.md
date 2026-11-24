@@ -195,3 +195,6 @@ shipping). A $15.90 GST-free line posted $2.17 instead of $2.39.
   shows the under-charged commission per seller and how much of it is in payouts already sent.
 - Not in this change (future-enhancements register): GST on the platform's commission, and lines
   without a frozen rate.
+- PR 3 (promotions preview): `ownCommissionOn` takes an optional `taxRateBps` (0..5000) that the caller
+  read on the server (the Offer's category rate from tax `categoryRates`), applies `lineCommission`, and
+  answers `taxRateBps`, `taxRateSource` (`line` or `provisional` when none was given) and `sellerReceives`.
