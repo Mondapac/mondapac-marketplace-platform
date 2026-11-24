@@ -86,6 +86,7 @@ function exported(
     | 'TEST_SELLERS_LIST_OWNER_DATABASE_URL'
     | 'TEST_ORDERING_ORDERS_DATABASE_URL'
     | 'TEST_ORDERING_ORDERS_OWNER_DATABASE_URL'
+    | 'TEST_DASHBOARD_PAYMENTS_QUEUE_DATABASE_URL'
     | 'TEST_SEARCH_DOCUMENTS_DATABASE_URL'
     | 'TEST_SEARCH_FILTERS_DATABASE_URL'
     | 'TEST_SEARCH_RATINGS_DATABASE_URL'
@@ -415,6 +416,15 @@ export function sellersListOwnerTestDatabaseUrl(): string {
  */
 export function orderingOrdersTestDatabaseUrl(): string {
   return exported('TEST_ORDERING_ORDERS_DATABASE_URL');
+}
+
+/**
+ * The copy of the run database that dashboard-payments-queue-counts.db-spec.ts counts in
+ * (global-setup.ts): the work-queue readers count the whole Market, so no other file's rows
+ * may be there.
+ */
+export function dashboardPaymentsQueueTestDatabaseUrl(): string {
+  return exported('TEST_DASHBOARD_PAYMENTS_QUEUE_DATABASE_URL');
 }
 
 export function orderingOrdersOwnerTestDatabaseUrl(): string {
