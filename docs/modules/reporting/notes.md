@@ -175,12 +175,12 @@ All rule `system`, not exposed over HTTP; ids and money only (no name, address, 
 - `shipping.postcodeRegions` is Market configuration (`platform/market-config/postcode-regions.ts`):
   closed ranges per region code; a postcode matches a range of its own length; ranges of one length
   must not overlap; every code must be in `customers.address.regions`. AU has the main Australia Post
-  ranges (border postcodes go to the range's state, repo register FE-168); the synthetic Market has
+  ranges (border postcodes go to the range's state, repo register FE-173); the synthetic Market has
   its own. No country is named in code.
 - Once known, a state is kept as first recorded (`keepKnownInstants`): a later read may no longer
   know it (shipping removes a buyer's expired quotes 24 hours later) or may give the store's new
   region after a move. The method is ordering's and never changes. A state that stays unknown
-  because the quote was removed before the first record: repo register FE-167.
+  because the quote was removed before the first record: repo register FE-172.
 - All three writers fill the columns (the event worker, the nightly reconcile, the history backfill),
   since they share `ReportSources.sellerOrders`. A shipping failure fails the read like a catalog
   failure: the delivery or the page is tried again.
