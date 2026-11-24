@@ -161,10 +161,19 @@ export const NET_REVENUE_COMPONENTS = [
 export type NetRevenueComponent = (typeof NET_REVENUE_COMPONENTS)[number];
 
 /**
+ * The total of net revenue: a number only when every component has one. While any is missing it
+ * carries no amount at all, only the names of the missing components, so a partial sum can never
+ * be shown as the total; the available components keep their own amounts under their own labels.
+ */
+export type NetRevenueTotal =
+  | { readonly status: 'complete'; readonly amount: bigint }
+  | { readonly status: 'partial'; readonly missing: readonly NetRevenueComponent[] };
+
+/**
  * Mondapac's net revenue of a range, without GST: commission + delivery margin − platform-funded
  * discounts − platform-funded cashback − fleet fees (design: dashboards v2 KPI definitions).
- * Every component is positive as named; `total` adds the available ones with their sign and says
- * which are missing, so a screen never presents a partial total as the whole.
+ * Every component is positive as named; `total` adds them with their sign only when all are
+ * available ({@link NetRevenueTotal}).
  */
 export interface NetRevenue {
   readonly currency: string;
@@ -173,12 +182,7 @@ export interface NetRevenue {
   /** Commission given back by the range's seller-borne refunds. */
   readonly commissionRefunded: bigint;
   readonly components: Readonly<Record<NetRevenueComponent, LedgerComponent>>;
-  readonly total: {
-    readonly amount: bigint;
-    /** True only when every component is available. */
-    readonly complete: boolean;
-    readonly missing: readonly NetRevenueComponent[];
-  };
+  readonly total: NetRevenueTotal;
 }
 
 /**
@@ -202,6 +206,19 @@ export function netRevenueOf(sums: LedgerKindSums, currency: string): NetRevenue
     platformFundedCashback: notAvailable('not-reported'),
     fleetFees: notAvailable('not-recorded'),
   };
+  return {
+    currency,
+    commissionCharged,
+    commissionRefunded,
+    components,
+    total: netRevenueTotalOf(components),
+  };
+}
+
+/** The total of the components: complete with its amount, or partial with what is missing. */
+export function netRevenueTotalOf(
+  components: Readonly<Record<NetRevenueComponent, LedgerComponent>>,
+): NetRevenueTotal {
   const sign: Record<NetRevenueComponent, bigint> = {
     commission: 1n,
     deliveryMargin: 1n,
@@ -216,13 +233,7 @@ export function netRevenueOf(sums: LedgerKindSums, currency: string): NetRevenue
     if (component.status === 'available') amount += sign[name] * component.amount;
     else missing.push(name);
   }
-  return {
-    currency,
-    commissionCharged,
-    commissionRefunded,
-    components,
-    total: { amount, complete: missing.length === 0, missing },
-  };
+  return missing.length === 0 ? { status: 'complete', amount } : { status: 'partial', missing };
 }
 
 /**
@@ -336,32 +347,77 @@ export function matchLedgerDays(
   });
 }
 
+/**
+ * The fewest seller orders that must have matched (paid with goods and a commission fact on the
+ * same Market day) across the {@link READINESS_DAYS} days before net figures show: on average one
+ * a day. An empty week matches trivially (0 = 0) and proves nothing about the ledger subscriber;
+ * seven matched orders show it kept up on real traffic over the week, while a Market that is
+ * still quiet keeps its net figures withheld (fail-closed) rather than shown unproven.
+ */
+export const READINESS_MIN_MATCHED_SELLER_ORDERS = 7;
+
+/** Where the ledger history backfill of the Market stands, for the readiness. */
+export interface LedgerBackfillState {
+  /** It has read every row recorded before it started. */
+  readonly finished: boolean;
+  /** Rows it refused or could not write (logged and skipped): any one leaves a hole. */
+  readonly failedFacts: number;
+}
+
+export type LedgerReadinessReason =
+  | 'ready'
+  | 'backfill-not-finished'
+  | 'backfill-refused-rows'
+  | 'days-not-matching'
+  | 'insufficient-activity';
+
 /** Whether net figures may show, and why not. */
 export interface LedgerReadiness {
   readonly ready: boolean;
-  readonly reason: 'ready' | 'backfill-not-finished' | 'days-not-matching';
+  readonly reason: LedgerReadinessReason;
   /** The ledger history backfill has read every row recorded before it started. */
   readonly backfillFinished: boolean;
+  /** Rows the backfill refused or could not write. */
+  readonly backfillFailedFacts: number;
+  /** Seller orders that matched across the window (counted from the days). */
+  readonly matchedSellerOrders: number;
   readonly window: DayRange;
   readonly days: readonly LedgerMatchDay[];
 }
 
 /**
- * Ready when the ledger history backfill has finished and every one of the {@link READINESS_DAYS}
- * Market days ending yesterday matches ({@link matchLedgerDays}). Today is never in it: its rows are
- * still arriving.
+ * Ready when the ledger history backfill has finished without refusing a row, every one of the
+ * {@link READINESS_DAYS} Market days ending yesterday matches ({@link matchLedgerDays}), and at
+ * least {@link READINESS_MIN_MATCHED_SELLER_ORDERS} seller orders matched across them. Today is
+ * never in it: its rows are still arriving. The readiness checks the `commission` rows only; the
+ * other kinds are trusted to travel with them (same ledger, same event, same backfill).
  */
 export function ledgerReadinessOf(
-  backfillFinished: boolean,
+  backfill: LedgerBackfillState,
   window: DayRange,
   days: readonly LedgerMatchDay[],
 ): LedgerReadiness {
   const allMatch = days.length === READINESS_DAYS && days.every((day) => day.matches);
-  const ready = backfillFinished && allMatch;
+  // A paid seller order with its commission fact on the same day is a matched one.
+  const matchedSellerOrders = days.reduce(
+    (sum, day) => sum + day.paidSellerOrders - day.missingInLedger,
+    0,
+  );
+  const reason: LedgerReadinessReason = !backfill.finished
+    ? 'backfill-not-finished'
+    : backfill.failedFacts !== 0
+      ? 'backfill-refused-rows'
+      : !allMatch
+        ? 'days-not-matching'
+        : matchedSellerOrders < READINESS_MIN_MATCHED_SELLER_ORDERS
+          ? 'insufficient-activity'
+          : 'ready';
   return {
-    ready,
-    reason: ready ? 'ready' : !backfillFinished ? 'backfill-not-finished' : 'days-not-matching',
-    backfillFinished,
+    ready: reason === 'ready',
+    reason,
+    backfillFinished: backfill.finished,
+    backfillFailedFacts: backfill.failedFacts,
+    matchedSellerOrders,
     window,
     days,
   };

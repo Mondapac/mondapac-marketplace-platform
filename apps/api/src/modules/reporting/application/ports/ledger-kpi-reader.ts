@@ -1,5 +1,5 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
-import type { LedgerKindSums, PaidOnDay } from '../../domain/ledger';
+import type { LedgerBackfillState, LedgerKindSums, PaidOnDay } from '../../domain/ledger';
 import type { DayRange } from '../../domain/period';
 
 /** The range's sums per kind and when the newest rollup row behind them was rebuilt. */
@@ -29,8 +29,8 @@ export interface LedgerKpiReader {
   ): Promise<LedgerRangeSums>;
   /** The facts the readiness window is compared from. */
   matchFacts(market: MarketContext, currency: string, window: DayRange): Promise<LedgerMatchFacts>;
-  /** Whether the ledger history backfill of the Market has finished. */
-  backfillFinished(market: MarketContext): Promise<boolean>;
+  /** Whether the ledger history backfill of the Market has finished, and the rows it refused. */
+  backfillState(market: MarketContext): Promise<LedgerBackfillState>;
 }
 
 export const LEDGER_KPI_READER = Symbol('reporting.LedgerKpiReader');

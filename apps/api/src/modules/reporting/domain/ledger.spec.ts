@@ -8,6 +8,8 @@ import {
   ledgerReadinessOf,
   matchLedgerDays,
   netRevenueOf,
+  netRevenueTotalOf,
+  READINESS_MIN_MATCHED_SELLER_ORDERS,
   readinessWindow,
   rollUpLedgerDay,
   sellerNetEarningsOf,
@@ -124,11 +126,34 @@ describe.each([
       status: 'not-available',
       reason: 'not-recorded',
     });
+    // Partial: no amount at all, so the commission alone can never be shown as the total.
     expect(revenue.total).toEqual({
-      amount: 1200n,
-      complete: false,
+      status: 'partial',
       missing: ['deliveryMargin', 'platformFundedDiscounts', 'platformFundedCashback', 'fleetFees'],
     });
+    expect(revenue.total).not.toHaveProperty('amount');
+  });
+
+  it('totals the components with their sign only when every one is available', () => {
+    const amount = (value: bigint) => ({ status: 'available' as const, amount: value });
+    expect(
+      netRevenueTotalOf({
+        commission: amount(1200n),
+        deliveryMargin: amount(300n),
+        platformFundedDiscounts: amount(100n),
+        platformFundedCashback: amount(50n),
+        fleetFees: amount(25n),
+      }),
+    ).toEqual({ status: 'complete', amount: 1325n });
+    expect(
+      netRevenueTotalOf({
+        commission: amount(1200n),
+        deliveryMargin: amount(300n),
+        platformFundedDiscounts: amount(100n),
+        platformFundedCashback: amount(50n),
+        fleetFees: { status: 'not-available', reason: 'not-recorded' },
+      }),
+    ).toEqual({ status: 'partial', missing: ['fleetFees'] });
   });
 
   it('can go below zero when a range refunds more commission than it charged', () => {
@@ -162,10 +187,13 @@ describe.each([
   });
 });
 
-describe('readiness', () => {
-  const window = readinessWindow(day('2026-11-23'));
+describe.each([
+  ['AU', '2026-11-23'],
+  ['ZZ', '2026-11-23'],
+])('readiness in market %s', (market, todayText) => {
+  const window = readinessWindow(day(todayText));
   const all = (days: readonly string[], id: string) =>
-    days.map((text) => ({ sellerOrderId: `${id}-${text}`, day: day(text) }));
+    days.map((text) => ({ sellerOrderId: `${market}-${id}-${text}`, day: day(text) }));
   const days = [
     '2026-11-16',
     '2026-11-17',
@@ -175,38 +203,65 @@ describe('readiness', () => {
     '2026-11-21',
     '2026-11-22',
   ];
+  const done = { finished: true, failedFacts: 0 };
 
   it('looks at the seven Market days ending yesterday', () => {
     expect(window).toEqual({ from: '2026-11-16', to: '2026-11-22' });
   });
 
-  it('is ready when the backfill finished and every day matches, empty days included', () => {
-    const matched = matchLedgerDays(
-      window,
-      all(days.slice(2), 'x'),
-      all(days.slice(2), 'x'),
-      new Set(),
-    );
+  it('is ready when the backfill finished clean, every day matches and enough orders matched', () => {
+    // Seven matched seller orders, all on the last five days: the first two days are empty.
+    const orders = [...all(days.slice(2), 'x'), ...all(days.slice(5), 'y')];
+    expect(orders).toHaveLength(READINESS_MIN_MATCHED_SELLER_ORDERS);
+    const matched = matchLedgerDays(window, orders, orders, new Set());
     expect(matched).toHaveLength(7);
     expect(matched.every((row) => row.matches)).toBe(true);
     expect(matched[0]).toMatchObject({ paidSellerOrders: 0, ledgerSellerOrders: 0 });
-    expect(ledgerReadinessOf(true, window, matched)).toMatchObject({
+    expect(ledgerReadinessOf(done, window, matched)).toMatchObject({
       ready: true,
       reason: 'ready',
+      matchedSellerOrders: 7,
+      backfillFailedFacts: 0,
     });
-    expect(ledgerReadinessOf(false, window, matched)).toMatchObject({
+    expect(ledgerReadinessOf({ finished: false, failedFacts: 0 }, window, matched)).toMatchObject({
       ready: false,
       reason: 'backfill-not-finished',
     });
   });
 
+  it('is not ready on an empty week, nor below the minimum of matched orders', () => {
+    const empty = matchLedgerDays(window, [], [], new Set());
+    expect(empty.every((row) => row.matches)).toBe(true);
+    expect(ledgerReadinessOf(done, window, empty)).toMatchObject({
+      ready: false,
+      reason: 'insufficient-activity',
+      matchedSellerOrders: 0,
+    });
+    const few = all(days.slice(1), 'x');
+    expect(few).toHaveLength(READINESS_MIN_MATCHED_SELLER_ORDERS - 1);
+    expect(
+      ledgerReadinessOf(done, window, matchLedgerDays(window, few, few, new Set())),
+    ).toMatchObject({ ready: false, reason: 'insufficient-activity', matchedSellerOrders: 6 });
+  });
+
+  it('is not ready when the backfill refused a row, however well the days match', () => {
+    const orders = [...all(days, 'x'), ...all(days, 'y')];
+    const matched = matchLedgerDays(window, orders, orders, new Set());
+    expect(ledgerReadinessOf({ finished: true, failedFacts: 1 }, window, matched)).toMatchObject({
+      ready: false,
+      reason: 'backfill-refused-rows',
+      backfillFailedFacts: 1,
+    });
+  });
+
   it('is not ready while a paid seller order has no commission fact on its day', () => {
-    const paid = all(days, 'x');
+    const paid = [...all(days, 'x'), ...all(days, 'y')];
     const matched = matchLedgerDays(window, paid, paid.slice(1), new Set());
     expect(matched[0]).toMatchObject({ day: '2026-11-16', missingInLedger: 1, matches: false });
-    expect(ledgerReadinessOf(true, window, matched)).toMatchObject({
+    expect(ledgerReadinessOf(done, window, matched)).toMatchObject({
       ready: false,
       reason: 'days-not-matching',
+      matchedSellerOrders: 13,
     });
   });
 

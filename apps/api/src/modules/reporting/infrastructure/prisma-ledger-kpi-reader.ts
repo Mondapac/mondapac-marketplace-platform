@@ -7,7 +7,13 @@ import type {
   LedgerMatchFacts,
   LedgerRangeSums,
 } from '../application/ports/ledger-kpi-reader';
-import { EMPTY_LEDGER_SUMS, isLedgerFactKind, type LedgerKindSums } from '../domain/ledger';
+import {
+  EMPTY_LEDGER_SUMS,
+  isLedgerFactKind,
+  type LedgerBackfillState,
+  type LedgerKindSums,
+} from '../domain/ledger';
+import type { MarketDay } from '../domain/facts';
 import type { DayRange } from '../domain/period';
 import { dateToDay, dayToDate } from './prisma-fact-store';
 
@@ -64,18 +70,25 @@ export class PrismaLedgerKpiReader implements LedgerKpiReader {
     window: DayRange,
   ): Promise<LedgerMatchFacts> {
     const client = this.prisma.tx(market);
+    const scope = { marketId: market.marketId, tenantId: market.tenantId, currency };
     const days = { gte: dayToDate(window.from), lte: dayToDate(window.to) };
     const [paid, commission] = await Promise.all([
       client.reportingSellerOrder.findMany({
-        where: { marketId: market.marketId, currency, paidDay: days, goodsAmount: { gt: 0n } },
+        where: { ...scope, paidDay: days, goodsAmount: { gt: 0n } },
         select: { sellerOrderId: true, paidDay: true },
       }),
+      // No `distinct`: a seller order has one commission row a day at most in practice, and the
+      // pairs are deduplicated below; `distinct` would only add a sort over the window.
       client.reportingLedgerEntry.findMany({
-        where: { marketId: market.marketId, currency, kind: 'commission', marketDay: days },
+        where: { ...scope, kind: 'commission', marketDay: days },
         select: { sellerOrderId: true, marketDay: true },
-        distinct: ['sellerOrderId', 'marketDay'],
       }),
     ]);
+    const pairs = new Map<string, { sellerOrderId: string; day: MarketDay }>();
+    for (const row of commission) {
+      const day = dateToDay(row.marketDay);
+      pairs.set(`${row.sellerOrderId}|${day}`, { sellerOrderId: row.sellerOrderId, day });
+    }
     const paidIds = new Set(paid.map((row) => row.sellerOrderId));
     const others = [...new Set(commission.map((row) => row.sellerOrderId))].filter(
       (id) => !paidIds.has(id),
@@ -84,24 +97,24 @@ export class PrismaLedgerKpiReader implements LedgerKpiReader {
       others.length === 0
         ? []
         : await client.reportingSellerOrder.findMany({
-            where: { marketId: market.marketId, sellerOrderId: { in: others }, paidDay: null },
+            where: { ...scope, sellerOrderId: { in: others }, paidDay: null },
             select: { sellerOrderId: true },
           });
     return {
       paid: paid.map((row) => ({ sellerOrderId: row.sellerOrderId, day: dateToDay(row.paidDay!) })),
-      commission: commission.map((row) => ({
-        sellerOrderId: row.sellerOrderId,
-        day: dateToDay(row.marketDay),
-      })),
+      commission: [...pairs.values()],
       knownUnpaid: new Set(unpaid.map((row) => row.sellerOrderId)),
     };
   }
 
-  async backfillFinished(market: MarketContext): Promise<boolean> {
+  async backfillState(market: MarketContext): Promise<LedgerBackfillState> {
     const row = await this.prisma.tx(market).reportingBackfillProgress.findFirst({
-      where: { marketId: market.marketId, kind: LEDGER_BACKFILL_KIND },
-      select: { finishedAt: true },
+      where: { marketId: market.marketId, tenantId: market.tenantId, kind: LEDGER_BACKFILL_KIND },
+      select: { finishedAt: true, failedFacts: true },
     });
-    return row !== null && row.finishedAt !== null;
+    return {
+      finished: row !== null && row.finishedAt !== null,
+      failedFacts: row?.failedFacts ?? 0,
+    };
   }
 }

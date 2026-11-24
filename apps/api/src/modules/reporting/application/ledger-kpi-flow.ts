@@ -71,13 +71,13 @@ export async function readNetFigures(
           await Promise.all([
             deps.reader.rangeSums(market, currency, range, sellerId),
             deps.reader.matchFacts(market, currency, window),
-            deps.reader.backfillFinished(market),
+            deps.reader.backfillState(market),
           ]),
         ),
       { readOnly: true },
     );
     if (!unit.ok) return err({ code: 'access.unavailable' });
-    const [sums, match, finished] = unit.value;
+    const [sums, match, backfill] = unit.value;
     const days = matchLedgerDays(window, match.paid, match.commission, match.knownUnpaid);
     return ok({
       range,
@@ -85,7 +85,7 @@ export async function readNetFigures(
       timezone,
       generatedAt: now,
       refreshedAt: sums.refreshedAt,
-      readiness: ledgerReadinessOf(finished, window, days),
+      readiness: ledgerReadinessOf(backfill, window, days),
       sums: sums.sums,
     });
   } catch (error) {

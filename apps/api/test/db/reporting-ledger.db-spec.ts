@@ -43,7 +43,9 @@ import { ownerTestDatabaseUrl } from './test-database';
 // cashback rows once per delivery (a redelivery changes nothing), the daily rollup, net revenue
 // (a refund's commission with the opposite sign) and a seller's net earnings (its cashback taken
 // off), a changed ledger row is a conflict, the ledger backfill goes on from its saved cursor and
-// stops before the cursor after a failed read, and the "matching ledger" readiness. Every day of
+// stops before the cursor after a failed read, two units writing one seller day keep the rollup
+// equal to the facts, and the "matching ledger" readiness (a clean backfill, enough activity, a
+// payment at the Market's midnight on the same day on both sides). Every day of
 // this file is in 2031, so the sales facts of other spec files sharing the database never fall in
 // its readiness window.
 
@@ -311,6 +313,28 @@ describe.each(TEST_MARKETS)('reporting ledger facts in market %s (database)', (c
     );
   });
 
+  it('keeps the rollup equal to the sum of the facts when two units write the same seller day', async () => {
+    const sellerId = idOf<'Seller'>();
+    const orders = [paidSellerOrder(sellerId, 10_000n), paidSellerOrder(sellerId, 20_000n)];
+    await append(
+      market,
+      orders.flatMap((order) => order.paid),
+    );
+    const results = await Promise.all(orders.map((order) => deliver(order.ids.sellerOrderId)));
+    expect(results).toEqual([ok({ handled: true, entries: 1 }), ok({ handled: true, entries: 1 })]);
+    const sum = (
+      await owner.query<{ amount: string; orders: string }>(
+        `SELECT SUM(amount)::text AS amount, COUNT(DISTINCT seller_order_id)::text AS orders
+           FROM reporting.ledger_entries WHERE seller_id = $1 AND kind = 'commission'`,
+        [sellerId],
+      )
+    ).rows[0]!;
+    expect(sum).toEqual({ amount: '4500', orders: '2' });
+    expect(await rollup(sellerId)).toEqual([
+      { kind: 'commission', entries: 2, seller_orders: 2, amount: sum.amount },
+    ]);
+  });
+
   describe('backfill and readiness', () => {
     const resetProgress = () =>
       owner.query(
@@ -400,7 +424,7 @@ describe.each(TEST_MARKETS)('reporting ledger facts in market %s (database)', (c
       expect(result).toEqual(ok({ entries: 2, failedFacts: 1, pages: 1, finished: true }));
     });
 
-    it('is ready only after the backfill and while every paid seller order of the week has its commission', async () => {
+    it('is ready only after a clean backfill, with enough activity, while every paid seller order of the week has its commission', async () => {
       await resetProgress();
       const read = () => readNetFigures(kpiDeps(), system(), { range }, null);
       expect(await read()).toMatchObject({
@@ -409,12 +433,8 @@ describe.each(TEST_MARKETS)('reporting ledger facts in market %s (database)', (c
       });
       await backfillLedger({ ...deps, sources: fakeLedger([]) }, system());
 
-      // A paid seller order with its commission matches; one fully discounted (goods 0) is left out.
       const sellerId = idOf<'Seller'>();
-      const order = paidSellerOrder(sellerId, 10_000n, PAID_IN_WINDOW);
-      await append(market, order.paid);
-      await deliver(order.ids.sellerOrderId);
-      const salesFact = (sellerOrderId: string, goods: bigint) =>
+      const salesFact = (sellerOrderId: string, goods: bigint, paidAt = PAID_IN_WINDOW) =>
         owner.query(
           `INSERT INTO reporting.seller_orders (market_id, tenant_id, seller_order_id, order_id,
              seller_id, currency, goods_amount, goods_tax_amount, units, shipping_amount,
@@ -428,17 +448,59 @@ describe.each(TEST_MARKETS)('reporting ledger facts in market %s (database)', (c
             sellerId,
             currency,
             String(goods),
-            new Date(PAID_IN_WINDOW.epochMilliseconds),
-            '2031-03-05',
+            new Date(paidAt.epochMilliseconds),
+            // The paid day as the sales facts work it out: the payment's day in the Market's zone.
+            paidAt
+              .toZonedDateTimeISO(ZONES[code] as string)
+              .toPlainDate()
+              .toString(),
             new Date(NOW.epochMilliseconds),
           ],
         );
-      await salesFact(order.ids.sellerOrderId, 11_000n);
+      /** A paid seller order with its commission fact and its sales fact. */
+      const matched = async (paidAt: Temporal.Instant) => {
+        const order = paidSellerOrder(sellerId, 10_000n, paidAt);
+        await append(market, order.paid);
+        await deliver(order.ids.sellerOrderId);
+        await salesFact(order.ids.sellerOrderId, 11_000n, paidAt);
+        return order;
+      };
+      /** An instant at a wall-clock time of a window day in the Market's zone. */
+      const local = (day: string, time: string) =>
+        Temporal.PlainDateTime.from(`${day}T${time}`)
+          .toZonedDateTime(ZONES[code] as string)
+          .toInstant();
+
+      // One matched seller order matches every day, but a week this quiet proves nothing.
+      await matched(PAID_IN_WINDOW);
+      // A fully discounted seller order (goods 0) writes no commission row and is left out.
       await salesFact(idOf(), 0n);
+      const quiet = await read();
+      if (!quiet.ok) throw new Error('read failed');
+      expect(quiet.value.readiness).toMatchObject({
+        ready: false,
+        reason: 'insufficient-activity',
+        matchedSellerOrders: 1,
+      });
+
+      // Paid seconds before and after the Market's midnight: the ledger day and the paid day are
+      // both the payment's day in the Market's zone, so they agree.
+      const beforeMidnight = await matched(local('2031-03-06', '23:59:30'));
+      const afterMidnight = await matched(local('2031-03-07', '00:00:30'));
+      expect((await facts(beforeMidnight.ids.sellerOrderId))[0]!.market_day.toISOString()).toMatch(
+        /^2031-03-06/,
+      );
+      expect((await facts(afterMidnight.ids.sellerOrderId))[0]!.market_day.toISOString()).toMatch(
+        /^2031-03-07/,
+      );
+      for (const day of ['2031-03-03', '2031-03-04', '2031-03-08', '2031-03-09'])
+        await matched(local(day, '12:00:00'));
       const ready = await read();
       if (!ready.ok) throw new Error('read failed');
       expect(ready.value.readiness).toMatchObject({
         ready: true,
+        reason: 'ready',
+        matchedSellerOrders: 7,
         window: { from: '2031-03-03', to: '2031-03-09' },
       });
       expect(ready.value.readiness.days[2]).toMatchObject({
@@ -447,6 +509,24 @@ describe.each(TEST_MARKETS)('reporting ledger facts in market %s (database)', (c
         ledgerSellerOrders: 1,
         matches: true,
       });
+      expect(ready.value.readiness.days[3]).toMatchObject({ day: '2031-03-06', matches: true });
+      expect(ready.value.readiness.days[4]).toMatchObject({ day: '2031-03-07', matches: true });
+
+      // A backfill that refused a row left a hole: not ready, however well the week matches.
+      await owner.query(
+        `UPDATE reporting.backfill_progress SET failed_facts = 1
+          WHERE market_id = $1 AND kind = 'ledger'`,
+        [code],
+      );
+      expect(await read()).toMatchObject({
+        ok: true,
+        value: { readiness: { ready: false, reason: 'backfill-refused-rows' } },
+      });
+      await owner.query(
+        `UPDATE reporting.backfill_progress SET failed_facts = 0
+          WHERE market_id = $1 AND kind = 'ledger'`,
+        [code],
+      );
 
       // A paid seller order whose ledger rows never arrived: the week no longer matches.
       await salesFact(idOf(), 5_000n);

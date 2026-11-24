@@ -22,15 +22,23 @@ export type { FinanceAnswer, OperationsAnswer, PeriodId, TopCategoriesAnswer, To
 export { PERIOD_IDS, isPeriodId, resolvePeriod } from '../domain/period';
 export type { DayRange } from '../domain/period';
 export type {
+  LedgerBackfillState,
   LedgerComponent,
   LedgerMatchDay,
   LedgerReadiness,
+  LedgerReadinessReason,
   NetRevenue,
   NetRevenueComponent,
+  NetRevenueTotal,
   NotAvailableReason,
   SellerNetEarnings,
 } from '../domain/ledger';
-export { MAX_RANGE_MONTHS, NET_REVENUE_COMPONENTS, READINESS_DAYS } from '../domain/ledger';
+export {
+  MAX_RANGE_MONTHS,
+  NET_REVENUE_COMPONENTS,
+  READINESS_DAYS,
+  READINESS_MIN_MATCHED_SELLER_ORDERS,
+} from '../domain/ledger';
 export type { NetFiguresFailure, NetFiguresInput, NetRevenueAnswer, SellerNetEarningsAnswer };
 
 /**
@@ -64,8 +72,9 @@ export interface ReportingKpiFacade {
 
   /**
    * Mondapac's net revenue of a range of Market days, without GST, with the "matching ledger"
-   * readiness (FE-066): `netRevenue` is null until it is ready, and a component with no source is
-   * `not-available`, never 0. Key `commission-payouts.settlement.view`, platform admin only.
+   * readiness (FE-066): `netRevenue` is null until it is ready, a component with no source is
+   * `not-available`, never 0, and `total` has an amount only when every component has one
+   * (`partial` lists the missing ones instead). Key `commission-payouts.settlement.view`, platform admin only.
    */
   marketplaceNetRevenue(
     context: CallContext,

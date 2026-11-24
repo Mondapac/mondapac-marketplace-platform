@@ -244,8 +244,11 @@ still answers.
   charged less what seller-borne refunds gave back (the base is goods without GST, so the commission
   carries none). Delivery margin, platform-funded discounts and cashback are `not-available`
   (`not-reported`: ordering and promotions hold them, no facade carries them; FE-167, FE-168), fleet
-  fees `not-recorded` (FE-169). `total` adds the available ones and lists the missing: never a
-  silent 0. A seller's own cashback is the seller's money and never lowers it.
+  fees `not-recorded` (FE-169). `total` is `{status: 'complete', amount}` only when every component
+  is available; otherwise `{status: 'partial', missing}` with NO amount, so a partial sum can never
+  be shown as the total (Ali, PR 4 review). Each available component keeps its own amount, so the
+  screen shows the commission under its own label. A seller's own cashback is the seller's money
+  and never lowers it.
 - Seller net earnings (`reporting.view-seller-net-earnings`, key `commission-payouts.earnings.view`,
   the session's seller only, allowed while not approved like its ledger): commission base of the
   range's goods − base of its seller-borne refunds − net commission − net seller cashback. A refund
@@ -253,7 +256,14 @@ still answers.
   goods and are left out. The base uses the ledger's provisional GST until the tax module gives each
   line's tax, so it can differ slightly from GMV without GST of the sales rollups.
 - Readiness ("one week of matching ledger", design: FE-066 of the dashboards upgrade): ready when
-  the ledger backfill has finished AND each of the 7 Market days ending yesterday matches: every
+  the ledger backfill has finished without refusing a row (`failed_facts = 0`, else
+  `backfill-refused-rows`: a refused row is a hole the days may not show), at least
+  `READINESS_MIN_MATCHED_SELLER_ORDERS` = 7 seller orders matched across the window (else
+  `insufficient-activity`), AND each of the 7 Market days ending yesterday matches. The minimum is
+  one a day on average: an empty week matches trivially (0 = 0) and proves nothing, while seven
+  matched orders show the subscriber kept up on real traffic. A quiet Market keeps the figures
+  withheld (fail-closed) rather than showing them unproven; the constant is in `domain/ledger.ts`.
+  The match: every
   seller order the sales facts hold as paid that day with goods above 0 has a `commission` fact that
   day, and every seller order with a `commission` fact that day is held as paid that day (or held as
   never seen paid, a seller order first read after it was cancelled). Chosen over "the subscription
@@ -261,7 +271,18 @@ still answers.
   bug, and it needs no new state. Amounts are not compared: the ledger's base uses the provisional
   tax rate, the sales facts the line's tax. Today is never in the window (rows still arriving). Both
   reads answer the figure as null until ready; the admin answer carries the day counts, the seller
-  answer only the flag.
+  answer only the flag. The readiness checks the `commission` rows only: `refund-commission` and
+  the cashback kinds are trusted to travel with them (same ledger table, same event, same
+  backfill), so a lost refund or cashback row is not detected by it (the reconcile, FE-170, would).
+- Indexes and growth (Mojtaba, PR 4 review): the backfill pages commission-payouts' ledger by
+  `(market_id, id)`; that ledger has no such index today, so its next migration (in its own module)
+  should add `(market_id, id)` before the history grows. `reporting.ledger_entries` needs no
+  partitioning below about 5M rows; above that, partition by `market_day` month.
+- The readiness reads filter by Market, tenant and currency (the known-unpaid lookup too) and
+  dedupe the commission (seller order, day) pairs in memory, with no `DISTINCT` in the query.
 - Both reads take a range of Market days (at most 13 months, ending today at the latest) and are
   on the KPI facade (`marketplaceNetRevenue`, `sellerNetEarnings`) for PR 6 and PR 8. No HTTP
   endpoint yet.
+- Deferred from the PR 4 review: a shared `sessionSellerOf` in `platform/authz` (FE-171) and a
+  boundaries rule that lets only `modules/reporting` import `COMMISSION_PAYOUTS_REPORTING_FACADE`
+  (FE-172; today the facade's rule `system` is the control, tested per use case).
