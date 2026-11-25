@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { VariantPrice } from '../price/types.ts';
 import {
+  costKey,
+  costWritesOf,
   increasedBy,
+  savedCostText,
   savedPriceText,
   stockKey,
   writesOf,
@@ -128,5 +131,51 @@ describe('increasedBy bounds', () => {
   it('accepts 1000 and refuses 1000.01', () => {
     expect(increasedBy('100', '1000')).toBe('1100');
     expect(increasedBy('100', '1000.01')).toBeNull();
+  });
+});
+
+describe('costWritesOf (Offer page PR 7-UI)', () => {
+  const rows = [row('v1', '1000'), row('v2', '2000'), row('v3', null), row('v4', '500', 0, true)];
+  const saved = {
+    v1: { amount: '900' },
+    v2: { amount: null },
+    v3: { amount: null },
+    v4: { amount: '100' },
+  };
+
+  it('sends a typed Cost that differs from the recorded one, and clears an emptied one', () => {
+    expect(costWritesOf(rows, 'AUD', { v1: '9.5', v2: '12' }, saved)).toEqual({
+      writes: [
+        { kind: 'cost', variantId: 'v1', amount: '950' },
+        { kind: 'cost', variantId: 'v2', amount: '1200' },
+      ],
+      invalid: [],
+    });
+    expect(costWritesOf(rows, 'AUD', { v1: ' ' }, saved).writes).toEqual([
+      { kind: 'cost', variantId: 'v1', amount: null },
+    ]);
+  });
+
+  it('sends nothing for the same Cost, an empty field with none recorded, or a retired size', () => {
+    expect(costWritesOf(rows, 'AUD', { v1: '9', v2: '', v4: '3' }, saved)).toEqual({
+      writes: [],
+      invalid: [],
+    });
+  });
+
+  it('skips a size the Cost read did not answer for, and names text that is not money', () => {
+    expect(costWritesOf(rows, 'AUD', { v1: '0', v2: '9.999', v9: '5' }, saved)).toEqual({
+      writes: [],
+      invalid: [
+        { key: costKey('v1'), kind: 'cost' },
+        { key: costKey('v2'), kind: 'cost' },
+      ],
+    });
+  });
+
+  it('shows the recorded Cost in major units', () => {
+    expect(savedCostText({ amount: '900' }, 'AUD')).toBe('9.00');
+    expect(savedCostText({ amount: null }, 'AUD')).toBe('');
+    expect(savedCostText(undefined, 'AUD')).toBe('');
   });
 });

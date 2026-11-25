@@ -3,6 +3,8 @@
 
 export const PRICE_VIEW_PERMISSION = 'pricing.price.view';
 export const PRICE_EDIT_PERMISSION = 'pricing.price.edit';
+/** See the private Cost and Estimated profit of an offer's sizes (Offer page PR 7-UI). */
+export const COST_VIEW_PERMISSION = 'pricing.cost.view';
 
 export interface VariantPrice {
   readonly variantId: string;

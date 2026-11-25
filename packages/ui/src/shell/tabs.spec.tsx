@@ -25,6 +25,19 @@ function Switcher() {
 }
 
 describe('Tabs', () => {
+  it('draws a tab icon as decoration only: the label stays the name', () => {
+    render(
+      <Tabs
+        label="Sections"
+        items={[...items, { id: 'd', label: 'Cost', icon: 'lock' }]}
+        activeId="a"
+        onSelect={() => undefined}
+        panelId="p"
+      />,
+    );
+    const tab = screen.getByRole('tab', { name: 'Cost' });
+    expect(tab.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+  });
   it('keeps toggle buttons without a panel id', () => {
     render(<Tabs label="Sections" items={items} activeId="b" onSelect={() => undefined} />);
     expect(screen.getByRole('navigation', { name: 'Sections' })).toBeTruthy();

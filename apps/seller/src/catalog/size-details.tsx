@@ -8,13 +8,21 @@ import type { ReceiveEstimate } from '../price/receive-estimates.ts';
 import type { SourceView } from '../stock/types.ts';
 import { stockKey, type TableRow } from './variants-table-logic.ts';
 
-export type SizeTab = 'price' | 'stock';
+export type SizeTab = 'price' | 'stock' | 'cost';
 
-/** The tabs a size's Details shows: Price with the price columns, Stock with a stock location. */
-export function sizeTabsOf(showPrice: boolean, sources: readonly SourceView[]): readonly SizeTab[] {
+/**
+ * The tabs a size's Details shows: Price with the price columns, Stock with a stock location, and
+ * Cost (Offer page PR 7-UI) for a seller with `pricing.cost.view`, beside the prices.
+ */
+export function sizeTabsOf(
+  showPrice: boolean,
+  sources: readonly SourceView[],
+  showCost = false,
+): readonly SizeTab[] {
   return [
     ...(showPrice ? (['price'] as const) : []),
     ...(sources.length > 0 ? (['stock'] as const) : []),
+    ...(showPrice && showCost ? (['cost'] as const) : []),
   ];
 }
 
@@ -26,7 +34,8 @@ export function sizeTabsOf(showPrice: boolean, sources: readonly SourceView[]): 
  * not saved yet is named here too, so closing the row loses nothing. The Price tab opens with what
  * the seller receives for one unit (Offer page PR 4): what the customer pays now, the platform
  * commission and "You receive (est.)", worked out by the API as the ledger will. The special price
- * is set and ended in the Price tab too (Offer page PR 6): the table hands it in as `special`.
+ * is set and ended in the Price tab too (Offer page PR 6): the table hands it in as `special`. A
+ * seller with `pricing.cost.view` also gets a private Cost tab (Offer page PR 7-UI), handed in as `cost`.
  */
 export function SizeDetails({
   id,
@@ -42,6 +51,7 @@ export function SizeDetails({
   stockDrafts,
   receive = null,
   special = null,
+  cost = null,
 }: {
   /** The panel's id: the row's Details button controls it. */
   readonly id: string;
@@ -62,6 +72,8 @@ export function SizeDetails({
   readonly receive?: ReceiveView | null;
   /** The size's special price and its fields (Offer page PR 6), under the price lines. */
   readonly special?: React.ReactNode;
+  /** The size's private Cost and Estimated profit (Offer page PR 7-UI), in the Cost tab. */
+  readonly cost?: React.ReactNode;
 }) {
   const t = useTranslations('catalog.size-details');
   const locale = useLocale();
@@ -78,7 +90,11 @@ export function SizeDetails({
       </h3>
       <Tabs
         label={t('tabs', { size: row.label })}
-        items={tabs.map((item) => ({ id: item, label: t(`tab.${item}`) }))}
+        items={tabs.map((item) => ({
+          id: item,
+          label: t(`tab.${item}`),
+          ...(item === 'cost' ? { icon: 'lock' as const } : {}),
+        }))}
         activeId={tab}
         onSelect={(next) => onTab(next as SizeTab)}
         panelId={panelId}
@@ -121,6 +137,8 @@ export function SizeDetails({
         ) : null}
         {tab === 'price' ? (
           special
+        ) : tab === 'cost' ? (
+          cost
         ) : (
           <div className="flex max-w-xl flex-col gap-3">
             <div className="overflow-x-auto">

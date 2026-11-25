@@ -30,9 +30,18 @@ import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
 import { priceProblemOf } from '../price/errors.ts';
 import type { SpecialWithdrawn } from '../price/types.ts';
 import {
+  costProblemOf,
+  savedCostsOf,
+  type CostsState,
+  type OfferCostsBody,
+} from '../price/cost.ts';
+import {
+  costKey,
+  costWritesOf,
   increasedBy,
   isSpecialTyped,
   orderedWrites,
+  savedCostText,
   savedPriceText,
   savedStockText,
   specialKey,
@@ -42,6 +51,7 @@ import {
   type SpecialDraft,
   type TableRow,
 } from './variants-table-logic.ts';
+import { SizeCost } from './size-cost.tsx';
 import { SizeSpecial } from './size-special.tsx';
 import { unitProblemOf, variantOfPath } from './sell-unit-errors.ts';
 import {
@@ -97,6 +107,7 @@ export function VariantsTable({
   fileModel = null,
   sizeRequests = null,
   canEstimate = false,
+  canViewCost = false,
   focusPrice = false,
 }: {
   readonly offerId: string;
@@ -125,6 +136,11 @@ export function VariantsTable({
    * ledger key. Shown only with the price columns.
    */
   readonly canEstimate?: boolean;
+  /**
+   * The private Cost tab of each size (Offer page PR 7-UI): the seller holds `pricing.cost.view`;
+   * false hides the tab. Costs are read only when the seller presses "Show costs".
+   */
+  readonly canViewCost?: boolean;
   /** A draft just created with "Sell this" (Offer page PR 5): the cursor starts on a price. */
   readonly focusPrice?: boolean;
 }) {
@@ -139,6 +155,9 @@ export function VariantsTable({
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
   const [stockDrafts, setStockDrafts] = useState<Record<string, string>>({});
   const [specialDrafts, setSpecialDrafts] = useState<Record<string, SpecialDraft>>({});
+  // The private Cost (Offer page PR 7-UI): hidden until "Show costs", then typed as drafts.
+  const [costs, setCosts] = useState<CostsState>({ kind: 'hidden' });
+  const [costDrafts, setCostDrafts] = useState<Record<string, string>>({});
   // End special: the size whose request runs, and why the last one was refused.
   const [ending, setEnding] = useState<string | null>(null);
   const [endErrors, setEndErrors] = useState<Record<string, string>>({});
@@ -234,6 +253,17 @@ export function VariantsTable({
           isSpecialTyped(specialDrafts[row.variantId]),
       ).length
     : 0;
+  const showCost = canViewCost && showPrice;
+  // Writing a Cost needs the price edit key too (the API: nobody overwrites a Cost they can't see).
+  const canEditCost = showCost && canEditPrice;
+  const savedCosts = costs.kind === 'shown' ? costs.byVariant : {};
+  const costPlan =
+    canEditCost && costs.kind === 'shown'
+      ? costWritesOf(rows, currency, costDrafts, savedCosts)
+      : { writes: [], invalid: [] };
+  const costChanges = costPlan.writes.length + costPlan.invalid.length;
+  const costText = (row: TableRow) =>
+    costDrafts[row.variantId] ?? savedCostText(savedCosts[row.variantId], currency);
   const canBulk = canEditPrice || canEditStock;
   const canSave = canBulk || canEditUnits;
   // A malformed cell or SKU counts as a change so that the save bar shows and Save can say why
@@ -242,6 +272,7 @@ export function VariantsTable({
     writes.length +
     invalid.length +
     specialCount +
+    costChanges +
     unitChanges.length +
     (canEditUnits ? plan.badSku.length : 0);
 
@@ -304,8 +335,12 @@ export function VariantsTable({
     const specials = canEditPrice
       ? specialWritesOf(rows, currency, zone, specialDrafts, hasRegular)
       : { writes: [], invalid: [] };
+    const costsPlan =
+      canEditCost && costs.kind === 'shown'
+        ? costWritesOf(rows, currency, costDrafts, costs.byVariant)
+        : { writes: [], invalid: [] };
     const found: Record<string, string> = {};
-    for (const item of [...plan.invalid, ...specials.invalid]) {
+    for (const item of [...plan.invalid, ...specials.invalid, ...costsPlan.invalid]) {
       found[item.key] = t(INVALID_MESSAGE[item.kind]);
     }
     const unitsPlan = canEditUnits ? unitPlanOf(unitRows, skuDrafts, sellingDrafts) : null;
@@ -323,7 +358,12 @@ export function VariantsTable({
     setErrors(found);
     setNeedsReload(false);
     setEndErrors({});
-    if (plan.writes.length === 0 && specials.writes.length === 0 && !sendUnits) {
+    if (
+      plan.writes.length === 0 &&
+      specials.writes.length === 0 &&
+      costsPlan.writes.length === 0 &&
+      !sendUnits
+    ) {
       if (Object.keys(found).length > 0) showFirstError(found);
       return;
     }
@@ -333,18 +373,27 @@ export function VariantsTable({
     const skuLeft = { ...skuDrafts };
     const sellingLeft = { ...sellingDrafts };
     const specialLeft = { ...specialDrafts };
+    const costLeft = { ...costDrafts };
     const sent = await sendSizeWrites({
       offerId,
       rows,
-      writes: orderedWrites(rows, plan.writes, specials.writes),
+      // A Cost has its own series and changes no price: it goes last.
+      writes: [...orderedWrites(rows, plan.writes, specials.writes), ...costsPlan.writes],
       currency,
       versions,
+      costVersions:
+        costs.kind === 'shown'
+          ? Object.fromEntries(
+              Object.entries(costs.byVariant).map(([id, saved]) => [id, saved.seriesVersion]),
+            )
+          : {},
       csrfToken,
       guarded,
       messages: {
         throttledCell: t('catalog.variants-table.throttled-cell'),
         price: (problem) => t(`price.error.${problem}`),
         stock: (problem) => t(`stock.levels.error.${problem}`),
+        cost: (problem) => t(`price.cost.error.${problem}`),
       },
     });
     if (sent.signedOut) {
@@ -356,6 +405,7 @@ export function VariantsTable({
     for (const id of sent.savedPrices) delete priceLeft[id];
     for (const key of sent.savedStocks) delete stockLeft[key];
     for (const id of sent.savedSpecials) delete specialLeft[id];
+    for (const id of sent.savedCosts) delete costLeft[id];
     const seen = sent.seen;
     let done = sent.done;
     const stopped = sent.stopped;
@@ -420,7 +470,10 @@ export function VariantsTable({
     setSkuDrafts(skuLeft);
     setSellingDrafts(sellingLeft);
     setSpecialDrafts(specialLeft);
+    setCostDrafts(costLeft);
     setErrors(found);
+    // Fresh Costs and versions come from the Cost read: after a saved Cost, or a stale one.
+    if (sent.savedCosts.length > 0 || sent.staleCosts.length > 0) void loadCosts();
     const failed = Object.keys(found).length;
     if (failed > 0) showFirstError(found);
     if (waitSeconds !== null) {
@@ -457,17 +510,54 @@ export function VariantsTable({
    * failed, the first such size opens on its Price tab (one row open at a time).
    */
   function showFirstError(found: Readonly<Record<string, string>>) {
-    const special = rows.find((row) =>
-      [specialKey.amount, specialKey.start, specialKey.end].some(
+    // Fields that live in Details: a special's (Price tab) and a Cost (Cost tab, PR 7-UI).
+    const inDetails = (key: string) => key.startsWith('special') || key.startsWith('cost:');
+    const first = rows.find((row) =>
+      [specialKey.amount, specialKey.start, specialKey.end, costKey].some(
         (key) => found[key(row.variantId)] !== undefined,
       ),
     );
-    const otherFailed = Object.keys(found).some((key) => !key.startsWith('special'));
-    if (special !== undefined && !otherFailed) {
-      setOpenId(special.variantId);
-      setSizeTab('price');
+    const otherFailed = Object.keys(found).some((key) => !inDetails(key));
+    if (first !== undefined && !otherFailed) {
+      const specialFailed = [specialKey.amount, specialKey.start, specialKey.end].some(
+        (key) => found[key(first.variantId)] !== undefined,
+      );
+      setOpenId(first.variantId);
+      setSizeTab(specialFailed ? 'price' : 'cost');
     }
     setFocusTick((n) => n + 1);
+  }
+
+  /** "Show costs": reads the private Cost of every size of the offer, once per press. */
+  async function loadCosts() {
+    setCosts({ kind: 'loading' });
+    const result = await callApi<OfferCostsBody>('GET', `pricing/seller/offers/${offerId}/costs`);
+    if (result.ok) {
+      setCosts({ kind: 'shown', byVariant: savedCostsOf(result.body) });
+      return;
+    }
+    if (result.failure.status === 401) {
+      flushSync(() => setLeaving(true));
+      window.location.assign('/session-ended');
+      return;
+    }
+    setCosts({ kind: 'failed', problem: costProblemOf(result.failure) });
+  }
+
+  /** "Hide costs": the Costs leave the page; typed ones must be saved or discarded first. */
+  function hideCosts() {
+    if (costChanges > 0) return;
+    setCosts({ kind: 'hidden' });
+    setCostDrafts({});
+  }
+
+  /** Why the Cost tab of a size has no "You receive (est.)" to take the Cost from. */
+  function receiveStateOf(row: TableRow): 'ready' | 'hidden' | 'none' | 'pending' | 'unavailable' {
+    if (!showReceive) return 'hidden';
+    const amount = customerPays[row.variantId] ?? null;
+    if (amount === null) return 'none';
+    if (estimates.kind === 'unavailable' || estimates.kind === 'no-category') return 'unavailable';
+    return estimateFor(estimates, row.variantId, amount) === null ? 'pending' : 'ready';
   }
 
   /** End a size's running or scheduled special, or cancel one waiting for review, at once. */
@@ -505,6 +595,7 @@ export function VariantsTable({
 
   function discard() {
     setSpecialDrafts({});
+    setCostDrafts({});
     setEndErrors({});
     setPriceDrafts({});
     setStockDrafts({});
@@ -639,7 +730,7 @@ export function VariantsTable({
     );
   }
   const needsLocation = canEditStock && sources.length === 0;
-  const detailTabs = sizeTabsOf(showPrice, sources);
+  const detailTabs = sizeTabsOf(showPrice, sources, showCost);
   const showDetails = detailTabs.length > 0;
   const columnCount =
     (canBulk ? 1 : 0) +
@@ -1168,6 +1259,41 @@ export function VariantsTable({
                                       onEnd={() => void endSpecial(row)}
                                     />
                                   }
+                                  cost={
+                                    showCost ? (
+                                      <SizeCost
+                                        id={`${detailsId}-cost`}
+                                        sizeLabel={row.label}
+                                        currency={currency}
+                                        costs={costs}
+                                        canEdit={canEditCost}
+                                        text={costText(row)}
+                                        saved={
+                                          costs.kind === 'shown'
+                                            ? costs.byVariant[row.variantId]?.amount
+                                            : undefined
+                                        }
+                                        error={errors[costKey(row.variantId)]}
+                                        retired={row.price?.retired === true}
+                                        youReceiveMinor={
+                                          estimateFor(
+                                            estimates,
+                                            row.variantId,
+                                            customerPays[row.variantId] ?? null,
+                                          )?.youReceiveMinor ?? null
+                                        }
+                                        customerPaysMinor={customerPays[row.variantId] ?? null}
+                                        receiveState={receiveStateOf(row)}
+                                        disabled={saving}
+                                        hideBlocked={costChanges > 0}
+                                        onShow={() => void loadCosts()}
+                                        onHide={hideCosts}
+                                        onText={(text) =>
+                                          setCostDrafts({ ...costDrafts, [row.variantId]: text })
+                                        }
+                                      />
+                                    ) : null
+                                  }
                                 />
                               </div>
                             </td>
@@ -1263,6 +1389,7 @@ const INVALID_MESSAGE = {
   'special-amount': 'price.error.invalid',
   'special-start': 'price.special.error.start',
   'special-end': 'price.special.error.end',
+  cost: 'price.cost.error.invalid',
 } as const;
 
 /** An empty value: an em dash in the muted colour. */

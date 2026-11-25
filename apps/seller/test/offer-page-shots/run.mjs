@@ -32,9 +32,20 @@ const server = createServer((req, res) => {
 const port = server.address().port;
 const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH ?? 'playwright');
 const browser = await chromium.launch();
-const plan = ['closed', 'price', 'stock', 'draft', 'special-new', 'special-error'].flatMap((s) =>
-  [1280, 768, 375].map((w) => [s, w]),
-);
+const only = process.env.SHOTS_SCENARIOS?.split(',');
+const all = [
+  'closed',
+  'price',
+  'stock',
+  'draft',
+  'special-new',
+  'special-error',
+  'cost-hidden',
+  'cost',
+  'cost-loss',
+  'cost-error',
+];
+const plan = (only ?? all).flatMap((s) => [1280, 768, 375].map((w) => [s, w]));
 for (const scheme of ['light', 'dark']) {
   for (const [scenario, width] of plan) {
     const ctx = await browser.newContext({
@@ -64,6 +75,21 @@ for (const scheme of ['light', 'dark']) {
       else await page.getByRole('button', { name: 'Save 1 change' }).click();
     }
     if (scenario === 'stock') await page.getByRole('tab', { name: 'Stock' }).click();
+    // The private Cost tab (Offer page PR 7-UI): hidden, shown, a typed Cost above what the size
+    // receives, and Save with a Cost that is not money.
+    if (scenario.startsWith('cost')) {
+      await page.getByRole('tab', { name: 'Cost' }).click();
+      if (scenario !== 'cost-hidden') {
+        await page.getByRole('button', { name: 'Show costs' }).click();
+        await page.waitForTimeout(300);
+      }
+      const field = page.getByLabel('Your cost (AUD, incl. GST) for 500 g');
+      if (scenario === 'cost-loss') await field.fill('15');
+      if (scenario === 'cost-error') {
+        await field.fill('9.999');
+        await page.getByRole('button', { name: 'Save 1 change' }).click();
+      }
+    }
     // "You receive (est.)" is read after a short pause (Offer page PR 4).
     await page.waitForTimeout(900);
     const over = await page.evaluate(

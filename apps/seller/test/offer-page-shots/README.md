@@ -8,4 +8,6 @@ dark. Run from `apps/seller`:
 
 Scenarios: `closed`, `price` (Details of 500 g, Price tab), `stock` (Stock tab) and `draft` (a
 typed price kept and named in Details), `special-new` (a special typed in the Price tab, PR 6)
-and `special-error` (Save with a special that has no end).
+and `special-error` (Save with a special that has no end), `cost-hidden`, `cost`, `cost-loss` and
+`cost-error` (the private Cost tab of 500 g, PR 7-UI). `SHOTS_SCENARIOS=cost,cost-loss` runs only
+those.

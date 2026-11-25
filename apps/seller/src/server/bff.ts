@@ -214,6 +214,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'inventory/seller/offers/:id/variants/:id/sources/:id/stock',
     'pricing/seller/offers/:id/variants/:id/regular-price',
     'pricing/seller/offers/:id/variants/:id/special-price',
+    // The private Cost of one size (Offer page PR 7-UI): needs the price edit and Cost view keys.
+    'pricing/seller/offers/:id/variants/:id/cost',
   ],
   POST: [
     'identity/seller/team/invitations/:id/resend',
@@ -282,6 +284,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'customers/seller/customers/:code',
     // "You receive (est.)" of the offer page (query: `lines`; Offer page PR 4).
     'pricing/seller/offers/:id/receive-estimates',
+    // The private Cost of every size of an offer, read on "Show costs" only (Offer page PR 7-UI).
+    'pricing/seller/offers/:id/costs',
     // The size names of an Offer whose sizes are opened in the Offer list (Offer page PR 8).
     'catalog/seller/offers/:id/sell-units',
   ],
