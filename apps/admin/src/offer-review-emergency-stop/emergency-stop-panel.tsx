@@ -131,6 +131,7 @@ export function EmergencyStopPanel({
               <div>
                 <Button
                   variant={stop.on ? 'secondary' : 'destructive-solid'}
+                  className="w-full sm:w-auto"
                   disabled={busy}
                   onClick={ask}
                 >

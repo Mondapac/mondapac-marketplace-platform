@@ -1043,12 +1043,16 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
     });
 
     it('always needs a reason, even where settings changes are not reviewed', async () => {
-      for (const note of [undefined, '', '   ', 'x'.repeat(501)]) {
+      for (const note of [undefined, '', '   ']) {
         expect(await stop({ value: 'on', expectedVersion: 0, note })).toEqual({
           ok: false,
           error: { code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] },
         });
       }
+      expect(await stop({ value: 'on', expectedVersion: 0, note: 'x'.repeat(501) })).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'note', code: 'too-long' }] },
+      });
       expect(store.history).toHaveLength(0);
     });
 
@@ -1095,6 +1099,23 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       proofLeft = true;
       expect((await stop({ value: 'on', expectedVersion: 0, note: 'Fraud wave' })).ok).toBe(true);
       expect(spentProofs).toEqual(['settings.offer-review-emergency-stop.change']);
+    });
+
+    it('spends a fresh proof for the Offer review page too, and saves nothing without one', async () => {
+      const page = () =>
+        new ChangeOfferReviewSettings(gate, deps).execute(adminCtx(), {
+          changes: [{ code: 'offer-review-sampling', value: '10', expectedVersion: 0 }],
+          note: 'x',
+        });
+      proofLeft = false;
+      expect(await page()).toEqual({
+        ok: false,
+        error: { code: 'second-factor.required', actionKey: 'settings.offer-review.change' },
+      });
+      expect(store.history).toHaveLength(0);
+      proofLeft = true;
+      expect((await page()).ok).toBe(true);
+      expect(spentProofs).toEqual(['settings.offer-review.change']);
     });
 
     it('spends no proof on a stale version', async () => {

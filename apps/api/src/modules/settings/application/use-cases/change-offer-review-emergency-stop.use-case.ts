@@ -51,9 +51,8 @@ export class ChangeOfferReviewEmergencyStop extends UseCase<
   ): Promise<Result<readonly SettingChangeView[], SettingsFailure>> {
     const note = typeof input?.note === 'string' ? input.note.trim() : '';
     if (note.length === 0 || note.length > MAX_NOTE) {
-      return Promise.resolve(
-        err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] }),
-      );
+      const code = note.length === 0 ? 'required' : 'too-long';
+      return Promise.resolve(err({ code: 'validation.failed', fields: [{ path: 'note', code }] }));
     }
     return changeSettings(
       this.deps,

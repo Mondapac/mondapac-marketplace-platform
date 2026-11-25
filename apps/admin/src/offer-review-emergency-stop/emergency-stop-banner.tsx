@@ -32,7 +32,7 @@ export function EmergencyStopBanner({ zone }: { readonly zone: string }) {
   }, [read]);
   usePoll(() => void read(), BANNER_POLL_MS);
   // The stop's own page shows the same state in its card (Reza).
-  const onItsPage = usePathname() === EMERGENCY_STOP_HREF;
+  const onItsPage = (usePathname() ?? '').replace(/\/+$/, '').endsWith(EMERGENCY_STOP_HREF);
   if (stop === null || !stop.on || onItsPage) return null;
   const when =
     stop.changedAt === null

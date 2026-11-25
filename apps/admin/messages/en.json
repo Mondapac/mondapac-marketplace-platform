@@ -18347,7 +18347,7 @@
         "unknown": "It could not be switched. Try again."
       },
       "confirm-title": "Turn on emergency stop?",
-      "confirm-body": "Every new offer from every seller will wait for an admin until you turn it off. Offers already live stay on sale.",
+      "confirm-body": "Every new offer from every seller will wait for an admin until you turn it off. Offers already live stay on sale. Next you enter a fresh two-step code.",
       "confirm-cancel": "Cancel",
       "confirm-turn-on": "Turn on"
     }

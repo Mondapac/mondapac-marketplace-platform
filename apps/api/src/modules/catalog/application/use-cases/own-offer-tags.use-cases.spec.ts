@@ -608,6 +608,19 @@ describe.each([
       expect(r.referrals[0]!.reasons).toEqual(['emergency-stop']);
     });
 
+    it('adds the Market emergency stop to the reasons in modes all and risk-based too (R0)', async () => {
+      for (const mode of ['all', 'risk-based'] as const) {
+        const r = rig({
+          offer: draft(),
+          review: { mode, certificateBadges: 'automatic', emergencyStop: true },
+          reviewFacts: { probation: true },
+        });
+        const outcome = await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+        expect(outcome).toEqual({ ok: true, value: { published: false } });
+        expect(r.referrals[0]!.reasons).toEqual(['emergency-stop', 'probation']);
+      }
+    });
+
     it('queues everything in mode all, and nothing but an emergency stop in mode off', async () => {
       const all = rig({
         offer: draft(),

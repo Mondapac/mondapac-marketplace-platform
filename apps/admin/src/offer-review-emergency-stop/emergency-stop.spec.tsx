@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
-vi.mock('next/navigation', () => ({ usePathname: () => '/orders' }));
+const where = vi.hoisted(() => ({ path: '/orders' }));
+vi.mock('next/navigation', () => ({ usePathname: () => where.path }));
 vi.mock('../step-up/step-up.tsx', async () => {
   const api = await import('../api/client.ts');
   return {
@@ -111,6 +112,48 @@ describe('EmergencyStopPanel', () => {
     expect(screen.getByRole('button', { name: 'Turn off emergency stop' })).toBeTruthy();
   });
 
+  it('sends nothing when the confirm is cancelled', () => {
+    mount();
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'x' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on emergency stop' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel', hidden: true }));
+    expect(call).not.toHaveBeenCalled();
+    expect(document.querySelector('dialog[open]')).toBeNull();
+  });
+
+  it('turns off without a confirm (the safe way)', async () => {
+    call.mockResolvedValueOnce(ok({ settings: [] }));
+    call.mockResolvedValueOnce(ok(OFF));
+    mount(ON);
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'All clear' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Turn off emergency stop' }));
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Turn on emergency stop' })).toBeTruthy(),
+    );
+    expect(call).toHaveBeenNthCalledWith(
+      1,
+      'PUT',
+      'settings/admin/offer-review/emergency-stop',
+      { value: 'off', expectedVersion: 1, note: 'All clear' },
+      'csrf',
+    );
+    expect(document.querySelector('dialog[open]')).toBeNull();
+  });
+
+  it('keeps the reason and shows no error when the two-step code is cancelled', async () => {
+    call.mockResolvedValueOnce({
+      ok: false,
+      failure: { status: 0, code: 'step-up.cancelled' },
+    } as never);
+    mount();
+    fireEvent.change(screen.getByLabelText('Reason'), { target: { value: 'Fraud wave' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on emergency stop' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Turn on', hidden: true }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
+    expect(screen.getByLabelText<HTMLTextAreaElement>('Reason').value).toBe('Fraud wave');
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
   it('shows the state only to an admin without the permission', () => {
     mount(ON, false);
     expect(screen.queryByRole('button')).toBeNull();
@@ -119,6 +162,24 @@ describe('EmergencyStopPanel', () => {
 });
 
 describe('EmergencyStopBanner', () => {
+  afterEach(() => {
+    where.path = '/orders';
+  });
+
+  it('hides on the stop page itself, which shows the same state', async () => {
+    for (const path of ['/settings/emergency-stop', '/settings/emergency-stop/']) {
+      where.path = path;
+      call.mockResolvedValueOnce(ok(ON));
+      const { container, unmount } = render(
+        wrap(<EmergencyStopBanner zone="Australia/Brisbane" />),
+      );
+      await waitFor(() => expect(call).toHaveBeenCalled());
+      expect(container.textContent).toBe('');
+      unmount();
+      call.mockClear();
+    }
+  });
+
   it('shows nothing while the stop is off or the read fails', async () => {
     call.mockResolvedValueOnce(ok(OFF));
     const { container } = render(wrap(<EmergencyStopBanner zone="Australia/Brisbane" />));

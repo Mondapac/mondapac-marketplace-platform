@@ -115,6 +115,10 @@ change is live at once, audited as `settings.market-setting.changed` and reviewe
 afterwards where the area is reviewed. Nothing switches it off by itself, and a rejected or
 withdrawn review never switches it off either: that revert answers `not-permitted`, so only a
 holder of the stop's own key turns it off (a rejected "off" is restored to on).
+So a review request that switched the stop on cannot be rejected or withdrawn: the Reject answers
+`403 system-requests.revert-not-permitted` and the request stays open until it is approved or
+superseded; the admin turns the stop off on its own page instead (Hassan L1; hiding Reject
+beforehand is FE-20261125-offer-review-stop-reject-hint).
 Both Offer review saves need a fresh two-step code of the admin, spent in the change's unit
 (settings step-up actions, admin audience, locked): `settings.offer-review-emergency-stop.change`
 for the stop and `settings.offer-review.change` for the Offer review page; without one the route
