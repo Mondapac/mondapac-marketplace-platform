@@ -95,7 +95,11 @@ export class AdminDashboardController {
       'step under 5 is null; key `ordering.order.view`), `finance` (GMV with and without GST, refunded goods, net sales, ' +
       'average order, and `net`: Mondapac net revenue and take rate, null until a week of ' +
       'matching ledger, a partial total never carries an amount; key ' +
-      '`commission-payouts.settlement.view`), `discountCost` (the discounts of the orders paid ' +
+      '`commission-payouts.settlement.view`), `marketTarget` (the current calendar month, ' +
+      'whatever the period: GMV with GST to date, the whole month before, the month-end ' +
+      'forecast, an estimate, `not-enough-data` on the first three days, and the pace against ' +
+      'the monthly revenue target; keys `commission-payouts.settlement.view` and ' +
+      '`settings.monthly-revenue-target.view`), `discountCost` (the discounts of the orders paid ' +
       "in the period that still stand, with GST: Mondapac's and the sellers' shares, by kind, " +
       'against the period before, and what those orders gave back since; `not-enough-data` ' +
       'below 5 discounted orders; keys `commission-payouts.settlement.view` and ' +

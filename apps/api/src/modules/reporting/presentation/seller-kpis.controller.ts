@@ -1,6 +1,20 @@
-import { Controller, Get, HttpException, Logger, Query, Res } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  HttpException,
+  Logger,
+  Put,
+  Query,
+  Req,
+  Res,
+} from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiBody,
+  ApiConflictResponse,
+  ApiHeader,
   ApiForbiddenResponse,
   ApiOkResponse,
   ApiOperation,
@@ -10,7 +24,8 @@ import {
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
+import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import {
@@ -20,15 +35,27 @@ import {
 import { ExportSellerDaily } from '../application/use-cases/export-seller-daily.use-case';
 import { ViewSellerKpis } from '../application/use-cases/view-seller-kpis.use-case';
 import { ViewSellerNetEarnings } from '../application/use-cases/view-seller-net-earnings.use-case';
+import { SetSellerMonthlyGoal } from '../application/use-cases/set-seller-monthly-goal.use-case';
+import { ViewSellerMonthlyGoal } from '../application/use-cases/view-seller-monthly-goal.use-case';
 import { DAILY_EXPORT_QUERY, sendDailyExport } from './daily-export-response';
 import {
+  SellerGoalBody,
+  sellerGoalBody,
   SellerKpisBody,
   SellerNetEarningsBody,
+  SetSellerGoalRequest,
   sellerKpisBody,
   sellerNetEarningsBody,
+  type SellerGoalSection,
 } from './seller-kpis.dto';
 
 const ERROR = { type: Object };
+
+/** How long the goal section may take before it answers `error` (as the admin KPI sections). */
+export const SELLER_GOAL_TIMEOUT_MS = 1_500;
+
+/** The fields the goal body may carry; any other is `validation.failed` (a closed body). */
+const GOAL_FIELDS = ['month', 'amount', 'currency', 'expectedVersion'];
 
 /** The 400 body: `details.fields` when the refusal names them. */
 export function validationBody(error: {
@@ -54,7 +81,53 @@ export class SellerKpisController {
     private readonly kpis: ViewSellerKpis,
     private readonly netEarnings: ViewSellerNetEarnings,
     private readonly exportDaily: ExportSellerDaily,
+    private readonly viewGoal: ViewSellerMonthlyGoal,
+    private readonly setGoal: SetSellerMonthlyGoal,
   ) {}
+
+  /**
+   * The goal section of the KPI body: null when the use case refuses (the viewer may not read it),
+   * `error` when it fails, throws or takes longer than {@link SELLER_GOAL_TIMEOUT_MS}, so the KPI
+   * strip never waits on it or fails with it.
+   */
+  private async goalSection(context: CallContext): Promise<SellerGoalSection> {
+    let timer: NodeJS.Timeout | undefined;
+    const limit = new Promise<'timed-out'>((resolve) => {
+      timer = setTimeout(() => resolve('timed-out'), SELLER_GOAL_TIMEOUT_MS);
+      timer.unref();
+    });
+    try {
+      const answer = await Promise.race([this.viewGoal.execute(context, {}), limit]);
+      if (answer === 'timed-out') {
+        this.#logger.warn({
+          msg: 'reporting.seller-goal.section',
+          outcome: 'timeout',
+          marketId: context.market.marketId,
+          correlationId: context.correlationId,
+        });
+        return { status: 'error' };
+      }
+      if (answer.ok) return { status: 'ok', value: answer.value };
+      if (
+        answer.error.code === 'access.denied' ||
+        answer.error.code === 'access.seller-not-approved'
+      ) {
+        return null;
+      }
+      return { status: 'error' };
+    } catch (error) {
+      this.#logger.warn({
+        msg: 'reporting.seller-goal.section',
+        outcome: 'threw',
+        error: error instanceof Error ? error.constructor.name : typeof error,
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+      return { status: 'error' };
+    } finally {
+      clearTimeout(timer);
+    }
+  }
 
   @Get('kpis')
   @ApiOperation({
@@ -86,7 +159,10 @@ export class SellerKpisController {
     @Res({ passthrough: true }) response: Response,
   ): Promise<SellerKpisBody> {
     response.setHeader('Cache-Control', 'no-store');
-    const result = await this.kpis.execute(context, { period, from, to });
+    const [result, goal] = await Promise.all([
+      this.kpis.execute(context, { period, from, to }),
+      this.goalSection(context),
+    ]);
     const actor = context.actor;
     this.#logger.log({
       msg: 'reporting.seller-kpis',
@@ -102,7 +178,82 @@ export class SellerKpisController {
       const status = ACCESS_DENIED_STATUS[result.error.code];
       throw new HttpException({ statusCode: status, code: result.error.code }, status);
     }
-    return sellerKpisBody(result.value);
+    return sellerKpisBody(result.value, goal);
+  }
+
+  @Put('monthly-goal')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: "Set the seller's own sales goal for a month",
+    description:
+      "Always the session's own seller (never an id from input); needs " +
+      '`reporting.seller-goal.manage`, denied while the seller is not approved. `month` is this ' +
+      "calendar month of the Market's zone or one of the next 12; `amount` is sales with GST in " +
+      "minor units above zero (at most 15 digits), in the Market's currency. The body carries the " +
+      'version seen (`sellerGoal.goal.version` of the KPI read; 0 for none): a stale edit is 409 ' +
+      '`reporting.seller-goal-conflict`. Audited; the goal in force changes nothing. A goal is ' +
+      'changed, not removed.',
+  })
+  @ApiHeader({ name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' })
+  @ApiBody({ type: SetSellerGoalRequest })
+  @ApiOkResponse({ type: SellerGoalBody })
+  @ApiBadRequestResponse({
+    ...ERROR,
+    description: 'validation.failed (details.fields: month, amount, currency, expectedVersion)',
+  })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({
+    ...ERROR,
+    description: 'access.denied, access.seller-not-approved or request.csrf',
+  })
+  @ApiConflictResponse({ ...ERROR, description: 'reporting.seller-goal-conflict' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  async putGoal(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() body: unknown,
+  ): Promise<SellerGoalBody> {
+    response.setHeader('Cache-Control', 'no-store');
+    if (request.is('application/json') !== 'application/json') {
+      throw new HttpException({ statusCode: 415, code: 'request.body-unsupported' }, 415);
+    }
+    if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+      throw new HttpException(validationBody({ fields: [{ path: '', code: 'type' }] }), 400);
+    }
+    const unknown = Object.keys(body).filter((key) => !GOAL_FIELDS.includes(key));
+    if (unknown.length > 0) {
+      throw new HttpException(
+        validationBody({ fields: [{ path: '', code: 'unknown-field' }] }),
+        400,
+      );
+    }
+    const { month, amount, currency, expectedVersion } = body as Record<string, unknown>;
+    const result = await this.setGoal.execute(context, {
+      month,
+      amount,
+      currency,
+      expectedVersion,
+    });
+    const actor = context.actor;
+    this.#logger.log({
+      msg: 'reporting.seller-goal.set',
+      outcome: result.ok ? 'set' : result.error.code,
+      sellerId: actor.kind === 'authenticated' ? actor.sellerId : null,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    if (!result.ok) {
+      if (result.error.code === 'validation.failed') {
+        throw new HttpException(validationBody(result.error), 400);
+      }
+      if (result.error.code === 'reporting.seller-goal-conflict') {
+        throw new HttpException({ statusCode: 409, code: result.error.code }, 409);
+      }
+      const status = ACCESS_DENIED_STATUS[result.error.code];
+      throw new HttpException({ statusCode: status, code: result.error.code }, status);
+    }
+    return sellerGoalBody(result.value);
   }
 
   @Get('net-earnings')

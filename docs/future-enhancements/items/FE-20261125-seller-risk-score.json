@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-risk-score",
+  "area": "catalog",
+  "title": "امتیاز ریسک فروشنده به جای قاعدهٔ ساده",
+  "desc": "به جای Trusted بله یا نه، امتیازی از نرخ Changes needed، بیرون رفتن از فروش، بازگشت کالا و امتیاز مشتری؛ سیاست ارجاع و نرخ نمونه‌گیری از آن پیروی کنند.",
+  "src": "design/catalog/offer-approval/offer-approval-design-fa.html (بازبینی حسن، محمد، هادی)",
+  "date": "2026-11-25",
+  "trig": "بعد از دادهٔ کافی از سفارش و امتیاز",
+  "prio": "پایین",
+  "status": "موکول"
+}

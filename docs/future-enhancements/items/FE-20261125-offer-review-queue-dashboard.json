@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-offer-review-queue-dashboard",
+  "area": "admin",
+  "title": "داشبورد صف بازبینی Offer",
+  "desc": "زمان انتظار، حجم صف بر اساس دلیل (R1 تا R7)، نرخ انتشار خودکار و نرخ رد نمونه‌های بعد از انتشار، برای تنظیم عددهای سیاست.",
+  "src": "design/catalog/offer-approval/offer-approval-design-fa.html (بازبینی حسن، محمد، هادی)",
+  "date": "2026-11-25",
+  "trig": "بعد از ساخت تأیید Offer بر اساس ریسک",
+  "prio": "پایین",
+  "status": "موکول"
+}

@@ -2,6 +2,9 @@ import { ApiProperty } from '@nestjs/swagger';
 import type { SellerNetEarningsAnswer } from '../application/use-cases/view-seller-net-earnings.use-case';
 import type { SellerKpiAnswer } from '../application/use-cases/view-seller-kpis.use-case';
 import type { SellerKpiTotals } from '../domain/seller-kpis';
+import type { SellerGoalAnswer } from '../application/use-cases/view-seller-monthly-goal.use-case';
+import type { SetSellerGoalAnswer } from '../application/use-cases/set-seller-monthly-goal.use-case';
+import { MonthFiguresBody, monthFiguresBody } from './month-forecast.dto';
 
 /** Money is a decimal string of minor units (an integer may not fit a JSON number). */
 export class SellerKpiTotalsBody {
@@ -57,6 +60,63 @@ export class SellerKpiPeriodBody {
   @ApiProperty() days!: number;
 }
 
+export class SellerGoalFiguresBody extends MonthFiguresBody {
+  @ApiProperty({ description: "The month's goal version for the edit; 0 while none is set." })
+  version!: number;
+}
+
+export class SellerGoalSectionBody {
+  @ApiProperty({ enum: ['ok', 'error'], description: '`error`: the read failed or was slow.' })
+  status!: string;
+  @ApiProperty({ required: false, type: SellerGoalFiguresBody }) goal?: SellerGoalFiguresBody;
+}
+
+/** One section of the KPI body: its figures, `error`, or null (left out). */
+export type SellerGoalSection =
+  { readonly status: 'ok'; readonly value: SellerGoalAnswer } | { readonly status: 'error' } | null;
+
+export function sellerGoalSectionBody(section: SellerGoalSection): SellerGoalSectionBody | null {
+  if (section === null) return null;
+  if (section.status === 'error') return { status: 'error' };
+  const { value } = section;
+  return {
+    status: 'ok',
+    goal: {
+      ...monthFiguresBody(value.figures, value.timezone, value.currency),
+      version: value.version,
+    },
+  };
+}
+
+export class SetSellerGoalRequest {
+  @ApiProperty({
+    example: '2026-11',
+    description: 'This month of the Market or one of the next 12.',
+  })
+  month!: string;
+  @ApiProperty({ description: 'Minor units above zero (at most 15 digits), as a string.' })
+  amount!: string;
+  @ApiProperty({ description: "ISO 4217: the Market's currency." }) currency!: string;
+  @ApiProperty({ description: 'The version seen (0: no goal yet); a stale edit is 409.' })
+  expectedVersion!: number;
+}
+
+export class SellerGoalBody {
+  @ApiProperty({ example: '2026-11' }) month!: string;
+  @ApiProperty({ description: 'Minor units.' }) amount!: string;
+  @ApiProperty() currency!: string;
+  @ApiProperty() version!: number;
+  @ApiProperty({ format: 'date-time' }) updatedAt!: string;
+}
+
+export const sellerGoalBody = (answer: SetSellerGoalAnswer): SellerGoalBody => ({
+  month: answer.month,
+  amount: answer.goal.amount.toString(),
+  currency: answer.goal.currency,
+  version: answer.version,
+  updatedAt: answer.updatedAt.toString(),
+});
+
 export class SellerKpisBody {
   @ApiProperty({ type: SellerKpiPeriodBody }) period!: SellerKpiPeriodBody;
   @ApiProperty({ description: 'The IANA zone the Market counts its days in.' }) timezone!: string;
@@ -76,6 +136,15 @@ export class SellerKpisBody {
     description: 'The latest refresh of any figure read; null when the period has none.',
   })
   refreshedAt!: string | null;
+  @ApiProperty({
+    type: SellerGoalSectionBody,
+    nullable: true,
+    description:
+      "The current calendar month against the seller's own goal, whatever the period: sales " +
+      'with GST to date, last month, the month-end forecast (an estimate) and the pace. Null ' +
+      'when the viewer may not read it; `error` when it failed or took too long.',
+  })
+  sellerGoal!: SellerGoalSectionBody | null;
 }
 
 const money = (value: bigint): string => value.toString();
@@ -90,7 +159,10 @@ function totalsBody(totals: SellerKpiTotals): SellerKpiTotalsBody {
   };
 }
 
-export function sellerKpisBody(answer: SellerKpiAnswer): SellerKpisBody {
+export function sellerKpisBody(
+  answer: SellerKpiAnswer,
+  goal: SellerGoalSection = null,
+): SellerKpisBody {
   const { kpis, period } = answer;
   const days = (rows: typeof kpis.series): SellerKpiDayBody[] =>
     rows.map((row) => ({
@@ -119,6 +191,7 @@ export function sellerKpisBody(answer: SellerKpiAnswer): SellerKpisBody {
       units: row.units,
     })),
     refreshedAt: kpis.refreshedAt === null ? null : kpis.refreshedAt.toString(),
+    sellerGoal: sellerGoalSectionBody(goal),
   };
 }
 

@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-goal-remove",
+  "area": "seller",
+  "title": "Remove a seller's monthly goal",
+  "desc": "A seller can set and change a monthly goal but not remove it (no DELETE grant on reporting.seller_monthly_goals). Add a clear action (a tombstone or a DELETE grant with an audit row).",
+  "src": "Dashboards v2 phase 2, monthly targets PR",
+  "date": "2026-11-25",
+  "trig": "A seller asks to clear a goal, or the goal card's design adds a remove action",
+  "prio": "پایین",
+  "status": "موکول"
+}

@@ -353,3 +353,41 @@ must say the amounts include GST, while the finance section's net revenue subtra
 platform-funded part without GST. Top promotions by cost and the seller's own discount cost are
 deferred (FE-20261125-dashboards-top-promotions-by-cost, FE-20261125-dashboards-seller-discount-cost).
 The card is built in the phase 2 cards PR.
+
+### Monthly target and seller goal, with the month-end forecast (dashboards v2, phase 2)
+
+API only; the cards come in the phase 2 cards PR.
+
+- Market target: a Market setting `monthly-revenue-target` in the settings store (ADR-0026, the
+  history table keeps every earlier target). Value `none` or `<currency>:<minor units>` in the
+  Market's own currency. `GET` and `PUT settings/admin/monthly-revenue-target` (keys
+  `settings.monthly-revenue-target.view` and `.manage`, unprotected; the view key is in the Viewer
+  role, seed version 38). The change is the shared settings flow: version check, refused in
+  acting-as, System requests review, revert, and the audit action
+  `settings.monthly-revenue-target.changed` (money before and after). One standing target for
+  every month until changed.
+- Seller goal: table `reporting.seller_monthly_goals` (per seller and calendar month, version,
+  docs/design/data/reporting.md). `PUT reporting/seller/monthly-goal` (key
+  `reporting.seller-goal.manage`, a seller key the Seller Owner holds; denied while not approved;
+  the session's seller only; this month or one of the next 12; audited as
+  `reporting.seller-goal.changed`). Reporting owns it, not sellers: it is read only with
+  reporting's figures and keeps the module to one schema; it is the one authored table of
+  reporting (its down migration loses the goals).
+- `GET dashboard/admin/kpis` gains `marketTarget` (keys `commission-payouts.settlement.view` and
+  `settings.monthly-revenue-target.view`; null without both, `status: error` on failure or after
+  1.5 s). `GET reporting/seller/kpis` gains `sellerGoal` (key `ordering.seller-order.view`, as the
+  strip; null when refused, `status: error` on failure or after 1.5 s). Both are the current
+  calendar month whatever the period.
+- Revenue basis: the KPI one. Admin: GMV with GST (goods of paid seller orders on their paid day;
+  refunds never lower it). Seller: sales with GST, the same basis per seller. Days and the month
+  are the Market's (the rollups are by Market day), also for the seller goal: the seller's own
+  zone is not used (FE-20261125-seller-goal-seller-zone). A goal cannot be removed yet
+  (FE-20261125-seller-goal-remove); the Market target is one standing value, not per month
+  (FE-20261125-market-target-per-month).
+- Forecast (`reporting/domain/month-forecast.ts`): month to date ÷ time elapsed in the month ×
+  length of the month, both exact time from the month's start to the next month's start in the
+  Market zone (a month with a daylight-saving change is as long as it really is), half up. Always
+  an estimate (`status: estimate`); `not-enough-data` while fewer than 3 whole Market days of the
+  month are behind today (so from the 4th). With it: the whole month before, `progressBp`
+  (to date ÷ target), `paceBp` (forecast ÷ target), `toGo` and `perDayToGo` (`daysLeft` counts
+  today). A target in another currency than the Market's is shown as no target.

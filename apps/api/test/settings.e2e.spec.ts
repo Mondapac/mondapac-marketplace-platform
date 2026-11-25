@@ -13,6 +13,8 @@ import { ChangeOfferReviewSettings } from '../src/modules/settings/application/u
 import { ViewOfferReviewSettings } from '../src/modules/settings/application/use-cases/view-offer-review-settings.use-case';
 import { ReadListPaging } from '../src/modules/settings/application/use-cases/read-list-paging.use-case';
 import { ViewCartModeSetting } from '../src/modules/settings/application/use-cases/view-cart-mode-setting.use-case';
+import { ChangeMonthlyRevenueTargetSetting } from '../src/modules/settings/application/use-cases/change-monthly-revenue-target-setting.use-case';
+import { ViewMonthlyRevenueTargetSetting } from '../src/modules/settings/application/use-cases/view-monthly-revenue-target-setting.use-case';
 import { ViewListPagingSetting } from '../src/modules/settings/application/use-cases/view-list-paging-setting.use-case';
 import { SETTINGS_STATUS } from '../src/modules/settings/presentation/http-answers';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
@@ -97,6 +99,10 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
           .useValue(stub('view-cart'))
           .overrideProvider(ChangeCartModeSetting)
           .useValue(stub('change-cart'))
+          .overrideProvider(ViewMonthlyRevenueTargetSetting)
+          .useValue(stub('view-target'))
+          .overrideProvider(ChangeMonthlyRevenueTargetSetting)
+          .useValue(stub('change-target'))
           .overrideProvider(ViewOfferReviewSettings)
           .useValue(stub('view-offer-review'))
           .overrideProvider(ChangeOfferReviewSettings)
@@ -292,6 +298,53 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
         name: 'change-cart',
         input: { code: 'cart-mode', value: 'single-store', expectedVersion: 0 },
       },
+    ]);
+  });
+
+  it('reads and sets the monthly revenue target as money, the amount a string of minor units', async () => {
+    await boot();
+    const session = sessionOf('admin', 3);
+    const route = '/settings/admin/monthly-revenue-target';
+    next = ok([
+      {
+        code: 'monthly-revenue-target',
+        value: 'none',
+        version: 0,
+        updatedAt: null,
+        review: NOT_REVIEWED,
+      },
+    ]);
+    const empty = await call('get', route, 'admin', session);
+    expect(empty.status).toBe(200);
+    expect(empty.headers['cache-control']).toBe('no-store');
+    expect(empty.body).toEqual({ target: null, version: 0, updatedAt: null, review: NOT_REVIEWED });
+    next = ok({
+      code: 'monthly-revenue-target',
+      value: 'JPY:24000000',
+      version: 1,
+      updatedAt: START,
+      review: NOT_REVIEWED,
+      request: null,
+    });
+    const target = { amount: '24000000', currency: 'JPY' };
+    const set = await call('put', route, 'admin', session, { target, expectedVersion: 0 });
+    expect(set.status).toBe(200);
+    expect(set.body).toEqual({
+      target: { amount: '24000000', currency: 'JPY' },
+      version: 1,
+      updatedAt: START.toString(),
+      review: NOT_REVIEWED,
+      request: null,
+    });
+    const stray = await call('put', route, 'admin', session, { value: 'none', expectedVersion: 0 });
+    expect(stray.status).toBe(400);
+    next = err({ code: 'validation.failed', fields: [{ path: 'target.currency', code: 'value' }] });
+    const refused = await call('put', route, 'admin', session, { target, expectedVersion: 0 });
+    expect(refused.status).toBe(400);
+    expect(calls).toEqual([
+      { name: 'view-target', input: {} },
+      { name: 'change-target', input: { target, expectedVersion: 0, note: undefined } },
+      { name: 'change-target', input: { target, expectedVersion: 0, note: undefined } },
     ]);
   });
 
