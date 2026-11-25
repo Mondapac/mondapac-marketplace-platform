@@ -252,6 +252,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/admin/description-writer',
     'catalog/admin/description-writer/model-setup',
     'settings/admin/ai',
+    // The Offer review policy (settings; keys settings.offer-review.view / .manage).
+    'settings/admin/offer-review',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -294,6 +296,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // One AI setting (settings): code, value and `expectedVersion`; protected key
     // `settings.ai.manage`, so it may ask a fresh two-step code.
     'settings/admin/ai',
+    // The Offer review policy (settings): every changed setting with its `expectedVersion`, all
+    // or nothing.
+    'settings/admin/offer-review',
     // The Market default cap on seller refunds (ordering); `ordering.refund-limits.manage` is
     // protected, so it may ask a fresh two-step code.
     'ordering/admin/refund-limits',

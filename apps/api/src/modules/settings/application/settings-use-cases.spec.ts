@@ -32,6 +32,8 @@ import { ReadAiDescriptionWriter } from './use-cases/read-ai-description-writer.
 import { ReadCartMode } from './use-cases/read-cart-mode.use-case';
 import { ReadListPaging } from './use-cases/read-list-paging.use-case';
 import { ViewAiSettings } from './use-cases/view-ai-settings.use-case';
+import { ChangeOfferReviewSettings } from './use-cases/change-offer-review-settings.use-case';
+import { ViewOfferReviewSettings } from './use-cases/view-offer-review-settings.use-case';
 import { ViewCartModeSetting } from './use-cases/view-cart-mode-setting.use-case';
 import { ViewListPagingSetting } from './use-cases/view-list-paging-setting.use-case';
 
@@ -669,6 +671,151 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         ['list-paging', 'List paging'],
         ['cart-mode', 'Cart mode'],
       ]);
+    });
+  });
+  describe('the Offer review policy (risk-based Offer approval)', () => {
+    const saveOfferReview = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ChangeOfferReviewSettings(gate, deps).execute(context, input);
+
+    it('shows the launch defaults with version 0 before any change', async () => {
+      const view = await new ViewOfferReviewSettings(gate, deps).execute(adminCtx(), {});
+      expect(
+        view.ok && view.value.map(({ code, value, version }) => [code, value, version]),
+      ).toEqual([
+        ['offer-review-mode', 'risk-based', 0],
+        ['offer-review-probation-offers', '10', 0],
+        ['offer-review-reference-sellers', '3', 0],
+        ['offer-review-price-band', '50', 0],
+        ['offer-review-sampling', '5', 0],
+        ['offer-review-certificate-badges', 'review', 0],
+      ]);
+    });
+
+    it('saves several settings in one write, each with its history and audit row', async () => {
+      const saved = await saveOfferReview({
+        changes: [
+          { code: 'offer-review-probation-offers', value: '20', expectedVersion: 0 },
+          { code: 'offer-review-sampling', value: 10, expectedVersion: 0 },
+          { code: 'offer-review-mode', value: 'all', expectedVersion: 0 },
+        ],
+      });
+      expect(
+        saved.ok && saved.value.map(({ code, value, version }) => [code, value, version]),
+      ).toEqual([
+        ['offer-review-probation-offers', '20', 1],
+        ['offer-review-sampling', '10', 1],
+        ['offer-review-mode', 'all', 1],
+      ]);
+      expect(store.history.map((row) => [row.code, row.previousValue, row.value])).toEqual([
+        ['offer-review-probation-offers', null, '20'],
+        ['offer-review-sampling', null, '10'],
+        ['offer-review-mode', null, 'all'],
+      ]);
+      expect(audit.entries).toEqual([
+        expect.objectContaining({
+          action: 'settings.market-setting.number-changed',
+          targetId: 'offer-review-probation-offers',
+          before: { value: 10 },
+          after: { value: 20, version: 1 },
+        }),
+        expect.objectContaining({
+          action: 'settings.market-setting.number-changed',
+          targetId: 'offer-review-sampling',
+          before: { value: 5 },
+          after: { value: 10, version: 1 },
+        }),
+        expect.objectContaining({
+          action: 'settings.market-setting.changed',
+          targetId: 'offer-review-mode',
+          before: { value: 'risk-based' },
+          after: { value: 'all', version: 1 },
+        }),
+      ]);
+    });
+
+    it('saves nothing when any one version is stale', async () => {
+      await saveOfferReview({
+        changes: [{ code: 'offer-review-price-band', value: '40', expectedVersion: 0 }],
+      });
+      const stale = await saveOfferReview({
+        changes: [
+          { code: 'offer-review-sampling', value: '7', expectedVersion: 0 },
+          { code: 'offer-review-price-band', value: '30', expectedVersion: 0 },
+        ],
+      });
+      expect(!stale.ok && stale.error.code).toBe('settings.conflict');
+      expect(store.history).toHaveLength(1);
+      expect(await store.find(market, 'offer-review-sampling')).toBeNull();
+    });
+
+    it.each([
+      ['a number below its bounds', { code: 'offer-review-reference-sellers', value: '1' }],
+      ['a number above its bounds', { code: 'offer-review-sampling', value: '101' }],
+      ['a number with a leading zero', { code: 'offer-review-price-band', value: '050' }],
+      ['a fraction', { code: 'offer-review-probation-offers', value: '1.5' }],
+      ['an exponent', { code: 'offer-review-probation-offers', value: '1e1' }],
+      ['a negative number', { code: 'offer-review-probation-offers', value: -1 }],
+      ['a choice outside the list', { code: 'offer-review-mode', value: 'some' }],
+      ['a setting of another page', { code: 'list-paging', value: 'prev-next' }],
+      ['an unknown setting', { code: 'offer-review-anything', value: '1' }],
+    ])('refuses %s and saves nothing', async (_name, change) => {
+      const refused = await saveOfferReview({
+        changes: [
+          { code: 'offer-review-sampling', value: '6', expectedVersion: 0 },
+          { ...change, expectedVersion: 0 },
+        ],
+      });
+      expect(!refused.ok && refused.error.code).toBe('validation.failed');
+      expect(store.history).toHaveLength(0);
+    });
+
+    it('refuses an empty list, a setting named twice, and a list that is not one', async () => {
+      const twice = { code: 'offer-review-sampling', value: '6', expectedVersion: 0 };
+      for (const changes of [[], [twice, twice], 'offer-review-sampling', undefined]) {
+        const refused = await saveOfferReview({ changes });
+        expect(!refused.ok && refused.error.code).toBe('validation.failed');
+      }
+      expect(store.history).toHaveLength(0);
+    });
+
+    it('refuses anyone but an admin acting as themselves', async () => {
+      const changes = [{ code: 'offer-review-sampling', value: '6', expectedVersion: 0 }];
+      for (const context of [sellerCtx(), actingAs(adminCtx())]) {
+        const refused = await saveOfferReview({ changes }, context);
+        expect(!refused.ok && refused.error.code).toBe('access.denied');
+      }
+      expect(store.history).toHaveLength(0);
+    });
+
+    it('opens one review request per changed setting, and a revert restores a number', async () => {
+      review.review('marketplace');
+      await saveOfferReview({
+        changes: [
+          { code: 'offer-review-probation-offers', value: '0', expectedVersion: 0 },
+          { code: 'offer-review-certificate-badges', value: 'automatic', expectedVersion: 0 },
+        ],
+        note: 'Launch sellers are known to the team',
+      });
+      expect(review.opened.map((opened) => opened.subjectRef)).toEqual([
+        'offer-review-probation-offers',
+        'offer-review-certificate-badges',
+      ]);
+      const outcome = await new SettingsReverter(deps).revert(adminCtx(), {
+        requestId: id<'SystemRequest'>(0x5e4),
+        subjectRef: 'offer-review-probation-offers',
+        before: { value: '10' },
+        after: { value: '0' },
+      });
+      expect(outcome).toBe('reverted');
+      expect(await store.find(market, 'offer-review-probation-offers')).toMatchObject({
+        value: '10',
+        version: 2,
+      });
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'settings.market-setting.number-changed',
+        before: { value: 0 },
+        after: { value: 10, version: 2 },
+      });
     });
   });
 });

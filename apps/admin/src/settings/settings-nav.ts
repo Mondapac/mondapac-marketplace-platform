@@ -30,6 +30,10 @@ import {
 } from '../ship-to-retention/types.ts';
 import { AI_MANAGE_PERMISSION, AI_VIEW_PERMISSION } from '../ai-settings/types.ts';
 import { POLICY_MANAGE_PERMISSION, POLICY_VIEW_PERMISSION } from '../system-requests/types.ts';
+import {
+  OFFER_REVIEW_MANAGE_PERMISSION,
+  OFFER_REVIEW_VIEW_PERMISSION,
+} from '../offer-review-settings/types.ts';
 import { SUPPORT_MANAGE_PERMISSION, SUPPORT_VIEW_PERMISSION } from './types.ts';
 
 // The one map of the admin Settings pages (settings UX design, hub and roles sections). The hub,
@@ -117,6 +121,22 @@ export const settingsGroups: readonly SettingsGroup[] = [
         href: '/settings/fleets',
         view: [FLEET_VIEW_PERMISSION],
         manage: [FLEET_MANAGE_PERMISSION],
+      },
+    ],
+  },
+  {
+    id: 'catalogue',
+    labelKey: 'settings.hub.group.catalogue',
+    icon: 'tag',
+    links: [
+      {
+        id: 'offer-review',
+        labelKey: 'settings.hub.link.offer-review',
+        descriptionKey: 'settings.hub.about.offer-review',
+        keywordsKey: 'settings.hub.words.offer-review',
+        href: '/settings/offer-review',
+        view: [OFFER_REVIEW_VIEW_PERMISSION],
+        manage: [OFFER_REVIEW_MANAGE_PERMISSION],
       },
     ],
   },
