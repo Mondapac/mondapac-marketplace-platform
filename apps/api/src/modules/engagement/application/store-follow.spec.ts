@@ -122,6 +122,7 @@ describe.each([['AU'], ['ZZ']] as const)('store follows in market %s', (code) =>
         ownFollowedAmong: new OwnFollowedAmong(gate, deps),
         followsOfAccount: new FollowsOfAccount(gate, deps),
         followStore: follow,
+        shoppingFunnel: null as never,
       }),
     };
   });

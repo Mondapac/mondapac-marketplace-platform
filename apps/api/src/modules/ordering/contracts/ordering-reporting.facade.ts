@@ -6,6 +6,28 @@ export const MAX_REPORT_FACTS = 100;
 /** The most ids one page of changes holds. */
 export const MAX_REPORT_CHANGES = 500;
 
+/** The most accounts one checkouts read answers (dashboards v2, phase 2: the shopping funnel). */
+export const MAX_REPORT_CHECKOUTS = 5_000;
+/** The longest window one checkouts read covers: a Market day of 25 hours, with a margin. */
+export const MAX_REPORT_CHECKOUT_WINDOW_HOURS = 26;
+
+/**
+ * An account that placed an order (started checkout) in the window, and whether one of those
+ * orders has been paid. The only reporting read that names an account: reporting passes the list
+ * unchanged to engagement's funnel count and never stores, logs or returns it.
+ */
+export interface ReportCheckout {
+  readonly accountId: Id<'Account'>;
+  readonly paid: boolean;
+}
+
+export interface ReportCheckouts {
+  /** By account id; at most {@link MAX_REPORT_CHECKOUTS}. */
+  readonly items: readonly ReportCheckout[];
+  /** False when the window had more accounts than one read answers: do not count it. */
+  readonly complete: boolean;
+}
+
 export type ReportingReadFailure = AccessDenied | { readonly code: 'validation.failed' };
 
 /** An amount with its tax in minor units: `amount` includes the tax. */
@@ -147,6 +169,19 @@ export interface OrderingReportingFacade {
       readonly limit: number;
     },
   ): Promise<Result<ReportChangesPage<Id<'Refund'>>, ReportingReadFailure>>;
+
+  /**
+   * The accounts that placed an order in the window (`[from, to)`, at most 26 hours: one Market
+   * day), each once, with whether one of its orders of the window has been paid (confirmed, even
+   * if cancelled later). For reporting's nightly shopping-funnel snapshot (dashboards v2, phase
+   * 2), which hands the list unchanged to engagement. Rule `system`.
+   */
+  checkoutsStarted(
+    context: CallContext,
+    request: {
+      readonly window: { readonly from: Temporal.Instant; readonly to: Temporal.Instant };
+    },
+  ): Promise<Result<ReportCheckouts, ReportingReadFailure>>;
 }
 
 /** Nest token of the {@link OrderingReportingFacade}, provided and exported by `OrderingModule`. */

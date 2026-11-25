@@ -964,6 +964,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['INSERT', 'SELECT'],
       columnUpdate: ['amount', 'currency', 'updated_at', 'version'],
     },
+    // Dashboards v2, phase 2: the shopping funnel of a Market day is written once by the nightly
+    // snapshot and never changed (a customer's later opt-out never needs to touch it).
+    'reporting.daily_engagement': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // The backfill's cursor: its Market, kind, window end and start time stay.
     'reporting.backfill_progress': {
       table: ['INSERT', 'SELECT'],

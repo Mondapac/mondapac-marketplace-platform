@@ -15,6 +15,7 @@ notes: `docs/modules/reporting/notes.md`.
 | `inbox` | `(event_id, handler)` | one per consumed event and handler | about 6 per seller order (600k) |
 | `ledger_entries` | `(market_id, entry_id)` | one per commission, refund-commission and seller-cashback ledger row (PR 4 of dashboards v2) | about 160k (1.5 lines per seller order, plus refunds and cashback) |
 | `daily_ledger` | `(market_id, market_day, seller_id, currency, kind)` | one per active seller, day and ledger kind | about 1.2 × `daily_seller_sales` (commission every day, the other kinds rarely) |
+| `daily_engagement` | `(market_id, market_day)` | one per Market day (dashboards v2, phase 2: the shopping funnel) | 365 per Market |
 | `seller_monthly_goals` | `(market_id, seller_id, month)` | one per seller and month a goal was set for (dashboards v2 phase 2) | at most 12 × sellers who set goals (100 sellers: 1.2k) |
 
 `seller_orders` also holds `delivery_method` and `delivery_state` (a region code of at most 3
@@ -33,7 +34,15 @@ of all-null rows: no lock is avoided, none is needed): both or neither, only wit
 rollup keys and with no index until the new-and-returning card reads them. No customer or account id
 is stored anywhere in reporting.
 
-`seller_monthly_goals` (migration `20261125010000_reporting_seller_monthly_goals`, dashboards v2
+`daily_engagement` (migration `20261125020000_reporting_daily_engagement`, dashboards v2 phase 2):
+four counts per Market day (`viewed_count`, `carted_count`, `checkout_count`, `paid_count`) of
+distinct signed-in customers with personalization on, each within the step before (CHECK:
+`viewed >= carted >= checkout >= paid >= 0`), and `recorded_at`. Written once by the hourly
+snapshot job, at least 2 h after the Market day ends (`createMany` with skip-duplicates on the primary key), and never changed: the application
+role has SELECT and INSERT only, no UPDATE or DELETE, so a customer's opt-out or erasure never needs
+to touch it. No account, guest, offer or seller column.
+
+`seller_monthly_goals` (migration `20261125030000_reporting_seller_monthly_goals`, dashboards v2
 phase 2) is the one table of reporting that is NOT derived data: a seller's own sales goal for a
 calendar month of the Market's zone, set through `reporting.set-seller-monthly-goal`. `month` is the
 first day of the month (CHECK: day 1); `amount` is minor units above zero and below 10^15, with its
@@ -67,6 +76,8 @@ All rows are small (under 200 bytes), so even 10x this volume stays under a few 
 - Net revenue of a range: primary key range on `(market_id, market_day)` of `daily_ledger`; a
   seller's net earnings: `(market_id, seller_id, market_day)`. Rebuild one seller day of it:
   `ledger_entries (market_id, market_day, seller_id)`.
+- Shopping funnel: the snapshot's look-back (28 days) and the read of a period and the one before
+  are primary key ranges on `(market_id, market_day)`.
 - Ledger readiness (7 days): `seller_orders (market_id, paid_day, seller_id)` and
   `ledger_entries (market_id, market_day, seller_id)`, filtered on kind; then the seller orders
   not paid in the window by primary key. `ledger_entries (market_id, seller_order_id)` serves
@@ -80,6 +91,10 @@ All rows are small (under 200 bytes), so even 10x this volume stays under a few 
   changed in place, never removed yet (FE-20261125-seller-goal-remove).
 - The rollups and facts are derived data: kept as long as the dashboards show history, rebuilt by
   the backfill if lost. No personal data is stored (no customer, account or address id, no postcode; the delivery state is a region code only).
+- `daily_engagement` is NOT rebuildable: the behaviour behind a day is deleted by opt-out, erasure
+  and engagement's retention purge (guests 30 days, accounts 12 months). It is aggregate only and
+  kept as long as the dashboards show history (custom ranges reach 13 months); a lost row stays
+  lost, a down migration loses the history beyond the 28-day look-back.
 - `inbox` rows have no purge yet, the same as the other modules' inboxes; the shared inbox
   retention, when it is added, covers this one too.
 - Revisit partitioning `sales_entries` and the rollups by `market_day` when a table passes about

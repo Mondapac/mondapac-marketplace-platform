@@ -11,6 +11,9 @@ export {
   type StoreFollowWriteFailure,
   type RecentViews,
   type RecentViewsRequest,
+  type ShoppingFunnelCounts,
+  type ShoppingFunnelFailure,
+  type ShoppingFunnelRequest,
 } from './engagement.facade';
 export {
   CUSTOMER_BEHAVIOUR_FACADE,

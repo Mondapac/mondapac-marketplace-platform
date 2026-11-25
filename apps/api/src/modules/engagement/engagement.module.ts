@@ -30,6 +30,7 @@ import { RecordBlockEvents } from './application/use-cases/record-block-events.u
 import { BEHAVIOUR_EVENT_REPOSITORY } from './application/ports/behaviour-event.repository';
 import { ENGAGEMENT_GUEST_TOKENS } from './application/ports/guest-tokens';
 import { PERSONALIZATION_SETTING_REPOSITORY } from './application/ports/personalization-setting.repository';
+import { CountShoppingFunnel } from './application/use-cases/count-shopping-funnel.use-case';
 import { ForgetAccount } from './application/use-cases/forget-account.use-case';
 import { PurgeExpiredEvents } from './application/use-cases/purge-expired-events.use-case';
 import { RecentViewsOfGuest } from './application/use-cases/recent-views-guest.use-case';
@@ -150,6 +151,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       FollowedAmong,
       OwnFollowedAmong,
       FollowsOfAccount,
+      // Dashboards v2, phase 2: the shopping funnel's counts for reporting's nightly snapshot.
+      CountShoppingFunnel,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     ...[RecordBlockEvents, PurgeExpiredBlockCounts, ViewBlockStats].map((type) =>
       blockUseCaseProvider(type as BlockUseCaseClass<unknown>),
@@ -164,6 +167,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         OwnFollowedAmong,
         FollowsOfAccount,
         FollowStore,
+        CountShoppingFunnel,
       ],
       useFactory: (
         forgetAccount: ForgetAccount,
@@ -173,6 +177,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         ownFollowedAmong: OwnFollowedAmong,
         followsOfAccount: FollowsOfAccount,
         followStore: FollowStore,
+        shoppingFunnel: CountShoppingFunnel,
       ) =>
         new EngagementFacadeImplementation({
           forgetAccount,
@@ -182,6 +187,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           ownFollowedAmong,
           followsOfAccount,
           followStore,
+          shoppingFunnel,
         }),
     },
     {

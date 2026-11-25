@@ -42,6 +42,7 @@ import type {
   PeriodRefused,
   PeriodRequest,
   ReportingKpiFacade,
+  ShoppingFunnelAnswer,
   TopCategoriesAnswer,
   TopSellersAnswer,
 } from '../../../reporting';
@@ -165,6 +166,11 @@ export interface AdminKpisAnswer {
    * `settings.monthly-revenue-target.view`.
    */
   readonly marketTarget: KpiSection<MonthlyTargetAnswer> | null;
+  /**
+   * The shopping funnel of the period (signed-in customers with personalization on, daily counts
+   * summed); null without `ordering.order.view`.
+   */
+  readonly shoppingFunnel: KpiSection<ShoppingFunnelAnswer> | null;
   /** Null without `commission-payouts.settlement.view` (it shows each seller's money). */
   readonly topSellers: KpiSection<NamedTopSellers> | null;
   /** Null without `commission-payouts.settlement.view` (it shows money). */
@@ -251,7 +257,7 @@ async function section<T>(
  * Market's monthly revenue target (dashboards v2 phase 2). Rule
  * `own-resources` and a platform admin acting as themselves, like the work queue. Each section is
  * asked only when the viewer holds its key (operations and orders by status:
- * `ordering.order.view`; money: `commission-payouts.settlement.view`; each health number its
+ * `ordering.order.view`, and the shopping funnel too; money: `commission-payouts.settlement.view`; each health number its
  * owner's key) and its owner checks the key again. Nothing is cached here.
  */
 export class ViewAdminKpis extends UseCase<
@@ -303,6 +309,7 @@ export class ViewAdminKpis extends UseCase<
       orders,
       ordersByState,
       marketTarget,
+      shoppingFunnel,
     ] = await Promise.all([
       held.has(ORDERING_ORDER_VIEW.key)
         ? section('operations', timeoutMs, () => reporting.marketplaceOperations(context, input))
@@ -327,6 +334,11 @@ export class ViewAdminKpis extends UseCase<
       held.has(SETTINGS_MONTHLY_REVENUE_TARGET_VIEW.key)
         ? section('market-target', timeoutMs, () => reporting.marketplaceMonthlyTarget(context))
         : null,
+      held.has(ORDERING_ORDER_VIEW.key)
+        ? section('shopping-funnel', timeoutMs, () =>
+            reporting.marketplaceShoppingFunnel(context, input),
+          )
+        : null,
     ]);
     return ok({
       generatedAt: this.deps.clock.now(),
@@ -336,6 +348,7 @@ export class ViewAdminKpis extends UseCase<
       ordersByStatus: orders,
       ordersByState,
       marketTarget,
+      shoppingFunnel,
       topSellers,
       topCategories,
       health,

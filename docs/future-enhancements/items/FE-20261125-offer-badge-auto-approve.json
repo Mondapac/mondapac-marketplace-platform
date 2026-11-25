@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-offer-badge-auto-approve",
+  "area": "catalog",
+  "title": "انتشار خودکار Offer دارای نشان گواهی",
+  "desc": "در راه‌اندازی هر Offer با نشان گواهی (R2) به صف می‌رود. وقتی گواهی‌های تأییدشده و تطبیق روزانه پایدار شد، Offer فروشندهٔ Trusted با نشانی که evaluateClaim مجاز می‌داند خودکار منتشر شود.",
+  "src": "design/catalog/offer-approval/offer-approval-design-fa.html (بازبینی حسن، محمد، هادی)",
+  "date": "2026-11-25",
+  "trig": "چند ماه بعد از راه‌اندازی، با دادهٔ نرخ رد نشان‌ها",
+  "prio": "پایین",
+  "status": "موکول"
+}

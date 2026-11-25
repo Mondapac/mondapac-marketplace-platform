@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-reporting-funnel-tenant-scope",
+  "area": "infra",
+  "title": "شناسهٔ tenant در کلید و خواندن‌های قیف خرید",
+  "desc": "جدول reporting.daily_engagement کلید (market_id, market_day) دارد و خواندن accountsWith در engagement فقط با بازار محدود می‌شود (مثل بقیهٔ خواندن‌های behaviour_events). وقتی tenantها واقعی شوند (ADR-0001: امروز فقط درز)، tenant_id باید به کلید اصلی جدول و به فیلتر همهٔ خواندن‌های قیف (و رویدادهای رفتار) اضافه شود. یافتهٔ حسن (I3) و مجتبی (L2) در بازبینی PR 1328.",
+  "src": "apps/api/src/modules/engagement/infrastructure/prisma-behaviour-event.repository.ts (بازبینی PR 1328)",
+  "date": "2026-11-25",
+  "trig": "وقتی بیش از یک tenant واقعی در یک بازار فعال شود",
+  "prio": "پایین",
+  "status": "موکول"
+}

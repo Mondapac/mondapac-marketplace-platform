@@ -18,6 +18,13 @@ import {
   ViewSellerMonthlyGoal,
   type SellerGoalDependencies,
 } from './application/use-cases/view-seller-monthly-goal.use-case';
+import { ENGAGEMENT_FACADE, EngagementModule, type EngagementFacade } from '../engagement';
+import { ENGAGEMENT_SOURCES, type EngagementSources } from './application/ports/engagement-sources';
+import { ENGAGEMENT_STORE, type EngagementStore } from './application/ports/engagement-store';
+import { SnapshotDailyEngagement } from './application/use-cases/snapshot-daily-engagement.use-case';
+import { ViewMarketplaceShoppingFunnel } from './application/use-cases/view-marketplace-shopping-funnel.use-case';
+import { FacadeEngagementSources } from './infrastructure/facade-engagement-sources';
+import { snapshotDailyEngagementJob } from './presentation/jobs/snapshot-daily-engagement.job';
 import {
   COMMISSION_PAYOUTS_REPORTING_FACADE,
   CommissionPayoutsModule,
@@ -99,7 +106,10 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
  * numbers and their daily rollups. It reads no table of another module: the facts come from
  * ordering's reporting facade and catalog's `offerPrimaryCategories`, through the event worker
  * (ordering's order and refund events) and the nightly reconcile; the ledger facts come from
- * commission-payouts' reporting facade (its `ledger-recorded` event and the ledger backfill); the Market's monthly revenue target comes from the settings facade. No
+ * commission-payouts' reporting facade (its `ledger-recorded` event and the ledger backfill); the
+ * shopping funnel's daily counts from ordering's checkouts and engagement's count (dashboards v2,
+ * phase 2: a nightly snapshot, counts only); the Market's monthly revenue target from the settings
+ * facade. No
  * module imports it. It publishes no event. Its own keys are the two daily exports' (dashboards v2,
  * PR 5), each audited, and the seller's monthly goal (phase 2), the one table it holds that is not
  * derived data. The history backfill job brings the facts recorded before the module was
@@ -113,6 +123,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
     ShippingModule,
     CommissionPayoutsModule,
     SettingsModule,
+    EngagementModule,
   ],
   controllers: [SellerKpisController, AdminReportsController],
   providers: [
@@ -327,6 +338,45 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
       inject: [USE_CASE_GATE, LEDGER_KPI_DEPENDENCIES],
       useFactory: (gate: UseCaseGate, deps: LedgerKpiDependencies) => new type(gate, deps),
     })),
+    // The shopping funnel (dashboards v2, phase 2): the nightly snapshot and its read.
+    {
+      provide: ENGAGEMENT_SOURCES,
+      inject: [ORDERING_REPORTING_FACADE, ENGAGEMENT_FACADE],
+      useFactory: (
+        ordering: OrderingReportingFacade,
+        engagement: EngagementFacade,
+      ): EngagementSources => new FacadeEngagementSources(ordering, engagement),
+    },
+    {
+      provide: SnapshotDailyEngagement,
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        ENGAGEMENT_STORE,
+        ENGAGEMENT_SOURCES,
+        MARKET_ZONE,
+        CLOCK,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        store: EngagementStore,
+        sources: EngagementSources,
+        zone: MarketZone,
+        clock: Clock,
+      ) => new SnapshotDailyEngagement(gate, { unitOfWork, store, sources, zone, clock }),
+    },
+    {
+      provide: ViewMarketplaceShoppingFunnel,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ENGAGEMENT_STORE, MARKET_ZONE, CLOCK],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        store: EngagementStore,
+        zone: MarketZone,
+        clock: Clock,
+      ) => new ViewMarketplaceShoppingFunnel(gate, { unitOfWork, store, zone, clock }),
+    },
     {
       provide: REPORTING_KPI_FACADE,
       inject: [
@@ -339,6 +389,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
         ViewMarketplaceOrderStatus,
         ViewMarketplaceOrdersByState,
         ViewMarketplaceMonthlyTarget,
+        ViewMarketplaceShoppingFunnel,
         MARKET_ZONE,
         CLOCK,
       ],
@@ -352,6 +403,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
         orderStatus: ViewMarketplaceOrderStatus,
         ordersByState: ViewMarketplaceOrdersByState,
         monthlyTarget: ViewMarketplaceMonthlyTarget,
+        shoppingFunnel: ViewMarketplaceShoppingFunnel,
         zone: MarketZone,
         clock: Clock,
       ) =>
@@ -365,6 +417,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
           orderStatus,
           ordersByState,
           monthlyTarget,
+          shoppingFunnel,
           { zone, clock },
         ),
     },
@@ -378,11 +431,17 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
     ),
     registerJobsFrom(
       'reporting',
-      [ReconcileReportFacts, BackfillHistory, BackfillLedger],
-      (reconcile: ReconcileReportFacts, backfill: BackfillHistory, ledger: BackfillLedger) => [
+      [ReconcileReportFacts, BackfillHistory, BackfillLedger, SnapshotDailyEngagement],
+      (
+        reconcile: ReconcileReportFacts,
+        backfill: BackfillHistory,
+        ledger: BackfillLedger,
+        engagement: SnapshotDailyEngagement,
+      ) => [
         reconcileReportFactsJob(reconcile),
         backfillHistoryJob(backfill),
         backfillLedgerJob(ledger),
+        snapshotDailyEngagementJob(engagement),
       ],
     ),
   ],

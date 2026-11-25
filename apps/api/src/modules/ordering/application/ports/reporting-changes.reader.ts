@@ -1,5 +1,6 @@
-import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type {
+  ReportCheckout,
   ReportChangesPage,
   ReportWindow,
   SellerOrderRef,
@@ -24,6 +25,15 @@ export interface ReportingChangesReader {
     after: Id<'Refund'> | null,
     limit: number,
   ): Promise<ReportChangesPage<Id<'Refund'>>>;
+  /**
+   * The accounts with an order created in `[from, to)`, each once and by account id, with whether
+   * one of those orders was confirmed; at most `limit`.
+   */
+  checkoutsStarted(
+    market: MarketContext,
+    window: { readonly from: Temporal.Instant; readonly to: Temporal.Instant },
+    limit: number,
+  ): Promise<ReportCheckout[]>;
 }
 
 export const REPORTING_CHANGES_READER = Symbol('REPORTING_CHANGES_READER');

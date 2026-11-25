@@ -18,6 +18,7 @@ import type {
 import type { NetRevenueAnswer } from '../application/use-cases/view-marketplace-net-revenue.use-case';
 import type { SellerNetEarningsAnswer } from '../application/use-cases/view-seller-net-earnings.use-case';
 import type { OrdersByStateAnswer } from '../application/use-cases/view-marketplace-orders-by-state.use-case';
+import type { ShoppingFunnelAnswer } from '../application/use-cases/view-marketplace-shopping-funnel.use-case';
 import type { OrderStatusAnswer } from '../application/use-cases/view-marketplace-order-status.use-case';
 import type { MonthlyTargetAnswer } from '../application/use-cases/view-marketplace-monthly-target.use-case';
 import type { FinanceNet } from '../application/use-cases/view-marketplace-finance-kpis.use-case';
@@ -73,7 +74,14 @@ export {
   READINESS_MIN_MATCHED_SELLER_ORDERS,
 } from '../domain/ledger';
 export type { NetFiguresFailure, NetFiguresInput, NetRevenueAnswer, SellerNetEarningsAnswer };
-export type { FinanceNet, MonthlyTargetAnswer, OrderStatusAnswer, OrdersByStateAnswer };
+export type {
+  FinanceNet,
+  MonthlyTargetAnswer,
+  OrderStatusAnswer,
+  OrdersByStateAnswer,
+  ShoppingFunnelAnswer,
+};
+export type { FunnelStep, ShoppingFunnel } from '../domain/engagement';
 export type { CalendarMonth, MonthEndForecast, MonthForecast } from '../domain/month-forecast';
 export { MIN_FORECAST_DAYS } from '../domain/month-forecast';
 export type { OrdersByState, StateShare } from '../domain/orders-by-state';
@@ -136,6 +144,18 @@ export interface ReportingKpiFacade {
   marketplaceMonthlyTarget(
     context: CallContext,
   ): Promise<Result<MonthlyTargetAnswer, AccessDenied>>;
+
+  /**
+   * The shopping funnel of the period against the period before (dashboards v2, phase 2), from the
+   * nightly daily counts: signed-in customers with personalization on who viewed a product, added
+   * to the cart, placed an order and paid, each within the step before, summed over the days
+   * (customer-days). `not-enough-data` below 20 viewers; a step under five is hidden. Counts only:
+   * key `ordering.order.view`, platform admin only.
+   */
+  marketplaceShoppingFunnel(
+    context: CallContext,
+    input: KpiPeriodInput,
+  ): Promise<Result<ShoppingFunnelAnswer, KpiFailure>>;
 
   /** The five sellers with the most goods sold in the period (money: the finance key). */
   marketplaceTopSellers(
