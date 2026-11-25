@@ -804,6 +804,16 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
         typeCode: true,
         scope: true,
         publishedRevisionId: true,
+        publishedRevision: {
+          select: {
+            images: {
+              where: { image: { state: 'clean' } },
+              orderBy: { position: 'asc' },
+              take: 1,
+              select: { imageId: true },
+            },
+          },
+        },
       },
     });
     const revisionIds = products.flatMap((row) =>
@@ -823,6 +833,8 @@ export class PrismaOwnCatalogReader implements OwnCatalogReader {
       typeCode: row.typeCode,
       scope: row.scope === 'PLATFORM' ? 'PLATFORM' : 'SELLER',
       name: row.publishedRevisionId === null ? null : (nameOf.get(row.publishedRevisionId) ?? null),
+      primaryImageId: (row.publishedRevision?.images[0]?.imageId ??
+        null) as Id<'ProductImage'> | null,
     }));
   }
 

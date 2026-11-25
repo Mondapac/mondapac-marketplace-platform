@@ -173,6 +173,10 @@ export interface OfferView {
     readonly productCode: string | null;
     readonly typeCode: string | null;
     readonly name: string | null;
+    /** Which route serves the thumbnail; null when the product was not found. */
+    readonly scope: 'PLATFORM' | 'SELLER' | null;
+    /** The first clean photo of the published revision, else null. */
+    readonly primaryImageId: string | null;
   };
   readonly sellerSku: string;
   readonly conditionCode: string;

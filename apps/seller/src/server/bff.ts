@@ -263,6 +263,10 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
   // A product photo for the panel's <img> tags: the API serves a JPEG it wrote itself.
   GET: [
     'catalog/seller/products/:id/images/:id/:size',
+    // The thumbnail of a PLATFORM product (Offer list, "On the platform"): a published photo from
+    // the API's public image route. Only the thumb size, and only the Market of this panel's host
+    // (`:market`): the API takes that route's Market from the path, not from `x-market-id`.
+    'catalog/public-images/:market/:id/:id/thumb',
     'sellers/store-profile/images/:id/:size',
     // An import (polled) and its CSV report (query: `kind`).
     'catalog/seller/imports/:id',
@@ -550,25 +554,27 @@ const CUSTOMER_CODE = /^[0-9A-Za-z-]{1,12}$/;
 
 const PHOTO_SIZES: ReadonlySet<string> = new Set(['thumb', 'medium', 'large', 'small']);
 
-function matches(template: string, path: readonly string[]): boolean {
+function matches(template: string, path: readonly string[], marketId?: string): boolean {
   const parts = template.split('/');
   return (
     parts.length === path.length &&
     parts.every((part, index) =>
-      part === ':id'
-        ? UUID.test(path[index] ?? '')
-        : part === ':size'
-          ? PHOTO_SIZES.has(path[index] ?? '')
-          : part === ':code'
-            ? CUSTOMER_CODE.test(path[index] ?? '')
-            : part === path[index],
+      part === ':market'
+        ? marketId !== undefined && path[index] === marketId
+        : part === ':id'
+          ? UUID.test(path[index] ?? '')
+          : part === ':size'
+            ? PHOTO_SIZES.has(path[index] ?? '')
+            : part === ':code'
+              ? CUSTOMER_CODE.test(path[index] ?? '')
+              : part === path[index],
     )
   );
 }
 
-function isAllowed(method: string, path: readonly string[]): boolean {
+function isAllowed(method: string, path: readonly string[], marketId: string): boolean {
   if (ALLOWED[method]?.has(path.join('/')) === true) return true;
-  return (ALLOWED_WITH_ID[method] ?? []).some((template) => matches(template, path));
+  return (ALLOWED_WITH_ID[method] ?? []).some((template) => matches(template, path, marketId));
 }
 
 /** The largest request body the relay passes on: 16 KiB, but a photo upload may carry 5.8 MiB. */
@@ -712,7 +718,7 @@ export async function relay(
   const host = panelHostFor(config, request.headers.get('host'));
   if (host === undefined) return notFound();
   const target = path.join('/');
-  if (!isAllowed(request.method, path)) return notFound();
+  if (!isAllowed(request.method, path, host.marketId)) return notFound();
   if (request.headers.has('authorization')) return jsonError(401, 'session.invalid');
   if (request.method !== 'GET') {
     // Unsafe method: same-origin only, whatever the API would do with a missing header.

@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-add-offer-dialog-thumbnail",
+  "area": "seller",
+  "title": "تصویر کوچک محصول در پنجرهٔ Add offer",
+  "desc": "جستجوی platform-search از PR 3b صفحهٔ Offer شناسهٔ تصویر (primaryImageId) را برمی‌گرداند و لیست Offers و بخش On the platform آن را نشان می‌دهند، اما ردیف‌های پنجرهٔ Add offer هنوز تصویر ندارند. برای افزودن، باید شناسهٔ Market به AddOfferDialog و AddOfferButton (سربرگ Products و Offers) داده شود و ListThumb با productThumbSrc کنار هر ردیف قرار گیرد.",
+  "src": "design/seller/offer-page/final/offer-page-final-v2-fa.html بخش ۳؛ PR 3b صفحهٔ Offer",
+  "date": "2026-11-25",
+  "trig": "پس از ادغام PR 3b، همراه یکی از PRهای بعدی صفحهٔ Offer که پنجرهٔ Add offer را تغییر می‌دهد",
+  "prio": "پایین",
+  "status": "موکول"
+}

@@ -17,7 +17,13 @@ const assign = vi.fn();
 const offer: OfferView = {
   offerId: 'o1',
   productId: 'p1',
-  product: { productCode: 'P1', typeCode: 'grocery', name: 'Olive oil' },
+  product: {
+    productCode: 'P1',
+    typeCode: 'grocery',
+    name: 'Olive oil',
+    scope: 'PLATFORM',
+    primaryImageId: null,
+  },
   sellerSku: 'OIL-1',
   conditionCode: 'new',
   description: { 'en-AU': 'Cold pressed', fr: 'Pressée à froid' },

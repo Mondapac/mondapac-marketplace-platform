@@ -607,7 +607,9 @@ export function ProductsList({
           </>
         }
       />
-      {showPlatform ? <OnThePlatform text={query.q} csrfToken={csrfToken} /> : null}
+      {showPlatform ? (
+        <OnThePlatform text={query.q} marketId={marketId} csrfToken={csrfToken} />
+      ) : null}
       <BottomSheet
         open={!desktop && sheet === 'filter'}
         title={t('filter.title')}

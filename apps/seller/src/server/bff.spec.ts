@@ -787,6 +787,49 @@ describe('relay product photo paths', () => {
   });
 });
 
+describe('relay of the platform product thumbnail', () => {
+  const PRODUCT = '01990000-0000-7000-8000-00000000c002';
+  const IMAGE = '01990000-0000-7000-8000-00000000d002';
+  const read = (parts: readonly string[], method = 'GET') =>
+    new Request(`http://seller.localhost:3001/api/${parts.join('/')}`, {
+      method,
+      headers: method === 'GET' ? { host: sameOrigin.host } : sameOrigin,
+      ...(method === 'GET' ? {} : { body: '{}' }),
+    });
+
+  it("relays the thumb of the host's own Market to the public image route", async () => {
+    const upstream = upstreamOk();
+    const path = ['catalog', 'public-images', 'AU', PRODUCT, IMAGE, 'thumb'];
+    const response = await relay(config, read(path), path, upstream);
+    expect(response.status).toBe(200);
+    expect(upstream).toHaveBeenCalledTimes(1);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/public-images/AU/${PRODUCT}/${IMAGE}/thumb`,
+    );
+  });
+
+  it('refuses another Market, another size, a bad id, a longer path and any other method', async () => {
+    const refused: { readonly path: readonly string[]; readonly method?: string }[] = [
+      { path: ['catalog', 'public-images', 'NZ', PRODUCT, IMAGE, 'thumb'] },
+      { path: ['catalog', 'public-images', 'au', PRODUCT, IMAGE, 'thumb'] },
+      { path: ['catalog', 'public-images', 'AU', PRODUCT, IMAGE, 'medium'] },
+      { path: ['catalog', 'public-images', 'AU', PRODUCT, IMAGE, 'large.webp'] },
+      { path: ['catalog', 'public-images', 'AU', 'not-a-uuid', IMAGE, 'thumb'] },
+      { path: ['catalog', 'public-images', 'AU', PRODUCT, 'not-a-uuid', 'thumb'] },
+      { path: ['catalog', 'public-images', 'AU', PRODUCT, IMAGE, 'thumb', 'x'] },
+      { path: ['catalog', 'public-images', PRODUCT, IMAGE, 'thumb'] },
+      { path: ['catalog', 'public-images', 'AU', PRODUCT, IMAGE, 'thumb'], method: 'POST' },
+      { path: ['catalog', 'public-images', 'AU', PRODUCT, IMAGE, 'thumb'], method: 'DELETE' },
+    ];
+    for (const { path, method } of refused) {
+      const upstream = upstreamOk();
+      const response = await relay(config, read(path, method), path, upstream);
+      expect(response.status, `${method ?? 'GET'} ${path.join('/')}`).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    }
+  });
+});
+
 describe('relay of the payout account', () => {
   const get = (path: string) =>
     new Request(`http://seller.localhost:3001/api/${path}`, {

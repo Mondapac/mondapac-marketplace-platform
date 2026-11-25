@@ -388,6 +388,7 @@ export function OffersList({
       />
       <div ref={listTop} tabIndex={-1} className="outline-none">
         <OffersTable
+          marketId={marketId}
           rows={shown}
           columns={columns}
           empty={empty}

@@ -23,6 +23,12 @@ export interface ProductLabel {
   /** PLATFORM or SELLER: only an Offer on a PLATFORM product can be deleted on its own. */
   readonly scope: ProductScope;
   readonly name: string | null;
+  /**
+   * The first clean photo of the published revision (by position), else null: the thumbnail of
+   * the Offer lists. A PLATFORM product's photo is served by the public image route, a SELLER
+   * product's by the seller's own image route.
+   */
+  readonly primaryImageId: Id<'ProductImage'> | null;
 }
 
 /** A SELLER product waiting for its pending revision to be reviewed (the review queue). */

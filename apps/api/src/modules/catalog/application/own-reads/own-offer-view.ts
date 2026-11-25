@@ -6,11 +6,17 @@ import { isoOf } from './own-reads.shared';
 export interface OwnOfferView {
   readonly offerId: string;
   readonly productId: string;
-  /** The Offer's product: its code, type and published name in the default locale (else null). */
+  /**
+   * The Offer's product: its code, type, published name in the default locale (else null), scope
+   * and thumbnail. `scope` says which route serves `primaryImageId` (PLATFORM: the public image
+   * route; SELLER: the seller's own image route).
+   */
   readonly product: {
     readonly productCode: string | null;
     readonly typeCode: string | null;
     readonly name: string | null;
+    readonly scope: 'PLATFORM' | 'SELLER' | null;
+    readonly primaryImageId: string | null;
   };
   readonly sellerSku: string;
   readonly conditionCode: string;
@@ -65,6 +71,8 @@ export function offerViewOf(
       productCode: label?.productCode ?? null,
       typeCode: label?.typeCode ?? null,
       name: label?.name ?? null,
+      scope: label?.scope ?? null,
+      primaryImageId: label?.primaryImageId ?? null,
     },
     sellerSku: state.sellerSku,
     conditionCode: state.conditionCode,
