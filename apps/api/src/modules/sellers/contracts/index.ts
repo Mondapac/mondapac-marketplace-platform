@@ -33,6 +33,8 @@ export {
   SELLERS_FACADE,
   type AllowedProductTypesOf,
   type CarrierPickup,
+  type OfferReviewFlagOf,
+  type OfferReviewFlagsOf,
   type ReviewerBusinessDetails,
   type SellerBusinessActivitiesMap,
   type SellerBusinessActivitiesOf,

@@ -49,4 +49,21 @@ describe('shelf card from the API', () => {
     expect(screen.getByRole('button', { name: 'Add Lamb shoulder, 1 kg to cart' })).toBeDefined();
     expect(container.querySelector('.by')).toBeNull();
   });
+
+  it('marks a special without a "was" price (the rule withheld it): pill and colour, no struck price', () => {
+    const { container } = show({
+      ...CARD,
+      price: { amount: 2290, currency: 'AUD' },
+      onSpecial: true,
+    });
+    expect(container.querySelector('.badge')?.textContent).toBe('Special price');
+    expect(container.querySelector('.pr b.sp')?.textContent).toBe('A$22.90');
+    expect(container.querySelector('.pr s')).toBeNull();
+  });
+
+  it('shows no pill and no special colour on a price that is not a special', () => {
+    const { container } = show({ ...CARD, price: { amount: 2290, currency: 'AUD' } });
+    expect(container.querySelector('.badge')).toBeNull();
+    expect(container.querySelector('.pr b.sp')).toBeNull();
+  });
 });

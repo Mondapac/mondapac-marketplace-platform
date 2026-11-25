@@ -16,6 +16,10 @@ import {
   type InAppNoticeRepository,
 } from '../application/ports/in-app-notice.repository';
 import {
+  OFFER_QUEUE_BACKLOG_REPOSITORY,
+  type OfferQueueBacklogRepository,
+} from '../application/ports/offer-queue-backlog.repository';
+import {
   SUPPORT_CONTACT_REPOSITORY,
   type SupportContactRepository,
 } from '../application/ports/support-contact.repository';
@@ -28,6 +32,7 @@ import { ConfigNotificationsPolicy } from './config-notifications-policy';
 import { HmacUnsubscribeTokens, localNotificationsSecret } from './hmac-unsubscribe-tokens';
 import { PrismaCartReminderRepository } from './prisma-cart-reminder.repository';
 import { PrismaInAppNoticeRepository } from './prisma-in-app-notice.repository';
+import { PrismaOfferQueueBacklogRepository } from './prisma-offer-queue-backlog.repository';
 import { PrismaSupportContactRepository } from './prisma-support-contact.repository';
 
 /** Binds the ports of notifications. Only this layer may reach `PrismaService` and the secret. */
@@ -49,6 +54,12 @@ export const notificationsProviders: readonly FactoryProvider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): CartReminderRepository =>
       new PrismaCartReminderRepository(prisma),
+  },
+  {
+    provide: OFFER_QUEUE_BACKLOG_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OfferQueueBacklogRepository =>
+      new PrismaOfferQueueBacklogRepository(prisma),
   },
   {
     provide: NOTIFICATIONS_POLICY,

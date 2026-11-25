@@ -9,7 +9,7 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { CATALOG_OWN_PRODUCT_EDIT } from '../../contracts/permissions';
 import type { Offer } from '../../domain/offer';
 import { claimQueriesFor, isTagTypeCode, judgeTag, type TagBasis } from '../../domain/offer-tag';
-import type { OfferReviewReason } from '../../domain/offer-review-policy';
+import { sellerReviewReasonsOf, type SellerReviewReason } from '../../domain/offer-review-policy';
 import { isWatched, type OfferEditReview, type WatchedChange } from '../offer-edit-review';
 import { clearanceFromPolicy } from '../offer-review-clearance';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
@@ -50,8 +50,8 @@ export interface OwnOfferAddTagOutput {
   readonly applied: boolean;
   /** The held change, when `applied` is false. */
   readonly pendingChangeId?: string;
-  /** The policy's reasons, when `applied` is false. */
-  readonly reasons?: readonly OfferReviewReason[];
+  /** Why it is held, as a seller is told (`sellerReviewReasonsOf`), when `applied` is false. */
+  readonly reasons?: readonly SellerReviewReason[];
 }
 
 export type OwnOfferAddTagFailure =
@@ -215,6 +215,7 @@ export class OwnOfferAddTag extends UseCase<
     const guard = await deps.unitOfWork.run<
       {
         readonly version: number;
+        readonly productId: Id<'Product'>;
         readonly prepared: PreparedAsk | 'unavailable';
         readonly live: boolean;
         readonly hasOpenChange: boolean;
@@ -238,6 +239,7 @@ export class OwnOfferAddTag extends UseCase<
         const open = live ? await deps.editReview.openChange(market, offer.state.id) : null;
         return ok({
           version: offer.state.version,
+          productId: offer.state.productId,
           prepared: { facts, queries, productVersion },
           live,
           hasOpenChange: open !== null,
@@ -261,7 +263,8 @@ export class OwnOfferAddTag extends UseCase<
     if (!asked.ok) return err(asked.error);
 
     // The review policy, outside any unit; any failure holds the change (fail closed).
-    const verdict = watchedEdit ? await deps.editReview.verdict(context, offerId, watched) : null;
+    const subject = { offerId, sellerId, productId: guard.value.productId };
+    const verdict = watchedEdit ? await deps.editReview.verdict(context, subject, watched) : null;
     const reasons = verdict?.reasons ?? [];
 
     try {
@@ -310,7 +313,7 @@ export class OwnOfferAddTag extends UseCase<
             basis: null,
             applied: false,
             pendingChangeId,
-            reasons,
+            reasons: sellerReviewReasonsOf(reasons),
           });
         }
         const added = offer.addTags({

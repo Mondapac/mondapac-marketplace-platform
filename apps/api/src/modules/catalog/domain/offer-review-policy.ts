@@ -13,9 +13,11 @@ import type { OfferHandling } from './offer-handling';
 
 /**
  * Raise this whenever a rule below changes meaning. 2: the edit rules of a live Offer (slice 2c,
- * {@link offerEditReviewReasons}).
+ * {@link offerEditReviewReasons}). 3: R1, R6 and R7 read real facts (slice 4: the probation count,
+ * Trusted, the seller and category flags); the seller and category stops (R0) and R7 hold watched
+ * edits.
  */
-export const OFFER_REVIEW_POLICY_VERSION = 2;
+export const OFFER_REVIEW_POLICY_VERSION = 3;
 
 /**
  * The reasons, in the order the queue shows them. Each maps to a rule of the design:
@@ -34,6 +36,38 @@ export const OFFER_REVIEW_REASONS = [
   'review-all',
 ] as const;
 export type OfferReviewReason = (typeof OFFER_REVIEW_REASONS)[number];
+
+/**
+ * The reasons a seller is told (Hadi's decision (b) on Hassan S1, PR #1358): the ones about the
+ * seller's own content stay (`certificate-badge`, `handling`, `contact-text`); every other reason
+ * becomes the one generic `held-for-review`, so a seller never learns of its own stop, its full
+ * review or probation, a category stop or the admins' "always review" categories. Admin views keep
+ * the full codes; the stored referral and change rows always hold them.
+ */
+export const SELLER_REVIEW_REASONS = [
+  'certificate-badge',
+  'handling',
+  'contact-text',
+  'held-for-review',
+] as const;
+export type SellerReviewReason = (typeof SELLER_REVIEW_REASONS)[number];
+
+const TOLD_TO_SELLER: ReadonlySet<OfferReviewReason> = new Set([
+  'certificate-badge',
+  'handling',
+  'contact-text',
+]);
+
+/** The reasons as a seller sees them: in order, with every other reason once as `held-for-review`. */
+export function sellerReviewReasonsOf(
+  reasons: readonly OfferReviewReason[],
+): readonly SellerReviewReason[] {
+  const told = new Set<SellerReviewReason>();
+  for (const reason of reasons) {
+    told.add(TOLD_TO_SELLER.has(reason) ? (reason as SellerReviewReason) : 'held-for-review');
+  }
+  return [...told];
+}
 
 /** The Market's review mode (settings `catalog.offer-review.mode`). */
 export type OfferReviewMode = 'all' | 'risk-based' | 'off';
@@ -98,6 +132,11 @@ export interface OfferEditReviewInput {
    * of the product or the seller. It holds every watched change, in every mode.
    */
   readonly emergencyStop: boolean;
+  /**
+   * R7 on edits (owner decision 2026-11-25, slice 4): a category of the product, or an ancestor,
+   * is marked "always review". It holds every watched change outside mode `off`.
+   */
+  readonly sensitiveCategory: boolean;
   readonly addedBadgeTypes: readonly string[];
   readonly newHandling?: OfferHandling;
   /** Locale to text: the whole new description. */
@@ -106,12 +145,12 @@ export interface OfferEditReviewInput {
 
 /**
  * The reasons an edit of a live Offer is held for review; empty means it applies at once. Only R0
- * (the emergency stop holds every watched change, in every mode; owner decision 2026-11-25), R2 (a
- * new badge type while badges are reviewed), R3 (handling changed to anything but
- * `SEALED_ORIGINAL`) and R5 (contact text in any locale of a changed description) run on edits:
- * R1 and R6 judge a seller's first publication, and R7 is a no-op because a category change is a
- * product revision (VER-02). Mode `off` holds nothing but a stop; mode `all` holds every change of
- * a watched field, with `review-all` when no rule applies.
+ * (the Market, seller or category stop holds every watched change, in every mode; owner decision
+ * 2026-11-25), R2 (a new badge type while badges are reviewed), R3 (handling changed to anything
+ * but `SEALED_ORIGINAL`), R5 (contact text in any locale of a changed description) and R7 (the
+ * product is in an "always review" category; owner answer 4 of slice 4) run on edits: R1 and R6
+ * judge a seller's first publication only. Mode `off` holds nothing but a stop; mode `all` holds
+ * every change of a watched field, with `review-all` when no rule applies.
  */
 export function offerEditReviewReasons(input: OfferEditReviewInput): readonly OfferReviewReason[] {
   const watched =
@@ -135,6 +174,7 @@ export function offerEditReviewReasons(input: OfferEditReviewInput): readonly Of
   ) {
     found.add('contact-text');
   }
+  if (input.sensitiveCategory && watched) found.add('sensitive-category');
   if (input.mode === 'all' && found.size === 0 && watched) found.add('review-all');
   return OFFER_REVIEW_REASONS.filter((reason) => found.has(reason));
 }

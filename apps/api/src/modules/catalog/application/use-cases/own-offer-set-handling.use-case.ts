@@ -13,7 +13,11 @@ import {
   type Offer,
   type OfferHandling,
 } from '../../domain/offer';
-import type { OfferReviewReason } from '../../domain/offer-review-policy';
+import {
+  sellerReviewReasonsOf,
+  type OfferReviewReason,
+  type SellerReviewReason,
+} from '../../domain/offer-review-policy';
 import { isWatched, type OfferEditReview, type WatchedChange } from '../offer-edit-review';
 import { clearanceFromPolicy } from '../offer-review-clearance';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
@@ -49,8 +53,8 @@ export interface OwnOfferSetHandlingOutput {
   readonly applied: boolean;
   /** The held change, when `applied` is false. */
   readonly pendingChangeId?: string;
-  /** The policy's reasons, when `applied` is false. */
-  readonly reasons?: readonly OfferReviewReason[];
+  /** Why it is held, as a seller is told (`sellerReviewReasonsOf`), when `applied` is false. */
+  readonly reasons?: readonly SellerReviewReason[];
 }
 
 export type OwnOfferSetHandlingFailure =
@@ -235,6 +239,8 @@ export class OwnOfferSetHandling extends UseCase<
             : { addedBadgeTypes: [] };
         return ok({
           version: offer.state.version,
+          sellerId: offer.state.sellerId,
+          productId: offer.state.productId,
           prepared,
           watched,
           live,
@@ -251,7 +257,8 @@ export class OwnOfferSetHandling extends UseCase<
       return err({ code: 'offer.change-pending' });
     }
     // The review policy, outside any unit; any failure holds the change (fail closed).
-    const verdict = watchedEdit ? await deps.editReview.verdict(context, offerId, watched) : null;
+    const subject = { offerId, sellerId: guard.value.sellerId, productId: guard.value.productId };
+    const verdict = watchedEdit ? await deps.editReview.verdict(context, subject, watched) : null;
     const reasons = verdict?.reasons ?? [];
     const held = reasons.length > 0;
     // A held change asks nothing: the Offer keeps its handling and its tags as they are.
@@ -366,6 +373,11 @@ export class OwnOfferSetHandling extends UseCase<
       now: held.now,
     });
     if (pendingChangeId === null) throw new Error('set-handling: a held change has no id');
-    return ok({ changedFields: [], applied: false, pendingChangeId, reasons: held.reasons });
+    return ok({
+      changedFields: [],
+      applied: false,
+      pendingChangeId,
+      reasons: sellerReviewReasonsOf(held.reasons),
+    });
   }
 }

@@ -19,6 +19,19 @@ export interface SellerBusinessActivitiesOf {
 /** One answer per distinct requested seller. */
 export type SellerBusinessActivitiesMap = ReadonlyMap<Id<'Seller'>, SellerBusinessActivitiesOf>;
 
+/** One Offer review flag of a seller: on, and when an admin last changed it (null: never). */
+export interface OfferReviewFlagOf {
+  readonly on: boolean;
+  readonly at: Temporal.Instant | null;
+}
+
+/** `offerReviewFlagsOf`: a seller's three Offer review flags (SEL-25, slice 4). */
+export interface OfferReviewFlagsOf {
+  readonly trustedFromStart: OfferReviewFlagOf;
+  readonly fullReview: OfferReviewFlagOf;
+  readonly reviewStop: OfferReviewFlagOf;
+}
+
 /** Every product type, or the listed type codes (SEL-12). */
 export type AllowedProductTypesOf = 'all' | ReadonlySet<string>;
 
@@ -205,6 +218,23 @@ export interface SellersFacade {
     context: CallContext,
     sellerId: Id<'Seller'>,
   ): Promise<Result<boolean, AccessDenied | SellersValidationFailed | SellersUnavailable>>;
+
+  /**
+   * `offerReviewFlagsOf` (SEL-25; risk-based Offer approval slice 4, ADR-0051 decision 4): the
+   * seller's Offer review flags, each `{ on, at }` with `at` the time an admin last changed it:
+   * `trustedFromStart` (skips probation), `fullReview` (R6) and `reviewStop` (R0 for the seller).
+   * catalog reads it at decision time (no event), as `platform/ai` reads `aiAccessOf`. Answered to
+   * the `system` actor, an admin, and a seller's own account for its own id only; any other
+   * request actor is `access.denied`. An unknown seller, another Market's seller or a read error
+   * is `sellers.unavailable`: the caller fails closed (probation and full review). The flags
+   * never reach a seller response. Two use cases behind this method. Not exposed over HTTP.
+   */
+  offerReviewFlagsOf(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+  ): Promise<
+    Result<OfferReviewFlagsOf, AccessDenied | SellersValidationFailed | SellersUnavailable>
+  >;
 
   /**
    * `activeSinceOf` (promotions T1): the instant the seller's business file was first approved in

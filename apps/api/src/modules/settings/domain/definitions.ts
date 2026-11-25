@@ -95,6 +95,16 @@ export const OFFER_REVIEW_BADGES_VALUES = ['review', 'automatic'] as const;
 export type OfferReviewBadges = (typeof OFFER_REVIEW_BADGES_VALUES)[number];
 
 /**
+ * How many Offers waiting in the Offer review queue raise the backlog alert (risk-based Offer
+ * approval, slice 8). One alert per crossing of the limit.
+ */
+export const OFFER_REVIEW_BACKLOG_COUNT_CODE = 'offer-review-backlog-count';
+/**
+ * How many business hours (Monday to Friday, in the Market's time zone) the oldest Offer may wait
+ * in the review queue before the backlog alert is raised.
+ */
+export const OFFER_REVIEW_BACKLOG_HOURS_CODE = 'offer-review-backlog-hours';
+/**
  * The Offer review emergency stop (R0, design 9.5 b): while `on`, every new Offer of the Market
  * waits for an admin, even from a Trusted seller; live Offers stay live. Changed only through its
  * own protected permission with a reason, never with the page's other settings.
@@ -110,6 +120,8 @@ export const OFFER_REVIEW_CODES: readonly string[] = Object.freeze([
   OFFER_REVIEW_PRICE_BAND_CODE,
   OFFER_REVIEW_SAMPLING_CODE,
   OFFER_REVIEW_BADGES_CODE,
+  OFFER_REVIEW_BACKLOG_COUNT_CODE,
+  OFFER_REVIEW_BACKLOG_HOURS_CODE,
 ]);
 
 /**
@@ -280,6 +292,23 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
     values: OFFER_REVIEW_BADGES_VALUES,
     defaultValue: 'review',
     safeValue: 'review',
+  },
+  {
+    code: OFFER_REVIEW_BACKLOG_COUNT_CODE,
+    label: 'Offer queue size that raises an alert',
+    values: [],
+    integer: { min: 1, max: 10000 },
+    defaultValue: '50',
+    // Not used for the alert: its strict read answers nothing for an unreadable store.
+    safeValue: '50',
+  },
+  {
+    code: OFFER_REVIEW_BACKLOG_HOURS_CODE,
+    label: 'Business hours before an Offer waiting raises an alert',
+    values: [],
+    integer: { min: 1, max: 720 },
+    defaultValue: '24',
+    safeValue: '24',
   },
   {
     code: AI_GATEWAY_EMERGENCY_STOP_CODE,

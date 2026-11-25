@@ -142,6 +142,39 @@ export const AiAccessChanged = defineAuditAction({
 });
 
 /**
+ * An admin switched one of a seller's Offer review flags (SEL-25; risk-based Offer approval slice
+ * 4, ADR-0051 decision 4): before and after only. The admin's reason is text, so it is never in
+ * the row: it is kept in `sellers.offer_review_flag_changes` with the same unit and instant.
+ * `stepUpVerifiedAt` is when the admin's fresh two-step code spent by the change was verified
+ * (the protected flags only).
+ */
+export const OfferReviewTrustChanged = defineAuditAction({
+  action: 'sellers.offer-review-trust.changed',
+  targetType: SELLER_TARGET,
+  actors: ['authenticated'],
+  before: { on: auditField.boolean() },
+  after: { on: auditField.boolean(), stepUpVerifiedAt: auditField.optional(auditField.instant()) },
+});
+
+/** The full-review flag (R6) of a seller changed; see {@link OfferReviewTrustChanged}. */
+export const OfferReviewFullReviewChanged = defineAuditAction({
+  action: 'sellers.offer-review-full-review.changed',
+  targetType: SELLER_TARGET,
+  actors: ['authenticated'],
+  before: { on: auditField.boolean() },
+  after: { on: auditField.boolean() },
+});
+
+/** The seller's Offer review stop (R0) changed; see {@link OfferReviewTrustChanged}. */
+export const OfferReviewStopChanged = defineAuditAction({
+  action: 'sellers.offer-review-stop.changed',
+  targetType: SELLER_TARGET,
+  actors: ['authenticated'],
+  before: { on: auditField.boolean() },
+  after: { on: auditField.boolean(), stepUpVerifiedAt: auditField.optional(auditField.instant()) },
+});
+
+/**
  * An admin replaced a seller's business activities (ADR-0040 decision 4): the main activity and the
  * extras before and after, as ids. The admin's reason is text, so it is never in the row: it is
  * kept in the seller's activity change log (`seller_business_activity_changes`) with the same
@@ -199,6 +232,9 @@ export const SELLERS_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.fr
   BlogAccessChanged,
   CategoryProposalsChanged,
   AiAccessChanged,
+  OfferReviewTrustChanged,
+  OfferReviewFullReviewChanged,
+  OfferReviewStopChanged,
   BusinessActivitiesChanged,
   CulturesAttachedAtSignup,
   ServiceAreaNamesChanged,

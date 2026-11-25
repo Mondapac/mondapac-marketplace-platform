@@ -11,6 +11,7 @@ export const REVIEW_HELD = 'admin.review-held';
 export const REVIEW_REPORTED = 'admin.review-reported';
 export const SELLER_REFUND_LIMIT_REACHED = 'admin.seller-refund-limit-reached';
 export const ASSISTANT_SPEND_CAP_REACHED = 'admin.assistant-spend-cap-reached';
+export const OFFER_QUEUE_BACKLOG = 'admin.offer-queue-backlog';
 
 /** The areas of a system request; one overdue-reminder kind per area. */
 export const SYSTEM_REQUEST_AREAS = [
@@ -39,6 +40,7 @@ export const RINGING_KINDS: ReadonlySet<string> = new Set([
   REVIEW_REPORTED,
   SELLER_REFUND_LIMIT_REACHED,
   ASSISTANT_SPEND_CAP_REACHED,
+  OFFER_QUEUE_BACKLOG,
   ...SYSTEM_REQUEST_OVERDUE_KINDS,
 ]);
 
@@ -95,6 +97,10 @@ export interface AdminNoticeParams {
   readonly limit?: 'count' | 'amount' | 'unset';
   /** admin.assistant-spend-cap-reached: which spend cap switched the assistant off. */
   readonly cap?: 'daily' | 'monthly';
+  /** admin.offer-queue-backlog: why it was raised, how many Offers wait, the oldest wait in business hours. */
+  readonly reason?: 'age' | 'size' | 'both';
+  readonly count?: number;
+  readonly hours?: number;
   /** admin.system-request-overdue-<area>: the request, its SR number and its age in days. */
   readonly requestId?: string;
   readonly number?: number;

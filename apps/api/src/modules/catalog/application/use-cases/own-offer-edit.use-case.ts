@@ -6,7 +6,7 @@ import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_OWN_PRODUCT_EDIT } from '../../contracts/permissions';
 import { sameDescription, type Offer, type OfferRefusal } from '../../domain/offer';
-import type { OfferReviewReason } from '../../domain/offer-review-policy';
+import { sellerReviewReasonsOf, type SellerReviewReason } from '../../domain/offer-review-policy';
 import { isWatched, type OfferEditReview, type WatchedChange } from '../offer-edit-review';
 import { clearanceFromPolicy } from '../offer-review-clearance';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
@@ -52,8 +52,8 @@ export interface OwnOfferEditOutput {
   readonly applied: boolean;
   /** The held change, when `applied` is false. */
   readonly pendingChangeId?: string;
-  /** The policy's reasons, when `applied` is false. */
-  readonly reasons?: readonly OfferReviewReason[];
+  /** Why it is held, as a seller is told (`sellerReviewReasonsOf`), when `applied` is false. */
+  readonly reasons?: readonly SellerReviewReason[];
 }
 
 export type OwnOfferEditFailure =
@@ -281,7 +281,8 @@ export class OwnOfferEdit extends UseCase<
     const hash = hashesOf(prepared);
 
     // The review policy, outside any unit; any failure holds the change (fail closed).
-    const verdict = watchedEdit ? await deps.editReview.verdict(context, offerId, watched) : null;
+    const subject = { offerId, sellerId: seen.state.sellerId, productId: seen.state.productId };
+    const verdict = watchedEdit ? await deps.editReview.verdict(context, subject, watched) : null;
     const reasons = verdict?.reasons ?? [];
     const held = reasons.length > 0;
 
@@ -347,7 +348,12 @@ export class OwnOfferEdit extends UseCase<
         return ok(
           pendingChangeId === null
             ? { changedFields: edited.value, applied: true }
-            : { changedFields: edited.value, applied: false, pendingChangeId, reasons },
+            : {
+                changedFields: edited.value,
+                applied: false,
+                pendingChangeId,
+                reasons: sellerReviewReasonsOf(reasons),
+              },
         );
       });
       if (written.ok && written.value === RETRY) return RETRY;

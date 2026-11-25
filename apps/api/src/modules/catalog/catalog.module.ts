@@ -61,6 +61,7 @@ import {
   JOB_CALL_CONTEXTS,
   registerPermissions,
   registerStepUpActions,
+  STEP_UP_CONSUMER,
   USE_CASE_GATE,
   type AccessDeclaration,
   type UseCaseGate,
@@ -70,6 +71,15 @@ import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { OFFER_REVIEW_INPUTS, OFFER_REVIEW_REFERRAL_STORE } from './application/ports/offer-review';
 import { OFFER_PENDING_CHANGE_REPOSITORY } from './application/ports/offer-pending-change.repository';
 import { OfferEditReview } from './application/offer-edit-review';
+import { SellerReviewProbation } from './application/seller-review-probation';
+import { SELLER_REVIEW_STANDING_REPOSITORY } from './application/ports/seller-review-standing.repository';
+import { CATEGORY_OFFER_REVIEW_FLAGS_STORE } from './application/ports/category-offer-review-flags.store';
+import { SELLER_OFFER_REVIEW_FLAGS_READER } from './application/ports/seller-offer-review-flags.reader';
+import { ChangeCategoryAlwaysReview } from './application/use-cases/change-category-always-review.use-case';
+import { ChangeCategoryReviewStop } from './application/use-cases/change-category-review-stop.use-case';
+import { ViewCategoryOfferReviewFlags } from './application/use-cases/view-category-offer-review-flags.use-case';
+import { ViewSellerReviewStanding } from './application/use-cases/view-seller-review-standing.use-case';
+import { CatalogOfferReviewController } from './presentation/offer-review-flags.controller';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -233,6 +243,7 @@ import { OFFER_PRIMARY_CATEGORIES_READER } from './application/ports/offer-prima
 import { PENDING_PRODUCT_REVISIONS_READER } from './application/ports/pending-product-revisions.reader';
 import { OfferTaxCategoriesQuery } from './application/use-cases/offer-tax-categories.use-case';
 import { OfferPrimaryCategoriesQuery } from './application/use-cases/offer-primary-categories.use-case';
+import { ReadOfferReviewQueue } from './application/use-cases/read-offer-review-queue.use-case';
 import { PendingProductRevisionsQuery } from './application/use-cases/pending-product-revisions.use-case';
 import { PRODUCT_LINKING_READER } from './application/ports/product-linking.reader';
 import { ProductsForLinkingQuery } from './application/use-cases/products-for-linking.use-case';
@@ -636,6 +647,16 @@ import { AdminVariantsList } from './application/use-cases/admin-variants-list.u
 import { VariantTypeSettingsEdit } from './application/use-cases/variant-type-settings-edit.use-case';
 import { VariantAdminController } from './presentation/variant-admin.controller';
 
+/** The ports of the two category Offer review flag changes (risk-based Offer approval slice 4). */
+const CATEGORY_OFFER_REVIEW_FLAG_CHANGE_PORTS = {
+  unitOfWork: true,
+  categoryFlags: true,
+  audit: true,
+  stepUp: true,
+  clock: true,
+  ids: true,
+} as const;
+
 /** This module's own registrar for System requests (never exported from the barrel). */
 const CATALOG_SYSTEM_CHANGES = createSystemChangeRegistrar('catalog');
 
@@ -677,6 +698,11 @@ const PORT = {
   reviewInputs: OFFER_REVIEW_INPUTS,
   referrals: OFFER_REVIEW_REFERRAL_STORE,
   editReview: OfferEditReview,
+  probation: SellerReviewProbation,
+  standings: SELLER_REVIEW_STANDING_REPOSITORY,
+  categoryFlags: CATEGORY_OFFER_REVIEW_FLAGS_STORE,
+  sellerFlags: SELLER_OFFER_REVIEW_FLAGS_READER,
+  stepUp: STEP_UP_CONSUMER,
   pendingChanges: OFFER_PENDING_CHANGE_REPOSITORY,
   matcher: CLAIM_TEXT_MATCHER,
   check: CheckClaimText,
@@ -1099,6 +1125,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     OwnTopicController,
     ProductImageController,
     OfferReviewController,
+    CatalogOfferReviewController,
     AdminProductListController,
     AdminCustomVariantLabelsController,
     ClaimTermsImpactCountController,
@@ -1155,6 +1182,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       CountPendingRevisions,
       CountBrandMerges,
       CountCategoryProposals,
+      ReadOfferReviewQueue,
     ].map((type) => ({
       provide: type,
       inject: [USE_CASE_GATE, UNIT_OF_WORK, CATALOG_WORK_QUEUE_COUNT_READER],
@@ -1172,6 +1200,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
         CountPendingRevisions,
         CountBrandMerges,
         CountCategoryProposals,
+        ReadOfferReviewQueue,
       ],
       useFactory: (
         claimsWithoutCertificate: CountClaimsWithoutCertificate,
@@ -1179,6 +1208,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
         pendingRevisions: CountPendingRevisions,
         brandMerges: CountBrandMerges,
         categoryProposals: CountCategoryProposals,
+        offerReviewQueue: ReadOfferReviewQueue,
       ) =>
         new CatalogWorkQueueFacadeImplementation(
           claimsWithoutCertificate,
@@ -1186,6 +1216,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
           pendingRevisions,
           brandMerges,
           categoryProposals,
+          offerReviewQueue,
         ),
     },
     PersistenceModule.outboxWriterFor('catalog'),
@@ -2378,6 +2409,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       evaluator: true,
       clock: true,
       ids: true,
+      probation: true,
     }),
     useCaseProvider(OwnOfferAddTag, {
       unitOfWork: true,
@@ -2433,13 +2465,25 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       clock: true,
       claims: true,
       evaluator: true,
+      probation: true,
     }),
     useCaseProvider(OfferRequestChanges, {
       unitOfWork: true,
       offers: true,
       outbox: true,
       clock: true,
+      probation: true,
     }),
+    // Risk-based Offer approval slice 4: a seller's standing, and the category flags (R7, R0).
+    useCaseProvider(ViewSellerReviewStanding, {
+      unitOfWork: true,
+      standings: true,
+      sellerFlags: true,
+      reviewInputs: true,
+    }),
+    useCaseProvider(ViewCategoryOfferReviewFlags, { unitOfWork: true, categoryFlags: true }),
+    useCaseProvider(ChangeCategoryAlwaysReview, CATEGORY_OFFER_REVIEW_FLAG_CHANGE_PORTS),
+    useCaseProvider(ChangeCategoryReviewStop, CATEGORY_OFFER_REVIEW_FLAG_CHANGE_PORTS),
     useCaseProvider(AdminOfferChangeApprove, {
       unitOfWork: true,
       offers: true,

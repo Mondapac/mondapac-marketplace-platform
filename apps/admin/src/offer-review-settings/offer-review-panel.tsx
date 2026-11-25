@@ -29,6 +29,8 @@ import {
 } from '../shared/review-note.tsx';
 import { offerReviewProblemOf } from './errors.ts';
 import {
+  BACKLOG_COUNT_CODE,
+  BACKLOG_HOURS_CODE,
   BADGES_CODE,
   BADGES_VALUES,
   BAND_CODE,
@@ -56,6 +58,8 @@ const CODES = [
   REFERENCE_CODE,
   BAND_CODE,
   SAMPLING_CODE,
+  BACKLOG_COUNT_CODE,
+  BACKLOG_HOURS_CODE,
 ] as const;
 type Code = (typeof CODES)[number];
 type Draft = Readonly<Record<Code, string>>;
@@ -310,6 +314,10 @@ export function OfferReviewPanel({
       </SettingsSection>
       <SettingsSection title={t(`${P}.section.sampling`)}>
         {numberRow(SAMPLING_CODE)}
+      </SettingsSection>
+      <SettingsSection title={t(`${P}.section.backlog`)} description={t(`${P}.backlog-intro`)}>
+        {numberRow(BACKLOG_COUNT_CODE)}
+        {numberRow(BACKLOG_HOURS_CODE)}
       </SettingsSection>
       {reviewed && canManage ? (
         <SettingsSection title={t(`${P}.review-section`)}>

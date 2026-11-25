@@ -33,7 +33,7 @@ import type { OfferPendingChangeState } from '../../domain/offer-pending-change'
 import type { ClaimFacts, OfferTagState } from '../../domain/offer-tag';
 import { ConfigCatalogMarketPolicy } from '../../infrastructure/config-catalog-market-policy';
 import type { CheckClaimText } from '../claim-text/check-claim-text.service';
-import type { OfferReviewSettings } from '../ports/offer-review';
+import type { OfferReviewFactsRead, OfferReviewSettings } from '../ports/offer-review';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import { AdminOfferChangeApprove } from './admin-offer-change-approve.use-case';
@@ -41,6 +41,9 @@ import { AdminOfferChangeReject } from './admin-offer-change-reject.use-case';
 import { AdminOfferChangeRequestChanges } from './admin-offer-change-request-changes.use-case';
 import { decideHeldChange, decidesOwnSubmission } from '../offer-change-decision';
 import { AdminOfferChangesList } from './admin-offer-changes-list.use-case';
+import { OwnOfferRead } from './own-offer-read.use-case';
+import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { OwnCatalogReader } from '../ports/own-catalog.reader';
 import { OwnOfferAddTag } from './own-offer-add-tag.use-case';
 import { OwnOfferDelete } from './own-offer-delete.use-case';
 import { OwnOfferEdit } from './own-offer-edit.use-case';
@@ -156,6 +159,7 @@ describe.each([
       offer?: OfferState;
       tags?: OfferTagState[];
       settings?: OfferReviewSettings | 'fail';
+      facts?: Partial<OfferReviewFactsRead> | 'fail';
     } = {},
   ) {
     let settings: OfferReviewSettings | 'fail' = options.settings ?? RISK;
@@ -195,6 +199,7 @@ describe.each([
     const memory = memoryOfferEditReview({
       ids,
       settings: () => settings,
+      ...(options.facts === undefined ? {} : { facts: options.facts }),
       pendingChanges,
       inUnit: () => openUnits > 0,
     });
@@ -308,6 +313,19 @@ describe.each([
       ) => decideHeldChange(decisionDeps, c, target, decision),
       /** The use cases' own steps without the gate, for a context the gate cannot mint yet. */
       list: new AdminOfferChangesList(gate, { unitOfWork, pendingChanges }),
+      /** The seller's single Offer read (its latest held change, as the seller is told it). */
+      read: new OwnOfferRead(gate, {
+        unitOfWork,
+        offers,
+        ownReader: {
+          productLabels: () => Promise.resolve([]),
+          sellUnitsOf: () => Promise.resolve([]),
+        } as unknown as OwnCatalogReader,
+        policy: {
+          locales: () => ({ default: locale, allowed: [locale] }),
+        } as unknown as CatalogMarketPolicy,
+        pendingChanges,
+      }),
       offerId: initial.id,
       current: () => current,
       changes: () => [...pendingChanges.rows.values()],
@@ -322,6 +340,7 @@ describe.each([
       /** Stores a held change as it is, without the domain's checks (a stored row). */
       store: (state: OfferPendingChangeState) => pendingChanges.rows.set(state.id, state),
       settingsReads: memory.settingsReads,
+      factsAsked: memory.factsAsked,
       evaluator,
       outbox,
       setSettings: (next: OfferReviewSettings | 'fail') => (settings = next),
@@ -387,7 +406,7 @@ describe.each([
         proposedHandling: null,
         proposedTagTypes: [],
         reasons: ['contact-text'],
-        policyVersion: 2,
+        policyVersion: 3,
       });
       expect(r.referrals).toEqual([
         expect.objectContaining({
@@ -403,7 +422,7 @@ describe.each([
     it('holds every watched change in mode all, and nothing in mode off', async () => {
       const all = rig({ settings: ALL });
       const held = await all.edit.execute(sellerContext(), form(all, 'Clean text'));
-      expect(held.ok && held.value).toMatchObject({ applied: false, reasons: ['review-all'] });
+      expect(held.ok && held.value).toMatchObject({ applied: false, reasons: ['held-for-review'] });
       const off = rig({ settings: OFF });
       const applied = await off.edit.execute(sellerContext(), form(off, CONTACT));
       expect(applied.ok && applied.value).toEqual({
@@ -413,10 +432,44 @@ describe.each([
       expect(off.changes()).toEqual([]);
     });
 
+    it('tells the seller held-for-review for a stop or R7, while the row and the admin list keep the codes (Hassan S1)', async () => {
+      const r = rig({ facts: { emergencyStop: true, sensitiveCategory: true } });
+      const held = await r.edit.execute(sellerContext(), form(r, 'Call 0412 345 678'));
+      expect(held.ok && held.value).toMatchObject({
+        applied: false,
+        reasons: ['held-for-review', 'contact-text'],
+      });
+      expect(JSON.stringify(held)).not.toMatch(/emergency-stop|sensitive-category/);
+      expect(r.changes()[0]?.reasons).toEqual([
+        'emergency-stop',
+        'contact-text',
+        'sensitive-category',
+      ]);
+      const page = await r.list.execute(adminContext(), {});
+      expect(page.ok && page.value.items[0]?.reasons).toEqual([
+        'emergency-stop',
+        'contact-text',
+        'sensitive-category',
+      ]);
+      // The seller's own read of the change says the same as the edit answer (Hassan S1) and
+      // carries no review flag or standing (Sajad G2).
+      const read = await r.read.execute(sellerContext(), { offerId: r.offerId });
+      expect(read.ok && read.value.pendingChange?.reasons).toEqual([
+        'held-for-review',
+        'contact-text',
+      ]);
+      expect(JSON.stringify(read)).not.toMatch(
+        /emergency-stop|sensitive-category|fullReview|trustedFromStart|reviewStop|probation|standing|trustedAt|epoch/,
+      );
+      expect(JSON.stringify(held)).not.toMatch(
+        /fullReview|trustedFromStart|reviewStop|probation|standing|trustedAt|epoch/,
+      );
+    });
+
     it('holds a watched change during an emergency stop, even in mode off (R0)', async () => {
       const r = rig({ settings: { ...OFF, emergencyStop: true } });
       const held = await r.edit.execute(sellerContext(), form(r, 'Clean text'));
-      expect(held.ok && held.value).toMatchObject({ applied: false, reasons: ['emergency-stop'] });
+      expect(held.ok && held.value).toMatchObject({ applied: false, reasons: ['held-for-review'] });
       expect(r.changes()).toHaveLength(1);
       // A field the rules never watch still applies at once.
       const sku = rig({ settings: { ...OFF, emergencyStop: true } });
@@ -428,12 +481,64 @@ describe.each([
       expect(sku.changes()).toEqual([]);
     });
 
+    it('holds a watched change during a seller or category stop, even in mode off (R0, slice 4)', async () => {
+      const r = rig({ settings: OFF, facts: { emergencyStop: true } });
+      const held = await r.edit.execute(sellerContext(), form(r, 'Clean text'));
+      expect(held.ok && held.value).toMatchObject({ applied: false, reasons: ['held-for-review'] });
+      // The facts are asked for the Offer's own seller and product.
+      expect(r.factsAsked).toEqual([
+        { sellerId: r.current().state.sellerId, productId: r.current().state.productId },
+      ]);
+    });
+
+    it('holds a watched change of a product in an always-review category (R7, slice 4)', async () => {
+      const r = rig({ facts: { sensitiveCategory: true } });
+      const held = await r.edit.execute(sellerContext(), form(r, 'Clean text'));
+      expect(held.ok && held.value).toMatchObject({
+        applied: false,
+        reasons: ['held-for-review'],
+      });
+      const [change] = r.changes();
+      expect(change?.reasons).toEqual(['sensitive-category']);
+      // R7 never holds a field the rules do not watch, and mode off holds nothing but a stop.
+      const sku = rig({ facts: { sensitiveCategory: true } });
+      const applied = await sku.edit.execute(
+        sellerContext(),
+        form(sku, 'Lamb shoulder, 1 kg', { sellerSku: 'SKU-9' }),
+      );
+      expect(applied.ok && applied.value).toMatchObject({ applied: true });
+      const off = rig({ settings: OFF, facts: { sensitiveCategory: true } });
+      const offEdit = await off.edit.execute(sellerContext(), form(off, 'Clean text'));
+      expect(offEdit.ok && offEdit.value).toMatchObject({ applied: true });
+    });
+
+    it('never holds an edit for probation or full review (R1, R6 judge first publications)', async () => {
+      const r = rig({ facts: { probation: true, fullReview: true } });
+      const outcome = await r.edit.execute(sellerContext(), form(r, 'Clean text'));
+      expect(outcome.ok && outcome.value).toMatchObject({ applied: true });
+    });
+
+    it('judges the edit in mode all when the facts are degraded, with no invented stop', async () => {
+      const r = rig({ settings: OFF, facts: { degraded: true } });
+      const outcome = await r.edit.execute(sellerContext(), form(r, 'Clean text'));
+      expect(outcome.ok && outcome.value).toMatchObject({
+        applied: false,
+        reasons: ['held-for-review'],
+      });
+      const failed = rig({ settings: OFF, facts: 'fail' });
+      const held = await failed.edit.execute(sellerContext(), form(failed, 'Clean text'));
+      expect(held.ok && held.value).toMatchObject({
+        applied: false,
+        reasons: ['held-for-review'],
+      });
+    });
+
     it('fails closed: a settings read that fails holds the change (mode all)', async () => {
       const r = rig({ settings: 'fail' });
       const outcome = await r.edit.execute(sellerContext(), form(r, 'Clean text'));
       expect(outcome.ok && outcome.value).toMatchObject({
         applied: false,
-        reasons: ['review-all'],
+        reasons: ['held-for-review'],
       });
     });
 
@@ -529,6 +634,19 @@ describe.each([
       expect(r.evaluator.calls).toHaveLength(0);
     });
 
+    it('tells the seller held-for-review for a seller stop, keeping handling (Hassan S1)', async () => {
+      const r = rig({ facts: { emergencyStop: true } });
+      const outcome = await r.setHandling.execute(sellerContext(), {
+        offerId: r.offerId,
+        handling: 'REPACKED',
+      });
+      expect(outcome.ok && outcome.value).toMatchObject({
+        applied: false,
+        reasons: ['held-for-review', 'handling'],
+      });
+      expect(r.changes()[0]?.reasons).toEqual(['emergency-stop', 'handling']);
+    });
+
     it('applies a move to SEALED_ORIGINAL at once in risk-based mode', async () => {
       const r = rig({ offer: liveOffer({ handling: 'FRESH' }) });
       const outcome = await r.setHandling.execute(sellerContext(), {
@@ -555,6 +673,17 @@ describe.each([
       expect(r.current().tags).toEqual([]);
       expect(r.changes()[0]).toMatchObject({ proposedTagTypes: [typeCode] });
       expect(r.outbox.appended).toEqual([]);
+    });
+
+    it('tells the seller held-for-review for an always-review category (Hassan S1)', async () => {
+      const r = rig({ facts: { sensitiveCategory: true } });
+      const outcome = await r.addTag.execute(sellerContext(), { offerId: r.offerId, typeCode });
+      if (!outcome.ok) throw new Error(outcome.error.code);
+      expect(outcome.value).toMatchObject({
+        applied: false,
+        reasons: ['certificate-badge', 'held-for-review'],
+      });
+      expect(r.changes()[0]?.reasons).toEqual(['certificate-badge', 'sensitive-category']);
     });
 
     it('refuses a type certification does not allow, never queueing it', async () => {
@@ -921,14 +1050,14 @@ describe.each([
           fields: ['handling'],
           handling: 'repacked',
           reasons: ['handling'],
-          policyVersion: 2,
+          policyVersion: 3,
         },
         {
           changeId: tag.value.pendingChangeId,
           fields: ['tags'],
           handling: null,
           reasons: ['review-all'],
-          policyVersion: 2,
+          policyVersion: 3,
         },
       ]);
       const tagId = r.current().tags.find((t) => t.typeCode === typeCode)!.id;

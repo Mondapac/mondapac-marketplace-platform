@@ -235,9 +235,12 @@ export async function readSettingValue(
   deps: SettingsDependencies,
   context: CallContext,
   code: string,
+  options: { readonly strict?: boolean } = {},
 ): Promise<string | null> {
   const definition = findDefinition(code);
   if (definition === null) return null;
+  // `strict`: a caller that must not act on a guess (the Offer queue alert) gets null, not the safe value.
+  const fallback = options.strict === true ? null : definition.safeValue;
   try {
     const read = await deps.unitOfWork.run(
       context.market,
@@ -246,7 +249,7 @@ export async function readSettingValue(
     );
     if (!read.ok) {
       logReadFailure(context, definition.code, 'unit-failed');
-      return definition.safeValue;
+      return fallback;
     }
     const stored = read.value?.value;
     if (stored === undefined) return definition.defaultValue;
@@ -254,13 +257,13 @@ export async function readSettingValue(
     // never passed on: the safe value instead (Hassan, PR #1329).
     if (acceptedValue(definition, stored) === null) {
       logReadFailure(context, definition.code, 'stored-value-invalid');
-      return definition.safeValue;
+      return fallback;
     }
     return stored;
   } catch {
     // An unreadable store is not the Market's choice: answer the safe value (ADR-0026 decision 5).
     logReadFailure(context, definition.code, 'store-unreadable');
-    return definition.safeValue;
+    return fallback;
   }
 }
 
