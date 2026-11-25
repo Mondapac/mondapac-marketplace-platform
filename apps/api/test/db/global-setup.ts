@@ -89,6 +89,7 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'REPORTING_SELLER_KPIS');
   await createCopy(name, 'CATALOG_TREE');
   await createCopy(name, 'BUYER_FIRST');
+  await createCopy(name, 'ABANDONED_CARTS');
 }
 
 /**
@@ -182,6 +183,9 @@ export default async function globalSetup(): Promise<void> {
  * - `buyer_first`: ordering-buyer-first.db-spec.ts runs the history backfill of migration
  *   20261124020000 again, which reads and writes every paid order of the database, so no other
  *   file's orders live there.
+ * - `abandoned_carts`: reporting-abandoned-carts.db-spec.ts counts every abandoned cart of a Market
+ *   (no lower bound on the last change), while other files insert and purge carts in both Markets in
+ *   parallel, so none of them lives there.
  * Copied before any test connects, since a template must have no other session.
  */
 async function createCopy(
@@ -226,7 +230,8 @@ async function createCopy(
     | 'REPORTING_ADMIN_KPI'
     | 'REPORTING_SELLER_KPIS'
     | 'CATALOG_TREE'
-    | 'BUYER_FIRST',
+    | 'BUYER_FIRST'
+    | 'ABANDONED_CARTS',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });

@@ -92,7 +92,10 @@ export class AdminDashboardController {
       '(signed-in customers with personalization on who viewed a product, then added to the ' +
       'cart, placed an order and paid, each within the step before: daily distinct counts ' +
       'summed over the period, from the nightly snapshot; `not-enough-data` below 20 viewers, a ' +
-      'step under 5 is null; key `ordering.order.view`), `finance` (GMV with and without GST, refunded goods, net sales, ' +
+      'step under 5 is null; key `ordering.order.view`), `abandonedCarts` (active carts with ' +
+      'lines, not left by a paid order, untouched for 24 hours at the end of the latest ' +
+      'snapshot day of the period, and their approximate value at the prices when added; ' +
+      '`not-enough-data` below 5 carts; key `ordering.order.view`), `finance` (GMV with and without GST, refunded goods, net sales, ' +
       'average order, and `net`: Mondapac net revenue and take rate, null until a week of ' +
       'matching ledger, a partial total never carries an amount; key ' +
       '`commission-payouts.settlement.view`), and `health` (live listings and out of stock, ' +

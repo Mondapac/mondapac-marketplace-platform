@@ -17,6 +17,19 @@ import { SnapshotDailyEngagement } from './application/use-cases/snapshot-daily-
 import { ViewMarketplaceShoppingFunnel } from './application/use-cases/view-marketplace-shopping-funnel.use-case';
 import { FacadeEngagementSources } from './infrastructure/facade-engagement-sources';
 import { snapshotDailyEngagementJob } from './presentation/jobs/snapshot-daily-engagement.job';
+import { CART_REPORTING_FACADE, CartModule, type CartReportingFacade } from '../cart';
+import {
+  ABANDONED_CART_SOURCES,
+  type AbandonedCartSources,
+} from './application/ports/abandoned-cart-sources';
+import {
+  ABANDONED_CARTS_STORE,
+  type AbandonedCartsStore,
+} from './application/ports/abandoned-carts-store';
+import { SnapshotAbandonedCarts } from './application/use-cases/snapshot-abandoned-carts.use-case';
+import { ViewMarketplaceAbandonedCarts } from './application/use-cases/view-marketplace-abandoned-carts.use-case';
+import { FacadeAbandonedCartSources } from './infrastructure/facade-abandoned-cart-sources';
+import { snapshotAbandonedCartsJob } from './presentation/jobs/snapshot-abandoned-carts.job';
 import {
   COMMISSION_PAYOUTS_REPORTING_FACADE,
   CommissionPayoutsModule,
@@ -99,7 +112,8 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
  * (ordering's order and refund events) and the nightly reconcile; the ledger facts come from
  * commission-payouts' reporting facade (its `ledger-recorded` event and the ledger backfill); the
  * shopping funnel's daily counts from ordering's checkouts and engagement's count (dashboards v2,
- * phase 2: a nightly snapshot, counts only). No
+ * phase 2: a nightly snapshot, counts only); the abandoned carts from cart's reporting facade (a
+ * nightly snapshot: a count and an approximate value). No
  * module imports it. It publishes no event. Its own keys are the two daily exports' (dashboards v2,
  * PR 5), each audited. The history backfill job brings the facts recorded before the module was
  * deployed in, once.
@@ -112,6 +126,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
     ShippingModule,
     CommissionPayoutsModule,
     EngagementModule,
+    CartModule,
   ],
   controllers: [SellerKpisController, AdminReportsController],
   providers: [
@@ -332,6 +347,43 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         clock: Clock,
       ) => new ViewMarketplaceShoppingFunnel(gate, { unitOfWork, store, zone, clock }),
     },
+    // Abandoned carts (dashboards v2, phase 2): the nightly snapshot and its read.
+    {
+      provide: ABANDONED_CART_SOURCES,
+      inject: [CART_REPORTING_FACADE],
+      useFactory: (cart: CartReportingFacade): AbandonedCartSources =>
+        new FacadeAbandonedCartSources(cart),
+    },
+    {
+      provide: SnapshotAbandonedCarts,
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        ABANDONED_CARTS_STORE,
+        ABANDONED_CART_SOURCES,
+        MARKET_ZONE,
+        CLOCK,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        store: AbandonedCartsStore,
+        sources: AbandonedCartSources,
+        zone: MarketZone,
+        clock: Clock,
+      ) => new SnapshotAbandonedCarts(gate, { unitOfWork, store, sources, zone, clock }),
+    },
+    {
+      provide: ViewMarketplaceAbandonedCarts,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ABANDONED_CARTS_STORE, MARKET_ZONE, CLOCK],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        store: AbandonedCartsStore,
+        zone: MarketZone,
+        clock: Clock,
+      ) => new ViewMarketplaceAbandonedCarts(gate, { unitOfWork, store, zone, clock }),
+    },
     {
       provide: REPORTING_KPI_FACADE,
       inject: [
@@ -344,6 +396,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         ViewMarketplaceOrderStatus,
         ViewMarketplaceOrdersByState,
         ViewMarketplaceShoppingFunnel,
+        ViewMarketplaceAbandonedCarts,
         MARKET_ZONE,
         CLOCK,
       ],
@@ -357,6 +410,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         orderStatus: ViewMarketplaceOrderStatus,
         ordersByState: ViewMarketplaceOrdersByState,
         shoppingFunnel: ViewMarketplaceShoppingFunnel,
+        abandonedCarts: ViewMarketplaceAbandonedCarts,
         zone: MarketZone,
         clock: Clock,
       ) =>
@@ -370,6 +424,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
           orderStatus,
           ordersByState,
           shoppingFunnel,
+          abandonedCarts,
           { zone, clock },
         ),
     },
@@ -383,17 +438,25 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
     ),
     registerJobsFrom(
       'reporting',
-      [ReconcileReportFacts, BackfillHistory, BackfillLedger, SnapshotDailyEngagement],
+      [
+        ReconcileReportFacts,
+        BackfillHistory,
+        BackfillLedger,
+        SnapshotDailyEngagement,
+        SnapshotAbandonedCarts,
+      ],
       (
         reconcile: ReconcileReportFacts,
         backfill: BackfillHistory,
         ledger: BackfillLedger,
         engagement: SnapshotDailyEngagement,
+        abandoned: SnapshotAbandonedCarts,
       ) => [
         reconcileReportFactsJob(reconcile),
         backfillHistoryJob(backfill),
         backfillLedgerJob(ledger),
         snapshotDailyEngagementJob(engagement),
+        snapshotAbandonedCartsJob(abandoned),
       ],
     ),
   ],

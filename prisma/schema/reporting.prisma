@@ -292,3 +292,24 @@ model ReportingDailyEngagement {
   @@map("daily_engagement")
   @@schema("reporting")
 }
+
+/// Abandoned carts at the end of one Market day (dashboards v2, phase 2): how many active carts
+/// (guest or signed-in) held a line, carried no order mark and were untouched for at least 24 h at
+/// the day's end, and their lines' approximate value (the price when each line was added, not the
+/// price now), written once by the hourly snapshot job on the next Market day and never changed.
+/// Aggregate only: no cart, account, guest, offer or seller column. The value is null when a line
+/// was in another currency. The CHECKs and the grants (SELECT and INSERT only) are hand-written in
+/// the migration.
+model ReportingDailyAbandonedCarts {
+  marketId            String   @map("market_id") @db.VarChar(8)
+  tenantId            String   @map("tenant_id")
+  marketDay           DateTime @map("market_day") @db.Date
+  cartCount           Int      @map("cart_count")
+  approxValueAmount   BigInt?  @map("approx_value_amount")
+  approxValueCurrency String?  @map("approx_value_currency") @db.VarChar(3)
+  recordedAt          DateTime @map("recorded_at") @db.Timestamptz(6)
+
+  @@id([marketId, marketDay])
+  @@map("daily_abandoned_carts")
+  @@schema("reporting")
+}

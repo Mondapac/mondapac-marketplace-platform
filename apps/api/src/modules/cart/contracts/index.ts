@@ -20,6 +20,12 @@ export {
   type CartAdminFacade,
   type CartAdminFailure,
 } from './cart-admin.facade';
+export {
+  CART_REPORTING_FACADE,
+  type AbandonedCartTotals,
+  type CartReportingFacade,
+  type CartReportingFailure,
+} from './cart-reporting.facade';
 export { CART_CUSTOMER_CART_VIEW, CART_PERMISSIONS } from './permissions';
 export {
   CART_ASSISTANT_FACADE,

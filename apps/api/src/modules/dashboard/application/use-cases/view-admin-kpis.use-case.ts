@@ -41,6 +41,7 @@ import type {
   PeriodRequest,
   ReportingKpiFacade,
   ShoppingFunnelAnswer,
+  AbandonedCartsAnswer,
   TopCategoriesAnswer,
   TopSellersAnswer,
 } from '../../../reporting';
@@ -163,6 +164,11 @@ export interface AdminKpisAnswer {
    * summed); null without `ordering.order.view`.
    */
   readonly shoppingFunnel: KpiSection<ShoppingFunnelAnswer> | null;
+  /**
+   * Abandoned carts on the period's latest nightly snapshot (a count and an approximate value);
+   * null without `ordering.order.view`.
+   */
+  readonly abandonedCarts: KpiSection<AbandonedCartsAnswer> | null;
   /** Null without `commission-payouts.settlement.view` (it shows each seller's money). */
   readonly topSellers: KpiSection<NamedTopSellers> | null;
   /** Null without `commission-payouts.settlement.view` (it shows money). */
@@ -248,7 +254,7 @@ async function section<T>(
  * strip and trend, orders by status, net revenue and the supply and health numbers. Rule
  * `own-resources` and a platform admin acting as themselves, like the work queue. Each section is
  * asked only when the viewer holds its key (operations and orders by status:
- * `ordering.order.view`, and the shopping funnel too; money: `commission-payouts.settlement.view`; each health number its
+ * `ordering.order.view`, and the shopping funnel and abandoned carts too; money: `commission-payouts.settlement.view`; each health number its
  * owner's key) and its owner checks the key again. Nothing is cached here.
  */
 export class ViewAdminKpis extends UseCase<
@@ -300,6 +306,7 @@ export class ViewAdminKpis extends UseCase<
       orders,
       ordersByState,
       shoppingFunnel,
+      abandonedCarts,
     ] = await Promise.all([
       held.has(ORDERING_ORDER_VIEW.key)
         ? section('operations', timeoutMs, () => reporting.marketplaceOperations(context, input))
@@ -325,6 +332,11 @@ export class ViewAdminKpis extends UseCase<
             reporting.marketplaceShoppingFunnel(context, input),
           )
         : null,
+      held.has(ORDERING_ORDER_VIEW.key)
+        ? section('abandoned-carts', timeoutMs, () =>
+            reporting.marketplaceAbandonedCarts(context, input),
+          )
+        : null,
     ]);
     return ok({
       generatedAt: this.deps.clock.now(),
@@ -334,6 +346,7 @@ export class ViewAdminKpis extends UseCase<
       ordersByStatus: orders,
       ordersByState,
       shoppingFunnel,
+      abandonedCarts,
       topSellers,
       topCategories,
       health,

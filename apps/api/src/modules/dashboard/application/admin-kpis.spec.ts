@@ -22,6 +22,7 @@ import type {
   OrderStatusAnswer,
   OrdersByStateAnswer,
   ShoppingFunnelAnswer,
+  AbandonedCartsAnswer,
   ReportingKpiFacade,
   TopCategoriesAnswer,
   TopSellersAnswer,
@@ -191,6 +192,20 @@ const shoppingFunnel = {
   },
 } as unknown as ShoppingFunnelAnswer;
 
+const abandonedCarts = {
+  period: finance.period,
+  generatedAt: NOW,
+  abandonedCarts: {
+    status: 'available',
+    carts: 42,
+    approximateValue: { amount: 412_600n, currency: 'AUD' },
+    asOfDay: '2026-11-23',
+    change: NA,
+    recordedDays: 6,
+    periodDays: 7,
+  },
+} as unknown as AbandonedCartsAnswer;
+
 const orderStatus: OrderStatusAnswer = {
   period: finance.period,
   timezone: 'Australia/Brisbane',
@@ -330,6 +345,10 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
         asked.push('shopping-funnel');
         return Promise.resolve(ok(shoppingFunnel));
       },
+      marketplaceAbandonedCarts: () => {
+        asked.push('abandoned-carts');
+        return Promise.resolve(ok(abandonedCarts));
+      },
       marketplaceOperations: (_context, input) => {
         asked.push('operations');
         inputs.push(input);
@@ -391,6 +410,7 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     const ordersOnly = await build([ORDERS]).execute(admin, { period: '7d' });
     expect(ordersOnly.ok && ordersOnly.value.topSellers).toBeNull();
     expect(asked.sort()).toEqual([
+      'abandoned-carts',
       'operations',
       'orders-by-state',
       'orders-by-status',
@@ -484,6 +504,49 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     const failed = await build([ORDERS]).execute(admin, { period: '7d' });
     expect(failed.ok && failed.value.shoppingFunnel).toEqual({ status: 'error' });
     expect(failed.ok && failed.value.ordersByState?.status).toBe('ok');
+  });
+
+  it('maps the abandoned-carts section: approximate value as a string, not-enough-data, error, and null without the key', async () => {
+    const full = await build([ORDERS]).execute(admin, { period: '7d' });
+    if (!full.ok) throw new Error('expected an answer');
+    const base = { ...full.value, operations: null };
+    expect(adminKpisBody(base).abandonedCarts).toEqual({
+      status: 'ok',
+      kpis: {
+        status: 'available',
+        carts: 42,
+        approximateValue: { amountMinor: '412600', currency: 'AUD' },
+        asOfDay: '2026-11-23',
+        change: NA,
+        recordedDays: 6,
+        periodDays: 7,
+      },
+    });
+    const few = {
+      ...base,
+      abandonedCarts: {
+        status: 'ok' as const,
+        value: {
+          ...abandonedCarts,
+          abandonedCarts: {
+            status: 'not-enough-data' as const,
+            minimum: 5,
+            recordedDays: 7,
+            periodDays: 7,
+          },
+        },
+      },
+    };
+    expect(adminKpisBody(few).abandonedCarts).toEqual({
+      status: 'ok',
+      kpis: { status: 'not-enough-data', minimum: 5, recordedDays: 7, periodDays: 7 },
+    });
+    const none = await build([MONEY]).execute(admin, { period: '7d' });
+    expect(none.ok && none.value.abandonedCarts).toBeNull();
+    facade.marketplaceAbandonedCarts = () => Promise.reject(new TypeError('boom'));
+    const failed = await build([ORDERS]).execute(admin, { period: '7d' });
+    expect(failed.ok && failed.value.abandonedCarts).toEqual({ status: 'error' });
+    expect(failed.ok && failed.value.shoppingFunnel?.status).toBe('ok');
   });
 
   it('names the top categories from the live tree, null for a category it does not have', async () => {

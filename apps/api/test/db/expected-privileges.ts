@@ -962,6 +962,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Dashboards v2, phase 2: the shopping funnel of a Market day is written once by the nightly
     // snapshot and never changed (a customer's later opt-out never needs to touch it).
     'reporting.daily_engagement': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Dashboards v2, phase 2: a Market day's abandoned carts are written once by the nightly
+    // snapshot and never changed.
+    'reporting.daily_abandoned_carts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // The backfill's cursor: its Market, kind, window end and start time stay.
     'reporting.backfill_progress': {
       table: ['INSERT', 'SELECT'],

@@ -19,6 +19,7 @@ import type { NetRevenueAnswer } from '../application/use-cases/view-marketplace
 import type { SellerNetEarningsAnswer } from '../application/use-cases/view-seller-net-earnings.use-case';
 import type { OrdersByStateAnswer } from '../application/use-cases/view-marketplace-orders-by-state.use-case';
 import type { ShoppingFunnelAnswer } from '../application/use-cases/view-marketplace-shopping-funnel.use-case';
+import type { AbandonedCartsAnswer } from '../application/use-cases/view-marketplace-abandoned-carts.use-case';
 import type { OrderStatusAnswer } from '../application/use-cases/view-marketplace-order-status.use-case';
 import type { FinanceNet } from '../application/use-cases/view-marketplace-finance-kpis.use-case';
 
@@ -75,6 +76,8 @@ export {
 export type { NetFiguresFailure, NetFiguresInput, NetRevenueAnswer, SellerNetEarningsAnswer };
 export type { FinanceNet, OrderStatusAnswer, OrdersByStateAnswer, ShoppingFunnelAnswer };
 export type { FunnelStep, ShoppingFunnel } from '../domain/engagement';
+export type { AbandonedCartsAnswer };
+export type { AbandonedCarts } from '../domain/abandoned-carts';
 export type { OrdersByState, StateShare } from '../domain/orders-by-state';
 export type { OrderStatusCounts, SameDayShare, TakeRate } from '../domain/admin-health';
 export type { InstantWindow } from '../domain/period';
@@ -136,6 +139,17 @@ export interface ReportingKpiFacade {
     context: CallContext,
     input: KpiPeriodInput,
   ): Promise<Result<ShoppingFunnelAnswer, KpiFailure>>;
+
+  /**
+   * Abandoned carts (dashboards v2, phase 2) on the period's latest nightly snapshot day against
+   * the latest day of the period before: active carts with lines, no order mark and no change for
+   * 24 hours at the day's end, and their approximate value (prices when added). `not-enough-data`
+   * below five carts. Counts only: key `ordering.order.view`, platform admin only.
+   */
+  marketplaceAbandonedCarts(
+    context: CallContext,
+    input: KpiPeriodInput,
+  ): Promise<Result<AbandonedCartsAnswer, KpiFailure>>;
 
   /** The five sellers with the most goods sold in the period (money: the finance key). */
   marketplaceTopSellers(
