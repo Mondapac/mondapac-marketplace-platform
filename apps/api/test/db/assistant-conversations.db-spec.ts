@@ -546,10 +546,14 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
          calls, cost_micro_usd) VALUES (gen_random_uuid(), $1, $2, $3, $4, NULL, 1, 4321)`,
       [market.marketId, market.tenantId, day.toString(), BUYER_CHAT],
     );
-    // The other Market's run of this file may have its own record; never this one (Temporal
-    // instants compare by their text: toEqual sees no fields on them).
+    // The other Market gets its own, later record back, never this one (Hassan, PR 1354 B).
+    // Temporal instants compare by their text: toEqual sees no fields on them.
+    const otherAt = at.add({ hours: 1 });
+    await inUnit(other, () => report.markCapReached(other, BUYER_CHAT, day, 'day', otherAt));
     const others = await read(other, () => report.lastCapReached(other, BUYER_CHAT));
+    const mine = await read(market, () => report.lastCapReached(market, BUYER_CHAT));
     expect(others?.at.toString()).not.toBe(at.toString());
+    expect(mine?.period).toBe('month');
     await expect(read(other, () => report.costByDay(other, BUYER_CHAT, day, day))).resolves.toEqual(
       [],
     );

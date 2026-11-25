@@ -70,13 +70,15 @@ $check$;
 ALTER TABLE "platform"."ai_budget_counters"
   VALIDATE CONSTRAINT "ai_budget_counters_cap_reached_check";
 
-SET lock_timeout = '5s';
-
 -- The settings screen's "last auto-off": the newest record of one capability in a Market. Few rows
--- (at most one a day per capability), so a partial index.
+-- (at most one a day per capability), so a partial index, built under the same 1 s lock wait (its
+-- SHARE lock holds back reserves while it builds; the table is small). Not CONCURRENTLY: a failed
+-- concurrent build leaves an invalid index that IF NOT EXISTS would then skip.
 CREATE INDEX IF NOT EXISTS "ai_budget_counters_cap_reached_idx"
   ON "platform"."ai_budget_counters" ("market_id", "scope_key", "cap_reached_at")
   WHERE "cap_reached_at" IS NOT NULL;
+
+SET lock_timeout = '5s';
 
 -- 3. Spend before the gateway counted: per Market day of the buyer chat (no seller), the part of
 -- spend_days the gateway's day row does not hold, up to the Market's first gateway day (all days

@@ -1,9 +1,12 @@
+import { Logger } from '@nestjs/common';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { CapabilityUsageReport } from '../../../platform/ai/usage/ai-usage-report';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import { BUYER_CHAT } from '../contracts/ai-capabilities';
 import type { SpendRepository, SpendTotals } from '../application/ports/spend.repository';
+
+const logger = new Logger('PrismaSpendRepository');
 
 /** A calendar day as the DATE column takes it. */
 const dateOf = (day: Temporal.PlainDate): Date => new Date(`${day.toString()}T00:00:00Z`);
@@ -111,13 +114,20 @@ export class PrismaSpendRepository implements SpendRepository {
     // finding 5); spend_days still decides (and answers) until G7b. A failure here rolls the whole
     // unit back, as any failed write of the turn's unit does (fail closed).
     if (marked.count !== 1) return false;
-    await this.usage.markCapReached(
-      market,
-      BUYER_CHAT,
-      day,
-      cap === 'monthly' ? 'month' : 'day',
-      at,
-    );
+    try {
+      await this.usage.markCapReached(
+        market,
+        BUYER_CHAT,
+        day,
+        cap === 'monthly' ? 'month' : 'day',
+        at,
+      );
+    } catch (error) {
+      // Rare, and the unit rolls back with it (the turn's spend_days add too): seen, not silent
+      // (Mojtaba, PR 1354 re-review).
+      logger.error({ msg: 'assistant.cap-reached.mirror-failed', marketId: market.marketId });
+      throw error;
+    }
     return true;
   }
 }
