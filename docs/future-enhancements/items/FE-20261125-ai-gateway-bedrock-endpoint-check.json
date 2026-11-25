@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-ai-gateway-bedrock-endpoint-check",
+  "area": "assistant",
+  "title": "درگاه AI: تأیید آدرس Bedrock Mantle و طول کلید",
+  "desc": "پیش از ثبت dataTerms برای ردیف Bedrock، آدرس bedrock-mantle.<region>.api.aws/anthropic/v1/messages، شناسهٔ مدل و سقف ۲۰۰۰ نویسهٔ AI_BEDROCK_API_KEY با مستندات AWS تأیید شود؛ و یک متریک برای پاسخ‌های 401/403 مسیر (یافتهٔ ۷ حسن، محمد ۳).",
+  "src": "docs/design/domain/platform-ai.md",
+  "date": "2026-11-25",
+  "trig": "پیش از ثبت بررسی حسن روی ردیف Bedrock سیدنی",
+  "prio": "بالا",
+  "status": "موکول"
+}

@@ -12,6 +12,7 @@ import {
   type InMemoryAiUsageStore,
 } from '../../../../test/support/in-memory-ai-usage';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
+import { passesFor, testRouteCatalogue, testRouter } from '../../../../test/support/ai-routes';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
@@ -33,15 +34,13 @@ const TURN: ModelTurn = {
   usage: { inputTokens: 10, outputTokens: 5 },
 };
 const REQUEST = { system: 'You write.', input: 'Pan, call 0412 345 678', maxOutputTokens: 5000 };
-const PRICE = { inputPicoUsd: 1_000_000, outputPicoUsd: 5_000_000 };
-
 const configOf = () =>
   ({
     aiKillSwitch: false,
     assistantModels: {
       apiKeys: { AU: 'sk-test-canary-key-0001', ZZ: 'sk-test-canary-key-0002' },
       models: { fast: { AU: 'model-fast', ZZ: 'model-fast' }, balanced: {} },
-      prices: { fast: { AU: PRICE, ZZ: PRICE }, balanced: {} },
+      bedrockApiKeys: {},
     },
   }) as unknown as AppConfig;
 
@@ -88,12 +87,14 @@ describe('GatewayDescriptionWriterModel on the real AiGateway (AIS-03; ADR-0019 
     const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
     const { usage, store: usageStore } = inMemoryAiUsage(markets, clock);
     store = usageStore;
+    const models = new ModelGateway(configOf(), provider, testRouteCatalogue());
     const gateway = new AiGateway(
-      new ModelGateway(configOf(), provider),
+      models,
       registry,
       { isOn: () => Promise.resolve(sellerOn) },
       usage,
       clock,
+      testRouter(testRouteCatalogue(), passesFor(CATALOG_AI_CAPABILITIES), models, markets, clock),
     );
     return new GatewayDescriptionWriterModel(gateway);
   };

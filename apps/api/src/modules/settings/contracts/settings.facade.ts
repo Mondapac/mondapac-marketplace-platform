@@ -5,6 +5,14 @@ import type { OfferReviewPolicySettings } from '../application/use-cases/read-of
 
 export type { OfferReviewPolicySettings };
 
+/** The two limits of the Offer review queue backlog alert (whole numbers, both at least 1). */
+export interface OfferQueueBacklogLimits {
+  /** Offers waiting in the queue above which the alert is raised. */
+  readonly count: number;
+  /** Business hours the oldest waiting Offer may wait before the alert is raised. */
+  readonly hours: number;
+}
+
 /**
  * What other modules read from the settings store (ADR-0026 decision 2). Each method carries the
  * caller's `CallContext` unchanged and answers for its Market alone.
@@ -37,6 +45,12 @@ export interface SettingsFacade {
    * throw answers the safe policy (every Offer waits for an admin; ADR-0026 decision 5).
    */
   offerReviewPolicy(context: CallContext): Promise<OfferReviewPolicySettings>;
+
+  /**
+   * The limits of the Offer review queue backlog alert, for the system actor of a worker job. Null
+   * when the store cannot be read or a refusal or throw happens: the alert then acts on no guess.
+   */
+  offerQueueBacklogLimits(context: CallContext): Promise<OfferQueueBacklogLimits | null>;
 }
 
 export const SETTINGS_FACADE = Symbol('SETTINGS_FACADE');

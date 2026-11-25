@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-ai-gateway-keep-reservation",
+  "area": "assistant",
+  "title": "درگاه AI: نگه داشتن رزرو بودجه برای تلاش بعدی",
+  "desc": "در خطای بی‌هزینه (خطای سرور یا محدودیت نرخ) رزرو برای تلاش بعدی نگه داشته شود به‌جای آزاد کردن و رزرو دوباره؛ دو واحد کمتر روی ردیف‌های پرترافیک بودجه برای هر fallback (مجتبی، بازبینی G3).",
+  "src": "docs/design/domain/platform-ai.md",
+  "date": "2026-11-25",
+  "trig": "انتظار قفل روی ai_budget_counters یا خطای ai.usage.settle-failed، یا G4",
+  "prio": "پایین",
+  "status": "موکول"
+}

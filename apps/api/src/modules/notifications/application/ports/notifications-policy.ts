@@ -14,6 +14,9 @@ export interface NotificationsPolicy {
   /** The Market's mail sender (the same one identity's mail uses). */
   mailSender(market: MarketContext): MailSender;
 
+  /** The Market's time zone (an IANA id): what "business hours" of its admins' queues mean. */
+  marketTimezone(market: MarketContext): string;
+
   /** The Market's default locale: the language of product names asked for in an order mail. */
   defaultLocale(market: MarketContext): string;
 

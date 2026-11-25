@@ -6,6 +6,8 @@ import type { Temporal } from '@mondapac/shared-kernel';
  * test checks the registry holds exactly these.
  */
 export const STEP_UP_ACTION_KEYS = [
+  'catalog.category-review.change',
+  'catalog.offer-review-stop.change',
   'catalog.offer.delete',
   'customers.account-deletion-settings.change',
   'customers.buyer-account.delete',
@@ -17,6 +19,8 @@ export const STEP_UP_ACTION_KEYS = [
   'payments.payout-account.change',
   'pricing.price.change',
   'sellers.business-activity.change',
+  'sellers.offer-review-stop.change',
+  'sellers.offer-review-trust.change',
   'sellers.store-terms.change',
   'storefront.seo.change-protected',
   'wallet.credit.approve',

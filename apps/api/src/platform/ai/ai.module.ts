@@ -9,8 +9,13 @@ import { UNIT_OF_WORK, type UnitOfWork } from '../unit-of-work/unit-of-work';
 import { AiGateway } from './ai-gateway';
 import { AnthropicMessagesProvider } from './anthropic-messages.provider';
 import { CapabilityRegistry } from './capability-registry';
+import { checkedInCatalogue } from './catalogue';
+import { AI_ROUTE_CATALOGUE, type RouteCatalogue } from './catalogue/route-catalogue';
+import { AI_EVALUATION_RESULTS, EvaluationResults } from './evaluations/evaluation-results';
+import { EVALUATION_PASSES } from './evaluations/results';
 import { ModelGateway } from './model-gateway';
 import { MODEL_PROVIDER } from './model-provider';
+import { AiRouter } from './routing/ai-router';
 import { AiUsage } from './usage/ai-usage';
 import { aiReservationSweeperJob, aiUsageRetentionJob } from './usage/ai-usage-jobs';
 import { AiUsageReport } from './usage/ai-usage-report';
@@ -21,7 +26,9 @@ import { AI_USAGE_STORE, type AiUsageStore } from './usage/ai-usage-store';
  * a model. It imports no module. Modules reach a model only through {@link AiGateway}, imported
  * only by the files on the boundary allow-list (`.dependency-cruiser.cjs`), and register their
  * capabilities in the {@link CapabilityRegistry}. Tests replace {@link MODEL_PROVIDER} with a fake,
- * so `pnpm verify` stays offline and deterministic.
+ * so `pnpm verify` stays offline and deterministic, and may replace the checked-in route catalogue
+ * ({@link AI_ROUTE_CATALOGUE}) and evaluation passes ({@link AI_EVALUATION_RESULTS}) with rows
+ * and passes of their own (the checked-in ones have no verified route yet, ADR-0052).
  *
  * The usage and budget store (`platform.ai_*`, design section 10) is bound here only and not
  * exported, so no module changes the AI budget; its two jobs (`platform.ai-reservation-
@@ -42,7 +49,23 @@ export class AiModule {
       imports: [sellerAiSwitchProvider],
       providers: [
         { provide: MODEL_PROVIDER, useValue: new AnthropicMessagesProvider() },
+        { provide: AI_ROUTE_CATALOGUE, useFactory: () => checkedInCatalogue() },
+        {
+          provide: AI_EVALUATION_RESULTS,
+          useFactory: () => new EvaluationResults(EVALUATION_PASSES),
+        },
         ModelGateway,
+        {
+          provide: AiRouter,
+          inject: [AI_ROUTE_CATALOGUE, AI_EVALUATION_RESULTS, ModelGateway, MarketRegistry, CLOCK],
+          useFactory: (
+            catalogue: RouteCatalogue,
+            evaluations: EvaluationResults,
+            models: ModelGateway,
+            markets: MarketRegistry,
+            clock: Clock,
+          ) => new AiRouter(catalogue, evaluations, models, markets, clock),
+        },
         CapabilityRegistry,
         PersistenceModule.aiUsageStore(),
         {

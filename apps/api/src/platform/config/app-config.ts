@@ -26,7 +26,7 @@ const MODEL_ID = '[A-Za-z0-9][A-Za-z0-9._:/@-]{0,99}';
 const API_KEY = '[A-Za-z0-9_-]{20,500}';
 const HMAC_KEY = /^[A-Za-z0-9_+/=.-]{32,200}$/;
 const HMAC_KEY_MESSAGE = 'must be 32 to 200 characters of A-Z a-z 0-9 _ + / = . -';
-const PRICE = '\\d{1,4}(?:\\.\\d{1,6})?/\\d{1,4}(?:\\.\\d{1,6})?';
+const BEDROCK_KEY = '[A-Za-z0-9+/=_-]{20,2000}';
 const MARKET_VALUE = (value: string): string => `[A-Z][A-Z0-9_]{1,7}=${value}`;
 /** A carrier key or webhook secret: long enough to be guessed by no one, in a URL-safe alphabet. */
 const CARRIER_SECRET = '[A-Za-z0-9_-]{24,200}';
@@ -305,11 +305,12 @@ const envSchema = z.object({
   // and checked by parseClientAddressTrust below; a secret is never echoed.
   TRUSTED_BFF_CIDRS: z.string().optional(),
   CLIENT_ADDRESS_KEYS: z.string().optional(),
-  // Buyer assistant (ADR-0019 R7: provider and model are Market configuration, no default):
-  // MARKET=value pairs separated by commas, each Market at most once and only hosted ones. A
-  // Market without its key, the chosen tier's model or that model's price stays off whatever its
-  // settings say. The key is a server secret, never echoed; the admin screen learns only whether
-  // it is set. Checked in parseMarketValues below.
+  // AI models (ADR-0019 R7, ADR-0052): MARKET=value pairs separated by commas, each Market at most
+  // once and only hosted ones. ASSISTANT_MODEL_API_KEY is the key of the anthropic-api route. A
+  // Market without the key of a route cannot use that route; a tier without a model is off. The
+  // key is a server secret, never echoed; the admin screen learns only whether it is set. Prices
+  // are the route catalogue's (platform/ai/catalogue), never configuration. Checked in
+  // parseMarketValues below.
   ASSISTANT_MODEL_API_KEY: z
     .string()
     .regex(
@@ -317,7 +318,9 @@ const envSchema = z.object({
       'must be MARKET=key pairs separated by commas (a key is 20 to 500 of A-Z a-z 0-9 _ -)',
     )
     .optional(),
-  // The provider model id of each tier the admin may choose, per Market (configuration, not code).
+  // The model family of each tier the admin may choose, per Market, until the priority lists move to
+  // settings (G4): a catalogue family (claude-haiku-5-5) or the exact model id of one of its rows.
+  // A name outside the catalogue is logged and that tier is off (ModelGateway; R8).
   ASSISTANT_MODEL_FAST: z
     .string()
     .regex(
@@ -332,21 +335,13 @@ const envSchema = z.object({
       'must be MARKET=model pairs separated by commas (a model id is letters, digits, . _ : / @ -)',
     )
     .optional(),
-  // The list price of each tier's model, per Market, as "input/output" US dollars per million
-  // tokens (for example AU=0.1/0.5). The spend caps are counted with it, so a tier without a
-  // price is off.
-  ASSISTANT_MODEL_PRICE_FAST: z
+  // Bedrock API key of the fallback route (ADR-0052 decision 5), per Market: MARKET=key pairs. A
+  // server secret, never echoed. Without it the bedrock-mantle rows are not usable in the Market.
+  AI_BEDROCK_API_KEY: z
     .string()
     .regex(
-      new RegExp(`^${MARKET_VALUE(PRICE)}(,${MARKET_VALUE(PRICE)})*$`),
-      'must be MARKET=input/output pairs separated by commas (US dollars per million tokens)',
-    )
-    .optional(),
-  ASSISTANT_MODEL_PRICE_BALANCED: z
-    .string()
-    .regex(
-      new RegExp(`^${MARKET_VALUE(PRICE)}(,${MARKET_VALUE(PRICE)})*$`),
-      'must be MARKET=input/output pairs separated by commas (US dollars per million tokens)',
+      new RegExp(`^${MARKET_VALUE(BEDROCK_KEY)}(,${MARKET_VALUE(BEDROCK_KEY)})*$`),
+      'must be MARKET=key pairs separated by commas (a key is 20 to 2000 of A-Z a-z 0-9 + / = _ -)',
     )
     .optional(),
   // Social sign-in: the Google OAuth client of this stack (Google Cloud console, "Web
@@ -363,17 +358,12 @@ const envSchema = z.object({
     .optional(),
 });
 
-/** The model price of a tier in one Market: pico US dollars per token (1e-12 USD). */
-export interface ModelTokenPrice {
-  readonly inputPicoUsd: number;
-  readonly outputPicoUsd: number;
-}
-
 /** `ASSISTANT_MODEL_*` by Market; a Market missing from a record has no value for it. */
 export interface AssistantModelConfig {
   readonly apiKeys: Readonly<Record<string, string>>;
   readonly models: Readonly<Record<'fast' | 'balanced', Readonly<Record<string, string>>>>;
-  readonly prices: Readonly<Record<'fast' | 'balanced', Readonly<Record<string, ModelTokenPrice>>>>;
+  /** Keys of the `bedrock-mantle` route (`AI_BEDROCK_API_KEY`). */
+  readonly bedrockApiKeys: Readonly<Record<string, string>>;
 }
 
 /** The migration role's URL: read by the prisma CLI, the scripts and test setup only. */
@@ -781,12 +771,6 @@ export function parseMarketValues(
   return { values: Object.freeze(values), issues };
 }
 
-/** "input/output" US dollars per million tokens as pico US dollars per token (exact: 6 decimals). */
-function tokenPriceOf(value: string): ModelTokenPrice {
-  const [input, output] = value.split('/').map((part) => Math.round(Number(part) * 1_000_000));
-  return Object.freeze({ inputPicoUsd: input!, outputPicoUsd: output! });
-}
-
 function assistantModelConfig(env: z.infer<typeof envSchema>): {
   config: AssistantModelConfig;
   issues: string[];
@@ -797,22 +781,14 @@ function assistantModelConfig(env: z.infer<typeof envSchema>): {
   const keys = read('ASSISTANT_MODEL_API_KEY');
   const fast = read('ASSISTANT_MODEL_FAST');
   const balanced = read('ASSISTANT_MODEL_BALANCED');
-  const fastPrice = read('ASSISTANT_MODEL_PRICE_FAST');
-  const balancedPrice = read('ASSISTANT_MODEL_PRICE_BALANCED');
-  const prices = (values: Readonly<Record<string, string>>) =>
-    Object.freeze(
-      Object.fromEntries(Object.entries(values).map(([market, v]) => [market, tokenPriceOf(v)])),
-    );
+  const bedrockKeys = read('AI_BEDROCK_API_KEY');
   return {
     config: Object.freeze({
       apiKeys: keys.values,
       models: Object.freeze({ fast: fast.values, balanced: balanced.values }),
-      prices: Object.freeze({
-        fast: prices(fastPrice.values),
-        balanced: prices(balancedPrice.values),
-      }),
+      bedrockApiKeys: bedrockKeys.values,
     }),
-    issues: [keys, fast, balanced, fastPrice, balancedPrice].flatMap((read) => read.issues),
+    issues: [keys, fast, balanced, bedrockKeys].flatMap((read) => read.issues),
   };
 }
 

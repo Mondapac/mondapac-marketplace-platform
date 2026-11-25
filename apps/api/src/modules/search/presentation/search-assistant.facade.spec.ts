@@ -92,6 +92,7 @@ describe.each(TEST_MARKET_IDS)('SearchAssistantFacadeImplementation in market %s
   let detailAnswer: unknown;
   let detailCalls: number;
   let storeAnswer: unknown;
+  let specialRegular: ReturnType<typeof AUD> | null;
   const make = () =>
     new SearchAssistantFacadeImplementation(
       {
@@ -113,7 +114,7 @@ describe.each(TEST_MARKET_IDS)('SearchAssistantFacadeImplementation in market %s
                 {
                   ...item(OFFER, SELLER),
                   price: AUD(990n),
-                  regularPrice: AUD(1250n),
+                  regularPrice: specialRegular,
                   taxInclusive: true,
                 },
               ],
@@ -130,6 +131,7 @@ describe.each(TEST_MARKET_IDS)('SearchAssistantFacadeImplementation in market %s
     );
 
   beforeEach(() => {
+    specialRegular = AUD(1250n);
     detailAnswer = { ok: true, value: page() };
     detailCalls = 0;
     storeAnswer = {
@@ -187,6 +189,15 @@ describe.each(TEST_MARKET_IDS)('SearchAssistantFacadeImplementation in market %s
           sellerName: 'Fresh Farm',
         }),
       ],
+    });
+  });
+
+  it('keeps a null regular price of the shelf (the was-price rule did not allow it)', async () => {
+    specialRegular = null;
+    const found = await make().specials(context, { categoryId: null, limit: 6 });
+    expect(found).toEqual({
+      ok: true,
+      value: [expect.objectContaining({ price: AUD(990n), regularPrice: null })],
     });
   });
 

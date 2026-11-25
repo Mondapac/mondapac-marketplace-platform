@@ -37,6 +37,11 @@ export interface SettledCall {
   readonly provider: string;
   readonly model: string;
   readonly attempt: number;
+  /**
+   * The route is not the plan's first one (a fallback, also when the breaker skipped the first
+   * route; Mohammad, G3 review 5).
+   */
+  readonly fallback: boolean;
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly inputPicoUsd: number;
@@ -176,6 +181,27 @@ export class AiUsage {
   }
 
   /**
+   * The share of the Market's month cap already taken (held and spent), for saver mode (design
+   * section 6), or null when the Market has no month cap. Reads in a read-only unit of its own.
+   * Throws on a store failure; the gateway then keeps the normal order.
+   */
+  async monthShare(market: MarketContext): Promise<number | null> {
+    const day = this.dayOf(market, this.clock.now());
+    const month = this.linesOf(market, { capability: '', sellerId: null, guest: false }, day).find(
+      (line) => line.period === 'month',
+    )!;
+    if (month.capMicroUsd === null) return null;
+    const held = await this.unitOfWork.run(
+      market,
+      async () => ok(await this.store.heldOf(market, [month])),
+      { readOnly: true },
+    );
+    if (!held.ok) throw new Error('month share not read');
+    if (month.capMicroUsd === 0) return 1;
+    return (held.value.get(counterKeyText(month)) ?? 0) / month.capMicroUsd;
+  }
+
+  /**
    * Holds `estimateMicroUsd` on every counter of the scope, all or nothing, and records the
    * reservation with its expiry (`ttl` after now). Answers 'over-budget' when a cap is full.
    * Throws on a store failure; the gateway then calls nothing.
@@ -256,13 +282,14 @@ export class AiUsage {
       async () => {
         const taken = await this.store.takeReservation(market, reservation.id);
         if (call !== null) {
+          const { fallback, ...row } = call;
           const first = await this.store.addCall(market, {
             id: reservation.id,
             day,
             capability: scope.capability,
             sellerId: scope.sellerId,
             guest: scope.guest,
-            ...call,
+            ...row,
           });
           // The call's row is there already: this call was settled before, nothing more to count.
           if (!first) return ok(null);
@@ -272,6 +299,7 @@ export class AiUsage {
             sellerId: scope.sellerId,
             calls: 1,
             failures: call.outcome === 'ok' ? 0 : 1,
+            fallbacks: fallback ? 1 : 0,
             refusals: 0,
             inputTokens: call.inputTokens,
             outputTokens: call.outputTokens,
@@ -302,6 +330,7 @@ export class AiUsage {
           sellerId: scope.sellerId,
           calls: 0,
           failures: 0,
+          fallbacks: 0,
           refusals: 1,
           inputTokens: 0,
           outputTokens: 0,

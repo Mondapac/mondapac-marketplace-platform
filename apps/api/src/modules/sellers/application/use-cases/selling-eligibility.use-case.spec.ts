@@ -178,6 +178,8 @@ describe.each([
     jobs = new SellingEligibilitySystem(gate, deps);
     facade = new SellersFacadeImplementation({
       sellerSummaries: undefined as never,
+      offerReviewFlags: undefined as never,
+      offerReviewFlagsSystem: undefined as never,
       searchStoreNames: undefined as never,
       publishedStoreSlugs: undefined as never,
       publishedStoreSlugsSystem: undefined as never,

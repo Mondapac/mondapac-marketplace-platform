@@ -19,7 +19,12 @@ import type { AllowedProductTypesReader } from '../ports/allowed-product-types.r
 import type { AuditWriter } from '../../../../platform/audit/audit-writer';
 import { OfferReviewReferredAudit } from '../../domain/audit';
 import { OFFER_REVIEW_POLICY_VERSION, offerReviewReasons } from '../../domain/offer-review-policy';
-import type { OfferReviewInputs, OfferReviewReferralStore } from '../ports/offer-review';
+import {
+  SAFE_OFFER_REVIEW_SETTINGS,
+  type OfferReviewInputs,
+  type OfferReviewReferralStore,
+} from '../ports/offer-review';
+import type { SellerReviewProbation } from '../seller-review-probation';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
@@ -93,6 +98,8 @@ export interface OwnOfferSubmitDependencies {
   readonly evaluator: ClaimEvaluator;
   readonly clock: Clock;
   readonly ids: IdGenerator;
+  /** Stamps Trusted when N was lowered under the seller's count (slice 4), in the submit unit. */
+  readonly probation: SellerReviewProbation;
 }
 
 /**
@@ -303,9 +310,15 @@ export class OwnOfferSubmit extends UseCase<
       deps.reviewInputs.settings(context),
       deps.reviewInputs.facts(context, { sellerId, productId }),
     ]);
+    // Facts read with a failure (degraded) are judged in the safe settings, as edits are: mode
+    // `all` and badges reviewed, so a stop that could not be read never lets an Offer go live
+    // in mode `off` (Hassan M1 on PR #1358). No stop is invented.
+    const safe = reviewFacts.degraded === true;
     const reasons = offerReviewReasons({
-      mode: reviewSettings.mode,
-      certificateBadges: reviewSettings.certificateBadges,
+      mode: safe ? SAFE_OFFER_REVIEW_SETTINGS.mode : reviewSettings.mode,
+      certificateBadges: safe
+        ? SAFE_OFFER_REVIEW_SETTINGS.certificateBadges
+        : reviewSettings.certificateBadges,
       facts: {
         ...reviewFacts,
         emergencyStop: reviewFacts.emergencyStop || reviewSettings.emergencyStop,
@@ -360,6 +373,15 @@ export class OwnOfferSubmit extends UseCase<
         );
         if (tagged !== null) return tagged;
         await deps.offers.save(market, offer, { kind: 'seller', accountId: actor.accountId });
+        // N was lowered under the seller's count: stamp Trusted now (lock order: Offer, standing),
+        // so raising N later never demotes the seller (design 5).
+        if (reviewFacts.stampTrust === true) {
+          await deps.probation.stampTrust(context, {
+            sellerId,
+            probationOffers: reviewFacts.probationOffers,
+            now,
+          });
+        }
         await deps.referrals.record(market, {
           offerId,
           sellerId,

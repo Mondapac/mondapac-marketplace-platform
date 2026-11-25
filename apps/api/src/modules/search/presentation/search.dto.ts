@@ -254,8 +254,15 @@ export class SpecialItemBody extends ProductSearchItemBody {
   variantId!: string;
   @ApiProperty({ type: MoneyBody, description: 'The price a buyer pays now (the special).' })
   price!: MoneyBody;
-  @ApiProperty({ type: MoneyBody, description: 'The regular price in force.' })
-  regularPrice!: MoneyBody;
+  @ApiProperty({
+    type: MoneyBody,
+    nullable: true,
+    description:
+      'The regular price, to show struck through ("was"). Null unless it is above the special ' +
+      "and the Market's was-price rule allows it (the unit sold at that price on enough days of " +
+      "the Market's window); a rule that cannot be checked is null too.",
+  })
+  regularPrice!: MoneyBody | null;
   @ApiProperty({ description: 'Whether both prices include tax.' }) taxInclusive!: boolean;
   @ApiProperty({ format: 'date-time', description: 'When the special ends (UTC).' })
   specialEndsAt!: string;

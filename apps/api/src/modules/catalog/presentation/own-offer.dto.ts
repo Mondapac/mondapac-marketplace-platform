@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { OFFER_REVIEW_REASONS } from '../domain/offer-review-policy';
+import { SELLER_REVIEW_REASONS } from '../domain/offer-review-policy';
 
 // Body and answer of the seller Offer routes (catalog design 4.4, 8.2; OFR-02, OFR-03; slice 7a-3).
 // Ids and codes only. The one exception is a refused unknown key: it is cut and sanitised, and
@@ -86,9 +86,11 @@ export class OwnOfferEdited {
 
   @ApiProperty({
     required: false,
-    enum: OFFER_REVIEW_REASONS,
+    enum: SELLER_REVIEW_REASONS,
     isArray: true,
-    description: 'Why the change is held, when applied is false.',
+    description:
+      'Why the change is held, when applied is false: certificate-badge, handling or ' +
+      'contact-text, and held-for-review for every other reason.',
   })
   reasons?: string[];
 }
@@ -206,9 +208,11 @@ export class OwnOfferHandlingSet {
 
   @ApiProperty({
     required: false,
-    enum: OFFER_REVIEW_REASONS,
+    enum: SELLER_REVIEW_REASONS,
     isArray: true,
-    description: 'Why the change is held, when applied is false.',
+    description:
+      'Why the change is held, when applied is false: certificate-badge, handling or ' +
+      'contact-text, and held-for-review for every other reason.',
   })
   reasons?: string[];
 }
@@ -319,9 +323,11 @@ export class OwnOfferTagAdded {
 
   @ApiProperty({
     required: false,
-    enum: OFFER_REVIEW_REASONS,
+    enum: SELLER_REVIEW_REASONS,
     isArray: true,
-    description: 'Why the change is held, when applied is false.',
+    description:
+      'Why the change is held, when applied is false: certificate-badge, handling or ' +
+      'contact-text, and held-for-review for every other reason.',
   })
   reasons?: string[];
 }

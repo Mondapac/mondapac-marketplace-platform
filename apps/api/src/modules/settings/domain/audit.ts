@@ -39,6 +39,8 @@ export const NUMBER_SETTING_TARGET_IDS = [
   'offer-review-reference-sellers',
   'offer-review-price-band',
   'offer-review-sampling',
+  'offer-review-backlog-count',
+  'offer-review-backlog-hours',
 ] as const;
 
 /** An admin changed a Market setting. */

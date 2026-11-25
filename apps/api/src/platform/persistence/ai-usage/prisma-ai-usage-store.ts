@@ -244,6 +244,7 @@ export class PrismaAiUsageStore implements AiUsageStore {
       data: {
         calls: { increment: usage.calls },
         failures: { increment: usage.failures },
+        fallbacks: { increment: usage.fallbacks },
         refusals: { increment: usage.refusals },
         inputTokens: { increment: BigInt(usage.inputTokens) },
         outputTokens: { increment: BigInt(usage.outputTokens) },

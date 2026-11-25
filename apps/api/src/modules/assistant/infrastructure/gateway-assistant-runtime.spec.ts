@@ -36,7 +36,12 @@ describe.each([
   it('runs the buyer chat with its tier and timeout, and passes the price on', async () => {
     const calls: unknown[] = [];
     const runtime = runtimeOf(
-      { ok: true, turn: TURN, route: { provider: 'p', model: 'm', attempt: 1 }, costMicroUsd: 7 },
+      {
+        ok: true,
+        turn: TURN,
+        route: { provider: 'p', model: 'm', route: 'r', attempt: 1 },
+        costMicroUsd: 7,
+      },
       calls,
     );
     expect(await runtime.complete(context, 'fast', REQUEST, 500, 'turn-1')).toEqual({

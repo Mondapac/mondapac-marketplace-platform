@@ -30,6 +30,7 @@ import { ChangeCartModeSetting } from './use-cases/change-cart-mode-setting.use-
 import { ChangeListPagingSetting } from './use-cases/change-list-paging-setting.use-case';
 import { ReadAiDescriptionWriter } from './use-cases/read-ai-description-writer.use-case';
 import { ReadCartMode } from './use-cases/read-cart-mode.use-case';
+import { ReadOfferQueueBacklogLimits } from './use-cases/read-offer-queue-backlog-limits.use-case';
 import { ReadListPaging } from './use-cases/read-list-paging.use-case';
 import { ChangeMonthlyRevenueTargetSetting } from './use-cases/change-monthly-revenue-target-setting.use-case';
 import { ReadMonthlyRevenueTarget } from './use-cases/read-monthly-revenue-target.use-case';
@@ -824,6 +825,8 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         ['offer-review-price-band', '50', 0],
         ['offer-review-sampling', '5', 0],
         ['offer-review-certificate-badges', 'review', 0],
+        ['offer-review-backlog-count', '50', 0],
+        ['offer-review-backlog-hours', '24', 0],
       ]);
     });
 
@@ -925,6 +928,43 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       expect(lower.ok && lower.value.map((row) => row.value)).toEqual(['2', '5', '100']);
     });
 
+    it('saves the queue backlog limits and hands them to the system actor through the facade', async () => {
+      const facade = new SettingsFacadeImplementation(
+        new ReadAiDescriptionWriter(gate, deps),
+        new ReadCartMode(gate, deps),
+        new ReadMonthlyRevenueTarget(gate, deps),
+        undefined,
+        new ReadOfferQueueBacklogLimits(gate, deps),
+      );
+      const system = testCallContext(market, 'system', 'settings-sys-abcd');
+      expect(await facade.offerQueueBacklogLimits(system)).toEqual({ count: 50, hours: 24 });
+      const saved = await saveOfferReview({
+        changes: [
+          { code: 'offer-review-backlog-count', value: '120', expectedVersion: 0 },
+          { code: 'offer-review-backlog-hours', value: 48, expectedVersion: 0 },
+        ],
+      });
+      expect(saved.ok).toBe(true);
+      expect(await facade.offerQueueBacklogLimits(system)).toEqual({ count: 120, hours: 48 });
+      for (const bad of [
+        { code: 'offer-review-backlog-count', value: '0', expectedVersion: 1 },
+        { code: 'offer-review-backlog-hours', value: '721', expectedVersion: 1 },
+      ]) {
+        expect((await saveOfferReview({ changes: [bad] })).ok).toBe(false);
+      }
+      // An admin is not the system actor: the use case refuses it and the facade answers nothing.
+      expect(await facade.offerQueueBacklogLimits(adminCtx())).toBeNull();
+      // An unreadable store answers nothing (the alert acts on no guess), not the safe values.
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        store.failReads = true;
+        expect(await facade.offerQueueBacklogLimits(system)).toBeNull();
+        store.failReads = false;
+      } finally {
+        warn.mockRestore();
+      }
+    });
+
     it('answers each safe value when the store cannot be read or holds a value out of bounds', async () => {
       const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
       const SAFE = {
@@ -934,6 +974,8 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         'offer-review-price-band': '5',
         'offer-review-sampling': '100',
         'offer-review-certificate-badges': 'review',
+        'offer-review-backlog-count': '50',
+        'offer-review-backlog-hours': '24',
       };
       try {
         store.failReads = true;

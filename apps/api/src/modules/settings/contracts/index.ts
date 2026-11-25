@@ -11,6 +11,8 @@ export {
   CART_MODE_VALUES,
   LIST_PAGING_CODE,
   LIST_PAGING_VALUES,
+  OFFER_REVIEW_BACKLOG_COUNT_CODE,
+  OFFER_REVIEW_BACKLOG_HOURS_CODE,
   MONTHLY_REVENUE_TARGET_CODE,
   OFFER_REVIEW_BADGES_CODE,
   OFFER_REVIEW_BADGES_VALUES,
@@ -30,6 +32,7 @@ export {
 } from '../domain/definitions';
 export {
   SETTINGS_FACADE,
+  type OfferQueueBacklogLimits,
   type OfferReviewPolicySettings,
   type SettingsFacade,
 } from './settings.facade';

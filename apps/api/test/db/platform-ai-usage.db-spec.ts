@@ -17,14 +17,20 @@ import { AppModule } from '../../src/app.module';
 import { AiGateway } from '../../src/platform/ai/ai-gateway';
 import {
   MODEL_PROVIDER,
+  ModelProviderError,
   type ModelProvider,
   type ModelRequest,
 } from '../../src/platform/ai/model-provider';
 import { AiUsage, type SettledCall, type UsageScope } from '../../src/platform/ai/usage/ai-usage';
+import { CALL_OUTCOMES } from '../../src/platform/ai/usage/ai-usage-store';
 import { CLOCK } from '../../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../../src/platform/market-context/tenant';
 import { MarketRegistry } from '../../src/platform/market-config/market-registry';
 import { testAppConfig, TEST_MARKETS } from '../support/test-config';
+import { passesFor, testRouteCatalogue } from '../support/ai-routes';
+import { AI_ROUTE_CATALOGUE } from '../../src/platform/ai/catalogue/route-catalogue';
+import { AI_EVALUATION_RESULTS } from '../../src/platform/ai/evaluations/evaluation-results';
+import { CATALOG_AI_CAPABILITIES } from '../../src/modules/catalog/contracts/ai-capabilities';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // AI Gateway G2 (docs/design/domain/platform-ai.md sections 7 and 10): the usage and budget
@@ -35,7 +41,6 @@ import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 const INSUFFICIENT_PRIVILEGE = '42501';
 const CHECK_VIOLATION = '23514';
 const NOW = Temporal.Instant.from('2026-11-25T02:00:00Z');
-const PRICE = 'AU=1/5,ZZ=1/5';
 
 const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
 const uuid = () => uuidV7(Date.now(), randomBytes(10));
@@ -52,6 +57,7 @@ const settled = (cost: number): SettledCall => ({
   provider: 'anthropic',
   model: 'model-fast',
   attempt: 1,
+  fallback: false,
   inputTokens: 10,
   outputTokens: 5,
   inputPicoUsd: 1_000_000,
@@ -111,7 +117,7 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
             DATABASE_URL: testDatabaseUrl(),
             ASSISTANT_MODEL_API_KEY: 'AU=sk-test-canary-key-0001,ZZ=sk-test-canary-key-0002',
             ASSISTANT_MODEL_FAST: 'AU=model-fast,ZZ=model-fast',
-            ASSISTANT_MODEL_PRICE_FAST: PRICE,
+            AI_BEDROCK_API_KEY: 'AU=bedrock-test-canary-key-0001,ZZ=bedrock-test-canary-key-0002',
           }),
           logDestination: pino.destination(devNull),
         }),
@@ -121,6 +127,11 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       .useValue(clock)
       .overrideProvider(MODEL_PROVIDER)
       .useValue(provider)
+      // Verified test routes and passes: the checked-in catalogue has no verified route yet.
+      .overrideProvider(AI_ROUTE_CATALOGUE)
+      .useValue(testRouteCatalogue())
+      .overrideProvider(AI_EVALUATION_RESULTS)
+      .useValue(passesFor(CATALOG_AI_CAPABILITIES))
       .compile();
     app = await moduleRef.init();
     usage = app.get(AiUsage);
@@ -337,6 +348,48 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       ).toEqual({ ok: false, reason: 'over-budget', costMicroUsd: 0 });
       expect(spy).not.toHaveBeenCalled();
     });
+
+    it('falls back to the second route: two call rows, one fallback counted (G3)', async () => {
+      const context = adminContext(market);
+      // Tests share the day rows: the count must rise by exactly one (Mojtaba, G3 review nit 5).
+      const fallbacks = async () =>
+        Number(
+          (
+            await sql.query<{ total: string | null }>(
+              `SELECT SUM(fallbacks) AS total FROM platform.ai_usage_days
+                WHERE market_id = $1 AND capability = 'catalog.description-writer.admin'`,
+              [market.marketId],
+            )
+          ).rows[0]!.total ?? 0,
+        );
+      const before = await fallbacks();
+      const call = jest.spyOn(provider, 'call').mockImplementation((credentials) =>
+        credentials.route === 'anthropic-api'
+          ? Promise.reject(new ModelProviderError('server'))
+          : Promise.resolve({
+              blocks: [{ type: 'text', text: 'Hello' }],
+              stop: 'end',
+              usage: { inputTokens: 100, outputTokens: 20 },
+            }),
+      );
+      const run = await gateway.run('catalog.description-writer.admin', context, REQUEST, {
+        tier: 'fast',
+      });
+      expect(run).toMatchObject({ ok: true, route: { route: 'bedrock-mantle', attempt: 2 } });
+      expect(call).toHaveBeenCalledTimes(2);
+      const { rows } = await sql.query<{ attempt: number; outcome: string; model: string }>(
+        `SELECT attempt, outcome, model FROM platform.ai_calls
+          WHERE market_id = $1 AND capability = 'catalog.description-writer.admin'
+            AND (attempt = 2 OR outcome = 'unavailable')
+          ORDER BY attempt DESC`,
+        [market.marketId],
+      );
+      expect(rows.map((row) => [row.attempt, row.outcome, row.model])).toEqual([
+        [2, 'ok', 'anthropic.model-fast'],
+        [1, 'unavailable', 'model-fast'],
+      ]);
+      expect(await fallbacks()).toBe(before + 1);
+    });
   });
 
   it("keeps each Market's counters, reservations and calls to itself (cross-Market canary, Hassan L5)", async () => {
@@ -426,5 +479,15 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
     expect(await sqlStateOf(sql, insert, [...base, 'day', '2020-01-01', 'market', '', 0, 0])).toBe(
       'ok',
     );
+    // The widened outcome CHECK (G3): the five outcomes and nothing else.
+    const call = `INSERT INTO platform.ai_calls (id, market_id, tenant_id, occurred_at, day,
+        capability, seller_id, guest, provider, model, attempt, input_tokens, output_tokens,
+        input_pico_usd, output_pico_usd, cost_micro_usd, latency_ms, outcome)
+      VALUES ($1, $2, $3, now(), '2026-11-25', 'test.x', NULL, false, 'anthropic', 'm', 2,
+        0, 0, 1, 1, 0, 1, $4)`;
+    for (const outcome of CALL_OUTCOMES) {
+      expect(await sqlStateOf(sql, call, [uuid(), ...base, outcome])).toBe('ok');
+    }
+    expect(await sqlStateOf(sql, call, [uuid(), ...base, 'refusal'])).toBe(CHECK_VIOLATION);
   });
 });

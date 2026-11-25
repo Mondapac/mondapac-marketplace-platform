@@ -275,6 +275,28 @@ describe.each(TEST_MARKETS)('storefront reads over HTTP in market %s', (code) =>
     expect(calls[0]).toMatchObject({ route: 'specials', actor: 'anonymous', input: {} });
   });
 
+  it('answers a special whose regular price the was-price rule does not allow with regularPrice null', async () => {
+    next.specials = ok({
+      items: [
+        {
+          ...ITEM,
+          variantId: id<'Variant'>(4),
+          price: { amount: 800n, currency },
+          regularPrice: null,
+          taxInclusive: true,
+          specialEndsAt: Temporal.Instant.from(ENDS),
+        },
+      ],
+    });
+
+    const response = await get('/search/specials');
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      items: [expect.objectContaining({ price: { amount: '800', currency }, regularPrice: null })],
+    });
+  });
+
   it('answers the product page with Money as a string amount, not cacheable', async () => {
     const response = await get(`/search/product-detail/${PRODUCT}`);
 
