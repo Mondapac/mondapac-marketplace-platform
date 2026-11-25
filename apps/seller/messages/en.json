@@ -2227,7 +2227,7 @@
         "running": "Special · ends {ends}",
         "scheduled": "Special {amount} from {starts}",
         "held": "Special waiting for review",
-        "typed": "New special typed, not saved yet"
+        "typed": "Special not saved"
       },
       "saved-review": "{count, plural, one {Saved # change.} other {Saved # changes.}} A large special price waits for review before it starts."
     },
@@ -3080,7 +3080,7 @@
       "receive": {
         "title": "What you receive",
         "customer-pays": "Customer pays",
-        "special": "Special price, running",
+        "special": "Special · ends {ends}",
         "typed": "The price you typed, not saved yet",
         "commission": "Platform commission",
         "commission-value": "− {amount}",
@@ -3104,8 +3104,9 @@
         "none": "No special price.",
         "running": "{amount} until {ends}",
         "scheduled": "{amount} from {starts} until {ends}",
-        "was": "Customers see the special price. Whether they also see your regular price of {regular} crossed out depends on how long this size sold at it before the special.",
-        "held": "A special price of {amount} ({starts} to {ends}) waits for our check. It starts only once approved.",
+        "was": "Customers may also see your regular price of {regular} crossed out, once this size has sold at it long enough.",
+        "held": "A special price of {amount} ({starts} to {ends}) is waiting for review. It starts only once approved.",
+        "replace-open": "Replace special price",
         "retired": "This size is no longer sold, so its special ends on its own date.",
         "end": {
           "running": "End special price",

@@ -90,6 +90,9 @@ export async function sendSizeWrites({
       const key = `price:${write.variantId}`;
       const expectedVersion =
         key in seen ? (seen[key] ?? null) : (row.price?.seriesVersion ?? null);
+      // Its regular price was refused in this save, or the size has no price series yet: the
+      // special stays a draft, unsent, and the price cell says why.
+      if (found[write.variantId] !== undefined || expectedVersion === null) continue;
       const result = await guarded<SpecialWritten>(
         'PUT',
         `pricing/seller/offers/${offerId}/variants/${write.variantId}/special-price`,

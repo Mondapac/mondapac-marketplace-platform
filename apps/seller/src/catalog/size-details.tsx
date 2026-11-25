@@ -196,6 +196,8 @@ export interface ReceiveView {
    * `unfinished` while the typed text is not an amount yet, `none` without any price.
    */
   readonly source: 'special' | 'typed' | 'saved' | 'unfinished' | 'none';
+  /** The day a running special ends, shown under its price ("Special · ends 30 Nov"). */
+  readonly specialEnds?: string | null;
   /** `unavailable`: the read failed; `no-category`: the product is not published yet. */
   readonly state: 'ready' | 'unavailable' | 'no-category';
 }
@@ -238,7 +240,9 @@ function ReceiveBreakdown({
               <span className="tabular-nums">{money(estimate.customerPaysMinor)}</span>
               {view.source === 'saved' ? null : (
                 <span className="block text-sm text-fg-muted">
-                  {t(view.source === 'special' ? 'special' : 'typed')}
+                  {view.source === 'special'
+                    ? t('special', { ends: view.specialEnds ?? '-' })
+                    : t('typed')}
                 </span>
               )}
             </Line>

@@ -2,10 +2,11 @@
 
 import { Badge, Banner, Button, TextField } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
+import { useState } from 'react';
 import { formatMinor } from '../price/money.ts';
 import { formatInZone } from '../price/zone-time.ts';
 import type { VariantPrice } from '../price/types.ts';
-import { EMPTY_SPECIAL, type SpecialDraft } from './variants-table-logic.ts';
+import { EMPTY_SPECIAL, isSpecialTyped, type SpecialDraft } from './variants-table-logic.ts';
 
 /**
  * The special price of one size, in the Price tab of its Details (Offer page PR 6): what runs, is
@@ -65,9 +66,17 @@ export function SizeSpecial({
   const set = (patch: Partial<SpecialDraft>) => onDraft({ ...value, ...patch });
   const editable = canEdit && !retired;
   const endKey = special !== null ? `end.${special.state}` : 'end.held';
+  // A current special shows as one line; its replace fields open on request, and stay open while
+  // something is typed in them or one of them has a message.
+  const [replacing, setReplacing] = useState(false);
+  const typed = isSpecialTyped(value);
+  const hasError = Object.values(errors).some((message) => message !== undefined);
+  const showFields = special === null || replacing || typed || hasError;
+  const fieldsId = `${id}-fields`;
+  const helpId = `${id}-help`;
 
   return (
-    <section aria-labelledby={`${id}-title`} className="mt-4 flex max-w-3xl flex-col gap-3">
+    <section aria-labelledby={`${id}-title`} className="mt-4 flex max-w-xl flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
         <h4 id={`${id}-title`} className="font-semibold">
           {t('title')}
@@ -117,7 +126,19 @@ export function SizeSpecial({
         </div>
       )}
       {editable && (special !== null || held !== null) ? (
-        <div>
+        <div className="flex flex-wrap gap-2">
+          {special !== null && hasRegular ? (
+            <Button
+              type="button"
+              variant="secondary"
+              aria-expanded={showFields}
+              aria-controls={showFields ? fieldsId : undefined}
+              disabled={typed || hasError}
+              onClick={() => setReplacing(!replacing)}
+            >
+              {t('replace-open')}
+            </Button>
+          ) : null}
           <Button
             type="button"
             variant="secondary"
@@ -132,13 +153,17 @@ export function SizeSpecial({
       ) : null}
       {!editable ? null : !hasRegular ? (
         <p className="text-sm text-fg-muted">{t('needs-regular')}</p>
-      ) : (
-        <fieldset className="flex min-w-0 flex-col gap-2 border-t border-line pt-3">
+      ) : !showFields ? null : (
+        <fieldset
+          id={fieldsId}
+          aria-describedby={helpId}
+          className="flex min-w-0 flex-col gap-2 border-t border-line pt-3"
+        >
           <legend className="float-start w-full pb-1 font-medium">
             {t(special === null ? 'new' : 'replace')}
           </legend>
           <div className="flex flex-wrap items-start gap-3">
-            <div className="w-40">
+            <div className="w-full max-w-40">
               <TextField
                 name={`special-${id}`}
                 label={t('amount', { currency })}
@@ -166,13 +191,16 @@ export function SizeSpecial({
                 type="datetime-local"
                 label={t('ends')}
                 aria-label={t('ends-for', { size: sizeLabel })}
+                required
                 value={value.end}
                 error={errors.end}
                 onChange={(event) => set({ end: event.target.value })}
               />
             </div>
           </div>
-          <p className="text-sm text-fg-muted">{t(special === null ? 'help' : 'replace-help')}</p>
+          <p id={helpId} className="text-sm text-fg-muted">
+            {t(special === null ? 'help' : 'replace-help')}
+          </p>
         </fieldset>
       )}
     </section>

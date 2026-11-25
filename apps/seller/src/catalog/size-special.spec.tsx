@@ -99,7 +99,7 @@ describe('special price in Details', () => {
     });
     // The draft stays, and the row says so, when its Details closes.
     fireEvent.click(screen.getAllByRole('button', { name: 'Close details for 250 g' })[0]!);
-    expect(screen.getByText('New special typed, not saved yet')).toBeTruthy();
+    expect(screen.getByText('Special not saved')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Save 1 change' }));
     await waitFor(() => expect(call).toHaveBeenCalledTimes(1));
     expect(call).toHaveBeenCalledWith(
@@ -220,5 +220,93 @@ describe('special price in Details', () => {
     expect(open.getByText(/\$15\.90 until 30 Nov 2026/)).toBeTruthy();
     expect(open.queryByRole('button', { name: /End special/ })).toBeNull();
     expect(open.queryByLabelText(/Special price \(AUD\)/)).toBeNull();
+  });
+
+  const fail = (code: string, status = 422) =>
+    ({ ok: false, status, failure: { status, code, message: 'x' } }) as never;
+  const typeSpecial = (size: string, amount: string, end: string, start = '') => {
+    const open = panel(size);
+    fireEvent.change(open.getByLabelText(`Special price (AUD) for ${size}`), {
+      target: { value: amount },
+    });
+    if (start !== '')
+      fireEvent.change(open.getByLabelText(`Special starts, ${size}`), {
+        target: { value: start },
+      });
+    fireEvent.change(open.getByLabelText(`Special ends, ${size}`), { target: { value: end } });
+  };
+
+  it.each([
+    [
+      'pricing.special-window.start-in-past',
+      'Special starts, 250 g',
+      "The start can't be in the past.",
+    ],
+    ['pricing.special-window.invalid', 'Special ends, 250 g', 'The end must be after the start.'],
+  ])('puts the refusal %s under the field it is about', async (code, field, message) => {
+    call.mockResolvedValue(fail(code));
+    mount();
+    details('250 g');
+    typeSpecial('250 g', '8.50', '2026-12-08T10:00', '2099-12-01T10:00');
+    fireEvent.click(screen.getByRole('button', { name: 'Save 1 change' }));
+    await panel('250 g').findByText(message);
+    const input = panel('250 g').getByLabelText(field);
+    expect(input.getAttribute('aria-invalid')).toBe('true');
+  });
+
+  it('keeps the special unsent when the regular price of its size is refused in the same save', async () => {
+    call.mockResolvedValue(fail('pricing.amount-out-of-range'));
+    mount();
+    fireEvent.change(screen.getByLabelText('Price for 250 g'), { target: { value: '12.00' } });
+    details('250 g');
+    typeSpecial('250 g', '8.50', '2026-12-08T10:00');
+    fireEvent.click(screen.getByRole('button', { name: 'Save 2 changes' }));
+    expect(await screen.findByText('This price is outside the allowed range.')).toBeTruthy();
+    expect(call).toHaveBeenCalledTimes(1);
+    expect(call.mock.calls[0]?.[1]).toBe('pricing/seller/offers/o1/variants/v1/regular-price');
+    expect(
+      panel('250 g').getByLabelText<HTMLInputElement>('Special price (AUD) for 250 g').value,
+    ).toBe('8.50');
+  });
+
+  it('sends the special first when the new regular price is not above the running one', async () => {
+    call
+      .mockResolvedValueOnce(ok({ status: 'pending-review', seriesVersion: 4 }))
+      .mockResolvedValueOnce(fail('pricing.regular-not-above-special'));
+    mount();
+    fireEvent.change(screen.getByLabelText('Price for 500 g'), { target: { value: '15.00' } });
+    details('500 g');
+    fireEvent.click(panel('500 g').getByRole('button', { name: 'Replace special price' }));
+    typeSpecial('500 g', '12.00', '2026-12-08T10:00');
+    fireEvent.click(screen.getByRole('button', { name: 'Save 2 changes' }));
+    await waitFor(() => expect(call).toHaveBeenCalledTimes(2));
+    expect(call.mock.calls[0]?.[1]).toBe('pricing/seller/offers/o1/variants/v2/special-price');
+    expect(call.mock.calls[1]?.[2]).toMatchObject({ amount: '1500', expectedVersion: 4 });
+    // The held special leaves the running one in force, so the lower regular price is refused.
+    expect(
+      await screen.findByText(/The regular price must stay above the special price/),
+    ).toBeTruthy();
+  });
+
+  it('shows why End was refused and reloads on a stale version', async () => {
+    call.mockResolvedValue(fail('conflict.stale', 409));
+    mount();
+    details('500 g');
+    fireEvent.click(panel('500 g').getByRole('button', { name: 'End special price of 500 g' }));
+    expect(await panel('500 g').findByText(/The price changed somewhere else/)).toBeTruthy();
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it('does not save while an End is still running', async () => {
+    let finish: (value: unknown) => void = () => {};
+    call.mockImplementationOnce(() => new Promise((resolve) => (finish = resolve)) as never);
+    mount();
+    details('500 g');
+    fireEvent.change(screen.getByLabelText('Price for 250 g'), { target: { value: '9.90' } });
+    fireEvent.click(panel('500 g').getByRole('button', { name: 'End special price of 500 g' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save 1 change' }));
+    expect(call).toHaveBeenCalledTimes(1);
+    finish(ok({ seriesVersion: 4, endedRecordId: 'r', cancelledRecordId: null }));
+    await expectToast('The special price was ended.');
   });
 });

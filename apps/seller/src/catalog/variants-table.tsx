@@ -224,9 +224,14 @@ export function VariantsTable({
     stockDrafts[stockKey(row.variantId, sourceId)] ?? savedStockText(row, sourceId);
   const { writes, invalid } = writesOf(rows, sources, currency, priceDrafts, stockDrafts);
   // A size's special is one change, however many of its fields are typed or wrong.
+  const hasRegular = (row: TableRow) =>
+    row.price?.inForce != null || minorOf(priceText(row), currency) !== null;
   const specialCount = canEditPrice
     ? rows.filter(
-        (row) => row.price?.retired !== true && isSpecialTyped(specialDrafts[row.variantId]),
+        (row) =>
+          row.price?.retired !== true &&
+          hasRegular(row) &&
+          isSpecialTyped(specialDrafts[row.variantId]),
       ).length
     : 0;
   const canBulk = canEditPrice || canEditStock;
@@ -293,10 +298,11 @@ export function VariantsTable({
   }
 
   async function save() {
-    if (saving) return;
+    // An End in flight uses the same series version: Save waits for it.
+    if (saving || ending !== null) return;
     const plan = writesOf(rows, sources, currency, priceDrafts, stockDrafts);
     const specials = canEditPrice
-      ? specialWritesOf(rows, currency, zone, specialDrafts)
+      ? specialWritesOf(rows, currency, zone, specialDrafts, hasRegular)
       : { writes: [], invalid: [] };
     const found: Record<string, string> = {};
     for (const item of [...plan.invalid, ...specials.invalid]) {
@@ -558,7 +564,7 @@ export function VariantsTable({
             {t('catalog.variants-table.pays.held')}
           </span>
         )}
-        {canEditPrice && isSpecialTyped(specialDrafts[row.variantId]) ? (
+        {canEditPrice && hasRegular(row) && isSpecialTyped(specialDrafts[row.variantId]) ? (
           <span className="block text-xs text-attention-fg">
             {t('catalog.variants-table.pays.typed')}
           </span>
@@ -611,9 +617,11 @@ export function VariantsTable({
           : typed
             ? 'typed'
             : 'saved';
+    const running = row.price?.special?.state === 'running' ? row.price.special : null;
     return {
       estimate: estimateFor(estimates, row.variantId, amount),
       source,
+      specialEnds: running === null ? null : formatDayInZone(running.endsAt, zone, locale),
       state:
         estimates.kind === 'unavailable' || estimates.kind === 'no-category'
           ? estimates.kind
@@ -1140,10 +1148,7 @@ export function VariantsTable({
                                       price={row.price}
                                       currency={currency}
                                       zone={zone}
-                                      hasRegular={
-                                        row.price?.inForce != null ||
-                                        minorOf(priceText(row), currency) !== null
-                                      }
+                                      hasRegular={hasRegular(row)}
                                       canEdit={canEditPrice}
                                       draft={specialDrafts[row.variantId]}
                                       errors={{

@@ -145,26 +145,32 @@ export function isSpecialTyped(draft: SpecialDraft | undefined): draft is Specia
  * typed sends one write, or one `invalid` line per field that is wrong (the amount is not money,
  * the start is not a time, the end is missing or not a time). Times are read in the seller's zone.
  * The server checks the rest (below the regular price, the end after the start, not in the past).
+ * A size without a regular price sends nothing: its fields are hidden until it has one.
  */
 export function specialWritesOf(
   rows: readonly TableRow[],
   currency: string,
   zone: string,
   drafts: Readonly<Record<string, SpecialDraft>>,
+  /** The size has a regular price, saved or typed; a special for one without is not sent. */
+  hasRegular: (row: TableRow) => boolean = (row) => row.price?.inForce != null,
+  now: number = Date.now(),
 ): { readonly writes: SpecialWrite[]; readonly invalid: Invalid[] } {
   const writes: SpecialWrite[] = [];
   const invalid: Invalid[] = [];
   for (const row of rows) {
     if (row.price?.retired === true) continue;
     const draft = drafts[row.variantId];
-    if (!isSpecialTyped(draft)) continue;
+    if (!isSpecialTyped(draft) || !hasRegular(row)) continue;
     const amount = minorOf(draft.amount, currency);
-    const startsAt = draft.start.trim() === '' ? null : instantOfZoned(draft.start, zone);
+    const typedStart = draft.start.trim() === '' ? null : instantOfZoned(draft.start, zone);
+    // A start typed for this minute is already past when it reaches the server: it starts now.
+    const startsAt = typedStart !== null && Date.parse(typedStart) <= now ? null : typedStart;
     const endsAt = instantOfZoned(draft.end, zone);
     const bad: Invalid[] = [];
     if (amount === null)
       bad.push({ key: specialKey.amount(row.variantId), kind: 'special-amount' });
-    if (draft.start.trim() !== '' && startsAt === null)
+    if (draft.start.trim() !== '' && typedStart === null)
       bad.push({ key: specialKey.start(row.variantId), kind: 'special-start' });
     if (endsAt === null) bad.push({ key: specialKey.end(row.variantId), kind: 'special-end' });
     if (bad.length > 0 || amount === null || endsAt === null) {

@@ -118,7 +118,14 @@ describe('size Details', () => {
     expect(open.getByText(/\$15\.90 until 30 Nov 2026/)).toBeTruthy();
     expect(open.getByText(/regular price of \$17\.90 crossed out/)).toBeTruthy();
     expect(open.getByRole('button', { name: 'End special price of 500 g' })).toBeTruthy();
+    // The replace fields open on request, so a current special reads as one line.
+    expect(open.queryByRole('group', { name: 'Replace the special price' })).toBeNull();
+    const replace = open.getByRole('button', { name: 'Replace special price' });
+    expect(replace.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(replace);
+    expect(replace.getAttribute('aria-expanded')).toBe('true');
     expect(open.getByRole('group', { name: 'Replace the special price' })).toBeTruthy();
+    expect(open.getByLabelText<HTMLInputElement>('Special ends, 500 g').required).toBe(true);
     expect(open.queryByRole('link', { name: /special price/ })).toBeNull();
   });
 

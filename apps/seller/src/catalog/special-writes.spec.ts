@@ -61,6 +61,24 @@ describe.each([
     ]);
   });
 
+  it('starts now a start already past, and sends nothing for a size without a regular price', () => {
+    const now = Date.parse('2026-12-01T00:00:30Z');
+    const draft = { amount, start: '2026-12-01T10:00', end: '2026-12-08T10:00' };
+    const sameMinute = specialWritesOf(
+      [row('v1')],
+      currency,
+      'Australia/Brisbane',
+      { v1: draft },
+      undefined,
+      now,
+    );
+    expect(sameMinute.writes[0]?.startsAt).toBeNull();
+    const noRegular = specialWritesOf([row('v1', { inForce: null })], currency, zone, {
+      v1: draft,
+    });
+    expect(noRegular).toEqual({ writes: [], invalid: [] });
+  });
+
   it('skips untouched sizes and sizes no longer sold', () => {
     const { writes, invalid } = specialWritesOf(
       [row('v1'), row('v2', { retired: true })],
