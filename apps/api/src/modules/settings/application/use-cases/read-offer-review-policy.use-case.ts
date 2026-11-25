@@ -4,6 +4,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import {
   findDefinition,
   OFFER_REVIEW_BADGES_CODE,
+  OFFER_REVIEW_EMERGENCY_STOP_CODE,
   OFFER_REVIEW_MODE_CODE,
   OFFER_REVIEW_PRICE_BAND_CODE,
   OFFER_REVIEW_PROBATION_CODE,
@@ -25,6 +26,8 @@ export interface OfferReviewPolicySettings {
   /** Percent of automatically published Offers checked afterwards. */
   readonly samplingPercent: number;
   readonly certificateBadges: OfferReviewBadges;
+  /** R0: every new Offer of the Market waits for an admin while true. */
+  readonly emergencyStop: boolean;
 }
 
 const safeOf = (code: string): string => findDefinition(code)?.safeValue ?? '';
@@ -35,6 +38,7 @@ export const SAFE_OFFER_REVIEW_POLICY: OfferReviewPolicySettings = Object.freeze
   probationOffers: Number(safeOf(OFFER_REVIEW_PROBATION_CODE)),
   referenceSellers: Number(safeOf(OFFER_REVIEW_REFERENCE_SELLERS_CODE)),
   priceBandPercent: Number(safeOf(OFFER_REVIEW_PRICE_BAND_CODE)),
+  emergencyStop: safeOf(OFFER_REVIEW_EMERGENCY_STOP_CODE) === 'on',
   samplingPercent: Number(safeOf(OFFER_REVIEW_SAMPLING_CODE)),
   certificateBadges: safeOf(OFFER_REVIEW_BADGES_CODE) as OfferReviewBadges,
 });
@@ -75,6 +79,7 @@ export class ReadOfferReviewPolicy extends UseCase<
       priceBandPercent: Number(await read(OFFER_REVIEW_PRICE_BAND_CODE)),
       samplingPercent: Number(await read(OFFER_REVIEW_SAMPLING_CODE)),
       certificateBadges: (await read(OFFER_REVIEW_BADGES_CODE)) as OfferReviewBadges,
+      emergencyStop: (await read(OFFER_REVIEW_EMERGENCY_STOP_CODE)) === 'on',
     });
   }
 }

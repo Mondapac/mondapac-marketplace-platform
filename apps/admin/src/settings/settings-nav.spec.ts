@@ -14,7 +14,7 @@ describe('settings map', () => {
       [
         ['general', ['/settings/support', '/settings/service-areas', '/settings/lists']],
         ['delivery', ['/settings/delivery', '/settings/fleets']],
-        ['catalogue', ['/settings/offer-review']],
+        ['catalogue', ['/settings/offer-review', '/settings/emergency-stop']],
         ['money', ['/settings/tax', '/settings/wallet', '/settings/refund-limits']],
         ['marketing', ['/settings/promotions']],
         ['ai', ['/settings/assistant', '/settings/ai']],
@@ -91,7 +91,11 @@ describe('settings map', () => {
     expect(keys('roles')).toEqual(['identity.platform-role.view']);
     expect(keys('review-policy')).toEqual(['system-requests.policy.view']);
     expect(keys('offer-review')).toEqual(['settings.offer-review.view']);
-    expect(settingsViewKeys).toHaveLength(17);
+    expect(keys('emergency-stop')).toEqual([
+      'settings.offer-review.view',
+      'settings.offer-review.emergency-stop',
+    ]);
+    expect(settingsViewKeys).toHaveLength(19);
   });
 
   it('finds a link with its group, and nothing for an unknown id', () => {
@@ -108,7 +112,7 @@ describe('visibleSettings', () => {
     expect(shape(all)).toEqual([
       ['general', ['support', 'service-areas', 'lists']],
       ['delivery', ['delivery', 'fleets']],
-      ['catalogue', ['offer-review']],
+      ['catalogue', ['offer-review', 'emergency-stop']],
       ['money', ['tax', 'wallet', 'refund-limits']],
       ['marketing', ['promotions']],
       ['ai', ['assistant', 'ai']],

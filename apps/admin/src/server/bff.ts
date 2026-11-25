@@ -254,6 +254,8 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'settings/admin/ai',
     // The Offer review policy (settings; keys settings.offer-review.view / .manage).
     'settings/admin/offer-review',
+    // Whether the Offer review emergency stop is on (settings; any admin, the banner).
+    'settings/admin/offer-review/emergency-stop',
   ]),
   // The Market's support email (notifications): a body of one field, set by an admin.
   PUT: new Set([
@@ -299,6 +301,9 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The Offer review policy (settings): every changed setting with its `expectedVersion`, all
     // or nothing.
     'settings/admin/offer-review',
+    // The Offer review emergency stop (settings): value, `expectedVersion` and a required note;
+    // protected key `settings.offer-review.emergency-stop`, so it may ask a fresh two-step code.
+    'settings/admin/offer-review/emergency-stop',
     // The Market default cap on seller refunds (ordering); `ordering.refund-limits.manage` is
     // protected, so it may ask a fresh two-step code.
     'ordering/admin/refund-limits',

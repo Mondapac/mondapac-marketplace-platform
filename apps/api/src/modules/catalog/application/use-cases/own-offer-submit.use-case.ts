@@ -304,8 +304,12 @@ export class OwnOfferSubmit extends UseCase<
       deps.reviewInputs.facts(context, { sellerId, productId }),
     ]);
     const reasons = offerReviewReasons({
-      ...reviewSettings,
-      facts: reviewFacts,
+      mode: reviewSettings.mode,
+      certificateBadges: reviewSettings.certificateBadges,
+      facts: {
+        ...reviewFacts,
+        emergencyStop: reviewFacts.emergencyStop || reviewSettings.emergencyStop,
+      },
       handling,
       badgeTypes,
       description,

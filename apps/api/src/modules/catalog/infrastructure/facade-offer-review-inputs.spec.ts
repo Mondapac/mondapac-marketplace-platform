@@ -15,6 +15,7 @@ const POLICY: OfferReviewPolicySettings = {
   priceBandPercent: 50,
   samplingPercent: 5,
   certificateBadges: 'review',
+  emergencyStop: false,
 };
 
 function inputsWith(answer: () => Promise<unknown>): OfferReviewInputs {
@@ -30,21 +31,40 @@ describe.each(TEST_MARKET_IDS)('FacadeOfferReviewInputs in market %s', (code) =>
       const inputs = inputsWith(() =>
         Promise.resolve({ ...POLICY, mode, certificateBadges: 'automatic' }),
       );
-      expect(await inputs.settings(context)).toEqual({ mode, certificateBadges: 'automatic' });
+      expect(await inputs.settings(context)).toEqual({
+        mode,
+        certificateBadges: 'automatic',
+        emergencyStop: false,
+      });
     }
   });
 
   it('answers review everything when the facade throws (fail closed)', async () => {
     const inputs = inputsWith(() => Promise.reject(new Error('settings down')));
     expect(await inputs.settings(context)).toEqual(SAFE_OFFER_REVIEW_SETTINGS);
-    expect(SAFE_OFFER_REVIEW_SETTINGS).toEqual({ mode: 'all', certificateBadges: 'review' });
+    expect(SAFE_OFFER_REVIEW_SETTINGS).toEqual({
+      mode: 'all',
+      certificateBadges: 'review',
+      emergencyStop: false,
+    });
   });
 
   it('reads an unknown mode as all and an unknown badge setting as review', async () => {
     const inputs = inputsWith(() =>
       Promise.resolve({ ...POLICY, mode: 'bogus', certificateBadges: 'weird' }),
     );
-    expect(await inputs.settings(context)).toEqual({ mode: 'all', certificateBadges: 'review' });
+    expect(await inputs.settings(context)).toEqual({
+      mode: 'all',
+      certificateBadges: 'review',
+      emergencyStop: false,
+    });
+  });
+
+  it('passes the emergency stop through only when it is exactly true', async () => {
+    const on = inputsWith(() => Promise.resolve({ ...POLICY, emergencyStop: true }));
+    expect((await on.settings(context)).emergencyStop).toBe(true);
+    const odd = inputsWith(() => Promise.resolve({ ...POLICY, emergencyStop: 'yes' }));
+    expect((await odd.settings(context)).emergencyStop).toBe(false);
   });
 
   it('counts every seller as in probation until the counter exists, every other fact off', async () => {
