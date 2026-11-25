@@ -23,6 +23,8 @@ const CLAIM_CANDIDATES = 5;
 export const EVALUATION_RUNS_KEPT = Temporal.Duration.from({ months: 25 });
 export const PLAYGROUND_DAYS_KEPT = Temporal.Duration.from({ days: 90 });
 const PURGE_BATCH = 500;
+/** Ended runs per purge unit: a run has up to a few hundred samples (Mojtaba, PR 1367 finding 5). */
+const RUN_PURGE_BATCH = 20;
 const PURGE_MAX_BATCHES = 40;
 
 /** A capability's verdict from its samples, once all of them landed. */
@@ -106,10 +108,10 @@ export class AiEvaluationRunner {
         found.spec.promptVersion !== row.promptVersion ||
         found.suite.setVersion !== row.setVersion
       ) {
-        await this.#write(market, async () => {
-          await this.store.setVerdict(market, runId, row.capability, 'superseded');
-          return true;
-        });
+        const marked = await this.#write(market, () =>
+          this.store.setVerdict(market, runId, token, row.capability, 'superseded'),
+        );
+        if (!marked) return this.#refused(market, runId);
         continue;
       }
       const done = new Map(
@@ -162,16 +164,30 @@ export class AiEvaluationRunner {
           latencyMs: result.attempt?.latencyMs ?? null,
           finishedAt: this.clock.now(),
         };
-        await this.#write(market, () => this.store.addSample(market, runId, sample));
+        // Written only while this job still holds the run (a cancel or another job's claim since
+        // the renewal wins): else it stops, and nothing it learnt is kept.
+        const added = await this.#write(market, () =>
+          this.store.addSample(market, runId, token, sample),
+        );
+        if (!added) return this.#refused(market, runId);
         done.set(sampleId, sample);
       }
-      const verdict = verdictOf([...done.values()]);
-      await this.#write(market, async () => {
-        await this.store.setVerdict(market, runId, row.capability, verdict);
-        return true;
+      // The verdict comes from what is stored, not from this job's memory.
+      const set = await this.#write(market, async () => {
+        const stored = (await this.store.samplesOf(market, runId)).filter(
+          (sample) => sample.capability === row.capability,
+        );
+        return this.store.setVerdict(market, runId, token, row.capability, verdictOf(stored));
       });
+      if (!set) return this.#refused(market, runId);
     }
     return this.#end(market, runId, token, 'completed');
+  }
+
+  /** Why a write was refused: the run ended (a cancel) or another job holds it now. */
+  async #refused(market: MarketContext, runId: string): Promise<'ended' | 'lost'> {
+    const run = await this.#read(market, () => this.store.findRun(market, runId));
+    return run === null || (run.status !== 'queued' && run.status !== 'running') ? 'ended' : 'lost';
   }
 
   /** Ends the run with this token; a capability still pending is incomplete. */
@@ -184,11 +200,7 @@ export class AiEvaluationRunner {
     const ended = await this.#write(market, async () => {
       const finished = await this.store.finish(market, runId, token, status, this.clock.now());
       if (!finished) return false;
-      for (const row of await this.store.capabilitiesOf(market, runId)) {
-        if (row.verdict === 'pending') {
-          await this.store.setVerdict(market, runId, row.capability, 'incomplete');
-        }
-      }
+      await this.store.closePending(market, runId);
       return true;
     });
     return ended ? status : 'lost';
@@ -222,11 +234,17 @@ export class AiEvaluationRunner {
     const today = this.dayOf(market, now);
     const runsBefore = now.toZonedDateTimeISO('UTC').subtract(EVALUATION_RUNS_KEPT).toInstant();
     const daysBefore = today.subtract(PLAYGROUND_DAYS_KEPT);
-    const runs = await this.#batches(market, deadline, () =>
-      this.store.purgeRuns(market, runsBefore, PURGE_BATCH),
+    const runs = await this.#batches(
+      market,
+      deadline,
+      () => this.store.purgeRuns(market, runsBefore, RUN_PURGE_BATCH),
+      RUN_PURGE_BATCH,
     );
-    const days = await this.#batches(market, deadline, () =>
-      this.store.purgePlaygroundDays(market, daysBefore, PURGE_BATCH),
+    const days = await this.#batches(
+      market,
+      deadline,
+      () => this.store.purgePlaygroundDays(market, daysBefore, PURGE_BATCH),
+      PURGE_BATCH,
     );
     return { runs: runs.total, playgroundDays: days.total, backlog: runs.backlog || days.backlog };
   }
@@ -235,6 +253,7 @@ export class AiEvaluationRunner {
     market: MarketContext,
     deadline: Temporal.Instant,
     batch: () => Promise<number>,
+    size: number,
   ): Promise<{ total: number; backlog: boolean }> {
     let total = 0;
     for (let index = 0; index < PURGE_MAX_BATCHES; index += 1) {
@@ -242,7 +261,7 @@ export class AiEvaluationRunner {
         return { total, backlog: true };
       const deleted = await this.#write(market, batch);
       total += deleted;
-      if (deleted < PURGE_BATCH) return { total, backlog: false };
+      if (deleted < size) return { total, backlog: false };
     }
     return { total, backlog: true };
   }

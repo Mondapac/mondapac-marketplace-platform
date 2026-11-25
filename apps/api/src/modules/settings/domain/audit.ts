@@ -148,10 +148,43 @@ export const AiEvaluationRequested = defineAuditAction({
   },
 });
 
+/**
+ * An admin cancelled a queued or running evaluation run of the Market (G4c; Hassan, PR 1367 L2).
+ * The run's id only; its model and state are on its own row. No free text (ADR-0009).
+ */
+export const AiEvaluationCancelled = defineAuditAction({
+  action: 'settings.ai-evaluation.cancelled',
+  targetType: AI_EVALUATION_RUN_TARGET,
+  targetId: auditField.id(),
+  actors: ['authenticated'],
+});
+
+/** The audit target type of a playground run (G4c): the target id is the admin account's. */
+export const AI_PLAYGROUND_TARGET = 'settings.ai-playground';
+
+/**
+ * An admin ran one evaluation sample on models side by side in the playground (G4c; Hassan, PR
+ * 1367 L2). Numbers only: how many models were called and what the calls spent (not a
+ * product Cost, ADR-0024: the field avoids the name). The capability,
+ * the sample and the models are not kept, nor any text (ADR-0009); nothing else is stored.
+ */
+export const AiPlaygroundRun = defineAuditAction({
+  action: 'settings.ai-playground.run',
+  targetType: AI_PLAYGROUND_TARGET,
+  targetId: auditField.id(),
+  actors: ['authenticated'],
+  after: {
+    families: auditField.integer(),
+    spentMicroUsd: auditField.integer(),
+  },
+});
+
 export const SETTINGS_AUDIT_ACTIONS = [
   AiCapChanged,
+  AiEvaluationCancelled,
   AiEvaluationRequested,
   AiModelsChanged,
+  AiPlaygroundRun,
   MarketSettingChanged,
   MarketNumberSettingChanged,
   MonthlyRevenueTargetChanged,

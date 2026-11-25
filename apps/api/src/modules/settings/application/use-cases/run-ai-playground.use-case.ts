@@ -7,6 +7,8 @@ import type {
   PlaygroundAnswer,
 } from '../../../../platform/ai/evaluations/evaluation-control';
 import { SETTINGS_AI_MODELS_MANAGE } from '../../contracts/permissions';
+import { AiPlaygroundRun } from '../../domain/audit';
+import type { SettingsDependencies } from '../settings-dependencies';
 import { adminAccountId, type SettingsFailure } from '../settings-flow';
 
 export type { PlaygroundAnswer };
@@ -34,7 +36,8 @@ const logger = new Logger('RunAiPlayground');
  * `AI_PLAYGROUND_RUNS_PER_ADMIN_DAY` runs per admin per Market day (`ai.playground-limit-reached`),
  * counted before the calls; the calls are paid from the evaluation budget and closed like a run.
  * Each answer is the capability's own guarded text, plain and inert, with its check codes, cost,
- * latency and route kind; nothing is stored. No two-step code: it spends little and changes
+ * latency and route kind; nothing is stored but the audit row `settings.ai-playground.run` (how
+ * many models and what they cost, in a unit after the calls). No two-step code: it spends little and changes
  * nothing. Refused in an acting-as session.
  */
 export class RunAiPlayground extends UseCase<
@@ -49,6 +52,7 @@ export class RunAiPlayground extends UseCase<
 
   constructor(
     gate: UseCaseGate,
+    private readonly deps: Pick<SettingsDependencies, 'unitOfWork' | 'audit'>,
     private readonly control: Pick<AiEvaluationControl, 'playground'>,
   ) {
     super(gate);
@@ -90,6 +94,23 @@ export class RunAiPlayground extends UseCase<
       return err({ code: 'validation.failed', fields: [{ path: result.path, code: result.code }] });
     }
     if (result.kind === 'limit-reached') return err({ code: 'ai.playground-limit-reached' });
-    return ok(result.answers);
+    const answers = result.answers;
+    const audited = await this.deps.unitOfWork.run<true, AiPlaygroundFailure>(
+      context.market,
+      async () => {
+        await this.deps.audit.record(
+          context,
+          AiPlaygroundRun.entry(adminId, {
+            after: {
+              families: answers.length,
+              spentMicroUsd: answers.reduce((total, answer) => total + answer.costMicroUsd, 0),
+            },
+          }),
+        );
+        return ok(true);
+      },
+    );
+    if (!audited.ok) return audited;
+    return ok(answers);
   }
 }

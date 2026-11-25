@@ -164,17 +164,17 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // purged; a capability's verdict is set; samples are inserted once and purged with their run;
     // a playground day is counted and purged.
     'platform.ai_evaluation_runs': {
-      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
-      columnUpdate: [],
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['ended_at', 'lease_token', 'lease_until', 'started_at', 'status'],
     },
     'platform.ai_evaluation_capabilities': {
-      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
-      columnUpdate: [],
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['verdict'],
     },
     'platform.ai_evaluation_samples': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'platform.ai_playground_days': {
-      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
-      columnUpdate: [],
+      table: ['DELETE', 'INSERT', 'SELECT'],
+      columnUpdate: ['runs'],
     },
     // docs/design/data/identity.md section 7 (slice 3; PM3): the envelope copy is immutable to
     // the application; DELETE arrives with the prune job.

@@ -166,15 +166,35 @@ export interface AiEvaluationStore {
     status: 'completed' | EvaluationClosedStatus,
     at: Temporal.Instant,
   ): Promise<boolean>;
-  /** Inserts a sample's result once (ON CONFLICT DO NOTHING); false when it was there already. */
-  addSample(market: MarketContext, runId: string, sample: EvaluationSampleRecord): Promise<boolean>;
-  /** Sets a capability's verdict while it is pending. */
+  /**
+   * Inserts a sample's result once (ON CONFLICT DO NOTHING), only while the run is running with
+   * this token: in the caller's unit, one conditional UPDATE of the run (id, token, running) proves
+   * and locks the lease first, so a cancel or another job's claim waits for this unit or wins
+   * before it. False (nothing written) when the lease is not held; true when the sample is stored,
+   * now or before. Read-write unit.
+   */
+  addSample(
+    market: MarketContext,
+    runId: string,
+    token: string,
+    sample: EvaluationSampleRecord,
+  ): Promise<boolean>;
+  /**
+   * Sets a capability's verdict while it is pending, only while the run is running with this
+   * token (the same lease proof as {@link addSample}). False (nothing written) when it is not held.
+   */
   setVerdict(
     market: MarketContext,
     runId: string,
+    token: string,
     capability: string,
     verdict: Exclude<EvaluationVerdict, 'pending'>,
-  ): Promise<void>;
+  ): Promise<boolean>;
+  /**
+   * Marks every capability still pending `incomplete`, only once the run has ended (cancelled or
+   * finished: an end is final, so no lease is needed). Read-write unit.
+   */
+  closePending(market: MarketContext, runId: string): Promise<void>;
 
   /**
    * Counts one playground run of the admin on the Market day: one conditional UPDATE while the
@@ -188,7 +208,10 @@ export interface AiEvaluationStore {
     limit: number,
   ): Promise<boolean>;
 
-  /** Deletes up to `limit` ended runs requested before `before` (with their rows); how many. */
+  /**
+   * Deletes up to `limit` ended runs requested before `before`, their samples first and then the
+   * runs (their capabilities by cascade); how many runs.
+   */
   purgeRuns(market: MarketContext, before: Temporal.Instant, limit: number): Promise<number>;
   /** Deletes up to `limit` playground days before `before`; how many. */
   purgePlaygroundDays(

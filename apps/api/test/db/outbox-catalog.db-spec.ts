@@ -369,6 +369,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // AI Gateway G4c: one open evaluation run (queued or running) per model and Market.
   'platform.ai_evaluation_runs_one_open_key':
     "CREATE UNIQUE INDEX ai_evaluation_runs_one_open_key ON platform.ai_evaluation_runs USING btree (market_id, provider, family) WHERE ((status)::text = ANY ((ARRAY['queued'::character varying, 'running'::character varying])::text[]))",
+  'platform.ai_evaluation_runs_open_requested_at_idx':
+    "CREATE INDEX ai_evaluation_runs_open_requested_at_idx ON platform.ai_evaluation_runs USING btree (market_id, requested_at, id) WHERE ((status)::text = ANY ((ARRAY['queued'::character varying, 'running'::character varying])::text[]))",
   // Payments package 8a: the relay's claim index of payments' outbox.
   'payments.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON payments.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',

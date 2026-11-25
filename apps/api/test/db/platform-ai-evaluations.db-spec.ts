@@ -34,6 +34,7 @@ import { testDatabaseUrl } from './test-database';
 
 const UNIQUE_VIOLATION = '23505';
 const CHECK_VIOLATION = '23514';
+const INSUFFICIENT_PRIVILEGE = '42501';
 const NOW = Temporal.Instant.from('2026-11-25T02:00:00Z');
 const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
 const uuid = () => uuidV7(Date.now(), randomBytes(10));
@@ -210,22 +211,111 @@ describe('platform AI evaluations (database integration, AI Gateway G4c)', () =>
       expect(await write(market, () => store.renew(market, run.id, loser, later))).toBe('ended');
     });
 
-    it('inserts a sample once and sets a verdict only while pending', async () => {
+    /** A queued run claimed now with a fresh token. */
+    const claimed = async () => {
       const run = newRun(family());
       await write(market, () => store.enqueue(market, run));
-      expect(await write(market, () => store.addSample(market, run.id, sample('plain')))).toBe(
-        true,
-      );
-      expect(await write(market, () => store.addSample(market, run.id, sample('plain')))).toBe(
-        false,
-      );
+      const token = uuid();
+      const now = clock.now();
+      expect(
+        await write(market, () => store.claim(market, run.id, token, now, now.add(LEASE))),
+      ).toBe(true);
+      return { run, token };
+    };
+    const CAPABILITY = 'catalog.description-writer.admin';
+
+    it('inserts a sample once and sets a verdict only while pending, with the lease', async () => {
+      const { run, token } = await claimed();
+      expect(
+        await write(market, () => store.addSample(market, run.id, token, sample('plain'))),
+      ).toBe(true);
+      expect(
+        await write(market, () => store.addSample(market, run.id, token, sample('plain'))),
+      ).toBe(true);
       expect(await write(market, () => store.samplesOf(market, run.id))).toHaveLength(1);
-      const capability = 'catalog.description-writer.admin';
-      await write(market, () => store.setVerdict(market, run.id, capability, 'failed'));
-      await write(market, () => store.setVerdict(market, run.id, capability, 'pass-candidate'));
+      expect(
+        await write(market, () => store.setVerdict(market, run.id, token, CAPABILITY, 'failed')),
+      ).toBe(true);
+      await write(market, () =>
+        store.setVerdict(market, run.id, token, CAPABILITY, 'pass-candidate'),
+      );
       expect(
         (await write(market, () => store.capabilitiesOf(market, run.id))).map((r) => r.verdict),
       ).toEqual(['failed']);
+      await write(market, () => store.cancel(market, run.id, clock.now()));
+    });
+
+    it('refuses a result of a job that lost its lease: cancelled, or taken over (Mojtaba 1)', async () => {
+      const cancelled = await claimed();
+      await write(market, () => store.cancel(market, cancelled.run.id, clock.now()));
+      const taken = await claimed();
+      const later = clock.now().add(LEASE).add({ seconds: 1 });
+      const other = uuid();
+      expect(
+        await write(market, () =>
+          store.claim(market, taken.run.id, other, later, later.add(LEASE)),
+        ),
+      ).toBe(true);
+      for (const { run, token } of [cancelled, taken]) {
+        expect(
+          await write(market, () => store.addSample(market, run.id, token, sample('plain'))),
+        ).toBe(false);
+        expect(
+          await write(market, () => store.setVerdict(market, run.id, token, CAPABILITY, 'failed')),
+        ).toBe(false);
+        expect(await write(market, () => store.samplesOf(market, run.id))).toEqual([]);
+        expect(
+          (await write(market, () => store.capabilitiesOf(market, run.id))).map((r) => r.verdict),
+        ).toEqual(['pending']);
+      }
+      // The job holding the run now still writes; the ended run's pending verdicts close.
+      expect(
+        await write(market, () => store.addSample(market, taken.run.id, other, sample('plain'))),
+      ).toBe(true);
+      await write(market, () => store.closePending(market, cancelled.run.id));
+      await write(market, () => store.closePending(market, taken.run.id));
+      expect(
+        (await write(market, () => store.capabilitiesOf(market, cancelled.run.id))).map(
+          (r) => r.verdict,
+        ),
+      ).toEqual(['incomplete']);
+      expect(
+        (await write(market, () => store.capabilitiesOf(market, taken.run.id))).map(
+          (r) => r.verdict,
+        ),
+      ).toEqual(['pending']);
+      await write(market, () => store.cancel(market, taken.run.id, later));
+    });
+
+    it("keeps a run's life consistent and updates only the granted columns (Mojtaba 2, 4)", async () => {
+      const run = newRun(family());
+      await write(market, () => store.enqueue(market, run));
+      const where = 'WHERE market_id = $1 AND id = $2';
+      for (const change of [
+        'ended_at = now()',
+        `lease_token = '${uuid()}', lease_until = now()`,
+        "status = 'cancelled'",
+      ]) {
+        await expect(
+          sql.query(`UPDATE platform.ai_evaluation_runs SET ${change} ${where}`, [code, run.id]),
+        ).rejects.toMatchObject({ code: CHECK_VIOLATION });
+      }
+      await expect(
+        sql.query(`UPDATE platform.ai_evaluation_runs SET family = 'other' ${where}`, [
+          code,
+          run.id,
+        ]),
+      ).rejects.toMatchObject({ code: INSUFFICIENT_PRIVILEGE });
+      await expect(
+        sql.query(
+          `INSERT INTO platform.ai_evaluation_samples
+             (market_id, tenant_id, run_id, capability, sample_id, outcome, checks, call_id,
+              route, attempt, input_tokens, output_tokens, cost_micro_usd, finished_at)
+           VALUES ($1, $2, $3, $4, 'plain', 'ok', '{}', $5, NULL, NULL, 0, 0, 0, now())`,
+          [code, PLATFORM_TENANT_ID, run.id, CAPABILITY, uuid()],
+        ),
+      ).rejects.toMatchObject({ code: CHECK_VIOLATION });
+      await write(market, () => store.cancel(market, run.id, clock.now()));
     });
 
     it('counts at most the limit of concurrent playground runs per admin and day', async () => {
@@ -246,8 +336,10 @@ describe('platform AI evaluations (database integration, AI Gateway G4c)', () =>
       const open = newRun(family(), old);
       await write(market, () => store.enqueue(market, ended));
       await write(market, () => store.enqueue(market, open));
-      await write(market, () => store.addSample(market, ended.id, sample('plain')));
-      await write(market, () => store.cancel(market, ended.id, old));
+      const token = uuid();
+      await write(market, () => store.claim(market, ended.id, token, old, old.add(LEASE)));
+      await write(market, () => store.addSample(market, ended.id, token, sample('plain')));
+      await write(market, () => store.cancel(market, ended.id, old.add({ seconds: 1 })));
       const before = Temporal.Instant.from('2024-01-01T00:00:00Z');
       expect(
         await write(market, () => store.purgeRuns(market, before, 500)),
@@ -281,9 +373,12 @@ describe('platform AI evaluations (database integration, AI Gateway G4c)', () =>
           [code, run.id],
         ),
       ).rejects.toMatchObject({ code: CHECK_VIOLATION });
+      const token = uuid();
+      const now = clock.now();
+      await write(market, () => store.claim(market, run.id, token, now, now.add(LEASE)));
       await expect(
         write(market, () =>
-          store.addSample(market, run.id, { ...sample('plain'), checks: ['nice' as never] }),
+          store.addSample(market, run.id, token, { ...sample('plain'), checks: ['nice' as never] }),
         ),
       ).rejects.toThrow();
       await write(market, () => store.cancel(market, run.id, clock.now()));

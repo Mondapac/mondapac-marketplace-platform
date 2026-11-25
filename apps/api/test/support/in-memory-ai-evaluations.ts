@@ -232,35 +232,56 @@ export class InMemoryAiEvaluationStore implements AiEvaluationStore {
     return Promise.resolve(true);
   }
 
+  #holds(market: MarketContext, runId: string, token: string) {
+    const run = this.#run(market, runId);
+    return run?.status === 'running' && run.leaseToken === token;
+  }
+
   addSample(
     market: MarketContext,
     runId: string,
+    token: string,
     sample: EvaluationSampleRecord,
   ): Promise<boolean> {
+    if (!this.#holds(market, runId, token)) return Promise.resolve(false);
     const key = this.#key(market, runId);
     const list = this.samples.get(key) ?? [];
     if (
-      list.some((row) => row.capability === sample.capability && row.sampleId === sample.sampleId)
+      !list.some((row) => row.capability === sample.capability && row.sampleId === sample.sampleId)
     ) {
-      return Promise.resolve(false);
+      this.samples.set(key, [...list, sample]);
     }
-    this.samples.set(key, [...list, sample]);
     return Promise.resolve(true);
+  }
+
+  #verdict(market: MarketContext, runId: string, capability: string | null, verdict: string) {
+    const key = this.#key(market, runId);
+    this.capabilities.set(
+      key,
+      (this.capabilities.get(key) ?? []).map((row) =>
+        (capability === null || row.capability === capability) && row.verdict === 'pending'
+          ? { ...row, verdict: verdict as EvaluationVerdict }
+          : row,
+      ),
+    );
   }
 
   setVerdict(
     market: MarketContext,
     runId: string,
+    token: string,
     capability: string,
     verdict: Exclude<EvaluationVerdict, 'pending'>,
-  ): Promise<void> {
-    const key = this.#key(market, runId);
-    this.capabilities.set(
-      key,
-      (this.capabilities.get(key) ?? []).map((row) =>
-        row.capability === capability && row.verdict === 'pending' ? { ...row, verdict } : row,
-      ),
-    );
+  ): Promise<boolean> {
+    if (!this.#holds(market, runId, token)) return Promise.resolve(false);
+    this.#verdict(market, runId, capability, verdict);
+    return Promise.resolve(true);
+  }
+
+  closePending(market: MarketContext, runId: string): Promise<void> {
+    const run = this.#run(market, runId);
+    if (run !== undefined && !OPEN.has(run.status))
+      this.#verdict(market, runId, null, 'incomplete');
     return Promise.resolve();
   }
 

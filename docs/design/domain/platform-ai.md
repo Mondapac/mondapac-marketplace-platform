@@ -401,18 +401,38 @@ settings/admin/ai-gateway/emergency-stop` (protected key `settings.ai-gateway.ma
   `platform.ai-evaluation-runner` (every 15 s, 300 s slot) takes one run per tick with a lease
   token (a conditional UPDATE), renews it before each sample, stops on a cancel or a lost lease,
   hands the run back before a sample that could outlive its slot, inserts each sample once and
-  sets each capability's verdict (`pass-candidate`, never a pass: a PR records a pass in
-  `evaluations/results.ts`; `failed`, `incomplete`, `superseded` when the prompt or set version
-  changed). Routes under `settings/admin/ai-models/`: `GET evaluations`, `GET
+  sets each capability's verdict from the stored samples. A result or a verdict is written only
+  while the job still holds the run: in its unit, a conditional UPDATE of the run (id, token,
+  running) proves and locks the lease first, so after a cancel or another job's claim the write is
+  refused and the job stops (Mojtaba and Hassan, PR 1367). Verdicts: `pass-candidate` (never a pass: a PR records a pass in
+  `evaluations/results.ts`), `failed`, `incomplete`, `superseded` when the prompt or set version
+  changed. Routes under `settings/admin/ai-models/`: `GET evaluations`, `GET
   evaluations/estimate`, `GET evaluations/{runId}`, `GET playground/samples` (view key); `POST
   evaluations` (protected `settings.ai-models.manage` and the step-up
   `settings.ai-evaluation.run`; the estimate the admin confirmed must still hold; step-up spend,
   queueing and the audit row `settings.ai-evaluation.requested`, numbers only, in one unit),
-  `POST evaluations/{runId}/cancel` and `POST playground` (manage key; ids only, two distinct
-  families called in parallel, 20 runs per admin per Market day, nothing stored). Tables
+  `POST evaluations/{runId}/cancel` (manage key; the cancel and its audit row
+  `settings.ai-evaluation.cancelled`, the run id only, in one unit) and `POST playground` (manage
+  key; ids only, two distinct families called in parallel, 20 runs per admin per Market day;
+  nothing stored but the audit row `settings.ai-playground.run`: how many models and what they
+  spent). Tables
   `platform.ai_evaluation_runs`, `_capabilities`, `_samples` and `ai_playground_days` (migration
   `20261125230000_platform_ai_evaluations`; runs kept 25 months, playground days 90 days, purged
-  by the usage retention job). No event, no notification (R2). **G4c2 (deferred):** capabilities
+  by the usage retention job: samples first, 20 runs a unit). The tables' CHECKs hold a run's life
+  (open exactly while it has no end, no lease while queued, a start once running, no end before
+  the start) and a sent call's route and attempt; the application updates only the columns it
+  changes (column-level grants). No event, no notification (R2).
+- **Accepted in G4c1: a queued run does not re-check its requester** (Hassan, PR 1367 L4). The job
+  works a run as the system actor; it does not ask again whether the admin who asked for it still
+  holds `settings.ai-models.manage`. Doing so needs `platform/ai` wired to identity's job identity
+  and authorisation ports, the requester's session id on the run and settings' permission key in
+  `platform/`, a new cross-module dependency not built here. The spend is bounded by the
+  evaluation budget, and any admin with the key can cancel the run
+  (FE-20261125-ai-gateway-evaluation-requester-recheck).
+- **Total AI spend of a Market** (Hassan, PR 1367 I2): evaluation and playground calls count only
+  on the evaluation budget, never on the Market's day or month caps, so a Market can spend up to
+  its month cap plus its evaluation cap in a month. The evaluation cap is 0 until a senior admin
+  raises it. **G4c2 (deferred):** capabilities
   with tool rounds, the buyer chat (FE-20261125-ai-gateway-evaluation-tool-capabilities).
 
 ## 9. Security (Hassan)
@@ -577,3 +597,4 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 | FE-20261125-ai-gateway-drop-spend-days          | G7 step 4: drop `assistant.spend_days` one release after G7b                                           |
 | FE-20261125-ai-gateway-assistant-cap-to-gateway | Move the assistant's day and month cap values into the gateway's caps (with G4)                        |
 | FE-20261125-ai-gateway-evaluation-tool-capabilities | G4c2: evaluation runs and the playground for capabilities with tools (the buyer chat) |
+| FE-20261125-ai-gateway-evaluation-requester-recheck | Re-check the requesting admin's access before a queued evaluation run starts (accepted risk in G4c1) |

@@ -74,9 +74,6 @@ CREATE TABLE "platform"."ai_playground_days" (
 );
 
 -- CreateIndex
-CREATE INDEX "ai_evaluation_runs_market_id_status_requested_at_idx" ON "platform"."ai_evaluation_runs"("market_id", "status", "requested_at");
-
--- CreateIndex
 CREATE INDEX "ai_evaluation_runs_market_id_requested_at_id_idx" ON "platform"."ai_evaluation_runs"("market_id", "requested_at" DESC, "id");
 
 -- AddForeignKey
@@ -91,6 +88,13 @@ CREATE UNIQUE INDEX "ai_evaluation_runs_one_open_key"
   ON "platform"."ai_evaluation_runs"("market_id", "provider", "family")
   WHERE "status" IN ('queued', 'running');
 
+-- Hand-written: the job's claim reads open runs of the Market oldest first (requested_at, id), a
+-- handful at a time; ended runs, which are nearly all rows, stay out of the index (Mojtaba, PR
+-- 1367 finding 3).
+CREATE INDEX "ai_evaluation_runs_open_requested_at_idx"
+  ON "platform"."ai_evaluation_runs"("market_id", "requested_at", "id")
+  WHERE "status" IN ('queued', 'running');
+
 -- Hand-written: closed values and non-negative counts.
 ALTER TABLE "platform"."ai_evaluation_runs"
   ADD CONSTRAINT "ai_evaluation_runs_status_check" CHECK ("status" IN (
@@ -99,7 +103,17 @@ ALTER TABLE "platform"."ai_evaluation_runs"
   ADD CONSTRAINT "ai_evaluation_runs_estimate_check" CHECK ("estimate_micro_usd" >= 0),
   -- A running run is held by one job run: its lease token and expiry are set.
   ADD CONSTRAINT "ai_evaluation_runs_lease_check" CHECK (
-    "status" <> 'running' OR ("lease_token" IS NOT NULL AND "lease_until" IS NOT NULL));
+    "status" <> 'running' OR ("lease_token" IS NOT NULL AND "lease_until" IS NOT NULL)),
+  -- The life of a run (Mojtaba, PR 1367 finding 2): open exactly while it has no end; a queued run
+  -- holds no lease; a running one has started; an end never comes before the start.
+  ADD CONSTRAINT "ai_evaluation_runs_ended_check" CHECK (
+    ("status" IN ('queued', 'running')) = ("ended_at" IS NULL)),
+  ADD CONSTRAINT "ai_evaluation_runs_queued_lease_check" CHECK (
+    "status" <> 'queued' OR ("lease_token" IS NULL AND "lease_until" IS NULL)),
+  ADD CONSTRAINT "ai_evaluation_runs_started_check" CHECK (
+    "status" <> 'running' OR "started_at" IS NOT NULL),
+  ADD CONSTRAINT "ai_evaluation_runs_order_check" CHECK (
+    "ended_at" IS NULL OR "started_at" IS NULL OR "ended_at" >= "started_at");
 
 ALTER TABLE "platform"."ai_evaluation_capabilities"
   ADD CONSTRAINT "ai_evaluation_capabilities_capability_check"
@@ -115,6 +129,9 @@ ALTER TABLE "platform"."ai_evaluation_samples"
   ADD CONSTRAINT "ai_evaluation_samples_checks_check" CHECK (
     "checks" <@ ARRAY['leak', 'empty', 'incomplete', 'too-long', 'missing-fact']::VARCHAR(16)[]),
   ADD CONSTRAINT "ai_evaluation_samples_attempt_check" CHECK ("attempt" BETWEEN 1 AND 10),
+  -- A call sent has its route and attempt (Mojtaba, PR 1367 finding 2).
+  ADD CONSTRAINT "ai_evaluation_samples_call_check" CHECK (
+    "call_id" IS NULL OR ("route" IS NOT NULL AND "attempt" IS NOT NULL)),
   ADD CONSTRAINT "ai_evaluation_samples_counts_check" CHECK (
     "input_tokens" >= 0 AND "output_tokens" >= 0 AND "cost_micro_usd" >= 0
     AND ("latency_ms" IS NULL OR "latency_ms" >= 0));
@@ -134,10 +151,15 @@ ALTER TABLE "platform"."ai_budget_counters"
         AND "scope_key" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$')) NOT VALID;
 ALTER TABLE "platform"."ai_budget_counters" VALIDATE CONSTRAINT "ai_budget_counters_scope_check";
 
--- Grants (database-designer): only what platform/persistence/ai-evaluations/ runs. Runs are
--- enqueued, claimed, renewed, finished and purged; a capability's verdict is set once; samples are
--- inserted once and purged with their run; a playground day is counted and purged.
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "platform"."ai_evaluation_runs" TO "mondapac_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "platform"."ai_evaluation_capabilities" TO "mondapac_app";
+-- Grants (database-designer): only what platform/persistence/ai-evaluations/ runs, UPDATE by
+-- column (Mojtaba, PR 1367 finding 4). Runs are enqueued, claimed, renewed, finished and purged
+-- (their state, start, end and lease change, nothing else); a capability's verdict is set once;
+-- samples are inserted once and purged; a playground day is counted and purged.
+GRANT SELECT, INSERT, DELETE ON TABLE "platform"."ai_evaluation_runs" TO "mondapac_app";
+GRANT UPDATE ("status", "started_at", "ended_at", "lease_token", "lease_until")
+  ON TABLE "platform"."ai_evaluation_runs" TO "mondapac_app";
+GRANT SELECT, INSERT, DELETE ON TABLE "platform"."ai_evaluation_capabilities" TO "mondapac_app";
+GRANT UPDATE ("verdict") ON TABLE "platform"."ai_evaluation_capabilities" TO "mondapac_app";
 GRANT SELECT, INSERT, DELETE ON TABLE "platform"."ai_evaluation_samples" TO "mondapac_app";
-GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE "platform"."ai_playground_days" TO "mondapac_app";
+GRANT SELECT, INSERT, DELETE ON TABLE "platform"."ai_playground_days" TO "mondapac_app";
+GRANT UPDATE ("runs") ON TABLE "platform"."ai_playground_days" TO "mondapac_app";

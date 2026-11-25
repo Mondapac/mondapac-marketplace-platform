@@ -14,10 +14,14 @@ ALTER TABLE "platform"."ai_budget_counters"
     OR ("scope" = 'seller'
         AND "scope_key" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'));
 
-REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE "platform"."ai_playground_days" FROM "mondapac_app";
+REVOKE UPDATE ("runs") ON TABLE "platform"."ai_playground_days" FROM "mondapac_app";
+REVOKE SELECT, INSERT, DELETE ON TABLE "platform"."ai_playground_days" FROM "mondapac_app";
 REVOKE SELECT, INSERT, DELETE ON TABLE "platform"."ai_evaluation_samples" FROM "mondapac_app";
-REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE "platform"."ai_evaluation_capabilities" FROM "mondapac_app";
-REVOKE SELECT, INSERT, UPDATE, DELETE ON TABLE "platform"."ai_evaluation_runs" FROM "mondapac_app";
+REVOKE UPDATE ("verdict") ON TABLE "platform"."ai_evaluation_capabilities" FROM "mondapac_app";
+REVOKE SELECT, INSERT, DELETE ON TABLE "platform"."ai_evaluation_capabilities" FROM "mondapac_app";
+REVOKE UPDATE ("status", "started_at", "ended_at", "lease_token", "lease_until")
+  ON TABLE "platform"."ai_evaluation_runs" FROM "mondapac_app";
+REVOKE SELECT, INSERT, DELETE ON TABLE "platform"."ai_evaluation_runs" FROM "mondapac_app";
 
 DROP TABLE "platform"."ai_playground_days";
 DROP TABLE "platform"."ai_evaluation_samples";

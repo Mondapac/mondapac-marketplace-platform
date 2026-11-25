@@ -99,9 +99,9 @@ const FAMILY = /^[a-z0-9][a-z0-9.-]{0,19}$/;
  * (boundary rule), which check the caller's access first; this file calls no model itself (the
  * evaluation gateway does, imported only inside `evaluations/`).
  *
- * Every read answers for the caller's Market only. `enqueue` runs in the caller's unit (with the
- * step-up spend and the audit row); every other method opens its own units and is never called
- * inside one.
+ * Every read answers for the caller's Market only. `enqueue` and `cancel` run in the caller's unit
+ * (with the step-up spend and the audit row); every other method opens its own units and is never
+ * called inside one.
  */
 @Injectable()
 export class AiEvaluationControl {
@@ -225,17 +225,14 @@ export class AiEvaluationControl {
     return queued ? id : null;
   }
 
-  /** Cancels a queued or running run of the Market; false when it is not open (or not there). */
+  /**
+   * Cancels a queued or running run of the Market, in the caller's open unit (with its audit row),
+   * and marks its pending capabilities incomplete; false when it is not open (or not there).
+   */
   async cancel(market: MarketContext, runId: string): Promise<boolean> {
-    return this.#write(market, async () => {
-      if (!(await this.store.cancel(market, runId, this.clock.now()))) return false;
-      for (const row of await this.store.capabilitiesOf(market, runId)) {
-        if (row.verdict === 'pending') {
-          await this.store.setVerdict(market, runId, row.capability, 'incomplete');
-        }
-      }
-      return true;
-    });
+    if (!(await this.store.cancel(market, runId, this.clock.now()))) return false;
+    await this.store.closePending(market, runId);
+    return true;
   }
 
   /** A page of the Market's runs, newest first; null for a cursor that is not one. */

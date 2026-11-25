@@ -217,6 +217,8 @@ export class PrismaAiEvaluationStore implements AiEvaluationStore {
     const rows = await this.prisma.tx(market).aiEvaluationRun.findMany({
       where: {
         ...this.#scope(market),
+        // The partial index ai_evaluation_runs_open_requested_at_idx: open runs, oldest first.
+        status: { in: OPEN },
         OR: [{ status: 'queued' }, { status: 'running', leaseUntil: { lt: timestampOf(now) } }],
       },
       orderBy: [{ requestedAt: 'asc' }, { id: 'asc' }],
@@ -234,25 +236,20 @@ export class PrismaAiEvaluationStore implements AiEvaluationStore {
     leaseUntil: Temporal.Instant,
   ): Promise<boolean> {
     const tx = this.prisma.tx(market);
-    const where = {
-      ...this.#scope(market),
-      id: runId,
-      OR: [{ status: 'queued' }, { status: 'running', leaseUntil: { lt: timestampOf(now) } }],
-    };
-    const claimed = await tx.aiEvaluationRun.updateMany({
-      where,
-      data: {
-        status: 'running',
-        leaseToken: token,
-        leaseUntil: timestampOf(leaseUntil),
-      },
+    const scope = this.#scope(market);
+    const lease = { leaseToken: token, leaseUntil: timestampOf(leaseUntil) };
+    // A queued run starts now (CHECK: a running run has started_at) ...
+    const started = await tx.aiEvaluationRun.updateMany({
+      where: { ...scope, id: runId, status: 'queued' },
+      data: { status: 'running', startedAt: timestampOf(now), ...lease },
     });
-    if (claimed.count !== 1) return false;
-    // The first claim stamps the start; a claim after a lost lease keeps it.
-    await tx.aiEvaluationRun.updateMany({
-      where: { ...this.#scope(market), id: runId, leaseToken: token, startedAt: null },
-      data: { startedAt: timestampOf(now) },
+    if (started.count === 1) return true;
+    // ... and a running one whose lease ran out keeps its start.
+    const taken = await tx.aiEvaluationRun.updateMany({
+      where: { ...scope, id: runId, status: 'running', leaseUntil: { lt: timestampOf(now) } },
+      data: lease,
     });
+    if (taken.count !== 1) return false;
     return true;
   }
 
@@ -301,12 +298,28 @@ export class PrismaAiEvaluationStore implements AiEvaluationStore {
     return finished.count === 1;
   }
 
+  /**
+   * The lease proof of a result write: one conditional UPDATE of the run (still running with this
+   * token) in the caller's unit. It writes the token it matched, so it changes nothing, but it
+   * locks the row: a cancel or another job's claim waits for this unit to commit, and a write
+   * after either of them finds no row.
+   */
+  async #holds(market: MarketContext, runId: string, token: string): Promise<boolean> {
+    const held = await this.prisma.tx(market).aiEvaluationRun.updateMany({
+      where: { ...this.#scope(market), id: runId, leaseToken: token, status: 'running' },
+      data: { leaseToken: token },
+    });
+    return held.count === 1;
+  }
+
   async addSample(
     market: MarketContext,
     runId: string,
+    token: string,
     sample: EvaluationSampleRecord,
   ): Promise<boolean> {
-    const inserted = await this.prisma.tx(market).aiEvaluationSample.createMany({
+    if (!(await this.#holds(market, runId, token))) return false;
+    await this.prisma.tx(market).aiEvaluationSample.createMany({
       data: [
         {
           ...this.#scope(market),
@@ -327,18 +340,35 @@ export class PrismaAiEvaluationStore implements AiEvaluationStore {
       ],
       skipDuplicates: true,
     });
-    return inserted.count === 1;
+    return true;
   }
 
   async setVerdict(
     market: MarketContext,
     runId: string,
+    token: string,
     capability: string,
     verdict: Exclude<EvaluationVerdict, 'pending'>,
-  ): Promise<void> {
+  ): Promise<boolean> {
+    if (!(await this.#holds(market, runId, token))) return false;
     await this.prisma.tx(market).aiEvaluationCapability.updateMany({
       where: { ...this.#scope(market), runId, capability, verdict: 'pending' },
       data: { verdict },
+    });
+    return true;
+  }
+
+  async closePending(market: MarketContext, runId: string): Promise<void> {
+    const tx = this.prisma.tx(market);
+    const run = await tx.aiEvaluationRun.findFirst({
+      where: { ...this.#scope(market), id: runId },
+      select: { status: true },
+    });
+    // An end is final: once ended, no lease can write again, so this never races a result.
+    if (run === null || OPEN.includes(run.status as EvaluationRunStatus)) return;
+    await tx.aiEvaluationCapability.updateMany({
+      where: { ...this.#scope(market), runId, verdict: 'pending' },
+      data: { verdict: 'incomplete' },
     });
   }
 
@@ -368,9 +398,12 @@ export class PrismaAiEvaluationStore implements AiEvaluationStore {
       select: { id: true },
     });
     if (rows.length === 0) return 0;
-    // Capabilities and samples go with their run (ON DELETE CASCADE).
+    const ids = rows.map((row) => row.id);
+    // Samples first, in this statement of their own, so the cascade of the run delete is small
+    // (Mojtaba, PR 1367 finding 5); capabilities go with their run (ON DELETE CASCADE).
+    await tx.aiEvaluationSample.deleteMany({ where: { ...scope, runId: { in: ids } } });
     const deleted = await tx.aiEvaluationRun.deleteMany({
-      where: { ...scope, id: { in: rows.map((row) => row.id) }, status: { notIn: OPEN } },
+      where: { ...scope, id: { in: ids }, status: { notIn: OPEN } },
     });
     return deleted.count;
   }

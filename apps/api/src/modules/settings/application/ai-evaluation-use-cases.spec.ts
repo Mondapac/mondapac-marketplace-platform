@@ -75,9 +75,9 @@ describe.each([['AU'], ['ZZ']] as const)('AI evaluation use cases in market %s',
     detail: new ViewAiEvaluation(gate, harness.control),
     estimate: new EstimateAiEvaluation(gate, harness.control),
     run: new RunAiEvaluation(gate, deps, harness.control),
-    cancel: new CancelAiEvaluation(gate, harness.control),
+    cancel: new CancelAiEvaluation(gate, deps, harness.control),
     samples: new ViewAiPlaygroundSamples(gate, harness.control),
-    playground: new RunAiPlayground(gate, harness.control),
+    playground: new RunAiPlayground(gate, deps, harness.control),
   });
 
   const estimateOf = async () => {
@@ -239,10 +239,21 @@ describe.each([['AU'], ['ZZ']] as const)('AI evaluation use cases in market %s',
       ok: false,
       error: { code: 'ai.evaluation-not-found' },
     });
+    const before = audit.entries.length;
     expect(await useCases().cancel.execute(admin(), { runId })).toEqual({
       ok: true,
       value: { runId },
     });
+    // One audit row, the run id only (Hassan, PR 1367 L2); a refused cancel writes none.
+    expect(audit.entries.slice(before)).toEqual([
+      expect.objectContaining({ action: 'settings.ai-evaluation.cancelled', targetId: runId }),
+    ]);
+    expect(JSON.stringify(audit.entries.slice(before))).not.toMatch(/anthropic|model-fast/);
+    expect(await useCases().cancel.execute(admin(), { runId })).toEqual({
+      ok: false,
+      error: { code: 'ai.evaluation-not-found' },
+    });
+    expect(audit.entries).toHaveLength(before + 1);
     expect(await useCases().detail.execute(admin(), { runId: 'not-an-id' })).toEqual({
       ok: false,
       error: { code: 'ai.evaluation-not-found' },
@@ -267,14 +278,22 @@ describe.each([['AU'], ['ZZ']] as const)('AI evaluation use cases in market %s',
       ]);
     });
 
-    it('answers two models side by side without a two-step code, storing nothing', async () => {
+    it('answers two models side by side without a two-step code, audited with numbers only', async () => {
       const result = await play(body);
       expect(result.ok && result.value.map((answer) => answer.family)).toEqual([
         'model-fast',
         'model-balanced',
       ]);
       expect(spentProofs).toEqual([]);
-      expect(audit.entries).toEqual([]);
+      const cost = result.ok ? result.value.reduce((sum, item) => sum + item.costMicroUsd, 0) : -1;
+      expect(audit.entries).toEqual([
+        expect.objectContaining({
+          action: 'settings.ai-playground.run',
+          targetId: ADMIN_ID,
+          after: { families: 2, spentMicroUsd: cost },
+        }),
+      ]);
+      expect(JSON.stringify(audit.entries)).not.toMatch(/alpha|s-1|model-|Synthetic|rice/);
       expect(harness.store.runs.size).toBe(0);
     });
 
@@ -302,6 +321,7 @@ describe.each([['AU'], ['ZZ']] as const)('AI evaluation use cases in market %s',
       });
       expect(harness.provider.requests).toHaveLength(0);
       expect(harness.store.playgroundDays.size).toBe(0);
+      expect(audit.entries).toEqual([]);
     });
 
     it('is refused for an anonymous caller', async () => {

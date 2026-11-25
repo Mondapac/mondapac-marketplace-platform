@@ -155,17 +155,19 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     },
     // Evaluation runs and the playground (G4c) reach platform/ai through AiEvaluationControl;
     // AiModule is global, so it reaches this module without an import.
-    ...[
-      ViewAiEvaluations,
-      ViewAiEvaluation,
-      EstimateAiEvaluation,
-      CancelAiEvaluation,
-      ViewAiPlaygroundSamples,
-      RunAiPlayground,
-    ].map((type): FactoryProvider => ({
+    ...[ViewAiEvaluations, ViewAiEvaluation, EstimateAiEvaluation, ViewAiPlaygroundSamples].map(
+      (type): FactoryProvider => ({
+        provide: type,
+        inject: [USE_CASE_GATE, AiEvaluationControl],
+        useFactory: (gate: UseCaseGate, control: AiEvaluationControl) => new type(gate, control),
+      }),
+    ),
+    // The cancel and the playground write an audit row (Hassan, PR 1367 L2).
+    ...[CancelAiEvaluation, RunAiPlayground].map((type): FactoryProvider => ({
       provide: type,
-      inject: [USE_CASE_GATE, AiEvaluationControl],
-      useFactory: (gate: UseCaseGate, control: AiEvaluationControl) => new type(gate, control),
+      inject: [USE_CASE_GATE, AiEvaluationControl, ...PORTS.map(([, token]) => token)],
+      useFactory: (gate: UseCaseGate, control: AiEvaluationControl, ...values: unknown[]) =>
+        new type(gate, dependenciesOf(values), control),
     })),
     {
       provide: RunAiEvaluation,

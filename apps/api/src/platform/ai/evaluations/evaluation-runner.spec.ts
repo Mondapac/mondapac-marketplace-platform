@@ -118,7 +118,7 @@ describe('AiEvaluationRunner (G4c; platform-ai.md section 8, Evaluation)', () =>
     expect(await harness.store.samplesOf(AU, runId)).toHaveLength(4);
   });
 
-  it('stops at the next sample when an admin cancelled the run', async () => {
+  it('stops when an admin cancelled the run, keeping no later result', async () => {
     const harness = setUp();
     const runId = await queued(harness, AU);
     harness.provider.answer = async () => {
@@ -128,6 +128,8 @@ describe('AiEvaluationRunner (G4c; platform-ai.md section 8, Evaluation)', () =>
     expect(await harness.runner.tick(job(AU), SLOT)).toEqual({ runId, stop: 'ended' });
     expect(harness.provider.requests).toHaveLength(1);
     expect((await harness.store.findRun(AU, runId))?.status).toBe('cancelled');
+    // The answer that came back after the cancel is not written.
+    expect(await harness.store.samplesOf(AU, runId)).toEqual([]);
   });
 
   it('stops when another job took the run after its lease ran out, and ends nothing', async () => {
@@ -145,8 +147,9 @@ describe('AiEvaluationRunner (G4c; platform-ai.md section 8, Evaluation)', () =>
       status: 'running',
       leaseToken: 'other-token',
     });
-    // The first result was kept once; nothing is counted twice when the other job goes on.
-    expect(await harness.store.samplesOf(AU, runId)).toHaveLength(1);
+    // The result it got after losing the lease is not kept (Mojtaba 1, Hassan L1): the other job
+    // runs that sample again, and nothing is counted twice.
+    expect(await harness.store.samplesOf(AU, runId)).toHaveLength(0);
   });
 
   it('supersedes a capability whose evaluation set changed while the run waited', async () => {

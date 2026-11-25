@@ -899,3 +899,28 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
     });
   });
 });
+
+// The evaluation exception of ADR-0052 decision 3 (a route without a recorded pass) is reached only
+// through the evaluation gateway (Hassan, PR 1367 L3): no other source file of the API calls the
+// router's evaluation plan or its problem. Specs and test/ (the eval file) may.
+describe('the router evaluation plan is called only by the evaluation gateway (G4c)', () => {
+  const ALLOWED = new Set([
+    'src/platform/ai/evaluations/evaluation-gateway.ts',
+    'src/platform/ai/routing/ai-router.ts',
+  ]);
+
+  function sources(dir: string): string[] {
+    return readdirSync(path.join(API_ROOT, dir), { withFileTypes: true }).flatMap((entry) => {
+      const relative = `${dir}/${entry.name}`;
+      if (entry.isDirectory()) return entry.name === 'generated' ? [] : sources(relative);
+      return entry.name.endsWith('.ts') && !entry.name.endsWith('.spec.ts') ? [relative] : [];
+    });
+  }
+
+  it('finds evaluationPlan( and evaluationProblem( only in the gateway and the router', () => {
+    const callers = sources('src').filter((file) =>
+      /\bevaluation(?:Plan|Problem)\(/.test(readFileSync(path.join(API_ROOT, file), 'utf8')),
+    );
+    expect(callers.sort()).toEqual([...ALLOWED].sort());
+  });
+});

@@ -421,7 +421,8 @@ model AiBudgetReservation {
 /// An evaluation run of one model (provider and family) in a Market (AI Gateway G4c;
 /// platform-ai.md section 8, Tab 1, Evaluation): each capability's synthetic evaluation set on the
 /// real model in a background job, paid from the evaluation budget. One open run (queued or
-/// running) per model and Market: a partial unique index in the migration. A running run holds a
+/// running) per model and Market: a partial unique index in the migration, which also holds the
+/// job's partial claim index over open runs (ai_evaluation_runs_open_requested_at_idx). A running run holds a
 /// lease (token and expiry, CHECK) that the job renews before each sample. No model text is stored.
 /// Kept 25 months. Written only by platform/persistence/ai-evaluations/.
 model AiEvaluationRun {
@@ -449,8 +450,6 @@ model AiEvaluationRun {
   capabilities AiEvaluationCapability[]
 
   @@id([marketId, id], map: "ai_evaluation_runs_pkey")
-  /// The job's claim: queued runs and running ones whose lease ran out, oldest first.
-  @@index([marketId, status, requestedAt], map: "ai_evaluation_runs_market_id_status_requested_at_idx")
   /// The panel's list, newest first.
   @@index([marketId, requestedAt(sort: Desc), id], map: "ai_evaluation_runs_market_id_requested_at_id_idx")
   @@map("ai_evaluation_runs")
