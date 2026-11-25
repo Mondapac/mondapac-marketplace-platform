@@ -147,6 +147,19 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
     },
+    // AI Gateway G2 (docs/design/data/platform.md 14): a call row is written once and purged;
+    // day rows and budget counters are incremented and purged; a reservation is inserted and
+    // deleted (settle, sweep), never updated.
+    'platform.ai_calls': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'platform.ai_usage_days': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'platform.ai_budget_counters': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'platform.ai_budget_reservations': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/identity.md section 7 (slice 3; PM3): the envelope copy is immutable to
     // the application; DELETE arrives with the prune job.
     'platform.event_delivery': {
