@@ -11,7 +11,13 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 
 import { callApi } from '../api/client.ts';
 import { OrdersList } from './orders-list.tsx';
-import { DEFAULT_QUERY, queryString, presetDays, sortIdOf } from './orders-query.ts';
+import {
+  DEFAULT_QUERY,
+  presetDays,
+  queryFromParams,
+  queryString,
+  sortIdOf,
+} from './orders-query.ts';
 import {
   payloadOf,
   problemOf,
@@ -138,6 +144,15 @@ describe('orders list', () => {
       'Paid (20)',
       'Cancelled (2)',
     ]);
+  });
+
+  it('opens on the status and filters of a link', async () => {
+    serve(() => pageOf([row()]));
+    mount({
+      initialQuery: queryFromParams({ status: 'confirmed', fulfilment: 'to-ship' }),
+    });
+    await waitFor(() => expect(call).toHaveBeenCalled());
+    expect(paramsOf(lastUrl())).toMatchObject({ status: 'confirmed', fulfilment: 'to-ship' });
   });
 
   it('filters by status and says which status is empty', async () => {
