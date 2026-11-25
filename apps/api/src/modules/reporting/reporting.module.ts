@@ -15,6 +15,14 @@ import { ENGAGEMENT_SOURCES, type EngagementSources } from './application/ports/
 import { ENGAGEMENT_STORE, type EngagementStore } from './application/ports/engagement-store';
 import { SnapshotDailyEngagement } from './application/use-cases/snapshot-daily-engagement.use-case';
 import { ViewMarketplaceShoppingFunnel } from './application/use-cases/view-marketplace-shopping-funnel.use-case';
+import { ViewMarketplaceDiscountCost } from './application/use-cases/view-marketplace-discount-cost.use-case';
+import { DISCOUNT_SOURCES, type DiscountSources } from './application/ports/discount-sources';
+import { FacadeDiscountSources } from './infrastructure/facade-discount-sources';
+import {
+  PROMOTIONS_REPORTING_FACADE,
+  PromotionsModule,
+  type PromotionsReportingFacade,
+} from '../promotions';
 import { FacadeEngagementSources } from './infrastructure/facade-engagement-sources';
 import { snapshotDailyEngagementJob } from './presentation/jobs/snapshot-daily-engagement.job';
 import {
@@ -99,7 +107,8 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
  * (ordering's order and refund events) and the nightly reconcile; the ledger facts come from
  * commission-payouts' reporting facade (its `ledger-recorded` event and the ledger backfill); the
  * shopping funnel's daily counts from ordering's checkouts and engagement's count (dashboards v2,
- * phase 2: a nightly snapshot, counts only). No
+ * phase 2: a nightly snapshot, counts only); the discount cost from promotions' reporting facade
+ * at request time (dashboards v2, phase 2; nothing stored). No
  * module imports it. It publishes no event. Its own keys are the two daily exports' (dashboards v2,
  * PR 5), each audited. The history backfill job brings the facts recorded before the module was
  * deployed in, once.
@@ -112,6 +121,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
     ShippingModule,
     CommissionPayoutsModule,
     EngagementModule,
+    PromotionsModule,
   ],
   controllers: [SellerKpisController, AdminReportsController],
   providers: [
@@ -332,6 +342,19 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         clock: Clock,
       ) => new ViewMarketplaceShoppingFunnel(gate, { unitOfWork, store, zone, clock }),
     },
+    // The discount cost (dashboards v2, phase 2): read from promotions at request time.
+    {
+      provide: DISCOUNT_SOURCES,
+      inject: [PROMOTIONS_REPORTING_FACADE],
+      useFactory: (promotions: PromotionsReportingFacade): DiscountSources =>
+        new FacadeDiscountSources(promotions),
+    },
+    {
+      provide: ViewMarketplaceDiscountCost,
+      inject: [USE_CASE_GATE, DISCOUNT_SOURCES, MARKET_ZONE, CLOCK],
+      useFactory: (gate: UseCaseGate, sources: DiscountSources, zone: MarketZone, clock: Clock) =>
+        new ViewMarketplaceDiscountCost(gate, { sources, zone, clock }),
+    },
     {
       provide: REPORTING_KPI_FACADE,
       inject: [
@@ -344,6 +367,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         ViewMarketplaceOrderStatus,
         ViewMarketplaceOrdersByState,
         ViewMarketplaceShoppingFunnel,
+        ViewMarketplaceDiscountCost,
         MARKET_ZONE,
         CLOCK,
       ],
@@ -357,6 +381,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         orderStatus: ViewMarketplaceOrderStatus,
         ordersByState: ViewMarketplaceOrdersByState,
         shoppingFunnel: ViewMarketplaceShoppingFunnel,
+        discountCost: ViewMarketplaceDiscountCost,
         zone: MarketZone,
         clock: Clock,
       ) =>
@@ -370,6 +395,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
           orderStatus,
           ordersByState,
           shoppingFunnel,
+          discountCost,
           { zone, clock },
         ),
     },

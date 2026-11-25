@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-dashboards-seller-discount-cost",
+  "area": "seller",
+  "title": "هزینهٔ تخفیف سهم فروشنده در داشبورد فروشنده",
+  "desc": "PR هزینهٔ تخفیف (داشبورد ۲ فاز ۲) فقط بخش ادمین را ساخت (کلید commission-payouts.settlement.view). فروشنده هنوز نمی‌بیند در بازه چقدر از تخفیف‌ها را خودش پرداخته (سهم فروشنده در promotions.redemptions به تفکیک فروشنده ثبت نمی‌شود؛ تقسیم سهم فروشنده بین فروشنده‌های یک سفارش در سطر redemption نیست و باید از تخصیص خط‌ها یا دفتر کمیسیون خوانده شود).",
+  "src": "apps/api/src/modules/promotions/application/use-cases/sum-discount-cost.use-case.ts",
+  "date": "2026-11-25",
+  "trig": "وقتی فروشندگان کمپین مشترک زیاد شد یا فروشنده پرسید تخفیف‌ها چقدر برایش هزینه داشته",
+  "prio": "کم",
+  "status": "موکول"
+}

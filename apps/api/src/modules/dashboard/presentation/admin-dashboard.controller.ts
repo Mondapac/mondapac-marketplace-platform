@@ -95,7 +95,10 @@ export class AdminDashboardController {
       'step under 5 is null; key `ordering.order.view`), `finance` (GMV with and without GST, refunded goods, net sales, ' +
       'average order, and `net`: Mondapac net revenue and take rate, null until a week of ' +
       'matching ledger, a partial total never carries an amount; key ' +
-      '`commission-payouts.settlement.view`), and `health` (live listings and out of stock, ' +
+      '`commission-payouts.settlement.view`), `discountCost` (the discounts of the orders paid ' +
+      "in the period that still stand, with GST: Mondapac's and the sellers' shares, by kind, " +
+      'against the period before, and what those orders gave back since; `not-enough-data` ' +
+      'below 5 discounted orders; key `commission-payouts.settlement.view`), and `health` (live listings and out of stock, ' +
       'certificates expiring in 30 Market days, payout holds, dispute rate; each under its ' +
       "owner's key). A section the admin holds no key for is null. One that fails or takes over " +
       '1.5 s is `status: error` and the others still answer. Days are ' +

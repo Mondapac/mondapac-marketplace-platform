@@ -17,6 +17,7 @@ import { loadMarketConfigs } from '../../../platform/market-config/market-config
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../../../platform/market-context/tenant';
 import type {
+  DiscountCostAnswer,
   FinanceAnswer,
   OperationsAnswer,
   OrderStatusAnswer,
@@ -191,6 +192,28 @@ const shoppingFunnel = {
   },
 } as unknown as ShoppingFunnelAnswer;
 
+const discountCost: DiscountCostAnswer = {
+  period: finance.period,
+  generatedAt: NOW,
+  currency: 'AUD',
+  cost: {
+    status: 'available',
+    orders: 42,
+    amount: 50_000n,
+    platformShare: 30_000n,
+    sellerShare: 20_000n,
+    platformShareBp: 6000,
+    change: { value: 2500, direction: 'up', state: 'ok' },
+    previousAmount: 40_000n,
+    byKind: [
+      { kind: 'promotion', uses: 40, amount: 40_000n, platformShare: 20_000n, shareBp: 8000 },
+      { kind: 'first-order', uses: 5, amount: 10_000n, platformShare: 10_000n, shareBp: 2000 },
+      { kind: 'free-shipping', uses: 0, amount: 0n, platformShare: 0n, shareBp: 0 },
+    ],
+    released: { orders: 2, amount: 1_500n },
+  },
+};
+
 const orderStatus: OrderStatusAnswer = {
   period: finance.period,
   timezone: 'Australia/Brisbane',
@@ -330,6 +353,10 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
         asked.push('shopping-funnel');
         return Promise.resolve(ok(shoppingFunnel));
       },
+      marketplaceDiscountCost: () => {
+        asked.push('discount-cost');
+        return Promise.resolve(ok(discountCost));
+      },
       marketplaceOperations: (_context, input) => {
         asked.push('operations');
         inputs.push(input);
@@ -373,7 +400,7 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
 
   it('asks only the sections whose keys the viewer holds', async () => {
     const out = await build([MONEY]).execute(admin, { period: '7d' });
-    expect(asked.sort()).toEqual(['finance', 'top-categories', 'top-sellers']);
+    expect(asked.sort()).toEqual(['discount-cost', 'finance', 'top-categories', 'top-sellers']);
     expect(out.ok && out.value.operations).toBeNull();
     expect(out.ok && out.value.finance?.status).toBe('ok');
   });
@@ -484,6 +511,75 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     const failed = await build([ORDERS]).execute(admin, { period: '7d' });
     expect(failed.ok && failed.value.shoppingFunnel).toEqual({ status: 'error' });
     expect(failed.ok && failed.value.ordersByState?.status).toBe('ok');
+  });
+
+  it('maps the discount-cost section: money as strings, not-enough-data, error, and null without the money key', async () => {
+    const full = await build([MONEY]).execute(admin, { period: '7d' });
+    if (!full.ok) throw new Error('expected an answer');
+    const money = (amountMinor: string) => ({ amountMinor, currency: 'AUD' });
+    expect(adminKpisBody(full.value).discountCost).toEqual({
+      status: 'ok',
+      kpis: {
+        status: 'available',
+        orders: 42,
+        amount: money('50000'),
+        platformShare: money('30000'),
+        sellerShare: money('20000'),
+        platformShareBp: 6000,
+        change: { value: 2500, direction: 'up', state: 'ok' },
+        previousAmount: money('40000'),
+        byKind: [
+          {
+            kind: 'promotion',
+            uses: 40,
+            amount: money('40000'),
+            platformShare: money('20000'),
+            shareBp: 8000,
+          },
+          {
+            kind: 'first-order',
+            uses: 5,
+            amount: money('10000'),
+            platformShare: money('10000'),
+            shareBp: 2000,
+          },
+          {
+            kind: 'free-shipping',
+            uses: 0,
+            amount: money('0'),
+            platformShare: money('0'),
+            shareBp: 0,
+          },
+        ],
+        released: { orders: 2, amount: money('1500') },
+      },
+    });
+    const few = {
+      ...full.value,
+      discountCost: {
+        status: 'ok' as const,
+        value: {
+          ...discountCost,
+          cost: { status: 'not-enough-data' as const, orders: 3, minimum: 5 },
+        },
+      },
+    };
+    expect(adminKpisBody(few).discountCost).toEqual({
+      status: 'ok',
+      kpis: { status: 'not-enough-data', orders: 3, minimum: 5 },
+    });
+    asked.length = 0;
+    const none = await build([ORDERS]).execute(admin, { period: '7d' });
+    expect(none.ok && none.value.discountCost).toBeNull();
+    expect(asked).not.toContain('discount-cost');
+    facade.marketplaceDiscountCost = () => Promise.reject(new TypeError('boom'));
+    const failed = await build([MONEY]).execute(admin, { period: '7d' });
+    expect(failed.ok && failed.value.discountCost).toEqual({ status: 'error' });
+    expect(failed.ok && failed.value.finance?.status).toBe('ok');
+    // The owner refusing the key leaves the section out, like a key the viewer lacks.
+    facade.marketplaceDiscountCost = () => Promise.resolve(err({ code: 'access.denied' }));
+    const refused = await build([MONEY]).execute(admin, { period: '7d' });
+    expect(refused.ok && refused.value.discountCost).toBeNull();
   });
 
   it('names the top categories from the live tree, null for a category it does not have', async () => {

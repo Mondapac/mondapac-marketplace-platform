@@ -465,7 +465,8 @@ model PromotionsRedemption {
   /// One row per order and promotion: the redemption's idempotency.
   @@unique([marketId, orderId, promotionKey])
   /// A customer's redemptions, newest first (the admin customer page). The partial indexes of the
-  /// counts and the sweep are in the migration only.
+  /// counts, the sweep and the dashboard's discount cost (redemptions_confirmed_idx) are in the
+  /// migrations only.
   @@index([marketId, customerAccountId, reservedAt(sort: Desc), id(sort: Desc)], map: "redemptions_customer_newest_idx")
   @@map("redemptions")
   @@schema("promotions")

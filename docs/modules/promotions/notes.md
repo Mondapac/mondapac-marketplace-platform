@@ -539,3 +539,22 @@ total covers what is left); the cancel reason `discount-changed`. Existing rows 
   `confirmedAt` and `releasedAt` say how it ended. There is no total: the tab pages with "Load more", like the
   other per-customer histories. It is a plain table, not a super list (rule 14): one customer's discounts rarely
   pass 50 rows; if the product wants a super list here, filters and a count are a follow-up.
+
+## Discount cost for the dashboards (dashboards v2, phase 2)
+
+`PROMOTIONS_REPORTING_FACADE` (contracts/promotions-reporting.facade.ts) is what reporting reads of
+promotions for the dashboards. `promotions.sum-discount-cost`: the redemptions whose order's payment
+was confirmed in a window (at most 400 days), in one currency and the caller's tenant, summed by
+kind and status in one read-only unit: what still stands (CONFIRMED), per kind with its uses, the
+orders counted by their head rows (kind ORDER, one per redeemed order), and what the window's orders
+gave back since (RELEASED after confirmation). Totals only: no order, customer, code or promotion
+leaves the module. Key `commission-payouts.settlement.view` (the dashboard's money key; the finance
+section's net revenue already subtracts the platform-funded discounts), never
+`promotions.promotion.view`, whose holders see no cost (owner decision of 28 October); a platform
+admin acting as themselves only. A store failure is `promotions.unavailable`, never a zero.
+
+Index: `redemptions_confirmed_idx` on `(market_id, confirmed_at) WHERE confirmed_at IS NOT NULL`
+(migration `20261125074000_promotions_redemptions_confirmed_index`, built CONCURRENTLY alone in its
+file, dropped CONCURRENTLY in `down.sql`). RESERVED rows have no confirmation, so they stay out of it.
+Tenant and currency are filters on the window's rows. Migration-only, like the other partial indexes
+of the table (Prisma's schema does not describe it).

@@ -571,3 +571,24 @@ new/returning card, phase 2 cards PR):
   the reads (FE-20261125-reporting-funnel-tenant-scope), and the product owner's check that the
   privacy policy covers aggregate statistics (FE-20261125-legal-privacy-policy-aggregate-statistics).
 
+
+## Discount cost (dashboards v2, phase 2)
+
+`reporting.view-marketplace-discount-cost` (key `commission-payouts.settlement.view`, a platform
+admin acting as themselves) answers the discount cost of a period for the admin dashboard. Nothing
+is stored in reporting: it asks promotions' reporting facade (`PROMOTIONS_REPORTING_FACADE`,
+`promotions.sum-discount-cost`) for the instants of the period's Market days and of the period
+before (`windowOf`, the Market's zone, never UTC days), in the Market's currency, with the caller's
+own context, so promotions checks the same key again. Two grouped reads (at most 8 groups each)
+over the partial index `promotions.redemptions_confirmed_idx`; a live read is cheap, so no nightly
+snapshot was added. `domain/discount-cost.ts` checks that the shares and kinds add up (a mismatch
+throws and the section answers `error`, never a guessed number), holds the amounts back below five
+discounted orders, and gives the change with the money base of the other KPIs (100.00). A refusal
+of the key from promotions passes through (the dashboard leaves the section out); any other failure
+is `access.unavailable`.
+
+Attribution: a discount counts on the Market day its order's payment was confirmed (the redemption's
+`confirmed_at`, set by `ordering.order-paid.v1`), like GMV by paid day. A later refund or
+cancellation after payment moves it from `amount` to `released` of the same period (the redemption
+is released for the whole order), so an old period's cost can fall after the fact; the card shows
+the figure as of now.

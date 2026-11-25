@@ -331,3 +331,19 @@ accepted, `docs/modules/reporting/notes.md`).
 The seller's "Product funnel" card has no API yet (FE-20261125-dashboards-seller-product-funnel), so
 the seller KPI endpoint is unchanged. The card is built in the phase 2 cards PR.
 
+
+### Discount cost (dashboards v2, phase 2)
+
+`GET dashboard/admin/kpis` gains the section `discountCost` (key `commission-payouts.settlement.view`,
+the money key, null without it; `status: error` when it fails or takes over 1.5 s; null too when
+promotions refuses the key): reporting's `marketplaceDiscountCost`. The discounts of the orders whose
+payment was confirmed in the period's Market days that still stand, with GST (`amount`), Mondapac's
+and the sellers' shares (`platformShare`, `sellerShare`, `platformShareBp`), per kind (`promotion`,
+`first-order`, `free-shipping`, each with `uses`, `amount`, `platformShare`, `shareBp`; zeros listed),
+`change` and `previousAmount` against the period before (`na` below 100.00 of the currency before), and
+`released`: the orders of the period refunded or cancelled after payment and the discount they gave
+back (already left out of `amount`). `not-enough-data` below five discounted orders. The card's "?"
+must say the amounts include GST, while the finance section's net revenue subtracts the
+platform-funded part without GST. Top promotions by cost and the seller's own discount cost are
+deferred (FE-20261125-dashboards-top-promotions-by-cost, FE-20261125-dashboards-seller-discount-cost).
+The card is built in the phase 2 cards PR.
