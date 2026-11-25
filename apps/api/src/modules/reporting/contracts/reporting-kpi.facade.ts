@@ -19,6 +19,7 @@ import type { NetRevenueAnswer } from '../application/use-cases/view-marketplace
 import type { SellerNetEarningsAnswer } from '../application/use-cases/view-seller-net-earnings.use-case';
 import type { OrdersByStateAnswer } from '../application/use-cases/view-marketplace-orders-by-state.use-case';
 import type { ShoppingFunnelAnswer } from '../application/use-cases/view-marketplace-shopping-funnel.use-case';
+import type { ZeroResultSearchesAnswer } from '../application/use-cases/view-marketplace-zero-result-searches.use-case';
 import type { OrderStatusAnswer } from '../application/use-cases/view-marketplace-order-status.use-case';
 import type { FinanceNet } from '../application/use-cases/view-marketplace-finance-kpis.use-case';
 
@@ -74,6 +75,8 @@ export {
 } from '../domain/ledger';
 export type { NetFiguresFailure, NetFiguresInput, NetRevenueAnswer, SellerNetEarningsAnswer };
 export type { FinanceNet, OrderStatusAnswer, OrdersByStateAnswer, ShoppingFunnelAnswer };
+export type { ZeroResultSearchesAnswer };
+export type { ZeroResultQuery, ZeroResultSearches } from '../domain/zero-result-searches';
 export type { FunnelStep, ShoppingFunnel } from '../domain/engagement';
 export type { OrdersByState, StateShare } from '../domain/orders-by-state';
 export type { OrderStatusCounts, SameDayShare, TakeRate } from '../domain/admin-health';
@@ -136,6 +139,18 @@ export interface ReportingKpiFacade {
     context: CallContext,
     input: KpiPeriodInput,
   ): Promise<Result<ShoppingFunnelAnswer, KpiFailure>>;
+
+  /**
+   * The top ten texts the storefront search found nothing for in the period (dashboards v2, phase
+   * 2), from the nightly rows: each a text at least ten distinct signed-in customers searched on a
+   * day it found nothing, with its searches summed over those days. `not-enough-data` when none
+   * qualifies. Texts and counts only, never a person: key `catalog.product.view`, platform admin
+   * only.
+   */
+  marketplaceZeroResultSearches(
+    context: CallContext,
+    input: KpiPeriodInput,
+  ): Promise<Result<ZeroResultSearchesAnswer, KpiFailure>>;
 
   /** The five sellers with the most goods sold in the period (money: the finance key). */
   marketplaceTopSellers(

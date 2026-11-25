@@ -463,6 +463,55 @@ export class ShoppingFunnelSectionBody {
   @ApiProperty({ required: false, type: ShoppingFunnelKpiBody }) kpis?: ShoppingFunnelKpiBody;
 }
 
+export class ZeroResultQueryBody {
+  @ApiProperty({
+    description:
+      'The text as searched, folded (lower case, white space collapsed, at most 50 characters). ' +
+      'Data, never markup: render it as plain text.',
+  })
+  query!: string;
+  @ApiProperty({
+    description: 'Searches of it on the days of the period it found nothing and was kept.',
+  })
+  searches!: number;
+  @ApiProperty({
+    description:
+      "Each kept day's distinct signed-in customers who searched it, summed (one who searched on " +
+      'two days counts twice); at least 10 per day.',
+  })
+  searcherDays!: number;
+  @ApiProperty({ description: 'The days of the period it was kept for.' }) days!: number;
+}
+
+export class ZeroResultSearchesKpiBody {
+  @ApiProperty({
+    enum: ['available', 'not-enough-data'],
+    description:
+      '`not-enough-data`: no text was searched by at least `minimumSearchers` distinct ' +
+      'customers on a day of the period it found nothing; show no query.',
+  })
+  status!: string;
+  @ApiProperty({ required: false, type: Number, description: 'Only when not-enough-data.' })
+  minimumSearchers?: number;
+  @ApiProperty({
+    required: false,
+    type: [ZeroResultQueryBody],
+    description: 'At most 10, most searches first, then by text. Only when available.',
+  })
+  queries?: ZeroResultQueryBody[];
+  @ApiProperty({
+    description: 'Days of the period with a nightly snapshot (today has none until tomorrow).',
+  })
+  recordedDays!: number;
+  @ApiProperty() periodDays!: number;
+}
+
+export class ZeroResultSearchesSectionBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: ZeroResultSearchesKpiBody })
+  kpis?: ZeroResultSearchesKpiBody;
+}
+
 export class TopSellerBody {
   @ApiProperty({ format: 'uuid' }) sellerId!: string;
   @ApiProperty({ nullable: true, type: String, description: 'The public store name.' })
@@ -632,6 +681,12 @@ export class AdminKpisBody {
     description: 'Null without `ordering.order.view`: leave the card out.',
   })
   shoppingFunnel!: ShoppingFunnelSectionBody | null;
+  @ApiProperty({
+    type: ZeroResultSearchesSectionBody,
+    nullable: true,
+    description: 'Null without `catalog.product.view`: leave the card out.',
+  })
+  zeroResultSearches!: ZeroResultSearchesSectionBody | null;
   @ApiProperty({
     type: TopSellersSectionBody,
     nullable: true,
@@ -832,6 +887,29 @@ function shoppingFunnelSection(
   };
 }
 
+function zeroResultSearchesSection(
+  section: AdminKpisAnswer['zeroResultSearches'],
+): ZeroResultSearchesSectionBody | null {
+  if (section === null) return null;
+  if (section.status === 'error') return { status: 'error' };
+  const { searches } = section.value;
+  if (searches.status === 'not-enough-data') return { status: 'ok', kpis: { ...searches } };
+  return {
+    status: 'ok',
+    kpis: {
+      status: searches.status,
+      queries: searches.queries.map((row) => ({
+        query: row.query,
+        searches: row.searches,
+        searcherDays: row.searcherDays,
+        days: row.days,
+      })),
+      recordedDays: searches.recordedDays,
+      periodDays: searches.periodDays,
+    },
+  };
+}
+
 function financeSection(section: AdminKpisAnswer['finance']): FinanceSectionBody | null {
   if (section === null) return null;
   if (section.status === 'error') return { status: 'error' };
@@ -897,6 +975,7 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     answer.ordersByStatus,
     answer.ordersByState,
     answer.shoppingFunnel,
+    answer.zeroResultSearches,
     answer.topSellers,
     answer.topCategories,
   ].find((section) => section !== null && section.status === 'ok');
@@ -912,6 +991,7 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     ordersByStatus: ordersByStatusSection(answer.ordersByStatus),
     ordersByState: ordersByStateSection(answer.ordersByState),
     shoppingFunnel: shoppingFunnelSection(answer.shoppingFunnel),
+    zeroResultSearches: zeroResultSearchesSection(answer.zeroResultSearches),
     topSellers: topSellersSection(answer.topSellers),
     topCategories: topCategoriesSection(answer.topCategories),
     health:

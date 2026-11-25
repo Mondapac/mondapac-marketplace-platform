@@ -22,6 +22,7 @@ import type {
   OrderStatusAnswer,
   OrdersByStateAnswer,
   ShoppingFunnelAnswer,
+  ZeroResultSearchesAnswer,
   ReportingKpiFacade,
   TopCategoriesAnswer,
   TopSellersAnswer,
@@ -191,6 +192,20 @@ const shoppingFunnel = {
   },
 } as unknown as ShoppingFunnelAnswer;
 
+const zeroResultSearches = {
+  period: finance.period,
+  generatedAt: NOW,
+  searches: {
+    status: 'available',
+    queries: [
+      { query: 'sangak bread', searches: 41, searcherDays: 22, days: 2 },
+      { query: 'barberry', searches: 12, searcherDays: 10, days: 1 },
+    ],
+    recordedDays: 6,
+    periodDays: 7,
+  },
+} as unknown as ZeroResultSearchesAnswer;
+
 const orderStatus: OrderStatusAnswer = {
   period: finance.period,
   timezone: 'Australia/Brisbane',
@@ -329,6 +344,10 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
       marketplaceShoppingFunnel: () => {
         asked.push('shopping-funnel');
         return Promise.resolve(ok(shoppingFunnel));
+      },
+      marketplaceZeroResultSearches: () => {
+        asked.push('zero-result-searches');
+        return Promise.resolve(ok(zeroResultSearches));
       },
       marketplaceOperations: (_context, input) => {
         asked.push('operations');
@@ -484,6 +503,54 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     const failed = await build([ORDERS]).execute(admin, { period: '7d' });
     expect(failed.ok && failed.value.shoppingFunnel).toEqual({ status: 'error' });
     expect(failed.ok && failed.value.ordersByState?.status).toBe('ok');
+  });
+
+  it('maps the zero-result searches section: queries, not-enough-data, error, and null without the catalogue key', async () => {
+    const full = await build([CATALOG_VIEW]).execute(admin, { period: '7d' });
+    if (!full.ok) throw new Error('expected an answer');
+    expect(adminKpisBody(full.value).zeroResultSearches).toEqual({
+      status: 'ok',
+      kpis: {
+        status: 'available',
+        queries: [
+          { query: 'sangak bread', searches: 41, searcherDays: 22, days: 2 },
+          { query: 'barberry', searches: 12, searcherDays: 10, days: 1 },
+        ],
+        recordedDays: 6,
+        periodDays: 7,
+      },
+    });
+    const few = {
+      ...full.value,
+      zeroResultSearches: {
+        status: 'ok' as const,
+        value: {
+          ...zeroResultSearches,
+          searches: {
+            status: 'not-enough-data' as const,
+            minimumSearchers: 10,
+            recordedDays: 7,
+            periodDays: 7,
+          },
+        },
+      },
+    };
+    expect(adminKpisBody(few).zeroResultSearches).toEqual({
+      status: 'ok',
+      kpis: { status: 'not-enough-data', minimumSearchers: 10, recordedDays: 7, periodDays: 7 },
+    });
+    for (const keys of [[ORDERS], [MONEY]]) {
+      asked.length = 0;
+      const none = await build(keys).execute(admin, { period: '7d' });
+      expect(none.ok && none.value.zeroResultSearches).toBeNull();
+      expect(asked).not.toContain('zero-result-searches');
+    }
+    facade.marketplaceZeroResultSearches = () => Promise.reject(new TypeError('boom'));
+    const failed = await build([CATALOG_VIEW]).execute(admin, { period: '7d' });
+    expect(failed.ok && failed.value.zeroResultSearches).toEqual({ status: 'error' });
+    facade.marketplaceZeroResultSearches = () => new Promise(() => undefined);
+    const slow = await build([CATALOG_VIEW], 20).execute(admin, { period: '7d' });
+    expect(slow.ok && slow.value.zeroResultSearches).toEqual({ status: 'error' });
   });
 
   it('names the top categories from the live tree, null for a category it does not have', async () => {

@@ -33,6 +33,7 @@ import { STORE_RESOLVER } from './application/ports/store-resolver';
 import { PERSONAL_SIGNALS } from './application/ports/personal-signals';
 import { PUBLIC_VISIBILITY } from './application/ports/public-visibility';
 import { SEARCH_POLICY } from './application/ports/search-policy';
+import { ZERO_RESULT_LOG, type ZeroResultLog } from './application/ports/zero-result-log';
 import { SELLER_ELIGIBILITY } from './application/ports/seller-eligibility';
 import { SELL_UNIT_STATES } from './application/ports/sell-unit-states';
 import { OFFER_VARIANT_READER } from './application/ports/offer-variant.reader';
@@ -82,7 +83,19 @@ import { catalogIndexSubscriptions } from './presentation/subscribers/catalog-in
 import { namesIndexSubscriptions } from './presentation/subscribers/names-index.subscriptions';
 import { sellerAccessIndexSubscriptions } from './presentation/subscribers/seller-access-index.subscriptions';
 import { cultureIndexSubscriptions } from './presentation/subscribers/culture-index.subscriptions';
-import { SEARCH_ASSISTANT_FACADE, SEARCH_SUPPLY_FACADE } from './contracts';
+import {
+  SEARCH_ASSISTANT_FACADE,
+  SEARCH_REPORTING_FACADE,
+  SEARCH_SUPPLY_FACADE,
+} from './contracts';
+import {
+  ZeroResultTextsOf,
+  type ZeroResultDependencies,
+} from './application/use-cases/zero-result-texts.use-case';
+import { PurgeZeroResultQueries } from './application/use-cases/purge-zero-result-queries.use-case';
+import { SearchReportingFacadeImplementation } from './presentation/search-reporting.facade';
+import { purgeZeroResultQueriesJob } from './presentation/jobs/purge-zero-result-queries.job';
+import type { Clock } from '@mondapac/shared-kernel';
 import {
   LIVE_LISTING_COUNTER,
   type LiveListingCounter,
@@ -115,6 +128,7 @@ const PORTS: readonly [keyof SearchDependencies, InjectionToken][] = [
   ['storeDirectory', STORE_DIRECTORY],
   ['storeDocuments', STORE_DOCUMENT_REPOSITORY],
   ['cultures', OFFER_CULTURE_SOURCE],
+  ['zeroResults', ZERO_RESULT_LOG],
 ];
 
 /** Every search use case shares one dependency object, built from the same ports. */
@@ -303,7 +317,9 @@ function productDetailProvider<U>(
  * (`GET /search/product-detail/:productId`) is composed from catalog, pricing, inventory and
  * sellers. The personal shelves (personalization package 1d-1) are the signed-in customer's or
  * guest's "for you" (`GET /search/for-you`) and "recently viewed"
- * (`GET /engagement/recommendations/recently-viewed`), read from `engagement`'s facade.
+ * (`GET /engagement/recommendations/recently-viewed`), read from `engagement`'s facade. The
+ * storefront search notes text searches that found nothing (`search.zero_result_queries`, texts
+ * only) for reporting's nightly snapshot (`SEARCH_REPORTING_FACADE`, dashboards v2, phase 2).
  */
 @Module({
   imports: [
@@ -359,6 +375,22 @@ function productDetailProvider<U>(
       useFactory: (gate: UseCaseGate, unitOfWork: UnitOfWork, counts: LiveListingCounter) =>
         new CountLiveListings(gate, { unitOfWork, counts }),
     },
+    // Zero-result searches (dashboards v2, phase 2): the snapshot's read and the 35-day purge.
+    ...[ZeroResultTextsOf, PurgeZeroResultQueries].map((type) => ({
+      provide: type,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ZERO_RESULT_LOG, CLOCK],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        zeroResults: ZeroResultLog,
+        clock: Clock,
+      ) => new type(gate, { unitOfWork, zeroResults, clock } satisfies ZeroResultDependencies),
+    })),
+    {
+      provide: SEARCH_REPORTING_FACADE,
+      inject: [ZeroResultTextsOf],
+      useFactory: (texts: ZeroResultTextsOf) => new SearchReportingFacadeImplementation(texts),
+    },
     {
       provide: SEARCH_SUPPLY_FACADE,
       inject: [CountLiveListings],
@@ -377,14 +409,20 @@ function productDetailProvider<U>(
     ),
     registerJobsFrom(
       'search',
-      [RebuildOfferIndex, SyncProductRatings, ReindexOfferAttributes],
+      [RebuildOfferIndex, SyncProductRatings, ReindexOfferAttributes, PurgeZeroResultQueries],
       (
         rebuild: RebuildOfferIndex,
         ratings: SyncProductRatings,
         reindex: ReindexOfferAttributes,
-      ) => [rebuildIndexJob(rebuild), syncRatingsJob(ratings), reindexAttributesJob(reindex)],
+        purgeZeroResults: PurgeZeroResultQueries,
+      ) => [
+        rebuildIndexJob(rebuild),
+        syncRatingsJob(ratings),
+        reindexAttributesJob(reindex),
+        purgeZeroResultQueriesJob(purgeZeroResults),
+      ],
     ),
   ],
-  exports: [SEARCH_ASSISTANT_FACADE, SEARCH_SUPPLY_FACADE],
+  exports: [SEARCH_ASSISTANT_FACADE, SEARCH_SUPPLY_FACADE, SEARCH_REPORTING_FACADE],
 })
 export class SearchModule {}

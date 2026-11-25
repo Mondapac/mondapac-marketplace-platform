@@ -1,11 +1,14 @@
+import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Money, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import {
   parseSearchQuery,
   type SearchProductsRequest,
+  type SearchQuery,
   type SearchValidationFailed,
 } from '../../domain/search-query';
+import { isZeroResultSearch, zeroResultBucketOf, zeroResultKeyOf } from '../../domain/zero-result';
 import type { ImageRef } from '../../domain/image-ref';
 import { splitFacet } from '../../domain/search-filter';
 import type { OfferHit } from '../../domain/offer-document';
@@ -134,6 +137,17 @@ const NO_FACETS = {
   exactMatch: null,
 } as const;
 
+/**
+ * The search request with what only server code may add: `noteZeroResult` is set by the storefront
+ * route (`GET /search/products`), never read from the query string, and never by the buyer
+ * assistant's facade (a model-chosen text is not a shopper's search).
+ */
+export type SearchProductsInput = SearchProductsRequest & {
+  readonly noteZeroResult?: boolean;
+};
+
+const logger = new Logger('SearchProducts');
+
 export type SearchProductsFailure =
   SearchValidationFailed | { readonly code: 'search.unavailable' };
 
@@ -158,9 +172,12 @@ export type SearchProductsFailure =
  * retired or not selling answers an empty page, never an error or a hint of why. Text, categories,
  * ids and the first photo only: a certification badge comes from `evaluateClaim`, never from
  * indexed text.
+ * Called from the storefront route (`noteZeroResult`), a plain text search whose first page shows
+ * nothing is noted afterwards in its own unit (dashboards v2, phase 2): the folded text and the UTC
+ * quarter hour only (`search.zero_result_queries`), never who searched.
  */
 export class SearchProducts extends UseCase<
-  SearchProductsRequest,
+  SearchProductsInput,
   ProductSearchPage,
   SearchProductsFailure
 > {
@@ -178,7 +195,7 @@ export class SearchProducts extends UseCase<
 
   protected async handle(
     context: CallContext,
-    input: SearchProductsRequest,
+    input: SearchProductsInput,
   ): Promise<Result<ProductSearchPage, SearchProductsFailure>> {
     const query = parseSearchQuery(input);
     if (!query.ok) return query;
@@ -359,6 +376,12 @@ export class SearchProducts extends UseCase<
     const views = counted
       ? await this.filterViews(context, definitions, selection, hits.value.rows, hits.value.numbers)
       : null;
+    if (
+      input.noteZeroResult === true &&
+      isZeroResultSearch(query.value, { items: items.length, hasMore })
+    ) {
+      await this.#noteZeroResult(context, query.value);
+    }
     return ok({
       items,
       page,
@@ -369,6 +392,33 @@ export class SearchProducts extends UseCase<
       countsComplete: views?.complete ?? true,
       counts,
       exactMatch: null,
+    });
+  }
+
+  /**
+   * Notes a zero-result text search (dashboards v2, phase 2) in its own unit after the read: the
+   * folded text and the UTC quarter hour only, nothing about who searched. A text that may name or
+   * reach a person is not noted. Best effort: a failed note is logged without the text and never
+   * changes the answer.
+   */
+  async #noteZeroResult(context: CallContext, query: SearchQuery): Promise<void> {
+    const key = query.text === null ? null : zeroResultKeyOf(query.text);
+    if (key === null) return;
+    const { market } = context;
+    const bucket = zeroResultBucketOf(this.deps.clock.now());
+    try {
+      const unit = await this.deps.unitOfWork.run(market, async () => {
+        await this.deps.zeroResults.note(market, key, bucket);
+        return ok(true);
+      });
+      if (unit.ok) return;
+    } catch {
+      // Logged below; the shopper still gets the answer.
+    }
+    logger.warn({
+      msg: 'search.zero-result-not-noted',
+      marketId: market.marketId,
+      correlationId: context.correlationId,
     });
   }
 

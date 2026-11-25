@@ -17,6 +17,13 @@ import { SnapshotDailyEngagement } from './application/use-cases/snapshot-daily-
 import { ViewMarketplaceShoppingFunnel } from './application/use-cases/view-marketplace-shopping-funnel.use-case';
 import { FacadeEngagementSources } from './infrastructure/facade-engagement-sources';
 import { snapshotDailyEngagementJob } from './presentation/jobs/snapshot-daily-engagement.job';
+import { SEARCH_REPORTING_FACADE, SearchModule, type SearchReportingFacade } from '../search';
+import { SEARCH_SOURCES, type SearchSources } from './application/ports/search-sources';
+import { SEARCH_STORE, type SearchStore } from './application/ports/search-store';
+import { SnapshotDailySearches } from './application/use-cases/snapshot-daily-searches.use-case';
+import { ViewMarketplaceZeroResultSearches } from './application/use-cases/view-marketplace-zero-result-searches.use-case';
+import { FacadeSearchSources } from './infrastructure/facade-search-sources';
+import { snapshotDailySearchesJob } from './presentation/jobs/snapshot-daily-searches.job';
 import {
   COMMISSION_PAYOUTS_REPORTING_FACADE,
   CommissionPayoutsModule,
@@ -99,7 +106,8 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
  * (ordering's order and refund events) and the nightly reconcile; the ledger facts come from
  * commission-payouts' reporting facade (its `ledger-recorded` event and the ledger backfill); the
  * shopping funnel's daily counts from ordering's checkouts and engagement's count (dashboards v2,
- * phase 2: a nightly snapshot, counts only). No
+ * phase 2: a nightly snapshot, counts only); the zero-result searches from search's texts and
+ * engagement's searcher counts (the same phase: texts at least ten customers searched). No
  * module imports it. It publishes no event. Its own keys are the two daily exports' (dashboards v2,
  * PR 5), each audited. The history backfill job brings the facts recorded before the module was
  * deployed in, once.
@@ -112,6 +120,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
     ShippingModule,
     CommissionPayoutsModule,
     EngagementModule,
+    SearchModule,
   ],
   controllers: [SellerKpisController, AdminReportsController],
   providers: [
@@ -332,6 +341,36 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         clock: Clock,
       ) => new ViewMarketplaceShoppingFunnel(gate, { unitOfWork, store, zone, clock }),
     },
+    // Zero-result searches (dashboards v2, phase 2): the nightly snapshot and its read.
+    {
+      provide: SEARCH_SOURCES,
+      inject: [SEARCH_REPORTING_FACADE, ENGAGEMENT_FACADE],
+      useFactory: (search: SearchReportingFacade, engagement: EngagementFacade): SearchSources =>
+        new FacadeSearchSources(search, engagement),
+    },
+    {
+      provide: SnapshotDailySearches,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, SEARCH_STORE, SEARCH_SOURCES, MARKET_ZONE, CLOCK],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        store: SearchStore,
+        sources: SearchSources,
+        zone: MarketZone,
+        clock: Clock,
+      ) => new SnapshotDailySearches(gate, { unitOfWork, store, sources, zone, clock }),
+    },
+    {
+      provide: ViewMarketplaceZeroResultSearches,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, SEARCH_STORE, MARKET_ZONE, CLOCK],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        store: SearchStore,
+        zone: MarketZone,
+        clock: Clock,
+      ) => new ViewMarketplaceZeroResultSearches(gate, { unitOfWork, store, zone, clock }),
+    },
     {
       provide: REPORTING_KPI_FACADE,
       inject: [
@@ -344,6 +383,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         ViewMarketplaceOrderStatus,
         ViewMarketplaceOrdersByState,
         ViewMarketplaceShoppingFunnel,
+        ViewMarketplaceZeroResultSearches,
         MARKET_ZONE,
         CLOCK,
       ],
@@ -357,6 +397,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         orderStatus: ViewMarketplaceOrderStatus,
         ordersByState: ViewMarketplaceOrdersByState,
         shoppingFunnel: ViewMarketplaceShoppingFunnel,
+        zeroResultSearches: ViewMarketplaceZeroResultSearches,
         zone: MarketZone,
         clock: Clock,
       ) =>
@@ -370,6 +411,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
           orderStatus,
           ordersByState,
           shoppingFunnel,
+          zeroResultSearches,
           { zone, clock },
         ),
     },
@@ -383,17 +425,25 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
     ),
     registerJobsFrom(
       'reporting',
-      [ReconcileReportFacts, BackfillHistory, BackfillLedger, SnapshotDailyEngagement],
+      [
+        ReconcileReportFacts,
+        BackfillHistory,
+        BackfillLedger,
+        SnapshotDailyEngagement,
+        SnapshotDailySearches,
+      ],
       (
         reconcile: ReconcileReportFacts,
         backfill: BackfillHistory,
         ledger: BackfillLedger,
         engagement: SnapshotDailyEngagement,
+        searches: SnapshotDailySearches,
       ) => [
         reconcileReportFactsJob(reconcile),
         backfillHistoryJob(backfill),
         backfillLedgerJob(ledger),
         snapshotDailyEngagementJob(engagement),
+        snapshotDailySearchesJob(searches),
       ],
     ),
   ],
