@@ -12,6 +12,7 @@ import { migrationDatabaseUrl, REPO_ROOT } from './test-database';
 
 const MIGRATIONS = join(REPO_ROOT, 'prisma', 'migrations');
 const EXPAND = '20261125150000_assistant_spend_days_expand';
+const SWITCH = '20261125160000_assistant_spend_days_switch';
 const CAPABILITY = 'assistant.buyer-chat';
 
 /**
@@ -274,5 +275,31 @@ describe('assistant spend_days expand migration (database integration, AI Gatewa
     expect(await conversationDays()).toEqual(before.conversations);
     expect(await usageDays()).toEqual(before.usage);
     expect(await counters()).toEqual(before.counters);
+  });
+
+  it('the G7b switch adds what old pods wrote to spend_days only meanwhile, and nothing twice', async () => {
+    // An old pod (before G7a) counted a conversation and an auto-off in spend_days only.
+    await owner.query(
+      `UPDATE assistant.spend_days SET conversations = conversations + 2,
+         auto_off_cap = 'daily', auto_off_at = '2026-11-20T05:00:00Z'
+        WHERE market_id = $1 AND day = '2026-11-20'`,
+      [first],
+    );
+    const usage = await usageDays();
+    await owner.query(readFileSync(join(MIGRATIONS, SWITCH, 'migration.sql'), 'utf8'));
+    const conversations = await conversationDays();
+    expect(
+      conversations.find((row) => row.market_id === first && row.day === '2026-11-20'),
+    ).toEqual({ market_id: first, day: '2026-11-20', conversations: 5 });
+    const reached = (await counters()).find(
+      (row) => row.key === `${first}|day|2026-11-20|capability|${CAPABILITY}`,
+    );
+    expect([reached?.reached_at, reached?.reached]).toEqual(['2026-11-20T05:00:00Z', 'day']);
+    expect(await usageDays()).toEqual(usage);
+
+    const after = { conversations: await conversationDays(), counters: await counters() };
+    await owner.query(readFileSync(join(MIGRATIONS, SWITCH, 'migration.sql'), 'utf8'));
+    expect(await conversationDays()).toEqual(after.conversations);
+    expect(await counters()).toEqual(after.counters);
   });
 });

@@ -84,9 +84,12 @@ export const assistantProviders: readonly FactoryProvider[] = [
   },
   {
     provide: INSIGHTS_REPOSITORY,
-    inject: [PrismaService, SUBJECT_KEY_SERVICE],
-    useFactory: (prisma: PrismaService, keys: SubjectKeyService): InsightsRepository =>
-      new PrismaInsightsRepository(prisma, keys),
+    inject: [PrismaService, SUBJECT_KEY_SERVICE, AiUsageReport],
+    useFactory: (
+      prisma: PrismaService,
+      keys: SubjectKeyService,
+      usage: AiUsageReport,
+    ): InsightsRepository => new PrismaInsightsRepository(prisma, keys, usage.for('assistant')),
   },
   {
     provide: SPEND_REPOSITORY,
