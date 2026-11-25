@@ -40,6 +40,7 @@ import type {
   SellerMonthlyGoal,
 } from './ports/seller-goal-store';
 import type { SellerKpiReader } from './ports/seller-kpi-reader';
+import { isActingAsSession } from './acting-as';
 import { SetSellerMonthlyGoal } from './use-cases/set-seller-monthly-goal.use-case';
 import { ViewMarketplaceMonthlyTarget } from './use-cases/view-marketplace-monthly-target.use-case';
 import {
@@ -409,6 +410,21 @@ describe.each(TEST_MARKETS)('the monthly target and seller goal in market %s', (
       });
       expect(await goals.find(market, OTHER_SELLER, '2026-11' as CalendarMonth)).toBeNull();
       expect((await goals.find(market, SELLER, '2026-11' as CalendarMonth))?.goal.amount).toBe(5n);
+    });
+
+    it('refuses a goal write in an acting-as (Login as Seller) session and writes nothing', async () => {
+      // As the catalog tag writes test it: the seller context with the reserved marker (SEL-08).
+      const acting = {
+        ...seller,
+        actor: { ...seller.actor, actingAs: { adminAccountId: id(0xa1) } },
+      } as unknown as CallContext;
+      expect(isActingAsSession(acting.actor)).toBe(true);
+      expect(isActingAsSession(seller.actor)).toBe(false);
+      expect(
+        await set({ month: '2026-11', amount: '8000', currency, expectedVersion: 0 }, acting),
+      ).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect(goals.rows.size).toBe(0);
+      expect(audit.entries).toHaveLength(0);
     });
 
     it('fails closed when the store fails', async () => {

@@ -49,7 +49,6 @@ export class PrismaSellerGoalStore implements SellerGoalStore {
       amount: change.goal.amount,
       version: change.version,
       updatedAt: new Date(change.changedAt.epochMilliseconds),
-      updatedByAccountId: change.changedBy,
     };
     if (change.version === 1) {
       const created = await client.reportingSellerMonthlyGoal.createMany({

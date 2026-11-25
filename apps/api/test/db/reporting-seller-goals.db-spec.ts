@@ -78,7 +78,6 @@ describe.each(TEST_MARKETS)('the seller monthly goals in market %s (database)', 
     goal: { amount, currency },
     version,
     changedAt: AT,
-    changedBy: idOf<'Account'>(),
   });
   const code_ = (promise: Promise<unknown>) =>
     promise.then(
@@ -125,7 +124,6 @@ describe.each(TEST_MARKETS)('the seller monthly goals in market %s (database)', 
       amount: '100',
       version: 1,
       updated_at: new Date(),
-      updated_by_account_id: idOf<'Account'>(),
       ...over,
     };
     const keys = Object.keys(v);

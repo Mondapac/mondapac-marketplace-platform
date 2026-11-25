@@ -3,6 +3,6 @@
 -- export the table first if it holds rows that matter.
 SET lock_timeout = '5s';
 
-REVOKE SELECT, INSERT, UPDATE ("currency", "amount", "version", "updated_at", "updated_by_account_id") ON TABLE "reporting"."seller_monthly_goals" FROM "mondapac_app";
+REVOKE SELECT, INSERT, UPDATE ("currency", "amount", "version", "updated_at") ON TABLE "reporting"."seller_monthly_goals" FROM "mondapac_app";
 
 DROP TABLE "reporting"."seller_monthly_goals";

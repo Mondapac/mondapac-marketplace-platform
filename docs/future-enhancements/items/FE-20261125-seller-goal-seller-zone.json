@@ -2,7 +2,7 @@
   "id": "FE-20261125-seller-goal-seller-zone",
   "area": "seller",
   "title": "Seller month in the seller's own time zone",
-  "desc": "The seller goal and its forecast count the month in the Market's zone, because the rollups are by Market day (ADR-0005 prefers the owning party's zone). Count it in the seller's zone once reporting keeps seller-zone days.",
+  "desc": "The seller goal and its forecast count the month in the Market's zone, because the rollups are by Market day (ADR-0005 prefers the owning party's zone). Counting it in the seller's zone needs a data step first: reporting must keep seller-zone days (or instants) for the sales, and the stored goals' `month` (a Market-zone month) must be mapped or re-keyed to the seller's zone.",
   "src": "Dashboards v2 phase 2, monthly targets PR",
   "date": "2026-11-25",
   "trig": "A Market spans more than one time zone with sellers in several of them",

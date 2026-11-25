@@ -40,9 +40,16 @@ first day of the month (CHECK: day 1); `amount` is minor units above zero and be
 `currency` (the Market's); `version` starts at 1 and every change raises it (the use case refuses a
 stale version; the store's first insert is `ON CONFLICT DO NOTHING`, so a race never aborts the
 unit). The application role has SELECT, INSERT and column UPDATE on `currency`, `amount`,
-`version`, `updated_at` and `updated_by_account_id`: the key never changes and nothing is deleted.
+`version` and `updated_at`: the key never changes and nothing is deleted. It stores no account
+id (reporting's rule, checked by `reporting-facts.db-spec.ts`): who set a goal is in the audit row.
 No index beyond the primary key (one point read per seller and month). Its down migration loses
 the goals (no backfill brings them back).
+
+- A goal stored in another currency than the Market's (after a Market currency change) is ignored
+  by the read: the seller sees no goal until they set one again (L3).
+- The forecast reads the rollups, which lag the events by up to the worker's delay, while the time
+  elapsed is exact: early in a day it reads slightly low (L4).
+- Growth: about one row per seller per month a goal is set; past months are never deleted (L5).
 
 All rows are small (under 200 bytes), so even 10x this volume stays under a few GB with indexes.
 

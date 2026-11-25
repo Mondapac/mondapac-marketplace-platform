@@ -8,6 +8,7 @@ import {
   type UseCaseGate,
 } from '../../../../platform/authz';
 import { sessionSellerOf } from '../../../../platform/work-queue/count-work-queue';
+import { isActingAsSession } from '../acting-as';
 import { REPORTING_SELLER_GOAL_MANAGE } from '../../contracts/permissions';
 import { SellerMonthlyGoalChanged as GoalChanged } from '../../domain/audit';
 import { calendarMonthFrom, monthWindowOf, type CalendarMonth } from '../../domain/month-forecast';
@@ -52,8 +53,8 @@ export interface SetSellerGoalAnswer {
  * sales goal (with GST) for this calendar month of the Market's zone or one of the next twelve,
  * in the Market's own currency, from the version they saw (a stale edit is a conflict). Key
  * `reporting.seller-goal.manage` (a seller key), denied while the seller is not approved; always
- * the session's seller, never an id from input; an admin in Login as Seller may set it like the
- * seller (the audit row names the admin). Audited; the goal already in force changes nothing. No
+ * the session's seller, never an id from input. Refused in an acting-as (Login as Seller) session,
+ * fail closed, until SEL-08 names the admin (FE-20261125-seller-goal-login-as-seller). Audited; the goal already in force changes nothing. No
  * goal is removed here (FE row): a goal is changed, not deleted.
  */
 export class SetSellerMonthlyGoal extends UseCase<
@@ -80,7 +81,9 @@ export class SetSellerMonthlyGoal extends UseCase<
   ): Promise<Result<SetSellerGoalAnswer, SetSellerGoalFailure>> {
     const sellerId = sessionSellerOf(context);
     const actor = context.actor;
-    if (sellerId === null || actor.kind !== 'authenticated') return err({ code: 'access.denied' });
+    if (sellerId === null || actor.kind !== 'authenticated' || isActingAsSession(actor)) {
+      return err({ code: 'access.denied' });
+    }
     const { market } = context;
     const now = this.deps.clock.now();
     const timezone = this.deps.zone.zoneOf(market);
@@ -131,7 +134,6 @@ export class SetSellerMonthlyGoal extends UseCase<
         goal,
         version: version + 1,
         changedAt: now,
-        changedBy: actor.accountId,
       });
       if (!saved) return err({ code: 'reporting.seller-goal-conflict' });
       await this.deps.audit.record(

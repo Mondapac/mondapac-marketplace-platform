@@ -60,7 +60,7 @@ export const SellerDailyExported = defineAuditAction({
 export const SELLER_GOAL_TARGET = 'reporting.seller-goal';
 
 /**
- * A seller's team member (or an admin in Login as Seller) set the shop's goal for a month: the
+ * A seller's team member set the shop's goal for a month (never in Login as Seller): the
  * month (the instant its first day starts in the Market's zone), the goal before (null: none) and
  * after, and the new version.
  */

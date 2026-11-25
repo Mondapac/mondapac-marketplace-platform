@@ -17,7 +17,6 @@ export interface SellerGoalChange {
   /** The version after the change: 1 inserts, any other updates the row at `version - 1`. */
   readonly version: number;
   readonly changedAt: Temporal.Instant;
-  readonly changedBy: Id<'Account'>;
 }
 
 /**

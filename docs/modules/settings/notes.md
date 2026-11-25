@@ -82,3 +82,6 @@ store of ADR-0026).
 - Read by reporting through `SettingsFacade.monthlyRevenueTarget` (use case
   `settings.read-monthly-revenue-target`, the view key). An unreadable store is
   `access.unavailable`, never "no target".
+- Review (Hassan L2, accepted): where the Market reviews area `marketplace`, the System requests row
+  of a change shows the target before and after to every reviewer of that area, also one without
+  `settings.monthly-revenue-target.view`; the other settings are reviewed the same way.

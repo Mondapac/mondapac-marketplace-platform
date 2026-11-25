@@ -15,7 +15,6 @@ CREATE TABLE "reporting"."seller_monthly_goals" (
     "amount" BIGINT NOT NULL,
     "version" INTEGER NOT NULL,
     "updated_at" TIMESTAMPTZ(6) NOT NULL,
-    "updated_by_account_id" UUID NOT NULL,
 
     CONSTRAINT "seller_monthly_goals_pkey" PRIMARY KEY ("market_id","seller_id","month")
 );
@@ -30,5 +29,6 @@ ALTER TABLE "reporting"."seller_monthly_goals"
   ADD CONSTRAINT "seller_monthly_goals_amount_check" CHECK ("amount" > 0 AND "amount" < 1000000000000000),
   ADD CONSTRAINT "seller_monthly_goals_version_check" CHECK ("version" >= 1);
 
+-- No account id is stored in reporting (the module rule): who set a goal is in the audit row.
 -- Grants. A goal is set and changed in place (its key never changes); nothing is deleted.
-GRANT SELECT, INSERT, UPDATE ("currency", "amount", "version", "updated_at", "updated_by_account_id") ON TABLE "reporting"."seller_monthly_goals" TO "mondapac_app";
+GRANT SELECT, INSERT, UPDATE ("currency", "amount", "version", "updated_at") ON TABLE "reporting"."seller_monthly_goals" TO "mondapac_app";
