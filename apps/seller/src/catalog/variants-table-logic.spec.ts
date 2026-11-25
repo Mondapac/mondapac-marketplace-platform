@@ -178,4 +178,22 @@ describe('costWritesOf (Offer page PR 7-UI)', () => {
     expect(savedCostText({ amount: null }, 'AUD')).toBe('');
     expect(savedCostText(undefined, 'AUD')).toBe('');
   });
+
+  it('skips a row the Cost read did not answer for', () => {
+    expect(costWritesOf([row('v5', '100')], 'AUD', { v5: '4' }, saved)).toEqual({
+      writes: [],
+      invalid: [],
+    });
+  });
+
+  it('takes whole amounts in a currency without decimals', () => {
+    const yen = { v1: { amount: '900' }, v2: { amount: null } };
+    expect(savedCostText(yen.v1, 'JPY')).toBe('900');
+    expect(costWritesOf(rows, 'JPY', { v1: '900', v2: '1200' }, yen).writes).toEqual([
+      { kind: 'cost', variantId: 'v2', amount: '1200' },
+    ]);
+    expect(costWritesOf(rows, 'JPY', { v2: '9.5' }, yen).invalid).toEqual([
+      { key: costKey('v2'), kind: 'cost' },
+    ]);
+  });
 });

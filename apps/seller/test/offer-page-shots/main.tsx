@@ -19,7 +19,7 @@ const t = createTranslator({ locale: 'en-AU', messages });
 const realFetch = globalThis.fetch;
 globalThis.fetch = (input, init) => {
   const url = input instanceof Request ? input.url : input.toString();
-  // The private Cost (Offer page PR 7-UI): read on "Show costs"; a write answers "recorded".
+  // The private Cost (Offer page PR 7-UI): read on "Show costs". Fake amounts; no write is mocked.
   if (url.endsWith('/costs')) {
     const body = {
       offerId: 'o1',

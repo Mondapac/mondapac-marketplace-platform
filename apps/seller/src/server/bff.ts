@@ -214,7 +214,7 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'inventory/seller/offers/:id/variants/:id/sources/:id/stock',
     'pricing/seller/offers/:id/variants/:id/regular-price',
     'pricing/seller/offers/:id/variants/:id/special-price',
-    // The private Cost of one size (Offer page PR 7-UI): needs the price edit and Cost view keys.
+    // The private Cost of one size (Offer page PR 7-UI); the API checks the price edit and Cost keys.
     'pricing/seller/offers/:id/variants/:id/cost',
   ],
   POST: [

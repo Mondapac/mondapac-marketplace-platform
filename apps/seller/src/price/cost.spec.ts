@@ -12,6 +12,11 @@ describe('profitOf (Offer page PR 7-UI)', () => {
     expect(profitOf('1005', '1000', '200')).toEqual({ profitMinor: '5', percent: 3 });
     expect(profitOf('800', '1000', '1000')).toEqual({ profitMinor: '-200', percent: -20 });
     expect(profitOf('1000', '1000', '1000')).toEqual({ profitMinor: '0', percent: 0 });
+    // −2.5% rounds to −3; a loss under half a percent is 0, not −0; above 100% stays exact.
+    expect(profitOf('975', '1000', '1000')).toEqual({ profitMinor: '-25', percent: -3 });
+    expect(Object.is(profitOf('996', '1000', '1000')?.percent, 0)).toBe(true);
+    expect(profitOf('3000', '500', '1000')).toEqual({ profitMinor: '2500', percent: 250 });
+    expect(profitOf('900', '400', '1000')).toEqual({ profitMinor: '500', percent: 50 });
   });
 
   it('is exact for amounts beyond floating point', () => {

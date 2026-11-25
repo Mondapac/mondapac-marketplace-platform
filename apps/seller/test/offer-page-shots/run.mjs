@@ -78,7 +78,7 @@ for (const scheme of ['light', 'dark']) {
     // The private Cost tab (Offer page PR 7-UI): hidden, shown, a typed Cost above what the size
     // receives, and Save with a Cost that is not money.
     if (scenario.startsWith('cost')) {
-      await page.getByRole('tab', { name: 'Cost' }).click();
+      await page.getByRole('tab', { name: /^Cost/ }).click();
       if (scenario !== 'cost-hidden') {
         await page.getByRole('button', { name: 'Show costs' }).click();
         await page.waitForTimeout(300);

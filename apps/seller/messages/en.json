@@ -2253,7 +2253,8 @@
         "held": "Special waiting for review",
         "typed": "Special not saved"
       },
-      "saved-review": "{count, plural, one {Saved # change.} other {Saved # changes.}} A large special price waits for review before it starts."
+      "saved-review": "{count, plural, one {Saved # change.} other {Saved # changes.}} A large special price waits for review before it starts.",
+      "explicit-save-costs": "Prices, stock and costs are saved with the button, not automatically."
     },
     "suggestions": {
       "title": "Value suggestions",
@@ -3081,7 +3082,8 @@
       "tab": {
         "price": "Price",
         "stock": "Stock",
-        "cost": "Cost"
+        "cost": "Cost",
+        "cost-private": ", private"
       },
       "price": {
         "now": "Price now",
@@ -3860,7 +3862,6 @@
       "field": "Your cost ({currency}, incl. GST)",
       "field-for": "Your cost ({currency}, incl. GST) for {size}",
       "none": "No cost recorded",
-      "unfinished": "Type a full amount",
       "not-priceable": "This size takes no cost.",
       "you-receive": "You receive (est.)",
       "your-cost": "Your cost",
@@ -3886,12 +3887,14 @@
         "stale": "The cost changed somewhere else. We reloaded it; check the number and save again.",
         "retired": "This size no longer takes a cost.",
         "out-of-range": "This cost is outside the allowed range.",
-        "invalid": "Enter a cost above zero, with at most the decimals the currency allows.",
+        "invalid": "Enter a cost above zero, with up to {decimals, plural, =0 {no decimals} one {# decimal} other {# decimals}} (for example {example}).",
         "throttled": "Too many requests. Wait a moment and try again.",
         "csrf": "Your session expired. Reload the page and try again.",
         "unavailable": "Costs are unavailable right now. Try again later.",
-        "unknown": "Something went wrong. Try again."
-      }
+        "unknown": "Something went wrong. Try again.",
+        "currency": "Your costs are recorded in another currency than this offer’s prices, so they can’t be shown here."
+      },
+      "refresh-failed": "Showing the costs read before your save. Reading them again failed: {reason}"
     }
   },
   "load": {

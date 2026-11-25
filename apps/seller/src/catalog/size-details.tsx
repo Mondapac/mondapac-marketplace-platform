@@ -93,7 +93,7 @@ export function SizeDetails({
         items={tabs.map((item) => ({
           id: item,
           label: t(`tab.${item}`),
-          ...(item === 'cost' ? { icon: 'lock' as const } : {}),
+          ...(item === 'cost' ? { icon: 'lock' as const, srHint: t('tab.cost-private') } : {}),
         }))}
         activeId={tab}
         onSelect={(next) => onTab(next as SizeTab)}

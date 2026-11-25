@@ -2,8 +2,9 @@
 
 import { Banner, Button, TextField } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
+import { useRef } from 'react';
 import type { CostsState } from '../price/cost.ts';
-import { formatMinor, minorOf } from '../price/money.ts';
+import { exponentOf, formatMinor, minorOf } from '../price/money.ts';
 import { profitOf } from '../price/cost.ts';
 
 /**
@@ -64,6 +65,10 @@ export function SizeCost({
   const t = useTranslations('price.cost');
   const locale = useLocale();
   const money = (amount: string) => formatMinor(amount, currency, locale);
+  // One minus glyph (U+2212) for every negative on the tab, as in "− $9.00".
+  const signed = (amount: string) =>
+    amount.startsWith('-') ? `\u2212${money(amount.slice(1))}` : money(amount);
+  const sectionRef = useRef<HTMLElement>(null);
   const privateNote = <p className="text-sm text-fg-muted">{t('private')}</p>;
 
   if (costs.kind === 'hidden' || costs.kind === 'loading') {
@@ -109,28 +114,50 @@ export function SizeCost({
   const costMinor = text.trim() === '' ? null : typed;
   const profit = profitOf(youReceiveMinor, costMinor, customerPaysMinor);
   const unsaved = takesCost && costMinor !== saved && !(text.trim() === '' && saved === null);
+  const negative = profit?.profitMinor.startsWith('-') === true;
 
   return (
-    <section aria-labelledby={`${id}-title`} className="flex max-w-xl flex-col gap-3">
+    <section
+      ref={sectionRef}
+      aria-labelledby={`${id}-title`}
+      // Typing brings up the save bar: the field and the profit lines stay above it (WCAG 2.4.11).
+      className="flex max-w-xl scroll-mb-[calc(var(--mp-size-bottom-bar)_+_7rem)] flex-col gap-3 md:scroll-mb-28"
+    >
       <h4 id={`${id}-title`} className="sr-only">
         {t('title')}
       </h4>
       {privateNote}
+      {costs.notice === undefined ? null : (
+        <Banner tone="attention">
+          <p>{t('refresh-failed', { reason: t(`error.${costs.notice}`) })}</p>
+        </Banner>
+      )}
       {!takesCost ? (
         <p className="text-sm text-fg-muted">{t('not-priceable')}</p>
       ) : canEdit && !retired ? (
-        <div className="max-w-56">
-          <TextField
-            name={`cost-${id}`}
-            label={t('field', { currency })}
-            aria-label={t('field-for', { currency, size: sizeLabel })}
-            inputMode="decimal"
-            autoComplete="off"
-            value={text}
-            error={error}
-            disabled={disabled}
-            onChange={(event) => onText(event.target.value)}
-          />
+        // From sm up the field sits in the value column, like the lines under it (mock v4-3).
+        <div className="flex flex-col gap-1 border-b border-line py-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+          <span aria-hidden="true" className="shrink-0 font-medium sm:pt-2">
+            {t('field', { currency })}
+          </span>
+          <div className="w-full sm:w-64 [&_input]:sm:text-end [&_label]:sr-only">
+            <TextField
+              name={`cost-${id}`}
+              label={t('field', { currency })}
+              aria-label={t('field-for', { currency, size: sizeLabel })}
+              inputMode="decimal"
+              autoComplete="off"
+              value={text}
+              error={error}
+              disabled={disabled}
+              onChange={(event) => {
+                onText(event.target.value);
+                requestAnimationFrame(() =>
+                  sectionRef.current?.scrollIntoView?.({ block: 'nearest' }),
+                );
+              }}
+            />
+          </div>
         </div>
       ) : (
         <dl className="flex flex-col">
@@ -155,32 +182,34 @@ export function SizeCost({
             )}
           </Line>
           <Line label={t('your-cost')}>
-            {costMinor === null ? (
+            {costMinor === null || error !== undefined ? (
               <span className="text-sm text-fg-muted">
-                {text.trim() === '' ? t('none') : t('unfinished')}
+                {text.trim() === '' ? t('none') : '\u2014'}
               </span>
             ) : (
               <span className="tabular-nums">{t('minus', { amount: money(costMinor) })}</span>
             )}
           </Line>
           <Line label={<span className="font-semibold">{t('profit')}</span>}>
-            {profit === null || receiveState !== 'ready' ? (
+            {profit === null || receiveState !== 'ready' || error !== undefined ? (
               <span className="text-sm text-fg-muted">{'—'}</span>
             ) : (
               <>
                 <span
-                  className={`font-semibold tabular-nums ${
-                    profit.profitMinor.startsWith('-') ? 'text-critical-fg' : ''
-                  }`}
+                  className={`font-semibold tabular-nums ${negative ? 'text-critical-fg' : ''}`}
                 >
-                  {t('approx', { amount: money(profit.profitMinor) })}
+                  {t('approx', { amount: signed(profit.profitMinor) })}
                 </span>
                 {profit.percent === null || customerPaysMinor === null ? null : (
                   <span className="ms-1 text-sm text-fg-muted tabular-nums">
-                    {t('share', { percent: profit.percent, price: money(customerPaysMinor) })}
+                    {t('share', {
+                      percent:
+                        profit.percent < 0 ? `\u2212${-profit.percent}` : String(profit.percent),
+                      price: money(customerPaysMinor),
+                    })}
                   </span>
                 )}
-                {profit.profitMinor.startsWith('-') ? (
+                {negative ? (
                   <span className="block text-sm text-critical-fg">{t('loss')}</span>
                 ) : null}
               </>

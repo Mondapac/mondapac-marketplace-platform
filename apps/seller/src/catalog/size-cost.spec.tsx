@@ -119,7 +119,7 @@ const flush = async () => {
 };
 const openCost = (size: string) => {
   fireEvent.click(screen.getAllByRole('button', { name: `Details for ${size}` })[0]!);
-  fireEvent.click(screen.getByRole('tab', { name: 'Cost' }));
+  fireEvent.click(screen.getByRole('tab', { name: /^Cost/ }));
 };
 const costCalls = () => call.mock.calls.filter(([, path]) => /\/costs?$/.test(path));
 
@@ -140,11 +140,11 @@ describe('Cost tab', () => {
   it('is there only for a seller with the Cost view key', () => {
     mount({ canViewCost: false });
     fireEvent.click(screen.getAllByRole('button', { name: 'Details for 500 g' })[0]!);
-    expect(screen.queryByRole('tab', { name: 'Cost' })).toBeNull();
+    expect(screen.queryByRole('tab', { name: /^Cost/ })).toBeNull();
     cleanup();
     mount();
     fireEvent.click(screen.getAllByRole('button', { name: 'Details for 500 g' })[0]!);
-    expect(screen.getByRole('tab', { name: 'Cost' })).toBeTruthy();
+    expect(screen.getByRole('tab', { name: /^Cost/ })).toBeTruthy();
   });
 
   it('is hidden by default: nothing is read until "Show costs", and no Cost is in the table', async () => {
@@ -190,7 +190,7 @@ describe('Cost tab', () => {
     fireEvent.change(screen.getByLabelText('Your cost (AUD, incl. GST) for 500 g'), {
       target: { value: '15' },
     });
-    expect(screen.getByText('≈ -$1.48')).toBeTruthy();
+    expect(screen.getByText('≈ −$1.48')).toBeTruthy();
     expect(screen.getByText('Your cost is more than you receive at this price.')).toBeTruthy();
     expect(screen.getByText('Typed, not saved yet. Saved with your other changes.')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Save 1 change' })).toBeTruthy();
@@ -248,9 +248,9 @@ describe('Cost tab', () => {
     fireEvent.click(screen.getByRole('tab', { name: 'Price' }));
     fireEvent.click(screen.getByRole('button', { name: 'Save 1 change' }));
     await flush();
-    expect(screen.getByRole('tab', { name: 'Cost' }).getAttribute('aria-selected')).toBe('true');
+    expect(screen.getByRole('tab', { name: /^Cost/ }).getAttribute('aria-selected')).toBe('true');
     expect(
-      screen.getByText('Enter a cost above zero, with at most the decimals the currency allows.'),
+      screen.getByText('Enter a cost above zero, with up to 2 decimals (for example 9.99).'),
     ).toBeTruthy();
     expect(call.mock.calls.some(([method]) => method === 'PUT')).toBe(false);
   });
@@ -319,5 +319,117 @@ describe('Cost tab', () => {
     await flush();
     expect(screen.getByText('Your role can’t see what you receive')).toBeTruthy();
     expect(screen.queryByText(/≈/)).toBeNull();
+  });
+
+  it('names the tab as private for screen readers', () => {
+    mount();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Details for 500 g' })[0]!);
+    expect(screen.getByRole('tab', { name: 'Cost, private' })).toBeTruthy();
+  });
+
+  it('keeps the Costs and the typed one when the read after a save fails, and focuses the refused field', async () => {
+    writeAnswer = { ok: false, failure: { status: 409, code: 'conflict.stale' } };
+    mount();
+    await flush();
+    openCost('500 g');
+    fireEvent.click(screen.getByRole('button', { name: 'Show costs' }));
+    await flush();
+    costAnswer = { ok: false, failure: { status: 503, code: 'access.unavailable' } };
+    const field = () =>
+      screen.getByLabelText<HTMLInputElement>('Your cost (AUD, incl. GST) for 500 g');
+    fireEvent.change(field(), { target: { value: '10' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save 1 change' }));
+    await flush();
+    await flush();
+    expect(field().value).toBe('10');
+    expect(document.activeElement).toBe(field());
+    expect(screen.getByText(/The cost changed somewhere else/)).toBeTruthy();
+    expect(screen.getByText(/Reading them again failed/)).toBeTruthy();
+    // The typed Cost still counts.
+    expect(screen.getByRole('button', { name: 'Save 1 change' })).toBeTruthy();
+  });
+
+  it('saves a price, a special and a Cost in one save, the Cost last, and a refused price does not stop it', async () => {
+    call.mockImplementation((method, path) => {
+      if (path.endsWith('/regular-price'))
+        return Promise.resolve({
+          ok: false,
+          failure: { status: 422, code: 'pricing.amount-out-of-range' },
+        } as never);
+      if (path.endsWith('/special-price'))
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          body: { status: 'accepted', seriesVersion: 6 },
+        } as never);
+      return Promise.resolve(api(method, path) as never);
+    });
+    mount();
+    await flush();
+    openCost('250 g');
+    fireEvent.click(screen.getByRole('button', { name: 'Show costs' }));
+    await flush();
+    fireEvent.change(screen.getByLabelText('Your cost (AUD, incl. GST) for 250 g'), {
+      target: { value: '6' },
+    });
+    fireEvent.change(screen.getByLabelText('Price for 500 g'), { target: { value: '19' } });
+    fireEvent.click(screen.getByRole('tab', { name: 'Price' }));
+    fireEvent.change(screen.getByLabelText('Special price (AUD) for 250 g'), {
+      target: { value: '8' },
+    });
+    fireEvent.change(screen.getByLabelText('Special ends, 250 g'), {
+      target: { value: '2099-12-07T17:00' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Save 3 changes' }));
+    await flush();
+    const puts = call.mock.calls.filter(([method]) => method === 'PUT').map(([, path]) => path);
+    expect(puts).toEqual([
+      `pricing/seller/offers/o1/variants/${V2}/regular-price`,
+      `pricing/seller/offers/o1/variants/${V1}/special-price`,
+      `pricing/seller/offers/o1/variants/${V1}/cost`,
+    ]);
+  });
+
+  it('discards typed Costs with the rest', async () => {
+    mount();
+    await flush();
+    openCost('500 g');
+    fireEvent.click(screen.getByRole('button', { name: 'Show costs' }));
+    await flush();
+    const field = () =>
+      screen.getByLabelText<HTMLInputElement>('Your cost (AUD, incl. GST) for 500 g');
+    fireEvent.change(field(), { target: { value: '11' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
+    expect(field().value).toBe('9.00');
+  });
+
+  it('shows a retired size read-only, and a size the read left out takes no Cost', async () => {
+    costAnswer = {
+      ...COSTS,
+      body: { ...COSTS.body, variants: COSTS.body.variants.filter((v) => v.variantId !== V1) },
+    };
+    mount({
+      rows: [ROWS[0]!, { ...ROWS[1]!, price: price(V2, '1790', { retired: true }) }, ROWS[2]!],
+    });
+    await flush();
+    openCost('500 g');
+    fireEvent.click(screen.getByRole('button', { name: 'Show costs' }));
+    await flush();
+    expect(screen.queryByLabelText('Your cost (AUD, incl. GST) for 500 g')).toBeNull();
+    expect(within(screen.getByRole('tabpanel')).getByText('$9.00')).toBeTruthy();
+    fireEvent.click(screen.getAllByRole('button', { name: 'Details for 250 g' })[0]!);
+    fireEvent.click(screen.getByRole('tab', { name: /^Cost/ }));
+    expect(screen.getByText('This size takes no cost.')).toBeTruthy();
+  });
+
+  it('shows nothing when the Costs are in another currency than the prices', async () => {
+    costAnswer = { ...COSTS, body: { ...COSTS.body, currency: 'NZD' } };
+    mount();
+    await flush();
+    openCost('500 g');
+    fireEvent.click(screen.getByRole('button', { name: 'Show costs' }));
+    await flush();
+    expect(screen.getByText(/recorded in another currency/)).toBeTruthy();
+    expect(screen.queryByText(/9\.00/)).toBeNull();
   });
 });

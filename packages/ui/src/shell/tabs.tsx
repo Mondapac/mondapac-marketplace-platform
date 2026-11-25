@@ -17,6 +17,8 @@ export interface TabItem {
   readonly help?: string;
   /** A small icon after the label (a lock on a private tab). Decorative: the label names the tab. */
   readonly icon?: IconName;
+  /** Words added to the tab's name for screen readers only (", private" beside a lock icon). */
+  readonly srHint?: string;
 }
 
 export interface TabsProps {
@@ -139,6 +141,7 @@ export function Tabs({ label, items, activeId, onSelect, panelId }: TabsProps) {
             >
               {item.label}
               {item.icon === undefined ? null : <Icon name={item.icon} className="size-4" />}
+              {item.srHint === undefined ? null : <span className="sr-only">{item.srHint}</span>}
             </button>
           );
         })}

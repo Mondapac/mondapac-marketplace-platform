@@ -17,7 +17,7 @@ import { useRouter } from 'next/navigation';
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { callApi } from '../api/client.ts';
-import { formatMinor, inputOf, minorOf } from '../price/money.ts';
+import { exponentOf, formatMinor, inputOf, minorOf } from '../price/money.ts';
 import {
   customerPaysMinor,
   estimateFor,
@@ -180,6 +180,8 @@ export function VariantsTable({
   const [sizeTab, setSizeTab] = useState<SizeTab>('price');
   const [regionWidth, setRegionWidth] = useState<number | null>(null);
   const regionRef = useRef<HTMLDivElement>(null);
+  // Only the newest Cost read may land: an older answer would bring back old versions.
+  const costRead = useRef(0);
   // "You receive (est.)": for what a customer pays now, the typed price included (not saved).
   const showReceive = canEstimate && showPrice;
   const customerPays = Object.fromEntries(
@@ -262,6 +264,13 @@ export function VariantsTable({
       ? costWritesOf(rows, currency, costDrafts, savedCosts)
       : { writes: [], invalid: [] };
   const costChanges = costPlan.writes.length + costPlan.invalid.length;
+  // The decimals the Cost field takes, for its error text ("up to 2 decimals, for example 9.99").
+  const costCopy = {
+    decimals: showPrice ? exponentOf(currency) : 0,
+    example: showPrice
+      ? inputOf(String(999 * 10 ** Math.max(0, exponentOf(currency) - 2)), currency)
+      : '',
+  };
   const costText = (row: TableRow) =>
     costDrafts[row.variantId] ?? savedCostText(savedCosts[row.variantId], currency);
   const canBulk = canEditPrice || canEditStock;
@@ -341,7 +350,7 @@ export function VariantsTable({
         : { writes: [], invalid: [] };
     const found: Record<string, string> = {};
     for (const item of [...plan.invalid, ...specials.invalid, ...costsPlan.invalid]) {
-      found[item.key] = t(INVALID_MESSAGE[item.kind]);
+      found[item.key] = t(INVALID_MESSAGE[item.kind], costCopy);
     }
     const unitsPlan = canEditUnits ? unitPlanOf(unitRows, skuDrafts, sellingDrafts) : null;
     if (unitsPlan !== null) {
@@ -393,7 +402,7 @@ export function VariantsTable({
         throttledCell: t('catalog.variants-table.throttled-cell'),
         price: (problem) => t(`price.error.${problem}`),
         stock: (problem) => t(`stock.levels.error.${problem}`),
-        cost: (problem) => t(`price.cost.error.${problem}`),
+        cost: (problem) => t(`price.cost.error.${problem}`, costCopy),
       },
     });
     if (sent.signedOut) {
@@ -473,7 +482,7 @@ export function VariantsTable({
     setCostDrafts(costLeft);
     setErrors(found);
     // Fresh Costs and versions come from the Cost read: after a saved Cost, or a stale one.
-    if (sent.savedCosts.length > 0 || sent.staleCosts.length > 0) void loadCosts();
+    if (sent.savedCosts.length > 0 || sent.staleCosts.length > 0) void loadCosts(true);
     const failed = Object.keys(found).length;
     if (failed > 0) showFirstError(found);
     if (waitSeconds !== null) {
@@ -528,12 +537,23 @@ export function VariantsTable({
     setFocusTick((n) => n + 1);
   }
 
-  /** "Show costs": reads the private Cost of every size of the offer, once per press. */
-  async function loadCosts() {
-    setCosts({ kind: 'loading' });
+  /**
+   * "Show costs": reads the private Cost of every size of the offer, once per press. After a save
+   * (`refresh`) the Costs stay on screen while they are read again, and a failed read keeps them,
+   * so typed Costs are never lost from the save count.
+   */
+  async function loadCosts(refresh = false) {
+    if (!refresh) setCosts({ kind: 'loading' });
+    const ticket = ++costRead.current;
     const result = await callApi<OfferCostsBody>('GET', `pricing/seller/offers/${offerId}/costs`);
+    if (ticket !== costRead.current) return;
     if (result.ok) {
-      setCosts({ kind: 'shown', byVariant: savedCostsOf(result.body) });
+      setCosts(
+        result.body.currency === currency
+          ? { kind: 'shown', byVariant: savedCostsOf(result.body) }
+          : { kind: 'failed', problem: 'currency' },
+      );
+      if (result.body.currency !== currency) setCostDrafts({});
       return;
     }
     if (result.failure.status === 401) {
@@ -541,12 +561,15 @@ export function VariantsTable({
       window.location.assign('/session-ended');
       return;
     }
-    setCosts({ kind: 'failed', problem: costProblemOf(result.failure) });
+    const problem = costProblemOf(result.failure);
+    if (refresh) setCosts((now) => (now.kind === 'shown' ? { ...now, notice: problem } : now));
+    else setCosts({ kind: 'failed', problem });
   }
 
   /** "Hide costs": the Costs leave the page; typed ones must be saved or discarded first. */
   function hideCosts() {
     if (costChanges > 0) return;
+    costRead.current += 1;
     setCosts({ kind: 'hidden' });
     setCostDrafts({});
   }
@@ -1351,7 +1374,7 @@ export function VariantsTable({
           {canSave ? (
             <SaveBar
               count={changeCount}
-              summary={`${t('settings.bar.summary', { count: changeCount })} · ${t('catalog.variants-table.explicit-save')}`}
+              summary={`${t('settings.bar.summary', { count: changeCount })} · ${t(costChanges > 0 ? 'catalog.variants-table.explicit-save-costs' : 'catalog.variants-table.explicit-save')}`}
               saving={saving}
               aboveBottomBar
               labels={{

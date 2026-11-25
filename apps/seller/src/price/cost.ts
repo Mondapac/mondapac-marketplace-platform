@@ -35,7 +35,12 @@ export interface SavedCost {
 export type CostsState =
   | { readonly kind: 'hidden' }
   | { readonly kind: 'loading' }
-  | { readonly kind: 'shown'; readonly byVariant: Readonly<Record<string, SavedCost>> }
+  | {
+      readonly kind: 'shown';
+      readonly byVariant: Readonly<Record<string, SavedCost>>;
+      /** A read again after a save failed: the Costs shown are the last ones read. */
+      readonly notice?: CostProblem;
+    }
   | { readonly kind: 'failed'; readonly problem: CostProblem };
 
 /** The saved Cost of each size the API answered for; a size it left out takes no Cost. */
@@ -50,6 +55,8 @@ export function savedCostsOf(body: OfferCostsBody): Record<string, SavedCost> {
 
 export type CostProblem =
   | 'acting-as'
+  /** The Costs are in another currency than the page's prices: nothing is shown or written. */
+  | 'currency'
   | 'denied'
   | 'not-eligible'
   | 'not-found'
