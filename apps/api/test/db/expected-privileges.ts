@@ -147,6 +147,19 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
       columnUpdate: [],
     },
+    // AI Gateway G2 (docs/design/data/platform.md 14): a call row is written once and purged;
+    // day rows and budget counters are incremented and purged; a reservation is inserted and
+    // deleted (settle, sweep), never updated.
+    'platform.ai_calls': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'platform.ai_usage_days': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'platform.ai_budget_counters': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'platform.ai_budget_reservations': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     // docs/design/data/identity.md section 7 (slice 3; PM3): the envelope copy is immutable to
     // the application; DELETE arrives with the prune job.
     'platform.event_delivery': {
@@ -959,9 +972,21 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Dashboards v2, phase 1, PR 4: ledger facts are insert-only; the rollup is delete and insert.
     'reporting.ledger_entries': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'reporting.daily_ledger': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // Dashboards v2, phase 2: a seller's own monthly goal, changed in place, never deleted.
+    'reporting.seller_monthly_goals': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['amount', 'currency', 'updated_at', 'version'],
+    },
     // Dashboards v2, phase 2: the shopping funnel of a Market day is written once by the nightly
     // snapshot and never changed (a customer's later opt-out never needs to touch it).
     'reporting.daily_engagement': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Dashboards v2, phase 2: the zero-result searches of a Market day (texts at least ten
+    // customers searched, with counts) and the day they were written, once, never changed.
+    'reporting.search_snapshot_days': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'reporting.daily_zero_result_searches': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Dashboards v2, phase 2: a Market day's abandoned carts are written once by the nightly
+    // snapshot and never changed.
+    'reporting.daily_abandoned_carts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // The backfill's cursor: its Market, kind, window end and start time stay.
     'reporting.backfill_progress': {
       table: ['INSERT', 'SELECT'],
@@ -1265,6 +1290,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: ['rating', 'reason', 'updated_at'],
     },
     'assistant.spend_days': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
+    // G7: the daily conversation count that moved out of spend_days; counted up, never deleted.
+    'assistant.conversation_days': { table: ['INSERT', 'SELECT', 'UPDATE'], columnUpdate: [] },
     'assistant.outbox': { table: ['INSERT', 'SELECT'], columnUpdate: ['published_at'] },
     // Notifications (support contact): a change is a new version row; none is updated or deleted.
     'notifications.support_contacts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
@@ -1317,6 +1344,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'updated_at',
       ],
     },
+    // Dashboards v2, phase 2: the folded texts of text searches that found nothing, per quarter
+    // hour; inserted once, read by reporting's snapshot and purged after 35 days, never updated.
+    'search.zero_result_queries': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     // Search rating boost (buyer reviews and ratings package 5): the star totals of a product,
     // copied from reviews by a job; upserted and deleted when a product has no published review.
     'search.product_ratings': {
@@ -1750,6 +1780,18 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       ],
     },
     'catalog.offer_history': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.offer_review_referrals': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Slice 2c: a held Offer edit is decided once; only the decision columns move; never deleted.
+    'catalog.offer_pending_changes': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'decision_note',
+        'status',
+        'superseded_cause',
+      ],
+    },
     // Categories C9a (data design 3.22): only the decision moves on a proposal; only the status,
     // the merge target and the version on a shelf; a shelf's names are written once with it.
     'catalog.category_proposals': {
@@ -1940,11 +1982,30 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['count', 'window_started_at'],
     },
+    // Cost (slice 3; data design 3.7, 7): a series' Offer, seller and currency never change;
+    // records are insert-only (append-only triggers refuse UPDATE, DELETE and TRUNCATE too).
+    'pricing.cost_series': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['retire_cause', 'retired_at', 'version'],
+    },
+    'pricing.cost_records': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'pricing.retired_offers': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'pricing.retired_variants': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'pricing.write_refusal_throttles': {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['window_started_at'],
+    },
+    // R4 first-price checks (offer approval slice 3): insert-only, except the one re-check and
+    // the review reason it may change. No DELETE (triggers refuse it too).
+    'pricing.first_price_checks': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'post_review_reason',
+        'recheck_amount_minor',
+        'recheck_outcome',
+        'recheck_reference_amount_minor',
+        'rechecked_at',
+      ],
     },
     // The per-actor counter of M7 (pricing-data 12.1: a proposed shape, pending sign-off).
     'pricing.write_refusal_actor_throttles': {

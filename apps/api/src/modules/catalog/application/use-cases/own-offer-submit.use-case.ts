@@ -16,7 +16,10 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { CATALOG_OWN_PRODUCT_EDIT } from '../../contracts/permissions';
 import type { CheckClaimText } from '../claim-text/check-claim-text.service';
 import type { AllowedProductTypesReader } from '../ports/allowed-product-types.reader';
-import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { AuditWriter } from '../../../../platform/audit/audit-writer';
+import { OfferReviewReferredAudit } from '../../domain/audit';
+import { OFFER_REVIEW_POLICY_VERSION, offerReviewReasons } from '../../domain/offer-review-policy';
+import type { OfferReviewInputs, OfferReviewReferralStore } from '../ports/offer-review';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
@@ -80,7 +83,10 @@ export interface OwnOfferSubmitDependencies {
   readonly eligibility: SellerEligibilityReader;
   readonly allowedTypes: AllowedProductTypesReader;
   readonly check: CheckClaimText;
-  readonly policy: CatalogMarketPolicy;
+  /** The Offer review policy's settings and facts (ADR-0051), read outside any unit. */
+  readonly reviewInputs: OfferReviewInputs;
+  readonly referrals: OfferReviewReferralStore;
+  readonly audit: AuditWriter;
   readonly outbox: OutboxWriter;
   /** The claim facts and queries (design 5.1). */
   readonly claims: ClaimQueryBuilder;
@@ -98,8 +104,10 @@ export interface OwnOfferSubmitDependencies {
  * from the reader is `access.unavailable`, ADR-0031); every description text passes the
  * claim-text control again, since the vocabulary can have grown since the last save. In one unit
  * the Offer is read again, its version must equal the one that was checked (else
- * `conflict.stale`), the Market's `catalog.approval-required` is read, and the Offer waits for
- * review or is published at once. Handling must already be recorded (`offer.handling-missing`).
+ * `conflict.stale`) and the Offer review policy (ADR-0051) decides: with a reason the Offer waits
+ * for review, with none it is published at once. The policy's settings and facts are read outside
+ * the unit (a failure is "review everything"); the decision is stored with its reasons and policy
+ * version and audited in the unit. Handling must already be recorded (`offer.handling-missing`).
  *
  * Tags (design 5.1a point 6, 5.2, 5.4): every kept tag is asked again against the product's
  * published revision, and `requestedTags` (closed: at most 20 distinct active type codes of the
@@ -235,19 +243,23 @@ export class OwnOfferSubmit extends UseCase<
           productStatus: productOnSale ? ('published' as const) : null,
           typeCode: product?.state.typeCode ?? null,
           added,
+          badgeTypes: types,
           prepared,
+          productId: offer.state.productId,
         });
       },
       { readOnly: true },
     );
     if (!guard.ok) return err({ code: 'access.unavailable' });
     if (guard.value === null) return err({ code: 'offer.not-found' });
-    const { description, status, version, productStatus, typeCode, added } = guard.value;
+    const { description, status, version, productStatus, typeCode, added, badgeTypes } =
+      guard.value;
     if (status !== 'draft') return err({ code: 'offer.not-submittable' });
     if (productStatus !== 'published' || typeCode === null) {
       return err({ code: 'offer.product-not-published' });
     }
-    if (guard.value.handling === null) return err({ code: 'offer.handling-missing' });
+    const handling = guard.value.handling;
+    if (handling === null) return err({ code: 'offer.handling-missing' });
     const prepared = guard.value.prepared ?? NOTHING_ASKED;
     if (prepared === 'unavailable') return err({ code: 'claim.check-unavailable' });
     const allowed = await deps.allowedTypes.allowedFor(context, sellerId);
@@ -285,6 +297,24 @@ export class OwnOfferSubmit extends UseCase<
     if (!asked.ok) return err(asked.error);
     const hash = hashesOf(prepared);
 
+    // The review policy's inputs, outside any unit; each answers "review" on a failure.
+    const productId = guard.value.productId;
+    const [reviewSettings, reviewFacts] = await Promise.all([
+      deps.reviewInputs.settings(context),
+      deps.reviewInputs.facts(context, { sellerId, productId }),
+    ]);
+    const reasons = offerReviewReasons({
+      mode: reviewSettings.mode,
+      certificateBadges: reviewSettings.certificateBadges,
+      facts: {
+        ...reviewFacts,
+        emergencyStop: reviewFacts.emergencyStop || reviewSettings.emergencyStop,
+      },
+      handling,
+      badgeTypes,
+      description,
+    });
+
     try {
       const written = await deps.unitOfWork.run<
         OwnOfferSubmitOutput | typeof RETRY,
@@ -303,14 +333,8 @@ export class OwnOfferSubmit extends UseCase<
         if (product?.state.status !== 'published' || product.state.pausedAt !== null) {
           return err({ code: 'offer.product-not-published' } as const);
         }
-        let approvalRequired: boolean;
-        try {
-          approvalRequired = await deps.policy.approvalRequired(market);
-        } catch {
-          return err({ code: 'access.unavailable' } as const);
-        }
         const now = deps.clock.now();
-        const submitted = offer.submit({ approvalRequired, now });
+        const submitted = offer.submit({ approvalRequired: reasons.length > 0, now });
         if (!submitted.ok) {
           return err(
             submitted.error.code === 'offer.handling-missing'
@@ -336,6 +360,26 @@ export class OwnOfferSubmit extends UseCase<
         );
         if (tagged !== null) return tagged;
         await deps.offers.save(market, offer, { kind: 'seller', accountId: actor.accountId });
+        await deps.referrals.record(market, {
+          offerId,
+          sellerId,
+          offerVersion: offer.state.version,
+          trigger: 'first-publication',
+          reasons,
+          policyVersion: OFFER_REVIEW_POLICY_VERSION,
+          decidedAt: now,
+        });
+        await deps.audit.record(
+          context,
+          OfferReviewReferredAudit.entry(offerId, {
+            after: {
+              trigger: 'first-publication',
+              outcome: submitted.value.published ? 'published' : 'queued',
+              reasons,
+              policyVersion: OFFER_REVIEW_POLICY_VERSION,
+            },
+          }),
+        );
         await deps.outbox.append(context, offer.pendingEvents);
         return ok({ published: submitted.value.published });
       });

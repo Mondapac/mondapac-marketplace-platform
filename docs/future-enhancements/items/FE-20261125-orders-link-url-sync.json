@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-orders-link-url-sync",
+  "area": "admin",
+  "title": "Orders list keeps its filters in the address bar",
+  "desc": "The Orders list now opens from a link (status, payment, shipping, placed days) but does not write later changes back to the URL, so a filtered view cannot be shared by copying the address.",
+  "src": "Dashboards v2 phase 2, drill-down (Orders status filter PR)",
+  "date": "2026-11-25",
+  "trig": "When admins ask to share a filtered Orders view by link",
+  "prio": "پایین",
+  "status": "موکول"
+}

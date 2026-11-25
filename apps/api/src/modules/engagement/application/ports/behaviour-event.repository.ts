@@ -1,3 +1,4 @@
+import type { SearchPair } from '../../domain/search-shoppers';
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
 import type { BehaviourFacts } from '../../domain/behaviour-event';
 
@@ -105,6 +106,19 @@ export interface BehaviourEventRepository {
     range: { readonly from: Temporal.Instant; readonly to: Temporal.Instant },
     limit: number,
   ): Promise<Id<'Account'>[]>;
+
+  /**
+   * The (search text, account) pairs of the accounts' (never a guest's) `search-performed` events
+   * in the range whose text, in any case, is one of `keys`, each with its count of events; at most
+   * `limit` pairs. For the zero-result searchers' counts only: the ids never leave engagement
+   * (dashboards v2, phase 2).
+   */
+  searchPairs(
+    market: MarketContext,
+    range: { readonly from: Temporal.Instant; readonly to: Temporal.Instant },
+    keys: readonly string[],
+    limit: number,
+  ): Promise<SearchPair[]>;
 
   /** Deletes every event of one account in the Market; answers how many went. */
   deleteForAccount(market: MarketContext, accountId: Id<'Account'>): Promise<number>;

@@ -5,6 +5,7 @@ import {
   Banner,
   Button,
   Card,
+  Icon,
   SaveBar,
   Select,
   TextField,
@@ -13,11 +14,17 @@ import {
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
-import { useEffect, useId, useRef, useState } from 'react';
+import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { callApi } from '../api/client.ts';
 import { priceProblemOf } from '../price/errors.ts';
-import { formatMinor, inputOf } from '../price/money.ts';
+import { formatMinor, inputOf, minorOf } from '../price/money.ts';
+import {
+  customerPaysMinor,
+  estimateFor,
+  lastEstimateFor,
+  useReceiveEstimates,
+} from '../price/receive-estimates.ts';
 import type { PriceWritten } from '../price/types.ts';
 import { levelsProblemOf } from '../stock/levels-errors.ts';
 import type { StockSet } from '../stock/levels-types.ts';
@@ -40,6 +47,7 @@ import {
   type UnitRow,
 } from './sell-unit-logic.ts';
 import { CHECKBOX, SkuField } from './sku-field.tsx';
+import { SizeDetails, sizeTabsOf, type ReceiveView, type SizeTab } from './size-details.tsx';
 import { SizeRequests } from './size-requests.tsx';
 import type { SizeRequestsData } from './size-request-logic.ts';
 import { LastSizeHint, SizesYouSell } from './sizes-you-sell.tsx';
@@ -49,7 +57,16 @@ import type { CellChange, FileModel } from './variant-file.ts';
 type Bulk = 'price' | 'increase' | 'stock';
 
 /** Column widths in rem. Inputs are w-28 (price), w-24 (stock) and w-40 (SKU) inside p-2 cells. */
-const COL = { variant: 8, onSale: 6, price: 8, special: 7, stock: 7, sku: 11 } as const;
+const COL = {
+  variant: 8,
+  onSale: 6,
+  price: 8,
+  special: 7,
+  receive: 7,
+  stock: 7,
+  sku: 11,
+  details: 7,
+} as const;
 
 const unitError = (name: string): string => `catalog.variants-table.units.error.${name}`;
 
@@ -70,6 +87,7 @@ export function VariantsTable({
   csrfToken,
   fileModel = null,
   sizeRequests = null,
+  canEstimate = false,
 }: {
   readonly offerId: string;
   readonly rows: readonly TableRow[];
@@ -92,6 +110,11 @@ export function VariantsTable({
   readonly fileModel?: FileModel | null;
   /** Request a size and the seller's requests (variants V7); null when the product takes none. */
   readonly sizeRequests?: SizeRequestsData | null;
+  /**
+   * "You receive (est.)" (Offer page PR 4): the seller holds the price view key and the seller
+   * ledger key. Shown only with the price columns.
+   */
+  readonly canEstimate?: boolean;
 }) {
   const t = useTranslations();
   const showPrice = marketCurrency !== null;
@@ -116,7 +139,20 @@ export function VariantsTable({
   const [leaving, setLeaving] = useState(false);
   const [focusTick, setFocusTick] = useState(0);
   const [moreToScroll, setMoreToScroll] = useState(false);
+  // Details: one size open at a time (Offer page PR 3); its drafts stay when it closes.
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [sizeTab, setSizeTab] = useState<SizeTab>('price');
+  const [regionWidth, setRegionWidth] = useState<number | null>(null);
   const regionRef = useRef<HTMLDivElement>(null);
+  // "You receive (est.)": for what a customer pays now, the typed price included (not saved).
+  const showReceive = canEstimate && showPrice;
+  const customerPays = Object.fromEntries(
+    rows.map((row) => [
+      row.variantId,
+      showReceive ? customerPaysMinor(row.price, priceDrafts[row.variantId], currency) : null,
+    ]),
+  );
+  const estimates = useReceiveEstimates(offerId, customerPays, showReceive);
   // After a failed save the first invalid field takes focus, so its message is read out.
   useEffect(() => {
     if (focusTick > 0)
@@ -124,9 +160,16 @@ export function VariantsTable({
   }, [focusTick]);
   function updateFade() {
     const el = regionRef.current;
-    if (el !== null) setMoreToScroll(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    if (el === null) return;
+    setMoreToScroll(el.scrollLeft + el.clientWidth < el.scrollWidth - 1);
+    setRegionWidth(el.clientWidth);
   }
   useEffect(updateFade, [rows.length, sources.length]);
+  useEffect(() => {
+    // The open Details keeps the width of the visible table, also after the window changes.
+    window.addEventListener('resize', updateFade, { passive: true });
+    return () => window.removeEventListener('resize', updateFade);
+  }, []);
   const lastHintId = useId();
   const tableErrorId = useId();
 
@@ -416,472 +459,691 @@ export function VariantsTable({
     setNeedsReload(false);
   }
 
+  /** The Details or Close button of a size; `className` hides one of its two places. */
+  function detailsButton(row: TableRow, open: boolean, detailsId: string, className?: string) {
+    return (
+      <Button
+        className={className}
+        variant="secondary"
+        aria-expanded={open}
+        aria-controls={open ? detailsId : undefined}
+        aria-label={t(open ? 'catalog.size-details.close-for' : 'catalog.size-details.open-for', {
+          size: row.label,
+        })}
+        onClick={() => toggleDetails(row.variantId)}
+      >
+        {t(open ? 'catalog.size-details.close' : 'catalog.size-details.open')}
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} className="size-4" />
+      </Button>
+    );
+  }
+
+  /**
+   * The "You receive (est.)" cell: "≈ amount" once the estimate for the row's price is read; while
+   * a newly typed price is read, the last number stays, muted, so it does not blink to a dash.
+   */
+  function receiveCell(variantId: string) {
+    const amount = customerPays[variantId] ?? null;
+    const estimate = estimateFor(estimates, variantId, amount);
+    const shown = estimate ?? (amount === null ? null : lastEstimateFor(estimates, variantId));
+    if (shown === null) return <Dash />;
+    return (
+      <span
+        className={estimate === null ? 'text-fg-muted' : undefined}
+        aria-busy={estimate === null}
+      >
+        {t('catalog.variants-table.receive.value', {
+          amount: formatMinor(shown.youReceiveMinor, currency, locale),
+        })}
+        {shown.taxInclusive ? null : (
+          <span className="block text-xs text-fg-muted">
+            {t('catalog.variants-table.receive.before-tax')}
+          </span>
+        )}
+      </span>
+    );
+  }
+
+  /** What the open Details' Price tab shows of "You receive (est.)" for one size. */
+  function receiveView(row: TableRow): ReceiveView | null {
+    // A size no longer sold has nothing to estimate.
+    if (row.price?.retired === true) return null;
+    const amount = customerPays[row.variantId] ?? null;
+    const draft = priceDrafts[row.variantId];
+    const typed =
+      draft !== undefined && minorOf(draft, currency) !== (row.price?.inForce?.amount ?? null);
+    const source: ReceiveView['source'] =
+      row.price?.special?.state === 'running'
+        ? 'special'
+        : amount === null
+          ? draft !== undefined && draft.trim() !== ''
+            ? 'unfinished'
+            : 'none'
+          : typed
+            ? 'typed'
+            : 'saved';
+    return {
+      estimate: estimateFor(estimates, row.variantId, amount),
+      source,
+      state:
+        estimates.kind === 'unavailable' || estimates.kind === 'no-category'
+          ? estimates.kind
+          : 'ready',
+    };
+  }
+
   if (rows.length === 0) {
-    return <p className="text-fg-muted">{t('price.no-variants')}</p>;
+    return (
+      <div id="sizes" className="scroll-mt-4">
+        <Card title={t('catalog.variants-table.title')}>
+          <p className="text-fg-muted">{t('price.no-variants')}</p>
+        </Card>
+      </div>
+    );
   }
   const needsLocation = canEditStock && sources.length === 0;
+  const detailTabs = sizeTabsOf(showPrice, sources);
+  const showDetails = detailTabs.length > 0;
+  const columnCount =
+    (canBulk ? 1 : 0) +
+    1 +
+    (showUnits ? 2 : 0) +
+    (showPrice ? 2 : 0) +
+    (showReceive ? 1 : 0) +
+    sources.length +
+    (showDetails ? 1 : 0);
+  function toggleDetails(variantId: string) {
+    if (openId === variantId) {
+      setOpenId(null);
+      return;
+    }
+    setOpenId(variantId);
+    if (!detailTabs.includes(sizeTab)) setSizeTab(detailTabs[0] ?? 'price');
+  }
   const tableRem =
     (canBulk ? 2.5 : 0) +
     COL.variant +
     (showUnits ? COL.onSale + COL.sku : 0) +
     (showPrice ? COL.price + COL.special : 0) +
-    sources.length * COL.stock;
+    (showReceive ? COL.receive : 0) +
+    sources.length * COL.stock +
+    (showDetails ? COL.details : 0);
 
   return (
-    <Card title={t('catalog.variants-table.title')}>
-      {/* One form holds the table so its save bar stays at the bottom of the screen. */}
-      <form
-        noValidate
-        className="flex flex-col gap-4"
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (canSave) void save();
-        }}
-      >
-        {needsLocation ? (
-          <Banner tone="attention">
-            <p>{t('stock.levels.no-locations')}</p>
-            <a className="font-medium text-link underline" href="/settings/stock-locations">
-              {t('stock.title')}
-            </a>
-          </Banner>
-        ) : null}
-        {errors.units === undefined ? null : (
-          <div id={tableErrorId}>
-            <Banner tone="critical">
-              <p>{errors.units}</p>
-              {needsReload ? (
-                <div className="mt-2">
-                  <Button variant="secondary" onClick={() => router.refresh()}>
-                    {t('catalog.variants-table.units.reload')}
-                  </Button>
-                </div>
-              ) : null}
+    <div id="sizes" className="scroll-mt-4">
+      <Card title={t('catalog.variants-table.title')}>
+        {/* One form holds the table so its save bar stays at the bottom of the screen. */}
+        <form
+          noValidate
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            if (canSave) void save();
+          }}
+        >
+          {needsLocation ? (
+            <Banner tone="attention">
+              <p>{t('stock.levels.no-locations')}</p>
+              <a className="font-medium text-link underline" href="/settings/stock-locations">
+                {t('stock.title')}
+              </a>
             </Banner>
-          </div>
-        )}
-        {fileModel === null ? null : (
-          <VariantFileTools
-            model={fileModel}
-            disabled={saving}
-            hasDrafts={changeCount > 0}
-            onApply={applyFile}
-          />
-        )}
-        {showUnits && units.productScope === 'PLATFORM' ? (
-          <SizesYouSell
-            items={unitRows.map((item) => {
-              const row = rowOf(item);
-              return {
-                variantId: item.variantId,
-                label: item.unit.label ?? item.unit.variantCode,
-                checked: sellingOf(row),
-                locked: lockedOn(row),
-              };
-            })}
-            disabled={!canEditUnits}
-            hintId={lastHintId}
-            onChange={setSelling}
-          />
-        ) : null}
-        {canBulk && selected.size > 0 ? (
-          <div
-            className="flex flex-col gap-3 rounded-md border border-line p-3"
-            role="group"
-            aria-label={t('catalog.variants-table.bulk')}
-          >
-            <p className="text-sm font-medium">
-              {t('catalog.variants-table.selected', { count: selected.size })}
-            </p>
-            <div className="flex flex-wrap gap-2">
-              {canEditPrice ? (
-                <>
-                  <Button
-                    variant="secondary"
-                    aria-pressed={bulk === 'price'}
-                    onClick={() => setBulk('price')}
-                  >
-                    {t('catalog.variants-table.set-price')}
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    aria-pressed={bulk === 'increase'}
-                    onClick={() => setBulk('increase')}
-                  >
-                    {t('catalog.variants-table.increase')}
-                  </Button>
-                </>
-              ) : null}
-              {canEditStock && sources.length > 0 ? (
-                <Button
-                  variant="secondary"
-                  aria-pressed={bulk === 'stock'}
-                  onClick={() => setBulk('stock')}
-                >
-                  {t('catalog.variants-table.set-stock')}
-                </Button>
-              ) : null}
+          ) : null}
+          {errors.units === undefined ? null : (
+            <div id={tableErrorId}>
+              <Banner tone="critical">
+                <p>{errors.units}</p>
+                {needsReload ? (
+                  <div className="mt-2">
+                    <Button variant="secondary" onClick={() => router.refresh()}>
+                      {t('catalog.variants-table.units.reload')}
+                    </Button>
+                  </div>
+                ) : null}
+              </Banner>
             </div>
-            {bulk === null ? null : (
-              <div className="flex flex-wrap items-end gap-2">
-                {bulk === 'stock' && sources.length > 1 ? (
-                  <Select
-                    name="bulk-source"
-                    label={t('catalog.variants-table.location')}
-                    value={bulkSource}
-                    options={sources.map((source) => ({ value: source.id, label: source.name }))}
-                    onChange={(event) => setBulkSource(event.target.value)}
-                  />
-                ) : null}
-                <TextField
-                  name="bulk-value"
-                  label={t(`catalog.variants-table.bulk-label.${bulk}`, { currency })}
-                  inputMode="decimal"
-                  value={bulkValue}
-                  onChange={(event) => setBulkValue(event.target.value)}
-                  onKeyDown={(event) => {
-                    // Enter applies the value to the chosen rows; it does not save the table.
-                    if (event.key !== 'Enter') return;
-                    event.preventDefault();
-                    if (bulkValue.trim() !== '') applyBulk();
-                  }}
-                />
-                <Button variant="secondary" disabled={bulkValue.trim() === ''} onClick={applyBulk}>
-                  {t('catalog.variants-table.apply', { count: selected.size })}
-                </Button>
-              </div>
-            )}
-            <p className="text-sm text-fg-muted" role="status">
-              {bulkNote}
-            </p>
-            <p className="text-sm text-fg-muted">{t('catalog.variants-table.bulk-help')}</p>
-          </div>
-        ) : null}
-
-        <div className="relative">
-          <div
-            ref={regionRef}
-            className="relative overflow-x-auto"
-            role="region"
-            aria-label={t('catalog.variants-table.title')}
-            tabIndex={0}
-            // A focused field scrolls into view beside the sticky Variant column, not under it, and
-            // clear of the end fade, so its error text and focus ring stay visible on phones.
-            style={{
-              scrollPaddingInlineStart: `${COL.variant + 0.5}rem`,
-              scrollPaddingInlineEnd: '1rem',
-              paddingInlineEnd: '1rem',
-            }}
-            onScroll={updateFade}
-          >
-            <table className="table-fixed text-start text-sm" style={{ width: `${tableRem}rem` }}>
-              <colgroup>
-                {canBulk ? <col style={{ width: '2.5rem' }} /> : null}
-                <col style={{ width: `${COL.variant}rem` }} />
-                {showUnits ? <col style={{ width: `${COL.onSale}rem` }} /> : null}
-                {showPrice ? (
-                  <>
-                    <col style={{ width: `${COL.price}rem` }} />
-                    <col style={{ width: `${COL.special}rem` }} />
-                  </>
-                ) : null}
-                {sources.map((source) => (
-                  <col key={source.id} style={{ width: `${COL.stock}rem` }} />
-                ))}
-                {showUnits ? <col style={{ width: `${COL.sku}rem` }} /> : null}
-              </colgroup>
-              <thead>
-                <tr>
-                  {canBulk ? (
-                    <th scope="col" className="p-2 align-middle">
-                      <input
-                        type="checkbox"
-                        className={CHECKBOX}
-                        aria-label={t('catalog.variants-table.select-all')}
-                        checked={
-                          live.length > 0 && live.every((row) => selected.has(row.variantId))
-                        }
-                        onChange={(event) =>
-                          setSelected(
-                            event.target.checked
-                              ? new Set(live.map((row) => row.variantId))
-                              : new Set(),
-                          )
-                        }
-                      />
-                    </th>
-                  ) : null}
-                  <th scope="col" className="sticky start-0 z-10 bg-surface p-2 font-medium">
-                    {t('catalog.variants-table.variant')}
-                  </th>
-                  {showUnits ? (
-                    <th scope="col" className="p-2 font-medium">
-                      {t('catalog.variants-table.units.selling')}
-                    </th>
-                  ) : null}
-                  {showPrice ? (
-                    <>
-                      <th scope="col" className="p-2 font-medium">
-                        {t('price.field', { currency })}
-                      </th>
-                      <th scope="col" className="p-2 font-medium">
-                        {t('price.special.title')}
-                      </th>
-                    </>
-                  ) : null}
-                  {sources.map((source) => (
-                    <th key={source.id} scope="col" className="p-2 font-medium">
-                      {source.name}
-                    </th>
-                  ))}
-                  {showUnits ? (
-                    <th scope="col" className="p-2 font-medium">
-                      {t('catalog.variants-table.units.sku')}
-                    </th>
-                  ) : null}
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((row) => {
-                  const retired = row.price?.retired === true;
-                  const special = row.price?.special;
-                  const unit = row.unit;
-                  const offSale = unit != null && !sellingOf(row);
-                  const bg = offSale ? 'bg-muted' : 'bg-surface';
-                  return (
-                    <tr
-                      key={row.variantId}
-                      className={`border-t border-line align-middle ${bg} ${
-                        offSale ? '[&_input:not([type=checkbox])]:bg-muted' : ''
-                      }`}
-                    >
-                      {canBulk ? (
-                        <td className="p-2 [&_label]:sr-only">
-                          <input
-                            type="checkbox"
-                            className={CHECKBOX}
-                            aria-label={t('catalog.variants-table.select', { variant: row.label })}
-                            disabled={retired}
-                            checked={selected.has(row.variantId)}
-                            onChange={(event) => toggle(row.variantId, event.target.checked)}
-                          />
-                        </td>
-                      ) : null}
-                      <th scope="row" className={`sticky start-0 z-10 p-2 font-medium ${bg}`}>
-                        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                          <span className="min-w-0 break-words">{row.label}</span>
-                          {offSale ? (
-                            <Badge tone="neutral">
-                              {t('catalog.variants-table.units.off-sale')}
-                            </Badge>
-                          ) : null}
-                        </span>
-                        {unit == null ? null : (
-                          <span
-                            className="block font-mono text-xs font-normal text-fg-muted"
-                            dir="ltr"
-                          >
-                            {unit.variantCode}
-                          </span>
-                        )}
-                        {retired ? (
-                          <span className="block text-fg-muted">{t('price.retired')}</span>
-                        ) : null}
-                      </th>
-                      {showUnits ? (
-                        <td className="p-2">
-                          {unit == null ? (
-                            <Dash />
-                          ) : (
-                            <input
-                              type="checkbox"
-                              role="switch"
-                              className={`${CHECKBOX} size-5`}
-                              aria-label={t('catalog.variants-table.units.selling-for', {
-                                variant: row.label,
-                              })}
-                              aria-describedby={lockedOn(row) ? lastHintId : undefined}
-                              checked={sellingOf(row)}
-                              disabled={!canEditUnits || lockedOn(row)}
-                              onChange={(event) => setSelling(row.variantId, event.target.checked)}
-                            />
-                          )}
-                        </td>
-                      ) : null}
-                      {showPrice ? (
-                        <>
-                          <td className="p-2 [&_label]:sr-only">
-                            {canEditPrice && !retired ? (
-                              <div className="w-28">
-                                <TextField
-                                  name={`price-${row.variantId}`}
-                                  label={t('price.field', { currency })}
-                                  aria-label={t('catalog.variants-table.price-for', {
-                                    variant: row.label,
-                                  })}
-                                  inputMode="decimal"
-                                  value={priceText(row)}
-                                  error={errors[row.variantId]}
-                                  onChange={(event) =>
-                                    setPriceDrafts({
-                                      ...priceDrafts,
-                                      [row.variantId]: event.target.value,
-                                    })
-                                  }
-                                />
-                              </div>
-                            ) : row.price?.inForce == null ? (
-                              <Dash />
-                            ) : (
-                              <span>{formatMinor(row.price.inForce.amount, currency, locale)}</span>
-                            )}
-                            {row.price?.held == null ? null : (
-                              <span className="mt-1 block text-fg-muted">
-                                {t('catalog.variants-table.held', {
-                                  amount: formatMinor(row.price.held.amount, currency, locale),
-                                })}
-                              </span>
-                            )}
-                          </td>
-                          <td className="p-2">
-                            {special == null ? (
-                              <Dash />
-                            ) : (
-                              t(`catalog.variants-table.special.${special.state}`, {
-                                amount: formatMinor(special.amount, currency, locale),
-                              })
-                            )}
-                          </td>
-                        </>
-                      ) : null}
-                      {sources.map((source) => {
-                        const cell = row.stock[source.id];
-                        const key = stockKey(row.variantId, source.id);
-                        return (
-                          <td key={source.id} className="p-2 [&_label]:sr-only">
-                            {canEditStock && !retired ? (
-                              <div className="w-24">
-                                <TextField
-                                  name={`onHand-${key}`}
-                                  label={t('stock.levels.on-hand')}
-                                  aria-label={t('stock.levels.on-hand-for', {
-                                    location: source.name,
-                                  })}
-                                  inputMode="numeric"
-                                  value={stockText(row, source.id)}
-                                  error={errors[key]}
-                                  onChange={(event) =>
-                                    setStockDrafts({ ...stockDrafts, [key]: event.target.value })
-                                  }
-                                />
-                              </div>
-                            ) : cell === undefined ? (
-                              <Dash />
-                            ) : (
-                              <span>{cell.onHand}</span>
-                            )}
-                            {cell === undefined || cell.held === 0 ? null : (
-                              <span className="mt-1 block text-fg-muted">
-                                {t('stock.levels.held', { count: cell.held })}
-                              </span>
-                            )}
-                          </td>
-                        );
-                      })}
-                      {showUnits ? (
-                        <td className="p-2">
-                          {unit == null ? (
-                            <Dash />
-                          ) : canEditUnits ? (
-                            <div className="w-40">
-                              <SkuField
-                                name={`sku-${row.variantId}`}
-                                label={t('catalog.variants-table.units.sku-for', {
-                                  variant: row.label,
-                                })}
-                                dir="ltr"
-                                autoComplete="off"
-                                spellCheck={false}
-                                placeholder={skuPlaceholder(unit, units.sellerSku)}
-                                value={skuText(row)}
-                                error={errors[`sku:${row.variantId}`]}
-                                onChange={(event) =>
-                                  setSkuDrafts({
-                                    ...skuDrafts,
-                                    [row.variantId]: event.target.value,
-                                  })
-                                }
-                              />
-                            </div>
-                          ) : (
-                            <span className="font-mono" dir="ltr">
-                              {unit.displaySku}
-                            </span>
-                          )}
-                        </td>
-                      ) : null}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-          {moreToScroll ? (
-            <div
-              aria-hidden="true"
-              className="pointer-events-none absolute inset-y-0 end-0 w-8 bg-linear-to-l from-surface to-transparent"
+          )}
+          {fileModel === null ? null : (
+            <VariantFileTools
+              model={fileModel}
+              disabled={saving}
+              hasDrafts={changeCount > 0}
+              onApply={applyFile}
+            />
+          )}
+          {showUnits && units.productScope === 'PLATFORM' ? (
+            <SizesYouSell
+              items={unitRows.map((item) => {
+                const row = rowOf(item);
+                return {
+                  variantId: item.variantId,
+                  label: item.unit.label ?? item.unit.variantCode,
+                  checked: sellingOf(row),
+                  locked: lockedOn(row),
+                };
+              })}
+              disabled={!canEditUnits}
+              hintId={lastHintId}
+              onChange={setSelling}
             />
           ) : null}
-        </div>
-        {showUnits ? (
-          <div className="flex flex-col gap-2 text-sm text-fg-muted">
-            {onlyOneLeft && units.productScope !== 'PLATFORM' ? (
-              <LastSizeHint id={lastHintId} />
+          {canBulk && selected.size > 0 ? (
+            <div
+              className="flex flex-col gap-3 rounded-md border border-line p-3"
+              role="group"
+              aria-label={t('catalog.variants-table.bulk')}
+            >
+              <p className="text-sm font-medium">
+                {t('catalog.variants-table.selected', { count: selected.size })}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {canEditPrice ? (
+                  <>
+                    <Button
+                      variant="secondary"
+                      aria-pressed={bulk === 'price'}
+                      onClick={() => setBulk('price')}
+                    >
+                      {t('catalog.variants-table.set-price')}
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      aria-pressed={bulk === 'increase'}
+                      onClick={() => setBulk('increase')}
+                    >
+                      {t('catalog.variants-table.increase')}
+                    </Button>
+                  </>
+                ) : null}
+                {canEditStock && sources.length > 0 ? (
+                  <Button
+                    variant="secondary"
+                    aria-pressed={bulk === 'stock'}
+                    onClick={() => setBulk('stock')}
+                  >
+                    {t('catalog.variants-table.set-stock')}
+                  </Button>
+                ) : null}
+              </div>
+              {bulk === null ? null : (
+                <div className="flex flex-wrap items-end gap-2">
+                  {bulk === 'stock' && sources.length > 1 ? (
+                    <Select
+                      name="bulk-source"
+                      label={t('catalog.variants-table.location')}
+                      value={bulkSource}
+                      options={sources.map((source) => ({ value: source.id, label: source.name }))}
+                      onChange={(event) => setBulkSource(event.target.value)}
+                    />
+                  ) : null}
+                  <TextField
+                    name="bulk-value"
+                    label={t(`catalog.variants-table.bulk-label.${bulk}`, { currency })}
+                    inputMode="decimal"
+                    value={bulkValue}
+                    onChange={(event) => setBulkValue(event.target.value)}
+                    onKeyDown={(event) => {
+                      // Enter applies the value to the chosen rows; it does not save the table.
+                      if (event.key !== 'Enter') return;
+                      event.preventDefault();
+                      if (bulkValue.trim() !== '') applyBulk();
+                    }}
+                  />
+                  <Button
+                    variant="secondary"
+                    disabled={bulkValue.trim() === ''}
+                    onClick={applyBulk}
+                  >
+                    {t('catalog.variants-table.apply', { count: selected.size })}
+                  </Button>
+                </div>
+              )}
+              <p className="text-sm text-fg-muted" role="status">
+                {bulkNote}
+              </p>
+              <p className="text-sm text-fg-muted">{t('catalog.variants-table.bulk-help')}</p>
+            </div>
+          ) : null}
+
+          <div className="relative">
+            <div
+              ref={regionRef}
+              className="relative overflow-x-auto"
+              role="region"
+              aria-label={t('catalog.variants-table.title')}
+              tabIndex={0}
+              // A focused field scrolls into view beside the sticky Variant column, not under it, and
+              // clear of the end fade, so its error text and focus ring stay visible on phones.
+              style={{
+                scrollPaddingInlineStart: `${COL.variant + 0.5}rem`,
+                // Clear of the sticky Details column too, when the table has it.
+                scrollPaddingInlineEnd: showDetails ? `${COL.details + 1}rem` : '1rem',
+                // No strip of the column under it shows beside the sticky Details column.
+                paddingInlineEnd: showDetails ? 0 : '1rem',
+              }}
+              onScroll={updateFade}
+            >
+              <table
+                className="w-full table-fixed text-start text-sm"
+                style={{ minWidth: `${tableRem}rem` }}
+              >
+                <colgroup>
+                  {canBulk ? <col style={{ width: '2.5rem' }} /> : null}
+                  <col style={{ width: `${COL.variant}rem` }} />
+                  {showUnits ? <col style={{ width: `${COL.onSale}rem` }} /> : null}
+                  {showPrice ? (
+                    <>
+                      <col style={{ width: `${COL.price}rem` }} />
+                      <col style={{ width: `${COL.special}rem` }} />
+                    </>
+                  ) : null}
+                  {showReceive ? <col style={{ width: `${COL.receive}rem` }} /> : null}
+                  {sources.map((source) => (
+                    <col key={source.id} style={{ width: `${COL.stock}rem` }} />
+                  ))}
+                  {showUnits ? <col style={{ width: `${COL.sku}rem` }} /> : null}
+                  {showDetails ? <col style={{ width: `${COL.details}rem` }} /> : null}
+                </colgroup>
+                <thead>
+                  <tr>
+                    {canBulk ? (
+                      <th scope="col" className="p-2 align-middle">
+                        <input
+                          type="checkbox"
+                          className={CHECKBOX}
+                          aria-label={t('catalog.variants-table.select-all')}
+                          checked={
+                            live.length > 0 && live.every((row) => selected.has(row.variantId))
+                          }
+                          onChange={(event) =>
+                            setSelected(
+                              event.target.checked
+                                ? new Set(live.map((row) => row.variantId))
+                                : new Set(),
+                            )
+                          }
+                        />
+                      </th>
+                    ) : null}
+                    <th scope="col" className="sticky start-0 z-10 bg-surface p-2 font-medium">
+                      {t('catalog.variants-table.variant')}
+                    </th>
+                    {showUnits ? (
+                      <th scope="col" className="p-2 font-medium">
+                        {t('catalog.variants-table.units.selling')}
+                      </th>
+                    ) : null}
+                    {showPrice ? (
+                      <>
+                        <th scope="col" className="p-2 font-medium">
+                          {t('catalog.variants-table.your-price')}
+                        </th>
+                        <th scope="col" className="p-2 font-medium">
+                          {t('price.special.title')}
+                        </th>
+                      </>
+                    ) : null}
+                    {showReceive ? (
+                      <th scope="col" className="p-2 font-medium">
+                        {t('catalog.variants-table.receive.column')}
+                      </th>
+                    ) : null}
+                    {sources.map((source) => (
+                      <th key={source.id} scope="col" className="p-2 font-medium">
+                        {source.name}
+                      </th>
+                    ))}
+                    {showUnits ? (
+                      <th scope="col" className="p-2 font-medium">
+                        {t('catalog.variants-table.units.sku')}
+                      </th>
+                    ) : null}
+                    {showDetails ? (
+                      <th
+                        scope="col"
+                        className="bg-surface p-2 font-medium sm:sticky sm:end-0 sm:z-10 sm:border-s sm:border-line"
+                      >
+                        <span className="sr-only">{t('catalog.size-details.column')}</span>
+                      </th>
+                    ) : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => {
+                    const retired = row.price?.retired === true;
+                    const special = row.price?.special;
+                    const unit = row.unit;
+                    const offSale = unit != null && !sellingOf(row);
+                    const open = openId === row.variantId;
+                    const bg = offSale ? 'bg-muted' : open ? 'bg-selected' : 'bg-surface';
+                    const detailsId = `size-details-${row.variantId}`;
+                    return (
+                      <Fragment key={row.variantId}>
+                        <tr
+                          className={`border-t border-line align-middle ${bg} ${
+                            offSale ? '[&_input:not([type=checkbox])]:bg-muted' : ''
+                          }`}
+                        >
+                          {canBulk ? (
+                            <td className="p-2 [&_label]:sr-only">
+                              <input
+                                type="checkbox"
+                                className={CHECKBOX}
+                                aria-label={t('catalog.variants-table.select', {
+                                  variant: row.label,
+                                })}
+                                disabled={retired}
+                                checked={selected.has(row.variantId)}
+                                onChange={(event) => toggle(row.variantId, event.target.checked)}
+                              />
+                            </td>
+                          ) : null}
+                          <th scope="row" className={`sticky start-0 z-10 p-2 font-medium ${bg}`}>
+                            <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                              <span className="min-w-0 break-words">{row.label}</span>
+                              {offSale ? (
+                                <Badge tone="neutral">
+                                  {t('catalog.variants-table.units.off-sale')}
+                                </Badge>
+                              ) : null}
+                            </span>
+                            {unit == null ? null : (
+                              <span
+                                className="block font-mono text-xs font-normal text-fg-muted"
+                                dir="ltr"
+                              >
+                                {unit.variantCode}
+                              </span>
+                            )}
+                            {retired ? (
+                              <span className="block text-fg-muted">{t('price.retired')}</span>
+                            ) : null}
+                            {showDetails ? (
+                              // On a phone Details sits under the size, in the column that stays.
+                              <span className="mt-2 block font-normal sm:hidden">
+                                {detailsButton(row, open, detailsId)}
+                              </span>
+                            ) : null}
+                          </th>
+                          {showUnits ? (
+                            <td className="p-2">
+                              {unit == null ? (
+                                <Dash />
+                              ) : (
+                                <input
+                                  type="checkbox"
+                                  role="switch"
+                                  className={`${CHECKBOX} size-5`}
+                                  aria-label={t('catalog.variants-table.units.selling-for', {
+                                    variant: row.label,
+                                  })}
+                                  aria-describedby={lockedOn(row) ? lastHintId : undefined}
+                                  checked={sellingOf(row)}
+                                  disabled={!canEditUnits || lockedOn(row)}
+                                  onChange={(event) =>
+                                    setSelling(row.variantId, event.target.checked)
+                                  }
+                                />
+                              )}
+                            </td>
+                          ) : null}
+                          {showPrice ? (
+                            <>
+                              <td className="p-2 [&_label]:sr-only">
+                                {canEditPrice && !retired ? (
+                                  <div className="w-28">
+                                    <TextField
+                                      name={`price-${row.variantId}`}
+                                      label={t('price.field', { currency })}
+                                      aria-label={t('catalog.variants-table.price-for', {
+                                        variant: row.label,
+                                      })}
+                                      inputMode="decimal"
+                                      value={priceText(row)}
+                                      error={errors[row.variantId]}
+                                      onChange={(event) =>
+                                        setPriceDrafts({
+                                          ...priceDrafts,
+                                          [row.variantId]: event.target.value,
+                                        })
+                                      }
+                                    />
+                                  </div>
+                                ) : row.price?.inForce == null ? (
+                                  <Dash />
+                                ) : (
+                                  <span>
+                                    {formatMinor(row.price.inForce.amount, currency, locale)}
+                                  </span>
+                                )}
+                                {row.price?.held == null ? null : (
+                                  <span className="mt-1 block text-fg-muted">
+                                    {t('catalog.variants-table.held', {
+                                      amount: formatMinor(row.price.held.amount, currency, locale),
+                                    })}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="p-2">
+                                {special == null ? (
+                                  <Dash />
+                                ) : (
+                                  t(`catalog.variants-table.special.${special.state}`, {
+                                    amount: formatMinor(special.amount, currency, locale),
+                                  })
+                                )}
+                              </td>
+                            </>
+                          ) : null}
+                          {showReceive ? (
+                            <td className="p-2 tabular-nums">{receiveCell(row.variantId)}</td>
+                          ) : null}
+                          {sources.map((source) => {
+                            const cell = row.stock[source.id];
+                            const key = stockKey(row.variantId, source.id);
+                            return (
+                              <td key={source.id} className="p-2 [&_label]:sr-only">
+                                {canEditStock && !retired ? (
+                                  <div className="w-24">
+                                    <TextField
+                                      name={`onHand-${key}`}
+                                      label={t('stock.levels.on-hand')}
+                                      aria-label={t('stock.levels.on-hand-for', {
+                                        location: source.name,
+                                      })}
+                                      inputMode="numeric"
+                                      value={stockText(row, source.id)}
+                                      error={errors[key]}
+                                      onChange={(event) =>
+                                        setStockDrafts({
+                                          ...stockDrafts,
+                                          [key]: event.target.value,
+                                        })
+                                      }
+                                    />
+                                  </div>
+                                ) : cell === undefined ? (
+                                  <Dash />
+                                ) : (
+                                  <span>{cell.onHand}</span>
+                                )}
+                                {cell === undefined || cell.held === 0 ? null : (
+                                  // Short, so the row stays low; the Stock tab explains it.
+                                  <span className="mt-1 block text-xs text-fg-muted">
+                                    {t('catalog.variants-table.held-stock', { count: cell.held })}
+                                  </span>
+                                )}
+                              </td>
+                            );
+                          })}
+                          {showUnits ? (
+                            <td className="p-2">
+                              {unit == null ? (
+                                <Dash />
+                              ) : canEditUnits ? (
+                                <div className="w-40">
+                                  <SkuField
+                                    name={`sku-${row.variantId}`}
+                                    label={t('catalog.variants-table.units.sku-for', {
+                                      variant: row.label,
+                                    })}
+                                    dir="ltr"
+                                    autoComplete="off"
+                                    spellCheck={false}
+                                    placeholder={skuPlaceholder(unit, units.sellerSku)}
+                                    value={skuText(row)}
+                                    error={errors[`sku:${row.variantId}`]}
+                                    onChange={(event) =>
+                                      setSkuDrafts({
+                                        ...skuDrafts,
+                                        [row.variantId]: event.target.value,
+                                      })
+                                    }
+                                  />
+                                </div>
+                              ) : (
+                                <span className="font-mono" dir="ltr">
+                                  {unit.displaySku}
+                                </span>
+                              )}
+                            </td>
+                          ) : null}
+                          {showDetails ? (
+                            // Sticky at the end: on a phone Details and Close stay in view.
+                            <td
+                              className={`p-2 sm:sticky sm:end-0 sm:z-10 sm:border-s sm:border-line ${bg}`}
+                            >
+                              {detailsButton(row, open, detailsId, 'max-sm:hidden')}
+                            </td>
+                          ) : null}
+                        </tr>
+                        {open ? (
+                          <tr className="border-t border-line bg-selected">
+                            <td colSpan={columnCount} className="p-0">
+                              <div
+                                className="sticky start-0 border-s-4 border-accent p-4"
+                                // The visible width of the table: on a phone it stays in view.
+                                style={
+                                  regionWidth === null
+                                    ? undefined
+                                    : { width: `min(calc(${regionWidth}px - 1rem), 100%)` }
+                                }
+                              >
+                                <SizeDetails
+                                  id={detailsId}
+                                  offerId={offerId}
+                                  row={row}
+                                  code={unit?.displaySku ?? null}
+                                  tabs={detailTabs}
+                                  tab={
+                                    detailTabs.includes(sizeTab)
+                                      ? sizeTab
+                                      : (detailTabs[0] ?? 'price')
+                                  }
+                                  onTab={setSizeTab}
+                                  currency={currency}
+                                  priceDraft={
+                                    row.variantId in priceDrafts &&
+                                    (priceDrafts[row.variantId] ?? '').trim() !==
+                                      savedPriceText(row, currency)
+                                      ? (priceDrafts[row.variantId] ?? '')
+                                      : null
+                                  }
+                                  sources={sources}
+                                  stockDrafts={stockDrafts}
+                                  receive={showReceive ? receiveView(row) : null}
+                                />
+                              </div>
+                            </td>
+                          </tr>
+                        ) : null}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {/* The fade sits before the sticky Details column, and goes while a row is open. */}
+            {moreToScroll && openId === null ? (
+              <div
+                aria-hidden="true"
+                className={`pointer-events-none absolute inset-y-0 end-0 w-8 bg-linear-to-l from-surface to-transparent ${showDetails ? 'sm:end-28' : ''}`}
+              />
             ) : null}
-            <p>
-              {t('catalog.variants-table.units.sku-help', {
-                example: fallbackSku(units.sellerSku, 1),
-              })}
-            </p>
           </div>
-        ) : null}
-        {showPrice ? (
-          <p className="text-sm text-fg-muted">
-            <a className="font-medium text-link underline" href={`/offers/${offerId}/prices`}>
-              {t('catalog.variants-table.special-link')}
-            </a>
-          </p>
-        ) : null}
-        {canSave ? (
-          <SaveBar
-            count={changeCount}
-            summary={t('settings.bar.summary', { count: changeCount })}
-            saving={saving}
-            aboveBottomBar
-            labels={{
-              region: t('settings.bar.region'),
-              discard: t('settings.bar.discard'),
-              save: t('catalog.variants-table.save', { count: changeCount }),
-              // The button keeps its count while it saves; it shows the spinner.
-              saving: t('catalog.variants-table.save', { count: changeCount }),
-            }}
-            onDiscard={discard}
+          {showPrice ? (
+            <p className="text-sm text-fg-muted">
+              {/* The tax convention comes from the Market's answer, never assumed. */}
+              {t(
+                estimates.kind === 'ready' && estimates.taxInclusive !== null
+                  ? estimates.taxInclusive
+                    ? 'catalog.variants-table.price-note-inclusive'
+                    : 'catalog.variants-table.price-note-exclusive'
+                  : 'catalog.variants-table.price-note',
+                { currency },
+              )}
+            </p>
+          ) : null}
+          {showReceive && (estimates.kind === 'unavailable' || estimates.kind === 'no-category') ? (
+            <p className="text-sm text-fg-muted" role="status">
+              {t(`catalog.variants-table.receive.${estimates.kind}`)}
+            </p>
+          ) : null}
+          {showReceive ? (
+            <p className="text-sm text-fg-muted">
+              {t('catalog.variants-table.receive.promotions')}
+            </p>
+          ) : null}
+          {showUnits ? (
+            <div className="flex flex-col gap-2 text-sm text-fg-muted">
+              {onlyOneLeft && units.productScope !== 'PLATFORM' ? (
+                <LastSizeHint id={lastHintId} />
+              ) : null}
+              <p>
+                {t('catalog.variants-table.units.sku-help', {
+                  example: fallbackSku(units.sellerSku, 1),
+                })}
+              </p>
+            </div>
+          ) : null}
+          {showPrice ? (
+            <p className="text-sm text-fg-muted">
+              <a className="font-medium text-link underline" href={`/offers/${offerId}/prices`}>
+                {t('catalog.variants-table.special-link')}
+              </a>
+            </p>
+          ) : null}
+          {canSave ? (
+            <SaveBar
+              count={changeCount}
+              summary={`${t('settings.bar.summary', { count: changeCount })} · ${t('catalog.variants-table.explicit-save')}`}
+              saving={saving}
+              aboveBottomBar
+              labels={{
+                region: t('settings.bar.region'),
+                discard: t('settings.bar.discard'),
+                save: t('catalog.variants-table.save', { count: changeCount }),
+                // The button keeps its count while it saves; it shows the spinner.
+                saving: t('catalog.variants-table.save', { count: changeCount }),
+              }}
+              onDiscard={discard}
+            />
+          ) : null}
+        </form>
+        {canSave && changeCount > 0 ? guard.dialog : null}
+        {showUnits && units.productScope === 'PLATFORM' && sizeRequests !== null ? (
+          <SizeRequests
+            offerId={offerId}
+            axes={sizeRequests.axes}
+            items={sizeRequests.items}
+            openCount={sizeRequests.openCount}
+            maxOpen={sizeRequests.maxOpen}
+            canRequest={units.canEdit}
+            csrfToken={csrfToken}
           />
         ) : null}
-      </form>
-      {canSave && changeCount > 0 ? guard.dialog : null}
-      {showUnits && units.productScope === 'PLATFORM' && sizeRequests !== null ? (
-        <SizeRequests
-          offerId={offerId}
-          axes={sizeRequests.axes}
-          items={sizeRequests.items}
-          openCount={sizeRequests.openCount}
-          maxOpen={sizeRequests.maxOpen}
-          canRequest={units.canEdit}
-          csrfToken={csrfToken}
-        />
-      ) : null}
-    </Card>
+      </Card>
+    </div>
   );
 }
 

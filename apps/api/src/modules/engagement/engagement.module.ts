@@ -31,6 +31,7 @@ import { BEHAVIOUR_EVENT_REPOSITORY } from './application/ports/behaviour-event.
 import { ENGAGEMENT_GUEST_TOKENS } from './application/ports/guest-tokens';
 import { PERSONALIZATION_SETTING_REPOSITORY } from './application/ports/personalization-setting.repository';
 import { CountShoppingFunnel } from './application/use-cases/count-shopping-funnel.use-case';
+import { CountSearchShoppers } from './application/use-cases/count-search-shoppers.use-case';
 import { ForgetAccount } from './application/use-cases/forget-account.use-case';
 import { PurgeExpiredEvents } from './application/use-cases/purge-expired-events.use-case';
 import { RecentViewsOfGuest } from './application/use-cases/recent-views-guest.use-case';
@@ -153,6 +154,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       FollowsOfAccount,
       // Dashboards v2, phase 2: the shopping funnel's counts for reporting's nightly snapshot.
       CountShoppingFunnel,
+      // Dashboards v2, phase 2: the zero-result searchers' counts for the same snapshot.
+      CountSearchShoppers,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     ...[RecordBlockEvents, PurgeExpiredBlockCounts, ViewBlockStats].map((type) =>
       blockUseCaseProvider(type as BlockUseCaseClass<unknown>),
@@ -168,6 +171,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         FollowsOfAccount,
         FollowStore,
         CountShoppingFunnel,
+        CountSearchShoppers,
       ],
       useFactory: (
         forgetAccount: ForgetAccount,
@@ -178,6 +182,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         followsOfAccount: FollowsOfAccount,
         followStore: FollowStore,
         shoppingFunnel: CountShoppingFunnel,
+        searchShoppers: CountSearchShoppers,
       ) =>
         new EngagementFacadeImplementation({
           forgetAccount,
@@ -188,6 +193,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           followsOfAccount,
           followStore,
           shoppingFunnel,
+          searchShoppers,
         }),
     },
     {

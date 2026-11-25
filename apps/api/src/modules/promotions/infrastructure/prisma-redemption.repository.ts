@@ -9,6 +9,7 @@ import {
   type UsageDelta,
 } from '../application/ports/redemption.repository';
 import { LockContendedError } from '../application/ports/promotion.repository';
+import { discountCostOf, type DiscountCostTotals } from '../domain/discount-cost';
 import { ORDER_KEY } from '../domain/redemption';
 import type {
   RedemptionKind,
@@ -423,5 +424,37 @@ export class PrismaRedemptionRepository implements RedemptionRepository {
       record: toRecord(row),
       promotionName: row.promotion?.name ?? null,
     }));
+  }
+
+  async discountCost(
+    market: MarketContext,
+    currency: string,
+    window: { readonly from: Temporal.Instant; readonly to: Temporal.Instant },
+  ): Promise<DiscountCostTotals> {
+    // Through redemptions_confirmed_idx (market, confirmed_at) WHERE confirmed_at IS NOT NULL: a
+    // range scan of the window's confirmed rows, head rows included (they count the orders); at
+    // most 8 groups (4 kinds x CONFIRMED or RELEASED) come back. The tenant and currency are
+    // filters on those rows.
+    const groups = await this.prisma.tx(market).promotionsRedemption.groupBy({
+      by: ['kind', 'status'],
+      where: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        currency,
+        confirmedAt: { gte: toDate(window.from), lt: toDate(window.to) },
+      },
+      _count: { _all: true },
+      _sum: { amountMinor: true, platformShareMinor: true, sellerShareMinor: true },
+    });
+    return discountCostOf(
+      groups.map((group) => ({
+        kind: group.kind as RedemptionKind,
+        status: group.status as RedemptionStatus,
+        rows: group._count._all,
+        amount: group._sum.amountMinor ?? 0n,
+        platformShare: group._sum.platformShareMinor ?? 0n,
+        sellerShare: group._sum.sellerShareMinor ?? 0n,
+      })),
+    );
   }
 }

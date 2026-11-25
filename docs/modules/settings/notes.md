@@ -74,7 +74,7 @@ store of ADR-0026).
 - The four numbers are the store's first whole-number settings: stored as decimal text, checked
   against bounds, audited by `settings.market-setting.number-changed` with integer values.
 - `GET` and `PUT settings/admin/offer-review`; the write takes `changes: [{code, value,
-  expectedVersion}]`, each code once, all or nothing (every version checked before any write). Each
+expectedVersion}]`, each code once, all or nothing (every version checked before any write). Each
   change keeps its own history row, audit row and review request.
 - Keys `settings.offer-review.view` (Viewer role, seed 37) and `.manage` (protected, second
   factor). Reviewed at high risk where area `marketplace` is reviewed. A stored value outside the
@@ -90,3 +90,52 @@ store of ADR-0026).
   raises an alert of its own).
 - `SettingsFacade.offerQueueBacklogLimits(context)` hands both to notifications' worker job; rule
   `system` (use case `settings.read-offer-queue-backlog-limits`).
+
+## Monthly revenue target (dashboards v2, phase 2)
+
+- Eleventh setting in the same store, the first whose value is an amount: code
+  `monthly-revenue-target`, value `none` (default and safe value) or `<ISO 4217>:<minor units>`
+  (for example `AUD:24000000`, at most 15 digits, above zero). A definition may now carry a
+  `pattern` besides its list of values: `acceptedValue` takes a value that matches it, so the
+  change, the revert and the stored-value check of a read accept it.
+  No migration: the value column takes 1 to 64 characters.
+- Routes: `GET` and `PUT settings/admin/monthly-revenue-target`; the body is
+  `{target: {amount, currency} | null, expectedVersion, note?}` and the currency must be the
+  Market's (`validation.failed` on `target.currency` otherwise). Keys
+  `settings.monthly-revenue-target.view` (in the Viewer role, seed version 38) and `.manage`, both
+  unprotected.
+- Audited as `settings.monthly-revenue-target.changed` with the target before and after as money
+  (the enum action `settings.market-setting.changed` cannot hold an amount); both fields are on the
+  audit money allow-list.
+- Read by reporting through `SettingsFacade.monthlyRevenueTarget` (use case
+  `settings.read-monthly-revenue-target`, the view key). An unreadable store is
+  `access.unavailable`, never "no target".
+- Review (Hassan L2, accepted): where the Market reviews area `marketplace`, the System requests row
+  of a change shows the target before and after to every reviewer of that area, also one without
+  `settings.monthly-revenue-target.view`; the other settings are reviewed the same way.
+
+## Offer review emergency stop (R0, risk-based Offer approval slice 2b)
+
+`offer-review-emergency-stop` (`off`/`on`, default and safe value `off`) is a Market setting with
+its own protected permission `settings.offer-review.emergency-stop` (Platform Administrator, or a
+senior custom role; admin second factor). It is not part of the Offer review page's list, so the
+`settings.offer-review.manage` save can never switch it. `PUT settings/admin/offer-review/emergency-stop`
+takes `value`, `expectedVersion` and a `note` that is always required (1 to 500 characters); the
+change is live at once, audited as `settings.market-setting.changed` and reviewed at high risk
+afterwards where the area is reviewed. Nothing switches it off by itself, and a rejected or
+withdrawn review never switches it off either: that revert answers `not-permitted`, so only a
+holder of the stop's own key turns it off (a rejected "off" is restored to on).
+So a review request that switched the stop on cannot be rejected or withdrawn: the Reject answers
+`403 system-requests.revert-not-permitted` and the request stays open until it is approved or
+superseded; the admin turns the stop off on its own page instead (Hassan L1; hiding Reject
+beforehand is FE-20261125-offer-review-stop-reject-hint).
+Both Offer review saves need a fresh two-step code of the admin, spent in the change's unit
+(settings step-up actions, admin audience, locked): `settings.offer-review-emergency-stop.change`
+for the stop and `settings.offer-review.change` for the Offer review page; without one the route
+answers `403 second-factor.required` with `details.actionKey` and the panel asks for the code.
+`GET settings/admin/offer-review/emergency-stop` (rule own-resources, admins only) answers `on`,
+the version, when it was last switched and the display name of who switched it (identity
+`changeActors`); the admin shell shows a critical banner on every page while it is on.
+`SettingsFacade.offerReviewPolicy` carries `emergencyStop`; the catalog policy adds the
+`emergency-stop` reason to every new Offer while it is on, whatever the mode. Deferred:
+FE-20261125-offer-review-stop-reminder, -stop-scopes, -stop-recent-sampling.

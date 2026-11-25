@@ -67,6 +67,8 @@ import { closedBody, optionalClosedBody, pageQuery, refusalWith } from './http-a
 import { OwnOfferAddTag } from '../application/use-cases/own-offer-add-tag.use-case';
 import { OwnOfferRemoveTag } from '../application/use-cases/own-offer-remove-tag.use-case';
 import { OwnOfferRemoveSuspendedTag } from '../application/use-cases/own-offer-remove-suspended-tag.use-case';
+import { OwnOfferWithdrawChange } from '../application/use-cases/own-offer-withdraw-change.use-case';
+import { OfferChangeDecidedDto } from './offer-change.dto';
 import { OwnOfferList, OwnOfferViewDto } from './own-reads.dto';
 import {
   OwnOfferCreated,
@@ -129,6 +131,10 @@ export const OWN_OFFER_STATUS: Readonly<Record<string, number>> = Object.freeze(
   'claim.requested-tag-not-allowed': 422,
   'claim.check-unavailable': 503,
   'conflict.retry': 409,
+  // Held changes of live Offers (slice 2c).
+  'offer.change-pending': 409,
+  'offer-change.not-found': 404,
+  'offer-change.not-pending': 409,
 });
 
 const WHOLE_NUMBER = /^\d{1,6}$/;
@@ -153,6 +159,31 @@ function offerListQuery(query: Record<string, unknown>): Record<string, unknown>
 }
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
+
+/** The held part of an answer (slice 2c): `applied`, and the change id and reasons when held. */
+function heldPart(value: {
+  readonly applied: boolean;
+  readonly pendingChangeId?: string;
+  readonly reasons?: readonly string[];
+}): { applied: boolean; pendingChangeId?: string; reasons?: string[] } {
+  return value.applied
+    ? { applied: true }
+    : {
+        applied: false,
+        ...(value.pendingChangeId === undefined ? {} : { pendingChangeId: value.pendingChangeId }),
+        reasons: [...(value.reasons ?? [])],
+      };
+}
+
+/** An edit answer: the changed fields and the held part. */
+function heldAnswer(value: {
+  readonly changedFields: readonly string[];
+  readonly applied: boolean;
+  readonly pendingChangeId?: string;
+  readonly reasons?: readonly string[];
+}): { changedFields: string[]; applied: boolean; pendingChangeId?: string; reasons?: string[] } {
+  return { changedFields: [...value.changedFields], ...heldPart(value) };
+}
 
 /**
  * Seller Offers over HTTP (catalog design 4.4, 8.2; OFR-02, OFR-03; slice 7a-3): a seller creates
@@ -184,6 +215,7 @@ export class OwnOfferController {
     private readonly addOfferTag: OwnOfferAddTag,
     private readonly removeOfferTag: OwnOfferRemoveTag,
     private readonly removeSuspendedOfferTag: OwnOfferRemoveSuspendedTag,
+    private readonly withdrawOfferChange: OwnOfferWithdrawChange,
   ) {}
 
   @Get()
@@ -559,7 +591,12 @@ export class OwnOfferController {
       'a byte-identical offer.not-found. A changed text that holds a certification-like claim or ' +
       'a hidden character, or that cannot be checked, refuses the whole edit ' +
       '(claim-text.refused, details.fields). An Offer waiting for review or needing changes ' +
-      'returns to draft; a published Offer stays published with no queue. Every tag of the ' +
+      'returns to draft; a published Offer stays published. ' +
+      'Live Offer (slice 2c): the Market review policy may hold the description for an admin; the ' +
+      'answer is then applied: false with pendingChangeId and reasons, and the rest of the ' +
+      'request applies. With a held change open, a description change is offer.change-pending ' +
+      'unless replacePending is true (the held change is set aside). ' +
+      'Every tag of the ' +
       'Offer is asked of certification again: one no longer allowed is suspended and the Offer ' +
       'goes off sale; an unanswered check refuses the edit (claim.check-unavailable). A lost ' +
       'race is retried, then conflict.retry. Shares the save budget of draft saves: 60 a minute ' +
@@ -581,7 +618,7 @@ export class OwnOfferController {
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found' })
   @ApiConflictResponse({
     type: ApiErrorBody,
-    description: 'offer.sku-taken, offer.not-editable or conflict.retry',
+    description: 'offer.sku-taken, offer.not-editable, offer.change-pending or conflict.retry',
   })
   @ApiUnprocessableEntityResponse({ type: ApiErrorBody, description: 'claim-text.refused' })
   @ApiTooManyRequestsResponse({
@@ -597,7 +634,12 @@ export class OwnOfferController {
     @Param('offerId') offerId: string,
     @Body() body: unknown,
   ): Promise<OwnOfferEdited> {
-    const input = closedBody(request, body, ['sellerSku', 'conditionCode', 'description']);
+    const input = closedBody(
+      request,
+      body,
+      ['sellerSku', 'conditionCode', 'description'],
+      ['replacePending'],
+    );
     let outcome: OwnOfferEdited | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
@@ -606,9 +648,10 @@ export class OwnOfferController {
         sellerSku: input.sellerSku as string,
         conditionCode: input.conditionCode as string,
         description: input.description,
+        ...(Object.hasOwn(input, 'replacePending') ? { replacePending: input.replacePending } : {}),
       });
       outcome = result.ok
-        ? { changedFields: [...result.value.changedFields] }
+        ? heldAnswer(result.value)
         : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
     }
     const failed = outcome instanceof HttpException && outcome.getStatus() >= 500;
@@ -697,7 +740,12 @@ export class OwnOfferController {
       'Needs catalog.own-product.edit and a seller who may sell. Body: handling, one of ' +
       'SEALED_ORIGINAL, REPACKED, PREPARED, FRESH. An Offer of another seller, a deleted one or ' +
       'an unknown id is a byte-identical offer.not-found. An Offer waiting for review or ' +
-      'needing changes returns to draft; a published Offer stays published. A change away from ' +
+      'needing changes returns to draft; a published Offer stays published. ' +
+      'Live Offer (slice 2c): the Market review policy may hold the handling for an admin; the ' +
+      'answer is then applied: false with pendingChangeId and reasons, and the rest of the ' +
+      'request applies. With a held change open, a handling change is offer.change-pending ' +
+      'unless replacePending is true (the held change is set aside). ' +
+      'A change away from ' +
       'SEALED_ORIGINAL withdraws a recorded attestation in the same change (changedFields ' +
       'handling and attestation); returning to SEALED_ORIGINAL needs a new attestation. Every ' +
       'tag is asked again against the new handling: one no longer allowed is suspended and the ' +
@@ -720,7 +768,7 @@ export class OwnOfferController {
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found' })
   @ApiConflictResponse({
     type: ApiErrorBody,
-    description: 'offer.not-editable, conflict.stale or conflict.retry',
+    description: 'offer.not-editable, offer.change-pending, conflict.stale or conflict.retry',
   })
   @ApiTooManyRequestsResponse({
     type: ApiErrorBody,
@@ -735,16 +783,17 @@ export class OwnOfferController {
     @Param('offerId') offerId: string,
     @Body() body: unknown,
   ): Promise<OwnOfferHandlingSet> {
-    const input = closedBody(request, body, ['handling']);
+    const input = closedBody(request, body, ['handling'], ['replacePending']);
     let outcome: OwnOfferHandlingSet | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
       const result = await this.setOfferHandling.execute(context, {
         offerId,
         handling: input.handling,
+        ...(Object.hasOwn(input, 'replacePending') ? { replacePending: input.replacePending } : {}),
       });
       outcome = result.ok
-        ? { changedFields: [...result.value.changedFields] }
+        ? heldAnswer(result.value)
         : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
     }
     const failed = outcome instanceof HttpException && outcome.getStatus() >= 500;
@@ -908,6 +957,55 @@ export class OwnOfferController {
     return this.settleRead('catalog.own-offer-submit', context, outcome);
   }
 
+  @Post(':offerId/pending-change/withdraw')
+  @HttpCode(200)
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Withdraw the held change of an own live Offer',
+    description:
+      'Needs catalog.own-product.edit and a seller who may sell. No body. The change the review ' +
+      'policy held (slice 2c) becomes withdrawn; the live Offer stays as it is. An Offer of ' +
+      'another seller, an unknown one and an Offer with no open change are one byte-identical ' +
+      'offer-change.not-found.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'offerId', format: 'uuid' })
+  @ApiOkResponse({ type: OfferChangeDecidedDto })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({
+    type: ApiErrorBody,
+    description: 'session.invalid (the cookie is cleared) or access.unauthenticated',
+  })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description: 'access.denied, request.csrf or seller.not-eligible',
+  })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer-change.not-found' })
+  @ApiConflictResponse({
+    type: ApiErrorBody,
+    description: 'offer-change.not-pending or conflict.stale',
+  })
+  @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'A body that is not JSON' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async withdrawChange(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Param('offerId') offerId: string,
+    @Body() body: unknown,
+  ): Promise<OfferChangeDecidedDto> {
+    const input = optionalClosedBody(request, body, []);
+    let outcome: OfferChangeDecidedDto | HttpException;
+    if (input instanceof HttpException) outcome = input;
+    else {
+      const result = await this.withdrawOfferChange.execute(context, { offerId });
+      outcome = result.ok
+        ? { ...result.value }
+        : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
+    }
+    return this.settleRead('catalog.own-offer-withdraw-change', context, outcome);
+  }
+
   @Post(':offerId/tags')
   @HttpCode(201)
   @ReadsSession()
@@ -919,7 +1017,12 @@ export class OwnOfferController {
       'tag is written active only when every variant is allowed on one certificate. A refusal ' +
       'names the type and the reason code (claim.tag-not-allowed, details.tags); an unanswered ' +
       'check refuses (claim.check-unavailable). A product never published takes its tags as ' +
-      'requestedTags at its first submit (tag.product-not-published). Shares the save budget.',
+      'requestedTags at its first submit (tag.product-not-published). ' +
+      'Live Offer (slice 2c): the Market review policy may hold the badge for an admin; the ' +
+      'answer is then applied: false with pendingChangeId and reasons, and the rest of the ' +
+      'request applies (status held, basis null, no tag written). With a held change open, a badge change is offer.change-pending ' +
+      'unless replacePending is true (the held change is set aside). ' +
+      'Shares the save budget.',
   })
   @ApiHeader(CSRF)
   @ApiParam({ name: 'offerId', format: 'uuid' })
@@ -937,7 +1040,7 @@ export class OwnOfferController {
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer.not-found' })
   @ApiConflictResponse({
     type: ApiErrorBody,
-    description: 'tag.exists, tag.product-not-published or conflict.retry',
+    description: 'tag.exists, tag.product-not-published, offer.change-pending or conflict.retry',
   })
   @ApiUnprocessableEntityResponse({
     type: ApiErrorBody,
@@ -961,13 +1064,22 @@ export class OwnOfferController {
     @Param('offerId') offerId: string,
     @Body() body: unknown,
   ): Promise<OwnOfferTagAdded> {
-    const input = closedBody(request, body, ['typeCode']);
+    const input = closedBody(request, body, ['typeCode'], ['replacePending']);
     let outcome: OwnOfferTagAdded | HttpException;
     if (input instanceof HttpException) outcome = input;
     else {
-      const result = await this.addOfferTag.execute(context, { offerId, typeCode: input.typeCode });
+      const result = await this.addOfferTag.execute(context, {
+        offerId,
+        typeCode: input.typeCode,
+        ...(Object.hasOwn(input, 'replacePending') ? { replacePending: input.replacePending } : {}),
+      });
       outcome = result.ok
-        ? { ...result.value }
+        ? {
+            typeCode: result.value.typeCode,
+            status: result.value.status,
+            basis: result.value.basis,
+            ...heldPart(result.value),
+          }
         : refusalWith(OWN_OFFER_STATUS, result.error, response, context);
     }
     return this.settleRead('catalog.own-offer-add-tag', context, outcome);

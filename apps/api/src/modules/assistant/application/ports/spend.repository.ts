@@ -10,11 +10,17 @@ export interface SpendTotals {
 }
 
 /**
- * `assistant.spend_days`: one row per Market and day (the Market's own calendar), counted up by
- * every model call, so every API instance sees the same totals.
+ * The assistant's spend and conversation count per Market day (the Market's own calendar), shared
+ * by every API instance. Since AI Gateway G7 the spend is the gateway's usage record of the buyer
+ * chat (every call is settled there before the runtime answers), the conversation count is
+ * `assistant.conversation_days`, and the auto-off record is the gateway's "cap reached" record.
  */
 export interface SpendRepository {
   totals(market: MarketContext, day: Temporal.PlainDate): Promise<SpendTotals>;
+  /**
+   * Counts a turn: its new conversations. The spend fields are what the gateway settled for the
+   * turn already; the production store does not count them a second time.
+   */
   add(
     market: MarketContext,
     day: Temporal.PlainDate,

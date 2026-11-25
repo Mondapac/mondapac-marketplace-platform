@@ -18,6 +18,8 @@ import { PrismaFactStore } from './prisma-fact-store';
 import { SELLER_KPI_READER, type SellerKpiReader } from '../application/ports/seller-kpi-reader';
 import { PrismaSellerKpiReader } from './prisma-seller-kpi-reader';
 import { PrismaRollupStore } from './prisma-rollup-store';
+import { SELLER_GOAL_STORE, type SellerGoalStore } from '../application/ports/seller-goal-store';
+import { PrismaSellerGoalStore } from './prisma-seller-goal-store';
 import { RegistryMarketZone } from './registry-market-zone';
 import { LedgerRecorder } from '../application/ledger-recorder';
 import { LEDGER_FACT_STORE, type LedgerFactStore } from '../application/ports/ledger-fact-store';
@@ -26,6 +28,13 @@ import { PrismaLedgerFactStore } from './prisma-ledger-fact-store';
 import { PrismaLedgerKpiReader } from './prisma-ledger-kpi-reader';
 import { ENGAGEMENT_STORE, type EngagementStore } from '../application/ports/engagement-store';
 import { PrismaEngagementStore } from './prisma-engagement-store';
+import { SEARCH_STORE, type SearchStore } from '../application/ports/search-store';
+import { PrismaSearchStore } from './prisma-search-store';
+import {
+  ABANDONED_CARTS_STORE,
+  type AbandonedCartsStore,
+} from '../application/ports/abandoned-carts-store';
+import { PrismaAbandonedCartsStore } from './prisma-abandoned-carts-store';
 
 /** Binds the ports of reporting. Only this layer may reach `PrismaService`. */
 export const reportingProviders: readonly FactoryProvider[] = [
@@ -56,6 +65,11 @@ export const reportingProviders: readonly FactoryProvider[] = [
     provide: SELLER_KPI_READER,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): SellerKpiReader => new PrismaSellerKpiReader(prisma),
+  },
+  {
+    provide: SELLER_GOAL_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SellerGoalStore => new PrismaSellerGoalStore(prisma),
   },
   {
     provide: MARKET_ZONE,
@@ -89,5 +103,16 @@ export const reportingProviders: readonly FactoryProvider[] = [
     provide: ENGAGEMENT_STORE,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): EngagementStore => new PrismaEngagementStore(prisma),
+  },
+  {
+    provide: SEARCH_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SearchStore => new PrismaSearchStore(prisma),
+  },
+  {
+    provide: ABANDONED_CARTS_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AbandonedCartsStore =>
+      new PrismaAbandonedCartsStore(prisma),
   },
 ];

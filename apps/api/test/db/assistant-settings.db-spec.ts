@@ -47,6 +47,7 @@ import {
 } from './persistence-support';
 import { ids } from './outbox-support';
 import { testDatabaseUrl } from './test-database';
+import { assistantUsageReport } from './assistant-usage-report';
 
 // The assistant settings history as the application role, in both Market fixtures: the real use
 // cases on the real unit of work store every field and read them back, version by version, never
@@ -81,7 +82,7 @@ describe.each(TEST_MARKETS)('assistant settings store in market %s (database)', 
   beforeAll(async () => {
     db = createPersistence();
     settings = new PrismaAssistantSettingsRepository(db.service);
-    spend = new PrismaSpendRepository(db.service);
+    spend = new PrismaSpendRepository(db.service, assistantUsageReport(db.service));
     // The real audit writer (Hassan, package 2 review): the audit row commits with the version.
     catalogue = new AuditActionCatalogue();
     catalogue.register('assistant', ASSISTANT_AUDIT_ACTIONS);

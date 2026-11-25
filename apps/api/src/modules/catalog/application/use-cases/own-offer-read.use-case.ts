@@ -5,6 +5,8 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { CATALOG_OWN_PRODUCT_VIEW } from '../../contracts/permissions';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
 import type { OfferRepository } from '../ports/offer.repository';
+import type { OfferPendingChangeRepository } from '../ports/offer-pending-change.repository';
+import { offerChangeViewOf } from '../offer-change-view';
 import type { OwnCatalogReader } from '../ports/own-catalog.reader';
 import { offerViewOf, type OwnOfferView } from '../own-reads/own-offer-view';
 import { invalid, sellerOf, type ValidationFailure } from '../own-reads/own-reads.shared';
@@ -24,13 +26,16 @@ export interface OwnOfferReadDependencies {
   readonly offers: OfferRepository;
   readonly ownReader: OwnCatalogReader;
   readonly policy: CatalogMarketPolicy;
+  /** The Offer's latest held change (slice 2c). */
+  readonly pendingChanges: Pick<OfferPendingChangeRepository, 'findLatestByOffer'>;
 }
 
 /**
  * `own-offer.read` (catalog design 8.2, 9.2a): one of the seller's own Offers with the label of its
  * product. Rule: the key `catalog.own-product.view` and the seller population. An unknown Offer,
  * another seller's and a deleted one answer one byte-identical `offer.not-found`. One read-only
- * unit (ADR-0025).
+ * unit (ADR-0025). The answer carries the Offer's latest held change (`pendingChange`, slice 2c):
+ * its proposed fields, reasons, status and the reviewer's note.
  */
 export class OwnOfferRead extends UseCase<OwnOfferReadInput, OwnOfferView, OwnOfferReadFailure> {
   static override readonly access: AccessDeclaration = {
@@ -71,7 +76,12 @@ export class OwnOfferRead extends UseCase<OwnOfferReadInput, OwnOfferView, OwnOf
         if (owner !== sellerId || status === 'deleted') return ok(null);
         const [label] = await this.deps.ownReader.productLabels(market, [productId], locale);
         const sellUnits = await this.deps.ownReader.sellUnitsOf(market, offer.state.id);
-        return ok({ ...offerViewOf(offer, label, { withTags: true }), sellUnits });
+        const latest = await this.deps.pendingChanges.findLatestByOffer(market, offer.state.id);
+        return ok({
+          ...offerViewOf(offer, label, { withTags: true }),
+          sellUnits,
+          pendingChange: latest === null ? null : offerChangeViewOf(latest),
+        });
       },
       { readOnly: true },
     );

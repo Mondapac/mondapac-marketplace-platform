@@ -118,6 +118,11 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX offers_market_id_seller_id_seller_sku_open_key ON catalog.offers USING btree (market_id, seller_id, seller_sku) WHERE (status <> 'deleted'::text)",
   'catalog.offers_market_id_submitted_at_pending_idx':
     "CREATE INDEX offers_market_id_submitted_at_pending_idx ON catalog.offers USING btree (market_id, submitted_at, id) WHERE (status = 'pending-first-publish'::text)",
+  // ADR-0051 slice 2c: one open pending change per Offer; one referral per pending change.
+  'catalog.offer_pending_changes_open_offer_key':
+    "CREATE UNIQUE INDEX offer_pending_changes_open_offer_key ON catalog.offer_pending_changes USING btree (market_id, offer_id) WHERE (status = 'pending'::text)",
+  'catalog.offer_review_referrals_pending_change_id_key':
+    'CREATE UNIQUE INDEX offer_review_referrals_pending_change_id_key ON catalog.offer_review_referrals USING btree (market_id, pending_change_id) WHERE (pending_change_id IS NOT NULL)',
   // Categories C9a (data design 3.22): the Offers on a shelf (cleared when it closes), the admin
   // queue of pending proposals, and one pending proposal per seller, parent and name.
   'catalog.offers_market_id_shelf_category_id_idx':
@@ -352,6 +357,12 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // The dashboard's count of failed webhooks (dashboards upgrade, phase 1): the events given up.
   'payments.stripe_events_market_id_received_at_failed_idx':
     "CREATE INDEX stripe_events_market_id_received_at_failed_idx ON payments.stripe_events USING btree (market_id, received_at) WHERE (outcome = 'failed'::text)",
+  // AI Gateway G7 (platform-ai.md section 10): a capability's newest "cap reached" record.
+  'platform.ai_budget_counters_cap_reached_idx':
+    'CREATE INDEX ai_budget_counters_cap_reached_idx ON platform.ai_budget_counters USING btree (market_id, scope_key, cap_reached_at) WHERE (cap_reached_at IS NOT NULL)',
+  // AI Gateway G7b: the assistant's month of spend, read from the buyer chat's day counters.
+  'platform.ai_budget_counters_capability_day_idx':
+    "CREATE INDEX ai_budget_counters_capability_day_idx ON platform.ai_budget_counters USING btree (market_id, scope_key, period_start) WHERE (((scope)::text = 'capability'::text) AND ((period)::text = 'day'::text))",
   // Payments package 8a: the relay's claim index of payments' outbox.
   'payments.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON payments.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
@@ -389,6 +400,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON pricing.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'pricing.regular_price_records_effective_period_excl':
     "CREATE INDEX regular_price_records_effective_period_excl ON pricing.regular_price_records USING gist (market_id, series_id, tstzrange(effective_from, effective_to, '[)'::text)) WHERE (status = ANY (ARRAY['accepted'::text, 'approved'::text]))",
+  'pricing.first_price_checks_market_id_product_id_variant_id_pending_idx':
+    "CREATE INDEX first_price_checks_market_id_product_id_variant_id_pending_idx ON pricing.first_price_checks USING btree (market_id, product_id, variant_id, checked_at, record_id) WHERE ((rechecked_at IS NULL) AND (outcome = ANY (ARRAY['no-reference'::text, 'reference-unavailable'::text])))",
   'pricing.regular_price_records_market_id_submitted_at_id_pending_idx':
     "CREATE INDEX regular_price_records_market_id_submitted_at_id_pending_idx ON pricing.regular_price_records USING btree (market_id, submitted_at, id) WHERE (status = 'pending-review'::text)",
   'pricing.regular_price_records_market_id_series_id_pending_key':
@@ -497,6 +510,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE INDEX product_reviews_public_list_idx ON reviews.product_reviews USING btree (market_id, product_id, published_at DESC, id DESC) WHERE (status = 'published'::text)",
   'reviews.product_reviews_public_list_rating_idx':
     "CREATE INDEX product_reviews_public_list_rating_idx ON reviews.product_reviews USING btree (market_id, product_id, rating, published_at DESC, id DESC) WHERE (status = 'published'::text)",
+  // The admin dashboard's review counts (dashboards v2, phase 2) read the Market's published reviews by time.
+  'reviews.product_reviews_market_published_idx':
+    "CREATE INDEX product_reviews_market_published_idx ON reviews.product_reviews USING btree (market_id, published_at) WHERE (status = 'published'::text)",
   // The shop's Reviews list (super list 32) reads its published reviews by Market and seller.
   'reviews.product_reviews_seller_published_idx':
     "CREATE INDEX product_reviews_seller_published_idx ON reviews.product_reviews USING btree (market_id, seller_id, published_at DESC, id DESC) WHERE (status = 'published'::text)",
@@ -517,6 +533,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // sweep, and the backstops of one live first-order discount per customer and one live row per code.
   'promotions.redemptions_code_live_idx':
     "CREATE UNIQUE INDEX redemptions_code_live_idx ON promotions.redemptions USING btree (market_id, code_hash) WHERE ((code_hash IS NOT NULL) AND (status <> 'RELEASED'::text))",
+  'promotions.redemptions_confirmed_idx':
+    'CREATE INDEX redemptions_confirmed_idx ON promotions.redemptions USING btree (market_id, confirmed_at) WHERE (confirmed_at IS NOT NULL)',
   'promotions.redemptions_customer_live_idx':
     "CREATE INDEX redemptions_customer_live_idx ON promotions.redemptions USING btree (market_id, promotion_id, customer_account_id) WHERE (status <> 'RELEASED'::text)",
   'promotions.redemptions_first_order_month_idx':

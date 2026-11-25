@@ -1,3 +1,4 @@
+import { PrismaOfferPendingChangeRepository } from '../../src/modules/catalog/infrastructure/prisma-offer-pending-change.repository';
 import { ALL_CATEGORIES_IN_SCOPE } from '../support/seller-scope-allow-all';
 import { randomUUID } from 'node:crypto';
 import { Temporal, ok, uuidV7 } from '@mondapac/shared-kernel';
@@ -380,6 +381,7 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       clock,
     });
     readOffer = new OwnOfferRead(gate, {
+      pendingChanges: new PrismaOfferPendingChangeRepository(persistence.service),
       unitOfWork: persistence.unitOfWork,
       offers,
       ownReader: reader,
@@ -1057,7 +1059,14 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
       // No sell-unit row stored: the read lists none (a variant with no row sells, no SKU).
       sellUnits: [],
       description: { en: 'mine' },
-      product: { name: 'Labelled', typeCode: 'simple', productCode: platform.state.productCode },
+      // A PLATFORM product without a photo: its scope names the route, and no thumbnail.
+      product: {
+        name: 'Labelled',
+        typeCode: 'simple',
+        productCode: platform.state.productCode,
+        scope: 'PLATFORM',
+        primaryImageId: null,
+      },
     });
     const notFound = { ok: false, error: { code: 'offer.not-found' } };
     expect(await readOffer.execute(sellerContext(), { offerId: theirs.state.id })).toEqual(
@@ -1070,6 +1079,9 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
     expect(listed.value.items.map((item) => item.offerId)).toContain(mine.state.id);
     expect(listed.value.items.map((item) => item.offerId)).not.toContain(theirs.state.id);
     expect(listed.value.items[0]!.product.name).toBe('Labelled');
+    expect(
+      listed.value.items.find((item) => item.offerId === mine.state.id)?.product,
+    ).toMatchObject({ scope: 'PLATFORM', primaryImageId: null });
     // The counts are the seller's own Offers only: every draft listed, none of the other seller's.
     const drafts = listed.value.items.filter((item) => item.status === 'draft').length;
     expect(listed.value.counts.draft).toBe(drafts);
@@ -1124,6 +1136,11 @@ describe.each(TEST_MARKETS)('catalog seller reads in market %s (database integra
     expect(await idsOf({ listed: false, q: tag })).toHaveLength(2);
     const counted = await ids({ q: tag });
     expect(counted.counts).toMatchObject({ draft: 2, published: 0, all: 2 });
+    // List mode carries the product's scope and thumbnail too (none here: no photo).
+    expect(counted.items.map((item) => item.product)).toEqual([
+      expect.objectContaining({ scope: 'PLATFORM', primaryImageId: null }),
+      expect.objectContaining({ scope: 'PLATFORM', primaryImageId: null }),
+    ]);
 
     // Pages with a total, then Previous and Next without one; ties and edges are exact.
     const page1 = await ids({ q: tag, sort: 'sku', direction: 'asc', page: 1, pageSize: 25 });

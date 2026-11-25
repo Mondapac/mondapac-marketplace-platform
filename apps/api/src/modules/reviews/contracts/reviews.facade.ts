@@ -52,6 +52,16 @@ export interface SellerReviewCount {
   readonly starsSum: number;
 }
 
+/** The reviews the whole Market published in one window, for the admin dashboard. */
+export interface MarketReviewCount {
+  /** Reviews published in the window and still published. */
+  readonly reviews: number;
+  /** The sum of their 1 to 5 ratings. */
+  readonly starsSum: number;
+  /** Reviews of 1, 2, 3, 4 and 5 stars. */
+  readonly histogram: readonly [number, number, number, number, number];
+}
+
 /** The star totals of one product that has published reviews: `count` reviews adding up to `sum` stars. */
 export interface ProductRatingTotal {
   readonly productId: Id<'Product'>;
@@ -99,6 +109,18 @@ export interface ReviewsFacade {
     sellerId: Id<'Seller'>,
     windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
   ): Promise<Result<readonly SellerReviewCount[], ReviewsFacadeFailure>>;
+
+  /**
+   * The review numbers of the admin dashboard (dashboards v2, phase 2): for each window `[from, to)`
+   * the reviews of the whole Market published in it, their stars and how many of each rating
+   * (at most 4 windows). Counts only: no text, author, product or seller. Key
+   * `reviews.settings.view`, a platform admin acting as themselves; `reviews.disabled` while
+   * reviews are off. The caller works the windows out in the Market's zone (ADR-0005).
+   */
+  marketReviewCounts(
+    context: CallContext,
+    windows: readonly { readonly from: Temporal.Instant; readonly to: Temporal.Instant }[],
+  ): Promise<Result<readonly MarketReviewCount[], ReviewsFacadeFailure>>;
 
   /**
    * The star totals of every product with a published review, a page at a time in product-id

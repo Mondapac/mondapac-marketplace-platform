@@ -278,7 +278,8 @@
         "earnings": "What you keep from your sales after commission, refunds and cashback you fund, without GST. It comes from your earnings ledger and is shown once a week of ledger records is in.",
         "payout": "The estimated amount of your next payout and the day it is looked at. It can change before payout day if an order is refunded or disputed.",
         "categories": "Your categories ranked by net sales: goods of paid orders with GST after refunds, so the figures can be lower than Sales. Products are not ranked yet.",
-        "health": "Your store health is the lowest of five measures, each scored 0 to 100 (cancellations, late orders, rating, disputes, reports). 67 or more is healthy. It is updated daily and needs enough orders to be scored."
+        "health": "Your store health is the lowest of five measures, each scored 0 to 100 (cancellations, late orders, rating, disputes, reports). 67 or more is healthy. It is updated daily and needs enough orders to be scored.",
+        "goal": "Your sales with GST this calendar month (Market time) against your own goal. The month does not follow the period above. The forecast is an estimate: your sales so far divided by the time passed, times the length of the month. It shows from the 4th. Only you see your goal."
       },
       "earnings": {
         "scope": "after commission, excl. GST",
@@ -342,6 +343,45 @@
           "unavailable": "Export failed. Try again."
         },
         "denied": "You can't export this report. Ask the store owner for access."
+      },
+      "goal": {
+        "title": "Monthly goal",
+        "scope": "Your own goal · {month} to date",
+        "of-goal": "of goal",
+        "pace": "On pace for {rate}",
+        "estimate": "Estimate",
+        "forecast": "Forecast {amount} by {day} · {month} was {last}",
+        "forecast-not-enough": "Forecast from day {day} · {month} was {last}",
+        "none": "No goal set for this month",
+        "none-hint": "Set a sales goal to see your progress and pace.",
+        "none-hint-read": "The store owner can set a goal for this month.",
+        "not-set": "Not set",
+        "goal": "Goal",
+        "to-date": "{month} to date",
+        "to-go": "{days, plural, one {# day} other {# days}} left · {amount} to go · {perDay} a day",
+        "set": "Set goal",
+        "edit": "Edit goal",
+        "set-title": "Set your monthly goal",
+        "edit-title": "Edit your monthly goal",
+        "field": "Sales goal for {month} ({currency}, incl. GST)",
+        "field-help": "Applies to {month} only, in {currency}. Your goal is private to your store and changes nothing else.",
+        "cancel": "Cancel",
+        "save": "Save goal",
+        "saved": "Goal for {month} saved.",
+        "reload": "Reload",
+        "error": {
+          "amount": "Enter an amount above zero, with at most the currency’s decimals.",
+          "invalid": "This goal is not accepted. Check the amount and try again.",
+          "conflict": "The goal was changed meanwhile. Reload to see the latest goal, then try again.",
+          "not-approved": "You can set a goal once your store is approved.",
+          "denied": "The goal can’t be changed in this session. Only the store owner, signed in with their own account, can set it.",
+          "csrf": "Your session needs a refresh. Reload the page and try again.",
+          "throttled": "Too many tries. Wait a moment and try again.",
+          "unavailable": "The goal could not be saved just now. Try again.",
+          "unknown": "The goal could not be saved. Try again."
+        },
+        "behind": "Behind pace: {rate}",
+        "retry": "Try again"
       }
     }
   },
@@ -1015,6 +1055,70 @@
     }
   },
   "catalog": {
+    "addOffer": {
+      "button": "Add offer",
+      "title": "Add offer",
+      "search-label": "Search the catalogue",
+      "search-help": "Matches the name, brand, category, product code or barcode of the products you may sell.",
+      "search-placeholder": "Search by name, brand, category or barcode",
+      "paste": "Paste barcodes",
+      "paste-label": "Barcodes",
+      "paste-help": "One barcode per line, or separated by commas.",
+      "paste-find": "Find products",
+      "paste-results": "Result for each barcode",
+      "barcode": {
+        "found": "Found",
+        "already-selling": "You already sell this",
+        "not-allowed": "Not in your categories",
+        "not-found": "Not in the catalogue",
+        "invalid": "Not a valid barcode"
+      },
+      "sizes": "{count, plural, one {# size} other {# sizes}}",
+      "already-selling": "You already sell this",
+      "picked": "{count, plural, one {# product selected} other {# products selected}}",
+      "sell-this": "Sell this",
+      "sell-these": "Sell these ({count})",
+      "saving": "Creating drafts",
+      "cancel": "Cancel",
+      "note-pick": "Tick the products you want to sell.",
+      "note-loading": "Getting ready.",
+      "loading": "Searching",
+      "empty": "There are no products to offer in your categories yet.",
+      "no-match": "No product matches that search. Try a name, a brand or a barcode.",
+      "no-activity": "Your shop has no business activity yet, so there are no products to offer. Ask us to add one.",
+      "error": "We couldn't search the catalogue. Try again.",
+      "create-error": "These offers could not be created:",
+      "create-reason": {
+        "sku-taken": "you already use this product code as a SKU",
+        "exists": "you already sell this product",
+        "type-not-allowed": "your shop can't sell this type of product",
+        "off": "selling from the catalogue is switched off",
+        "not-eligible": "your shop can't sell yet",
+        "throttled": "too many requests, try again in a minute",
+        "not-found": "this product is no longer available",
+        "unknown": "something went wrong, try again"
+      },
+      "open-drafts": "{count, plural, one {Open the # draft that was created} other {Open the # drafts that were created}}",
+      "condition-error": "We couldn't get your shop's settings, so drafts can't be created yet.",
+      "try-again": "Try again",
+      "clear": "Clear",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {page} of {pages}"
+    },
+    "onThePlatform": {
+      "title": "On the platform: products you can sell",
+      "note": "From your business activities only. Not part of the list above.",
+      "sell-label": "Sell this: {name}, {code}",
+      "sell-label-brand": "Sell this: {name} by {brand}, {code}",
+      "saving": "Creating…",
+      "saving-label": "Creating a draft offer for {name}",
+      "refused": "The offer could not be created: {reason}.",
+      "settings-error": "we couldn't get your shop's settings, try again",
+      "showing": "Showing {shown} of {total}",
+      "see-all": "See all platform products for “{q}”",
+      "add-own": "Add your own product"
+    },
     "error": {
       "unavailable": "We couldn't load this page. Check your connection and try again."
     },
@@ -1445,8 +1549,7 @@
           "for": "Actions for {name}",
           "open": "Open",
           "edit": "Edit",
-          "prices": "Prices",
-          "stock": "Stock",
+          "sizes": "Prices and stock",
           "submit": "Submit for review…",
           "delete": "Delete…",
           "done": {
@@ -1532,10 +1635,8 @@
         "description-claim-text": "The description makes a claim that needs a matching certificate",
         "unknown": "Unknown reason"
       },
-      "tab": {
-        "details": "Details"
-      },
-      "tabs": "Offer sections"
+      "your-offer": "Your offer",
+      "back": "Back to the offer"
     },
     "add": {
       "subtitle": "Your product · {market}",
@@ -1988,10 +2089,9 @@
       }
     },
     "variants-table": {
-      "title": "Prices and stock by variant",
-      "tab": "Variants",
-      "variant": "Variant",
-      "variant-n": "Variant {number}",
+      "title": "Sizes, prices and stock",
+      "variant": "Size",
+      "variant-n": "Size {number}",
       "select": "Select {variant}",
       "select-all": "Select all variants",
       "price-for": "Price for {variant}",
@@ -2107,7 +2207,23 @@
           "cancel": "Cancel",
           "apply": "{count, plural, =0 {Nothing to apply} one {Apply # change} other {Apply # changes}}"
         }
-      }
+      },
+      "explicit-save": "Prices and stock are saved with the button, not automatically.",
+      "unavailable": "Sizes, prices and stock can't be shown right now. Try again later.",
+      "receive": {
+        "column": "You receive (est.)",
+        "value": "≈ {amount}",
+        "before-tax": "before tax",
+        "for": "You receive (est.) for {variant}",
+        "unavailable": "“You receive” can’t be worked out right now. Your prices are not affected.",
+        "promotions": "More offers (codes, buy-one-get-one, free delivery) are set in Promotions. They are not counted in “You receive”.",
+        "no-category": "“You receive” shows once the product is published in the catalogue."
+      },
+      "your-price": "Your price",
+      "price-note": "Prices are in {currency}.",
+      "held-stock": "{count} held",
+      "price-note-inclusive": "Prices are in {currency} and include tax.",
+      "price-note-exclusive": "Prices are in {currency}, before tax."
     },
     "suggestions": {
       "title": "Value suggestions",
@@ -2923,6 +3039,63 @@
     "tax": {
       "taxable": "Taxable",
       "gst-free": "GST-free"
+    },
+    "size-details": {
+      "column": "Details",
+      "open": "Details",
+      "close": "Close",
+      "open-for": "Details for {size}",
+      "close-for": "Close details for {size}",
+      "heading": "{size} · {code}",
+      "tabs": "Price and stock of {size}",
+      "tab": {
+        "price": "Price",
+        "stock": "Stock"
+      },
+      "price": {
+        "now": "Price now",
+        "none": "No price yet",
+        "since": "Since {since}",
+        "unsaved": "Typed, not saved yet",
+        "held": "Waiting for review",
+        "held-help": "This new price goes on sale after our check.",
+        "special": "Special price",
+        "special-none": "None",
+        "special-running": "{amount}, running, ends {ends}",
+        "special-scheduled": "{amount}, from {starts} to {ends}",
+        "retired": "This size is no longer sold on the platform.",
+        "special-link": "Set or end a special price",
+        "held-special": "Special waiting for review",
+        "held-special-value": "{amount}, from {starts} to {ends}",
+        "held-special-help": "It starts only after our check."
+      },
+      "stock": {
+        "caption": "Stock of {size} by location",
+        "location": "Location",
+        "in-stock": "In stock",
+        "held": "held for checkouts and orders",
+        "lowest": "Lowest you can set",
+        "unsaved": "Typed: {value}, not saved yet",
+        "help": "Change stock in the row above. Units held for checkouts and orders that are not sent yet set the lowest stock you can save.",
+        "link": "Stock by location"
+      },
+      "receive": {
+        "title": "What you receive",
+        "customer-pays": "Customer pays",
+        "special": "Special price, running",
+        "typed": "The price you typed, not saved yet",
+        "commission": "Platform commission",
+        "commission-value": "− {amount}",
+        "you-receive": "You receive (est.)",
+        "you-receive-value": "≈ {amount}",
+        "note": "The most the commission can be. Your payout statement has the final amount.",
+        "none": "Set a price to see what you receive.",
+        "pending": "Working it out…",
+        "unavailable": "Can’t be worked out right now. Try again later.",
+        "note-before-tax": "Before tax. The most the commission can be. Your payout statement has the final amount.",
+        "unfinished": "Type a full price to see what you receive.",
+        "no-category": "Shows once the product is published in the catalogue."
+      }
     }
   },
   "stock": {
@@ -2976,7 +3149,7 @@
       "back": "Back to offer",
       "variant": "Variant {number}",
       "on-hand-for": "Units in stock at {location}",
-      "held": "{count, plural, one {# unit held in checkouts} other {# units held in checkouts}}",
+      "held": "{count, plural, one {# unit held for checkouts and orders} other {# units held for checkouts and orders}}",
       "saved": "Saved.",
       "no-locations": "Add a stock location before you set stock levels.",
       "no-variants": "This offer has no variants yet.",
@@ -5517,6 +5690,58 @@
           }
         ]
       },
+      "offers-offerId": {
+        "title": "Offer",
+        "about": "One offer to sell a product: its details, then each size with its price and stock on the same page.",
+        "good": [
+          "Type prices and stock in the size rows. Nothing is saved until you press Save.",
+          "Details opens one size at a time, with a Price tab and a Stock tab. Closing it keeps what you typed.",
+          "Held units are in orders not sent yet, so stock cannot go below them."
+        ],
+        "related": [
+          {
+            "label": "Products",
+            "href": "/products"
+          },
+          {
+            "label": "Stock locations",
+            "href": "/settings/stock-locations"
+          }
+        ]
+      },
+      "offers-offerId-prices": {
+        "title": "Prices",
+        "about": "Set this offer's prices and special prices, size by size.",
+        "good": [
+          "Dates and times are in your store's time zone ({zone}).",
+          "A large price change waits for review. The current price stays until it is approved."
+        ],
+        "related": [
+          {
+            "label": "Products",
+            "href": "/products"
+          },
+          {
+            "label": "Stock locations",
+            "href": "/settings/stock-locations"
+          }
+        ]
+      },
+      "offers-offerId-stock": {
+        "title": "Stock levels",
+        "about": "How many you have of each size in each stock location.",
+        "good": [],
+        "related": [
+          {
+            "label": "Products",
+            "href": "/products"
+          },
+          {
+            "label": "Stock locations",
+            "href": "/settings/stock-locations"
+          }
+        ]
+      },
       "offers-offerId-edit": {
         "title": "Edit offer",
         "about": "Change the details of this offer.",
@@ -5814,77 +6039,6 @@
         "related": []
       }
     },
-    "tabbed": {
-      "t-offers-offerId": {
-        "page": "Offer",
-        "about": "One offer to sell a product: its details, price, stock and variants.",
-        "good": [],
-        "tabs": [
-          {
-            "label": "Details",
-            "text": "One offer: its status, price, stock and variants.",
-            "points": [],
-            "related": [
-              {
-                "label": "Products",
-                "href": "/products"
-              },
-              {
-                "label": "Stock locations",
-                "href": "/settings/stock-locations"
-              }
-            ]
-          },
-          {
-            "label": "Prices",
-            "text": "Set this offer's price, and schedule price changes.",
-            "points": [
-              "Dates and times are in your store's time zone ({zone}).",
-              "A large price change waits for review. The current price stays until it is approved."
-            ],
-            "related": [
-              {
-                "label": "Products",
-                "href": "/products"
-              },
-              {
-                "label": "Stock locations",
-                "href": "/settings/stock-locations"
-              }
-            ]
-          },
-          {
-            "label": "Stock",
-            "text": "How many you have in each stock location.",
-            "points": [],
-            "related": [
-              {
-                "label": "Products",
-                "href": "/products"
-              },
-              {
-                "label": "Stock locations",
-                "href": "/settings/stock-locations"
-              }
-            ]
-          },
-          {
-            "label": "Variants",
-            "text": "The sizes, flavours or colours you sell of this product.",
-            "points": [],
-            "related": [
-              {
-                "label": "Products",
-                "href": "/products"
-              },
-              {
-                "label": "Stock locations",
-                "href": "/settings/stock-locations"
-              }
-            ]
-          }
-        ]
-      }
-    }
+    "tabbed": {}
   }
 }

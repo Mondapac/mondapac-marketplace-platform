@@ -1,3 +1,4 @@
+import { OfferChangeViewDto } from './offer-change.dto';
 import { ApiProperty } from '@nestjs/swagger';
 import { TopicRefBody } from './topic.dto';
 
@@ -279,6 +280,22 @@ export class OwnOfferProductLabel {
   @ApiProperty({ nullable: true, type: String }) typeCode!: string | null;
   @ApiProperty({ nullable: true, type: String, description: 'Published name, default locale.' })
   name!: string | null;
+  @ApiProperty({
+    nullable: true,
+    enum: ['PLATFORM', 'SELLER'],
+    description: 'Which route serves the thumbnail; null when the product was not found.',
+  })
+  scope!: 'PLATFORM' | 'SELLER' | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description:
+      'The first clean photo of the published revision. A PLATFORM product: GET ' +
+      'catalog/public-images/{market}/{productId}/{primaryImageId}/thumb; a SELLER product: GET ' +
+      'catalog/seller/products/{productId}/images/{primaryImageId}/thumb.',
+  })
+  primaryImageId!: string | null;
 }
 
 export class OwnOfferTagBadgeIssuer {
@@ -370,6 +387,15 @@ export class OwnOfferViewDto {
       'has no SKU. On the single-Offer read only.',
   })
   sellUnits?: OwnOfferSellUnitDto[];
+  @ApiProperty({
+    type: OfferChangeViewDto,
+    nullable: true,
+    required: false,
+    description:
+      'The latest held change of a live Offer (slice 2c) in any status, with the reviewer note; ' +
+      'null when it never had one. On the single-Offer read only.',
+  })
+  pendingChange?: OfferChangeViewDto | null;
 }
 
 export class OwnOfferStatusCounts {
@@ -462,4 +488,45 @@ export class OwnProductOptions {
   productStatuses!: string[];
   @ApiProperty({ type: [String], description: 'Statuses a seller sees on Offers in lists.' })
   offerStatuses!: string[];
+}
+
+export class PlatformSearchItemView {
+  @ApiProperty() productId!: string;
+  @ApiProperty() productCode!: string;
+  @ApiProperty({ nullable: true, type: String }) name!: string | null;
+  @ApiProperty({ nullable: true, type: String }) brandName!: string | null;
+  @ApiProperty({ nullable: true, type: String }) categoryId!: string | null;
+  @ApiProperty({ nullable: true, type: String }) categoryName!: string | null;
+  @ApiProperty({ description: 'The sizes of the product.' }) variantCount!: number;
+  @ApiProperty({ description: 'The seller already has a live Offer on this product.' })
+  alreadySelling!: boolean;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description:
+      'The first clean photo of the published revision. Serve it with GET ' +
+      'catalog/public-images/{market}/{productId}/{primaryImageId}/thumb.',
+  })
+  primaryImageId!: string | null;
+}
+
+export class PlatformSearchBarcodeResultView {
+  @ApiProperty() input!: string;
+  @ApiProperty({
+    enum: ['found', 'already-selling', 'not-allowed', 'not-found', 'invalid'],
+  })
+  status!: string;
+  @ApiProperty({ nullable: true, type: PlatformSearchItemView })
+  product!: PlatformSearchItemView | null;
+}
+
+export class PlatformSearchPage {
+  @ApiProperty({ type: [PlatformSearchItemView] }) items!: PlatformSearchItemView[];
+  @ApiProperty() total!: number;
+  @ApiProperty() page!: number;
+  @ApiProperty() pageSize!: number;
+  @ApiProperty({ nullable: true, enum: ['no-activity'], type: String }) notice!: string | null;
+  @ApiProperty({ type: [PlatformSearchBarcodeResultView] })
+  barcodeResults!: PlatformSearchBarcodeResultView[];
 }

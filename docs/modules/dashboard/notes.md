@@ -331,3 +331,195 @@ accepted, `docs/modules/reporting/notes.md`).
 The seller's "Product funnel" card has no API yet (FE-20261125-dashboards-seller-product-funnel), so
 the seller KPI endpoint is unchanged. The card is built in the phase 2 cards PR.
 
+
+### Reviews of the last 30 days (dashboards v2, phase 2)
+
+`GET dashboard/admin/kpis` gains the section `reviews` (key `reviews.settings.view`, a protected
+platform key, so only the Platform Administrator; null without it, `status: error` when it fails
+or takes over 1.5 s): reporting's `marketplaceReviews`. It is always the last 30 Market days
+(today included) against the 30 before, whatever `period` the page asks for; `period` in the
+section names both ranges. `kpis.status` is `off` while reviews are off in the Market (the default
+until an admin switches them on: the card says so and links to the switch, it is not an error),
+`not-enough-data` below 5 reviews (`minimum`; nothing else is given), else `available` with
+`reviews`, `averageTimes100` (433 is 4.33 stars), `histogram` (reviews of 1 to 5 stars),
+`lowStarShareBp` (1 and 2 stars ÷ reviews; 10000 is all) and the changes against the 30 days
+before (`na` while that period had under 5 reviews). Counts only, read live from the reviews module
+(nothing is stored in reporting): no text, author, product or seller. A review hidden or removed
+later stops counting; one published again counts in the window of its last publication. The card
+is built in the phase 2 cards PR. Reviews waiting in moderation and unanswered reviews are not in
+this section (FE-20261125-dashboards-reviews-moderation-backlog).
+
+### Zero-result searches (dashboards v2, phase 2)
+
+`GET dashboard/admin/kpis` gains the section `zeroResultSearches` (key `catalog.product.view`, null
+without it, `status: error` when it fails or takes over 1.5 s): reporting's
+`marketplaceZeroResultSearches`, from the nightly rows only. `queries` (at most ten, most searches
+first): `query` (the folded text; render it as a plain text node, never HTML or markup and never a
+link, Hassan I4), `searches` (every search of the text by the counted customers on the days of the
+period it found nothing at least once, including that day's searches that found something, Hassan
+I3), `searcherDays` (each kept day's distinct signed-in searchers summed)
+and `days`; `recordedDays` of `periodDays`. `not-enough-data` (`minimumSearchers: 10`) when no text
+was searched by at least ten distinct customers on one day of the period. The "?" must say that a
+text appears only on days at least ten customers searched it and that searches count on days it
+returned nothing. The mock's "Top searches" card with a no-result share is
+FE-20261125-dashboards-top-searches-no-result-share. The card is built in the phase 2 cards PR.
+
+### Discount cost (dashboards v2, phase 2)
+
+`GET dashboard/admin/kpis` gains the section `discountCost` (keys `commission-payouts.settlement.view`
+and `promotions.promotion.manage`, both, null without either: spend is for promotion managers, so the
+default Viewer, which holds the money key and promotion view, does not see it; owner's choice of
+25 November; `status: error` when it fails or takes over 1.5 s; null too when
+promotions refuses the key): reporting's `marketplaceDiscountCost`. The discounts of the orders whose
+payment was confirmed in the period's Market days that still stand, with GST (`amount`), Mondapac's
+and the sellers' shares (`platformShare`, `sellerShare`, `platformShareBp`), per kind (`promotion`,
+`first-order`, `free-shipping`, each with `uses`, `amount`, `platformShare`, `shareBp`; zeros listed;
+a kind of 1 to 4 uses has every figure null, and the shares of the kinds shown add up to 100.00%),
+`change` and `previousAmount` against the period before (`na` below 100.00 of the currency before), and
+`released`: the orders of the period refunded or cancelled after payment and the discount they gave
+back (already left out of `amount`; null for 1 to 4 orders). `not-enough-data` below five
+discounted orders. The money base of the change is 10,000 minor units in every currency (100.00 AUD,
+10,000 JPY); scaling it per currency is deferred with the other KPIs
+(FE-20261125-dashboards-money-base-per-currency). The card's "?"
+must say the amounts include GST, while the finance section's net revenue subtracts the
+platform-funded part without GST. Top promotions by cost and the seller's own discount cost are
+deferred (FE-20261125-dashboards-top-promotions-by-cost, FE-20261125-dashboards-seller-discount-cost).
+The card is built in the phase 2 cards PR.
+
+### Monthly target and seller goal, with the month-end forecast (dashboards v2, phase 2)
+
+API only; the cards come in the phase 2 cards PR.
+
+- Market target: a Market setting `monthly-revenue-target` in the settings store (ADR-0026, the
+  history table keeps every earlier target). Value `none` or `<currency>:<minor units>` in the
+  Market's own currency. `GET` and `PUT settings/admin/monthly-revenue-target` (keys
+  `settings.monthly-revenue-target.view` and `.manage`, unprotected; the view key is in the Viewer
+  role, seed version 38). The change is the shared settings flow: version check, refused in
+  acting-as, System requests review, revert, and the audit action
+  `settings.monthly-revenue-target.changed` (money before and after). One standing target for
+  every month until changed.
+- Seller goal: table `reporting.seller_monthly_goals` (per seller and calendar month, version,
+  docs/design/data/reporting.md). `PUT reporting/seller/monthly-goal` (key
+  `reporting.seller-goal.manage`, a seller key the Seller Owner holds; denied while not approved;
+  the session's seller only; this month or one of the next 12; audited as
+  `reporting.seller-goal.changed`). Reporting owns it, not sellers: it is read only with
+  reporting's figures and keeps the module to one schema; it is the one authored table of
+  reporting (its down migration loses the goals).
+- `GET dashboard/admin/kpis` gains `marketTarget` (keys `commission-payouts.settlement.view` and
+  `settings.monthly-revenue-target.view`; null without both, `status: error` on failure or after
+  1.5 s). `GET reporting/seller/kpis` gains `sellerGoal` (key `ordering.seller-order.view`, as the
+  strip; null when refused, `status: error` on failure or after 1.5 s). Both are the current
+  calendar month whatever the period.
+- Revenue basis: the KPI one. Admin: GMV with GST (goods of paid seller orders on their paid day;
+  refunds never lower it). Seller: sales with GST, the same basis per seller. Days and the month
+  are the Market's (the rollups are by Market day), also for the seller goal: the seller's own
+  zone is not used (FE-20261125-seller-goal-seller-zone). A goal cannot be removed yet
+  (FE-20261125-seller-goal-remove); the Market target is one standing value, not per month
+  (FE-20261125-market-target-per-month).
+- Forecast (`reporting/domain/month-forecast.ts`): month to date ÷ time elapsed in the month ×
+  length of the month, both exact time from the month's start to the next month's start in the
+  Market zone (a month with a daylight-saving change is as long as it really is), half up. Always
+  an estimate (`status: estimate`); `not-enough-data` while fewer than 3 whole Market days of the
+  month are behind today (so from the 4th). With it: the whole month before, `progressBp`
+  (to date ÷ target), `paceBp` (forecast ÷ target), `toGo` and `perDayToGo` (`daysLeft` counts
+  today). A target in another currency than the Market's is shown as no target.
+
+### Abandoned carts (dashboards v2, phase 2, nightly snapshot)
+
+`GET dashboard/admin/kpis` gains the section `abandonedCarts` (key `ordering.order.view`, null
+without it, `status: error` when it fails or takes over 1.5 s): reporting's
+`marketplaceAbandonedCarts`, from `reporting.daily_abandoned_carts` only. `carts` and
+`approximateValue` (Money as a string; null with mixed currencies) of `asOfDay`, the latest snapshot
+day of the period, with `change` against the latest day of the period before (`na` below 5 carts
+there), and `recordedDays` of `periodDays`. `not-enough-data` below 5 carts (no count, no value) or
+with no snapshot in the period (the period "today" has none until tomorrow). The card must say
+"about" for the value (prices when the items were added) and show the count as "untouched 24h+ as of
+<day>", not as a total of the period. "Reminders sent" is not in the API
+(FE-20261125-dashboards-abandoned-carts-reminders-sent). The card is built in the phase 2 cards PR.
+
+### Phase 2 cards (dashboards v2, phase 2, cards PR)
+
+The phase 2 sections now have cards. Admin (`apps/admin/src/dashboard/kpi-phase2.tsx`; shared card
+pieces moved to `kpi-parts.tsx`), after the chart and Needs action: a row with Monthly target and a
+column of Shopping funnel with a compact Abandoned carts card under it (as in the design); the existing row (sales by category, orders by status, supply
+and health); Top sellers; then a row with Searches with no results, Orders by state and Discount
+cost. Each card is left out when its section is null or absent (no key; the panel mirrors the API's
+keys in `allowedOf`), shows an in-place error with a secondary "Try again" (reads the page
+again) when its section is `error` or the whole
+read failed, a skeleton while the read streams, and "Not enough data yet" in words (never 0) for
+`not-enough-data`, a hidden funnel step ("Fewer than 5") and a held-back discount kind. Each has a
+"?" with the rules the sections above ask for (funnel: customer-days and steps under 5 hidden in
+each answer; searches: counted on the days a text found nothing, shown only when 10 or more
+shoppers searched it in a day; discounts: with GST, unlike net revenue). The pace badge says it in words, not by colour only ("On pace for X%" at 100% or more,
+"Behind pace: X%" below); the gauge's text alternative says the same figure as its centre; the
+"Estimate" badge shows only with a forecast. Muted text on the tiles (`fg-muted` on `bg-muted`)
+measures 5.2:1 light and 5.6:1 dark. A zero-result text is
+rendered only as a React text node (no HTML, link or title attribute; tested with markup in it).
+Orders by state shows the region code as the API sends it
+(FE-20261125-dashboards-orders-by-state-names).
+
+The target is edited on the dashboard: with `settings.monthly-revenue-target.manage` the Monthly
+target card has an Edit button that opens a dialog (`target-editor.tsx`): it reads `GET
+settings/admin/monthly-revenue-target` (version, review flag), sends `PUT` with the version, a note
+where the area is reviewed (an amount takes a comma only as a thousands separator), or `target: null` to remove it, and reads the page again. The currency is
+the Market's from the KPI section, because the settings read does not name it while no target is
+set; a Settings page is FE-20261125-market-target-settings-page. Both routes were added to the admin
+BFF.
+
+Seller (`apps/seller/src/dashboard/kpis/seller-goal.tsx`): Monthly goal beside the sales chart, from
+`sellerGoal` of the KPI read; left out when null, error in place with "Try again", "Set goal" or
+"Edit goal" in the card header only with `reporting.seller-goal.manage`. The dialog sets this month's goal (`PUT reporting/seller/monthly-goal`
+through the BFF, the version seen; future months are FE-20261125-seller-goal-future-months). The
+panel cannot tell an acting-as session in advance: the API refuses it with 403 like a missing key,
+and the dialog says the goal can only be set by the store owner signed in as themselves. The seller
+new-versus-returning and product funnel cards have no API yet and are not built. Built in code first
+under speed mode (FE-20261125-dashboards-phase2-cards-figma-backport). Screenshots:
+`apps/admin/test/dashboard-shots`, `apps/seller/test/dashboard-shots` (not part of CI).
+
+## Drill-down (dashboards v2, phase 2)
+
+A click on an admin dashboard figure opens the Orders list on the matching filter (the URL
+filters of PR 1331). Every address is built by one pure helper, `ordersHref` in
+`apps/admin/src/orders/orders-link.ts`: it writes only the names and values the list's own reader
+takes (`status`, `fulfilment`, `paymentState`, `placed`, `from`/`to` as real yyyy-mm-dd days, from
+the list's constants), drops any other value and a backwards range, and encodes with
+`URLSearchParams`. No text from an answer and no id of a person reaches an address.
+
+| Element | Opens |
+|---|---|
+| GMV and Seller orders paid cards | `/orders?from=<period from>&to=<period to>` |
+| Orders by status: Delivered, Shipped, To ship (legend row and table row) | `/orders?fulfilment=<delivered\|shipped\|to-ship>&from=&to=` |
+| Orders by status: Cancelled | `/orders?status=cancelled&from=&to=` |
+| Orders by status: card action "Orders" | `/orders?from=&to=` |
+| Revenue chart, GMV and Orders measures: a day (pointer column, Enter on the focused chart, table row) | `/orders?from=<day>&to=<day>` |
+| Revenue chart action "View orders" | `/orders?from=&to=` |
+| Work queue: Failed customer payments | `/orders?status=cancelled` |
+
+How it is built: `ShareBar` (packages/ui) takes `href` and `linkLabel` per part; a linked legend
+row is an `<a>` with the same grid, so the layout does not move. `LineAreaChart` takes `href` and
+`linkLabel` per point: a transparent column per day is a link for a pointer (out of the tab order,
+so a long range adds no tab stops), Enter on the focused chart follows the active day's link (the
+live text says so; Enter with no day chosen first reads the last day), and in "View as table" each
+day is a focusable link. The tooltip of a linked day shows "View orders ›". On touch the first tap
+only shows the day; a second tap on it, or the tooltip's link, follows. A linked legend row is at
+least 44 px high on a phone, and its value and share are its description for a screen reader; next
+to links, the plain rows are no tab stops. Names: "View orders:
+Delivered, placed 16 Nov - 22 Nov" and "View orders placed on 21 Nov". The names hold no count on
+purpose: the KPI counts seller orders by their paid Market day, the list shows orders by their
+placed day on the admin's clock, so the list is the closest match, not the same number
+(FE-20261125-dashboard-drill-paid-day).
+
+Not linked (no matching list filter, so no link is invented):
+
+- Orders by state rows: no delivery-state filter (FE-20261125-dashboard-drill-orders-by-state).
+- Discount cost order count: no discounted or promotion filter
+  (FE-20261125-dashboard-drill-discounted-orders).
+- Orders by status Refunded part and the Refunded chart measure: no refund filter on the list, and
+  the Refunds list reads no filter from the address (FE-20261125-dashboard-drill-refunded-orders).
+- Sales by category: no category filter (FE-20261125-dashboard-drill-category).
+- Failed customer payments opens every cancelled order, not only payment failures of the last 24
+  hours (FE-20261125-dashboard-drill-failed-payments).
+- Monthly target, shopping funnel, abandoned carts, zero-result searches, net revenue, average
+  order: no list of their items exists; a zero-result text never goes into an address.
+- Seller dashboard: the seller orders list reads no filter from the address (only `view=board`), so
+  its cards and sales chart keep their plain links (FE-20261125-dashboard-drill-seller-orders).

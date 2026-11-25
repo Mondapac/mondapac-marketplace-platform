@@ -280,3 +280,140 @@ model SecurityEventArchive {
   @@map("security_events_archive")
   @@schema("platform")
 }
+
+/// One model call through the AI Gateway (docs/design/domain/platform-ai.md section 10): which
+/// capability, route and attempt, the tokens, the unit price used, the cost, the latency and the
+/// outcome. Never any text, customer id, IP or personal key; a seller id only for a seller-scoped
+/// capability. Kept 90 days, then the retention job `platform.ai-usage-retention` deletes it in
+/// batches (no partitions). Written and purged only by platform/persistence/ai-usage/. CHECKs and
+/// the grants are hand-written in the migration.
+model AiCall {
+  /// The gateway's call id (UUIDv7), also the id of the call's budget reservation.
+  id            String   @id @db.Uuid
+  marketId      String   @map("market_id") @db.VarChar(8)
+  tenantId      String   @map("tenant_id")
+  /// When the call was sent, from the injected Clock.
+  occurredAt    DateTime @map("occurred_at") @db.Timestamptz(6)
+  /// The Market day (Market time zone) the call is counted on: the day of its reservation.
+  day           DateTime @db.Date
+  /// The registered capability id, `<module>.<name>`.
+  capability    String   @db.VarChar(100)
+  /// Seller-scoped capabilities only; a plain id, no FK across schemas.
+  sellerId      String?  @map("seller_id") @db.Uuid
+  /// A buyer capability called by an anonymous visitor (the guest pool).
+  guest         Boolean
+  provider      String   @db.VarChar(40)
+  model         String   @db.VarChar(200)
+  /// 1 for the first try; G3 adds fallbacks.
+  attempt       Int      @db.SmallInt
+  inputTokens   Int      @map("input_tokens")
+  outputTokens  Int      @map("output_tokens")
+  /// The unit prices the cost was counted at, pico US dollars per token.
+  inputPicoUsd  BigInt   @map("input_pico_usd")
+  outputPicoUsd BigInt   @map("output_pico_usd")
+  /// US micro-dollars; on a timeout the most the call can cost.
+  costMicroUsd  BigInt   @map("cost_micro_usd")
+  latencyMs     Int      @map("latency_ms")
+  /// ok | timeout | unavailable (CHECK).
+  outcome       String   @db.VarChar(20)
+
+  /// The retention scan, oldest first.
+  @@index([marketId, occurredAt, id], map: "ai_calls_market_id_occurred_at_id_idx")
+  @@map("ai_calls")
+  @@schema("platform")
+}
+
+/// Daily totals of the AI Gateway per Market, capability and seller (platform-ai.md sections 10
+/// and 11): calls, failures, budget refusals, tokens, settled cost and latency counts in fixed
+/// buckets, from which p50 and p95 are read. Kept 25 months. One row per (market, day,
+/// capability, seller): the unique index is NULLS NOT DISTINCT in the migration (no seller is
+/// null). Written only by platform/persistence/ai-usage/.
+model AiUsageDay {
+  /// UUIDv7; the natural key is the hand-written unique index below.
+  id               String   @id @db.Uuid
+  marketId         String   @map("market_id") @db.VarChar(8)
+  tenantId         String   @map("tenant_id")
+  day              DateTime @db.Date
+  capability       String   @db.VarChar(100)
+  sellerId         String?  @map("seller_id") @db.Uuid
+  calls            Int      @default(0)
+  failures         Int      @default(0)
+  /// Calls answered by a fallback route (G3); 0 until then.
+  fallbacks        Int      @default(0)
+  /// Runs refused before any call: a full cap, too large an input, too many rounds.
+  refusals         Int      @default(0)
+  inputTokens      BigInt   @default(0) @map("input_tokens")
+  outputTokens     BigInt   @default(0) @map("output_tokens")
+  costMicroUsd     BigInt   @default(0) @map("cost_micro_usd")
+  /// Latency counts: calls that took at most 500 ms, 1, 2, 4, 8, 16 and 32 s, and longer.
+  latencyLe500Ms   Int      @default(0) @map("latency_le_500_ms")
+  latencyLe1000Ms  Int      @default(0) @map("latency_le_1000_ms")
+  latencyLe2000Ms  Int      @default(0) @map("latency_le_2000_ms")
+  latencyLe4000Ms  Int      @default(0) @map("latency_le_4000_ms")
+  latencyLe8000Ms  Int      @default(0) @map("latency_le_8000_ms")
+  latencyLe16000Ms Int      @default(0) @map("latency_le_16000_ms")
+  latencyLe32000Ms Int      @default(0) @map("latency_le_32000_ms")
+  latencyGt32000Ms Int      @default(0) @map("latency_gt_32000_ms")
+
+  /// NULLS NOT DISTINCT in the migration (Prisma cannot declare it).
+  @@unique([marketId, day, capability, sellerId], map: "ai_usage_days_market_id_day_capability_seller_id_key")
+  @@map("ai_usage_days")
+  @@schema("platform")
+}
+
+/// The AI budget counters (platform-ai.md sections 7 and 10): one row per Market, period (day or
+/// month, in the Market's time zone) and cap scope (the Market, one capability, one seller, the
+/// guest pool). `held` is settled plus reserved spend; a reservation adds to `held` only while
+/// `held + estimate <= cap`, one conditional UPDATE per row, in a fixed order. Settling corrects
+/// `held` and adds to `spent`. Kept 25 months. Written only by platform/persistence/ai-usage/.
+model AiBudgetCounter {
+  marketId         String    @map("market_id") @db.VarChar(8)
+  tenantId         String    @map("tenant_id")
+  /// day | month (CHECK).
+  period           String    @db.VarChar(5)
+  /// The day, or the first day of the month.
+  periodStart      DateTime  @map("period_start") @db.Date
+  /// market | capability | seller | guest (CHECK).
+  scope            String    @db.VarChar(10)
+  /// The capability id or the seller id; '' for the Market and the guest pool.
+  scopeKey         String    @map("scope_key") @db.VarChar(100)
+  /// Settled plus reserved, US micro-dollars.
+  heldMicroUsd     BigInt    @default(0) @map("held_micro_usd")
+  /// Settled only, US micro-dollars.
+  spentMicroUsd    BigInt    @default(0) @map("spent_micro_usd")
+  /// The capability's "cap reached" record (AI Gateway G7, design section 10): set once, on the
+  /// capability's day row, when a cap of the capability switched it off that day, so the owning
+  /// module notifies at most once a day. Null until then; both set or both null (CHECK).
+  capReachedAt     DateTime? @map("cap_reached_at") @db.Timestamptz(6)
+  /// day | month: which cap was reached (CHECK).
+  capReachedPeriod String?   @map("cap_reached_period") @db.VarChar(5)
+
+  @@id([marketId, periodStart, period, scope, scopeKey], map: "ai_budget_counters_pkey")
+  @@map("ai_budget_counters")
+  @@schema("platform")
+}
+
+/// A budget reservation of one AI call (platform-ai.md section 10): the most the call can cost,
+/// held on the counters of its scope until the call is settled. Settling deletes it (DELETE
+/// once, so a second settle changes nothing); one a server never settled expires and the job
+/// `platform.ai-reservation-sweeper` releases it. Lives minutes. Written only by
+/// platform/persistence/ai-usage/.
+model AiBudgetReservation {
+  /// The call id.
+  id               String   @id @db.Uuid
+  marketId         String   @map("market_id") @db.VarChar(8)
+  tenantId         String   @map("tenant_id")
+  /// The Market day the counters were reserved on; the settle is written to it.
+  day              DateTime @db.Date
+  capability       String   @db.VarChar(100)
+  sellerId         String?  @map("seller_id") @db.Uuid
+  guest            Boolean
+  estimateMicroUsd BigInt   @map("estimate_micro_usd")
+  createdAt        DateTime @map("created_at") @db.Timestamptz(6)
+  expiresAt        DateTime @map("expires_at") @db.Timestamptz(6)
+
+  /// The sweeper's scan, soonest first.
+  @@index([marketId, expiresAt, id], map: "ai_budget_reservations_market_id_expires_at_id_idx")
+  @@map("ai_budget_reservations")
+  @@schema("platform")
+}

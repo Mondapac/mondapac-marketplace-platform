@@ -29,6 +29,7 @@
   { "name": "cart.add-guest-item", "rule": "anonymous" },
   { "name": "cart.add-item", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.clear-ordered-lines", "rule": "system" },
+  { "name": "cart.count-abandoned-carts", "rule": "system" },
   { "name": "cart.list-idle-account-carts", "rule": "system" },
   { "name": "cart.merge-guest-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.move-saved-to-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
@@ -98,6 +99,11 @@
   },
   { "name": "catalog.own-offers-export", "rule": "permissions", "whenSellerNotApproved": "allow" },
   { "name": "catalog.own-offers-list", "rule": "permissions", "whenSellerNotApproved": "allow" },
+  {
+    "name": "catalog.own-platform-product-search",
+    "rule": "permissions",
+    "whenSellerNotApproved": "allow"
+  },
   {
     "name": "catalog.own-product-image-list",
     "rule": "permissions",
@@ -422,6 +428,7 @@
     "rule": "own-resources",
     "whenSellerNotApproved": "allow"
   },
+  { "name": "engagement.count-search-shoppers", "rule": "system" },
   { "name": "engagement.count-shopping-funnel", "rule": "system" },
   { "name": "engagement.follow-store", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "engagement.followed-among", "rule": "system" },
@@ -883,7 +890,9 @@
   { "name": "reporting.reconcile-report-facts", "rule": "system" },
   { "name": "reporting.record-ledger-facts", "rule": "system" },
   { "name": "reporting.record-report-facts", "rule": "system" },
+  { "name": "reporting.snapshot-abandoned-carts", "rule": "system" },
   { "name": "reporting.snapshot-daily-engagement", "rule": "system" },
+  { "name": "reporting.snapshot-daily-searches", "rule": "system" },
   {
     "name": "reporting.view-seller-net-earnings",
     "rule": "permissions",
@@ -936,6 +945,7 @@
   },
   { "name": "search.list-recently-viewed-guest", "rule": "anonymous" },
   { "name": "search.list-specials", "rule": "anonymous" },
+  { "name": "search.purge-zero-result-queries", "rule": "system" },
   { "name": "search.rebuild-offer-index", "rule": "system" },
   { "name": "search.reindex-offer-attributes", "rule": "system" },
   { "name": "search.request-offer-reindex", "rule": "system" },
@@ -945,6 +955,7 @@
   { "name": "search.sync-offer-documents", "rule": "system" },
   { "name": "search.sync-product-ratings", "rule": "system" },
   { "name": "search.view-product-detail", "rule": "anonymous" },
+  { "name": "search.zero-result-texts", "rule": "system" },
   { "name": "security.deliver-security-alerts", "rule": "system" },
   { "name": "security.evaluate-security-rules", "rule": "system" },
   { "name": "security.send-security-digests", "rule": "system" },
@@ -1064,6 +1075,12 @@
     "whenSellerNotApproved": "allow"
   },
   { "name": "settings.read-offer-queue-backlog-limits", "rule": "system" },
+  { "name": "settings.read-offer-review-policy", "rule": "anonymous" },
+  {
+    "name": "settings.view-offer-review-emergency-stop",
+    "rule": "own-resources",
+    "whenSellerNotApproved": "deny"
+  },
   { "name": "shipping.book-carrier-delivery", "rule": "system" },
   { "name": "shipping.cancel-carrier-delivery", "rule": "system" },
   { "name": "shipping.carrier-shipment", "rule": "system" },

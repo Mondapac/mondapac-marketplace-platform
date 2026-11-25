@@ -83,7 +83,8 @@ describe.each(TEST_MARKETS)('product search over HTTP in market %s', (code) => {
       {
         actor: 'anonymous',
         market: code,
-        input: { q: 'sausages', category: CATEGORY, page: 2, pageSize: 10 },
+        // The route, never the query string, asks for the zero-result note (dashboards v2).
+        input: { q: 'sausages', category: CATEGORY, page: 2, pageSize: 10, noteZeroResult: true },
       },
     ]);
   });
@@ -115,8 +116,8 @@ describe.each(TEST_MARKETS)('product search over HTTP in market %s', (code) => {
     expect(combined.status).toBe(200);
     expect((alone.body as typeof PAGE).items[0]?.primaryImage).toEqual(PAGE.items[0]?.primaryImage);
     expect(calls.map((call) => call.input)).toEqual([
-      { store: 'kedron-halal', page: 2 },
-      { store: 'kedron-halal', category: CATEGORY },
+      { store: 'kedron-halal', page: 2, noteZeroResult: true },
+      { store: 'kedron-halal', category: CATEGORY, noteZeroResult: true },
     ]);
     expect(calls.every((call) => call.actor === 'anonymous')).toBe(true);
   });
@@ -128,8 +129,8 @@ describe.each(TEST_MARKETS)('product search over HTTP in market %s', (code) => {
     expect(alone.status).toBe(200);
     expect(combined.status).toBe(200);
     expect(calls.map((call) => call.input)).toEqual([
-      { brand: 'saffron-co', page: 2 },
-      { brand: 'saffron-co', category: CATEGORY },
+      { brand: 'saffron-co', page: 2, noteZeroResult: true },
+      { brand: 'saffron-co', category: CATEGORY, noteZeroResult: true },
     ]);
     expect(calls.every((call) => call.actor === 'anonymous')).toBe(true);
   });
@@ -139,6 +140,12 @@ describe.each(TEST_MARKETS)('product search over HTTP in market %s', (code) => {
       const response = await get(query);
       expect(response.status).toBe(400);
     }
+    expect(calls).toEqual([]);
+  });
+
+  it('never lets the query string set the zero-result note', async () => {
+    const response = await get('?q=tea&noteZeroResult=false');
+    expect(response.status).toBe(400);
     expect(calls).toEqual([]);
   });
 

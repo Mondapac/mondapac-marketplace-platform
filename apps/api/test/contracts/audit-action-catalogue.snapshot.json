@@ -502,6 +502,91 @@
     }
   },
   {
+    "action": "catalog.offer.review-referred",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "outcome": "enumOf(queued|published)",
+      "policyVersion": "integer",
+      "reasons": "listOf(enumOf(emergency-stop|probation|certificate-badge|handling|contact-text|full-review|sensitive-category|review-all), max 8)",
+      "trigger": "enumOf(first-publication|edit)"
+    }
+  },
+  {
+    "action": "catalog.offer-change.held",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "changeId": "id",
+      "fields": "listOf(enumOf(description|handling|tags), max 3)",
+      "handling": "optional(enumOf(sealed-original|repacked|prepared|fresh))",
+      "policyVersion": "integer",
+      "reasons": "listOf(enumOf(emergency-stop|probation|certificate-badge|handling|contact-text|full-review|sensitive-category|review-all), max 8)"
+    }
+  },
+  {
+    "action": "catalog.offer-change.approved",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "addedTagIds": "listOf(id, max 32)",
+      "changeId": "id",
+      "fields": "listOf(enumOf(description|handling|tags), max 3)",
+      "handling": "optional(enumOf(sealed-original|repacked|prepared|fresh))"
+    }
+  },
+  {
+    "action": "catalog.offer-change.changes-requested",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "changeId": "id",
+      "fields": "listOf(enumOf(description|handling|tags), max 3)"
+    }
+  },
+  {
+    "action": "catalog.offer-change.rejected",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "changeId": "id",
+      "fields": "listOf(enumOf(description|handling|tags), max 3)"
+    }
+  },
+  {
+    "action": "catalog.offer-change.withdrawn",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "changeId": "id",
+      "fields": "listOf(enumOf(description|handling|tags), max 3)"
+    }
+  },
+  {
+    "action": "catalog.offer-change.superseded",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "cause": "enumOf(resubmitted|offer-deleted)",
+      "changeId": "id",
+      "fields": "listOf(enumOf(description|handling|tags), max 3)"
+    }
+  },
+  {
     "action": "catalog.missing-details-email.requested",
     "targetType": "catalog.missing-details-email",
     "targetId": "id",
@@ -2852,6 +2937,30 @@
     }
   },
   {
+    "action": "pricing.cost.cleared",
+    "targetType": "pricing.cost-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "offerId": "id",
+      "recordId": "id",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.cost.set",
+    "targetType": "pricing.cost-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "offerId": "id",
+      "recordId": "id",
+      "variantId": "id"
+    }
+  },
+  {
     "action": "pricing.offer-write.refusals-suppressed",
     "targetType": "pricing.write-refusal-actor",
     "targetId": "id",
@@ -2880,11 +2989,12 @@
     "before": null,
     "after": {
       "amount": "money",
-      "anchorAmount": "money",
-      "anchorRecordId": "id",
+      "anchorAmount": "optional(money)",
+      "anchorRecordId": "optional(id)",
       "effectiveFrom": "instant",
       "offerId": "id",
       "recordId": "id",
+      "referenceAmount": "optional(money)",
       "variantId": "id"
     }
   },
@@ -3017,6 +3127,42 @@
       "cause": "enumOf(withdrawn|replaced|offer-removed|variant-removed)",
       "offerId": "id",
       "recordId": "id",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.first-price.checked",
+    "targetType": "pricing.price-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "bandPercent": "integer",
+      "businesses": "integer",
+      "businessesNeeded": "integer",
+      "direction": "optional(enumOf(up|down))",
+      "offerId": "id",
+      "outcome": "enumOf(no-reference|reference-unavailable|within|outside)",
+      "postReview": "boolean",
+      "recordId": "id",
+      "referenceAmount": "optional(money)",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.first-price.rechecked",
+    "targetType": "pricing.price-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "bandPercent": "integer",
+      "businesses": "integer",
+      "offerId": "id",
+      "outcome": "enumOf(within|outside)",
+      "referenceAmount": "money",
       "variantId": "id"
     }
   },
@@ -3250,6 +3396,20 @@
     }
   },
   {
+    "action": "reporting.seller-goal.changed",
+    "targetType": "reporting.seller-goal",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "goal": "optional(money)"
+    },
+    "after": {
+      "monthStart": "instant",
+      "goal": "money",
+      "version": "integer"
+    }
+  },
+  {
     "action": "reviews.market-status.changed",
     "targetType": "reviews.market-settings",
     "targetId": "enumOf(reviews-settings)",
@@ -3437,7 +3597,7 @@
   {
     "action": "settings.market-setting.changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(list-paging|cart-mode|ai-description-writer|ai-description-writer-tier|offer-review-mode|offer-review-certificate-badges)",
+    "targetId": "enumOf(list-paging|cart-mode|ai-description-writer|ai-description-writer-tier|offer-review-mode|offer-review-certificate-badges|offer-review-emergency-stop)",
     "actors": ["authenticated"],
     "before": {
       "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced|all|risk-based|review|automatic)"
@@ -3457,6 +3617,19 @@
     },
     "after": {
       "value": "integer",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "settings.monthly-revenue-target.changed",
+    "targetType": "settings.market-setting",
+    "targetId": "enumOf(monthly-revenue-target)",
+    "actors": ["authenticated"],
+    "before": {
+      "target": "optional(money)"
+    },
+    "after": {
+      "target": "optional(money)",
       "version": "integer"
     }
   },

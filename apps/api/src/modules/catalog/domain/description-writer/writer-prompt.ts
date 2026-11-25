@@ -6,6 +6,12 @@ import type { WriterLength, WriterRequest, WriterTone } from './writer-request';
  * the capability is switched on again.
  */
 export const WRITER_PROMPT_VERSION = 'description-writer-1';
+/** A provider that has not answered by then is cut (the modal shows "We couldn't write a draft."). */
+export const WRITER_TIMEOUT_MS = 25_000;
+/** Enough for about 150 words and a margin; the guard cuts the kept text at its own bound. */
+export const WRITER_MAX_OUTPUT_TOKENS = 700;
+/** The facts, instructions and system text of one request stay well under this (G2 enforces it). */
+export const WRITER_MAX_INPUT_TOKENS = 8_000;
 
 const TONE: Readonly<Record<WriterTone, string>> = Object.freeze({
   'clear-friendly': 'clear and friendly',

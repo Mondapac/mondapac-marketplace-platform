@@ -34,3 +34,17 @@ export interface JumpAnchor {
   readonly recordId: Id<'RegularPriceRecord'>;
   readonly amount: PriceAmount;
 }
+
+/**
+ * R4 (risk-based Offer approval, ADR-0051): the reference a first regular price was measured
+ * against, copied so it never changes. Only on the first price of a series, and only when the
+ * Variant had a reference (enough distinct businesses); every other record carries null.
+ */
+export interface ReferenceCheck {
+  /** The median of the other live Offers' regular prices, rounded half up to minor units. */
+  readonly amount: PriceAmount;
+  /** How many distinct businesses formed the median. */
+  readonly businesses: number;
+  /** The Market's band (percent) at the time of the write. */
+  readonly bandPercent: number;
+}

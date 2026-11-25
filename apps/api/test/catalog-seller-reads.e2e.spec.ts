@@ -24,8 +24,10 @@ import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
+import { OFFER_PENDING_CHANGE_REPOSITORY } from '../src/modules/catalog/application/ports/offer-pending-change.repository';
 import { CLOCK } from '../src/platform/clock/clock.module';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
+import { InMemoryOfferPendingChanges } from './support/catalog-offer-edit-review-fakes';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { createTestApp, type LogLine } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
@@ -117,6 +119,9 @@ describe('seller read routes over HTTP (integration)', () => {
           })
           .overrideProvider(OFFER_REPOSITORY)
           .useValue({ findById: () => Promise.resolve(offer) })
+          // The own-Offer read carries the latest held change (slice 2c); no database here.
+          .overrideProvider(OFFER_PENDING_CHANGE_REPOSITORY)
+          .useValue(new InMemoryOfferPendingChanges())
           .overrideProvider(ALLOWED_PRODUCT_TYPES_READER)
           .useValue({
             allowedFor: (_context: unknown, sellerId: unknown) => {
@@ -828,6 +833,7 @@ describe('seller read routes over HTTP (integration)', () => {
         offerId: offer.state.id,
         description: { en: 'mine' },
         sellUnits: [{ variantId: VARIANT, variantSku: 'SKU-1-A', selling: false }],
+        pendingChange: null,
       });
 
       offer = offerOf(code, id<'Seller'>(0xb999));

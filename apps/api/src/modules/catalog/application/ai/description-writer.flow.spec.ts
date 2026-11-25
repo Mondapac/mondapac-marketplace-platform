@@ -87,14 +87,18 @@ describe.each(['AU', 'ZZ'] as const)('description writer in market %s', (code) =
   let matched: string[][];
 
   const model: DescriptionWriterModel = {
-    configured: () => configured,
+    // The gateway's evaluation, as far as the writer sees it: the route and the seller's switch.
+    available: (_c, audience) =>
+      Promise.resolve(
+        configured && (audience.kind !== 'seller' || sellerSwitch.get(audience.sellerId) === true),
+      ),
     setup: () => ({
       killSwitch: false,
       keyConfigured: true,
       models: { fast: 'm-fast', balanced: 'm-balanced' },
     }),
-    write: (m, tier, request) => {
-      requests.push({ market: m, tier, system: request.system, input: request.input });
+    write: (c, _audience, tier, request) => {
+      requests.push({ market: c.market, tier, system: request.system, input: request.input });
       return Promise.resolve(answer);
     },
   };
@@ -103,8 +107,6 @@ describe.each(['AU', 'ZZ'] as const)('description writer in market %s', (code) =
       marketSwitch === 'throws'
         ? Promise.reject(new Error('settings down'))
         : Promise.resolve(marketSwitch),
-    seller: (_c: CallContext, sellerId: Id<'Seller'>) =>
-      Promise.resolve(sellerSwitch.get(sellerId) === true),
   };
   const calendar: MarketDayCalendar = {
     dayOf: () => '2026-11-13',

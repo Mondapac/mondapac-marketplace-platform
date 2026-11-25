@@ -44,6 +44,7 @@ import { ModerateReview } from './application/use-cases/moderate-review.use-case
 import { RemoveReview } from './application/use-cases/remove-review.use-case';
 import { ViewModerationReview } from './application/use-cases/view-moderation-review.use-case';
 import { DeleteProductReview } from './application/use-cases/delete-product-review.use-case';
+import { CountMarketReviews } from './application/use-cases/count-market-reviews.use-case';
 import { CountSellerReviews } from './application/use-cases/count-seller-reviews.use-case';
 import { DetachAuthor } from './application/use-cases/detach-author.use-case';
 import { EditProductReview } from './application/use-cases/edit-product-review.use-case';
@@ -301,6 +302,7 @@ function moderationListUseCaseProvider<U>(type: ModerationListUseCaseClass<U>): 
       RebuildRatingSummaries,
       DetachAuthor,
       CountSellerReviews,
+      CountMarketReviews,
       CastHelpfulVote,
       RemoveHelpfulVote,
       ListProductRatingTotals,
@@ -367,6 +369,7 @@ function moderationListUseCaseProvider<U>(type: ModerationListUseCaseClass<U>): 
         DetachAuthor,
         ListProductRatingTotals,
         CountSellerReviews,
+        CountMarketReviews,
       ],
       useFactory: (
         product: ViewProductSummary,
@@ -374,7 +377,8 @@ function moderationListUseCaseProvider<U>(type: ModerationListUseCaseClass<U>): 
         detach: DetachAuthor,
         totals: ListProductRatingTotals,
         count: CountSellerReviews,
-      ) => new ReviewsFacadeImplementation(product, seller, detach, totals, count),
+        countMarket: CountMarketReviews,
+      ) => new ReviewsFacadeImplementation(product, seller, detach, totals, count, countMarket),
     },
     registerJobsFrom(
       'reviews',

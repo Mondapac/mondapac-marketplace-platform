@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-ai-gateway-drop-spend-days",
+  "area": "assistant",
+  "title": "درگاه AI: حذف جدول قدیمی spend_days دستیار (گام ۴ از G7)",
+  "desc": "پس از آنکه خواندن سقف و آمار دستیار در G7b به درگاه منتقل شد و یک نسخه بی‌مشکل منتشر شد، جدول assistant.spend_days با یک down.sql کامل حذف می‌شود. تا آن زمان جدول فقط برای بازگشت امن نگه داشته می‌شود.",
+  "src": "docs/design/domain/platform-ai.md (بخش ۱۰ و ۱۴)",
+  "date": "2026-11-25",
+  "trig": "یک نسخه پس از انتشار G7b",
+  "prio": "متوسط",
+  "status": "موکول"
+}

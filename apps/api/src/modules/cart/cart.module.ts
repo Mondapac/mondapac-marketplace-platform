@@ -33,12 +33,19 @@ import { ClearOrderedLines } from './application/use-cases/clear-ordered-lines.u
 import { PurgeInactiveCarts } from './application/use-cases/purge-inactive-carts.use-case';
 import { ReadCheckoutLines } from './application/use-cases/read-checkout-lines.use-case';
 import { ListIdleAccountCarts } from './application/use-cases/list-idle-account-carts.use-case';
+import { CountAbandonedCarts } from './application/use-cases/count-abandoned-carts.use-case';
+import {
+  ABANDONED_CART_TOTALS,
+  type AbandonedCartTotalsReader,
+} from './application/ports/abandoned-cart-totals';
+import type { UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import {
   CART_ADMIN_FACADE,
   CART_ASSISTANT_FACADE,
   CART_CHECKOUT_FACADE,
   CART_PERMISSIONS,
   CART_REMINDER_FACADE,
+  CART_REPORTING_FACADE,
 } from './contracts';
 import { AdminCustomerCartRead } from './application/use-cases/admin-customer-cart.use-case';
 import { AdminCustomerSavedItems } from './application/use-cases/admin-customer-saved-items.use-case';
@@ -49,6 +56,7 @@ import { cartProviders } from './infrastructure/cart-providers';
 import { CartAssistantFacadeImplementation } from './presentation/cart-assistant.facade';
 import { CartCheckoutFacadeImplementation } from './presentation/cart-checkout.facade';
 import { CartReminderFacadeImplementation } from './presentation/cart-reminder.facade';
+import { CartReportingFacadeImplementation } from './presentation/cart-reporting.facade';
 import { CartController } from './presentation/cart.controller';
 import { purgeInactiveCartsJob } from './presentation/jobs/purge-inactive-carts.job';
 
@@ -152,6 +160,18 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       inject: [ListIdleAccountCarts],
       useFactory: (list: ListIdleAccountCarts) => new CartReminderFacadeImplementation(list),
     },
+    // Dashboards v2, phase 2: reporting's nightly abandoned-cart snapshot (counts only).
+    {
+      provide: CountAbandonedCarts,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ABANDONED_CART_TOTALS],
+      useFactory: (gate: UseCaseGate, unitOfWork: UnitOfWork, totals: AbandonedCartTotalsReader) =>
+        new CountAbandonedCarts(gate, { unitOfWork, totals }),
+    },
+    {
+      provide: CART_REPORTING_FACADE,
+      inject: [CountAbandonedCarts],
+      useFactory: (count: CountAbandonedCarts) => new CartReportingFacadeImplementation(count),
+    },
     {
       provide: CART_ADMIN_FACADE,
       inject: [AdminCustomerCartRead, AdminCustomerSavedItems],
@@ -165,6 +185,12 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         new CartAssistantFacadeImplementation(view, units),
     },
   ],
-  exports: [CART_CHECKOUT_FACADE, CART_REMINDER_FACADE, CART_ADMIN_FACADE, CART_ASSISTANT_FACADE],
+  exports: [
+    CART_CHECKOUT_FACADE,
+    CART_REMINDER_FACADE,
+    CART_ADMIN_FACADE,
+    CART_ASSISTANT_FACADE,
+    CART_REPORTING_FACADE,
+  ],
 })
 export class CartModule {}

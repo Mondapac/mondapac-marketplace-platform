@@ -85,6 +85,7 @@ describe.each([['AU'], ['ZZ']] as const)('behaviour capture in market %s', (code
     followsOfAccount: null as never,
     followStore: null as never,
     shoppingFunnel: null as never,
+    searchShoppers: null as never,
   };
   let clock: FixedClock;
   let events: InMemoryBehaviourEvents;

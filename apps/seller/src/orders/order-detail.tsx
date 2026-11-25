@@ -12,7 +12,7 @@ import {
   PageHeader,
 } from '@mondapac/ui';
 import { useLocale, useTimeZone, useTranslations } from 'next-intl';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { OrderNotes } from './order-notes.tsx';
 import { OrderTimeline } from './order-timeline.tsx';
 import { UnavailableDialog } from './unavailable-dialog.tsx';
@@ -84,8 +84,11 @@ export function OrderDetail({
   const hintId = useId();
   const doneRef = useRef<HTMLDivElement>(null);
   // The button unmounts once the order is ready; focus moves to the result so it is announced and
-  // keyboard focus is not dropped back to the top of the page.
-  useEffect(() => {
+  // keyboard focus is not dropped back to the top of the page. A layout effect, so focus moves in
+  // the same commit that shows the result: a passive effect runs in a later scheduler task, and on
+  // a busy machine anything that reads the page right after the commit (a screen reader, a test)
+  // finds focus lost on <body>.
+  useLayoutEffect(() => {
     if (justMarked) doneRef.current?.focus();
   }, [justMarked]);
   const money = (amount: { amount: string; currency: string }) =>

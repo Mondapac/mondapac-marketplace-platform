@@ -2,7 +2,7 @@
 import { DashboardGrid } from '@mondapac/ui';
 import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
 import {
   kpiMajor,
@@ -21,6 +21,9 @@ import type {
   OrdersByStatusKpis,
 } from './kpi-types.ts';
 import { KpiItems } from './kpis.tsx';
+
+// A failed phase 2 card offers "Try again" (router.refresh).
+vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 afterEach(cleanup);
 
@@ -642,6 +645,71 @@ describe('the admin KPI cards', () => {
   it('says in one line what the figures cover, in Market days, and how fresh they are', () => {
     page(FULL);
     expect(screen.getByText('16 Nov - 22 Nov · Market days · updated 2 min ago')).toBeTruthy();
+  });
+});
+
+describe('drill-down links to the Orders list', () => {
+  it('links each status part with an Orders list filter to it, for the period', () => {
+    page(FULL);
+    const region = screen.getByRole('region', { name: 'Orders by status' });
+    const range = `${kpiDayLabel('2026-11-16', 'en-AU')} - ${kpiDayLabel('2026-11-22', 'en-AU')}`;
+    const days = '&from=2026-11-16&to=2026-11-22';
+    const expected: [string, string][] = [
+      ['Delivered', `/orders?fulfilment=delivered${days}`],
+      ['Shipped', `/orders?fulfilment=shipped${days}`],
+      ['To ship', `/orders?fulfilment=to-ship${days}`],
+      ['Cancelled', `/orders?status=cancelled${days}`],
+    ];
+    for (const [state, href] of expected) {
+      const link = within(region).getByRole('link', {
+        name: `View orders: ${state}, placed ${range}`,
+      });
+      expect(link.getAttribute('href')).toBe(href);
+      // A real link: in the tab order, and it takes focus.
+      expect(link.tagName).toBe('A');
+      link.focus();
+      expect(document.activeElement).toBe(link);
+    }
+    // Refunded has no matching list filter: a plain, focusable row, not a link.
+    expect(within(region).queryByRole('link', { name: /Refunded/ })).toBeNull();
+    expect(within(region).getByRole('link', { name: 'Orders' }).getAttribute('href')).toBe(
+      '/orders?from=2026-11-16&to=2026-11-22',
+    );
+  });
+
+  it('opens the period on the GMV and Orders cards, and a day on a chart point', () => {
+    page(FULL);
+    for (const label of ['GMV (incl. GST)', 'Seller orders paid']) {
+      const link = card(label).querySelector('a[href^="/orders"]');
+      expect(link?.getAttribute('href')).toBe('/orders?from=2026-11-16&to=2026-11-22');
+    }
+    const chart = screen.getByRole('region', { name: 'Revenue analytics' });
+    expect(within(chart).getByRole('link', { name: 'View orders' }).getAttribute('href')).toBe(
+      '/orders?from=2026-11-16&to=2026-11-22',
+    );
+    const day = kpiDayLabel('2026-11-21', 'en-AU');
+    const column = chart.querySelector('svg a[data-point-link="0"]');
+    expect(column?.getAttribute('href')).toBe('/orders?from=2026-11-21&to=2026-11-21');
+    expect(column?.getAttribute('aria-label')).toBe(`View orders placed on ${day}`);
+    fireEvent.click(within(chart).getByRole('button', { name: 'View as table' }));
+    const row = within(chart).getByRole('link', { name: `View orders placed on ${day}` });
+    expect(row.getAttribute('href')).toBe('/orders?from=2026-11-21&to=2026-11-21');
+    row.focus();
+    expect(document.activeElement).toBe(row);
+  });
+
+  it('does not link the Refunded measure: refunds fall on their own day', () => {
+    page(FULL);
+    const chart = screen.getByRole('region', { name: 'Revenue analytics' });
+    const select = within(chart).queryByRole('combobox');
+    if (select !== null) fireEvent.change(select, { target: { value: 'refunded' } });
+    else fireEvent.click(within(chart).getByRole('radio', { name: 'Refunded' }));
+    expect(chart.querySelector('svg a[data-point-link]')).toBeNull();
+    // No day link in the table either, and the tooltip offers none.
+    fireEvent.keyDown(chart.querySelector('svg[data-chart="line"]')!, { key: 'ArrowRight' });
+    expect(chart.querySelector('[data-tooltip-link]')).toBeNull();
+    fireEvent.click(within(chart).getByRole('button', { name: 'View as table' }));
+    expect(within(chart).queryByRole('link', { name: /View orders placed on/ })).toBeNull();
   });
 });
 

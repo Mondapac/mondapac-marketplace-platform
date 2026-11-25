@@ -1,4 +1,6 @@
 import { CertificationModule } from '../certification';
+import { registerCapabilities } from '../../platform/ai/capability-registry';
+import { CATALOG_AI_CAPABILITIES } from './contracts/ai-capabilities';
 import { CountClaimsWithoutCertificate } from './application/use-cases/count-claims-without-certificate.use-case';
 import { CountPendingOffers } from './application/use-cases/count-pending-offers.use-case';
 import { CountPendingRevisions } from './application/use-cases/count-pending-revisions.use-case';
@@ -65,6 +67,9 @@ import {
 } from '../../platform/authz';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import { OFFER_REVIEW_INPUTS, OFFER_REVIEW_REFERRAL_STORE } from './application/ports/offer-review';
+import { OFFER_PENDING_CHANGE_REPOSITORY } from './application/ports/offer-pending-change.repository';
+import { OfferEditReview } from './application/offer-edit-review';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -117,6 +122,11 @@ import { OwnOfferCreateOnPlatformProduct } from './application/use-cases/own-off
 import { ReviewQueueBulkDecide } from './application/use-cases/review-queue-bulk-decide.use-case';
 import { OfferApprove } from './application/use-cases/offer-approve.use-case';
 import { OfferRequestChanges } from './application/use-cases/offer-request-changes.use-case';
+import { AdminOfferChangeApprove } from './application/use-cases/admin-offer-change-approve.use-case';
+import { AdminOfferChangeRequestChanges } from './application/use-cases/admin-offer-change-request-changes.use-case';
+import { AdminOfferChangeReject } from './application/use-cases/admin-offer-change-reject.use-case';
+import { AdminOfferChangesList } from './application/use-cases/admin-offer-changes-list.use-case';
+import { OwnOfferWithdrawChange } from './application/use-cases/own-offer-withdraw-change.use-case';
 import { OwnOfferDelete } from './application/use-cases/own-offer-delete.use-case';
 import { OwnOfferEdit } from './application/use-cases/own-offer-edit.use-case';
 import { OwnOfferSetHandling } from './application/use-cases/own-offer-set-handling.use-case';
@@ -392,6 +402,8 @@ import { OwnTopicController } from './presentation/own-topic.controller';
 import { OwnTopicList } from './application/use-cases/own-topic-list.use-case';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
 import { OwnCategoryPicker } from './application/use-cases/own-category-picker.use-case';
+import { OwnPlatformProductSearch } from './application/use-cases/own-platform-product-search.use-case';
+import { PLATFORM_PRODUCT_SEARCH_READER } from './application/ports/platform-product-search.reader';
 import { SellerCategoryScope } from './application/business-activities/allowed-category-ids';
 import { SELLER_ACTIVITY_READER } from './application/ports/seller-activity.reader';
 import { PlatformCategoryPicker } from './application/use-cases/platform-category-picker.use-case';
@@ -663,6 +675,10 @@ const PORT = {
   counters: RATE_COUNTER_REPOSITORY,
   counterKeys: RATE_COUNTER_KEYS,
   policy: CATALOG_MARKET_POLICY,
+  reviewInputs: OFFER_REVIEW_INPUTS,
+  referrals: OFFER_REVIEW_REFERRAL_STORE,
+  editReview: OfferEditReview,
+  pendingChanges: OFFER_PENDING_CHANGE_REPOSITORY,
   matcher: CLAIM_TEXT_MATCHER,
   check: CheckClaimText,
   save: SaveWorkingCopy,
@@ -674,6 +690,7 @@ const PORT = {
   addSizes: AddSizes,
   reader: OFFER_SELL_UNITS_READER,
   searchReader: OFFER_SEARCH_FACTS_READER,
+  platformSearchReader: PLATFORM_PRODUCT_SEARCH_READER,
   filterReader: SEARCH_FILTER_READER,
   namesReader: OFFER_NAMES_READER,
   labelsReader: SELL_UNIT_LABELS_READER,
@@ -1192,6 +1209,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     },
     // Pushes its catalogue into the permission registry (identity slice 8a-1, PF 6.1).
     registerPermissions('catalog', CATALOG_PERMISSIONS),
+    registerCapabilities('catalog', CATALOG_AI_CAPABILITIES),
     registerStepUpActions('catalog', CATALOG_STEP_UP_ACTIONS),
     ...catalogProviders,
     serviceProvider(CheckClaimText, {
@@ -2327,6 +2345,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       evaluator: true,
       outbox: true,
       clock: true,
+      editReview: true,
     }),
     useCaseProvider(OwnOfferSetHandling, {
       unitOfWork: true,
@@ -2337,6 +2356,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       evaluator: true,
       outbox: true,
       clock: true,
+      editReview: true,
     }),
     useCaseProvider(OwnOfferRecordAttestation, {
       unitOfWork: true,
@@ -2355,7 +2375,9 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       eligibility: true,
       allowedTypes: true,
       check: true,
-      policy: true,
+      reviewInputs: true,
+      referrals: true,
+      audit: true,
       outbox: true,
       claims: true,
       evaluator: true,
@@ -2372,6 +2394,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       outbox: true,
       clock: true,
       ids: true,
+      editReview: true,
     }),
     useCaseProvider(OwnOfferRemoveTag, {
       unitOfWork: true,
@@ -2402,6 +2425,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       products: true,
       outbox: true,
       clock: true,
+      editReview: true,
     }),
     useCaseProvider(OfferApprove, {
       unitOfWork: true,
@@ -2420,6 +2444,44 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       offers: true,
       outbox: true,
       clock: true,
+    }),
+    useCaseProvider(AdminOfferChangeApprove, {
+      unitOfWork: true,
+      offers: true,
+      pendingChanges: true,
+      eligibility: true,
+      check: true,
+      claims: true,
+      evaluator: true,
+      audit: true,
+      outbox: true,
+      clock: true,
+      ids: true,
+    }),
+    useCaseProvider(AdminOfferChangeRequestChanges, {
+      unitOfWork: true,
+      offers: true,
+      pendingChanges: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(AdminOfferChangeReject, {
+      unitOfWork: true,
+      offers: true,
+      pendingChanges: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(OwnOfferWithdrawChange, {
+      unitOfWork: true,
+      offers: true,
+      pendingChanges: true,
+      audit: true,
+      clock: true,
+    }),
+    useCaseProvider(AdminOfferChangesList, {
+      unitOfWork: true,
+      pendingChanges: true,
     }),
     useCaseProvider(ReviewQueueList, {
       unitOfWork: true,
@@ -2705,6 +2767,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
         evaluator: true,
         outbox: true,
         clock: true,
+        editReview: true,
       },
       { save: NO_SAVE_BUDGET },
       ['import-row'],
@@ -2925,6 +2988,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       outbox: true,
       audit: true,
       clock: true,
+      editReview: true,
     }),
     useCaseProvider(PlatformProductRetire, {
       unitOfWork: true,
@@ -3142,6 +3206,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       offers: true,
       ownReader: true,
       policy: true,
+      pendingChanges: true,
     }),
     useCaseProvider(OwnOfferReadSellUnits, {
       unitOfWork: true,
@@ -3163,6 +3228,12 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     useCaseProvider(OwnCategoryPicker, {
       unitOfWork: true,
       adminCategoryReader: true,
+      policy: true,
+      sellerCategories: true,
+    }),
+    useCaseProvider(OwnPlatformProductSearch, {
+      unitOfWork: true,
+      platformSearchReader: true,
       policy: true,
       sellerCategories: true,
     }),

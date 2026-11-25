@@ -114,6 +114,12 @@ model PricingRegularPriceRecord {
   /// The record this one was measured against (D 2.4); null only for the first price.
   anchorRecordId       String?                     @map("anchor_record_id") @db.Uuid
   anchorAmountMinor    BigInt?                     @map("anchor_amount_minor")
+  /// R4 (ADR-0051): the reference a first price was measured against (the median of the other live
+  /// Offers' regular prices, rounded half up), the businesses that formed it and the band; all
+  /// three set or all null, and only on a record with no anchor (CHECK).
+  referenceAmountMinor BigInt?                     @map("reference_amount_minor")
+  referenceBusinesses  Int?                        @map("reference_businesses")
+  referenceBandPercent Int?                        @map("reference_band_percent")
   /// up | down for a held record; null exactly for an accepted one.
   holdDirection        String?                     @map("hold_direction")
   /// Set when the record becomes effective; never by input (Q5).
@@ -135,6 +141,7 @@ model PricingRegularPriceRecord {
   anchoredRecords      PricingRegularPriceRecord[] @relation("RegularAnchor")
   specialsMeasured     PricingSpecialPriceRecord[] @relation("SpecialRegular")
   specialsAnchored     PricingSpecialPriceRecord[] @relation("SpecialAnchor")
+  firstPriceChecks     PricingFirstPriceCheck[]
 
   /// The target of the in-series references (P3); also "the records of a series in order".
   @@unique([marketId, seriesId, id])
@@ -282,7 +289,8 @@ model PricingSpecialPriceBoundary {
   @@schema("pricing")
 }
 
-/// The per-account cap on a seller's price writes (pricing design 5.2, 8; data design 3.8 and
+/// The per-account cap on a seller's price writes, and the caps on the typical-price read (kinds
+/// typical.account.day, typical.account.minute and, keyed by seller id, typical.seller.day) (pricing design 5.2, 8; data design 3.8 and
 /// the general per-account limit of identity design 6.8): one fixed window per (account, kind),
 /// counted in the unit before the write. The key is the plain account id, as in the refusal
 /// counters. Transient: purged after 48 hours. The CHECKs and the grants are hand-written in the
@@ -301,5 +309,109 @@ model PricingWriteRateCounter {
   @@id([marketId, kind, actorAccountId])
   @@index([marketId, windowStartedAt])
   @@map("write_rate_counters")
+  @@schema("pricing")
+}
+
+/// The Cost series of one Variant of one Offer in one Market (pricing design 2.1, 6.5; data design
+/// 3.7). A separate root with its own version: no price table relates to it, so no price query can
+/// return Cost. Only modules/pricing/infrastructure/cost/ references the PricingCost* models (the
+/// boundary rule of `pnpm boundaries`, H-D1). Offer, seller and currency never change (column
+/// grants). The CHECKs and the grants are hand-written in the migration.
+model PricingCostSeries {
+  id          String              @id @db.Uuid
+  marketId    String              @map("market_id") @db.VarChar(8)
+  tenantId    String              @map("tenant_id")
+  /// catalog's Offer id (a plain id, C4).
+  offerId     String              @map("offer_id") @db.Uuid
+  /// catalog's Variant id.
+  variantId   String              @map("variant_id") @db.Uuid
+  /// Copy from catalog's offerSellUnits at creation (D 2.3).
+  productId   String              @map("product_id") @db.Uuid
+  /// Copy at creation (D 2.3). Ownership is never decided from it alone (D 5.2).
+  sellerId    String              @map("seller_id") @db.Uuid
+  /// The Market's currency at creation, written once (P2); every record's foreign key names it.
+  currency    String              @db.Char(3)
+  /// Set once by a retirement handler, with its cause (CHECK); not written yet (future slice).
+  retiredAt   DateTime?           @map("retired_at") @db.Timestamptz(6)
+  retireCause String?             @map("retire_cause")
+  /// Optimistic version of the aggregate (P 10); 1 at insert, raised by every write.
+  version     Int
+  createdAt   DateTime            @map("created_at") @db.Timestamptz(6)
+  records     PricingCostRecord[] @relation("CostSeriesRecords")
+
+  /// One Cost series per (Market, Offer, Variant) (D 2.1).
+  @@unique([marketId, offerId, variantId])
+  /// The target of every record's foreign key (P2): a record is in its series' currency.
+  @@unique([marketId, id, currency])
+  /// The Variant-removed handler (D 6.4).
+  @@index([marketId, productId, variantId])
+  @@map("cost_series")
+  @@schema("pricing")
+}
+
+/// One Cost record (pricing design 3.3; data design 3.7), ADR-0009 V4 append-only: the latest row
+/// of a series is the current Cost. Cost never leaves the module (D 6.5): no event, no queue, no
+/// audit amount. The CHECKs, the append-only triggers and the grants are hand-written in the
+/// migration.
+model PricingCostRecord {
+  id                   String            @id @db.Uuid
+  marketId             String            @map("market_id") @db.VarChar(8)
+  tenantId             String            @map("tenant_id")
+  costSeriesId         String            @map("cost_series_id") @db.Uuid
+  /// The series version this record's write produced: unique per series and strictly rising, so
+  /// "the latest record" never depends on two writes having distinct instants (one millisecond).
+  seriesVersion        Int               @map("series_version")
+  /// amount | cleared (Q7: Cost is optional).
+  kind                 String
+  /// Minor units of `currency` (P1): 1 to 2^53 - 1; null exactly for a cleared record.
+  amountMinor          BigInt?           @map("amount_minor")
+  /// The series currency, also on cleared rows, so the foreign key is always checked.
+  currency             String            @db.Char(3)
+  submittedAt          DateTime          @map("submitted_at") @db.Timestamptz(6)
+  /// The account that wrote the record (Hassan finding 4; plain id).
+  submittedByAccountId String            @map("submitted_by_account_id") @db.Uuid
+  series               PricingCostSeries @relation("CostSeriesRecords", fields: [marketId, costSeriesId, currency], references: [marketId, id, currency], onDelete: Restrict, onUpdate: Restrict, map: "cost_records_cost_series_id_fkey")
+
+  /// One record per series version; also "the current Cost of a series": the highest version.
+  @@unique([marketId, costSeriesId, seriesVersion])
+  @@map("cost_records")
+  @@schema("pricing")
+}
+
+/// R4 of the risk-based Offer approval (ADR-0051): one row per first regular price of a series that
+/// was checked against the Variant's reference. Insert once; the re-check columns are written once,
+/// together, when the Variant's reference first forms (grants and the write-once trigger, by hand).
+/// `post_review_reason` set = the Offer is on the post-publication review list for its price.
+model PricingFirstPriceCheck {
+  /// The first-price record that was checked.
+  recordId                    String                    @id @map("record_id") @db.Uuid
+  marketId                    String                    @map("market_id") @db.VarChar(8)
+  tenantId                    String                    @map("tenant_id")
+  seriesId                    String                    @map("series_id") @db.Uuid
+  /// Copies from the series (plain ids, C4).
+  offerId                     String                    @map("offer_id") @db.Uuid
+  productId                   String                    @map("product_id") @db.Uuid
+  variantId                   String                    @map("variant_id") @db.Uuid
+  sellerId                    String                    @map("seller_id") @db.Uuid
+  /// no-reference | reference-unavailable | within | outside (CHECK).
+  outcome                     String
+  /// The median, rounded half up; null without a reference.
+  referenceAmountMinor        BigInt?                   @map("reference_amount_minor")
+  referenceBusinesses         Int                       @map("reference_businesses")
+  businessesNeeded            Int                       @map("businesses_needed")
+  bandPercent                 Int                       @map("band_percent")
+  /// no-reference | reference-unavailable | recheck-outside, or null (CHECK).
+  postReviewReason            String?                   @map("post_review_reason")
+  checkedAt                   DateTime                  @map("checked_at") @db.Timestamptz(6)
+  recheckedAt                 DateTime?                 @map("rechecked_at") @db.Timestamptz(6)
+  /// within | outside once re-checked.
+  recheckOutcome              String?                   @map("recheck_outcome")
+  recheckReferenceAmountMinor BigInt?                   @map("recheck_reference_amount_minor")
+  recheckAmountMinor          BigInt?                   @map("recheck_amount_minor")
+  record                      PricingRegularPriceRecord @relation(fields: [marketId, seriesId, recordId], references: [marketId, seriesId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  /// The re-check's lookup is the hand-written partial index on (market, product, variant) of the
+  /// checks still waiting for a reference.
+  @@map("first_price_checks")
   @@schema("pricing")
 }

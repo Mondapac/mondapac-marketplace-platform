@@ -1,3 +1,4 @@
+import type { SearchPair } from '../../domain/search-shoppers';
 import { encodePayload, err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, PendingEvent } from '@mondapac/shared-kernel';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
@@ -162,6 +163,35 @@ export class InMemoryBehaviourEvents implements BehaviourEventRepository {
       }
     }
     return Promise.resolve([...accounts].sort().slice(0, limit));
+  }
+
+  searchPairs(
+    market: MarketContext,
+    range: { readonly from: Temporal.Instant; readonly to: Temporal.Instant },
+    keys: readonly string[],
+    limit: number,
+  ) {
+    const asked = new Set(keys.map((key) => key.toLowerCase()));
+    const pairs = new Map<string, SearchPair>();
+    for (const row of this.rows) {
+      if (
+        row.marketId === market.marketId &&
+        row.subject.kind === 'account' &&
+        row.facts.kind === 'search-performed' &&
+        asked.has(row.facts.query.toLowerCase()) &&
+        row.occurredAt.epochMilliseconds >= range.from.epochMilliseconds &&
+        row.occurredAt.epochMilliseconds < range.to.epochMilliseconds
+      ) {
+        const id = `${row.facts.query}|${row.subject.accountId}`;
+        const pair = pairs.get(id);
+        pairs.set(id, {
+          query: row.facts.query,
+          accountId: row.subject.accountId,
+          events: (pair?.events ?? 0) + 1,
+        });
+      }
+    }
+    return Promise.resolve([...pairs.values()].slice(0, limit));
   }
 
   deleteForAccount(market: MarketContext, accountId: Id<'Account'>) {

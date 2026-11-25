@@ -1,8 +1,10 @@
-// Violations: platform/persistence/ names a module's model (platform owns platform.prisma only)
-// and an audit model outside platform/persistence/audit/.
+// Violations: platform/persistence/ names a module's model (platform owns platform.prisma only),
+// an audit model outside platform/persistence/audit/ and an AI budget model outside
+// platform/persistence/ai-usage/.
 declare const tx: Record<string, { findMany(args: unknown): Promise<unknown> }>;
 
 export async function read(): Promise<void> {
   await tx.auditLog.findMany({});
   await tx.alphaParent.findMany({});
+  await tx.aiBudgetCounter.findMany({});
 }

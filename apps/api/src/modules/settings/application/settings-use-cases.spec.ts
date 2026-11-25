@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { parseId, Temporal } from '@mondapac/shared-kernel';
+import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -11,7 +11,7 @@ import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { RecordingReview } from '../../../../test/support/system-request-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
-import type { AccessDecision } from '../../../platform/authz';
+import type { AccessDecision, StepUpProofConsumer } from '../../../platform/authz';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
@@ -32,9 +32,15 @@ import { ReadAiDescriptionWriter } from './use-cases/read-ai-description-writer.
 import { ReadCartMode } from './use-cases/read-cart-mode.use-case';
 import { ReadOfferQueueBacklogLimits } from './use-cases/read-offer-queue-backlog-limits.use-case';
 import { ReadListPaging } from './use-cases/read-list-paging.use-case';
+import { ChangeMonthlyRevenueTargetSetting } from './use-cases/change-monthly-revenue-target-setting.use-case';
+import { ReadMonthlyRevenueTarget } from './use-cases/read-monthly-revenue-target.use-case';
+import { ViewMonthlyRevenueTargetSetting } from './use-cases/view-monthly-revenue-target-setting.use-case';
 import { ViewAiSettings } from './use-cases/view-ai-settings.use-case';
 import { ChangeOfferReviewSettings } from './use-cases/change-offer-review-settings.use-case';
 import { ViewOfferReviewSettings } from './use-cases/view-offer-review-settings.use-case';
+import { ChangeOfferReviewEmergencyStop } from './use-cases/change-offer-review-emergency-stop.use-case';
+import { ViewOfferReviewEmergencyStop } from './use-cases/view-offer-review-emergency-stop.use-case';
+import { ReadOfferReviewPolicy as ReadPolicyForStop } from './use-cases/read-offer-review-policy.use-case';
 import { ViewCartModeSetting } from './use-cases/view-cart-mode-setting.use-case';
 import { ViewListPagingSetting } from './use-cases/view-list-paging-setting.use-case';
 
@@ -103,6 +109,16 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
   let audit: RecordingAudit;
   let deps: SettingsDependencies;
   let review: RecordingReview;
+  /** The step-up proofs spent, and whether the admin has a fresh one left. */
+  let spentProofs: string[];
+  let proofLeft: boolean;
+  const stepUp: StepUpProofConsumer = {
+    consume: (_context: CallContext, actionKey: string) => {
+      if (!proofLeft) return Promise.resolve(err({ code: 'second-factor.required', actionKey }));
+      spentProofs.push(actionKey);
+      return Promise.resolve(ok({ sessionId: id<'Session'>(0x99), verifiedAt: T0 }));
+    },
+  };
 
   const adminCtx = () =>
     testCallContext(
@@ -148,7 +164,10 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       audit,
       clock: new FixedClock(T0),
       review,
+      stepUp,
     };
+    spentProofs = [];
+    proofLeft = true;
   });
 
   it('shows the default (page numbers, version 0) before any change', async () => {
@@ -348,7 +367,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       const facade = new SettingsFacadeImplementation(
         new ReadAiDescriptionWriter(gate, deps),
         new ReadCartMode(gate, deps),
-        new ReadOfferQueueBacklogLimits(gate, deps),
+        new ReadMonthlyRevenueTarget(gate, deps),
       );
       for (const context of [anonymous, sellerCtx(), adminCtx()]) {
         expect(await facade.cartMode(context)).toBe('multi-store');
@@ -369,7 +388,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         const facade = new SettingsFacadeImplementation(
           new ReadAiDescriptionWriter(gate, deps),
           new ReadCartMode(gate, deps),
-          new ReadOfferQueueBacklogLimits(gate, deps),
+          new ReadMonthlyRevenueTarget(gate, deps),
         );
         expect(await facade.cartMode(anonymous)).toBe('multi-store');
       } finally {
@@ -378,9 +397,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       const throwing = new SettingsFacadeImplementation(
         { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadAiDescriptionWriter,
         { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadCartMode,
-        {
-          execute: () => Promise.reject(new Error('boom')),
-        } as unknown as ReadOfferQueueBacklogLimits,
+        { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadMonthlyRevenueTarget,
       );
       expect(await throwing.cartMode(anonymous)).toBe('multi-store');
     });
@@ -399,7 +416,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       new SettingsFacadeImplementation(
         new ReadAiDescriptionWriter(gate, deps),
         new ReadCartMode(gate, deps),
-        new ReadOfferQueueBacklogLimits(gate, deps),
+        new ReadMonthlyRevenueTarget(gate, deps),
       );
 
     it('is off on the fast tier before any change, for the admin view and the facade', async () => {
@@ -491,9 +508,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       const throwing = new SettingsFacadeImplementation(
         { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadAiDescriptionWriter,
         { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadCartMode,
-        {
-          execute: () => Promise.reject(new Error('boom')),
-        } as unknown as ReadOfferQueueBacklogLimits,
+        { execute: () => Promise.reject(new Error('boom')) } as unknown as ReadMonthlyRevenueTarget,
       );
       expect(await throwing.aiDescriptionWriter(sellerCtx())).toEqual({
         enabled: false,
@@ -683,6 +698,118 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       ]);
     });
   });
+
+  describe('monthly revenue target', () => {
+    const currency = markets.get(market.marketId).defaultCurrency;
+    const otherCurrency = currency === 'AUD' ? 'NZD' : 'AUD';
+    const changeTarget = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ChangeMonthlyRevenueTargetSetting(gate, deps, {
+        currencyOf: (m) => markets.get(m.marketId).defaultCurrency,
+      }).execute(context, input);
+    const facade = () =>
+      new SettingsFacadeImplementation(
+        new ReadAiDescriptionWriter(gate, deps),
+        new ReadCartMode(gate, deps),
+        new ReadMonthlyRevenueTarget(gate, deps),
+      );
+
+    it('has no target before any change, then sets it in the Market currency with history and an amount audit row', async () => {
+      const view = await new ViewMonthlyRevenueTargetSetting(gate, deps).execute(adminCtx(), {});
+      expect(view.ok && view.value[0]).toMatchObject({
+        code: 'monthly-revenue-target',
+        value: 'none',
+        version: 0,
+      });
+      expect(await facade().monthlyRevenueTarget(adminCtx())).toEqual({ ok: true, value: null });
+      const set = await changeTarget({
+        target: { amount: '24000000', currency },
+        expectedVersion: 0,
+      });
+      expect(set.ok && set.value).toMatchObject({ value: `${currency}:24000000`, version: 1 });
+      expect(audit.entries).toEqual([
+        expect.objectContaining({
+          action: 'settings.monthly-revenue-target.changed',
+          before: { target: null },
+          after: { target: { amount: 24000000n, currency }, version: 1 },
+        }),
+      ]);
+      expect(await facade().monthlyRevenueTarget(adminCtx())).toEqual({
+        ok: true,
+        value: { amount: 24000000n, currency },
+      });
+      const cleared = await changeTarget({ target: null, expectedVersion: 1 });
+      expect(cleared.ok && cleared.value).toMatchObject({ value: 'none', version: 2 });
+      expect(store.history.map((row) => row.value)).toEqual([`${currency}:24000000`, 'none']);
+      const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+      expect(await store.find(other, 'monthly-revenue-target')).toBeNull();
+    });
+
+    it.each([
+      [{ amount: '0', currency: 'CUR' }, ['target.amount']],
+      [{ amount: '-5', currency: 'CUR' }, ['target.amount']],
+      [{ amount: 100, currency: 'CUR' }, ['target.amount']],
+      [{ amount: '1234567890123456', currency: 'CUR' }, ['target.amount']],
+      [{ amount: '100', currency: 'OTHER' }, ['target.currency']],
+      [{ amount: '100', currency: 'CUR', extra: 1 }, ['target']],
+      ['100', ['target']],
+      [undefined, ['target']],
+    ])('refuses the target %j', async (target, paths) => {
+      const fill = (value: unknown): unknown =>
+        value !== null && typeof value === 'object'
+          ? Object.fromEntries(
+              Object.entries(value).map(([key, item]) => [
+                key,
+                item === 'CUR' ? currency : item === 'OTHER' ? otherCurrency : item,
+              ]),
+            )
+          : value;
+      const out = await changeTarget({ target: fill(target), expectedVersion: 0 });
+      expect(!out.ok && out.error.code).toBe('validation.failed');
+      expect(!out.ok && 'fields' in out.error && out.error.fields.map((f) => f.path)).toEqual(
+        paths,
+      );
+      expect(store.history).toHaveLength(0);
+    });
+
+    it('refuses acting-as and a stale version, and reverts to the target before', async () => {
+      const acting = await changeTarget(
+        { target: { amount: '100', currency }, expectedVersion: 0 },
+        actingAs(adminCtx()),
+      );
+      expect(!acting.ok && acting.error.code).toBe('access.denied');
+      await changeTarget({ target: { amount: '100', currency }, expectedVersion: 0 });
+      const stale = await changeTarget({ target: { amount: '200', currency }, expectedVersion: 0 });
+      expect(!stale.ok && stale.error.code).toBe('settings.conflict');
+      await changeTarget({ target: { amount: '200', currency }, expectedVersion: 1 });
+      const reverted = await new SettingsReverter(deps).revert(adminCtx(), {
+        requestId: id<'SystemRequest'>(0x5e3),
+        subjectRef: 'monthly-revenue-target',
+        before: { value: `${currency}:100` },
+        after: { value: `${currency}:200` },
+      });
+      expect(reverted).toBe('reverted');
+      expect(store.rows.get(`${code}/monthly-revenue-target`)?.value).toBe(`${currency}:100`);
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'settings.monthly-revenue-target.changed',
+        before: { target: { amount: 200n, currency } },
+        after: { target: { amount: 100n, currency }, version: 3 },
+      });
+    });
+
+    it('answers unavailable, never "no target", when the store cannot be read', async () => {
+      store.failReads = true;
+      const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+      try {
+        expect(await facade().monthlyRevenueTarget(adminCtx())).toEqual({
+          ok: false,
+          error: { code: 'access.unavailable' },
+        });
+      } finally {
+        warn.mockRestore();
+      }
+    });
+  });
+
   describe('the Offer review policy (risk-based Offer approval)', () => {
     const saveOfferReview = (input: Record<string, unknown>, context = adminCtx()) =>
       new ChangeOfferReviewSettings(gate, deps).execute(context, input);
@@ -805,6 +932,8 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       const facade = new SettingsFacadeImplementation(
         new ReadAiDescriptionWriter(gate, deps),
         new ReadCartMode(gate, deps),
+        new ReadMonthlyRevenueTarget(gate, deps),
+        undefined,
         new ReadOfferQueueBacklogLimits(gate, deps),
       );
       const system = testCallContext(market, 'system', 'settings-sys-abcd');
@@ -936,6 +1065,131 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         before: { value: 0 },
         after: { value: 10, version: 2 },
       });
+    });
+  });
+  describe('the Offer review emergency stop (R0)', () => {
+    const names = {
+      namesOf: (_c: CallContext, ids: readonly string[]) =>
+        Promise.resolve(new Map(ids.map((accountId) => [accountId, 'Leila Admin']))),
+    };
+    const view = (context = adminCtx()) =>
+      new ViewOfferReviewEmergencyStop(gate, { settings: deps, names }).execute(context, {});
+    const stop = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ChangeOfferReviewEmergencyStop(gate, deps).execute(context, input);
+
+    it('is off by default, with no switch time and no name', async () => {
+      expect(await view()).toEqual({
+        ok: true,
+        value: { on: false, version: 0, changedAt: null, changedBy: null },
+      });
+    });
+
+    it('always needs a reason, even where settings changes are not reviewed', async () => {
+      for (const note of [undefined, '', '   ']) {
+        expect(await stop({ value: 'on', expectedVersion: 0, note })).toEqual({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] },
+        });
+      }
+      expect(await stop({ value: 'on', expectedVersion: 0, note: 'x'.repeat(501) })).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'note', code: 'too-long' }] },
+      });
+      expect(store.history).toHaveLength(0);
+    });
+
+    it('switches on at once, audited; the banner names who and when, and the policy reads it', async () => {
+      const saved = await stop({ value: 'on', expectedVersion: 0, note: 'Fraud wave' });
+      expect(saved.ok && saved.value.map(({ code, value }) => [code, value])).toEqual([
+        ['offer-review-emergency-stop', 'on'],
+      ]);
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'settings.market-setting.changed',
+        targetId: 'offer-review-emergency-stop',
+        before: { value: 'off' },
+        after: { value: 'on', version: 1 },
+      });
+      const shown = await view();
+      expect(shown.ok && shown.value).toMatchObject({
+        on: true,
+        version: 1,
+        changedBy: 'Leila Admin',
+      });
+      const policy = await new ReadPolicyForStop(gate, deps).execute(anonymous, {});
+      expect(policy.ok && policy.value.emergencyStop).toBe(true);
+    });
+
+    it('takes no other code and no other value', async () => {
+      expect((await stop({ value: 'maybe', expectedVersion: 0, note: 'x' })).ok).toBe(false);
+      const page = await new ChangeOfferReviewSettings(gate, deps).execute(adminCtx(), {
+        changes: [{ code: 'offer-review-emergency-stop', value: 'on', expectedVersion: 0 }],
+        note: 'x',
+      });
+      expect(page.ok).toBe(false);
+    });
+
+    it('spends a fresh two-step proof of the admin, and saves nothing without one', async () => {
+      proofLeft = false;
+      expect(await stop({ value: 'on', expectedVersion: 0, note: 'Fraud wave' })).toEqual({
+        ok: false,
+        error: {
+          code: 'second-factor.required',
+          actionKey: 'settings.offer-review-emergency-stop.change',
+        },
+      });
+      expect(store.history).toHaveLength(0);
+      proofLeft = true;
+      expect((await stop({ value: 'on', expectedVersion: 0, note: 'Fraud wave' })).ok).toBe(true);
+      expect(spentProofs).toEqual(['settings.offer-review-emergency-stop.change']);
+    });
+
+    it('spends a fresh proof for the Offer review page too, and saves nothing without one', async () => {
+      const page = () =>
+        new ChangeOfferReviewSettings(gate, deps).execute(adminCtx(), {
+          changes: [{ code: 'offer-review-sampling', value: '10', expectedVersion: 0 }],
+          note: 'x',
+        });
+      proofLeft = false;
+      expect(await page()).toEqual({
+        ok: false,
+        error: { code: 'second-factor.required', actionKey: 'settings.offer-review.change' },
+      });
+      expect(store.history).toHaveLength(0);
+      proofLeft = true;
+      expect((await page()).ok).toBe(true);
+      expect(spentProofs).toEqual(['settings.offer-review.change']);
+    });
+
+    it('spends no proof on a stale version', async () => {
+      expect((await stop({ value: 'on', expectedVersion: 3, note: 'x' })).ok).toBe(false);
+      expect(spentProofs).toEqual([]);
+    });
+
+    it('is never switched off by a rejected review; a rejected "off" is restored on', async () => {
+      const reverter = new SettingsReverter(deps);
+      await stop({ value: 'on', expectedVersion: 0, note: 'Fraud wave' });
+      expect(
+        await reverter.revert(adminCtx(), {
+          requestId: id<'SystemRequest'>(0x5e2),
+          subjectRef: 'offer-review-emergency-stop',
+          before: { value: 'off' },
+          after: { value: 'on' },
+        }),
+      ).toBe('not-permitted');
+      await stop({ value: 'off', expectedVersion: 1, note: 'Over' });
+      expect(
+        await reverter.revert(adminCtx(), {
+          requestId: id<'SystemRequest'>(0x5e2),
+          subjectRef: 'offer-review-emergency-stop',
+          before: { value: 'on' },
+          after: { value: 'off' },
+        }),
+      ).toBe('reverted');
+    });
+
+    it('shows the banner to admins only', async () => {
+      expect(await view(sellerCtx())).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect((await view(anonymous)).ok).toBe(false);
     });
   });
 });

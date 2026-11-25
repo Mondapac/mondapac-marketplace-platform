@@ -2,15 +2,22 @@ import type { Offer, OffSaleCause, OfferHandling, OfferStatus } from '../../doma
 import type { OfferTagStatus, TagBadge, TagBasis } from '../../domain/offer-tag';
 import type { OwnOfferSellUnitView, ProductLabel } from '../ports/own-catalog.reader';
 import { isoOf } from './own-reads.shared';
+import type { OfferChangeView } from '../offer-change-view';
 
 export interface OwnOfferView {
   readonly offerId: string;
   readonly productId: string;
-  /** The Offer's product: its code, type and published name in the default locale (else null). */
+  /**
+   * The Offer's product: its code, type, published name in the default locale (else null), scope
+   * and thumbnail. `scope` says which route serves `primaryImageId` (PLATFORM: the public image
+   * route; SELLER: the seller's own image route).
+   */
   readonly product: {
     readonly productCode: string | null;
     readonly typeCode: string | null;
     readonly name: string | null;
+    readonly scope: 'PLATFORM' | 'SELLER' | null;
+    readonly primaryImageId: string | null;
   };
   readonly sellerSku: string;
   readonly conditionCode: string;
@@ -28,6 +35,11 @@ export interface OwnOfferView {
   readonly tags?: readonly OwnOfferTagView[];
   /** The stored sell-unit rows (variant SKU and selling switch); on the single read only. */
   readonly sellUnits?: readonly OwnOfferSellUnitView[];
+  /**
+   * The Offer's latest held change in any status (slice 2c), with the reviewer's note; null when
+   * it never had one. On the single read only.
+   */
+  readonly pendingChange?: OfferChangeView | null;
 }
 
 /** One open tag as the seller sees it (design 5.3 "Seller sees"): badge data only while active. */
@@ -65,6 +77,8 @@ export function offerViewOf(
       productCode: label?.productCode ?? null,
       typeCode: label?.typeCode ?? null,
       name: label?.name ?? null,
+      scope: label?.scope ?? null,
+      primaryImageId: label?.primaryImageId ?? null,
     },
     sellerSku: state.sellerSku,
     conditionCode: state.conditionCode,

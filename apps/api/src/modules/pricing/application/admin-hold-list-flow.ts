@@ -290,6 +290,7 @@ const HEADERS: Readonly<Record<HoldExportColumn | 'base', readonly string[]>> = 
     'Direction',
     'Held amount',
     'Reference amount',
+    'Reference',
     'Currency',
     'Submitted (UTC)',
   ],
@@ -323,7 +324,8 @@ function cellsOf(column: HoldExportColumn, hold: LabelledHold): ExportCell[] {
         ? ['', '']
         : [hold.window.startsAt.toString(), hold.window.endsAt.toString()];
     case 'anchor':
-      return [hold.anchorRecordId];
+      // A first price held against the Variant's reference (R4) has no anchor record.
+      return [hold.anchorRecordId ?? ''];
   }
 }
 
@@ -430,6 +432,8 @@ async function* exportRows(
       hold.direction === 'up' ? 'Increase' : 'Decrease',
       decimalOf(hold.amount.amount, hold.amount.currency),
       decimalOf(hold.anchorAmount.amount, hold.anchorAmount.currency),
+      // R4: a first price is held against the Variant's median, not the seller's own last price.
+      hold.basis === 'reference' ? 'Median of other sellers' : 'Previous price',
       hold.amount.currency,
       hold.submittedAt.toString(),
       ...columns.flatMap((column) => cellsOf(column, hold)),

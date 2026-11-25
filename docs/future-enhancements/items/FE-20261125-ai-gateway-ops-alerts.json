@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-ai-gateway-ops-alerts",
+  "area": "assistant",
+  "title": "درگاه AI: هشدارهای عملیاتی برای کاظم",
+  "desc": "هشدار نرخ خطای بالای ۵ درصد در ۱۰ دقیقه، باز شدن circuit breaker، رسیدن مصرف به ۸۰ درصد، و هر لاگ ai.usage.settle-failed یا رزرو منقضی‌شده‌ای که پاک‌کننده تمام می‌کند (یافتهٔ M2 حسن در PR 1348)، خوانده از ai_usage_days، ai_calls و لاگ‌ها.",
+  "src": "docs/design/domain/platform-ai.md (بخش ۱۱ و ۱۴)",
+  "date": "2026-11-25",
+  "trig": "پس از G3 (circuit breaker)",
+  "prio": "متوسط",
+  "status": "موکول"
+}

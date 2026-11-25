@@ -271,7 +271,14 @@
         "categories": "Goods sold with GST, before refunds, grouped by category. The five biggest are named; the rest are one Other slice.",
         "sellers": "Stores ranked by goods sold with GST in the period. On time is shipped orders shipped on time; refunds is the share of goods refunded.",
         "status": "Seller orders paid in the period, by where they are now. Cancelled and refunded orders were paid first. Same-day share is paid orders whose buyer chose same-day delivery.",
-        "health": "Counts right now, except sellers with orders and the dispute rate, which follow the period."
+        "health": "Counts right now, except sellers with orders and the dispute rate, which follow the period.",
+        "target": "GMV with GST of this calendar month in the Market's time zone, against the Market's monthly revenue target. The forecast is an estimate: the month to date divided by the time passed, times the length of the month. It shows from the 4th. The month does not follow the period above.",
+        "funnel": "Signed-in shoppers with personalization on. Each step counts customer-days: each day counts distinct shoppers, and a shopper who comes back on another day counts again. Each step is the shoppers of the step before who went on. A step with fewer than 5 is hidden in each answer, and so is every step after it; it is never shown as 0. Today is counted tomorrow.",
+        "reviews": "Reviews published in the last 30 days, whatever period the page shows, against the 30 days before. The average is of the stars given (1 to 5). Only counts: no text, author or product. A review hidden or removed later stops counting. Nothing is shown below 5 reviews.",
+        "carts": "Active carts with items, not turned into a paid order and untouched for 24 hours or more at the end of the latest counted day. A level on that day, not a total of the period. The value is about: items at the price when they were added or last changed.",
+        "searches": "Texts shoppers searched that found nothing. Searches are counted on the days a text found nothing at least once, including that day's searches of it that did find something. A text is shown only on days at least 10 signed-in shoppers searched it. Texts are shown exactly as typed, folded to lower case.",
+        "by-state": "Seller orders paid in the period, by the state of the delivery address; a pickup counts in the store's state. Cancelled orders are included. Orders placed before delivery states were kept are counted as not recorded, never folded into a state.",
+        "discounts": "Discounts of the orders paid in the period that still stand, with GST, split by who funded them. Discounts given back by refunded or cancelled orders are shown apart. Net revenue subtracts the platform-funded part without GST, so the two do not match."
       },
       "delta": {
         "na": "Too little in the previous period to compare."
@@ -325,7 +332,10 @@
           "refunded": "Refunded"
         },
         "measure-failed": "{measure} could not be loaded.",
-        "empty-current": "No sales in this period."
+        "empty-current": "No sales in this period.",
+        "open-day": "View orders placed on {day}",
+        "open-point": "Press Enter to view the orders placed on this day.",
+        "open-point-link": "View orders ›"
       },
       "categories": {
         "title": "Sales by category",
@@ -380,6 +390,8 @@
         "cancelled": "Cancelled",
         "refunded": "Refunded",
         "other": "Other",
+        "open": "View orders: {state}",
+        "open-range": "View orders: {state}, placed {range}",
         "on-time": {
           "label": "Shipped on time",
           "value": "{count} shipped",
@@ -451,7 +463,132 @@
           "unavailable": "Export failed. Try again."
         },
         "denied": "You can't export this report."
-      }
+      },
+      "coverage": "{recorded} of {days} days counted so far",
+      "target": {
+        "title": "Monthly target",
+        "scope": "{month} to date · GMV incl. GST",
+        "edit": "Edit",
+        "of-target": "of target",
+        "pace": "On pace for {rate}",
+        "estimate": "Estimate",
+        "forecast": "Forecast {amount} by {day} · {month} was {last}",
+        "forecast-not-enough": "Forecast from day {day} · {month} was {last}",
+        "none": "No monthly target is set",
+        "none-hint": "An admin with the right to manage it can set one in Settings.",
+        "none-hint-edit": "Set one with Edit.",
+        "not-set": "Not set",
+        "target": "Target",
+        "to-date": "{month} to date",
+        "to-go": "{days, plural, one {# day} other {# days}} left · {amount} to go · {perDay} a day",
+        "editor": {
+          "title": "Monthly revenue target",
+          "loading": "Loading the target…",
+          "load-failed": "The target could not be loaded.",
+          "retry": "Try again",
+          "field": "Target GMV per month ({currency}, incl. GST)",
+          "field-help": "Applies to every calendar month of the Market until changed, in {currency}. It changes nothing else.",
+          "cancel": "Cancel",
+          "clear": "Remove target",
+          "save": "Save target",
+          "saved": "Monthly target saved.",
+          "reload": "Reload",
+          "error": {
+            "amount": "Enter an amount above zero, with at most the currency’s decimals.",
+            "invalid": "This target is not accepted. Check the amount and try again.",
+            "conflict": "The target was changed meanwhile. Reload to see the latest, then try again.",
+            "pending": "A change of the target already waits for review in System requests.",
+            "denied": "The target can’t be changed in this session.",
+            "csrf": "Your session needs a refresh. Reload the page and try again.",
+            "throttled": "Too many tries. Wait a moment and try again.",
+            "unavailable": "The target could not be saved just now. Try again.",
+            "unknown": "The target could not be saved. Try again."
+          }
+        },
+        "behind": "Behind pace: {rate}"
+      },
+      "funnel": {
+        "title": "Shopping funnel",
+        "scope": "Signed-in shoppers with personalization on",
+        "list": "Shopping funnel steps",
+        "step": {
+          "viewed": "Viewed a product",
+          "carted": "Added to cart",
+          "checkedOut": "Started checkout",
+          "paid": "Paid"
+        },
+        "of": {
+          "viewed": "viewers",
+          "carted": "carts",
+          "checkedOut": "checkouts"
+        },
+        "rate": "{rate} of {of}",
+        "shoppers": "shoppers",
+        "hidden": "Fewer than 5",
+        "not-enough": "Not enough data yet",
+        "not-enough-hint": "The funnel shows once {minimum} or more shoppers viewed a product in the period."
+      },
+      "carts": {
+        "title": "Abandoned carts",
+        "scope": "Untouched 24h+",
+        "as-of": "Untouched 24h+ as of {day}",
+        "value": "about {amount}",
+        "value-mixed": "value not shown: more than one currency",
+        "not-enough": "Not enough data yet: fewer than {minimum} carts.",
+        "no-snapshot": "Not enough data yet: no day of this period is counted yet."
+      },
+      "searches": {
+        "title": "Searches with no results",
+        "scope": "Top 10",
+        "empty": "No searches without results in this period.",
+        "not-enough": "Not enough data yet",
+        "not-enough-hint": "A text is shown only on a day at least {minimum} shoppers searched it.",
+        "days": "{days, plural, one {# day} other {# days}} · {shoppers} shopper-days"
+      },
+      "reviews": {
+        "title": "Reviews",
+        "scope": "Last 30 days",
+        "average": "{average} average",
+        "count": "{count, plural, one {# review} other {# reviews}}",
+        "low-star": "{share} of 1 or 2 stars",
+        "stars": "{stars}★",
+        "off": "Reviews are switched off in this market.",
+        "not-enough": "Not enough data yet",
+        "not-enough-hint": "Fewer than {minimum} reviews were published in the last 30 days."
+      },
+      "by-state": {
+        "title": "Orders by state",
+        "scope": "Seller orders paid, by delivery state",
+        "row": "{orders} · {share}",
+        "other": "Other states",
+        "unknown": "Not recorded",
+        "empty": "No seller orders were paid in this period.",
+        "not-enough": "Not enough data yet",
+        "not-enough-hint": "The split is shown once {minimum} or more orders were paid."
+      },
+      "discounts": {
+        "title": "Discount cost",
+        "scope": "Incl. GST",
+        "orders": "{count, plural, one {# discounted order} other {# discounted orders}}",
+        "platform": "Mondapac funded",
+        "sellers": "Sellers funded",
+        "of-total": "{share} of the total",
+        "by-kind": "Discount cost by kind",
+        "kind": {
+          "promotion": "Promotions",
+          "first-order": "First-order discount",
+          "free-shipping": "Free delivery"
+        },
+        "uses": "{count, plural, one {# use} other {# uses}}",
+        "held-back": "Fewer than 5 uses",
+        "released": "{count, plural, one {# order} other {# orders}} refunded or cancelled gave back {amount} (not in the total).",
+        "released-held": "Discounts given back by refunded or cancelled orders: fewer than 5 orders, not shown.",
+        "empty": "No discounted orders in this period.",
+        "not-enough": "Not enough data yet",
+        "not-enough-hint": "Shown once {minimum} or more orders used a discount; {orders} so far.",
+        "held": "Held back"
+      },
+      "retry": "Try again"
     }
   },
   "work-queue": {
@@ -4166,7 +4303,8 @@
         "ai": "Write with AI",
         "promotions": "Promotion rules",
         "review-policy": "Approval rules",
-        "offer-review": "Offer review"
+        "offer-review": "Offer review",
+        "emergency-stop": "Emergency stop"
       },
       "words": {
         "assistant": "Smart assistant,chat,buyer assistant",
@@ -4176,7 +4314,8 @@
         "ai": "AI,AI writing,product descriptions",
         "promotions": "Promotions,discounts,free delivery,first order",
         "review-policy": "Review policy,System requests,second admin,review",
-        "offer-review": "Offers,approval,probation,new sellers,price check,sampling,Approval required,queue alert,backlog"
+        "offer-review": "Offers,approval,probation,new sellers,price check,sampling,Approval required,queue alert,backlog",
+        "emergency-stop": "Emergency,stop,freeze,incident,fraud,offers,review,R0"
       },
       "about": {
         "support": "The help address customers and sellers see",
@@ -4195,7 +4334,8 @@
         "admins": "Who can sign in to this panel, and invitations",
         "roles": "Sets of permissions to give admins",
         "review-policy": "Which changes a second admin must review",
-        "offer-review": "Which new offers wait for an admin, and the numbers the checks use"
+        "offer-review": "Which new offers wait for an admin, and the numbers the checks use",
+        "emergency-stop": "Send every new offer to review at once, for a fraud wave or an incident"
       }
     },
     "sub": {
@@ -17780,6 +17920,21 @@
           "If you don't recognise one, sign out of all other devices and change your password."
         ],
         "related": []
+      },
+      "settings-emergency-stop": {
+        "title": "Emergency stop",
+        "about": "While it is on, every new offer waits for an admin, even from trusted sellers. Offers already live stay on sale.",
+        "good": [
+          "Switching it on or off asks for a reason and a fresh two-step code.",
+          "A red banner shows on every admin page while it is on.",
+          "Sellers only see that their offer is in review."
+        ],
+        "related": [
+          {
+            "label": "Offer review",
+            "href": "/settings/offer-review"
+          }
+        ]
       }
     },
     "tabbed": {
@@ -18308,6 +18463,42 @@
       "throttled": "Too many attempts. Wait a moment and try again.",
       "unavailable": "The service isn't available right now. Try again.",
       "unknown": "Something went wrong. Try again."
+    }
+  },
+  "emergency-stop": {
+    "banner": {
+      "title": "Emergency stop is on",
+      "body": "Every new offer waits for an admin. Offers already live stay on sale.",
+      "by-at": "Turned on by {name}, {when}.",
+      "at": "Turned on {when}.",
+      "link": "Open emergency stop"
+    },
+    "page": {
+      "title": "Emergency stop",
+      "section": "Offer review emergency stop",
+      "intro": "Use it for a fraud wave or an incident. It does not turn itself off.",
+      "state-on": "On: every new offer waits for review",
+      "state-off": "Off",
+      "on-body": "New offers from every seller, trusted ones too, go to the review queue. Offers already live stay on sale.",
+      "off-body": "New offers follow the Offer review settings.",
+      "last-by-at": "Last switched by {name}, {when}.",
+      "last-at": "Last switched {when}.",
+      "reason-label": "Reason",
+      "reason-help": "Required to switch it either way. Kept in the history and the audit log.",
+      "reason-required": "Enter a reason of up to 500 characters.",
+      "turn-on": "Turn on emergency stop",
+      "turn-off": "Turn off emergency stop",
+      "view-only": "Only an admin with the emergency stop permission can switch it.",
+      "load-failed": "The emergency stop could not be loaded.",
+      "problem": {
+        "conflict": "Someone switched it a moment ago. The page shows the latest state; check it and try again.",
+        "denied": "You do not have permission to switch the emergency stop.",
+        "unknown": "It could not be switched. Try again."
+      },
+      "confirm-title": "Turn on emergency stop?",
+      "confirm-body": "Every new offer from every seller will wait for an admin until you turn it off. Offers already live stay on sale. Next you enter a fresh two-step code.",
+      "confirm-cancel": "Cancel",
+      "confirm-turn-on": "Turn on"
     }
   }
 }

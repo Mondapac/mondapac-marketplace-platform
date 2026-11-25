@@ -273,7 +273,7 @@ Evidence (2026-10-14, PostgreSQL 16, 100k specials and 120k markers, 20 due): bo
 
 ### 3.7 `pricing.cost_series` and `pricing.cost_records` (slice 3; D 2.1, 6.5)
 
-`cost_series` has the columns, keys, CHECKs and grants of `price_series` (3.2) under its own names: `cost_series_market_id_offer_id_variant_id_key`, `cost_series_market_id_id_currency_key`, `cost_series_market_id_product_id_variant_id_idx`. It is a separate root with its own `version` (D 2.3). The retirement handlers retire it too, and the re-key moves it with the same rules and guard trigger (3.2.1; D 6.4).
+`cost_series` has the columns, keys, CHECKs and grants of `price_series` (3.2) under its own names: `cost_series_market_id_offer_id_variant_id_key`, `cost_series_market_id_id_currency_key`, `cost_series_market_id_product_id_variant_id_idx`. It is a separate root with its own `version` (D 2.3). The retirement handlers retire it too, and the re-key moves it with the same rules and guard trigger (3.2.1; D 6.4). **As built (PR 7 of the seller Offer page):** the retirement handlers do not retire Cost series yet, and there is no re-key guard trigger on `cost_series`; a Cost read or write is refused for a deleted Offer or a Variant that is not priceable, and both tombstones block a new series. Deferred: register row FE-20261125-pricing-cost-series-retirement.
 
 `cost_records`:
 
@@ -282,13 +282,14 @@ Evidence (2026-10-14, PostgreSQL 16, 100k specials and 120k markers, 20 due): bo
 | `id` | `uuid` | no | PK |
 | `cost_series_id` | `uuid` | no | FK `cost_records_cost_series_id_fkey` `(market_id, cost_series_id, currency)` → `cost_series (market_id, id, currency)` (P2) |
 | `kind` | `text` | no | CHECK `amount`, `cleared` (Q7: Cost is optional) |
+| `series_version` | `integer` | no | CHECK `>= 1`. The series `version` this record raised it to (as built, PR 7 of the seller Offer page). Unique `cost_records_market_id_cost_series_id_series_version_key` |
 | `amount_minor` | `bigint` | yes | CHECK: NOT NULL if and only if `kind = 'amount'`; range P1. **Cost: never leaves the module** (D 6.5) |
 | `currency` | `char(3)` | no | The series currency, also on `cleared` rows, so the foreign key is always checked (a NULL currency would switch a composite FK off) |
 | `submitted_at` | `timestamptz(6)` | no | |
 | `submitted_by_account_id` | `uuid` | no | Who wrote it (Hassan finding 4: the audit row has no amount, H2, so the actor is recorded here). Acting-as: P8 |
 
 - **Append-only.** `SELECT`, `INSERT` only; trigger `cost_records_no_update_delete` (`BEFORE UPDATE OR DELETE`) and `cost_records_no_truncate` answer `23001` to the owner (measured for `UPDATE` as the application: `42501`).
-- Current Cost of a series = the latest row. Index `cost_records_market_id_cost_series_id_submitted_at_id_idx`, read newest first per series. A page of the seller's Offer list reads the rows of at most that page's series in one statement. Cost changes are rare, so the read returns few rows per series. Not measured at volume; revisit with the slice 3 plans (10).
+- Current Cost of a series = the record with the highest `series_version`, through the unique index above (as built: the earlier index on `(submitted_at, id)` was replaced, because two writes can share an instant and a random id does not order them). A page of the seller's Offer list reads the rows of at most that page's series in one statement. Cost changes are rare, so the read returns few rows per series. Not measured at volume; revisit with the slice 3 plans (10).
 - No column of a price table holds Cost, and no Cost table has a relation to a price table. A query on price tables cannot return Cost by structure, as `password_credentials` is kept apart from `accounts` (ID-data 3.3).
 
 ### 3.8 `pricing.write_refusal_throttles` and `pricing.write_refusal_actor_throttles` (slice 1; adopted; 11.2 M7)
@@ -323,15 +324,17 @@ D 5.2, 8 and H3 cap the `pricing.offer-write-refused` audit rows at 1 per (actor
 - Grants: `write_refusal_throttles` `SELECT, INSERT, UPDATE (window_started_at), DELETE`; `write_refusal_actor_throttles` `SELECT, INSERT, UPDATE (window_started_at, recorded_count, suppressed_count), DELETE` (7).
 - Not personal beyond the account id, which the audit row holds anyway.
 
-### 3.9 `pricing.write_rate_counters` (phase 4 leftover: the per-account write cap)
+### 3.9 `pricing.write_rate_counters` (phase 4 leftover: the per-account write cap; offer page PR 9: the typical-price read caps)
+
+The same table holds the caps on the seller's typical-price read (`GET .../typical-prices`): `typical.account.minute` (20), `typical.account.day` (200) and `typical.seller.day` (400, keyed by seller), counted before the Offer lookup, apart from the price-write allowance (migration `20261125100000_pricing_typical_price_counters`).
 
 The general per-account limit on the seller price write routes (D 5.2, 8; Hassan M2). One fixed window per (Market, kind, account): `kind` is `write.account.minute` (60 attempts) or `write.account.day` (1,000), both counted for every attempt that reaches the use case with a valid input, refused or not, in a unit of its own before the Offer lookup, so the count commits even when the write is refused. A count above the limit answers `request.throttled` with `retryAfterSeconds` (HTTP 429). The limits are policy in code, not CHECKs; the CHECK holds only the closed kind list and `count >= 0`.
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `market_id`, `tenant_id` | | no | As every table |
-| `kind` | `text` | no | CHECK `write.account.day`, `write.account.minute` |
-| `actor_account_id` | `uuid` | no | The plain account id (as 3.8); PK `write_rate_counters_pkey (market_id, kind, actor_account_id)` |
+| `kind` | `text` | no | CHECK `typical.account.day`, `typical.account.minute`, `typical.seller.day`, `write.account.day`, `write.account.minute` |
+| `actor_account_id` | `uuid` | no | The plain account id (as 3.8); for `typical.seller.day` the plain seller id (one cap over all the seller's accounts); PK `write_rate_counters_pkey (market_id, kind, actor_account_id)` |
 | `window_started_at` | `timestamptz(6)` | no | Start of the fixed window, set at the first attempt |
 | `count` | `integer` | no | CHECK `>= 0` |
 
@@ -430,7 +433,7 @@ The facade answers 1 to 200 `(offerId, variantId)` keys (D 6.2). Three statement
 | Re-key handler (3.2.1) | Series of the Offer; target keys (Offer, `to`); tombstones by primary key | Leading `(market_id, offer_id)` of the series unique key; `retired_variants_pkey`. No new index |
 | Boundary job, starts (D 11) | Specials with `effective_from` in `(now − H, now]`, no `start` marker (Prisma `none` relation filter = `NOT EXISTS`), `ORDER BY effective_from LIMIT 100` | `special_price_records_market_id_effective_from_live_idx` + marker PK |
 | Boundary job, natural ends | `status IN (accepted, approved)`, `ends_at` in `(now − H, now]`, no `end` marker | `special_price_records_market_id_ends_at_live_idx` |
-| Cost of a page of series (D 5.2) | `cost_records` by `cost_series_id in […]`, newest first | `cost_records_market_id_cost_series_id_submitted_at_id_idx` |
+| Cost of a page of series (D 5.2) | `cost_records` by `cost_series_id in […]`, highest `series_version` first | `cost_records_market_id_cost_series_id_series_version_key` |
 
 **Job horizon H** (proposal: 7 days). Measured at steady state, with 91,048 of 91,058 past starts already marked: with H the discovery query took **11 to 13 ms** (3,583 probes). Without H it took **229 to 238 ms** (91,058 probes) and grows with every special ever created, every minute. A boundary older than H with no marker is not published. Prices are still correct (D 11: the job only tells consumers), and a daily check counts such rows and alerts. This adds a value and an alert to D 11 (11.2 M4).
 
@@ -641,3 +644,18 @@ No migration and no schema change. What the first caller of 3.8 settles:
 | 4 | Purge | `purgeStartedBefore` is split into `purgeActorWindowsStartedBefore` and `purgeOfferWindowsStartedBefore`; the job `pricing.purge-write-refusal-throttles` runs them hourly, each in its own READ COMMITTED unit, actor table first, so it never holds rows of both tables |
 | 5 | 5.1 serializable units | `PriceSeriesRepository.add` refuses to run outside `runSerializable` (pricing's only way to open a `serializable` unit), before any statement |
 | 6 | Versions | One version per event (P 10): a seller write that supersedes a pending record and adds a new one raises the series version by two |
+
+### 12.3 R4 first price against the Variant median (offer approval slice 3; PR #1340, 2026-11-25)
+
+Migration `20261125091500_pricing_first_price_reference`. Reviewed by Mojtaba (database-designer) on 2026-11-25: approved with fixes, which are applied here.
+
+| # | Point | As built |
+|---|---|---|
+| 1 | `regular_price_records` | Adds `reference_amount_minor`, `reference_businesses` and `reference_band_percent`. They are either all set or all null, and only on a record with no anchor (a first price). The CHECK `regular_price_records_reference_check` enforces this. The hold-direction CHECK now lets a held record have a reference instead of an anchor. The write-once guard trigger covers the three columns. The table's column UPDATE grant does not name them, so they are insert-only. |
+| 2 | `first_price_checks` (new) | One row per measured first price. The primary key is `record_id`, and the FK `(market_id, series_id, record_id)` points to the record. It is write-once except for the re-check columns (`rechecked_at`, `recheck_outcome`, `recheck_reference_amount_minor`, `recheck_amount_minor`) and `post_review_reason`. Triggers refuse UPDATE of anything else, DELETE and TRUNCATE. The app role has SELECT, INSERT and a column-level UPDATE on those five columns (privilege map). |
+| 3 | Partial index | `(market_id, product_id, variant_id, checked_at, record_id) WHERE rechecked_at IS NULL AND outcome IN ('no-reference','reference-unavailable')` serves `pendingRechecks`. It is used only with a custom plan, because the outcome list is a literal of the predicate. Prisma sends unnamed statements, so the plan is always custom. A generic plan would fall back to a parallel scan (measured 23.5 ms against 0.45 ms at 200k rows). Named or prepared statements on this query must keep that in mind. |
+| 4 | `regularPricesInForce` | Uses the series index `(market, product, variant)`, then the records' `(market, series, id)` key, filtering each series' history. Measured 6.3 ms for 300 series and 0.8 ms for 10. A partial index is needed only if history passes about 50 records per series. The query reads at most 200 prices (future item `FE-20261125-r4-reference-over-200-offers`). |
+| 5 | Migration locks | The new constraints are added NOT VALID and then validated. Prisma runs the file in one transaction, so the ACCESS EXCLUSIVE lock is held through both scans (about 0.3 s each on 2M records). Past about 5M records, a migration like this puts its VALIDATE statements in a migration of its own. |
+| 6 | `down.sql` | Runs only on a database with no R4 data: no row in `first_price_checks` and no record with a reference. Once R4 data exists, going down would lose the post-publication review list and the reason a first price was held, so the way back is a forward migration. |
+| 7 | Growth | About 230 MB per million check rows, at one row per first price per Variant. No partitioning and no purge: the rows are the review evidence. |
+| 8 | Not carried by the database (nits, kept in code) | The database does not check that the hold direction matches the amount against the reference, or that an `outside` re-check carries the reason `recheck-outside`. The domain and `markRechecked` set both, and unit and DB tests cover them. |

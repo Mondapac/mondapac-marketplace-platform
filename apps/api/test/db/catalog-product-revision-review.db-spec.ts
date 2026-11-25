@@ -1,3 +1,4 @@
+import { NO_AUDIT, prismaOfferEditReview } from '../support/catalog-offer-edit-review-fakes';
 import { ALL_CATEGORIES_IN_SCOPE } from '../support/seller-scope-allow-all';
 import { randomUUID } from 'node:crypto';
 import { Temporal, ok, uuidV7 } from '@mondapac/shared-kernel';
@@ -1064,6 +1065,11 @@ describe.each(TEST_MARKETS)(
       let release!: () => void;
       const released = new Promise<void>((resolve) => (release = resolve));
       const addTag = new OwnOfferAddTag(gate, {
+        editReview: prismaOfferEditReview(
+          persistence.service,
+          { next: () => uuid7() } as never,
+          NO_AUDIT,
+        ),
         unitOfWork: persistence.unitOfWork,
         offers: offerStore,
         eligibility: { isEligible: () => Promise.resolve(true) },

@@ -10,13 +10,53 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { CATALOG_FACADE, CatalogModule, type CatalogFacade } from '../catalog';
+import { SETTINGS_FACADE, SettingsModule, type SettingsFacade } from '../settings';
+import { SELLER_GOAL_STORE, type SellerGoalStore } from './application/ports/seller-goal-store';
+import { SetSellerMonthlyGoal } from './application/use-cases/set-seller-monthly-goal.use-case';
+import { ViewMarketplaceMonthlyTarget } from './application/use-cases/view-marketplace-monthly-target.use-case';
+import {
+  ViewSellerMonthlyGoal,
+  type SellerGoalDependencies,
+} from './application/use-cases/view-seller-monthly-goal.use-case';
 import { ENGAGEMENT_FACADE, EngagementModule, type EngagementFacade } from '../engagement';
 import { ENGAGEMENT_SOURCES, type EngagementSources } from './application/ports/engagement-sources';
 import { ENGAGEMENT_STORE, type EngagementStore } from './application/ports/engagement-store';
 import { SnapshotDailyEngagement } from './application/use-cases/snapshot-daily-engagement.use-case';
+import { REVIEW_SOURCES, type ReviewSources } from './application/ports/review-sources';
+import { ViewMarketplaceReviews } from './application/use-cases/view-marketplace-reviews.use-case';
+import { FacadeReviewSources } from './infrastructure/facade-review-sources';
+import { REVIEWS_FACADE, ReviewsModule, type ReviewsFacade } from '../reviews';
 import { ViewMarketplaceShoppingFunnel } from './application/use-cases/view-marketplace-shopping-funnel.use-case';
+import { ViewMarketplaceDiscountCost } from './application/use-cases/view-marketplace-discount-cost.use-case';
+import { DISCOUNT_SOURCES, type DiscountSources } from './application/ports/discount-sources';
+import { FacadeDiscountSources } from './infrastructure/facade-discount-sources';
+import {
+  PROMOTIONS_REPORTING_FACADE,
+  PromotionsModule,
+  type PromotionsReportingFacade,
+} from '../promotions';
 import { FacadeEngagementSources } from './infrastructure/facade-engagement-sources';
 import { snapshotDailyEngagementJob } from './presentation/jobs/snapshot-daily-engagement.job';
+import { SEARCH_REPORTING_FACADE, SearchModule, type SearchReportingFacade } from '../search';
+import { SEARCH_SOURCES, type SearchSources } from './application/ports/search-sources';
+import { SEARCH_STORE, type SearchStore } from './application/ports/search-store';
+import { SnapshotDailySearches } from './application/use-cases/snapshot-daily-searches.use-case';
+import { ViewMarketplaceZeroResultSearches } from './application/use-cases/view-marketplace-zero-result-searches.use-case';
+import { FacadeSearchSources } from './infrastructure/facade-search-sources';
+import { snapshotDailySearchesJob } from './presentation/jobs/snapshot-daily-searches.job';
+import { CART_REPORTING_FACADE, CartModule, type CartReportingFacade } from '../cart';
+import {
+  ABANDONED_CART_SOURCES,
+  type AbandonedCartSources,
+} from './application/ports/abandoned-cart-sources';
+import {
+  ABANDONED_CARTS_STORE,
+  type AbandonedCartsStore,
+} from './application/ports/abandoned-carts-store';
+import { SnapshotAbandonedCarts } from './application/use-cases/snapshot-abandoned-carts.use-case';
+import { ViewMarketplaceAbandonedCarts } from './application/use-cases/view-marketplace-abandoned-carts.use-case';
+import { FacadeAbandonedCartSources } from './infrastructure/facade-abandoned-cart-sources';
+import { snapshotAbandonedCartsJob } from './presentation/jobs/snapshot-abandoned-carts.job';
 import {
   COMMISSION_PAYOUTS_REPORTING_FACADE,
   CommissionPayoutsModule,
@@ -91,6 +131,7 @@ const REPORT_FACTS_DEPENDENCIES = Symbol('REPORT_FACTS_DEPENDENCIES');
 const ADMIN_KPI_DEPENDENCIES = Symbol('ADMIN_KPI_DEPENDENCIES');
 const LEDGER_FACTS_DEPENDENCIES = Symbol('LEDGER_FACTS_DEPENDENCIES');
 const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
+const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
 
 /**
  * The reporting module (dashboards upgrade, option B, phase 3): the facts behind the dashboard
@@ -99,9 +140,15 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
  * (ordering's order and refund events) and the nightly reconcile; the ledger facts come from
  * commission-payouts' reporting facade (its `ledger-recorded` event and the ledger backfill); the
  * shopping funnel's daily counts from ordering's checkouts and engagement's count (dashboards v2,
- * phase 2: a nightly snapshot, counts only). No
+ * phase 2: a nightly snapshot, counts only); the zero-result searches from search's texts and
+ * engagement's searcher counts (the same phase: texts at least ten customers searched); the
+ * discount cost from promotions' reporting facade at request time (dashboards v2, phase 2;
+ * nothing stored); the abandoned carts from cart's reporting facade (a nightly snapshot: a
+ * count and an approximate value); the Market's monthly revenue target from the settings
+ * facade. No
  * module imports it. It publishes no event. Its own keys are the two daily exports' (dashboards v2,
- * PR 5), each audited. The history backfill job brings the facts recorded before the module was
+ * PR 5), each audited, and the seller's monthly goal (phase 2), the one table it holds that is not
+ * derived data. The history backfill job brings the facts recorded before the module was
  * deployed in, once.
  */
 @Module({
@@ -111,7 +158,12 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
     CatalogModule,
     ShippingModule,
     CommissionPayoutsModule,
+    SettingsModule,
     EngagementModule,
+    ReviewsModule,
+    SearchModule,
+    PromotionsModule,
+    CartModule,
   ],
   controllers: [SellerKpisController, AdminReportsController],
   providers: [
@@ -179,6 +231,39 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
           zone,
           clock,
         } satisfies ViewSellerKpisDependencies),
+    },
+    // Monthly target and seller goal (dashboards v2, phase 2).
+    {
+      provide: SELLER_GOAL_DEPENDENCIES,
+      inject: [UNIT_OF_WORK, SELLER_KPI_READER, SELLER_GOAL_STORE, MARKET_ZONE, CLOCK],
+      useFactory: (
+        unitOfWork: UnitOfWork,
+        reader: SellerKpiReader,
+        goals: SellerGoalStore,
+        zone: MarketZone,
+        clock: Clock,
+      ): SellerGoalDependencies => ({ unitOfWork, reader, goals, zone, clock }),
+    },
+    {
+      provide: ViewSellerMonthlyGoal,
+      inject: [USE_CASE_GATE, SELLER_GOAL_DEPENDENCIES],
+      useFactory: (gate: UseCaseGate, deps: SellerGoalDependencies) =>
+        new ViewSellerMonthlyGoal(gate, deps),
+    },
+    {
+      provide: SetSellerMonthlyGoal,
+      inject: [USE_CASE_GATE, SELLER_GOAL_DEPENDENCIES, AUDIT_WRITER],
+      useFactory: (gate: UseCaseGate, deps: SellerGoalDependencies, audit: AuditWriter) =>
+        new SetSellerMonthlyGoal(gate, { ...deps, audit }),
+    },
+    {
+      provide: ViewMarketplaceMonthlyTarget,
+      inject: [USE_CASE_GATE, ADMIN_KPI_DEPENDENCIES, SETTINGS_FACADE],
+      useFactory: (gate: UseCaseGate, deps: AdminKpiDependencies, settings: SettingsFacade) =>
+        new ViewMarketplaceMonthlyTarget(gate, {
+          ...deps,
+          targets: { marketTarget: (context) => settings.monthlyRevenueTarget(context) },
+        }),
     },
     {
       provide: REPORT_SOURCES,
@@ -332,6 +417,97 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         clock: Clock,
       ) => new ViewMarketplaceShoppingFunnel(gate, { unitOfWork, store, zone, clock }),
     },
+    // Zero-result searches (dashboards v2, phase 2): the nightly snapshot and its read.
+    {
+      provide: SEARCH_SOURCES,
+      inject: [SEARCH_REPORTING_FACADE, ENGAGEMENT_FACADE],
+      useFactory: (search: SearchReportingFacade, engagement: EngagementFacade): SearchSources =>
+        new FacadeSearchSources(search, engagement),
+    },
+    {
+      provide: SnapshotDailySearches,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, SEARCH_STORE, SEARCH_SOURCES, MARKET_ZONE, CLOCK],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        store: SearchStore,
+        sources: SearchSources,
+        zone: MarketZone,
+        clock: Clock,
+      ) => new SnapshotDailySearches(gate, { unitOfWork, store, sources, zone, clock }),
+    },
+    {
+      provide: ViewMarketplaceZeroResultSearches,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, SEARCH_STORE, MARKET_ZONE, CLOCK],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        store: SearchStore,
+        zone: MarketZone,
+        clock: Clock,
+      ) => new ViewMarketplaceZeroResultSearches(gate, { unitOfWork, store, zone, clock }),
+    },
+    // The discount cost (dashboards v2, phase 2): read from promotions at request time.
+    {
+      provide: DISCOUNT_SOURCES,
+      inject: [PROMOTIONS_REPORTING_FACADE],
+      useFactory: (promotions: PromotionsReportingFacade): DiscountSources =>
+        new FacadeDiscountSources(promotions),
+    },
+    {
+      provide: ViewMarketplaceDiscountCost,
+      inject: [USE_CASE_GATE, DISCOUNT_SOURCES, MARKET_ZONE, CLOCK],
+      useFactory: (gate: UseCaseGate, sources: DiscountSources, zone: MarketZone, clock: Clock) =>
+        new ViewMarketplaceDiscountCost(gate, { sources, zone, clock }),
+    },
+    // Abandoned carts (dashboards v2, phase 2): the nightly snapshot and its read.
+    {
+      provide: ABANDONED_CART_SOURCES,
+      inject: [CART_REPORTING_FACADE],
+      useFactory: (cart: CartReportingFacade): AbandonedCartSources =>
+        new FacadeAbandonedCartSources(cart),
+    },
+    {
+      provide: SnapshotAbandonedCarts,
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        ABANDONED_CARTS_STORE,
+        ABANDONED_CART_SOURCES,
+        MARKET_ZONE,
+        CLOCK,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        store: AbandonedCartsStore,
+        sources: AbandonedCartSources,
+        zone: MarketZone,
+        clock: Clock,
+      ) => new SnapshotAbandonedCarts(gate, { unitOfWork, store, sources, zone, clock }),
+    },
+    {
+      provide: ViewMarketplaceAbandonedCarts,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ABANDONED_CARTS_STORE, MARKET_ZONE, CLOCK],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        store: AbandonedCartsStore,
+        zone: MarketZone,
+        clock: Clock,
+      ) => new ViewMarketplaceAbandonedCarts(gate, { unitOfWork, store, zone, clock }),
+    },
+    {
+      provide: REVIEW_SOURCES,
+      inject: [REVIEWS_FACADE],
+      useFactory: (reviews: ReviewsFacade): ReviewSources => new FacadeReviewSources(reviews),
+    },
+    {
+      provide: ViewMarketplaceReviews,
+      inject: [USE_CASE_GATE, REVIEW_SOURCES, MARKET_ZONE, CLOCK],
+      useFactory: (gate: UseCaseGate, sources: ReviewSources, zone: MarketZone, clock: Clock) =>
+        new ViewMarketplaceReviews(gate, { sources, zone, clock }),
+    },
     {
       provide: REPORTING_KPI_FACADE,
       inject: [
@@ -343,7 +519,12 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         ViewSellerNetEarnings,
         ViewMarketplaceOrderStatus,
         ViewMarketplaceOrdersByState,
+        ViewMarketplaceMonthlyTarget,
         ViewMarketplaceShoppingFunnel,
+        ViewMarketplaceReviews,
+        ViewMarketplaceZeroResultSearches,
+        ViewMarketplaceDiscountCost,
+        ViewMarketplaceAbandonedCarts,
         MARKET_ZONE,
         CLOCK,
       ],
@@ -356,7 +537,12 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         netEarnings: ViewSellerNetEarnings,
         orderStatus: ViewMarketplaceOrderStatus,
         ordersByState: ViewMarketplaceOrdersByState,
+        monthlyTarget: ViewMarketplaceMonthlyTarget,
         shoppingFunnel: ViewMarketplaceShoppingFunnel,
+        reviews: ViewMarketplaceReviews,
+        zeroResultSearches: ViewMarketplaceZeroResultSearches,
+        discountCost: ViewMarketplaceDiscountCost,
+        abandonedCarts: ViewMarketplaceAbandonedCarts,
         zone: MarketZone,
         clock: Clock,
       ) =>
@@ -369,7 +555,12 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
           netEarnings,
           orderStatus,
           ordersByState,
+          monthlyTarget,
           shoppingFunnel,
+          reviews,
+          zeroResultSearches,
+          discountCost,
+          abandonedCarts,
           { zone, clock },
         ),
     },
@@ -383,17 +574,28 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
     ),
     registerJobsFrom(
       'reporting',
-      [ReconcileReportFacts, BackfillHistory, BackfillLedger, SnapshotDailyEngagement],
+      [
+        ReconcileReportFacts,
+        BackfillHistory,
+        BackfillLedger,
+        SnapshotDailyEngagement,
+        SnapshotDailySearches,
+        SnapshotAbandonedCarts,
+      ],
       (
         reconcile: ReconcileReportFacts,
         backfill: BackfillHistory,
         ledger: BackfillLedger,
         engagement: SnapshotDailyEngagement,
+        searches: SnapshotDailySearches,
+        abandoned: SnapshotAbandonedCarts,
       ) => [
         reconcileReportFactsJob(reconcile),
         backfillHistoryJob(backfill),
         backfillLedgerJob(ledger),
         snapshotDailyEngagementJob(engagement),
+        snapshotDailySearchesJob(searches),
+        snapshotAbandonedCartsJob(abandoned),
       ],
     ),
   ],

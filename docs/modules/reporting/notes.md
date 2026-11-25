@@ -45,6 +45,11 @@ day then conflict with a 40001 the platform retries, instead of one missing the 
 Seller days are rebuilt in a fixed order (day, then seller). Growth and retention:
 `docs/design/data/reporting.md`.
 
+Not everything here is rebuildable any more (Mojtaba M1, dashboards v2 phase 2):
+`seller_monthly_goals` holds the sellers' own goals, authored data no backfill can bring back. Any
+future reset or rebuild runbook of reporting must leave that table out, and it stays in backup and
+point-in-time recovery scope like every module's own data.
+
 Early warning (Mojtaba, 24 Nov 2026): units of DIFFERENT sellers and days can also meet. When the
 reporting db-specs shared one database and ran in parallel, their SERIALIZABLE units failed with
 40001 at random (3 of 3 local runs of the five reporting files): on near-empty tables the predicate
@@ -571,3 +576,153 @@ new/returning card, phase 2 cards PR):
   the reads (FE-20261125-reporting-funnel-tenant-scope), and the product owner's check that the
   privacy policy covers aggregate statistics (FE-20261125-legal-privacy-policy-aggregate-statistics).
 
+
+### Reviews card (dashboards v2, phase 2)
+
+`reporting.view-marketplace-reviews` (key `reviews.settings.view`, platform admin only) answers the
+reviews of the last 30 Market days against the 30 before. Reporting stores nothing for it: it works
+the two windows out in the Market's zone (`windowOf`, ADR-0005) and asks reviews'
+`marketReviewCounts` (rule: the same key, platform admin) with the caller's context unchanged;
+only counts come back (`FacadeReviewSources`). Reviews off in the Market is the `off` answer, not
+an error. Below 5 reviews in the period nothing is shown, so a handful cannot be one person's
+review. Hassan: counts only, no account, product or seller reaches reporting; overlapping custom
+ranges do not apply because the window is fixed.
+
+## Zero-result searches: nightly snapshot (dashboards v2, phase 2)
+
+- Design choice (the simplest safe one): nothing about a person crosses a module. search notes,
+  server-side in `search.search-products` when called by the storefront route, the folded text of a
+  plain text search whose first page showed nothing, per UTC quarter hour (`search.zero_result_queries`,
+  no session or account). engagement counts, inside its own module, the distinct signed-in customers
+  with personalization on who searched a given text on a given day. reporting hands the texts from
+  one to the other and keeps only texts and counts. Compared with #1328 no id passes through
+  reporting at all: the hand-off is texts in, counts out.
+- `reporting.snapshot-daily-searches` (job, hourly): for each Market day of the last 28 that ended at
+  least 2 hours ago in the Market's zone and has no `search_snapshot_days` row, asks search's
+  `zeroResultTexts` (the day's noted texts, at most 2,000, those noted in the most quarter hours
+  first, so a flood of one-off texts cannot push out the texts many shoppers miss) and hands them to
+  engagement's `searchShoppers`, which answers only texts searched by at least ten distinct customers
+  that day (its own constant, not the caller's). The day row and the kept texts are written once, in
+  one unit. A day with no qualifying text still gets its day row (`query_count` 0). A day over
+  engagement's cap (100,000 text-account pairs) is asked once per process (`cappedDays`), like the
+  funnel.
+- Flag semantics: a search event of the day counts for a text when search noted that text as
+  zero-result at least once that day. A text that found nothing in the morning and something after
+  a product was published at noon counts for the whole day; the card's "?" should say "searches on
+  days it returned no results".
+- Suppression (Hassan's rule from the phase plan): a text is written only when at least ten distinct
+  signed-in customers searched it that Market day; below ten its words never reach reporting (the
+  engagement count drops it, `keptZeroResultRows` drops it again, the table CHECK refuses it).
+  Over a period the read sums the kept days, so `searcherDays` is customer-days; a text ten people
+  searched over a month but never ten in one day is never shown
+  (FE-20261125-dashboards-zero-result-distinct-over-period). Guests are never counted (a new guest
+  cookie would be a new "person"). search also never notes a text that may name or reach a person:
+  more than 50 characters, an `@`, `://` or `www.`, or five digits or more in all (phone, order and
+  card numbers, GTINs).
+- Survives opt-out and erasure: rows are written once (SELECT and INSERT only) and name no one; a
+  later switch-off deletes the behaviour in engagement and leaves the day's row (db-spec
+  `reporting-zero-result-searches`).
+- Only reporting's `FacadeSearchSources` calls `searchShoppers` and `zeroResultTexts`, and only the
+  storefront route sets `noteZeroResult` (never the buyer assistant's facade, whose texts a model
+  chooses): contract spec `zero-result-search-handoff`.
+- Read: `reporting.view-marketplace-zero-result-searches`, key `catalog.product.view` (what shoppers
+  miss is a catalogue gap; the same key as the live-listings health number; no new key), platform
+  admin acting as themselves. Top ten by searches, then by text; `not-enough-data` when no text
+  qualifies. The text is data: the admin card must render it as a plain text node, never HTML or
+  markup and never a link (Hassan I4).
+- `searches` counts every search of the text by the counted population (signed-in customers with
+  personalization on) on each kept day, including searches of that day that did find something
+  (the flag is per text and day, see above; Hassan I3). The DTO description says so.
+- Both `daily_zero_result_searches.query_text` and search's `zero_result_queries.query_key` refuse,
+  by CHECK, an `@`, `://` or `www.` (any case) as well as the length rule (Mojtaba L5, Hassan I1);
+  the digit rule stays in the application.
+- Accepted residual risks (PR 1342 review):
+  - Hassan L1: a name or street address with four digits or fewer passes the text rules and can sit
+    in search's notes for up to 35 days; it reaches reporting and the dashboard only when ten
+    distinct signed-in customers searched that exact text on one day.
+  - Hassan L2: many accounts or a botnet can fill a day with one-off zero-result texts and crowd the
+    2,000-text read. The texts are taken most noted quarter hours first, and search keeps a small
+    per-process recent-notes cache so a repeat in the same quarter hour does not reach the database
+    (Mojtaba L1); a row-count alert on `search.zero_result_queries` comes with the monitoring work.
+  - Hassan L3: the text is what clients typed; any text ten accounts report as searched on one day
+    can show on the admin card. A control for an admin to hide a text is
+    FE-20261125-dashboards-zero-result-hide-text.
+  - Mojtaba 7: a day above engagement's cap (100,000 text-account pairs) is skipped (no day row);
+    once it leaves the 28-day look-back it is lost for good. The covering index that would let the
+    cap rise is FE-20261125-engagement-search-pairs-covering-index.
+- Deferred: distinct searchers over a whole period
+  (FE-20261125-dashboards-zero-result-distinct-over-period), the mock's "Top searches" card with a
+  no-result share (FE-20261125-dashboards-top-searches-no-result-share), a 13-month purge of the rows
+  (FE-20261125-reporting-zero-result-searches-retention).
+
+## Discount cost (dashboards v2, phase 2)
+
+`reporting.view-marketplace-discount-cost` (keys `commission-payouts.settlement.view` and
+`promotions.promotion.manage`, both; a platform admin acting as themselves) answers the discount cost of a period for the admin dashboard. Nothing
+is stored in reporting: it asks promotions' reporting facade (`PROMOTIONS_REPORTING_FACADE`,
+`promotions.sum-discount-cost`) for the instants of the period's Market days and of the period
+before (`windowOf`, the Market's zone, never UTC days), in the Market's currency, with the caller's
+own context, so promotions checks the same key again. Two grouped reads (at most 8 groups each)
+over the partial index `promotions.redemptions_confirmed_idx`; a live read is cheap, so no nightly
+snapshot was added. `domain/discount-cost.ts` checks that the shares and kinds add up (a mismatch
+throws and the section answers `error`, never a guessed number), holds the amounts back below five
+discounted orders, and gives the change with the money base of the other KPIs (100.00). A refusal
+of the key from promotions passes through (the dashboard leaves the section out); any other failure
+is `access.unavailable`.
+
+Attribution: a discount counts on the Market day its order's payment was confirmed (the redemption's
+`confirmed_at`, set by `ordering.order-paid.v1`), like GMV by paid day. A later refund or
+cancellation after payment moves it from `amount` to `released` of the same period (the redemption
+is released for the whole order), so an old period's cost can fall after the fact; the card shows
+the figure as of now.
+
+Privacy and residual risk: a kind used by 1 to 4 redemptions has every figure null, and `released`
+is null for 1 to 4 orders, so one order's discount is not read off the card; below five discounted
+orders the whole answer is `not-enough-data`. Differencing stays possible: a viewer who compares two
+overlapping custom ranges, or the total against the kinds shown, can still narrow a small group down.
+That is accepted, because the viewer is a platform admin who holds both the money key and promotion
+management and can already see each promotion's spend in promotions; the hiding guards against a
+glance, not against that viewer. The kinds' shares use the largest remainder (ties to the earlier
+kind), so the shares shown add up to 10000 basis points.
+
+## Abandoned carts (dashboards v2, phase 2, nightly snapshot)
+
+- Table `reporting.daily_abandoned_carts`, one row per (Market, day): `cart_count` and an approximate
+  value in the Market's currency. Written by `reporting.snapshot-abandoned-carts` (rule `system`,
+  hourly job of the same name) through cart's `CartReportingFacade.abandonedCarts`
+  (`cart.count-abandoned-carts`, rule `system`).
+- Definition: an ACTIVE cart (guest or signed-in; never a merged one) with at least one line, no
+  order mark (a paid order cleared lines from it and the buyer has not changed it since; the same
+  "not ordered" as the cart reminder), last changed at or before 24 hours before the end of the
+  Market day (absolute hours, the Market's zone, the injected Clock). It is a level, not a flow: the
+  read shows the period's latest snapshot day (`asOfDay`) against the latest day of the period
+  before, never a sum of days.
+- When: once yesterday ended at least 2 h ago in the Market's zone, on the first hourly run, and
+  only yesterday. The carts are read as they are at that run, so a cart changed between midnight and
+  the run is left out (slightly fewer, never more). An older day is never written late, since a
+  cart's past state cannot be read: a day missed while the worker was down stays without a row and
+  the card shows the day before it.
+- Value: each line's quantity times its price when added or last changed (`price_at_add`), summed.
+  Approximate by design (prices change; the card says "about"); it is never the price now and never
+  a basis for money decisions. When any line is in another currency than the Market's, the value is
+  null (no conversion) and the count is still written; the job logs the currencies only.
+- No cap (Mojtaba M1, option A): cart answers with two aggregate statements in one read-only unit,
+  scoped by Market and tenant at both levels (Hassan L1): the lines grouped by currency and quantity
+  with their prices summed (value = quantity × that sum; a line holds 1 to 999 units, so the groups
+  stay few), and a count of the carts that have a line. No row reaches memory and no raw SQL is
+  used. The unit opens no transaction (ADR-0025), so a cart changed between the two statements can
+  make the count and the value differ by that cart: within "about". If the statements get slow at
+  volume: FE-20261125-reporting-abandoned-carts-paging.
+- Privacy: counts and a sum only. No cart, account or guest id leaves cart's adapter; nothing is
+  logged but the day, a reason code and currencies. The table has no account, customer, guest,
+  offer or seller column (db-spec `reporting-abandoned-carts`); SELECT and INSERT only for the
+  application role. The read answers `not-enough-data` below 5 carts on the latest day, with no
+  count and no value (a value of one or two carts would be one person's cart). The same residual
+  risk as the funnel (Hassan L1): two overlapping custom ranges can show two different latest days,
+  each over 5; no single small count is ever answered.
+- Read: `reporting.view-marketplace-abandoned-carts`, key `ordering.order.view` (no new key),
+  platform admin acting as themselves; `GET dashboard/admin/kpis` section `abandonedCarts`.
+- "Reminders sent" (in the design mock) is deferred: the cart reminder exists, but
+  `notifications.cart_reminders` records a stage when it is taken, before consent and address are
+  checked, so counting it would overstate the mails sent
+  (FE-20261125-dashboards-abandoned-carts-reminders-sent).

@@ -21,4 +21,9 @@ describe('the admin queues against the API', () => {
     const levelOf = (index: number) => (index < 4 ? 'critical' : index < 15 ? 'today' : 'review');
     expect(ADMIN_QUEUES.map((queue, index) => `${queue.key}:${levelOf(index)}`)).toEqual(bound);
   });
+
+  it('opens failed payments on the cancelled orders (drill-down, a status the list knows)', () => {
+    const failed = ADMIN_QUEUES.find((queue) => queue.key === 'ordering.failed-payments');
+    expect(failed?.href).toBe('/orders?status=cancelled');
+  });
 });

@@ -98,6 +98,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue search in market %s', (code) 
       typeCode: 'simple',
       scope: 'PLATFORM',
       name: 'Medjool dates',
+      primaryImageId: null,
     },
     {
       productId: ID(0x102) as never,
@@ -105,6 +106,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue search in market %s', (code) 
       typeCode: 'simple',
       scope: 'PLATFORM',
       name: 'Saffron 1g',
+      primaryImageId: null,
     },
     {
       productId: ID(0x103) as never,
@@ -112,6 +114,7 @@ describe.each(['AU', 'ZZ'] as const)('review queue search in market %s', (code) 
       typeCode: 'simple',
       scope: 'PLATFORM',
       name: null,
+      primaryImageId: null,
     },
   ];
   const revisions: PendingRevisionRow[] = [

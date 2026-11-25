@@ -1,3 +1,5 @@
+import type { Money } from '@mondapac/shared-kernel';
+
 // The admin-editable Market settings (ADR-0026), declared in code: code, allowed values, the
 // value in force while no admin has changed it, and the safe value used when the store cannot be
 // read. Adding a setting is adding a definition here (and its translation keys in the panels).
@@ -37,6 +39,33 @@ export const AI_DESCRIPTION_WRITER_TIER_CODE = 'ai-description-writer-tier';
 export const AI_MODEL_TIER_VALUES = ['fast', 'balanced'] as const;
 export type AiModelTierSetting = (typeof AI_MODEL_TIER_VALUES)[number];
 
+export const MONTHLY_REVENUE_TARGET_CODE = 'monthly-revenue-target';
+
+/**
+ * The Market's monthly revenue target (dashboards v2 phase 2): the GMV with tax the marketplace
+ * aims for in each calendar month of the Market's zone, the basis of the admin KPI GMV. `none`
+ * (the default and the safe value) or `<ISO 4217 code>:<minor units>`, for example
+ * `AUD:24000000`; the currency is the Market's when it is set, never assumed. It stays in force
+ * for every month until it is changed; the history keeps the earlier targets.
+ */
+export const MONTHLY_REVENUE_TARGET_NONE = 'none';
+/** At most 15 digits of minor units (inside a BIGINT and below 2^53). */
+const MONEY_VALUE = /^([A-Z]{3}):([1-9][0-9]{0,14})$/;
+
+/** The target a stored value names; null for `none` or anything else. */
+export function targetOf(value: string): Money | null {
+  const match = MONEY_VALUE.exec(value);
+  if (match === null) return null;
+  return Object.freeze({ amount: BigInt(match[2]!), currency: match[1]! });
+}
+
+/** The stored value of a target (null: `none`). */
+export function targetValue(target: Money | null): string {
+  return target === null
+    ? MONTHLY_REVENUE_TARGET_NONE
+    : `${target.currency}:${target.amount.toString()}`;
+}
+
 export const OFFER_REVIEW_MODE_CODE = 'offer-review-mode';
 
 /**
@@ -75,6 +104,13 @@ export const OFFER_REVIEW_BACKLOG_COUNT_CODE = 'offer-review-backlog-count';
  * in the review queue before the backlog alert is raised.
  */
 export const OFFER_REVIEW_BACKLOG_HOURS_CODE = 'offer-review-backlog-hours';
+/**
+ * The Offer review emergency stop (R0, design 9.5 b): while `on`, every new Offer of the Market
+ * waits for an admin, even from a Trusted seller; live Offers stay live. Changed only through its
+ * own protected permission with a reason, never with the page's other settings.
+ */
+export const OFFER_REVIEW_EMERGENCY_STOP_CODE = 'offer-review-emergency-stop';
+export const OFFER_REVIEW_EMERGENCY_STOP_VALUES = ['off', 'on'] as const;
 
 /** Every code of the Offer review policy, as one page shows and saves them. */
 export const OFFER_REVIEW_CODES: readonly string[] = Object.freeze([
@@ -100,6 +136,8 @@ export interface SettingDefinition {
   readonly label: string;
   /** The allowed values of a choice; empty for a whole number setting. */
   readonly values: readonly string[];
+  /** A setting whose values are not a list (an amount) accepts the values this matches too. */
+  readonly pattern?: RegExp;
   /** Set for a whole number setting: the value is a decimal text within these bounds. */
   readonly integer?: IntegerBounds;
   /** In force while the Market has no row. */
@@ -138,6 +176,15 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
     defaultValue: 'fast',
     // The cheaper tier.
     safeValue: 'fast',
+  },
+  {
+    code: OFFER_REVIEW_EMERGENCY_STOP_CODE,
+    label: 'Offer review emergency stop',
+    values: OFFER_REVIEW_EMERGENCY_STOP_VALUES,
+    defaultValue: 'off',
+    // A failed read of the policy already answers mode `all` (every Offer waits), so the safe
+    // value stays `off`: an unreadable row must not raise a stop banner nobody switched on.
+    safeValue: 'off',
   },
   {
     code: OFFER_REVIEW_MODE_CODE,
@@ -205,6 +252,15 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
     defaultValue: '24',
     safeValue: '24',
   },
+  {
+    code: MONTHLY_REVENUE_TARGET_CODE,
+    label: 'Monthly revenue target',
+    values: [MONTHLY_REVENUE_TARGET_NONE],
+    pattern: MONEY_VALUE,
+    defaultValue: MONTHLY_REVENUE_TARGET_NONE,
+    // An unreadable store is never read as a target; the dashboard section answers `error`.
+    safeValue: MONTHLY_REVENUE_TARGET_NONE,
+  },
 ]);
 
 export const SETTING_CODES: readonly string[] = SETTING_DEFINITIONS.map((d) => d.code);
@@ -216,13 +272,16 @@ export function findDefinition(code: unknown): SettingDefinition | null {
 const DECIMAL = /^(0|[1-9][0-9]{0,8})$/;
 
 /**
- * The value as the store keeps it when the definition allows it, or null: one of a choice's values,
- * or a whole number within the bounds written as plain decimal text (a JSON number is accepted and
+ * The value as the store keeps it when the definition allows it, or null: one of a choice's values
+ * or a text its pattern matches (an amount), or a whole number within the bounds written as plain decimal text (a JSON number is accepted and
  * written as text; "07", "1e2" and "10.0" are not).
  */
 export function acceptedValue(definition: SettingDefinition, value: unknown): string | null {
   if (definition.integer === undefined) {
-    return typeof value === 'string' && definition.values.includes(value) ? value : null;
+    if (typeof value !== 'string') return null;
+    return definition.values.includes(value) || (definition.pattern?.test(value) ?? false)
+      ? value
+      : null;
   }
   const text = typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : value;
   if (typeof text !== 'string' || !DECIMAL.test(text)) return null;

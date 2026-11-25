@@ -28,6 +28,9 @@ the price-jump hold; wider penetration-test scope). From identity spike 6, ADR-0
 units open no transaction; READ COMMITTED checked at start-up).
 Phase 3 frontend: ADR-0033 (panel UI base: Next.js, Tailwind on the exported tokens, Base UI) and
 ADR-0034 (panel apps: `apps/seller`, `apps/admin`, `packages/ui`; the panel server is the BFF).
+AI Gateway: ADR-0052 (AI providers, routes and regions; "ADR 3" of ADR-0019) and ADR-0053 (AI model
+choice in the admin panel, superseding ADR-0026 decision 9 and ADR-0042 decision 7 for AI models
+only); design `docs/design/domain/platform-ai.md`.
 Follow them; change one only through a new superseding ADR.
 - docs/features/09-internationalization.md (INTL-* feature IDs, supersedes deprecated AU-*)
 for the full reasoning and the extension-point interfaces (ProductTypeHandler,
@@ -111,7 +114,9 @@ strategy implementation, not in core logic.
   content, or stores a suggestion, that takes effect only when the user submits it
   through the normal use case. Tools are READ or DRAFT only.
 - R7 Models are called only through platform/ai; no provider SDK import elsewhere.
-  Provider, model and region are Market configuration, with no default ("none" is valid).
+  Provider, model and region are Market configuration, with no default ("none" is valid):
+  a senior admin picks models per Market only among the approved routes of the ADR-0052
+  catalogue (ADR-0053); routes, regions, prices and keys are code and secrets, never panel.
   Data goes to an external AI service only under a no-retention, no-training contract,
   within the Market's data-residency requirement, in categories the owner approved.
 - R8 Every capability can be switched off per Market and per seller (the seller setting is

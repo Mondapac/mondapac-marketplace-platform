@@ -205,6 +205,11 @@ import {
 } from '../application/ports/offer-tax-categories.reader';
 import { PrismaOfferTaxCategoriesReader } from './prisma-offer-tax-categories.reader';
 import { PrismaOfferPrimaryCategoriesReader } from './prisma-offer-primary-categories.reader';
+import { PrismaPlatformProductSearchReader } from './prisma-platform-product-search.reader';
+import {
+  PLATFORM_PRODUCT_SEARCH_READER,
+  type PlatformProductSearchReader,
+} from '../application/ports/platform-product-search.reader';
 import {
   OFFER_PRIMARY_CATEGORIES_READER,
   type OfferPrimaryCategoriesReader,
@@ -413,7 +418,7 @@ import {
 import { PrismaVariantAdminReader } from './prisma-variant-admin.reader';
 import { PrismaVariantTypeSettingsStore } from './prisma-variant-type-settings.store';
 
-import { ModelGateway } from '../../../platform/ai/model-gateway';
+import { AiGateway } from '../../../platform/ai/ai-gateway';
 import { SETTINGS_FACADE, type SettingsFacade } from '../../settings';
 import {
   DESCRIPTION_WRITER_MODEL,
@@ -426,6 +431,21 @@ import {
 import { FacadeDescriptionWriterSwitches } from './description-writer-switches';
 import { GatewayDescriptionWriterModel } from './gateway-description-writer-model';
 import { RegistryMarketDayCalendar } from './registry-market-day-calendar';
+import {
+  OFFER_REVIEW_INPUTS,
+  OFFER_REVIEW_REFERRAL_STORE,
+  type OfferReviewInputs,
+  type OfferReviewReferralStore,
+} from '../application/ports/offer-review';
+import { FacadeOfferReviewInputs } from './facade-offer-review-inputs';
+import { PrismaOfferReviewReferralStore } from './prisma-offer-review-referral.store';
+import {
+  OFFER_PENDING_CHANGE_REPOSITORY,
+  type OfferPendingChangeRepository,
+} from '../application/ports/offer-pending-change.repository';
+import { PrismaOfferPendingChangeRepository } from './prisma-offer-pending-change.repository';
+import { OfferEditReview } from '../application/offer-edit-review';
+import { AUDIT_WRITER, type AuditWriter } from '../../../platform/audit/audit-writer';
 
 export const catalogProviders: readonly Provider[] = [
   {
@@ -436,15 +456,50 @@ export const catalogProviders: readonly Provider[] = [
   },
   {
     provide: DESCRIPTION_WRITER_MODEL,
-    inject: [ModelGateway],
-    useFactory: (gateway: ModelGateway): DescriptionWriterModel =>
+    inject: [AiGateway],
+    useFactory: (gateway: AiGateway): DescriptionWriterModel =>
       new GatewayDescriptionWriterModel(gateway),
   },
   {
     provide: DESCRIPTION_WRITER_SWITCHES,
-    inject: [SETTINGS_FACADE, SELLERS_FACADE],
-    useFactory: (settings: SettingsFacade, sellers: SellersFacade): DescriptionWriterSwitches =>
-      new FacadeDescriptionWriterSwitches(settings, sellers),
+    inject: [SETTINGS_FACADE],
+    useFactory: (settings: SettingsFacade): DescriptionWriterSwitches =>
+      new FacadeDescriptionWriterSwitches(settings),
+  },
+  {
+    provide: OFFER_REVIEW_INPUTS,
+    inject: [SETTINGS_FACADE],
+    useFactory: (settings: SettingsFacade): OfferReviewInputs =>
+      new FacadeOfferReviewInputs(settings),
+  },
+  {
+    provide: OFFER_REVIEW_REFERRAL_STORE,
+    inject: [PrismaService, ID_GENERATOR],
+    useFactory: (prisma: PrismaService, ids: IdGenerator): OfferReviewReferralStore =>
+      new PrismaOfferReviewReferralStore(prisma, ids),
+  },
+  {
+    provide: OFFER_PENDING_CHANGE_REPOSITORY,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): OfferPendingChangeRepository =>
+      new PrismaOfferPendingChangeRepository(prisma),
+  },
+  {
+    provide: OfferEditReview,
+    inject: [
+      OFFER_REVIEW_INPUTS,
+      OFFER_REVIEW_REFERRAL_STORE,
+      OFFER_PENDING_CHANGE_REPOSITORY,
+      AUDIT_WRITER,
+      ID_GENERATOR,
+    ],
+    useFactory: (
+      inputs: OfferReviewInputs,
+      referrals: OfferReviewReferralStore,
+      pendingChanges: OfferPendingChangeRepository,
+      audit: AuditWriter,
+      ids: IdGenerator,
+    ): OfferEditReview => new OfferEditReview({ inputs, referrals, pendingChanges, audit, ids }),
   },
   {
     provide: MARKET_DAY_CALENDAR,
@@ -796,6 +851,12 @@ export const catalogProviders: readonly Provider[] = [
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): OfferTaxCategoriesReader =>
       new PrismaOfferTaxCategoriesReader(prisma),
+  },
+  {
+    provide: PLATFORM_PRODUCT_SEARCH_READER,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): PlatformProductSearchReader =>
+      new PrismaPlatformProductSearchReader(prisma),
   },
   {
     provide: OFFER_PRIMARY_CATEGORIES_READER,

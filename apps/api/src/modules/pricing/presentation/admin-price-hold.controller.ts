@@ -434,6 +434,7 @@ function rowOf(view: PriceHoldPage['items'][number]): PriceHoldRow {
       amount: view.anchorAmount.amount.toString(),
       currency: view.anchorAmount.currency,
     },
+    basis: view.basis,
     direction: view.direction,
     submittedAt: view.submittedAt.toString(),
   };

@@ -758,6 +758,26 @@ export class MemoryReviews implements ReviewRepository {
       }),
     );
   }
+  countPublishedForMarket(_m: MarketContext, windows: readonly ReviewWindow[]) {
+    return Promise.resolve(
+      windows.map((w) => {
+        const histogram: [number, number, number, number, number] = [0, 0, 0, 0, 0];
+        let reviews = 0;
+        let starsSum = 0;
+        for (const r of this.productReviews.values()) {
+          const at = r.publishedAt;
+          if (r.status !== 'published' || at === null) continue;
+          if (Temporal.Instant.compare(at, w.from) < 0 || Temporal.Instant.compare(at, w.to) >= 0) {
+            continue;
+          }
+          histogram[r.rating - 1] = histogram[r.rating - 1]! + 1;
+          reviews += 1;
+          starsSum += r.rating;
+        }
+        return { reviews, starsSum, histogram };
+      }),
+    );
+  }
 }
 
 export class MemoryReviewsSetting implements MarketSettingRepository {

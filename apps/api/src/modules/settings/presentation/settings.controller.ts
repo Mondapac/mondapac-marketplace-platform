@@ -12,6 +12,7 @@ import {
 } from '@nestjs/swagger';
 import type { CallContext } from '@mondapac/shared-kernel';
 import type { Request, Response } from 'express';
+import { RequiresStepUp } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { CSRF_HEADER } from '../../../platform/call-context/csrf';
 import {
@@ -22,18 +23,34 @@ import { ChangeAiSetting } from '../application/use-cases/change-ai-setting.use-
 import { ViewAiSettings } from '../application/use-cases/view-ai-settings.use-case';
 import { ChangeOfferReviewSettings } from '../application/use-cases/change-offer-review-settings.use-case';
 import { ViewOfferReviewSettings } from '../application/use-cases/view-offer-review-settings.use-case';
+import { ChangeOfferReviewEmergencyStop } from '../application/use-cases/change-offer-review-emergency-stop.use-case';
+import { ViewOfferReviewEmergencyStop } from '../application/use-cases/view-offer-review-emergency-stop.use-case';
 import { ChangeCartModeSetting } from '../application/use-cases/change-cart-mode-setting.use-case';
 import { ChangeListPagingSetting } from '../application/use-cases/change-list-paging-setting.use-case';
 import { ReadListPaging } from '../application/use-cases/read-list-paging.use-case';
 import { ViewCartModeSetting } from '../application/use-cases/view-cart-mode-setting.use-case';
 import { ViewListPagingSetting } from '../application/use-cases/view-list-paging-setting.use-case';
+import { ChangeMonthlyRevenueTargetSetting } from '../application/use-cases/change-monthly-revenue-target-setting.use-case';
+import { ViewMonthlyRevenueTargetSetting } from '../application/use-cases/view-monthly-revenue-target-setting.use-case';
+import {
+  SETTINGS_EMERGENCY_STOP_STEP_UP,
+  SETTINGS_OFFER_REVIEW_STEP_UP,
+} from '../contracts/step-up';
 import { closedBody, refusal } from './http-answers';
 import { CART_MODE_CODE } from '../domain/definitions';
 import {
   ChangeAiSettingRequest,
   ChangeCartModeRequest,
+  ChangeMonthlyRevenueTargetRequest,
+  ChangeEmergencyStopRequest,
   ChangeOfferReviewRequest,
+  EmergencyStopBody,
+  emergencyStopBody,
   ChangeSettingRequest,
+  MonthlyRevenueTargetBody,
+  monthlyRevenueTargetBody,
+  MonthlyRevenueTargetChangeBody,
+  monthlyRevenueTargetChangeBody,
   ListPagingBody,
   listPagingBody,
   SettingBody,
@@ -47,6 +64,9 @@ import {
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
 const ERROR = { type: Object };
+const STEP_UP_FORBIDDEN =
+  'access.denied, request.csrf, second-factor.required (details.actionKey) or ' +
+  'second-factor.enrolment-required';
 
 function logRoute(logger: Logger, msg: string, context: CallContext, outcome: string): void {
   // Ids and codes only.
@@ -82,7 +102,159 @@ export class AdminSettingsController {
     private readonly changeAi: ChangeAiSetting,
     private readonly viewOfferReview: ViewOfferReviewSettings,
     private readonly changeOfferReview: ChangeOfferReviewSettings,
+    private readonly viewTarget: ViewMonthlyRevenueTargetSetting,
+    private readonly changeTarget: ChangeMonthlyRevenueTargetSetting,
+    private readonly viewEmergencyStop: ViewOfferReviewEmergencyStop,
+    private readonly changeEmergencyStop: ChangeOfferReviewEmergencyStop,
   ) {}
+
+  @Get('offer-review/emergency-stop')
+  @ApiOperation({
+    summary: 'Whether the Offer review emergency stop is on (admin)',
+    description:
+      'Any admin of the Market (the banner on every admin page): on, the version, when it was ' +
+      'last switched and the display name of who switched it.',
+  })
+  @ApiOkResponse({ type: EmergencyStopBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async emergencyStop(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.viewEmergencyStop.execute(context, {});
+    logRoute(
+      this.#logger,
+      'settings.view-offer-review-emergency-stop-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return emergencyStopBody(result.value);
+  }
+
+  @Put('offer-review/emergency-stop')
+  @HttpCode(200)
+  @RequiresStepUp(SETTINGS_EMERGENCY_STOP_STEP_UP)
+  @ApiOperation({
+    summary: 'Switch the Offer review emergency stop on or off (admin)',
+    description:
+      'Needs the protected settings.offer-review.emergency-stop and a fresh two-step proof of ' +
+      'this admin (`POST identity/admin/step-up/verify` for ' +
+      'settings.offer-review-emergency-stop.change; without it 403 second-factor.required with ' +
+      'details.actionKey); refused in an acting-as session. A rejected review never switches it ' +
+      'off. A note is always required. Live at once: while on, every new ' +
+      'Offer of the Market waits for an admin; live Offers stay live. Audited, and reviewed at ' +
+      'high risk where the area is reviewed. A stale version is 409 settings.conflict.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ChangeEmergencyStopRequest })
+  @ApiOkResponse({ type: SettingsChangeListBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: STEP_UP_FORBIDDEN })
+  @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
+  async putEmergencyStop(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody, ['value', 'expectedVersion', 'note']);
+    if (invalid !== null) throw invalid;
+    const { value, expectedVersion, note } = requestBody as Record<string, unknown>;
+    const result = await this.changeEmergencyStop.execute(context, {
+      value,
+      expectedVersion,
+      note,
+    });
+    logRoute(
+      this.#logger,
+      'settings.change-offer-review-emergency-stop-route',
+      context,
+      result.ok ? 'set' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return settingsChangeListBody(result.value);
+  }
+
+  @Get('monthly-revenue-target')
+  @ApiOperation({
+    summary: 'The monthly revenue target of the Market (admin)',
+    description:
+      'Needs settings.monthly-revenue-target.view. The GMV with tax the Market aims for in each ' +
+      "calendar month of its zone, in the Market's currency (minor units as a string); null while " +
+      'none is set (version 0). It stays in force for every month until changed.',
+  })
+  @ApiOkResponse({ type: MonthlyRevenueTargetBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async monthlyRevenueTarget(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.viewTarget.execute(context, {});
+    logRoute(
+      this.#logger,
+      'settings.view-monthly-revenue-target-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    const [view] = result.value;
+    if (view === undefined) throw refusal({ code: 'internal' }, context, this.#logger);
+    return monthlyRevenueTargetBody(view);
+  }
+
+  @Put('monthly-revenue-target')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Set or clear the monthly revenue target of the Market (admin)',
+    description:
+      'Needs settings.monthly-revenue-target.manage; refused in an acting-as session. `target` ' +
+      "is minor units above zero (at most 15 digits) in the Market's own currency, or null to " +
+      'clear it. The body carries the version the admin saw: a stale edit is 409 ' +
+      'settings.conflict. Audited with the target before and after; asking for the target ' +
+      'already in force changes nothing. ' +
+      REVIEWED,
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ChangeMonthlyRevenueTargetRequest })
+  @ApiOkResponse({ type: MonthlyRevenueTargetChangeBody })
+  @ApiBadRequestResponse({
+    ...ERROR,
+    description: 'validation.failed (details.fields: target, target.amount, target.currency, ...)',
+  })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
+  async putMonthlyRevenueTarget(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody, ['target', 'expectedVersion', 'note']);
+    if (invalid !== null) throw invalid;
+    const { target, expectedVersion, note } = requestBody as {
+      target?: unknown;
+      expectedVersion?: unknown;
+      note?: unknown;
+    };
+    const result = await this.changeTarget.execute(context, { target, expectedVersion, note });
+    logRoute(
+      this.#logger,
+      'settings.change-monthly-revenue-target-route',
+      context,
+      result.ok ? 'set' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return monthlyRevenueTargetChangeBody(result.value);
+  }
 
   @Get('offer-review')
   @ApiOperation({
@@ -116,10 +288,13 @@ export class AdminSettingsController {
 
   @Put('offer-review')
   @HttpCode(200)
+  @RequiresStepUp(SETTINGS_OFFER_REVIEW_STEP_UP)
   @ApiOperation({
     summary: 'Change the Offer review policy of the Market (admin)',
     description:
-      'Needs settings.offer-review.manage; refused in an acting-as session. `changes` lists each ' +
+      'Needs settings.offer-review.manage and a fresh two-step proof of this admin ' +
+      '(`POST identity/admin/step-up/verify` for settings.offer-review.change; without it 403 ' +
+      'second-factor.required with details.actionKey); refused in an acting-as session. `changes` lists each ' +
       'changed setting once with the version the admin saw. All or nothing: a stale version of ' +
       'any of them is 409 settings.conflict and nothing is saved. Each change is audited and, ' +
       'where reviewed, opens its own review request. ' +
@@ -130,7 +305,7 @@ export class AdminSettingsController {
   @ApiOkResponse({ type: SettingsChangeListBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
-  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiForbiddenResponse({ ...ERROR, description: STEP_UP_FORBIDDEN })
   @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
   async putOfferReview(
     @Call() context: CallContext,

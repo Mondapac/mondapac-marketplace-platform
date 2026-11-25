@@ -340,6 +340,24 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
     noCustomerText: 'a guarded draft sentence shown in the modal only, never saved',
   },
   GuardedDraft: { noCustomerText: 'guarded draft sentences and counts, never saved' },
+  OfferReviewFacts: { noCustomerText: 'booleans about the seller, product and Market' },
+  OfferReviewInput: {
+    noCustomerText: 'the review policy input; the description is read, never written or shown',
+  },
+  OfferEditReviewInput: {
+    noCustomerText: 'the edit rules input; the description is read, never written or shown',
+  },
+  // A held edit of a live Offer (slice 2c): its description was claim-checked at the seller's
+  // edit and reaches the Offer only through the approval, which claim-checks it again.
+  OfferPendingChangeState: {
+    noCustomerText:
+      'a held change; its description goes live only through the approval, which claim-checks it',
+  },
+  OfferPendingChange: {
+    noCustomerText:
+      'a held change; its description goes live only through the approval, which claim-checks it',
+  },
+  ReviewClearance: { noCustomerText: 'a marker of the review policy or an approval; no text' },
   WriterEvaluationCase: { noCustomerText: 'synthetic evaluation data used in tests' },
   WriterDetail: { noCustomerText: 'form data sent to the writer, never saved by it' },
   WriterRequest: { noCustomerText: 'form data sent to the writer, never saved by it' },

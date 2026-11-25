@@ -1,11 +1,22 @@
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { parseId, Temporal } from '@mondapac/shared-kernel';
-import type { CallContext, Id, MarketContext, PendingEvent } from '@mondapac/shared-kernel';
+import type {
+  CallContext,
+  Id,
+  MarketContext,
+  MarketId,
+  PendingEvent,
+} from '@mondapac/shared-kernel';
 import { FixedClock, testCallContext, testMarketContext } from '@mondapac/shared-kernel/testing';
 import request from 'supertest';
 import { CheckClaimText } from '../src/modules/catalog/application/claim-text/check-claim-text.service';
 import { ALLOWED_PRODUCT_TYPES_READER } from '../src/modules/catalog/application/ports/allowed-product-types.reader';
+import { CLAIM_EVALUATOR } from '../src/modules/catalog/application/ports/claim-evaluator';
+import { OFFER_PENDING_CHANGE_REPOSITORY } from '../src/modules/catalog/application/ports/offer-pending-change.repository';
 import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer.repository';
+import { ClaimQueryBuilder } from '../src/modules/catalog/application/tags/claim-query-builder';
+import { OfferPendingChange } from '../src/modules/catalog/domain/offer-pending-change';
+import { AUDIT_WRITER } from '../src/platform/audit/audit-writer';
 import type { OfferActor } from '../src/modules/catalog/application/ports/offer.repository';
 import { OWN_CATALOG_READER } from '../src/modules/catalog/application/ports/own-catalog.reader';
 import { PRODUCT_REPOSITORY } from '../src/modules/catalog/application/ports/product.repository';
@@ -24,6 +35,12 @@ import { CLOCK } from '../src/platform/clock/clock.module';
 import { OUTBOX_WRITER } from '../src/platform/events/outbox-writer';
 import { PLATFORM_TENANT_ID } from '../src/platform/market-context/tenant';
 import { UNIT_OF_WORK } from '../src/platform/unit-of-work/unit-of-work';
+import { InMemoryOfferPendingChanges } from './support/catalog-offer-edit-review-fakes';
+import {
+  FakeClaimEvaluator,
+  FixedFactsClaimQueryBuilder,
+  refusedDecision,
+} from './support/catalog-tag-fakes';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
 import { FakeUnitOfWork } from './support/pricing-fakes';
 import { createTestApp } from './support/test-app';
@@ -66,6 +83,11 @@ it('maps every refusal code of the review use cases to its exact status', () => 
     'batch.too-large': 413,
     'access.unavailable': 503,
     'claim.check-unavailable': 503,
+    'offer-change.not-found': 404,
+    'offer-change.not-pending': 409,
+    'offer-change.own-submission': 403,
+    'offer-change.invalid': 422,
+    'claim.tag-not-allowed': 422,
   });
 });
 
@@ -80,6 +102,10 @@ describe('admin Offer review over HTTP (integration)', () => {
   let claimVerdict: 'clean' | 'claim-text.found';
   let saveThrows: Error | null;
   let allowed: 'all' | Set<string>;
+  let pendingChanges: InMemoryOfferPendingChanges;
+  let audits: { action: string }[];
+  let evaluator: FakeClaimEvaluator;
+  let claimFacts: FixedFactsClaimQueryBuilder;
   const http = () => request(app.getHttpServer());
 
   async function boot() {
@@ -152,6 +178,19 @@ describe('admin Offer review over HTTP (integration)', () => {
           .useValue({ allowedFor: () => Promise.resolve(allowed) })
           .overrideProvider(SELLER_ELIGIBILITY_READER)
           .useValue({ isEligible: () => Promise.resolve(eligible) })
+          .overrideProvider(OFFER_PENDING_CHANGE_REPOSITORY)
+          .useValue(pendingChanges)
+          .overrideProvider(AUDIT_WRITER)
+          .useValue({
+            record: (_c: unknown, entry: { action: string }) => {
+              audits.push(entry);
+              return Promise.resolve();
+            },
+          })
+          .overrideProvider(CLAIM_EVALUATOR)
+          .useValue(evaluator)
+          .overrideProvider(ClaimQueryBuilder)
+          .useValue(claimFacts)
           .overrideProvider(CheckClaimText)
           .useValue({
             execute: (_c: CallContext, texts: readonly { locale: string }[]) =>
@@ -323,6 +362,12 @@ describe('admin Offer review over HTTP (integration)', () => {
     claimVerdict = 'clean';
     saveThrows = null;
     allowed = 'all';
+    pendingChanges = new InMemoryOfferPendingChanges();
+    audits = [];
+    evaluator = new FakeClaimEvaluator(() => {
+      throw new Error('no claim was expected');
+    }, []);
+    claimFacts = new FixedFactsClaimQueryBuilder(null);
   });
   afterEach(async () => {
     await app.close();
@@ -335,6 +380,14 @@ describe('admin Offer review over HTTP (integration)', () => {
     for (const route of ['approve', 'request-changes']) {
       const responses = document[`/catalog/admin/offers/{offerId}/${route}`]?.post?.responses;
       for (const status of ['200', '400', '403', '404', '409', '503']) {
+        expect(responses).toHaveProperty(status);
+      }
+    }
+    expect(document['/catalog/admin/offer-changes']?.get?.responses).toHaveProperty('403');
+    for (const route of ['approve', 'request-changes', 'reject']) {
+      const responses =
+        document[`/catalog/admin/offer-changes/{changeId}/${route}`]?.post?.responses;
+      for (const status of ['200', '400', '403', '404', '409']) {
         expect(responses).toHaveProperty(status);
       }
     }
@@ -622,6 +675,239 @@ describe('admin Offer review over HTTP (integration)', () => {
         .send({ version: 4 });
       expect(sellerOrigin.status).toBe(403);
       expect(saved).toHaveLength(0);
+    });
+  });
+
+  describe.each(TEST_MARKETS)('held changes of live Offers in market %s (slice 2c)', (code) => {
+    const typeCode = code === 'AU' ? 'halal' : 'zz-cert';
+    const SELLER_ACCOUNT = id<'Account'>(0xa101);
+
+    /** A live Offer with one held change waiting for a reviewer. */
+    function held(
+      n: number,
+      proposal: {
+        readonly proposedDescription?: Record<string, string>;
+        readonly proposedHandling?: 'FRESH' | 'REPACKED';
+        readonly proposedTagTypes?: readonly string[];
+        readonly submittedByAccountId?: Id<'Account'>;
+      },
+    ) {
+      const offer = waiting(code, n, {
+        status: 'published',
+        listed: true,
+        firstPublishedAt: START,
+        version: 5,
+      });
+      const made = OfferPendingChange.propose({
+        id: id<'OfferPendingChange'>(0x8000 + n),
+        marketId: code as MarketId,
+        offerId: offer.state.id,
+        sellerId: SELLER,
+        baseOfferVersion: 5,
+        reasons: ['handling'],
+        policyVersion: 2,
+        submittedByAccountId: SELLER_ACCOUNT,
+        ...proposal,
+        now: START.add({ minutes: n }),
+      });
+      if (!made.ok) throw new Error(made.error.code);
+      void pendingChanges.insert(marketOf(code), made.value);
+      return { offer, change: made.value };
+    }
+
+    it('lists the held changes oldest first for the Viewer, no-store, with the proposal', async () => {
+      await boot();
+      await seeded(code);
+      const later = held(2, { proposedHandling: 'FRESH' });
+      const earlier = held(1, { proposedDescription: { 'en-AU': 'New text' } });
+      const session = sessionOf(code, VIEWER, 1);
+
+      const response = await get(code, '/offer-changes', session);
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toBe('no-store');
+      const body = response.body as { items: Record<string, unknown>[]; nextAfterId: unknown };
+      expect(body.items.map((i) => i.changeId)).toEqual([
+        earlier.change.state.id,
+        later.change.state.id,
+      ]);
+      expect(body.items[0]).toMatchObject({
+        offerId: earlier.offer.state.id,
+        sellerId: SELLER,
+        status: 'pending',
+        fields: ['description'],
+        proposedDescription: { 'en-AU': 'New text' },
+        reasons: ['handling'],
+      });
+      const first = await get(code, '/offer-changes?limit=1', session);
+      const cursor = (first.body as { nextAfterId: string }).nextAfterId;
+      expect(cursor).toBe(earlier.change.state.id);
+      const second = await get(code, `/offer-changes?limit=1&afterId=${cursor}`, session);
+      expect((second.body as { items: { changeId: string }[] }).items[0]!.changeId).toBe(
+        later.change.state.id,
+      );
+      expect((await get(code, '/offer-changes?limit=0', session)).status).toBe(400);
+      expect((await get(code, '/offer-changes', null)).status).toBe(401);
+      expect((await get(code, '/offer-changes', sessionOf(code, NO_KEY, 3))).status).toBe(403);
+    });
+
+    it('approves a held change: its fields go live in one edit, admin actor, audited', async () => {
+      await boot();
+      await seeded(code);
+      const { offer, change } = held(1, {
+        proposedDescription: { 'en-AU': 'Fresher dates' },
+        proposedHandling: 'FRESH',
+      });
+
+      const response = await post(
+        code,
+        `/offer-changes/${change.state.id}/approve`,
+        sessionOf(code, MODERATOR, 1),
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual({
+        changeId: change.state.id,
+        offerId: offer.state.id,
+        status: 'approved',
+        fields: ['description', 'handling'],
+      });
+      expect(saved).toHaveLength(1);
+      expect(saved[0]!.actor).toEqual({ kind: 'admin', accountId: MODERATOR });
+      expect(saved[0]!.offer.state).toMatchObject({
+        status: 'published',
+        handling: 'FRESH',
+        description: { 'en-AU': 'Fresher dates' },
+      });
+      expect(pendingChanges.rows.get(change.state.id)).toMatchObject({
+        status: 'approved',
+        decidedByAccountId: MODERATOR,
+      });
+      expect(audits.map((a) => a.action)).toContain('catalog.offer-change.approved');
+
+      const again = await post(
+        code,
+        `/offer-changes/${change.state.id}/approve`,
+        sessionOf(code, MODERATOR, 2),
+      );
+      expect(again.status).toBe(409);
+      expect(again.body).toEqual({ statusCode: 409, code: 'offer-change.not-pending' });
+    });
+
+    it('answers 403 offer-change.own-submission to the admin who submitted the change', async () => {
+      await boot();
+      await seeded(code);
+      const { change } = held(1, { proposedHandling: 'FRESH', submittedByAccountId: MODERATOR });
+      const path = (route: string) => `/offer-changes/${change.state.id}/${route}`;
+      const approve = await post(code, path('approve'), sessionOf(code, MODERATOR, 1));
+      expect(approve.status).toBe(403);
+      expect(approve.body).toEqual({ statusCode: 403, code: 'offer-change.own-submission' });
+      const reject = await post(code, path('reject'), sessionOf(code, MODERATOR, 2), {
+        note: 'No',
+      });
+      expect(reject.status).toBe(403);
+      expect(saved).toHaveLength(0);
+      expect(pendingChanges.rows.get(change.state.id)).toMatchObject({ status: 'pending' });
+    });
+
+    it('approves all or nothing: a refused requested tag stores nothing and leaves the change waiting', async () => {
+      evaluator.decide = (q) => refusedDecision(q, 'no-certificate');
+      evaluator.active = [typeCode];
+      claimFacts.published = {
+        productId: PRODUCT,
+        productRevisionId: id<'ProductRevision'>(0xd001),
+        revisionPublished: true,
+        variantIds: [id<'Variant'>(0x6001)],
+        platformCategoryPaths: [],
+      };
+      await boot();
+      await seeded(code);
+      const { change } = held(1, { proposedHandling: 'FRESH', proposedTagTypes: [typeCode] });
+
+      const response = await post(
+        code,
+        `/offer-changes/${change.state.id}/approve`,
+        sessionOf(code, MODERATOR, 1),
+      );
+
+      expect(response.status).toBe(422);
+      expect(response.body).toMatchObject({ code: 'claim.tag-not-allowed' });
+      expect(saved).toHaveLength(0);
+      expect(pendingChanges.rows.get(change.state.id)).toMatchObject({ status: 'pending' });
+    });
+
+    it('requests changes and rejects with a required note, and refuses a Viewer and a bad body', async () => {
+      await boot();
+      await seeded(code);
+      const first = held(1, { proposedHandling: 'FRESH' });
+      const second = held(2, { proposedHandling: 'REPACKED' });
+      const moderator = () => sessionOf(code, MODERATOR, 1);
+      const path = (changeId: string, route: string) => `/offer-changes/${changeId}/${route}`;
+
+      const missing = await post(code, path(first.change.state.id, 'request-changes'), moderator());
+      expect(missing.status).toBe(400);
+      expect(missing.body).toMatchObject({
+        code: 'validation.failed',
+        details: { fields: [{ path: 'note' }] },
+      });
+      expect(
+        (await post(code, path(first.change.state.id, 'reject'), moderator(), { note: '   ' }))
+          .status,
+      ).toBe(400);
+      expect(
+        (
+          await post(code, path(first.change.state.id, 'reject'), moderator(), {
+            note: 'x',
+            extra: true,
+          })
+        ).status,
+      ).toBe(400);
+      expect(
+        (
+          await post(code, path(first.change.state.id, 'reject'), sessionOf(code, VIEWER, 2), {
+            note: 'No',
+          })
+        ).status,
+      ).toBe(403);
+      expect((await post(code, path('nope', 'reject'), moderator(), { note: 'No' })).status).toBe(
+        400,
+      );
+      const unknown = await post(
+        code,
+        path(id<'OfferPendingChange'>(0x8999), 'reject'),
+        moderator(),
+        { note: 'No' },
+      );
+      expect(unknown.status).toBe(404);
+      expect(unknown.body).toEqual({ statusCode: 404, code: 'offer-change.not-found' });
+
+      const requested = await post(
+        code,
+        path(first.change.state.id, 'request-changes'),
+        moderator(),
+        { note: 'Please keep it sealed' },
+      );
+      expect(requested.status).toBe(200);
+      expect(requested.body).toEqual({
+        changeId: first.change.state.id,
+        offerId: first.offer.state.id,
+        status: 'changes-requested',
+      });
+      const rejected = await post(code, path(second.change.state.id, 'reject'), moderator(), {
+        note: 'Not allowed',
+      });
+      expect(rejected.body).toMatchObject({ status: 'rejected' });
+      expect(pendingChanges.rows.get(second.change.state.id)).toMatchObject({
+        status: 'rejected',
+        decisionNote: 'Not allowed',
+      });
+      // The live Offers keep their handling.
+      expect(saved.map((s) => s.offer.state.handling)).toEqual([
+        'SEALED_ORIGINAL',
+        'SEALED_ORIGINAL',
+      ]);
+      expect(audits.map((a) => a.action).filter((action) => action.startsWith('catalog.'))).toEqual(
+        ['catalog.offer-change.changes-requested', 'catalog.offer-change.rejected'],
+      );
     });
   });
 });

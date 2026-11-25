@@ -73,6 +73,13 @@ export class ModelGateway {
       : null;
   }
 
+  /** The price a tier's model is counted at in the Market, or null. */
+  priceOf(marketId: MarketId, tier: AiModelTier): ModelTokenPrice | null {
+    return Object.hasOwn(this.#config.prices[tier], marketId)
+      ? this.#config.prices[tier][marketId]!
+      : null;
+  }
+
   /** Key, model and price are all set for this tier in the Market, and the kill switch is not. */
   configured(marketId: MarketId, tier: AiModelTier): boolean {
     return (
@@ -111,8 +118,8 @@ export class ModelGateway {
       ]);
       return { ok: true, turn, price };
     } catch {
+      // The AI Gateway logs the failure once, with the capability.
       const failure = abort.signal.aborted ? 'timeout' : 'unavailable';
-      this.#logger.warn({ msg: 'ai.model-call.failed', marketId, tier, failure });
       return { ok: false, failure, price };
     } finally {
       clearTimeout(timer);

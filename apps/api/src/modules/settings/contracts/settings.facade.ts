@@ -1,5 +1,9 @@
-import type { CallContext } from '@mondapac/shared-kernel';
+import type { CallContext, Money, Result } from '@mondapac/shared-kernel';
+import type { AccessDenied } from '../../../platform/authz';
 import type { AiModelTierSetting, CartMode } from '../domain/definitions';
+import type { OfferReviewPolicySettings } from '../application/use-cases/read-offer-review-policy.use-case';
+
+export type { OfferReviewPolicySettings };
 
 /** The two limits of the Offer review queue backlog alert (whole numbers, both at least 1). */
 export interface OfferQueueBacklogLimits {
@@ -28,6 +32,19 @@ export interface SettingsFacade {
    * `multi-store`, today's behaviour (ADR-0026 decision 5).
    */
   cartMode(context: CallContext): Promise<CartMode>;
+
+  /**
+   * The Market's monthly revenue target (null: none set), for a caller holding
+   * `settings.monthly-revenue-target.view` (else `access.denied`). A store that cannot be read is
+   * `access.unavailable`, never "no target".
+   */
+  monthlyRevenueTarget(context: CallContext): Promise<Result<Money | null, AccessDenied>>;
+
+  /**
+   * The Market's Offer review policy (ADR-0051), for any caller. Never an error: a refusal or a
+   * throw answers the safe policy (every Offer waits for an admin; ADR-0026 decision 5).
+   */
+  offerReviewPolicy(context: CallContext): Promise<OfferReviewPolicySettings>;
 
   /**
    * The limits of the Offer review queue backlog alert, for the system actor of a worker job. Null

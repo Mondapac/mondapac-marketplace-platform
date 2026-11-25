@@ -101,6 +101,9 @@ interface RecordRow {
   readonly submittedByAccountId: string;
   readonly anchorRecordId: string | null;
   readonly anchorAmountMinor: bigint | null;
+  readonly referenceAmountMinor: bigint | null;
+  readonly referenceBusinesses: number | null;
+  readonly referenceBandPercent: number | null;
   readonly holdDirection: string | null;
   readonly effectiveFrom: Date | null;
   readonly effectiveTo: Date | null;
@@ -173,6 +176,16 @@ function recordFromRow(row: RecordRow): RegularPriceRecord {
         : {
             recordId: row.anchorRecordId as Id<'RegularPriceRecord'>,
             amount: storedAmount(row.anchorAmountMinor, row.currency),
+          },
+    reference:
+      row.referenceAmountMinor === null ||
+      row.referenceBusinesses === null ||
+      row.referenceBandPercent === null
+        ? null
+        : {
+            amount: storedAmount(row.referenceAmountMinor, row.currency),
+            businesses: row.referenceBusinesses,
+            bandPercent: row.referenceBandPercent,
           },
     heldDirection: row.holdDirection as 'up' | 'down' | null,
     supersededBy: row.supersededByRecordId as Id<'RegularPriceRecord'> | null,
@@ -388,6 +401,7 @@ function specialHoldFromRow(row: SpecialHoldRow): PendingHoldView {
   const useAnchor = row.anchorAmountMinor > row.regularAmountMinor;
   return {
     kind: 'special',
+    basis: 'jump',
     recordId: row.id as Id<'SpecialPriceRecord'>,
     seriesId: row.series.id as Id<'PriceSeries'>,
     offerId: row.series.offerId as Id<'Offer'>,
@@ -408,13 +422,12 @@ function specialHoldFromRow(row: SpecialHoldRow): PendingHoldView {
 }
 
 function holdFromRow(row: HoldRow): PendingHoldView {
-  if (
-    row.anchorRecordId === null ||
-    row.anchorAmountMinor === null ||
-    (row.holdDirection !== 'up' && row.holdDirection !== 'down')
-  ) {
+  const direction = row.holdDirection;
+  const jump = row.anchorRecordId !== null && row.anchorAmountMinor !== null;
+  const reference = row.anchorRecordId === null && row.referenceAmountMinor !== null;
+  if ((direction !== 'up' && direction !== 'down') || jump === reference) {
     // The table's CHECKs make this unreachable for a pending record.
-    throw new Error('price series: a pending record without its anchor');
+    throw new Error('price series: a pending record without its anchor or reference');
   }
   return {
     kind: 'regular',
@@ -424,9 +437,13 @@ function holdFromRow(row: HoldRow): PendingHoldView {
     variantId: row.series.variantId as Id<'Variant'>,
     sellerId: row.series.sellerId as Id<'Seller'>,
     amount: storedAmount(row.amountMinor, row.currency),
-    anchorRecordId: row.anchorRecordId as Id<'RegularPriceRecord'>,
-    anchorAmount: storedAmount(row.anchorAmountMinor, row.currency),
-    direction: row.holdDirection,
+    basis: jump ? 'jump' : 'reference',
+    anchorRecordId: (row.anchorRecordId as Id<'RegularPriceRecord'> | null) ?? null,
+    anchorAmount: storedAmount(
+      (jump ? row.anchorAmountMinor : row.referenceAmountMinor) as bigint,
+      row.currency,
+    ),
+    direction,
     submittedAt: toInstant(row.submittedAt),
     window: null,
   };
@@ -907,6 +924,9 @@ export class PrismaPriceSeriesRepository implements PriceSeriesRepository {
           submittedByAccountId: record.submittedBy,
           anchorRecordId: record.anchor?.recordId ?? null,
           anchorAmountMinor: record.anchor?.amount.amount ?? null,
+          referenceAmountMinor: record.reference?.amount.amount ?? null,
+          referenceBusinesses: record.reference?.businesses ?? null,
+          referenceBandPercent: record.reference?.bandPercent ?? null,
           holdDirection: record.heldDirection,
           ...recordChanges(record),
         };

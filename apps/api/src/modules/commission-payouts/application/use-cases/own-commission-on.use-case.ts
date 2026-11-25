@@ -7,7 +7,8 @@ import { ownCommissionOn, type RatesFailure } from '../rate-flow';
 /**
  * `commission-payouts.own-commission-on`: the commission the signed-in approved seller would pay on
  * an amount, from its own rate (own resources: the seller is the session's, never a request
- * field). For `promotions`' payout preview; not exposed over HTTP.
+ * field). For `promotions`' payout preview and `pricing`'s "You receive (est.)"; not exposed over
+ * HTTP itself (each caller has its own route and access rule).
  */
 export class OwnCommissionOn extends UseCase<
   { readonly amount: bigint; readonly taxInclusive: boolean; readonly taxRateBps: number },

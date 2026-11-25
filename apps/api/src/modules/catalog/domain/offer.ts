@@ -27,6 +27,7 @@ import {
   type TagEntryPath,
   type TagJudgement,
 } from './offer-tag';
+import { isIssuedClearance, type ReviewClearance } from './review-clearance';
 
 import { OFFER_HANDLINGS, type OfferHandling } from './offer-handling';
 export const OFFER_STATUSES = [
@@ -39,6 +40,7 @@ export const OFFER_STATUSES = [
 export type OfferStatus = (typeof OFFER_STATUSES)[number];
 
 export { OFFER_HANDLINGS, type OfferHandling };
+export type { ReviewClearance };
 
 /**
  * The stored causes that take a published Offer off sale (catalog design 2.3 M-5, 4.4). A cause
@@ -176,6 +178,23 @@ export function isListed(state: Pick<OfferState, 'status' | 'offSaleCauses'>): b
   return state.status === 'published' && state.offSaleCauses.length === 0;
 }
 
+/**
+ * The state after a handling change, as `setHandling` makes it: a change away from
+ * `SEALED_ORIGINAL` clears a recorded attestation. For the claim queries of a change not applied
+ * yet (a read-only preview); never stored.
+ */
+export function offerStateWithHandling(state: OfferState, handling: OfferHandling): OfferState {
+  const clears =
+    handling !== state.handling &&
+    handling !== 'SEALED_ORIGINAL' &&
+    state.attestationRecordedAt !== null;
+  return Object.freeze({
+    ...state,
+    handling,
+    ...(clears ? { attestationRecordedAt: null, attestationAccountId: null } : {}),
+  });
+}
+
 /** Printable ASCII without whitespace, 1 to 64 characters (data design 3.13 `seller_sku`). */
 const SKU_PATTERN = /^[!-~]{1,64}$/;
 /** A vocabulary code (data design CA4). */
@@ -188,6 +207,14 @@ export const MAX_DESCRIPTION_LOCALES = 20;
 
 function sortedEntries(value: Readonly<Record<string, string>>): [string, string][] {
   return Object.entries(value).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+}
+
+/** True when two descriptions hold the same texts per locale (key order does not matter). */
+export function sameDescription(
+  a: Readonly<Record<string, string>>,
+  b: Readonly<Record<string, string>>,
+): boolean {
+  return JSON.stringify(sortedEntries(a)) === JSON.stringify(sortedEntries(b));
 }
 
 function validDescription(value: unknown): value is Record<string, string> {
@@ -227,6 +254,8 @@ export class Offer {
   readonly #readChangeSeqs: ReadonlyMap<string, number>;
   /** False for a read-only projection built without its tags: such an Offer is never saved (I1). */
   readonly #tagsLoaded: boolean;
+  /** The status as read: the edit rules guard an Offer that was live when the unit read it. */
+  readonly #readStatus: OfferStatus;
 
   private constructor(
     state: OfferState,
@@ -236,6 +265,7 @@ export class Offer {
     this.#state = Object.freeze(state);
     this.#persistedVersion = persistedVersion;
     this.#tagsLoaded = tags !== null;
+    this.#readStatus = persistedVersion === null ? 'draft' : state.status;
     this.#tags = (tags ?? []).map((tag) => Object.freeze({ ...tag }));
     this.#readChangeSeqs = new Map(this.#tags.map((tag) => [tag.id, tag.changeSeq]));
   }
@@ -309,6 +339,8 @@ export class Offer {
     readonly conditionCode: string;
     readonly description: Readonly<Record<string, string>>;
     readonly now: Temporal.Instant;
+    /** Needed on a live Offer when the description changes (slice 2c bypass guard). */
+    readonly review?: ReviewClearance;
   }): Result<readonly string[], OfferRefusal> {
     const state = this.#state;
     if (state.status === 'deleted') return err({ code: 'offer.not-editable' });
@@ -331,6 +363,7 @@ export class Offer {
     const published = state.status === 'published';
     if (changed.length === 0 && (state.status === 'draft' || published)) return ok([]);
     if (this.#pendingHistory !== null) throw new Error('edit: the Offer already has a change');
+    if (changed.includes('description')) this.#assertCleared('edit', input.review);
     this.#state = Object.freeze({
       ...state,
       sellerSku: input.sellerSku,
@@ -356,6 +389,8 @@ export class Offer {
   setHandling(input: {
     readonly handling: OfferHandling;
     readonly now: Temporal.Instant;
+    /** Needed on a live Offer for a change to anything but `SEALED_ORIGINAL` (slice 2c). */
+    readonly review?: ReviewClearance;
   }): Result<readonly string[], OfferHandlingRefusal> {
     const state = this.#state;
     if (state.status === 'deleted') return err({ code: 'offer.not-editable' });
@@ -367,6 +402,9 @@ export class Offer {
     if (!changed && (state.status === 'draft' || published)) return ok([]);
     if (this.#pendingHistory !== null)
       throw new Error('setHandling: the Offer already has a change');
+    if (changed && input.handling !== 'SEALED_ORIGINAL') {
+      this.#assertCleared('setHandling', input.review);
+    }
     const clearsAttestation =
       changed && input.handling !== 'SEALED_ORIGINAL' && state.attestationRecordedAt !== null;
     const fields = !changed ? [] : clearsAttestation ? ['handling', 'attestation'] : ['handling'];
@@ -379,6 +417,70 @@ export class Offer {
     });
     this.#pendingHistory = { changeKind: 'edited', changedFields: fields, occurredAt: input.now };
     return ok(fields);
+  }
+
+  /**
+   * An admin's approval of a held change applies its description and handling to the live Offer
+   * in one change (slice 2c): one `edited` history row with the changed field ids, the attestation
+   * cleared as `setHandling` clears it. Needs the clearance of the approval; the use case then
+   * settles the kept tags against the new state and adds the requested ones (`addTags`, same
+   * clearance) in the same unit. A field equal to the live value changes nothing.
+   */
+  applyApprovedChange(input: {
+    readonly description: Readonly<Record<string, string>> | null;
+    readonly handling: OfferHandling | null;
+    readonly review: ReviewClearance;
+    readonly now: Temporal.Instant;
+  }): Result<readonly string[], OfferRefusal | OfferHandlingRefusal> {
+    const state = this.#state;
+    if (state.status !== 'published') return err({ code: 'offer.not-editable' });
+    if (!isIssuedClearance(input.review, state.id, 'approval')) {
+      throw new Error('applyApprovedChange: needs the clearance of an approval');
+    }
+    if (input.description !== null && !validDescription(input.description)) {
+      return err({ code: 'offer.description-invalid' });
+    }
+    if (
+      input.handling !== null &&
+      !(OFFER_HANDLINGS as readonly unknown[]).includes(input.handling)
+    ) {
+      return err({ code: 'offer.handling-invalid' });
+    }
+    const changed: string[] = [];
+    let next: OfferState = state;
+    if (
+      input.description !== null &&
+      JSON.stringify(sortedEntries(input.description)) !==
+        JSON.stringify(sortedEntries(state.description))
+    ) {
+      changed.push('description');
+      next = { ...next, description: Object.freeze({ ...input.description }) };
+    }
+    if (input.handling !== null && input.handling !== state.handling) {
+      changed.push('handling');
+      if (input.handling !== 'SEALED_ORIGINAL' && state.attestationRecordedAt !== null) {
+        changed.push('attestation');
+      }
+      next = offerStateWithHandling(next, input.handling);
+    }
+    if (changed.length === 0) return ok([]);
+    this.#assertNoChange('applyApprovedChange');
+    this.#state = Object.freeze({ ...next, version: state.version + 1 });
+    this.#pendingHistory = { changeKind: 'edited', changedFields: changed, occurredAt: input.now };
+    return ok(changed);
+  }
+
+  /**
+   * A held change of this Offer was written or decided (held, approved, changes requested,
+   * rejected, withdrawn, superseded; slice 2c): the Offer's version rises once, so the optimistic
+   * lock orders every change of the pending change after the Offer row (Mojtaba, lock order) and
+   * each referral names its own version. Nothing else of the Offer changes.
+   */
+  markReviewChange(): void {
+    if (this.#state.status === 'deleted' && this.#readStatus === 'deleted') {
+      throw new Error('markReviewChange: the Offer is deleted');
+    }
+    this.#touch();
   }
 
   /**
@@ -559,10 +661,13 @@ export class Offer {
   addTags(
     input: ClaimAnswerInput & {
       readonly tags: readonly { readonly tagId: Id<'OfferTag'>; readonly typeCode: string }[];
+      /** Needed on a live Offer (slice 2c bypass guard). */
+      readonly review?: ReviewClearance;
     },
   ): Result<void, OfferTagRefusal> {
     const state = this.#state;
     if (state.status === 'deleted') return err({ code: 'offer.not-taggable' });
+    if (input.tags.length > 0) this.#assertCleared('addTags', input.review);
     if (state.handling === null) return err({ code: 'offer.handling-missing' });
     if (!input.facts.revisionPublished) return err({ code: 'tag.product-not-published' });
     const types = input.tags.map((tag) => tag.typeCode);
@@ -1288,6 +1393,14 @@ export class Offer {
         payload: { offerId: state.id, productId: state.productId, sellerId: state.sellerId },
       }),
     );
+  }
+
+  /** The bypass guard: a watched change of an Offer read as live needs a clearance (slice 2c). */
+  #assertCleared(command: string, review: ReviewClearance | undefined): void {
+    if (this.#readStatus !== 'published') return;
+    if (!isIssuedClearance(review, this.#state.id)) {
+      throw new Error(`${command}: a watched change of a live Offer needs a review clearance`);
+    }
   }
 
   #assertNoChange(command: string): void {

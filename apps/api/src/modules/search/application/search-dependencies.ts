@@ -18,6 +18,7 @@ import type { SellUnitStates } from './ports/sell-unit-states';
 import type { OfferVariantReader } from './ports/offer-variant.reader';
 import type { ShelfDocumentsReader } from './ports/shelf-documents.reader';
 import type { StoreResolver } from './ports/store-resolver';
+import type { ZeroResultLog } from './ports/zero-result-log';
 
 /** The ports the search use cases share; each use case reads the ones it needs. */
 export interface SearchDependencies {
@@ -52,4 +53,6 @@ export interface SearchDependencies {
   readonly storeDocuments: StoreDocumentRepository;
   /** The cultures each Offer is visible in, from catalog's facade (multi-culture package 3a). */
   readonly cultures: OfferCultureSource;
+  /** The server-side note of text searches that found nothing (dashboards v2, phase 2). */
+  readonly zeroResults: ZeroResultLog;
 }

@@ -11,8 +11,12 @@ import { ChangeCartModeSetting } from '../src/modules/settings/application/use-c
 import { ChangeListPagingSetting } from '../src/modules/settings/application/use-cases/change-list-paging-setting.use-case';
 import { ChangeOfferReviewSettings } from '../src/modules/settings/application/use-cases/change-offer-review-settings.use-case';
 import { ViewOfferReviewSettings } from '../src/modules/settings/application/use-cases/view-offer-review-settings.use-case';
+import { ChangeOfferReviewEmergencyStop } from '../src/modules/settings/application/use-cases/change-offer-review-emergency-stop.use-case';
+import { ViewOfferReviewEmergencyStop } from '../src/modules/settings/application/use-cases/view-offer-review-emergency-stop.use-case';
 import { ReadListPaging } from '../src/modules/settings/application/use-cases/read-list-paging.use-case';
 import { ViewCartModeSetting } from '../src/modules/settings/application/use-cases/view-cart-mode-setting.use-case';
+import { ChangeMonthlyRevenueTargetSetting } from '../src/modules/settings/application/use-cases/change-monthly-revenue-target-setting.use-case';
+import { ViewMonthlyRevenueTargetSetting } from '../src/modules/settings/application/use-cases/view-monthly-revenue-target-setting.use-case';
 import { ViewListPagingSetting } from '../src/modules/settings/application/use-cases/view-list-paging-setting.use-case';
 import { SETTINGS_STATUS } from '../src/modules/settings/presentation/http-answers';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
@@ -59,6 +63,8 @@ it('maps every refusal code of the settings routes to its exact status', () => {
   expect(SETTINGS_STATUS).toEqual({
     'validation.failed': 400,
     'settings.conflict': 409,
+    'second-factor.required': 403,
+    'second-factor.enrolment-required': 403,
   });
 });
 
@@ -97,10 +103,18 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
           .useValue(stub('view-cart'))
           .overrideProvider(ChangeCartModeSetting)
           .useValue(stub('change-cart'))
+          .overrideProvider(ViewMonthlyRevenueTargetSetting)
+          .useValue(stub('view-target'))
+          .overrideProvider(ChangeMonthlyRevenueTargetSetting)
+          .useValue(stub('change-target'))
           .overrideProvider(ViewOfferReviewSettings)
           .useValue(stub('view-offer-review'))
           .overrideProvider(ChangeOfferReviewSettings)
-          .useValue(stub('change-offer-review')),
+          .useValue(stub('change-offer-review'))
+          .overrideProvider(ViewOfferReviewEmergencyStop)
+          .useValue(stub('view-stop'))
+          .overrideProvider(ChangeOfferReviewEmergencyStop)
+          .useValue(stub('change-stop')),
     }));
     await app.get(SeedRoles).execute(testCallContext(marketOf(), 'system', 'settings-seed-01'), {});
     const ownerRole = [...fakes.roles.values()].find(
@@ -155,7 +169,28 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
       version: 1,
       createdAt: START,
     });
+    fakes.factors.set(ADMIN, {
+      id: id<'SecondFactor'>(0xf309),
+      marketId,
+      accountId: ADMIN,
+      state: 'active',
+      secretCiphertext: 'sealed',
+      pendingSecretCiphertext: null,
+      lastAcceptedStep: null,
+      activatedAt: START,
+      lockedAt: null,
+      createdAt: START,
+      recoveryCodes: Array.from({ length: 10 }, (_, index) => ({
+        position: index + 1,
+        codeHash: new Uint8Array(32).fill(index + 1),
+        usedAt: null,
+      })),
+      version: 1,
+    });
   }
+  /** A fresh step-up proof of the admin session n for one settings action. */
+  const prove = (n: number, action: string) =>
+    fakes.stepUpProofs.set(`${code}|${id<'Session'>(0xf100 + n)}|${action}`, clock.now());
 
   function sessionOf(population: 'seller' | 'admin', n: number) {
     const issued = tokens.issue();
@@ -295,6 +330,53 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
     ]);
   });
 
+  it('reads and sets the monthly revenue target as money, the amount a string of minor units', async () => {
+    await boot();
+    const session = sessionOf('admin', 3);
+    const route = '/settings/admin/monthly-revenue-target';
+    next = ok([
+      {
+        code: 'monthly-revenue-target',
+        value: 'none',
+        version: 0,
+        updatedAt: null,
+        review: NOT_REVIEWED,
+      },
+    ]);
+    const empty = await call('get', route, 'admin', session);
+    expect(empty.status).toBe(200);
+    expect(empty.headers['cache-control']).toBe('no-store');
+    expect(empty.body).toEqual({ target: null, version: 0, updatedAt: null, review: NOT_REVIEWED });
+    next = ok({
+      code: 'monthly-revenue-target',
+      value: 'JPY:24000000',
+      version: 1,
+      updatedAt: START,
+      review: NOT_REVIEWED,
+      request: null,
+    });
+    const target = { amount: '24000000', currency: 'JPY' };
+    const set = await call('put', route, 'admin', session, { target, expectedVersion: 0 });
+    expect(set.status).toBe(200);
+    expect(set.body).toEqual({
+      target: { amount: '24000000', currency: 'JPY' },
+      version: 1,
+      updatedAt: START.toString(),
+      review: NOT_REVIEWED,
+      request: null,
+    });
+    const stray = await call('put', route, 'admin', session, { value: 'none', expectedVersion: 0 });
+    expect(stray.status).toBe(400);
+    next = err({ code: 'validation.failed', fields: [{ path: 'target.currency', code: 'value' }] });
+    const refused = await call('put', route, 'admin', session, { target, expectedVersion: 0 });
+    expect(refused.status).toBe(400);
+    expect(calls).toEqual([
+      { name: 'view-target', input: {} },
+      { name: 'change-target', input: { target, expectedVersion: 0, note: undefined } },
+      { name: 'change-target', input: { target, expectedVersion: 0, note: undefined } },
+    ]);
+  });
+
   it('answers List paging to a signed-in admin and to a signed-in seller, each on its own route', async () => {
     await boot();
     next = ok('pages');
@@ -414,6 +496,14 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
         request: null,
       },
     ]);
+    const noCode = await call('put', path, 'admin', session, { changes, note: 'Launch' });
+    expect(noCode.status).toBe(403);
+    expect(noCode.body).toEqual({
+      statusCode: 403,
+      code: 'second-factor.required',
+      details: { actionKey: 'settings.offer-review.change' },
+    });
+    prove(4, 'settings.offer-review.change');
     const set = await call('put', path, 'admin', session, { changes, note: 'Launch' });
     expect(set.status).toBe(200);
     expect(set.headers['cache-control']).toBe('no-store');
@@ -449,5 +539,39 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
       'change-offer-review',
     ]);
     expect(calls[1]?.input).toEqual({ changes, note: 'Launch' });
+  });
+  it('reads the emergency stop for the banner and switches it with a closed body', async () => {
+    await boot();
+    const session = sessionOf('admin', 5);
+    const path = '/settings/admin/offer-review/emergency-stop';
+    next = ok({ on: true, version: 1, changedAt: START, changedBy: 'Leila Admin' });
+    const read = await call('get', path, 'admin', session);
+    expect(read.status).toBe(200);
+    expect(read.headers['cache-control']).toBe('no-store');
+    expect(read.body).toEqual({
+      on: true,
+      version: 1,
+      changedAt: START.toString(),
+      changedBy: 'Leila Admin',
+    });
+    const body = { value: 'off', expectedVersion: 1, note: 'All clear' };
+    next = ok([]);
+    const noCode = await call('put', path, 'admin', session, body);
+    expect(noCode.status).toBe(403);
+    expect(noCode.body).toEqual({
+      statusCode: 403,
+      code: 'second-factor.required',
+      details: { actionKey: 'settings.offer-review-emergency-stop.change' },
+    });
+    prove(5, 'settings.offer-review-emergency-stop.change');
+    const set = await call('put', path, 'admin', session, body);
+    expect(set.status).toBe(200);
+    expect(set.body).toEqual({ settings: [] });
+    expect((await call('put', path, 'admin', session, { ...body, code: 'x' })).status).toBe(400);
+    expect((await call('put', path, 'admin', { cookie: session.cookie }, body)).status).toBe(403);
+    next = err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] });
+    expect((await call('put', path, 'admin', session, { ...body, note: '' })).status).toBe(400);
+    expect(calls.map((c) => c.name)).toEqual(['view-stop', 'change-stop', 'change-stop']);
+    expect(calls[1]?.input).toEqual(body);
   });
 });

@@ -787,6 +787,125 @@ describe('relay product photo paths', () => {
   });
 });
 
+describe('relay of the platform product thumbnail', () => {
+  const PRODUCT = '01990000-0000-7000-8000-00000000c002';
+  const IMAGE = '01990000-0000-7000-8000-00000000d002';
+  const read = (parts: readonly string[], method = 'GET') =>
+    new Request(`http://seller.localhost:3001/api/${parts.join('/')}`, {
+      method,
+      headers: method === 'GET' ? { host: sameOrigin.host } : sameOrigin,
+      ...(method === 'GET' ? {} : { body: '{}' }),
+    });
+
+  it("relays the thumb of the host's own Market to the public image route", async () => {
+    const upstream = upstreamOk();
+    const path = ['catalog', 'public-images', 'AU', PRODUCT, IMAGE, 'thumb'];
+    const response = await relay(config, read(path), path, upstream);
+    expect(response.status).toBe(200);
+    expect(upstream).toHaveBeenCalledTimes(1);
+    expect(upstream.mock.calls[0]?.[0]).toBe(
+      `http://api.test/catalog/public-images/AU/${PRODUCT}/${IMAGE}/thumb`,
+    );
+  });
+
+  it('sends no session cookie or CSRF token, keeps the photo out of shared caches and keeps its sandbox', async () => {
+    const upstream = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response('jpeg', {
+          status: 200,
+          headers: {
+            'content-type': 'image/jpeg',
+            'cache-control': 'public, max-age=300, s-maxage=300',
+            'content-security-policy': "default-src 'none'; frame-ancestors 'none'; sandbox",
+          },
+        }),
+      ),
+    );
+    const path = ['catalog', 'public-images', 'AU', PRODUCT, IMAGE, 'thumb'];
+    const request = new Request(`http://seller.localhost:3001/api/${path.join('/')}`, {
+      headers: { host: sameOrigin.host, cookie: 'mp_seller_AU=secret', 'x-csrf-token': 't' },
+    });
+    const response = await relay(config, request, path, upstream);
+    const sent = upstream.mock.calls[0]?.[1]?.headers as Headers;
+    expect(sent.get('cookie')).toBeNull();
+    expect(sent.get('x-csrf-token')).toBeNull();
+    expect(sent.get('x-market-id')).toBe('AU');
+    expect(response.headers.get('cache-control')).toBe('private, max-age=300');
+    expect(response.headers.get('content-security-policy')).toBe(
+      "default-src 'none'; frame-ancestors 'none'; sandbox",
+    );
+
+    // A refusal is never cached.
+    const refused = vi.fn<typeof fetch>(() =>
+      Promise.resolve(
+        new Response('{"code":"image.not-found"}', {
+          status: 404,
+          headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+        }),
+      ),
+    );
+    const missing = await relay(config, request, path, refused);
+    expect(missing.status).toBe(404);
+    expect(missing.headers.get('cache-control')).toBe('no-store');
+    expect(missing.headers.get('content-security-policy')).toBeNull();
+  });
+
+  it("follows the host's own Market: a second Market's panel reaches only its own photos", async () => {
+    const two: PanelConfig = {
+      ...config,
+      hosts: [
+        ...config.hosts,
+        {
+          origin: 'http://seller.zz.localhost:3001',
+          host: 'seller.zz.localhost:3001',
+          marketId: 'ZZ',
+        },
+      ],
+    };
+    const at = (host: string, market: string) => {
+      const path = ['catalog', 'public-images', market, PRODUCT, IMAGE, 'thumb'];
+      return {
+        path,
+        request: new Request(`http://${host}/api/${path.join('/')}`, { headers: { host } }),
+      };
+    };
+    for (const [host, market, status] of [
+      ['seller.zz.localhost:3001', 'ZZ', 200],
+      ['seller.zz.localhost:3001', 'AU', 404],
+      ['seller.localhost:3001', 'ZZ', 404],
+      // A percent-encoded Market is not the Market (the router decodes nothing for us here).
+      ['seller.localhost:3001', '%41U', 404],
+    ] as const) {
+      const upstream = upstreamOk();
+      const { path, request } = at(host, market);
+      const response = await relay(two, request, path, upstream);
+      expect(response.status, `${host} ${market}`).toBe(status);
+      expect(upstream).toHaveBeenCalledTimes(status === 200 ? 1 : 0);
+    }
+  });
+
+  it('refuses another Market, another size, a bad id, a longer path and any other method', async () => {
+    const refused: { readonly path: readonly string[]; readonly method?: string }[] = [
+      { path: ['catalog', 'public-images', 'NZ', PRODUCT, IMAGE, 'thumb'] },
+      { path: ['catalog', 'public-images', 'au', PRODUCT, IMAGE, 'thumb'] },
+      { path: ['catalog', 'public-images', 'AU', PRODUCT, IMAGE, 'medium'] },
+      { path: ['catalog', 'public-images', 'AU', PRODUCT, IMAGE, 'large.webp'] },
+      { path: ['catalog', 'public-images', 'AU', 'not-a-uuid', IMAGE, 'thumb'] },
+      { path: ['catalog', 'public-images', 'AU', PRODUCT, 'not-a-uuid', 'thumb'] },
+      { path: ['catalog', 'public-images', 'AU', PRODUCT, IMAGE, 'thumb', 'x'] },
+      { path: ['catalog', 'public-images', PRODUCT, IMAGE, 'thumb'] },
+      { path: ['catalog', 'public-images', 'AU', PRODUCT, IMAGE, 'thumb'], method: 'POST' },
+      { path: ['catalog', 'public-images', 'AU', PRODUCT, IMAGE, 'thumb'], method: 'DELETE' },
+    ];
+    for (const { path, method } of refused) {
+      const upstream = upstreamOk();
+      const response = await relay(config, read(path, method), path, upstream);
+      expect(response.status, `${method ?? 'GET'} ${path.join('/')}`).toBe(404);
+      expect(upstream).not.toHaveBeenCalled();
+    }
+  });
+});
+
 describe('relay of the payout account', () => {
   const get = (path: string) =>
     new Request(`http://seller.localhost:3001/api/${path}`, {
@@ -1024,6 +1143,33 @@ describe('relay of the seller payout routes', () => {
     expect(created.mock.calls[0]?.[0]).toBe(
       `http://api.test/commission-payouts/seller/payouts?limit=20&cursor=${encodeURIComponent(createdCursor)}&sort=created`,
     );
+  });
+
+  it('forwards the receive-estimate lines of an offer in their shape only (Offer page PR 4)', async () => {
+    const send = async (query: string) => {
+      const upstream = upstreamOk();
+      const path = ['pricing', 'seller', 'offers', ID, 'receive-estimates'];
+      await relay(
+        config,
+        new Request(`http://seller.localhost:3001/api/${path.join('/')}?${query}`, {
+          method: 'GET',
+          headers: { host: 'seller.localhost:3001' },
+        }),
+        path,
+        upstream,
+      );
+      return upstream.mock.calls[0]?.[0];
+    };
+    const base = `http://api.test/pricing/seller/offers/${ID}/receive-estimates`;
+    // Twenty pairs are longer than the usual cap and still cross.
+    const twenty = Array.from({ length: 20 }, () => `${ID}:9999999999999`).join(',');
+    expect(await send(`lines=${twenty}&rateBps=1`)).toBe(
+      `${base}?lines=${encodeURIComponent(twenty)}`,
+    );
+    // Out of shape, or more than twenty pairs: dropped (the API then refuses the missing key).
+    expect(await send(`lines=${ID}:0`)).toBe(base);
+    expect(await send(`lines=${ID}:15.90`)).toBe(base);
+    expect(await send(`lines=${twenty},${ID}:1`)).toBe(base);
   });
 
   it('forwards the earnings list filters, sort and page, and the export keys, in their shapes only', async () => {

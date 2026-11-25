@@ -646,6 +646,7 @@ export function AdminDashboard({
   kpis = null,
   selection = { id: DEFAULT_KPI_PERIOD },
   today = '',
+  csrfToken,
 }: {
   /** The page title (the h1 of the title row, which holds the period switch). */
   readonly title: string;
@@ -659,6 +660,8 @@ export function AdminDashboard({
   readonly selection?: KpiSelection;
   /** The Market's day now (`YYYY-MM-DD`): the last day a custom range may end on. */
   readonly today?: string;
+  /** The session's CSRF token, for the writes a card offers (the monthly target). */
+  readonly csrfToken?: string;
 }) {
   const t = useTranslations('dashboard');
   const tk = useTranslations('dashboard.kpis');
@@ -687,6 +690,7 @@ export function AdminDashboard({
           period={selection.id}
           permissionKeys={permissionKeys}
           before={queue}
+          {...(csrfToken === undefined ? {} : { csrfToken })}
         />
       )}
       <GridItem span={12}>

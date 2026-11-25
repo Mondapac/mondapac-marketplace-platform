@@ -190,6 +190,7 @@ cannot be built, is `access.unavailable` (fail closed, never "every category"). 
 read-only unit, so callers ask it before theirs.
 
 Where it applies (SELLER scope only; platform and admin paths are unchanged):
+
 - seller picker `GET /catalog/seller/products/category-picker`: only choices inside the scope; an
   empty scope answers `choices: []` with `notice: "no-activity"` (the form says "Ask the team to set
   your business activity before choosing categories."); an unreadable scope is 503.
@@ -204,3 +205,84 @@ Where it applies (SELLER scope only; platform and admin paths are unchanged):
 Deferred (docs/future-enhancements, FE-167 to FE-170): admin per-seller exceptions; the scope in
 admin bulk moves, seller import check time and the seller's platform-product search; an impact
 count before an activity or link is removed; the proposal form's parent list.
+
+## Offer review policy at first publication (ADR-0051, risk-based Offer approval slice 2)
+
+A seller's Offer submit (`own-offer.submit`) no longer reads the Market's `approval-required`
+(that setting now governs product revisions only). The pure policy
+`domain/offer-review-policy.ts` decides, version `OFFER_REVIEW_POLICY_VERSION` (2 since slice 2c): it returns the
+reasons that send the Offer to the queue, empty meaning publish at once.
+
+| Reason code          | Rule       | Source today                                                                                                              |
+| -------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `emergency-stop`     | R0         | the Market switch `offer-review-emergency-stop` (slice 2b); category and seller scopes later |
+| `probation`          | R1         | none yet (slice 4): every seller counts as in probation, so risk-based mode still queues every new Offer (fail closed)    |
+| `certificate-badge`  | R2         | kept and requested badge types, while `catalog.offer-review.certificate-badges` is `review`                               |
+| `handling`           | R3         | handling other than `SEALED_ORIGINAL`                                                                                     |
+| `contact-text`       | R5         | a link, domain, e-mail, phone number (dates excluded), `@handle` or a messaging app name in any locale of the description |
+| `full-review`        | R6         | none yet (slice 4); off                                                                                                   |
+| `sensitive-category` | R7         | none yet (category list pending with Hadi); off                                                                           |
+| `review-all`         | mode `all` | the Market's mode is `all` and no other reason applies                                                                    |
+
+Mode `off` publishes everything except during an emergency stop. The settings are read through
+`SettingsFacade.offerReviewPolicy` outside the unit (port `OfferReviewInputs`); a failure answers
+mode `all` (review everything). In the submit unit the decision is stored in
+`catalog.offer_review_referrals` (insert-only; reasons, policy version, Offer version) and audited
+as `catalog.offer.review-referred`. R4 (price against the reference) runs in pricing (slice 3).
+The rules on edits are in the next section (slice 2c).
+
+## Edits of a live Offer (risk-based Offer approval slice 2c)
+
+`offerEditReviewReasons` (policy version 2) judges a seller's edit of a **published** Offer. It
+watches three fields: the description, the handling and a new certification tag. While the
+emergency stop is on (R0, owner decision 2026-11-25), every watched change is held with
+`emergency-stop`, in every mode (today the Market's stop; the seller and category stops join when
+slice 4 reads the review facts). Without a stop, mode `off` holds nothing. Otherwise R2 (a new badge while `certificate-badges` is `review`), R3 (handling other
+than `SEALED_ORIGINAL`) and R5 (contact text in any locale) hold the change; in mode `all` any
+watched change is held (`review-all`), except a handling change back to `SEALED_ORIGINAL`, which
+lowers the risk and is instant in every mode (Hadi, 2026-11-25). R1, R6 and R7 are publication
+rules and do not apply to edits (R7: an Offer has no category; a category change is a product
+revision, VER-02). A settings read failure answers the safe
+settings (mode `all`).
+
+- Green: the edit applies as before, and an `edit` referral with no reason is stored and audited.
+- Red: the fields the policy does not watch (SKU, condition) apply at once; the watched part is
+  stored as one `catalog.offer_pending_changes` row (`pending`, one per Offer), the Offer's
+  version goes up (no `offer_history` row), the referral carries the reasons and the change id,
+  and `catalog.offer-change.held` is audited. The answer is `applied: false` with
+  `pendingChangeId` and `reasons`. A tag add asks certification first, so a type that is not
+  allowed is refused and never queued.
+- While a change waits, another watched edit answers 409 `offer.change-pending` unless the body
+  has `replacePending: true`: the old change is then `superseded` (cause `resubmitted`). Edits of
+  fields that are not watched apply. Deleting the Offer, or an admin withdrawing its product,
+  supersedes it (cause `offer-deleted`).
+- Decisions: the seller withdraws (`POST catalog/seller/offers/:offerId/pending-change/withdraw`);
+  a reviewer with the Offer approve key approves, requests changes or rejects
+  (`POST catalog/admin/offer-changes/:changeId/{approve|request-changes|reject}`; a note of 1 to
+  2000 characters is required for the last two, optional on approve) and lists the waiting changes
+  (`GET catalog/admin/offer-changes`, keyset `afterId`/`limit`). Approve is all or nothing: the
+  description is claim-text checked again, every kept and requested tag is asked fresh, and a
+  refused tag fails the whole approval (`claim.tag-not-allowed`) with the change still waiting.
+  Each decision is one conditional update on `status = 'pending'`, so two deciders cannot both
+  win (`conflict.stale`). A held value the Offer refuses on approval answers 422
+  `offer-change.invalid` and applies nothing.
+- No self-decision (Hassan N3 on PR #1350): an admin never approves, requests changes on or
+  rejects a change their own account submitted, nor from a Login-as-Seller session for its seller
+  (or one naming no seller): 403 `offer-change.own-submission`. The domain refuses the first case
+  too. A held edit made in an acting-as session records the admin behind it as the submitter.
+- Audit (Hassan N1): `catalog.offer-change.held` and `.approved` carry the held handling as a
+  lower-case code (`sealed-original`, `repacked`, `prepared`, `fresh`); `.approved` also carries
+  the ids of the tags it added. The audit vocabulary has no kind for type codes that grow at run
+  time, so the requested type codes stay on the change row (its proposal columns are immutable)
+  and `changeId` names it. Never the description or the note.
+- Bypass guard (Hassan S1 on PR #1350): `Offer.edit`, `setHandling`, `addTags` and
+  `applyApprovedChange` refuse a watched change of a live Offer without a `ReviewClearance` issued
+  for that Offer. The brand is a run-time one (`domain/review-clearance.ts` remembers what it
+  issued in a module-private `WeakSet`), so a cast or a look-alike object never passes, and a
+  clearance issued for another Offer is refused. `application/offer-review-clearance.ts` issues a
+  policy clearance only from an opaque verdict made by running the policy (`OfferEditReview.verdict`)
+  that found no reason, and an approval clearance only for a change approved in the unit.
+  `test/contracts/catalog-review-clearance.contract.spec.ts` is an import allow-list over the
+  syntax tree of every source file: only the named files may import the issuing functions.
+- The seller's Offer read carries `pendingChange` (the latest change, or null). No event or
+  notification is sent for a decision yet.

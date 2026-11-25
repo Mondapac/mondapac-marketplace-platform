@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-offer-csv-import-risk-routing",
+  "area": "catalog",
+  "title": "Import گروهی Offer با CSV از مسیر سیاست ارجاع",
+  "desc": "فروشنده Offerهای زیاد را با یک فایل وارد کند؛ هر ردیف از همان سیاست ارجاع ریسک (R1 تا R7) و همان use case فرم بگذرد، نه مسیر جدا.",
+  "src": "design/catalog/offer-approval/offer-approval-design-fa.html (بازبینی حسن، محمد، هادی)",
+  "date": "2026-11-25",
+  "trig": "بعد از ساخت تأیید Offer بر اساس ریسک",
+  "prio": "متوسط",
+  "status": "موکول"
+}

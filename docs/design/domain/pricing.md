@@ -285,6 +285,13 @@ All three use `UnitOfWork.runOnce` with the inbox (ADR-0006 decision 5; PE 6.4),
 | Logs and audit | Log redaction of the Cost DTO, proven by a log-redaction test (Hassan finding 5); audit rows for Cost carry no amount (H2), and the cost record names the actor (Hassan finding 4) |
 | AI | None (12) |
 
+**As built (PR 7 of the seller Offer page, 2026-11-25).**
+- A third boundary rule keeps the Cost use cases (`application/use-cases/*cost*`) reachable only from each other, the Cost route and the Nest module. `test/contracts/pricing-no-cost-type.contract.spec.ts` is the type-level test: no export of the pricing barrel reaches `CostAmount` (Hassan, PR 7 review H1).
+- The Cost write reuses the step-up action `pricing.price.change`.
+- The nested `cost` object is closed like the body: an extra key there answers `unknown-field`.
+- Accepted risk (Hassan H5): a refused Cost read writes no audit row, as for the price reads (5.2). The answer and its timing are uniform, so Offers cannot be enumerated through it.
+- Cost series are not yet retired by the retirement handlers. See register row FE-20261125-pricing-cost-series-retirement: when they are, the retire raises the series version, so a concurrent Cost write comes back stale (Hassan H4).
+
 ## 7. Data ownership (for Mojtaba)
 `pricing` owns, in its own schema: price series; regular records; special records; boundary markers; retirement tombstones; cost series; cost records; `pricing.outbox`; `pricing.inbox`. Every row carries `market_id` and `tenant_id`; money is `BigInt` + `char(3)` (ADR-0004). Nothing joins another module's tables. Offer, Variant and seller names on admin and seller screens are composed through the `catalog` and `sellers` facades.
 
