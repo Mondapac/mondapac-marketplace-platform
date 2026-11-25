@@ -105,7 +105,8 @@ describe.each(TEST_MARKETS)('platform product search reader in market %s', (code
       created_by_kind: 'seed',
       version: 1,
       created_at: NOW,
-      position: (sequence += 1),
+      // -1: the database takes the next free position (one per parent and Market, trigger).
+      position: -1,
     });
     await insert('platform_category_revisions', {
       id: revisionId,
