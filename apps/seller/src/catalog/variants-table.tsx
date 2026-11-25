@@ -12,7 +12,7 @@ import {
   toast,
   useUnsavedChangesGuard,
 } from '@mondapac/ui';
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale, useTimeZone, useTranslations } from 'next-intl';
 import { useRouter } from 'next/navigation';
 import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
@@ -24,16 +24,25 @@ import {
   lastEstimateFor,
   useReceiveEstimates,
 } from '../price/receive-estimates.ts';
+import { formatDayInZone, resolveZone } from '../price/zone-time.ts';
 import type { SourceView } from '../stock/types.ts';
-import { useGuardedCall } from '../step-up/step-up.tsx';
+import { isStepUpCancelled, useGuardedCall } from '../step-up/step-up.tsx';
+import { priceProblemOf } from '../price/errors.ts';
+import type { SpecialWithdrawn } from '../price/types.ts';
 import {
   increasedBy,
+  isSpecialTyped,
+  orderedWrites,
   savedPriceText,
   savedStockText,
+  specialKey,
+  specialWritesOf,
   stockKey,
   writesOf,
+  type SpecialDraft,
   type TableRow,
 } from './variants-table-logic.ts';
+import { SizeSpecial } from './size-special.tsx';
 import { unitProblemOf, variantOfPath } from './sell-unit-errors.ts';
 import {
   fallbackSku,
@@ -59,7 +68,7 @@ const COL = {
   variant: 8,
   onSale: 6,
   price: 8,
-  special: 7,
+  pays: 9,
   receive: 7,
   stock: 7,
   sku: 11,
@@ -69,7 +78,9 @@ const COL = {
 const unitError = (name: string): string => `catalog.variants-table.units.error.${name}`;
 
 /**
- * Price, special price and stock of every variant of one offer in one table (variants V3b).
+ * Price, special price and stock of every variant of one offer in one table (variants V3b). The
+ * "Customers pay now" column shows what the shop charges (a running special wins); a size's special
+ * price is set and ended in its Details (Offer page PR 6) and saved with the rest.
  * Cells are drafts; a bulk action (set price, increase by a percent, set stock) fills the drafts
  * of the selected rows, and Save sends only the cells that changed, one write each, through the
  * same pricing and inventory routes as the price and stock pages. The server decides every write.
@@ -127,6 +138,11 @@ export function VariantsTable({
   const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
   const [priceDrafts, setPriceDrafts] = useState<Record<string, string>>({});
   const [stockDrafts, setStockDrafts] = useState<Record<string, string>>({});
+  const [specialDrafts, setSpecialDrafts] = useState<Record<string, SpecialDraft>>({});
+  // End special: the size whose request runs, and why the last one was refused.
+  const [ending, setEnding] = useState<string | null>(null);
+  const [endErrors, setEndErrors] = useState<Record<string, string>>({});
+  const zone = resolveZone(useTimeZone());
   const [versions, setVersions] = useState<Record<string, number | null>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [bulk, setBulk] = useState<Bulk | null>(null);
@@ -207,12 +223,27 @@ export function VariantsTable({
   const stockText = (row: TableRow, sourceId: string) =>
     stockDrafts[stockKey(row.variantId, sourceId)] ?? savedStockText(row, sourceId);
   const { writes, invalid } = writesOf(rows, sources, currency, priceDrafts, stockDrafts);
+  // A size's special is one change, however many of its fields are typed or wrong.
+  const hasRegular = (row: TableRow) =>
+    row.price?.inForce != null || minorOf(priceText(row), currency) !== null;
+  const specialCount = canEditPrice
+    ? rows.filter(
+        (row) =>
+          row.price?.retired !== true &&
+          hasRegular(row) &&
+          isSpecialTyped(specialDrafts[row.variantId]),
+      ).length
+    : 0;
   const canBulk = canEditPrice || canEditStock;
   const canSave = canBulk || canEditUnits;
   // A malformed cell or SKU counts as a change so that the save bar shows and Save can say why
   // it is not sent.
   const changeCount =
-    writes.length + invalid.length + unitChanges.length + (canEditUnits ? plan.badSku.length : 0);
+    writes.length +
+    invalid.length +
+    specialCount +
+    unitChanges.length +
+    (canEditUnits ? plan.badSku.length : 0);
 
   function toggle(variantId: string, on: boolean) {
     const next = new Set(selected);
@@ -267,12 +298,15 @@ export function VariantsTable({
   }
 
   async function save() {
-    if (saving) return;
+    // An End in flight uses the same series version: Save waits for it.
+    if (saving || ending !== null) return;
     const plan = writesOf(rows, sources, currency, priceDrafts, stockDrafts);
+    const specials = canEditPrice
+      ? specialWritesOf(rows, currency, zone, specialDrafts, hasRegular)
+      : { writes: [], invalid: [] };
     const found: Record<string, string> = {};
-    for (const item of plan.invalid) {
-      found[item.key] =
-        item.kind === 'price' ? t('price.error.invalid') : t('stock.levels.error.invalid');
+    for (const item of [...plan.invalid, ...specials.invalid]) {
+      found[item.key] = t(INVALID_MESSAGE[item.kind]);
     }
     const unitsPlan = canEditUnits ? unitPlanOf(unitRows, skuDrafts, sellingDrafts) : null;
     if (unitsPlan !== null) {
@@ -288,8 +322,9 @@ export function VariantsTable({
       !unitsPlan.noneSelling;
     setErrors(found);
     setNeedsReload(false);
-    if (plan.writes.length === 0 && !sendUnits) {
-      if (Object.keys(found).length > 0) setFocusTick((n) => n + 1);
+    setEndErrors({});
+    if (plan.writes.length === 0 && specials.writes.length === 0 && !sendUnits) {
+      if (Object.keys(found).length > 0) showFirstError(found);
       return;
     }
     setSaving(true);
@@ -297,10 +332,11 @@ export function VariantsTable({
     const stockLeft = { ...stockDrafts };
     const skuLeft = { ...skuDrafts };
     const sellingLeft = { ...sellingDrafts };
+    const specialLeft = { ...specialDrafts };
     const sent = await sendSizeWrites({
       offerId,
       rows,
-      writes: plan.writes,
+      writes: orderedWrites(rows, plan.writes, specials.writes),
       currency,
       versions,
       csrfToken,
@@ -319,6 +355,7 @@ export function VariantsTable({
     Object.assign(found, sent.found);
     for (const id of sent.savedPrices) delete priceLeft[id];
     for (const key of sent.savedStocks) delete stockLeft[key];
+    for (const id of sent.savedSpecials) delete specialLeft[id];
     const seen = sent.seen;
     let done = sent.done;
     const stopped = sent.stopped;
@@ -382,9 +419,10 @@ export function VariantsTable({
     setStockDrafts(stockLeft);
     setSkuDrafts(skuLeft);
     setSellingDrafts(sellingLeft);
+    setSpecialDrafts(specialLeft);
     setErrors(found);
     const failed = Object.keys(found).length;
-    if (failed > 0) setFocusTick((n) => n + 1);
+    if (failed > 0) showFirstError(found);
     if (waitSeconds !== null) {
       toast.warning(
         t('catalog.variants-table.throttled', {
@@ -392,7 +430,9 @@ export function VariantsTable({
           minutes: Math.max(1, Math.ceil(waitSeconds / 60)),
         }),
       );
-    } else if (done > 0 && failed === 0 && !stopped)
+    } else if (done > 0 && failed === 0 && !stopped && sent.heldSpecials.length > 0)
+      toast.info(t('catalog.variants-table.saved-review', { count: done }));
+    else if (done > 0 && failed === 0 && !stopped)
       toast.success(t('catalog.variants-table.saved', { count: done }));
     else if (done > 0) toast.info(t('catalog.variants-table.partial', { done, failed }));
     else if (stopped) toast.info(t('catalog.variants-table.cancelled'));
@@ -412,7 +452,60 @@ export function VariantsTable({
     { count: changeCount, page: t('catalog.variants-table.title') },
   );
 
+  /**
+   * Focus the first field that failed. A special's fields live in its Details: when only specials
+   * failed, the first such size opens on its Price tab (one row open at a time).
+   */
+  function showFirstError(found: Readonly<Record<string, string>>) {
+    const special = rows.find((row) =>
+      [specialKey.amount, specialKey.start, specialKey.end].some(
+        (key) => found[key(row.variantId)] !== undefined,
+      ),
+    );
+    const otherFailed = Object.keys(found).some((key) => !key.startsWith('special'));
+    if (special !== undefined && !otherFailed) {
+      setOpenId(special.variantId);
+      setSizeTab('price');
+    }
+    setFocusTick((n) => n + 1);
+  }
+
+  /** End a size's running or scheduled special, or cancel one waiting for review, at once. */
+  async function endSpecial(row: TableRow) {
+    if (saving || ending !== null) return;
+    const key = `price:${row.variantId}`;
+    const expectedVersion =
+      key in versions ? (versions[key] ?? null) : (row.price?.seriesVersion ?? null);
+    if (expectedVersion === null) return;
+    setEnding(row.variantId);
+    setEndErrors({});
+    const result = await guarded<SpecialWithdrawn>(
+      'POST',
+      `pricing/seller/offers/${offerId}/variants/${row.variantId}/special-price/withdraw`,
+      { expectedVersion },
+      csrfToken,
+    );
+    setEnding(null);
+    if (isStepUpCancelled(result)) return;
+    if (!result.ok) {
+      if (result.failure.status === 401) {
+        flushSync(() => setLeaving(true));
+        window.location.assign('/session-ended');
+        return;
+      }
+      const problem = priceProblemOf(result.failure);
+      setEndErrors({ [row.variantId]: t(`price.error.${problem}`) });
+      if (problem === 'stale' || problem === 'special-not-found') router.refresh();
+      return;
+    }
+    setVersions({ ...versions, [key]: result.body.seriesVersion });
+    toast.success(t('price.special.withdrawn'));
+    router.refresh();
+  }
+
   function discard() {
+    setSpecialDrafts({});
+    setEndErrors({});
     setPriceDrafts({});
     setStockDrafts({});
     setSkuDrafts({});
@@ -437,6 +530,46 @@ export function VariantsTable({
         {t(open ? 'catalog.size-details.close' : 'catalog.size-details.open')}
         <Icon name={open ? 'chevron-up' : 'chevron-down'} className="size-4" />
       </Button>
+    );
+  }
+
+  /**
+   * The "Customers pay now" cell: a running special with its end day, else the typed or saved
+   * price; a scheduled special, one waiting for review and a typed one are named under it.
+   */
+  function paysCell(row: TableRow) {
+    const price = row.price;
+    if (price?.retired === true) return <Dash />;
+    const special = price?.special ?? null;
+    const amount = customerPaysMinor(price, priceDrafts[row.variantId], currency);
+    return (
+      <>
+        {amount === null ? <Dash /> : <span>{formatMinor(amount, currency, locale)}</span>}
+        {special?.state === 'running' ? (
+          <span className="block text-xs text-fg-muted">
+            {t('catalog.variants-table.pays.running', {
+              ends: formatDayInZone(special.endsAt, zone, locale),
+            })}
+          </span>
+        ) : special?.state === 'scheduled' ? (
+          <span className="block text-xs text-fg-muted">
+            {t('catalog.variants-table.pays.scheduled', {
+              amount: formatMinor(special.amount, currency, locale),
+              starts: formatDayInZone(special.startsAt, zone, locale),
+            })}
+          </span>
+        ) : null}
+        {price?.heldSpecial == null ? null : (
+          <span className="block text-xs text-fg-muted">
+            {t('catalog.variants-table.pays.held')}
+          </span>
+        )}
+        {canEditPrice && hasRegular(row) && isSpecialTyped(specialDrafts[row.variantId]) ? (
+          <span className="block text-xs text-attention-fg">
+            {t('catalog.variants-table.pays.typed')}
+          </span>
+        ) : null}
+      </>
     );
   }
 
@@ -484,9 +617,11 @@ export function VariantsTable({
           : typed
             ? 'typed'
             : 'saved';
+    const running = row.price?.special?.state === 'running' ? row.price.special : null;
     return {
       estimate: estimateFor(estimates, row.variantId, amount),
       source,
+      specialEnds: running === null ? null : formatDayInZone(running.endsAt, zone, locale),
       state:
         estimates.kind === 'unavailable' || estimates.kind === 'no-category'
           ? estimates.kind
@@ -526,7 +661,7 @@ export function VariantsTable({
     (canBulk ? 2.5 : 0) +
     COL.variant +
     (showUnits ? COL.onSale + COL.sku : 0) +
-    (showPrice ? COL.price + COL.special : 0) +
+    (showPrice ? COL.price + COL.pays : 0) +
     (showReceive ? COL.receive : 0) +
     sources.length * COL.stock +
     (showDetails ? COL.details : 0);
@@ -697,7 +832,7 @@ export function VariantsTable({
                   {showPrice ? (
                     <>
                       <col style={{ width: `${COL.price}rem` }} />
-                      <col style={{ width: `${COL.special}rem` }} />
+                      <col style={{ width: `${COL.pays}rem` }} />
                     </>
                   ) : null}
                   {showReceive ? <col style={{ width: `${COL.receive}rem` }} /> : null}
@@ -742,7 +877,7 @@ export function VariantsTable({
                           {t('catalog.variants-table.your-price')}
                         </th>
                         <th scope="col" className="p-2 font-medium">
-                          {t('price.special.title')}
+                          {t('catalog.variants-table.pays.column')}
                         </th>
                       </>
                     ) : null}
@@ -774,7 +909,6 @@ export function VariantsTable({
                 <tbody>
                   {rows.map((row) => {
                     const retired = row.price?.retired === true;
-                    const special = row.price?.special;
                     const unit = row.unit;
                     const offSale = unit != null && !sellingOf(row);
                     const open = openId === row.variantId;
@@ -887,15 +1021,7 @@ export function VariantsTable({
                                   </span>
                                 )}
                               </td>
-                              <td className="p-2">
-                                {special == null ? (
-                                  <Dash />
-                                ) : (
-                                  t(`catalog.variants-table.special.${special.state}`, {
-                                    amount: formatMinor(special.amount, currency, locale),
-                                  })
-                                )}
-                              </td>
+                              <td className="p-2 tabular-nums">{paysCell(row)}</td>
                             </>
                           ) : null}
                           {showReceive ? (
@@ -1015,6 +1141,33 @@ export function VariantsTable({
                                   sources={sources}
                                   stockDrafts={stockDrafts}
                                   receive={showReceive ? receiveView(row) : null}
+                                  special={
+                                    <SizeSpecial
+                                      id={`${detailsId}-special`}
+                                      sizeLabel={row.label}
+                                      price={row.price}
+                                      currency={currency}
+                                      zone={zone}
+                                      hasRegular={hasRegular(row)}
+                                      canEdit={canEditPrice}
+                                      draft={specialDrafts[row.variantId]}
+                                      errors={{
+                                        amount: errors[specialKey.amount(row.variantId)],
+                                        start: errors[specialKey.start(row.variantId)],
+                                        end: errors[specialKey.end(row.variantId)],
+                                      }}
+                                      ending={ending === row.variantId}
+                                      disabled={saving || ending !== null}
+                                      statusError={endErrors[row.variantId] ?? null}
+                                      onDraft={(draft) =>
+                                        setSpecialDrafts({
+                                          ...specialDrafts,
+                                          [row.variantId]: draft,
+                                        })
+                                      }
+                                      onEnd={() => void endSpecial(row)}
+                                    />
+                                  }
                                 />
                               </div>
                             </td>
@@ -1069,13 +1222,6 @@ export function VariantsTable({
               </p>
             </div>
           ) : null}
-          {showPrice ? (
-            <p className="text-sm text-fg-muted">
-              <a className="font-medium text-link underline" href={`/offers/${offerId}/prices`}>
-                {t('catalog.variants-table.special-link')}
-              </a>
-            </p>
-          ) : null}
           {canSave ? (
             <SaveBar
               count={changeCount}
@@ -1109,6 +1255,15 @@ export function VariantsTable({
     </div>
   );
 }
+
+/** The message of a cell or field whose text is not a valid value. */
+const INVALID_MESSAGE = {
+  price: 'price.error.invalid',
+  stock: 'stock.levels.error.invalid',
+  'special-amount': 'price.error.invalid',
+  'special-start': 'price.special.error.start',
+  'special-end': 'price.special.error.end',
+} as const;
 
 /** An empty value: an em dash in the muted colour. */
 function Dash() {

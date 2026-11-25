@@ -32,7 +32,7 @@ const server = createServer((req, res) => {
 const port = server.address().port;
 const { chromium } = createRequire(import.meta.url)(process.env.PLAYWRIGHT_PATH ?? 'playwright');
 const browser = await chromium.launch();
-const plan = ['closed', 'price', 'stock', 'draft'].flatMap((s) =>
+const plan = ['closed', 'price', 'stock', 'draft', 'special-new', 'special-error'].flatMap((s) =>
   [1280, 768, 375].map((w) => [s, w]),
 );
 for (const scheme of ['light', 'dark']) {
@@ -52,10 +52,16 @@ for (const scheme of ['light', 'dark']) {
       await page.getByLabel('Price for 1 kg').fill('34.90');
       await page.getByLabel('Price for 250 g').fill('9.90');
     }
+    const size = scenario === 'draft' || scenario.startsWith('special') ? '250 g' : '500 g';
     if (scenario !== 'closed') {
-      await page
-        .getByRole('button', { name: `Details for ${scenario === 'draft' ? '250 g' : '500 g'}` })
-        .click();
+      await page.getByRole('button', { name: `Details for ${size}` }).click();
+    }
+    // A special typed in Details (Offer page PR 6); without an end, Save shows why on the field.
+    if (scenario.startsWith('special')) {
+      await page.getByLabel('Special price (AUD) for 250 g').fill('8.50');
+      if (scenario === 'special-new')
+        await page.getByLabel('Special ends, 250 g').fill('2026-12-07T17:00');
+      else await page.getByRole('button', { name: 'Save 1 change' }).click();
     }
     if (scenario === 'stock') await page.getByRole('tab', { name: 'Stock' }).click();
     // "You receive (est.)" is read after a short pause (Offer page PR 4).

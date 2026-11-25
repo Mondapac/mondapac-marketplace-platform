@@ -113,10 +113,20 @@ describe('size Details', () => {
     expect(open.getByText('$17.90')).toBeTruthy();
     expect(open.getByText('Waiting for review')).toBeTruthy();
     expect(open.getByText('$18.90')).toBeTruthy();
-    expect(open.getByText(/\$15\.90, running, ends/)).toBeTruthy();
-    expect(
-      open.getByRole('link', { name: 'Set or end a special price' }).getAttribute('href'),
-    ).toBe('/offers/o1/prices');
+    // Offer page PR 6: the special is set and ended here, not on the Prices page.
+    expect(open.getByText('Running')).toBeTruthy();
+    expect(open.getByText(/\$15\.90 until 30 Nov 2026/)).toBeTruthy();
+    expect(open.getByText(/regular price of \$17\.90 crossed out/)).toBeTruthy();
+    expect(open.getByRole('button', { name: 'End special price of 500 g' })).toBeTruthy();
+    // The replace fields open on request, so a current special reads as one line.
+    expect(open.queryByRole('group', { name: 'Replace the special price' })).toBeNull();
+    const replace = open.getByRole('button', { name: 'Replace special price' });
+    expect(replace.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(replace);
+    expect(replace.getAttribute('aria-expanded')).toBe('true');
+    expect(open.getByRole('group', { name: 'Replace the special price' })).toBeTruthy();
+    expect(open.getByLabelText<HTMLInputElement>('Special ends, 500 g').required).toBe(true);
+    expect(open.queryByRole('link', { name: /special price/ })).toBeNull();
   });
 
   it('keeps a typed price when Details closes, names it, and still counts it for Save', () => {
@@ -204,9 +214,13 @@ describe('size Details', () => {
     });
     fireEvent.click(details('250 g'));
     const open = within(panel('250 g'));
-    expect(open.getByText(/\$8\.50, from 1 Dec 2026.* to 8 Dec 2026/)).toBeTruthy();
-    expect(open.getByText('Special waiting for review')).toBeTruthy();
-    expect(open.getByText(/\$5\.00, from 10 Dec 2026/)).toBeTruthy();
+    expect(open.getByText('Scheduled')).toBeTruthy();
+    expect(open.getByText(/\$8\.50 from 1 Dec 2026.* until 8 Dec 2026/)).toBeTruthy();
+    expect(open.getByText(/A special price of \$5\.00 \(10 Dec 2026/)).toBeTruthy();
+    expect(open.getByRole('button', { name: 'Cancel scheduled special of 250 g' })).toBeTruthy();
+    // The row says what customers pay and what is coming, in short.
+    expect(screen.getByText('Special $8.50 from 1 Dec')).toBeTruthy();
+    expect(screen.getByText('Special waiting for review')).toBeTruthy();
   });
 
   it('keeps the sizes card and its anchor for an offer with no sizes', () => {

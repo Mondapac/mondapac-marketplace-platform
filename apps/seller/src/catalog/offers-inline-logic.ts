@@ -5,7 +5,7 @@ import {
   writesOf,
   type Invalid,
   type TableRow,
-  type Write,
+  type CellWrite,
 } from './variants-table-logic.ts';
 
 // The pure half of editing prices and stock right in the Offer list (Offer page PR 8, design
@@ -123,7 +123,7 @@ export type Drafts = Readonly<Record<string, Readonly<Record<string, string>>>>;
 /** What a save of the list sends: per Offer, its writes and its fields that are not valid. */
 export interface OfferPlan {
   readonly offer: InlineOffer;
-  readonly writes: readonly Write[];
+  readonly writes: readonly CellWrite[];
   readonly invalid: readonly Invalid[];
 }
 

@@ -303,7 +303,7 @@ describe('What you receive in the Price tab', () => {
     const group = within(screen.getByRole('region', { name: 'What you receive' }));
     const text = (label: string) =>
       group.getByText(label).closest('div')!.querySelector('dd')!.textContent;
-    expect(text('Customer pays')).toBe('$15.90Special price, running');
+    expect(text('Customer pays')).toBe('$15.90Special · ends 30 Nov');
     expect(text('Platform commission')).toBe('− $2.38');
     expect(text('You receive (est.)')).toBe('≈ $13.52');
     expect(group.getByText(/The most the commission can be/)).toBeTruthy();

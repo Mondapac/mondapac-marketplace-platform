@@ -1,4 +1,5 @@
 import { inputOf, minorOf } from '../price/money.ts';
+import { instantOfZoned } from '../price/zone-time.ts';
 import type { VariantPrice } from '../price/types.ts';
 import type { StockCell } from '../stock/levels-types.ts';
 import type { SellUnitView } from './types.ts';
@@ -57,12 +58,23 @@ export interface StockWrite {
   readonly sourceId: string;
   readonly onHand: number;
 }
-export type Write = PriceWrite | StockWrite;
+/** A new special price for one size (Offer page PR 6): it replaces any running or scheduled one. */
+export interface SpecialWrite {
+  readonly kind: 'special';
+  readonly variantId: string;
+  readonly amount: string;
+  /** UTC instant; null starts it now. */
+  readonly startsAt: string | null;
+  readonly endsAt: string;
+}
+/** A write of one table cell: a price or a stock level. */
+export type CellWrite = PriceWrite | StockWrite;
+export type Write = CellWrite | SpecialWrite;
 
 /** A line a save cannot send because its text is not a valid value. */
 export interface Invalid {
   readonly key: string;
-  readonly kind: 'price' | 'stock';
+  readonly kind: 'price' | 'stock' | 'special-amount' | 'special-start' | 'special-end';
 }
 
 const WHOLE = /^\d{1,7}$/;
@@ -78,8 +90,8 @@ export function writesOf(
   currency: string,
   priceDrafts: Readonly<Record<string, string>>,
   stockDrafts: Readonly<Record<string, string>>,
-): { readonly writes: Write[]; readonly invalid: Invalid[] } {
-  const writes: Write[] = [];
+): { readonly writes: CellWrite[]; readonly invalid: Invalid[] } {
+  const writes: CellWrite[] = [];
   const invalid: Invalid[] = [];
   for (const row of rows) {
     if (row.price?.retired === true) continue;
@@ -102,4 +114,99 @@ export function writesOf(
     }
   }
   return { writes, invalid };
+}
+
+/** The special price fields of one size as typed in its Details (Offer page PR 6). */
+export interface SpecialDraft {
+  readonly amount: string;
+  /** `datetime-local` text in the seller's zone; empty starts it now. */
+  readonly start: string;
+  /** `datetime-local` text in the seller's zone; required. */
+  readonly end: string;
+}
+
+export const EMPTY_SPECIAL: SpecialDraft = { amount: '', start: '', end: '' };
+
+/** The error keys of a size's special fields: under the amount, the start and the end. */
+export const specialKey = {
+  amount: (variantId: string): string => `special:${variantId}`,
+  start: (variantId: string): string => `special-start:${variantId}`,
+  end: (variantId: string): string => `special-end:${variantId}`,
+} as const;
+
+/** Whether the seller typed anything in a size's special fields. */
+export function isSpecialTyped(draft: SpecialDraft | undefined): draft is SpecialDraft {
+  return (
+    draft !== undefined &&
+    (draft.amount.trim() !== '' || draft.start.trim() !== '' || draft.end.trim() !== '')
+  );
+}
+
+/**
+ * The special price writes a save sends, read from the Details fields: a size with any field
+ * typed sends one write, or one `invalid` line per field that is wrong (the amount is not money,
+ * the start is not a time, the end is missing or not a time). Times are read in the seller's zone.
+ * The server checks the rest (below the regular price, the end after the start, not in the past).
+ * A size without a regular price sends nothing: its fields are hidden until it has one.
+ */
+export function specialWritesOf(
+  rows: readonly TableRow[],
+  currency: string,
+  zone: string,
+  drafts: Readonly<Record<string, SpecialDraft>>,
+  /** The size has a regular price, saved or typed; a special for one without is not sent. */
+  hasRegular: (row: TableRow) => boolean = (row) => row.price?.inForce != null,
+  now: number = Date.now(),
+): { readonly writes: SpecialWrite[]; readonly invalid: Invalid[] } {
+  const writes: SpecialWrite[] = [];
+  const invalid: Invalid[] = [];
+  for (const row of rows) {
+    if (row.price?.retired === true) continue;
+    const draft = drafts[row.variantId];
+    if (!isSpecialTyped(draft) || !hasRegular(row)) continue;
+    const amount = minorOf(draft.amount, currency);
+    const typedStart = draft.start.trim() === '' ? null : instantOfZoned(draft.start, zone);
+    // A start typed for this minute is already past when it reaches the server: it starts now.
+    const startsAt = typedStart !== null && Date.parse(typedStart) <= now ? null : typedStart;
+    const endsAt = instantOfZoned(draft.end, zone);
+    const bad: Invalid[] = [];
+    if (amount === null)
+      bad.push({ key: specialKey.amount(row.variantId), kind: 'special-amount' });
+    if (draft.start.trim() !== '' && typedStart === null)
+      bad.push({ key: specialKey.start(row.variantId), kind: 'special-start' });
+    if (endsAt === null) bad.push({ key: specialKey.end(row.variantId), kind: 'special-end' });
+    if (bad.length > 0 || amount === null || endsAt === null) {
+      invalid.push(...bad);
+      continue;
+    }
+    writes.push({ kind: 'special', variantId: row.variantId, amount, startsAt, endsAt });
+  }
+  return { writes, invalid };
+}
+
+/**
+ * The order a save sends its writes in. A special goes after the regular price of its size,
+ * because it must stay below the new regular price; but when the new regular price is at or below
+ * the running or scheduled special, the special goes first, as the server refuses a regular price
+ * that is not above a special.
+ */
+export function orderedWrites(
+  rows: readonly TableRow[],
+  writes: readonly Write[],
+  specials: readonly SpecialWrite[],
+): Write[] {
+  const first: Write[] = [];
+  const last: Write[] = [];
+  for (const special of specials) {
+    const row = rows.find((item) => item.variantId === special.variantId);
+    const price = writes.find(
+      (write): write is PriceWrite =>
+        write.kind === 'price' && write.variantId === special.variantId,
+    );
+    const current = row?.price?.special?.amount;
+    const lowersBelow =
+      price !== undefined && current !== undefined && BigInt(price.amount) <= BigInt(current);
+    (lowersBelow ? first : last).push(special);
+  }
+  return [...first, ...writes, ...last];
 }
