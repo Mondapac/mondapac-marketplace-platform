@@ -231,6 +231,7 @@ export function sellerOrderSource(
       shippedOnTime: fact.shippedOnTime,
       deliveredAt: fact.deliveredAt,
       delivery,
+      buyerFirst: { order: fact.buyerFirstOrder, withSeller: fact.buyerFirstWithSeller },
     },
     goods: goodsOf(fact.lines, categories),
   };

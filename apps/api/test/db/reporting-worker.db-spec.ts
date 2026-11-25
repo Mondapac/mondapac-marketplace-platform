@@ -191,6 +191,9 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
     deliveredAt: null,
     deliveryQuoteId: null,
     deliveryMethod: 'instant',
+    // Ordering freezes the flags at payment: known once paid.
+    buyerFirstOrder: paidAt === null ? null : false,
+    buyerFirstWithSeller: paidAt === null ? null : false,
   });
   const days = async (sellerId: string) =>
     (
@@ -450,6 +453,7 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
         { kind: 'seller-orders', after: orderIds[199], pages: 2, failed: 0, done: false },
         { kind: 'refunds', after: null, pages: 0, failed: 0, done: false },
         { kind: 'delivery', after: null, pages: 0, failed: 0, done: false },
+        { kind: 'buyer-first', after: null, pages: 0, failed: 0, done: false },
       ]);
 
       // A later run keeps the window end fixed at the first start, for both kinds.
@@ -461,7 +465,12 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
       const third = await backfillHistory(backfill, system(), limits(2));
       expect(third).toEqual(
         // The last refund page, then the delivery pass: every row here already has its method.
-        ok({ sellerOrders: 0, refunds: 20, failedFacts: 0, pages: 2, finished: true }),
+        ok({ sellerOrders: 0, refunds: 20, failedFacts: 0, pages: 2, finished: false }),
+      );
+      const fourth = await backfillHistory(backfill, system(), limits(2));
+      expect(fourth).toEqual(
+        // The buyer-first pass: every paid row here already has its flags.
+        ok({ sellerOrders: 0, refunds: 0, failedFacts: 0, pages: 1, finished: true }),
       );
       expect(windows.length).toBe(5);
       expect(windows.every((window) => window.from === null && window.to.equals(T0))).toBe(true);
@@ -475,6 +484,7 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
           done: true,
         },
         { kind: 'delivery', after: null, pages: 1, failed: 0, done: true },
+        { kind: 'buyer-first', after: null, pages: 1, failed: 0, done: true },
       ]);
       expect(await stored(sellerId)).toEqual({ orders: '250', refunds: '120' });
 
@@ -519,17 +529,19 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
         { kind: 'seller-orders', after: null, pages: 0, failed: 0, done: false },
         { kind: 'refunds', after: null, pages: 0, failed: 0, done: false },
         { kind: 'delivery', after: null, pages: 0, failed: 0, done: false },
+        { kind: 'buyer-first', after: null, pages: 0, failed: 0, done: false },
       ]);
 
       // The connection is back: the page is written again, and the refused refund is counted.
       const done = await backfillHistory(backfill, system(), limits(5));
       expect(done).toEqual(
-        ok({ sellerOrders: 3, refunds: 1, failedFacts: 1, pages: 3, finished: true }),
+        ok({ sellerOrders: 3, refunds: 1, failedFacts: 1, pages: 4, finished: true }),
       );
       expect(await progressOf()).toEqual([
         { kind: 'seller-orders', after: null, pages: 1, failed: 0, done: true },
         { kind: 'refunds', after: null, pages: 1, failed: 1, done: true },
         { kind: 'delivery', after: null, pages: 1, failed: 0, done: true },
+        { kind: 'buyer-first', after: null, pages: 1, failed: 0, done: true },
       ]);
       expect(await stored(sellerId)).toEqual({ orders: '3', refunds: '1' });
     });
@@ -596,6 +608,7 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
         },
         { kind: 'refunds', after: null, pages: 1, failed: 0, done: true },
         { kind: 'delivery', after: null, pages: 1, failed: 0, done: true },
+        { kind: 'buyer-first', after: null, pages: 1, failed: 0, done: true },
       ]);
       expect(await stored(sellerId)).toEqual({ orders: '250', refunds: '0' });
     });
@@ -649,7 +662,8 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
       });
       const second = await backfillHistory(backfill, system(), limits(5));
       expect(second).toEqual(
-        ok({ sellerOrders: 50, refunds: 0, failedFacts: 0, pages: 1, finished: true }),
+        // The last delivery page, then the buyer-first pass (every row has its flags).
+        ok({ sellerOrders: 50, refunds: 0, failedFacts: 0, pages: 2, finished: true }),
       );
 
       const rows = (
@@ -683,6 +697,86 @@ describe.each(TEST_MARKETS)('reporting reconcile in market %s (database)', (code
       await backfillHistory(backfill, system(), limits(5));
       expect(owners.reads).toBe(reads);
       // Nothing about the delivery is in the rollups: one day, 150 orders, as before.
+      expect((await days(sellerId)).map((row) => row.orders_paid)).toEqual([150]);
+    });
+
+    it('fills the buyer-first flags of paid rows recorded before the columns, resuming from its cursor', async () => {
+      const sellerId = idOf<'Seller'>();
+      const offer = idOf<'Offer'>();
+      // 150 paid seller orders: first, returning, new to the seller, and one ordering does not
+      // know (paid before it recorded the flags).
+      for (let i = 0; i < 150; i += 1) {
+        const base = sellerOrder(sellerId, offer, T0.subtract({ hours: 720 }));
+        const [first, withSeller] =
+          i === 2
+            ? [null, null]
+            : i % 3 === 0
+              ? [true, true]
+              : i % 3 === 1
+                ? [false, false]
+                : [false, true];
+        owners.orders.push({ ...base, buyerFirstOrder: first, buyerFirstWithSeller: withSeller });
+      }
+      await reconcileWindow(deps, system(), window);
+      // The history backfill and the delivery pass had finished before the buyer-first pass existed.
+      await owner.query(
+        `INSERT INTO reporting.backfill_progress (market_id, tenant_id, kind, until, after, pages,
+           failed_facts, started_at, updated_at, finished_at)
+         SELECT $1, $2, kind, $3, NULL, 1, 0, $3, $3, $3
+           FROM unnest(ARRAY['seller-orders', 'refunds', 'delivery']) AS kind`,
+        [market.marketId, market.tenantId, new Date(T0.epochMilliseconds)],
+      );
+      // Rows as an earlier release recorded them: no flags.
+      await owner.query(
+        `UPDATE reporting.seller_orders
+            SET buyer_first_order = NULL, buyer_first_with_seller = NULL
+          WHERE seller_id = $1`,
+        [sellerId],
+      );
+      const ids = idsOf(owners.orders, (order) => order.sellerOrderId);
+
+      const first = await backfillHistory(backfill, system(), limits(1));
+      expect(first).toEqual(
+        ok({ sellerOrders: 100, refunds: 0, failedFacts: 0, pages: 1, finished: false }),
+      );
+      expect((await progressOf()).find((row) => row.kind === 'buyer-first')).toEqual({
+        kind: 'buyer-first',
+        after: ids[99],
+        pages: 1,
+        failed: 0,
+        done: false,
+      });
+      const second = await backfillHistory(backfill, system(), limits(5));
+      expect(second).toEqual(
+        ok({ sellerOrders: 50, refunds: 0, failedFacts: 0, pages: 1, finished: true }),
+      );
+
+      const rows = (
+        await owner.query<{ id: string; first: boolean | null; withSeller: boolean | null }>(
+          `SELECT seller_order_id::text AS id, buyer_first_order AS first,
+                  buyer_first_with_seller AS "withSeller"
+             FROM reporting.seller_orders WHERE seller_id = $1`,
+          [sellerId],
+        )
+      ).rows;
+      expect(rows).toHaveLength(150);
+      const expected = new Map(
+        owners.orders.map((order) => [
+          order.sellerOrderId as string,
+          { first: order.buyerFirstOrder, withSeller: order.buyerFirstWithSeller },
+        ]),
+      );
+      for (const row of rows) {
+        expect({ first: row.first, withSeller: row.withSeller }).toEqual(expected.get(row.id));
+      }
+      // The unknown flags stay null, and the pass does not visit the row again.
+      expect(rows.filter((row) => row.first === null).map((row) => row.id)).toEqual([
+        owners.orders[2]!.sellerOrderId,
+      ]);
+      const reads = owners.reads;
+      await backfillHistory(backfill, system(), limits(5));
+      expect(owners.reads).toBe(reads);
+      // Nothing about the flags is in the rollups: one day, 150 paid orders, as before.
       expect((await days(sellerId)).map((row) => row.orders_paid)).toEqual([150]);
     });
   });

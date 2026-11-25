@@ -128,7 +128,7 @@ export type FactKind = (typeof FACT_KINDS)[number];
  * `delivery`, which records again the seller orders reporting holds without a delivery method (rows
  * recorded before the delivery columns; dashboards v2).
  */
-export const SALES_BACKFILL_KINDS = [...FACT_KINDS, 'delivery'] as const;
+export const SALES_BACKFILL_KINDS = [...FACT_KINDS, 'delivery', 'buyer-first'] as const;
 export type SalesBackfillKind = (typeof SALES_BACKFILL_KINDS)[number];
 
 /** The name the nightly reconcile's logs carry (its job's name). */

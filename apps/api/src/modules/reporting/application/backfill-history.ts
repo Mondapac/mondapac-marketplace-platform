@@ -15,7 +15,10 @@ import {
 
 export interface BackfillDependencies extends ReportFactsDependencies {
   readonly progress: BackfillProgressStore;
-  /** reporting's own facts, read by the `delivery` pass for the rows still without a delivery. */
+  /**
+   * reporting's own facts, read by the `delivery` and `buyer-first` passes for the rows still
+   * without their columns.
+   */
   readonly facts: FactStore;
 }
 
@@ -84,8 +87,8 @@ export async function backfillHistory(
     while (progress !== null && progress.finishedAt === null && !outOfBudget()) {
       const from: BackfillProgress = progress;
       const page =
-        from.kind === 'delivery'
-          ? await deliveryPage(deps, context, from.after)
+        from.kind === 'delivery' || from.kind === 'buyer-first'
+          ? await missingPage(deps, context, from.kind, from.after)
           : await writePage(
               deps,
               context,
@@ -127,29 +130,35 @@ export async function backfillHistory(
 }
 
 /**
- * One page of the `delivery` pass (dashboards v2): the seller orders reporting recorded before the
- * delivery columns (no method), after `after` in id order (reporting's own table, read in a read-only
- * unit), read again from their owners and recorded through the same writer as the other kinds.
- * A state shipping cannot tell (a delivery placed before quotes were kept, a quote removed, a
- * postcode in no range) stays null and the pass moves on, so it ends. Rows recorded after the
- * pass are written with both columns by the worker.
+ * One page of the `delivery` or the `buyer-first` pass (dashboards v2): the seller orders reporting
+ * recorded before the delivery columns (no method), or paid ones without the buyer-first flags,
+ * after `after` in id order (reporting's own table, read in a read-only unit), read again from their
+ * owners and recorded through the same writer as the other kinds. A value the owner cannot tell (a
+ * state shipping cannot place; flags of an order paid before ordering recorded them) stays null and
+ * the pass moves on, so it ends. Rows recorded after the pass are written with the columns by the
+ * worker; a flag already known is kept as it was (`keepKnownInstants`).
  */
-async function deliveryPage(
+async function missingPage(
   deps: BackfillDependencies,
   context: CallContext,
+  kind: 'delivery' | 'buyer-first',
   after: string | null,
 ): Promise<Result<WrittenPage, SourceUnavailable>> {
   const read = await deps.unitOfWork.run(
     context.market,
     async () =>
-      ok(await deps.facts.sellerOrdersMissingDelivery(context.market, after, SOURCE_BATCH)),
+      ok(
+        kind === 'delivery'
+          ? await deps.facts.sellerOrdersMissingDelivery(context.market, after, SOURCE_BATCH)
+          : await deps.facts.sellerOrdersMissingBuyerFirst(context.market, after, SOURCE_BATCH),
+      ),
     { readOnly: true },
   );
   if (!read.ok) return read;
   return recordPage(
     deps,
     context,
-    'delivery',
+    kind,
     after,
     {
       next: read.value.next,

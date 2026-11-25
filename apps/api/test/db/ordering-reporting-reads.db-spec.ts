@@ -181,6 +181,7 @@ describe.each(TEST_MARKETS)('ordering reporting reads in market %s (database)', 
           readyAt: null,
           readyPrepMinutes: null,
           deliveryAttention: null,
+          buyerFirst: null,
           deliveryQuote: null,
         },
       ],
@@ -280,6 +281,9 @@ describe.each(TEST_MARKETS)('ordering reporting reads in market %s (database)', 
       // The method and shipping's quote id only (dashboards v2): never the ship-to address.
       deliveryMethod: 'instant',
       deliveryQuoteId: null,
+      // The buyer's first paid order (dashboards v2): two flags, never the account id.
+      buyerFirstOrder: true,
+      buyerFirstWithSeller: true,
     });
     expect(fact.paidAt).not.toBeNull();
     expect(fact.lines.map((line) => [line.quantity, line.goods])).toEqual([
@@ -291,6 +295,8 @@ describe.each(TEST_MARKETS)('ordering reporting reads in market %s (database)', 
     );
     expect(Object.keys(fact).sort()).toEqual(
       [
+        'buyerFirstOrder',
+        'buyerFirstWithSeller',
         'cancelledAt',
         'currency',
         'deliveredAt',
@@ -322,6 +328,33 @@ describe.each(TEST_MARKETS)('ordering reporting reads in market %s (database)', 
       sellerOrders: [{ orderId: ids.next<'Order'>(), sellerOrderId: o.sellerOrderId }],
     });
     expect(mismatched.ok && mismatched.value).toEqual([]);
+  });
+
+  it('answers the buyer-first flags frozen at payment, for a returning buyer too', async () => {
+    const accountId = ids.next<'Account'>();
+    const [s1, s2] = [ids.next<'Seller'>(), ids.next<'Seller'>()];
+    const first = await paidOrder(s1, accountId);
+    const again = await paidOrder(s1, accountId);
+    const elsewhere = await paidOrder(s2, accountId);
+    const facts = await new SellerOrderReportFactsQuery(gate, deps).execute(system, {
+      sellerOrders: [first, again, elsewhere].map(({ orderId, sellerOrderId }) => ({
+        orderId,
+        sellerOrderId,
+      })),
+    });
+    if (!facts.ok) throw new Error(facts.error.code);
+    const flagsOf = (sellerOrderId: string) => {
+      const fact = facts.value.find((candidate) => candidate.sellerOrderId === sellerOrderId);
+      return [fact?.buyerFirstOrder, fact?.buyerFirstWithSeller];
+    };
+    expect(flagsOf(first.sellerOrderId)).toEqual([true, true]);
+    expect(flagsOf(again.sellerOrderId)).toEqual([false, false]);
+    expect(flagsOf(elsewhere.sellerOrderId)).toEqual([false, true]);
+    expect(
+      JSON.stringify(facts.value, (_key, value: unknown) =>
+        typeof value === 'bigint' ? value.toString() : value,
+      ),
+    ).not.toContain(accountId);
   });
 
   it('answers only a succeeded refund, with the Offer of each line', async () => {

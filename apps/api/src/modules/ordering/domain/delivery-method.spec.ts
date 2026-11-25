@@ -104,6 +104,7 @@ const sellerOrder = (patch: Partial<SellerOrder> = {}): SellerOrder => ({
   readyAt: null,
   readyPrepMinutes: null,
   deliveryAttention: null,
+  buyerFirst: null,
   deliveryQuote: null,
   ...patch,
 });

@@ -203,6 +203,7 @@ describe.each(TEST_MARKETS)('admin refund list in market %s (database)', (code) 
           readyAt: null,
           readyPrepMinutes: null,
           deliveryAttention: null,
+          buyerFirst: null,
           deliveryQuote: null,
         },
       ],

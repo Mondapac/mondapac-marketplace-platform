@@ -88,6 +88,7 @@ export default async function globalSetup(): Promise<void> {
   await createCopy(name, 'REPORTING_ADMIN_KPI');
   await createCopy(name, 'REPORTING_SELLER_KPIS');
   await createCopy(name, 'CATALOG_TREE');
+  await createCopy(name, 'BUYER_FIRST');
 }
 
 /**
@@ -178,6 +179,9 @@ export default async function globalSetup(): Promise<void> {
  * - `catalog_tree`: catalog-category-tree.db-spec.ts runs the Market seed use case and then counts the
  *   categories and `platform-category-created` outbox events of whole Markets (AU must stay empty),
  *   while other files seed or insert categories in both Markets in parallel, so none of them lives there.
+ * - `buyer_first`: ordering-buyer-first.db-spec.ts runs the history backfill of migration
+ *   20261124020000 again, which reads and writes every paid order of the database, so no other
+ *   file's orders live there.
  * Copied before any test connects, since a template must have no other session.
  */
 async function createCopy(
@@ -221,7 +225,8 @@ async function createCopy(
     | 'REPORTING_WORKER'
     | 'REPORTING_ADMIN_KPI'
     | 'REPORTING_SELLER_KPIS'
-    | 'CATALOG_TREE',
+    | 'CATALOG_TREE'
+    | 'BUYER_FIRST',
 ): Promise<void> {
   const name = `${template}_${kind.toLowerCase()}`;
   const admin = new Client({ connectionString: migrationDatabaseUrl() });

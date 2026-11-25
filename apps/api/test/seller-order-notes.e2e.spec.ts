@@ -98,6 +98,7 @@ describe.each(TEST_MARKETS)('seller notes and order activity over HTTP in market
     readyAt: START.add({ minutes: 10 }),
     readyPrepMinutes: null,
     deliveryAttention: null,
+    buyerFirst: null,
     deliveryQuote: null,
     ...patch,
   });

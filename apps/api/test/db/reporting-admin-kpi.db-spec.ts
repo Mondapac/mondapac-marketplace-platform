@@ -81,6 +81,7 @@ describe.each(TEST_MARKETS)('the admin KPI reader in market %s (database)', (cod
     shippedOnTime: null,
     deliveredAt: null,
     delivery: { method: 'instant' as const, state: null },
+    buyerFirst: { order: null, withSeller: null },
     ...overrides,
   });
 

@@ -768,6 +768,8 @@ export async function placeOrder<T>(
       readyPrepMinutes: prepMinutes.get(seller.sellerId) ?? null,
       deliveryAttention: null,
       deliveryQuote: chargedQuoteOf(charges.get(seller.sellerId)),
+      // Decided when the payment is confirmed.
+      buyerFirst: null,
     })),
     lines,
   };

@@ -129,6 +129,7 @@ describe.each(TEST_MARKETS)('reporting facts and rollups in market %s (database)
     shippedOnTime: null,
     deliveredAt: null,
     delivery: { method: 'instant', state: null },
+    buyerFirst: { order: null, withSeller: null },
     ...overrides,
   });
 
@@ -422,6 +423,113 @@ describe.each(TEST_MARKETS)('reporting facts and rollups in market %s (database)
       );
       expect(updated.rowCount).toBe(1);
       expect(await deliveryOf(order.sellerOrderId)).toEqual([{ method: 'scheduled', state }]);
+    });
+  });
+
+  describe('buyer-first flags (dashboards v2)', () => {
+    const FIRST = { order: true, withSeller: true };
+    const RETURNING = { order: false, withSeller: false };
+    const NEW_TO_SELLER = { order: false, withSeller: true };
+    const UNKNOWN = { order: null, withSeller: null };
+    const flagsOf = async (sellerOrderId: string) =>
+      (
+        await owner.query<{ order: boolean | null; withSeller: boolean | null }>(
+          `SELECT buyer_first_order AS "order", buyer_first_with_seller AS "withSeller"
+             FROM reporting.seller_orders WHERE seller_order_id = $1`,
+          [sellerOrderId],
+        )
+      ).rows;
+    const record = (order: SellerOrderFact) =>
+      within(market, () => recorder.recordSellerOrder(market, order, allGoods(order)));
+
+    it('stores the two flags as ordering reports them, outside the rollups', async () => {
+      const sellerId = idOf<'Seller'>();
+      const facts = [FIRST, RETURNING, NEW_TO_SELLER].map((buyerFirst) =>
+        sellerOrder(sellerId, { buyerFirst }),
+      );
+      for (const fact of facts) await record(fact);
+      expect(await flagsOf(facts[0]!.sellerOrderId)).toEqual([FIRST]);
+      expect(await flagsOf(facts[1]!.sellerOrderId)).toEqual([RETURNING]);
+      expect(await flagsOf(facts[2]!.sellerOrderId)).toEqual([NEW_TO_SELLER]);
+      // Not a rollup key: one seller day, the three orders in it.
+      expect((await sellerDays(sellerId)).map((row) => row.orders_paid)).toEqual([3]);
+    });
+
+    it('keeps unknown flags null, fills them once known, and never changes a known flag', async () => {
+      const sellerId = idOf<'Seller'>();
+      const unpaid = sellerOrder(sellerId, { paidAt: null });
+      await record(unpaid);
+      expect(await flagsOf(unpaid.sellerOrderId)).toEqual([UNKNOWN]);
+
+      // Paid before ordering recorded them: unknown, and stays so on a second read.
+      const legacy = sellerOrder(sellerId);
+      await record(legacy);
+      await record(legacy);
+      expect(await flagsOf(legacy.sellerOrderId)).toEqual([UNKNOWN]);
+
+      // Paid later: the worker writes the flags with the payment.
+      await record({ ...unpaid, paidAt: at('2026-11-22T01:00:00Z'), buyerFirst: NEW_TO_SELLER });
+      expect(await flagsOf(unpaid.sellerOrderId)).toEqual([NEW_TO_SELLER]);
+
+      // A later read that no longer knows them, or says otherwise, leaves the first record.
+      const known = sellerOrder(sellerId, { buyerFirst: FIRST });
+      await record(known);
+      for (const buyerFirst of [UNKNOWN, RETURNING, NEW_TO_SELLER]) {
+        await record({ ...known, buyerFirst });
+        expect(await flagsOf(known.sellerOrderId)).toEqual([FIRST]);
+      }
+    });
+
+    it('refuses contradictory flags in the recorder and in the CHECK, and lets the role write both', async () => {
+      const sellerId = idOf<'Seller'>();
+      for (const bad of [
+        sellerOrder(sellerId, { buyerFirst: { order: true, withSeller: null } }),
+        sellerOrder(sellerId, { buyerFirst: { order: true, withSeller: false } }),
+        sellerOrder(sellerId, { paidAt: null, buyerFirst: RETURNING }),
+      ]) {
+        await expect(record(bad)).rejects.toThrow(RangeError);
+      }
+      const order = sellerOrder(sellerId);
+      await record(order);
+      for (const [first, withSeller] of [
+        [true, null],
+        [null, false],
+        [true, false],
+      ] as const) {
+        await expect(
+          owner.query(
+            `UPDATE reporting.seller_orders
+                SET buyer_first_order = $1, buyer_first_with_seller = $2
+              WHERE seller_order_id = $3`,
+            [first, withSeller, order.sellerOrderId],
+          ),
+        ).rejects.toMatchObject({ code: CHECK });
+      }
+      const unpaid = sellerOrder(sellerId, { paidAt: null });
+      await record(unpaid);
+      await expect(
+        owner.query(
+          `UPDATE reporting.seller_orders SET buyer_first_order = false, buyer_first_with_seller = false
+            WHERE seller_order_id = $1`,
+          [unpaid.sellerOrderId],
+        ),
+      ).rejects.toMatchObject({ code: CHECK });
+      const updated = await app.query(
+        `UPDATE reporting.seller_orders SET buyer_first_order = false, buyer_first_with_seller = true
+          WHERE seller_order_id = $1`,
+        [order.sellerOrderId],
+      );
+      expect(updated.rowCount).toBe(1);
+      expect(await flagsOf(order.sellerOrderId)).toEqual([NEW_TO_SELLER]);
+    });
+
+    it('holds no customer or account id anywhere in reporting', async () => {
+      const columns = await owner.query<{ table_name: string; column_name: string }>(
+        `SELECT table_name, column_name FROM information_schema.columns
+          WHERE table_schema = 'reporting'
+            AND (column_name ~ '(account|customer|buyer|shopper)' AND column_name NOT IN ('buyer_first_order', 'buyer_first_with_seller'))`,
+      );
+      expect(columns.rows).toEqual([]);
     });
   });
 });

@@ -544,3 +544,62 @@ describe.each(['AU', 'ZZ'] as const)('identity.lock-invitation in market %s', (c
     ).rejects.toBeInstanceOf(NamedStatementRefusedError);
   });
 });
+
+describe.each(['AU', 'ZZ'] as const)('ordering.buyer-first-with-sellers in market %s', (code) => {
+  const market = testMarketContext(code, 'default');
+  const other = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
+  const at = new Date('2026-11-20T10:00:00Z');
+
+  it('reads the earliest paid seller order per seller, bound to the unit Market and tenant', async () => {
+    const { runner, seen } = runnerAnswering([
+      { seller_id: ID(1), seller_order_id: ID(11), order_id: ID(21), confirmed_at: at },
+    ]);
+    const rows = await runNamedStatement(runner, market, 'ordering.buyer-first-with-sellers', {
+      accountId: ID(7),
+      sellerIds: [ID(1), ID(2), ID(1)],
+    });
+    expect(rows).toEqual([
+      { sellerId: ID(1), sellerOrderId: ID(11), orderId: ID(21), confirmedAt: at },
+    ]);
+    expect(seen[0]!.sql).toContain('DISTINCT ON (s.seller_id)');
+    expect(seen[0]!.sql).toContain("o.status = 'confirmed'");
+    expect(seen[0]!.sql).toContain('ORDER BY s.seller_id, o.confirmed_at, o.id');
+    // Duplicates go once; the Market and tenant come from the unit.
+    expect(seen[0]!.values).toEqual([market.marketId, market.tenantId, ID(7), [ID(1), ID(2)]]);
+    const request = { operation: '$queryRaw', args: seen[0] };
+    expect(isApprovedStatement(request, market)).toBe(true);
+    expect(isApprovedStatement(request, other)).toBe(false);
+    expect(isApprovedStatement({ operation: '$executeRaw', args: seen[0] }, market)).toBe(false);
+    for (const values of [
+      [market.marketId, market.tenantId, "x' OR '1", [ID(1)]],
+      [market.marketId, market.tenantId, ID(7), ["x' OR '1"]],
+      [market.marketId, market.tenantId, ID(7), []],
+      [market.marketId, market.tenantId, ID(7), ID(1)],
+      [market.marketId, market.tenantId, ID(7), [ID(1)], 'extra'],
+    ]) {
+      const forged = { sql: seen[0]!.sql, values };
+      expect(isApprovedStatement({ operation: '$queryRaw', args: forged }, market)).toBe(false);
+    }
+  });
+
+  it('refuses a malformed account or seller id, no seller, and too many sellers', async () => {
+    const { runner, seen } = runnerAnswering([]);
+    const run = (accountId: string, sellerIds: readonly string[]) =>
+      runNamedStatement(runner, market, 'ordering.buyer-first-with-sellers', {
+        accountId,
+        sellerIds,
+      });
+    for (const call of [
+      run("x' OR '1", [ID(1)]),
+      run(ID(7), ["x' OR '1"]),
+      run(ID(7), []),
+      run(
+        ID(7),
+        Array.from({ length: 101 }, (_, n) => ID(n + 1)),
+      ),
+    ]) {
+      await expect(call).rejects.toBeInstanceOf(NamedStatementRefusedError);
+    }
+    expect(seen).toHaveLength(0);
+  });
+});

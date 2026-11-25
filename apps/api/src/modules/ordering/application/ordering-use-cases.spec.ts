@@ -694,6 +694,68 @@ describe.each([['AU'], ['ZZ']] as const)('ordering use cases in market %s', (cod
       expect(JSON.stringify(event.payload)).not.toMatch(/@|email|amount/i);
     });
 
+    describe('buyer-first flags (dashboards v2)', () => {
+      const pay = (order: OrderState) =>
+        new ConfirmPayment(gate, deps).execute(system, {
+          orderId: order.id,
+          paymentIntentId: `pi_${order.id}`,
+          sessionId: order.stripeSessionId,
+          amount: order.total,
+        });
+      const flagsOf = (order: OrderState) =>
+        Object.fromEntries(
+          orders.rows
+            .get(order.id)!
+            .sellerOrders.map((sellerOrder) => [sellerOrder.sellerId, sellerOrder.buyerFirst]),
+        );
+
+      it("freezes the buyer's first order on every seller order of it, at payment only", async () => {
+        const order = await started();
+        // Placed but not paid: unknown.
+        expect(Object.values(flagsOf(order))).toEqual([null, null]);
+        expect(await pay(order)).toEqual(ok('confirmed'));
+        expect(flagsOf(order)).toEqual({
+          [SELLER_A]: { order: true, withSeller: true },
+          [SELLER_B]: { order: true, withSeller: true },
+        });
+        // A repeated delivery changes nothing.
+        expect(await pay(order)).toEqual(ok('already-confirmed'));
+        expect(flagsOf(order)[SELLER_A]).toEqual({ order: true, withSeller: true });
+      });
+
+      it('marks a returning buyer not first, yet first with a seller it never bought from', async () => {
+        cart.lines = [line(OFFER_1, SELLER_A, 1000n, 1)];
+        const first = await started();
+        expect(await pay(first)).toEqual(ok('confirmed'));
+        cart.lines = [line(OFFER_1, SELLER_A, 1000n, 1), line(OFFER_2, SELLER_B, 250n, 1)];
+        const second = await started();
+        expect(await pay(second)).toEqual(ok('confirmed'));
+
+        expect(flagsOf(first)).toEqual({ [SELLER_A]: { order: true, withSeller: true } });
+        expect(flagsOf(second)).toEqual({
+          [SELLER_A]: { order: false, withSeller: false },
+          [SELLER_B]: { order: false, withSeller: true },
+        });
+      });
+
+      it('claims nothing for an order that is never paid', async () => {
+        const voided = await started();
+        inventory.commitFails = {
+          code: 'inventory.insufficient',
+          details: { lines: [{ offerId: OFFER_1, variantId: VARIANT, reason: 'out' }] },
+        };
+        expect(await pay(voided)).toEqual(ok('voided'));
+        expect(orders.firstOrderClaims.size).toBe(0);
+        expect(orders.firstWithSellerClaims.size).toBe(0);
+        expect(Object.values(flagsOf(voided))).toEqual([null, null]);
+
+        inventory.commitFails = null;
+        const paid = await started();
+        expect(await pay(paid)).toEqual(ok('confirmed'));
+        expect(flagsOf(paid)[SELLER_A]).toEqual({ order: true, withSeller: true });
+      });
+    });
+
     it('asks for a retry, not a throw, when the outbox refuses the event', async () => {
       const order = await started();
       deps = {

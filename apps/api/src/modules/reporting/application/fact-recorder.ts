@@ -1,5 +1,6 @@
 import type { MarketContext } from '@mondapac/shared-kernel';
 import {
+  checkedBuyerFirst,
   checkedDelivery,
   keepKnownInstants,
   marketDayOf,
@@ -105,6 +106,7 @@ export class FactRecorder {
       await this.deps.facts.sellerOrderInstants(market, read.sellerOrderId),
     );
     checkedDelivery(order.delivery);
+    checkedBuyerFirst(order.buyerFirst, order.paidAt);
     checkGoods(goods, order.goods.amount, order.goods.tax, `seller order ${order.sellerOrderId}`);
     const zone = this.deps.zone.zoneOf(market);
     const day = (at: SellerOrderFact['paidAt']) => (at === null ? null : marketDayOf(at, zone));

@@ -52,6 +52,19 @@ export interface FactStore {
     readonly items: readonly { readonly orderId: string; readonly sellerOrderId: string }[];
     readonly next: string | null;
   }>;
+  /**
+   * The paid seller orders reporting holds without the buyer-first flags, by seller order id after
+   * `after`, at most `limit` (the buyer-first pass of the backfill). `next` is the last id of a full
+   * page, null on the last page.
+   */
+  sellerOrdersMissingBuyerFirst(
+    market: MarketContext,
+    after: string | null,
+    limit: number,
+  ): Promise<{
+    readonly items: readonly { readonly orderId: string; readonly sellerOrderId: string }[];
+    readonly next: string | null;
+  }>;
   /** Every fact of one seller that falls on one Market day. */
   loadSellerDay(market: MarketContext, key: SellerDay): Promise<SellerDayFacts>;
 }

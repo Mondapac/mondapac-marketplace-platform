@@ -117,6 +117,7 @@ describe.each(TEST_MARKETS)('order repository in market %s (database)', (code) =
           readyAt: null,
           readyPrepMinutes: null,
           deliveryAttention: null,
+          buyerFirst: null,
           deliveryQuote: null,
         },
       ],

@@ -128,6 +128,7 @@ describe.each(TEST_MARKETS)('offer pairs in market %s (database)', (code) => {
           readyAt: null,
           readyPrepMinutes: null,
           deliveryAttention: null,
+          buyerFirst: null,
           deliveryQuote: null,
         },
       ],
