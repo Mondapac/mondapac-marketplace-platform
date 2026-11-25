@@ -60,7 +60,7 @@ module. Where it needs another module's data it declares a port that the module 
 
 | Job | Where | Notes |
 |---|---|---|
-| Capability definition | The owning module, in `contracts/` | Each module registers its capabilities at boot (`assistant.buyer-chat`, `catalog.description-writer`, ...). A spec carries task type, audience, seller-scoped or not, input and output token caps, max tool rounds, timeout and prompt version. The gateway validates only; an unknown or duplicate capability fails boot. |
+| Capability definition | The owning module, in `contracts/` | Each module registers its capabilities at boot (`assistant.buyer-chat`, `catalog.description-writer.seller`, `catalog.description-writer.admin`, ...; one capability per audience). A spec carries task type, audience, seller-scoped or not, input and output token caps, max tool rounds, timeout and prompt version. The gateway validates only; an unknown or duplicate capability fails boot. |
 | Field allow-list and output guard | The owning module | The gateway receives a request the module already built, so it cannot know where a field came from; the claim rule needs `certification` data. A CI test with a fake provider (ADR-0019 decision 9) proves no field outside the allow-list leaves. |
 | Switches | Gateway | Evaluated in this order: kill switch, capability switch for the Market, and the seller's switch through the `sellers` port when the capability is seller-scoped. A seller-scoped capability called without a seller id is refused; the module takes the id from the seller `ActorContext` or the loaded aggregate, never from input. An unregistered capability is off at run time. An acting-as session ("Login as Seller") is always off. Any error means off. |
 | Budget and limits | Gateway | Reserve before the call, settle after it (section 7). |
@@ -86,11 +86,12 @@ once per round. Cost comes back on success and failure, because a provider may b
 ran out of time.
 
 ```ts
-gateway.status(capability, market, sellerId?)
-  → { on: boolean, reason?: 'kill-switch' | 'off' | 'no-route' | 'over-budget' }
+gateway.status(capability, context: CallContext,
+               opts: { tier /* G1 to G4 only */, sellerId?, timeoutMs? })
+  → { on: true } | { on: false, reason: 'kill-switch' | 'off' | 'no-route' | 'over-budget' }
 
 gateway.run(capability, context: CallContext, request: ModelRequest,
-            opts?: { sellerId?, timeoutMs?, tier?: 'fast' | 'balanced' /* G1 to G4 only */ })
+            opts: { tier /* G1 to G4 only */, sellerId?, timeoutMs? })
   → { ok: true,  turn, route: { provider, model, attempt }, cost }
   | { ok: false, reason: 'off' | 'over-budget' | 'rate-limited' | 'unavailable'
                        | 'timeout' | 'rejected-output', cost }
@@ -106,7 +107,11 @@ the usage row records the resolved model id. Likewise the Market's on/off switch
 stays where it is today (the assistant's settings, the description writer's setting) and the module
 checks it before `status`/`run`; the gateway evaluates the kill switch, the acting-as state, the
 audience, the seller switch through the `sellers` port and the configured tier (the catalogue's
-route conditions apply from G3). G4 moves both into the
+route conditions apply from G3). `status` takes the caller's `CallContext`, because the audience
+and acting-as checks need the actor. `maxInputTokens` and `maxToolRounds` are declared and
+validated from G1 and enforced by the gateway from G2; until then each module keeps its own caps.
+`status` opens no transaction and calls no model, so it is safe inside a UnitOfWork until G2 reads
+the budget. G4 moves both into the
 `settings` definitions the gateway reads, and the `tier` option goes. `opts.timeoutMs` may only
 shorten the capability's `timeoutMs`.
 

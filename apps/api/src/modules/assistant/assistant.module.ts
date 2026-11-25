@@ -1,4 +1,5 @@
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
+import { registerCapabilities } from '../../platform/ai/capability-registry';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
 import { CHANGE_TRAIL } from '../../platform/audit/change-trail';
@@ -48,6 +49,7 @@ import { ViewConversation } from './application/use-cases/view-conversation.use-
 import { ViewStorefrontAssistant } from './application/use-cases/view-storefront-assistant.use-case';
 import { AdminCustomerConversations } from './application/use-cases/admin-customer-conversations.use-case';
 import { ASSISTANT_PERMISSIONS, CUSTOMER_CONVERSATIONS_FACADE } from './contracts';
+import { ASSISTANT_AI_CAPABILITIES } from './contracts/ai-capabilities';
 import { CustomerConversationsFacadeImplementation } from './presentation/customer-conversations.facade';
 import { ASSISTANT_AUDIT_ACTIONS } from './domain/audit';
 import { ASSISTANT_EVENTS } from './domain/events';
@@ -132,6 +134,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
     registerEvents('assistant', ASSISTANT_EVENTS),
     changeTrailProvider(),
     registerAuditActions('assistant', ASSISTANT_AUDIT_ACTIONS),
+    registerCapabilities('assistant', ASSISTANT_AI_CAPABILITIES),
     registerPermissions('assistant', ASSISTANT_PERMISSIONS),
     // The insights list's saved filters, through the generic routes of `lists` (rule 14).
     registerLists('assistant', ASSISTANT_LISTS),

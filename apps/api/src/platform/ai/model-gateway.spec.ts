@@ -112,9 +112,8 @@ describe('ModelGateway (ADR-0019 R7, R8)', () => {
       price: PRICE,
     });
     expect(aborted).toBe(true);
-    expect(warnings).toEqual([
-      { msg: 'ai.model-call.failed', marketId: AU, tier: 'fast', failure: 'timeout' },
-    ]);
+    // The AI Gateway logs a failed call once, with its capability; this layer does not.
+    expect(warnings).toEqual([]);
   });
 
   it('turns any provider failure into unavailable and logs no provider text or key', async () => {

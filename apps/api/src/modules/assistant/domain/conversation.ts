@@ -16,6 +16,8 @@ export const MAX_TOOL_CALLS_PER_ROUND = 3;
 export const MAX_CARDS_PER_TURN = 24;
 /** Model calls in one buyer turn: the answer and up to three rounds of tool results. */
 export const MAX_MODEL_ROUNDS = 4;
+/** Input tokens of one model call: system text, history and tool results (G2 enforces it). */
+export const MAX_INPUT_TOKENS = 60_000;
 /** Output tokens of one model call. */
 export const MAX_OUTPUT_TOKENS = 600;
 /** One model call is cut after this (plan section 8: unavailable or slower than 15 seconds). */
@@ -70,31 +72,7 @@ export function retentionDaysOf(retention: Retention, caller: 'guest' | 'custome
 /** Spend is counted in micro US dollars (1e-6 USD); the caps are set in US cents. */
 export const MICRO_USD_PER_CENT = 10_000;
 
-/** What one model call cost, rounded up to a whole micro dollar. */
-export function costMicroUsd(
-  usage: { readonly inputTokens: number; readonly outputTokens: number },
-  price: { readonly inputPicoUsd: number; readonly outputPicoUsd: number },
-): number {
-  const pico = usage.inputTokens * price.inputPicoUsd + usage.outputTokens * price.outputPicoUsd;
-  return Math.ceil(pico / 1_000_000);
-}
-
-/**
- * The usage counted for a call cut at its timeout: every character of the request as a token
- * (more than any tokenizer counts) and the whole output allowance.
- */
-export function timeoutUsageOf(request: {
-  readonly system: string;
-  readonly messages: readonly unknown[];
-  readonly tools: readonly unknown[];
-  readonly maxOutputTokens: number;
-}): { readonly inputTokens: number; readonly outputTokens: number } {
-  const characters =
-    request.system.length +
-    JSON.stringify(request.messages).length +
-    JSON.stringify(request.tools).length;
-  return { inputTokens: characters, outputTokens: request.maxOutputTokens };
-}
+// The cost of each call is computed by platform/ai's gateway (`AiGateway.run`), at the route's price.
 
 /** Which cap the Market's spend has reached, if any; the daily one is checked first. */
 export function capReached(

@@ -389,8 +389,58 @@ module.exports = {
       from: { pathNot: MODEL_ENTRY_ALLOW_LIST },
       to: {
         path: '^src/platform/ai/',
-        pathNot: '^src/platform/ai/model-provider\\.ts$',
+        // Types and registration only, no model call: a module's ports use the request shape, every
+        // module registers its capabilities, and sellers implements the seller-switch port.
+        pathNot: [
+          '^src/platform/ai/model-provider\\.ts$',
+          '^src/platform/ai/capability\\.ts$',
+          '^src/platform/ai/capability-registry\\.ts$',
+          '^src/platform/ai/seller-ai-switch\\.ts$',
+        ],
       },
+    },
+    {
+      name: 'ai-registration-only-from-module-files',
+      comment:
+        'A module registers its AI capabilities in its *.module.ts and declares them in ' +
+        'contracts/ai-capabilities.ts; nothing else touches the registry or the spec type.',
+      severity: 'error',
+      from: { pathNot: ['^src/platform/ai/', '\\.module\\.ts$'] },
+      to: { path: '^src/platform/ai/capability-registry\\.ts$' },
+    },
+    {
+      name: 'ai-capability-spec-only-from-contracts',
+      comment: "A capability is declared only in its owning module's contracts/ai-capabilities.ts.",
+      severity: 'error',
+      from: {
+        pathNot: ['^src/platform/ai/', '^src/modules/[^/]+/contracts/ai-capabilities\\.ts$'],
+      },
+      to: { path: '^src/platform/ai/capability\\.ts$' },
+    },
+    {
+      name: 'seller-ai-switch-only-from-sellers',
+      comment:
+        'Only sellers implements the seller-switch port (SEL-25; ADR-0019 decision 7): its module ' +
+        'file and its adapter.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/platform/ai/',
+          '^src/app\\.module\\.ts$',
+          '^src/modules/sellers/sellers\\.module\\.ts$',
+          '^src/modules/sellers/infrastructure/facade-seller-ai-switch\\.ts$',
+        ],
+      },
+      to: { path: '^src/platform/ai/seller-ai-switch\\.ts$' },
+    },
+    {
+      name: 'no-ai-in-identity-payments-or-payouts',
+      comment:
+        'identity, payments and commission-payouts publish no AI tools and send nothing to a ' +
+        'model (ADR-0019 R2): they import nothing from platform/ai.',
+      severity: 'error',
+      from: { path: '^src/modules/(?:identity|payments|commission-payouts)/' },
+      to: { path: '^src/platform/ai/' },
     },
     {
       name: 'model-provider-sdks-only-in-platform-ai',

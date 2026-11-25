@@ -123,6 +123,8 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       const rules = cruise.summary.ruleSetUsed.forbidden;
 
       expect(rules.map((rule) => rule.name).sort()).toEqual([
+        'ai-capability-spec-only-from-contracts',
+        'ai-registration-only-from-module-files',
         'application-does-not-know-delivery',
         'approved-seller-zones-contract-is-for-certification',
         'approved-seller-zones-use-cases-stay-in-sellers-reader',
@@ -148,6 +150,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'module-internals-are-private',
         'module-public-api-only',
         'modules-reach-authz-through-its-barrel',
+        'no-ai-in-identity-payments-or-payouts',
         'no-circular',
         'nothing-imports-dashboard',
         'persistence-internals-are-private',
@@ -160,6 +163,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'repositories-stay-behind-use-cases',
         'request-actor-is-attached-by-the-actor-guard',
         'seller-access-contract-is-for-sellers',
+        'seller-ai-switch-only-from-sellers',
         'sql-parser-only-in-pg-parser',
         'subject-keys-only-in-infrastructure',
         'subject-keys-only-through-the-port',
@@ -173,6 +177,9 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
 
     it('reports every deliberate violation in the fixtures, and nothing else', () => {
       expect(found).toEqual([
+        'ai-capability-spec-only-from-contracts: src/modules/alpha/application/declares-capability.ts',
+        'ai-capability-spec-only-from-contracts: src/modules/identity/application/uses-ai.ts',
+        'ai-registration-only-from-module-files: src/modules/alpha/application/registers-capabilities.ts',
         'application-does-not-know-delivery: src/modules/alpha/application/knows-delivery.ts',
         'approved-seller-zones-contract-is-for-certification: src/modules/alpha/application/reads-approved-seller-zones.ts',
         'approved-seller-zones-contract-is-for-certification: src/modules/certification/presentation/reads-approved-seller-zones.ts',
@@ -214,6 +221,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'module-internals-are-private: src/platform/reaches-into-module.ts',
         'module-public-api-only: src/modules/alpha/application/reaches-into-module.ts',
         'modules-reach-authz-through-its-barrel: src/modules/alpha/application/reaches-use-case-gate.ts',
+        'no-ai-in-identity-payments-or-payouts: src/modules/identity/application/uses-ai.ts',
         'no-circular: src/modules/alpha/domain/circular-a.ts',
         'nothing-imports-dashboard: src/modules/alpha/application/imports-dashboard.ts',
         'persistence-internals-are-private: src/modules/alpha/application/reaches-audit-writer.ts',
@@ -230,6 +238,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'repositories-stay-behind-use-cases: src/modules/alpha/presentation/jobs/reaches-repository.ts',
         'request-actor-is-attached-by-the-actor-guard: src/modules/alpha/presentation/attaches-actor.ts',
         'seller-access-contract-is-for-sellers: src/modules/alpha/application/reads-seller-access.ts',
+        'seller-ai-switch-only-from-sellers: src/modules/alpha/infrastructure/implements-seller-ai-switch.ts',
         'sql-parser-only-in-pg-parser: src/platform/uses-sql-parser.ts',
         'subject-keys-only-in-infrastructure: src/modules/alpha/application/uses-subject-keys.ts',
         'subject-keys-only-through-the-port: src/modules/alpha/infrastructure/reaches-key-wrapper.ts',

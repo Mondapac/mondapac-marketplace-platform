@@ -4,6 +4,7 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import type { DestinationStream } from 'pino';
 import { BINDING_MODULES, CORE_MODULES } from './modules';
 import { IdentityModule } from './modules/identity';
+import { SellersModule } from './modules/sellers';
 import { AuditModule } from './platform/audit/audit.module';
 import { SecurityEventsModule } from './platform/security-events/security-events.module';
 import { AuthzModule } from './platform/authz/authz.module';
@@ -83,7 +84,7 @@ export class AppModule {
         MalwareModule,
         SchedulerModule,
         // The one model entry point (ADR-0019 decision 6); no model is called unless configured.
-        AiModule,
+        AiModule.register(SellersModule),
         WorkerModule,
         HealthModule,
         ...CORE_MODULES,
