@@ -110,3 +110,10 @@ export function formatInZone(iso: string | null, zone: string, locale: string): 
   }).format(date);
   return `${text} ${zoneName(date, locale, zone)}`;
 }
+
+/** The day of an instant in a zone, short ("30 Nov"), for a cell with little room; '-' if bad. */
+export function formatDayInZone(iso: string, zone: string, locale: string): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime()) || !isKnownZone(zone)) return '-';
+  return dateFormat(locale, { day: 'numeric', month: 'short', timeZone: zone }).format(date);
+}

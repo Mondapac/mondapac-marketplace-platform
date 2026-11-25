@@ -87,14 +87,23 @@ describe('VariantsTable', () => {
         {
           ...ROWS[0]!,
           price: price('v1', '1000', {
-            special: { amount: '800', startsAt: 'a', endsAt: 'b', state: 'running' },
+            special: {
+              amount: '800',
+              startsAt: '2026-11-20T00:00:00Z',
+              endsAt: '2026-11-30T06:00:00Z',
+              state: 'running',
+            },
           }),
         },
         ROWS[1]!,
       ],
     });
     expect(priceBox('Small').value).toBe('10.00');
-    expect(screen.getByText('$8.00, running')).toBeTruthy();
+    // "Customers pay now": the running special wins, with its end day.
+    expect(screen.getByRole('columnheader', { name: 'Customers pay now' })).toBeTruthy();
+    expect(screen.getByText('$8.00')).toBeTruthy();
+    expect(screen.getByText(/^Special · ends 30 Nov$/)).toBeTruthy();
+    expect(screen.getByText('$20.00')).toBeTruthy();
     expect(stockBox(0).value).toBe('4');
     expect(stockBox(1).value).toBe('9');
   });
@@ -277,12 +286,13 @@ describe('VariantsTable', () => {
     mount({ canEditPrice: false, canEditStock: false });
     expect(screen.queryByRole('checkbox')).toBeNull();
     expect(screen.queryByRole('button', { name: /Save/ })).toBeNull();
-    expect(screen.getByText('$10.00')).toBeTruthy();
+    // Shown as "Your price" and as "Customers pay now".
+    expect(screen.getAllByText('$10.00')).toHaveLength(2);
   });
 
   it('shows no price columns when the seller may not see prices', () => {
     mount({ currency: null, rows: ROWS.map((r) => ({ ...r, price: null })) });
-    expect(screen.queryByText('Special price')).toBeNull();
+    expect(screen.queryByText('Customers pay now')).toBeNull();
     expect(screen.getByText('Large')).toBeTruthy();
   });
 });

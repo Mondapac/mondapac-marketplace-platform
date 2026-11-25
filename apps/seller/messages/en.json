@@ -2099,11 +2099,6 @@
       "select-all": "Select all variants",
       "price-for": "Price for {variant}",
       "held": "Waiting for review: {amount}",
-      "special": {
-        "running": "{amount}, running",
-        "scheduled": "{amount}, scheduled"
-      },
-      "special-link": "Set or end a special price on the Prices page.",
       "bulk": "Bulk actions",
       "selected": "{count, plural, one {# variant selected} other {# variants selected}}",
       "set-price": "Set price",
@@ -2226,7 +2221,15 @@
       "price-note": "Prices are in {currency}.",
       "held-stock": "{count} held",
       "price-note-inclusive": "Prices are in {currency} and include tax.",
-      "price-note-exclusive": "Prices are in {currency}, before tax."
+      "price-note-exclusive": "Prices are in {currency}, before tax.",
+      "pays": {
+        "column": "Customers pay now",
+        "running": "Special · ends {ends}",
+        "scheduled": "Special {amount} from {starts}",
+        "held": "Special waiting for review",
+        "typed": "New special typed, not saved yet"
+      },
+      "saved-review": "{count, plural, one {Saved # change.} other {Saved # changes.}} A large special price waits for review before it starts."
     },
     "suggestions": {
       "title": "Value suggestions",
@@ -3062,15 +3065,7 @@
         "unsaved": "Typed, not saved yet",
         "held": "Waiting for review",
         "held-help": "This new price goes on sale after our check.",
-        "special": "Special price",
-        "special-none": "None",
-        "special-running": "{amount}, running, ends {ends}",
-        "special-scheduled": "{amount}, from {starts} to {ends}",
-        "retired": "This size is no longer sold on the platform.",
-        "special-link": "Set or end a special price",
-        "held-special": "Special waiting for review",
-        "held-special-value": "{amount}, from {starts} to {ends}",
-        "held-special-help": "It starts only after our check."
+        "retired": "This size is no longer sold on the platform."
       },
       "stock": {
         "caption": "Stock of {size} by location",
@@ -3098,6 +3093,39 @@
         "note-before-tax": "Before tax. The most the commission can be. Your payout statement has the final amount.",
         "unfinished": "Type a full price to see what you receive.",
         "no-category": "Shows once the product is published in the catalogue."
+      },
+      "special": {
+        "title": "Special price",
+        "state": {
+          "running": "Running",
+          "scheduled": "Scheduled",
+          "held": "Waiting for review"
+        },
+        "none": "No special price.",
+        "running": "{amount} until {ends}",
+        "scheduled": "{amount} from {starts} until {ends}",
+        "was": "Customers see the special price. Whether they also see your regular price of {regular} crossed out depends on how long this size sold at it before the special.",
+        "held": "A special price of {amount} ({starts} to {ends}) waits for our check. It starts only once approved.",
+        "retired": "This size is no longer sold, so its special ends on its own date.",
+        "end": {
+          "running": "End special price",
+          "scheduled": "Cancel scheduled special",
+          "held": "Cancel special waiting for review",
+          "running-for": "End special price of {size}",
+          "scheduled-for": "Cancel scheduled special of {size}",
+          "held-for": "Cancel special waiting for review of {size}"
+        },
+        "needs-regular": "Set a regular price first. A special must be below it.",
+        "new": "Set a special price",
+        "replace": "Replace the special price",
+        "amount": "Special price ({currency})",
+        "amount-for": "Special price ({currency}) for {size}",
+        "starts": "Starts (optional)",
+        "starts-for": "Special starts, {size}",
+        "ends": "Ends",
+        "ends-for": "Special ends, {size}",
+        "help": "Leave Starts empty to start now. An end is required. Saved with your other changes.",
+        "replace-help": "A new special replaces the current one when you save."
       }
     },
     "quick-entry": {

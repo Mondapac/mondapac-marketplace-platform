@@ -7,4 +7,5 @@ dark. Run from `apps/seller`:
     VITE_PATH=<path to the vite package> node test/offer-page-shots/run.mjs <out-dir>
 
 Scenarios: `closed`, `price` (Details of 500 g, Price tab), `stock` (Stock tab) and `draft` (a
-typed price kept and named in Details).
+typed price kept and named in Details), `special-new` (a special typed in the Price tab, PR 6)
+and `special-error` (Save with a special that has no end).
