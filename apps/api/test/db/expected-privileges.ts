@@ -1301,6 +1301,11 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // 200 per seller); a read is insert-only and leaves with its notice by the cascade.
     'notifications.in_app_notices': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     'notifications.in_app_notice_reads': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Offer queue backlog alert: one row per crossing; only cleared_at is set later.
+    'notifications.offer_queue_backlog_alerts': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['cleared_at'],
+    },
     // Personalization 1c: a cart reminder is taken once per account, cart change and stage, never
     // updated, and deleted by retention (30 days, the reminder job).
     'notifications.cart_reminders': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },

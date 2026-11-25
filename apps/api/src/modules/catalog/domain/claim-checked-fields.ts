@@ -657,6 +657,10 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   },
   SearchFilterUnavailable: { noCustomerText: 'one error code' },
   CatalogFiltersFacade: { noCustomerText: 'a facade interface: no text of its own' },
+  OfferReviewQueueSnapshot: {
+    noCustomerText: 'a count and a timestamp of the review queue: no text',
+  },
+  OfferReviewQueueFailure: { noCustomerText: 'a failure code of the queue read: no text' },
   CatalogWorkQueueFacade: { noCustomerText: 'a facade interface of dashboard counts: no text' },
   OfferSearchText: {
     noCustomerText:

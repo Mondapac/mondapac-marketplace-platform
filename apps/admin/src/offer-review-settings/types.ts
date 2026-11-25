@@ -12,12 +12,19 @@ export const REFERENCE_CODE = 'offer-review-reference-sellers';
 export const BAND_CODE = 'offer-review-price-band';
 export const SAMPLING_CODE = 'offer-review-sampling';
 export const BADGES_CODE = 'offer-review-certificate-badges';
+export const BACKLOG_COUNT_CODE = 'offer-review-backlog-count';
+export const BACKLOG_HOURS_CODE = 'offer-review-backlog-hours';
 
 export const MODE_VALUES = ['risk-based', 'all', 'off'] as const;
 export const BADGES_VALUES = ['review', 'automatic'] as const;
 
 export type NumberCode =
-  typeof PROBATION_CODE | typeof REFERENCE_CODE | typeof BAND_CODE | typeof SAMPLING_CODE;
+  | typeof PROBATION_CODE
+  | typeof REFERENCE_CODE
+  | typeof BAND_CODE
+  | typeof SAMPLING_CODE
+  | typeof BACKLOG_COUNT_CODE
+  | typeof BACKLOG_HOURS_CODE;
 
 /** The bounds the API checks; the page checks them first so a typo never leaves the page. */
 export const NUMBER_BOUNDS: Readonly<Record<NumberCode, { min: number; max: number }>> = {
@@ -25,6 +32,8 @@ export const NUMBER_BOUNDS: Readonly<Record<NumberCode, { min: number; max: numb
   [REFERENCE_CODE]: { min: 2, max: 20 },
   [BAND_CODE]: { min: 5, max: 200 },
   [SAMPLING_CODE]: { min: 0, max: 100 },
+  [BACKLOG_COUNT_CODE]: { min: 1, max: 10000 },
+  [BACKLOG_HOURS_CODE]: { min: 1, max: 720 },
 };
 
 export const NUMBER_CODES = Object.keys(NUMBER_BOUNDS) as readonly NumberCode[];
@@ -50,6 +59,8 @@ const DEFAULTS: Readonly<Record<string, string>> = {
   [BAND_CODE]: '50',
   [SAMPLING_CODE]: '5',
   [BADGES_CODE]: 'review',
+  [BACKLOG_COUNT_CODE]: '50',
+  [BACKLOG_HOURS_CODE]: '24',
 };
 
 /** One row of an answer, or its launch default when the API did not name it. */
