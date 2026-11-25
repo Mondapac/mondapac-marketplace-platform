@@ -18,6 +18,7 @@ Operational documentation for the Mondapac security operations centre (SOC). Sou
 | [runbooks/credential-stuffing.md](runbooks/credential-stuffing.md) | Mass failed sign-ins or password guessing |
 | [runbooks/unknown-script-csp.md](runbooks/unknown-script-csp.md) | An unknown script or CSP violation on a page, especially checkout |
 | [runbooks/vulnerable-dependency.md](runbooks/vulnerable-dependency.md) | A dependency has a known vulnerability |
+| [runbooks/ai-bedrock-sydney-route.md](runbooks/ai-bedrock-sydney-route.md) | Setting up, checking or switching off the AI route in Sydney (Amazon Bedrock) |
 
 ## Scope: five monitored areas
 
