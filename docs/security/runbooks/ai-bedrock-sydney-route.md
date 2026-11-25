@@ -39,17 +39,18 @@ account that will hold the production key, in `ap-southeast-2`.
 | --- | --- | --- |
 | E1 | Account data retention in `ap-southeast-2` is `none`, and both models list `none` in `allowed_modes` | Bedrock console, Data retention; or `GET /v1/data_retention` and `GET /v1/models/{model}` on the Sydney mantle host with an admin credential |
 | E2 | Model access is granted for both models, and one synthetic call per model to the Sydney host answers 200 with the system prompt marked for caching | The curl below, with the production key, synthetic text only |
-| E3 | A dedicated IAM user holds the key, with only the policy below; the key expires in 90 days or less | IAM console, the user and its service-specific credential |
+| E3 | A dedicated IAM user holds the key, with only the policy below; the key expires in 90 days or less; the policy is proven by one allowed call (E2) and two refused ones: the same call with `anthropic.claude-opus-5-5`, and with the Melbourne host | IAM console, the user and its service-specific credential; the IAM policy simulator or the refused calls' status codes |
 | E4 | Model invocation logging is off in `ap-southeast-2` | Bedrock console, Settings |
 | E5 | The price of both models in `ap-southeast-2` (input and output per million tokens) | AWS pricing page or AWS Marketplace listing |
-| E6 | The guard that keeps retention at `none`: an SCP or IAM deny on changing it | AWS Organizations or IAM, the statement below |
+| E6 | The guard that keeps retention at `none`: an SCP or IAM deny on changing it, tested by one refused attempt to set `default` | AWS Organizations or IAM, the statement below; the refused call |
 
 Synthetic call for E2 (run once per model; never put customer data in it):
 
 ```bash
+read -rs BEDROCK_KEY   # paste the key; it is not echoed and not kept in the shell history
 curl -sS -o /dev/null -w '%{http_code}\n' \
   https://bedrock-mantle.ap-southeast-2.api.aws/anthropic/v1/messages \
-  -H "Authorization: Bearer $AI_BEDROCK_KEY" \
+  -H "Authorization: Bearer $BEDROCK_KEY" \
   -H 'anthropic-version: 2023-06-01' -H 'content-type: application/json' \
   -d '{"model":"anthropic.claude-haiku-5-5","max_tokens":16,
        "system":[{"type":"text","text":"Answer with one word.","cache_control":{"type":"ephemeral"}}],
@@ -58,7 +59,7 @@ curl -sS -o /dev/null -w '%{http_code}\n' \
 
 ## IAM policy of the key's user (E3)
 
-Replace `ACCOUNT_ID`. Check each action and condition key name in the IAM policy editor.
+Replace `ACCOUNT_ID`. Check each action and condition key name in the IAM policy editor. Attach this policy to the key's user only, never to an admin role: the region deny would also block admin calls to global services.
 
 ```json
 {
@@ -93,7 +94,7 @@ Replace `ACCOUNT_ID`. Check each action and condition key name in the IAM policy
 }
 ```
 
-Guard for E6 (in an SCP, or on every admin role):
+Guard for E6 (in an SCP, or on every admin role). A negated condition with the key absent also matches, so a call that omits the mode is refused too; E6 tests it:
 
 ```json
 {
@@ -112,8 +113,10 @@ Guard for E6 (in an SCP, or on every admin role):
 Create the key with `aws iam create-service-specific-credential --user-name <user>
 --service-name bedrock.amazonaws.com --credential-age-days 90`. The value goes straight into the
 secret manager as `AI_BEDROCK_API_KEY=AU=<key>` for the API, and into the GitHub Environment
-`assistant-eval` as `ASSISTANT_EVAL_BEDROCK_API_KEY` (an evaluation key of its own is better: it
-can be revoked alone). Never paste it in a chat, a ticket or a log.
+`assistant-eval` as `ASSISTANT_EVAL_BEDROCK_API_KEY`. The evaluation should have a key of its own, on a second
+IAM user with the same policy, so it can be revoked alone. Put each key's expiry date in the
+secrets register with a reminder 14 days before (FE-20261125-ai-gateway-bedrock-key-rotation-alert);
+rotating means a new key, the secret updated, the API restarted, then the old key deleted. Never paste it in a chat, a ticket or a log.
 
 ## Order of switching AI on in AU
 

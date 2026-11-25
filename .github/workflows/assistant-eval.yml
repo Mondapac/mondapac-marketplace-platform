@@ -95,6 +95,7 @@ jobs:
           fi
           if [ -n "$BEDROCK_KEY" ]; then
             export AI_BEDROCK_API_KEY="AU=$BEDROCK_KEY,ZZ=$BEDROCK_KEY"
+            echo "::add-mask::$AI_BEDROCK_API_KEY"
           fi
           if [ "$ASSISTANT_EVAL_TIER" = fast ]; then
             export ASSISTANT_MODEL_FAST="AU=$MODEL,ZZ=$MODEL"
