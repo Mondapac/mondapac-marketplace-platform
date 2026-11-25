@@ -1,4 +1,4 @@
--- Reverses 20261125070000_pricing_cost (docs/design/data/pricing.md 8.2): the grants, the
+-- Reverses 20261125081500_pricing_cost (docs/design/data/pricing.md 8.2): the grants, the
 -- triggers, then the tables, child before parent (CHECKs, indexes and the foreign key go with
 -- them). reject_mutation() belongs to 20261008183000 and stays.
 REVOKE SELECT, INSERT ON TABLE "pricing"."cost_records" FROM "mondapac_app";

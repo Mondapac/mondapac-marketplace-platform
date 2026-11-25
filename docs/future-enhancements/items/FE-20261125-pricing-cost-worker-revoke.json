@@ -3,7 +3,7 @@
   "area": "infra",
   "title": "گرفتن دسترسی جدول‌های هزینه از نقش worker",
   "desc": "جدول‌های pricing.cost_series و pricing.cost_records به گروه mondapac_app دسترسی می‌دهند که api و worker هر دو عضو آن‌اند. worker امروز هیچ کاری با هزینه ندارد؛ وقتی worker گروه پایگاه‌دادهٔ جدا بگیرد، دسترسی این دو جدول باید از آن گرفته شود (کمترین دسترسی، طراحی 6.5).",
-  "src": "prisma/migrations/20261125070000_pricing_cost/migration.sql (PR 7 صفحهٔ پیشنهاد)",
+  "src": "prisma/migrations/20261125081500_pricing_cost/migration.sql (PR 7 صفحهٔ پیشنهاد)",
   "date": "2026-11-25",
   "trig": "وقتی worker نقش یا گروه پایگاه‌دادهٔ جدا بگیرد",
   "prio": "پایین",
