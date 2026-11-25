@@ -13,12 +13,8 @@ vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
 import { callApi } from '../api/client.ts';
-import {
-  canEstimateReceive,
-  customerPaysMinor,
-  ESTIMATE_DELAY_MS,
-  linesQueries,
-} from '../price/receive-estimates.ts';
+import { canEstimateReceive } from '../price/receive-permissions.ts';
+import { customerPaysMinor, ESTIMATE_DELAY_MS, linesQueries } from '../price/receive-estimates.ts';
 import type { VariantPrice } from '../price/types.ts';
 import { VariantsTable } from './variants-table.tsx';
 import type { TableRow } from './variants-table-logic.ts';

@@ -8,7 +8,7 @@ import { VariantsTable } from '../../../../src/catalog/variants-table.tsx';
 import { loadActiveShelves } from '../../../../src/server/category-proposals-page.ts';
 import { isUuid, loadCatalogPage } from '../../../../src/server/catalog-page.ts';
 import { loadOfferSizes } from '../../../../src/server/offer-sizes.ts';
-import { canEstimateReceive } from '../../../../src/price/receive-estimates.ts';
+import { canEstimateReceive } from '../../../../src/price/receive-permissions.ts';
 import { PRICE_EDIT_PERMISSION } from '../../../../src/price/types.ts';
 import { SellerShell } from '../../../../src/server/seller-shell.tsx';
 import { STOCK_EDIT_PERMISSION } from '../../../../src/stock/levels-types.ts';

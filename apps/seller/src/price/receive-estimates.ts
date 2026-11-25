@@ -5,17 +5,6 @@ import { callApi } from '../api/client.ts';
 import { minorOf } from './money.ts';
 import type { VariantPrice } from './types.ts';
 
-/** The keys the estimate needs: the price view and the seller ledger (the commission is its data). */
-export const RECEIVE_ESTIMATE_PERMISSIONS = [
-  'pricing.price.view',
-  'commission-payouts.earnings.view',
-] as const;
-
-/** True when the seller may see "You receive (est.)". */
-export function canEstimateReceive(permissionKeys: readonly string[]): boolean {
-  return RECEIVE_ESTIMATE_PERMISSIONS.every((key) => permissionKeys.includes(key));
-}
-
 /** The answer of `GET pricing/seller/offers/:offerId/receive-estimates` (Offer page PR 4). */
 export interface ReceiveEstimatesView {
   readonly offerId: string;
