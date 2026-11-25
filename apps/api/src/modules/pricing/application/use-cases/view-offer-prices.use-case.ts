@@ -175,7 +175,8 @@ export class ViewOfferPrices extends UseCase<
   }
 }
 
-function variantView(
+/** One priceable Variant as the seller sees it: the series' version, in-force, held and specials. */
+export function variantView(
   variantId: Id<'Variant'>,
   series: PriceSeries | null,
   now: Temporal.Instant,

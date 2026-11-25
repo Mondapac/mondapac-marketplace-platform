@@ -55,6 +55,7 @@ describe('the public surface of the kernel', () => {
       'parseContentHash',
       'parseCorrelationId',
       'parseId',
+      'parseIdList',
       'parseMarketId',
       'parseMinorUnits',
       'parseMoney',

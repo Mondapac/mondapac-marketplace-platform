@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-offers-list-price-stock-column-picker",
+  "area": "seller",
+  "title": "ستون‌های Price و Stock در انتخابگر ستون لیست Offers",
+  "desc": "در PR ۸ ستون‌های Price و Stock لیست Offers با دسترسی فروشنده نشان داده می‌شوند و در انتخابگر ستون نیستند. قاعدهٔ super list می‌خواهد هر ستون اختیاری از انتخابگر پنهان‌شدنی باشد.",
+  "src": "بازبینی PR 1361 (سجاد، QA)",
+  "date": "2026-11-25",
+  "trig": "همراه PR ۱۰ صفحهٔ Offer",
+  "prio": "پایین",
+  "status": "موکول"
+}

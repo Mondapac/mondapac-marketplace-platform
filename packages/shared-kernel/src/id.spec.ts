@@ -1,4 +1,4 @@
-import { parseId, uuidV7 } from './id';
+import { parseId, parseIdList, uuidV7 } from './id';
 import type { Id } from './id';
 
 // RFC 9562 appendix A.6: 2022-02-22T19:22:22.000Z, rand_a 0xCC3, rand_b 0x18C4DC0C0C07398F.
@@ -123,5 +123,26 @@ describe('parseId', () => {
     const orderId: Id<'Order'> = accountId;
     expect(orderId).toBe(RFC_UUID);
     expect(typeof accountId).toBe('string');
+  });
+});
+
+describe('parseIdList', () => {
+  const second = '017f22e2-79b0-7cc3-98c4-dc0c0c073990';
+
+  it('reads 1 to max ids, in their order', () => {
+    expect(parseIdList(RFC_UUID, 2)).toEqual([RFC_UUID]);
+    expect(parseIdList(`${second},${RFC_UUID}`, 2)).toEqual([second, RFC_UUID]);
+  });
+
+  it.each([
+    ['nothing', ''],
+    ['an array (a repeated query key)', [RFC_UUID]],
+    ['a repeated id', `${RFC_UUID},${RFC_UUID}`],
+    ['more than max ids', `${RFC_UUID},${second},017f22e2-79b0-7cc3-98c4-dc0c0c073991`],
+    ['an empty part', `${RFC_UUID},`],
+    ['a space after a comma', `${RFC_UUID}, ${second}`],
+    ['an id that is not version 7', '017f22e2-79b0-4cc3-98c4-dc0c0c07398f'],
+  ])('refuses %s', (_, text) => {
+    expect(parseIdList(text, 2)).toBeNull();
   });
 });

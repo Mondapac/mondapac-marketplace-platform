@@ -59,6 +59,84 @@ export class PrismaOfferStockReader implements OfferStockReader {
     };
   }
 
+  async readMany(
+    market: MarketContext,
+    sellerId: Id<'Seller'>,
+    offers: readonly {
+      readonly offerId: Id<'Offer'>;
+      readonly variantIds: readonly Id<'Variant'>[];
+    }[],
+    now: Temporal.Instant,
+  ): Promise<ReadonlyMap<Id<'Offer'>, OfferStockSnapshot>> {
+    const answer = new Map<Id<'Offer'>, OfferStockSnapshot>();
+    if (offers.length === 0) return answer;
+    const offerIds = offers.map((offer) => offer.offerId);
+    const variantIds = [...new Set(offers.flatMap((offer) => offer.variantIds))];
+    const tx = this.prisma.tx(market);
+    const tombstones = await tx.inventoryRetirement.findMany({
+      where: {
+        marketId: market.marketId,
+        OR: [
+          { scope: 'offer', offerId: { in: offerIds } },
+          { scope: 'variant', variantId: { in: variantIds } },
+        ],
+      },
+      select: { scope: true, offerId: true, variantId: true },
+    });
+    const rows = await tx.inventoryStockItem.findMany({
+      where: {
+        marketId: market.marketId,
+        offerId: { in: offerIds },
+        sellerId,
+        variantId: { in: variantIds },
+      },
+      select: {
+        id: true,
+        offerId: true,
+        variantId: true,
+        sourceId: true,
+        onHand: true,
+        version: true,
+        retiredAt: true,
+      },
+      orderBy: { id: 'asc' },
+    });
+    const held = await heldQuantitiesOf(
+      this.prisma,
+      market,
+      rows.map((row) => row.id as Id<'StockItem'>),
+      now,
+    );
+    const retiredVariants = new Set(
+      tombstones.flatMap((row) =>
+        row.scope === 'variant' && row.variantId !== null ? [row.variantId as Id<'Variant'>] : [],
+      ),
+    );
+    for (const offer of offers) {
+      const asked = new Set(offer.variantIds);
+      answer.set(offer.offerId, {
+        offerRetired: tombstones.some(
+          (row) => row.scope === 'offer' && row.offerId === offer.offerId,
+        ),
+        retiredVariantIds: new Set(offer.variantIds.filter((id) => retiredVariants.has(id))),
+        items: rows
+          .filter(
+            (row) => row.offerId === offer.offerId && asked.has(row.variantId as Id<'Variant'>),
+          )
+          .map((row) => ({
+            id: row.id as Id<'StockItem'>,
+            variantId: row.variantId as Id<'Variant'>,
+            sourceId: row.sourceId as Id<'InventorySource'>,
+            onHand: row.onHand,
+            version: row.version,
+            retired: row.retiredAt !== null,
+            held: held.get(row.id as Id<'StockItem'>) ?? 0,
+          })),
+      });
+    }
+    return answer;
+  }
+
   async listLowStock(
     market: MarketContext,
     sellerId: Id<'Seller'>,

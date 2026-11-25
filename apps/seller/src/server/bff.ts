@@ -52,6 +52,10 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     'catalog/seller/offers',
     // The Offers export (file): the list's selector, the format, the columns and the selected ids.
     'catalog/seller/offers/export',
+    // The prices and the stock of one page of the Offer list, for its price and stock cells
+    // (query: `offerIds`, at most 100; Offer page PR 8). The API answers only the seller's own.
+    'pricing/seller/offer-prices',
+    'inventory/seller/offer-stock',
     // The export of the order list as a CSV file (ordering): the list's own filter.
     'ordering/seller/orders/export',
     // The dashboard's daily figures of the shown period or custom range as CSV or XLSX (reporting;
@@ -278,6 +282,8 @@ const ALLOWED_WITH_ID: Readonly<Record<string, readonly string[]>> = {
     'customers/seller/customers/:code',
     // "You receive (est.)" of the offer page (query: `lines`; Offer page PR 4).
     'pricing/seller/offers/:id/receive-estimates',
+    // The size names of an Offer whose sizes are opened in the Offer list (Offer page PR 8).
+    'catalog/seller/offers/:id/sell-units',
   ],
 };
 
@@ -297,6 +303,9 @@ const OWN_PAYOUT_SELECTOR: Readonly<Record<string, RegExp>> = {
   sort: /^(slot|created|amount)$/,
   direction: /^(asc|desc)$/,
 };
+/** Up to 100 Offer ids, comma separated: one page of the Offer list (the API checks them again). */
+const OFFER_PAGE_IDS =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(,[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}){0,99}$/i;
 /** Per GET target, the query keys passed on and, where set, the shape each value must have. */
 /** The seller lists on the generic saved-filter routes of `lists`. */
 const GENERIC_LIST_KEY = /^seller\.reviews\.list$/;
@@ -399,6 +408,9 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     afterId: UUID,
     limit: /^[0-9]{1,2}$/,
   },
+  // At most 100 Offer ids, one list page (Offer page PR 8; see QUERY_VALUE_MAX_FOR).
+  'pricing/seller/offer-prices': { offerIds: OFFER_PAGE_IDS },
+  'inventory/seller/offer-stock': { offerIds: OFFER_PAGE_IDS },
   'catalog/seller/offers/export': {
     format: /^(csv|xlsx)$/,
     columns:
@@ -503,6 +515,8 @@ const QUERY_VALUE_MAX_FOR: Readonly<Record<string, number>> = {
   'reviews/seller/export:ids': 7400,
   'ordering/seller/orders/export:ids': 3700,
   'catalog/seller/offers/export:offerIds': 3700,
+  'pricing/seller/offer-prices:offerIds': 3700,
+  'inventory/seller/offer-stock:offerIds': 3700,
   // 20 pairs of a 36-character id, a colon and up to 13 digits, and 19 commas.
   'pricing/seller/offers/:id/receive-estimates:lines': 1020,
 };
