@@ -512,3 +512,39 @@ new/returning card, phase 2 cards PR):
   the retention inventory. Their foreign keys are `ON DELETE RESTRICT`: an order-pruning job must
   delete the claims first (it needs a DELETE grant), and deleting a claim would make a later order
   wrongly "first".
+
+## Shopping funnel: nightly engagement snapshot (dashboards v2, phase 2)
+
+- Population (phase plan, one population): signed-in customers who have not switched
+  personalization off. engagement records an account's behaviour only while its switch is on and
+  deletes it in the same unit when it is switched off, so every account with an event of the day is
+  in the population. Guests are never counted. Steps, each a count of distinct accounts of the Market
+  day that did the step AND every step before it: viewed a product (`product-viewed`), added to the
+  cart (`added-to-cart`), placed an order (an `ordering.orders` row created that day: there is no
+  checkout event), paid (one of those orders confirmed). An account that orders the day after it
+  viewed is not in either day's checkout step.
+- `reporting.snapshot-daily-engagement` (job, hourly; the scheduler has no wall clock): for each
+  Market day of the last 28 that ended at least 2 hours ago in the Market's zone (the 30-minute
+  payment window plus a margin) and has no row, reads ordering's `checkoutsStarted` (accounts with an
+  order in the day, each with a paid flag, at most 5,000) and hands it unchanged to engagement's
+  `shoppingFunnel` (rule `system`), which matches it against its own population and answers four
+  counts. The row is inserted once and never changed. A day an owner cannot count is logged by day
+  and reason and retried next run; the run then fails so the scheduler reports it.
+- Ordering of the purge: the snapshot reaches a day about 2 hours after it ends; engagement's purge
+  deletes guest behaviour after 30 days and account behaviour after 12 months, and the look-back (28
+  days) stays inside both, so the behaviour of a day is still there when its row is written (guests
+  are not in the funnel today; the window keeps room for a later guest-inclusive count).
+- Privacy (for Hassan to confirm): the table holds counts per (Market, day) only, no account, guest,
+  offer or seller column (the reporting-facts db-spec scans for such columns). The account ids of
+  the checkouts exist only inside one call of `FacadeEngagementSources` (from ordering's facade to
+  engagement's), never stored, logged or returned. The application role has SELECT and INSERT only,
+  so an opt-out or an erasure never needs to touch reporting, and the counts of past days survive it
+  (db-spec `reporting-engagement`). The read hides a step under 5 customers (and every step after
+  it, so no hidden count can be worked out from a rate) and answers `not-enough-data` below 20
+  viewers (phase plan's minimum of 20 shoppers). Marketplace totals only, admin only.
+- Read: `reporting.view-marketplace-shopping-funnel`, key `ordering.order.view` (the same key as the
+  other order-count sections; no new key), platform admin acting as themselves.
+- Deferred: the seller's product funnel (FE-20261125-dashboards-seller-product-funnel), distinct
+  customers over a whole period (FE-20261125-dashboards-funnel-distinct-over-period), paging past
+  5,000 checkouts a day (FE-20261125-reporting-funnel-checkouts-paging).
+

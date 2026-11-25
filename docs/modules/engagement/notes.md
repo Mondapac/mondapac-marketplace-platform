@@ -172,3 +172,16 @@ record and exclusive to switch or forget, at READ COMMITTED. M1 still holds: a r
 first commits before the switch's delete runs; a record after the switch reads the new setting.
 Under a heavy burst for one account a wait can pass the role's `lock_timeout` (3 s); the unit then
 ends as a conflict (409), where it used to fail with a 500 after three 40001 aborts.
+
+## Shopping funnel counts for reporting (dashboards v2, phase 2)
+
+`EngagementFacade.shoppingFunnel` (use case `engagement.count-shopping-funnel`, rule `system`):
+for one window of at most 26 hours (a Market day) it counts distinct accounts with a
+`product-viewed` event, of them those with an `added-to-cart` event, of them those of the accounts
+the caller names (ordering's checkouts of the window, at most 5,000) that placed an order, and of
+them those that paid. Guests are never counted. Only the four counts leave the module; the ids read
+(`accountsWith`, one `GROUP BY account_id` per kind on the `(market_id, occurred_at)` index, at most
+100,000 per kind, else `engagement.funnel-too-large`) are not returned or logged. reporting writes
+the counts once per day (`reporting.daily_engagement`), so a later switch-off or erasure deletes the
+behaviour here as before and leaves the day's counts as they were. PIA: the purpose "personalization"
+is extended by aggregate, non-identifying dashboard statistics of the customers who keep it on.

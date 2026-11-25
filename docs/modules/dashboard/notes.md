@@ -313,3 +313,18 @@ rest summed in `other`, orders with no state recorded (placed before delivery qu
 before the history backfill reached them) in `unknown`, never folded into a state. Below five paid
 orders no share is shown (`not-enough-data`). "Paid" counts every paid seller order, cancelled ones
 included, like `ordersByStatus.paid`; the card must not read as live orders. The card is built in the phase 2 cards PR.
+
+### Shopping funnel (dashboards v2, phase 2, nightly engagement)
+
+`GET dashboard/admin/kpis` gains the section `shoppingFunnel` (key `ordering.order.view`, null
+without it, `status: error` when it fails or takes over 1.5 s): reporting's
+`marketplaceShoppingFunnel`, from `reporting.daily_engagement` only. Steps `viewed`, `carted`,
+`checkedOut`, `paid`, each with `count`, `rateBp` (of the step before), `change` and `rateChange`
+against the period before; `recordedDays` of `periodDays` (today has no row until its snapshot, about
+two hours after it ends). `not-enough-data` below 20 viewers in the period; a step under 5 is
+`count: null` with its rate (never 0), and so is every step after it; change `na` when the period
+before had under 20 viewers. Counts are customer-days (each day's distinct customers summed): the
+card's "?" must say so (true distinct over a period: FE-20261125-dashboards-funnel-distinct-over-period).
+The seller's "Product funnel" card has no API yet (FE-20261125-dashboards-seller-product-funnel), so
+the seller KPI endpoint is unchanged. The card is built in the phase 2 cards PR.
+
