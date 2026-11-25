@@ -180,7 +180,10 @@ export class SearchController {
       'No session needed. `q` is 2 to 100 characters, in web-search syntax; with a `category` and ' +
       'no `q` the route lists that category by name; with a `store` (a store address) and no `q` it lists the Offers of that store by name, in one category if `category` is also given, and an unknown, retired or not-selling store answers an empty page. Text matches are ranked, ties by Offer id, ' +
       'so pages are stable. `pageSize` is 1 to 48 (default 24), `page` 1 to 100. Only Offers ' +
-      'that are sellable now and whose seller may sell are returned.',
+      'that are sellable now and whose seller may sell are returned. A plain text search (no ' +
+      'category, store, brand, filter or price) whose page 1 shows nothing is noted on the ' +
+      'server for the admin dashboard: the folded text and the quarter hour only, never who ' +
+      'searched; text with an e-mail or web address or five digits or more is not noted.',
   })
   @ApiQuery({ name: 'q', required: false, description: '2 to 100 characters.' })
   @ApiQuery({ name: 'category', required: false, description: 'A platform category id.' })
@@ -254,7 +257,11 @@ export class SearchController {
     @Call() context: CallContext,
     @Query() query: Record<string, unknown>,
   ): Promise<ProductSearchPageBody> {
-    const result = await this.search.execute(context, requestOf(query));
+    // The storefront route notes a text search that found nothing (server-side; dashboards v2).
+    const result = await this.search.execute(context, {
+      ...requestOf(query),
+      noteZeroResult: true,
+    });
     if (result.ok) {
       // Money amounts are bigint: written as decimal text (JSON has no bigint).
       return JSON.parse(

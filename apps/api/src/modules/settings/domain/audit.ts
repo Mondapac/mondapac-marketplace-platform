@@ -30,6 +30,7 @@ export const SETTING_TARGET_IDS = [
   'ai-description-writer-tier',
   'offer-review-mode',
   'offer-review-certificate-badges',
+  'offer-review-emergency-stop',
 ] as const;
 
 /** Every whole number setting code, the target id of its audit row. */

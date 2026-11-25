@@ -18,6 +18,7 @@ import {
 } from './ports/offer-facet.reader';
 import type { OfferSearchReader, OfferSearchRequest } from './ports/offer-search.reader';
 import type { FilterDefinition, SearchFilterSource } from './ports/search-filters';
+import { MemoryZeroResultLog } from './testing/memory-zero-result-log';
 import type { SearchDependencies } from './search-dependencies';
 import { SearchProducts } from './use-cases/search-products.use-case';
 
@@ -131,6 +132,7 @@ describe('SearchProducts with attribute filters', () => {
       cultures: {
         visibleCodes: () => Promise.resolve(new Map()),
       },
+      zeroResults: new MemoryZeroResultLog(),
       storeDirectory: { publicStores: () => Promise.resolve(new Map()) },
       filterSource,
       policy: new ConfigSearchPolicy(markets),

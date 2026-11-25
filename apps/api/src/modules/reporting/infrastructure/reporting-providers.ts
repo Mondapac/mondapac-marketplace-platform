@@ -28,6 +28,8 @@ import { PrismaLedgerFactStore } from './prisma-ledger-fact-store';
 import { PrismaLedgerKpiReader } from './prisma-ledger-kpi-reader';
 import { ENGAGEMENT_STORE, type EngagementStore } from '../application/ports/engagement-store';
 import { PrismaEngagementStore } from './prisma-engagement-store';
+import { SEARCH_STORE, type SearchStore } from '../application/ports/search-store';
+import { PrismaSearchStore } from './prisma-search-store';
 import {
   ABANDONED_CARTS_STORE,
   type AbandonedCartsStore,
@@ -101,6 +103,11 @@ export const reportingProviders: readonly FactoryProvider[] = [
     provide: ENGAGEMENT_STORE,
     inject: [PrismaService],
     useFactory: (prisma: PrismaService): EngagementStore => new PrismaEngagementStore(prisma),
+  },
+  {
+    provide: SEARCH_STORE,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): SearchStore => new PrismaSearchStore(prisma),
   },
   {
     provide: ABANDONED_CARTS_STORE,

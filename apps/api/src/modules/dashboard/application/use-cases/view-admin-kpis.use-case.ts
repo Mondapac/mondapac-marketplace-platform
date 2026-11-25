@@ -45,6 +45,7 @@ import type {
   PeriodRequest,
   ReportingKpiFacade,
   ShoppingFunnelAnswer,
+  ZeroResultSearchesAnswer,
   AbandonedCartsAnswer,
   TopCategoriesAnswer,
   TopSellersAnswer,
@@ -175,6 +176,11 @@ export interface AdminKpisAnswer {
    */
   readonly shoppingFunnel: KpiSection<ShoppingFunnelAnswer> | null;
   /**
+   * The top texts the storefront search found nothing for in the period (each searched by at least
+   * ten distinct signed-in customers on a day); null without `catalog.product.view`.
+   */
+  readonly zeroResultSearches: KpiSection<ZeroResultSearchesAnswer> | null;
+  /**
    * Abandoned carts on the period's latest nightly snapshot (a count and an approximate value);
    * null without `ordering.order.view`.
    */
@@ -270,8 +276,9 @@ async function section<T>(
  * Market's monthly revenue target (dashboards v2 phase 2). Rule
  * `own-resources` and a platform admin acting as themselves, like the work queue. Each section is
  * asked only when the viewer holds its key (operations and orders by status:
- * `ordering.order.view`, and the shopping funnel and abandoned carts too; money: `commission-payouts.settlement.view`, and
- * the discount cost also `promotions.promotion.manage`; each health number its
+ * `ordering.order.view`, and the shopping funnel and abandoned carts too; zero-result searches:
+ * `catalog.product.view`; money: `commission-payouts.settlement.view`, and the discount cost also
+ * `promotions.promotion.manage`; each health number its
  * owner's key) and its owner checks the key again. Nothing is cached here.
  */
 export class ViewAdminKpis extends UseCase<
@@ -324,6 +331,7 @@ export class ViewAdminKpis extends UseCase<
       ordersByState,
       marketTarget,
       shoppingFunnel,
+      zeroResultSearches,
       discountCost,
       abandonedCarts,
     ] = await Promise.all([
@@ -355,6 +363,11 @@ export class ViewAdminKpis extends UseCase<
             reporting.marketplaceShoppingFunnel(context, input),
           )
         : null,
+      held.has(CATALOG_PRODUCT_VIEW.key)
+        ? section('zero-result-searches', timeoutMs, () =>
+            reporting.marketplaceZeroResultSearches(context, input),
+          )
+        : null,
       held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key) && held.has(PROMOTIONS_PROMOTION_MANAGE.key)
         ? section('discount-cost', timeoutMs, () =>
             reporting.marketplaceDiscountCost(context, input),
@@ -375,6 +388,7 @@ export class ViewAdminKpis extends UseCase<
       ordersByState,
       marketTarget,
       shoppingFunnel,
+      zeroResultSearches,
       discountCost,
       abandonedCarts,
       topSellers,

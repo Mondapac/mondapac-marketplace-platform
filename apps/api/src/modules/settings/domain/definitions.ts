@@ -94,6 +94,14 @@ export const OFFER_REVIEW_BADGES_CODE = 'offer-review-certificate-badges';
 export const OFFER_REVIEW_BADGES_VALUES = ['review', 'automatic'] as const;
 export type OfferReviewBadges = (typeof OFFER_REVIEW_BADGES_VALUES)[number];
 
+/**
+ * The Offer review emergency stop (R0, design 9.5 b): while `on`, every new Offer of the Market
+ * waits for an admin, even from a Trusted seller; live Offers stay live. Changed only through its
+ * own protected permission with a reason, never with the page's other settings.
+ */
+export const OFFER_REVIEW_EMERGENCY_STOP_CODE = 'offer-review-emergency-stop';
+export const OFFER_REVIEW_EMERGENCY_STOP_VALUES = ['off', 'on'] as const;
+
 /** Every code of the Offer review policy, as one page shows and saves them. */
 export const OFFER_REVIEW_CODES: readonly string[] = Object.freeze([
   OFFER_REVIEW_MODE_CODE,
@@ -156,6 +164,15 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
     defaultValue: 'fast',
     // The cheaper tier.
     safeValue: 'fast',
+  },
+  {
+    code: OFFER_REVIEW_EMERGENCY_STOP_CODE,
+    label: 'Offer review emergency stop',
+    values: OFFER_REVIEW_EMERGENCY_STOP_VALUES,
+    defaultValue: 'off',
+    // A failed read of the policy already answers mode `all` (every Offer waits), so the safe
+    // value stays `off`: an unreadable row must not raise a stop banner nobody switched on.
+    safeValue: 'off',
   },
   {
     code: OFFER_REVIEW_MODE_CODE,

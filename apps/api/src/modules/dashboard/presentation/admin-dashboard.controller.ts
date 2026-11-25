@@ -92,7 +92,11 @@ export class AdminDashboardController {
       '(signed-in customers with personalization on who viewed a product, then added to the ' +
       'cart, placed an order and paid, each within the step before: daily distinct counts ' +
       'summed over the period, from the nightly snapshot; `not-enough-data` below 20 viewers, a ' +
-      'step under 5 is null; key `ordering.order.view`), `abandonedCarts` (active carts with ' +
+      'step under 5 is null; key `ordering.order.view`), `zeroResultSearches` (the top ten ' +
+      'texts the storefront search found nothing for, each shown only on the days at least 10 ' +
+      'distinct signed-in customers searched it, searches summed over those days; ' +
+      '`not-enough-data` when none qualifies; never a person; key `catalog.product.view`), ' +
+      '`abandonedCarts` (active carts with ' +
       'lines, not left by a paid order, untouched for 24 hours at the end of the latest ' +
       'snapshot day of the period, and their approximate value at the prices when added; ' +
       '`not-enough-data` below 5 carts; key `ordering.order.view`), `finance` (GMV with and without GST, refunded goods, net sales, ' +

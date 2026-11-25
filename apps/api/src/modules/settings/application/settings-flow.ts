@@ -18,8 +18,10 @@ import {
   AI_DESCRIPTION_WRITER_CODE,
   AI_DESCRIPTION_WRITER_TIER_CODE,
   OFFER_REVIEW_CODES,
+  OFFER_REVIEW_EMERGENCY_STOP_CODE,
   type SettingDefinition,
 } from '../domain/definitions';
+import type { StepUpRefusal } from '../../../platform/authz';
 import type { RecordedRequest } from '../../system-requests';
 import type { SettingsDependencies } from './settings-dependencies';
 
@@ -40,7 +42,11 @@ const AI_CODES: ReadonlySet<string> = new Set([
  * Reviewed at high risk too: one change can take every Offer past the admin, badges included
  * (Hassan, PR #1329).
  */
-const HIGH_RISK_CODES: ReadonlySet<string> = new Set([...AI_CODES, ...OFFER_REVIEW_CODES]);
+const HIGH_RISK_CODES: ReadonlySet<string> = new Set([
+  ...AI_CODES,
+  ...OFFER_REVIEW_CODES,
+  OFFER_REVIEW_EMERGENCY_STOP_CODE,
+]);
 
 // Admin-editable Market settings (ADR-0026). A change is refused in an acting-as session, checks
 // the version the admin saw (a stale edit is refused), writes the value and a history row in one
@@ -96,7 +102,13 @@ export type SettingsFailure =
   | { readonly code: 'access.denied' }
   | { readonly code: 'validation.failed'; readonly fields: readonly FieldIssue[] }
   /** Another admin changed the setting first; the screen reloads and tries again. */
-  | { readonly code: 'settings.conflict' };
+  | { readonly code: 'settings.conflict' }
+  /** The change needs a fresh two-step code of this admin; the panel asks for one and repeats. */
+  | {
+      readonly code: 'second-factor.required' | 'second-factor.enrolment-required';
+      readonly actionKey: string;
+    }
+  | { readonly code: 'access.unavailable' };
 
 export interface SettingView {
   readonly code: string;
@@ -355,6 +367,8 @@ export async function changeSettings(
   /** The settings the caller's manage key covers; any other code is a validation failure. */
   allowedCodes: readonly string[],
   input: { readonly changes?: unknown; readonly note?: unknown },
+  /** The admin step-up action whose fresh proof the change spends in its unit, if any. */
+  stepUpAction?: string,
 ): Promise<Result<readonly SettingChangeView[], SettingsFailure>> {
   const adminId = adminAccountId(context);
   if (adminId === null) return err({ code: 'access.denied' });
@@ -393,6 +407,11 @@ export async function changeSettings(
         const row = await deps.settings.find(context.market, definition.code);
         if ((row?.version ?? 0) !== seen) return err({ code: 'settings.conflict' as const });
       }
+      // The proof is spent only for a change that would be saved; a refusal commits nothing.
+      if (stepUpAction !== undefined) {
+        const spent = await deps.stepUp.consume(context, stepUpAction);
+        if (!spent.ok) return err(stepUpFailure(spent.error));
+      }
       const views: SettingChangeView[] = [];
       for (const checked of checkedChanges) {
         const result = await applyChecked(
@@ -410,6 +429,17 @@ export async function changeSettings(
       return ok(views);
     },
   );
+}
+
+/** identity's refusal of the step-up, as a settings change answers it; anything else stays closed. */
+function stepUpFailure(refusal: StepUpRefusal): SettingsFailure {
+  if (
+    refusal.code === 'second-factor.required' ||
+    refusal.code === 'second-factor.enrolment-required'
+  ) {
+    return { code: refusal.code, actionKey: refusal.actionKey };
+  }
+  return { code: refusal.code === 'access.unavailable' ? 'access.unavailable' : 'access.denied' };
 }
 
 /**
@@ -436,6 +466,11 @@ export async function revertSetting(
   const current = row?.value ?? definition.defaultValue;
   if (current !== request.after.value) return 'changed-since';
   if (definition.code === AI_DESCRIPTION_WRITER_CODE && restore === 'on') return 'not-permitted';
+  // A reviewer without the stop's own key never switches the emergency stop off (Hassan, PR 2b);
+  // restoring it on after a rejected "off" is the safe side and goes ahead.
+  if (definition.code === OFFER_REVIEW_EMERGENCY_STOP_CODE && restore === 'off') {
+    return 'not-permitted';
+  }
   const version = (row?.version ?? 0) + 1;
   const now = deps.clock.now();
   const applied = await deps.settings.apply(context.market, {

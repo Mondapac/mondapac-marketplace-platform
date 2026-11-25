@@ -577,6 +577,73 @@ new/returning card, phase 2 cards PR):
   privacy policy covers aggregate statistics (FE-20261125-legal-privacy-policy-aggregate-statistics).
 
 
+## Zero-result searches: nightly snapshot (dashboards v2, phase 2)
+
+- Design choice (the simplest safe one): nothing about a person crosses a module. search notes,
+  server-side in `search.search-products` when called by the storefront route, the folded text of a
+  plain text search whose first page showed nothing, per UTC quarter hour (`search.zero_result_queries`,
+  no session or account). engagement counts, inside its own module, the distinct signed-in customers
+  with personalization on who searched a given text on a given day. reporting hands the texts from
+  one to the other and keeps only texts and counts. Compared with #1328 no id passes through
+  reporting at all: the hand-off is texts in, counts out.
+- `reporting.snapshot-daily-searches` (job, hourly): for each Market day of the last 28 that ended at
+  least 2 hours ago in the Market's zone and has no `search_snapshot_days` row, asks search's
+  `zeroResultTexts` (the day's noted texts, at most 2,000, those noted in the most quarter hours
+  first, so a flood of one-off texts cannot push out the texts many shoppers miss) and hands them to
+  engagement's `searchShoppers`, which answers only texts searched by at least ten distinct customers
+  that day (its own constant, not the caller's). The day row and the kept texts are written once, in
+  one unit. A day with no qualifying text still gets its day row (`query_count` 0). A day over
+  engagement's cap (100,000 text-account pairs) is asked once per process (`cappedDays`), like the
+  funnel.
+- Flag semantics: a search event of the day counts for a text when search noted that text as
+  zero-result at least once that day. A text that found nothing in the morning and something after
+  a product was published at noon counts for the whole day; the card's "?" should say "searches on
+  days it returned no results".
+- Suppression (Hassan's rule from the phase plan): a text is written only when at least ten distinct
+  signed-in customers searched it that Market day; below ten its words never reach reporting (the
+  engagement count drops it, `keptZeroResultRows` drops it again, the table CHECK refuses it).
+  Over a period the read sums the kept days, so `searcherDays` is customer-days; a text ten people
+  searched over a month but never ten in one day is never shown
+  (FE-20261125-dashboards-zero-result-distinct-over-period). Guests are never counted (a new guest
+  cookie would be a new "person"). search also never notes a text that may name or reach a person:
+  more than 50 characters, an `@`, `://` or `www.`, or five digits or more in all (phone, order and
+  card numbers, GTINs).
+- Survives opt-out and erasure: rows are written once (SELECT and INSERT only) and name no one; a
+  later switch-off deletes the behaviour in engagement and leaves the day's row (db-spec
+  `reporting-zero-result-searches`).
+- Only reporting's `FacadeSearchSources` calls `searchShoppers` and `zeroResultTexts`, and only the
+  storefront route sets `noteZeroResult` (never the buyer assistant's facade, whose texts a model
+  chooses): contract spec `zero-result-search-handoff`.
+- Read: `reporting.view-marketplace-zero-result-searches`, key `catalog.product.view` (what shoppers
+  miss is a catalogue gap; the same key as the live-listings health number; no new key), platform
+  admin acting as themselves. Top ten by searches, then by text; `not-enough-data` when no text
+  qualifies. The text is data: the admin card must render it as a plain text node, never HTML or
+  markup and never a link (Hassan I4).
+- `searches` counts every search of the text by the counted population (signed-in customers with
+  personalization on) on each kept day, including searches of that day that did find something
+  (the flag is per text and day, see above; Hassan I3). The DTO description says so.
+- Both `daily_zero_result_searches.query_text` and search's `zero_result_queries.query_key` refuse,
+  by CHECK, an `@`, `://` or `www.` (any case) as well as the length rule (Mojtaba L5, Hassan I1);
+  the digit rule stays in the application.
+- Accepted residual risks (PR 1342 review):
+  - Hassan L1: a name or street address with four digits or fewer passes the text rules and can sit
+    in search's notes for up to 35 days; it reaches reporting and the dashboard only when ten
+    distinct signed-in customers searched that exact text on one day.
+  - Hassan L2: many accounts or a botnet can fill a day with one-off zero-result texts and crowd the
+    2,000-text read. The texts are taken most noted quarter hours first, and search keeps a small
+    per-process recent-notes cache so a repeat in the same quarter hour does not reach the database
+    (Mojtaba L1); a row-count alert on `search.zero_result_queries` comes with the monitoring work.
+  - Hassan L3: the text is what clients typed; any text ten accounts report as searched on one day
+    can show on the admin card. A control for an admin to hide a text is
+    FE-20261125-dashboards-zero-result-hide-text.
+  - Mojtaba 7: a day above engagement's cap (100,000 text-account pairs) is skipped (no day row);
+    once it leaves the 28-day look-back it is lost for good. The covering index that would let the
+    cap rise is FE-20261125-engagement-search-pairs-covering-index.
+- Deferred: distinct searchers over a whole period
+  (FE-20261125-dashboards-zero-result-distinct-over-period), the mock's "Top searches" card with a
+  no-result share (FE-20261125-dashboards-top-searches-no-result-share), a 13-month purge of the rows
+  (FE-20261125-reporting-zero-result-searches-retention).
+
 ## Discount cost (dashboards v2, phase 2)
 
 `reporting.view-marketplace-discount-cost` (keys `commission-payouts.settlement.view` and

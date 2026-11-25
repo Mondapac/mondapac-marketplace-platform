@@ -194,3 +194,26 @@ behaviour and discarded when the call ends: an account without behaviour of the 
 to any count, and none of the ids is stored, logged or returned (Hassan I2). Whether the privacy
 policy's wording covers these aggregate statistics (APP 6) is for the product owner to confirm
 (FE-20261125-legal-privacy-policy-aggregate-statistics).
+
+## Zero-result searchers for reporting (dashboards v2, phase 2)
+
+`EngagementFacade.searchShoppers` (use case `engagement.count-search-shoppers`, rule `system`): for
+one window of at most 26 hours (a Market day) and up to 2,000 texts the caller names (search's
+zero-result notes of the day, never typed by a person here), it counts per text the distinct
+accounts with a `search-performed` event of that text, in any case, and their searches. Only texts
+with at least ten distinct accounts (`MIN_SEARCH_SHOPPERS`, a constant of this module) are answered,
+with the two counts; ids are not returned or logged. Guests are never counted. Access path:
+`searchPairs` is one `GROUP BY search_query, account_id` over the day,
+`WHERE market_id = $1 AND tenant_id = $2 AND account_id IS NOT NULL AND kind = 'search-performed' AND occurred_at in the
+window AND LOWER(search_query) IN (LOWER($texts))` (Prisma `mode: 'insensitive'`), served by
+`behaviour_events (market_id, occurred_at)`; at most 100,000 pairs, else
+`engagement.search-too-large` (reporting then skips the day; a day still over the cap when it leaves
+reporting's 28-day look-back is lost, Mojtaba 7). A covering partial index for this read, built when
+one Market passes 2 million events a day or the statement passes 5 s, is
+FE-20261125-engagement-search-pairs-covering-index. The `searches` count is every search of the text
+by these accounts that day, including ones that found something (Hassan I3). PIA: the search text now leaves the module in one aggregate form: a
+text the storefront search found nothing for that at least ten distinct customers searched on one
+day, with counts, written once by reporting (`reporting.daily_zero_result_searches`). This amends
+the line "never leaves the module except to package 1d's own ranking" above; search itself notes
+only texts without a person (no `@`, web address or five digits), and reporting's row survives a
+later opt-out as an aggregate.

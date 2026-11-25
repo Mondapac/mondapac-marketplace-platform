@@ -9,6 +9,8 @@ import { ACCESS_DENIED_STATUS } from '../../../platform/authz';
 export const SETTINGS_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'validation.failed': 400,
   'settings.conflict': 409,
+  'second-factor.required': 403,
+  'second-factor.enrolment-required': 403,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {
@@ -57,5 +59,8 @@ export function refusal(
     return fail(500, 'internal');
   }
   if (error.fields !== undefined) return fail(status, error.code, { fields: error.fields });
+  if (typeof error.actionKey === 'string') {
+    return fail(status, error.code, { actionKey: error.actionKey });
+  }
   return fail(status, error.code);
 }

@@ -35,7 +35,7 @@ export class FacadeOfferReviewInputs implements OfferReviewInputs {
           : SAFE_OFFER_REVIEW_SETTINGS.mode;
       const certificateBadges =
         policy.certificateBadges === 'automatic' ? 'automatic' : ('review' as const);
-      return { mode, certificateBadges };
+      return { mode, certificateBadges, emergencyStop: policy.emergencyStop === true };
     } catch {
       return SAFE_OFFER_REVIEW_SETTINGS;
     }

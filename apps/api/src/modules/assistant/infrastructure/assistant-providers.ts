@@ -6,7 +6,7 @@ import { SELLERS_FACADE, type SellersFacade } from '../../sellers';
 import { SUPPORT_CONTACT_FACADE, type SupportContactFacade } from '../../notifications';
 import { SEARCH_ASSISTANT_FACADE, type SearchAssistantFacade } from '../../search';
 import { SETTINGS_FACADE, type SettingsFacade } from '../../settings';
-import { ModelGateway } from '../../../platform/ai/model-gateway';
+import { AiGateway } from '../../../platform/ai/ai-gateway';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { APP_CONFIG } from '../../../platform/config/config.module';
 import { LocaleCatalogues } from '../../../platform/i18n/locale-catalogues';
@@ -67,8 +67,8 @@ export const assistantProviders: readonly FactoryProvider[] = [
   },
   {
     provide: ASSISTANT_RUNTIME,
-    inject: [ModelGateway],
-    useFactory: (gateway: ModelGateway): AssistantRuntime => new GatewayAssistantRuntime(gateway),
+    inject: [AiGateway],
+    useFactory: (gateway: AiGateway): AssistantRuntime => new GatewayAssistantRuntime(gateway),
   },
   {
     provide: CONVERSATION_REPOSITORY,

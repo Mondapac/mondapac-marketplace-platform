@@ -4166,7 +4166,8 @@
         "ai": "Write with AI",
         "promotions": "Promotion rules",
         "review-policy": "Approval rules",
-        "offer-review": "Offer review"
+        "offer-review": "Offer review",
+        "emergency-stop": "Emergency stop"
       },
       "words": {
         "assistant": "Smart assistant,chat,buyer assistant",
@@ -4176,7 +4177,8 @@
         "ai": "AI,AI writing,product descriptions",
         "promotions": "Promotions,discounts,free delivery,first order",
         "review-policy": "Review policy,System requests,second admin,review",
-        "offer-review": "Offers,approval,probation,new sellers,price check,sampling,Approval required"
+        "offer-review": "Offers,approval,probation,new sellers,price check,sampling,Approval required",
+        "emergency-stop": "Emergency,stop,freeze,incident,fraud,offers,review,R0"
       },
       "about": {
         "support": "The help address customers and sellers see",
@@ -4195,7 +4197,8 @@
         "admins": "Who can sign in to this panel, and invitations",
         "roles": "Sets of permissions to give admins",
         "review-policy": "Which changes a second admin must review",
-        "offer-review": "Which new offers wait for an admin, and the numbers the checks use"
+        "offer-review": "Which new offers wait for an admin, and the numbers the checks use",
+        "emergency-stop": "Send every new offer to review at once, for a fraud wave or an incident"
       }
     },
     "sub": {
@@ -17778,6 +17781,21 @@
           "If you don't recognise one, sign out of all other devices and change your password."
         ],
         "related": []
+      },
+      "settings-emergency-stop": {
+        "title": "Emergency stop",
+        "about": "While it is on, every new offer waits for an admin, even from trusted sellers. Offers already live stay on sale.",
+        "good": [
+          "Switching it on or off asks for a reason and a fresh two-step code.",
+          "A red banner shows on every admin page while it is on.",
+          "Sellers only see that their offer is in review."
+        ],
+        "related": [
+          {
+            "label": "Offer review",
+            "href": "/settings/offer-review"
+          }
+        ]
       }
     },
     "tabbed": {
@@ -18296,6 +18314,42 @@
       "throttled": "Too many attempts. Wait a moment and try again.",
       "unavailable": "The service isn't available right now. Try again.",
       "unknown": "Something went wrong. Try again."
+    }
+  },
+  "emergency-stop": {
+    "banner": {
+      "title": "Emergency stop is on",
+      "body": "Every new offer waits for an admin. Offers already live stay on sale.",
+      "by-at": "Turned on by {name}, {when}.",
+      "at": "Turned on {when}.",
+      "link": "Open emergency stop"
+    },
+    "page": {
+      "title": "Emergency stop",
+      "section": "Offer review emergency stop",
+      "intro": "Use it for a fraud wave or an incident. It does not turn itself off.",
+      "state-on": "On: every new offer waits for review",
+      "state-off": "Off",
+      "on-body": "New offers from every seller, trusted ones too, go to the review queue. Offers already live stay on sale.",
+      "off-body": "New offers follow the Offer review settings.",
+      "last-by-at": "Last switched by {name}, {when}.",
+      "last-at": "Last switched {when}.",
+      "reason-label": "Reason",
+      "reason-help": "Required to switch it either way. Kept in the history and the audit log.",
+      "reason-required": "Enter a reason of up to 500 characters.",
+      "turn-on": "Turn on emergency stop",
+      "turn-off": "Turn off emergency stop",
+      "view-only": "Only an admin with the emergency stop permission can switch it.",
+      "load-failed": "The emergency stop could not be loaded.",
+      "problem": {
+        "conflict": "Someone switched it a moment ago. The page shows the latest state; check it and try again.",
+        "denied": "You do not have permission to switch the emergency stop.",
+        "unknown": "It could not be switched. Try again."
+      },
+      "confirm-title": "Turn on emergency stop?",
+      "confirm-body": "Every new offer from every seller will wait for an admin until you turn it off. Offers already live stay on sale. Next you enter a fresh two-step code.",
+      "confirm-cancel": "Cancel",
+      "confirm-turn-on": "Turn on"
     }
   }
 }

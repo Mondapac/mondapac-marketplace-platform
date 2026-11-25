@@ -193,6 +193,9 @@ import { SELLERS_PERMISSIONS } from './contracts/permissions';
 import { SELLERS_STEP_UP_ACTIONS } from './contracts/step-up';
 import { APPROVED_SELLER_ZONES } from './contracts/approved-seller-zones.contract';
 import { SELLERS_FACADE } from './contracts/sellers.facade';
+import { SELLER_AI_SWITCH } from '../../platform/ai/seller-ai-switch';
+import { FacadeSellerAiSwitch } from './infrastructure/facade-seller-ai-switch';
+import type { SellersFacade } from './contracts/sellers.facade';
 import { SELLERS_AUDIT_ACTIONS } from './domain/audit';
 import { OwnZoneRead } from './application/use-cases/own-zone-read.use-case';
 import { StoreSettingsMinimumOrderHistory } from './application/use-cases/store-settings-minimum-order-history.use-case';
@@ -1007,6 +1010,11 @@ const REVIEW_DECISION_PORTS = {
     // The seller's approved operating zone, for shipping's cut-off and windows: a clear column.
     useCaseProvider(OperatingZones, { unitOfWork: true, revisions: true }),
     {
+      provide: SELLER_AI_SWITCH,
+      inject: [SELLERS_FACADE],
+      useFactory: (facade: SellersFacade) => new FacadeSellerAiSwitch(facade),
+    },
+    {
       provide: SELLERS_FACADE,
       inject: [
         SellerSummaries,
@@ -1266,6 +1274,8 @@ const REVIEW_DECISION_PORTS = {
   exports: [
     SELLERS_WORK_QUEUE_FACADE,
     SELLERS_FACADE,
+    // platform/ai's seller-switch port (ADR-0019 decision 7), bound by AiModule.register.
+    SELLER_AI_SWITCH,
     APPROVED_SELLER_ZONES,
     STORE_TEXT_CLAIM_CHECK,
     BUSINESS_ACTIVITY_DIRECTORY,
