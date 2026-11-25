@@ -334,15 +334,21 @@ the seller KPI endpoint is unchanged. The card is built in the phase 2 cards PR.
 
 ### Discount cost (dashboards v2, phase 2)
 
-`GET dashboard/admin/kpis` gains the section `discountCost` (key `commission-payouts.settlement.view`,
-the money key, null without it; `status: error` when it fails or takes over 1.5 s; null too when
+`GET dashboard/admin/kpis` gains the section `discountCost` (keys `commission-payouts.settlement.view`
+and `promotions.promotion.manage`, both, null without either: spend is for promotion managers, so the
+default Viewer, which holds the money key and promotion view, does not see it; owner's choice of
+25 November; `status: error` when it fails or takes over 1.5 s; null too when
 promotions refuses the key): reporting's `marketplaceDiscountCost`. The discounts of the orders whose
 payment was confirmed in the period's Market days that still stand, with GST (`amount`), Mondapac's
 and the sellers' shares (`platformShare`, `sellerShare`, `platformShareBp`), per kind (`promotion`,
-`first-order`, `free-shipping`, each with `uses`, `amount`, `platformShare`, `shareBp`; zeros listed),
+`first-order`, `free-shipping`, each with `uses`, `amount`, `platformShare`, `shareBp`; zeros listed;
+a kind of 1 to 4 uses has every figure null, and the shares of the kinds shown add up to 100.00%),
 `change` and `previousAmount` against the period before (`na` below 100.00 of the currency before), and
 `released`: the orders of the period refunded or cancelled after payment and the discount they gave
-back (already left out of `amount`). `not-enough-data` below five discounted orders. The card's "?"
+back (already left out of `amount`; null for 1 to 4 orders). `not-enough-data` below five
+discounted orders. The money base of the change is 10,000 minor units in every currency (100.00 AUD,
+10,000 JPY); scaling it per currency is deferred with the other KPIs
+(FE-20261125-dashboards-money-base-per-currency). The card's "?"
 must say the amounts include GST, while the finance section's net revenue subtracts the
 platform-funded part without GST. Top promotions by cost and the seller's own discount cost are
 deferred (FE-20261125-dashboards-top-promotions-by-cost, FE-20261125-dashboards-seller-discount-cost).

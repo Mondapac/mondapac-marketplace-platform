@@ -8,6 +8,7 @@ import {
   type UseCaseGate,
 } from '../../../../platform/authz';
 import { COMMISSION_PAYOUTS_SETTLEMENT_VIEW } from '../../../commission-payouts';
+import { PROMOTIONS_PROMOTION_MANAGE } from '../../contracts/permissions';
 import {
   MAX_DISCOUNT_COST_WINDOW_DAYS,
   type DiscountCostFailure,
@@ -32,10 +33,10 @@ const isInstant = (value: unknown): value is Temporal.Instant =>
  * (refunded or cancelled after payment). Totals only: no order, customer, code or promotion
  * leaves the module.
  *
- * Rule: the key `commission-payouts.settlement.view`, the dashboard's money key (the finance
- * section's net revenue already subtracts the platform-funded discounts), never
- * `promotions.promotion.view` (a Viewer sees no cost, owner decision of 28 October); a platform
- * admin acting as themselves only. The window is at most {@link MAX_DISCOUNT_COST_WINDOW_DAYS}
+ * Rule: both `commission-payouts.settlement.view` (the dashboard's money key) and
+ * `promotions.promotion.manage` (in promotions, spend is for managers: a holder of
+ * `promotions.promotion.view` alone, such as the default Viewer, sees usage counts only; owner
+ * decision of 28 October); a platform admin acting as themselves only. The window is at most {@link MAX_DISCOUNT_COST_WINDOW_DAYS}
  * days (13 months of Market days). One read-only unit (ADR-0025).
  */
 export class SumDiscountCost extends UseCase<
@@ -45,7 +46,10 @@ export class SumDiscountCost extends UseCase<
 > {
   static override readonly access: AccessDeclaration = {
     name: 'promotions.sum-discount-cost',
-    rule: { kind: 'permissions', allOf: [COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key] },
+    rule: {
+      kind: 'permissions',
+      allOf: [COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key, PROMOTIONS_PROMOTION_MANAGE.key],
+    },
   };
 
   constructor(

@@ -28,6 +28,7 @@ const id = <T extends string>(n: number): Id<T> => {
 const FROM = Temporal.Instant.from('2026-11-15T14:00:00Z');
 const TO = Temporal.Instant.from('2026-11-22T14:00:00Z');
 const MONEY_KEY = 'commission-payouts.settlement.view';
+const MANAGE_KEY = 'promotions.promotion.manage';
 
 describe.each([['AU'], ['ZZ']] as const)('promotions.sum-discount-cost in market %s', (code) => {
   const market = testMarketContext(code, 'default');
@@ -167,7 +168,7 @@ describe.each([['AU'], ['ZZ']] as const)('promotions.sum-discount-cost in market
       },
     });
     expect(units.units).toEqual([{ market: market.marketId, options: { readOnly: true } }]);
-    expect(checked).toEqual([[MONEY_KEY]]);
+    expect(checked).toEqual([[MONEY_KEY, MANAGE_KEY]]);
   });
 
   it('refuses a seller and an admin acting as a seller before any read', async () => {

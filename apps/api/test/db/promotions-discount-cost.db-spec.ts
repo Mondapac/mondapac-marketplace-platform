@@ -1,7 +1,12 @@
 import { randomUUID } from 'node:crypto';
-import { Temporal } from '@mondapac/shared-kernel';
+import { ok, Temporal } from '@mondapac/shared-kernel';
 import { FixedClock } from '@mondapac/shared-kernel/testing';
-import { testAuthenticatedActor, testCallContext } from '@mondapac/shared-kernel/testing';
+import {
+  testAuthenticatedActor,
+  testCallContext,
+  testMarketContext,
+} from '@mondapac/shared-kernel/testing';
+import type { CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import { SumDiscountCost } from '../../src/modules/promotions/application/use-cases/sum-discount-cost.use-case';
 import { ConfigPromotionsPolicy } from '../../src/modules/promotions/infrastructure/config-promotions-policy';
@@ -19,7 +24,8 @@ import { ownerTestDatabaseUrl } from './test-database';
 // The grouped read sums the redemptions whose payment was confirmed in the window (head rows count
 // the orders, released rows apart, other windows, currencies and tenants left out), and the
 // partial index redemptions_confirmed_idx exists, is valid and serves the window's range. Rows
-// are never deleted, so every test writes its own window far from the others' instants.
+// are never deleted, so every test writes under a tenant of its own (and its own window), and a
+// rerun on the same database never meets an earlier run's rows.
 
 const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
 
@@ -28,30 +34,33 @@ describe.each(TEST_MARKETS)('promotions discount cost in market %s (database)', 
   const currency = new ConfigPromotionsPolicy(markets).settings(market)!.currency;
   const ids = new UuidV7IdGenerator(new FixedClock(Temporal.Instant.from('2026-11-25T00:00:00Z')));
   const gate = createUseCaseGate(markets, { check: () => Promise.resolve({ allowed: true }) });
-  const admin = testCallContext(
-    market,
-    testAuthenticatedActor(market, {
-      population: 'admin',
-      accountId: ids.next<'Account'>(),
-      sessionId: ids.next<'Session'>(),
-      sellerId: null,
-    }),
-    'discount-cost-db-admin',
-  );
+  /** A tenant of the test's own (the column's pattern), so no other run's rows are summed. */
+  const freshTenant = (): MarketContext =>
+    testMarketContext(code, `t${randomUUID().replace(/-/g, '').slice(0, 20)}`);
+  const adminOf = (tenant: MarketContext): CallContext =>
+    testCallContext(
+      tenant,
+      testAuthenticatedActor(tenant, {
+        population: 'admin',
+        accountId: ids.next<'Account'>(),
+        sessionId: ids.next<'Session'>(),
+        sellerId: null,
+      }),
+      'discount-cost-db-admin',
+    );
 
   let db: Persistence;
   let owner: Client;
   let facade: PromotionsReportingFacadeImplementation;
+  let repository: PrismaRedemptionRepository;
 
   beforeAll(async () => {
     db = createPersistence();
     owner = new Client({ connectionString: ownerTestDatabaseUrl() });
     await owner.connect();
+    repository = new PrismaRedemptionRepository(db.service);
     facade = new PromotionsReportingFacadeImplementation(
-      new SumDiscountCost(gate, {
-        unitOfWork: db.unitOfWork,
-        redemptions: new PrismaRedemptionRepository(db.service),
-      }),
+      new SumDiscountCost(gate, { unitOfWork: db.unitOfWork, redemptions: repository }),
     );
   });
   afterAll(async () => {
@@ -61,13 +70,14 @@ describe.each(TEST_MARKETS)('promotions discount cost in market %s (database)', 
 
   /** Writes one redemption RESERVED, then moves it the way the app does (confirm, release). */
   const redemption = async (row: {
+    tenant: MarketContext;
     orderId: string;
     kind: 'ORDER' | 'FIRST_ORDER' | 'FREE_SHIPPING';
     platform?: number;
+    seller?: number;
     confirmedAt: Temporal.Instant | null;
     released?: boolean;
     currency?: string;
-    tenant?: string;
   }) => {
     const key =
       row.kind === 'ORDER'
@@ -75,7 +85,8 @@ describe.each(TEST_MARKETS)('promotions discount cost in market %s (database)', 
         : row.kind === 'FIRST_ORDER'
           ? 'first-order'
           : 'free-shipping:metro';
-    const amount = row.kind === 'ORDER' ? 0 : (row.platform ?? 0);
+    const platform = row.kind === 'ORDER' ? 0 : (row.platform ?? 0);
+    const seller = row.kind === 'ORDER' ? 0 : (row.seller ?? 0);
     const reservedAt = (row.confirmedAt ?? Temporal.Instant.from('2031-01-01T00:00:00Z')).subtract({
       minutes: 10,
     });
@@ -84,17 +95,19 @@ describe.each(TEST_MARKETS)('promotions discount cost in market %s (database)', 
       `INSERT INTO promotions.redemptions (id, market_id, tenant_id, order_id, promotion_key, kind,
          customer_account_id, currency, amount_minor, seller_share_minor, platform_share_minor,
          budget_month, status, reserved_at)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, $9, $10, 'RESERVED', $11)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'RESERVED', $13)`,
       [
         id,
         market.marketId,
-        row.tenant ?? market.tenantId,
+        row.tenant.tenantId,
         row.orderId,
         key,
         row.kind,
         randomUUID(),
         row.currency ?? currency,
-        amount,
+        platform + seller,
+        seller,
+        platform,
         row.kind === 'FIRST_ORDER' ? '2031-03' : null,
         reservedAt.toString(),
       ],
@@ -115,6 +128,8 @@ describe.each(TEST_MARKETS)('promotions discount cost in market %s (database)', 
   };
 
   it('sums the confirmed discounts of the window by kind, with the orders and the given-back apart', async () => {
+    const tenant = freshTenant();
+    const other = freshTenant();
     // A window of its own per Market fixture, so other tests' rows never fall in it.
     const from = Temporal.Instant.from(
       code === TEST_MARKETS[0] ? '2031-03-01T00:00:00Z' : '2031-04-01T00:00:00Z',
@@ -124,30 +139,42 @@ describe.each(TEST_MARKETS)('promotions discount cost in market %s (database)', 
     const kept1 = randomUUID();
     const kept2 = randomUUID();
     const refunded = randomUUID();
-    await redemption({ orderId: kept1, kind: 'ORDER', confirmedAt: inside });
-    await redemption({ orderId: kept1, kind: 'FIRST_ORDER', platform: 1_500, confirmedAt: inside });
-    await redemption({ orderId: kept1, kind: 'FREE_SHIPPING', platform: 900, confirmedAt: inside });
-    await redemption({ orderId: kept2, kind: 'ORDER', confirmedAt: from });
-    await redemption({ orderId: kept2, kind: 'FREE_SHIPPING', platform: 600, confirmedAt: from });
-    await redemption({ orderId: refunded, kind: 'ORDER', confirmedAt: inside, released: true });
-    await redemption({
-      orderId: refunded,
-      kind: 'FIRST_ORDER',
-      platform: 700,
-      confirmedAt: inside,
-      released: true,
-    });
-    // Left out: confirmed at the window's end, still reserved, another currency or tenant.
-    const outside = randomUUID();
-    await redemption({ orderId: outside, kind: 'ORDER', confirmedAt: to });
-    await redemption({ orderId: outside, kind: 'FREE_SHIPPING', platform: 50, confirmedAt: to });
-    await redemption({
-      orderId: randomUUID(),
+    const row = (fields: Omit<Parameters<typeof redemption>[0], 'tenant'>) =>
+      redemption({ tenant, ...fields });
+    await row({ orderId: kept1, kind: 'ORDER', confirmedAt: inside });
+    await row({ orderId: kept1, kind: 'FIRST_ORDER', platform: 1_500, confirmedAt: inside });
+    await row({ orderId: kept1, kind: 'FREE_SHIPPING', platform: 900, confirmedAt: inside });
+    await row({ orderId: kept2, kind: 'ORDER', confirmedAt: from });
+    // A seller funds part of this one: the shares are summed apart.
+    await row({
+      orderId: kept2,
       kind: 'FREE_SHIPPING',
-      platform: 50,
-      confirmedAt: null,
+      platform: 600,
+      seller: 300,
+      confirmedAt: from,
     });
-    await redemption({
+    // Refunded after payment, released the way the app does: the whole order, confirmed rows too.
+    await row({ orderId: refunded, kind: 'ORDER', confirmedAt: inside });
+    await row({ orderId: refunded, kind: 'FIRST_ORDER', platform: 700, confirmedAt: inside });
+    const released = await db.unitOfWork.run(tenant, async () =>
+      ok(
+        await repository.release(
+          tenant,
+          refunded as Id<'Order'>,
+          'ORDER_REFUNDED',
+          inside.add({ hours: 1 }),
+          true,
+        ),
+      ),
+    );
+    expect(released.ok && released.value.length).toBe(2);
+    // Left out: confirmed at the window's end, still reserved, another currency or tenant, and a
+    // head row born RELEASED by a cancellation before redemption (no currency, never confirmed).
+    const outside = randomUUID();
+    await row({ orderId: outside, kind: 'ORDER', confirmedAt: to });
+    await row({ orderId: outside, kind: 'FREE_SHIPPING', platform: 50, confirmedAt: to });
+    await row({ orderId: randomUUID(), kind: 'FREE_SHIPPING', platform: 50, confirmedAt: null });
+    await row({
       orderId: randomUUID(),
       kind: 'FREE_SHIPPING',
       platform: 50,
@@ -155,32 +182,42 @@ describe.each(TEST_MARKETS)('promotions discount cost in market %s (database)', 
       currency: currency === 'NZD' ? 'AUD' : 'NZD',
     });
     await redemption({
+      tenant: other,
       orderId: randomUUID(),
       kind: 'FREE_SHIPPING',
       platform: 50,
       confirmedAt: inside,
-      tenant: 'other-tenant',
     });
+    await owner.query(
+      `INSERT INTO promotions.redemptions (id, market_id, tenant_id, order_id, promotion_key, kind,
+         amount_minor, seller_share_minor, platform_share_minor, status, release_reason,
+         reserved_at, released_at)
+       VALUES ($1, $2, $3, $4, 'order', 'ORDER', 0, 0, 0, 'RELEASED', 'ORDER_CANCELLED', $5, $5)`,
+      [randomUUID(), market.marketId, tenant.tenantId, randomUUID(), inside.toString()],
+    );
 
-    const out = await facade.discountCost(admin, { window: { from, to }, currency });
+    const out = await facade.discountCost(adminOf(tenant), { window: { from, to }, currency });
     expect(out).toEqual({
       ok: true,
       value: {
-        kept: { orders: 2, amount: 3_000n, platformShare: 3_000n, sellerShare: 0n },
+        kept: { orders: 2, amount: 3_300n, platformShare: 3_000n, sellerShare: 300n },
         byKind: [
           { kind: 'PROMOTION', uses: 0, amount: 0n, platformShare: 0n, sellerShare: 0n },
           { kind: 'FIRST_ORDER', uses: 1, amount: 1_500n, platformShare: 1_500n, sellerShare: 0n },
           {
             kind: 'FREE_SHIPPING',
             uses: 2,
-            amount: 1_500n,
+            amount: 1_800n,
             platformShare: 1_500n,
-            sellerShare: 0n,
+            sellerShare: 300n,
           },
         ],
         released: { orders: 1, amount: 700n, platformShare: 700n, sellerShare: 0n },
       },
     });
+    // The other tenant's admin sees its own row only.
+    const theirs = await facade.discountCost(adminOf(other), { window: { from, to }, currency });
+    expect(theirs.ok && theirs.value.byKind[2]).toMatchObject({ uses: 1, amount: 50n });
   });
 
   it('has the partial index valid, and it serves a window of confirmations', async () => {

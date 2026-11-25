@@ -47,6 +47,7 @@ const gate = createUseCaseGate(markets, {
 const NOW = Temporal.Instant.from('2026-11-22T01:00:00Z');
 const ORDERS = 'ordering.order.view' as PermissionKey;
 const MONEY = 'commission-payouts.settlement.view' as PermissionKey;
+const PROMO_MANAGE = 'promotions.promotion.manage' as PermissionKey;
 
 const operations = { period: { id: '7d' }, sellersWithOrders: 3 } as unknown as OperationsAnswer;
 const finance = {
@@ -208,9 +209,9 @@ const discountCost: DiscountCostAnswer = {
     byKind: [
       { kind: 'promotion', uses: 40, amount: 40_000n, platformShare: 20_000n, shareBp: 8000 },
       { kind: 'first-order', uses: 5, amount: 10_000n, platformShare: 10_000n, shareBp: 2000 },
-      { kind: 'free-shipping', uses: 0, amount: 0n, platformShare: 0n, shareBp: 0 },
+      { kind: 'free-shipping', uses: null, amount: null, platformShare: null, shareBp: null },
     ],
-    released: { orders: 2, amount: 1_500n },
+    released: null,
   },
 };
 
@@ -400,7 +401,7 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
 
   it('asks only the sections whose keys the viewer holds', async () => {
     const out = await build([MONEY]).execute(admin, { period: '7d' });
-    expect(asked.sort()).toEqual(['discount-cost', 'finance', 'top-categories', 'top-sellers']);
+    expect(asked.sort()).toEqual(['finance', 'top-categories', 'top-sellers']);
     expect(out.ok && out.value.operations).toBeNull();
     expect(out.ok && out.value.finance?.status).toBe('ok');
   });
@@ -513,8 +514,8 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     expect(failed.ok && failed.value.ordersByState?.status).toBe('ok');
   });
 
-  it('maps the discount-cost section: money as strings, not-enough-data, error, and null without the money key', async () => {
-    const full = await build([MONEY]).execute(admin, { period: '7d' });
+  it('maps the discount-cost section: money as strings, not-enough-data, error, and null without both keys', async () => {
+    const full = await build([MONEY, PROMO_MANAGE]).execute(admin, { period: '7d' });
     if (!full.ok) throw new Error('expected an answer');
     const money = (amountMinor: string) => ({ amountMinor, currency: 'AUD' });
     expect(adminKpisBody(full.value).discountCost).toEqual({
@@ -543,15 +544,10 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
             platformShare: money('10000'),
             shareBp: 2000,
           },
-          {
-            kind: 'free-shipping',
-            uses: 0,
-            amount: money('0'),
-            platformShare: money('0'),
-            shareBp: 0,
-          },
+          // A kind of 1 to 4 uses is held back whole, and so is a released of 1 to 4 orders.
+          { kind: 'free-shipping', uses: null, amount: null, platformShare: null, shareBp: null },
         ],
-        released: { orders: 2, amount: money('1500') },
+        released: null,
       },
     });
     const few = {
@@ -568,17 +564,20 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
       status: 'ok',
       kpis: { status: 'not-enough-data', orders: 3, minimum: 5 },
     });
-    asked.length = 0;
-    const none = await build([ORDERS]).execute(admin, { period: '7d' });
-    expect(none.ok && none.value.discountCost).toBeNull();
-    expect(asked).not.toContain('discount-cost');
+    // Either key alone leaves the section out: spend is for promotion managers with the money key.
+    for (const keys of [[ORDERS], [MONEY], [PROMO_MANAGE]]) {
+      asked.length = 0;
+      const none = await build(keys).execute(admin, { period: '7d' });
+      expect(none.ok && none.value.discountCost).toBeNull();
+      expect(asked).not.toContain('discount-cost');
+    }
     facade.marketplaceDiscountCost = () => Promise.reject(new TypeError('boom'));
-    const failed = await build([MONEY]).execute(admin, { period: '7d' });
+    const failed = await build([MONEY, PROMO_MANAGE]).execute(admin, { period: '7d' });
     expect(failed.ok && failed.value.discountCost).toEqual({ status: 'error' });
     expect(failed.ok && failed.value.finance?.status).toBe('ok');
     // The owner refusing the key leaves the section out, like a key the viewer lacks.
     facade.marketplaceDiscountCost = () => Promise.resolve(err({ code: 'access.denied' }));
-    const refused = await build([MONEY]).execute(admin, { period: '7d' });
+    const refused = await build([MONEY, PROMO_MANAGE]).execute(admin, { period: '7d' });
     expect(refused.ok && refused.value.discountCost).toBeNull();
   });
 
@@ -788,6 +787,13 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     const out = await build([ORDERS, MONEY], 20).execute(admin, { period: '7d' });
     expect(out.ok && out.value.operations).toBeNull();
     expect(out.ok && out.value.finance).toEqual({ status: 'error' });
+  });
+
+  it('marks a slow discount cost as error and keeps finance', async () => {
+    facade.marketplaceDiscountCost = () => new Promise(() => undefined);
+    const out = await build([MONEY, PROMO_MANAGE], 20).execute(admin, { period: '7d' });
+    expect(out.ok && out.value.discountCost).toEqual({ status: 'error' });
+    expect(out.ok && out.value.finance?.status).toBe('ok');
   });
 
   it('marks a section that throws as error and keeps the other', async () => {

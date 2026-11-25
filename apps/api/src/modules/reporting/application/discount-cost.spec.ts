@@ -110,6 +110,39 @@ describe.each(TEST_MARKETS)('the discount cost in market %s', (code) => {
     });
   });
 
+  it('asks the literal instants of the Market days, never the UTC days', async () => {
+    await useCase().execute(admin, { period: '7d' });
+    const tz = zone.zoneOf(market);
+    // 7d at NOW is 16 to 22 November against 9 to 15 November, each from local midnight.
+    const midnight = (date: string) =>
+      Temporal.PlainDate.from(date).toZonedDateTime({ timeZone: tz }).toInstant();
+    expect(asked.map((ask) => ask.window)).toEqual([
+      { from: midnight('2026-11-16'), to: midnight('2026-11-23') },
+      { from: midnight('2026-11-09'), to: midnight('2026-11-16') },
+    ]);
+    if (tz === 'Australia/Brisbane') {
+      expect(asked[0]!.window).toEqual({
+        from: Temporal.Instant.from('2026-11-15T14:00:00Z'),
+        to: Temporal.Instant.from('2026-11-22T14:00:00Z'),
+      });
+    }
+  });
+
+  it('answers unavailable when only the period before fails, never a change against zero', async () => {
+    sources = {
+      totalsOf: (context, currency, window) => {
+        asked.push({ context, currency, window });
+        return asked.length === 1
+          ? Promise.resolve(ok(answers[0]!))
+          : Promise.resolve(err({ code: 'access.unavailable' }));
+      },
+    };
+    expect(await useCase().execute(admin, { period: '7d' })).toEqual({
+      ok: false,
+      error: { code: 'access.unavailable' },
+    });
+  });
+
   it('refuses a seller and an acting-as admin before asking promotions', async () => {
     expect((await useCase().execute(person('seller'), { period: '7d' })).ok).toBe(false);
     const actingAs = Object.assign(

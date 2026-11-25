@@ -6,6 +6,6 @@
   "src": "apps/api/src/modules/promotions/domain/discount-cost.ts (PR هزینهٔ تخفیف، داشبورد ۲ فاز ۲)",
   "date": "2026-11-25",
   "trig": "وقتی کارت هزینهٔ تخفیف ساخته شد و ادمین خواست بداند کدام تبلیغ پرهزینه است",
-  "prio": "کم",
+  "prio": "پایین",
   "status": "موکول"
 }

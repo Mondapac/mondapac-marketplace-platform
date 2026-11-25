@@ -19,6 +19,7 @@ import {
 } from '../../../certification';
 import type { SearchSupplyFacade } from '../../../search';
 import { ORDERING_ORDER_VIEW } from '../../../ordering';
+import { PROMOTIONS_PROMOTION_MANAGE } from '../../../promotions';
 import type { Id } from '@mondapac/shared-kernel';
 import {
   CATALOG_PRODUCT_VIEW,
@@ -166,7 +167,7 @@ export interface AdminKpisAnswer {
   readonly shoppingFunnel: KpiSection<ShoppingFunnelAnswer> | null;
   /**
    * The discount cost of the period (Mondapac's and the sellers' shares, by kind); null without
-   * `commission-payouts.settlement.view` (it shows money).
+   * both `commission-payouts.settlement.view` and `promotions.promotion.manage` (promotion spend).
    */
   readonly discountCost: KpiSection<DiscountCostAnswer> | null;
   /** Null without `commission-payouts.settlement.view` (it shows each seller's money). */
@@ -254,8 +255,8 @@ async function section<T>(
  * strip and trend, orders by status, net revenue and the supply and health numbers. Rule
  * `own-resources` and a platform admin acting as themselves, like the work queue. Each section is
  * asked only when the viewer holds its key (operations and orders by status:
- * `ordering.order.view`, and the shopping funnel too; money, the discount cost too:
- * `commission-payouts.settlement.view`; each health number its
+ * `ordering.order.view`, and the shopping funnel too; money: `commission-payouts.settlement.view`, and
+ * the discount cost also `promotions.promotion.manage`; each health number its
  * owner's key) and its owner checks the key again. Nothing is cached here.
  */
 export class ViewAdminKpis extends UseCase<
@@ -333,7 +334,7 @@ export class ViewAdminKpis extends UseCase<
             reporting.marketplaceShoppingFunnel(context, input),
           )
         : null,
-      held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
+      held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key) && held.has(PROMOTIONS_PROMOTION_MANAGE.key)
         ? section('discount-cost', timeoutMs, () =>
             reporting.marketplaceDiscountCost(context, input),
           )

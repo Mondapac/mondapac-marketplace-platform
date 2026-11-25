@@ -644,6 +644,10 @@ export class MemoryRedemptions implements RedemptionRepository {
   readonly rows: RedemptionRecord[] = [];
   /** Set by a test to make {@link discountCost} throw (a store failure). */
   failDiscountCost = false;
+  /**
+   * The store's grouped read in memory. One fake holds one Market and tenant, so `_market` is not
+   * matched against the rows (the database test covers the tenant and Market filters).
+   */
   discountCost(
     _market: MarketContext,
     currency: string,

@@ -465,15 +465,23 @@ export class ShoppingFunnelSectionBody {
 
 export class DiscountKindCostBody {
   @ApiProperty({ enum: ['promotion', 'first-order', 'free-shipping'] }) kind!: string;
-  @ApiProperty({ description: 'Redemptions (an order may use several promotions).' })
-  uses!: number;
-  @ApiProperty({ type: MoneyBody }) amount!: MoneyBody;
-  @ApiProperty({ type: MoneyBody, description: 'What Mondapac funded of it.' })
-  platformShare!: MoneyBody;
   @ApiProperty({
     type: Number,
     nullable: true,
-    description: 'Share of the whole discount, basis points; null when the whole is 0.',
+    description:
+      'Redemptions (an order may use several promotions). Null: 1 to 4 uses, every figure of ' +
+      'the kind held back; show "fewer than 5", never 0.',
+  })
+  uses!: number | null;
+  @ApiProperty({ type: MoneyBody, nullable: true }) amount!: MoneyBody | null;
+  @ApiProperty({ type: MoneyBody, nullable: true, description: 'What Mondapac funded of it.' })
+  platformShare!: MoneyBody | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Share of the whole discount, basis points; the kinds add up to 10000. Null when the ' +
+      'whole is 0 or the kind is held back.',
   })
   shareBp!: number | null;
 }
@@ -527,7 +535,13 @@ export class DiscountCostKpiBody {
     description: 'Every kind, zeros included.',
   })
   byKind?: DiscountKindCostBody[];
-  @ApiProperty({ required: false, type: DiscountReleasedBody }) released?: DiscountReleasedBody;
+  @ApiProperty({
+    required: false,
+    type: DiscountReleasedBody,
+    nullable: true,
+    description: 'Null when 1 to 4 orders gave a discount back (held back).',
+  })
+  released?: DiscountReleasedBody | null;
 }
 
 export class DiscountCostSectionBody {
@@ -707,7 +721,9 @@ export class AdminKpisBody {
   @ApiProperty({
     type: DiscountCostSectionBody,
     nullable: true,
-    description: 'Null without `commission-payouts.settlement.view`: leave the card out.',
+    description:
+      'Null without both `commission-payouts.settlement.view` and `promotions.promotion.manage`: ' +
+      'leave the card out.',
   })
   discountCost!: DiscountCostSectionBody | null;
   @ApiProperty({
@@ -931,11 +947,14 @@ function discountCostSection(
       byKind: cost.byKind.map((row) => ({
         kind: row.kind,
         uses: row.uses,
-        amount: money(row.amount, currency),
-        platformShare: money(row.platformShare, currency),
+        amount: row.amount === null ? null : money(row.amount, currency),
+        platformShare: row.platformShare === null ? null : money(row.platformShare, currency),
         shareBp: row.shareBp,
       })),
-      released: { orders: cost.released.orders, amount: money(cost.released.amount, currency) },
+      released:
+        cost.released === null
+          ? null
+          : { orders: cost.released.orders, amount: money(cost.released.amount, currency) },
     },
   };
 }

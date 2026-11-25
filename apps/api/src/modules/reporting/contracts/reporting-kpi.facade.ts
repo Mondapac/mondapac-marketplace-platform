@@ -144,8 +144,8 @@ export interface ReportingKpiFacade {
    * The discount cost of the period against the period before (dashboards v2, phase 2): the
    * discounts of the orders paid in its Market days that still stand, Mondapac's and the sellers'
    * shares, by kind, and what those orders gave back since; read from promotions, nothing stored.
-   * `not-enough-data` below five discounted orders. Money: key `commission-payouts.settlement.view`,
-   * platform admin only.
+   * `not-enough-data` below five discounted orders. Keys `commission-payouts.settlement.view` and
+   * `promotions.promotion.manage`, platform admin only.
    */
   marketplaceDiscountCost(
     context: CallContext,

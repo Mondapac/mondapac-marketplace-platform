@@ -98,7 +98,8 @@ export class AdminDashboardController {
       '`commission-payouts.settlement.view`), `discountCost` (the discounts of the orders paid ' +
       "in the period that still stand, with GST: Mondapac's and the sellers' shares, by kind, " +
       'against the period before, and what those orders gave back since; `not-enough-data` ' +
-      'below 5 discounted orders; key `commission-payouts.settlement.view`), and `health` (live listings and out of stock, ' +
+      'below 5 discounted orders; keys `commission-payouts.settlement.view` and ' +
+      '`promotions.promotion.manage`), and `health` (live listings and out of stock, ' +
       'certificates expiring in 30 Market days, payout holds, dispute rate; each under its ' +
       "owner's key). A section the admin holds no key for is null. One that fails or takes over " +
       '1.5 s is `status: error` and the others still answer. Days are ' +

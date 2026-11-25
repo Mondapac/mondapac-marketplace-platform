@@ -8,6 +8,7 @@ import {
   type UseCaseGate,
 } from '../../../../platform/authz';
 import { COMMISSION_PAYOUTS_SETTLEMENT_VIEW } from '../../../commission-payouts';
+import { PROMOTIONS_PROMOTION_MANAGE } from '../../../promotions';
 import { discountCostOf, type DiscountCost } from '../../domain/discount-cost';
 import { windowOf, type ResolvedPeriod } from '../../domain/period';
 import { resolveKpiPeriod, type KpiFailure, type KpiInput } from '../admin-kpi-flow';
@@ -33,14 +34,17 @@ export interface DiscountCostAnswer {
  * `reporting.view-marketplace-discount-cost` (dashboards v2, phase 2): what the discounts of the
  * orders paid in the period's Market days cost, who funded them (Mondapac or the sellers), by kind,
  * against the period before, read from promotions (`promotions.sum-discount-cost`) for the
- * period and the period before, side by side. Money: the key `commission-payouts.settlement.view`
- * (the finance section's key), a platform admin acting as themselves; promotions checks the same
- * key again. `not-enough-data` below five discounted orders. Nothing is stored in reporting.
+ * period and the period before, side by side. Keys `commission-payouts.settlement.view` and
+ * `promotions.promotion.manage` (a promotions Viewer sees no spend), a platform admin acting as
+ * themselves; promotions checks the same keys again. `not-enough-data` below five discounted orders. Nothing is stored in reporting.
  */
 export class ViewMarketplaceDiscountCost extends UseCase<KpiInput, DiscountCostAnswer, KpiFailure> {
   static override readonly access: AccessDeclaration = {
     name: 'reporting.view-marketplace-discount-cost',
-    rule: { kind: 'permissions', allOf: [COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key] },
+    rule: {
+      kind: 'permissions',
+      allOf: [COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key, PROMOTIONS_PROMOTION_MANAGE.key],
+    },
   };
 
   constructor(

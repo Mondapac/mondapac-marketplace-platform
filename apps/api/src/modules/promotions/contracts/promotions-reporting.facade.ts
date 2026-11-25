@@ -31,9 +31,9 @@ export type DiscountCostFailure =
  */
 export interface PromotionsReportingFacade {
   /**
-   * The discount cost of the orders paid in the window (`promotions.sum-discount-cost`): key
-   * `commission-payouts.settlement.view` (the dashboard's money key), a platform admin acting as
-   * themselves. One read-only unit.
+   * The discount cost of the orders paid in the window (`promotions.sum-discount-cost`): keys
+   * `commission-payouts.settlement.view` and `promotions.promotion.manage`, a platform admin
+   * acting as themselves. One read-only unit.
    */
   discountCost(
     context: CallContext,
