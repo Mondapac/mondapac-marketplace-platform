@@ -9,3 +9,5 @@ Run from `apps/admin`:
       node test/dashboard-shots/run.mjs <out-dir>
 
 Phase 2 cards: scenarios `p2-thin`, `p2-failed` (admin) and `goal-none`, `goal-failed`, `goal-read-only`, the goal dialog (seller); `SHOTS_ONLY=<view names>` takes only those views.
+
+Drill-down: `admin-dashboard-drill-focus` (keyboard focus on a status link) `admin-dashboard-drill-hover` (a pointer on a revenue chart day, 1280) and `admin-dashboard-drill-tap` (the first tap on a day on a phone, 375); the pointer views are viewport captures.

@@ -53,6 +53,9 @@ const views = [
   ['seller-dashboard-goal-failed', 'goal-failed', [1280, 375]],
   ['seller-dashboard-goal-read-only', 'goal-read-only', [1280]],
   ['seller-dashboard-goal-dialog', 'full', [1280, 375], 'goal'],
+  // Drill-down: keyboard focus on the Paid orders card link. The seller orders list reads no
+  // filter from the address yet, so the link stays the plain list (FE-20261125-dashboard-drill-seller-orders).
+  ['seller-dashboard-drill-focus', 'full', [1280, 375], 'drill-focus'],
 ];
 // SHOTS_ONLY: a comma-separated list of view names to take (all when unset).
 const only = process.env.SHOTS_ONLY?.split(',');
@@ -81,6 +84,11 @@ for (const scheme of ['light', 'dark']) {
       }
       if (action === 'goal') {
         await page.getByRole('button', { name: 'Edit goal' }).click();
+        await page.waitForTimeout(200);
+      }
+      if (action === 'drill-focus') {
+        await page.keyboard.press('Tab');
+        await page.locator('[data-kpi-card] a[href="/orders"]').first().focus();
         await page.waitForTimeout(200);
       }
       if (action === 'export') {
