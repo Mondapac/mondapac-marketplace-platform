@@ -12,6 +12,7 @@ import type { CallContext, Money, Result } from '@mondapac/shared-kernel';
 import { ACCESS_DENIED_STATUS, type AccessDenied } from '../../../platform/authz';
 import { Call } from '../../../platform/call-context/call-context.decorator';
 import { RoutePopulation } from '../../../platform/call-context/route-population.decorator';
+import { RateLimit } from '../../../platform/rate-limit/rate-limit.decorator';
 import type { ShelfRequest } from '../domain/shelf-query';
 import {
   ListBestsellers,
@@ -67,7 +68,12 @@ export class ShelfController {
     return JSON.parse(JSON.stringify(this.answer(context, result))) as ShelfPageBody;
   }
 
+  /**
+   * In the `public-search` rate-limit class, not `default`: every item's was price is checked
+   * against pricing's history, so one answer costs several reads (Hassan M1, was price).
+   */
   @Get('specials')
+  @RateLimit('public-search')
   @Header('Cache-Control', 'no-store')
   @ApiOperation({
     summary: 'Specials shelf (public)',

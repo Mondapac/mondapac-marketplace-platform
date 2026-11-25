@@ -20,7 +20,11 @@ import type { WasPriceCheck } from './ports/was-price-check';
 import type { ShelfDependencies } from './shelf-dependencies';
 import { FILL_DEPTH, ListBestsellers, RANKED_DEPTH } from './use-cases/list-bestsellers.use-case';
 import { ListBoughtTogether } from './use-cases/list-bought-together.use-case';
-import { ListSpecials, SPECIALS_DEPTH } from './use-cases/list-specials.use-case';
+import {
+  ListSpecials,
+  SPECIALS_DEPTH,
+  WAS_PRICE_CONCURRENCY,
+} from './use-cases/list-specials.use-case';
 
 // The two shelf reads in memory on both Market fixtures (AU in AUD, ZZ in JPY): the order comes
 // from ordering's ranking or pricing's specials, the documents from the read model, a short
@@ -629,9 +633,33 @@ describe.each([
         sources.specials_ = [special(1), special(2), special(3)];
         visibility.hidden.add(offer(2));
 
-        await run({ limit: 1 });
+        await run({ limit: 2 });
 
-        expect(wasPrice.asked.map((a) => a.offerId)).toEqual([offer(1)]);
+        expect(wasPrice.asked.map((a) => a.offerId)).toEqual([offer(1), offer(3)]);
+      });
+
+      it('checks a full shelf a few at a time and keeps shelf order', async () => {
+        const all = Array.from({ length: 10 }, (_, n) => n + 1);
+        shelves.documents = all.map((n) => hit(n));
+        sources.specials_ = all.map((n) => special(n));
+        wasPrice.eligible_ = new Set(all.filter((n) => n % 2 === 0).map((n) => variant(n)));
+        let running = 0;
+        let most = 0;
+        const answer = wasPrice.eligible.bind(wasPrice);
+        wasPrice.eligible = async (...args) => {
+          running += 1;
+          most = Math.max(most, running);
+          await new Promise((resolve) => setTimeout(resolve, 1));
+          running -= 1;
+          return answer(...args);
+        };
+
+        const result = await run({ limit: 10 });
+
+        expect(most).toBeLessThanOrEqual(WAS_PRICE_CONCURRENCY);
+        expect(
+          result.ok && result.value.items.map((i) => [i.offerId, i.regularPrice !== null]),
+        ).toEqual(all.map((n) => [offer(n), n % 2 === 0]));
       });
     });
   });

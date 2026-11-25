@@ -100,8 +100,11 @@ PostgreSQL full-text search only (ADR-0004 decision 1); Elasticsearch needs a ne
   (`PromotionsFacade.wasPriceEligible`, rule anonymous, called with the request's context; AU: the
   unit sold at that price on at least 28 of the last 90 days, Market settings). Otherwise it is
   `null` and the special is shown on its own. Promotions off, unavailable or failing is `null` too
-  (fail closed), never 503. Search never applies the rule itself (port `WasPriceCheck`). The same
-  answer reaches the buyer assistant's specials cards.
+  (fail closed), never 503; a refusal other than "promotions off" or a fault is logged
+  (`search.was-price-check-failed`, codes only). Search never applies the rule itself (port
+  `WasPriceCheck`); the checks run at most 4 at a time, and `GET /search/specials` is in the
+  `public-search` rate-limit class because each item costs history reads. The same answer reaches
+  the buyer assistant's specials cards.
 - **Visibility:** the same re-check as the search route (catalog published and listed, seller may
   sell); a failed source or check is 503 `search.unavailable`. No badge, no stock filter (as search).
 - **Product page:** `GET /search/product-detail/:productId` (anonymous, `no-store`, no query string)

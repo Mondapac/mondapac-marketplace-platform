@@ -12,6 +12,13 @@ import type { ProductSearchItem } from './search-products.use-case';
 export const SPECIALS_DEPTH = 48;
 
 /**
+ * How many was-price checks run at once. Each is two short read-only units (promotions' Market
+ * switch and pricing's days at price), so a full shelf never takes the whole pool (Hassan M1, was
+ * price). A batched read is FE-20261125-specials-was-price-batch-read.
+ */
+export const WAS_PRICE_CONCURRENCY = 4;
+
+/**
  * A shelf item on special: the search item plus the priced Variant, the special and, only when the
  * Market's was-price rule allows it, the regular price to show struck through (otherwise null).
  */
@@ -93,19 +100,23 @@ export class ListSpecials extends UseCase<ShelfRequest, SpecialsPage, ShelfFailu
     const visible = await this.deps.visibility.visible(context, candidates);
     if (visible === null) return err({ code: 'search.unavailable' });
     const shown = candidates.filter((hit) => visible.has(hit.offerId)).slice(0, limit);
-    const withSpecials = await Promise.all(
-      shown.map(async (hit) => {
-        const special = firstOf.get(hit.offerId) as ShelfSpecial;
-        return {
-          ...itemOf(hit),
-          variantId: special.variantId,
-          price: special.price,
-          regularPrice: await this.wasPriceOf(context, special),
-          taxInclusive: special.taxInclusive,
-          specialEndsAt: special.endsAt,
-        };
-      }),
-    );
+    const specialsShown = shown.map((hit) => firstOf.get(hit.offerId) as ShelfSpecial);
+    const wasPrices: (Money | null)[] = [];
+    for (let start = 0; start < specialsShown.length; start += WAS_PRICE_CONCURRENCY) {
+      const batch = specialsShown.slice(start, start + WAS_PRICE_CONCURRENCY);
+      wasPrices.push(...(await Promise.all(batch.map((s) => this.wasPriceOf(context, s)))));
+    }
+    const withSpecials = shown.map((hit, index) => {
+      const special = specialsShown[index] as ShelfSpecial;
+      return {
+        ...itemOf(hit),
+        variantId: special.variantId,
+        price: special.price,
+        regularPrice: wasPrices[index] ?? null,
+        taxInclusive: special.taxInclusive,
+        specialEndsAt: special.endsAt,
+      };
+    });
     const items = await withPrimaryImages(this.deps.images, context, withSpecials);
     return ok({ items });
   }

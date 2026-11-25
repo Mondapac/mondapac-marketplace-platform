@@ -2,10 +2,10 @@
   "id": "FE-20261125-specials-was-price-batch-read",
   "area": "storefront",
   "title": "خواندن یکجای قاعدهٔ Was برای شلف",
-  "desc": "شلف specials برای هر کارت (حداکثر ۲۴) یک بار promotions.wasPriceEligible و یک کوئری daysAtPrice می‌زند. اگر بار زیاد شد، یک متد دسته‌ای در promotions و pricing لازم است.",
+  "desc": "شلف specials برای هر کارت (حداکثر ۲۴، چهارتا چهارتا) یک بار promotions.wasPriceEligible می‌زند که دو خواندن کوتاه دارد (کلید Market و daysAtPrice). یک متد دسته‌ای در promotions و pricing و خواندن یک‌بارهٔ کلید Market لازم است.",
   "src": "docs/modules/search/search.md (Was price)",
   "date": "2026-11-25",
-  "trig": "اگر زمان پاسخ search/specials بالا رفت یا کش صفحهٔ اول اضافه شد",
-  "prio": "پایین",
+  "trig": "اگر زمان پاسخ search/specials بالا رفت، بار بانک از این مسیر دیده شد، یا کش صفحهٔ اول اضافه شد (بازبینی حسن)",
+  "prio": "متوسط",
   "status": "موکول"
 }
