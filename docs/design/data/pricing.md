@@ -324,15 +324,17 @@ D 5.2, 8 and H3 cap the `pricing.offer-write-refused` audit rows at 1 per (actor
 - Grants: `write_refusal_throttles` `SELECT, INSERT, UPDATE (window_started_at), DELETE`; `write_refusal_actor_throttles` `SELECT, INSERT, UPDATE (window_started_at, recorded_count, suppressed_count), DELETE` (7).
 - Not personal beyond the account id, which the audit row holds anyway.
 
-### 3.9 `pricing.write_rate_counters` (phase 4 leftover: the per-account write cap)
+### 3.9 `pricing.write_rate_counters` (phase 4 leftover: the per-account write cap; offer page PR 9: the typical-price read caps)
+
+The same table holds the caps on the seller's typical-price read (`GET .../typical-prices`): `typical.account.minute` (20), `typical.account.day` (200) and `typical.seller.day` (400, keyed by seller), counted before the Offer lookup, apart from the price-write allowance (migration `20261125100000_pricing_typical_price_counters`).
 
 The general per-account limit on the seller price write routes (D 5.2, 8; Hassan M2). One fixed window per (Market, kind, account): `kind` is `write.account.minute` (60 attempts) or `write.account.day` (1,000), both counted for every attempt that reaches the use case with a valid input, refused or not, in a unit of its own before the Offer lookup, so the count commits even when the write is refused. A count above the limit answers `request.throttled` with `retryAfterSeconds` (HTTP 429). The limits are policy in code, not CHECKs; the CHECK holds only the closed kind list and `count >= 0`.
 
 | Column | Type | Null | Notes |
 |---|---|---|---|
 | `market_id`, `tenant_id` | | no | As every table |
-| `kind` | `text` | no | CHECK `write.account.day`, `write.account.minute` |
-| `actor_account_id` | `uuid` | no | The plain account id (as 3.8); PK `write_rate_counters_pkey (market_id, kind, actor_account_id)` |
+| `kind` | `text` | no | CHECK `typical.account.day`, `typical.account.minute`, `typical.seller.day`, `write.account.day`, `write.account.minute` |
+| `actor_account_id` | `uuid` | no | The plain account id (as 3.8); for `typical.seller.day` the plain seller id (one cap over all the seller's accounts); PK `write_rate_counters_pkey (market_id, kind, actor_account_id)` |
 | `window_started_at` | `timestamptz(6)` | no | Start of the fixed window, set at the first attempt |
 | `count` | `integer` | no | CHECK `>= 0` |
 

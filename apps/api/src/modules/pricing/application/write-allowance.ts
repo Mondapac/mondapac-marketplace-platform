@@ -1,7 +1,11 @@
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
-import { PRICE_WRITE_LIMITS, writeRateVerdict } from '../domain/write-rate-limits';
+import {
+  PRICE_WRITE_LIMITS,
+  writeRateVerdict,
+  type WriteRateLimit,
+} from '../domain/write-rate-limits';
 import type { WriteRateCounterRepository } from './ports/write-rate-counter.repository';
 
 export interface WriteAllowanceDependencies {
@@ -26,15 +30,16 @@ export async function reserveWriteAllowance(
   deps: WriteAllowanceDependencies,
   context: CallContext,
   accountId: Id<'Account'>,
+  limits: readonly WriteRateLimit[] = PRICE_WRITE_LIMITS,
 ): Promise<Result<true, WriteThrottled>> {
   const { market } = context;
   const now = deps.clock.now();
   const reserved = await deps.unitOfWork.run(market, async () =>
-    ok(await deps.counters.reserve(market, accountId, PRICE_WRITE_LIMITS, now)),
+    ok(await deps.counters.reserve(market, accountId, limits, now)),
   );
   // A failed unit throws out of here, so a store fault is never a pass.
   if (!reserved.ok) throw new Error('pricing write allowance: the counter unit failed');
-  const verdict = writeRateVerdict(PRICE_WRITE_LIMITS, reserved.value, now);
+  const verdict = writeRateVerdict(limits, reserved.value, now);
   return verdict.allowed
     ? ok(true)
     : err({ code: 'request.throttled', retryAfterSeconds: verdict.retryAfterSeconds });
