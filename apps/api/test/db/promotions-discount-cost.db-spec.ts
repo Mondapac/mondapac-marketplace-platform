@@ -231,29 +231,26 @@ describe.each(TEST_MARKETS)('promotions discount cost in market %s (database)', 
     ).rows as { valid: boolean; def: string }[];
     expect(index?.valid).toBe(true);
     expect(index?.def).toContain('(market_id, confirmed_at) WHERE (confirmed_at IS NOT NULL)');
-    // With a sequential scan ruled out the planner can answer the grouped read from the index; on
-    // a test table this small it would otherwise pick a scan of the whole table.
+    // The index serves the window's range: with scans of the whole table, bitmaps and sorts
+    // ruled out, the rows of one Market's window in confirmation order come from it alone. On a
+    // test table this small the planner would otherwise pick any index on market_id, or none.
     await owner.query('BEGIN');
     try {
       await owner.query('SET LOCAL enable_seqscan = off');
+      await owner.query('SET LOCAL enable_bitmapscan = off');
+      await owner.query('SET LOCAL enable_sort = off');
       const plan = (
         await owner.query(
-          `EXPLAIN SELECT kind, status, count(*), sum(amount_minor) FROM promotions.redemptions
-            WHERE market_id = $1 AND tenant_id = $2 AND currency = $3
-              AND confirmed_at >= $4 AND confirmed_at < $5
-            GROUP BY kind, status`,
-          [
-            market.marketId,
-            market.tenantId,
-            currency,
-            '2031-03-01T00:00:00Z',
-            '2031-03-08T00:00:00Z',
-          ],
+          `EXPLAIN SELECT kind, status, amount_minor FROM promotions.redemptions
+            WHERE market_id = $1 AND confirmed_at >= $2 AND confirmed_at < $3
+            ORDER BY confirmed_at`,
+          [market.marketId, '2031-03-01T00:00:00Z', '2031-03-08T00:00:00Z'],
         )
       ).rows
         .map((row: Record<string, string>) => row['QUERY PLAN'])
         .join('\n');
-      expect(plan).toContain('redemptions_confirmed_idx');
+      expect(plan).toMatch(/Index Scan using redemptions_confirmed_idx/);
+      expect(plan).toMatch(/Index Cond: .*confirmed_at >=/);
     } finally {
       await owner.query('ROLLBACK');
     }
