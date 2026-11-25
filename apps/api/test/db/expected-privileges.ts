@@ -337,6 +337,8 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'sellers.seller_business_activity_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Offer approval slice 4 (ADR-0051 decision 4): the Offer review flag change log is insert-only.
+    'sellers.offer_review_flag_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Multi-culture package 2 (ADR-0047 decision 3): a membership is never deleted; a request, a
     // decision and a new request after a rejection update only these columns.
     'sellers.seller_cultures': {
@@ -1792,6 +1794,34 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'superseded_cause',
       ],
     },
+    // Slice 4: a standing moves its probation state and version, never its identity; credits and
+    // the category flag change log are insert-only; a category's flags move with their at/by.
+    'catalog.seller_review_standings': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'consecutive_changes_needed',
+        'epoch',
+        'target_kind',
+        'trust_lost_at',
+        'trusted_at',
+        'updated_at',
+        'version',
+      ],
+    },
+    'catalog.seller_review_credits': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'catalog.category_offer_review_flags': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'always_review',
+        'always_review_changed_at',
+        'always_review_changed_by_account_id',
+        'review_stop',
+        'review_stop_changed_at',
+        'review_stop_changed_by_account_id',
+        'version',
+      ],
+    },
+    'catalog.category_offer_review_changes': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Categories C9a (data design 3.22): only the decision moves on a proposal; only the status,
     // the merge target and the version on a shelf; a shelf's names are written once with it.
     'catalog.category_proposals': {
