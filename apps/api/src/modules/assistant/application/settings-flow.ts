@@ -246,29 +246,30 @@ export async function viewStorefrontAssistant(
     deps.previewTokens.verify(context.market, input.preview, deps.clock.now());
   const visitorKey =
     typeof input?.visitor === 'string' && VISITOR_KEY.test(input.visitor) ? input.visitor : null;
-  return deps.unitOfWork.run<StorefrontAssistantView, never>(
+  const read = await deps.unitOfWork.run<AssistantSettings, never>(
     context.market,
-    async () => {
-      const { settings } = await current(deps, context);
-      const configured = await deps.runtime.available(context, settings.modelTier);
-      if (!configured || !inRollout(settings, context.market.marketId, visitorKey, preview)) {
-        return ok(STOREFRONT_OFF);
-      }
-      return ok({
-        enabled: true,
-        guestsAllowed: settings.users === 'guests-and-customers',
-        replyLanguage: settings.replyLanguage,
-        welcomeText: settings.welcomeText,
-        retentionDays: {
-          customer: retentionDaysOf(settings.retention, 'customer'),
-          guest: retentionDaysOf(settings.retention, 'guest'),
-        },
-        quickPrompts: deps.quickPrompts.forBuyer(context.market, lang),
-        preview,
-      });
-    },
+    async () => ok((await current(deps, context)).settings),
     { readOnly: true },
   );
+  if (!read.ok) return read;
+  const settings = read.value;
+  // Outside the unit: the gateway reads its budget in a unit of its own (AI Gateway G2).
+  const configured = await deps.runtime.available(context, settings.modelTier);
+  if (!configured || !inRollout(settings, context.market.marketId, visitorKey, preview)) {
+    return ok(STOREFRONT_OFF);
+  }
+  return ok({
+    enabled: true,
+    guestsAllowed: settings.users === 'guests-and-customers',
+    replyLanguage: settings.replyLanguage,
+    welcomeText: settings.welcomeText,
+    retentionDays: {
+      customer: retentionDaysOf(settings.retention, 'customer'),
+      guest: retentionDaysOf(settings.retention, 'guest'),
+    },
+    quickPrompts: deps.quickPrompts.forBuyer(context.market, lang),
+    preview,
+  });
 }
 
 /**

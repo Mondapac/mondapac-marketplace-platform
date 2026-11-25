@@ -31,9 +31,11 @@ export class GatewayAssistantRuntime implements AssistantRuntime {
     tier: ModelTier,
     request: ModelRequest,
     timeoutMs: number,
+    turnId: string,
   ): Promise<ModelAnswer> {
-    const run = await this.gateway.run(BUYER_CHAT, context, request, { tier, timeoutMs });
+    const run = await this.gateway.run(BUYER_CHAT, context, request, { tier, timeoutMs, turnId });
     if (run.ok) return { ok: true, turn: run.turn, costMicroUsd: run.costMicroUsd };
+    // A full AI budget cap (or the gateway's round or input cap) ends the turn as unavailable.
     const failure =
       run.reason === 'off'
         ? 'not-configured'

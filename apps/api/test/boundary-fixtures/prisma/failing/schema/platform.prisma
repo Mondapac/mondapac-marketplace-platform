@@ -8,3 +8,15 @@ model AuditLog {
   @@map("audit_log")
   @@schema("platform")
 }
+
+// The AI Gateway's budget counter, reserved to platform/persistence/ai-usage/.
+model AiBudgetCounter {
+  marketId     String @map("market_id")
+  tenantId     String @map("tenant_id")
+  scope        String
+  heldMicroUsd BigInt @map("held_micro_usd")
+
+  @@id([marketId, scope])
+  @@map("ai_budget_counters")
+  @@schema("platform")
+}

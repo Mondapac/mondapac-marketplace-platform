@@ -295,8 +295,9 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
     clock = new FixedClock(T0);
     audit = new RecordingAudit(clock);
     actors = new FakeChangeActors();
-    runtime = new FakeRuntime();
     const unitOfWork = new FakeUnitOfWork();
+    runtime = new FakeRuntime();
+    runtime.unitOfWork = unitOfWork;
     const conversations = new MemoryConversations();
     deps = {
       unitOfWork,
@@ -550,6 +551,15 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
       runtime.key = true;
       await set(on({ modelTier: 'balanced', welcomeText: 'Hi' }), 1);
       expect(await storefront()).toEqual(ok(OFF));
+    });
+
+    it('stays off while an AI budget cap is full (AI Gateway G2)', async () => {
+      await set(on({ welcomeText: 'Hi' }));
+      runtime.overBudget = true;
+      expect(await storefront()).toEqual(ok(OFF));
+      runtime.overBudget = false;
+      const read = await storefront();
+      expect(read.ok && read.value.enabled).toBe(true);
     });
 
     it('stays off for the internal audience and leaves a visitor without a usable key out of a percentage', async () => {

@@ -1,11 +1,20 @@
 import { Logger } from '@nestjs/common';
+import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import {
+  FixedClock,
   testAuthenticatedActor,
   testCallContext,
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
+import {
+  inMemoryAiUsage,
+  type InMemoryAiUsageStore,
+} from '../../../../test/support/in-memory-ai-usage';
+import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AppConfig } from '../../../platform/config/app-config';
+import { loadMarketConfigs } from '../../../platform/market-config/market-config';
+import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { AiGateway } from '../../../platform/ai/ai-gateway';
 import { CapabilityRegistry } from '../../../platform/ai/capability-registry';
 import { ModelGateway } from '../../../platform/ai/model-gateway';
@@ -64,6 +73,7 @@ describe('GatewayDescriptionWriterModel on the real AiGateway (AIS-03; ADR-0019 
   let requests: ModelRequest[];
   let sellerOn: boolean;
 
+  let store: InMemoryAiUsageStore;
   const modelOf = () => {
     const registry = new CapabilityRegistry();
     registry.register('catalog', CATALOG_AI_CAPABILITIES);
@@ -74,9 +84,17 @@ describe('GatewayDescriptionWriterModel on the real AiGateway (AIS-03; ADR-0019 
         return Promise.resolve(TURN);
       },
     };
-    const gateway = new AiGateway(new ModelGateway(configOf(), provider), registry, {
-      isOn: () => Promise.resolve(sellerOn),
-    });
+    const clock = new FixedClock(Temporal.Instant.from('2026-11-25T10:00:00Z'));
+    const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
+    const { usage, store: usageStore } = inMemoryAiUsage(markets, clock);
+    store = usageStore;
+    const gateway = new AiGateway(
+      new ModelGateway(configOf(), provider),
+      registry,
+      { isOn: () => Promise.resolve(sellerOn) },
+      usage,
+      clock,
+    );
     return new GatewayDescriptionWriterModel(gateway);
   };
 
@@ -116,6 +134,28 @@ describe('GatewayDescriptionWriterModel on the real AiGateway (AIS-03; ADR-0019 
       failure: 'not-configured',
     });
     expect(requests).toHaveLength(0);
+  });
+
+  it("is not available and calls nothing when the seller's AI budget for the day is used up (ZZ caps it; R8)", async () => {
+    const model = modelOf();
+    const audience = { kind: 'seller', sellerId: SELLER } as const;
+    // The ZZ fixture caps each seller's day at 50,000,000 micro-dollars.
+    store.counters.set(`ZZ|day|2026-11-25|seller|${SELLER}`, {
+      held: 50_000_000,
+      spent: 50_000_000,
+    });
+    expect(await model.available(sellerContext(ZZ), audience, 'fast')).toBe(false);
+    expect(await model.write(sellerContext(ZZ), audience, 'fast', REQUEST, 1000)).toEqual({
+      ok: false,
+      failure: 'unavailable',
+    });
+    expect(requests).toHaveLength(0);
+    // AU sets no cap: the same spend is counted, never refused.
+    store.counters.set(`AU|day|2026-11-25|seller|${SELLER}`, {
+      held: 50_000_000,
+      spent: 50_000_000,
+    });
+    expect(await model.available(sellerContext(AU), audience, 'fast')).toBe(true);
   });
 
   it('keeps the audiences apart: a seller cannot use the admin writer, nor an admin the seller one', async () => {

@@ -53,13 +53,37 @@ export class FakeRuntime implements AssistantRuntime {
   modelOf(_marketId: MarketId, tier: ModelTier) {
     return this.models[tier];
   }
+  /**
+   * A full AI budget cap, as the gateway answers it through `GatewayAssistantRuntime`: `available`
+   * is false (status over-budget) and `complete` is unavailable at no cost (run over-budget).
+   */
+  overBudget = false;
+  /** When set, `available` fails inside an open unit, as the real gateway answers off there. */
+  unitOfWork?: { readonly open: number };
+  readonly turnIds: string[] = [];
   available(context: CallContext, tier: ModelTier) {
+    if ((this.unitOfWork?.open ?? 0) > 0) {
+      return Promise.reject(new Error('available() called inside a unit of work'));
+    }
     return Promise.resolve(
-      this.key && this.priced && this.modelOf(context.market.marketId, tier) !== null,
+      !this.overBudget &&
+        this.key &&
+        this.priced &&
+        this.modelOf(context.market.marketId, tier) !== null,
     );
   }
-  complete(_context: CallContext, _tier: ModelTier, request: ModelRequest): Promise<ModelAnswer> {
+  complete(
+    _context: CallContext,
+    _tier: ModelTier,
+    request: ModelRequest,
+    _timeoutMs?: number,
+    turnId?: string,
+  ): Promise<ModelAnswer> {
     this.requests.push(structuredClone(request));
+    if (turnId !== undefined) this.turnIds.push(turnId);
+    if (this.overBudget) {
+      return Promise.resolve({ ok: false, failure: 'unavailable', costMicroUsd: 0 });
+    }
     const next = this.script.shift();
     if (next === undefined) return Promise.resolve(answer({ text: 'How can I help?' }));
     return Promise.resolve(typeof next === 'function' ? next(request) : next);

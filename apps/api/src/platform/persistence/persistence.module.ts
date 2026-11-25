@@ -34,7 +34,9 @@ import {
 } from '../security-events/security-event-feed';
 import { SUBJECT_KEY_STORE, type SubjectKeyStore } from '../subject-keys/subject-key-store';
 import { UNIT_OF_WORK, type UnitOfWork } from '../unit-of-work/unit-of-work';
+import { AI_USAGE_STORE, type AiUsageStore } from '../ai/usage/ai-usage-store';
 import { AdvisoryJobLock } from './advisory-job-lock';
+import { PrismaAiUsageStore } from './ai-usage/prisma-ai-usage-store';
 import { PrismaAuditChainStore } from './audit/prisma-audit-chain-store';
 import { createAuditTrailReader } from './audit/prisma-audit-trail-reader';
 import { createAuditWriter } from './audit/prisma-audit-writer';
@@ -253,6 +255,18 @@ export class PersistenceModule {
    */
   static securityEventStore(): FactoryProvider<SecurityEventStore> {
     return { provide: SECURITY_EVENT_STORE, useFactory: () => new PrismaSecurityEventStore() };
+  }
+
+  /**
+   * The AI Gateway's usage and budget store (docs/design/domain/platform-ai.md section 10), bound
+   * only by `AiModule`: not exported, so no module reads or changes the AI budget.
+   */
+  static aiUsageStore(): FactoryProvider<AiUsageStore> {
+    return {
+      provide: AI_USAGE_STORE,
+      inject: [PrismaService, ID_GENERATOR],
+      useFactory: (prisma: PrismaService, ids: IdGenerator) => new PrismaAiUsageStore(prisma, ids),
+    };
   }
 
   /**

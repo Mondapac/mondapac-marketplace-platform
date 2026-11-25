@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, Result, Temporal } from '@mondapac/shared-kernel';
@@ -162,6 +162,7 @@ async function runModel(
   settings: AssistantSettings,
   history: readonly StoredMessage[],
   text: string,
+  turnId: string,
 ): Promise<Turn> {
   const turn: Turn = {
     cards: [],
@@ -214,6 +215,7 @@ async function runModel(
         maxOutputTokens: MAX_OUTPUT_TOKENS,
       },
       Math.min(MODEL_TIMEOUT_MS, left),
+      turnId,
     );
     if (!answer.ok) {
       turn.costMicroUsd += answer.costMicroUsd;
@@ -334,10 +336,9 @@ export async function sendMessage(
     async () => {
       const latest = await deps.settings.latest(market);
       const settings = latest?.settings ?? DEFAULT_ASSISTANT_SETTINGS;
-      const on =
-        settings.enabled &&
-        (await deps.runtime.available(context, settings.modelTier)) &&
-        inRollout(settings, market.marketId, visitorKey, preview);
+      // The gateway's own status (kill switch, route, its budget caps) is asked after this unit:
+      // it reads the budget in a unit of its own (AI Gateway G2, Mohammad's entry condition).
+      const on = settings.enabled && inRollout(settings, market.marketId, visitorKey, preview);
       if (!on) return err({ code: 'assistant.off' });
       if (caller.kind === 'guest' && settings.users === 'customers-only') {
         return err({ code: 'assistant.sign-in-required' });
@@ -366,6 +367,9 @@ export async function sendMessage(
   );
   if (!loaded.ok) return loaded;
   const { settings, conversation, history } = loaded.value;
+  if (!(await deps.runtime.available(context, settings.modelTier))) {
+    return err({ code: 'assistant.off' });
+  }
 
   const limit =
     caller.kind === 'customer' ? settings.customerMessageLimit : settings.guestMessageLimit;
@@ -375,7 +379,10 @@ export async function sendMessage(
   if (throttled !== null) return err(throttled);
 
   const masked = maskPersonalData(text.value);
-  const turn = await runModel(deps, context, settings, history, masked);
+  // A random id per buyer message (design section 5): the gateway allows the capability's
+  // rounds per turn id.
+  const turnId = randomUUID();
+  const turn = await runModel(deps, context, settings, history, masked, turnId);
   const guarded = guardReply(turn.text);
   for (const notice of guarded.notices) turn.notices.add(notice);
   const replyText = guarded.sentences.join(' ');

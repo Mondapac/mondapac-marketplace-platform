@@ -125,6 +125,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       expect(rules.map((rule) => rule.name).sort()).toEqual([
         'ai-capability-spec-only-from-contracts',
         'ai-registration-only-from-module-files',
+        'ai-usage-store-only-in-persistence',
         'application-does-not-know-delivery',
         'approved-seller-zones-contract-is-for-certification',
         'approved-seller-zones-use-cases-stay-in-sellers-reader',
@@ -180,6 +181,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'ai-capability-spec-only-from-contracts: src/modules/alpha/application/declares-capability.ts',
         'ai-capability-spec-only-from-contracts: src/modules/identity/application/uses-ai.ts',
         'ai-registration-only-from-module-files: src/modules/alpha/application/registers-capabilities.ts',
+        'ai-usage-store-only-in-persistence: src/modules/alpha/infrastructure/reaches-ai-usage-store.ts',
         'application-does-not-know-delivery: src/modules/alpha/application/knows-delivery.ts',
         'approved-seller-zones-contract-is-for-certification: src/modules/alpha/application/reads-approved-seller-zones.ts',
         'approved-seller-zones-contract-is-for-certification: src/modules/certification/presentation/reads-approved-seller-zones.ts',
@@ -356,7 +358,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       ).toEqual({ status: 0, problems: [] });
     });
 
-    it('accepts the passing fixture: a name:-named selector, @@unique([kind, marketId]), a composite foreign key, an exempt model, identical outboxes, an event-keyed inbox and event_delivery, the outbox exception, the audit folder and the Cost folder', () => {
+    it('accepts the passing fixture: a name:-named selector, @@unique([kind, marketId]), a composite foreign key, an exempt model, identical outboxes, an event-keyed inbox and event_delivery, the outbox exception, the audit folder, the AI usage folder and the Cost folder', () => {
       expect(
         checkPrisma(
           path.join(PRISMA_FIXTURES, 'passing/schema'),
@@ -423,8 +425,9 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
           'modules/alpha/infrastructure/raw-forms.ts:32: import of the database driver "postgres/cjs/src/index.js" outside the files of DRIVER_FILES (ADR-0030)',
           'modules/beta/infrastructure/calls-alpha.ts:5: rawRead "alpha.sound" belongs to module "alpha"; call it from that module\'s infrastructure folder',
           'platform/persistence/outbox/reaches-module.ts:6: property ".betaThing" names model BetaThing, which belongs to module "beta"',
-          'platform/persistence/reaches-module.ts:6: property ".auditLog" names model AuditLog, which is reserved to platform/persistence/audit/ (write it through AuditWriter)',
-          'platform/persistence/reaches-module.ts:7: property ".alphaParent" names model AlphaParent, which belongs to module "alpha"',
+          'platform/persistence/reaches-module.ts:7: property ".auditLog" names model AuditLog, which is reserved to platform/persistence/audit/ (write it through AuditWriter)',
+          'platform/persistence/reaches-module.ts:8: property ".alphaParent" names model AlphaParent, which belongs to module "alpha"',
+          'platform/persistence/reaches-module.ts:9: property ".aiBudgetCounter" names model AiBudgetCounter, which is reserved to platform/persistence/ai-usage/ (the AI Gateway\'s budget, platform-ai.md 10)',
           'modules/pricing/infrastructure/price-reads-cost.ts:5: property ".pricingCostSeries" names model PricingCostSeries, which is reserved to modules/pricing/infrastructure/cost/ (Cost stays inside, pricing design 6.5)',
         ].sort(),
       );
