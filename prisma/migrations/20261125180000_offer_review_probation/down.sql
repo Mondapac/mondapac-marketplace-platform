@@ -1,4 +1,4 @@
--- Reverses 20261125170000_offer_review_probation. Development and CI only: every standing, credit,
+-- Reverses 20261125180000_offer_review_probation. Development and CI only: every standing, credit,
 -- category flag, seller flag and their change logs are lost (sellers return to probation with no
 -- credit). It fails while a held change carries the reason `sensitive-category` (changes are
 -- never deleted).
