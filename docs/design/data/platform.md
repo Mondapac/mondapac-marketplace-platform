@@ -1250,7 +1250,7 @@ The two tables are reserved like the audit tables: `PrismaService.tx` does not e
 ## 14. AI Gateway usage and budget (AI Gateway G2, 2026-11-25)
 
 Logical design: docs/design/domain/platform-ai.md sections 7 and 10. Migration
-`20261125100000_platform_ai_usage`; store `platform/persistence/ai-usage/` (the four models are
+`20261125121500_platform_ai_usage`; store `platform/persistence/ai-usage/` (the four models are
 reserved to that folder by `scripts/check-prisma-boundaries.mjs`, `AI_USAGE_TABLES`).
 
 | Table | Key | Writes | Grants to `mondapac_app` | Retention |

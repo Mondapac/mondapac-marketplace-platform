@@ -38,7 +38,7 @@ export function latencyColumnOf(latencyMs: number): (typeof LATENCY_COLUMNS)[num
 
 /**
  * {@link AiUsageStore} on the four `platform.ai_*` tables (docs/design/domain/platform-ai.md
- * section 10; migration 20261125100000_platform_ai_usage). Every statement goes through
+ * section 10; migration 20261125121500_platform_ai_usage). Every statement goes through
  * `tx(market)`, so the market guard pins it to the unit's Market and tenant. The cap check is a
  * conditional `updateMany` (one `UPDATE ... WHERE held <= cap - amount`), which PostgreSQL
  * re-checks on the latest row version after waiting for a concurrent writer, so two units can
