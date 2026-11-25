@@ -418,7 +418,7 @@ import {
 import { PrismaVariantAdminReader } from './prisma-variant-admin.reader';
 import { PrismaVariantTypeSettingsStore } from './prisma-variant-type-settings.store';
 
-import { ModelGateway } from '../../../platform/ai/model-gateway';
+import { AiGateway } from '../../../platform/ai/ai-gateway';
 import { SETTINGS_FACADE, type SettingsFacade } from '../../settings';
 import {
   DESCRIPTION_WRITER_MODEL,
@@ -449,15 +449,15 @@ export const catalogProviders: readonly Provider[] = [
   },
   {
     provide: DESCRIPTION_WRITER_MODEL,
-    inject: [ModelGateway],
-    useFactory: (gateway: ModelGateway): DescriptionWriterModel =>
+    inject: [AiGateway],
+    useFactory: (gateway: AiGateway): DescriptionWriterModel =>
       new GatewayDescriptionWriterModel(gateway),
   },
   {
     provide: DESCRIPTION_WRITER_SWITCHES,
-    inject: [SETTINGS_FACADE, SELLERS_FACADE],
-    useFactory: (settings: SettingsFacade, sellers: SellersFacade): DescriptionWriterSwitches =>
-      new FacadeDescriptionWriterSwitches(settings, sellers),
+    inject: [SETTINGS_FACADE],
+    useFactory: (settings: SettingsFacade): DescriptionWriterSwitches =>
+      new FacadeDescriptionWriterSwitches(settings),
   },
   {
     provide: OFFER_REVIEW_INPUTS,

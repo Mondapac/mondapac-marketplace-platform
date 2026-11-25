@@ -205,7 +205,7 @@ async function runModel(
       break;
     }
     const answer = await deps.runtime.complete(
-      context.market.marketId,
+      context,
       settings.modelTier,
       {
         system: instructionsFor(settings.replyLanguage, settings.scope),
@@ -336,7 +336,7 @@ export async function sendMessage(
       const settings = latest?.settings ?? DEFAULT_ASSISTANT_SETTINGS;
       const on =
         settings.enabled &&
-        deps.runtime.configured(market.marketId, settings.modelTier) &&
+        (await deps.runtime.available(context, settings.modelTier)) &&
         inRollout(settings, market.marketId, visitorKey, preview);
       if (!on) return err({ code: 'assistant.off' });
       if (caller.kind === 'guest' && settings.users === 'customers-only') {

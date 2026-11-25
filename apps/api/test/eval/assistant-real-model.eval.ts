@@ -14,6 +14,9 @@ import { FakeUnitOfWork } from '../support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../support/test-config';
 import { AnthropicMessagesProvider } from '../../src/platform/ai/anthropic-messages.provider';
 import { ModelGateway } from '../../src/platform/ai/model-gateway';
+import { AiGateway } from '../../src/platform/ai/ai-gateway';
+import { CapabilityRegistry } from '../../src/platform/ai/capability-registry';
+import { ASSISTANT_AI_CAPABILITIES } from '../../src/modules/assistant/contracts/ai-capabilities';
 import type { ModelRequest } from '../../src/platform/ai/model-provider';
 import type { AuditWriter } from '../../src/platform/audit/audit-writer';
 import { createUseCaseGate } from '../../src/platform/authz/use-case-gate';
@@ -199,16 +202,16 @@ class RecordingRuntime implements AssistantRuntime {
   modelOf(marketId: Parameters<AssistantRuntime['modelOf']>[0], tier: ModelTier) {
     return this.inner.modelOf(marketId, tier);
   }
-  configured(marketId: Parameters<AssistantRuntime['configured']>[0], tier: ModelTier) {
-    return this.inner.configured(marketId, tier);
+  available(context: Parameters<AssistantRuntime['available']>[0], tier: ModelTier) {
+    return this.inner.available(context, tier);
   }
   async complete(
-    marketId: Parameters<AssistantRuntime['complete']>[0],
+    context: Parameters<AssistantRuntime['complete']>[0],
     tier: ModelTier,
     request: ModelRequest,
     timeoutMs: number,
   ): Promise<ModelAnswer> {
-    const answer = await this.inner.complete(marketId, tier, request, timeoutMs);
+    const answer = await this.inner.complete(context, tier, request, timeoutMs);
     if (answer.ok) {
       for (const block of answer.turn.blocks) {
         if (block.type === 'tool-call') this.requested.push(block.name);
@@ -449,6 +452,10 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
   const registry = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
   const gate = createUseCaseGate(registry, { check: () => Promise.resolve({ allowed: true }) });
   const gateway = new ModelGateway(config, new AnthropicMessagesProvider());
+  // The real gateway path, with the buyer chat registered; no seller-scoped capability runs here.
+  const capabilities = new CapabilityRegistry();
+  capabilities.register('assistant', ASSISTANT_AI_CAPABILITIES);
+  const aiGateway = new AiGateway(gateway, capabilities, { isOn: () => Promise.resolve(false) });
   const reportDir = process.env.ASSISTANT_EVAL_REPORT_DIR ?? join(tmpdir(), 'assistant-eval');
 
   it('evaluates both Market fixtures (AU and ZZ), each with a key and a model', () => {
@@ -510,7 +517,7 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
         '%s',
         async (_id, item, index) => {
           const toolsCalled: string[] = [];
-          const runtime = new RecordingRuntime(new GatewayAssistantRuntime(gateway));
+          const runtime = new RecordingRuntime(new GatewayAssistantRuntime(aiGateway));
           const conversations = new MemoryConversations();
           const deps: AssistantDependencies = {
             unitOfWork: new FakeUnitOfWork(),

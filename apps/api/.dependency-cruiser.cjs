@@ -389,7 +389,14 @@ module.exports = {
       from: { pathNot: MODEL_ENTRY_ALLOW_LIST },
       to: {
         path: '^src/platform/ai/',
-        pathNot: '^src/platform/ai/model-provider\\.ts$',
+        // Types and registration only, no model call: a module's ports use the request shape, every
+        // module registers its capabilities, and sellers implements the seller-switch port.
+        pathNot: [
+          '^src/platform/ai/model-provider\\.ts$',
+          '^src/platform/ai/capability\\.ts$',
+          '^src/platform/ai/capability-registry\\.ts$',
+          '^src/platform/ai/seller-ai-switch\\.ts$',
+        ],
       },
     },
     {

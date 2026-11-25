@@ -125,10 +125,8 @@ async function tierIfOn(
   try {
     const market = await deps.switches.market(context);
     if (!market.enabled) return null;
-    if (caller.kind === 'seller' && !(await deps.switches.seller(context, caller.sellerId))) {
-      return null;
-    }
-    return deps.model.configured(context.market, market.tier) ? market.tier : null;
+    // The gateway evaluates the rest: audience, acting-as, kill switch, the seller's switch, route.
+    return (await deps.model.available(context, caller, market.tier)) ? market.tier : null;
   } catch {
     return null;
   }
@@ -255,7 +253,8 @@ async function draft(
   if (refused !== null) return err(refused);
 
   const answer = await deps.model.write(
-    context.market,
+    context,
+    caller,
     tier,
     {
       system: writerInstructions(request.value.tone, request.value.length),
