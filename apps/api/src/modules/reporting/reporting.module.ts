@@ -10,11 +10,27 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { CATALOG_FACADE, CatalogModule, type CatalogFacade } from '../catalog';
+import { SETTINGS_FACADE, SettingsModule, type SettingsFacade } from '../settings';
+import { SELLER_GOAL_STORE, type SellerGoalStore } from './application/ports/seller-goal-store';
+import { SetSellerMonthlyGoal } from './application/use-cases/set-seller-monthly-goal.use-case';
+import { ViewMarketplaceMonthlyTarget } from './application/use-cases/view-marketplace-monthly-target.use-case';
+import {
+  ViewSellerMonthlyGoal,
+  type SellerGoalDependencies,
+} from './application/use-cases/view-seller-monthly-goal.use-case';
 import { ENGAGEMENT_FACADE, EngagementModule, type EngagementFacade } from '../engagement';
 import { ENGAGEMENT_SOURCES, type EngagementSources } from './application/ports/engagement-sources';
 import { ENGAGEMENT_STORE, type EngagementStore } from './application/ports/engagement-store';
 import { SnapshotDailyEngagement } from './application/use-cases/snapshot-daily-engagement.use-case';
 import { ViewMarketplaceShoppingFunnel } from './application/use-cases/view-marketplace-shopping-funnel.use-case';
+import { ViewMarketplaceDiscountCost } from './application/use-cases/view-marketplace-discount-cost.use-case';
+import { DISCOUNT_SOURCES, type DiscountSources } from './application/ports/discount-sources';
+import { FacadeDiscountSources } from './infrastructure/facade-discount-sources';
+import {
+  PROMOTIONS_REPORTING_FACADE,
+  PromotionsModule,
+  type PromotionsReportingFacade,
+} from '../promotions';
 import { FacadeEngagementSources } from './infrastructure/facade-engagement-sources';
 import { snapshotDailyEngagementJob } from './presentation/jobs/snapshot-daily-engagement.job';
 import { SEARCH_REPORTING_FACADE, SearchModule, type SearchReportingFacade } from '../search';
@@ -98,6 +114,7 @@ const REPORT_FACTS_DEPENDENCIES = Symbol('REPORT_FACTS_DEPENDENCIES');
 const ADMIN_KPI_DEPENDENCIES = Symbol('ADMIN_KPI_DEPENDENCIES');
 const LEDGER_FACTS_DEPENDENCIES = Symbol('LEDGER_FACTS_DEPENDENCIES');
 const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
+const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
 
 /**
  * The reporting module (dashboards upgrade, option B, phase 3): the facts behind the dashboard
@@ -107,9 +124,12 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
  * commission-payouts' reporting facade (its `ledger-recorded` event and the ledger backfill); the
  * shopping funnel's daily counts from ordering's checkouts and engagement's count (dashboards v2,
  * phase 2: a nightly snapshot, counts only); the zero-result searches from search's texts and
- * engagement's searcher counts (the same phase: texts at least ten customers searched). No
+ * engagement's searcher counts (the same phase: texts at least ten customers searched); the
+ * discount cost from promotions' reporting facade at request time (dashboards v2, phase 2;
+ * nothing stored); the Market's monthly revenue target from the settings facade. No
  * module imports it. It publishes no event. Its own keys are the two daily exports' (dashboards v2,
- * PR 5), each audited. The history backfill job brings the facts recorded before the module was
+ * PR 5), each audited, and the seller's monthly goal (phase 2), the one table it holds that is not
+ * derived data. The history backfill job brings the facts recorded before the module was
  * deployed in, once.
  */
 @Module({
@@ -119,8 +139,10 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
     CatalogModule,
     ShippingModule,
     CommissionPayoutsModule,
+    SettingsModule,
     EngagementModule,
     SearchModule,
+    PromotionsModule,
   ],
   controllers: [SellerKpisController, AdminReportsController],
   providers: [
@@ -188,6 +210,39 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
           zone,
           clock,
         } satisfies ViewSellerKpisDependencies),
+    },
+    // Monthly target and seller goal (dashboards v2, phase 2).
+    {
+      provide: SELLER_GOAL_DEPENDENCIES,
+      inject: [UNIT_OF_WORK, SELLER_KPI_READER, SELLER_GOAL_STORE, MARKET_ZONE, CLOCK],
+      useFactory: (
+        unitOfWork: UnitOfWork,
+        reader: SellerKpiReader,
+        goals: SellerGoalStore,
+        zone: MarketZone,
+        clock: Clock,
+      ): SellerGoalDependencies => ({ unitOfWork, reader, goals, zone, clock }),
+    },
+    {
+      provide: ViewSellerMonthlyGoal,
+      inject: [USE_CASE_GATE, SELLER_GOAL_DEPENDENCIES],
+      useFactory: (gate: UseCaseGate, deps: SellerGoalDependencies) =>
+        new ViewSellerMonthlyGoal(gate, deps),
+    },
+    {
+      provide: SetSellerMonthlyGoal,
+      inject: [USE_CASE_GATE, SELLER_GOAL_DEPENDENCIES, AUDIT_WRITER],
+      useFactory: (gate: UseCaseGate, deps: SellerGoalDependencies, audit: AuditWriter) =>
+        new SetSellerMonthlyGoal(gate, { ...deps, audit }),
+    },
+    {
+      provide: ViewMarketplaceMonthlyTarget,
+      inject: [USE_CASE_GATE, ADMIN_KPI_DEPENDENCIES, SETTINGS_FACADE],
+      useFactory: (gate: UseCaseGate, deps: AdminKpiDependencies, settings: SettingsFacade) =>
+        new ViewMarketplaceMonthlyTarget(gate, {
+          ...deps,
+          targets: { marketTarget: (context) => settings.monthlyRevenueTarget(context) },
+        }),
     },
     {
       provide: REPORT_SOURCES,
@@ -371,6 +426,19 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         clock: Clock,
       ) => new ViewMarketplaceZeroResultSearches(gate, { unitOfWork, store, zone, clock }),
     },
+    // The discount cost (dashboards v2, phase 2): read from promotions at request time.
+    {
+      provide: DISCOUNT_SOURCES,
+      inject: [PROMOTIONS_REPORTING_FACADE],
+      useFactory: (promotions: PromotionsReportingFacade): DiscountSources =>
+        new FacadeDiscountSources(promotions),
+    },
+    {
+      provide: ViewMarketplaceDiscountCost,
+      inject: [USE_CASE_GATE, DISCOUNT_SOURCES, MARKET_ZONE, CLOCK],
+      useFactory: (gate: UseCaseGate, sources: DiscountSources, zone: MarketZone, clock: Clock) =>
+        new ViewMarketplaceDiscountCost(gate, { sources, zone, clock }),
+    },
     {
       provide: REPORTING_KPI_FACADE,
       inject: [
@@ -382,8 +450,10 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         ViewSellerNetEarnings,
         ViewMarketplaceOrderStatus,
         ViewMarketplaceOrdersByState,
+        ViewMarketplaceMonthlyTarget,
         ViewMarketplaceShoppingFunnel,
         ViewMarketplaceZeroResultSearches,
+        ViewMarketplaceDiscountCost,
         MARKET_ZONE,
         CLOCK,
       ],
@@ -396,8 +466,10 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         netEarnings: ViewSellerNetEarnings,
         orderStatus: ViewMarketplaceOrderStatus,
         ordersByState: ViewMarketplaceOrdersByState,
+        monthlyTarget: ViewMarketplaceMonthlyTarget,
         shoppingFunnel: ViewMarketplaceShoppingFunnel,
         zeroResultSearches: ViewMarketplaceZeroResultSearches,
+        discountCost: ViewMarketplaceDiscountCost,
         zone: MarketZone,
         clock: Clock,
       ) =>
@@ -410,8 +482,10 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
           netEarnings,
           orderStatus,
           ordersByState,
+          monthlyTarget,
           shoppingFunnel,
           zeroResultSearches,
+          discountCost,
           { zone, clock },
         ),
     },

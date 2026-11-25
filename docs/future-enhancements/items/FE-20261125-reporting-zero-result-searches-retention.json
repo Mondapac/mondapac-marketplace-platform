@@ -3,7 +3,7 @@
   "area": "admin",
   "title": "نگهداری محدود ردیف‌های جستجوی بی‌نتیجه در reporting",
   "desc": "reporting.daily_zero_result_searches متن جستجو (تجمیعی، دست‌کم ۱۰ نفر) را بدون پاک‌سازی نگه می‌دارد؛ نقش برنامه فقط SELECT و INSERT دارد. داشبورد حداکثر ۱۳ ماه را نشان می‌دهد، پس یک کار پاک‌سازی برای روزهای قدیمی‌تر از ۱۳ ماه (با مجوز DELETE جدا) کافی است. یادداشت‌های خود search پس از ۳۵ روز پاک می‌شوند.",
-  "src": "prisma/migrations/20261125030100_reporting_zero_result_searches",
+  "src": "prisma/migrations/20261125090100_reporting_zero_result_searches",
   "date": "2026-11-25",
   "trig": "پیش از راه‌اندازی بازار دوم یا بازبینی فهرست نگهداری داده (retention inventory)",
   "prio": "پایین",

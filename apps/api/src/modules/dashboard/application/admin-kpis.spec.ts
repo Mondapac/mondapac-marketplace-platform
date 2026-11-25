@@ -17,9 +17,11 @@ import { loadMarketConfigs } from '../../../platform/market-config/market-config
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../../../platform/market-context/tenant';
 import type {
+  DiscountCostAnswer,
   FinanceAnswer,
   OperationsAnswer,
   OrderStatusAnswer,
+  MonthlyTargetAnswer,
   OrdersByStateAnswer,
   ShoppingFunnelAnswer,
   ZeroResultSearchesAnswer,
@@ -47,6 +49,8 @@ const gate = createUseCaseGate(markets, {
 const NOW = Temporal.Instant.from('2026-11-22T01:00:00Z');
 const ORDERS = 'ordering.order.view' as PermissionKey;
 const MONEY = 'commission-payouts.settlement.view' as PermissionKey;
+const PROMO_MANAGE = 'promotions.promotion.manage' as PermissionKey;
+const TARGET = 'settings.monthly-revenue-target.view' as PermissionKey;
 
 const operations = { period: { id: '7d' }, sellersWithOrders: 3 } as unknown as OperationsAnswer;
 const finance = {
@@ -177,6 +181,28 @@ const ordersByState = {
   },
 } as unknown as OrdersByStateAnswer;
 
+const monthlyTarget: MonthlyTargetAnswer = {
+  generatedAt: NOW,
+  timezone: 'Australia/Brisbane',
+  currency: 'AUD',
+  refreshedAt: null,
+  figures: {
+    month: '2026-11',
+    lastMonth: '2026-10',
+    daysInMonth: 30,
+    dayOfMonth: 22,
+    daysLeft: 9,
+    monthToDate: 190_560_00n,
+    lastMonthTotal: 221_040_00n,
+    forecast: { status: 'estimate', amount: 248_600_00n },
+    target: 240_000_00n,
+    progressBp: 7940,
+    paceBp: 10358,
+    toGo: 49_440_00n,
+    perDayToGo: 5_493_33n,
+  },
+} as unknown as MonthlyTargetAnswer;
+
 const NA = { value: 0, direction: 'flat', state: 'na' } as const;
 const shoppingFunnel = {
   period: finance.period,
@@ -205,6 +231,28 @@ const zeroResultSearches = {
     periodDays: 7,
   },
 } as unknown as ZeroResultSearchesAnswer;
+
+const discountCost: DiscountCostAnswer = {
+  period: finance.period,
+  generatedAt: NOW,
+  currency: 'AUD',
+  cost: {
+    status: 'available',
+    orders: 42,
+    amount: 50_000n,
+    platformShare: 30_000n,
+    sellerShare: 20_000n,
+    platformShareBp: 6000,
+    change: { value: 2500, direction: 'up', state: 'ok' },
+    previousAmount: 40_000n,
+    byKind: [
+      { kind: 'promotion', uses: 40, amount: 40_000n, platformShare: 20_000n, shareBp: 8000 },
+      { kind: 'first-order', uses: 5, amount: 10_000n, platformShare: 10_000n, shareBp: 2000 },
+      { kind: 'free-shipping', uses: null, amount: null, platformShare: null, shareBp: null },
+    ],
+    released: null,
+  },
+};
 
 const orderStatus: OrderStatusAnswer = {
   period: finance.period,
@@ -341,6 +389,10 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
         asked.push('orders-by-state');
         return Promise.resolve(ok(ordersByState));
       },
+      marketplaceMonthlyTarget: () => {
+        asked.push('market-target');
+        return Promise.resolve(ok(monthlyTarget));
+      },
       marketplaceShoppingFunnel: () => {
         asked.push('shopping-funnel');
         return Promise.resolve(ok(shoppingFunnel));
@@ -348,6 +400,10 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
       marketplaceZeroResultSearches: () => {
         asked.push('zero-result-searches');
         return Promise.resolve(ok(zeroResultSearches));
+      },
+      marketplaceDiscountCost: () => {
+        asked.push('discount-cost');
+        return Promise.resolve(ok(discountCost));
       },
       marketplaceOperations: (_context, input) => {
         asked.push('operations');
@@ -462,6 +518,81 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     expect(failed.ok && failed.value.ordersByStatus?.status).toBe('ok');
   });
 
+  it('asks the market target only with the money key and the target key, and maps it for the body', async () => {
+    const both = await build([MONEY, TARGET]).execute(admin, { period: '7d' });
+    expect(asked).toContain('market-target');
+    expect(both.ok && both.value.marketTarget).toEqual({ status: 'ok', value: monthlyTarget });
+    if (!both.ok) throw new Error('expected an answer');
+    expect(adminKpisBody(both.value).marketTarget).toEqual({
+      status: 'ok',
+      kpis: {
+        month: '2026-11',
+        lastMonth: '2026-10',
+        timezone: 'Australia/Brisbane',
+        currency: 'AUD',
+        daysInMonth: 30,
+        dayOfMonth: 22,
+        daysLeft: 9,
+        monthToDate: '19056000',
+        lastMonthTotal: '22104000',
+        forecast: { status: 'estimate', amount: '24860000' },
+        target: '24000000',
+        progressBp: 7940,
+        paceBp: 10358,
+        toGo: '4944000',
+        perDayToGo: '549333',
+        refreshedAt: null,
+      },
+    });
+    const early = {
+      ...both.value,
+      marketTarget: {
+        status: 'ok' as const,
+        value: {
+          ...monthlyTarget,
+          figures: {
+            ...monthlyTarget.figures,
+            target: null,
+            progressBp: null,
+            paceBp: null,
+            toGo: null,
+            perDayToGo: null,
+            forecast: {
+              status: 'not-enough-data' as const,
+              daysElapsed: 1,
+              minimumDays: 3,
+            },
+          },
+        },
+      },
+    };
+    expect(adminKpisBody(early).marketTarget?.kpis).toMatchObject({
+      target: null,
+      paceBp: null,
+      forecast: { status: 'not-enough-data', daysElapsed: 1, minimumDays: 3 },
+    });
+    for (const keys of [[MONEY], [TARGET], [ORDERS, TARGET]] as const) {
+      asked.length = 0;
+      const out = await build(keys).execute(admin, { period: '7d' });
+      expect(out.ok && out.value.marketTarget).toBeNull();
+      expect(asked).not.toContain('market-target');
+    }
+    // A refusal by the owner leaves it out; a failure or a slow read is `error`, alone.
+    facade.marketplaceMonthlyTarget = () => Promise.resolve(err({ code: 'access.denied' }));
+    const refused = await build([MONEY, TARGET]).execute(admin, { period: '7d' });
+    expect(refused.ok && refused.value.marketTarget).toBeNull();
+    facade.marketplaceMonthlyTarget = () => Promise.reject(new TypeError('boom'));
+    const failed = await build([MONEY, TARGET]).execute(admin, { period: '7d' });
+    expect(failed.ok && failed.value.marketTarget).toEqual({ status: 'error' });
+    expect(failed.ok && failed.value.finance?.status).toBe('ok');
+    expect(
+      adminKpisBody({ ...both.value, marketTarget: { status: 'error' } }).marketTarget,
+    ).toEqual({ status: 'error' });
+    facade.marketplaceMonthlyTarget = () => new Promise(() => undefined);
+    const slow = await build([MONEY, TARGET], 5).execute(admin, { period: '7d' });
+    expect(slow.ok && slow.value.marketTarget).toEqual({ status: 'error' });
+  });
+
   it('maps the shopping-funnel section: hidden steps stay null, not-enough-data, error, and null without the key', async () => {
     const full = await build([ORDERS]).execute(admin, { period: '7d' });
     if (!full.ok) throw new Error('expected an answer');
@@ -503,6 +634,73 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     const failed = await build([ORDERS]).execute(admin, { period: '7d' });
     expect(failed.ok && failed.value.shoppingFunnel).toEqual({ status: 'error' });
     expect(failed.ok && failed.value.ordersByState?.status).toBe('ok');
+  });
+
+  it('maps the discount-cost section: money as strings, not-enough-data, error, and null without both keys', async () => {
+    const full = await build([MONEY, PROMO_MANAGE]).execute(admin, { period: '7d' });
+    if (!full.ok) throw new Error('expected an answer');
+    const money = (amountMinor: string) => ({ amountMinor, currency: 'AUD' });
+    expect(adminKpisBody(full.value).discountCost).toEqual({
+      status: 'ok',
+      kpis: {
+        status: 'available',
+        orders: 42,
+        amount: money('50000'),
+        platformShare: money('30000'),
+        sellerShare: money('20000'),
+        platformShareBp: 6000,
+        change: { value: 2500, direction: 'up', state: 'ok' },
+        previousAmount: money('40000'),
+        byKind: [
+          {
+            kind: 'promotion',
+            uses: 40,
+            amount: money('40000'),
+            platformShare: money('20000'),
+            shareBp: 8000,
+          },
+          {
+            kind: 'first-order',
+            uses: 5,
+            amount: money('10000'),
+            platformShare: money('10000'),
+            shareBp: 2000,
+          },
+          // A kind of 1 to 4 uses is held back whole, and so is a released of 1 to 4 orders.
+          { kind: 'free-shipping', uses: null, amount: null, platformShare: null, shareBp: null },
+        ],
+        released: null,
+      },
+    });
+    const few = {
+      ...full.value,
+      discountCost: {
+        status: 'ok' as const,
+        value: {
+          ...discountCost,
+          cost: { status: 'not-enough-data' as const, orders: 3, minimum: 5 },
+        },
+      },
+    };
+    expect(adminKpisBody(few).discountCost).toEqual({
+      status: 'ok',
+      kpis: { status: 'not-enough-data', orders: 3, minimum: 5 },
+    });
+    // Either key alone leaves the section out: spend is for promotion managers with the money key.
+    for (const keys of [[ORDERS], [MONEY], [PROMO_MANAGE]]) {
+      asked.length = 0;
+      const none = await build(keys).execute(admin, { period: '7d' });
+      expect(none.ok && none.value.discountCost).toBeNull();
+      expect(asked).not.toContain('discount-cost');
+    }
+    facade.marketplaceDiscountCost = () => Promise.reject(new TypeError('boom'));
+    const failed = await build([MONEY, PROMO_MANAGE]).execute(admin, { period: '7d' });
+    expect(failed.ok && failed.value.discountCost).toEqual({ status: 'error' });
+    expect(failed.ok && failed.value.finance?.status).toBe('ok');
+    // The owner refusing the key leaves the section out, like a key the viewer lacks.
+    facade.marketplaceDiscountCost = () => Promise.resolve(err({ code: 'access.denied' }));
+    const refused = await build([MONEY, PROMO_MANAGE]).execute(admin, { period: '7d' });
+    expect(refused.ok && refused.value.discountCost).toBeNull();
   });
 
   it('maps the zero-result searches section: queries, not-enough-data, error, and null without the catalogue key', async () => {
@@ -759,6 +957,13 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     const out = await build([ORDERS, MONEY], 20).execute(admin, { period: '7d' });
     expect(out.ok && out.value.operations).toBeNull();
     expect(out.ok && out.value.finance).toEqual({ status: 'error' });
+  });
+
+  it('marks a slow discount cost as error and keeps finance', async () => {
+    facade.marketplaceDiscountCost = () => new Promise(() => undefined);
+    const out = await build([MONEY, PROMO_MANAGE], 20).execute(admin, { period: '7d' });
+    expect(out.ok && out.value.discountCost).toEqual({ status: 'error' });
+    expect(out.ok && out.value.finance?.status).toBe('ok');
   });
 
   it('marks a section that throws as error and keeps the other', async () => {

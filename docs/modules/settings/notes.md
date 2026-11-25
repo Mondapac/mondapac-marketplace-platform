@@ -80,3 +80,26 @@ store of ADR-0026).
   factor). Reviewed at high risk where area `marketplace` is reviewed. A stored value outside the
   definition is read as the safe value and logged (every setting, not only these).
 - Nothing reads them yet: catalog's referral policy (next slice) reads them through the facade.
+
+## Monthly revenue target (dashboards v2, phase 2)
+
+- Eleventh setting in the same store, the first whose value is an amount: code
+  `monthly-revenue-target`, value `none` (default and safe value) or `<ISO 4217>:<minor units>`
+  (for example `AUD:24000000`, at most 15 digits, above zero). A definition may now carry a
+  `pattern` besides its list of values: `acceptedValue` takes a value that matches it, so the
+  change, the revert and the stored-value check of a read accept it.
+  No migration: the value column takes 1 to 64 characters.
+- Routes: `GET` and `PUT settings/admin/monthly-revenue-target`; the body is
+  `{target: {amount, currency} | null, expectedVersion, note?}` and the currency must be the
+  Market's (`validation.failed` on `target.currency` otherwise). Keys
+  `settings.monthly-revenue-target.view` (in the Viewer role, seed version 38) and `.manage`, both
+  unprotected.
+- Audited as `settings.monthly-revenue-target.changed` with the target before and after as money
+  (the enum action `settings.market-setting.changed` cannot hold an amount); both fields are on the
+  audit money allow-list.
+- Read by reporting through `SettingsFacade.monthlyRevenueTarget` (use case
+  `settings.read-monthly-revenue-target`, the view key). An unreadable store is
+  `access.unavailable`, never "no target".
+- Review (Hassan L2, accepted): where the Market reviews area `marketplace`, the System requests row
+  of a change shows the target before and after to every reviewer of that area, also one without
+  `settings.monthly-revenue-target.view`; the other settings are reviewed the same way.

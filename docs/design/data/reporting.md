@@ -18,6 +18,7 @@ notes: `docs/modules/reporting/notes.md`.
 | `daily_engagement` | `(market_id, market_day)` | one per Market day (dashboards v2, phase 2: the shopping funnel) | 365 per Market |
 | `search_snapshot_days` | `(market_id, market_day)` | one per Market day whose zero-result searches were written (dashboards v2, phase 2) | 365 per Market |
 | `daily_zero_result_searches` | `(market_id, market_day, query_text)` | one per Market day and text the search found nothing for and at least ten customers searched | a few per day at launch; at most 2,000 per day by construction |
+| `seller_monthly_goals` | `(market_id, seller_id, month)` | one per seller and month a goal was set for (dashboards v2 phase 2) | at most 12 × sellers who set goals (100 sellers: 1.2k) |
 
 `seller_orders` also holds `delivery_method` and `delivery_state` (a region code of at most 3
 characters, never a postcode; migration `20261124010000_reporting_seller_orders_delivery`): nullable
@@ -44,7 +45,7 @@ role has SELECT and INSERT only, no UPDATE or DELETE, so a customer's opt-out or
 to touch it. No account, guest, offer or seller column.
 
 `search_snapshot_days` and `daily_zero_result_searches` (migration
-`20261125030100_reporting_zero_result_searches`, dashboards v2 phase 2): per Market day, the day row
+`20261125090100_reporting_zero_result_searches`, dashboards v2 phase 2): per Market day, the day row
 (`query_count`, `recorded_at`) and one row per folded text (`query_text`, 2 to 50 characters) the
 storefront search found nothing for that day (search's own note, `search.zero_result_queries`) and
 that at least ten distinct signed-in customers with personalization on searched that day
@@ -54,6 +55,24 @@ hourly snapshot (the day row first, skip-duplicates, so a second run writes noth
 changed: SELECT and INSERT only. No account, guest or session column; the column names avoid
 `account`, `customer`, `buyer` and `shopper` (the reporting-facts db-spec scans for them). No foreign
 key between the two tables (Prisma models them apart; the unit writes both).
+
+`seller_monthly_goals` (migration `20261125030000_reporting_seller_monthly_goals`, dashboards v2
+phase 2) is the one table of reporting that is NOT derived data: a seller's own sales goal for a
+calendar month of the Market's zone, set through `reporting.set-seller-monthly-goal`. `month` is the
+first day of the month (CHECK: day 1); `amount` is minor units above zero and below 10^15, with its
+`currency` (the Market's); `version` starts at 1 and every change raises it (the use case refuses a
+stale version; the store's first insert is `ON CONFLICT DO NOTHING`, so a race never aborts the
+unit). The application role has SELECT, INSERT and column UPDATE on `currency`, `amount`,
+`version` and `updated_at`: the key never changes and nothing is deleted. It stores no account
+id (reporting's rule, checked by `reporting-facts.db-spec.ts`): who set a goal is in the audit row.
+No index beyond the primary key (one point read per seller and month). Its down migration loses
+the goals (no backfill brings them back).
+
+- A goal stored in another currency than the Market's (after a Market currency change) is ignored
+  by the read: the seller sees no goal until they set one again (L3).
+- The forecast reads the rollups, which lag the events by up to the worker's delay, while the time
+  elapsed is exact: early in a day it reads slightly low (L4).
+- Growth: about one row per seller per month a goal is set; past months are never deleted (L5).
 
 All rows are small (under 200 bytes), so even 10x this volume stays under a few GB with indexes.
 
@@ -65,6 +84,9 @@ All rows are small (under 200 bytes), so even 10x this volume stays under a few 
 - Admin KPIs over a range: primary key range on `(market_id, market_day)`.
 - Seller KPIs over a range: `(market_id, seller_id, market_day)` on both rollups.
 - Top categories of a range: `(market_id, market_day, category_id)`.
+- The month-end forecast: the admin month to date and the month before are two `dailyTotals` ranges
+  (primary key range); the seller's are two `daily` ranges on `(market_id, seller_id, market_day)`
+  plus one primary-key read of `seller_monthly_goals`.
 - Net revenue of a range: primary key range on `(market_id, market_day)` of `daily_ledger`; a
   seller's net earnings: `(market_id, seller_id, market_day)`. Rebuild one seller day of it:
   `ledger_entries (market_id, market_day, seller_id)`.
@@ -82,6 +104,8 @@ All rows are small (under 200 bytes), so even 10x this volume stays under a few 
 
 - `ledger_entries` and `daily_ledger` hold ids and money only; like the rest, derived data the
   ledger backfill rebuilds (reset its `backfill_progress` row).
+- `seller_monthly_goals` is authored data: keep it like the other modules' settings; a goal is
+  changed in place, never removed yet (FE-20261125-seller-goal-remove).
 - The rollups and facts are derived data: kept as long as the dashboards show history, rebuilt by
   the backfill if lost. No personal data is stored (no customer, account or address id, no postcode; the delivery state is a region code only).
 - `daily_engagement` is NOT rebuildable: the behaviour behind a day is deleted by opt-out, erasure

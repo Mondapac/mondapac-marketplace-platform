@@ -101,6 +101,7 @@ import { RedeemDiscounts } from './application/use-cases/redeem-discounts.use-ca
 import { QuoteOwnDiscounts } from './application/use-cases/quote-own-discounts.use-case';
 import { RedeemOwnDiscounts } from './application/use-cases/redeem-own-discounts.use-case';
 import { ListStaleRedemptions } from './application/use-cases/list-stale-redemptions.use-case';
+import { SumDiscountCost } from './application/use-cases/sum-discount-cost.use-case';
 import { SettleRedemptions } from './application/use-cases/settle-redemptions.use-case';
 import { ConfirmRedemptions } from './application/use-cases/confirm-redemptions.use-case';
 import { ReleaseCancelledRedemptions } from './application/use-cases/release-cancelled-redemptions.use-case';
@@ -119,6 +120,7 @@ import { ViewPromotionsSettings } from './application/use-cases/view-promotions-
 import {
   PROMOTIONS_AUDIT_ACTIONS,
   PROMOTIONS_FACADE,
+  PROMOTIONS_REPORTING_FACADE,
   PROMOTIONS_PERMISSIONS,
   PROMOTIONS_STEP_UP_ACTIONS,
 } from './contracts';
@@ -131,6 +133,7 @@ import {
   SellerPromotionsController,
 } from './presentation/promotions.controller';
 import { PromotionsFacadeImplementation } from './presentation/promotions.facade';
+import { PromotionsReportingFacadeImplementation } from './presentation/promotions-reporting.facade';
 
 type UseCaseClass<U> = new (gate: UseCaseGate, deps: PromotionsDependencies) => U;
 
@@ -275,6 +278,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       GrantDueCredits,
       ClawBackOnRefund,
       CountGroupSegmentUses,
+      SumDiscountCost,
     ].map((type) => useCaseProvider(type as UseCaseClass<unknown>)),
     // Customers phase 4c: the cashback that waited for its seller order's payout release.
     registerJobsFrom('promotions', [GrantDueCredits], (grantDue: GrantDueCredits) => [
@@ -310,11 +314,19 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
           settle,
         ),
     },
+    // Dashboards v2, phase 2: what reporting reads for the admin dashboard (the discount cost).
+    {
+      provide: PROMOTIONS_REPORTING_FACADE,
+      inject: [SumDiscountCost],
+      useFactory: (sumDiscountCost: SumDiscountCost) =>
+        new PromotionsReportingFacadeImplementation(sumDiscountCost),
+    },
   ],
   // The event handlers are exported for `PromotionsOrderEventsModule`, which subscribes them to
   // ordering's events (ordering imports promotions, so this module cannot).
   exports: [
     PROMOTIONS_FACADE,
+    PROMOTIONS_REPORTING_FACADE,
     DELIVERED_ORDER_FACTS,
     CashbackOnDelivery,
     QualifyReferralOnDelivery,

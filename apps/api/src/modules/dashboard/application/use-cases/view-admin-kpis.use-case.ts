@@ -19,6 +19,7 @@ import {
 } from '../../../certification';
 import type { SearchSupplyFacade } from '../../../search';
 import { ORDERING_ORDER_VIEW } from '../../../ordering';
+import { PROMOTIONS_PROMOTION_MANAGE } from '../../../promotions';
 import type { Id } from '@mondapac/shared-kernel';
 import {
   CATALOG_PRODUCT_VIEW,
@@ -30,9 +31,12 @@ import {
   type SellersFacade,
   type SellersWorkQueueFacade,
 } from '../../../sellers';
+import { SETTINGS_MONTHLY_REVENUE_TARGET_VIEW } from '../../../settings';
 import type {
+  DiscountCostAnswer,
   FinanceAnswer,
   KpiFailure,
+  MonthlyTargetAnswer,
   OperationsAnswer,
   OrderStatusAnswer,
   OrdersByStateAnswer,
@@ -160,6 +164,12 @@ export interface AdminKpisAnswer {
   /** Seller orders paid in the period by delivery state; null without `ordering.order.view`. */
   readonly ordersByState: KpiSection<OrdersByStateAnswer> | null;
   /**
+   * The current month against the Market's monthly revenue target, with the month-end forecast;
+   * not tied to the period. Null without `commission-payouts.settlement.view` and
+   * `settings.monthly-revenue-target.view`.
+   */
+  readonly marketTarget: KpiSection<MonthlyTargetAnswer> | null;
+  /**
    * The shopping funnel of the period (signed-in customers with personalization on, daily counts
    * summed); null without `ordering.order.view`.
    */
@@ -169,6 +179,11 @@ export interface AdminKpisAnswer {
    * ten distinct signed-in customers on a day); null without `catalog.product.view`.
    */
   readonly zeroResultSearches: KpiSection<ZeroResultSearchesAnswer> | null;
+  /**
+   * The discount cost of the period (Mondapac's and the sellers' shares, by kind); null without
+   * both `commission-payouts.settlement.view` and `promotions.promotion.manage` (promotion spend).
+   */
+  readonly discountCost: KpiSection<DiscountCostAnswer> | null;
   /** Null without `commission-payouts.settlement.view` (it shows each seller's money). */
   readonly topSellers: KpiSection<NamedTopSellers> | null;
   /** Null without `commission-payouts.settlement.view` (it shows money). */
@@ -251,10 +266,13 @@ async function section<T>(
 
 /**
  * `GET dashboard/admin/kpis` (dashboards upgrade, phase 5; dashboards v2 PR 6): the admin KPI
- * strip and trend, orders by status, net revenue and the supply and health numbers. Rule
+ * strip and trend, orders by status, net revenue, the supply and health numbers and the month against the
+ * Market's monthly revenue target (dashboards v2 phase 2). Rule
  * `own-resources` and a platform admin acting as themselves, like the work queue. Each section is
  * asked only when the viewer holds its key (operations and orders by status:
- * `ordering.order.view`, and the shopping funnel too; zero-result searches: `catalog.product.view`; money: `commission-payouts.settlement.view`; each health number its
+ * `ordering.order.view`, and the shopping funnel too; zero-result searches: `catalog.product.view`;
+ * money: `commission-payouts.settlement.view`, and the discount cost also
+ * `promotions.promotion.manage`; each health number its
  * owner's key) and its owner checks the key again. Nothing is cached here.
  */
 export class ViewAdminKpis extends UseCase<
@@ -305,8 +323,10 @@ export class ViewAdminKpis extends UseCase<
       health,
       orders,
       ordersByState,
+      marketTarget,
       shoppingFunnel,
       zeroResultSearches,
+      discountCost,
     ] = await Promise.all([
       held.has(ORDERING_ORDER_VIEW.key)
         ? section('operations', timeoutMs, () => reporting.marketplaceOperations(context, input))
@@ -327,6 +347,10 @@ export class ViewAdminKpis extends UseCase<
             reporting.marketplaceOrdersByState(context, input),
           )
         : null,
+      held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key) &&
+      held.has(SETTINGS_MONTHLY_REVENUE_TARGET_VIEW.key)
+        ? section('market-target', timeoutMs, () => reporting.marketplaceMonthlyTarget(context))
+        : null,
       held.has(ORDERING_ORDER_VIEW.key)
         ? section('shopping-funnel', timeoutMs, () =>
             reporting.marketplaceShoppingFunnel(context, input),
@@ -337,6 +361,11 @@ export class ViewAdminKpis extends UseCase<
             reporting.marketplaceZeroResultSearches(context, input),
           )
         : null,
+      held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key) && held.has(PROMOTIONS_PROMOTION_MANAGE.key)
+        ? section('discount-cost', timeoutMs, () =>
+            reporting.marketplaceDiscountCost(context, input),
+          )
+        : null,
     ]);
     return ok({
       generatedAt: this.deps.clock.now(),
@@ -345,8 +374,10 @@ export class ViewAdminKpis extends UseCase<
       finance,
       ordersByStatus: orders,
       ordersByState,
+      marketTarget,
       shoppingFunnel,
       zeroResultSearches,
+      discountCost,
       topSellers,
       topCategories,
       health,

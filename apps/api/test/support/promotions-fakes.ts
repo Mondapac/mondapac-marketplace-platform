@@ -76,6 +76,7 @@ import type {
   ShippingThresholdRecord,
   ShippingThresholdRepository,
 } from '../../src/modules/promotions/application/ports/settings.repository';
+import { discountCostOf } from '../../src/modules/promotions/domain/discount-cost';
 import { displayStatusOf } from '../../src/modules/promotions/domain/display-status';
 import {
   RedemptionTakenError,
@@ -641,6 +642,52 @@ export class FakeBatchCodeCrypto implements BatchCodeCrypto {
  */
 export class MemoryRedemptions implements RedemptionRepository {
   readonly rows: RedemptionRecord[] = [];
+  /** Set by a test to make {@link discountCost} throw (a store failure). */
+  failDiscountCost = false;
+  /**
+   * The store's grouped read in memory. One fake holds one Market and tenant, so `_market` is not
+   * matched against the rows (the database test covers the tenant and Market filters).
+   */
+  discountCost(
+    _market: MarketContext,
+    currency: string,
+    window: { readonly from: Temporal.Instant; readonly to: Temporal.Instant },
+  ) {
+    if (this.failDiscountCost) return Promise.reject(new Error('store down'));
+    const groups = new Map<
+      string,
+      {
+        kind: RedemptionRecord['kind'];
+        status: RedemptionRecord['status'];
+        rows: number;
+        amount: bigint;
+        platformShare: bigint;
+        sellerShare: bigint;
+      }
+    >();
+    for (const row of this.rows) {
+      if (row.confirmedAt === null || row.currency !== currency) continue;
+      if (Temporal.Instant.compare(row.confirmedAt, window.from) < 0) continue;
+      if (Temporal.Instant.compare(row.confirmedAt, window.to) >= 0) continue;
+      const key = `${row.kind}|${row.status}`;
+      const group = groups.get(key) ?? {
+        kind: row.kind,
+        status: row.status,
+        rows: 0,
+        amount: 0n,
+        platformShare: 0n,
+        sellerShare: 0n,
+      };
+      groups.set(key, {
+        ...group,
+        rows: group.rows + 1,
+        amount: group.amount + row.amount,
+        platformShare: group.platformShare + row.platformShare,
+        sellerShare: group.sellerShare + row.sellerShare,
+      });
+    }
+    return Promise.resolve(discountCostOf([...groups.values()]));
+  }
   /** Promotion names by id, for {@link forCustomer} (a test sets them). */
   readonly names = new Map<string, string>();
   forCustomer(

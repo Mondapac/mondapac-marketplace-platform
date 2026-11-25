@@ -5,13 +5,16 @@ import type { AuditEntry } from '@mondapac/shared-kernel';
 import {
   MarketNumberSettingChanged,
   MarketSettingChanged,
+  MonthlyRevenueTargetChanged,
   type NUMBER_SETTING_TARGET_IDS,
   type SETTING_TARGET_IDS,
 } from '../domain/audit';
 import {
   acceptedValue,
   findDefinition,
+  MONTHLY_REVENUE_TARGET_CODE,
   SETTING_DEFINITIONS,
+  targetOf,
   AI_DESCRIPTION_WRITER_CODE,
   AI_DESCRIPTION_WRITER_TIER_CODE,
   OFFER_REVIEW_CODES,
@@ -47,13 +50,22 @@ const logger = new Logger('SettingsFlow');
 
 type ChoiceValue = Parameters<typeof MarketSettingChanged.entry>[1]['before']['value'];
 
-/** The audit row of one change: a choice's values, or a whole number setting's numbers. */
+/**
+ * The audit row of one change: a choice's values, a whole number setting's numbers, or the
+ * monthly revenue target's amounts.
+ */
 function changeEntry(
   definition: SettingDefinition,
   was: string,
   next: string,
   version: number,
 ): AuditEntry {
+  if (definition.code === MONTHLY_REVENUE_TARGET_CODE) {
+    return MonthlyRevenueTargetChanged.entry('monthly-revenue-target', {
+      before: { target: targetOf(was) },
+      after: { target: targetOf(next), version },
+    });
+  }
   if (definition.integer !== undefined) {
     // A stored value outside the definition (a row changed by hand) is audited as the default it
     // stands for, and logged, so the page can still be saved over it.

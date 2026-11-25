@@ -1,4 +1,5 @@
 import type { Id, MarketContext, Temporal } from '@mondapac/shared-kernel';
+import type { DiscountCostTotals } from '../../domain/discount-cost';
 import type { RedemptionRecord, ReleaseReason } from '../../domain/redemption';
 
 /** What a redemption or its release moves on one promotion's usage counters. */
@@ -121,6 +122,16 @@ export interface RedemptionRepository {
     limit: number,
     after: UsageCursor | null,
   ): Promise<readonly CustomerUsage[]>;
+  /**
+   * The discount cost of the orders whose payment was confirmed in `[from, to)`, in `currency`
+   * (dashboards v2, phase 2): one grouped read by kind and status over the partial index
+   * `redemptions_confirmed_idx`. The orders are the head rows (one per redeemed order).
+   */
+  discountCost(
+    market: MarketContext,
+    currency: string,
+    window: { readonly from: Temporal.Instant; readonly to: Temporal.Instant },
+  ): Promise<DiscountCostTotals>;
 }
 
 /** One discount an order of a customer took (a per-promotion row; never an order's head row). */

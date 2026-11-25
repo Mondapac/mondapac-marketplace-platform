@@ -9,6 +9,7 @@ import {
   parsePeriodQuery,
   resolvePeriod,
   resolvePeriodRequest,
+  windowOf,
 } from './period';
 import type { MarketDay } from './facts';
 
@@ -191,6 +192,28 @@ describe('custom ranges (dashboards v2, PR 5)', () => {
     expect(dayStartsOf(range, 'Pacific/Auckland')).toEqual({
       start: Temporal.Instant.from('2026-04-03T11:00:00Z'),
       end: Temporal.Instant.from('2026-04-06T12:00:00Z'),
+    });
+  });
+});
+
+describe('windowOf', () => {
+  it('spans a Market day from midnight to midnight in its zone: 25 and 23 hours over daylight saving', () => {
+    // Sydney leaves daylight saving on 5 April 2026 and enters it on 4 October 2026.
+    const autumn = windowOf({ from: day('2026-04-05'), to: day('2026-04-05') }, 'Australia/Sydney');
+    expect(autumn).toEqual({
+      from: Temporal.Instant.from('2026-04-04T13:00:00Z'),
+      to: Temporal.Instant.from('2026-04-05T14:00:00Z'),
+    });
+    const spring = windowOf({ from: day('2026-10-04'), to: day('2026-10-04') }, 'Australia/Sydney');
+    expect(spring).toEqual({
+      from: Temporal.Instant.from('2026-10-03T14:00:00Z'),
+      to: Temporal.Instant.from('2026-10-04T13:00:00Z'),
+    });
+    expect(
+      windowOf({ from: day('2026-04-05'), to: day('2026-04-05') }, 'Australia/Brisbane'),
+    ).toEqual({
+      from: Temporal.Instant.from('2026-04-04T14:00:00Z'),
+      to: Temporal.Instant.from('2026-04-05T14:00:00Z'),
     });
   });
 });

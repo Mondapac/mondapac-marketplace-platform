@@ -1,4 +1,4 @@
--- Reverses 20261125030100_reporting_zero_result_searches. The snapshot writes the days of its look-back
+-- Reverses 20261125090100_reporting_zero_result_searches. The snapshot writes the days of its look-back
 -- window again once the migration is applied again; older days are lost (search keeps its notes 35
 -- days), which is acceptable for derived dashboard data.
 SET lock_timeout = '5s';
