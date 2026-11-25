@@ -14,6 +14,9 @@ export {
   type ShoppingFunnelCounts,
   type ShoppingFunnelFailure,
   type ShoppingFunnelRequest,
+  type SearchShoppers,
+  type SearchShoppersFailure,
+  type SearchShoppersRequest,
 } from './engagement.facade';
 export {
   CUSTOMER_BEHAVIOUR_FACADE,

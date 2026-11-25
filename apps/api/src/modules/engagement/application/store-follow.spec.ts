@@ -123,6 +123,7 @@ describe.each([['AU'], ['ZZ']] as const)('store follows in market %s', (code) =>
         followsOfAccount: new FollowsOfAccount(gate, deps),
         followStore: follow,
         shoppingFunnel: null as never,
+        searchShoppers: null as never,
       }),
     };
   });

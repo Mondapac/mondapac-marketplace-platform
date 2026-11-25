@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-engagement-search-pairs-covering-index",
+  "area": "infra",
+  "title": "ایندکس پوشا و جزئی برای شمارش جستجوگران در engagement",
+  "desc": "شمارش جستجوگران متن‌های بی‌نتیجه (searchPairs) امروز با ایندکس (market_id, occurred_at) روی engagement.behaviour_events خوانده می‌شود و روزی با بیش از ۱۰۰٬۰۰۰ جفت متن-حساب رد می‌شود (و پس از ۲۸ روز از دست می‌رود). راه‌حل: CREATE INDEX CONCURRENTLY ... ON engagement.behaviour_events (market_id, tenant_id, occurred_at) INCLUDE (search_query, account_id) WHERE kind = 'search-performed' AND account_id IS NOT NULL، در یک migration جدا و بدون تراکنش، با تأیید database-designer.",
+  "src": "apps/api/src/modules/engagement/infrastructure/prisma-behaviour-event.repository.ts (searchPairs)",
+  "date": "2026-11-25",
+  "trig": "بیش از ۲ میلیون رویداد در روز در یک بازار، یا اجرای این دستور بیش از ۵ ثانیه",
+  "prio": "متوسط",
+  "status": "موکول"
+}

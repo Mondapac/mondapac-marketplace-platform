@@ -128,6 +128,8 @@ import {
   LIVE_LISTING_COUNTER,
   type LiveListingCounter,
 } from '../application/ports/live-listing-counter';
+import { ZERO_RESULT_LOG, type ZeroResultLog } from '../application/ports/zero-result-log';
+import { PrismaZeroResultLog } from './prisma-zero-result-log';
 
 /**
  * Binds the ports of search. Only this layer may reach `PrismaService`, the module's own raw read
@@ -135,6 +137,11 @@ import {
  * other modules.
  */
 export const searchProviders: readonly FactoryProvider[] = [
+  {
+    provide: ZERO_RESULT_LOG,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): ZeroResultLog => new PrismaZeroResultLog(prisma),
+  },
   {
     provide: LIVE_LISTING_COUNTER,
     inject: [PrismaService],

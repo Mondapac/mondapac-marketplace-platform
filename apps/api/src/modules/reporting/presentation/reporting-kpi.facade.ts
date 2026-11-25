@@ -15,6 +15,7 @@ import type { ViewMarketplaceOrderStatus } from '../application/use-cases/view-m
 import type { ViewMarketplaceOrdersByState } from '../application/use-cases/view-marketplace-orders-by-state.use-case';
 import type { ViewMarketplaceMonthlyTarget } from '../application/use-cases/view-marketplace-monthly-target.use-case';
 import type { ViewMarketplaceShoppingFunnel } from '../application/use-cases/view-marketplace-shopping-funnel.use-case';
+import type { ViewMarketplaceZeroResultSearches } from '../application/use-cases/view-marketplace-zero-result-searches.use-case';
 import type { ViewMarketplaceDiscountCost } from '../application/use-cases/view-marketplace-discount-cost.use-case';
 import type { ViewMarketplaceAbandonedCarts } from '../application/use-cases/view-marketplace-abandoned-carts.use-case';
 import type { KpiPeriodInput, PeriodRequest, ReportingKpiFacade } from '../contracts';
@@ -32,6 +33,7 @@ export class ReportingKpiFacadeImplementation implements ReportingKpiFacade {
     private readonly ordersByState: ViewMarketplaceOrdersByState,
     private readonly monthlyTarget: ViewMarketplaceMonthlyTarget,
     private readonly shoppingFunnel: ViewMarketplaceShoppingFunnel,
+    private readonly zeroResultSearches: ViewMarketplaceZeroResultSearches,
     private readonly discountCost: ViewMarketplaceDiscountCost,
     private readonly abandonedCarts: ViewMarketplaceAbandonedCarts,
     private readonly days: {
@@ -64,6 +66,10 @@ export class ReportingKpiFacadeImplementation implements ReportingKpiFacade {
 
   marketplaceShoppingFunnel(context: CallContext, input: KpiPeriodInput) {
     return this.shoppingFunnel.execute(context, input);
+  }
+
+  marketplaceZeroResultSearches(context: CallContext, input: KpiPeriodInput) {
+    return this.zeroResultSearches.execute(context, input);
   }
 
   marketplaceAbandonedCarts(context: CallContext, input: KpiPeriodInput) {

@@ -967,6 +967,10 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
     // Dashboards v2, phase 2: the shopping funnel of a Market day is written once by the nightly
     // snapshot and never changed (a customer's later opt-out never needs to touch it).
     'reporting.daily_engagement': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    // Dashboards v2, phase 2: the zero-result searches of a Market day (texts at least ten
+    // customers searched, with counts) and the day they were written, once, never changed.
+    'reporting.search_snapshot_days': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
+    'reporting.daily_zero_result_searches': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Dashboards v2, phase 2: a Market day's abandoned carts are written once by the nightly
     // snapshot and never changed.
     'reporting.daily_abandoned_carts': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
@@ -1325,6 +1329,9 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'updated_at',
       ],
     },
+    // Dashboards v2, phase 2: the folded texts of text searches that found nothing, per quarter
+    // hour; inserted once, read by reporting's snapshot and purged after 35 days, never updated.
+    'search.zero_result_queries': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
     // Search rating boost (buyer reviews and ratings package 5): the star totals of a product,
     // copied from reviews by a job; upserted and deleted when a product has no published review.
     'search.product_ratings': {

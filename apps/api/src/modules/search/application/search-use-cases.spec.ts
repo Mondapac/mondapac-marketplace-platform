@@ -39,6 +39,7 @@ import type { SearchDependencies } from './search-dependencies';
 import { SYNC_BATCH } from './sync-offers';
 import { RebuildOfferIndex } from './use-cases/rebuild-offer-index.use-case';
 import { SearchProducts } from './use-cases/search-products.use-case';
+import { MemoryZeroResultLog } from './testing/memory-zero-result-log';
 import {
   CATEGORY_DIRECT_PAGES,
   SyncOfferDocuments,
@@ -491,6 +492,7 @@ describe.each([
   let shelves: StubShelves;
   let categories: StubCategories;
   let sellUnits: StubSellUnits;
+  let zeroResults: MemoryZeroResultLog;
   let deps: SearchDependencies;
   // The cultures catalog's facade answers per Offer (multi-culture package 3a); `down` fails it.
   const cultureSource = {
@@ -519,6 +521,7 @@ describe.each([
     shelves = new StubShelves();
     categories = new StubCategories();
     sellUnits = new StubSellUnits();
+    zeroResults = new MemoryZeroResultLog();
     scopeRowsOf.rows = [];
     treeOf.nodes = [];
     storeNames.clear();
@@ -549,6 +552,7 @@ describe.each([
       categories,
       sellUnits,
       variants: new MemoryVariants(documents),
+      zeroResults,
     };
   });
 
@@ -1048,6 +1052,77 @@ describe.each([
   describe('SearchProducts', () => {
     const search = (input: Parameters<SearchProducts['execute']>[1]) =>
       new SearchProducts(gate, deps).execute(anonymous, input);
+
+    describe('zero-result searches (dashboards v2, phase 2)', () => {
+      it('notes, on the server, the folded text of a storefront text search that found nothing', async () => {
+        reader.hits = [];
+        const result = await search({ q: '  Sangak   BREAD ', noteZeroResult: true });
+        expect(result.ok && result.value.items).toEqual([]);
+        expect(zeroResults.rows).toEqual([
+          {
+            marketId: code,
+            key: 'sangak bread',
+            bucketStart: Temporal.Instant.from('2026-10-15T10:00:00Z'),
+          },
+        ]);
+        // The same text in the same quarter hour is one row.
+        await search({ q: 'sangak bread', noteZeroResult: true });
+        expect(zeroResults.rows).toHaveLength(1);
+      });
+
+      it('counts a page whose every hit is hidden as nothing found', async () => {
+        reader.hits = [hit(1)];
+        visibility.hidden.add(offer(1));
+        await search({ q: 'barberry', noteZeroResult: true });
+        expect(zeroResults.rows.map((row) => row.key)).toEqual(['barberry']);
+      });
+
+      it('notes nothing for a caller other than the storefront route, nor when something was found', async () => {
+        reader.hits = [];
+        await search({ q: 'barberry' });
+        reader.hits = [hit(1)];
+        await search({ q: 'barberry', noteZeroResult: true });
+        expect(zeroResults.rows).toEqual([]);
+      });
+
+      it('notes nothing for a later page, a browse, a filtered list or text that may name a person', async () => {
+        reader.hits = [];
+        await search({ q: 'barberry', page: 2, noteZeroResult: true });
+        await search({ category: CATEGORY, noteZeroResult: true });
+        await search({ q: 'barberry', category: CATEGORY, noteZeroResult: true });
+        await search({ q: 'barberry', price: '100..', noteZeroResult: true });
+        await search({ q: 'jane@example.com', noteZeroResult: true });
+        await search({ q: 'call 0412 345 678', noteZeroResult: true });
+        expect(zeroResults.rows).toEqual([]);
+      });
+
+      it('skips the store for a text it already noted in the same quarter hour (per process)', async () => {
+        reader.hits = [];
+        const searchProducts = new SearchProducts(gate, deps);
+        await searchProducts.execute(anonymous, { q: 'Barberry', noteZeroResult: true });
+        await searchProducts.execute(anonymous, { q: 'barberry ', noteZeroResult: true });
+        expect(zeroResults.noteCalls).toBe(1);
+        expect(zeroResults.rows).toHaveLength(1);
+      });
+
+      it('tries again after a failed note', async () => {
+        reader.hits = [];
+        zeroResults.failing = true;
+        const searchProducts = new SearchProducts(gate, deps);
+        await searchProducts.execute(anonymous, { q: 'barberry', noteZeroResult: true });
+        zeroResults.failing = false;
+        await searchProducts.execute(anonymous, { q: 'barberry', noteZeroResult: true });
+        expect(zeroResults.noteCalls).toBe(2);
+        expect(zeroResults.rows).toHaveLength(1);
+      });
+
+      it('answers the shopper even when the note fails', async () => {
+        reader.hits = [];
+        zeroResults.failing = true;
+        const result = await search({ q: 'barberry', noteZeroResult: true });
+        expect(result.ok && result.value.items).toEqual([]);
+      });
+    });
 
     describe('counts of the scope (search 1a)', () => {
       const parent = '00000000-0000-7000-8000-0000000000c1' as Id<'Category'>;

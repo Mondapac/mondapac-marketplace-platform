@@ -1,5 +1,6 @@
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
 import type { AccessDenied } from '../../../platform/authz';
+import type { SearchShoppers } from '../domain/search-shoppers';
 import type { ShoppingFunnelCounts } from '../domain/shopping-funnel';
 
 /**
@@ -93,7 +94,36 @@ export interface EngagementFacade {
     context: CallContext,
     request: ShoppingFunnelRequest,
   ): Promise<Result<ShoppingFunnelCounts, ShoppingFunnelFailure>>;
+
+  /**
+   * For the texts named (search's zero-result notes of one window), the distinct signed-in
+   * customers with personalization on who searched each in the window and their searches; only
+   * texts searched by at least ten distinct customers are answered (dashboards v2, phase 2).
+   * Guests are never counted. Rule `system` (reporting's nightly snapshot). Counts only.
+   */
+  searchShoppers(
+    context: CallContext,
+    request: SearchShoppersRequest,
+  ): Promise<Result<readonly SearchShoppers[], SearchShoppersFailure>>;
 }
+
+/**
+ * What reporting's nightly snapshot asks the searchers of (dashboards v2, phase 2): one window (a
+ * Market day, at most 26 hours) and the folded texts search found nothing for in it (at most
+ * 2,000, each 1 to 200 characters). Texts only; no person is named.
+ */
+export interface SearchShoppersRequest {
+  readonly window: { readonly from: Temporal.Instant; readonly to: Temporal.Instant };
+  readonly queries: readonly string[];
+}
+
+/** A text searched by at least ten distinct customers in the window, with its counts. */
+export type { SearchShoppers };
+
+export type SearchShoppersFailure =
+  | AccessDenied
+  | { readonly code: 'validation.failed' }
+  | { readonly code: 'engagement.search-too-large' };
 
 /**
  * What reporting's nightly snapshot asks the shopping funnel of (dashboards v2, phase 2): one
