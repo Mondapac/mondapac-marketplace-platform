@@ -44,9 +44,10 @@ setting" list needs a superseding ADR and security-tester review (ADR-0026 decis
    current prompt version; with none left, the capability is off (R8).
 4. **Who may change.** Keys `settings.ai-models.manage` and `settings.ai-gateway.manage` change,
    `settings.ai-gateway.view` reads (ADR-0042 decision 2). Only senior admins hold the manage keys
-   (owner decision Q4): both are protected permission keys, which only the Platform Administrator
-   role holds or grants (identity brief R11), and a permission contract test fails if any other
-   seeded role holds them. An admin changes only their own Market.
+   (owner decision Q4): both are protected permission keys that only the Platform Administrator
+   role may grant (identity brief R11), so a key in any other role is a deliberate, audited
+   Platform Administrator decision; a permission contract test fails if any other seeded role
+   holds them. An admin changes only their own Market.
 5. **In-place TOTP confirmation**, through the existing admin step-up (registered action keys, as
    for the wallet admin settings; admins always have a second factor, ADR-0018 decision 5); never a
    second admin. Required for: adding or removing a model; a priority list, saver model or saver

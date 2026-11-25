@@ -105,7 +105,8 @@ configured model tier (`ai-description-writer-tier`, the assistant's tier settin
 the usage row records the resolved model id. Likewise the Market's on/off switch of a capability
 stays where it is today (the assistant's settings, the description writer's setting) and the module
 checks it before `status`/`run`; the gateway evaluates the kill switch, the acting-as state, the
-audience, the seller switch through the `sellers` port and the route. G4 moves both into the
+audience, the seller switch through the `sellers` port and the configured tier (the catalogue's
+route conditions apply from G3). G4 moves both into the
 `settings` definitions the gateway reads, and the `tier` option goes. `opts.timeoutMs` may only
 shorten the capability's `timeoutMs`.
 
@@ -242,8 +243,9 @@ description writer's, the buyer assistant's) are not rebuilt.
 - **Permissions:** `settings.ai-models.manage` and `settings.ai-gateway.manage` to change,
   `settings.ai-gateway.view` to see, named per ADR-0042. Each admin changes only their own Market.
   Only a senior admin is given the change permissions (owner decision, Q4): the two manage keys are
-  protected permission keys, which only the Platform Administrator role holds or grants (identity
-  brief R11); a permission contract test fails if a seeded role other than it holds them.
+  protected permission keys that only the Platform Administrator role may grant (identity brief
+  R11), so a key in any other role is a deliberate, audited Platform Administrator decision; a
+  permission contract test fails if a seeded role other than it holds them.
 - **In-place confirmation (owner decision).** The admin is not signed out: a small dialog asks for
   the six-digit TOTP code, through the existing admin step-up (registered action keys, as for the
   wallet admin settings; admins always have a second factor, ADR-0018 decision 5). These changes
@@ -322,7 +324,7 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 | G0 | Docs only: this document, ADR-0052, ADR-0053, the ADR-0019 decision 2 amendment, the future-enhancement rows | — | Ali (CTO), Mohammad, Hassan |
 | G1 | Capability registry, `run` and `status`, the seller-switch port, the generic masker. The buyer assistant and the description writer move to `run` and `status`; no user-visible change. | G0 | Mohammad, Hassan |
 | G2 | Usage and reservation tables, central caps, parallel counting. Cap values come from per-Market configuration defaults until G4; counting only, nothing enforced before G7 | G1 | Mojtaba, Hassan |
-| G3 | Router with priority lists, saver mode, circuit breaker, second adapter. Until G4 each task type's list is the single catalogue row today's tier maps to; the `tier` option stays until G4 | G2 and ADR-0052 | Mohammad, Hassan |
+| G3 | Router with priority lists, saver mode, circuit breaker, second adapter. Until G4 each task type's list is the single catalogue row today's tier maps to; the `tier` option stays until G4 | G2, ADR-0052 and Hassan's verification of the first route recorded in its catalogue row | Mohammad, Hassan |
 | G4 | «AI Models» and gateway settings in `settings`, with API, permissions, TOTP confirmation, audit and the background evaluation run; capability switches and priority lists move into these settings and the `tier` option goes | G3 | Hassan, Mojtaba |
 | G5 | Admin pages AI Models (external tab, scorecard, playground, change preview) and AI Gateway | G4 | Reza (UI/UX) |
 | G6 | In-house model tab: shadow, percent rollout, auto rollback, HTTP contract | G4, G5 and Hassan's approval | Mohammad, Hassan |
