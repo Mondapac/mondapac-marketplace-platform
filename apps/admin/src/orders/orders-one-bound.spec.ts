@@ -3,6 +3,7 @@ import {
   DEFAULT_QUERY,
   daysLabel,
   filterCount,
+  queryFromParams,
   queryString,
   rangeIsBackwards,
 } from './orders-query.ts';
@@ -79,5 +80,35 @@ describe('a saved range with one date bound', () => {
     expect(rangeIsBackwards({ from: '2026-10-31' })).toBe(false);
     expect(rangeIsBackwards({ to: '2026-10-01' })).toBe(false);
     expect(rangeIsBackwards({ from: '2026-10-31', to: '2026-10-01' })).toBe(true);
+  });
+});
+
+describe('the query a link opens the list on', () => {
+  it('reads the status tab, the filters and a day range', () => {
+    const query = queryFromParams({
+      status: 'confirmed',
+      fulfilment: 'to-ship',
+      from: '2026-11-01',
+      to: '2026-11-30',
+    });
+    expect(query.tab).toBe('confirmed');
+    expect(query.filters).toEqual({ fulfilment: 'to-ship' });
+    expect(query.days).toEqual({ from: '2026-11-01', to: '2026-11-30' });
+  });
+
+  it('prefers a placed preset to a range and drops unknown values', () => {
+    const query = queryFromParams({
+      status: 'bogus',
+      paymentState: 'nope',
+      placed: 'last-7-days',
+      from: '2026-11-01',
+    });
+    expect(query.tab).toBe('all');
+    expect(query.filters).toEqual({ placed: 'last-7-days' });
+    expect(query.days).toBeNull();
+  });
+
+  it('ignores a day that is not a date', () => {
+    expect(queryFromParams({ from: 'yesterday' }).days).toBeNull();
   });
 });
