@@ -78,3 +78,27 @@ export interface OfferReviewReferralStore {
   record(market: MarketContext, referral: OfferReviewReferral): Promise<void>;
 }
 export const OFFER_REVIEW_REFERRAL_STORE = Symbol('CATALOG_OFFER_REVIEW_REFERRAL_STORE');
+
+/**
+ * What the review queue reads about Offers waiting for their first publication (slice 5): the
+ * reasons of each Offer's latest `first-publication` referral (the queue's reason chips and the
+ * bulk approval's allow-list) and the certification type codes of its open tags (the bulk
+ * approval's "one certificate type" check). Runs in the caller's unit, by Market.
+ */
+export interface OfferReviewQueueFacts {
+  /**
+   * The reasons of the latest `first-publication` referral of each Offer (highest Offer version);
+   * an Offer with no such referral is left out of the map.
+   */
+  firstPublicationReasons(
+    market: MarketContext,
+    offerIds: readonly Id<'Offer'>[],
+  ): Promise<ReadonlyMap<string, readonly OfferReviewReason[]>>;
+
+  /** The distinct type codes of each Offer's open (not removed) tags, sorted; an Offer with none is left out. */
+  openTagTypes(
+    market: MarketContext,
+    offerIds: readonly Id<'Offer'>[],
+  ): Promise<ReadonlyMap<string, readonly string[]>>;
+}
+export const OFFER_REVIEW_QUEUE_FACTS = Symbol('CATALOG_OFFER_REVIEW_QUEUE_FACTS');

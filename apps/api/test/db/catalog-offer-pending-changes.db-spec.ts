@@ -26,8 +26,14 @@ import { Product } from '../../src/modules/catalog/domain/product';
 import { simpleProductType } from '../../src/modules/catalog/domain/product-types/simple';
 import { PrismaCategoryPathsReader } from '../../src/modules/catalog/infrastructure/prisma-category-paths.reader';
 import { PrismaOfferPendingChangeRepository } from '../../src/modules/catalog/infrastructure/prisma-offer-pending-change.repository';
-import { PrismaOfferReviewReferralStore } from '../../src/modules/catalog/infrastructure/prisma-offer-review-referral.store';
+import {
+  PrismaOfferReviewQueueFacts,
+  PrismaOfferReviewReferralStore,
+} from '../../src/modules/catalog/infrastructure/prisma-offer-review-referral.store';
+import type { OfferChangeQueueFilter } from '../../src/modules/catalog/application/ports/offer-pending-change.repository';
 import { PrismaOfferRepository } from '../../src/modules/catalog/infrastructure/prisma-offer.repository';
+import { PrismaOwnCatalogReader } from '../../src/modules/catalog/infrastructure/prisma-own-catalog.reader';
+import { ConfigCatalogMarketPolicy } from '../../src/modules/catalog/infrastructure/config-catalog-market-policy';
 import { PrismaProductRepository } from '../../src/modules/catalog/infrastructure/prisma-product.repository';
 import { PrismaProductRevisionRepository } from '../../src/modules/catalog/infrastructure/prisma-product-revision.repository';
 import { prismaOfferEditReview } from '../support/catalog-offer-edit-review-fakes';
@@ -98,6 +104,19 @@ describe.each(TEST_MARKETS)(
         return persistence.service.violatedConstraint(error) ?? 'not-a-constraint';
       }
     };
+
+    /** The admin list over the database, with fakes for the other modules (slice 5). */
+    const listOf = () =>
+      new AdminOfferChangesList(gate, {
+        unitOfWork: persistence.unitOfWork,
+        pendingChanges: changes,
+        offers,
+        ownReader: new PrismaOwnCatalogReader(persistence.service),
+        policy: new ConfigCatalogMarketPolicy(markets),
+        sellerNames: { storeNames: () => Promise.resolve(new Map()) },
+        storeSearch: { sellersMatching: () => Promise.resolve({ sellerIds: [], capped: false }) },
+        productApproveProbe: { execute: () => Promise.resolve({ ok: true }) },
+      });
 
     const unit = <T>(work: () => Promise<T>) =>
       persistence.unitOfWork.run(market, async () => ({ ok: true as const, value: await work() }));
@@ -416,6 +435,220 @@ describe.each(TEST_MARKETS)(
       expect(row.rows).toEqual([{ status: 'pending', decided_at: null, decision_note: null }]);
     });
 
+    describe('the admin Edits list and the queue facts (slice 5)', () => {
+      const locale = new ConfigCatalogMarketPolicy(markets).locales(market).default;
+      const admin = (): CallContext =>
+        testCallContext(
+          market,
+          testAuthenticatedActor(market, {
+            population: 'admin',
+            accountId: uuid7() as Id<'Account'>,
+            sessionId: uuid7() as Id<'Session'>,
+            sellerId: null,
+          }),
+        );
+
+      async function category(): Promise<Id<'Category'>> {
+        const id = uuid7();
+        await owner.query(
+          `INSERT INTO catalog.platform_categories
+             (id, market_id, tenant_id, slug, status, created_by_kind, version, created_at)
+           VALUES ($1, $2, $3, $4, 'active', 'seed', 1, now())`,
+          [id, market.marketId, market.tenantId, `oc-${id.slice(-12)}`],
+        );
+        return id as Id<'Category'>;
+      }
+
+      /** Publishes a revision of the Offer's product with a name and (optionally) a category. */
+      async function publish(offerId: Id<'Offer'>, name: string, categoryId?: Id<'Category'>) {
+        const { rows } = await owner.query<{ product_id: string }>(
+          `SELECT product_id FROM catalog.offers WHERE id = $1`,
+          [offerId],
+        );
+        const productId = rows[0]!.product_id;
+        const base = [market.marketId, market.tenantId];
+        const [familyId, familyRevisionId, revisionId] = [uuid7(), uuid7(), uuid7()];
+        await owner.query(
+          `INSERT INTO catalog.attribute_families
+             (id, market_id, tenant_id, code, status, created_by_kind, version, created_at)
+           VALUES ($1, $2, $3, $4, 'active', 'seed', 1, now())`,
+          [familyId, ...base, `f-${uuid7().slice(-10)}`],
+        );
+        await owner.query(
+          `INSERT INTO catalog.attribute_family_revisions
+             (id, market_id, tenant_id, family_id, revision_no, groups, author_kind, created_at)
+           VALUES ($1, $2, $3, $4, 1, '[]', 'seed', now())`,
+          [familyRevisionId, ...base, familyId],
+        );
+        await owner.query(
+          `INSERT INTO catalog.product_revisions
+             (id, market_id, tenant_id, product_id, revision_no, revision_kind, type_code,
+              base_revision_id, reverted_from_revision_id, family_revision_id,
+              definition_revision_ids, tax_category_code, attribute_values, field_provenance,
+              sensitive, sensitive_reasons, content_schema_version, content_hash, author_kind,
+              author_account_id, acting_admin_account_id, submitted_at)
+           VALUES ($1, $2, $3, $4, 1, 'submission', 'simple', NULL, NULL, $5, '{}', 'standard',
+              '{}', NULL, false, '{}', 1, $6, 'admin', $7, NULL, now())`,
+          [revisionId, ...base, productId, familyRevisionId, `sha256:${'a'.repeat(64)}`, uuid7()],
+        );
+        await owner.query(
+          `INSERT INTO catalog.product_revision_texts
+             (market_id, tenant_id, revision_id, locale, name, short_description, description)
+           VALUES ($1, $2, $3, $4, $5, NULL, NULL)`,
+          [...base, revisionId, locale, name],
+        );
+        if (categoryId !== undefined) {
+          await owner.query(
+            `INSERT INTO catalog.product_revision_categories
+               (market_id, tenant_id, revision_id, category_id, position)
+             VALUES ($1, $2, $3, $4, 0)`,
+            [...base, revisionId, categoryId],
+          );
+        }
+        await owner.query(
+          `UPDATE catalog.products SET status = 'published', published_revision_id = $3
+            WHERE market_id = $1 AND id = $2`,
+          [market.marketId, productId, revisionId],
+        );
+      }
+
+      it('filters, counts and searches the pending changes in SQL, with % and _ as typed', async () => {
+        const marker = uuid7().slice(-8);
+        const categoryId = await category();
+        // Unique instants, so other specs' rows never fall in the window.
+        const at = Temporal.Instant.fromEpochMilliseconds(
+          Date.UTC(2002, 0, 1) + Math.floor(Math.random() * 86_400_000),
+        );
+        const [a, b, c] = [await liveOffer(), await liveOffer(), await liveOffer()];
+        await publish(a, `Saffron ${marker}`, categoryId);
+        await publish(b, `Rice_${marker}`);
+        const changeA = propose(a, { at, reasons: ['contact-text'] });
+        const changeB = propose(b, { at: at.add({ minutes: 1 }), reasons: ['handling'] });
+        const changeC = propose(c, {
+          at: at.add({ minutes: 2 }),
+          reasons: ['emergency-stop', 'certificate-badge'],
+        });
+        for (const change of [changeA, changeB, changeC]) {
+          await unit(() => changes.insert(market, change));
+        }
+        const window = { submittedFrom: at, submittedTo: at.add({ minutes: 3 }) };
+        const search = (text: string) => ({ text, locale, sellerIds: [] });
+        const read = await unit(async () => {
+          const ids = async (filter: OfferChangeQueueFilter, direction?: 'asc' | 'desc') =>
+            (
+              await changes.listPending(
+                market,
+                { after: null, limit: 50, ...(direction === undefined ? {} : { direction }) },
+                { ...window, ...filter },
+              )
+            ).map((row) => row.state.id as string);
+          return {
+            all: await ids({}),
+            desc: await ids({}, 'desc'),
+            offset: (
+              await changes.listPending(market, { after: null, limit: 1, offset: 1 }, window)
+            ).map((row) => row.state.id as string),
+            count: await changes.countPending(market, window),
+            reasons: await ids({ reasons: ['handling', 'emergency-stop'] }),
+            seller: await ids({ sellerId: uuid7() as Id<'Seller'> }),
+            category: await ids({ categoryId }),
+            categoryCount: await changes.countPending(market, { ...window, categoryId }),
+            byName: await ids({ search: search(`saffron ${marker}`) }),
+            byStore: await ids({
+              search: { text: 'no-such-name', locale, sellerIds: [sellerId] },
+            }),
+            underscore: await ids({ search: search(`rice_${marker}`) }),
+            // `_` is a literal: "riceX" never matches "Rice_".
+            wildcard: await ids({ search: search(`rice%${marker}`) }),
+          };
+        });
+        if (!read.ok) throw new Error('read failed');
+        const [idA, idB, idC] = [changeA, changeB, changeC].map((x) => x.state.id as string);
+        expect(read.value.all).toEqual([idA, idB, idC]);
+        expect(read.value.desc).toEqual([idC, idB, idA]);
+        expect(read.value.offset).toEqual([idB]);
+        expect(read.value.count).toBe(3);
+        expect(read.value.reasons).toEqual([idB, idC]);
+        expect(read.value.seller).toEqual([]);
+        expect(read.value.category).toEqual([idA]);
+        expect(read.value.categoryCount).toBe(1);
+        expect(read.value.byName).toEqual([idA]);
+        expect(read.value.byStore).toEqual([idA, idB, idC]);
+        expect(read.value.underscore).toEqual([idB]);
+        expect(read.value.wildcard).toEqual([]);
+      });
+
+      it('lists through the use case with the live values next to the proposed ones', async () => {
+        const offerId = await liveOffer();
+        await publish(offerId, 'Dates');
+        const change = propose(offerId, {
+          at: Temporal.Instant.fromEpochMilliseconds(Date.UTC(2003, 0, 1) + sequence),
+        });
+        await unit(() => changes.insert(market, change));
+        const list = listOf();
+        const found = await list.execute(admin(), {
+          sellerId,
+          reasons: 'certificate-badge',
+          submittedFrom: change.state.submittedAt.toString(),
+          submittedTo: change.state.submittedAt.add({ seconds: 1 }).toString(),
+        });
+        expect(found.ok).toBe(true);
+        if (!found.ok) return;
+        expect(found.value.total).toBe(1);
+        expect(found.value.items).toEqual([
+          expect.objectContaining({
+            changeId: change.state.id,
+            proposedDescription: { 'en-AU': 'Call 0412 345 678' },
+            proposedTagTypes: ['halal'],
+            live: {
+              description: { 'en-AU': 'Fresh dates' },
+              handling: 'SEALED_ORIGINAL',
+              tagTypes: [],
+            },
+          }),
+        ]);
+        expect(found.value.items[0]?.offer?.status).toBe('published');
+        expect(found.value.items[0]?.product.name).toBe('Dates');
+      });
+
+      it('reads the latest first-publication reasons and the open tag types of Offers', async () => {
+        const offerId = await liveOffer();
+        const store = new PrismaOfferReviewReferralStore(persistence.service, ids);
+        const facts = new PrismaOfferReviewQueueFacts(persistence.service);
+        const referral = {
+          offerId,
+          sellerId,
+          trigger: 'first-publication' as const,
+          policyVersion: 3,
+          decidedAt: T0,
+        };
+        await unit(() =>
+          store.record(market, { ...referral, offerVersion: 2, reasons: ['probation'] }),
+        );
+        await unit(() =>
+          store.record(market, {
+            ...referral,
+            offerVersion: 3,
+            reasons: ['handling', 'full-review'],
+          }),
+        );
+        const unknown = uuid7() as Id<'Offer'>;
+        const read = await unit(async () => ({
+          reasons: await facts.firstPublicationReasons(market, [offerId, unknown]),
+          tags: await facts.openTagTypes(market, [offerId]),
+        }));
+        if (!read.ok) throw new Error('read failed');
+        expect([...read.value.reasons]).toEqual([[offerId, ['handling', 'full-review']]]);
+        expect(read.value.tags.get(offerId)).toBeUndefined();
+        const other = marketOf(otherMarketOf(code));
+        const across = await persistence.unitOfWork.run(other, async () => ({
+          ok: true as const,
+          value: await facts.firstPublicationReasons(other, [offerId]),
+        }));
+        expect(across.ok && across.value.size).toBe(0);
+      });
+    });
+
     describe('end to end: hold, withdraw, approve', () => {
       const contextOf = (population: 'seller' | 'admin', target = market): CallContext =>
         testCallContext(
@@ -479,10 +712,7 @@ describe.each(TEST_MARKETS)(
             editReview,
           }),
           reject: new AdminOfferChangeReject(gate, decision),
-          list: new AdminOfferChangesList(gate, {
-            unitOfWork: persistence.unitOfWork,
-            pendingChanges: changes,
-          }),
+          list: listOf(),
           setHandling: new OwnOfferSetHandling(gate, {
             unitOfWork: persistence.unitOfWork,
             offers,

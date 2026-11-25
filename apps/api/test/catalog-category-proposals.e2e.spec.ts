@@ -22,7 +22,7 @@ import { CATEGORY_PROPOSAL_ADMIN_STATUS } from '../src/modules/catalog/presentat
 import { OWN_CATEGORY_PROPOSAL_STATUS } from '../src/modules/catalog/presentation/own-category-proposal.controller';
 import { SeedRoles } from '../src/modules/identity/application/use-cases/seed-roles.use-case';
 import type { AccountState } from '../src/modules/identity/domain/account';
-import { PRODUCT_CHANGE_REASONS } from '../src/modules/catalog/domain/events';
+import { OFFER_CHANGE_REASONS, PRODUCT_CHANGE_REASONS } from '../src/modules/catalog/domain/events';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { csrfTokenFor } from '../src/platform/call-context/csrf';
@@ -490,10 +490,23 @@ describe.each(TEST_MARKETS)(
       const REVISION = id<'ProductRevision'>(0xdffc);
 
       it('answers per row, refuses a bad request whole, and needs the key and the admin session', async () => {
-        const offers = await http()
+        // No database here: the review reasons of a bulk approval cannot be read, so the
+        // approval is refused whole (fail closed, slice 5); a send-back still answers per row.
+        const approve = await http()
           .post(URL)
           .set(admin())
           .send({ kind: 'offer', action: 'approve', items: [{ id: OFFER, version: 1 }] })
+          .expect(503);
+        expect(approve.body).toMatchObject({ code: 'access.unavailable' });
+        const offers = await http()
+          .post(URL)
+          .set(admin())
+          .send({
+            kind: 'offer',
+            action: 'request-changes',
+            reasonCode: OFFER_CHANGE_REASONS[0],
+            items: [{ id: OFFER, version: 1 }],
+          })
           .expect(200);
         expect((offers.body as { results: unknown[] }).results).toHaveLength(1);
         expect((offers.body as { counts: { done: number } }).counts.done).toBe(0);

@@ -68,7 +68,12 @@ import {
 } from '../../platform/authz';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
-import { OFFER_REVIEW_INPUTS, OFFER_REVIEW_REFERRAL_STORE } from './application/ports/offer-review';
+import {
+  OFFER_REVIEW_INPUTS,
+  OFFER_REVIEW_QUEUE_FACTS,
+  OFFER_REVIEW_REFERRAL_STORE,
+} from './application/ports/offer-review';
+import { OFFER_REVIEW_STOPS_READER } from './application/ports/offer-review-stops.reader';
 import { OFFER_PENDING_CHANGE_REPOSITORY } from './application/ports/offer-pending-change.repository';
 import { OfferEditReview } from './application/offer-edit-review';
 import { SellerReviewProbation } from './application/seller-review-probation';
@@ -136,6 +141,9 @@ import { AdminOfferChangeApprove } from './application/use-cases/admin-offer-cha
 import { AdminOfferChangeRequestChanges } from './application/use-cases/admin-offer-change-request-changes.use-case';
 import { AdminOfferChangeReject } from './application/use-cases/admin-offer-change-reject.use-case';
 import { AdminOfferChangesList } from './application/use-cases/admin-offer-changes-list.use-case';
+import { AdminOfferChangesExport } from './application/use-cases/admin-offer-changes-export.use-case';
+import { AdminOfferChangeView } from './application/use-cases/admin-offer-change-view.use-case';
+import { OfferReviewStopsView } from './application/use-cases/offer-review-stops-view.use-case';
 import { OwnOfferWithdrawChange } from './application/use-cases/own-offer-withdraw-change.use-case';
 import { OwnOfferDelete } from './application/use-cases/own-offer-delete.use-case';
 import { OwnOfferEdit } from './application/use-cases/own-offer-edit.use-case';
@@ -702,6 +710,9 @@ const PORT = {
   standings: SELLER_REVIEW_STANDING_REPOSITORY,
   categoryFlags: CATEGORY_OFFER_REVIEW_FLAGS_STORE,
   sellerFlags: SELLER_OFFER_REVIEW_FLAGS_READER,
+  queueFacts: OFFER_REVIEW_QUEUE_FACTS,
+  stops: OFFER_REVIEW_STOPS_READER,
+  changes: AdminOfferChangesList,
   stepUp: STEP_UP_CONSUMER,
   pendingChanges: OFFER_PENDING_CHANGE_REPOSITORY,
   matcher: CLAIM_TEXT_MATCHER,
@@ -2521,6 +2532,29 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     useCaseProvider(AdminOfferChangesList, {
       unitOfWork: true,
       pendingChanges: true,
+      offers: true,
+      ownReader: true,
+      policy: true,
+      sellerNames: true,
+      storeSearch: true,
+      productApproveProbe: true,
+    }),
+    // Risk-based Offer approval slice 5: the Edits list's export, one change with its live
+    // values, and the stop banner's counts.
+    useCaseProvider(AdminOfferChangesExport, { changes: true, sheetWriter: true, clock: true }),
+    useCaseProvider(AdminOfferChangeView, {
+      unitOfWork: true,
+      pendingChanges: true,
+      offers: true,
+      ownReader: true,
+      policy: true,
+      sellerNames: true,
+      productApproveProbe: true,
+    }),
+    useCaseProvider(OfferReviewStopsView, {
+      unitOfWork: true,
+      categoryFlags: true,
+      stops: true,
     }),
     useCaseProvider(ReviewQueueList, {
       unitOfWork: true,
@@ -2531,6 +2565,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       storeSearch: true,
       gtinRegistry: true,
       productApproveProbe: true,
+      queueFacts: true,
     }),
     useCaseProvider(ReviewQueueExport, {
       reviewQueue: true,
@@ -2644,6 +2679,11 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       revisionRequestChanges: true,
       offerApprove: true,
       offerRequestChanges: true,
+      unitOfWork: true,
+      offers: true,
+      queueFacts: true,
+      ownReader: true,
+      policy: true,
     }),
     useCaseProvider(BusinessActivityEditProbe, {}),
     useCaseProvider(TopicManageProbe, {}),

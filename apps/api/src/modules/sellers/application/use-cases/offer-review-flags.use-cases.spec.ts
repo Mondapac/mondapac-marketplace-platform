@@ -28,6 +28,7 @@ import { ChangeOfferReviewStopUseCase } from './change-offer-review-stop.use-cas
 import { ChangeOfferReviewTrustUseCase } from './change-offer-review-trust.use-case';
 import { OfferReviewFlagsSystem } from './offer-review-flags-system.use-case';
 import { OfferReviewFlags } from './offer-review-flags.use-case';
+import { OfferReviewStoppedSellers } from './offer-review-stopped-sellers.use-case';
 import { ViewOfferReviewFlagsUseCase } from './view-offer-review-flags.use-case';
 
 // The three Offer review flags of a seller (SEL-25; risk-based Offer approval slice 4) in memory,
@@ -89,6 +90,7 @@ function setUp() {
     view: new ViewOfferReviewFlagsUseCase(gate, { unitOfWork, offerReviewFlags: rows }),
     read: new OfferReviewFlags(gate, { unitOfWork, offerReviewFlags: rows }),
     readSystem: new OfferReviewFlagsSystem(gate, { unitOfWork, offerReviewFlags: rows }),
+    stoppedCount: new OfferReviewStoppedSellers(gate, { unitOfWork, offerReviewFlags: rows }),
   };
 }
 type Setup = ReturnType<typeof setUp>;
@@ -390,6 +392,48 @@ describe.each(TEST_MARKET_IDS)('Offer review flags (SEL-25) in %s', (code) => {
         false,
       );
       expect((await t.readSystem.execute(actorOf(t, code, 'admin'), { sellerId })).ok).toBe(false);
+    });
+  });
+
+  describe('stopped seller count (the admin stop banner, slice 5)', () => {
+    const stopped = { on: true, changedAt: START, changedBy: null };
+
+    it('counts the sellers of the Market with their stop on, through the facade', async () => {
+      const t = setUp();
+      t.rows.seed(market, t.ids.next<'Seller'>(), { reviewStop: stopped });
+      t.rows.seed(market, t.ids.next<'Seller'>(), { reviewStop: stopped });
+      t.rows.seed(market, t.ids.next<'Seller'>(), {
+        fullReview: { on: true, changedAt: START, changedBy: null },
+      });
+      // Another Market's stopped seller never counts here.
+      t.rows.seed(other, t.ids.next<'Seller'>(), { reviewStop: stopped });
+      const facade = new SellersFacadeImplementation({
+        offerReviewStoppedSellers: t.stoppedCount,
+      } as unknown as ConstructorParameters<typeof SellersFacadeImplementation>[0]);
+      expect(await facade.offerReviewStoppedSellerCount(actorOf(t, code, 'admin'))).toEqual(ok(2));
+      expect(OfferReviewStoppedSellers.access).toEqual({
+        name: 'sellers.offer-review-stopped-sellers',
+        rule: { kind: 'permissions', allOf: ['sellers.seller.view'] },
+      });
+    });
+
+    it('refuses a seller, the system and an admin without the key; a read error is unavailable', async () => {
+      const t = setUp();
+      expect(await t.stoppedCount.execute(actorOf(t, code, 'seller', t.ids.next()), {})).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
+      expect((await t.stoppedCount.execute(testCallContext(market, 'system'), {})).ok).toBe(false);
+      t.rows.failReads = true;
+      expect(await t.stoppedCount.execute(actorOf(t, code, 'admin'), {})).toEqual({
+        ok: false,
+        error: { code: 'sellers.unavailable' },
+      });
+      t.withhold();
+      expect(await t.stoppedCount.execute(actorOf(t, code, 'admin'), {})).toEqual({
+        ok: false,
+        error: { code: 'access.denied' },
+      });
     });
   });
 });

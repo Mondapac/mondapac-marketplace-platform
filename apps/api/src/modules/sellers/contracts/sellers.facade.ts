@@ -237,6 +237,16 @@ export interface SellersFacade {
   >;
 
   /**
+   * `offerReviewStoppedSellerCount` (SEL-25; risk-based Offer approval slice 5): how many sellers
+   * of the caller's Market have their Offer review stop on, for catalog's admin stop banner. A
+   * count only. Answered to an admin holding `sellers.seller.view`; anyone else is
+   * `access.denied`. A read error is `sellers.unavailable`.
+   */
+  offerReviewStoppedSellerCount(
+    context: CallContext,
+  ): Promise<Result<number, AccessDenied | SellersUnavailable>>;
+
+  /**
    * `activeSinceOf` (promotions T1): the instant the seller's business file was first approved in
    * the context's Market, the clock of promotions' "a seller active for fewer than N days needs
    * approval" rule. A revision approved and later superseded still counts; a rejected or

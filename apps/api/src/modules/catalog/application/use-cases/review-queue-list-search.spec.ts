@@ -214,6 +214,10 @@ describe.each(['AU', 'ZZ'] as const)('review queue search in market %s', (code) 
       },
       gtinRegistry: { duplicatesOf: () => Promise.resolve([]) },
       productApproveProbe: { probe: () => Promise.resolve(false) } as never,
+      queueFacts: {
+        firstPublicationReasons: () => Promise.resolve(new Map()),
+        openTagTypes: () => Promise.resolve(new Map()),
+      },
     });
 
   beforeEach(() => {

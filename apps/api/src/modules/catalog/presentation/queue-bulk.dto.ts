@@ -29,6 +29,22 @@ export class BulkDecideResultBody {
   @ApiProperty({ enum: ['done', 'skipped', 'failed'] }) outcome!: string;
   @ApiProperty({ required: false, description: 'A stable code of why the row was not decided.' })
   reason?: string;
+  @ApiProperty({
+    required: false,
+    nullable: true,
+    type: String,
+    description:
+      'Review queue Offer rows only: the product name (Market default locale) for the result list.',
+  })
+  name?: string | null;
+  @ApiProperty({
+    required: false,
+    type: [String],
+    description:
+      'Review queue Offer approvals only: the review reasons that kept the row out of a bulk ' +
+      'approval (with reason review.bulk-not-allowed or review.bulk-certificate-mixed).',
+  })
+  blockers?: string[];
 }
 
 export class BulkDecideCountsBody {

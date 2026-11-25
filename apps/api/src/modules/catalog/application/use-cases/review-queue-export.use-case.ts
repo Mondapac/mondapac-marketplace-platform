@@ -155,7 +155,7 @@ function rowOf(row: ReviewQueueRow): Cell[] {
       row.storeName ?? '',
       row.sellerSku,
       '',
-      '',
+      row.reasons.join('; '),
       '',
       '',
       '',

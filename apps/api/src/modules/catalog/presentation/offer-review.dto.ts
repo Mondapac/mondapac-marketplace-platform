@@ -1,5 +1,6 @@
 import { ApiExtraModels, ApiProperty, getSchemaPath } from '@nestjs/swagger';
 import { OFFER_CHANGE_REASONS } from '../domain/events';
+import { OFFER_REVIEW_REASONS } from '../domain/offer-review-policy';
 
 // Bodies and answers of the admin Offer review routes (catalog design 4.4, 8.2, 9.2). Ids, codes
 // and the seller's own Offer content only.
@@ -67,6 +68,21 @@ export class ReviewQueueRowDto {
 
   @ApiProperty({ nullable: true, type: String })
   handling!: string | null;
+
+  @ApiProperty({
+    enum: OFFER_REVIEW_REASONS,
+    isArray: true,
+    description:
+      "The review reasons of the Offer's latest first-publication decision (reason chips); empty " +
+      'when none is stored.',
+  })
+  reasons!: string[];
+
+  @ApiProperty({
+    type: [String],
+    description: "The certification type codes of the Offer's open tags, sorted.",
+  })
+  tagTypes!: string[];
 
   @ApiProperty({ nullable: true, type: String, description: 'ISO instant; oldest first.' })
   submittedAt!: string | null;

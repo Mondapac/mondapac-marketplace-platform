@@ -180,6 +180,7 @@ describe.each([
       sellerSummaries: undefined as never,
       offerReviewFlags: undefined as never,
       offerReviewFlagsSystem: undefined as never,
+      offerReviewStoppedSellers: undefined as never,
       searchStoreNames: undefined as never,
       publishedStoreSlugs: undefined as never,
       publishedStoreSlugsSystem: undefined as never,

@@ -49,6 +49,10 @@ import { AdminOfferChangeApprove } from '../application/use-cases/admin-offer-ch
 import { AdminOfferChangeReject } from '../application/use-cases/admin-offer-change-reject.use-case';
 import { AdminOfferChangeRequestChanges } from '../application/use-cases/admin-offer-change-request-changes.use-case';
 import { AdminOfferChangesList } from '../application/use-cases/admin-offer-changes-list.use-case';
+import { AdminOfferChangesExport } from '../application/use-cases/admin-offer-changes-export.use-case';
+import { AdminOfferChangeView } from '../application/use-cases/admin-offer-change-view.use-case';
+import { OfferReviewStopsView } from '../application/use-cases/offer-review-stops-view.use-case';
+import { OFFER_REVIEW_REASONS } from '../domain/offer-review-policy';
 import { writeChunks } from './write-chunks';
 import {
   closedBody,
@@ -62,7 +66,9 @@ import {
   OfferChangeApproveRequest,
   OfferChangeDecidedDto,
   OfferChangeDecisionRequest,
+  OfferChangeListItemDto,
   OfferChangesListDto,
+  OfferReviewStopsDto,
 } from './offer-change.dto';
 import {
   OfferApproveRequest,
@@ -133,6 +139,9 @@ export class OfferReviewController {
     private readonly approveChange: AdminOfferChangeApprove,
     private readonly requestChangeChanges: AdminOfferChangeRequestChanges,
     private readonly rejectChange: AdminOfferChangeReject,
+    private readonly exportChanges: AdminOfferChangesExport,
+    private readonly viewChange: AdminOfferChangeView,
+    private readonly viewStops: OfferReviewStopsView,
   ) {}
 
   @Get('review-queue')
@@ -414,11 +423,59 @@ export class OfferReviewController {
     summary: 'List the held changes of live Offers that wait for a decision',
     description:
       'Needs catalog.product.view. Edits of published Offers the review policy held (slice 2c), ' +
-      'oldest submit first, keyset-paged: send `nextAfterId` of the previous page as `afterId`. ' +
-      '`limit` is 1 to 50 (default 25). Each row carries the proposed fields and the reasons.',
+      'as a super list (slice 5). Page read: `sort` (submitted), `direction` (asc default), ' +
+      '`page`, `pageSize` (1 to 50) and `paging` (the Market "List paging" setting; `pages` ' +
+      'gives `total`). Keyset read: `afterId` (the `nextAfterId` of the previous page) and ' +
+      '`limit` (1 to 50, default 25), oldest first; never mixed with the page keys. Filters, all ' +
+      'composable: `reasons` (comma-separated review reason codes; any of them), `sellerId`, ' +
+      "`categoryId` (a platform category of the product's published revision), " +
+      "`submittedFrom`/`submittedTo` (the age) and `q` (the review queue's search). Each row " +
+      'carries the proposed fields, the reasons, the live values (`live`), the Offer now ' +
+      "(`offer`), the product label, the store name and the caller's `actions`. `totalPending` " +
+      'is the whole queue (the tab count).',
   })
   @ApiQuery({ name: 'afterId', required: false, description: 'The last change id of the page.' })
   @ApiQuery({ name: 'limit', required: false, description: '1 to 50, default 25.' })
+  @ApiQuery({ name: 'sort', required: false, enum: ['submitted'] })
+  @ApiQuery({ name: 'direction', required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'page', required: false, description: 'Page number, 1 to 20.' })
+  @ApiQuery({ name: 'pageSize', required: false, description: '1 to 50, default 25.' })
+  @ApiQuery({
+    name: 'paging',
+    required: false,
+    enum: ['pages', 'prev-next'],
+    description: 'The Market "List paging" setting; `prev-next` gives no total.',
+  })
+  @ApiQuery({
+    name: 'reasons',
+    required: false,
+    description: `Comma-separated review reasons, any of: ${OFFER_REVIEW_REASONS.join(', ')}.`,
+  })
+  @ApiQuery({ name: 'sellerId', required: false, description: "One seller's changes (uuid)." })
+  @ApiQuery({
+    name: 'categoryId',
+    required: false,
+    description: "A platform category of the product's published revision (uuid).",
+  })
+  @ApiQuery({
+    name: 'submittedFrom',
+    required: false,
+    description: 'ISO 8601 instant with an offset or Z; submitted at or after it (inclusive).',
+  })
+  @ApiQuery({
+    name: 'submittedTo',
+    required: false,
+    description:
+      'ISO 8601 instant with an offset or Z; submitted before it (exclusive): "older than 24 h".',
+  })
+  @ApiQuery({
+    name: 'q',
+    required: false,
+    description:
+      'Search text, 2 to 100 characters after trimming: the product name (published, Market ' +
+      'default locale), product code or seller public store name contains it, any case; % and _ ' +
+      'are matched as typed.',
+  })
   @ApiOkResponse({ type: OfferChangesListDto })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
@@ -429,11 +486,134 @@ export class OfferReviewController {
     @Res({ passthrough: true }) response: Response,
     @Query() query: Record<string, unknown>,
   ): Promise<OfferChangesListDto> {
-    const result = await this.listChanges.execute(context, pageQuery(query));
+    const result = await this.listChanges.execute(context, numericQuery(pageQuery(query)));
     const outcome = result.ok
       ? (JSON.parse(JSON.stringify(result.value)) as OfferChangesListDto)
       : refusalWith(OFFER_REVIEW_STATUS, result.error, response, context);
     return this.settle('catalog.admin-offer-changes-list', context, outcome);
+  }
+
+  @Get('offer-changes/export')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Export the held changes of live Offers as a file',
+    description:
+      'Needs catalog.product.view. The rows of the Edits list for the same filters (`reasons`, ' +
+      '`sellerId`, `categoryId`, `submittedFrom`, `submittedTo`, `q`), oldest submit first. ' +
+      '`format` is csv (the default) or xlsx, with the columns change_id, offer_id, ' +
+      'product_code, product_name, seller_id, store_name, seller_sku, fields, reasons, ' +
+      'submitted_at (no free text). At most 1,000 rows; more is refused whole as ' +
+      'batch.too-large; a `q` whose store names match more stores than can be searched is ' +
+      'validation.failed (q, too-broad). An attachment. CSV: a text cell that starts with ' +
+      '= + - @ gets a leading quote. XLSX: every cell is a string, never a formula.',
+  })
+  @ApiQuery({ name: 'format', required: false, enum: ['csv', 'xlsx'] })
+  @ApiQuery({ name: 'reasons', required: false })
+  @ApiQuery({ name: 'sellerId', required: false })
+  @ApiQuery({ name: 'categoryId', required: false })
+  @ApiQuery({ name: 'submittedFrom', required: false })
+  @ApiQuery({ name: 'submittedTo', required: false })
+  @ApiQuery({ name: 'q', required: false })
+  @ApiOkResponse({
+    description:
+      'text/csv; charset=utf-8 (offer-changes-<date>.csv) or ' +
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet (.xlsx), as an attachment',
+  })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiPayloadTooLargeResponse({ type: ApiErrorBody, description: 'batch.too-large' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async downloadChanges(
+    @Call() context: CallContext,
+    @Res() response: Response,
+    @Query() query: Record<string, unknown>,
+  ): Promise<void> {
+    const result = await this.exportChanges.execute(context, query);
+    const log = (outcome: string): void =>
+      this.#logger.log({
+        msg: 'catalog.admin-offer-changes-export',
+        outcome,
+        marketId: context.market.marketId,
+        correlationId: context.correlationId,
+      });
+    if (!result.ok) {
+      const error = refusalWith(OFFER_REVIEW_STATUS, result.error, response, context);
+      log((error.getResponse() as { code: string }).code);
+      response
+        .status(error.getStatus())
+        .setHeader('Cache-Control', 'no-store')
+        .json(error.getResponse());
+      return;
+    }
+    const { filename, contentType, chunks } = result.value;
+    response.status(200);
+    response.setHeader('Content-Type', contentType);
+    response.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    response.setHeader('Cache-Control', 'no-store');
+    response.setHeader('X-Content-Type-Options', 'nosniff');
+    try {
+      await writeChunks(response, chunks);
+      log('ok');
+    } catch {
+      log('stream-failed');
+      response.destroy();
+    }
+  }
+
+  @Get('offer-changes/:changeId')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Read one held change of a live Offer, with the live values',
+    description:
+      'Needs catalog.product.view. The change in any status, as a row of the list: proposed ' +
+      'and live values (the Live | Proposed diff), the Offer now, product label, store name and ' +
+      "the caller's actions. Another Market's change is offer-change.not-found.",
+  })
+  @ApiParam({ name: 'changeId', format: 'uuid' })
+  @ApiOkResponse({ type: OfferChangeListItemDto })
+  @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer-change.not-found' })
+  @ApiServiceUnavailableResponse({ type: ApiErrorBody, description: 'access.unavailable' })
+  async change(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('changeId') changeId: string,
+  ): Promise<OfferChangeListItemDto> {
+    const result = await this.viewChange.execute(context, { changeId });
+    const outcome = result.ok
+      ? (JSON.parse(JSON.stringify(result.value)) as OfferChangeListItemDto)
+      : refusalWith(OFFER_REVIEW_STATUS, result.error, response, context);
+    return this.settle('catalog.admin-offer-change-view', context, outcome);
+  }
+
+  @Get('offer-review/stops')
+  @Header('Cache-Control', 'no-store')
+  @ReadsSession()
+  @ApiOperation({
+    summary: 'Count the active Offer review stops (the admin stop banner)',
+    description:
+      "Needs catalog.product.view. Whether the Market's emergency stop is on, and how many " +
+      'sellers and platform categories have their review stop on. Counts only. A part that ' +
+      'cannot be read is null; the seller count is null without sellers.seller.view. `active` ' +
+      'is true when any stop that could be read is on. For who and since of the Market stop, ' +
+      'read settings/admin/offer-review/emergency-stop.',
+  })
+  @ApiOkResponse({ type: OfferReviewStopsDto })
+  @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
+  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied' })
+  async stops(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ): Promise<OfferReviewStopsDto> {
+    const result = await this.viewStops.execute(context, {});
+    const outcome = result.ok
+      ? { ...result.value }
+      : refusalWith(OFFER_REVIEW_STATUS, result.error, response, context);
+    return this.settle('catalog.offer-review-stops-view', context, outcome);
   }
 
   @Post('offer-changes/:changeId/approve')

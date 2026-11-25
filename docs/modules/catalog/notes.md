@@ -342,3 +342,29 @@ settings (mode `all`).
   and full review; standing unreadable: probation; categories unreadable: sensitive category;
   each marks the facts `degraded`, and a degraded edit verdict uses mode `all`. A failure never
   invents a stop.
+
+## The admin review queue APIs (risk-based Offer approval slice 5)
+
+- **Edits super list** (`GET catalog/admin/offer-changes`, Hadi's decision 2): the page read of
+  the review queue (`sort` `submitted`, `direction`, `page`, `pageSize`, `paging` from the
+  Market's "List paging"; `total` in `pages` mode) next to the slice 2c keyset read (`afterId`,
+  `limit`), never mixed. Filters `reasons` (any of, comma-separated), `sellerId`, `categoryId`
+  (the product's published revision, exact category), `submittedFrom`/`submittedTo` (the age)
+  and `q` (the review queue's rules and escaping). `totalPending` is the tab count. Each row also
+  carries `live` (the Offer's description, handling and open tag types now), `offer`, `product`,
+  `storeName` and the caller's `actions`. Export at `offer-changes/export` (CSV, XLSX; codes and
+  labels only, never the proposed description); one change by id at `offer-changes/:changeId`.
+  No new index: the filters run on the few pending rows the `(market_id, status, submitted_at,
+  id)` index picks.
+- **First publications**: review queue Offer rows carry `reasons` (the latest first-publication
+  referral) and `tagTypes` (open tags), for the chips and the bulk check.
+- **Bulk approval of Offers** (Hadi's decision 3) is enforced in `review-queue.bulk-decide`: only
+  `probation` (R1), `full-review` (R6) and `certificate-badge` (R2) when every R2 row of the batch
+  is one seller's with one certificate type. Other rows are `skipped` with
+  `review.bulk-not-allowed` and `blockers`, `review.bulk-certificate-mixed`, or
+  `review.reasons-unknown` (no stored decision; fail closed). Offer results carry the product
+  `name`. If the reasons cannot be read, an approval is refused whole (503); a send-back goes on.
+- **Stop banner** (`GET catalog/admin/offer-review/stops`): the Market stop and how many sellers
+  (sellers facade `offerReviewStoppedSellerCount`, needs `sellers.seller.view`) and categories
+  have their stop on; a part that cannot be read is null.
+- First-publication reject is deferred (Hadi's decision 1; FE-20261125-offer-first-publication-reject).

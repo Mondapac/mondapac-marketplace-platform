@@ -9,6 +9,7 @@ import type { BlogAccess } from '../application/use-cases/blog-access.use-case';
 import type { AiAccessSystem } from '../application/use-cases/ai-access-system.use-case';
 import type { AiAccess } from '../application/use-cases/ai-access.use-case';
 import type { OfferReviewFlagsSystem } from '../application/use-cases/offer-review-flags-system.use-case';
+import type { OfferReviewStoppedSellers } from '../application/use-cases/offer-review-stopped-sellers.use-case';
 import type { OfferReviewFlags } from '../application/use-cases/offer-review-flags.use-case';
 import type { MayProposeCategoriesSystem } from '../application/use-cases/may-propose-categories-system.use-case';
 import type { MayProposeCategories } from '../application/use-cases/may-propose-categories.use-case';
@@ -69,6 +70,7 @@ export interface SellersFacadeUseCases {
   readonly aiAccessSystem: AiAccessSystem;
   readonly offerReviewFlags: OfferReviewFlags;
   readonly offerReviewFlagsSystem: OfferReviewFlagsSystem;
+  readonly offerReviewStoppedSellers: OfferReviewStoppedSellers;
   readonly activeSince: ActiveSince;
   readonly activeSinceSystem: ActiveSinceSystem;
   readonly reviewerBusinessDetails: ReviewerBusinessDetailsRead;
@@ -200,6 +202,12 @@ export class SellersFacadeImplementation implements SellersFacade {
         ? this.useCases.offerReviewFlagsSystem
         : this.useCases.offerReviewFlags;
     return useCase.execute(context, { sellerId });
+  }
+
+  offerReviewStoppedSellerCount(
+    context: CallContext,
+  ): Promise<Result<number, AccessDenied | SellersUnavailable>> {
+    return this.useCases.offerReviewStoppedSellers.execute(context, {});
   }
 
   activeSinceOf(

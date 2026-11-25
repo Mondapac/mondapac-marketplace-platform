@@ -154,6 +154,7 @@ import { ChangeOfferReviewFullReviewUseCase } from './application/use-cases/chan
 import { ChangeOfferReviewStopUseCase } from './application/use-cases/change-offer-review-stop.use-case';
 import { ChangeOfferReviewTrustUseCase } from './application/use-cases/change-offer-review-trust.use-case';
 import { OfferReviewFlagsSystem } from './application/use-cases/offer-review-flags-system.use-case';
+import { OfferReviewStoppedSellers } from './application/use-cases/offer-review-stopped-sellers.use-case';
 import { OfferReviewFlags } from './application/use-cases/offer-review-flags.use-case';
 import { ViewOfferReviewFlagsUseCase } from './application/use-cases/view-offer-review-flags.use-case';
 import { SellerOfferReviewFlagsController } from './presentation/offer-review-flags.controller';
@@ -907,6 +908,8 @@ const REVIEW_DECISION_PORTS = {
     // `offerReviewFlagsOf`, the admin's read and the three changes.
     useCaseProvider(OfferReviewFlags, { unitOfWork: true, offerReviewFlags: true }),
     useCaseProvider(OfferReviewFlagsSystem, { unitOfWork: true, offerReviewFlags: true }),
+    // The admin stop banner's count (slice 5), behind `offerReviewStoppedSellerCount`.
+    useCaseProvider(OfferReviewStoppedSellers, { unitOfWork: true, offerReviewFlags: true }),
     useCaseProvider(ViewOfferReviewFlagsUseCase, { unitOfWork: true, offerReviewFlags: true }),
     useCaseProvider(ChangeOfferReviewTrustUseCase, OFFER_REVIEW_FLAG_CHANGE_PORTS),
     useCaseProvider(ChangeOfferReviewFullReviewUseCase, OFFER_REVIEW_FLAG_CHANGE_PORTS),
@@ -1064,6 +1067,7 @@ const REVIEW_DECISION_PORTS = {
         AiAccessSystem,
         OfferReviewFlags,
         OfferReviewFlagsSystem,
+        OfferReviewStoppedSellers,
         ActiveSince,
         ActiveSinceSystem,
         ReviewerBusinessDetailsRead,
@@ -1099,6 +1103,7 @@ const REVIEW_DECISION_PORTS = {
         aiAccessSystem: AiAccessSystem,
         offerReviewFlags: OfferReviewFlags,
         offerReviewFlagsSystem: OfferReviewFlagsSystem,
+        offerReviewStoppedSellers: OfferReviewStoppedSellers,
         activeSince: ActiveSince,
         activeSinceSystem: ActiveSinceSystem,
         reviewerBusinessDetails: ReviewerBusinessDetailsRead,
@@ -1134,6 +1139,7 @@ const REVIEW_DECISION_PORTS = {
           aiAccessSystem,
           offerReviewFlags,
           offerReviewFlagsSystem,
+          offerReviewStoppedSellers,
           activeSince,
           activeSinceSystem,
           reviewerBusinessDetails,

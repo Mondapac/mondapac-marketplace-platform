@@ -72,6 +72,10 @@ describe.each(['AU', 'ZZ'] as const)('review queue submitted range in market %s'
       storeSearch: { sellersMatching: () => Promise.resolve({ sellerIds: [], capped: false }) },
       gtinRegistry: { duplicatesOf: () => Promise.resolve([]) },
       productApproveProbe: { probe: () => Promise.resolve(false) } as never,
+      queueFacts: {
+        firstPublicationReasons: () => Promise.resolve(new Map()),
+        openTagTypes: () => Promise.resolve(new Map()),
+      },
     });
 
   beforeEach(() => {

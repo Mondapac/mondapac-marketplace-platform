@@ -17,6 +17,7 @@ import {
 import { CATALOG_PRODUCT_APPROVE, CATALOG_PRODUCT_VIEW } from '../../contracts/permissions';
 import type { OfferHandling } from '../../domain/offer';
 import type { CatalogMarketPolicy } from '../ports/catalog-market-policy';
+import type { OfferReviewQueueFacts } from '../ports/offer-review';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { OwnCatalogReader, QueueTextSearch } from '../ports/own-catalog.reader';
 import type { VariantGtinRegistry } from '../ports/variant-gtin.registry';
@@ -92,6 +93,13 @@ export interface OfferReviewRow {
   readonly conditionCode: string;
   readonly description: Readonly<Record<string, string>>;
   readonly handling: OfferHandling | null;
+  /**
+   * The review reasons of the Offer's latest first-publication decision (the reason chips; slice
+   * 5), in policy order; empty when none is stored (an Offer queued before the policy).
+   */
+  readonly reasons: readonly string[];
+  /** The certification type codes of the Offer's open tags, sorted (the R2 bulk check). */
+  readonly tagTypes: readonly string[];
   /** The instant the seller submitted; the queue is oldest first. */
   readonly submittedAt: string | null;
   /** The row actions of the Actions menu the caller may run: `approve`, `request-changes`. */
@@ -165,6 +173,7 @@ export interface ReviewQueueListDependencies {
   readonly storeSearch: StoreNameSearch;
   readonly gtinRegistry: VariantGtinRegistry;
   readonly productApproveProbe: PermissionProbe;
+  readonly queueFacts: OfferReviewQueueFacts;
 }
 
 interface Position {
@@ -527,6 +536,14 @@ export class ReviewQueueList extends UseCase<
           ],
           locale,
         );
+        const shownOffers = shown.flatMap((entry) =>
+          entry.kind === 'offer' ? [entry.offer.state.id] : [],
+        );
+        const offerReasons = await this.deps.queueFacts.firstPublicationReasons(
+          market,
+          shownOffers,
+        );
+        const offerTagTypes = await this.deps.queueFacts.openTagTypes(market, shownOffers);
         const warnings = new Map<string, readonly string[]>();
         for (const entry of shown) {
           if (entry.kind !== 'revision') continue;
@@ -548,14 +565,15 @@ export class ReviewQueueList extends UseCase<
                 ],
           );
         }
-        return ok({ found, shown, labels, total, totals, warnings });
+        return ok({ found, shown, labels, total, totals, warnings, offerReasons, offerTagTypes });
       },
       { readOnly: true },
     );
     if (!read.ok) {
       return read.error.code === 'validation.failed' ? read : err({ code: 'access.unavailable' });
     }
-    const { found, shown, labels, total, totals, warnings } = read.value;
+    const { found, shown, labels, total, totals, warnings, offerReasons, offerTagTypes } =
+      read.value;
     const labelOf = new Map(labels.map((label) => [label.productId, label]));
     const last = shown[shown.length - 1];
     const granted = await heldKeys(context, {
@@ -613,6 +631,8 @@ export class ReviewQueueList extends UseCase<
         conditionCode: state.conditionCode,
         description: state.description,
         handling: state.handling,
+        reasons: offerReasons.get(state.id) ?? [],
+        tagTypes: offerTagTypes.get(state.id) ?? [],
         submittedAt: isoOf(state.submittedAt),
         actions,
       };
