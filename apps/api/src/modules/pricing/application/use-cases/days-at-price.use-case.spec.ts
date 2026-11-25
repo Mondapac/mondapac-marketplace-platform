@@ -58,6 +58,7 @@ describe.each(['AU', 'ZZ'] as const)('pricing.days-at-price in market %s', (code
         effectiveFrom: since,
         effectiveTo: null,
         anchor: null,
+        reference: null,
         heldDirection: null,
         supersededBy: null,
         supersededAt: null,

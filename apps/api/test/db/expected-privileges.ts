@@ -1962,6 +1962,18 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['window_started_at'],
     },
+    // R4 first-price checks (offer approval slice 3): insert-only, except the one re-check and
+    // the review reason it may change. No DELETE (triggers refuse it too).
+    'pricing.first_price_checks': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'post_review_reason',
+        'recheck_amount_minor',
+        'recheck_outcome',
+        'recheck_reference_amount_minor',
+        'rechecked_at',
+      ],
+    },
     // The per-actor counter of M7 (pricing-data 12.1: a proposed shape, pending sign-off).
     'pricing.write_refusal_actor_throttles': {
       table: ['DELETE', 'INSERT', 'SELECT'],

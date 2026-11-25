@@ -27,6 +27,8 @@ import { UNIT_OF_WORK } from '../../platform/unit-of-work/unit-of-work';
 import { CatalogModule } from '../catalog';
 import { ListsModule, registerLists } from '../lists';
 import { SellersModule } from '../sellers';
+import { SettingsModule } from '../settings';
+import { FIRST_PRICE_REFERENCE } from './application/reference/variant-reference';
 import { HELD_UNIT_LABELS, SELLER_STORE_NAMES } from './application/ports/held-labels';
 import { OFFER_SELL_UNITS_SOURCE } from './application/ports/offer-sell-units';
 import { PRICE_SERIES_REPOSITORY } from './application/ports/price-series.repository';
@@ -100,6 +102,7 @@ const PORT = {
   clock: CLOCK,
   ids: ID_GENERATOR,
   specials: SPECIALS_IN_FORCE_READER,
+  reference: FIRST_PRICE_REFERENCE,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -175,7 +178,7 @@ function holdListUseCaseProvider<U>(type: HoldListUseCaseClass<U>): FactoryProvi
  * write answers `pricing.offer-not-found`.
  */
 @Module({
-  imports: [CatalogModule, SellersModule, ListsModule],
+  imports: [CatalogModule, SellersModule, SettingsModule, ListsModule],
   controllers: [
     SellerRegularPriceController,
     SellerSpecialPriceController,
@@ -237,6 +240,7 @@ function holdListUseCaseProvider<U>(type: HoldListUseCaseClass<U>): FactoryProvi
       outbox: true,
       clock: true,
       ids: true,
+      reference: true,
     }),
     useCaseProvider(SetSpecialPrice, {
       unitOfWork: true,
