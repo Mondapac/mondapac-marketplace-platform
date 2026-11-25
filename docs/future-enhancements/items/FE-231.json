@@ -5,7 +5,7 @@
   "desc": "مدل تیم همکار با قرارداد HTTP درگاه، اول حالت سایه بعد انتشار درصدی.",
   "src": "docs/design/domain/platform-ai.md (بخش ۱۴) و design/ai-gateway/ai-gateway-design-fa.html (بخش ۱۵)",
   "date": "2026-11-25",
-  "trig": "وقتی مدل اختصاصی آماده شد و شرط‌های ADR 3 را داشت",
+  "trig": "وقتی مدل اختصاصی آماده شد و شرط‌های ADR-0052 را داشت",
   "prio": "متوسط",
   "status": "موکول"
 }

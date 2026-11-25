@@ -9,9 +9,8 @@ rows added), ADR-0018 decision 7 (scope of the penetration test), `CLAUDE.md` (A
 AI rules, team rules, Definition of Done), `docs/features/06-storefront-admin-platform.md`
 section 5 and `docs/features/00-INDEX.md` sections 3 to 5 (codes and priority of AI;
 applied by a follow-up PR)
-**Amended by:** ADR-0052 (2026-11-25: "ADR 3", providers, routes and regions), ADR-0053
-(2026-11-25: model choice in the admin panel; R7) and the owner's decision of 2026-11-25 on
-decision 2 (a chat window in the seller panel)
+**Amended by:** ADR-0052 (2026-11-25: "ADR 3", providers, routes and regions) and ADR-0053
+(2026-11-25: model choice in the admin panel, R7; a chat window in the seller panel, decision 2)
 **Relates to:** ADR-0001 decision 5, ADR-0002 decision 1, ADR-0003 decision 5, ADR-0004
 decision 1, ADR-0006 decisions 1 and 4, ADR-0009 decisions 1 and 6, ADR-0010 decision 3,
 ADR-0012 decision 5, ADR-0015 decisions 1, 2 and 4, ADR-0016 decision 3, ADR-0017,
@@ -44,7 +43,7 @@ names a vertical, a country or a provider.
 2. **Shape** (owner decision 3). In the admin and seller panels AI is embedded in forms
    and pages; there is no chat window. Conversation exists only for the buyer, and its
    shape is decided with the storefront design. New panel UI follows ADR-0017.
-   *(Amended 2026-11-25, owner decision Q2 in the AI Gateway design
+   *(Amended by ADR-0053 decision 7, 2026-11-25, owner decision Q2 in the AI Gateway design
    (`docs/design/domain/platform-ai.md` section 13): the seller panel may also have a chat
    window (the seller assistant's side panel). The admin panel still has none; an admin
    assistant needs a design of its own (FE-235). Every other rule of this ADR applies to the

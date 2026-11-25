@@ -5,6 +5,7 @@ the shared settings store of ADR-0026 is built now, with List paging as its firs
 settings that already exist are not changed. Ali (cto), Mohammad (software-architect), Mojtaba
 (database-designer) and Hassan (security-tester) review the implementation PR; their review is
 not yet recorded here.
+**Superseded in part by:** ADR-0053 (2026-11-25; decision 7, AI model choice only)
 **Amends:** ADR-0026 (it says the store lands "no later than" the first slice that needs it; this
 ADR says where it lives and how the existing settings reach it)
 **Relates to:** ADR-0008 decision 6, ADR-0018 decision 4

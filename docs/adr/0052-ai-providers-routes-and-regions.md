@@ -29,7 +29,9 @@ contract and region before it is used, and the panel must not be able to bypass 
    provider, with one row per allowed model: the exact model version id, the route and processing
    region, the no-retention and no-training status with the date and reference of Hassan's check,
    input and output price per million tokens in US dollars, and the retirement date. A row is added,
-   changed or removed only by PR, with Hassan's review. The panel picks from this catalogue and never
+   changed or removed only by PR, with Hassan's review. Hassan's verification is recorded in the
+   row itself (date, reference, reviewer); the router and the server checks read only the row.
+   The log at the end of this ADR is for reference and never makes a route usable. The panel picks from this catalogue and never
    types a model id (ADR-0053); the server refuses any id outside it.
 3. **Conditions for a route to be usable** (all of them, checked on the server; any one missing
    means the route is not usable and, with no other route, the capability is off per R8):
@@ -42,13 +44,19 @@ contract and region before it is used, and the panel must not be able to bypass 
    - a passed real-model evaluation for the capability, bound to provider, model and prompt version
      (ADR-0019 decision 9), recorded in the repository's evaluation-results file;
    - not past its retirement date.
+   One exception breaks the loop with the evaluation: an evaluation or playground run may use a row
+   that meets every other condition (no retention, region, key, not retired), with synthetic samples
+   only. Nothing else may use it.
    When a provider reports the processing region in its answer, the gateway compares it with the
-   row and treats a mismatch as a failed call.
+   row; a mismatch is a failed call, sets the route aside (circuit breaker) and sends a security
+   alert to Kazem and Hassan.
 4. **Residency value for the first Market.** For AU the owner's condition ("processing of
    documents in Australia", ADR-0019 decision 3) is recorded as the residency value
    `in-market-region`: processing in an Australian region (for the hosting services in use, Sydney,
    `ap-southeast-2` or the provider's equivalent). A Market whose value does not express a
-   condition (for example `none`) keeps AI off until an ADR records its value.
+   condition (for example `none`) keeps AI off until an ADR records its value. Until INTL-53 adds
+   `Market.data_residency_requirement`, the AU value is recorded in Market configuration as code
+   with this ADR, and the server checks of ADR-0053 decision 3 read it from there.
 5. **Providers now: external only.** The provider in code today (the Anthropic Messages API) stays
    the first route. The fallback is the same model family through a second hosting route in the
    Market's region (owner decision Q1), so the evaluation and the prompt stay valid. Each route
@@ -59,8 +67,8 @@ contract and region before it is used, and the panel must not be able to bypass 
    version id and token counts in the answer, no text retained, processing in the Market's region,
    authentication by a server-only key or mTLS. Its endpoint address changes only by PR. It is held
    to decision 3 like any other route; before its first shadow request Hassan approves the endpoint
-   and the result is added to this ADR. Customer data reaches shadow mode only with the owner's
-   written approval.
+   in its catalogue row and the check is logged below. Customer data reaches shadow mode only once
+   the owner's written approval is recorded in this ADR.
 7. **Data categories** stay those of ADR-0019 decision 3: certificate files and seller texts; for
    the buyer, the customer's own message, order status and tracking. No address, phone or payment
    data. A new category needs the owner's approval, recorded in an amending ADR.
@@ -70,6 +78,11 @@ contract and region before it is used, and the panel must not be able to bypass 
    with the provider invoice; a mismatch raises an alert.
 9. **Key rotation** needs a server restart (keys are read at boot), not a release. Reload without a
    restart is FE-234.
+
+## Verification log
+Reference only (decision 2). Each entry: route, date, reviewer, reference. Empty at acceptance: no
+route has been verified yet, so the router treats every row as not usable until its row records the
+check.
 
 ## Consequences
 - Adding a model or a provider is always a PR plus Hassan's check; the panel only chooses among

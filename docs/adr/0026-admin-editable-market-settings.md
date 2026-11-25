@@ -5,6 +5,7 @@ reviewed by Ali (cto) and Hassan (security-tester), fixes applied 2026-10-07. Mo
 (database-designer) designs the tables. Needed before the earliest of: `sellers` slice 15; `catalog`'s CAT-36, OFR-01 and OFR-03 setting slices; the
 first `platform/ai` slice that checks a switch (ADR-0019 decision 7). The store lands no later
 than that slice.
+**Superseded in part by:** ADR-0053 (2026-11-25; decision 9, AI model choice only)
 **Amends:** ADR-0003 decision 5; ADR-0015 decision 3 (pulls the row "Market configuration seeded
 to the database", for editable settings only)
 **Relates to:** ADR-0004 decision 7, ADR-0009 decision 2, ADR-0012, ADR-0018 decisions 3 to 5,

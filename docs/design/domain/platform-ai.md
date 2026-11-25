@@ -62,7 +62,7 @@ module. Where it needs another module's data it declares a port that the module 
 |---|---|---|
 | Capability definition | The owning module, in `contracts/` | Each module registers its capabilities at boot (`assistant.buyer-chat`, `catalog.description-writer`, ...). A spec carries task type, audience, seller-scoped or not, input and output token caps, max tool rounds, timeout and prompt version. The gateway validates only; an unknown or duplicate capability fails boot. |
 | Field allow-list and output guard | The owning module | The gateway receives a request the module already built, so it cannot know where a field came from; the claim rule needs `certification` data. A CI test with a fake provider (ADR-0019 decision 9) proves no field outside the allow-list leaves. |
-| Switches | Gateway | Evaluated in this order: kill switch, capability switch for the Market, and the seller's switch through the `sellers` port when the capability is seller-scoped. An acting-as session ("Login as Seller") is always off. Any error means off. |
+| Switches | Gateway | Evaluated in this order: kill switch, capability switch for the Market, and the seller's switch through the `sellers` port when the capability is seller-scoped. A seller-scoped capability called without a seller id is refused; the module takes the id from the seller `ActorContext` or the loaded aggregate, never from input. An unregistered capability is off at run time. An acting-as session ("Login as Seller") is always off. Any error means off. |
 | Budget and limits | Gateway | Reserve before the call, settle after it (section 7). |
 | Generic masking of personal data | Gateway | Email, phone and card numbers are masked in every part of the request, tool results included. Second line of defence only: the field allow-list is the control that keeps address, phone and payment data out. |
 | Router and adapters | Gateway | Reads the task type's priority list and calls with a timeout (section 6). |
@@ -80,8 +80,8 @@ platform/ai
 ```
 
 ## 5. API contract
-**Internal contract.** Modules no longer send a model tier or a model name; they name the
-capability. One `run` is one model round: the buyer assistant, which loops over tools, calls `run`
+**Internal contract.** Modules no longer send a model name, and (after the interim below) no
+model tier; they name the capability. One `run` is one model round: the buyer assistant, which loops over tools, calls `run`
 once per round. Cost comes back on success and failure, because a provider may bill a call that
 ran out of time.
 
@@ -89,7 +89,8 @@ ran out of time.
 gateway.status(capability, market, sellerId?)
   → { on: boolean, reason?: 'kill-switch' | 'off' | 'no-route' | 'over-budget' }
 
-gateway.run(capability, context: CallContext, request: ModelRequest, opts?: { sellerId? })
+gateway.run(capability, context: CallContext, request: ModelRequest,
+            opts?: { sellerId?, timeoutMs?, tier?: 'fast' | 'balanced' /* G1 to G4 only */ })
   → { ok: true,  turn, route: { provider, model, attempt }, cost }
   | { ok: false, reason: 'off' | 'over-budget' | 'rate-limited' | 'unavailable'
                        | 'timeout' | 'rejected-output', cost }
@@ -99,8 +100,14 @@ CapabilitySpec = { id, audience: 'buyer' | 'seller' | 'admin' | 'system',
                    maxInputTokens, maxOutputTokens, maxToolRounds, timeoutMs, promptVersion }
 ```
 
-Until the router lands (G3), a capability's route is the Market's configured tier, passed by the
-owning module from its existing setting; G3 replaces it with the priority list and the option goes.
+**Interim (G1 to G4).** Until priority lists exist (G4), the owning module passes its capability's
+configured model tier (`ai-description-writer-tier`, the assistant's tier setting) as `opts.tier`;
+the usage row records the resolved model id. Likewise the Market's on/off switch of a capability
+stays where it is today (the assistant's settings, the description writer's setting) and the module
+checks it before `status`/`run`; the gateway evaluates the kill switch, the acting-as state, the
+audience, the seller switch through the `sellers` port and the route. G4 moves both into the
+`settings` definitions the gateway reads, and the `tier` option goes. `opts.timeoutMs` may only
+shorten the capability's `timeoutMs`.
 
 **Provider contract.** `ModelProvider` stays and gains two things: image input and the processing
 region identifier. Word-by-word streaming is not in this design, because the output guard and the
@@ -127,14 +134,17 @@ number so the partner team can work in parallel (G6).
   and requests go straight to the fallback; the monitoring page shows it.
 - **Evaluation gate.** Per ADR-0019 decision 9, a pass is bound to provider, model and prompt
   version. The result is recorded in a file in the repository, which the router reads. A model that
-  has not passed a capability's evaluation is neither its primary nor its fallback; with no valid
-  fallback, an outage switches the capability off.
+  has not passed a capability's evaluation is neither its primary nor its fallback: save-time checks
+  are not enough, so at call time the router skips any model without a recorded pass for that
+  capability, provider, model and current prompt version. With no model left, or no valid fallback
+  during an outage, the capability is off (R8).
 - **Data gate.** A fallback must also meet ADR-0019 decision 3 (no retention, no training,
   processing in the Market's region). A model whose region is not recorded cannot be chosen.
 - **Fallback route (owner decision, Q1).** The same model through a second hosting route in the
   Market's region (for AU, for example Amazon Bedrock in `ap-southeast-2`), so the evaluation and
   prompt stay the same. It covers an outage of the primary service, not a fault of the model
-  itself. It is enabled only once ADR-0052 records it as verified.
+  itself. It is usable only once its catalogue row carries Hassan's verification (ADR-0052
+  decision 2); the router reads only the row.
 - **Shadow mode (in-house model).** A share of requests is also sent to the second model; its answer
   is never shown to anyone or stored. Only metrics are compared: tokens, latency, valid-output rate
   and guard-rejection rate. Shadow runs only for single-round capabilities without tools and its
@@ -172,7 +182,8 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   and preview versions. The allow-list is changed by PR and Hassan approves it with the connection;
   each row has the exact model version, region, no-retention status, input and output price and
   retirement date. Any id outside the list is refused on the server. When a provider returns the
-  processing region, the gateway checks it too.
+  processing region, the gateway checks it too: a mismatch is a failed call, the route is set
+  aside (circuit breaker) and a security alert goes to Kazem and Hassan.
 - **Price.** From the price table in the repository, never from the panel: a price below reality
   would shrink the reservation and void the cap. Each month the gateway's total is compared with the
   provider's invoice and a mismatch raises an alert.
@@ -181,11 +192,15 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   confirmed with TOTP; the cost comes out of a small separate evaluation budget, not the assistants'
   caps. One run per model at a time; closed once spend reached the saver threshold. A panel result
   is only a "pass candidate", bound to provider, model, prompt version and evaluation-set version; it
-  becomes "passed" when a small PR records it in the results file. Only a model passed for a task
-  type enters that type's priority list.
+  becomes "passed" when a small PR records it in the results file. A model enters a task type's
+  list only if it passed the evaluation of every capability of that task type in the Market; the
+  router still skips a model not passed for the calling capability (section 6). An evaluation or
+  playground run may use a catalogue row that meets every other condition of ADR-0052 decision 3,
+  with synthetic samples only.
 - **Priority.** Per task type a list of up to 3 models plus one saver model. Each assistant uses
-  these lists by default and may get its own. Every list, assistant lists and saver model included,
-  passes the same server checks. The saver model must be cheaper than model 1.
+  these lists by default and may get its own. The same server checks apply to every list, to the
+  saver model, to an assistant's own list, to a revert and to the auto-rollback limits. The saver
+  model must be cheaper than model 1.
 - **Scorecard.** Cost per 1000 requests, error rate, p95 latency, number of times the next model
   stood in, evaluation result; all from the last 30 days of `ai_usage_days`.
 - **Playground.** The admin runs ready evaluation samples (no customer data) on two models side by
@@ -205,8 +220,10 @@ ADR-0026 decision 9 and ADR-0042 decision 7, so ADR-0053 supersedes those points
   server has a ceiling for these limits (for example 5 %) and a minimum sample size. Tightening a
   limit needs no confirmation; loosening one needs TOTP.
 - **Roll back to the previous version:** one button, if that version passed its evaluation.
-- **Conditions:** each version passes the evaluation before any stage other than off. The endpoint
-  address changes only by PR. Customer data reaches shadow only with the owner's written approval.
+- **Conditions:** a stage other than off is accepted only if the in-house route is usable under
+  ADR-0052 decision 3 and that version passed its evaluation; the same holds for "roll back to the
+  previous version". The endpoint address changes only by PR. Customer data reaches shadow only
+  once the owner's written approval is recorded in ADR-0052.
 
 **AI Gateway page.** Tabs Overview (today's and this month's cost against the caps, requests,
 errors, latency and fallbacks per capability), Limits (caps, guest share, alert and saver
@@ -224,12 +241,16 @@ description writer's, the buyer assistant's) are not rebuilt.
 
 - **Permissions:** `settings.ai-models.manage` and `settings.ai-gateway.manage` to change,
   `settings.ai-gateway.view` to see, named per ADR-0042. Each admin changes only their own Market.
-  Only a senior admin is given the change permissions (owner decision, Q4).
+  Only a senior admin is given the change permissions (owner decision, Q4): the two manage keys are
+  protected permission keys, which only the Platform Administrator role holds or grants (identity
+  brief R11); a permission contract test fails if a seeded role other than it holds them.
 - **In-place confirmation (owner decision).** The admin is not signed out: a small dialog asks for
-  the six-digit TOTP code, the mechanism of the seller payout and wallet pages. These changes need
-  it: adding or removing a model; changing a priority list, the saver model or the saver threshold;
-  running an evaluation from the panel; loosening auto-rollback limits; changing the in-house stage;
-  raising a cap; switching a capability on, or on again after an emergency stop; reverting settings
+  the six-digit TOTP code, through the existing admin step-up (registered action keys, as for the
+  wallet admin settings; admins always have a second factor, ADR-0018 decision 5). These changes
+  need it: adding or removing a model; changing a priority list, the saver model or the saver
+  threshold; running an evaluation from the panel; loosening auto-rollback limits; changing the
+  in-house stage or raising the shadow or percent share; raising a cap or the guest share;
+  switching a capability on, or on again after an emergency stop; reverting settings
   to a previous version. Switching something off never needs confirmation.
 - **Versions and revert.** Each change in the ADR-0042 store has a version and an audit row. A
   revert is a new forward change and passes the same server checks and confirmation.
@@ -253,7 +274,8 @@ description writer's, the buyer assistant's) are not rebuilt.
   never from model input or output. Canary tests in CI check that no data crosses sellers, customers
   or Markets.
 - **Second route and partner team.** Before activation Hassan checks their no-retention contract and
-  processing region; the result is recorded in ADR-0052.
+  processing region; the result is recorded in the route's catalogue row (date, reference, Hassan),
+  which is the only record the router reads. ADR-0052 keeps a log of these checks for reference.
 - **Logs.** For an error, only the error kind is logged, never the provider's error text.
 - **Security review** is mandatory for every gateway PR (R15).
 
@@ -267,7 +289,7 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 | `platform.ai_calls` | One row per call: Market, capability, seller (if any), provider, model, attempt, input and output tokens, unit price used, cost, latency and outcome. No text, customer id, IP or personal key. | 90 days. A scheduled job deletes old rows in batches, like the security-events table. No partitions. |
 | `platform.ai_usage_days` | Daily totals per Market, capability and seller: settled cost, reserved cost, calls, errors and fallbacks, and latency counts in fixed buckets from which p95 is computed. | 25 months |
 | `platform.ai_budget_reservations` | Temporary reservation with an expiry; deleted on settle or expiry. | Minutes |
-| Settings | Routes, caps and shadow share in the existing store (`settings.market_settings`), versioned with history. | Versioned |
+| Settings | Priority lists, saver model and threshold, caps, guest share, in-house stage, shadow share and rollback limits in the existing store (`settings.market_settings`), versioned with history. Routes are code (ADR-0052). | Versioned |
 
 - **Atomic reservation.** For each cap (Market day, Market month, capability, seller) a separate
   `UPDATE … WHERE spent + reserved + est <= cap RETURNING`, all in one short unit in a fixed order
@@ -299,11 +321,11 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 |---|---|---|---|
 | G0 | Docs only: this document, ADR-0052, ADR-0053, the ADR-0019 decision 2 amendment, the future-enhancement rows | — | Ali (CTO), Mohammad, Hassan |
 | G1 | Capability registry, `run` and `status`, the seller-switch port, the generic masker. The buyer assistant and the description writer move to `run` and `status`; no user-visible change. | G0 | Mohammad, Hassan |
-| G2 | Usage and reservation tables, central caps, parallel counting | G1 | Mojtaba, Hassan |
-| G3 | Router with priority lists, saver mode, circuit breaker, second adapter | G2 and ADR-0052 | Mohammad, Hassan |
-| G4 | «AI Models» and gateway settings in `settings`, with API, permissions, TOTP confirmation, audit and the background evaluation run | G3 | Hassan, Mojtaba |
+| G2 | Usage and reservation tables, central caps, parallel counting. Cap values come from per-Market configuration defaults until G4; counting only, nothing enforced before G7 | G1 | Mojtaba, Hassan |
+| G3 | Router with priority lists, saver mode, circuit breaker, second adapter. Until G4 each task type's list is the single catalogue row today's tier maps to; the `tier` option stays until G4 | G2 and ADR-0052 | Mohammad, Hassan |
+| G4 | «AI Models» and gateway settings in `settings`, with API, permissions, TOTP confirmation, audit and the background evaluation run; capability switches and priority lists move into these settings and the `tier` option goes | G3 | Hassan, Mojtaba |
 | G5 | Admin pages AI Models (external tab, scorecard, playground, change preview) and AI Gateway | G4 | Reza (UI/UX) |
-| G6 | In-house model tab: shadow, percent rollout, auto rollback, HTTP contract | G3 and Hassan's approval | Mohammad, Hassan |
+| G6 | In-house model tab: shadow, percent rollout, auto rollback, HTTP contract | G4, G5 and Hassan's approval | Mohammad, Hassan |
 | G7 | Move `spend_days` in four steps | G2 | Mojtaba |
 
 - G1 and G2 merge before the seller assistant's first PR.
@@ -314,8 +336,8 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 | Question | Decision |
 |---|---|
 | Q1. Fallback model during an outage | The same model through a second hosting route in the Market's region |
-| Q2. Chat window in the seller and admin panels | ADR-0019 decision 2 amended for the seller panel only |
-| Q3. Model choice in the panel | Section «AI Models» with two tabs, several external models with priorities, superseding ADR-0053 |
+| Q2. Chat window in the seller and admin panels | ADR-0019 decision 2 amended for the seller panel only (ADR-0053 decision 7) |
+| Q3. Model choice in the panel | Section «AI Models» with two tabs, several external models with priorities; recorded in ADR-0053, which supersedes ADR-0026 decision 9 and ADR-0042 decision 7 for AI models |
 | Q4. Who changes gateway settings | Senior admin only |
 | Admin assistant | Not designed now (FE-235) |
 | Models | External models only for now; the in-house model joins later behind the same contract |
