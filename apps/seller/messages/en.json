@@ -1015,6 +1015,43 @@
     }
   },
   "catalog": {
+    "addOffer": {
+      "button": "Add offer",
+      "title": "Add offer",
+      "search-label": "Search the catalogue",
+      "search-help": "Matches the name, brand, category, product code or barcode of the products you may sell.",
+      "search-placeholder": "Search by name, brand, category or barcode",
+      "paste": "Paste barcodes",
+      "paste-label": "Barcodes",
+      "paste-help": "One barcode per line, or separated by commas.",
+      "paste-find": "Find products",
+      "paste-results": "Result for each barcode",
+      "barcode": {
+        "found": "Found",
+        "already-selling": "You already sell this",
+        "not-allowed": "Not in your categories",
+        "not-found": "Not in the catalogue",
+        "invalid": "Not a valid barcode"
+      },
+      "sizes": "{count, plural, one {# size} other {# sizes}}",
+      "already-selling": "You already sell this",
+      "picked": "{count, plural, one {# product selected} other {# products selected}}",
+      "sell-this": "Sell this",
+      "sell-these": "Sell these ({count})",
+      "saving": "Creating drafts",
+      "cancel": "Cancel",
+      "note-pick": "Tick the products you want to sell.",
+      "note-loading": "Getting ready.",
+      "loading": "Searching",
+      "empty": "There are no products to offer in your categories yet.",
+      "no-match": "No product matches that search. Try a name, a brand or a barcode.",
+      "no-activity": "Your shop has no business activity yet, so there are no products to offer. Ask us to add one.",
+      "error": "We couldn't search the catalogue. Try again.",
+      "create-error": "These offers could not be created:",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {page} of {pages}"
+    },
     "error": {
       "unavailable": "We couldn't load this page. Check your connection and try again."
     },
