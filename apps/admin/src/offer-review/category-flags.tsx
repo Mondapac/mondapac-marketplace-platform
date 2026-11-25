@@ -1,6 +1,13 @@
 'use client';
 
-import { Banner, Button, EmptyState, Select, Switch } from '@mondapac/ui';
+import {
+  Banner,
+  Button,
+  EmptyState,
+  SearchSelect,
+  Switch,
+  type SearchSelectOption,
+} from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useMemo, useState } from 'react';
 import { callApi } from '../api/client.ts';
@@ -14,6 +21,7 @@ import {
   type CategoryFlagId,
   type FlaggedCategory,
 } from './category-flags-types.ts';
+import { TOUCH_SWITCH } from './touch.ts';
 import { flagErrorKey } from './flag-errors.ts';
 import { ReasonDialog, type ReasonResult } from './reason-dialog.tsx';
 
@@ -55,7 +63,7 @@ export function CategoryFlags({
   const guarded = useGuardedCall();
   const [rows, setRows] = useState<readonly FlaggedCategory[]>(initial);
   const [added, setAdded] = useState<readonly string[]>([]);
-  const [pick, setPick] = useState('');
+  const [pick, setPick] = useState<SearchSelectOption | null>(null);
   const [asking, setAsking] = useState<{ id: string; flag: CategoryFlagId } | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
@@ -142,41 +150,63 @@ export function CategoryFlags({
       {shown.length === 0 ? (
         <EmptyState size="compact" icon="search" title={t('empty.title')} body={t('empty.body')} />
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-line">
-          <table className="w-full border-collapse text-start">
+        <div className="rounded-lg md:overflow-x-auto md:border md:border-line">
+          {/* On a phone each category is a card (name, two labelled switches, last change), so no column is cut. The roles keep the table semantics when the layout is not a table. */}
+          <table role="table" className="block w-full border-collapse text-start md:table">
             <caption className="sr-only">{t('caption')}</caption>
-            <thead>
-              <tr className="border-b border-line bg-muted text-sm">
-                <th scope="col" className="px-4 py-2 text-start font-medium">
+            <thead role="rowgroup" className="max-md:sr-only">
+              <tr role="row" className="border-b border-line bg-muted text-sm">
+                <th role="columnheader" scope="col" className="px-4 py-2 text-start font-medium">
                   {t('col.category')}
                 </th>
                 {FLAGS.map((flag) => (
-                  <th key={flag} scope="col" className="px-4 py-2 text-start font-medium">
+                  <th
+                    key={flag}
+                    role="columnheader"
+                    scope="col"
+                    className="px-4 py-2 text-start font-medium"
+                  >
                     {t(`col.${flag}`)}
                   </th>
                 ))}
-                <th scope="col" className="px-4 py-2 text-start font-medium">
+                <th role="columnheader" scope="col" className="px-4 py-2 text-start font-medium">
                   {t('col.changed')}
                 </th>
               </tr>
             </thead>
-            <tbody>
+            <tbody role="rowgroup" className="max-md:flex max-md:flex-col max-md:gap-3">
               {shown.map((row) => {
                 const when = changedAt(row);
                 return (
-                  <tr key={row.categoryId} className="border-b border-line last:border-b-0">
-                    <th scope="row" className="px-4 py-3 text-start font-medium wrap-anywhere">
+                  <tr
+                    key={row.categoryId}
+                    role="row"
+                    className="border-b border-line last:border-b-0 max-md:grid max-md:gap-1 max-md:rounded-lg max-md:border max-md:p-3 max-md:last:border-b"
+                  >
+                    <th
+                      role="rowheader"
+                      scope="row"
+                      className="px-4 py-3 text-start font-medium wrap-anywhere max-md:p-0 max-md:pb-1"
+                    >
                       {name(row.categoryId)}
                     </th>
                     {FLAGS.map((flag) => {
                       const allowed = flag === 'always-review' ? canAlways : canStop;
                       return (
-                        <td key={flag} className="px-4 py-3">
+                        <td
+                          key={flag}
+                          role="cell"
+                          className="px-4 py-3 max-md:flex max-md:min-h-11 max-md:items-center max-md:justify-between max-md:gap-3 max-md:p-0"
+                        >
+                          <span aria-hidden="true" className="text-sm text-fg-muted md:hidden">
+                            {t(`col.${flag}`)}
+                          </span>
                           <div className="flex items-center gap-2">
                             <Switch
                               aria-label={t(`switch.${flag}`, { name: name(row.categoryId) })}
                               checked={on(row, flag)}
                               disabled={!allowed || asking !== null}
+                              className={TOUCH_SWITCH}
                               onCheckedChange={() => {
                                 setNotice(null);
                                 setAsking({ id: row.categoryId, flag });
@@ -187,8 +217,14 @@ export function CategoryFlags({
                         </td>
                       );
                     })}
-                    <td className="px-4 py-3 text-sm text-fg-muted">
-                      {when === null ? '-' : formatInstantInZone(when, locale, zone)}
+                    <td
+                      role="cell"
+                      className="px-4 py-3 text-sm text-fg-muted max-md:flex max-md:justify-between max-md:gap-3 max-md:p-0 max-md:pt-1"
+                    >
+                      <span aria-hidden="true" className="md:hidden">
+                        {t('col.changed')}
+                      </span>
+                      <span>{when === null ? '-' : formatInstantInZone(when, locale, zone)}</span>
                     </td>
                   </tr>
                 );
@@ -199,25 +235,36 @@ export function CategoryFlags({
       )}
       {canAlways || canStop ? (
         <form
-          className="flex flex-wrap items-end gap-3"
+          className="flex flex-col gap-3 sm:flex-row sm:items-end"
           onSubmit={(event) => {
             event.preventDefault();
-            if (pick === '') return;
-            setAdded((ids) => [...ids, pick]);
-            setPick('');
+            if (pick === null) return;
+            setAdded((ids) => [...ids, pick.value]);
+            setPick(null);
           }}
         >
-          <div className="w-full max-w-md">
-            <Select
+          <div className="w-full sm:max-w-md">
+            <SearchSelect
               name="category"
               label={t('add.label')}
               placeholder={t('add.placeholder')}
+              alwaysSearch
               value={pick}
               options={addable.map((c) => ({ value: c.id, label: c.label }))}
-              onChange={(event) => setPick(event.target.value)}
+              labels={{
+                search: t('add.search'),
+                noResults: t('add.no-results'),
+                none: t('add.placeholder'),
+              }}
+              onChange={setPick}
             />
           </div>
-          <Button type="submit" variant="secondary" disabled={pick === ''}>
+          <Button
+            type="submit"
+            variant="secondary"
+            disabled={pick === null}
+            className="max-sm:w-full"
+          >
             {t('add.button')}
           </Button>
         </form>

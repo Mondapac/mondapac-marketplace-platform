@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 import { callApi } from '../api/client.ts';
 import { flagErrorKey } from '../offer-review/flag-errors.ts';
+import { TOUCH_SWITCH } from '../offer-review/touch.ts';
 import { ReasonDialog, type ReasonResult } from '../offer-review/reason-dialog.tsx';
 import { StandingSummary } from '../offer-review/standing-summary.tsx';
 import {
@@ -125,7 +126,7 @@ export function OfferReviewCard({
                       setNotice(null);
                       setAsking(id);
                     }}
-                    className="mt-0.5 min-h-6"
+                    className={`mt-0.5 min-h-6 ${TOUCH_SWITCH}`}
                   />
                   <div className="min-w-0 flex-1">
                     <p id={`${sellerId}-${label}`} className="m-0 font-medium">

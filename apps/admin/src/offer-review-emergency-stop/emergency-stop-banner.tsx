@@ -61,11 +61,12 @@ export function EmergencyStopBanner({
           timeZone: zone,
         });
   return (
-    <div className="mb-4 flex flex-col gap-2">
+    <div className="mb-3 flex flex-col gap-2 sm:mb-4">
       {marketOn && stop !== null ? (
         <Banner tone="critical" title={t('title')}>
-          <p>{t('body')}</p>
-          <p className="mt-1">
+          {/* On a phone the title and the link are one compact block; the sentence stays for a screen reader. */}
+          <p className="max-sm:sr-only">{t('body')}</p>
+          <p className="mt-1 max-sm:mt-0">
             {stop.changedBy !== null && when !== null
               ? t('by-at', { name: stop.changedBy, when })
               : when !== null

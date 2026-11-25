@@ -149,6 +149,23 @@ describe('ReviewDetail of an edit', () => {
     expect(within(tags).getAllByText(/Halal/).length).toBe(2);
   });
 
+  it("isolates the seller's text and shows a hidden or direction character as its code", () => {
+    mount({
+      kind: 'edit',
+      row: change({
+        proposedDescription: { 'en-AU': 'Sealed\u202E box\u200B of dates' },
+        live: { description: { 'en-AU': 'Sealed box of dates' }, handling: null, tagTypes: [] },
+      }),
+    });
+    const description = screen.getByRole('region', { name: 'Description (en-AU)' });
+    expect(within(description).getByRole('img', { name: 'Hidden character U+202E' })).toBeTruthy();
+    expect(within(description).getByRole('img', { name: 'Hidden character U+200B' })).toBeTruthy();
+    // Every part of the text sits in its own bidi isolate, so a mark cannot reorder its neighbours.
+    const isolated = description.querySelectorAll('[class*="unicode-bidi:isolate"]');
+    expect(isolated.length).toBeGreaterThan(2);
+    expect(description.textContent).not.toContain('\u202E');
+  });
+
   it('says so when the live values are unavailable and still shows the proposal', () => {
     mount({ kind: 'edit', row: change({ live: null }) });
     expect(screen.getByText(/Live values unavailable/)).toBeTruthy();
@@ -293,11 +310,16 @@ describe('ReviewDetail of a first publication', () => {
     const { onDecided } = mount({ kind: 'first', row: first() });
     expect(screen.getByText('Fresh dates')).toBeTruthy();
     expect(screen.queryByRole('button', { name: 'Reject' })).toBeNull();
-    const send = screen.getByRole('button', { name: 'Request changes' });
+    // The reason choice shows only once the reviewer chooses to send it back.
+    expect(screen.queryByRole('combobox', { name: /Reason for sending it back/ })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Request changes' }));
+    const reasonField = screen.getByRole('combobox', { name: /Reason for sending it back/ });
+    // Focus moves into the reason field, and Approve gives way to the send-back choice.
+    expect(document.activeElement).toBe(reasonField);
+    expect(screen.queryByRole('button', { name: 'Approve' })).toBeNull();
+    const send = screen.getByRole('button', { name: 'Send back' });
     expect((send as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.change(screen.getByRole('combobox', { name: /Reason for sending it back/ }), {
-      target: { value: 'handling-unclear' },
-    });
+    fireEvent.change(reasonField, { target: { value: 'handling-unclear' } });
     fireEvent.click(send);
     await waitFor(() => expect(onDecided).toHaveBeenCalledWith('request-changes'));
     expect(call).toHaveBeenCalledWith(
@@ -306,6 +328,16 @@ describe('ReviewDetail of a first publication', () => {
       { version: 7, reasonCode: 'handling-unclear' },
       'csrf',
     );
+  });
+
+  it('puts the focus back on Request changes when the send-back choice is cancelled', () => {
+    mount({ kind: 'first', row: first() });
+    const open = screen.getByRole('button', { name: 'Request changes' });
+    fireEvent.click(open);
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('combobox', { name: /Reason for sending it back/ })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Request changes' }));
+    expect(screen.getByRole('button', { name: 'Approve' })).toBeTruthy();
   });
 
   it('approves naming the version it saw', async () => {
@@ -319,6 +351,68 @@ describe('ReviewDetail of a first publication', () => {
       { version: 7 },
       'csrf',
     );
+  });
+});
+
+describe('DecisionDrawer keyboard', () => {
+  function mountDrawer(onClose = vi.fn()) {
+    const subject: Subject = { kind: 'edit', row: change() };
+    render(
+      wrap(
+        <DecisionDrawer
+          subject={subject}
+          csrfToken="csrf"
+          zone="Australia/Brisbane"
+          canDecide
+          viewerKeys={[]}
+          onClose={onClose}
+          onDecided={vi.fn()}
+          onReload={vi.fn()}
+        />,
+      ),
+    );
+    return onClose;
+  }
+  const panel = () =>
+    screen
+      .getAllByRole('dialog', { hidden: true })
+      .find((dialog) =>
+        within(dialog).queryByRole('heading', { name: 'Offer review', hidden: true }),
+      ) as HTMLDialogElement;
+
+  it('closes on Escape when nothing is typed', () => {
+    const onClose = mountDrawer();
+    // Escape on a native dialog is its cancel event; the panel turns it into its own close.
+    const cancel = new Event('cancel', { cancelable: true });
+    panel().dispatchEvent(cancel);
+    expect(cancel.defaultPrevented).toBe(true);
+    expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks on Escape when a note is typed, and keeps the focus on Keep editing', async () => {
+    const onClose = mountDrawer();
+    fireEvent.change(screen.getByRole('textbox', { name: /Note to the seller/, hidden: true }), {
+      target: { value: 'half written' },
+    });
+    panel().dispatchEvent(new Event('cancel', { cancelable: true }));
+    expect(onClose).not.toHaveBeenCalled();
+    const keep = await screen.findByRole('button', { name: 'Keep editing', hidden: true });
+    await waitFor(() => expect(document.activeElement).toBe(keep));
+    // Enter on the focused button keeps the text; nothing is thrown away.
+    fireEvent.click(keep);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it('announces a refusal to a screen reader as an alert', async () => {
+    call.mockResolvedValue(fail(409, 'conflict.stale'));
+    mountDrawer();
+    fireEvent.click(screen.getByRole('button', { name: 'Approve', hidden: true }));
+    const alerts = await screen.findAllByRole('alert', { hidden: true });
+    expect(alerts.some((alert) => alert.textContent?.includes('Changed since you opened it'))).toBe(
+      true,
+    );
+    // One alert for the refusal, not one nested in another.
+    expect(alerts.some((alert) => alert.querySelector('[role="alert"]') !== null)).toBe(false);
   });
 });
 

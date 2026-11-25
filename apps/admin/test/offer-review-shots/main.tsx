@@ -1,7 +1,9 @@
+import { PageHeader } from '@mondapac/ui';
 import { NextIntlClientProvider } from 'next-intl';
 import { createRoot } from 'react-dom/client';
 import messages from '../../messages/en.json';
 import '../../app/globals.css';
+import { AdminHelpButton, AdminHelpPanel, AdminHelpProvider } from '../../src/help/admin-help.tsx';
 import { EmergencyStopBanner } from '../../src/offer-review-emergency-stop/emergency-stop-banner.tsx';
 import { CategoryFlags } from '../../src/offer-review/category-flags.tsx';
 import { OfferReviewQueue } from '../../src/offer-review/queue.tsx';
@@ -88,16 +90,20 @@ const paged = (items: unknown[], extra: object = {}) => ({
   pageSize: 25,
   paging: 'pages',
   hasNext: false,
+  sellers: [
+    { sellerId: id(10), storeName: 'Date Palace' },
+    { sellerId: id(11), storeName: 'Corner Pantry' },
+  ],
   ...extra,
 });
 const standing = {
-  status: 'probation',
-  source: null,
-  trustedSince: null,
-  count: 4,
+  status: view === 'seller' ? 'trusted' : 'probation',
+  source: view === 'seller' ? 'admin' : null,
+  trustedSince: view === 'seller' ? '2026-10-02T03:00:00Z' : null,
+  count: view === 'seller' ? 10 : 4,
   target: 10,
   targetKind: 'initial',
-  consecutiveChangesNeeded: 0,
+  consecutiveChangesNeeded: view === 'seller' ? 2 : 0,
 };
 const flags = {
   trustedFromStart: { on: false, changedAt: null },
@@ -135,6 +141,14 @@ window.fetch = ((input: string) => {
     });
   } else if (path === 'catalog/admin/offer-changes') {
     body = paged(editRows, { totalPending: editRows.length });
+  } else if (path === 'catalog/categories') {
+    body = {
+      categories: [
+        { id: id(500), name: 'Food', depth: 0 },
+        { id: id(501), name: 'Meat', depth: 1 },
+        { id: id(502), name: 'Dates', depth: 1 },
+      ],
+    };
   } else if (path === 'lists/admin/saved-filters') {
     body = { items: [], canShare: false };
   } else if (path.endsWith('/review-standing')) body = standing;
@@ -155,7 +169,7 @@ const where = {
   zone: 'Australia/Brisbane',
 } as const;
 const keys = ['catalog.product.view', 'catalog.product.approve', 'sellers.seller.view'];
-const title = <h1 className="mb-4 text-2xl font-semibold">Offer reviews</h1>;
+const title = <PageHeader title="Offer reviews" className="mb-4" />;
 const content =
   view === 'seller' ? (
     <div className="max-w-3xl">
@@ -175,7 +189,7 @@ const content =
     </div>
   ) : view === 'categories' ? (
     <>
-      <h1 className="mb-4 text-2xl font-semibold">Offer review categories</h1>
+      <PageHeader title="Offer review categories" className="mb-4" />
       <CategoryFlags
         initial={categories.items}
         choices={[
@@ -204,6 +218,14 @@ const content =
   );
 createRoot(document.getElementById('root')!).render(
   <NextIntlClientProvider locale="en-AU" messages={messages} timeZone="Australia/Brisbane">
-    <main className="mx-auto max-w-7xl p-4 md:p-6">{content}</main>
+    {/* A stand-in for the shell's top bar: the real Help button (round, icon only) and its panel. */}
+    <AdminHelpProvider zone="Australia/Brisbane">
+      <header className="flex items-center justify-between border-b border-line px-4 py-2">
+        <span className="font-semibold">MondaPac Admin</span>
+        <AdminHelpButton />
+      </header>
+      <main className="mx-auto max-w-7xl p-4 md:p-6">{content}</main>
+      <AdminHelpPanel zone="Australia/Brisbane" />
+    </AdminHelpProvider>
   </NextIntlClientProvider>,
 );

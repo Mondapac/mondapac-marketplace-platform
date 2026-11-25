@@ -21,7 +21,11 @@ export interface ReviewBulk {
    * An Offer approval the reviewer may not ask for (the Offer review queue checks it before the
    * server does): the dialog says why and offers no confirm.
    */
-  readonly blocked?: { readonly why: 'reasons' | 'certificate-mixed'; readonly reasons: string };
+  readonly blocked?: {
+    readonly why: 'reasons' | 'certificate-mixed';
+    /** The names of the rows to open one by one (those whose reasons need a person). */
+    readonly rows: readonly string[];
+  };
   /** Offers with a certificate badge to check: who and which type, named in the confirmation. */
   readonly certificate?: { readonly seller: string; readonly type: string };
 }
@@ -87,10 +91,17 @@ function Inner({
         actions={<Button onClick={onClose}>{tc('close')}</Button>}
       >
         <p role="status" className="wrap-anywhere">
-          {bulk.blocked.why === 'reasons'
-            ? tq('blocked.reasons', { reasons: bulk.blocked.reasons })
-            : tq('blocked.certificate-mixed')}
+          {bulk.blocked.why === 'reasons' ? tq('blocked.reasons') : tq('blocked.certificate-mixed')}
         </p>
+        {bulk.blocked.rows.length === 0 ? null : (
+          <ul className="mt-2 mb-0 list-disc ps-5">
+            {bulk.blocked.rows.map((name, index) => (
+              <li key={index} className="wrap-anywhere">
+                {name}
+              </li>
+            ))}
+          </ul>
+        )}
       </Dialog>
     );
   }
@@ -130,6 +141,9 @@ function Inner({
       }
       confirm={t(`${bulk.action}.confirm.${bulk.kind}`, { count })}
       ready={!sendBack || reason !== ''}
+      confirmVariant={
+        bulk.kind === 'offer' && bulk.action === 'approve' ? 'primary' : 'destructive-solid'
+      }
       extraBody={{ kind: bulk.kind, ...(sendBack ? { reasonCode: reason } : {}) }}
       describeSkipped={bulk.kind === 'offer' ? skippedLine : undefined}
       reasonText={(code, rows) =>

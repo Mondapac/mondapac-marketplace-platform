@@ -125,7 +125,8 @@ export type BulkCheck =
   | {
       readonly ok: false;
       readonly why: 'reasons' | 'certificate-mixed';
-      readonly codes: readonly string[];
+      /** The rows that need a person (why `reasons`), to be named; none for a mixed certificate. */
+      readonly rows: readonly FirstRow[];
     };
 
 /**
@@ -135,18 +136,16 @@ export type BulkCheck =
  * what it refuses.
  */
 export function bulkApprovalCheck(rows: readonly FirstRow[]): BulkCheck {
-  const blocked = [
-    ...new Set(rows.flatMap((row) => row.reasons.filter((reason) => !BULK_REASONS.has(reason)))),
-  ];
-  if (blocked.length > 0 || rows.some((row) => row.reasons.length === 0)) {
-    return { ok: false, why: 'reasons', codes: blocked };
-  }
+  const blocked = rows.filter(
+    (row) => row.reasons.length === 0 || row.reasons.some((reason) => !BULK_REASONS.has(reason)),
+  );
+  if (blocked.length > 0) return { ok: false, why: 'reasons', rows: blocked };
   const badge = rows.filter((row) => row.reasons.includes('certificate-badge'));
   if (badge.length === 0) return { ok: true, certificate: null, sellerId: null };
   const sellers = new Set(badge.map((row) => row.sellerId));
   const types = new Set(badge.flatMap((row) => row.tagTypes));
   if (sellers.size > 1 || types.size > 1) {
-    return { ok: false, why: 'certificate-mixed', codes: [] };
+    return { ok: false, why: 'certificate-mixed', rows: [] };
   }
   return { ok: true, certificate: [...types][0] ?? null, sellerId: [...sellers][0] ?? null };
 }

@@ -99,3 +99,35 @@ export function tagDiff(
     removed: [...now].filter((code) => !next.has(code)).sort(),
   };
 }
+
+/**
+ * Characters that draw nothing or change the reading order (soft hyphen, zero-width and direction
+ * marks, bidi embeddings, overrides and isolates, word joiner and invisible operators, the byte
+ * order mark). A seller can hide them in text to mislead a reviewer, so the view shows each one.
+ */
+const INVISIBLE = new RegExp(
+  '[\u00AD\u200B-\u200F\u202A-\u202E\u2060-\u2064\u2066-\u2069\uFEFF]',
+  'u',
+);
+
+export interface Run {
+  readonly text: string;
+  /** The text is one invisible character; `text` is its code point as `U+202E`. */
+  readonly hidden: boolean;
+}
+
+/** The text cut into plain runs and one run for each invisible character. */
+export function splitInvisible(text: string): Run[] {
+  const runs: Run[] = [];
+  let plain = '';
+  for (const char of text) {
+    if (INVISIBLE.test(char)) {
+      if (plain !== '') runs.push({ text: plain, hidden: false });
+      plain = '';
+      const code = (char.codePointAt(0) ?? 0).toString(16).toUpperCase().padStart(4, '0');
+      runs.push({ text: `U+${code}`, hidden: true });
+    } else plain += char;
+  }
+  if (plain !== '') runs.push({ text: plain, hidden: false });
+  return runs;
+}

@@ -1634,6 +1634,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
   'catalog/admin/review-queue': [
     'kind',
     'q',
+    'reasons',
+    'categoryId',
     'submittedFrom',
     'submittedTo',
     'sellerId',
@@ -1649,6 +1651,8 @@ const QUERY_KEYS: Readonly<Record<string, readonly string[]>> = {
     'format',
     'kind',
     'q',
+    'reasons',
+    'categoryId',
     'submittedFrom',
     'submittedTo',
     'sellerId',
@@ -2378,8 +2382,9 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     submittedFrom: ISO_INSTANT,
     submittedTo: ISO_INSTANT,
     q: QUEUE_SEARCH_TEXT,
-    page: /^[1-9][0-9]{0,3}$/,
-    pageSize: /^([1-9][0-9]?|100)$/,
+    // The API takes pages 1 to 20 of 1 to 50 rows (its list contract for this route).
+    page: /^([1-9]|1[0-9]|20)$/,
+    pageSize: /^([1-9]|[1-4][0-9]|50)$/,
     paging: /^(pages|prev-next)$/,
     sort: /^submitted$/,
     direction: /^(asc|desc)$/,
@@ -2396,6 +2401,10 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
   'catalog/admin/review-queue': {
     kind: /^(offer-first-publication|product-revision)$/,
     q: QUEUE_SEARCH_TEXT,
+    // Offers only (the API refuses them with kind=product-revision): the first publication's
+    // reason filter and its platform category.
+    reasons: OFFER_REVIEW_REASONS_LIST,
+    categoryId: UUID,
     submittedFrom: ISO_INSTANT,
     submittedTo: ISO_INSTANT,
     sellerId: UUID,
@@ -2411,6 +2420,8 @@ const QUERY_SHAPES: Readonly<Record<string, Readonly<Record<string, RegExp>>>> =
     format: /^(csv|xlsx)$/,
     kind: /^(offer-first-publication|product-revision)$/,
     q: QUEUE_SEARCH_TEXT,
+    reasons: OFFER_REVIEW_REASONS_LIST,
+    categoryId: UUID,
     submittedFrom: ISO_INSTANT,
     submittedTo: ISO_INSTANT,
     sellerId: UUID,

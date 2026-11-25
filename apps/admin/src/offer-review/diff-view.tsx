@@ -1,7 +1,9 @@
 'use client';
 
-import { Badge } from '@mondapac/ui';
+import { Badge, Button, Icon } from '@mondapac/ui';
+import { useId, useState } from 'react';
 import { useTranslations } from 'next-intl';
+import { SafeText } from './safe-text.tsx';
 import { descriptionDiffs, diffText, tagDiff, type Part } from './text-diff.ts';
 import { typeLabel, type ChangeLive, type ChangeRow } from './types.ts';
 
@@ -10,25 +12,60 @@ function Marked({ parts }: { readonly parts: readonly Part[] }) {
   const t = useTranslations('offer-review.diff');
   if (parts.length === 0) return <span className="text-fg-muted">{t('empty')}</span>;
   return (
-    <span className="break-words whitespace-pre-line">
+    <span className="break-words whitespace-pre-line [unicode-bidi:isolate]">
       {parts.map((part, index) =>
         part.kind === 'same' ? (
-          <span key={index}>{part.text}</span>
+          <SafeText key={index} text={part.text} />
         ) : part.kind === 'removed' ? (
           <del key={index} className="rounded-sm bg-critical-bg text-critical-fg">
             <span className="sr-only">{t('removed')}: </span>
             <span aria-hidden="true">− </span>
-            {part.text}
+            <SafeText text={part.text} />
           </del>
         ) : (
           <ins key={index} className="rounded-sm bg-success-bg text-success-fg no-underline">
             <span className="sr-only">{t('added')}: </span>
             <span aria-hidden="true">+ </span>
-            {part.text}
+            <SafeText text={part.text} />
           </ins>
         ),
       )}
     </span>
+  );
+}
+
+/** The languages that did not change, folded under a button (a library button, not a native details). */
+function Unchanged({
+  rows,
+}: {
+  readonly rows: readonly { readonly locale: string; readonly text: string }[];
+}) {
+  const t = useTranslations('offer-review.diff');
+  const [open, setOpen] = useState(false);
+  const listId = useId();
+  return (
+    <div className="rounded-md border border-line px-3 py-2 text-sm">
+      <Button
+        variant="link"
+        size="sm"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} />
+        {t('unchanged', { count: rows.length })}
+      </Button>
+      <ul id={listId} hidden={!open} className="mt-2 flex list-none flex-col gap-2 p-0">
+        {rows.map((row) => (
+          <li key={row.locale}>
+            <span className="me-2 text-fg-muted">{row.locale}</span>
+            <span className="break-words whitespace-pre-line">
+              <SafeText text={row.text} />
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -106,19 +143,9 @@ export function ChangeDiff({ change }: { readonly change: ChangeRow }) {
                   );
                 })}
                 {same.length === 0 ? null : (
-                  <details className="rounded-md border border-line px-3 py-2 text-sm">
-                    <summary className="cursor-pointer font-medium">
-                      {t('unchanged', { count: same.length })}
-                    </summary>
-                    <ul className="mt-2 flex list-none flex-col gap-2 p-0">
-                      {same.map((row) => (
-                        <li key={row.locale}>
-                          <span className="me-2 text-fg-muted">{row.locale}</span>
-                          <span className="break-words whitespace-pre-line">{row.proposed}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </details>
+                  <Unchanged
+                    rows={same.map((row) => ({ locale: row.locale, text: row.proposed }))}
+                  />
                 )}
               </>
             );

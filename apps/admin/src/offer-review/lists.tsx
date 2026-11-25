@@ -4,7 +4,7 @@ import { type MenuItem, type SuperColumn } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useMemo, useState } from 'react';
 import { ReviewBulkDialog, type ReviewBulk } from '../catalog/review-bulk.tsx';
-import { shortInstantInZone } from '../shared/format.ts';
+import { formatInstantInZone, shortInstantInZone } from '../shared/format.ts';
 import { PagedSuperList } from '../shared/paged-list/paged-super-list.tsx';
 import { useDateFilter } from '../shared/paged-list/use-date-filter.ts';
 import type {
@@ -15,6 +15,7 @@ import type {
 } from '../shared/paged-list/types.ts';
 import { useCategoryOptions, useSellerOptions, type FilterOption } from './filter-options.ts';
 import { ReasonChips } from './reason-chips.tsx';
+import { waitingAge } from './waiting-age.ts';
 import {
   API_CHANGES,
   API_QUEUE,
@@ -29,6 +30,24 @@ import {
 
 // The routes search product name, product code and store name by 2 to 100 characters.
 const SEARCH = { max: 100, accepts: (text: string) => [...text].length >= 2 };
+
+const AGE_PRESETS = ['older-24h', 'older-48h', 'older-7d'] as const;
+const AGE_HOURS: Readonly<Record<string, number>> = {
+  'older-24h': 24,
+  'older-48h': 48,
+  'older-7d': 168,
+};
+
+/** "Waiting longer than N hours" is a window that ends N hours ago; read at each load. */
+function ageRange(preset: string): { readonly from: string; readonly to: string } | null {
+  const hours = AGE_HOURS[preset];
+  return hours === undefined
+    ? null
+    : {
+        from: '1970-01-01T00:00:00.000Z',
+        to: new Date(Date.now() - hours * 3_600_000).toISOString(),
+      };
+}
 
 interface ListProps<Row> {
   readonly paging: ListPagingMode;
@@ -80,6 +99,33 @@ function sharedFields(
   ];
 }
 
+/**
+ * Waiting since: how long it has waited ("3d 4h") first, the moment it was submitted after it, and
+ * the full date and time as the hover text.
+ */
+function Waiting({ since, zone }: { readonly since: string; readonly zone: string }) {
+  const t = useTranslations('offer-review.age');
+  const locale = useLocale();
+  const age = waitingAge(since, new Date());
+  const words =
+    age === null
+      ? null
+      : age.key === 'days'
+        ? t('days', { days: age.days, hours: age.hours })
+        : age.key === 'hours'
+          ? t('hours', { hours: age.hours, minutes: age.minutes })
+          : t('minutes', { minutes: age.minutes });
+  return (
+    <span title={formatInstantInZone(since, locale, zone)}>
+      {words === null ? null : <span className="font-medium">{words}</span>}
+      {words === null ? null : <span className="text-fg-muted"> · </span>}
+      <span className={words === null ? '' : 'text-fg-muted'}>
+        {shortInstantInZone(since, locale, zone, true)}
+      </span>
+    </span>
+  );
+}
+
 /** A name that opens the decision drawer: a real button, so the keyboard reaches it. */
 function OpenName({
   name,
@@ -128,7 +174,6 @@ export function FirstPublicationsList({
   const t = useTranslations('offer-review.first');
   const tq = useTranslations('catalog.queue.bulk');
   const tr = useTranslations('offer-review.reason');
-  const locale = useLocale();
   const [bulk, setBulk] = useState<ReviewBulk | null>(null);
   const [refresh, setRefresh] = useState(0);
 
@@ -181,11 +226,12 @@ export function FirstPublicationsList({
             id,
             header,
             skeleton: 'date',
-            cell: (row) => shortInstantInZone(row.submittedAt, locale, zone, true),
+            cell: (row) =>
+              row.submittedAt === null ? '-' : <Waiting since={row.submittedAt} zone={zone} />,
           };
       }
     },
-    [t, onOpen, locale, zone],
+    [t, onOpen, zone],
   );
   const config: PagedListConfig<FirstRow> = useMemo(
     () => ({
@@ -223,9 +269,7 @@ export function FirstPublicationsList({
                     ...base,
                     blocked: {
                       why: check.why,
-                      reasons: check.codes
-                        .map((code) => (tr.has(code) ? tr(code) : code))
-                        .join(', '),
+                      rows: check.rows.map((row) => firstName(row)),
                     },
                   });
                 }
@@ -261,9 +305,19 @@ export function FirstPublicationsList({
   });
   const sellers = useSellerOptions(t('seller-unnamed'));
   const categories = useCategoryOptions();
+  const dateOf = submitted.dateRange;
+  const firstRange = useCallback((preset: string) => ageRange(preset) ?? dateOf(preset), [dateOf]);
+  // One field holds both ways to say when: a date preset, or "waiting longer than N" (the same two
+  // query keys, so the two can never disagree).
   const fields = useMemo(
     () => [
-      submitted.field,
+      {
+        ...submitted.field,
+        options: [
+          ...submitted.field.options,
+          ...AGE_PRESETS.map((value) => ({ value, label: t(`filter.age.${value}`) })),
+        ],
+      },
       ...sharedFields(
         (key) => t(`filter.name.${key}`),
         REVIEW_REASONS.map((code) => ({ value: code, label: tr(code) })),
@@ -280,7 +334,7 @@ export function FirstPublicationsList({
       accountId={accountId}
       marketId={marketId}
       fields={fields}
-      dateRange={submitted.dateRange}
+      dateRange={firstRange}
       csrfToken={csrfToken}
       refreshKey={refresh + refreshKey}
       onAnswer={(answer: PagedAnswer<FirstRow>) => {
@@ -302,13 +356,6 @@ export function FirstPublicationsList({
   );
 }
 
-const AGE_PRESETS = ['older-24h', 'older-48h', 'older-7d'] as const;
-const AGE_HOURS: Readonly<Record<string, number>> = {
-  'older-24h': 24,
-  'older-48h': 48,
-  'older-7d': 168,
-};
-
 /**
  * Held edits of live Offers: a super list over `catalog/admin/offer-changes` with the reason, age,
  * store and category filters and the search of the route, and saved filters (registry list
@@ -328,7 +375,6 @@ export function EditsList({
 }: ListProps<ChangeRow>) {
   const t = useTranslations('offer-review.edits');
   const tr = useTranslations('offer-review.reason');
-  const locale = useLocale();
 
   const rowActions = useCallback(
     (row: ChangeRow): readonly MenuItem[] => [
@@ -379,11 +425,11 @@ export function EditsList({
             id,
             header,
             skeleton: 'date',
-            cell: (row) => shortInstantInZone(row.submittedAt, locale, zone, true),
+            cell: (row) => <Waiting since={row.submittedAt} zone={zone} />,
           };
       }
     },
-    [t, onOpen, locale, zone],
+    [t, onOpen, zone],
   );
   const config: PagedListConfig<ChangeRow> = useMemo(
     () => ({
@@ -427,16 +473,6 @@ export function EditsList({
       ),
     [t, tr, sellers.options, categories],
   );
-  // "Waiting longer than N hours" is a window that ends N hours ago; read at each load.
-  const dateRange = useCallback((preset: string) => {
-    const hours = AGE_HOURS[preset];
-    return hours === undefined
-      ? null
-      : {
-          from: '1970-01-01T00:00:00.000Z',
-          to: new Date(Date.now() - hours * 3_600_000).toISOString(),
-        };
-  }, []);
   return (
     <PagedSuperList
       config={config}
@@ -444,7 +480,7 @@ export function EditsList({
       accountId={accountId}
       marketId={marketId}
       fields={fields}
-      dateRange={dateRange}
+      dateRange={ageRange}
       csrfToken={csrfToken}
       refreshKey={refreshKey}
       onAnswer={(answer: PagedAnswer<ChangeRow>) => {

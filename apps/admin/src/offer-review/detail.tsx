@@ -8,6 +8,7 @@ import { formatInstantInZone } from '../shared/format.ts';
 import { CHANGE_REASONS } from '../catalog/types.ts';
 import { ChangeDiff } from './diff-view.tsx';
 import { decisionProblemOf, type DecisionProblem } from './decision-errors.ts';
+import { SafeText } from './safe-text.tsx';
 import { ReasonChips } from './reason-chips.tsx';
 import { StandingSummary } from './standing-summary.tsx';
 import { STANDING_VIEW_PERMISSIONS, standingOf, standingPath, type Standing } from './standing.ts';
@@ -78,12 +79,24 @@ export function ReviewDetail({
   const busy = useRef(false);
   const [note, setNote] = useState('');
   const [reasonCode, setReasonCode] = useState('');
+  // A first publication shows its prepared reasons only once the reviewer chooses to send it back.
+  const [sendingBack, setSendingBack] = useState(false);
+  const reasonField = useRef<HTMLSelectElement>(null);
+  const sendBackButton = useRef<HTMLButtonElement>(null);
   const [touched, setTouched] = useState(false);
   const [pending, setPending] = useState<Decision | null>(null);
   const [problem, setProblem] = useState<DecisionProblem | null>(null);
   const [standing, setStanding] = useState<Standing | null>(null);
   const sellerId = subject.row.sellerId;
   const canSeeStanding = STANDING_VIEW_PERMISSIONS.every((key) => viewerKeys.includes(key));
+
+  // Focus follows the choice: into the reason field when it opens, back to the button when it closes.
+  const wasSendingBack = useRef(false);
+  useEffect(() => {
+    if (sendingBack) reasonField.current?.focus();
+    else if (wasSendingBack.current) sendBackButton.current?.focus();
+    wasSendingBack.current = sendingBack;
+  }, [sendingBack]);
 
   useEffect(() => {
     onDirtyChange?.(note !== '' || reasonCode !== '');
@@ -246,7 +259,7 @@ export function ReviewDetail({
               description.map(([code, text]) => (
                 <p key={code} className="m-0 break-words whitespace-pre-line">
                   <span className="me-2 text-fg-muted">{code}</span>
-                  {text}
+                  <SafeText text={text} />
                 </p>
               ))
             )}
@@ -265,36 +278,36 @@ export function ReviewDetail({
 
       {change?.decisionNote ? (
         <p className="m-0 text-sm">
-          <span className="font-medium">{t('decision-note')}</span> {change.decisionNote}
+          <span className="font-medium">{t('decision-note')}</span>{' '}
+          <SafeText text={change.decisionNote} />
         </p>
       ) : null}
 
       {canDecide ? (
         <div
-          className={`sticky bottom-0 mt-auto flex flex-col gap-3 border-t border-line bg-surface py-3 ${layout === 'drawer' ? '-mx-4 px-4 sm:-mx-6 sm:px-6' : ''}`}
+          className={`sticky ${layout === 'drawer' ? '' : 'bottom-0'} mt-auto flex flex-col gap-3 border-t border-line bg-surface py-3 ${layout === 'drawer' ? '-bottom-4 -mx-4 -mb-4 px-4 pb-4 sm:-mx-6 sm:px-6' : ''}`}
         >
           {problem === null ? null : (
-            <div role="alert">
-              <Banner tone="critical">
-                {td(`error.${problem.key}`)}
-                {problem.reload ? (
-                  <>
-                    {' '}
-                    <button
-                      type="button"
-                      className="font-semibold underline focus-visible:outline-2 focus-visible:outline-focus"
-                      onClick={onReload}
-                    >
-                      {td('reload')}
-                    </button>
-                  </>
-                ) : null}
-              </Banner>
-            </div>
+            <Banner tone="critical">
+              {td(`error.${problem.key}`)}
+              {problem.reload ? (
+                <>
+                  {' '}
+                  <button
+                    type="button"
+                    className="font-semibold underline focus-visible:outline-2 focus-visible:outline-focus"
+                    onClick={onReload}
+                  >
+                    {td('reload')}
+                  </button>
+                </>
+              ) : null}
+            </Banner>
           )}
           {decided ? null : sellerFirst ? (
-            allowed('request-changes') ? (
+            allowed('request-changes') && sendingBack ? (
               <Select
+                ref={reasonField}
                 name="reasonCode"
                 label={td('reason')}
                 value={reasonCode}
@@ -309,7 +322,7 @@ export function ReviewDetail({
               name="note"
               label={td('note')}
               help={td('note-help')}
-              rows={3}
+              rows={2}
               value={note}
               disabled={pending !== null}
               error={noteRequiredError}
@@ -319,7 +332,7 @@ export function ReviewDetail({
             />
           )}
           <div className="flex flex-wrap items-center gap-2">
-            {allowed('approve') ? (
+            {allowed('approve') && !sendingBack ? (
               <Button
                 loading={pending === 'approve'}
                 disabled={!ready('approve') || (pending !== null && pending !== 'approve')}
@@ -330,14 +343,32 @@ export function ReviewDetail({
             ) : null}
             {allowed('request-changes') ? (
               <Button
+                ref={sendBackButton}
                 variant="secondary"
                 loading={pending === 'request-changes'}
                 disabled={
-                  !ready('request-changes') || (pending !== null && pending !== 'request-changes')
+                  sellerFirst && sendingBack
+                    ? !ready('request-changes')
+                    : !sellerFirst && !ready('request-changes')
                 }
-                onClick={() => void decide('request-changes')}
+                onClick={() => {
+                  if (sellerFirst && !sendingBack) setSendingBack(true);
+                  else void decide('request-changes');
+                }}
               >
-                {td('request-changes')}
+                {sellerFirst && sendingBack ? td('send-back') : td('request-changes')}
+              </Button>
+            ) : null}
+            {sellerFirst && sendingBack ? (
+              <Button
+                variant="link"
+                disabled={pending !== null}
+                onClick={() => {
+                  setSendingBack(false);
+                  setReasonCode('');
+                }}
+              >
+                {td('send-back-cancel')}
               </Button>
             ) : null}
             {edit && allowed('reject') ? (

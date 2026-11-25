@@ -51,6 +51,7 @@ export function BulkDecideDialog({
   reasonText,
   describeSkipped,
   ready = true,
+  confirmVariant = 'destructive-solid',
   csrfToken,
   onClose,
   onFinished,
@@ -79,6 +80,8 @@ export function BulkDecideDialog({
   readonly extraBody?: Readonly<Record<string, unknown>>;
   /** The fields are filled in. */
   readonly ready?: boolean;
+  /** The confirm button: red by default (a rejection); a plain approval is the primary button. */
+  readonly confirmVariant?: 'primary' | 'destructive-solid';
   readonly csrfToken: string;
   /** Closed without a decision, or after the answer was read. */
   readonly onClose: () => void;
@@ -163,7 +166,7 @@ export function BulkDecideDialog({
               {t('cancel')}
             </Button>
             <Button
-              variant="destructive-solid"
+              variant={confirmVariant}
               loading={pending}
               disabled={!ready || pending}
               onClick={() => void submit()}

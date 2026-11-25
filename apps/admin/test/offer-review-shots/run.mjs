@@ -32,14 +32,77 @@ const { chromium } = createRequire(process.env.PW_PATH ?? import.meta.url)('play
 const browser = await chromium.launch();
 
 // Each view: a ready text, then named steps that act on the page before the screenshot.
+// `clip` takes only the top of the page (the header row); `scroll` is whether the full page is taken.
+const openDrawer = async (page, name) => {
+  await page.getByRole('button', { name }).click();
+  await page.getByRole('dialog', { name: 'Offer review' }).waitFor();
+  await page.waitForTimeout(300);
+};
+// The decision bar sticks to the bottom of the drawer and no block of the diff is cut by it, even
+// with the body scrolled to its end (the check Reza asked for in a real browser).
+const checkBar = async (page, label) => {
+  const result = await page.evaluate(() => {
+    const dialog = [...globalThis.document.querySelectorAll('dialog[open]')].pop();
+    const bar = dialog.querySelector('.sticky');
+    const body = bar.closest('.overflow-y-auto');
+    const panel = dialog.getBoundingClientRect();
+    const first = bar.getBoundingClientRect();
+    body.scrollTop = body.scrollHeight;
+    const last = bar.getBoundingClientRect();
+    const sections = [...dialog.querySelectorAll('section[aria-label]')].map((node) => ({
+      name: node.getAttribute('aria-label'),
+      bottom: node.getBoundingClientRect().bottom,
+    }));
+    const lowest = Math.max(0, ...sections.map((section) => section.bottom));
+    body.scrollTop = 0;
+    return {
+      barBottomGap: Math.round(panel.bottom - last.bottom),
+      barAtBottomBeforeScroll: Math.round(panel.bottom - first.bottom),
+      lastSectionClearOfBar: lowest <= last.top + 0.5,
+      scrollable: body.scrollHeight > body.clientHeight,
+    };
+  });
+  console.log('  drawer check', label, JSON.stringify(result));
+};
+const filterBy = async (page, rows) => {
+  await page.getByRole('button', { name: 'Filter', exact: true }).click();
+  let index = 0;
+  for (const [field, value] of rows) {
+    if (index > 0) await page.getByRole('button', { name: 'Add condition' }).click();
+    await page.getByRole('combobox', { name: 'Field' }).nth(index).selectOption({ label: field });
+    await page.getByRole('combobox', { name: 'Value' }).nth(index).selectOption({ label: value });
+    index += 1;
+  }
+};
 const views = {
   first: {
     ready: 'Medjool dates 500 g',
     steps: {
       list: async () => undefined,
+      header: async () => undefined,
       drawer: async (page) => {
-        await page.getByRole('button', { name: 'Review Lamb shoulder, halal' }).click();
-        await page.getByRole('dialog', { name: 'Offer review' }).waitFor();
+        await openDrawer(page, 'Review Lamb shoulder, halal');
+        await checkBar(page, 'first drawer');
+      },
+      'drawer-send-back': async (page) => {
+        await openDrawer(page, 'Review Lamb shoulder, halal');
+        await page.getByRole('button', { name: 'Request changes' }).click();
+        await page.waitForTimeout(200);
+      },
+      discard: async (page) => {
+        await openDrawer(page, 'Review Lamb shoulder, halal');
+        await page.getByRole('button', { name: 'Request changes' }).click();
+        await page
+          .getByRole('combobox', { name: /Reason for sending it back/ })
+          .selectOption({ index: 1 });
+        await page.getByRole('button', { name: 'Close', exact: true }).click();
+        await page.getByRole('dialog', { name: 'Discard what you typed?' }).waitFor();
+      },
+      filters: async (page) => {
+        await filterBy(page, [
+          ['Store', 'Date Palace'],
+          ['Category', '– Meat'],
+        ]);
         await page.waitForTimeout(300);
       },
       'bulk-ok': async (page) => {
@@ -65,12 +128,22 @@ const views = {
     steps: {
       list: async () => undefined,
       drawer: async (page) => {
-        await page.getByRole('button', { name: 'Review Medjool dates 500 g' }).click();
-        await page.getByRole('dialog', { name: 'Offer review' }).waitFor();
-        await page.waitForTimeout(300);
+        await openDrawer(page, 'Review Medjool dates 500 g');
+        await checkBar(page, 'edits drawer');
+      },
+      discard: async (page) => {
+        await openDrawer(page, 'Review Medjool dates 500 g');
+        await page
+          .getByRole('textbox', { name: /Note to the seller/ })
+          .fill('Please resend the halal certificate.');
+        await page.getByRole('button', { name: 'Close', exact: true }).click();
+        await page.getByRole('dialog', { name: 'Discard what you typed?' }).waitFor();
       },
       filters: async (page) => {
-        await page.getByRole('button', { name: 'Filter' }).click();
+        await filterBy(page, [
+          ['Store', 'Date Palace'],
+          ['Category', '– Meat'],
+        ]);
         await page.waitForTimeout(300);
       },
     },
@@ -123,7 +196,9 @@ for (const [view, { ready, steps }] of Object.entries(views)) {
         console.log(view, step, width, scheme, 'horizontal overflow:', over);
         await page.screenshot({
           path: join(out, `${view}-${step}-${width}-${scheme}.png`),
-          fullPage: step === 'list' || step === 'card' || step === 'table',
+          ...(step === 'header'
+            ? { clip: { x: 0, y: 0, width, height: 160 } }
+            : { fullPage: ['list', 'card', 'table', 'filters', 'banner'].includes(step) }),
         });
         await ctx.close();
       }

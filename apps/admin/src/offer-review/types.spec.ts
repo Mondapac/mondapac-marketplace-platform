@@ -24,12 +24,9 @@ describe('bulkApprovalCheck', () => {
   it('allows probation and watched-seller rows', () => {
     expect(bulkApprovalCheck([row({}), row({ reasons: ['full-review'] })]).ok).toBe(true);
   });
-  it('names the reasons that need a single look', () => {
-    expect(bulkApprovalCheck([row({}), row({ reasons: ['handling', 'contact-text'] })])).toEqual({
-      ok: false,
-      why: 'reasons',
-      codes: ['handling', 'contact-text'],
-    });
+  it('names the rows that need a single look', () => {
+    const near = row({ offerId: 'o2', reasons: ['handling', 'contact-text'] });
+    expect(bulkApprovalCheck([row({}), near])).toEqual({ ok: false, why: 'reasons', rows: [near] });
   });
   it('refuses rows with no stored reason', () => {
     expect(bulkApprovalCheck([row({ reasons: [] })]).ok).toBe(false);

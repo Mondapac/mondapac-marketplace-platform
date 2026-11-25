@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { descriptionDiffs, diffText, tagDiff } from './text-diff.ts';
+import { descriptionDiffs, diffText, splitInvisible, tagDiff } from './text-diff.ts';
 
 describe('diffText', () => {
   it('marks the words that left and the words that came', () => {
@@ -41,5 +41,27 @@ describe('tagDiff', () => {
       kept: ['halal'],
       removed: ['organic'],
     });
+  });
+});
+
+describe('splitInvisible', () => {
+  it('shows each invisible or direction-changing character as its code point', () => {
+    expect(splitInvisible('halal\u200B ok')).toEqual([
+      { text: 'halal', hidden: false },
+      { text: 'U+200B', hidden: true },
+      { text: ' ok', hidden: false },
+    ]);
+    expect(splitInvisible('a\u202Eb\u2066').map((run) => run.text)).toEqual([
+      'a',
+      'U+202E',
+      'b',
+      'U+2066',
+    ]);
+  });
+  it('leaves ordinary text, other scripts and emoji alone', () => {
+    expect(splitInvisible('Kurma \u0645\u062D\u0645\u062F \u{1F334}')).toEqual([
+      { text: 'Kurma \u0645\u062D\u0645\u062F \u{1F334}', hidden: false },
+    ]);
+    expect(splitInvisible('')).toEqual([]);
   });
 });

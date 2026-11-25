@@ -18601,6 +18601,11 @@
       "sensitive-category": "R7 Sensitive category",
       "review-all": "Review all"
     },
+    "age": {
+      "days": "{days}d {hours}h",
+      "hours": "{hours}h {minutes}m",
+      "minutes": "{minutes}m"
+    },
     "handling": {
       "SEALED_ORIGINAL": "Sealed original",
       "REPACKED": "Repacked",
@@ -18616,10 +18621,15 @@
       },
       "tabs": "Offer review views",
       "tab": {
-        "first": "First publications"
+        "first": "All"
       },
       "filter": {
         "title": "Filter first publications",
+        "age": {
+          "older-24h": "Waiting longer than 24 hours",
+          "older-48h": "Waiting longer than 48 hours",
+          "older-7d": "Waiting longer than 7 days"
+        },
         "name": {
           "submitted": "Submitted",
           "reasons": "Reason",
@@ -18715,7 +18725,7 @@
       },
       "tabs": "Offer review views",
       "tab": {
-        "edits": "Edits"
+        "edits": "All"
       },
       "filter": {
         "title": "Filter edits",
@@ -18786,7 +18796,7 @@
         "open-page": "Open on its own page"
       },
       "bulk": {
-        "button": "Bulk action",
+        "button": "Actions",
         "selected": "{count, plural, one {# edit selected} other {# edits selected}}",
         "all-open": "All matching edits selected",
         "export": "Export…"
@@ -18817,7 +18827,7 @@
     "bulk": {
       "blocked": {
         "title": "These rows need a closer look",
-        "reasons": "Some rows have reasons that need a person to open them one by one: {reasons}. Open each row to decide it.",
+        "reasons": "These offers wait for a person to look at them closely. Open each one to decide it; the others can be approved together.",
         "certificate-mixed": "Certificate rows can be approved together only when they come from one seller and share one certificate type. Select rows of one seller and one certificate type, or open them one by one."
       },
       "certificate": "Certificate to check: {type}, seller {seller}.",
@@ -18850,6 +18860,8 @@
     "decide": {
       "approve": "Approve",
       "request-changes": "Request changes",
+      "send-back": "Send back",
+      "send-back-cancel": "Cancel",
       "reject": "Reject",
       "note": "Note to the seller",
       "note-help": "Required to request changes or reject, 1 to 2000 characters. Optional when you approve.",
@@ -18909,6 +18921,7 @@
       "added": "Added",
       "empty": "(empty)",
       "unknown": "Not available",
+      "hidden-char": "Hidden character {code}",
       "live-unavailable": "Live values unavailable. Only the proposed values are shown.",
       "description": "Description ({locale})",
       "unchanged": "{count, plural, one {# unchanged language} other {# unchanged languages}}",
@@ -19046,6 +19059,8 @@
       "add": {
         "label": "Add a category",
         "placeholder": "Choose a category",
+        "search": "Search categories",
+        "no-results": "No category matches.",
         "button": "Add"
       },
       "read-only": "You can view these flags but not change them.",

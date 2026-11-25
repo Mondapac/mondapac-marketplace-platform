@@ -1,4 +1,6 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it, vi } from 'vitest';
+import { REVIEW_REASONS } from '../offer-review/types.ts';
 import { relay, upstreamHeaders } from './bff.ts';
 import type { PanelConfig } from './config.ts';
 
@@ -5603,6 +5605,57 @@ describe('relay of the Offer review queue (risk-based Offer approval slice 5)', 
     expect(keyset.upstream.mock.calls[0]?.[0]).toBe(
       `http://api.test/catalog/admin/offer-changes?afterId=${id}&limit=50`,
     );
+  });
+
+  it('keeps the offer-changes paging inside what the API takes (page 1 to 20, 1 to 50 rows)', async () => {
+    const ok = await sendOffer('GET', 'catalog/admin/offer-changes?page=20&pageSize=50');
+    expect(ok.upstream.mock.calls[0]?.[0]).toBe(
+      'http://api.test/catalog/admin/offer-changes?page=20&pageSize=50',
+    );
+    for (const query of ['page=21', 'pageSize=51', 'pageSize=100', 'page=9999', 'page=0']) {
+      const bad = await sendOffer('GET', `catalog/admin/offer-changes?${query}`);
+      expect(bad.upstream.mock.calls[0]?.[0]).toBe('http://api.test/catalog/admin/offer-changes');
+    }
+  });
+
+  it.each(['catalog/admin/review-queue', 'catalog/admin/review-queue/export'])(
+    'passes the first-publication reason and category filters of %s, in their shapes',
+    async (path) => {
+      const ok = await sendOffer(
+        'GET',
+        `${path}?kind=offer-first-publication&reasons=certificate-badge,handling&categoryId=${id}`,
+      );
+      const asked = new URL(ok.upstream.mock.calls[0]?.[0] as string).searchParams;
+      expect(Object.fromEntries(asked)).toEqual({
+        kind: 'offer-first-publication',
+        reasons: 'certificate-badge,handling',
+        categoryId: id,
+      });
+      // An unknown reason or a category that is not an id is dropped, never forwarded.
+      const bad = await sendOffer('GET', `${path}?reasons=halal&categoryId=nope`);
+      expect(bad.upstream.mock.calls[0]?.[0]).toBe(`http://api.test/${path}`);
+    },
+  );
+
+  it("lists the same review reasons as the API's policy (a new reason must reach the filter)", async () => {
+    const policy = readFileSync(
+      new URL('../../../api/src/modules/catalog/domain/offer-review-policy.ts', import.meta.url),
+      'utf8',
+    );
+    const block = /export const OFFER_REVIEW_REASONS = \[([^\]]*)\] as const/.exec(policy)?.[1];
+    expect(block).toBeDefined();
+    const codes = [...(block ?? '').matchAll(/'([a-z-]+)'/g)].map((match) => match[1] as string);
+    expect(codes.length).toBeGreaterThan(0);
+    // The admin's own list (chips and filter options) has exactly these codes.
+    expect([...REVIEW_REASONS]).toEqual(codes);
+    // Every code passes the BFF filter alone on both lists, and all of them pass together.
+    for (const path of ['catalog/admin/offer-changes', 'catalog/admin/review-queue']) {
+      for (const reasons of [...codes, codes.join(',')]) {
+        const sent = await sendOffer('GET', `${path}?reasons=${reasons}`);
+        const asked = new URL(sent.upstream.mock.calls[0]?.[0] as string).searchParams;
+        expect(asked.get('reasons')).toBe(reasons);
+      }
+    }
   });
 
   it('passes the offer-changes export keys and never the sort or the page', async () => {

@@ -62,6 +62,12 @@ const reason = () => screen.getByRole('textbox', { name: /Reason/ });
 
 beforeEach(() => {
   vi.clearAllMocks();
+  window.matchMedia = ((query: string) => ({
+    matches: false,
+    media: query,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  })) as unknown as typeof window.matchMedia;
   HTMLDialogElement.prototype.showModal = function showModal(this: HTMLDialogElement) {
     this.setAttribute('open', '');
   };
@@ -271,9 +277,8 @@ describe('CategoryFlags', () => {
   it('adds a category from the picker and switches it with version 0, a reason and the step-up call', async () => {
     guarded.call.mockResolvedValue(ok({ on: true, changed: true, version: 1 }));
     mount();
-    fireEvent.change(screen.getByRole('combobox', { name: 'Add a category' }), {
-      target: { value: CAT_B },
-    });
+    fireEvent.click(screen.getByRole('combobox', { name: 'Add a category' }));
+    fireEvent.click(await screen.findByRole('option', { name: 'Food > Meat' }));
     fireEvent.click(screen.getByRole('button', { name: 'Add' }));
     fireEvent.click(screen.getByRole('switch', { name: 'Review stop for Food > Meat' }));
     const dialog = screen.getByRole('dialog', { hidden: true });

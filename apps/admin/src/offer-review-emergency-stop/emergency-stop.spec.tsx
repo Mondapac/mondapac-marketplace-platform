@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import type { ReactNode } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -196,6 +196,57 @@ describe('EmergencyStopBanner', () => {
     expect(screen.getByRole('link', { name: 'Open emergency stop' }).getAttribute('href')).toBe(
       '/settings/emergency-stop',
     );
+  });
+
+  describe('the 60 s re-read', () => {
+    // Timers run inside act, so the state a read sets is drawn before the next line looks.
+    const tick = (ms: number) => act(async () => void (await vi.advanceTimersByTimeAsync(ms)));
+    afterEach(() => {
+      vi.useRealTimers();
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+    });
+
+    it('reads again every 60 s: the banner comes when the stop is switched on, and goes when it is off', async () => {
+      vi.useFakeTimers();
+      call.mockResolvedValue(ok(OFF));
+      const { container } = render(wrap(<EmergencyStopBanner zone="Australia/Brisbane" />));
+      await tick(0);
+      expect(call).toHaveBeenCalledTimes(1);
+      expect(container.textContent).toBe('');
+      await tick(59_000);
+      expect(call).toHaveBeenCalledTimes(1);
+      call.mockResolvedValue(ok(ON));
+      await tick(1_000);
+      expect(call).toHaveBeenCalledTimes(2);
+      expect(container.textContent).toContain('Emergency stop is on');
+      call.mockResolvedValue(ok(OFF));
+      await tick(60_000);
+      expect(call).toHaveBeenCalledTimes(3);
+      expect(container.textContent).toBe('');
+    });
+
+    it('keeps what it showed when a re-read fails, and reads at once when the tab shows again', async () => {
+      vi.useFakeTimers();
+      call.mockResolvedValue(ok(ON));
+      const { container } = render(wrap(<EmergencyStopBanner zone="Australia/Brisbane" />));
+      await tick(0);
+      expect(container.textContent).toContain('Emergency stop is on');
+      call.mockResolvedValue({ ok: false as const, failure: { status: 503, code: 'x' } });
+      await tick(60_000);
+      expect(call).toHaveBeenCalledTimes(2);
+      expect(container.textContent).toContain('Emergency stop is on');
+      // A hidden tab stops reading; showing it again reads at once.
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'hidden' });
+      document.dispatchEvent(new Event('visibilitychange'));
+      await tick(180_000);
+      expect(call).toHaveBeenCalledTimes(2);
+      call.mockResolvedValue(ok(OFF));
+      Object.defineProperty(document, 'visibilityState', { configurable: true, value: 'visible' });
+      document.dispatchEvent(new Event('visibilitychange'));
+      await tick(0);
+      expect(call).toHaveBeenCalledTimes(3);
+      expect(container.textContent).toBe('');
+    });
   });
 
   describe('seller and category stops', () => {

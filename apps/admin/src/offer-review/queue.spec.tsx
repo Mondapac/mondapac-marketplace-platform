@@ -240,7 +240,9 @@ describe('first publications tab', () => {
     await tick('Dates 2');
     await bulk('Approve ticked…');
     const dialog = await screen.findByRole('dialog', { name: 'These rows need a closer look' });
-    expect(within(dialog).getByText(/R3 Handling/)).toBeTruthy();
+    // The rows to open one by one are named, not the reason codes.
+    expect(within(dialog).getByRole('listitem').textContent).toBe('Dates 2');
+    expect(within(dialog).queryByText(/R3 Handling/)).toBeNull();
     expect(within(dialog).queryByRole('button', { name: /Approve/ })).toBeNull();
     expect(bulkWrites()).toEqual([]);
   });
@@ -361,6 +363,36 @@ describe('seller, category and reason filters', () => {
   });
 });
 
+describe('what a screen reader hears', () => {
+  it('announces the tab count in a polite live region once it is read', async () => {
+    call.mockResolvedValue(firstPage([row(1)]));
+    const { container } = mount('first');
+    await screen.findByText('Dates 1');
+    const live = container.querySelector('[aria-live="polite"].sr-only');
+    expect(live).not.toBeNull();
+    await waitFor(() => expect(live?.textContent).toBe('3 rows wait for review'));
+  });
+
+  it('announces how many offers are selected', async () => {
+    call.mockResolvedValue(firstPage([row(1), row(2)]));
+    mount('first');
+    await tick('Dates 1');
+    const status = await screen.findByText('1 offer selected');
+    expect(status.closest('[role="status"]')?.getAttribute('aria-live')).toBe('polite');
+  });
+});
+
+describe('first publications age filter', () => {
+  it('offers "waiting longer than" next to the date presets, in the same field', async () => {
+    call.mockResolvedValue(firstPage([row(1)]));
+    mount('first');
+    await screen.findByText('Dates 1');
+    fireEvent.click(screen.getByRole('button', { name: 'Filter' }));
+    const field = await screen.findByRole('combobox', { name: 'Field' });
+    expect(within(field).getByRole('option', { name: 'Submitted' })).toBeTruthy();
+  });
+});
+
 describe('edits tab', () => {
   it('reads the held edits with their filters, shows the count and has no bulk decision', async () => {
     call.mockResolvedValue(editsPage([edit(1), edit(2)]));
@@ -370,7 +402,9 @@ describe('edits tab', () => {
     expect(await screen.findByRole('link', { name: 'Edits (5)' })).toBeTruthy();
     expect(String(reads('catalog/admin/offer-changes')[0]?.[1])).toContain('paging=pages');
     await tick('Dates 1');
-    fireEvent.click(screen.getByRole('button', { name: 'Bulk action' }));
+    // No bulk decision on edits: the menu is just "Actions" (export).
+    expect(screen.queryByRole('button', { name: 'Bulk action' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Actions' }));
     expect(screen.queryByRole('menuitem', { name: /Approve|Send back/ })).toBeNull();
     expect(screen.getByRole('menuitem', { name: 'Export…' })).toBeTruthy();
   });
