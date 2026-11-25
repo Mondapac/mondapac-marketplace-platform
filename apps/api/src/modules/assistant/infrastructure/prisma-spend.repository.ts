@@ -1,4 +1,3 @@
-import { Logger } from '@nestjs/common';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
 import type { CapabilityUsageReport } from '../../../platform/ai/usage/ai-usage-report';
@@ -6,19 +5,18 @@ import type { PrismaService } from '../../../platform/persistence/prisma.service
 import { BUYER_CHAT } from '../contracts/ai-capabilities';
 import type { SpendRepository, SpendTotals } from '../application/ports/spend.repository';
 
-const logger = new Logger('PrismaSpendRepository');
-
 /** A calendar day as the DATE column takes it. */
 const dateOf = (day: Temporal.PlainDate): Date => new Date(`${day.toString()}T00:00:00Z`);
 
 /**
- * {@link SpendRepository} on `assistant.spend_days`, scoped by `marketId`.
- *
- * AI Gateway G7, step 2 of 4 (docs/design/domain/platform-ai.md section 10): every write also goes
- * to the new homes, in the same unit, while `spend_days` stays the one that is read. The
- * conversation count goes to `assistant.conversation_days`; the auto-off record goes to the
- * gateway's "cap reached" record of the buyer chat ({@link CapabilityUsageReport}). The spend itself needs
- * no second write: the gateway counts every call already (G2). Step 3 (G7b) switches the reads.
+ * {@link SpendRepository} on the AI Gateway (AI Gateway G7, step 3 of 4; docs/design/domain/
+ * platform-ai.md section 10). The spend is the gateway's: every model call is settled in the
+ * gateway's usage record before `complete` answers, so the buyer chat's settled cost per Market day
+ * is read through {@link CapabilityUsageReport} and the spend fields given to `add` are not written
+ * again (the gateway counted them). The conversation count is the assistant's own
+ * (`assistant.conversation_days`); the auto-off record is the gateway's once-a-day "cap reached"
+ * record of the buyer chat. `assistant.spend_days` is no longer written or read; step 4 drops it
+ * (FE-20261125-ai-gateway-drop-spend-days).
  */
 export class PrismaSpendRepository implements SpendRepository {
   constructor(
@@ -27,31 +25,22 @@ export class PrismaSpendRepository implements SpendRepository {
   ) {}
 
   async totals(market: MarketContext, day: Temporal.PlainDate): Promise<SpendTotals> {
-    const tx = this.prisma.tx(market);
-    const rows = await tx.assistantSpendDay.findMany({
+    const costs = await this.usage.costByDay(market, BUYER_CHAT, day.with({ day: 1 }), day);
+    const today = costs.find((row) => Temporal.PlainDate.compare(row.day, day) === 0);
+    const counted = await this.prisma.tx(market).assistantConversationDay.findUnique({
       where: {
         marketId: market.marketId,
-        day: { gte: dateOf(day.with({ day: 1 })), lte: dateOf(day) },
+        marketId_day: { marketId: market.marketId, day: dateOf(day) },
       },
-      select: { day: true, spendMicroUsd: true, conversations: true },
+      select: { conversations: true },
     });
-    const today = rows.find((row) => row.day.getTime() === dateOf(day).getTime());
-    const last = await tx.assistantSpendDay.findFirst({
-      where: { marketId: market.marketId, autoOffAt: { not: null } },
-      orderBy: { autoOffAt: 'desc' },
-      select: { autoOffAt: true, autoOffCap: true },
-    });
+    const last = await this.usage.lastCapReached(market, BUYER_CHAT);
     return {
-      todayMicroUsd: Number(today?.spendMicroUsd ?? 0n),
-      monthMicroUsd: rows.reduce((sum, row) => sum + Number(row.spendMicroUsd), 0),
-      conversationsToday: today?.conversations ?? 0,
+      todayMicroUsd: today?.costMicroUsd ?? 0,
+      monthMicroUsd: costs.reduce((sum, row) => sum + row.costMicroUsd, 0),
+      conversationsToday: counted?.conversations ?? 0,
       lastAutoOff:
-        last === null
-          ? null
-          : {
-              at: Temporal.Instant.fromEpochMilliseconds(last.autoOffAt!.getTime()),
-              cap: last.autoOffCap === 'monthly' ? 'monthly' : 'daily',
-            },
+        last === null ? null : { at: last.at, cap: last.period === 'month' ? 'monthly' : 'daily' },
     };
   }
 
@@ -60,8 +49,9 @@ export class PrismaSpendRepository implements SpendRepository {
     day: Temporal.PlainDate,
     spend: Parameters<SpendRepository['add']>[2],
   ): Promise<void> {
-    const tx = this.prisma.tx(market);
-    await tx.assistantSpendDay.upsert({
+    // The spend fields are what the gateway settled already; only the conversations are counted.
+    if (spend.conversations <= 0) return;
+    await this.prisma.tx(market).assistantConversationDay.upsert({
       where: {
         marketId: market.marketId,
         marketId_day: { marketId: market.marketId, day: dateOf(day) },
@@ -70,64 +60,24 @@ export class PrismaSpendRepository implements SpendRepository {
         marketId: market.marketId,
         tenantId: market.tenantId,
         day: dateOf(day),
-        spendMicroUsd: BigInt(spend.microUsd),
-        inputTokens: BigInt(spend.inputTokens),
-        outputTokens: BigInt(spend.outputTokens),
         conversations: spend.conversations,
       },
-      update: {
-        spendMicroUsd: { increment: BigInt(spend.microUsd) },
-        inputTokens: { increment: BigInt(spend.inputTokens) },
-        outputTokens: { increment: BigInt(spend.outputTokens) },
-        conversations: { increment: spend.conversations },
-      },
+      update: { conversations: { increment: spend.conversations } },
     });
-    if (spend.conversations > 0) {
-      await tx.assistantConversationDay.upsert({
-        where: {
-          marketId: market.marketId,
-          marketId_day: { marketId: market.marketId, day: dateOf(day) },
-        },
-        create: {
-          marketId: market.marketId,
-          tenantId: market.tenantId,
-          day: dateOf(day),
-          conversations: spend.conversations,
-        },
-        update: { conversations: { increment: spend.conversations } },
-      });
-    }
   }
 
-  async markAutoOff(
+  markAutoOff(
     market: MarketContext,
     day: Temporal.PlainDate,
     cap: 'daily' | 'monthly',
     at: Temporal.Instant,
   ): Promise<boolean> {
-    const marked = await this.prisma.tx(market).assistantSpendDay.updateMany({
-      where: { marketId: market.marketId, day: dateOf(day), autoOffCap: null },
-      data: { autoOffCap: cap, autoOffAt: new Date(at.epochMilliseconds) },
-    });
-    // The same record on the gateway's side, only when spend_days took it (the migration copied the
-    // earlier ones), so a capped turn does not wait on the counter row for nothing (Mojtaba, PR 1354
-    // finding 5); spend_days still decides (and answers) until G7b. A failure here rolls the whole
-    // unit back, as any failed write of the turn's unit does (fail closed).
-    if (marked.count !== 1) return false;
-    try {
-      await this.usage.markCapReached(
-        market,
-        BUYER_CHAT,
-        day,
-        cap === 'monthly' ? 'month' : 'day',
-        at,
-      );
-    } catch (error) {
-      // Rare, and the unit rolls back with it (the turn's spend_days add too): seen, not silent
-      // (Mojtaba, PR 1354 re-review).
-      logger.error({ msg: 'assistant.cap-reached.mirror-failed', marketId: market.marketId });
-      throw error;
-    }
-    return true;
+    return this.usage.markCapReached(
+      market,
+      BUYER_CHAT,
+      day,
+      cap === 'monthly' ? 'month' : 'day',
+      at,
+    );
   }
 }

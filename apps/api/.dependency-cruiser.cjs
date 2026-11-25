@@ -59,6 +59,7 @@ const MODEL_ENTRY_ALLOW_LIST = [
 const AI_USAGE_REPORT_ALLOW_LIST = [
   '^src/modules/assistant/infrastructure/assistant-providers\\.ts$',
   '^src/modules/assistant/infrastructure/prisma-spend\\.repository\\.ts$',
+  '^src/modules/assistant/infrastructure/prisma-insights\\.repository\\.ts$',
 ];
 
 /** @type {import('dependency-cruiser').IConfiguration} */

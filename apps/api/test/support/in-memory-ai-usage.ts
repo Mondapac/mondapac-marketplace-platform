@@ -165,25 +165,23 @@ export class InMemoryAiUsageStore implements AiUsageStore {
   }
 
   costByDay(
-    _market: MarketContext,
+    market: MarketContext,
     capability: string,
     from: Temporal.PlainDate,
     to: Temporal.PlainDate,
   ): Promise<readonly DayCost[]> {
     this.#check();
-    const byDay = new Map<string, number>();
-    for (const row of this.usage) {
-      if (row.capability !== capability) continue;
-      if (Temporal.PlainDate.compare(row.day, from) < 0) continue;
-      if (Temporal.PlainDate.compare(row.day, to) > 0) continue;
-      const key = row.day.toString();
-      byDay.set(key, (byDay.get(key) ?? 0) + row.costMicroUsd);
+    const days: DayCost[] = [];
+    for (const [key, counter] of this.counters) {
+      const [marketId, period, start, scope, scopeKey] = key.split('|');
+      if (marketId !== market.marketId || period !== 'day' || scope !== 'capability') continue;
+      if (scopeKey !== capability) continue;
+      const day = Temporal.PlainDate.from(start!);
+      if (Temporal.PlainDate.compare(day, from) < 0) continue;
+      if (Temporal.PlainDate.compare(day, to) > 0) continue;
+      days.push({ day, costMicroUsd: counter.spent });
     }
-    return Promise.resolve(
-      [...byDay]
-        .sort(([a], [b]) => a.localeCompare(b))
-        .map(([day, costMicroUsd]) => ({ day: Temporal.PlainDate.from(day), costMicroUsd })),
-    );
+    return Promise.resolve(days.sort((a, b) => Temporal.PlainDate.compare(a.day, b.day)));
   }
 
   markCapReached(

@@ -37,24 +37,17 @@ describe('AiUsageReport (AI Gateway G7)', () => {
   describe.each(['AU', 'ZZ'])('Market %s', (code) => {
     const market = testMarketContext(code, PLATFORM_TENANT_ID);
 
-    it('sums a capability’s settled cost per day, its own only, within the range', async () => {
+    it('answers a capability’s spent per day from its day counters, its own only, within the range', async () => {
       const { store, report } = setUp();
-      const row = (on: string, capability: string, cost: number, sellerId: string | null = null) =>
-        store.usage.push({
-          day: Temporal.PlainDate.from(on),
-          capability,
-          sellerId,
-          calls: 1,
-          failures: 0,
-          refusals: 0,
-          inputTokens: 1,
-          outputTokens: 1,
-          costMicroUsd: cost,
-          latencyMs: 10,
+      // The capability's day counters, as reserve and settle (or the sweeper) leave them.
+      const row = (on: string, capability: string, spent: number, scope = 'capability') =>
+        store.counters.set(`${market.marketId}|day|${on}|${scope}|${capability}`, {
+          held: spent,
+          spent,
         });
       row('2026-11-24', 'alpha.chat', 100);
-      row('2026-11-25', 'alpha.chat', 200);
-      row('2026-11-25', 'alpha.chat', 50, '0190c7a1-0000-7000-8000-000000000001');
+      row('2026-11-25', 'alpha.chat', 250);
+      row('2026-11-25', 'alpha.chat', 999, 'seller');
       row('2026-11-25', 'beta.write', 999);
       row('2026-11-26', 'alpha.chat', 7);
       await expect(
