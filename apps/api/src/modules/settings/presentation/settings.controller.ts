@@ -20,6 +20,8 @@ import {
 } from '../../../platform/call-context/route-population.decorator';
 import { ChangeAiSetting } from '../application/use-cases/change-ai-setting.use-case';
 import { ViewAiSettings } from '../application/use-cases/view-ai-settings.use-case';
+import { ChangeOfferReviewSettings } from '../application/use-cases/change-offer-review-settings.use-case';
+import { ViewOfferReviewSettings } from '../application/use-cases/view-offer-review-settings.use-case';
 import { ChangeCartModeSetting } from '../application/use-cases/change-cart-mode-setting.use-case';
 import { ChangeListPagingSetting } from '../application/use-cases/change-list-paging-setting.use-case';
 import { ReadListPaging } from '../application/use-cases/read-list-paging.use-case';
@@ -30,12 +32,15 @@ import { CART_MODE_CODE } from '../domain/definitions';
 import {
   ChangeAiSettingRequest,
   ChangeCartModeRequest,
+  ChangeOfferReviewRequest,
   ChangeSettingRequest,
   ListPagingBody,
   listPagingBody,
   SettingBody,
   SettingChangeBody,
   settingChangeBody,
+  SettingsChangeListBody,
+  settingsChangeListBody,
   SettingsListBody,
   settingsListBody,
 } from './settings.dto';
@@ -75,7 +80,77 @@ export class AdminSettingsController {
     private readonly changeCartMode: ChangeCartModeSetting,
     private readonly viewAi: ViewAiSettings,
     private readonly changeAi: ChangeAiSetting,
+    private readonly viewOfferReview: ViewOfferReviewSettings,
+    private readonly changeOfferReview: ChangeOfferReviewSettings,
   ) {}
+
+  @Get('offer-review')
+  @ApiOperation({
+    summary: 'The Offer review policy of the Market (admin)',
+    description:
+      'Needs settings.offer-review.view. offer-review-mode (risk-based by default), ' +
+      'offer-review-probation-offers (10), offer-review-reference-sellers (3), ' +
+      'offer-review-price-band (50, percent), offer-review-sampling (5, percent) and ' +
+      'offer-review-certificate-badges (review), each with its version (0 while the default is ' +
+      'in force). Numbers are decimal text.',
+  })
+  @ApiOkResponse({ type: SettingsListBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async offerReviewSettings(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.viewOfferReview.execute(context, {});
+    logRoute(
+      this.#logger,
+      'settings.view-offer-review-settings-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return settingsListBody(result.value);
+  }
+
+  @Put('offer-review')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Change the Offer review policy of the Market (admin)',
+    description:
+      'Needs settings.offer-review.manage; refused in an acting-as session. `changes` lists each ' +
+      'changed setting once with the version the admin saw. All or nothing: a stale version of ' +
+      'any of them is 409 settings.conflict and nothing is saved. Each change is audited and, ' +
+      'where reviewed, opens its own review request. ' +
+      REVIEWED,
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ChangeOfferReviewRequest })
+  @ApiOkResponse({ type: SettingsChangeListBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
+  async putOfferReview(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody, ['changes', 'note']);
+    if (invalid !== null) throw invalid;
+    const { changes, note } = requestBody as { changes?: unknown; note?: unknown };
+    const result = await this.changeOfferReview.execute(context, { changes, note });
+    logRoute(
+      this.#logger,
+      'settings.change-offer-review-settings-route',
+      context,
+      result.ok ? 'set' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return settingsChangeListBody(result.value);
+  }
 
   @Get('ai')
   @ApiOperation({

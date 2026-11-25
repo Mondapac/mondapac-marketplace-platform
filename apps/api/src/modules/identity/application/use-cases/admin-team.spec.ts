@@ -125,6 +125,7 @@ const LEAD_KEYS = [
   'settings.ai.view',
   'settings.cart-mode.view',
   'settings.list-paging.view',
+  'settings.offer-review.view',
   'storefront.seo.view',
 ];
 

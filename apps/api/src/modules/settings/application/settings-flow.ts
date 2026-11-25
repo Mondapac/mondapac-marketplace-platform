@@ -1,14 +1,21 @@
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel';
-import { MarketSettingChanged, type SETTING_TARGET_IDS } from '../domain/audit';
+import type { AuditEntry } from '@mondapac/shared-kernel';
 import {
+  MarketNumberSettingChanged,
+  MarketSettingChanged,
+  type NUMBER_SETTING_TARGET_IDS,
+  type SETTING_TARGET_IDS,
+} from '../domain/audit';
+import {
+  acceptedValue,
   findDefinition,
   SETTING_DEFINITIONS,
-  type CartMode,
-  type ListPaging,
   AI_DESCRIPTION_WRITER_CODE,
   AI_DESCRIPTION_WRITER_TIER_CODE,
+  OFFER_REVIEW_CODES,
+  type SettingDefinition,
 } from '../domain/definitions';
 import type { RecordedRequest } from '../../system-requests';
 import type { SettingsDependencies } from './settings-dependencies';
@@ -26,6 +33,11 @@ const AI_CODES: ReadonlySet<string> = new Set([
   AI_DESCRIPTION_WRITER_CODE,
   AI_DESCRIPTION_WRITER_TIER_CODE,
 ]);
+/**
+ * Reviewed at high risk too: one change can take every Offer past the admin, badges included
+ * (Hassan, PR #1329).
+ */
+const HIGH_RISK_CODES: ReadonlySet<string> = new Set([...AI_CODES, ...OFFER_REVIEW_CODES]);
 
 // Admin-editable Market settings (ADR-0026). A change is refused in an acting-as session, checks
 // the version the admin saw (a stale edit is refused), writes the value and a history row in one
@@ -33,7 +45,35 @@ const AI_CODES: ReadonlySet<string> = new Set([
 
 const logger = new Logger('SettingsFlow');
 
-type SettingValue = ListPaging | CartMode;
+type ChoiceValue = Parameters<typeof MarketSettingChanged.entry>[1]['before']['value'];
+
+/** The audit row of one change: a choice's values, or a whole number setting's numbers. */
+function changeEntry(
+  definition: SettingDefinition,
+  was: string,
+  next: string,
+  version: number,
+): AuditEntry {
+  if (definition.integer !== undefined) {
+    // A stored value outside the definition (a row changed by hand) is audited as the default it
+    // stands for, and logged, so the page can still be saved over it.
+    const before = acceptedValue(definition, was);
+    if (before === null) {
+      logger.error({ msg: 'settings.stored-value-invalid', code: definition.code });
+    }
+    return MarketNumberSettingChanged.entry(
+      definition.code as (typeof NUMBER_SETTING_TARGET_IDS)[number],
+      {
+        before: { value: Number(before ?? definition.defaultValue) },
+        after: { value: Number(next), version },
+      },
+    );
+  }
+  return MarketSettingChanged.entry(definition.code as (typeof SETTING_TARGET_IDS)[number], {
+    before: { value: was as ChoiceValue },
+    after: { value: next as ChoiceValue, version },
+  });
+}
 
 export interface FieldIssue {
   readonly path: string;
@@ -160,7 +200,15 @@ export async function readSettingValue(
       logReadFailure(context, definition.code, 'unit-failed');
       return definition.safeValue;
     }
-    return read.value?.value ?? definition.defaultValue;
+    const stored = read.value?.value;
+    if (stored === undefined) return definition.defaultValue;
+    // A stored value the definition no longer allows (bounds narrowed, a row changed by hand) is
+    // never passed on: the safe value instead (Hassan, PR #1329).
+    if (acceptedValue(definition, stored) === null) {
+      logReadFailure(context, definition.code, 'stored-value-invalid');
+      return definition.safeValue;
+    }
+    return stored;
   } catch {
     // An unreadable store is not the Market's choice: answer the safe value (ADR-0026 decision 5).
     logReadFailure(context, definition.code, 'store-unreadable');
@@ -168,90 +216,188 @@ export async function readSettingValue(
   }
 }
 
+/** One requested change, before it is checked against its definition. */
+export interface SettingChangeInput {
+  readonly code?: unknown;
+  readonly value?: unknown;
+  readonly expectedVersion?: unknown;
+}
+
+type Checked = {
+  readonly definition: SettingDefinition;
+  readonly next: string;
+  readonly seen: number;
+};
+
+/** One change checked against its definition and the codes the caller's key covers. */
+function checkChange(
+  allowedCodes: readonly string[],
+  input: SettingChangeInput,
+  prefix: string,
+): Checked | FieldIssue[] {
+  const definition =
+    typeof input?.code === 'string' && allowedCodes.includes(input.code)
+      ? findDefinition(input.code)
+      : null;
+  if (definition === null) return [{ path: `${prefix}code`, code: 'value' }];
+  const fields: FieldIssue[] = [];
+  const next = acceptedValue(definition, input.value);
+  if (next === null) fields.push({ path: `${prefix}value`, code: 'value' });
+  const { expectedVersion } = input;
+  if (!Number.isSafeInteger(expectedVersion) || (expectedVersion as number) < 0) {
+    fields.push({ path: `${prefix}expectedVersion`, code: 'type' });
+  }
+  if (fields.length > 0 || next === null) return fields;
+  return { definition, next, seen: expectedVersion as number };
+}
+
+/**
+ * One checked change inside the caller's open unit: the version check, the value and its history
+ * row, the audit row and the review request. A conflict or a refused review is an error, which
+ * rolls the whole unit back.
+ */
+async function applyChecked(
+  deps: SettingsDependencies,
+  context: CallContext,
+  adminId: Id<'Account'>,
+  { definition, next, seen }: Checked,
+  now: Temporal.Instant,
+  reviewPolicy: SettingsReview,
+  note: unknown,
+): Promise<Result<SettingChangeView, SettingsFailure>> {
+  const before = await deps.settings.find(context.market, definition.code);
+  const currentVersion = before?.version ?? 0;
+  if (currentVersion !== seen) return err({ code: 'settings.conflict' });
+  const was = before?.value ?? definition.defaultValue;
+  if (was === next) {
+    return ok({
+      code: definition.code,
+      value: was,
+      version: currentVersion,
+      updatedAt: before?.updatedAt ?? null,
+      review: reviewPolicy,
+      request: null,
+    });
+  }
+  const version = currentVersion + 1;
+  const applied = await deps.settings.apply(context.market, {
+    code: definition.code,
+    value: next,
+    previousValue: before?.value ?? null,
+    version,
+    changedAt: now,
+    changedBy: adminId,
+  });
+  if (!applied) return err({ code: 'settings.conflict' });
+  await deps.audit.record(context, changeEntry(definition, was, next, version));
+  // The change is live; its review opens in the same unit (a refusal rolls the change back).
+  const review = await deps.review.openReview(context, {
+    area: SETTINGS_REVIEW_AREA,
+    subjectKind: SETTING_SUBJECT_KIND,
+    subjectRef: definition.code,
+    before: { value: was },
+    after: { value: next },
+    note,
+    ...(HIGH_RISK_CODES.has(definition.code) ? { risk: 'high' as const } : {}),
+  });
+  if (!review.ok) return err(review.error);
+  return ok({
+    code: definition.code,
+    value: next,
+    version,
+    updatedAt: now,
+    review: reviewPolicy,
+    request: review.value === null ? null : { id: review.value.id, number: review.value.number },
+  });
+}
+
 export async function changeSetting(
   deps: SettingsDependencies,
   context: CallContext,
   /** The one setting the caller's manage key covers; any other code is a validation failure. */
   allowedCode: string,
-  input: {
-    readonly code?: unknown;
-    readonly value?: unknown;
-    readonly expectedVersion?: unknown;
+  input: SettingChangeInput & {
     /** The admin's note for the reviewer; needed only where the area is reviewed. */
     readonly note?: unknown;
   },
 ): Promise<Result<SettingChangeView, SettingsFailure>> {
   const adminId = adminAccountId(context);
   if (adminId === null) return err({ code: 'access.denied' });
-  const definition = input?.code === allowedCode ? findDefinition(allowedCode) : null;
-  if (definition === null) {
-    return err({ code: 'validation.failed', fields: [{ path: 'code', code: 'value' }] });
-  }
-  const { value, expectedVersion } = input;
-  const fields: FieldIssue[] = [];
-  if (typeof value !== 'string' || !definition.values.includes(value)) {
-    fields.push({ path: 'value', code: 'value' });
-  }
-  if (!Number.isSafeInteger(expectedVersion) || (expectedVersion as number) < 0) {
-    fields.push({ path: 'expectedVersion', code: 'type' });
-  }
-  if (fields.length > 0) return err({ code: 'validation.failed', fields });
-  const next = value as string;
-  const seen = expectedVersion as number;
+  const checked = checkChange([allowedCode], input, '');
+  if (Array.isArray(checked)) return err({ code: 'validation.failed', fields: checked });
   const now = deps.clock.now();
   const reviewPolicy = await settingsReview(deps, context);
-  return deps.unitOfWork.run<SettingChangeView, SettingsFailure>(context.market, async () => {
-    const before = await deps.settings.find(context.market, definition.code);
-    const currentVersion = before?.version ?? 0;
-    if (currentVersion !== seen) return err({ code: 'settings.conflict' });
-    const was = before?.value ?? definition.defaultValue;
-    if (was === next) {
-      return ok({
-        code: definition.code,
-        value: was,
-        version: currentVersion,
-        updatedAt: before?.updatedAt ?? null,
-        review: reviewPolicy,
-        request: null,
-      });
+  return deps.unitOfWork.run<SettingChangeView, SettingsFailure>(context.market, () =>
+    applyChecked(deps, context, adminId, checked, now, reviewPolicy, input.note),
+  );
+}
+
+/**
+ * Several settings of one page changed together, all or nothing: each with the version the admin
+ * saw, in one unit. A stale version of any of them is a conflict and nothing is saved. Each change
+ * keeps its own history row, audit row and review request (so a reviewer can reject one of them).
+ */
+export async function changeSettings(
+  deps: SettingsDependencies,
+  context: CallContext,
+  /** The settings the caller's manage key covers; any other code is a validation failure. */
+  allowedCodes: readonly string[],
+  input: { readonly changes?: unknown; readonly note?: unknown },
+): Promise<Result<readonly SettingChangeView[], SettingsFailure>> {
+  const adminId = adminAccountId(context);
+  if (adminId === null) return err({ code: 'access.denied' });
+  const changes = input?.changes;
+  if (!Array.isArray(changes) || changes.length === 0 || changes.length > allowedCodes.length) {
+    return err({ code: 'validation.failed', fields: [{ path: 'changes', code: 'value' }] });
+  }
+  const fields: FieldIssue[] = [];
+  const checkedChanges: Checked[] = [];
+  const codes = new Set<string>();
+  changes.forEach((change: unknown, index) => {
+    const checked = checkChange(allowedCodes, change as SettingChangeInput, `changes.${index}.`);
+    if (Array.isArray(checked)) {
+      fields.push(...checked);
+    } else if (codes.has(checked.definition.code)) {
+      fields.push({ path: `changes.${index}.code`, code: 'duplicate' });
+    } else {
+      codes.add(checked.definition.code);
+      checkedChanges.push(checked);
     }
-    const version = currentVersion + 1;
-    const applied = await deps.settings.apply(context.market, {
-      code: definition.code,
-      value: next,
-      previousValue: before?.value ?? null,
-      version,
-      changedAt: now,
-      changedBy: adminId,
-    });
-    if (!applied) return err({ code: 'settings.conflict' });
-    await deps.audit.record(
-      context,
-      MarketSettingChanged.entry(definition.code as (typeof SETTING_TARGET_IDS)[number], {
-        before: { value: was as SettingValue },
-        after: { value: next as SettingValue, version },
-      }),
-    );
-    // The change is live; its review opens in the same unit (a refusal rolls the change back).
-    const review = await deps.review.openReview(context, {
-      area: SETTINGS_REVIEW_AREA,
-      subjectKind: SETTING_SUBJECT_KIND,
-      subjectRef: definition.code,
-      before: { value: was },
-      after: { value: next },
-      note: input.note,
-      ...(AI_CODES.has(definition.code) ? { risk: 'high' as const } : {}),
-    });
-    if (!review.ok) return err(review.error);
-    return ok({
-      code: definition.code,
-      value: next,
-      version,
-      updatedAt: now,
-      review: reviewPolicy,
-      request: review.value === null ? null : { id: review.value.id, number: review.value.number },
-    });
   });
+  if (fields.length > 0) return err({ code: 'validation.failed', fields });
+  const now = deps.clock.now();
+  const reviewPolicy = await settingsReview(deps, context);
+  // Where changes are reviewed, a missing note refuses the page before anything is written (the
+  // review recorder checks it again per change).
+  const note = typeof input.note === 'string' ? input.note.trim() : '';
+  if (reviewPolicy.reviewed && (note.length === 0 || note.length > 500)) {
+    return err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] });
+  }
+  return deps.unitOfWork.run<readonly SettingChangeView[], SettingsFailure>(
+    context.market,
+    async () => {
+      // Every version first, so a stale one saves nothing (the unit also rolls back on an error).
+      for (const { definition, seen } of checkedChanges) {
+        const row = await deps.settings.find(context.market, definition.code);
+        if ((row?.version ?? 0) !== seen) return err({ code: 'settings.conflict' as const });
+      }
+      const views: SettingChangeView[] = [];
+      for (const checked of checkedChanges) {
+        const result = await applyChecked(
+          deps,
+          context,
+          adminId,
+          checked,
+          now,
+          reviewPolicy,
+          input.note,
+        );
+        if (!result.ok) return result;
+        views.push(result.value);
+      }
+      return ok(views);
+    },
+  );
 }
 
 /**
@@ -272,10 +418,8 @@ export async function revertSetting(
   const adminId = adminAccountId(context);
   if (adminId === null) throw new Error('settings: a revert needs a signed-in admin');
   const definition = findDefinition(request.subjectRef);
-  const restore = request.before.value;
-  if (definition === null || typeof restore !== 'string' || !definition.values.includes(restore)) {
-    return 'gone';
-  }
+  const restore = definition === null ? null : acceptedValue(definition, request.before.value);
+  if (definition === null || restore === null) return 'gone';
   const row = await deps.settings.find(context.market, definition.code);
   const current = row?.value ?? definition.defaultValue;
   if (current !== request.after.value) return 'changed-since';
@@ -291,12 +435,6 @@ export async function revertSetting(
     changedBy: adminId,
   });
   if (!applied) return 'changed-since';
-  await deps.audit.record(
-    context,
-    MarketSettingChanged.entry(definition.code as (typeof SETTING_TARGET_IDS)[number], {
-      before: { value: current as SettingValue },
-      after: { value: restore as SettingValue, version },
-    }),
-  );
+  await deps.audit.record(context, changeEntry(definition, current, restore, version));
   return 'reverted';
 }

@@ -63,3 +63,20 @@ store of ADR-0026).
   and its undo made while the area was off leave no request, and a later revert restores over them.
 - The admin panel sends no `note` yet; keep area `marketplace` off in a Market until the panel's
   save dialog asks for one (frontend package), or every save there answers 400 on `note`.
+
+## Offer review policy (risk-based Offer approval, ADR-0051)
+
+- Six settings on one page, Settings › Catalogue › Offer review: `offer-review-mode`
+  (`risk-based` default, `all` safe, `off`), `offer-review-probation-offers` (10, 0 to 100, safe 100),
+  `offer-review-reference-sellers` (3, 2 to 20, safe 20), `offer-review-price-band` (50 %, 5 to 200,
+  safe 5), `offer-review-sampling` (5 %, 0 to 100, safe 100) and `offer-review-certificate-badges`
+  (`review` default and safe, `automatic`).
+- The four numbers are the store's first whole-number settings: stored as decimal text, checked
+  against bounds, audited by `settings.market-setting.number-changed` with integer values.
+- `GET` and `PUT settings/admin/offer-review`; the write takes `changes: [{code, value,
+  expectedVersion}]`, each code once, all or nothing (every version checked before any write). Each
+  change keeps its own history row, audit row and review request.
+- Keys `settings.offer-review.view` (Viewer role, seed 37) and `.manage` (protected, second
+  factor). Reviewed at high risk where area `marketplace` is reviewed. A stored value outside the
+  definition is read as the safe value and logged (every setting, not only these).
+- Nothing reads them yet: catalog's referral policy (next slice) reads them through the facade.

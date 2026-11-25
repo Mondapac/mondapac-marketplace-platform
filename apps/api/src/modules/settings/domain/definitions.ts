@@ -37,11 +37,58 @@ export const AI_DESCRIPTION_WRITER_TIER_CODE = 'ai-description-writer-tier';
 export const AI_MODEL_TIER_VALUES = ['fast', 'balanced'] as const;
 export type AiModelTierSetting = (typeof AI_MODEL_TIER_VALUES)[number];
 
+export const OFFER_REVIEW_MODE_CODE = 'offer-review-mode';
+
+/**
+ * How a new Offer on a platform product is approved (risk-based Offer approval, catalog brief
+ * CAT-36). `all`: every first publication waits for an admin, as before. `risk-based`: an Offer
+ * that passes the automatic checks goes live at once and only the risky ones wait (R0 to R7).
+ * `off`: no Offer waits for an admin. This PR only stores the choice; catalog reads it later.
+ */
+export const OFFER_REVIEW_MODE_VALUES = ['all', 'risk-based', 'off'] as const;
+export type OfferReviewMode = (typeof OFFER_REVIEW_MODE_VALUES)[number];
+
+/** How many of a new seller's first Offers wait for an admin (R1 probation). */
+export const OFFER_REVIEW_PROBATION_CODE = 'offer-review-probation-offers';
+/**
+ * How many live Offers from different businesses (ABNs) a Variant needs before their median
+ * regular price is the reference; until then an Offer's first price is taken as it is and the
+ * Offer is always checked after it goes live (R4).
+ */
+export const OFFER_REVIEW_REFERENCE_SELLERS_CODE = 'offer-review-reference-sellers';
+/** How far, in percent above or below the reference, a first price may be before it waits (R4). */
+export const OFFER_REVIEW_PRICE_BAND_CODE = 'offer-review-price-band';
+/** The percent of Offers that went live automatically that are checked afterwards. */
+export const OFFER_REVIEW_SAMPLING_CODE = 'offer-review-sampling';
+/** Whether an Offer with a certification badge always waits for an admin (R2). */
+export const OFFER_REVIEW_BADGES_CODE = 'offer-review-certificate-badges';
+export const OFFER_REVIEW_BADGES_VALUES = ['review', 'automatic'] as const;
+export type OfferReviewBadges = (typeof OFFER_REVIEW_BADGES_VALUES)[number];
+
+/** Every code of the Offer review policy, as one page shows and saves them. */
+export const OFFER_REVIEW_CODES: readonly string[] = Object.freeze([
+  OFFER_REVIEW_MODE_CODE,
+  OFFER_REVIEW_PROBATION_CODE,
+  OFFER_REVIEW_REFERENCE_SELLERS_CODE,
+  OFFER_REVIEW_PRICE_BAND_CODE,
+  OFFER_REVIEW_SAMPLING_CODE,
+  OFFER_REVIEW_BADGES_CODE,
+]);
+
+/** A whole number setting: its value is stored as a decimal text such as "10". */
+export interface IntegerBounds {
+  readonly min: number;
+  readonly max: number;
+}
+
 export interface SettingDefinition {
   readonly code: string;
   /** The English name admins know it by, as the System requests queue labels its changes. */
   readonly label: string;
+  /** The allowed values of a choice; empty for a whole number setting. */
   readonly values: readonly string[];
+  /** Set for a whole number setting: the value is a decimal text within these bounds. */
+  readonly integer?: IntegerBounds;
   /** In force while the Market has no row. */
   readonly defaultValue: string;
   /** Used when the store cannot be read: restrictive and cheap, never a Market choice. */
@@ -79,10 +126,76 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
     // The cheaper tier.
     safeValue: 'fast',
   },
+  {
+    code: OFFER_REVIEW_MODE_CODE,
+    label: 'Offer review mode',
+    values: OFFER_REVIEW_MODE_VALUES,
+    defaultValue: 'risk-based',
+    // Every Offer waits for an admin, as before the risk rules.
+    safeValue: 'all',
+  },
+  {
+    code: OFFER_REVIEW_PROBATION_CODE,
+    label: 'New seller offers reviewed',
+    values: [],
+    integer: { min: 0, max: 100 },
+    defaultValue: '10',
+    safeValue: '100',
+  },
+  {
+    code: OFFER_REVIEW_REFERENCE_SELLERS_CODE,
+    label: 'Sellers needed for a reference price',
+    values: [],
+    integer: { min: 2, max: 20 },
+    defaultValue: '3',
+    // More Offers are checked after they go live.
+    safeValue: '20',
+  },
+  {
+    code: OFFER_REVIEW_PRICE_BAND_CODE,
+    label: 'Price band around the reference (%)',
+    values: [],
+    integer: { min: 5, max: 200 },
+    defaultValue: '50',
+    // The narrowest band: more first prices wait.
+    safeValue: '5',
+  },
+  {
+    code: OFFER_REVIEW_SAMPLING_CODE,
+    label: 'Offers checked after going live (%)',
+    values: [],
+    integer: { min: 0, max: 100 },
+    defaultValue: '5',
+    safeValue: '100',
+  },
+  {
+    code: OFFER_REVIEW_BADGES_CODE,
+    label: 'Offers with a certification badge',
+    values: OFFER_REVIEW_BADGES_VALUES,
+    defaultValue: 'review',
+    safeValue: 'review',
+  },
 ]);
 
 export const SETTING_CODES: readonly string[] = SETTING_DEFINITIONS.map((d) => d.code);
 
 export function findDefinition(code: unknown): SettingDefinition | null {
   return SETTING_DEFINITIONS.find((definition) => definition.code === code) ?? null;
+}
+
+const DECIMAL = /^(0|[1-9][0-9]{0,8})$/;
+
+/**
+ * The value as the store keeps it when the definition allows it, or null: one of a choice's values,
+ * or a whole number within the bounds written as plain decimal text (a JSON number is accepted and
+ * written as text; "07", "1e2" and "10.0" are not).
+ */
+export function acceptedValue(definition: SettingDefinition, value: unknown): string | null {
+  if (definition.integer === undefined) {
+    return typeof value === 'string' && definition.values.includes(value) ? value : null;
+  }
+  const text = typeof value === 'number' && Number.isSafeInteger(value) ? String(value) : value;
+  if (typeof text !== 'string' || !DECIMAL.test(text)) return null;
+  const number = Number(text);
+  return number >= definition.integer.min && number <= definition.integer.max ? text : null;
 }

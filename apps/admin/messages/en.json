@@ -4142,6 +4142,7 @@
       "group": {
         "general": "General",
         "delivery": "Delivery",
+        "catalogue": "Catalogue",
         "money": "Money & tax",
         "marketing": "Marketing",
         "ai": "AI",
@@ -4164,7 +4165,8 @@
         "lists": "List paging",
         "ai": "Write with AI",
         "promotions": "Promotion rules",
-        "review-policy": "Approval rules"
+        "review-policy": "Approval rules",
+        "offer-review": "Offer review"
       },
       "words": {
         "assistant": "Smart assistant,chat,buyer assistant",
@@ -4173,7 +4175,8 @@
         "lists": "Lists,pagination,page numbers",
         "ai": "AI,AI writing,product descriptions",
         "promotions": "Promotions,discounts,free delivery,first order",
-        "review-policy": "Review policy,System requests,second admin,review"
+        "review-policy": "Review policy,System requests,second admin,review",
+        "offer-review": "Offers,approval,probation,new sellers,price check,sampling,Approval required"
       },
       "about": {
         "support": "The help address customers and sellers see",
@@ -4191,7 +4194,8 @@
         "ship-to-retention": "When old orders' addresses and phone numbers are erased",
         "admins": "Who can sign in to this panel, and invitations",
         "roles": "Sets of permissions to give admins",
-        "review-policy": "Which changes a second admin must review"
+        "review-policy": "Which changes a second admin must review",
+        "offer-review": "Which new offers wait for an admin, and the numbers the checks use"
       }
     },
     "sub": {
@@ -17587,6 +17591,15 @@
         ],
         "related": []
       },
+      "settings-offer-review": {
+        "title": "Offer review",
+        "about": "Which new offers on catalogue products wait for an admin, and the numbers the automatic checks use.",
+        "good": [
+          "Saving asks for a fresh two-step code.",
+          "Each change is kept in the history and the audit log."
+        ],
+        "related": []
+      },
       "settings-delivery": {
         "title": "Delivery rules",
         "about": "Which delivery methods the Market offers and when same-day orders close.",
@@ -18222,6 +18235,67 @@
           }
         ]
       }
+    }
+  },
+  "offer-review-settings": {
+    "title": "Offer review",
+    "permission-view": "Offer review: view",
+    "load-failed": "Couldn't load the offer review settings.",
+    "read-only": "You can view these settings but not change them.",
+    "intro": "How a seller's new offer on a catalogue product is approved in this Market. Product changes are not affected.",
+    "version-defaults": "Not changed yet. The launch values are in force.",
+    "changed-before": "Changed by an admin. Each change is in the audit log.",
+    "saved": "Saved.",
+    "review-section": "Review",
+    "invalid-number": "Enter a whole number from {min} to {max}.",
+    "section": {
+      "approval": "Approval",
+      "sellers": "New sellers",
+      "prices": "First price check",
+      "sampling": "Checks after going live"
+    },
+    "offer-review-mode": {
+      "label": "Review mode",
+      "help": "Risk-based: offers that pass the automatic checks go live at once; only risky ones wait for an admin. Every offer: all new offers wait for an admin. No review: offers go live without an admin. Every offer applies if this setting can't be read.",
+      "option": {
+        "risk-based": "Risk-based",
+        "all": "Every offer",
+        "off": "No review"
+      }
+    },
+    "offer-review-certificate-badges": {
+      "label": "Offers with a certification badge",
+      "help": "Halal, kosher, vegan and other badges are still checked against the seller's certificate either way.",
+      "option": {
+        "review": "Always wait for an admin",
+        "automatic": "Follow the other checks"
+      }
+    },
+    "offer-review-probation-offers": {
+      "label": "New seller offers reviewed",
+      "help": "How many of a new seller's first offers wait for an admin. 0 skips this check. From {min} to {max}."
+    },
+    "offer-review-reference-sellers": {
+      "label": "Sellers needed for a reference price",
+      "help": "The reference price is the median regular price of live offers from this many different sellers. Until then, a first price is accepted and checked after it goes live. From {min} to {max}."
+    },
+    "offer-review-price-band": {
+      "label": "Price band around the reference (%)",
+      "help": "A first price more than this percent above or below the reference waits in the price queue. From {min} to {max}."
+    },
+    "offer-review-sampling": {
+      "label": "Offers checked after going live (%)",
+      "help": "The share of offers that went live automatically and are then checked by an admin. They stay on sale meanwhile. From {min} to {max}."
+    },
+    "error": {
+      "invalid": "One of these values isn't allowed.",
+      "conflict": "Someone changed these settings. Reload the page and try again.",
+      "denied": "You don't have permission to change these settings.",
+      "acting-as": "You can't change settings while acting as someone else.",
+      "csrf": "Your session expired. Reload the page.",
+      "throttled": "Too many attempts. Wait a moment and try again.",
+      "unavailable": "The service isn't available right now. Try again.",
+      "unknown": "Something went wrong. Try again."
     }
   }
 }

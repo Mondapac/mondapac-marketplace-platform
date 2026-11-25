@@ -251,6 +251,8 @@ const PINNED: readonly (readonly [string, string])[] = [
   ['platform:viewer@35', '98a877f69706e2e78e2d9fc3878bc64c014b63c61b444511d918a27525e329b5'],
   // Carrier progress on the admin Shipments list: `shipping.carrier-delivery.view`.
   ['platform:viewer@36', 'a416c092aa64f4ac5bd53abc648891a9a2e8e8fce6f0f1bb29a493c01bcec261'],
+  // Risk-based Offer approval: the Offer review policy settings, `settings.offer-review.view`.
+  ['platform:viewer@37', '54c4572c9df56fc73beb92dfc18a8a96b7a7d83aea90b13b8a13c2405e0454b5'],
 ];
 
 const ENTRY = /^(platform|seller):([a-z][a-z0-9-]*)@([1-9][0-9]*)$/;

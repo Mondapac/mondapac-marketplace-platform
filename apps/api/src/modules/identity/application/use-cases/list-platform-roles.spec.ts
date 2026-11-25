@@ -349,13 +349,13 @@ describe.each(TEST_MARKETS)('ListPlatformRoles in market %s (slice 10a)', (code)
       roleId: roleOf('viewer'),
       kind: 'default',
       seedCode: 'viewer',
-      permissionCount: 35,
+      permissionCount: 36,
       grantable: true,
       // A default role never lists a protected key (R11).
       sensitive: false,
     });
     expect(byId(items, roleOf('viewer')).name).toBeNull();
-    expect(byId(items, roleOf('viewer')).permissionKeys).toHaveLength(35);
+    expect(byId(items, roleOf('viewer')).permissionKeys).toHaveLength(36);
     expect(byId(items, LEAD_ROLE)).toMatchObject({
       kind: 'custom',
       seedCode: null,
