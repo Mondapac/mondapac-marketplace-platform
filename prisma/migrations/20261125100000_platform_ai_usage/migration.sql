@@ -56,7 +56,7 @@ CREATE TABLE "platform"."ai_usage_days" (
     "latency_gt_32000_ms" INTEGER NOT NULL DEFAULT 0,
 
     CONSTRAINT "ai_usage_days_pkey" PRIMARY KEY ("id")
-) WITH (fillfactor = 80);
+) WITH (fillfactor = 80, autovacuum_vacuum_scale_factor = 0.01);
 
 -- CreateTable
 -- One UPDATE per reservation and per settle on the same few rows: fillfactor leaves room for HOT
@@ -71,7 +71,7 @@ CREATE TABLE "platform"."ai_budget_counters" (
     "held_micro_usd" BIGINT NOT NULL DEFAULT 0,
     "spent_micro_usd" BIGINT NOT NULL DEFAULT 0,
 
-    CONSTRAINT "ai_budget_counters_pkey" PRIMARY KEY ("market_id","period","period_start","scope","scope_key")
+    CONSTRAINT "ai_budget_counters_pkey" PRIMARY KEY ("market_id","period_start","period","scope","scope_key")
 ) WITH (fillfactor = 70, autovacuum_vacuum_scale_factor = 0.01);
 
 -- CreateTable

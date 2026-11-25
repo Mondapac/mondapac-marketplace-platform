@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import { err, ok } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, Result, Temporal } from '@mondapac/shared-kernel';
@@ -379,8 +379,9 @@ export async function sendMessage(
   if (throttled !== null) return err(throttled);
 
   const masked = maskPersonalData(text.value);
-  // One id per buyer turn: the gateway allows the capability's rounds per turn id.
-  const turnId = `${conversationId}:${conversation?.turns ?? 0}:${deps.clock.now().epochMilliseconds}`;
+  // A random id per buyer message (design section 5): the gateway allows the capability's
+  // rounds per turn id.
+  const turnId = randomUUID();
   const turn = await runModel(deps, context, settings, history, masked, turnId);
   const guarded = guardReply(turn.text);
   for (const notice of guarded.notices) turn.notices.add(notice);

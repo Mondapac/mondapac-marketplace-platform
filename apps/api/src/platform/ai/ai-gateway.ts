@@ -52,8 +52,11 @@ export interface GatewayOptions {
   readonly timeoutMs?: number;
   /**
    * The user turn this round belongs to, for `run` of a capability with tool rounds (its
-   * `maxToolRounds` runs share one turn id; design section 5). A random id per user message
-   * (1 to 100 of A-Z a-z 0-9 . _ : -). Not needed by `status`, nor by a capability without tools.
+   * `maxToolRounds` runs share one turn id; design section 5). The caller makes one random id
+   * per user message, on the server, and passes the same id to every round of that message; it
+   * never comes from the client or a model (a new id per round would lift the round cap; Hassan,
+   * PR 1348 I6). 1 to 100 of A-Z a-z 0-9 . _ : -. Not needed by `status`, nor by a capability
+   * without tools.
    */
   readonly turnId?: string;
 }
@@ -180,7 +183,18 @@ export class AiGateway {
       const status = await this.#evaluate(capability, context, options);
       if (!status.on) return status;
       const spec = this.registry.get(capability)!;
-      if (await this.usage.overBudget(context.market, scopeOf(spec, context, options))) {
+      // Off once a cap cannot take the most one call of the capability can cost: its largest
+      // input (two characters a token at the cap, counted one token a character) and its whole
+      // output allowance (Hassan, PR 1348 M1), so the host flow shows its non-AI path (R8).
+      const price = this.models.priceOf(context.market.marketId, options.tier);
+      const largest =
+        price === null
+          ? 0
+          : costMicroUsd(
+              { inputTokens: 2 * spec.maxInputTokens, outputTokens: spec.maxOutputTokens },
+              price,
+            );
+      if (await this.usage.overBudget(context.market, scopeOf(spec, context, options), largest)) {
         return { on: false, reason: 'over-budget' };
       }
       return status;
@@ -241,7 +255,7 @@ export class AiGateway {
     if (spec.maxToolRounds > 0) {
       const turnId = options.turnId;
       if (turnId === undefined || !TURN_ID.test(turnId)) return refuse('no-turn', 'off');
-      if (!this.#rounds.take(capability, turnId, spec.maxToolRounds)) {
+      if (!this.#rounds.take(marketId, capability, turnId, spec.maxToolRounds)) {
         return refuse('rounds-exhausted', 'over-budget');
       }
     }
@@ -254,6 +268,11 @@ export class AiGateway {
     const estimate = costMicroUsd(timeoutUsageOf(sent), price);
     let reservation;
     try {
+      // Read first, without a lock: a cap that cannot take the estimate refuses here, so a
+      // refused call never queues on the Market's month and day rows (Hassan, PR 1348 M1, L3).
+      if (await this.usage.overBudget(market, scope, estimate)) {
+        return await refuse('over-budget', 'over-budget');
+      }
       reservation = await this.usage.reserve(
         market,
         scope,

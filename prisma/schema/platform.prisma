@@ -382,7 +382,7 @@ model AiBudgetCounter {
   /// Settled only, US micro-dollars.
   spentMicroUsd BigInt   @default(0) @map("spent_micro_usd")
 
-  @@id([marketId, period, periodStart, scope, scopeKey], map: "ai_budget_counters_pkey")
+  @@id([marketId, periodStart, period, scope, scopeKey], map: "ai_budget_counters_pkey")
   @@map("ai_budget_counters")
   @@schema("platform")
 }

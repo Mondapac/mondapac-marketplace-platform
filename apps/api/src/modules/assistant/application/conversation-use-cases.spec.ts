@@ -698,6 +698,48 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       },
     );
 
+    it('is off for a customer and a guest while an AI budget cap is full (AI Gateway G2)', async () => {
+      runtime.overBudget = true;
+      expect(await asCustomer('Hi')).toEqual({ ok: false, error: { code: 'assistant.off' } });
+      expect(await asGuest('Hi')).toEqual({ ok: false, error: { code: 'assistant.off' } });
+      expect(runtime.requests).toHaveLength(0);
+      expect([...spend.days.values()]).toEqual([]);
+    });
+
+    it('ends a turn the gateway refuses for budget mid-turn with the notice and the support card', async () => {
+      runtime.script.push(answer({ calls: [{ id: 'c1', name: 'list_bestsellers', input: {} }] }));
+      // The cap fills between the turn's first and second round.
+      const first = runtime.complete.bind(runtime);
+      let rounds = 0;
+      runtime.complete = (...args) => {
+        rounds += 1;
+        if (rounds === 2) runtime.overBudget = true;
+        return first(...args);
+      };
+      const reply = await asCustomer('Best sellers?');
+      expect(reply.ok && reply.value).toMatchObject({
+        sentences: [],
+        notices: ['unavailable'],
+        cards: [{ kind: 'support', email: 'help@example.com' }],
+      });
+      expect(rounds).toBe(2);
+    });
+
+    it('sends every round of one message with one random turn id, and a new id for the next message', async () => {
+      runtime.script.push(
+        answer({ calls: [{ id: 'c1', name: 'list_bestsellers', input: {} }] }),
+        answer({ text: 'Here they are.' }),
+        answer({ text: 'Hello again.' }),
+      );
+      await asCustomer('Best sellers?');
+      await asCustomer('Hi');
+      const [one, two, three] = runtime.turnIds;
+      expect(runtime.turnIds).toHaveLength(3);
+      expect(one).toBe(two);
+      expect(three).not.toBe(one);
+      expect(one).toMatch(/^[0-9a-f-]{36}$/u);
+    });
+
     it('answers a refusal with the fixed notice and the support card', async () => {
       runtime.script.push(answer({ text: 'I will not.', stop: 'refusal' }));
       const reply = await asCustomer('Something bad');

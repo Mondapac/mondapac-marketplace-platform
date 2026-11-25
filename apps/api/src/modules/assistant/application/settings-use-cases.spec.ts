@@ -553,6 +553,15 @@ describe.each(TEST_MARKET_IDS)('assistant settings use cases in market %s', (cod
       expect(await storefront()).toEqual(ok(OFF));
     });
 
+    it('stays off while an AI budget cap is full (AI Gateway G2)', async () => {
+      await set(on({ welcomeText: 'Hi' }));
+      runtime.overBudget = true;
+      expect(await storefront()).toEqual(ok(OFF));
+      runtime.overBudget = false;
+      const read = await storefront();
+      expect(read.ok && read.value.enabled).toBe(true);
+    });
+
     it('stays off for the internal audience and leaves a visitor without a usable key out of a percentage', async () => {
       await set(on({ audience: 'internal' }));
       expect(await storefront()).toEqual(ok(OFF));

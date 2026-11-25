@@ -6,8 +6,13 @@ import type { AiUsage } from './ai-usage';
 export const AI_RESERVATION_SWEEPER_JOB = 'platform.ai-reservation-sweeper';
 export const AI_USAGE_RETENTION_JOB = 'platform.ai-usage-retention';
 
+/** A run stops this long before its `maxRunMs`, so it never outlives its slot (Hassan, L4). */
+const RUN_MARGIN_MS = 5_000;
+const SWEEPER_MAX_RUN_MS = 50_000;
+const RETENTION_MAX_RUN_MS = 300_000;
+
 /**
- * `platform.ai-reservation-sweeper`: every minute, per hosted Market, releases the budget
+ * `platform.ai-reservation-sweeper`: every minute, per hosted Market, counts as spent the budget
  * reservations that expired unsettled (design section 7). Safe to run twice and concurrently: a
  * reservation is taken once. Only the worker role runs jobs.
  */
@@ -16,11 +21,11 @@ export function aiReservationSweeperJob(usage: AiUsage): JobDefinition {
   return {
     name: AI_RESERVATION_SWEEPER_JOB,
     every: Temporal.Duration.from({ minutes: 1 }),
-    maxRunMs: 50_000,
+    maxRunMs: SWEEPER_MAX_RUN_MS,
     async run(context: JobContext): Promise<void> {
-      const report = await usage.sweep(context.market);
+      const report = await usage.sweep(context.market, SWEEPER_MAX_RUN_MS - RUN_MARGIN_MS);
       if (report.released === 0 && !report.backlog) return;
-      // A released reservation is a call whose server never settled it: worth seeing.
+      // An ended reservation is a call whose server never settled it: worth seeing.
       (report.backlog ? logger.warn.bind(logger) : logger.log.bind(logger))({
         msg: report.backlog ? `${AI_RESERVATION_SWEEPER_JOB}.backlog` : AI_RESERVATION_SWEEPER_JOB,
         marketId: context.market.marketId,
@@ -40,9 +45,9 @@ export function aiUsageRetentionJob(usage: AiUsage): JobDefinition {
   return {
     name: AI_USAGE_RETENTION_JOB,
     every: Temporal.Duration.from({ hours: 1 }),
-    maxRunMs: 300_000,
+    maxRunMs: RETENTION_MAX_RUN_MS,
     async run(context: JobContext): Promise<void> {
-      const report = await usage.purge(context.market);
+      const report = await usage.purge(context.market, RETENTION_MAX_RUN_MS - RUN_MARGIN_MS);
       if (report.calls + report.days + report.counters === 0 && !report.backlog) return;
       (report.backlog ? logger.warn.bind(logger) : logger.log.bind(logger))({
         msg: report.backlog ? `${AI_USAGE_RETENTION_JOB}.backlog` : AI_USAGE_RETENTION_JOB,

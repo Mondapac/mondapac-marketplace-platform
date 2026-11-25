@@ -2,7 +2,7 @@
  * The model rounds of each user turn (docs/design/domain/platform-ai.md section 5;
  * `CapabilitySpec.maxToolRounds`): one `run` is one round, and a capability with tools allows
  * `maxToolRounds` runs per turn; one without tools allows one. A turn lives in one request on one
- * API instance, so the count is kept in memory, keyed by capability and the caller's turn id, and
+ * API instance, so the count is kept in memory, keyed by Market, capability and the caller's turn id, and
  * forgotten after {@link TURN_MEMORY_MS}. It is defence in depth against a runaway tool loop in a
  * module, which keeps its own cap as well.
  */
@@ -19,10 +19,10 @@ export class TurnRounds {
   constructor(private readonly nowMs: () => number = () => performance.now()) {}
 
   /** Counts one round of the turn; false when the turn has used all `allowed` rounds. */
-  take(capability: string, turnId: string, allowed: number): boolean {
+  take(marketId: string, capability: string, turnId: string, allowed: number): boolean {
     const now = this.nowMs();
     this.#forget(now);
-    const key = `${capability}|${turnId}`;
+    const key = `${marketId}|${capability}|${turnId}`;
     const turn = this.#turns.get(key);
     if (turn === undefined) {
       if (this.#turns.size >= MAX_TURNS_REMEMBERED) {

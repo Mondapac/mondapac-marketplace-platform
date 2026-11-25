@@ -23,7 +23,7 @@ import type { ModelProvider, ModelRequest, ModelTurn } from './model-provider';
 import { MASKED } from './personal-data-masker';
 import type { SellerAiSwitch } from './seller-ai-switch';
 import type { UnitOfWork } from '../unit-of-work/unit-of-work';
-import type { AiUsage } from './usage/ai-usage';
+import { SETTLE_ATTEMPTS, type AiUsage } from './usage/ai-usage';
 
 const AU = testMarketContext('AU', 'default');
 const ZZ = testMarketContext('ZZ', 'default');
@@ -366,10 +366,10 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       'is over budget when a cap is full: status says so, run calls nothing and counts a refusal (%s)',
       async (c) => {
         const market = marketOf(c);
-        const gateway = gatewayOf(false, registryOf({ capabilityDayMicroUsd: 1000 }), both);
+        const gateway = gatewayOf(false, registryOf({ capabilityDayMicroUsd: 20_000 }), both);
         store.counters.set(`${market.marketId}|day|2026-11-25|capability|alpha.admin-writer`, {
-          held: 1000,
-          spent: 1000,
+          held: 20_000,
+          spent: 20_000,
         });
         const options = { tier: 'fast' as const };
         expect(await gateway.status('alpha.admin-writer', adminContext(market), options)).toEqual({
@@ -491,15 +491,66 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       expect(provider.requests).toHaveLength(0);
     });
 
-    it('answers off from status called inside an open unit of work (entry condition, Mohammad)', async () => {
-      const gateway = gatewayOf(false, registryOf({ marketDayMicroUsd: 1_000_000 }));
-      const inside = await unitOfWork.run(AU, async () =>
-        ok(await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' })),
-      );
-      expect(inside).toEqual({ ok: true, value: { on: false, reason: 'off' } });
-    });
+    it.each([
+      ['AU', 'no caps'],
+      ['AU', 'caps'],
+      ['ZZ', 'no caps'],
+      ['ZZ', 'caps'],
+    ] as const)(
+      'answers off from status called inside an open unit of work (%s, %s; entry condition, Mohammad)',
+      async (c, caps) => {
+        const market = marketOf(c);
+        const gateway = gatewayOf(
+          false,
+          registryOf(caps === 'caps' ? { marketDayMicroUsd: 1_000_000 } : {}),
+          both,
+        );
+        const inside = await unitOfWork.run(market, async () =>
+          ok(await gateway.status('alpha.admin-writer', adminContext(market), { tier: 'fast' })),
+        );
+        expect(inside).toEqual({ ok: true, value: { on: false, reason: 'off' } });
+        // Outside a unit the same call is on.
+        expect(
+          await gateway.status('alpha.admin-writer', adminContext(market), { tier: 'fast' }),
+        ).toEqual({ on: true });
+      },
+    );
 
-    it('releases a reservation the sweeper finds expired, and a late settle still counts the cost', async () => {
+    it.each(both)(
+      'is off once a cap cannot take the largest call, and run refuses before any lock when the estimate does not fit (%s; Hassan M1)',
+      async (c) => {
+        const market = marketOf(c);
+        const key = `${market.marketId}|day|2026-11-25|capability|alpha.admin-writer`;
+        // The largest call: 8000 input tokens at 1 and 500 output tokens at 5 micro-dollars a
+        // thousand, 10,500 micro-dollars. This request's estimate is about 2,600.
+        const gateway = gatewayOf(false, registryOf({ capabilityDayMicroUsd: 20_000 }), both);
+        const options = { tier: 'fast' as const };
+        store.counters.set(key, { held: 9_500, spent: 9_500 });
+        expect(await gateway.status('alpha.admin-writer', adminContext(market), options)).toEqual({
+          on: true,
+        });
+        store.counters.set(key, { held: 9_501, spent: 9_501 });
+        expect(await gateway.status('alpha.admin-writer', adminContext(market), options)).toEqual({
+          on: false,
+          reason: 'over-budget',
+        });
+        // A smaller call still fits the room left.
+        expect(
+          await gateway.run('alpha.admin-writer', adminContext(market), REQUEST, options),
+        ).toMatchObject({ ok: true });
+        store.counters.set(key, { held: 19_000, spent: 19_000 });
+        const before = new Map(store.counters);
+        expect(
+          await gateway.run('alpha.admin-writer', adminContext(market), REQUEST, options),
+        ).toEqual({ ok: false, reason: 'over-budget', costMicroUsd: 0 });
+        expect(provider.requests).toHaveLength(1);
+        expect(store.reservations.size).toBe(0);
+        // Refused on the read: no counter row was created or written.
+        expect(store.counters).toEqual(before);
+      },
+    );
+
+    it('counts an expired reservation as spent, and a late settle writes the call without counting twice (Hassan M2)', async () => {
       gatewayOf();
       const scope = { capability: 'alpha.admin-writer', sellerId: null, guest: false };
       const reservation = await usage.reserve(
@@ -510,7 +561,8 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       );
       expect(store.counterOf(AU, dayLine('market'))).toEqual({ held: 900, spent: 0 });
       expect(await usage.sweep(AU)).toEqual({ released: 1, backlog: false });
-      expect(store.counterOf(AU, dayLine('market'))).toEqual({ held: 0, spent: 0 });
+      // The call may have been sent and billed: the whole estimate is spent, never released.
+      expect(store.counterOf(AU, dayLine('market'))).toEqual({ held: 900, spent: 900 });
       expect(await usage.sweep(AU)).toEqual({ released: 0, backlog: false });
       await usage.settle(AU, reservation as Exclude<typeof reservation, 'over-budget'>, {
         occurredAt: NOW,
@@ -525,7 +577,48 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
         latencyMs: 10,
         outcome: 'ok',
       });
+      expect(store.counterOf(AU, dayLine('market'))).toEqual({ held: 900, spent: 900 });
+      expect(store.calls).toHaveLength(1);
+      expect(store.usage).toEqual([expect.objectContaining({ calls: 1, costMicroUsd: 300 })]);
+    });
+
+    it('retries a failed settle, and one that keeps failing is logged and left to the sweeper (Hassan M2)', async () => {
+      gatewayOf();
+      const scope = { capability: 'alpha.admin-writer', sellerId: null, guest: false };
+      const settled = {
+        occurredAt: NOW,
+        provider: 'anthropic',
+        model: 'model-fast',
+        attempt: 1,
+        inputTokens: 10,
+        outputTokens: 10,
+        inputPicoUsd: 1,
+        outputPicoUsd: 1,
+        costMicroUsd: 300,
+        latencyMs: 10,
+        outcome: 'ok' as const,
+      };
+      const first = await usage.reserve(AU, scope, 900, Temporal.Duration.from({ seconds: 60 }));
+      store.failNext = SETTLE_ATTEMPTS - 1;
+      await usage.settle(AU, first as Exclude<typeof first, 'over-budget'>, settled);
       expect(store.counterOf(AU, dayLine('market'))).toEqual({ held: 300, spent: 300 });
+      expect(store.reservations.size).toBe(0);
+
+      const second = await usage.reserve(AU, scope, 900, Temporal.Duration.from({ seconds: 60 }));
+      store.failNext = SETTLE_ATTEMPTS;
+      await usage.settle(AU, second as Exclude<typeof second, 'over-budget'>, settled);
+      // Not settled: the estimate stays held until the sweeper counts it as spent.
+      expect(store.counterOf(AU, dayLine('market'))).toEqual({ held: 1200, spent: 300 });
+      expect(store.reservations.size).toBe(1);
+    });
+
+    it('stops a sweep at its run time and reports the backlog (Hassan L4)', async () => {
+      gatewayOf();
+      const scope = { capability: 'alpha.admin-writer', sellerId: null, guest: false };
+      await usage.reserve(AU, scope, 900, Temporal.Duration.from({ seconds: -1 }));
+      expect(await usage.sweep(AU, 0)).toEqual({ released: 0, backlog: true });
+      expect(await usage.purge(AU, 0)).toEqual({ calls: 0, days: 0, counters: 0, backlog: true });
+      expect(await usage.sweep(AU, 1000)).toEqual({ released: 1, backlog: false });
     });
   });
 

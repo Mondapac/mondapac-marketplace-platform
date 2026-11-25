@@ -6,7 +6,7 @@ import { Test } from '@nestjs/testing';
 import { Client } from 'pg';
 import pino from 'pino';
 import { Temporal, uuidV7 } from '@mondapac/shared-kernel';
-import type { CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
+import type { CallContext, Id, MarketContext, MarketId } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   testAuthenticatedActor,
@@ -256,7 +256,7 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       expect(rows).toEqual([{ calls: 2, refusals: 1, cost: 80, fast: 1, slower: 1 }]);
     });
 
-    it('releases an expired reservation once (the sweeper), and a late settle still counts', async () => {
+    it('counts an expired reservation as spent once (the sweeper), and a late settle counts nothing twice', async () => {
       const scope = scopeOf();
       const reservation = await usage.reserve(
         market,
@@ -268,13 +268,19 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       if (reservation === 'over-budget') throw new Error('unexpected');
       const [first, second] = await Promise.all([usage.sweep(market), usage.sweep(market)]);
       expect(first.released + second.released).toBeGreaterThanOrEqual(1);
+      // The call may have been billed: the whole estimate is spent (Hassan, PR 1348 M2).
       expect(await counter(market, 'capability', scope.capability)).toEqual([
-        { held: 0, spent: 0 },
+        { held: 500, spent: 500 },
       ]);
       await usage.settle(market, reservation, settled(120));
       expect(await counter(market, 'capability', scope.capability)).toEqual([
-        { held: 120, spent: 120 },
+        { held: 500, spent: 500 },
       ]);
+      const { rows } = await sql.query<{ n: number }>(
+        'SELECT count(*)::int AS n FROM platform.ai_calls WHERE id = $1',
+        [reservation.id],
+      );
+      expect(rows[0]!.n).toBe(1);
     });
 
     it('purges calls older than 90 days in batches, and keeps younger ones', async () => {
@@ -331,6 +337,64 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
       ).toEqual({ ok: false, reason: 'over-budget', costMicroUsd: 0 });
       expect(spy).not.toHaveBeenCalled();
     });
+  });
+
+  it("keeps each Market's counters, reservations and calls to itself (cross-Market canary, Hassan L5)", async () => {
+    const [au, zz] = [marketOf('AU'), marketOf('ZZ')];
+    const sellerId = uuid();
+    const scope = scopeOf(sellerId);
+    const config = (id: MarketId) => MarketRegistry.prototype.get.call(markets, id);
+    jest
+      .spyOn(markets, 'get')
+      .mockImplementation((id) => ({ ...config(id), aiBudget: { sellerDayMicroUsd: 100 } }));
+    try {
+      // The same capability and seller key fill the seller's cap in AU only.
+      expect(await usage.reserve(au, scope, 100, Temporal.Duration.from({ seconds: 1 }))).not.toBe(
+        'over-budget',
+      );
+      expect(await usage.reserve(au, scope, 100, Temporal.Duration.from({ seconds: 1 }))).toBe(
+        'over-budget',
+      );
+      expect(await usage.overBudget(zz, scope)).toBe(false);
+      expect(await usage.reserve(zz, scope, 100, Temporal.Duration.from({ seconds: 1 }))).not.toBe(
+        'over-budget',
+      );
+      clock.advance(Temporal.Duration.from({ seconds: 2 }));
+      // AU's sweeper ends AU's reservation and never touches ZZ's.
+      await usage.sweep(au);
+      const reservations = async (market: MarketContext) =>
+        (
+          await sql.query<{ n: number }>(
+            `SELECT count(*)::int AS n FROM platform.ai_budget_reservations
+              WHERE market_id = $1 AND capability = $2`,
+            [market.marketId, scope.capability],
+          )
+        ).rows[0]!.n;
+      expect(await reservations(au)).toBe(0);
+      expect(await reservations(zz)).toBe(1);
+      expect(await counter(zz, 'seller', sellerId)).toEqual([{ held: 100, spent: 0 }]);
+      await usage.sweep(zz);
+      expect(await reservations(zz)).toBe(0);
+
+      // AU's retention never deletes ZZ's old call.
+      const old = uuid();
+      const at = new Date(NOW.epochMilliseconds - 91 * 86_400_000);
+      await owner.query(
+        `INSERT INTO platform.ai_calls (id, market_id, tenant_id, occurred_at, day, capability,
+           seller_id, guest, provider, model, attempt, input_tokens, output_tokens,
+           input_pico_usd, output_pico_usd, cost_micro_usd, latency_ms, outcome)
+         VALUES ($1, $2, $3, $4, $5, $6, NULL, false, 'anthropic', 'm', 1, 1, 1, 1, 1, 1, 1, 'ok')`,
+        [old, zz.marketId, zz.tenantId, at, at.toISOString().slice(0, 10), scope.capability],
+      );
+      await usage.purge(au);
+      const kept = await sql.query('SELECT id FROM platform.ai_calls WHERE id = $1', [old]);
+      expect(kept.rows).toHaveLength(1);
+      await usage.purge(zz);
+      const gone = await sql.query('SELECT id FROM platform.ai_calls WHERE id = $1', [old]);
+      expect(gone.rows).toHaveLength(0);
+    } finally {
+      jest.restoreAllMocks();
+    }
   });
 
   it('grants the application only what the store runs, and the CHECKs hold', async () => {

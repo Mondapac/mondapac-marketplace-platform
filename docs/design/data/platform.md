@@ -1256,16 +1256,30 @@ reserved to that folder by `scripts/check-prisma-boundaries.mjs`, `AI_USAGE_TABL
 | Table | Key | Writes | Grants to `mondapac_app` | Retention |
 |---|---|---|---|---|
 | `ai_calls` | `id` (the call and reservation id); index `(market_id, occurred_at, id)` | insert once (`ON CONFLICT DO NOTHING`), purge | SELECT, INSERT, DELETE | 90 days, job `platform.ai-usage-retention` |
-| `ai_usage_days` | unique `(market_id, day, capability, seller_id)` NULLS NOT DISTINCT | create row, increment counts | SELECT, INSERT, UPDATE, DELETE | 25 months |
-| `ai_budget_counters` | PK `(market_id, period, period_start, scope, scope_key)`; fillfactor 70 | conditional `UPDATE … WHERE held <= cap - est`, corrections | SELECT, INSERT, UPDATE, DELETE | 25 months |
+| `ai_usage_days` | unique `(market_id, day, capability, seller_id)` NULLS NOT DISTINCT; fillfactor 80, autovacuum scale 0.01 | create row, increment counts | SELECT, INSERT, UPDATE, DELETE | 25 months |
+| `ai_budget_counters` | PK `(market_id, period_start, period, scope, scope_key)`, so the retention's `period_start <` is a range on it; fillfactor 70, autovacuum scale 0.01 | conditional `UPDATE … WHERE held <= cap - est`, corrections | SELECT, INSERT, UPDATE, DELETE | 25 months |
 | `ai_budget_reservations` | `id`; index `(market_id, expires_at, id)` | insert, delete (settle, sweep) | SELECT, INSERT, DELETE | minutes; job `platform.ai-reservation-sweeper` every minute |
 
 - CHECKs: closed `outcome`, `period`, `scope` values; a month starts on day 1; a seller key is a
   UUID and a Market or guest key is empty; `held >= spent >= 0`; every count non-negative; no
   guest call names a seller; a reservation expires after it is created.
-- Locking: one reservation takes the counter rows in the fixed order Market month, Market day,
-  capability, seller or guest pool, so two units never wait in a cycle; every call of a Market
-  briefly serialises on its month row, which is acceptable at today's volume (one short unit per
-  call). Measured in `test/db/platform-ai-usage.db-spec.ts`: 20 concurrent reservations against
-  room for 7 hold exactly 7.
+- Locking: one unit takes the counter rows in the fixed order most specific first (seller or
+  guest pool, capability, Market day, Market month), so two units never wait in a cycle and the
+  Market rows every call shares are locked last, just before the commit. Reserve inserts its
+  reservation row before the counters. Reserve, settle and sweep units wait at most 1 s for a row
+  lock (`lockTimeoutMs`), after which the call is off (reserve) or retried (settle, three tries).
+  Before reserving, the gateway reads the counters without a lock and refuses a call that cannot
+  fit, so a full cap never queues on the Market rows. Measured in
+  `test/db/platform-ai-usage.db-spec.ts`: 20 concurrent reservations against room for 7 hold
+  exactly 7.
+- Ceiling: every call updates its Market's day and month rows, so one Market takes a few hundred
+  reserve and settle units a second before they queue (estimate); launch expects well under 10
+  calls a second per Market. Above that, shard the Market rows.
+- Sweep: an expired reservation's whole estimate is counted as spent (the call may have been
+  billed), never released; a late settle then writes the call's row only.
+- Growth (assumptions per Market): `ai_calls` about 250 B a row with indexes; at 10k calls a day,
+  90 days is about 0.9M rows, roughly 230 MB. `ai_usage_days`: capabilities × active sellers ×
+  760 days. `ai_budget_counters`: about 300 rows a day × 760 days, about 230k rows.
+  `ai_budget_reservations`: in-flight calls only. Partition `ai_calls` by month when it passes 50M
+  rows or its purge no longer finishes within one run.
 - No text, customer id, IP or personal key in any of the four tables.

@@ -175,12 +175,19 @@ number so the partner team can work in parallel (G6).
   capability is off until the next day or month.
 - **Reserve before the call.** The largest possible cost is reserved first, at the price of the most
   expensive model on the route, and settled with the real figure after the answer, so concurrent
-  requests cannot pass the cap. A reservation not settled because a server died has an expiry and a
-  scheduled job releases it.
+  requests cannot pass the cap. Before the reservation the gateway reads the counters without a
+  lock, so a call that cannot fit is refused before any Market row is locked. A reservation not
+  settled (a server died, or the settle failed three times) has an expiry, and a scheduled job
+  counts its whole estimate as spent: the call may have been billed, so a failure over-counts and
+  never under-counts (Hassan, PR 1348 M2). A late settle then writes the call's row only.
+- **Status.** `status` answers over-budget once a cap of the scope cannot take the most one call of
+  the capability can cost (its largest input and its whole output allowance at the tier's price),
+  so the host flow shows its non-AI path instead of an answer that fails (Hassan, PR 1348 M1).
 - **Cost guards.** Each capability has an input token cap, an output token cap and a max tool-round
   count. Guest-id creation is limited per IP.
 - **Alerts.** At 80 % of a cap the admin is notified. At 100 % the capability switches off and at
-  most one more notice is sent per day.
+  most one more notice is sent per day. (Deferred: FE-20261125-ai-gateway-budget-alerts; G2 counts
+  and refuses only, and a full cap switches the capability off without a notice.)
 - **Message limits** stay in the module: the gateway counts model rounds, not user messages.
 - **Cap values until G4.** The Market configuration's optional `aiBudget` section
   (`marketDayMicroUsd`, `marketMonthMicroUsd`, `capabilityDayMicroUsd`, `sellerDayMicroUsd`,
@@ -308,23 +315,34 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 | Table | Content | Retention |
 |---|---|---|
 | `platform.ai_calls` | One row per call: Market, capability, seller (if any), provider, model, attempt, input and output tokens, unit price used, cost, latency and outcome. No text, customer id, IP or personal key. | 90 days. A scheduled job deletes old rows in batches, like the security-events table. No partitions. |
-| `platform.ai_usage_days` | Daily totals per Market, capability and seller: settled cost, reserved cost, calls, errors and fallbacks, and latency counts in fixed buckets from which p95 is computed. | 25 months |
-| `platform.ai_budget_counters` | One row per Market, period (day or month, in the Market's zone) and cap scope (Market, capability, seller, guest pool): `held` (settled plus reserved) and `spent`. Added in G2 (Mojtaba): a month cap cannot be one conditional UPDATE over day rows. | 25 months |
+| `platform.ai_usage_days` | Daily totals per Market, capability and seller: settled cost, calls, errors, refusals and fallbacks, and latency counts in fixed buckets from which p95 is computed. | 25 months |
+| `platform.ai_budget_counters` | One row per Market, period (day or month, in the Market's zone) and cap scope (Market, capability, seller, guest pool): `held` (settled plus reserved; the reserved cost lives here, not in the day rows) and `spent`. Added in G2 (Mojtaba): a month cap cannot be one conditional UPDATE over day rows. Key `(market_id, period_start, period, scope, scope_key)`, so the retention's `period_start <` is a range on it. | 25 months |
 | `platform.ai_budget_reservations` | Temporary reservation with an expiry; deleted on settle or expiry. | Minutes |
 | Settings | Priority lists, saver model and threshold, caps, guest share, in-house stage, shadow share and rollback limits in the existing store (`settings.market_settings`), versioned with history. Routes are code (ADR-0052). | Versioned |
 
 - **Atomic reservation.** For each cap (Market day, Market month, capability, seller) a separate
   `UPDATE … WHERE held <= cap - est` on `ai_budget_counters`, all in one short unit in the fixed
-  order Market month, Market day, capability, seller or guest pool, so no deadlock arises. The unit is outside the main work's transaction. The day row is created
-  first with `INSERT … ON CONFLICT DO NOTHING`.
+  order most specific first: seller or guest pool, capability, Market day, then Market month, so no
+  deadlock arises and the Market rows every call shares are held for the shortest time (Mojtaba,
+  PR 1348). The unit inserts the reservation's row first and updates the counters last, so the
+  commit follows the last counter UPDATE. It is outside the main work's transaction and waits at
+  most 1 s for a row lock (`lockTimeoutMs`), after which the call is off. The counter rows are
+  created first with `INSERT … ON CONFLICT DO NOTHING`.
 - **Settle once.** The reservation is taken (read, then `DELETE`; of two takes one deletes the row)
   and the counters are corrected in the same unit, with the call's row (its id is the reservation's)
   inserted `ON CONFLICT DO NOTHING`: a second settle finds the row and changes nothing. A settle
-  after the sweeper released the reservation adds the real cost. Settlement is written to the reservation's day,
+  after the sweeper counted the estimate as spent writes the call's row and its day totals and
+  leaves the counters. A settle is tried three times; one that still fails is logged as an error.
+  Settlement is written to the reservation's day,
   so a call that crosses midnight is counted right.
 - **Day-row key.** With no seller the seller column is null, so the day-row key is a unique index
-  with `NULLS NOT DISTINCT`. The auto-off and once-a-day-notice columns that live in `spend_days`
-  today move to this table.
+  with `NULLS NOT DISTINCT`.
+- **Auto-off and once-a-day notice.** The columns that live in `spend_days` today move to
+  `ai_budget_counters`, where the caps are counted (G7).
+- **Expected load.** Every call updates its Market's day and month rows, so one Market takes a few
+  hundred reserve and settle units a second before those rows queue (Mojtaba's estimate); the
+  launch expects well under 10 calls a second per Market. Above that, split the Market rows into
+  shards (G3 reviews this with retries).
 - **Moving `spend_days` in four steps (G7):** create the new table and backfill it; write to both;
   switch the readers (the buyer assistant's cap and its statistics page) through a gateway port;
   drop the old table in a later release, with a full `down.sql`. The "cap reached" event and the
@@ -345,7 +363,7 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 |---|---|---|---|
 | G0 | Docs only: this document, ADR-0052, ADR-0053, the ADR-0019 decision 2 amendment, the future-enhancement rows | — | Ali (CTO), Mohammad, Hassan |
 | G1 | Capability registry, `run` and `status`, the seller-switch port, the generic masker. The buyer assistant and the description writer move to `run` and `status`; no user-visible change. | G0 | Mohammad, Hassan |
-| G2 | Usage and reservation tables, central caps, parallel counting. Cap values come from per-Market configuration defaults until G4; counting only, nothing enforced before G7 | G1 | Mojtaba, Hassan |
+| G2 | Usage and reservation tables, central caps, parallel counting. Cap values come from per-Market configuration `aiBudget` until G4 and are enforced from G2 where set; the assistant's `spend_days` cap is not moved before G7 | G1 | Mojtaba, Hassan |
 | G3 | Router with priority lists, saver mode, circuit breaker, second adapter. Until G4 each task type's list is the single catalogue row today's tier maps to; the `tier` option stays until G4 | G2, ADR-0052 and Hassan's verification of the first route recorded in its catalogue row | Mohammad, Hassan |
 | G4 | «AI Models» and gateway settings in `settings`, with API, permissions, TOTP confirmation, audit and the background evaluation run; capability switches and priority lists move into these settings and the `tier` option goes | G3 | Hassan, Mojtaba |
 | G5 | Admin pages AI Models (external tab, scorecard, playground, change preview) and AI Gateway | G4 | Reza (UI/UX) |

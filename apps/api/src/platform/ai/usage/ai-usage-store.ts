@@ -10,7 +10,7 @@ import type { MarketContext, Temporal } from '@mondapac/shared-kernel';
 export interface AiUsageStore {
   /**
    * Adds `amountMicroUsd` to `held` of every line, in the order given (the fixed order of
-   * {@link budgetLinesOf}, so two units never wait on each other in a cycle), each only while
+   * `AiUsage.linesOf`, so two units never wait on each other in a cycle), each only while
    * `held + amount <= cap` (one conditional UPDATE per row; a line without a cap always takes it).
    * Missing rows are created first (INSERT ... ON CONFLICT DO NOTHING). Answers false at the first
    * full line; the caller then ends its unit with `err`, so nothing of it is kept. Read-write unit.

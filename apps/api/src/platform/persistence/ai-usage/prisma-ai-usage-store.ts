@@ -60,7 +60,8 @@ export class PrismaAiUsageStore implements AiUsageStore {
       return false;
     }
     const tx = this.prisma.tx(market);
-    // The rows first, in the fixed order; an existing row is left alone (ON CONFLICT DO NOTHING).
+    // The rows first, in the fixed order (most specific first, the Market's month last); an
+    // existing row is left alone (ON CONFLICT DO NOTHING).
     await tx.aiBudgetCounter.createMany({
       data: lines.map((line) => ({
         marketId: market.marketId,
@@ -280,7 +281,8 @@ export class PrismaAiUsageStore implements AiUsageStore {
     const scope = { marketId: market.marketId, tenantId: market.tenantId };
     const rows = await tx.aiUsageDay.findMany({
       where: { ...scope, day: { lt: dateOf(before) } },
-      orderBy: [{ day: 'asc' }, { id: 'asc' }],
+      // The unique index's order, so a batch needs no sort (Mojtaba, PR 1348 finding 5).
+      orderBy: [{ day: 'asc' }, { capability: 'asc' }, { sellerId: 'asc' }],
       take: limit,
       select: { id: true },
     });

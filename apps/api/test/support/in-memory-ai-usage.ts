@@ -39,6 +39,8 @@ export class InMemoryAiUsageStore implements AiUsageStore {
   usage: UsageDelta[] = [];
   /** Set to make every method throw (the database is down). */
   failing = false;
+  /** The next this many calls throw, then the store works again (a lock wait that passes). */
+  failNext = 0;
 
   #key(market: MarketContext, key: BudgetCounterKey) {
     return `${market.marketId}|${counterKeyText(key)}`;
@@ -46,6 +48,10 @@ export class InMemoryAiUsageStore implements AiUsageStore {
 
   #check() {
     if (this.failing) throw new Error('store down');
+    if (this.failNext > 0) {
+      this.failNext -= 1;
+      throw new Error('lock timeout');
+    }
   }
 
   snapshot() {

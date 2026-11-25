@@ -65,6 +65,13 @@ export const RESERVATION_GRACE = Temporal.Duration.from({ seconds: 60 });
 /** Rows per unit and units per run, so a job run stays bounded (P 7). */
 export const USAGE_BATCH = 500;
 export const USAGE_MAX_BATCHES = 40;
+/**
+ * How long a reserve or settle unit waits for a counter row's lock: a stalled hot row fails
+ * closed quickly (off) instead of queueing to the role's 3 s (Mojtaba finding 1, Hassan L3).
+ */
+export const USAGE_LOCK_TIMEOUT_MS = 1000;
+/** Settle attempts before the failure is logged and the sweeper counts the estimate (Hassan M2). */
+export const SETTLE_ATTEMPTS = 3;
 
 const logger = new Logger('AiUsage');
 
@@ -90,34 +97,14 @@ export class AiUsage {
   }
 
   /**
-   * The counters of a scope on a day, in the one fixed order every unit takes them: the Market's
-   * month, the Market's day, the capability's day, then the seller's day or the guest pool's day.
+   * The counters of a scope on a day, in the one fixed order every unit takes them, most specific
+   * first: the seller's day or the guest pool's day, the capability's day, the Market's day, then
+   * the Market's month. The Market rows every call shares are locked last, so they are held for
+   * the shortest time before the commit (Mojtaba, PR 1348 finding 1).
    */
   linesOf(market: MarketContext, scope: UsageScope, day: Temporal.PlainDate): BudgetLine[] {
     const caps = this.#caps(market);
-    const lines: BudgetLine[] = [
-      {
-        period: 'month',
-        periodStart: day.with({ day: 1 }),
-        scope: 'market',
-        scopeKey: '',
-        capMicroUsd: caps.marketMonth,
-      },
-      {
-        period: 'day',
-        periodStart: day,
-        scope: 'market',
-        scopeKey: '',
-        capMicroUsd: caps.marketDay,
-      },
-      {
-        period: 'day',
-        periodStart: day,
-        scope: 'capability',
-        scopeKey: scope.capability,
-        capMicroUsd: caps.capabilityDay,
-      },
-    ];
+    const lines: BudgetLine[] = [];
     if (scope.sellerId !== null) {
       lines.push({
         period: 'day',
@@ -136,25 +123,55 @@ export class AiUsage {
         capMicroUsd: caps.guestDay,
       });
     }
+    lines.push(
+      {
+        period: 'day',
+        periodStart: day,
+        scope: 'capability',
+        scopeKey: scope.capability,
+        capMicroUsd: caps.capabilityDay,
+      },
+      {
+        period: 'day',
+        periodStart: day,
+        scope: 'market',
+        scopeKey: '',
+        capMicroUsd: caps.marketDay,
+      },
+      {
+        period: 'month',
+        periodStart: day.with({ day: 1 }),
+        scope: 'market',
+        scopeKey: '',
+        capMicroUsd: caps.marketMonth,
+      },
+    );
     return lines;
   }
 
   /**
-   * Whether a cap of the scope is full today (for `status`). Reads nothing when the Market caps
-   * none of the scope's counters. Throws on a store failure; the gateway treats that as off.
+   * Whether a cap of the scope is full today: it cannot take `roomMicroUsd` more (for `status`, the
+   * most one call of the capability can cost; for `run`, the call's estimate, read before any row
+   * is locked so a refused call never queues on the Market's rows; Hassan, PR 1348 M1). Absent,
+   * a cap is full when nothing is left. Always opens its read-only unit
+   * (no transaction, ADR-0025), even when the Market caps none of the scope's counters, so a
+   * caller inside an open unit is refused in every Market (`NestedUnitOfWorkError`) and not only
+   * once caps are set. Throws on a store failure; the gateway treats that as off.
    */
-  async overBudget(market: MarketContext, scope: UsageScope): Promise<boolean> {
+  async overBudget(market: MarketContext, scope: UsageScope, roomMicroUsd = 0): Promise<boolean> {
     const capped = this.linesOf(market, scope, this.dayOf(market, this.clock.now())).filter(
       (line) => line.capMicroUsd !== null,
     );
-    if (capped.length === 0) return false;
     const held = await this.unitOfWork.run(
       market,
       async () => ok(await this.store.heldOf(market, capped)),
       { readOnly: true },
     );
     if (!held.ok) return true;
-    return capped.some((line) => (held.value.get(counterKeyText(line)) ?? 0) >= line.capMicroUsd!);
+    const room = Math.max(1, roomMicroUsd);
+    return capped.some(
+      (line) => line.capMicroUsd! - (held.value.get(counterKeyText(line)) ?? 0) < room,
+    );
   }
 
   /**
@@ -172,40 +189,70 @@ export class AiUsage {
     const day = this.dayOf(market, now);
     const id = this.ids.next<'AiCall'>();
     const lines = this.linesOf(market, scope, day);
-    const held = await this.unitOfWork.run<Reservation, 'over-budget'>(market, async () => {
-      if (!(await this.store.hold(market, lines, estimateMicroUsd))) return err('over-budget');
-      await this.store.addReservation(market, {
-        id,
-        day,
-        capability: scope.capability,
-        sellerId: scope.sellerId,
-        guest: scope.guest,
-        estimateMicroUsd,
-        createdAt: now,
-        expiresAt: now.add(ttl),
-      });
-      return ok({ id, day, scope, estimateMicroUsd });
-    });
+    // The reservation's row first and the counters last, so the commit follows the last counter
+    // UPDATE directly; a refusal rolls both back (Mojtaba, PR 1348 finding 1).
+    const held = await this.unitOfWork.run<Reservation, 'over-budget'>(
+      market,
+      async () => {
+        await this.store.addReservation(market, {
+          id,
+          day,
+          capability: scope.capability,
+          sellerId: scope.sellerId,
+          guest: scope.guest,
+          estimateMicroUsd,
+          createdAt: now,
+          expiresAt: now.add(ttl),
+        });
+        if (!(await this.store.hold(market, lines, estimateMicroUsd))) return err('over-budget');
+        return ok({ id, day, scope, estimateMicroUsd });
+      },
+      { lockTimeoutMs: USAGE_LOCK_TIMEOUT_MS },
+    );
     return held.ok ? held.value : held.error;
   }
 
   /**
    * Settles a reservation once: the reservation is deleted and each counter's `held` is corrected
    * to the real cost, which is added to `spent`. `call` null means nothing was sent: the estimate
-   * is released. When the sweeper released the reservation already, the real cost is still added;
-   * when the call's row exists already (settled before), nothing changes.
-   * The call's row and its day totals are written in the same unit. Never throws: a failed settle
-   * is logged, and the reservation expires and is released by the sweeper.
+   * is released. When the sweeper took the reservation already, it counted the estimate as spent,
+   * so the call's row and its day totals are written and the counters are left as they are (the
+   * estimate is the most the call is taken to cost); when the call's row exists already (settled before),
+   * nothing changes. The call's row and its day totals are written in the same unit. Tried
+   * {@link SETTLE_ATTEMPTS} times; never throws: a settle that still fails is logged as an error
+   * (`ai.usage.settle-failed`), and the sweeper later counts the whole estimate as spent, so a
+   * failure over-counts and never under-counts (Hassan, PR 1348 M2).
    */
   async settle(
     market: MarketContext,
     reservation: Reservation,
     call: SettledCall | null,
   ): Promise<void> {
+    for (let attempt = 1; attempt <= SETTLE_ATTEMPTS; attempt += 1) {
+      try {
+        await this.#settleOnce(market, reservation, call);
+        return;
+      } catch {
+        // Retried: a lock wait or a unit timeout on a hot row is usually gone a moment later.
+      }
+    }
+    logger.error({
+      msg: 'ai.usage.settle-failed',
+      marketId: market.marketId,
+      ...scopeLog(reservation.scope),
+    });
+  }
+
+  async #settleOnce(
+    market: MarketContext,
+    reservation: Reservation,
+    call: SettledCall | null,
+  ): Promise<void> {
     const { scope, day } = reservation;
     const cost = call?.costMicroUsd ?? 0;
-    try {
-      const settled = await this.unitOfWork.run(market, async () => {
+    const settled = await this.unitOfWork.run(
+      market,
+      async () => {
         const taken = await this.store.takeReservation(market, reservation.id);
         if (call !== null) {
           const first = await this.store.addCall(market, {
@@ -231,16 +278,17 @@ export class AiUsage {
             latencyMs: call.latencyMs,
           });
         }
-        const heldDelta = cost - (taken?.estimateMicroUsd ?? 0);
+        // Swept already: the estimate was counted as spent, and it covers the cost.
+        if (taken === null) return ok(null);
+        const heldDelta = cost - taken.estimateMicroUsd;
         if (heldDelta !== 0 || cost !== 0) {
           await this.store.adjust(market, this.linesOf(market, scope, day), heldDelta, cost);
         }
         return ok(null);
-      });
-      if (!settled.ok) throw new Error('not settled');
-    } catch {
-      logger.warn({ msg: 'ai.usage.settle-failed', marketId: market.marketId, ...scopeLog(scope) });
-    }
+      },
+      { lockTimeoutMs: USAGE_LOCK_TIMEOUT_MS },
+    );
+    if (!settled.ok) throw new Error('not settled');
   }
 
   /** Counts a run refused before any call (a full cap, too large an input, too many rounds). */
@@ -267,13 +315,23 @@ export class AiUsage {
   }
 
   /**
-   * Releases reservations a server never settled (it died, or the settle failed): each expired
-   * one is taken and its estimate released from its counters, one unit each, so a run racing a
-   * late settle releases nothing twice. Answers how many it released and whether some are left.
+   * Ends reservations a server never settled (it died, or the settle failed): each expired one
+   * is taken and its whole estimate counted as spent (`held` keeps it), one unit each, so a run
+   * racing a late settle counts nothing twice. The call may have been sent and billed, so an
+   * unsettled call over-counts and never under-counts (Hassan, PR 1348 M2); a late settle then
+   * writes the call's row and leaves the counters. Stops after `runForMs` (the job's run time,
+   * Hassan L4). Answers how many it ended and whether some are left.
    */
-  async sweep(market: MarketContext): Promise<{ released: number; backlog: boolean }> {
+  async sweep(
+    market: MarketContext,
+    runForMs?: number,
+  ): Promise<{ released: number; backlog: boolean }> {
     let released = 0;
+    const deadline = this.#deadlineOf(runForMs);
+    const late = () =>
+      deadline !== undefined && Temporal.Instant.compare(this.clock.now(), deadline) >= 0;
     for (let batch = 0; batch < USAGE_MAX_BATCHES; batch += 1) {
+      if (late()) return { released, backlog: true };
       const ids = await this.unitOfWork.run(
         market,
         async () => ok(await this.store.expiredReservations(market, this.clock.now(), USAGE_BATCH)),
@@ -281,17 +339,22 @@ export class AiUsage {
       );
       if (!ids.ok) return { released, backlog: false };
       for (const id of ids.value) {
-        const done = await this.unitOfWork.run(market, async () => {
-          const taken = await this.store.takeReservation(market, id);
-          if (taken === null) return ok(false);
-          await this.store.adjust(
-            market,
-            this.linesOf(market, scopeOf(taken), taken.day),
-            -taken.estimateMicroUsd,
-            0,
-          );
-          return ok(true);
-        });
+        if (late()) return { released, backlog: true };
+        const done = await this.unitOfWork.run(
+          market,
+          async () => {
+            const taken = await this.store.takeReservation(market, id);
+            if (taken === null) return ok(false);
+            await this.store.adjust(
+              market,
+              this.linesOf(market, scopeOf(taken), taken.day),
+              0,
+              taken.estimateMicroUsd,
+            );
+            return ok(true);
+          },
+          { lockTimeoutMs: USAGE_LOCK_TIMEOUT_MS },
+        );
         if (done.ok && done.value) released += 1;
       }
       if (ids.value.length < USAGE_BATCH) return { released, backlog: false };
@@ -301,21 +364,23 @@ export class AiUsage {
 
   /**
    * The retention of the usage tables (design section 10): calls older than 90 days, day rows and
-   * counters older than 25 months, in batches of one unit each.
+   * counters older than 25 months, in batches of one unit each, stopping after `runForMs`.
    */
   async purge(
     market: MarketContext,
+    runForMs?: number,
   ): Promise<{ calls: number; days: number; counters: number; backlog: boolean }> {
     const now = this.clock.now();
+    const deadline = this.#deadlineOf(runForMs);
     const callsBefore = now.subtract(AI_CALLS_KEPT);
     const daysBefore = this.dayOf(market, now).subtract(AI_USAGE_DAYS_KEPT);
-    const calls = await this.#batches(market, () =>
+    const calls = await this.#batches(market, deadline, () =>
       this.store.purgeCalls(market, callsBefore, USAGE_BATCH),
     );
-    const days = await this.#batches(market, () =>
+    const days = await this.#batches(market, deadline, () =>
       this.store.purgeUsageDays(market, daysBefore, USAGE_BATCH),
     );
-    const counters = await this.#batches(market, () =>
+    const counters = await this.#batches(market, deadline, () =>
       this.store.purgeCounters(market, daysBefore, USAGE_BATCH),
     );
     return {
@@ -328,16 +393,26 @@ export class AiUsage {
 
   async #batches(
     market: MarketContext,
+    deadline: Temporal.Instant | undefined,
     batch: () => Promise<number>,
   ): Promise<{ total: number; backlog: boolean }> {
     let total = 0;
     for (let index = 0; index < USAGE_MAX_BATCHES; index += 1) {
+      if (deadline !== undefined && Temporal.Instant.compare(this.clock.now(), deadline) >= 0) {
+        return { total, backlog: true };
+      }
       const result = await this.unitOfWork.run(market, async () => ok(await batch()));
       if (!result.ok) return { total, backlog: false };
       total += result.value;
       if (result.value < USAGE_BATCH) return { total, backlog: false };
     }
     return { total, backlog: true };
+  }
+
+  #deadlineOf(runForMs: number | undefined): Temporal.Instant | undefined {
+    return runForMs === undefined
+      ? undefined
+      : this.clock.now().add(Temporal.Duration.from({ milliseconds: runForMs }));
   }
 
   #caps(market: MarketContext): Caps {
