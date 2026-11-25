@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-price-anomaly-detection",
+  "area": "orders",
+  "title": "تشخیص ناهنجاری قیمت با تاریخچه",
+  "desc": "به جای بازهٔ ثابت ±X٪ نسبت به RRP یا میانه، ناهنجاری قیمت با تاریخچهٔ قیمت همان Variant و دسته سنجیده شود.",
+  "src": "design/catalog/offer-approval/offer-approval-design-fa.html (بازبینی حسن، محمد، هادی)",
+  "date": "2026-11-25",
+  "trig": "بعد از چند ماه تاریخچهٔ قیمت",
+  "prio": "پایین",
+  "status": "موکول"
+}

@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-offer-review-settings-impact-preview",
+  "area": "admin",
+  "title": "پیش‌نمایش اثر تغییر تنظیم سیاست تأیید Offer",
+  "desc": "پیش از ذخیرهٔ عدد تازه (دورهٔ آزمایشی، بازهٔ قیمت، نمونه‌گیری)، نشان داده شود با آن عدد هفتهٔ گذشته چند Offer به صف می‌رفت.",
+  "src": "design/catalog/offer-approval/offer-approval-design-fa.html (تصمیم john ۲۵ نوامبر)",
+  "date": "2026-11-25",
+  "trig": "بعد از ساخت صفحهٔ تنظیم سیاست و چند هفته داده",
+  "prio": "پایین",
+  "status": "موکول"
+}
