@@ -506,6 +506,92 @@ export class ShoppingFunnelSectionBody {
   @ApiProperty({ required: false, type: ShoppingFunnelKpiBody }) kpis?: ShoppingFunnelKpiBody;
 }
 
+export class DiscountKindCostBody {
+  @ApiProperty({ enum: ['promotion', 'first-order', 'free-shipping'] }) kind!: string;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Redemptions (an order may use several promotions). Null: 1 to 4 uses, every figure of ' +
+      'the kind held back; show "fewer than 5", never 0.',
+  })
+  uses!: number | null;
+  @ApiProperty({ type: MoneyBody, nullable: true }) amount!: MoneyBody | null;
+  @ApiProperty({ type: MoneyBody, nullable: true, description: 'What Mondapac funded of it.' })
+  platformShare!: MoneyBody | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Share of the whole discount, basis points; the kinds add up to 10000. Null when the ' +
+      'whole is 0 or the kind is held back.',
+  })
+  shareBp!: number | null;
+}
+
+export class DiscountReleasedBody {
+  @ApiProperty({ description: 'Orders of the period refunded or cancelled after payment.' })
+  orders!: number;
+  @ApiProperty({ type: MoneyBody, description: 'The discount they gave back (not in `amount`).' })
+  amount!: MoneyBody;
+}
+
+export class DiscountCostKpiBody {
+  @ApiProperty({
+    enum: ['available', 'not-enough-data'],
+    description: '`not-enough-data`: fewer than `minimum` discounted orders; show no amounts.',
+  })
+  status!: string;
+  @ApiProperty({
+    description: 'Orders paid in the period with at least one discount that still stands.',
+  })
+  orders!: number;
+  @ApiProperty({ required: false, type: Number, description: 'Only when not-enough-data.' })
+  minimum?: number;
+  @ApiProperty({
+    required: false,
+    type: MoneyBody,
+    description: 'The discounts that still stand, with GST; only when available.',
+  })
+  amount?: MoneyBody;
+  @ApiProperty({ required: false, type: MoneyBody, description: 'Mondapac funded.' })
+  platformShare?: MoneyBody;
+  @ApiProperty({ required: false, type: MoneyBody, description: 'Sellers funded.' })
+  sellerShare?: MoneyBody;
+  @ApiProperty({
+    required: false,
+    type: Number,
+    nullable: true,
+    description: 'platformShare ÷ amount, basis points.',
+  })
+  platformShareBp?: number | null;
+  @ApiProperty({
+    required: false,
+    type: DeltaBody,
+    description: '`amount` against the period before.',
+  })
+  change?: DeltaBody;
+  @ApiProperty({ required: false, type: MoneyBody }) previousAmount?: MoneyBody;
+  @ApiProperty({
+    required: false,
+    type: [DiscountKindCostBody],
+    description: 'Every kind, zeros included.',
+  })
+  byKind?: DiscountKindCostBody[];
+  @ApiProperty({
+    required: false,
+    type: DiscountReleasedBody,
+    nullable: true,
+    description: 'Null when 1 to 4 orders gave a discount back (held back).',
+  })
+  released?: DiscountReleasedBody | null;
+}
+
+export class DiscountCostSectionBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: DiscountCostKpiBody }) kpis?: DiscountCostKpiBody;
+}
+
 export class TopSellerBody {
   @ApiProperty({ format: 'uuid' }) sellerId!: string;
   @ApiProperty({ nullable: true, type: String, description: 'The public store name.' })
@@ -683,6 +769,14 @@ export class AdminKpisBody {
     description: 'Null without `ordering.order.view`: leave the card out.',
   })
   shoppingFunnel!: ShoppingFunnelSectionBody | null;
+  @ApiProperty({
+    type: DiscountCostSectionBody,
+    nullable: true,
+    description:
+      'Null without both `commission-payouts.settlement.view` and `promotions.promotion.manage`: ' +
+      'leave the card out.',
+  })
+  discountCost!: DiscountCostSectionBody | null;
   @ApiProperty({
     type: TopSellersSectionBody,
     nullable: true,
@@ -923,6 +1017,39 @@ function shoppingFunnelSection(
   };
 }
 
+function discountCostSection(
+  section: AdminKpisAnswer['discountCost'],
+): DiscountCostSectionBody | null {
+  if (section === null) return null;
+  if (section.status === 'error') return { status: 'error' };
+  const { cost, currency } = section.value;
+  if (cost.status === 'not-enough-data') return { status: 'ok', kpis: { ...cost } };
+  return {
+    status: 'ok',
+    kpis: {
+      status: cost.status,
+      orders: cost.orders,
+      amount: money(cost.amount, currency),
+      platformShare: money(cost.platformShare, currency),
+      sellerShare: money(cost.sellerShare, currency),
+      platformShareBp: cost.platformShareBp,
+      change: { ...cost.change },
+      previousAmount: money(cost.previousAmount, currency),
+      byKind: cost.byKind.map((row) => ({
+        kind: row.kind,
+        uses: row.uses,
+        amount: row.amount === null ? null : money(row.amount, currency),
+        platformShare: row.platformShare === null ? null : money(row.platformShare, currency),
+        shareBp: row.shareBp,
+      })),
+      released:
+        cost.released === null
+          ? null
+          : { orders: cost.released.orders, amount: money(cost.released.amount, currency) },
+    },
+  };
+}
+
 function financeSection(section: AdminKpisAnswer['finance']): FinanceSectionBody | null {
   if (section === null) return null;
   if (section.status === 'error') return { status: 'error' };
@@ -988,6 +1115,7 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     answer.ordersByStatus,
     answer.ordersByState,
     answer.shoppingFunnel,
+    answer.discountCost,
     answer.topSellers,
     answer.topCategories,
   ].find((section) => section !== null && section.status === 'ok');
@@ -1004,6 +1132,7 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     ordersByState: ordersByStateSection(answer.ordersByState),
     marketTarget: marketTargetSection(answer.marketTarget),
     shoppingFunnel: shoppingFunnelSection(answer.shoppingFunnel),
+    discountCost: discountCostSection(answer.discountCost),
     topSellers: topSellersSection(answer.topSellers),
     topCategories: topCategoriesSection(answer.topCategories),
     health:

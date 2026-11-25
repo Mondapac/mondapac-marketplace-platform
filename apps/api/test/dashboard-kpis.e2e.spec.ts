@@ -121,6 +121,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       ordersByState: null,
       marketTarget: null,
       shoppingFunnel: null,
+      discountCost: null,
       ordersByStatus: {
         status: 'ok',
         value: {
@@ -225,6 +226,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       ordersByState: { status: 'error' },
       marketTarget: { status: 'error' },
       shoppingFunnel: { status: 'error' },
+      discountCost: { status: 'error' },
       ordersByStatus: { status: 'error' },
       topSellers: null,
       topCategories: null,
@@ -238,9 +240,117 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       ordersByStatus: { status: 'error' },
       marketTarget: { status: 'error' },
       shoppingFunnel: { status: 'error' },
+      discountCost: { status: 'error' },
       finance: null,
     });
     expect((answer.body as { operations: unknown }).operations).toEqual({ status: 'error' });
+  });
+
+  it('answers the discount cost as money strings, held-back kinds as nulls, and not-enough-data', async () => {
+    await boot();
+    const period = {
+      id: '7d',
+      current: { from: '2026-11-16', to: '2026-11-22' },
+      previous: { from: '2026-11-09', to: '2026-11-15' },
+      days: 7,
+    };
+    const base = {
+      generatedAt: START,
+      period: '7d',
+      operations: null,
+      ordersByState: null,
+      shoppingFunnel: null,
+      ordersByStatus: null,
+      topSellers: null,
+      topCategories: null,
+      health: null,
+      finance: null,
+      marketTarget: null,
+    };
+    next = ok({
+      ...base,
+      discountCost: {
+        status: 'ok',
+        value: {
+          period,
+          generatedAt: START,
+          currency: 'AUD',
+          cost: {
+            status: 'available',
+            orders: 12,
+            amount: 12_000n,
+            platformShare: 3_000n,
+            sellerShare: 9_000n,
+            platformShareBp: 2500,
+            change: { value: -4000, direction: 'down', state: 'ok' },
+            previousAmount: 20_000n,
+            byKind: [
+              {
+                kind: 'promotion',
+                uses: 12,
+                amount: 12_000n,
+                platformShare: 3_000n,
+                shareBp: 10_000,
+              },
+              { kind: 'first-order', uses: null, amount: null, platformShare: null, shareBp: null },
+              { kind: 'free-shipping', uses: 0, amount: 0n, platformShare: 0n, shareBp: 0 },
+            ],
+            released: { orders: 5, amount: 700n },
+          },
+        },
+      },
+    });
+    const money = (amountMinor: string) => ({ amountMinor, currency: 'AUD' });
+    const answer = await get('?period=7d');
+    expect(answer.status).toBe(200);
+    expect((answer.body as { discountCost: unknown }).discountCost).toEqual({
+      status: 'ok',
+      kpis: {
+        status: 'available',
+        orders: 12,
+        amount: money('12000'),
+        platformShare: money('3000'),
+        sellerShare: money('9000'),
+        platformShareBp: 2500,
+        change: { value: -4000, direction: 'down', state: 'ok' },
+        previousAmount: money('20000'),
+        byKind: [
+          {
+            kind: 'promotion',
+            uses: 12,
+            amount: money('12000'),
+            platformShare: money('3000'),
+            shareBp: 10_000,
+          },
+          { kind: 'first-order', uses: null, amount: null, platformShare: null, shareBp: null },
+          {
+            kind: 'free-shipping',
+            uses: 0,
+            amount: money('0'),
+            platformShare: money('0'),
+            shareBp: 0,
+          },
+        ],
+        released: { orders: 5, amount: money('700') },
+      },
+    });
+    next = ok({
+      ...base,
+      discountCost: {
+        status: 'ok',
+        value: {
+          period,
+          generatedAt: START,
+          currency: 'AUD',
+          cost: { status: 'not-enough-data', orders: 3, minimum: 5 },
+        },
+      },
+    });
+    const few = await get('?period=7d');
+    expect((few.body as { discountCost: unknown }).discountCost).toEqual({
+      status: 'ok',
+      kpis: { status: 'not-enough-data', orders: 3, minimum: 5 },
+    });
   });
 
   it.each([
