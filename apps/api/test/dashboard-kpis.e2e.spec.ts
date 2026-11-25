@@ -122,6 +122,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       marketTarget: null,
       shoppingFunnel: null,
       discountCost: null,
+      abandonedCarts: null,
       ordersByStatus: {
         status: 'ok',
         value: {
@@ -227,6 +228,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       marketTarget: { status: 'error' },
       shoppingFunnel: { status: 'error' },
       discountCost: { status: 'error' },
+      abandonedCarts: { status: 'error' },
       ordersByStatus: { status: 'error' },
       topSellers: null,
       topCategories: null,
@@ -241,6 +243,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       marketTarget: { status: 'error' },
       shoppingFunnel: { status: 'error' },
       discountCost: { status: 'error' },
+      abandonedCarts: { status: 'error' },
       finance: null,
     });
     expect((answer.body as { operations: unknown }).operations).toEqual({ status: 'error' });
@@ -260,6 +263,7 @@ describe.each(TEST_MARKETS)('the admin KPIs over HTTP in market %s', (code) => {
       operations: null,
       ordersByState: null,
       shoppingFunnel: null,
+      abandonedCarts: null,
       ordersByStatus: null,
       topSellers: null,
       topCategories: null,

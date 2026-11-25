@@ -592,6 +592,59 @@ export class DiscountCostSectionBody {
   @ApiProperty({ required: false, type: DiscountCostKpiBody }) kpis?: DiscountCostKpiBody;
 }
 
+export class AbandonedCartsKpiBody {
+  @ApiProperty({
+    enum: ['available', 'not-enough-data'],
+    description:
+      '`not-enough-data`: no nightly snapshot in the period, or fewer than `minimum` carts on its ' +
+      'latest day; show no count and no value.',
+  })
+  status!: string;
+  @ApiProperty({ required: false, type: Number, description: 'Only when not-enough-data.' })
+  minimum?: number;
+  @ApiProperty({
+    required: false,
+    type: Number,
+    description:
+      'Active carts (guest or signed-in) with lines, not left by a paid order, untouched for at ' +
+      'least 24 hours at the end of `asOfDay`. A level, not a sum over the period.',
+  })
+  carts?: number;
+  @ApiProperty({
+    required: false,
+    type: MoneyBody,
+    nullable: true,
+    description:
+      'Approximate: the lines at the price when each was added or last changed, not the price ' +
+      'now ("about"). Null when a line was in another currency.',
+  })
+  approximateValue?: MoneyBody | null;
+  @ApiProperty({
+    required: false,
+    type: String,
+    format: 'date',
+    description: 'The latest Market day of the period with a snapshot.',
+  })
+  asOfDay?: string;
+  @ApiProperty({
+    required: false,
+    type: DeltaBody,
+    description:
+      'The count against the latest snapshot day of the period before; `na` below 5 carts there.',
+  })
+  change?: DeltaBody;
+  @ApiProperty({
+    description: 'Days of the period with a nightly snapshot (today has none until tomorrow).',
+  })
+  recordedDays!: number;
+  @ApiProperty() periodDays!: number;
+}
+
+export class AbandonedCartsSectionBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: AbandonedCartsKpiBody }) kpis?: AbandonedCartsKpiBody;
+}
+
 export class TopSellerBody {
   @ApiProperty({ format: 'uuid' }) sellerId!: string;
   @ApiProperty({ nullable: true, type: String, description: 'The public store name.' })
@@ -777,6 +830,12 @@ export class AdminKpisBody {
       'leave the card out.',
   })
   discountCost!: DiscountCostSectionBody | null;
+  @ApiProperty({
+    type: AbandonedCartsSectionBody,
+    nullable: true,
+    description: 'Null without `ordering.order.view`: leave the card out.',
+  })
+  abandonedCarts!: AbandonedCartsSectionBody | null;
   @ApiProperty({
     type: TopSellersSectionBody,
     nullable: true,
@@ -1050,6 +1109,30 @@ function discountCostSection(
   };
 }
 
+function abandonedCartsSection(
+  section: AdminKpisAnswer['abandonedCarts'],
+): AbandonedCartsSectionBody | null {
+  if (section === null) return null;
+  if (section.status === 'error') return { status: 'error' };
+  const carts = section.value.abandonedCarts;
+  if (carts.status === 'not-enough-data') return { status: 'ok', kpis: { ...carts } };
+  return {
+    status: 'ok',
+    kpis: {
+      status: carts.status,
+      carts: carts.carts,
+      approximateValue:
+        carts.approximateValue === null
+          ? null
+          : money(carts.approximateValue.amount, carts.approximateValue.currency),
+      asOfDay: carts.asOfDay,
+      change: { ...carts.change },
+      recordedDays: carts.recordedDays,
+      periodDays: carts.periodDays,
+    },
+  };
+}
+
 function financeSection(section: AdminKpisAnswer['finance']): FinanceSectionBody | null {
   if (section === null) return null;
   if (section.status === 'error') return { status: 'error' };
@@ -1116,6 +1199,7 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     answer.ordersByState,
     answer.shoppingFunnel,
     answer.discountCost,
+    answer.abandonedCarts,
     answer.topSellers,
     answer.topCategories,
   ].find((section) => section !== null && section.status === 'ok');
@@ -1133,6 +1217,7 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     marketTarget: marketTargetSection(answer.marketTarget),
     shoppingFunnel: shoppingFunnelSection(answer.shoppingFunnel),
     discountCost: discountCostSection(answer.discountCost),
+    abandonedCarts: abandonedCartsSection(answer.abandonedCarts),
     topSellers: topSellersSection(answer.topSellers),
     topCategories: topCategoriesSection(answer.topCategories),
     health:

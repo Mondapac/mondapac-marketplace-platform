@@ -29,6 +29,7 @@
   { "name": "cart.add-guest-item", "rule": "anonymous" },
   { "name": "cart.add-item", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.clear-ordered-lines", "rule": "system" },
+  { "name": "cart.count-abandoned-carts", "rule": "system" },
   { "name": "cart.list-idle-account-carts", "rule": "system" },
   { "name": "cart.merge-guest-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
   { "name": "cart.move-saved-to-cart", "rule": "own-resources", "whenSellerNotApproved": "deny" },
@@ -881,6 +882,7 @@
   { "name": "reporting.reconcile-report-facts", "rule": "system" },
   { "name": "reporting.record-ledger-facts", "rule": "system" },
   { "name": "reporting.record-report-facts", "rule": "system" },
+  { "name": "reporting.snapshot-abandoned-carts", "rule": "system" },
   { "name": "reporting.snapshot-daily-engagement", "rule": "system" },
   {
     "name": "reporting.view-seller-net-earnings",

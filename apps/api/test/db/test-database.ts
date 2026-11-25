@@ -101,7 +101,9 @@ function exported(
     | 'TEST_CATALOG_TREE_DATABASE_URL'
     | 'TEST_CATALOG_TREE_OWNER_DATABASE_URL'
     | 'TEST_BUYER_FIRST_DATABASE_URL'
-    | 'TEST_BUYER_FIRST_OWNER_DATABASE_URL',
+    | 'TEST_BUYER_FIRST_OWNER_DATABASE_URL'
+    | 'TEST_ABANDONED_CARTS_DATABASE_URL'
+    | 'TEST_ABANDONED_CARTS_OWNER_DATABASE_URL',
 ): string {
   const url = process.env[name];
   if (!url) {
@@ -544,4 +546,16 @@ export function buyerFirstTestDatabaseUrl(): string {
 
 export function buyerFirstOwnerTestDatabaseUrl(): string {
   return exported('TEST_BUYER_FIRST_OWNER_DATABASE_URL');
+}
+
+/**
+ * The copy that reporting-abandoned-carts.db-spec.ts counts the abandoned carts of whole Markets on
+ * (global-setup.ts), as the application login and as its owner.
+ */
+export function abandonedCartsTestDatabaseUrl(): string {
+  return exported('TEST_ABANDONED_CARTS_DATABASE_URL');
+}
+
+export function abandonedCartsOwnerTestDatabaseUrl(): string {
+  return exported('TEST_ABANDONED_CARTS_OWNER_DATABASE_URL');
 }

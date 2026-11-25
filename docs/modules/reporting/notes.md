@@ -606,3 +606,45 @@ That is accepted, because the viewer is a platform admin who holds both the mone
 management and can already see each promotion's spend in promotions; the hiding guards against a
 glance, not against that viewer. The kinds' shares use the largest remainder (ties to the earlier
 kind), so the shares shown add up to 10000 basis points.
+
+## Abandoned carts (dashboards v2, phase 2, nightly snapshot)
+
+- Table `reporting.daily_abandoned_carts`, one row per (Market, day): `cart_count` and an approximate
+  value in the Market's currency. Written by `reporting.snapshot-abandoned-carts` (rule `system`,
+  hourly job of the same name) through cart's `CartReportingFacade.abandonedCarts`
+  (`cart.count-abandoned-carts`, rule `system`).
+- Definition: an ACTIVE cart (guest or signed-in; never a merged one) with at least one line, no
+  order mark (a paid order cleared lines from it and the buyer has not changed it since; the same
+  "not ordered" as the cart reminder), last changed at or before 24 hours before the end of the
+  Market day (absolute hours, the Market's zone, the injected Clock). It is a level, not a flow: the
+  read shows the period's latest snapshot day (`asOfDay`) against the latest day of the period
+  before, never a sum of days.
+- When: once yesterday ended at least 2 h ago in the Market's zone, on the first hourly run, and
+  only yesterday. The carts are read as they are at that run, so a cart changed between midnight and
+  the run is left out (slightly fewer, never more). An older day is never written late, since a
+  cart's past state cannot be read: a day missed while the worker was down stays without a row and
+  the card shows the day before it.
+- Value: each line's quantity times its price when added or last changed (`price_at_add`), summed.
+  Approximate by design (prices change; the card says "about"); it is never the price now and never
+  a basis for money decisions. When any line is in another currency than the Market's, the value is
+  null (no conversion) and the count is still written; the job logs the currencies only.
+- No cap (Mojtaba M1, option A): cart answers with two aggregate statements in one read-only unit,
+  scoped by Market and tenant at both levels (Hassan L1): the lines grouped by currency and quantity
+  with their prices summed (value = quantity × that sum; a line holds 1 to 999 units, so the groups
+  stay few), and a count of the carts that have a line. No row reaches memory and no raw SQL is
+  used. The unit opens no transaction (ADR-0025), so a cart changed between the two statements can
+  make the count and the value differ by that cart: within "about". If the statements get slow at
+  volume: FE-20261125-reporting-abandoned-carts-paging.
+- Privacy: counts and a sum only. No cart, account or guest id leaves cart's adapter; nothing is
+  logged but the day, a reason code and currencies. The table has no account, customer, guest,
+  offer or seller column (db-spec `reporting-abandoned-carts`); SELECT and INSERT only for the
+  application role. The read answers `not-enough-data` below 5 carts on the latest day, with no
+  count and no value (a value of one or two carts would be one person's cart). The same residual
+  risk as the funnel (Hassan L1): two overlapping custom ranges can show two different latest days,
+  each over 5; no single small count is ever answered.
+- Read: `reporting.view-marketplace-abandoned-carts`, key `ordering.order.view` (no new key),
+  platform admin acting as themselves; `GET dashboard/admin/kpis` section `abandonedCarts`.
+- "Reminders sent" (in the design mock) is deferred: the cart reminder exists, but
+  `notifications.cart_reminders` records a stage when it is taken, before consent and address are
+  checked, so counting it would overstate the mails sent
+  (FE-20261125-dashboards-abandoned-carts-reminders-sent).
