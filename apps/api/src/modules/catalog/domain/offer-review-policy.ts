@@ -93,6 +93,11 @@ export function offerReviewReasons(input: OfferReviewInput): readonly OfferRevie
 export interface OfferEditReviewInput {
   readonly mode: OfferReviewMode;
   readonly certificateBadges: 'review' | 'automatic';
+  /**
+   * R0 on edits (owner decision 2026-11-25): the emergency stop is on for the Market, a category
+   * of the product or the seller. It holds every watched change, in every mode.
+   */
+  readonly emergencyStop: boolean;
   readonly addedBadgeTypes: readonly string[];
   readonly newHandling?: OfferHandling;
   /** Locale to text: the whole new description. */
@@ -100,16 +105,24 @@ export interface OfferEditReviewInput {
 }
 
 /**
- * The reasons an edit of a live Offer is held for review; empty means it applies at once. Only R2
- * (a new badge type while badges are reviewed), R3 (handling changed to anything but
+ * The reasons an edit of a live Offer is held for review; empty means it applies at once. Only R0
+ * (the emergency stop holds every watched change, in every mode; owner decision 2026-11-25), R2 (a
+ * new badge type while badges are reviewed), R3 (handling changed to anything but
  * `SEALED_ORIGINAL`) and R5 (contact text in any locale of a changed description) run on edits:
- * R0, R1 and R6 judge a seller's first publication, and R7 is a no-op because a category change is
- * a product revision (VER-02). Mode `off` holds nothing; mode `all` holds every change of a watched
- * field, with `review-all` when no rule applies.
+ * R1 and R6 judge a seller's first publication, and R7 is a no-op because a category change is a
+ * product revision (VER-02). Mode `off` holds nothing but a stop; mode `all` holds every change of
+ * a watched field, with `review-all` when no rule applies.
  */
 export function offerEditReviewReasons(input: OfferEditReviewInput): readonly OfferReviewReason[] {
-  if (input.mode === 'off') return [];
+  const watched =
+    input.addedBadgeTypes.length > 0 ||
+    // Handling back to sealed original lowers the risk: instant in every mode (Hadi, 2026-11-25).
+    (input.newHandling !== undefined && input.newHandling !== 'SEALED_ORIGINAL') ||
+    input.newDescription !== undefined;
+  const stopped = input.emergencyStop && watched;
+  if (input.mode === 'off') return stopped ? ['emergency-stop'] : [];
   const found = new Set<OfferReviewReason>();
+  if (stopped) found.add('emergency-stop');
   if (input.addedBadgeTypes.length > 0 && input.certificateBadges === 'review') {
     found.add('certificate-badge');
   }
@@ -122,11 +135,6 @@ export function offerEditReviewReasons(input: OfferEditReviewInput): readonly Of
   ) {
     found.add('contact-text');
   }
-  const watched =
-    input.addedBadgeTypes.length > 0 ||
-    // Handling back to sealed original lowers the risk: instant in every mode (Hadi, 2026-11-25).
-    (input.newHandling !== undefined && input.newHandling !== 'SEALED_ORIGINAL') ||
-    input.newDescription !== undefined;
   if (input.mode === 'all' && found.size === 0 && watched) found.add('review-all');
   return OFFER_REVIEW_REASONS.filter((reason) => found.has(reason));
 }

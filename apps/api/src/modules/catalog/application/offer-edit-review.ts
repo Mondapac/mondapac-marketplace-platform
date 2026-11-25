@@ -87,6 +87,9 @@ export class OfferEditReview {
     return policyVerdict(offerId, {
       mode: settings.mode,
       certificateBadges: settings.certificateBadges,
+      // R0 on edits (owner decision 2026-11-25): the Market's stop. The seller and category stops
+      // join here when the review facts are read (slice 4; today they are never on).
+      emergencyStop: settings.emergencyStop,
       ...change,
     });
   }

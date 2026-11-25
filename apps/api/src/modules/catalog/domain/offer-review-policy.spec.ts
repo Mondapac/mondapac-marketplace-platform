@@ -98,6 +98,7 @@ describe('offerEditReviewReasons (the edit rules of a live Offer, slice 2c)', ()
   const edit = (overrides: Partial<OfferEditReviewInput> = {}): OfferEditReviewInput => ({
     mode: 'risk-based',
     certificateBadges: 'review',
+    emergencyStop: false,
     addedBadgeTypes: [],
     ...overrides,
   });
@@ -166,7 +167,29 @@ describe('offerEditReviewReasons (the edit rules of a live Offer, slice 2c)', ()
     expect(offerEditReviewReasons(edit({ mode: 'all' }))).toEqual([]);
   });
 
-  it('holds nothing in mode off, whatever the edit', () => {
+  it('holds every watched change during an emergency stop, in every mode (R0)', () => {
+    for (const mode of ['off', 'risk-based', 'all'] as const) {
+      const stopped = (more: Partial<OfferEditReviewInput>) =>
+        offerEditReviewReasons(edit({ mode, emergencyStop: true, ...more }));
+      expect(stopped({ newDescription: { en: 'Now 2 kg' } })).toEqual(['emergency-stop']);
+      expect(stopped({ addedBadgeTypes: ['halal'], certificateBadges: 'automatic' })).toEqual([
+        'emergency-stop',
+      ]);
+      // Back to sealed original, or nothing watched: still instant.
+      expect(stopped({ newHandling: 'SEALED_ORIGINAL' })).toEqual([]);
+      expect(stopped({})).toEqual([]);
+    }
+    // The stop comes first; the other rules still name themselves outside mode off.
+    expect(offerEditReviewReasons(edit({ emergencyStop: true, newHandling: 'FRESH' }))).toEqual([
+      'emergency-stop',
+      'handling',
+    ]);
+    expect(
+      offerEditReviewReasons(edit({ mode: 'off', emergencyStop: true, newHandling: 'FRESH' })),
+    ).toEqual(['emergency-stop']);
+  });
+
+  it('holds nothing in mode off without a stop, whatever the edit', () => {
     expect(
       offerEditReviewReasons(
         edit({

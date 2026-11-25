@@ -21,6 +21,7 @@ import { OwnOfferSetHandling } from '../../src/modules/catalog/application/use-c
 import { OwnOfferWithdrawChange } from '../../src/modules/catalog/application/use-cases/own-offer-withdraw-change.use-case';
 import { Offer } from '../../src/modules/catalog/domain/offer';
 import { OfferPendingChange } from '../../src/modules/catalog/domain/offer-pending-change';
+import type { OfferReviewReason } from '../../src/modules/catalog/domain/offer-review-policy';
 import { Product } from '../../src/modules/catalog/domain/product';
 import { simpleProductType } from '../../src/modules/catalog/domain/product-types/simple';
 import { PrismaCategoryPathsReader } from '../../src/modules/catalog/infrastructure/prisma-category-paths.reader';
@@ -144,7 +145,10 @@ describe.each(TEST_MARKETS)(
       return offerId;
     }
 
-    const propose = (offerId: Id<'Offer'>, overrides: { at?: Temporal.Instant } = {}) => {
+    const propose = (
+      offerId: Id<'Offer'>,
+      overrides: { at?: Temporal.Instant; reasons?: readonly OfferReviewReason[] } = {},
+    ) => {
       const made = OfferPendingChange.propose({
         id: uuid7() as Id<'OfferPendingChange'>,
         marketId: market.marketId,
@@ -153,7 +157,7 @@ describe.each(TEST_MARKETS)(
         baseOfferVersion: 3,
         proposedDescription: { 'en-AU': 'Call 0412 345 678' },
         proposedTagTypes: ['halal'],
-        reasons: ['certificate-badge', 'contact-text'],
+        reasons: overrides.reasons ?? ['certificate-badge', 'contact-text'],
         policyVersion: 2,
         submittedByAccountId: sellerAccount,
         now: overrides.at ?? T0,
@@ -191,6 +195,24 @@ describe.each(TEST_MARKETS)(
           status: 'pending',
         },
       ]);
+    });
+
+    it('stores a change held by the emergency stop with every edit reason (R0 on edits)', async () => {
+      const offerId = await liveOffer();
+      const reasons = [
+        'emergency-stop',
+        'certificate-badge',
+        'handling',
+        'contact-text',
+        'review-all',
+      ] as const;
+      const change = propose(offerId, { reasons });
+      await unit(() => changes.insert(market, change));
+      const row = await owner.query<{ reasons: string[] }>(
+        'SELECT reasons FROM catalog.offer_pending_changes WHERE id = $1',
+        [change.state.id],
+      );
+      expect(row.rows[0]?.reasons).toEqual([...reasons]);
     });
 
     it('keeps one open change per Offer (partial unique), answered as a lost race', async () => {

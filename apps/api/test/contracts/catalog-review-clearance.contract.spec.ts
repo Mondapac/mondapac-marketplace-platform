@@ -200,7 +200,12 @@ describe('catalog review clearance (slice 2c bypass guard)', () => {
         now: T0,
         ...(review === undefined ? {} : { review }),
       });
-    const clean = { mode: 'risk-based', certificateBadges: 'review', addedBadgeTypes: [] } as const;
+    const clean = {
+      mode: 'risk-based',
+      certificateBadges: 'review',
+      emergencyStop: false,
+      addedBadgeTypes: [],
+    } as const;
 
     it('refuses every forge the regex test of PR #1350 let through', () => {
       const forges: unknown[] = [

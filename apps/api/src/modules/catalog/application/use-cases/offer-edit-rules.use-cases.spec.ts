@@ -69,7 +69,7 @@ const ALL: OfferReviewSettings = {
   certificateBadges: 'automatic',
   emergencyStop: false,
 };
-const OFF: OfferReviewSettings = { mode: 'off', certificateBadges: 'review', emergencyStop: true };
+const OFF: OfferReviewSettings = { mode: 'off', certificateBadges: 'review', emergencyStop: false };
 
 describe.each([
   ['AU', 'halal'],
@@ -411,6 +411,21 @@ describe.each([
         applied: true,
       });
       expect(off.changes()).toEqual([]);
+    });
+
+    it('holds a watched change during an emergency stop, even in mode off (R0)', async () => {
+      const r = rig({ settings: { ...OFF, emergencyStop: true } });
+      const held = await r.edit.execute(sellerContext(), form(r, 'Clean text'));
+      expect(held.ok && held.value).toMatchObject({ applied: false, reasons: ['emergency-stop'] });
+      expect(r.changes()).toHaveLength(1);
+      // A field the rules never watch still applies at once.
+      const sku = rig({ settings: { ...OFF, emergencyStop: true } });
+      const applied = await sku.edit.execute(
+        sellerContext(),
+        form(sku, 'Lamb shoulder, 1 kg', { sellerSku: 'SKU-9' }),
+      );
+      expect(applied.ok && applied.value).toMatchObject({ applied: true });
+      expect(sku.changes()).toEqual([]);
     });
 
     it('fails closed: a settings read that fails holds the change (mode all)', async () => {

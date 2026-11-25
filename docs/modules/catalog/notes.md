@@ -234,11 +234,13 @@ The rules on edits are in the next section (slice 2c).
 ## Edits of a live Offer (risk-based Offer approval slice 2c)
 
 `offerEditReviewReasons` (policy version 2) judges a seller's edit of a **published** Offer. It
-watches three fields: the description, the handling and a new certification tag. Mode `off` holds
-nothing. Otherwise R2 (a new badge while `certificate-badges` is `review`), R3 (handling other
+watches three fields: the description, the handling and a new certification tag. While the
+emergency stop is on (R0, owner decision 2026-11-25), every watched change is held with
+`emergency-stop`, in every mode (today the Market's stop; the seller and category stops join when
+slice 4 reads the review facts). Without a stop, mode `off` holds nothing. Otherwise R2 (a new badge while `certificate-badges` is `review`), R3 (handling other
 than `SEALED_ORIGINAL`) and R5 (contact text in any locale) hold the change; in mode `all` any
 watched change is held (`review-all`), except a handling change back to `SEALED_ORIGINAL`, which
-lowers the risk and is instant in every mode (Hadi, 2026-11-25). R0, R1, R6 and R7 are publication
+lowers the risk and is instant in every mode (Hadi, 2026-11-25). R1, R6 and R7 are publication
 rules and do not apply to edits (R7: an Offer has no category; a category change is a product
 revision, VER-02). A settings read failure answers the safe
 settings (mode `all`).
