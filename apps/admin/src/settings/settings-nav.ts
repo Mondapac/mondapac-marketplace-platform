@@ -127,7 +127,7 @@ export const settingsGroups: readonly SettingsGroup[] = [
   {
     id: 'catalogue',
     labelKey: 'settings.hub.group.catalogue',
-    icon: 'tag',
+    icon: 'list-checks',
     links: [
       {
         id: 'offer-review',

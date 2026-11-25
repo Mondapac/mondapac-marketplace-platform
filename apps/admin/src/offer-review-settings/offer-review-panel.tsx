@@ -103,7 +103,11 @@ export function OfferReviewPanel({
   const sentForReview = useSentForReview();
 
   const shown = (code: Code, value: string) =>
-    code === MODE_CODE || code === BADGES_CODE ? t(`${P}.${code}.option.${value}`) : value;
+    code === MODE_CODE || code === BADGES_CODE
+      ? t(`${P}.${code}.option.${value}`)
+      : code === BAND_CODE || code === SAMPLING_CODE
+        ? `${value}%`
+        : value;
 
   const form = useSettingsForm<OfferReviewAnswer, Draft>({
     initial,

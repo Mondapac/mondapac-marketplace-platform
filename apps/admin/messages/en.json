@@ -17591,6 +17591,15 @@
         ],
         "related": []
       },
+      "settings-offer-review": {
+        "title": "Offer review",
+        "about": "Which new offers on catalogue products wait for an admin, and the numbers the automatic checks use.",
+        "good": [
+          "Saving asks for a fresh two-step code.",
+          "Each change is kept in the history and the audit log."
+        ],
+        "related": []
+      },
       "settings-delivery": {
         "title": "Delivery rules",
         "about": "Which delivery methods the Market offers and when same-day orders close.",
@@ -18246,8 +18255,8 @@
       "sampling": "Checks after going live"
     },
     "offer-review-mode": {
-      "label": "Offer review",
-      "help": "Risk-based: an offer that passes the automatic checks goes live at once, and only risky offers wait for an admin. Every offer: each new offer waits for an admin, and is used when this setting cannot be read.",
+      "label": "Review mode",
+      "help": "Risk-based: offers that pass the automatic checks go live at once; only risky ones wait for an admin. Every offer: all new offers wait for an admin. No review: offers go live without an admin. Every offer applies if this setting can't be read.",
       "option": {
         "risk-based": "Risk-based",
         "all": "Every offer",
@@ -18256,7 +18265,7 @@
     },
     "offer-review-certificate-badges": {
       "label": "Offers with a certification badge",
-      "help": "Halal, organic and other badges are still checked against the seller's certificate either way.",
+      "help": "Halal, kosher, vegan and other badges are still checked against the seller's certificate either way.",
       "option": {
         "review": "Always wait for an admin",
         "automatic": "Follow the other checks"
@@ -18268,11 +18277,11 @@
     },
     "offer-review-reference-sellers": {
       "label": "Sellers needed for a reference price",
-      "help": "A variant's reference price is the middle regular price of live offers from this many different businesses. Until then, a first price is accepted and the offer is checked after it goes live. From {min} to {max}."
+      "help": "The reference price is the median regular price of live offers from this many different sellers. Until then, a first price is accepted and checked after it goes live. From {min} to {max}."
     },
     "offer-review-price-band": {
       "label": "Price band around the reference (%)",
-      "help": "A first price further above or below the reference than this waits in the price queue. From {min} to {max}."
+      "help": "A first price more than this percent above or below the reference waits in the price queue. From {min} to {max}."
     },
     "offer-review-sampling": {
       "label": "Offers checked after going live (%)",

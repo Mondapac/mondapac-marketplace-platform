@@ -78,7 +78,7 @@ describe('offer review answers', () => {
 describe('OfferReviewPanel', () => {
   it('shows the values in force and no save bar until something changes', () => {
     mount();
-    expect(field('Offer review').value).toBe('risk-based');
+    expect(field('Review mode').value).toBe('risk-based');
     expect(field('New seller offers reviewed').value).toBe('10');
     expect(field('Price band around the reference (%)').value).toBe('50');
     expect(screen.getByText('Not changed yet. The launch values are in force.')).toBeTruthy();
@@ -87,7 +87,7 @@ describe('OfferReviewPanel', () => {
 
   it('is read-only without the manage key', () => {
     mount(defaults(), false);
-    expect(field('Offer review').disabled).toBe(true);
+    expect(field('Review mode').disabled).toBe(true);
     expect(field('Offers checked after going live (%)').disabled).toBe(true);
     expect(screen.getByText('You can view these settings but not change them.')).toBeTruthy();
   });
@@ -104,7 +104,7 @@ describe('OfferReviewPanel', () => {
       },
     });
     mount();
-    fireEvent.change(field('Offer review'), { target: { value: 'all' } });
+    fireEvent.change(field('Review mode'), { target: { value: 'all' } });
     type('New seller offers reviewed', ' 20 ');
     save();
     await expectToast('Saved.', 'success');
