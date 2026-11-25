@@ -314,7 +314,7 @@ model AiCall {
   /// US micro-dollars; on a timeout the most the call can cost.
   costMicroUsd  BigInt   @map("cost_micro_usd")
   latencyMs     Int      @map("latency_ms")
-  /// ok | timeout | unavailable (CHECK).
+  /// ok | timeout | unavailable | rate-limited | rejected (CHECK; widened in G3).
   outcome       String   @db.VarChar(20)
 
   /// The retention scan, oldest first.

@@ -140,7 +140,12 @@ export interface ReservationRecord {
   readonly expiresAt: Temporal.Instant;
 }
 
-export type CallOutcome = 'ok' | 'timeout' | 'unavailable';
+/**
+ * How one attempt ended: answered, cut at its timeout, no answer or a server error, the provider's
+ * rate limit, or the provider refused the request itself (`rejected`). G3 widened it.
+ */
+export const CALL_OUTCOMES = ['ok', 'timeout', 'unavailable', 'rate-limited', 'rejected'] as const;
+export type CallOutcome = (typeof CALL_OUTCOMES)[number];
 
 /** One `platform.ai_calls` row: no text, customer id, IP or personal key. */
 export interface CallRecord {
@@ -170,6 +175,8 @@ export interface UsageDelta {
   readonly calls: number;
   readonly failures: number;
   readonly refusals: number;
+  /** 1 when this call went to a route after the plan's first one (a fallback), else 0. */
+  readonly fallbacks: number;
   readonly inputTokens: number;
   readonly outputTokens: number;
   readonly costMicroUsd: number;

@@ -1,14 +1,24 @@
 import { Logger } from '@nestjs/common';
 import type { MarketId } from '@mondapac/shared-kernel';
+import { testRoute, testRouteCatalogue } from '../../../test/support/ai-routes';
 import type { AppConfig } from '../config/app-config';
 import { AnthropicMessagesProvider, type Fetch } from './anthropic-messages.provider';
+import { checkedInCatalogue } from './catalogue';
 import { ModelGateway } from './model-gateway';
-import type { ModelProvider, ModelRequest, ModelTurn } from './model-provider';
+import {
+  ModelProviderError,
+  type ModelCredentials,
+  type ModelProvider,
+  type ModelRequest,
+  type ModelTurn,
+} from './model-provider';
 
 const AU = 'AU' as MarketId;
 const ZZ = 'ZZ' as MarketId;
 const KEY = 'sk-test-canary-key-0001';
-const PRICE = { inputPicoUsd: 1_000_000, outputPicoUsd: 5_000_000 };
+const BEDROCK_KEY = 'bedrock-test-canary-key-0001';
+const FAST = testRoute('model-fast');
+const FAST_BEDROCK = testRoute('model-fast', 'bedrock-mantle');
 const REQUEST: ModelRequest = {
   system: 'You help buyers.',
   messages: [{ role: 'user', blocks: [{ type: 'text', text: 'hi' }] }],
@@ -26,19 +36,21 @@ const configOf = (models: AppConfig['assistantModels']) =>
 const AU_ONLY = configOf({
   apiKeys: { AU: KEY },
   models: { fast: { AU: 'model-fast' }, balanced: { AU: 'model-balanced' } },
-  prices: { fast: { AU: PRICE }, balanced: {} },
+  bedrockApiKeys: { AU: BEDROCK_KEY },
 });
+const gatewayOf = (provider: ModelProvider, config = AU_ONLY) =>
+  new ModelGateway(config, provider, testRouteCatalogue());
 
 class ScriptedProvider implements ModelProvider {
-  readonly calls: { apiKey: string; model: string }[] = [];
+  readonly calls: ModelCredentials[] = [];
   constructor(private readonly answer: (signal: AbortSignal) => Promise<ModelTurn>) {}
-  call(credentials: { apiKey: string; model: string }, _r: ModelRequest, signal: AbortSignal) {
+  call(credentials: ModelCredentials, _r: ModelRequest, signal: AbortSignal) {
     this.calls.push(credentials);
     return this.answer(signal);
   }
 }
 
-describe('ModelGateway (ADR-0019 R7, R8)', () => {
+describe('ModelGateway (ADR-0019 R7, R8; ADR-0052)', () => {
   let warnings: unknown[];
   beforeEach(() => {
     warnings = [];
@@ -51,10 +63,9 @@ describe('ModelGateway (ADR-0019 R7, R8)', () => {
   it('calls nothing while AI_KILL_SWITCH is set (ADR-0026 decision 8)', async () => {
     const provider = new ScriptedProvider(() => Promise.resolve(TURN));
     const killed = { ...AU_ONLY, aiKillSwitch: true } as unknown as AppConfig;
-    const gateway = new ModelGateway(killed, provider);
+    const gateway = gatewayOf(provider, killed);
     expect(gateway.killSwitchSet()).toBe(true);
-    expect(gateway.configured(AU, 'fast')).toBe(false);
-    await expect(gateway.complete(AU, 'fast', REQUEST, 1000)).resolves.toEqual({
+    await expect(gateway.complete(AU, FAST, REQUEST, 1000)).resolves.toEqual({
       ok: false,
       failure: 'not-configured',
     });
@@ -62,69 +73,110 @@ describe('ModelGateway (ADR-0019 R7, R8)', () => {
     expect(warnings).toContainEqual(expect.objectContaining({ msg: 'ai.kill-switch.set' }));
   });
 
-  it('is configured per Market and tier only when key, model and price are all set', () => {
-    const gateway = new ModelGateway(AU_ONLY, new ScriptedProvider(() => Promise.resolve(TURN)));
+  it('knows each route key and tier model per Market', () => {
+    const gateway = gatewayOf(new ScriptedProvider(() => Promise.resolve(TURN)));
     expect(gateway.keyConfigured(AU)).toBe(true);
     expect(gateway.keyConfigured(ZZ)).toBe(false);
-    expect(gateway.configured(AU, 'fast')).toBe(true);
-    expect(gateway.configured(AU, 'balanced')).toBe(false);
-    expect(gateway.configured(ZZ, 'fast')).toBe(false);
+    expect(gateway.routeKeyConfigured(AU, 'bedrock-mantle')).toBe(true);
+    expect(gateway.routeKeyConfigured(ZZ, 'bedrock-mantle')).toBe(false);
+    expect(gateway.modelOf(AU, 'fast')).toBe('model-fast');
     expect(gateway.modelOf(ZZ, 'fast')).toBeNull();
   });
 
-  it('calls nothing for a Market that is not configured (fail closed)', async () => {
-    const provider = new ScriptedProvider(() => Promise.resolve(TURN));
-    const gateway = new ModelGateway(AU_ONLY, provider);
-    await expect(gateway.complete(ZZ, 'fast', REQUEST, 1000)).resolves.toEqual({
-      ok: false,
-      failure: 'not-configured',
+  it('reads a tier given as an exact model id as its family', () => {
+    const gateway = new ModelGateway(
+      configOf({
+        apiKeys: {},
+        models: { fast: { AU: 'anthropic.model-fast' }, balanced: {} },
+        bedrockApiKeys: {},
+      }),
+      new ScriptedProvider(() => Promise.resolve(TURN)),
+      testRouteCatalogue(),
+    );
+    expect(gateway.modelOf(AU, 'fast')).toBe('model-fast');
+  });
+
+  it('logs a tier naming a model outside the catalogue and keeps that tier off, booting (R7, R8)', () => {
+    const errors: unknown[] = [];
+    jest.spyOn(Logger.prototype, 'error').mockImplementation((message: unknown) => {
+      errors.push(message);
     });
-    await expect(gateway.complete(AU, 'balanced', REQUEST, 1000)).resolves.toEqual({
+    const gateway = new ModelGateway(
+      configOf({
+        apiKeys: {},
+        models: { fast: { AU: 'some-preview-model' }, balanced: {} },
+        bedrockApiKeys: {},
+      }),
+      new ScriptedProvider(() => Promise.resolve(TURN)),
+      checkedInCatalogue(),
+    );
+    expect(gateway.modelOf(AU, 'fast')).toBeNull();
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toMatchObject({ msg: 'ai.model.unknown' });
+    expect(JSON.stringify(errors[0])).toMatch(
+      /ASSISTANT_MODEL_FAST: AU names a model that is not in the/,
+    );
+    expect(JSON.stringify(errors)).not.toContain('some-preview-model');
+  });
+
+  it('calls nothing for a Market without the route key (fail closed)', async () => {
+    const provider = new ScriptedProvider(() => Promise.resolve(TURN));
+    const gateway = gatewayOf(provider);
+    await expect(gateway.complete(ZZ, FAST, REQUEST, 1000)).resolves.toEqual({
       ok: false,
       failure: 'not-configured',
     });
     expect(provider.calls).toEqual([]);
   });
 
-  it("passes the Market's own key and model, and answers the turn with its price", async () => {
+  it("passes the route's own key, model and region", async () => {
     const provider = new ScriptedProvider(() => Promise.resolve(TURN));
-    const gateway = new ModelGateway(AU_ONLY, provider);
-    await expect(gateway.complete(AU, 'fast', REQUEST, 1000)).resolves.toEqual({
+    const gateway = gatewayOf(provider);
+    await expect(gateway.complete(AU, FAST, REQUEST, 1000)).resolves.toEqual({
       ok: true,
       turn: TURN,
-      price: PRICE,
     });
-    expect(provider.calls).toEqual([{ apiKey: KEY, model: 'model-fast' }]);
+    await gateway.complete(AU, FAST_BEDROCK, REQUEST, 1000);
+    expect(provider.calls).toEqual([
+      { apiKey: KEY, model: 'model-fast', route: 'anthropic-api', region: 'ap-southeast-2' },
+      {
+        apiKey: BEDROCK_KEY,
+        model: 'anthropic.model-fast',
+        route: 'bedrock-mantle',
+        region: 'ap-southeast-2',
+      },
+    ]);
   });
 
   it('cuts a slow provider at the timeout, even one that ignores the signal', async () => {
     let aborted = false;
-    const gateway = new ModelGateway(
-      AU_ONLY,
+    const gateway = gatewayOf(
       new ScriptedProvider((signal) => {
         signal.addEventListener('abort', () => (aborted = true));
         return new Promise<ModelTurn>(() => undefined);
       }),
     );
-    await expect(gateway.complete(AU, 'fast', REQUEST, 20)).resolves.toEqual({
+    await expect(gateway.complete(AU, FAST, REQUEST, 20)).resolves.toEqual({
       ok: false,
       failure: 'timeout',
-      price: PRICE,
     });
     expect(aborted).toBe(true);
     // The AI Gateway logs a failed call once, with its capability; this layer does not.
     expect(warnings).toEqual([]);
   });
 
-  it('turns any provider failure into unavailable and logs no provider text or key', async () => {
-    const gateway = new ModelGateway(
-      AU_ONLY,
-      new ScriptedProvider(() => Promise.reject(new Error(`bad key ${KEY} for "hi"`))),
-    );
-    await expect(gateway.complete(AU, 'fast', REQUEST, 1000)).resolves.toEqual({
+  it.each([
+    [new ModelProviderError('rate-limited'), 'rate-limited'],
+    [new ModelProviderError('server'), 'unavailable'],
+    [new ModelProviderError('network'), 'unavailable'],
+    [new ModelProviderError('route'), 'unavailable'],
+    [new ModelProviderError('client'), 'rejected'],
+    [new Error(`bad key ${KEY} for "hi"`), 'unavailable'],
+  ])('turns %s into %s and logs no provider text or key', async (error, failure) => {
+    const gateway = gatewayOf(new ScriptedProvider(() => Promise.reject(error)));
+    await expect(gateway.complete(AU, FAST, REQUEST, 1000)).resolves.toEqual({
       ok: false,
-      failure: 'unavailable',
-      price: PRICE,
+      failure,
     });
     expect(JSON.stringify(warnings)).not.toContain(KEY);
     expect(JSON.stringify(warnings)).not.toContain('hi');
@@ -148,7 +200,11 @@ describe('AnthropicMessagesProvider', () => {
       stop_reason: 'end_turn',
       usage: { input_tokens: 5, cache_read_input_tokens: 100, output_tokens: 3 },
     });
-    const turn = await provider.call({ apiKey: KEY, model: 'model-fast' }, REQUEST, signal);
+    const turn = await provider.call(
+      { apiKey: KEY, model: 'model-fast', route: 'anthropic-api', region: null },
+      REQUEST,
+      signal,
+    );
 
     expect(turn).toEqual({
       blocks: [{ type: 'text', text: 'Hello' }],
@@ -180,7 +236,7 @@ describe('AnthropicMessagesProvider', () => {
       usage: { input_tokens: 1, output_tokens: 1 },
     });
     const turn = await provider.call(
-      { apiKey: KEY, model: 'm' },
+      { apiKey: KEY, model: 'm', route: 'anthropic-api', region: null },
       {
         ...REQUEST,
         messages: [
@@ -209,25 +265,109 @@ describe('AnthropicMessagesProvider', () => {
     ]);
   });
 
-  it('throws on any other status without reading or repeating the provider body', async () => {
-    const { provider } = answering(401, { error: { message: `invalid x-api-key ${KEY}` } });
+  it.each([
+    [400, 'client'],
+    [413, 'client'],
+    [422, 'client'],
+    [401, 'route'],
+    [403, 'route'],
+    [404, 'route'],
+    [429, 'rate-limited'],
+    [500, 'server'],
+    [529, 'server'],
+  ])(
+    'throws the kind of a %s answer without reading or repeating the provider body',
+    async (status, kind) => {
+      const { provider } = answering(status, { error: { message: `invalid x-api-key ${KEY}` } });
+      const failure = await provider
+        .call({ apiKey: KEY, model: 'm', route: 'anthropic-api', region: null }, REQUEST, signal)
+        .catch((e: Error) => e);
+      expect(failure).toBeInstanceOf(ModelProviderError);
+      expect((failure as ModelProviderError).kind).toBe(kind);
+      expect((failure as Error).message).not.toContain(KEY);
+    },
+  );
+
+  it('never follows a redirect (the key and the data would go to another host)', async () => {
+    const { sent, provider } = answering(200, {
+      content: [{ type: 'text', text: 'Hello' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 5, output_tokens: 3 },
+    });
+    await provider.call(
+      { apiKey: KEY, model: 'm', route: 'anthropic-api', region: null },
+      REQUEST,
+      signal,
+    );
+    expect(sent[0]!.init.redirect).toBe('error');
+  });
+
+  it('throws network when the request does not reach the provider', async () => {
+    const provider = new AnthropicMessagesProvider(() => Promise.reject(new Error('ECONNRESET')));
     const failure = await provider
-      .call({ apiKey: KEY, model: 'm' }, REQUEST, signal)
+      .call({ apiKey: KEY, model: 'm', route: 'anthropic-api', region: null }, REQUEST, signal)
       .catch((e: Error) => e);
-    expect(failure).toBeInstanceOf(Error);
-    expect((failure as Error).message).toBe('model provider answered 401');
+    expect((failure as ModelProviderError).kind).toBe('network');
+  });
+
+  it("calls Bedrock's Messages endpoint in the row's region with the key as a bearer token", async () => {
+    const { sent, provider } = answering(200, {
+      content: [{ type: 'text', text: 'Hello' }],
+      stop_reason: 'end_turn',
+      usage: { input_tokens: 5, output_tokens: 3 },
+    });
+    await provider.call(
+      {
+        apiKey: BEDROCK_KEY,
+        model: 'anthropic.model-fast',
+        route: 'bedrock-mantle',
+        region: 'ap-southeast-2',
+      },
+      REQUEST,
+      signal,
+    );
+    expect(sent[0]!.url).toBe(
+      'https://bedrock-mantle.ap-southeast-2.api.aws/anthropic/v1/messages',
+    );
+    const headers = sent[0]!.init.headers as Record<string, string>;
+    expect(headers.authorization).toBe(`Bearer ${BEDROCK_KEY}`);
+    expect(headers['x-api-key']).toBeUndefined();
+    expect(sent[0]!.init.body).not.toContain(BEDROCK_KEY);
+    expect(JSON.parse(sent[0]!.init.body as string)).toMatchObject({
+      model: 'anthropic.model-fast',
+    });
+  });
+
+  it.each([null, 'ap-southeast-2.evil.example/x', 'AP-SOUTHEAST-2'])(
+    'refuses a Bedrock call with region %s, reaching no host',
+    async (region) => {
+      const { sent, provider } = answering(200, {});
+      const failure = await provider
+        .call({ apiKey: BEDROCK_KEY, model: 'm', route: 'bedrock-mantle', region }, REQUEST, signal)
+        .catch((e: Error) => e);
+      expect((failure as ModelProviderError).kind).toBe('client');
+      expect(sent).toEqual([]);
+    },
+  );
+
+  it('refuses an unknown route, reaching no host', async () => {
+    const { sent, provider } = answering(200, {});
+    await expect(
+      provider.call({ apiKey: KEY, model: 'm', route: 'elsewhere', region: null }, REQUEST, signal),
+    ).rejects.toBeInstanceOf(ModelProviderError);
+    expect(sent).toEqual([]);
   });
 
   it('throws on an answer without content, and maps an unknown stop to other', async () => {
     await expect(
       answering(200, { stop_reason: 'end_turn' }).provider.call(
-        { apiKey: KEY, model: 'm' },
+        { apiKey: KEY, model: 'm', route: 'anthropic-api', region: null },
         REQUEST,
         signal,
       ),
-    ).rejects.toThrow('model provider answer has no content');
+    ).rejects.toBeInstanceOf(ModelProviderError);
     const odd = await answering(200, { content: [], stop_reason: 'pause_turn' }).provider.call(
-      { apiKey: KEY, model: 'm' },
+      { apiKey: KEY, model: 'm', route: 'anthropic-api', region: null },
       REQUEST,
       signal,
     );

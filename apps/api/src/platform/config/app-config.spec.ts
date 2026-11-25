@@ -44,7 +44,7 @@ describe('loadAppConfig', () => {
       assistantModels: {
         apiKeys: {},
         models: { fast: {}, balanced: {} },
-        prices: { fast: {}, balanced: {} },
+        bedrockApiKeys: {},
       },
       googleSignIn: null,
       mondapacDrive: { apiKeys: {}, webhookSecrets: {} },
@@ -461,24 +461,21 @@ describe('loadAppConfig', () => {
     });
   });
 
-  describe('the buyer assistant model (per Market: key, tiers, prices)', () => {
-    it('reads each value per hosted Market, and the price in pico dollars per token', () => {
+  describe('the AI models (per Market: route keys and tiers; prices from the catalogue)', () => {
+    it('reads each value per hosted Market, and ignores the retired price variables', () => {
+      const bedrockKey = 'ABSKbedrock+key/with=base64chars0123';
       const config = loadAppConfig({
         HOSTED_MARKETS: 'AU,NZ',
         ASSISTANT_MODEL_API_KEY: 'AU=test-key-0123456789abcdef,NZ=test-key-nz-0123456789abc',
         ASSISTANT_MODEL_FAST: 'AU=provider-model-fast-1',
-        ASSISTANT_MODEL_PRICE_FAST: 'AU=0.1/0.5,NZ=2/10.25',
+        AI_BEDROCK_API_KEY: `AU=${bedrockKey}`,
+        // Prices moved to the route catalogue in G3 (ADR-0052 decision 2): never read.
+        ASSISTANT_MODEL_PRICE_FAST: 'AU=0.0001/0.0001',
       });
       expect(config.assistantModels).toEqual({
         apiKeys: { AU: 'test-key-0123456789abcdef', NZ: 'test-key-nz-0123456789abc' },
         models: { fast: { AU: 'provider-model-fast-1' }, balanced: {} },
-        prices: {
-          fast: {
-            AU: { inputPicoUsd: 100_000, outputPicoUsd: 500_000 },
-            NZ: { inputPicoUsd: 2_000_000, outputPicoUsd: 10_250_000 },
-          },
-          balanced: {},
-        },
+        bedrockApiKeys: { AU: bedrockKey },
       });
     });
 
@@ -488,8 +485,8 @@ describe('loadAppConfig', () => {
       ['ASSISTANT_MODEL_API_KEY', 'AU=has a space in it 0123456789'],
       ['ASSISTANT_MODEL_FAST', 'AU=bad model id'],
       ['ASSISTANT_MODEL_BALANCED', 'AU=-leading-dash'],
-      ['ASSISTANT_MODEL_PRICE_FAST', 'AU=0.1'],
-      ['ASSISTANT_MODEL_PRICE_BALANCED', 'AU=-1/2'],
+      ['AI_BEDROCK_API_KEY', 'AU=short'],
+      ['AI_BEDROCK_API_KEY', 'AU=has a space in it 0123456789'],
     ])('refuses %s=%j without echoing it', (name, value) => {
       expect(() => loadAppConfig({ HOSTED_MARKETS: 'AU', [name]: value })).toThrow(name);
       try {

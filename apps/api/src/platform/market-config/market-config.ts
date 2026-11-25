@@ -1449,6 +1449,40 @@ const aiBudgetSchema = z.strictObject({
   guestDayMicroUsd: aiBudgetCap.optional(),
 });
 
+/**
+ * The AI Gateway's routing values of the Market (docs/design/domain/platform-ai.md section 6;
+ * ADR-0052 decision 4), code until the gateway settings move to `settings` (G4) and INTL-53 adds
+ * `Market.data_residency_requirement`. Absent: no route meets the Market's residency, so AI is off.
+ */
+const aiRoutingSchema = z
+  .strictObject({
+    /**
+     * The residency value (ADR-0052 decision 4): `in-market-region` allows a route whose processing
+     * region is one of `regions`; `none` expresses no condition and keeps AI off until an ADR
+     * records the Market's value.
+     */
+    dataResidency: z.enum(['in-market-region', 'none']),
+    /** The processing regions that are in the Market (for AU, Sydney and Melbourne). */
+    regions: z
+      .array(z.string().regex(/^[a-z]{2}(?:-[a-z]+)+-\d$/))
+      .max(10)
+      .default([]),
+    /**
+     * Saver mode (section 6): once the Market's month spend reaches `saverAtPercent` of its month
+     * cap, the gateway tries this model family first, so a capability stays on up to 100 %.
+     * Absent: no saver model. It must be cheaper than the model it goes before (checked per call).
+     */
+    saverModel: z
+      .string()
+      .regex(/^[a-z0-9][a-z0-9.-]{0,79}$/)
+      .optional(),
+    saverAtPercent: z.number().int().min(1).max(99).default(80),
+  })
+  .refine((routing) => routing.dataResidency === 'none' || routing.regions.length > 0, {
+    message: 'in-market-region needs at least one region',
+    path: ['regions'],
+  });
+
 const shippingSchema = z.strictObject({
   /**
    * The region (state) of each postcode, as ranges per region code (dashboards v2, phase 1): how
@@ -2192,6 +2226,8 @@ const marketSchema = z
     shipping: shippingSchema.optional(),
     /** Read by `platform/ai`: the AI budget caps. Absent: every call is counted, none is capped. */
     aiBudget: aiBudgetSchema.optional(),
+    /** Read by `platform/ai`: residency and saver model. Absent: no route is usable (AI off). */
+    aiRouting: aiRoutingSchema.optional(),
   })
   .refine((market) => market.supportedLocales.includes(market.defaultLocale), {
     message: 'supportedLocales must include defaultLocale',

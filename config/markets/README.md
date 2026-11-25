@@ -491,3 +491,12 @@ are fixed in the adapter; `environment` picks one. Prices come in the Market's d
   `timezone`. An absent cap is counted but not enforced (AU sets none today); 0 allows nothing.
   A full cap makes the gateway answer `over-budget` and the host flow completes without AI. Read
   by `platform/ai` until the gateway settings move to the `settings` module (G4).
+
+- `aiRouting` (optional section; AI Gateway G3, docs/design/domain/platform-ai.md section 6,
+  ADR-0052 decision 4): `dataResidency` is `in-market-region` (a route is usable only when its
+  catalogue row's processing region is in `regions`) or `none` (no condition expressed: AI stays
+  off until an ADR records the value). AU is `in-market-region` with Sydney (`ap-southeast-2`) and
+  Melbourne (`ap-southeast-4`). `saverModel` (optional) is the model family the gateway tries first
+  once the Market's month spend reaches `saverAtPercent` (default 80) of `aiBudget.
+  marketMonthMicroUsd`; it is used only when cheaper than the model it goes before. Absent section:
+  no route is usable and every AI capability is off. Read by `platform/ai` until G4 and INTL-53.
