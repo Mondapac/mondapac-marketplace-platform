@@ -215,7 +215,7 @@ reasons that send the Offer to the queue, empty meaning publish at once.
 
 | Reason code          | Rule       | Source today                                                                                                              |
 | -------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------- |
-| `emergency-stop`     | R0         | none yet (slice 2b); off                                                                                                  |
+| `emergency-stop`     | R0         | the Market switch `offer-review-emergency-stop` (slice 2b); category and seller scopes later |
 | `probation`          | R1         | none yet (slice 4): every seller counts as in probation, so risk-based mode still queues every new Offer (fail closed)    |
 | `certificate-badge`  | R2         | kept and requested badge types, while `catalog.offer-review.certificate-badges` is `review`                               |
 | `handling`           | R3         | handling other than `SEALED_ORIGINAL`                                                                                     |

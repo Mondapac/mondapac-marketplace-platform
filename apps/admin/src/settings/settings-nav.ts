@@ -34,6 +34,10 @@ import {
   OFFER_REVIEW_MANAGE_PERMISSION,
   OFFER_REVIEW_VIEW_PERMISSION,
 } from '../offer-review-settings/types.ts';
+import {
+  EMERGENCY_STOP_HREF,
+  EMERGENCY_STOP_PERMISSION,
+} from '../offer-review-emergency-stop/types.ts';
 import { SUPPORT_MANAGE_PERMISSION, SUPPORT_VIEW_PERMISSION } from './types.ts';
 
 // The one map of the admin Settings pages (settings UX design, hub and roles sections). The hub,
@@ -137,6 +141,15 @@ export const settingsGroups: readonly SettingsGroup[] = [
         href: '/settings/offer-review',
         view: [OFFER_REVIEW_VIEW_PERMISSION],
         manage: [OFFER_REVIEW_MANAGE_PERMISSION],
+      },
+      {
+        id: 'emergency-stop',
+        labelKey: 'settings.hub.link.emergency-stop',
+        descriptionKey: 'settings.hub.about.emergency-stop',
+        keywordsKey: 'settings.hub.words.emergency-stop',
+        href: EMERGENCY_STOP_HREF,
+        view: [OFFER_REVIEW_VIEW_PERMISSION, EMERGENCY_STOP_PERMISSION],
+        manage: [EMERGENCY_STOP_PERMISSION],
       },
     ],
   },

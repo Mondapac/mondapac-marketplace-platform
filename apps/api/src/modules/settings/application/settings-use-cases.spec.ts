@@ -1,5 +1,5 @@
 import { Logger } from '@nestjs/common';
-import { parseId, Temporal } from '@mondapac/shared-kernel';
+import { err, ok, parseId, Temporal } from '@mondapac/shared-kernel';
 import type { AuditEntry, CallContext, Id, MarketContext } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -11,7 +11,7 @@ import { FakeUnitOfWork } from '../../../../test/support/pricing-fakes';
 import { RecordingReview } from '../../../../test/support/system-request-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../../../../test/support/test-config';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
-import type { AccessDecision } from '../../../platform/authz';
+import type { AccessDecision, StepUpProofConsumer } from '../../../platform/authz';
 import { createUseCaseGate } from '../../../platform/authz/use-case-gate';
 import { loadMarketConfigs } from '../../../platform/market-config/market-config';
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
@@ -37,6 +37,9 @@ import { ViewMonthlyRevenueTargetSetting } from './use-cases/view-monthly-revenu
 import { ViewAiSettings } from './use-cases/view-ai-settings.use-case';
 import { ChangeOfferReviewSettings } from './use-cases/change-offer-review-settings.use-case';
 import { ViewOfferReviewSettings } from './use-cases/view-offer-review-settings.use-case';
+import { ChangeOfferReviewEmergencyStop } from './use-cases/change-offer-review-emergency-stop.use-case';
+import { ViewOfferReviewEmergencyStop } from './use-cases/view-offer-review-emergency-stop.use-case';
+import { ReadOfferReviewPolicy as ReadPolicyForStop } from './use-cases/read-offer-review-policy.use-case';
 import { ViewCartModeSetting } from './use-cases/view-cart-mode-setting.use-case';
 import { ViewListPagingSetting } from './use-cases/view-list-paging-setting.use-case';
 
@@ -105,6 +108,16 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
   let audit: RecordingAudit;
   let deps: SettingsDependencies;
   let review: RecordingReview;
+  /** The step-up proofs spent, and whether the admin has a fresh one left. */
+  let spentProofs: string[];
+  let proofLeft: boolean;
+  const stepUp: StepUpProofConsumer = {
+    consume: (_context: CallContext, actionKey: string) => {
+      if (!proofLeft) return Promise.resolve(err({ code: 'second-factor.required', actionKey }));
+      spentProofs.push(actionKey);
+      return Promise.resolve(ok({ sessionId: id<'Session'>(0x99), verifiedAt: T0 }));
+    },
+  };
 
   const adminCtx = () =>
     testCallContext(
@@ -150,7 +163,10 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       audit,
       clock: new FixedClock(T0),
       review,
+      stepUp,
     };
+    spentProofs = [];
+    proofLeft = true;
   });
 
   it('shows the default (page numbers, version 0) before any change', async () => {
@@ -1007,6 +1023,131 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         before: { value: 0 },
         after: { value: 10, version: 2 },
       });
+    });
+  });
+  describe('the Offer review emergency stop (R0)', () => {
+    const names = {
+      namesOf: (_c: CallContext, ids: readonly string[]) =>
+        Promise.resolve(new Map(ids.map((accountId) => [accountId, 'Leila Admin']))),
+    };
+    const view = (context = adminCtx()) =>
+      new ViewOfferReviewEmergencyStop(gate, { settings: deps, names }).execute(context, {});
+    const stop = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ChangeOfferReviewEmergencyStop(gate, deps).execute(context, input);
+
+    it('is off by default, with no switch time and no name', async () => {
+      expect(await view()).toEqual({
+        ok: true,
+        value: { on: false, version: 0, changedAt: null, changedBy: null },
+      });
+    });
+
+    it('always needs a reason, even where settings changes are not reviewed', async () => {
+      for (const note of [undefined, '', '   ']) {
+        expect(await stop({ value: 'on', expectedVersion: 0, note })).toEqual({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] },
+        });
+      }
+      expect(await stop({ value: 'on', expectedVersion: 0, note: 'x'.repeat(501) })).toEqual({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'note', code: 'too-long' }] },
+      });
+      expect(store.history).toHaveLength(0);
+    });
+
+    it('switches on at once, audited; the banner names who and when, and the policy reads it', async () => {
+      const saved = await stop({ value: 'on', expectedVersion: 0, note: 'Fraud wave' });
+      expect(saved.ok && saved.value.map(({ code, value }) => [code, value])).toEqual([
+        ['offer-review-emergency-stop', 'on'],
+      ]);
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'settings.market-setting.changed',
+        targetId: 'offer-review-emergency-stop',
+        before: { value: 'off' },
+        after: { value: 'on', version: 1 },
+      });
+      const shown = await view();
+      expect(shown.ok && shown.value).toMatchObject({
+        on: true,
+        version: 1,
+        changedBy: 'Leila Admin',
+      });
+      const policy = await new ReadPolicyForStop(gate, deps).execute(anonymous, {});
+      expect(policy.ok && policy.value.emergencyStop).toBe(true);
+    });
+
+    it('takes no other code and no other value', async () => {
+      expect((await stop({ value: 'maybe', expectedVersion: 0, note: 'x' })).ok).toBe(false);
+      const page = await new ChangeOfferReviewSettings(gate, deps).execute(adminCtx(), {
+        changes: [{ code: 'offer-review-emergency-stop', value: 'on', expectedVersion: 0 }],
+        note: 'x',
+      });
+      expect(page.ok).toBe(false);
+    });
+
+    it('spends a fresh two-step proof of the admin, and saves nothing without one', async () => {
+      proofLeft = false;
+      expect(await stop({ value: 'on', expectedVersion: 0, note: 'Fraud wave' })).toEqual({
+        ok: false,
+        error: {
+          code: 'second-factor.required',
+          actionKey: 'settings.offer-review-emergency-stop.change',
+        },
+      });
+      expect(store.history).toHaveLength(0);
+      proofLeft = true;
+      expect((await stop({ value: 'on', expectedVersion: 0, note: 'Fraud wave' })).ok).toBe(true);
+      expect(spentProofs).toEqual(['settings.offer-review-emergency-stop.change']);
+    });
+
+    it('spends a fresh proof for the Offer review page too, and saves nothing without one', async () => {
+      const page = () =>
+        new ChangeOfferReviewSettings(gate, deps).execute(adminCtx(), {
+          changes: [{ code: 'offer-review-sampling', value: '10', expectedVersion: 0 }],
+          note: 'x',
+        });
+      proofLeft = false;
+      expect(await page()).toEqual({
+        ok: false,
+        error: { code: 'second-factor.required', actionKey: 'settings.offer-review.change' },
+      });
+      expect(store.history).toHaveLength(0);
+      proofLeft = true;
+      expect((await page()).ok).toBe(true);
+      expect(spentProofs).toEqual(['settings.offer-review.change']);
+    });
+
+    it('spends no proof on a stale version', async () => {
+      expect((await stop({ value: 'on', expectedVersion: 3, note: 'x' })).ok).toBe(false);
+      expect(spentProofs).toEqual([]);
+    });
+
+    it('is never switched off by a rejected review; a rejected "off" is restored on', async () => {
+      const reverter = new SettingsReverter(deps);
+      await stop({ value: 'on', expectedVersion: 0, note: 'Fraud wave' });
+      expect(
+        await reverter.revert(adminCtx(), {
+          requestId: id<'SystemRequest'>(0x5e2),
+          subjectRef: 'offer-review-emergency-stop',
+          before: { value: 'off' },
+          after: { value: 'on' },
+        }),
+      ).toBe('not-permitted');
+      await stop({ value: 'off', expectedVersion: 1, note: 'Over' });
+      expect(
+        await reverter.revert(adminCtx(), {
+          requestId: id<'SystemRequest'>(0x5e2),
+          subjectRef: 'offer-review-emergency-stop',
+          before: { value: 'on' },
+          after: { value: 'off' },
+        }),
+      ).toBe('reverted');
+    });
+
+    it('shows the banner to admins only', async () => {
+      expect(await view(sellerCtx())).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect((await view(anonymous)).ok).toBe(false);
     });
   });
 });
