@@ -182,6 +182,43 @@ export function loosensAi(code: string, was: string, next: string): boolean {
   return after > before;
 }
 
+/** The AI task types a Market chooses models for (platform/ai `CAPABILITY_TASKS`, design section 6). */
+export const AI_MODEL_TASKS = ['chat', 'extract', 'write', 'vision'] as const;
+export type AiModelTask = (typeof AI_MODEL_TASKS)[number];
+
+/** No model chosen: the list is empty (the gateway falls back to the module's tier for now). */
+export const AI_MODELS_NONE = 'none';
+/** A model family of the route catalogue as a setting holds it: at most 20 characters (`none` is
+ * never a family). */
+const AI_FAMILY = '[a-z0-9][a-z0-9.-]{0,19}';
+/** A priority list: 1 to 3 families, comma-separated, in the order to try (64 characters at most). */
+const AI_MODEL_LIST_VALUE = new RegExp(`^${AI_FAMILY}(?:,${AI_FAMILY}){0,2}$`);
+const AI_SAVER_VALUE = new RegExp(`^${AI_FAMILY}$`);
+
+/** The priority list of one task type (the External models tab, design section 7). */
+export const aiModelsCode = (task: AiModelTask): string => `ai-models-${task}`;
+/** The saver model of one task type, put first from the saver threshold. */
+export const aiSaverCode = (task: AiModelTask): string => `ai-saver-${task}`;
+/** The share of the Market's month cap (50 to 99 %) from which a task's saver model goes first. */
+export const AI_SAVER_PERCENT_CODE = 'ai-saver-percent';
+
+export const AI_MODEL_LIST_CODES: readonly string[] = Object.freeze(
+  AI_MODEL_TASKS.map(aiModelsCode),
+);
+export const AI_SAVER_CODES: readonly string[] = Object.freeze(AI_MODEL_TASKS.map(aiSaverCode));
+/** Every AI model setting code, as the External models tab shows and saves them. */
+export const AI_MODEL_CODES: readonly string[] = Object.freeze([
+  ...AI_MODEL_LIST_CODES,
+  ...AI_SAVER_CODES,
+  AI_SAVER_PERCENT_CODE,
+]);
+
+/** The families of a stored list or saver value, in order; none for `none` or anything else. */
+export function familiesOf(value: string): readonly string[] {
+  if (value === AI_MODELS_NONE || !AI_MODEL_LIST_VALUE.test(value)) return [];
+  return value.split(',');
+}
+
 /** A whole number setting: its value is stored as a decimal text such as "10". */
 export interface IntegerBounds {
   readonly min: number;
@@ -362,6 +399,83 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
     defaultValue: AI_CAP_NONE,
     // An invalid stored value is read as 0: nothing allowed (ADR-0019 R8).
     safeValue: '0',
+  },
+  {
+    code: 'ai-models-chat',
+    label: 'AI models: chat priority list',
+    values: [AI_MODELS_NONE],
+    pattern: AI_MODEL_LIST_VALUE,
+    defaultValue: AI_MODELS_NONE,
+    // An invalid stored value is no list; the router still checks every route on each call.
+    safeValue: AI_MODELS_NONE,
+  },
+  {
+    code: 'ai-models-extract',
+    label: 'AI models: extract priority list',
+    values: [AI_MODELS_NONE],
+    pattern: AI_MODEL_LIST_VALUE,
+    defaultValue: AI_MODELS_NONE,
+    // An invalid stored value is no list; the router still checks every route on each call.
+    safeValue: AI_MODELS_NONE,
+  },
+  {
+    code: 'ai-models-write',
+    label: 'AI models: write priority list',
+    values: [AI_MODELS_NONE],
+    pattern: AI_MODEL_LIST_VALUE,
+    defaultValue: AI_MODELS_NONE,
+    // An invalid stored value is no list; the router still checks every route on each call.
+    safeValue: AI_MODELS_NONE,
+  },
+  {
+    code: 'ai-models-vision',
+    label: 'AI models: vision priority list',
+    values: [AI_MODELS_NONE],
+    pattern: AI_MODEL_LIST_VALUE,
+    defaultValue: AI_MODELS_NONE,
+    // An invalid stored value is no list; the router still checks every route on each call.
+    safeValue: AI_MODELS_NONE,
+  },
+  {
+    code: 'ai-saver-chat',
+    label: 'AI models: chat saver model',
+    values: [AI_MODELS_NONE],
+    pattern: AI_SAVER_VALUE,
+    defaultValue: AI_MODELS_NONE,
+    safeValue: AI_MODELS_NONE,
+  },
+  {
+    code: 'ai-saver-extract',
+    label: 'AI models: extract saver model',
+    values: [AI_MODELS_NONE],
+    pattern: AI_SAVER_VALUE,
+    defaultValue: AI_MODELS_NONE,
+    safeValue: AI_MODELS_NONE,
+  },
+  {
+    code: 'ai-saver-write',
+    label: 'AI models: write saver model',
+    values: [AI_MODELS_NONE],
+    pattern: AI_SAVER_VALUE,
+    defaultValue: AI_MODELS_NONE,
+    safeValue: AI_MODELS_NONE,
+  },
+  {
+    code: 'ai-saver-vision',
+    label: 'AI models: vision saver model',
+    values: [AI_MODELS_NONE],
+    pattern: AI_SAVER_VALUE,
+    defaultValue: AI_MODELS_NONE,
+    safeValue: AI_MODELS_NONE,
+  },
+  {
+    code: AI_SAVER_PERCENT_CODE,
+    label: 'AI models: saver threshold (% of the month cap)',
+    values: [],
+    integer: { min: 50, max: 99 },
+    defaultValue: '80',
+    // The cheaper model from half the month cap on: the cheap side.
+    safeValue: '50',
   },
   {
     code: MONTHLY_REVENUE_TARGET_CODE,

@@ -24,6 +24,9 @@ import { SettingsReverter } from './application/settings-reverter';
 import { createSystemChangeRegistrar, SYSTEM_REQUEST_RECORDER } from '../system-requests';
 import { ChangeAiSetting } from './application/use-cases/change-ai-setting.use-case';
 import { ChangeAiGatewayEmergencyStop } from './application/use-cases/change-ai-gateway-emergency-stop.use-case';
+import { ChangeAiModels } from './application/use-cases/change-ai-models.use-case';
+import { ViewAiModels } from './application/use-cases/view-ai-models.use-case';
+import { AiModelChoices } from '../../platform/ai/model-choices';
 import { ChangeAiGatewayLimits } from './application/use-cases/change-ai-gateway-limits.use-case';
 import { ViewAiGatewaySettings } from './application/use-cases/view-ai-gateway-settings.use-case';
 import { SettingsAiGatewayControls } from './application/ai-gateway-controls-reader';
@@ -86,7 +89,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * Settings (admin-editable Market settings, ADR-0026 and ADR-0042): one shared store with a
  * version, an insert-only history and an audit row per change, in the `settings` schema. List
  * paging is its first setting, Cart mode its second, the AI description writer's switch and tier
- * the next two, the Offer review policy (risk-based Offer approval) the next six, the monthly revenue target (an amount) the one after, and the AI Gateway's emergency stop and caps (G4, read by `platform/ai` through its `AI_GATEWAY_CONTROLS` port). The settings other modules already keep are not moved here. A change opens a
+ * the next two, the Offer review policy (risk-based Offer approval) the next six, the monthly revenue target (an amount) the one after, and the AI Gateway's emergency stop, caps and model lists (G4, read by `platform/ai` through its `AI_GATEWAY_CONTROLS` port). The settings other modules already keep are not moved here. A change opens a
  * review in Admin Inbox › System requests (area marketplace) when the Market reviews that area,
  * and a rejected or withdrawn one is restored by the registered reverter.
  */
@@ -127,6 +130,20 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         new ChangeMonthlyRevenueTargetSetting(gate, dependenciesOf(values), {
           currencyOf: (market) => markets.get(market.marketId).defaultCurrency,
         }),
+    },
+    // The External models tab (G4b) checks lists against platform/ai's catalogue; AiModule is
+    // global, so its AiModelChoices reaches this module without an import (and without a cycle).
+    {
+      provide: ViewAiModels,
+      inject: [USE_CASE_GATE, AiModelChoices, ...PORTS.map(([, token]) => token)],
+      useFactory: (gate: UseCaseGate, choices: AiModelChoices, ...values: unknown[]) =>
+        new ViewAiModels(gate, dependenciesOf(values), choices),
+    },
+    {
+      provide: ChangeAiModels,
+      inject: [USE_CASE_GATE, AiModelChoices, ...PORTS.map(([, token]) => token)],
+      useFactory: (gate: UseCaseGate, choices: AiModelChoices, ...values: unknown[]) =>
+        new ChangeAiModels(gate, dependenciesOf(values), choices),
     },
     {
       provide: SETTINGS_ADMIN_NAMES,

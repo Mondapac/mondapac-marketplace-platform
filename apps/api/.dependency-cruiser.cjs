@@ -406,6 +406,9 @@ module.exports = {
           '^src/platform/ai/seller-ai-switch\\.ts$',
           // The gateway-settings port (G4); rule ai-gateway-controls-only-from-settings limits it.
           '^src/platform/ai/gateway-controls\\.ts$',
+          // The External models tab's server checks (G4b); rule ai-model-choices-only-from-settings
+          // limits it.
+          '^src/platform/ai/model-choices\\.ts$',
           // The usage store's port; rule ai-usage-store-only-in-persistence limits who imports it.
           '^src/platform/ai/usage/ai-usage-store\\.ts$',
           // A module's read of its own capability's usage (G7); no model call. Rule
@@ -489,6 +492,22 @@ module.exports = {
         ],
       },
       to: { path: '^src/platform/ai/gateway-controls\\.ts$' },
+    },
+    {
+      name: 'ai-model-choices-only-from-settings',
+      comment:
+        "Only settings checks a Market's AI model lists against the route catalogue (G4b; " +
+        'docs/design/domain/platform-ai.md sections 7 and 8): its module file and the AI model ' +
+        'use cases.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/platform/ai/',
+          '^src/modules/settings/settings\\.module\\.ts$',
+          '^src/modules/settings/application/use-cases/(?:view|change)-ai-models\\.use-case\\.ts$',
+        ],
+      },
+      to: { path: '^src/platform/ai/model-choices\\.ts$' },
     },
     {
       name: 'no-ai-in-identity-payments-or-payouts',

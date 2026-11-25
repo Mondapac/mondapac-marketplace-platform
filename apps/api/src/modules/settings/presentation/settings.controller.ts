@@ -22,6 +22,8 @@ import {
 import { ChangeAiGatewayEmergencyStop } from '../application/use-cases/change-ai-gateway-emergency-stop.use-case';
 import { ChangeAiGatewayLimits } from '../application/use-cases/change-ai-gateway-limits.use-case';
 import { ChangeAiSetting } from '../application/use-cases/change-ai-setting.use-case';
+import { ChangeAiModels } from '../application/use-cases/change-ai-models.use-case';
+import { ViewAiModels } from '../application/use-cases/view-ai-models.use-case';
 import { ViewAiGatewaySettings } from '../application/use-cases/view-ai-gateway-settings.use-case';
 import { ViewAiSettings } from '../application/use-cases/view-ai-settings.use-case';
 import { ChangeOfferReviewSettings } from '../application/use-cases/change-offer-review-settings.use-case';
@@ -63,6 +65,8 @@ import {
   settingsChangeListBody,
   SettingsListBody,
   settingsListBody,
+  AiModelsBody,
+  aiModelsBody,
 } from './settings.dto';
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -112,7 +116,81 @@ export class AdminSettingsController {
     private readonly viewAiGateway: ViewAiGatewaySettings,
     private readonly changeAiGatewayLimits: ChangeAiGatewayLimits,
     private readonly changeAiGatewayStop: ChangeAiGatewayEmergencyStop,
+    private readonly viewAiModels: ViewAiModels,
+    private readonly changeAiModels: ChangeAiModels,
   ) {}
+
+  @Get('ai-models')
+  @ApiOperation({
+    summary: 'The AI model choice of the Market (admin)',
+    description:
+      'Needs settings.ai-gateway.view. Per task type (chat, extract, write, vision) the priority ' +
+      'list ai-models-<task> (none, or 1 to 3 model families comma-separated, in the order to ' +
+      'try) and the saver model ai-saver-<task> (none or one family), and ai-saver-percent (50 ' +
+      'to 99, default 80), each with its version; and per task type every model family of the ' +
+      'route catalogue with why it cannot be chosen in the Market now.',
+  })
+  @ApiOkResponse({ type: AiModelsBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async aiModels(@Call() context: CallContext, @Res({ passthrough: true }) response: Response) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.viewAiModels.execute(context, {});
+    logRoute(
+      this.#logger,
+      'settings.view-ai-models-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return aiModelsBody(result.value);
+  }
+
+  // Every change spends a two-step code in the use case's own unit, after the server checks.
+  @Put('ai-models')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Change the AI model choice of the Market (admin)',
+    description:
+      'Needs the protected settings.ai-models.manage; refused in an acting-as session. ' +
+      '`changes` lists each changed setting once with the version the admin saw. Every change ' +
+      'needs a fresh two-step proof of this admin (`POST identity/admin/step-up/verify` for ' +
+      'settings.ai-models.change; without it 403 second-factor.required with details.actionKey). ' +
+      'Server checks: each family of a changed list is in the route catalogue, once, and usable ' +
+      'in the Market for every capability of its task type; a saver model passes the same checks, ' +
+      'needs a list and is cheaper than its model 1 (400 validation.failed, details.fields with ' +
+      'the path <code>.<index> or <code> and the problem as its code). All or nothing: a stale ' +
+      'version is 409 settings.conflict. Each change is audited and, where reviewed, opens a ' +
+      'high-risk review request. ' +
+      REVIEWED,
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ChangeOfferReviewRequest })
+  @ApiOkResponse({ type: SettingsChangeListBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: STEP_UP_FORBIDDEN })
+  @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
+  async putAiModels(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody, ['changes', 'note']);
+    if (invalid !== null) throw invalid;
+    const { changes, note } = requestBody as { changes?: unknown; note?: unknown };
+    const result = await this.changeAiModels.execute(context, { changes, note });
+    logRoute(
+      this.#logger,
+      'settings.change-ai-models-route',
+      context,
+      result.ok ? 'set' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return settingsChangeListBody(result.value);
+  }
 
   @Get('ai-gateway')
   @ApiOperation({

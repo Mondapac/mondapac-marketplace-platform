@@ -491,7 +491,7 @@ are fixed in the adapter; `environment` picks one. Prices come in the Market's d
   ADR-0052 decision 4): `dataResidency` is `in-market-region` (a route is usable only when its
   catalogue row's processing region is in `regions`) or `none` (no condition expressed: AI stays
   off until an ADR records the value). AU is `in-market-region` with Sydney (`ap-southeast-2`) and
-  Melbourne (`ap-southeast-4`). `saverModel` (optional) is the model family the gateway tries first
-  once the Market's month spend reaches `saverAtPercent` (default 80) of the month cap
-  (`ai-cap-market-month` setting); it is used only when cheaper than the model it goes before. Absent section:
-  no route is usable and every AI capability is off. Read by `platform/ai` until G4 and INTL-53.
+  Melbourne (`ap-southeast-4`). The saver model and its threshold are settings since G4b
+  (`ai-saver-<task>`, `ai-saver-percent`); a Market file that still has `saverModel` or
+  `saverAtPercent` fails validation. Absent section: no route is usable and every AI capability is
+  off. Read by `platform/ai` until INTL-53.

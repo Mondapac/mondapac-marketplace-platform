@@ -1,7 +1,8 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Clock, MarketId } from '@mondapac/shared-kernel';
 import type { MarketRegistry } from '../../market-config/market-registry';
-import type { CapabilitySpec } from '../capability';
+import type { CapabilitySpec, CapabilityTask } from '../capability';
+import { NO_MODEL_LISTS, type AiModelLists } from '../gateway-controls';
 import {
   priceOf,
   type ModelTokenPrice,
@@ -11,6 +12,16 @@ import {
 import type { EvaluationResults } from '../evaluations/evaluation-results';
 import type { AiModelTier, ModelGateway } from '../model-gateway';
 import { CircuitBreaker } from './circuit-breaker';
+
+/** Why a model cannot be chosen or called (design section 8, server checks). */
+export type RouteProblem =
+  | 'unknown-model'
+  | 'task-unsupported'
+  | 'not-checked'
+  | 'region'
+  | 'no-key'
+  | 'retired'
+  | 'not-evaluated';
 
 /** The most attempts one `run` makes, the first route included (design section 6). */
 export const MAX_ATTEMPTS = 3;
@@ -24,8 +35,8 @@ export interface PlannedRoute {
 /**
  * The AI Gateway's router (docs/design/domain/platform-ai.md section 6; ADR-0052 decisions 2 to 5).
  * For a capability in a Market it builds the ordered list of routes a call may try: the task's
- * priority list of model families (until G4, the one family the module's tier names), saver mode
- * putting the Market's saver model first, and each family expanded to its catalogue rows, the
+ * priority list of model families (the Market's list for the task type, G4b; without one, the
+ * family the module's tier names), saver mode putting the task's saver model first, and each family expanded to its catalogue rows, the
  * provider's own API first and the fallback route next. A row is kept only when it is usable now
  * (ADR-0052 decision 3): Hassan's no-retention and no-training check is recorded, its processing
  * region is one the Market's residency allows, the Market holds the route's key, it is not past its
@@ -49,15 +60,28 @@ export class AiRouter {
   }
 
   /**
-   * The routes of a capability in the Market, in the order to try, at most {@link MAX_ATTEMPTS}.
-   * `saver` puts the Market's saver model first when it is usable and cheaper than the first model.
+   * The routes of a capability in the Market, in the order to try, at most {@link MAX_ATTEMPTS}:
+   * the Market's priority list for the capability's task type (G4b settings), or, while the Market
+   * has none, the one family its tier names. `saver` puts the task's saver model first when it is
+   * usable and cheaper than the first model.
    */
-  plan(marketId: MarketId, spec: CapabilitySpec, tier: AiModelTier, saver = false): PlannedRoute[] {
-    const first = this.models.modelOf(marketId, tier);
-    if (first === null) return [];
-    const families = [first];
+  plan(
+    marketId: MarketId,
+    spec: CapabilitySpec,
+    tier: AiModelTier,
+    saver = false,
+    models: AiModelLists = NO_MODEL_LISTS,
+  ): PlannedRoute[] {
+    const chosen = models.lists[spec.task] ?? [];
+    const families: string[] = [...chosen];
+    if (families.length === 0) {
+      const tierFamily = this.models.modelOf(marketId, tier);
+      if (tierFamily !== null) families.push(tierFamily);
+    }
+    if (families.length === 0) return [];
+    const first = families[0]!;
     if (saver) {
-      const saverModel = this.markets.get(marketId).aiRouting?.saverModel;
+      const saverModel = models.savers[spec.task];
       if (saverModel !== undefined && saverModel !== first) {
         const saverRoutes = this.#usableRoutes(marketId, spec, saverModel);
         const firstRoutes = this.#usableRoutes(marketId, spec, first);
@@ -69,15 +93,57 @@ export class AiRouter {
         }
       }
     }
-    return families
+    return [...new Set(families)]
       .flatMap((family) => this.#usableRoutes(marketId, spec, family))
       .slice(0, MAX_ATTEMPTS);
   }
 
-  /** The Market's saver threshold as a share (0.8 for 80 %), or null without a saver model. */
-  saverThreshold(marketId: MarketId): number | null {
-    const routing = this.markets.get(marketId).aiRouting;
-    return routing?.saverModel === undefined ? null : routing.saverAtPercent / 100;
+  /** The task's saver threshold as a share (0.8 for 80 %), or null without a saver model. */
+  saverThreshold(spec: CapabilitySpec, models: AiModelLists): number | null {
+    return models.savers[spec.task] === undefined ? null : models.saverAtPercent / 100;
+  }
+
+  /**
+   * Why a family cannot be chosen for a task type in the Market now (the server checks of the
+   * External models tab, design sections 7 and 8), or null. A family qualifies when, for every
+   * capability of the task type (`specs`), at least one of its routes is usable; with no capability
+   * of the task type yet, when one of its routes meets every condition but the evaluation. The
+   * reason given is the provider's own route's.
+   */
+  familyProblem(
+    marketId: MarketId,
+    task: CapabilityTask,
+    specs: readonly CapabilitySpec[],
+    family: string,
+  ): RouteProblem | null {
+    const rows = this.catalogue.routesOf(family);
+    if (rows.length === 0) return 'unknown-model';
+    if (specs.length === 0) {
+      const problems = rows.map((row) => this.#rowProblem(marketId, task, row));
+      return problems.includes(null) ? null : problems[0]!;
+    }
+    for (const spec of specs) {
+      const problems = rows.map((row) => this.routeProblem(marketId, spec, row));
+      if (!problems.includes(null)) return problems[0]!;
+    }
+    return null;
+  }
+
+  /** Every model family of the route catalogue, sorted. */
+  families(): string[] {
+    return this.catalogue.families();
+  }
+
+  /**
+   * The most expensive price per token (input and output) of a family's routes that meet every
+   * condition but the evaluation in the Market for the task type, as `plan` prices them; null with
+   * none (Mohammad, G4b review 3).
+   */
+  familyCost(marketId: MarketId, task: CapabilityTask, family: string): number | null {
+    const rows = this.catalogue
+      .routesOf(family)
+      .filter((row) => this.#rowProblem(marketId, task, row) === null);
+    return rows.length === 0 ? null : costliest(rows.map((row) => ({ row, price: priceOf(row) })));
   }
 
   #usableRoutes(marketId: MarketId, spec: CapabilitySpec, family: string): PlannedRoute[] {
@@ -88,20 +154,32 @@ export class AiRouter {
   }
 
   #usable(marketId: MarketId, spec: CapabilitySpec, row: RouteRow): boolean {
+    return this.routeProblem(marketId, spec, row) === null;
+  }
+
+  /** Why a route row is not usable for the capability in the Market now, or null (ADR-0052 d3). */
+  routeProblem(marketId: MarketId, spec: CapabilitySpec, row: RouteRow): RouteProblem | null {
+    const problem = this.#rowProblem(marketId, spec.task, row);
+    if (problem !== null) return problem;
+    return this.evaluationPassed(spec, row) ? null : 'not-evaluated';
+  }
+
+  /** Every condition of ADR-0052 decision 3 but the evaluation, for a task type in the Market. */
+  #rowProblem(marketId: MarketId, task: CapabilityTask, row: RouteRow): RouteProblem | null {
     // Image input is not in the provider contract yet (section 5): no route serves `vision`.
-    if (spec.task === 'vision') return false;
-    if (row.dataTerms === null) return false;
+    if (task === 'vision') return 'task-unsupported';
+    if (row.dataTerms === null) return 'not-checked';
     const routing = this.markets.get(marketId).aiRouting;
-    if (routing === undefined || routing.dataResidency !== 'in-market-region') return false;
-    if (row.region === null || !routing.regions.includes(row.region)) return false;
-    if (!this.models.routeKeyConfigured(marketId, row.route)) return false;
+    if (routing === undefined || routing.dataResidency !== 'in-market-region') return 'region';
+    if (row.region === null || !routing.regions.includes(row.region)) return 'region';
+    if (!this.models.routeKeyConfigured(marketId, row.route)) return 'no-key';
     if (row.retiresOn !== null) {
       const today = this.clock.now().toZonedDateTimeISO('UTC').toPlainDate();
       if (Temporal.PlainDate.compare(today, Temporal.PlainDate.from(row.retiresOn)) > 0) {
-        return false;
+        return 'retired';
       }
     }
-    return this.evaluationPassed(spec, row);
+    return null;
   }
 
   /**

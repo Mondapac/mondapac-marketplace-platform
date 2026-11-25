@@ -1450,16 +1450,6 @@ const aiRoutingSchema = z
       .array(z.string().regex(/^[a-z]{2}(?:-[a-z]+)+-\d$/))
       .max(10)
       .default([]),
-    /**
-     * Saver mode (section 6): once the Market's month spend reaches `saverAtPercent` of its month
-     * cap, the gateway tries this model family first, so a capability stays on up to 100 %.
-     * Absent: no saver model. It must be cheaper than the model it goes before (checked per call).
-     */
-    saverModel: z
-      .string()
-      .regex(/^[a-z0-9][a-z0-9.-]{0,79}$/)
-      .optional(),
-    saverAtPercent: z.number().int().min(1).max(99).default(80),
   })
   .refine((routing) => routing.dataResidency === 'none' || routing.regions.length > 0, {
     message: 'in-market-region needs at least one region',
@@ -2207,7 +2197,7 @@ const marketSchema = z
     certification: certificationSchema.optional(),
     /** Owned by `shipping`: the real-time carrier (SHP-02/03). Absent: sellers ship themselves. */
     shipping: shippingSchema.optional(),
-    /** Read by `platform/ai`: residency and saver model. Absent: no route is usable (AI off). */
+    /** Read by `platform/ai`: residency. Absent: no route is usable (AI off). */
     aiRouting: aiRoutingSchema.optional(),
   })
   .refine((market) => market.supportedLocales.includes(market.defaultLocale), {

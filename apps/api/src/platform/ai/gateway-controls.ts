@@ -1,4 +1,5 @@
 import type { CallContext } from '@mondapac/shared-kernel';
+import type { CapabilityTask } from './capability';
 
 /**
  * A Market's AI budget caps in US micro-dollars (docs/design/domain/platform-ai.md section 7):
@@ -23,11 +24,32 @@ export const NO_CAPS: AiCaps = Object.freeze({
   guestDay: null,
 });
 
+/**
+ * The Market's model choice (the External models tab, design sections 6 and 8): per task type an
+ * ordered list of up to 3 model families and a saver model, and the share of the month cap at
+ * which the saver model goes first. A task without a list uses the family its tier names (interim
+ * until the `tier` option goes).
+ */
+export interface AiModelLists {
+  readonly lists: Readonly<Partial<Record<CapabilityTask, readonly string[]>>>;
+  readonly savers: Readonly<Partial<Record<CapabilityTask, string>>>;
+  /** 50 to 99; the saver model goes first from this percent of the Market's month cap. */
+  readonly saverAtPercent: number;
+}
+
+/** No list and no saver model chosen. */
+export const NO_MODEL_LISTS: AiModelLists = Object.freeze({
+  lists: Object.freeze({}),
+  savers: Object.freeze({}),
+  saverAtPercent: 80,
+});
+
 /** What the gateway reads of a Market's gateway settings before each `status` and `run` (G4). */
 export interface AiMarketControls {
   /** The Market's AI emergency stop (design section 8): every AI capability of the Market off. */
   readonly stopped: boolean;
   readonly caps: AiCaps;
+  readonly models: AiModelLists;
 }
 
 /**

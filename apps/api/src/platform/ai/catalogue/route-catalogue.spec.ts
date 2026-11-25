@@ -99,6 +99,11 @@ describe('the AI route catalogue (ADR-0052 decision 2)', () => {
     ).not.toThrow();
   });
 
+  it('takes a family of at most 20 characters, so 3 fit one settings list (G4b)', () => {
+    expect(() => new RouteCatalogue([testRoute('a'.repeat(20))])).not.toThrow();
+    expect(() => new RouteCatalogue([testRoute('a'.repeat(21))])).toThrow(/family/);
+  });
+
   it('refuses a row listed twice', () => {
     expect(() => new RouteCatalogue([testRoute('m'), testRoute('m')])).toThrow(/listed twice/);
   });

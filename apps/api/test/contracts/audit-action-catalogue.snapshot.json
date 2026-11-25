@@ -3694,6 +3694,19 @@
     }
   },
   {
+    "action": "settings.ai-models.changed",
+    "targetType": "settings.market-setting",
+    "targetId": "enumOf(ai-models-chat|ai-models-extract|ai-models-write|ai-models-vision|ai-saver-chat|ai-saver-extract|ai-saver-write|ai-saver-vision)",
+    "actors": ["authenticated"],
+    "before": {
+      "models": "integer"
+    },
+    "after": {
+      "models": "integer",
+      "version": "integer"
+    }
+  },
+  {
     "action": "settings.market-setting.changed",
     "targetType": "settings.market-setting",
     "targetId": "enumOf(list-paging|cart-mode|ai-description-writer|ai-description-writer-tier|offer-review-mode|offer-review-certificate-badges|offer-review-emergency-stop|ai-gateway-emergency-stop)",
@@ -3709,7 +3722,7 @@
   {
     "action": "settings.market-setting.number-changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(offer-review-probation-offers|offer-review-reference-sellers|offer-review-price-band|offer-review-sampling|offer-review-backlog-count|offer-review-backlog-hours)",
+    "targetId": "enumOf(ai-saver-percent|offer-review-probation-offers|offer-review-reference-sellers|offer-review-price-band|offer-review-sampling|offer-review-backlog-count|offer-review-backlog-hours)",
     "actors": ["authenticated"],
     "before": {
       "value": "integer"

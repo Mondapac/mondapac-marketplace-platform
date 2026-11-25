@@ -43,8 +43,21 @@ export const AI_CAP_TARGET_IDS = [
   'ai-cap-guest-day',
 ] as const;
 
+/** Every AI model list and saver model code (AI Gateway G4b), the target id of its audit row. */
+export const AI_MODEL_TARGET_IDS = [
+  'ai-models-chat',
+  'ai-models-extract',
+  'ai-models-write',
+  'ai-models-vision',
+  'ai-saver-chat',
+  'ai-saver-extract',
+  'ai-saver-write',
+  'ai-saver-vision',
+] as const;
+
 /** Every whole number setting code, the target id of its audit row. */
 export const NUMBER_SETTING_TARGET_IDS = [
+  'ai-saver-percent',
   'offer-review-probation-offers',
   'offer-review-reference-sellers',
   'offer-review-price-band',
@@ -99,8 +112,23 @@ export const AiCapChanged = defineAuditAction({
   after: { microUsd: auditField.optional(auditField.integer()), version: auditField.integer() },
 });
 
+/**
+ * An admin changed a task type's AI model list or saver model (AI Gateway G4b): how many models
+ * before and after (a saver model: 0 or 1) and the new version. The families themselves are on the
+ * setting's history row (who, when, before, after); the audit row holds no free text (ADR-0009).
+ */
+export const AiModelsChanged = defineAuditAction({
+  action: 'settings.ai-models.changed',
+  targetType: SETTINGS_TARGET,
+  targetId: auditField.enumOf(AI_MODEL_TARGET_IDS),
+  actors: ['authenticated'],
+  before: { models: auditField.integer() },
+  after: { models: auditField.integer(), version: auditField.integer() },
+});
+
 export const SETTINGS_AUDIT_ACTIONS = [
   AiCapChanged,
+  AiModelsChanged,
   MarketSettingChanged,
   MarketNumberSettingChanged,
   MonthlyRevenueTargetChanged,
