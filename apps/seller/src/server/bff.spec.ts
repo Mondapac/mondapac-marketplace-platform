@@ -611,12 +611,42 @@ describe('relay allowlist for stock locations', () => {
     for (const path of bad) {
       expect((await relay(config, put(path.join('/')), path, upstream)).status).toBe(404);
     }
-    // The page reads the units on the server; the browser relay carries only the write.
-    const read = new Request(`http://seller.localhost:3001/api/${units.join('/')}`, {
+    // The Offer list reads the size names of an Offer whose sizes are opened (Offer page PR 8):
+    // the read crosses by UUID only, with no query.
+    const read = new Request(`http://seller.localhost:3001/api/${units.join('/')}?x=1`, {
       method: 'GET',
       headers: sameOrigin,
     });
-    expect((await relay(config, read, units, upstream)).status).toBe(404);
+    expect((await relay(config, read, units, upstream)).status).toBe(200);
+    expect(upstream).toHaveBeenLastCalledWith(expect.not.stringContaining('?'), expect.anything());
+    const badRead = ['catalog', 'seller', 'offers', 'x', 'sell-units'];
+    const wrong = new Request(`http://seller.localhost:3001/api/${badRead.join('/')}`, {
+      method: 'GET',
+      headers: sameOrigin,
+    });
+    expect((await relay(config, wrong, badRead, upstream)).status).toBe(404);
+  });
+  it('relays the page reads of the Offer list with at most 100 Offer ids (Offer page PR 8)', async () => {
+    for (const target of ['pricing/seller/offer-prices', 'inventory/seller/offer-stock']) {
+      const upstream = upstreamOk();
+      const path = target.split('/');
+      const ids = Array.from({ length: 100 }, () => ID).join(',');
+      const ok = new Request(`http://seller.localhost:3001/api/${target}?offerIds=${ids}&other=1`, {
+        method: 'GET',
+        headers: sameOrigin,
+      });
+      expect((await relay(config, ok, path, upstream)).status).toBe(200);
+      expect(upstream).toHaveBeenLastCalledWith(
+        `http://api.test/${target}?offerIds=${encodeURIComponent(ids)}`,
+        expect.anything(),
+      );
+      const tooMany = new Request(
+        `http://seller.localhost:3001/api/${target}?offerIds=${ids},${ID}`,
+        { method: 'GET', headers: sameOrigin },
+      );
+      await relay(config, tooMany, path, upstream);
+      expect(upstream).toHaveBeenLastCalledWith(`http://api.test/${target}`, expect.anything());
+    }
   });
   it('relays a handling write by UUID only as a PUT, and refuses other shapes', async () => {
     const upstream = upstreamOk();

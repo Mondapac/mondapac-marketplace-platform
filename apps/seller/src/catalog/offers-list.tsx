@@ -38,6 +38,8 @@ import {
   type SortField,
   type View,
 } from './offers-query.ts';
+import { useOffersInline } from './offers-inline.tsx';
+import { offerName } from './offers-table.tsx';
 import { useOfferRowActions } from './offers-row-actions.tsx';
 import { OffersSavedViews } from './offers-saved-views.tsx';
 import { LIST_KEY, queryOf, type SavedFilter, type SavedFiltersAnswer } from './offers-saved.ts';
@@ -273,6 +275,13 @@ export function OffersList({
     refresh();
   });
 
+  const unnamed = useTranslations('catalog.products')('unnamed');
+  const inlineRows = useMemo(
+    () => (rows ?? []).map((row) => ({ offerId: row.offerId, name: offerName(row, unnamed) })),
+    [rows, unnamed],
+  );
+  const inline = useOffersInline({ rows: inlineRows, permissionKeys, csrfToken });
+
   const saveColumns = (next: readonly OfferColumn[]) => {
     setColumns(next);
     writeIds(browserStorage(), storageKey, next);
@@ -396,8 +405,21 @@ export function OffersList({
           // Rows kept after a failed refresh belong to another list than the query: no actions.
           actions={failure === null ? rowActions.items : noActions}
           selection={selection}
+          inline={{
+            price: inline.access.seePrice,
+            stock: inline.access.seeStock,
+            priceCell: inline.priceCell,
+            stockCell: inline.stockCell,
+            expanded: inline.expanded,
+          }}
         />
+        {inline.readFailed ? (
+          <p role="status" className="mt-2 text-sm text-fg-muted">
+            {t('inline.read-failed')}
+          </p>
+        ) : null}
       </div>
+      {inline.footer}
     </div>
   );
 

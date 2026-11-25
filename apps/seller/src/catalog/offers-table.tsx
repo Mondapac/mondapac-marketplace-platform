@@ -13,6 +13,7 @@ import type { ReactNode } from 'react';
 import { formatInstant, known, OFFER_STATUSES } from './format.ts';
 import { OFFER_TONE } from './offer-tone.ts';
 import type { OfferColumn } from './offers-columns.ts';
+import type { InlineRow } from './offers-inline.tsx';
 import { productThumbSrc } from './product-thumb.ts';
 import type { OfferListRow } from './types.ts';
 
@@ -35,6 +36,7 @@ export function OffersTable({
   empty,
   skeletonRows,
   actions,
+  inline,
 }: {
   /** The panel's Market: a platform product's thumbnail is served by its public image route. */
   readonly marketId: string;
@@ -46,6 +48,14 @@ export function OffersTable({
   readonly skeletonRows?: number;
   /** The Actions menu of a row; a row with no items has none. */
   readonly actions: (row: OfferListRow) => readonly MenuItem[];
+  /** The price and stock cells and the opened sizes (Offer page PR 8); none when not given. */
+  readonly inline?: {
+    readonly price: boolean;
+    readonly stock: boolean;
+    readonly priceCell: (row: InlineRow) => ReactNode;
+    readonly stockCell: (row: InlineRow) => ReactNode;
+    readonly expanded: (row: InlineRow) => ReactNode;
+  };
 }) {
   const t = useTranslations('catalog.offers');
   const unnamed = useTranslations('catalog.products')('unnamed');
@@ -95,6 +105,28 @@ export function OffersTable({
         </div>
       ),
     },
+    ...(inline?.price === true
+      ? [
+          {
+            id: 'price',
+            header: t('col.price'),
+            skeleton: 'number' as const,
+            cell: (offer: OfferListRow) =>
+              inline.priceCell({ offerId: offer.offerId, name: offerName(offer, unnamed) }),
+          },
+        ]
+      : []),
+    ...(inline?.stock === true
+      ? [
+          {
+            id: 'stock',
+            header: t('col.stock'),
+            skeleton: 'number' as const,
+            cell: (offer: OfferListRow) =>
+              inline.stockCell({ offerId: offer.offerId, name: offerName(offer, unnamed) }),
+          },
+        ]
+      : []),
     {
       id: 'status',
       header: t('col.status'),
@@ -133,6 +165,12 @@ export function OffersTable({
         items: actions,
       }}
       empty={empty}
+      {...(inline === undefined
+        ? {}
+        : {
+            expanded: (offer: OfferListRow) =>
+              inline.expanded({ offerId: offer.offerId, name: offerName(offer, unnamed) }),
+          })}
       {...(skeletonRows === undefined ? {} : { skeletonRows })}
       minWidthClass="lg:min-w-200"
     />
