@@ -18,6 +18,7 @@ import {
   AI_DESCRIPTION_WRITER_CODE,
   AI_DESCRIPTION_WRITER_TIER_CODE,
   OFFER_REVIEW_CODES,
+  OFFER_REVIEW_EMERGENCY_STOP_CODE,
   type SettingDefinition,
 } from '../domain/definitions';
 import type { RecordedRequest } from '../../system-requests';
@@ -40,7 +41,11 @@ const AI_CODES: ReadonlySet<string> = new Set([
  * Reviewed at high risk too: one change can take every Offer past the admin, badges included
  * (Hassan, PR #1329).
  */
-const HIGH_RISK_CODES: ReadonlySet<string> = new Set([...AI_CODES, ...OFFER_REVIEW_CODES]);
+const HIGH_RISK_CODES: ReadonlySet<string> = new Set([
+  ...AI_CODES,
+  ...OFFER_REVIEW_CODES,
+  OFFER_REVIEW_EMERGENCY_STOP_CODE,
+]);
 
 // Admin-editable Market settings (ADR-0026). A change is refused in an acting-as session, checks
 // the version the admin saw (a stale edit is refused), writes the value and a history row in one

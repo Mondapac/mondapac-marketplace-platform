@@ -247,7 +247,11 @@ describe.each([
           options.reviewInputsFail === true
             ? Promise.reject(new Error('settings down'))
             : Promise.resolve(
-                options.review ?? { mode: 'risk-based', certificateBadges: 'automatic' },
+                options.review ?? {
+                  mode: 'risk-based',
+                  certificateBadges: 'automatic',
+                  emergencyStop: false,
+                },
               ),
         facts: () =>
           Promise.resolve({
@@ -546,7 +550,7 @@ describe.each([
     it('queues the Offer with its reasons when the policy finds any (R1, R2)', async () => {
       const r = rig({
         offer: draft(),
-        review: { mode: 'risk-based', certificateBadges: 'review' },
+        review: { mode: 'risk-based', certificateBadges: 'review', emergencyStop: false },
         reviewFacts: { probation: true },
       });
       const outcome = await r.submit.execute(contextOf('seller'), {
@@ -594,8 +598,21 @@ describe.each([
       expect(r.outbox.types).toEqual([]);
     });
 
+    it('queues even a clean Offer of a trusted seller while the Market emergency stop is on (R0)', async () => {
+      const r = rig({
+        offer: draft(),
+        review: { mode: 'off', certificateBadges: 'automatic', emergencyStop: true },
+      });
+      const outcome = await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+      expect(outcome).toEqual({ ok: true, value: { published: false } });
+      expect(r.referrals[0]!.reasons).toEqual(['emergency-stop']);
+    });
+
     it('queues everything in mode all, and nothing but an emergency stop in mode off', async () => {
-      const all = rig({ offer: draft(), review: { mode: 'all', certificateBadges: 'automatic' } });
+      const all = rig({
+        offer: draft(),
+        review: { mode: 'all', certificateBadges: 'automatic', emergencyStop: false },
+      });
       expect(await all.submit.execute(contextOf('seller'), { offerId: all.offerId })).toEqual({
         ok: true,
         value: { published: false },
@@ -603,7 +620,7 @@ describe.each([
       expect(all.referrals[0]!.reasons).toEqual(['review-all']);
       const off = rig({
         offer: draft(),
-        review: { mode: 'off', certificateBadges: 'review' },
+        review: { mode: 'off', certificateBadges: 'review', emergencyStop: false },
         reviewFacts: { probation: true, emergencyStop: true },
       });
       await off.submit.execute(contextOf('seller'), { offerId: off.offerId });

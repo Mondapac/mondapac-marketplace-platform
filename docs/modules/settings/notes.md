@@ -74,7 +74,7 @@ store of ADR-0026).
 - The four numbers are the store's first whole-number settings: stored as decimal text, checked
   against bounds, audited by `settings.market-setting.number-changed` with integer values.
 - `GET` and `PUT settings/admin/offer-review`; the write takes `changes: [{code, value,
-  expectedVersion}]`, each code once, all or nothing (every version checked before any write). Each
+expectedVersion}]`, each code once, all or nothing (every version checked before any write). Each
   change keeps its own history row, audit row and review request.
 - Keys `settings.offer-review.view` (Viewer role, seed 37) and `.manage` (protected, second
   factor). Reviewed at high risk where area `marketplace` is reviewed. A stored value outside the
@@ -103,3 +103,19 @@ store of ADR-0026).
 - Review (Hassan L2, accepted): where the Market reviews area `marketplace`, the System requests row
   of a change shows the target before and after to every reviewer of that area, also one without
   `settings.monthly-revenue-target.view`; the other settings are reviewed the same way.
+
+## Offer review emergency stop (R0, risk-based Offer approval slice 2b)
+
+`offer-review-emergency-stop` (`off`/`on`, default and safe value `off`) is a Market setting with
+its own protected permission `settings.offer-review.emergency-stop` (Platform Administrator, or a
+senior custom role; admin second factor). It is not part of the Offer review page's list, so the
+`settings.offer-review.manage` save can never switch it. `PUT settings/admin/offer-review/emergency-stop`
+takes `value`, `expectedVersion` and a `note` that is always required (1 to 500 characters); the
+change is live at once, audited as `settings.market-setting.changed` and reviewed at high risk
+afterwards where the area is reviewed. Nothing switches it off by itself.
+`GET settings/admin/offer-review/emergency-stop` (rule own-resources, admins only) answers `on`,
+the version, when it was last switched and the display name of who switched it (identity
+`changeActors`); the admin shell shows a critical banner on every page while it is on.
+`SettingsFacade.offerReviewPolicy` carries `emergencyStop`; the catalog policy adds the
+`emergency-stop` reason to every new Offer while it is on, whatever the mode. Deferred:
+FE-20261125-offer-review-stop-reminder, -stop-scopes, -stop-recent-sampling.

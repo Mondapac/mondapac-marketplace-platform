@@ -37,6 +37,9 @@ import { ViewMonthlyRevenueTargetSetting } from './use-cases/view-monthly-revenu
 import { ViewAiSettings } from './use-cases/view-ai-settings.use-case';
 import { ChangeOfferReviewSettings } from './use-cases/change-offer-review-settings.use-case';
 import { ViewOfferReviewSettings } from './use-cases/view-offer-review-settings.use-case';
+import { ChangeOfferReviewEmergencyStop } from './use-cases/change-offer-review-emergency-stop.use-case';
+import { ViewOfferReviewEmergencyStop } from './use-cases/view-offer-review-emergency-stop.use-case';
+import { ReadOfferReviewPolicy as ReadPolicyForStop } from './use-cases/read-offer-review-policy.use-case';
 import { ViewCartModeSetting } from './use-cases/view-cart-mode-setting.use-case';
 import { ViewListPagingSetting } from './use-cases/view-list-paging-setting.use-case';
 
@@ -1007,6 +1010,68 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         before: { value: 0 },
         after: { value: 10, version: 2 },
       });
+    });
+  });
+  describe('the Offer review emergency stop (R0)', () => {
+    const names = {
+      namesOf: (_c: CallContext, ids: readonly string[]) =>
+        Promise.resolve(new Map(ids.map((accountId) => [accountId, 'Leila Admin']))),
+    };
+    const view = (context = adminCtx()) =>
+      new ViewOfferReviewEmergencyStop(gate, { settings: deps, names }).execute(context, {});
+    const stop = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ChangeOfferReviewEmergencyStop(gate, deps).execute(context, input);
+
+    it('is off by default, with no switch time and no name', async () => {
+      expect(await view()).toEqual({
+        ok: true,
+        value: { on: false, version: 0, changedAt: null, changedBy: null },
+      });
+    });
+
+    it('always needs a reason, even where settings changes are not reviewed', async () => {
+      for (const note of [undefined, '', '   ', 'x'.repeat(501)]) {
+        expect(await stop({ value: 'on', expectedVersion: 0, note })).toEqual({
+          ok: false,
+          error: { code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] },
+        });
+      }
+      expect(store.history).toHaveLength(0);
+    });
+
+    it('switches on at once, audited; the banner names who and when, and the policy reads it', async () => {
+      const saved = await stop({ value: 'on', expectedVersion: 0, note: 'Fraud wave' });
+      expect(saved.ok && saved.value.map(({ code, value }) => [code, value])).toEqual([
+        ['offer-review-emergency-stop', 'on'],
+      ]);
+      expect(audit.entries.at(-1)).toMatchObject({
+        action: 'settings.market-setting.changed',
+        targetId: 'offer-review-emergency-stop',
+        before: { value: 'off' },
+        after: { value: 'on', version: 1 },
+      });
+      const shown = await view();
+      expect(shown.ok && shown.value).toMatchObject({
+        on: true,
+        version: 1,
+        changedBy: 'Leila Admin',
+      });
+      const policy = await new ReadPolicyForStop(gate, deps).execute(anonymous, {});
+      expect(policy.ok && policy.value.emergencyStop).toBe(true);
+    });
+
+    it('takes no other code and no other value', async () => {
+      expect((await stop({ value: 'maybe', expectedVersion: 0, note: 'x' })).ok).toBe(false);
+      const page = await new ChangeOfferReviewSettings(gate, deps).execute(adminCtx(), {
+        changes: [{ code: 'offer-review-emergency-stop', value: 'on', expectedVersion: 0 }],
+        note: 'x',
+      });
+      expect(page.ok).toBe(false);
+    });
+
+    it('shows the banner to admins only', async () => {
+      expect(await view(sellerCtx())).toEqual({ ok: false, error: { code: 'access.denied' } });
+      expect((await view(anonymous)).ok).toBe(false);
     });
   });
 });

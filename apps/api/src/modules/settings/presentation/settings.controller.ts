@@ -22,6 +22,8 @@ import { ChangeAiSetting } from '../application/use-cases/change-ai-setting.use-
 import { ViewAiSettings } from '../application/use-cases/view-ai-settings.use-case';
 import { ChangeOfferReviewSettings } from '../application/use-cases/change-offer-review-settings.use-case';
 import { ViewOfferReviewSettings } from '../application/use-cases/view-offer-review-settings.use-case';
+import { ChangeOfferReviewEmergencyStop } from '../application/use-cases/change-offer-review-emergency-stop.use-case';
+import { ViewOfferReviewEmergencyStop } from '../application/use-cases/view-offer-review-emergency-stop.use-case';
 import { ChangeCartModeSetting } from '../application/use-cases/change-cart-mode-setting.use-case';
 import { ChangeListPagingSetting } from '../application/use-cases/change-list-paging-setting.use-case';
 import { ReadListPaging } from '../application/use-cases/read-list-paging.use-case';
@@ -35,7 +37,10 @@ import {
   ChangeAiSettingRequest,
   ChangeCartModeRequest,
   ChangeMonthlyRevenueTargetRequest,
+  ChangeEmergencyStopRequest,
   ChangeOfferReviewRequest,
+  EmergencyStopBody,
+  emergencyStopBody,
   ChangeSettingRequest,
   MonthlyRevenueTargetBody,
   monthlyRevenueTargetBody,
@@ -91,7 +96,77 @@ export class AdminSettingsController {
     private readonly changeOfferReview: ChangeOfferReviewSettings,
     private readonly viewTarget: ViewMonthlyRevenueTargetSetting,
     private readonly changeTarget: ChangeMonthlyRevenueTargetSetting,
+    private readonly viewEmergencyStop: ViewOfferReviewEmergencyStop,
+    private readonly changeEmergencyStop: ChangeOfferReviewEmergencyStop,
   ) {}
+
+  @Get('offer-review/emergency-stop')
+  @ApiOperation({
+    summary: 'Whether the Offer review emergency stop is on (admin)',
+    description:
+      'Any admin of the Market (the banner on every admin page): on, the version, when it was ' +
+      'last switched and the display name of who switched it.',
+  })
+  @ApiOkResponse({ type: EmergencyStopBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async emergencyStop(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.viewEmergencyStop.execute(context, {});
+    logRoute(
+      this.#logger,
+      'settings.view-offer-review-emergency-stop-route',
+      context,
+      result.ok ? 'read' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return emergencyStopBody(result.value);
+  }
+
+  @Put('offer-review/emergency-stop')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Switch the Offer review emergency stop on or off (admin)',
+    description:
+      'Needs the protected settings.offer-review.emergency-stop (admin second factor); refused ' +
+      'in an acting-as session. A note is always required. Live at once: while on, every new ' +
+      'Offer of the Market waits for an admin; live Offers stay live. Audited, and reviewed at ' +
+      'high risk where the area is reviewed. A stale version is 409 settings.conflict.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: ChangeEmergencyStopRequest })
+  @ApiOkResponse({ type: SettingsChangeListBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiConflictResponse({ ...ERROR, description: 'settings.conflict' })
+  async putEmergencyStop(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody, ['value', 'expectedVersion', 'note']);
+    if (invalid !== null) throw invalid;
+    const { value, expectedVersion, note } = requestBody as Record<string, unknown>;
+    const result = await this.changeEmergencyStop.execute(context, {
+      value,
+      expectedVersion,
+      note,
+    });
+    logRoute(
+      this.#logger,
+      'settings.change-offer-review-emergency-stop-route',
+      context,
+      result.ok ? 'set' : result.error.code,
+    );
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return settingsChangeListBody(result.value);
+  }
 
   @Get('monthly-revenue-target')
   @ApiOperation({

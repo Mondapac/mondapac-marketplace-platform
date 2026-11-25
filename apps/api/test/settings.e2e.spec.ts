@@ -11,6 +11,8 @@ import { ChangeCartModeSetting } from '../src/modules/settings/application/use-c
 import { ChangeListPagingSetting } from '../src/modules/settings/application/use-cases/change-list-paging-setting.use-case';
 import { ChangeOfferReviewSettings } from '../src/modules/settings/application/use-cases/change-offer-review-settings.use-case';
 import { ViewOfferReviewSettings } from '../src/modules/settings/application/use-cases/view-offer-review-settings.use-case';
+import { ChangeOfferReviewEmergencyStop } from '../src/modules/settings/application/use-cases/change-offer-review-emergency-stop.use-case';
+import { ViewOfferReviewEmergencyStop } from '../src/modules/settings/application/use-cases/view-offer-review-emergency-stop.use-case';
 import { ReadListPaging } from '../src/modules/settings/application/use-cases/read-list-paging.use-case';
 import { ViewCartModeSetting } from '../src/modules/settings/application/use-cases/view-cart-mode-setting.use-case';
 import { ChangeMonthlyRevenueTargetSetting } from '../src/modules/settings/application/use-cases/change-monthly-revenue-target-setting.use-case';
@@ -106,7 +108,11 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
           .overrideProvider(ViewOfferReviewSettings)
           .useValue(stub('view-offer-review'))
           .overrideProvider(ChangeOfferReviewSettings)
-          .useValue(stub('change-offer-review')),
+          .useValue(stub('change-offer-review'))
+          .overrideProvider(ViewOfferReviewEmergencyStop)
+          .useValue(stub('view-stop'))
+          .overrideProvider(ChangeOfferReviewEmergencyStop)
+          .useValue(stub('change-stop')),
     }));
     await app.get(SeedRoles).execute(testCallContext(marketOf(), 'system', 'settings-seed-01'), {});
     const ownerRole = [...fakes.roles.values()].find(
@@ -502,5 +508,31 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
       'change-offer-review',
     ]);
     expect(calls[1]?.input).toEqual({ changes, note: 'Launch' });
+  });
+  it('reads the emergency stop for the banner and switches it with a closed body', async () => {
+    await boot();
+    const session = sessionOf('admin', 5);
+    const path = '/settings/admin/offer-review/emergency-stop';
+    next = ok({ on: true, version: 1, changedAt: START, changedBy: 'Leila Admin' });
+    const read = await call('get', path, 'admin', session);
+    expect(read.status).toBe(200);
+    expect(read.headers['cache-control']).toBe('no-store');
+    expect(read.body).toEqual({
+      on: true,
+      version: 1,
+      changedAt: START.toString(),
+      changedBy: 'Leila Admin',
+    });
+    const body = { value: 'off', expectedVersion: 1, note: 'All clear' };
+    next = ok([]);
+    const set = await call('put', path, 'admin', session, body);
+    expect(set.status).toBe(200);
+    expect(set.body).toEqual({ settings: [] });
+    expect((await call('put', path, 'admin', session, { ...body, code: 'x' })).status).toBe(400);
+    expect((await call('put', path, 'admin', { cookie: session.cookie }, body)).status).toBe(403);
+    next = err({ code: 'validation.failed', fields: [{ path: 'note', code: 'required' }] });
+    expect((await call('put', path, 'admin', session, { ...body, note: '' })).status).toBe(400);
+    expect(calls.map((c) => c.name)).toEqual(['view-stop', 'change-stop', 'change-stop']);
+    expect(calls[1]?.input).toEqual(body);
   });
 });

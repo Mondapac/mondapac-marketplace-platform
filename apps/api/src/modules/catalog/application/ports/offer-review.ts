@@ -9,12 +9,16 @@ import type {
 export interface OfferReviewSettings {
   readonly mode: OfferReviewMode;
   readonly certificateBadges: 'review' | 'automatic';
+  /** R0 for the whole Market (the settings switch); category and seller stops come later. */
+  readonly emergencyStop: boolean;
 }
 
 /** The safe answer when the settings cannot be read: review everything (fail closed). */
 export const SAFE_OFFER_REVIEW_SETTINGS: OfferReviewSettings = Object.freeze({
   mode: 'all',
   certificateBadges: 'review',
+  // Mode `all` already sends every Offer to an admin; no stop banner reason is invented.
+  emergencyStop: false,
 });
 
 /**

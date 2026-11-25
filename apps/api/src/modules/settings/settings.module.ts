@@ -1,3 +1,8 @@
+import { IDENTITY_FACADE, IdentityModule, type IdentityFacade } from '../identity';
+import { SETTINGS_ADMIN_NAMES, type AdminNames } from './application/ports/admin-names';
+import { ChangeOfferReviewEmergencyStop } from './application/use-cases/change-offer-review-emergency-stop.use-case';
+import { ViewOfferReviewEmergencyStop } from './application/use-cases/view-offer-review-emergency-stop.use-case';
+import { FacadeAdminNames } from './infrastructure/facade-admin-names';
 import { Module, type FactoryProvider, type InjectionToken } from '@nestjs/common';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
@@ -72,6 +77,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * and a rejected or withdrawn one is restored by the registered reverter.
  */
 @Module({
+  imports: [IdentityModule],
   controllers: [AdminSettingsController, SellerSettingsController],
   providers: [
     PersistenceModule.auditWriterFor('settings'),
@@ -88,6 +94,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ChangeAiSetting,
       ViewOfferReviewSettings,
       ChangeOfferReviewSettings,
+      ChangeOfferReviewEmergencyStop,
       ReadOfferReviewPolicy,
       ReadAiDescriptionWriter,
       ReadCartMode,
@@ -101,6 +108,17 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         new ChangeMonthlyRevenueTargetSetting(gate, dependenciesOf(values), {
           currencyOf: (market) => markets.get(market.marketId).defaultCurrency,
         }),
+    },
+    {
+      provide: SETTINGS_ADMIN_NAMES,
+      inject: [IDENTITY_FACADE],
+      useFactory: (identity: IdentityFacade): AdminNames => new FacadeAdminNames(identity),
+    },
+    {
+      provide: ViewOfferReviewEmergencyStop,
+      inject: [USE_CASE_GATE, SETTINGS_ADMIN_NAMES, ...PORTS.map(([, token]) => token)],
+      useFactory: (gate: UseCaseGate, names: AdminNames, ...values: unknown[]) =>
+        new ViewOfferReviewEmergencyStop(gate, { settings: dependenciesOf(values), names }),
     },
     {
       provide: SETTINGS_REVERTER,
