@@ -297,10 +297,15 @@ describe('platform AI evaluations (database integration, AI Gateway G4c)', () =>
       expect(estimate.capabilities.length).toBeGreaterThan(0);
       const runId = await write(market, () => control.enqueue(market, estimate, uuid()));
       expect(runId).not.toBeNull();
-      const before = await sql.query<{ scope: string }>(
-        `SELECT DISTINCT scope FROM platform.ai_budget_counters WHERE market_id = $1`,
-        [code],
-      );
+      const spentOnEvaluation = async () => {
+        const rows = await sql.query<{ spent: string }>(
+          `SELECT COALESCE(SUM(spent_micro_usd), 0) AS spent FROM platform.ai_budget_counters
+            WHERE market_id = $1 AND scope = 'evaluation'`,
+          [code],
+        );
+        return Number(rows.rows[0]!.spent);
+      };
+      const before = await spentOnEvaluation();
       const outcome = await runner.tick(context as JobContext, 295_000);
       expect(outcome).toEqual({ runId, stop: 'completed' });
       const detail = await control.detail(market, runId!);
@@ -315,14 +320,11 @@ describe('platform AI evaluations (database integration, AI Gateway G4c)', () =>
       );
       expect(after.rows).toHaveLength(1);
       expect(Number(after.rows[0]!.spent)).toBeGreaterThan(0);
-      // No other scope appeared for the run's calls.
-      const scopes = await sql.query<{ scope: string }>(
-        `SELECT DISTINCT scope FROM platform.ai_budget_counters WHERE market_id = $1`,
-        [code],
-      );
-      expect(scopes.rows.map((row) => row.scope).sort()).toEqual(
-        [...new Set([...before.rows.map((row) => row.scope), 'evaluation'])].sort(),
-      );
+      // The evaluation line took exactly the run's cost. Other test files write this Market's
+      // other counters at the same time, so the "no other line" rule is proved in the gateway's
+      // unit tests, not here.
+      const runCost = detail!.samples.reduce((sum, item) => sum + item.costMicroUsd, 0);
+      expect((await spentOnEvaluation()) - before).toBe(runCost);
       await setSetting(market, 'ai-cap-evaluation-month', '0');
     });
   });
