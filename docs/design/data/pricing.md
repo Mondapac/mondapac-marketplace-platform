@@ -326,7 +326,7 @@ D 5.2, 8 and H3 cap the `pricing.offer-write-refused` audit rows at 1 per (actor
 
 ### 3.9 `pricing.write_rate_counters` (phase 4 leftover: the per-account write cap; offer page PR 9: the typical-price read caps)
 
-The same table holds the caps on the seller's typical-price read (`GET .../typical-prices`): `typical.account.minute` (20), `typical.account.day` (200) and `typical.seller.day` (400, keyed by seller), counted before the Offer lookup, apart from the price-write allowance (migration `20261125080000_pricing_typical_price_counters`).
+The same table holds the caps on the seller's typical-price read (`GET .../typical-prices`): `typical.account.minute` (20), `typical.account.day` (200) and `typical.seller.day` (400, keyed by seller), counted before the Offer lookup, apart from the price-write allowance (migration `20261125100000_pricing_typical_price_counters`).
 
 The general per-account limit on the seller price write routes (D 5.2, 8; Hassan M2). One fixed window per (Market, kind, account): `kind` is `write.account.minute` (60 attempts) or `write.account.day` (1,000), both counted for every attempt that reaches the use case with a valid input, refused or not, in a unit of its own before the Offer lookup, so the count commits even when the write is refused. A count above the limit answers `request.throttled` with `retryAfterSeconds` (HTTP 429). The limits are policy in code, not CHECKs; the CHECK holds only the closed kind list and `count >= 0`.
 

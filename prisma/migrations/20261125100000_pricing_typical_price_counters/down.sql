@@ -1,4 +1,4 @@
--- Reverses 20261125080000_pricing_typical_price_counters. The read counters are throwaway rate
+-- Reverses 20261125100000_pricing_typical_price_counters. The read counters are throwaway rate
 -- windows, so they are deleted; nothing else is lost. Roll the code back first: while the new code
 -- runs it can insert a read counter after the delete, and then the narrower CHECK fails (safe).
 -- Safety: a blocked statement fails instead of queueing.
