@@ -38,8 +38,10 @@ export interface ReceiveEstimate {
   readonly taxInclusive: boolean;
 }
 
-/** The API takes at most this many sizes in one read. */
+/** The API takes at most this many sizes in one read; more sizes are read in several. */
 const MAX_LINES = 20;
+/** The largest amount the API estimates (10^12 minor units); a larger typed price shows none. */
+const MAX_MINOR = 10n ** 12n;
 /** Typing waits this long before the estimate is read again. */
 export const ESTIMATE_DELAY_MS = 400;
 
@@ -56,23 +58,41 @@ export function customerPaysMinor(
 ): string | null {
   if (price?.retired === true) return null;
   if (price?.special?.state === 'running') return price.special.amount;
-  if (draft !== undefined) return draft.trim() === '' ? null : minorOf(draft, currency);
-  return price?.inForce?.amount ?? null;
+  const minor =
+    draft !== undefined
+      ? draft.trim() === ''
+        ? null
+        : minorOf(draft, currency)
+      : (price?.inForce?.amount ?? null);
+  return minor !== null && BigInt(minor) <= MAX_MINOR ? minor : null;
 }
 
-/** The `lines` query of the amounts that have one, sorted, at most {@link MAX_LINES}. */
-export function linesQuery(amounts: Readonly<Record<string, string | null>>): string {
-  return Object.entries(amounts)
+/**
+ * The `lines` queries of the amounts that have one, sorted: one per {@link MAX_LINES} sizes, so an
+ * Offer with many sizes is read in several requests and no size is left out.
+ */
+export function linesQueries(amounts: Readonly<Record<string, string | null>>): string[] {
+  const pairs = Object.entries(amounts)
     .filter((entry): entry is [string, string] => entry[1] !== null)
     .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
-    .slice(0, MAX_LINES)
-    .map(([variantId, minor]) => `${variantId}:${minor}`)
-    .join(',');
+    .map(([variantId, minor]) => `${variantId}:${minor}`);
+  const queries: string[] = [];
+  for (let i = 0; i < pairs.length; i += MAX_LINES) {
+    queries.push(pairs.slice(i, i + MAX_LINES).join(','));
+  }
+  return queries;
 }
 
 export type EstimateState =
   | { readonly kind: 'off' }
-  | { readonly kind: 'ready'; readonly bySize: ReadonlyMap<string, ReceiveEstimate> }
+  | {
+      readonly kind: 'ready';
+      readonly bySize: ReadonlyMap<string, ReceiveEstimate>;
+      /** The Market's price convention, once an answer said it; null before the first one. */
+      readonly taxInclusive: boolean | null;
+    }
+  /** The product has no published tax category yet: no estimate until it is published. */
+  | { readonly kind: 'no-category' }
   | { readonly kind: 'unavailable' };
 
 /**
@@ -87,53 +107,75 @@ export function useReceiveEstimates(
   amounts: Readonly<Record<string, string | null>>,
   enabled: boolean,
 ): EstimateState {
-  const query = enabled ? linesQuery(amounts) : '';
+  const queries = enabled ? linesQueries(amounts) : [];
+  const key = queries.join('|');
   const [state, setState] = useState<EstimateState>(
-    enabled ? { kind: 'ready', bySize: new Map() } : { kind: 'off' },
+    enabled ? { kind: 'ready', bySize: new Map(), taxInclusive: null } : { kind: 'off' },
   );
-  const latest = useRef(query);
-  latest.current = query;
+  const latest = useRef(key);
+  latest.current = key;
 
   useEffect(() => {
     if (!enabled) {
       setState({ kind: 'off' });
       return;
     }
-    if (query === '') {
-      setState({ kind: 'ready', bySize: new Map() });
+    if (key === '') {
+      setState((old) => ({
+        kind: 'ready',
+        bySize: new Map(),
+        taxInclusive: old.kind === 'ready' ? old.taxInclusive : null,
+      }));
       return;
     }
     const controller = new AbortController();
     const timer = setTimeout(() => {
-      void callApi<ReceiveEstimatesView>(
-        'GET',
-        `pricing/seller/offers/${offerId}/receive-estimates?lines=${encodeURIComponent(query)}`,
-        undefined,
-        undefined,
-        controller.signal,
-      ).then((result) => {
-        if (controller.signal.aborted || latest.current !== query) return;
-        if (!result.ok) {
-          setState({ kind: 'unavailable' });
+      void Promise.all(
+        key
+          .split('|')
+          .map((query) =>
+            callApi<ReceiveEstimatesView>(
+              'GET',
+              `pricing/seller/offers/${offerId}/receive-estimates?lines=${encodeURIComponent(query)}`,
+              undefined,
+              undefined,
+              controller.signal,
+            ),
+          ),
+      ).then((results) => {
+        // An answer for amounts the page no longer shows is dropped.
+        if (controller.signal.aborted || latest.current !== key) return;
+        const failed = results.find((result) => !result.ok);
+        if (failed !== undefined && !failed.ok) {
+          setState(
+            failed.failure.code === 'pricing.estimate-no-tax-category'
+              ? { kind: 'no-category' }
+              : { kind: 'unavailable' },
+          );
           return;
         }
         const bySize = new Map<string, ReceiveEstimate>();
-        for (const line of result.body.lines) {
-          bySize.set(line.variantId, {
-            customerPaysMinor: line.priceMinor,
-            commissionMinor: line.commissionMinor,
-            youReceiveMinor: line.youReceiveMinor,
-            taxInclusive: result.body.taxInclusive,
-          });
+        let taxInclusive: boolean | null = null;
+        for (const result of results) {
+          if (!result.ok) continue;
+          taxInclusive = result.body.taxInclusive;
+          for (const line of result.body.lines) {
+            bySize.set(line.variantId, {
+              customerPaysMinor: line.priceMinor,
+              commissionMinor: line.commissionMinor,
+              youReceiveMinor: line.youReceiveMinor,
+              taxInclusive: result.body.taxInclusive,
+            });
+          }
         }
-        setState({ kind: 'ready', bySize });
+        setState({ kind: 'ready', bySize, taxInclusive });
       });
     }, ESTIMATE_DELAY_MS);
     return () => {
       clearTimeout(timer);
       controller.abort();
     };
-  }, [enabled, offerId, query]);
+  }, [enabled, offerId, key]);
 
   return state;
 }
@@ -150,4 +192,12 @@ export function estimateFor(
   if (state.kind !== 'ready' || amount === null) return null;
   const found = state.bySize.get(variantId);
   return found !== undefined && found.customerPaysMinor === amount ? found : null;
+}
+
+/**
+ * The last estimate read for a size, whatever its amount: shown muted while the estimate for a
+ * newly typed price is read, so the number does not blink to a dash at each key.
+ */
+export function lastEstimateFor(state: EstimateState, variantId: string): ReceiveEstimate | null {
+  return state.kind === 'ready' ? (state.bySize.get(variantId) ?? null) : null;
 }

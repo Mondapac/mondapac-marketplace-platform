@@ -1,6 +1,7 @@
 import { Controller, Get, Logger, Param, Query, Res } from '@nestjs/common';
 import {
   ApiBadRequestResponse,
+  ApiConflictResponse,
   ApiForbiddenResponse,
   ApiNotFoundResponse,
   ApiOkResponse,
@@ -56,8 +57,15 @@ export class SellerReceiveEstimatesController {
   @ApiOkResponse({ type: ReceiveEstimatesBody })
   @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
-  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or access.seller-not-approved' })
+  @ApiForbiddenResponse({
+    ...ERROR,
+    description: 'access.denied, access.seller-not-approved or pricing.acting-as-refused',
+  })
   @ApiNotFoundResponse({ ...ERROR, description: 'pricing.offer-not-found' })
+  @ApiConflictResponse({
+    ...ERROR,
+    description: 'pricing.estimate-no-tax-category (the product has no published tax category)',
+  })
   @ApiServiceUnavailableResponse({
     ...ERROR,
     description: 'pricing.estimate-unavailable or access.unavailable',
@@ -89,6 +97,8 @@ export class SellerReceiveEstimatesController {
       }
       if (error.code === 'pricing.offer-not-found') throw fail(404, error.code);
       if (error.code === 'pricing.estimate-unavailable') throw fail(503, error.code);
+      if (error.code === 'pricing.acting-as-refused') throw fail(403, error.code);
+      if (error.code === 'pricing.estimate-no-tax-category') throw fail(409, error.code);
       const status = ACCESS_DENIED_STATUS[error.code];
       throw fail(status ?? 500, status === undefined ? 'internal' : error.code);
     }

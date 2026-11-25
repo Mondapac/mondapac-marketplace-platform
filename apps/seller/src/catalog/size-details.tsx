@@ -99,7 +99,7 @@ export function SizeDetails({
                 </>
               )}
             </Line>
-            {priceDraft === null ? null : (
+            {priceDraft === null || receive?.source === 'typed' ? null : (
               <Line label={t('price.unsaved')}>
                 {draftMinor === null ? priceDraft : money(draftMinor)}
               </Line>
@@ -212,10 +212,13 @@ export function SizeDetails({
 export interface ReceiveView {
   /** The estimate for the price customers pay now; null while it is read or when there is none. */
   readonly estimate: ReceiveEstimate | null;
-  /** Where the customer price comes from: a running special, a typed price or the saved one. */
-  readonly source: 'special' | 'typed' | 'saved' | 'none';
-  /** The read failed: no money is shown. */
-  readonly unavailable: boolean;
+  /**
+   * Where the customer price comes from: a running special, a typed price or the saved one;
+   * `unfinished` while the typed text is not an amount yet, `none` without any price.
+   */
+  readonly source: 'special' | 'typed' | 'saved' | 'unfinished' | 'none';
+  /** `unavailable`: the read failed; `no-category`: the product is not published yet. */
+  readonly state: 'ready' | 'unavailable' | 'no-category';
 }
 
 /**
@@ -234,14 +237,17 @@ function ReceiveBreakdown({
   const t = useTranslations('catalog.size-details.receive');
   const { estimate } = view;
   return (
-    <section aria-labelledby={`${id}-title`} className="mb-4 flex max-w-xl flex-col">
-      <h4 id={`${id}-title`} className="font-medium">
+    <section
+      aria-labelledby={`${id}-title`}
+      className="mb-4 flex max-w-xl flex-col border-b border-line pb-4"
+    >
+      <h4 id={`${id}-title`} className="font-semibold">
         {t('title')}
       </h4>
-      {view.source === 'none' ? (
-        <p className="py-2 text-sm text-fg-muted">{t('none')}</p>
-      ) : view.unavailable ? (
-        <p className="py-2 text-sm text-fg-muted">{t('unavailable')}</p>
+      {view.source === 'none' || view.source === 'unfinished' ? (
+        <p className="py-2 text-sm text-fg-muted">{t(view.source)}</p>
+      ) : view.state !== 'ready' ? (
+        <p className="py-2 text-sm text-fg-muted">{t(view.state)}</p>
       ) : estimate === null ? (
         <p className="py-2 text-sm text-fg-muted" role="status">
           {t('pending')}
@@ -269,7 +275,7 @@ function ReceiveBreakdown({
             </Line>
           </dl>
           <p className="pt-2 text-sm text-fg-muted">
-            {estimate.taxInclusive ? t('note') : `${t('before-tax')} ${t('note')}`}
+            {t(estimate.taxInclusive ? 'note' : 'note-before-tax')}
           </p>
         </>
       )}

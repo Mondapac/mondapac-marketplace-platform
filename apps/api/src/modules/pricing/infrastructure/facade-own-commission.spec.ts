@@ -66,29 +66,51 @@ describe('FacadeOwnCommission', () => {
     ]);
   });
 
-  it('answers null for no published category, a refusal or an odd rate list', async () => {
-    expect(await adapter({ category: null }).source.lineTaxRate(context, OFFER)).toBeNull();
+  it('answers no-category for an Offer without a published category', async () => {
+    expect(await adapter({ category: null }).source.lineTaxRate(context, OFFER)).toBe(
+      'no-category',
+    );
+  });
+
+  it('answers null for a refusal or an odd rate list', async () => {
     expect(await adapter({ catalogFails: true }).source.lineTaxRate(context, OFFER)).toBeNull();
     expect(await adapter({ rates: null }).source.lineTaxRate(context, OFFER)).toBeNull();
     expect(await adapter({ rates: [] }).source.lineTaxRate(context, OFFER)).toBeNull();
     expect(await adapter({ rates: [0, 1000] }).source.lineTaxRate(context, OFFER)).toBeNull();
   });
 
-  it('passes the commission and what the seller receives through, and nothing else', async () => {
+  it('reads the rate once and works every amount out with the ledger rule', async () => {
     const { source, seen } = adapter();
-    expect(await source.commissionOn(context, 1590n, true, 0)).toEqual({
-      commission: 239n,
-      sellerReceives: 1351n,
-    });
-    expect(seen).toEqual([
-      ['payouts', context, { amount: 1590n, taxInclusive: true, taxRateBps: 0 }],
+    // The stub's rate is 15%. GST-free (0): 1590 -> 238.5 -> 239 (half up); 950 -> 142.5 -> 143.
+    expect(await source.commissionsOn(context, [1590n, 950n], true, 0)).toEqual([
+      { commission: 239n, sellerReceives: 1351n },
+      { commission: 143n, sellerReceives: 807n },
     ]);
+    // A 10% tax-inclusive line: 1100 -> base 1000 -> 150.
+    expect(await source.commissionsOn(context, [1100n], true, 1000)).toEqual([
+      { commission: 150n, sellerReceives: 950n },
+    ]);
+    // Prices before tax: the whole amount is the base.
+    expect(await source.commissionsOn(context, [1000n], false, 1000)).toEqual([
+      { commission: 150n, sellerReceives: 850n },
+    ]);
+    expect(seen.filter((entry) => (entry as unknown[])[0] === 'payouts')).toEqual([
+      ['payouts', context, { amount: 1590n, taxInclusive: true, taxRateBps: 0 }],
+      ['payouts', context, { amount: 1100n, taxInclusive: true, taxRateBps: 1000 }],
+      ['payouts', context, { amount: 1000n, taxInclusive: false, taxRateBps: 1000 }],
+    ]);
+  });
+
+  it('asks nothing for no amounts', async () => {
+    const { source, seen } = adapter();
+    expect(await source.commissionsOn(context, [], true, 0)).toEqual([]);
+    expect(seen).toEqual([]);
   });
 
   it('answers null when the commission is refused or the call throws', async () => {
     const refused = adapter({ commission: 'refused' }).source;
-    expect(await refused.commissionOn(context, 100n, true, 0)).toBeNull();
+    expect(await refused.commissionsOn(context, [100n], true, 0)).toBeNull();
     const throws = adapter({ commission: 'throws' }).source;
-    expect(await throws.commissionOn(context, 100n, true, 0)).toBeNull();
+    expect(await throws.commissionsOn(context, [100n], true, 0)).toBeNull();
   });
 });

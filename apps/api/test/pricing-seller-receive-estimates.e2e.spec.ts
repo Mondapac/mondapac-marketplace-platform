@@ -8,10 +8,15 @@ import type { AccountState } from '../src/modules/identity/domain/account';
 import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { OFFER_SELL_UNITS_SOURCE } from '../src/modules/pricing/application/ports/offer-sell-units';
+import type { CatalogFacade } from '../src/modules/catalog';
 import {
-  OWN_COMMISSION_SOURCE,
-  type OwnCommissionSource,
-} from '../src/modules/pricing/application/ports/own-commission';
+  COMMISSION_PAYOUTS_FACADE,
+  type CommissionPayoutsFacade,
+} from '../src/modules/commission-payouts';
+import { SELLER_RATE_REPOSITORY } from '../src/modules/commission-payouts/application/ports/seller-rate.repository';
+import { OWN_COMMISSION_SOURCE } from '../src/modules/pricing/application/ports/own-commission';
+import { FacadeOwnCommission } from '../src/modules/pricing/infrastructure/facade-own-commission';
+import type { TaxFacade } from '../src/modules/tax';
 import { PRICE_SERIES_REPOSITORY } from '../src/modules/pricing/application/ports/price-series.repository';
 import { WRITE_REFUSAL_THROTTLE_REPOSITORY } from '../src/modules/pricing/application/ports/write-refusal-throttle.repository';
 import { AUDIT_WRITER } from '../src/platform/audit/audit-writer';
@@ -33,10 +38,12 @@ import { createTestApp, type LogLine } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
 // The seller receive-estimates route over HTTP (Offer page PR 4): the real guards, controller,
-// gate (the seller owner holds both keys) and the real `pricing.view-receive-estimates` use case,
-// with identity's ports, the Offer source and the own-commission source as in-memory fakes.
-// Proved here: the seller session, the closed query, the status of each refusal, no-store and the
-// log line.
+// gate (the seller owner holds both keys), the real `pricing.view-receive-estimates` use case and
+// the real own-commission adapter over the real `commission-payouts.ownCommissionOn` (the Market's
+// default rate from its config, the ledger's rounding). Identity's ports, the Offer source, the
+// seller rate table (empty) and catalog's and tax's answers (the Offer's category and its rate) are
+// in-memory fakes. Proved here: the exact money in each Market, the session, the keys, the closed
+// query, the status of each refusal, no-store and the log line.
 
 const START = Temporal.Instant.from('2026-10-09T10:00:00Z');
 const LIFETIME = { idleTimeoutSeconds: 3600, absoluteLifetimeSeconds: 7200 };
@@ -61,8 +68,24 @@ describe('seller receive estimates over HTTP (offer page PR 4)', () => {
   let clock: FixedClock;
   let series: InMemoryPriceSeries;
   let offers: FakeOfferSellUnits;
-  let commission: OwnCommissionSource;
-  let available: boolean;
+  // What catalog and tax answer for the Offer: its category and that category's rate.
+  let category: string | null;
+  let taxRateBps: number | null;
+  const catalogStub = {
+    offerTaxCategories: (_context: unknown, ids: readonly Id<'Offer'>[]) =>
+      Promise.resolve({
+        ok: true,
+        value: new Map(category === null ? [] : ids.map((offerId) => [offerId, category])),
+      }),
+  } as unknown as CatalogFacade;
+  const taxStub = {
+    categoryRates: () =>
+      Promise.resolve(
+        taxRateBps === null
+          ? { ok: false, error: { code: 'tax.unavailable' } }
+          : { ok: true, value: { ratesBps: [taxRateBps] } },
+      ),
+  } as unknown as TaxFacade;
   const http = () => request(app.getHttpServer());
 
   async function boot() {
@@ -78,8 +101,14 @@ describe('seller receive estimates over HTTP (offer page PR 4)', () => {
           .useValue(new FakeUnitOfWork())
           .overrideProvider(PRICE_SERIES_REPOSITORY)
           .useValue(series)
+          .overrideProvider(SELLER_RATE_REPOSITORY)
+          .useValue({ findMany: () => Promise.resolve([]) })
           .overrideProvider(OWN_COMMISSION_SOURCE)
-          .useValue(commission)
+          .useFactory({
+            factory: (payouts: CommissionPayoutsFacade) =>
+              new FacadeOwnCommission(payouts, catalogStub, taxStub),
+            inject: [COMMISSION_PAYOUTS_FACADE],
+          })
           .overrideProvider(WRITE_REFUSAL_THROTTLE_REPOSITORY)
           .useValue(new InMemoryRefusalThrottles())
           .overrideProvider(OFFER_SELL_UNITS_SOURCE)
@@ -93,11 +122,11 @@ describe('seller receive estimates over HTTP (offer page PR 4)', () => {
 
   const marketOf = (code: string) => testMarketContext(code, PLATFORM_TENANT_ID);
 
-  async function seeded(code: string) {
+  async function seeded(code: string, role = 'seller-owner') {
     await app.get(SeedRoles).execute(testCallContext(marketOf(code), 'system', 'price-0001'), {});
     const marketId = code as AccountState['marketId'];
     const ownerRole = [...fakes.roles.values()].find(
-      (r) => r.marketId === code && r.scope === 'seller' && r.seedCode === 'seller-owner',
+      (r) => r.marketId === code && r.scope === 'seller' && r.seedCode === role,
     )!.id;
     fakes.seedSellerAccess({
       sellerId: SELLER,
@@ -176,7 +205,7 @@ describe('seller receive estimates over HTTP (offer page PR 4)', () => {
   const get = (
     code: string,
     headers: Record<string, string>,
-    query: string = `lines=${VARIANT}:2000`,
+    query: string = `lines=${VARIANT}:2200`,
     offerId: string = OFFER,
   ) =>
     http()
@@ -188,43 +217,43 @@ describe('seller receive estimates over HTTP (offer page PR 4)', () => {
     clock = new FixedClock(START);
     series = new InMemoryPriceSeries();
     offers = new FakeOfferSellUnits();
-    available = true;
-    // 15% of the amount, whatever the tax: the route passes the source's answer through.
-    commission = {
-      lineTaxRate: () => Promise.resolve(available ? 1000 : null),
-      commissionOn: (_context, amount) =>
-        Promise.resolve({
-          commission: (amount * 15n) / 100n,
-          sellerReceives: amount - (amount * 15n) / 100n,
-        }),
-    };
+    category = 'standard';
+    taxRateBps = 1000;
   });
   afterEach(async () => {
     await app.close();
   });
 
+  /**
+   * Each Market's own config: AU prices include 10% GST and its default rate is 15% (2200 -> base
+   * 2000 -> 300); ZZ prices exclude tax, in JPY, at 12% (2200 -> 264).
+   */
+  const EXPECTED: Record<string, { currency: string; taxInclusive: boolean; commission: string }> =
+    {
+      AU: { currency: 'AUD', taxInclusive: true, commission: '300' },
+      ZZ: { currency: 'JPY', taxInclusive: false, commission: '264' },
+    };
+
   describe.each(TEST_MARKETS)('in market %s', (code) => {
-    it('answers the commission and what the seller receives, with no-store and no rate', async () => {
+    it('answers the exact commission and what the seller receives, with no-store and no rate', async () => {
       await boot();
       await seeded(code);
+      const expected = EXPECTED[code]!;
 
       const answer = await get(code, sessionOf(code));
 
       expect(answer.status).toBe(200);
       expect(answer.headers['cache-control']).toBe('no-store');
-      const body = answer.body as { currency: unknown; taxInclusive: unknown };
-      expect(typeof body.currency).toBe('string');
-      expect(typeof body.taxInclusive).toBe('boolean');
       expect(answer.body).toEqual({
         offerId: OFFER,
-        currency: body.currency,
-        taxInclusive: body.taxInclusive,
+        currency: expected.currency,
+        taxInclusive: expected.taxInclusive,
         lines: [
           {
             variantId: VARIANT,
-            priceMinor: '2000',
-            commissionMinor: '300',
-            youReceiveMinor: '1700',
+            priceMinor: '2200',
+            commissionMinor: expected.commission,
+            youReceiveMinor: String(2200 - Number(expected.commission)),
           },
         ],
       });
@@ -254,15 +283,48 @@ describe('seller receive estimates over HTTP (offer page PR 4)', () => {
       expect(unknown.headers['cache-control']).toBe('no-store');
     });
 
-    it('answers 503 when the commission cannot be read', async () => {
+    it("answers another seller's Offer as not found, before any money is read", async () => {
       await boot();
       await seeded(code);
-      available = false;
+      const other = id<'Offer'>(0xc0aa);
+      offers.put(marketOf(code), other, {
+        sellerId: id<'Seller'>(0xb099),
+        productId: PRODUCT,
+        deleted: false,
+        priceableVariantIds: [VARIANT],
+      });
+
+      const answer = await get(code, sessionOf(code), undefined, other);
+
+      expect(answer.status).toBe(404);
+      expect(answer.body).toEqual({ statusCode: 404, code: 'pricing.offer-not-found' });
+    });
+
+    it('refuses a member without the price and ledger keys (403)', async () => {
+      await boot();
+      await seeded(code, 'store-manager');
 
       const answer = await get(code, sessionOf(code));
 
-      expect(answer.status).toBe(503);
-      expect(answer.body).toEqual({ statusCode: 503, code: 'pricing.estimate-unavailable' });
+      expect(answer.status).toBe(403);
+      expect(answer.body).toMatchObject({ code: 'access.denied' });
+    });
+
+    it('answers 409 when the product has no published tax category, and 503 when tax cannot be read', async () => {
+      await boot();
+      await seeded(code);
+      const session = sessionOf(code);
+
+      category = null;
+      const none = await get(code, session);
+      expect(none.status).toBe(409);
+      expect(none.body).toEqual({ statusCode: 409, code: 'pricing.estimate-no-tax-category' });
+
+      category = 'standard';
+      taxRateBps = null;
+      const down = await get(code, session);
+      expect(down.status).toBe(503);
+      expect(down.body).toEqual({ statusCode: 503, code: 'pricing.estimate-unavailable' });
     });
   });
 });

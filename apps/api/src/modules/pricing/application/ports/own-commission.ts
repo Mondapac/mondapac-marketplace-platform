@@ -20,18 +20,23 @@ export interface OwnLineCommission {
 export interface OwnCommissionSource {
   /**
    * The tax rate, in basis points, of a line of `offerId`. The caller has already checked that
-   * the Offer is the seller's own. Null when the Offer has no published tax category or anything
-   * cannot be read.
+   * the Offer is the seller's own. `no-category` when the Offer's product has no published tax
+   * category yet (checkout would refuse the line; the page says so rather than "try again");
+   * null when anything cannot be read.
    */
-  lineTaxRate(context: CallContext, offerId: Id<'Offer'>): Promise<number | null>;
+  lineTaxRate(context: CallContext, offerId: Id<'Offer'>): Promise<number | 'no-category' | null>;
 
-  /** The seller's own commission on `amount`; null when it cannot be read. */
-  commissionOn(
+  /**
+   * The seller's own commission on each of `amounts` (in the same order), with one read of its
+   * rate: the first amount goes through `ownCommissionOn`, and every amount is then worked out
+   * with the ledger's own rule (`lineCommission`) at that rate. Null when it cannot be read.
+   */
+  commissionsOn(
     context: CallContext,
-    amount: bigint,
+    amounts: readonly bigint[],
     taxInclusive: boolean,
     taxRateBps: number,
-  ): Promise<OwnLineCommission | null>;
+  ): Promise<readonly OwnLineCommission[] | null>;
 }
 
 export const OWN_COMMISSION_SOURCE = Symbol('PRICING_OWN_COMMISSION_SOURCE');

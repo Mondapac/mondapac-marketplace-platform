@@ -4,6 +4,7 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { COMMISSION_PAYOUTS_EARNINGS_VIEW } from '../../../commission-payouts';
 import { PRICING_PRICE_VIEW } from '../../contracts/permissions';
+import { isActingAsSession } from '../acting-as';
 import type { OfferSellUnitsSource } from '../ports/offer-sell-units';
 import type { OwnCommissionSource } from '../ports/own-commission';
 import type { PricingPolicyProvider } from '../ports/pricing-policy-provider';
@@ -41,7 +42,11 @@ export type ViewReceiveEstimatesFailure =
   | { readonly code: 'access.denied' }
   /** Unknown, another seller's, another Market's or deleted: one answer. */
   | { readonly code: 'pricing.offer-not-found' }
-  /** The tax rate or the commission cannot be read now: no money is guessed. */
+  /** Login as Seller: the seller's own commission is not read for someone acting as it. */
+  | { readonly code: 'pricing.acting-as-refused' }
+  /** The product has no published tax category yet, so no line of it can be priced at checkout. */
+  | { readonly code: 'pricing.estimate-no-tax-category' }
+  /** The Offer, the tax rate or the commission cannot be read now: no money is guessed. */
   | { readonly code: 'pricing.estimate-unavailable' };
 
 export interface ViewReceiveEstimatesDependencies {
@@ -71,6 +76,9 @@ const UNAVAILABLE = Object.freeze({ code: 'pricing.estimate-unavailable' as cons
  * net earnings). Approved sellers only. The Offer is checked like the price write: the actor's
  * seller, not deleted, every Variant priceable on it; anything else is `pricing.offer-not-found`.
  * The rate itself is never answered, and an unreadable value is `pricing.estimate-unavailable`.
+ * An acting-as (Login as Seller) session is refused first (`pricing.acting-as-refused`), as the
+ * Cost reads are: `ownCommissionOn` refuses it too, and it must not look like an outage. The rate
+ * is read once per request; every amount then goes through the ledger's own rule.
  */
 export class ViewReceiveEstimates extends UseCase<
   ViewReceiveEstimatesInput,
@@ -107,6 +115,14 @@ export class ViewReceiveEstimates extends UseCase<
     ) {
       return err({ code: 'access.denied' });
     }
+    if (isActingAsSession(actor)) {
+      this.#logger.log({
+        msg: 'pricing.view-receive-estimates.acting-as-refused',
+        marketId: market.marketId,
+        correlationId: context.correlationId,
+      });
+      return err({ code: 'pricing.acting-as-refused' });
+    }
     const offerId = parseId<'Offer'>(typeof input?.offerId === 'string' ? input.offerId : '');
     if (!offerId.ok) {
       return err({ code: 'validation.failed', fields: [{ path: 'offerId', code: 'format' }] });
@@ -116,7 +132,12 @@ export class ViewReceiveEstimates extends UseCase<
       return err({ code: 'validation.failed', fields: [{ path: 'lines', code: 'format' }] });
     }
 
-    const offers = await this.deps.offers.sellUnitsOf(context, [offerId.value]);
+    let offers: Awaited<ReturnType<OfferSellUnitsSource['sellUnitsOf']>>;
+    try {
+      offers = await this.deps.offers.sellUnitsOf(context, [offerId.value]);
+    } catch {
+      return this.#unavailable(context, 'offer');
+    }
     const offer = offers.get(offerId.value);
     if (
       offer === undefined ||
@@ -126,6 +147,9 @@ export class ViewReceiveEstimates extends UseCase<
     ) {
       this.#logger.log({
         msg: 'pricing.view-receive-estimates.refused',
+        sellerId: actor.sellerId,
+        accountId: actor.accountId,
+        offerId: offerId.value,
         marketId: market.marketId,
         correlationId: context.correlationId,
       });
@@ -135,22 +159,25 @@ export class ViewReceiveEstimates extends UseCase<
     const taxInclusive = this.deps.policies.pricesIncludeTax(market);
     const taxRateBps = await this.deps.ownCommission.lineTaxRate(context, offerId.value);
     if (taxRateBps === null) return this.#unavailable(context, 'tax-rate');
-    const lines: ReceiveEstimateLine[] = [];
-    for (const line of asked) {
-      const answer = await this.deps.ownCommission.commissionOn(
-        context,
-        line.price,
-        taxInclusive,
-        taxRateBps,
-      );
-      if (answer === null) return this.#unavailable(context, 'commission');
-      lines.push({
+    if (taxRateBps === 'no-category') return err({ code: 'pricing.estimate-no-tax-category' });
+    const answers = await this.deps.ownCommission.commissionsOn(
+      context,
+      asked.map((line) => line.price),
+      taxInclusive,
+      taxRateBps,
+    );
+    if (answers === null || answers.length !== asked.length) {
+      return this.#unavailable(context, 'commission');
+    }
+    const lines: ReceiveEstimateLine[] = asked.map((line, index) => {
+      const answer = answers[index] as (typeof answers)[number];
+      return {
         variantId: line.variantId,
         priceMinor: line.price.toString(),
         commissionMinor: answer.commission.toString(),
         youReceiveMinor: answer.sellerReceives.toString(),
-      });
-    }
+      };
+    });
     this.#logger.log({
       msg: 'pricing.view-receive-estimates.done',
       lines: lines.length,
@@ -167,7 +194,7 @@ export class ViewReceiveEstimates extends UseCase<
 
   #unavailable(
     context: CallContext,
-    part: 'tax-rate' | 'commission',
+    part: 'offer' | 'tax-rate' | 'commission',
   ): Result<never, ViewReceiveEstimatesFailure> {
     this.#logger.warn({
       msg: 'pricing.view-receive-estimates.unavailable',

@@ -30,27 +30,31 @@ const policies = new ConfigPricingPolicyProvider(markets);
 
 /** A stand-in for commission-payouts: 15% of the amount less its tax, rounded half up. */
 class FakeOwnCommission implements OwnCommissionSource {
-  taxRateBps: number | null = 0;
+  taxRateBps: number | 'no-category' | null = 0;
   failCommission = false;
-  readonly calls: { amount: bigint; taxInclusive: boolean; taxRateBps: number }[] = [];
+  readonly calls: { amounts: readonly bigint[]; taxInclusive: boolean; taxRateBps: number }[] = [];
   readonly taxAsked: Id<'Offer'>[] = [];
 
-  lineTaxRate(_context: CallContext, offerId: Id<'Offer'>): Promise<number | null> {
+  lineTaxRate(_context: CallContext, offerId: Id<'Offer'>): Promise<number | 'no-category' | null> {
     this.taxAsked.push(offerId);
     return Promise.resolve(this.taxRateBps);
   }
 
-  commissionOn(
+  commissionsOn(
     _context: CallContext,
-    amount: bigint,
+    amounts: readonly bigint[],
     taxInclusive: boolean,
     taxRateBps: number,
-  ): Promise<OwnLineCommission | null> {
-    this.calls.push({ amount, taxInclusive, taxRateBps });
+  ): Promise<readonly OwnLineCommission[] | null> {
+    this.calls.push({ amounts, taxInclusive, taxRateBps });
     if (this.failCommission) return Promise.resolve(null);
-    const base = taxInclusive ? (amount * 10000n) / BigInt(10000 + taxRateBps) : amount;
-    const commission = (base * 1500n + 5000n) / 10000n;
-    return Promise.resolve({ commission, sellerReceives: amount - commission });
+    return Promise.resolve(
+      amounts.map((amount) => {
+        const base = taxInclusive ? (amount * 10000n) / BigInt(10000 + taxRateBps) : amount;
+        const commission = (base * 1500n + 5000n) / 10000n;
+        return { commission, sellerReceives: amount - commission };
+      }),
+    );
   }
 }
 
@@ -113,9 +117,9 @@ describe.each(['AU', 'ZZ'] as const)('pricing.view-receive-estimates in market %
         BigInt(line.priceMinor),
       );
     }
+    // One read of the rate for the whole request.
     expect(ownCommission.calls).toEqual([
-      { amount: 1590n, taxInclusive, taxRateBps: 1000 },
-      { amount: 950n, taxInclusive, taxRateBps: 1000 },
+      { amounts: [1590n, 950n], taxInclusive, taxRateBps: 1000 },
     ]);
     expect(ownCommission.taxAsked).toEqual([offerId]);
   });
@@ -182,6 +186,43 @@ describe.each(['AU', 'ZZ'] as const)('pricing.view-receive-estimates in market %
     expect(await view(`${v1}:100`)).toEqual(notFound);
     expect(ownCommission.calls).toEqual([]);
     expect(ownCommission.taxAsked).toEqual([]);
+  });
+
+  it('refuses a Login as Seller session before any read', async () => {
+    const { view, v1, contextOf, ownCommission, offers } = setup();
+    const base = contextOf();
+    const actingAs = {
+      ...base,
+      actor: { ...base.actor, actingAs: { adminAccountId: 'a' } } as never,
+    } as CallContext;
+    const spy = jest.spyOn(offers, 'sellUnitsOf');
+
+    // The gate refuses the marked session first; the use case's own check is the second layer.
+    const answer = await view(`${v1}:100`, actingAs);
+    expect(answer.ok ? null : answer.error.code).toMatch(
+      /^(access\.denied|pricing\.acting-as-refused)$/,
+    );
+    expect(spy).not.toHaveBeenCalled();
+    expect(ownCommission.taxAsked).toEqual([]);
+  });
+
+  it('says the product has no published tax category, apart from a fault', async () => {
+    const { view, v1, ownCommission } = setup();
+    ownCommission.taxRateBps = 'no-category';
+    expect(await view(`${v1}:100`)).toEqual({
+      ok: false,
+      error: { code: 'pricing.estimate-no-tax-category' },
+    });
+    expect(ownCommission.calls).toEqual([]);
+  });
+
+  it('answers unavailable, not a fault, when the Offer cannot be read', async () => {
+    const { view, v1, offers } = setup();
+    jest.spyOn(offers, 'sellUnitsOf').mockRejectedValue(new Error('catalog down'));
+    expect(await view(`${v1}:100`)).toEqual({
+      ok: false,
+      error: { code: 'pricing.estimate-unavailable' },
+    });
   });
 
   it('refuses a session that is not a seller', async () => {

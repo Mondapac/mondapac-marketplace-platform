@@ -1,13 +1,14 @@
 import type { CallContext, Id } from '@mondapac/shared-kernel';
 import type { CatalogFacade } from '../../catalog';
-import type { CommissionPayoutsFacade } from '../../commission-payouts';
+import { lineCommission, type CommissionPayoutsFacade } from '../../commission-payouts';
 import type { TaxFacade } from '../../tax';
 import type { OwnCommissionSource, OwnLineCommission } from '../application/ports/own-commission';
 
 /**
  * {@link OwnCommissionSource} over `catalog`'s `offerTaxCategories`, `tax`'s `categoryRates` and
- * `commission-payouts`' `ownCommissionOn`, each called with the seller's context unchanged. A
- * refusal, a fault, a missing category or a missing rate is null: the estimate shows no money.
+ * `commission-payouts`' `ownCommissionOn` (once per request, for the rate; every amount then goes
+ * through the ledger's `lineCommission`), each called with the seller's context unchanged. A
+ * refusal, a fault or a missing rate is null: the estimate shows no money.
  */
 export class FacadeOwnCommission implements OwnCommissionSource {
   constructor(
@@ -16,13 +17,16 @@ export class FacadeOwnCommission implements OwnCommissionSource {
     private readonly tax: TaxFacade,
   ) {}
 
-  async lineTaxRate(context: CallContext, offerId: Id<'Offer'>): Promise<number | null> {
+  async lineTaxRate(
+    context: CallContext,
+    offerId: Id<'Offer'>,
+  ): Promise<number | 'no-category' | null> {
     try {
       const categories = await this.catalog.offerTaxCategories(context, [offerId]);
       if (!categories.ok) return null;
       // No published category: checkout would refuse the line, so no rate is guessed.
       const code = categories.value.get(offerId);
-      if (code === undefined) return null;
+      if (code === undefined) return 'no-category';
       const rates = await this.tax.categoryRates(context, [code]);
       if (!rates.ok || rates.value.ratesBps.length !== 1) return null;
       return rates.value.ratesBps[0] ?? null;
@@ -31,20 +35,26 @@ export class FacadeOwnCommission implements OwnCommissionSource {
     }
   }
 
-  async commissionOn(
+  async commissionsOn(
     context: CallContext,
-    amount: bigint,
+    amounts: readonly bigint[],
     taxInclusive: boolean,
     taxRateBps: number,
-  ): Promise<OwnLineCommission | null> {
+  ): Promise<readonly OwnLineCommission[] | null> {
+    const [first] = amounts;
+    if (first === undefined) return [];
     try {
       const answer = await this.payouts.ownCommissionOn(context, {
-        amount,
+        amount: first,
         taxInclusive,
         taxRateBps,
       });
       if (!answer.ok) return null;
-      return { commission: answer.value.commission, sellerReceives: answer.value.sellerReceives };
+      const { rateBps } = answer.value;
+      return amounts.map((amount) => {
+        const line = lineCommission({ amount, taxInclusive, taxBps: taxRateBps, rateBps });
+        return { commission: line.commission, sellerReceives: line.sellerReceives };
+      });
     } catch {
       return null;
     }

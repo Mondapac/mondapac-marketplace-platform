@@ -18,8 +18,13 @@ import { Fragment, useEffect, useId, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import { callApi } from '../api/client.ts';
 import { priceProblemOf } from '../price/errors.ts';
-import { formatMinor, inputOf } from '../price/money.ts';
-import { customerPaysMinor, estimateFor, useReceiveEstimates } from '../price/receive-estimates.ts';
+import { formatMinor, inputOf, minorOf } from '../price/money.ts';
+import {
+  customerPaysMinor,
+  estimateFor,
+  lastEstimateFor,
+  useReceiveEstimates,
+} from '../price/receive-estimates.ts';
 import type { PriceWritten } from '../price/types.ts';
 import { levelsProblemOf } from '../stock/levels-errors.ts';
 import type { StockSet } from '../stock/levels-types.ts';
@@ -42,7 +47,7 @@ import {
   type UnitRow,
 } from './sell-unit-logic.ts';
 import { CHECKBOX, SkuField } from './sku-field.tsx';
-import { SizeDetails, sizeTabsOf, type SizeTab } from './size-details.tsx';
+import { SizeDetails, sizeTabsOf, type ReceiveView, type SizeTab } from './size-details.tsx';
 import { SizeRequests } from './size-requests.tsx';
 import type { SizeRequestsData } from './size-request-logic.ts';
 import { LastSizeHint, SizesYouSell } from './sizes-you-sell.tsx';
@@ -473,16 +478,24 @@ export function VariantsTable({
     );
   }
 
-  /** The "You receive (est.)" cell: "≈ amount" once the estimate for the row's price is read. */
+  /**
+   * The "You receive (est.)" cell: "≈ amount" once the estimate for the row's price is read; while
+   * a newly typed price is read, the last number stays, muted, so it does not blink to a dash.
+   */
   function receiveCell(variantId: string) {
-    const estimate = estimateFor(estimates, variantId, customerPays[variantId] ?? null);
-    if (estimate === null) return <Dash />;
+    const amount = customerPays[variantId] ?? null;
+    const estimate = estimateFor(estimates, variantId, amount);
+    const shown = estimate ?? (amount === null ? null : lastEstimateFor(estimates, variantId));
+    if (shown === null) return <Dash />;
     return (
-      <span>
+      <span
+        className={estimate === null ? 'text-fg-muted' : undefined}
+        aria-busy={estimate === null}
+      >
         {t('catalog.variants-table.receive.value', {
-          amount: formatMinor(estimate.youReceiveMinor, currency, locale),
+          amount: formatMinor(shown.youReceiveMinor, currency, locale),
         })}
-        {estimate.taxInclusive ? null : (
+        {shown.taxInclusive ? null : (
           <span className="block text-xs text-fg-muted">
             {t('catalog.variants-table.receive.before-tax')}
           </span>
@@ -492,21 +505,30 @@ export function VariantsTable({
   }
 
   /** What the open Details' Price tab shows of "You receive (est.)" for one size. */
-  function receiveView(row: TableRow) {
+  function receiveView(row: TableRow): ReceiveView | null {
+    // A size no longer sold has nothing to estimate.
+    if (row.price?.retired === true) return null;
     const amount = customerPays[row.variantId] ?? null;
-    const source: 'special' | 'typed' | 'saved' | 'none' =
-      amount === null
-        ? 'none'
-        : row.price?.special?.state === 'running'
-          ? 'special'
-          : row.variantId in priceDrafts &&
-              (priceDrafts[row.variantId] ?? '').trim() !== savedPriceText(row, currency)
+    const draft = priceDrafts[row.variantId];
+    const typed =
+      draft !== undefined && minorOf(draft, currency) !== (row.price?.inForce?.amount ?? null);
+    const source: ReceiveView['source'] =
+      row.price?.special?.state === 'running'
+        ? 'special'
+        : amount === null
+          ? draft !== undefined && draft.trim() !== ''
+            ? 'unfinished'
+            : 'none'
+          : typed
             ? 'typed'
             : 'saved';
     return {
       estimate: estimateFor(estimates, row.variantId, amount),
       source,
-      unavailable: estimates.kind === 'unavailable',
+      state:
+        estimates.kind === 'unavailable' || estimates.kind === 'no-category'
+          ? estimates.kind
+          : 'ready',
     };
   }
 
@@ -1051,12 +1073,20 @@ export function VariantsTable({
           </div>
           {showPrice ? (
             <p className="text-sm text-fg-muted">
-              {t('catalog.variants-table.price-note', { currency })}
+              {/* The tax convention comes from the Market's answer, never assumed. */}
+              {t(
+                estimates.kind === 'ready' && estimates.taxInclusive !== null
+                  ? estimates.taxInclusive
+                    ? 'catalog.variants-table.price-note-inclusive'
+                    : 'catalog.variants-table.price-note-exclusive'
+                  : 'catalog.variants-table.price-note',
+                { currency },
+              )}
             </p>
           ) : null}
-          {showReceive && estimates.kind === 'unavailable' ? (
+          {showReceive && (estimates.kind === 'unavailable' || estimates.kind === 'no-category') ? (
             <p className="text-sm text-fg-muted" role="status">
-              {t('catalog.variants-table.receive.unavailable')}
+              {t(`catalog.variants-table.receive.${estimates.kind}`)}
             </p>
           ) : null}
           {showReceive ? (
