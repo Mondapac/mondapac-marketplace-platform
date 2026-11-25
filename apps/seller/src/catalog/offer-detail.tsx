@@ -34,7 +34,7 @@ export async function OfferDetail({
   readonly csrfToken?: string;
   /** The seller's active shelves (categories C9b); the picker shows only when there are some. */
   readonly shelves?: readonly ShelfChoice[];
-  /** The sizes table (prices and stock); null when the seller may see neither. */
+  /** The "Sizes, prices and stock" card: the table, or why it could not be read. */
   readonly sizes?: ReactNode;
 }) {
   const t = await getTranslations();

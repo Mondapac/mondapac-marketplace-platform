@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { NextIntlClientProvider } from 'next-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../messages/en.json';
@@ -10,6 +10,7 @@ import messages from '../../messages/en.json';
 vi.mock('../api/client.ts', () => ({ callApi: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: vi.fn() }) }));
 
+import { callApi } from '../api/client.ts';
 import type { VariantPrice } from '../price/types.ts';
 import type { SourceView } from '../stock/types.ts';
 import { VariantsTable } from './variants-table.tsx';
@@ -77,9 +78,13 @@ function mount(over: Partial<Parameters<typeof VariantsTable>[0]> = {}) {
     </NextIntlClientProvider>,
   );
 }
-const details = (size: string) => screen.getByRole('button', { name: `Details for ${size}` });
-const close = (size: string) => screen.getByRole('button', { name: `Close details for ${size}` });
-const panel = (size: string) => screen.getByRole('group', { name: `Details for ${size}` });
+// Each size has its button twice: under the size (phones) and in the last column (from 640 px);
+// CSS shows one of them. jsdom has no media queries, so the tests press the first.
+const details = (size: string) =>
+  screen.getAllByRole('button', { name: `Details for ${size}` })[0]!;
+const close = (size: string) =>
+  screen.getAllByRole('button', { name: `Close details for ${size}` })[0]!;
+const panel = (size: string) => screen.getByRole('group', { name: size });
 
 beforeEach(() => vi.clearAllMocks());
 afterEach(cleanup);
@@ -93,7 +98,7 @@ describe('size Details', () => {
     expect(close('250 g').getAttribute('aria-expanded')).toBe('true');
     expect(close('250 g').getAttribute('aria-controls')).toBe(panel('250 g').id);
     fireEvent.click(details('500 g'));
-    expect(screen.queryByRole('group', { name: 'Details for 250 g' })).toBeNull();
+    expect(screen.queryByRole('group', { name: '250 g' })).toBeNull();
     expect(details('250 g').getAttribute('aria-expanded')).toBe('false');
     expect(screen.getAllByRole('tablist')).toHaveLength(1);
     fireEvent.click(close('500 g'));
@@ -134,7 +139,10 @@ describe('size Details', () => {
     expect(tab.getAttribute('aria-selected')).toBe('true');
     const table = within(panel('500 g')).getByRole('table', { name: 'Stock of 500 g by location' });
     const cells = within(table).getAllByRole('row')[1]!.querySelectorAll('td');
-    expect([...cells].map((cell) => cell.textContent)).toEqual(['25', '3', '3']);
+    expect([...cells].map((cell) => cell.textContent)).toEqual([
+      '25',
+      '3held for checkouts and orders',
+    ]);
     // The tab stays when another size opens.
     fireEvent.click(details('250 g'));
     expect(
@@ -173,5 +181,59 @@ describe('size Details', () => {
     cleanup();
     mount({ currency: null, sources: [] });
     expect(screen.queryByRole('button', { name: /Details for/ })).toBeNull();
+  });
+
+  it('names a special waiting for review and when a scheduled one starts', () => {
+    mount({
+      rows: [
+        row('v1', '250 g', '950', 40, 0, {
+          special: {
+            amount: '850',
+            startsAt: '2026-12-01T00:00:00Z',
+            endsAt: '2026-12-08T00:00:00Z',
+            state: 'scheduled',
+          },
+          heldSpecial: {
+            amount: '500',
+            startsAt: '2026-12-10T00:00:00Z',
+            endsAt: '2026-12-12T00:00:00Z',
+            submittedAt: '2026-11-25T00:00:00Z',
+          },
+        }),
+      ],
+    });
+    fireEvent.click(details('250 g'));
+    const open = within(panel('250 g'));
+    expect(open.getByText(/\$8\.50, from 1 Dec 2026.* to 8 Dec 2026/)).toBeTruthy();
+    expect(open.getByText('Special waiting for review')).toBeTruthy();
+    expect(open.getByText(/\$5\.00, from 10 Dec 2026/)).toBeTruthy();
+  });
+
+  it('keeps the sizes card and its anchor for an offer with no sizes', () => {
+    const { container } = mount({ rows: [] });
+    expect(container.querySelector('#sizes')).not.toBeNull();
+    expect(screen.getByRole('heading', { name: 'Sizes, prices and stock' })).toBeTruthy();
+  });
+
+  it('saves while a row is open and keeps the row open', async () => {
+    vi.mocked(callApi).mockResolvedValue({
+      ok: true,
+      status: 200,
+      body: { stockItemId: 's', onHand: 12, version: 6, changed: true },
+    });
+    mount({ currency: null, canEditPrice: false });
+    fireEvent.change(screen.getAllByLabelText('Units in stock at Warehouse')[0]!, {
+      target: { value: '12' },
+    });
+    fireEvent.click(details('250 g'));
+    fireEvent.click(screen.getByRole('button', { name: 'Save 1 change' }));
+    await waitFor(() => expect(callApi).toHaveBeenCalledTimes(1));
+    expect(callApi).toHaveBeenCalledWith(
+      'PUT',
+      'inventory/seller/offers/o1/variants/v1/sources/s1/stock',
+      { onHand: 12, expectedVersion: 5 },
+      'csrf',
+    );
+    expect(close('250 g').getAttribute('aria-expanded')).toBe('true');
   });
 });

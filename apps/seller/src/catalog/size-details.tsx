@@ -62,15 +62,10 @@ export function SizeDetails({
   const draftMinor = priceDraft === null ? null : minorOf(priceDraft, currency);
 
   return (
-    <div
-      id={id}
-      className="flex flex-col gap-3"
-      aria-label={t('label', { size: row.label })}
-      role="group"
-    >
-      <p className="font-medium">
+    <div id={id} className="flex flex-col gap-3" aria-labelledby={`${id}-heading`} role="group">
+      <h3 id={`${id}-heading`} className="font-medium">
         {code === null ? row.label : t('heading', { size: row.label, code })}
-      </p>
+      </h3>
       <Tabs
         label={t('tabs', { size: row.label })}
         items={tabs.map((item) => ({ id: item, label: t(`tab.${item}`) }))}
@@ -112,19 +107,32 @@ export function SizeDetails({
               ) : (
                 t(`price.special-${price.special.state}`, {
                   amount: money(price.special.amount),
+                  starts: formatInZone(price.special.startsAt, zone, locale),
                   ends: formatInZone(price.special.endsAt, zone, locale),
                 })
               )}
             </Line>
-            {price?.retired === true ? (
-              <p className="py-2 text-sm text-fg-muted">{t('price.retired')}</p>
-            ) : null}
-            <p className="pt-3 text-sm">
-              <a className="font-medium text-link underline" href={`/offers/${offerId}/prices`}>
-                {t('price.special-link')}
-              </a>
-            </p>
+            {price?.heldSpecial == null ? null : (
+              <Line label={t('price.held-special')}>
+                {t('price.held-special-value', {
+                  amount: money(price.heldSpecial.amount),
+                  starts: formatInZone(price.heldSpecial.startsAt, zone, locale),
+                  ends: formatInZone(price.heldSpecial.endsAt, zone, locale),
+                })}
+                <span className="block text-sm text-fg-muted">{t('price.held-special-help')}</span>
+              </Line>
+            )}
           </dl>
+        ) : null}
+        {tab === 'price' && price?.retired === true ? (
+          <p className="max-w-xl py-2 text-sm text-fg-muted">{t('price.retired')}</p>
+        ) : null}
+        {tab === 'price' ? (
+          <p className="pt-3 text-sm">
+            <a className="font-medium text-link underline" href={`/offers/${offerId}/prices`}>
+              {t('price.special-link')}
+            </a>
+          </p>
         ) : (
           <div className="flex max-w-xl flex-col gap-3">
             <div className="overflow-x-auto">
@@ -137,9 +145,6 @@ export function SizeDetails({
                     </th>
                     <th scope="col" className="py-2 pe-3 text-end font-medium">
                       {t('stock.in-stock')}
-                    </th>
-                    <th scope="col" className="py-2 pe-3 text-end font-medium">
-                      {t('stock.held')}
                     </th>
                     <th scope="col" className="py-2 text-end font-medium">
                       {t('stock.lowest')}
@@ -171,8 +176,10 @@ export function SizeDetails({
                             </span>
                           ) : null}
                         </td>
-                        <td className="py-2 pe-3 text-end tabular-nums">{cell?.held ?? 0}</td>
-                        <td className="py-2 text-end tabular-nums">{cell?.held ?? 0}</td>
+                        <td className="py-2 text-end tabular-nums">
+                          {cell?.held ?? 0}
+                          <span className="block text-xs text-fg-muted">{t('stock.held')}</span>
+                        </td>
                       </tr>
                     );
                   })}
@@ -195,9 +202,9 @@ export function SizeDetails({
 /** One label and value line of the Price tab. */
 function Line({ label, children }: { readonly label: string; readonly children: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-line py-2">
-      <dt>{label}</dt>
-      <dd className="text-end">{children}</dd>
+    <div className="flex flex-col gap-1 border-b border-line py-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+      <dt className="shrink-0">{label}</dt>
+      <dd className="sm:text-end">{children}</dd>
     </div>
   );
 }

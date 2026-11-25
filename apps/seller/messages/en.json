@@ -2090,8 +2090,8 @@
     },
     "variants-table": {
       "title": "Sizes, prices and stock",
-      "variant": "Variant",
-      "variant-n": "Variant {number}",
+      "variant": "Size",
+      "variant-n": "Size {number}",
       "select": "Select {variant}",
       "select-all": "Select all variants",
       "price-for": "Price for {variant}",
@@ -2207,7 +2207,9 @@
           "cancel": "Cancel",
           "apply": "{count, plural, =0 {Nothing to apply} one {Apply # change} other {Apply # changes}}"
         }
-      }
+      },
+      "explicit-save": "Prices and stock are saved with the button, not automatically.",
+      "unavailable": "Sizes, prices and stock can't be shown right now. Try again later."
     },
     "suggestions": {
       "title": "Value suggestions",
@@ -3030,9 +3032,8 @@
       "close": "Close",
       "open-for": "Details for {size}",
       "close-for": "Close details for {size}",
-      "label": "Details for {size}",
       "heading": "{size} · {code}",
-      "tabs": "Details for {size}",
+      "tabs": "Price and stock of {size}",
       "tab": {
         "price": "Price",
         "stock": "Stock"
@@ -3047,18 +3048,21 @@
         "special": "Special price",
         "special-none": "None",
         "special-running": "{amount}, running, ends {ends}",
-        "special-scheduled": "{amount}, scheduled, ends {ends}",
+        "special-scheduled": "{amount}, from {starts} to {ends}",
         "retired": "This size is no longer sold on the platform.",
-        "special-link": "Set or end a special price"
+        "special-link": "Set or end a special price",
+        "held-special": "Special waiting for review",
+        "held-special-value": "{amount}, from {starts} to {ends}",
+        "held-special-help": "It starts only after our check."
       },
       "stock": {
         "caption": "Stock of {size} by location",
         "location": "Location",
         "in-stock": "In stock",
-        "held": "Held for orders",
+        "held": "held for checkouts and orders",
         "lowest": "Lowest you can set",
         "unsaved": "Typed: {value}, not saved yet",
-        "help": "Change stock in the row above. Held units are in checkouts or orders that are not sent yet, so stock cannot go below them.",
+        "help": "Change stock in the row above. Units held for checkouts and orders that are not sent yet set the lowest stock you can save.",
         "link": "Stock by location"
       }
     }
@@ -3114,7 +3118,7 @@
       "back": "Back to offer",
       "variant": "Variant {number}",
       "on-hand-for": "Units in stock at {location}",
-      "held": "{count, plural, one {# unit held in checkouts} other {# units held in checkouts}}",
+      "held": "{count, plural, one {# unit held for checkouts and orders} other {# units held for checkouts and orders}}",
       "saved": "Saved.",
       "no-locations": "Add a stock location before you set stock levels.",
       "no-variants": "This offer has no variants yet.",

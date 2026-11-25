@@ -5,6 +5,7 @@ import {
   Banner,
   Button,
   Card,
+  Icon,
   SaveBar,
   Select,
   TextField,
@@ -428,8 +429,33 @@ export function VariantsTable({
     setNeedsReload(false);
   }
 
+  /** The Details or Close button of a size; `className` hides one of its two places. */
+  function detailsButton(row: TableRow, open: boolean, detailsId: string, className?: string) {
+    return (
+      <Button
+        className={className}
+        variant="secondary"
+        aria-expanded={open}
+        aria-controls={open ? detailsId : undefined}
+        aria-label={t(open ? 'catalog.size-details.close-for' : 'catalog.size-details.open-for', {
+          size: row.label,
+        })}
+        onClick={() => toggleDetails(row.variantId)}
+      >
+        {t(open ? 'catalog.size-details.close' : 'catalog.size-details.open')}
+        <Icon name={open ? 'chevron-up' : 'chevron-down'} className="size-4" />
+      </Button>
+    );
+  }
+
   if (rows.length === 0) {
-    return <p className="text-fg-muted">{t('price.no-variants')}</p>;
+    return (
+      <div id="sizes" className="scroll-mt-4">
+        <Card title={t('catalog.variants-table.title')}>
+          <p className="text-fg-muted">{t('price.no-variants')}</p>
+        </Card>
+      </div>
+    );
   }
   const needsLocation = canEditStock && sources.length === 0;
   const detailTabs = sizeTabsOf(showPrice, sources);
@@ -604,12 +630,16 @@ export function VariantsTable({
               // clear of the end fade, so its error text and focus ring stay visible on phones.
               style={{
                 scrollPaddingInlineStart: `${COL.variant + 0.5}rem`,
-                scrollPaddingInlineEnd: '1rem',
+                // Clear of the sticky Details column too, when the table has it.
+                scrollPaddingInlineEnd: showDetails ? `${COL.details + 1}rem` : '1rem',
                 paddingInlineEnd: '1rem',
               }}
               onScroll={updateFade}
             >
-              <table className="table-fixed text-start text-sm" style={{ width: `${tableRem}rem` }}>
+              <table
+                className="w-full table-fixed text-start text-sm"
+                style={{ minWidth: `${tableRem}rem` }}
+              >
                 <colgroup>
                   {canBulk ? <col style={{ width: '2.5rem' }} /> : null}
                   <col style={{ width: `${COL.variant}rem` }} />
@@ -676,7 +706,10 @@ export function VariantsTable({
                       </th>
                     ) : null}
                     {showDetails ? (
-                      <th scope="col" className="p-2 font-medium">
+                      <th
+                        scope="col"
+                        className="bg-surface p-2 font-medium sm:sticky sm:end-0 sm:z-10"
+                      >
                         <span className="sr-only">{t('catalog.size-details.column')}</span>
                       </th>
                     ) : null}
@@ -731,6 +764,12 @@ export function VariantsTable({
                             )}
                             {retired ? (
                               <span className="block text-fg-muted">{t('price.retired')}</span>
+                            ) : null}
+                            {showDetails ? (
+                              // On a phone Details sits under the size, in the column that stays.
+                              <span className="mt-2 block font-normal sm:hidden">
+                                {detailsButton(row, open, detailsId)}
+                              </span>
                             ) : null}
                           </th>
                           {showUnits ? (
@@ -873,23 +912,9 @@ export function VariantsTable({
                             </td>
                           ) : null}
                           {showDetails ? (
-                            <td className="p-2">
-                              <Button
-                                variant="secondary"
-                                aria-expanded={open}
-                                aria-controls={open ? detailsId : undefined}
-                                aria-label={t(
-                                  open
-                                    ? 'catalog.size-details.close-for'
-                                    : 'catalog.size-details.open-for',
-                                  { size: row.label },
-                                )}
-                                onClick={() => toggleDetails(row.variantId)}
-                              >
-                                {t(
-                                  open ? 'catalog.size-details.close' : 'catalog.size-details.open',
-                                )}
-                              </Button>
+                            // Sticky at the end: on a phone Details and Close stay in view.
+                            <td className={`p-2 sm:sticky sm:end-0 sm:z-10 ${bg}`}>
+                              {detailsButton(row, open, detailsId, 'max-sm:hidden')}
                             </td>
                           ) : null}
                         </tr>
@@ -902,14 +927,14 @@ export function VariantsTable({
                                 style={
                                   regionWidth === null
                                     ? undefined
-                                    : { width: `min(${regionWidth}px, 100%)` }
+                                    : { width: `min(calc(${regionWidth}px - 1rem), 100%)` }
                                 }
                               >
                                 <SizeDetails
                                   id={detailsId}
                                   offerId={offerId}
                                   row={row}
-                                  code={unit?.variantCode ?? null}
+                                  code={unit?.displaySku ?? null}
                                   tabs={detailTabs}
                                   tab={
                                     detailTabs.includes(sizeTab)
@@ -938,10 +963,11 @@ export function VariantsTable({
                 </tbody>
               </table>
             </div>
-            {moreToScroll ? (
+            {/* The fade sits before the sticky Details column, and goes while a row is open. */}
+            {moreToScroll && openId === null ? (
               <div
                 aria-hidden="true"
-                className="pointer-events-none absolute inset-y-0 end-0 w-8 bg-linear-to-l from-surface to-transparent"
+                className={`pointer-events-none absolute inset-y-0 end-0 w-8 bg-linear-to-l from-surface to-transparent ${showDetails ? 'sm:end-28' : ''}`}
               />
             ) : null}
           </div>
@@ -967,7 +993,7 @@ export function VariantsTable({
           {canSave ? (
             <SaveBar
               count={changeCount}
-              summary={t('settings.bar.summary', { count: changeCount })}
+              summary={`${t('settings.bar.summary', { count: changeCount })} · ${t('catalog.variants-table.explicit-save')}`}
               saving={saving}
               aboveBottomBar
               labels={{

@@ -271,7 +271,15 @@ describe('seller offers row actions', () => {
     expect(push).toHaveBeenCalledWith(`/offers/${ID1}#sizes`);
   });
 
-  it('offers only what the row names, and no Prices or Stock without their keys', async () => {
+  it('shows Prices and stock for the stock key alone, opening the sizes on the offer', async () => {
+    mount(pageOf([row()]), { permissionKeys: ['inventory.stock.edit'] });
+    fireEvent.click(OPEN('Actions for Aged Basmati Rice'));
+    const menu = await screen.findByRole('menu');
+    fireEvent.click(within(menu).getByRole('menuitem', { name: 'Prices and stock' }));
+    expect(push).toHaveBeenCalledWith(`/offers/${ID1}#sizes`);
+  });
+
+  it('offers only what the row names, and no Prices and stock without their keys', async () => {
     mount(pageOf([row({}, ['open'])]));
     fireEvent.click(OPEN('Actions for Aged Basmati Rice'));
     const menu = await screen.findByRole('menu');
