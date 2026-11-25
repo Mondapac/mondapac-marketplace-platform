@@ -30,6 +30,11 @@ import { SellersModule } from '../sellers';
 import { HELD_UNIT_LABELS, SELLER_STORE_NAMES } from './application/ports/held-labels';
 import { OFFER_SELL_UNITS_SOURCE } from './application/ports/offer-sell-units';
 import { PRICE_SERIES_REPOSITORY } from './application/ports/price-series.repository';
+import { COST_SERIES_REPOSITORY } from './application/ports/cost-series.repository';
+import { SetOfferCost } from './application/use-cases/set-cost.use-case';
+import { ViewOfferCosts } from './application/use-cases/view-cost.use-case';
+import { costProviders } from './infrastructure/cost/cost-providers';
+import { SellerOfferCostsController } from './presentation/http/cost/seller-offer-costs.controller';
 import { PRICING_POLICY_PROVIDER } from './application/ports/pricing-policy-provider';
 import { RETIREMENT_TOMBSTONE_REPOSITORY } from './application/ports/retirement-tombstone.repository';
 import { WRITE_RATE_COUNTER_REPOSITORY } from './application/ports/write-rate-counter.repository';
@@ -82,6 +87,7 @@ import { PricingSpecialsFacadeImplementation } from './presentation/pricing-spec
 const PORT = {
   unitOfWork: UNIT_OF_WORK,
   series: PRICE_SERIES_REPOSITORY,
+  costs: COST_SERIES_REPOSITORY,
   throttles: WRITE_REFUSAL_THROTTLE_REPOSITORY,
   counters: WRITE_RATE_COUNTER_REPOSITORY,
   tombstones: RETIREMENT_TOMBSTONE_REPOSITORY,
@@ -174,6 +180,7 @@ function holdListUseCaseProvider<U>(type: HoldListUseCaseClass<U>): FactoryProvi
     SellerRegularPriceController,
     SellerSpecialPriceController,
     SellerOfferPricesController,
+    SellerOfferCostsController,
     AdminPriceHoldController,
   ],
   providers: [
@@ -201,6 +208,24 @@ function holdListUseCaseProvider<U>(type: HoldListUseCaseClass<U>): FactoryProvi
     registerStepUpActions('pricing', PRICING_STEP_UP_ACTIONS),
     registerLists('pricing', PRICING_LISTS),
     ...pricingProviders,
+    ...costProviders,
+    useCaseProvider(ViewOfferCosts, {
+      unitOfWork: true,
+      costs: true,
+      offers: true,
+      policies: true,
+    }),
+    useCaseProvider(SetOfferCost, {
+      unitOfWork: true,
+      costs: true,
+      throttles: true,
+      counters: true,
+      offers: true,
+      policies: true,
+      audit: true,
+      clock: true,
+      ids: true,
+    }),
     useCaseProvider(SetRegularPrice, {
       unitOfWork: true,
       series: true,

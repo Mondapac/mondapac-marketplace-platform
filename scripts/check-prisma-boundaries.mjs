@@ -25,7 +25,9 @@
 // Named exception: files under platform/persistence/outbox/ reach the models mapped to the
 // tables in OUTBOX_TABLES of any module, and those models are reserved to that folder.
 // Likewise the platform models mapped to AUDIT_TABLES are reserved to
-// platform/persistence/audit/ (the AuditWriter; docs/design/domain/platform-audit.md 2).
+// platform/persistence/audit/ (the AuditWriter; docs/design/domain/platform-audit.md 2), and
+// pricing's Cost models (PricingCost*) to modules/pricing/infrastructure/cost/ (pricing design
+// 6.5, H-D1).
 // Raw read statements (ADR-0030, controls C2 and C3):
 //   - when <src>/platform/persistence/raw-reads/statements.ts exists, the checked-in list is
 //     transpiled, parsed with libpg-query (loaded with createRequire from apps/api; the same
@@ -62,6 +64,12 @@ const AUDIT_TABLES = [
   'security_events_archive',
 ];
 const AUDIT_FOLDER = 'platform/persistence/audit/';
+/**
+ * pricing's Cost models (`PricingCost*`) are reserved to the Cost store, so no price repository,
+ * reader or job can name them (pricing design 6.5; Hassan H-D1 condition 1).
+ */
+const COST_MODEL = /^PricingCost[A-Z]/;
+const COST_FOLDER = 'modules/pricing/infrastructure/cost/';
 /** The calls whose result is a model view: `PrismaService.tx(market)` and `auditTx(market)`. */
 const VIEW_CALLS = ['tx', 'auditTx'];
 
@@ -259,6 +267,7 @@ function checkModelOwnership(root) {
     if (owner === undefined) continue;
     const inOutboxFolder = relative.startsWith(OUTBOX_FOLDER);
     const inAuditFolder = relative.startsWith(AUDIT_FOLDER);
+    const inCostFolder = relative.startsWith(COST_FOLDER);
     const source = ts.createSourceFile(
       file,
       readFileSync(file, 'utf8'),
@@ -270,13 +279,22 @@ function checkModelOwnership(root) {
     const report = (node, model, how) => {
       const reserved = OUTBOX_TABLES.includes(model.table);
       const audit = model.module === 'platform' && AUDIT_TABLES.includes(model.table);
-      const allowed = reserved ? inOutboxFolder : audit ? inAuditFolder : model.module === owner;
+      const cost = model.module === 'pricing' && COST_MODEL.test(model.name);
+      const allowed = reserved
+        ? inOutboxFolder
+        : audit
+          ? inAuditFolder
+          : cost
+            ? inCostFolder
+            : model.module === owner;
       if (allowed) return;
       const why = reserved
         ? `is reserved to ${OUTBOX_FOLDER} (write it through OutboxWriter)`
         : audit
           ? `is reserved to ${AUDIT_FOLDER} (write it through AuditWriter)`
-          : `belongs to module "${model.module}"`;
+          : cost
+            ? `is reserved to ${COST_FOLDER} (Cost stays inside, pricing design 6.5)`
+            : `belongs to module "${model.module}"`;
       found.push(`${relative}:${lineOf(node)}: ${how} names model ${model.name}, which ${why}`);
     };
 

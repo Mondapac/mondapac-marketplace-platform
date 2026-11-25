@@ -273,7 +273,7 @@ Evidence (2026-10-14, PostgreSQL 16, 100k specials and 120k markers, 20 due): bo
 
 ### 3.7 `pricing.cost_series` and `pricing.cost_records` (slice 3; D 2.1, 6.5)
 
-`cost_series` has the columns, keys, CHECKs and grants of `price_series` (3.2) under its own names: `cost_series_market_id_offer_id_variant_id_key`, `cost_series_market_id_id_currency_key`, `cost_series_market_id_product_id_variant_id_idx`. It is a separate root with its own `version` (D 2.3). The retirement handlers retire it too, and the re-key moves it with the same rules and guard trigger (3.2.1; D 6.4).
+`cost_series` has the columns, keys, CHECKs and grants of `price_series` (3.2) under its own names: `cost_series_market_id_offer_id_variant_id_key`, `cost_series_market_id_id_currency_key`, `cost_series_market_id_product_id_variant_id_idx`. It is a separate root with its own `version` (D 2.3). The retirement handlers retire it too, and the re-key moves it with the same rules and guard trigger (3.2.1; D 6.4). **As built (PR 7 of the seller Offer page):** the retirement handlers do not retire Cost series yet, and there is no re-key guard trigger on `cost_series`; a Cost read or write is refused for a deleted Offer or a Variant that is not priceable, and both tombstones block a new series. Deferred: register row FE-20261125-pricing-cost-series-retirement.
 
 `cost_records`:
 
@@ -282,13 +282,14 @@ Evidence (2026-10-14, PostgreSQL 16, 100k specials and 120k markers, 20 due): bo
 | `id` | `uuid` | no | PK |
 | `cost_series_id` | `uuid` | no | FK `cost_records_cost_series_id_fkey` `(market_id, cost_series_id, currency)` → `cost_series (market_id, id, currency)` (P2) |
 | `kind` | `text` | no | CHECK `amount`, `cleared` (Q7: Cost is optional) |
+| `series_version` | `integer` | no | CHECK `>= 1`. The series `version` this record raised it to (as built, PR 7 of the seller Offer page). Unique `cost_records_market_id_cost_series_id_series_version_key` |
 | `amount_minor` | `bigint` | yes | CHECK: NOT NULL if and only if `kind = 'amount'`; range P1. **Cost: never leaves the module** (D 6.5) |
 | `currency` | `char(3)` | no | The series currency, also on `cleared` rows, so the foreign key is always checked (a NULL currency would switch a composite FK off) |
 | `submitted_at` | `timestamptz(6)` | no | |
 | `submitted_by_account_id` | `uuid` | no | Who wrote it (Hassan finding 4: the audit row has no amount, H2, so the actor is recorded here). Acting-as: P8 |
 
 - **Append-only.** `SELECT`, `INSERT` only; trigger `cost_records_no_update_delete` (`BEFORE UPDATE OR DELETE`) and `cost_records_no_truncate` answer `23001` to the owner (measured for `UPDATE` as the application: `42501`).
-- Current Cost of a series = the latest row. Index `cost_records_market_id_cost_series_id_submitted_at_id_idx`, read newest first per series. A page of the seller's Offer list reads the rows of at most that page's series in one statement. Cost changes are rare, so the read returns few rows per series. Not measured at volume; revisit with the slice 3 plans (10).
+- Current Cost of a series = the record with the highest `series_version`, through the unique index above (as built: the earlier index on `(submitted_at, id)` was replaced, because two writes can share an instant and a random id does not order them). A page of the seller's Offer list reads the rows of at most that page's series in one statement. Cost changes are rare, so the read returns few rows per series. Not measured at volume; revisit with the slice 3 plans (10).
 - No column of a price table holds Cost, and no Cost table has a relation to a price table. A query on price tables cannot return Cost by structure, as `password_credentials` is kept apart from `accounts` (ID-data 3.3).
 
 ### 3.8 `pricing.write_refusal_throttles` and `pricing.write_refusal_actor_throttles` (slice 1; adopted; 11.2 M7)
@@ -430,7 +431,7 @@ The facade answers 1 to 200 `(offerId, variantId)` keys (D 6.2). Three statement
 | Re-key handler (3.2.1) | Series of the Offer; target keys (Offer, `to`); tombstones by primary key | Leading `(market_id, offer_id)` of the series unique key; `retired_variants_pkey`. No new index |
 | Boundary job, starts (D 11) | Specials with `effective_from` in `(now − H, now]`, no `start` marker (Prisma `none` relation filter = `NOT EXISTS`), `ORDER BY effective_from LIMIT 100` | `special_price_records_market_id_effective_from_live_idx` + marker PK |
 | Boundary job, natural ends | `status IN (accepted, approved)`, `ends_at` in `(now − H, now]`, no `end` marker | `special_price_records_market_id_ends_at_live_idx` |
-| Cost of a page of series (D 5.2) | `cost_records` by `cost_series_id in […]`, newest first | `cost_records_market_id_cost_series_id_submitted_at_id_idx` |
+| Cost of a page of series (D 5.2) | `cost_records` by `cost_series_id in […]`, highest `series_version` first | `cost_records_market_id_cost_series_id_series_version_key` |
 
 **Job horizon H** (proposal: 7 days). Measured at steady state, with 91,048 of 91,058 past starts already marked: with H the discovery query took **11 to 13 ms** (3,583 probes). Without H it took **229 to 238 ms** (91,058 probes) and grows with every special ever created, every minute. A boundary older than H with no marker is not published. Prices are still correct (D 11: the job only tells consumers), and a daily check counts such rows and alerts. This adds a value and an alert to D 11 (11.2 M4).
 
