@@ -462,6 +462,7 @@ describe.each(['AU', 'ZZ'] as const)('price-hold review and retirement in market
         'amount',
         'anchorAmount',
         'anchorRecordId',
+        'basis',
         'direction',
         'kind',
         'offerId',

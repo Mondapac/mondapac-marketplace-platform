@@ -181,6 +181,12 @@ const MONEY_FIELD_ALLOW_LIST: readonly string[] = [
   'ordering.refund.requested.after.tax',
   'pricing.price-hold.approved.after.amount',
   'pricing.price-hold.approved.after.anchorAmount',
+  // R4 (ADR-0051): the median a first price was measured against; regular prices only, never Cost.
+  'pricing.price-hold.approved.after.referenceAmount',
+  'pricing.first-price.checked.after.amount',
+  'pricing.first-price.checked.after.referenceAmount',
+  'pricing.first-price.rechecked.after.amount',
+  'pricing.first-price.rechecked.after.referenceAmount',
   'pricing.price-hold.rejected.after.amount',
   'pricing.regular-price.accepted.after.amount',
   'pricing.regular-price.accepted.after.anchorAmount',
