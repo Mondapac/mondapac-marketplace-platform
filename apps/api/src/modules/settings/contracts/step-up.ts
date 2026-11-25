@@ -12,6 +12,8 @@ export const SETTINGS_AI_GATEWAY_LIMITS_STEP_UP = 'settings.ai-gateway-limits.ra
  * settings/admin/ai-gateway/emergency-stop`); switching it on needs none.
  */
 export const SETTINGS_AI_GATEWAY_RESUME_STEP_UP = 'settings.ai-gateway-emergency-stop.resume';
+/** Any change of the Market's AI model lists, saver models or saver threshold (`PUT settings/admin/ai-models`). */
+export const SETTINGS_AI_MODELS_STEP_UP = 'settings.ai-models.change';
 
 /**
  * The step-up actions settings owns (Hassan, PR 2b). Both are admin actions: a platform admin
@@ -35,4 +37,6 @@ export const SETTINGS_STEP_UP_ACTIONS: readonly StepUpActionDeclaration[] = [
     locked: true,
     audience: 'admin',
   },
+  // The External models tab (G4b): every change, since any model change can move data or cost.
+  { key: SETTINGS_AI_MODELS_STEP_UP, defaultRequired: true, locked: true, audience: 'admin' },
 ];

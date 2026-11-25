@@ -4,7 +4,12 @@ import type { ActorContext, CallContext, Clock, Id, MarketId } from '@mondapac/s
 import { CLOCK } from '../clock/clock.module';
 import type { CapabilitySpec } from './capability';
 import { CapabilityRegistry } from './capability-registry';
-import { AI_GATEWAY_CONTROLS, type AiCaps, type AiGatewayControls } from './gateway-controls';
+import {
+  AI_GATEWAY_CONTROLS,
+  NO_MODEL_LISTS,
+  type AiGatewayControls,
+  type AiMarketControls,
+} from './gateway-controls';
 import { ModelGateway, type AiModelTier, type ModelTokenPrice } from './model-gateway';
 import { AiRouter, planPrice } from './routing/ai-router';
 import type { ModelRequest, ModelTurn, ModelUsage } from './model-provider';
@@ -79,13 +84,17 @@ export interface GatewaySetup {
   readonly models: { readonly fast: string | null; readonly balanced: string | null };
 }
 
-/** The caps an "off" evaluation carries: nothing allowed (never used to call). */
-const CLOSED_CAPS: AiCaps = Object.freeze({
-  marketDay: 0,
-  marketMonth: 0,
-  capabilityDay: 0,
-  sellerDay: 0,
-  guestDay: 0,
+/** What an "off" evaluation carries: stopped, nothing allowed (never used to call). */
+const CLOSED_CONTROLS: AiMarketControls = Object.freeze({
+  stopped: true,
+  caps: Object.freeze({
+    marketDay: 0,
+    marketMonth: 0,
+    capabilityDay: 0,
+    sellerDay: 0,
+    guestDay: 0,
+  }),
+  models: NO_MODEL_LISTS,
 });
 
 /** A fallback needs at least this long left of the run's timeout; with less, none is tried. */
@@ -207,13 +216,15 @@ export class AiGateway {
     options: GatewayOptions,
   ): Promise<GatewayStatus> {
     try {
-      const { status, caps } = await this.#evaluate(capability, context, options);
+      const { status, controls } = await this.#evaluate(capability, context, options);
       if (!status.on) return status;
       const spec = this.registry.get(capability)!;
       // Off once a cap cannot take the most one call of the capability can cost: its largest
       // input (two characters a token at the cap, counted one token a character) and its whole
       // output allowance (Hassan, PR 1348 M1), so the host flow shows its non-AI path (R8).
-      const price = planPrice(this.router.plan(context.market.marketId, spec, options.tier));
+      const price = planPrice(
+        this.router.plan(context.market.marketId, spec, options.tier, false, controls.models),
+      );
       const largest =
         price === null
           ? 0
@@ -222,7 +233,7 @@ export class AiGateway {
               price,
             );
       const scope = scopeOf(spec, context, options);
-      if (await this.usage.overBudget(context.market, scope, caps, largest)) {
+      if (await this.usage.overBudget(context.market, scope, controls.caps, largest)) {
         return { on: false, reason: 'over-budget' };
       }
       return status;
@@ -239,17 +250,17 @@ export class AiGateway {
     options: GatewayOptions,
   ): Promise<GatewayRun> {
     let spec: CapabilitySpec;
-    let caps: AiCaps;
+    let controls: AiMarketControls;
     try {
       const evaluation = await this.#evaluate(capability, context, options);
       if (!evaluation.status.on) return { ok: false, reason: 'off', costMicroUsd: 0 };
       spec = this.registry.get(capability)!;
-      caps = evaluation.caps;
+      controls = evaluation.controls;
     } catch {
       return { ok: false, reason: 'off', costMicroUsd: 0 };
     }
     try {
-      return await this.#call(capability, spec, context, request, options, caps);
+      return await this.#call(capability, spec, context, request, options, controls);
     } catch {
       // Never throws: an unexpected error after the evaluation is an unavailable model.
       this.#logger.warn({ msg: 'ai.run.failed', capability, failure: 'error' });
@@ -263,8 +274,9 @@ export class AiGateway {
     context: CallContext,
     request: ModelRequest,
     options: GatewayOptions,
-    caps: AiCaps,
+    controls: AiMarketControls,
   ): Promise<GatewayRun> {
+    const { caps, models } = controls;
     const { market } = context;
     const { marketId } = market;
     const scope = scopeOf(spec, context, options);
@@ -295,7 +307,7 @@ export class AiGateway {
     // Saver mode (design section 6): at the Market's threshold of its month cap, the saver model
     // goes first. A failure to read the share keeps the normal order.
     let saver = false;
-    const saverAt = this.router.saverThreshold(marketId);
+    const saverAt = this.router.saverThreshold(spec, models);
     if (saverAt !== null) {
       try {
         const share = await this.usage.monthShare(market, caps);
@@ -304,7 +316,7 @@ export class AiGateway {
         saver = false;
       }
     }
-    const plan = this.router.plan(marketId, spec, options.tier, saver);
+    const plan = this.router.plan(marketId, spec, options.tier, saver, models);
     const price = planPrice(plan);
     if (price === null) return { ok: false, reason: 'off', costMicroUsd: 0 };
 
@@ -443,17 +455,17 @@ export class AiGateway {
   }
 
   /**
-   * The switches, the Market's gateway settings and the route, in order; the caps come with an
-   * "on". Throws when the gateway settings cannot be read (the callers answer off).
+   * The switches, the Market's gateway settings and the route, in order; the settings come with
+   * an "on". Throws when the gateway settings cannot be read (the callers answer off).
    */
   async #evaluate(
     capability: string,
     context: CallContext,
     options: GatewayOptions,
-  ): Promise<{ readonly status: GatewayStatus; readonly caps: AiCaps }> {
+  ): Promise<{ readonly status: GatewayStatus; readonly controls: AiMarketControls }> {
     const off = (reason: GatewayOffReason) => ({
       status: { on: false, reason } as const,
-      caps: CLOSED_CAPS,
+      controls: CLOSED_CONTROLS,
     });
     const spec = this.registry.get(capability);
     if (spec === undefined) return off('off');
@@ -470,9 +482,12 @@ export class AiGateway {
       if (actor.kind === 'authenticated' && actor.sellerId !== sellerId) return off('off');
       if ((await this.sellerSwitch.isOn(context, sellerId)) !== true) return off('off');
     }
-    if (this.router.plan(context.market.marketId, spec, options.tier).length === 0) {
+    if (
+      this.router.plan(context.market.marketId, spec, options.tier, false, controls.models)
+        .length === 0
+    ) {
       return off('no-route');
     }
-    return { status: { on: true }, caps: controls.caps };
+    return { status: { on: true }, controls };
   }
 }

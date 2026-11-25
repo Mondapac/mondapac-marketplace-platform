@@ -191,7 +191,8 @@ number so the partner team can work in parallel (G6).
   or `_BALANCED`, now a catalogue family; a name outside the catalogue is logged as an error and
   that tier is off, the API still boots, R8). The router
   expands it to its usable rows, provider route first, at most 3 attempts. Market residency and the
-  saver model are Market configuration `aiRouting` until G4 and INTL-53.
+  saver model were Market configuration `aiRouting` until G4b (the saver model is now a setting;
+  the residency stays configuration until INTL-53).
 - An attempt moves to the next route on a timeout, a server error, no answer, a rate limit, or a
   route that refuses its key or model (401, 403, 404); never on a request the provider cannot take
   (400, 413, 422: `rejected`) or a model refusal. Each attempt reserves before it is sent (call id =
@@ -350,11 +351,32 @@ settings/admin/ai-gateway/emergency-stop` (protected key `settings.ai-gateway.ma
   no free text (ADR-0009). Every change is reviewed at high risk where the marketplace area
   is reviewed, and a revert (a rejected review) never raises a cap or switches the stop off. While
   the stop is on, `status` answers `emergency-stop` and `run` answers `off`. The saver threshold
-  moves with the priority lists (G4b); the alert threshold waits for the alerts
+  moved with the priority lists (G4b); the alert threshold waits for the alerts
   (FE-20261125-ai-gateway-budget-alerts).
 - **Server checks.** Every rule of the page is checked on the server too: a model without a key,
   without a passed evaluation, with a region that does not meet the Market's requirement or retired
   is refused in a priority list.
+- **Built in G4b (priority lists, saver model and threshold).** Settings `ai-models-<task>` (`none`
+  or 1 to 3 catalogue families, comma-separated, in the order to try; a family is at most 20
+  characters and never `none`), `ai-saver-<task>` (`none` or one family) for chat, extract, write
+  and vision, and `ai-saver-percent` (50 to 99, default 80). `GET settings/admin/ai-models` (key
+  `settings.ai-gateway.view`) also lists, per task type, every catalogue family and why it cannot
+  be chosen now. `PUT settings/admin/ai-models` needs the protected key `settings.ai-models.manage`
+  and spends the admin step-up `settings.ai-models.change` for every change that saves something.
+  The server checks run in the change's unit through `platform/ai`'s `AiModelChoices` (boundary
+  rule `ai-model-choices-only-from-settings`), on the page as it would stand and only for the task
+  types changed: each family is in the catalogue, once, and for every registered capability of
+  the task type one of its routes is usable (Hassan's check, region, key, not retired, evaluated;
+  with no capability of the task type yet, every condition but the evaluation); a saver model
+  passes the same checks, needs a list and is cheaper than its model 1. A failed check is
+  `validation.failed` with the path `<code>.<index>` or `<code>`. The audit row counts the models
+  (`settings.ai-models.changed`, no free text, ADR-0009); the families are on the history row.
+  Reviewed at high risk; a rejected change is restored (the router checks every route again on
+  each call, so a restored list that went stale only skips that model). The gateway reads the
+  lists with the caps; a task type with a list uses it, and only a task type without one still
+  uses the family the module's tier names (the `tier` option goes in G4d). Saver mode uses the
+  task type's saver model at the Market's threshold. Market configuration `aiRouting` keeps only
+  the residency.
 
 ## 9. Security (Hassan)
 
@@ -467,19 +489,19 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 
 ## 12. Build plan
 
-| PR  | Scope                                                                                                                                                                                                                        | Depends on                                                                              | Reviewers                   |
-| --- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | --------------------------- |
-| G0  | Docs only: this document, ADR-0052, ADR-0053, the ADR-0019 decision 2 amendment, the future-enhancement rows                                                                                                                 | —                                                                                       | Ali (CTO), Mohammad, Hassan |
-| G1  | Capability registry, `run` and `status`, the seller-switch port, the generic masker. The buyer assistant and the description writer move to `run` and `status`; no user-visible change.                                      | G0                                                                                      | Mohammad, Hassan            |
-| G2  | Usage and reservation tables, central caps, parallel counting. Cap values come from per-Market configuration `aiBudget` until G4 and are enforced from G2 where set; the assistant's `spend_days` cap is not moved before G7 | G1                                                                                      | Mojtaba, Hassan             |
-| G3  | Router with priority lists, saver mode, circuit breaker, second adapter. Until G4 each task type's list is the single catalogue row today's tier maps to; the `tier` option stays until G4                                   | G2, ADR-0052 and Hassan's verification of the first route recorded in its catalogue row | Mohammad, Hassan            |
-| G4a | Caps and the Market's emergency stop in `settings`, read by the gateway through a port; API, protected key, conditional TOTP, audit                                                                                          | G3                                                                                      | Hassan, Mohammad            |
-| G4b | Priority lists per task type, saver model and threshold in `settings`, server checks, router reads them; the `tier` option goes                                                                                              | G4a                                                                                     | Hassan, Mohammad            |
-| G4c | Background evaluation run with its separate budget, and the playground by sample id                                                                                                                                          | G4b                                                                                     | Hassan, Mojtaba             |
-| G4d | Capability switches into these settings, the assistant's cap values into the gateway caps (FE-20261125-ai-gateway-assistant-cap-to-gateway), and the panel's "revert to a previous version" as a forward change with TOTP    | G4b                                                                                     | Hassan, Mojtaba             |
-| G5  | Admin pages AI Models (external tab, scorecard, playground, change preview) and AI Gateway                                                                                                                                   | G4                                                                                      | Reza (UI/UX)                |
-| G6  | In-house model tab: shadow, percent rollout, auto rollback, HTTP contract                                                                                                                                                    | G4, G5 and Hassan's approval                                                            | Mohammad, Hassan            |
-| G7  | Move `spend_days` in four steps                                                                                                                                                                                              | G2                                                                                      | Mojtaba                     |
+| PR  | Scope                                                                                                                                                                                                                                                                                                                     | Depends on                                                                              | Reviewers                   |
+| --- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- | --------------------------- |
+| G0  | Docs only: this document, ADR-0052, ADR-0053, the ADR-0019 decision 2 amendment, the future-enhancement rows                                                                                                                                                                                                              | —                                                                                       | Ali (CTO), Mohammad, Hassan |
+| G1  | Capability registry, `run` and `status`, the seller-switch port, the generic masker. The buyer assistant and the description writer move to `run` and `status`; no user-visible change.                                                                                                                                   | G0                                                                                      | Mohammad, Hassan            |
+| G2  | Usage and reservation tables, central caps, parallel counting. Cap values come from per-Market configuration `aiBudget` until G4 and are enforced from G2 where set; the assistant's `spend_days` cap is not moved before G7                                                                                              | G1                                                                                      | Mojtaba, Hassan             |
+| G3  | Router with priority lists, saver mode, circuit breaker, second adapter. Until G4 each task type's list is the single catalogue row today's tier maps to; the `tier` option stays until G4                                                                                                                                | G2, ADR-0052 and Hassan's verification of the first route recorded in its catalogue row | Mohammad, Hassan            |
+| G4a | Caps and the Market's emergency stop in `settings`, read by the gateway through a port; API, protected key, conditional TOTP, audit                                                                                                                                                                                       | G3                                                                                      | Hassan, Mohammad            |
+| G4b | Priority lists per task type, saver model and threshold in `settings`, server checks, router reads them                                                                                                                                                                                                                   | G4a                                                                                     | Hassan, Mohammad            |
+| G4c | Background evaluation run with its separate budget, and the playground by sample id                                                                                                                                                                                                                                       | G4b                                                                                     | Hassan, Mojtaba             |
+| G4d | Capability switches into these settings, the assistant's cap values into the gateway caps (FE-20261125-ai-gateway-assistant-cap-to-gateway), the panel's "revert to a previous version" as a forward change with TOTP, and the `tier` option goes (moved from G4b: it touches the assistant's and catalog's own settings) | G4b                                                                                     | Hassan, Mojtaba             |
+| G5  | Admin pages AI Models (external tab, scorecard, playground, change preview) and AI Gateway                                                                                                                                                                                                                                | G4                                                                                      | Reza (UI/UX)                |
+| G6  | In-house model tab: shadow, percent rollout, auto rollback, HTTP contract                                                                                                                                                                                                                                                 | G4, G5 and Hassan's approval                                                            | Mohammad, Hassan            |
+| G7  | Move `spend_days` in four steps                                                                                                                                                                                                                                                                                           | G2                                                                                      | Mojtaba                     |
 
 - G1 and G2 merge before the seller assistant's first PR.
 - G2 to G4 all touch the gateway's main pipeline, so they are built one after another. G5 and G7
@@ -514,6 +536,6 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 | FE-20261125-ai-gateway-bedrock-endpoint-check   | Confirm the Bedrock Mantle endpoint, model id and key length with AWS before the row gets its check    |
 | FE-20261125-ai-gateway-bad-answer-cost          | Count a billed 200 answer without content at its worst-case cost, not 0                                |
 | FE-20261125-ai-gateway-keep-reservation         | Keep a reservation for the next attempt after a zero-cost failure (2 hot-row units less per fallback)  |
-| FE-20261125-ai-gateway-saver-model-check        | Check a Market's `saverModel` against the catalogue at boot                                            |
+| FE-20261125-ai-gateway-saver-model-check        | Obsolete (G4b): the saver model is a setting, checked on the server when saved                         |
 | FE-20261125-ai-gateway-drop-spend-days          | G7 step 4: drop `assistant.spend_days` one release after G7b                                           |
 | FE-20261125-ai-gateway-assistant-cap-to-gateway | Move the assistant's day and month cap values into the gateway's caps (with G4)                        |

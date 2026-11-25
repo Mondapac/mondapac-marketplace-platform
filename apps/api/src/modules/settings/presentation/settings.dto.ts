@@ -1,3 +1,4 @@
+import type { AiModelsView } from '../application/use-cases/view-ai-models.use-case';
 import type { OfferReviewEmergencyStopView } from '../application/use-cases/view-offer-review-emergency-stop.use-case';
 import { ApiProperty } from '@nestjs/swagger';
 import type { ListPaging } from '../domain/definitions';
@@ -42,6 +43,34 @@ export class SettingChangeBody extends SettingBody {
 
 export class SettingsListBody {
   @ApiProperty({ type: [SettingBody] }) settings!: SettingBody[];
+}
+
+export class AiModelOptionBody {
+  @ApiProperty({ description: 'A model family of the route catalogue, e.g. claude-sonnet-5-5.' })
+  family!: string;
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description:
+      'Why it cannot be chosen for the task type in the Market now (unknown-model, ' +
+      'task-unsupported, not-checked, region, no-key, retired, not-evaluated), or null.',
+  })
+  problem!: string | null;
+}
+
+export class AiModelsBody {
+  @ApiProperty({ type: [SettingBody] }) settings!: SettingBody[];
+  @ApiProperty({
+    description:
+      'Per task type (chat, extract, write, vision), every model family with why it cannot be ' +
+      'chosen now.',
+    type: 'object',
+    additionalProperties: {
+      type: 'array',
+      items: { $ref: '#/components/schemas/AiModelOptionBody' },
+    },
+  })
+  options!: Record<string, AiModelOptionBody[]>;
 }
 
 export class ChangeSettingRequest {
@@ -221,6 +250,16 @@ export const settingsChangeListBody = (
 
 export const settingsListBody = (views: readonly SettingView[]): SettingsListBody => ({
   settings: views.map(settingBody),
+});
+
+export const aiModelsBody = (view: AiModelsView): AiModelsBody => ({
+  settings: view.settings.map(settingBody),
+  options: Object.fromEntries(
+    Object.entries(view.options).map(([task, options]) => [
+      task,
+      options.map(({ family, problem }) => ({ family, problem })),
+    ]),
+  ),
 });
 
 export const listPagingBody = (value: ListPaging): ListPagingBody => ({ listPaging: value });

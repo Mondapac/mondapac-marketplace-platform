@@ -2,7 +2,7 @@ import { devNull } from 'node:os';
 import type { INestApplicationContext } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import pino from 'pino';
-import { ok, Temporal } from '@mondapac/shared-kernel';
+import { ok, Temporal, type Id } from '@mondapac/shared-kernel';
 import {
   FixedClock,
   testAuthenticatedActor,
@@ -50,7 +50,8 @@ import { createPersistence, marketOf, type Persistence } from './persistence-sup
 import { ChangeAiGatewayEmergencyStop } from '../../src/modules/settings/application/use-cases/change-ai-gateway-emergency-stop.use-case';
 import { ChangeAiGatewayLimits } from '../../src/modules/settings/application/use-cases/change-ai-gateway-limits.use-case';
 import { SettingsAiGatewayControls } from '../../src/modules/settings/application/ai-gateway-controls-reader';
-import { NO_CAPS } from '../../src/platform/ai/gateway-controls';
+import { NO_CAPS, NO_MODEL_LISTS } from '../../src/platform/ai/gateway-controls';
+import { ChangeAiModels } from '../../src/modules/settings/application/use-cases/change-ai-models.use-case';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // The settings store as the application role in both Market fixtures: the tables' own guards (the
@@ -63,6 +64,16 @@ const CHECK = '23514';
 /** These tests change list paging only, which spends no step-up proof; any call is a mistake. */
 const NO_STEP_UP: SettingsDependencies['stepUp'] = {
   consume: () => Promise.reject(new Error('no step-up expected')),
+};
+/** The AI model lists' change spends a step-up proof; the database tests grant it. */
+const SPENT: SettingsDependencies['stepUp'] = {
+  consume: () =>
+    Promise.resolve(
+      ok({
+        sessionId: '01990000-0000-7000-8000-0000000000f1' as Id<'Session'>,
+        verifiedAt: Temporal.Instant.from('2020-03-02T10:00:00Z'),
+      }),
+    ),
 };
 const NO_PRIVILEGE = '42501';
 const RESTRICT = '23001';
@@ -301,7 +312,11 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
         { code: 'ai-gateway-emergency-stop', value: 'on', note: 'Leak suspected' },
       ]);
       const controls = await new SettingsAiGatewayControls(deps).read(seller);
-      expect(controls).toEqual({ stopped: true, caps: { ...NO_CAPS, guestDay: 250 } });
+      expect(controls).toEqual({
+        stopped: true,
+        caps: { ...NO_CAPS, guestDay: 250 },
+        models: NO_MODEL_LISTS,
+      });
       expect(
         await code_(
           owner.query(
@@ -310,6 +325,45 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
           ),
         ),
       ).toBe(RESTRICT);
+    });
+
+    it('saves the AI model lists on the real store and the gateway reader sees them (G4b)', async () => {
+      const ctx = admin('settings-db-admin-models');
+      const checked: unknown[][] = [];
+      const choices = {
+        check: (marketId: string, task: string, list: readonly string[], saver: string | null) => {
+          checked.push([marketId, task, [...list], saver]);
+          return { list: list.map(() => null), saver: null };
+        },
+      };
+      const saved = await new ChangeAiModels(gate, { ...deps, stepUp: SPENT }, choices).execute(
+        ctx,
+        {
+          changes: [
+            { code: 'ai-models-chat', value: 'fam-a,fam-b', expectedVersion: 0 },
+            { code: 'ai-saver-chat', value: 'fam-cheap', expectedVersion: 0 },
+            { code: 'ai-saver-percent', value: '70', expectedVersion: 0 },
+          ],
+        },
+      );
+      expect(saved.ok).toBe(true);
+      expect(checked).toEqual([[market.marketId, 'chat', ['fam-a', 'fam-b'], 'fam-cheap']]);
+      const controls = await new SettingsAiGatewayControls(deps).read(seller);
+      expect(controls.models).toEqual({
+        lists: { chat: ['fam-a', 'fam-b'] },
+        savers: { chat: 'fam-cheap' },
+        saverAtPercent: 70,
+      });
+      const history = await owner.query(
+        `SELECT code, previous_value, value FROM settings.market_setting_history
+          WHERE market_id = $1 AND code LIKE 'ai-%' ORDER BY code`,
+        [market.marketId],
+      );
+      expect(history.rows).toEqual([
+        { code: 'ai-models-chat', previous_value: null, value: 'fam-a,fam-b' },
+        { code: 'ai-saver-chat', previous_value: null, value: 'fam-cheap' },
+        { code: 'ai-saver-percent', previous_value: null, value: '70' },
+      ]);
     });
 
     it('lets only one of two admins who saved from the same version win', async () => {

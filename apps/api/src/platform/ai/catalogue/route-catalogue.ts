@@ -119,6 +119,11 @@ export class RouteCatalogue {
     return this.#rows;
   }
 
+  /** Every model family of the catalogue, sorted. */
+  families(): string[] {
+    return [...new Set(this.#rows.map((row) => row.family))].sort();
+  }
+
   /** Whether a model family is in the catalogue. */
   hasFamily(family: string): boolean {
     return this.#rows.some((row) => row.family === family);

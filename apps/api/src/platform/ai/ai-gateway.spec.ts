@@ -912,7 +912,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
                 id,
                 {
                   ...config,
-                  aiRouting: { dataResidency: 'none', regions: [], saverAtPercent: 80 },
+                  aiRouting: { dataResidency: 'none', regions: [] },
                 },
               ]),
             ) as never,
@@ -1041,24 +1041,74 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       );
     });
 
+    describe('Market priority lists (G4b settings)', () => {
+      const listOf = (task: string, list: readonly string[]) => ({
+        lists: { [task]: list },
+        savers: {},
+        saverAtPercent: 80,
+      });
+      const other = () => testRouteCatalogue([testRoute('model-other', 'anthropic-api')]);
+      const passes = passesFor(ROUTED, ['model-fast', 'model-other']);
+
+      it.each(['AU', 'ZZ'] as const)(
+        'tries the list of the task type in its order, not the tier family (%s)',
+        async (code) => {
+          const market = code === 'AU' ? AU : ZZ;
+          const gateway = routedGateway({ catalogue: other(), passes });
+          controls.models.set(code, listOf('write', ['model-other', 'model-fast']));
+          expect(
+            await gateway.run('alpha.admin-writer', adminContext(market), REQUEST, {
+              tier: 'fast',
+            }),
+          ).toMatchObject({ ok: true, route: { model: 'model-other', attempt: 1 } });
+          routed.answer = (route) =>
+            route === 'anthropic-api'
+              ? Promise.reject(new ModelProviderError('server'))
+              : Promise.resolve(TURN);
+          expect(
+            await gateway.run('alpha.admin-writer', adminContext(market), REQUEST, {
+              tier: 'fast',
+            }),
+          ).toMatchObject({ ok: true, route: { model: 'anthropic.model-fast', attempt: 3 } });
+        },
+      );
+
+      it('skips a family the router cannot use and keeps the next one', async () => {
+        const gateway = routedGateway({ catalogue: other(), passes: passesFor(ROUTED) });
+        controls.models.set('AU', listOf('write', ['model-unknown', 'model-other', 'model-fast']));
+        expect(
+          await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
+        ).toMatchObject({ ok: true, route: { model: 'model-fast', attempt: 1 } });
+      });
+
+      it('leaves a capability on its tier family while only another task type has a list', async () => {
+        const gateway = routedGateway({ catalogue: other(), passes });
+        controls.models.set('AU', listOf('chat', ['model-other']));
+        expect(
+          await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
+        ).toMatchObject({ ok: true, route: { model: 'model-fast' } });
+      });
+
+      it('is off, calling nothing, when no family of the list is usable', async () => {
+        const gateway = routedGateway({ catalogue: other(), passes });
+        controls.models.set('AU', listOf('write', ['model-unknown']));
+        expect(
+          await gateway.status('alpha.admin-writer', adminContext(), { tier: 'fast' }),
+        ).toMatchObject({ on: false });
+        expect(
+          await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
+        ).toEqual({ ok: false, reason: 'off', costMicroUsd: 0 });
+        expect(routed.routes).toEqual([]);
+      });
+    });
+
     describe('saver mode', () => {
-      const saverMarkets = () =>
-        new MarketRegistry(
-          new Map(
-            [...REAL_MARKETS].map(([id, config]) => [
-              id,
-              {
-                ...config,
-                aiRouting: {
-                  dataResidency: 'in-market-region',
-                  regions: ['ap-southeast-2'],
-                  saverModel: 'model-saver',
-                  saverAtPercent: 80,
-                },
-              },
-            ]),
-          ) as never,
-        );
+      /** The Market's saver model for the writer's task type (G4b settings), at `percent`. */
+      const saverOf = (percent = 80) => ({
+        lists: {},
+        savers: { write: 'model-saver' },
+        saverAtPercent: percent,
+      });
       const withSaver = (price: number) =>
         testRouteCatalogue([
           testRoute('model-saver', 'anthropic-api', {
@@ -1067,29 +1117,44 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
           }),
         ]);
       const saverPasses = passesFor(ROUTED, ['model-fast', 'model-saver']);
+      const saverGateway = (price: number, percent = 80) => {
+        const gateway = routedGateway({ catalogue: withSaver(price), passes: saverPasses });
+        controls.models.set('AU', saverOf(percent));
+        return gateway;
+      };
 
       it.each([
         [0.85, 'model-saver'],
         [0.5, 'model-fast'],
         [null, 'model-fast'],
       ])('at a month share of %s tries %s first', async (share, first) => {
-        const gateway = routedGateway({
-          catalogue: withSaver(0.1),
-          passes: saverPasses,
-          markets: saverMarkets(),
-        });
+        const gateway = saverGateway(0.1);
         jest.spyOn(usage, 'monthShare').mockResolvedValue(share);
         expect(
           await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
         ).toMatchObject({ ok: true, route: { model: first, attempt: 1 } });
       });
 
+      it('takes the threshold from the Market settings (90 %: not yet at 85 %)', async () => {
+        const gateway = saverGateway(0.1, 90);
+        jest.spyOn(usage, 'monthShare').mockResolvedValue(0.85);
+        expect(
+          await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
+        ).toMatchObject({ ok: true, route: { model: 'model-fast' } });
+      });
+
+      it("uses the saver model of the capability's own task type only", async () => {
+        const gateway = routedGateway({ catalogue: withSaver(0.1), passes: saverPasses });
+        controls.models.set('AU', { ...saverOf(), savers: { chat: 'model-saver' } });
+        const share = jest.spyOn(usage, 'monthShare').mockResolvedValue(0.95);
+        expect(
+          await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
+        ).toMatchObject({ ok: true, route: { model: 'model-fast' } });
+        expect(share).not.toHaveBeenCalled();
+      });
+
       it('never puts a saver model first that is not cheaper', async () => {
-        const gateway = routedGateway({
-          catalogue: withSaver(50),
-          passes: saverPasses,
-          markets: saverMarkets(),
-        });
+        const gateway = saverGateway(50);
         jest.spyOn(usage, 'monthShare').mockResolvedValue(0.95);
         expect(
           await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),
@@ -1097,11 +1162,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
       });
 
       it('keeps the normal order when the share cannot be read', async () => {
-        const gateway = routedGateway({
-          catalogue: withSaver(0.1),
-          passes: saverPasses,
-          markets: saverMarkets(),
-        });
+        const gateway = saverGateway(0.1);
         jest.spyOn(usage, 'monthShare').mockRejectedValue(new Error('down'));
         expect(
           await gateway.run('alpha.admin-writer', adminContext(), REQUEST, { tier: 'fast' }),

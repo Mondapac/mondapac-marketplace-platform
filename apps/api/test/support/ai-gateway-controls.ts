@@ -1,7 +1,9 @@
 import type { CallContext } from '@mondapac/shared-kernel';
 import {
   NO_CAPS,
+  NO_MODEL_LISTS,
   type AiCaps,
+  type AiModelLists,
   type AiGatewayControls,
   type AiMarketControls,
 } from '../../src/platform/ai/gateway-controls';
@@ -34,12 +36,13 @@ export const capsOfBudget = (budget: TestBudget): AiCaps => ({
 
 /**
  * {@link AiGatewayControls} for unit tests: by default AU has no caps (counted only) and ZZ the
- * caps its fixture had; `stopped` Markets have the emergency stop on; `failing` throws (the
- * settings store is down).
+ * caps its fixture had; `stopped` Markets have the emergency stop on; `models` holds a Market's
+ * model lists (none: the tier family); `failing` throws (the settings store is down).
  */
 export class TestAiGatewayControls implements AiGatewayControls {
   readonly caps = new Map<string, AiCaps>([['ZZ', ZZ_TEST_AI_CAPS]]);
   readonly stopped = new Set<string>();
+  readonly models = new Map<string, AiModelLists>();
   failing = false;
   reads = 0;
 
@@ -60,6 +63,7 @@ export class TestAiGatewayControls implements AiGatewayControls {
     return Promise.resolve({
       stopped: this.stopped.has(marketId),
       caps: this.caps.get(marketId) ?? this.default,
+      models: this.models.get(marketId) ?? NO_MODEL_LISTS,
     });
   }
 }

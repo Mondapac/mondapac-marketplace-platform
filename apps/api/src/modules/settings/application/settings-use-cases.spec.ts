@@ -46,7 +46,10 @@ import { ChangeAiGatewayEmergencyStop } from './use-cases/change-ai-gateway-emer
 import { ChangeAiGatewayLimits } from './use-cases/change-ai-gateway-limits.use-case';
 import { ViewAiGatewaySettings } from './use-cases/view-ai-gateway-settings.use-case';
 import { SettingsAiGatewayControls } from './ai-gateway-controls-reader';
-import { NO_CAPS } from '../../../platform/ai/gateway-controls';
+import { NO_CAPS, NO_MODEL_LISTS } from '../../../platform/ai/gateway-controls';
+import type { AiModelChoices, ModelChoiceProblem } from '../../../platform/ai/model-choices';
+import { ChangeAiModels } from './use-cases/change-ai-models.use-case';
+import { ViewAiModels } from './use-cases/view-ai-models.use-case';
 
 // The settings store in memory on both Market fixtures: the default in force before any change,
 // a change with its version, history and one audit row, a stale version, a repeat that changes
@@ -1180,7 +1183,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         ['ai-cap-seller-day', 'none', 0],
         ['ai-cap-guest-day', 'none', 0],
       ]);
-      expect(await controls()).toEqual({ stopped: false, caps: NO_CAPS });
+      expect(await controls()).toEqual({ stopped: false, caps: NO_CAPS, models: NO_MODEL_LISTS });
     });
 
     it('lowers a cap without a two-step code, audited in micro-dollars; the gateway reads it', async () => {
@@ -1335,7 +1338,11 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         updatedAt: T0,
         updatedBy: ADMIN,
       });
-      expect(await controls()).toEqual({ stopped: true, caps: { ...NO_CAPS, capabilityDay: 0 } });
+      expect(await controls()).toEqual({
+        stopped: true,
+        caps: { ...NO_CAPS, capabilityDay: 0 },
+        models: NO_MODEL_LISTS,
+      });
     });
 
     it('throws when the store cannot be read (the gateway answers off)', async () => {
@@ -1362,6 +1369,274 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       expect(
         await aiStop({ value: 'on', expectedVersion: 0, note: 'x' }, actingAs(adminCtx())),
       ).toEqual({ ok: false, error: { code: 'access.denied' } });
+    });
+  });
+
+  describe('the AI model lists (G4b, docs/design/domain/platform-ai.md sections 7 and 8)', () => {
+    /**
+     * The External models tab's server checks, faked: `fam-a`, `fam-b` and `fam-cheap` may be
+     * chosen, anything else is not evaluated, a family twice is a duplicate, and a saver model must
+     * be `fam-cheap` (the only one cheaper than the others).
+     */
+    class FakeChoices implements Pick<AiModelChoices, 'check' | 'options'> {
+      readonly checked: unknown[][] = [];
+      check(marketId: string, task: string, list: readonly string[], saver: string | null) {
+        this.checked.push([marketId, task, [...list], saver]);
+        const seen = new Set<string>();
+        const problemOf = (family: string): ModelChoiceProblem | null =>
+          ['fam-a', 'fam-b', 'fam-cheap'].includes(family) ? null : 'not-evaluated';
+        return {
+          list: list.map((family) => {
+            if (seen.has(family)) return 'duplicate' as const;
+            seen.add(family);
+            return problemOf(family);
+          }),
+          saver:
+            saver === null
+              ? null
+              : list.length === 0
+                ? ('saver-without-list' as const)
+                : (problemOf(saver) ?? (saver === 'fam-cheap' ? null : 'saver-not-cheaper')),
+        };
+      }
+      options() {
+        return {
+          chat: [{ family: 'fam-a', problem: null }],
+          extract: [],
+          write: [{ family: 'fam-x', problem: 'not-evaluated' as const }],
+          vision: [{ family: 'fam-a', problem: 'task-unsupported' as const }],
+        };
+      }
+    }
+    let choices: FakeChoices;
+    beforeEach(() => {
+      choices = new FakeChoices();
+    });
+    const change = (input: Record<string, unknown>, context = adminCtx()) =>
+      new ChangeAiModels(gate, deps, choices).execute(context, input);
+    const controls = () => new SettingsAiGatewayControls(deps).read(adminCtx());
+    const set = (code: string, value: unknown, expectedVersion = 0) => ({
+      code,
+      value,
+      expectedVersion,
+    });
+
+    it('shows no list, no saver model and 80 % by default, with what each task type may take', async () => {
+      const view = await new ViewAiModels(gate, deps, choices).execute(adminCtx(), {});
+      expect(
+        view.ok && view.value.settings.map(({ code, value, version }) => [code, value, version]),
+      ).toEqual([
+        ['ai-models-chat', 'none', 0],
+        ['ai-models-extract', 'none', 0],
+        ['ai-models-write', 'none', 0],
+        ['ai-models-vision', 'none', 0],
+        ['ai-saver-chat', 'none', 0],
+        ['ai-saver-extract', 'none', 0],
+        ['ai-saver-write', 'none', 0],
+        ['ai-saver-vision', 'none', 0],
+        ['ai-saver-percent', '80', 0],
+      ]);
+      expect(view.ok && view.value.options.write).toEqual([
+        { family: 'fam-x', problem: 'not-evaluated' },
+      ]);
+      expect((await controls()).models).toEqual(NO_MODEL_LISTS);
+    });
+
+    it('needs a fresh two-step code for every change, and saves nothing without one', async () => {
+      proofLeft = false;
+      expect(await change({ changes: [set('ai-models-chat', 'none')] })).toEqual({
+        ok: true,
+        value: [expect.objectContaining({ code: 'ai-models-chat', value: 'none', version: 0 })],
+      });
+      for (const changes of [
+        [set('ai-models-chat', 'fam-a')],
+        [set('ai-saver-percent', '60')],
+        [set('ai-saver-percent', '95')],
+      ]) {
+        proofLeft = false;
+        expect(await change({ changes })).toEqual({
+          ok: false,
+          error: { code: 'second-factor.required', actionKey: 'settings.ai-models.change' },
+        });
+      }
+      expect(store.history).toHaveLength(0);
+    });
+
+    it('saves a list, a saver model and the threshold; audited by count; the gateway reads them', async () => {
+      proofLeft = true;
+      const saved = await change({
+        changes: [
+          set('ai-models-write', 'fam-a,fam-b'),
+          set('ai-saver-write', 'fam-cheap'),
+          set('ai-saver-percent', '90'),
+        ],
+      });
+      expect(saved.ok && saved.value.map(({ code, value }) => [code, value])).toEqual([
+        ['ai-models-write', 'fam-a,fam-b'],
+        ['ai-saver-write', 'fam-cheap'],
+        ['ai-saver-percent', '90'],
+      ]);
+      expect(spentProofs).toEqual(['settings.ai-models.change']);
+      expect(choices.checked).toEqual([
+        [market.marketId, 'write', ['fam-a', 'fam-b'], 'fam-cheap'],
+      ]);
+      expect(audit.entries.slice(-3)).toMatchObject([
+        {
+          action: 'settings.ai-models.changed',
+          targetId: 'ai-models-write',
+          before: { models: 0 },
+          after: { models: 2, version: 1 },
+        },
+        {
+          action: 'settings.ai-models.changed',
+          targetId: 'ai-saver-write',
+          before: { models: 0 },
+          after: { models: 1, version: 1 },
+        },
+        {
+          action: 'settings.market-setting.number-changed',
+          targetId: 'ai-saver-percent',
+          before: { value: 80 },
+          after: { value: 90, version: 1 },
+        },
+      ]);
+      expect((await controls()).models).toEqual({
+        lists: { write: ['fam-a', 'fam-b'] },
+        savers: { write: 'fam-cheap' },
+        saverAtPercent: 90,
+      });
+    });
+
+    it('refuses a list or a saver model the server checks do not allow, before any code is spent', async () => {
+      proofLeft = true;
+      expect(await change({ changes: [set('ai-models-chat', 'fam-a,fam-z,fam-a')] })).toEqual({
+        ok: false,
+        error: {
+          code: 'validation.failed',
+          fields: [
+            { path: 'ai-models-chat.1', code: 'not-evaluated' },
+            { path: 'ai-models-chat.2', code: 'duplicate' },
+          ],
+        },
+      });
+      expect(await change({ changes: [set('ai-saver-chat', 'fam-cheap')] })).toEqual({
+        ok: false,
+        error: {
+          code: 'validation.failed',
+          fields: [{ path: 'ai-saver-chat', code: 'saver-without-list' }],
+        },
+      });
+      expect(
+        await change({ changes: [set('ai-models-chat', 'fam-a'), set('ai-saver-chat', 'fam-b')] }),
+      ).toEqual({
+        ok: false,
+        error: {
+          code: 'validation.failed',
+          fields: [{ path: 'ai-saver-chat', code: 'saver-not-cheaper' }],
+        },
+      });
+      expect(spentProofs).toEqual([]);
+      expect(store.history).toHaveLength(0);
+    });
+
+    it('checks a saver model alone against the list in force, and only the task types changed', async () => {
+      proofLeft = true;
+      expect((await change({ changes: [set('ai-models-extract', 'fam-a')] })).ok).toBe(true);
+      // A stored list that no longer passes does not block a change of another task type.
+      store.rows.set(`${market.marketId}/ai-models-chat`, {
+        code: 'ai-models-chat',
+        value: 'fam-gone',
+        version: 1,
+        updatedAt: T0,
+        updatedBy: ADMIN,
+      });
+      choices.checked.length = 0;
+      proofLeft = true;
+      expect((await change({ changes: [set('ai-saver-extract', 'fam-cheap')] })).ok).toBe(true);
+      expect(choices.checked).toEqual([[market.marketId, 'extract', ['fam-a'], 'fam-cheap']]);
+      // Its saver model is still checked against it.
+      proofLeft = true;
+      expect(await change({ changes: [set('ai-saver-chat', 'fam-b')] })).toEqual({
+        ok: false,
+        error: {
+          code: 'validation.failed',
+          fields: [{ path: 'ai-saver-chat', code: 'saver-not-cheaper' }],
+        },
+      });
+    });
+
+    it('takes only none or 1 to 3 lowercase families, and a threshold of 50 to 99', async () => {
+      proofLeft = true;
+      for (const value of [
+        '',
+        'fam-a,',
+        ',fam-a',
+        'Fam-A',
+        'fam-a,fam-b,fam-cheap,fam-a',
+        'fam a',
+        `f${'a'.repeat(20)}`,
+        5,
+      ]) {
+        expect(await change({ changes: [set('ai-models-chat', value)] })).toEqual({
+          ok: false,
+          error: {
+            code: 'validation.failed',
+            fields: [{ path: 'changes.0.value', code: 'value' }],
+          },
+        });
+      }
+      expect((await change({ changes: [set('ai-saver-chat', 'fam-a,fam-b')] })).ok).toBe(false);
+      for (const value of ['49', '100', '80.5']) {
+        expect((await change({ changes: [set('ai-saver-percent', value)] })).ok).toBe(false);
+      }
+      expect((await change({ changes: [set('ai-cap-market-day', '1')] })).ok).toBe(false);
+      expect(store.history).toHaveLength(0);
+    });
+
+    it('is reviewed at high risk where the area is reviewed, and a rejected change is reverted', async () => {
+      review.review('marketplace');
+      proofLeft = true;
+      expect(
+        (await change({ changes: [set('ai-models-write', 'fam-a')], note: 'Try fam-a' })).ok,
+      ).toBe(true);
+      expect(review.opened.map((opened) => [opened.subjectRef, opened.risk])).toEqual([
+        ['ai-models-write', 'high'],
+      ]);
+      const reverted = await new SettingsReverter(deps).revert(adminCtx(), {
+        requestId: id<'SystemRequest'>(0x5e4),
+        subjectRef: 'ai-models-write',
+        before: { value: 'none' },
+        after: { value: 'fam-a' },
+      });
+      expect(reverted).toBe('reverted');
+      expect((await controls()).models.lists).toEqual({});
+    });
+
+    it('reads a stored value the definition does not allow as no list and a 50 % threshold', async () => {
+      for (const [code, value] of [
+        ['ai-models-write', 'FAM'],
+        ['ai-saver-write', 'fam-a,fam-b'],
+        ['ai-saver-percent', '12'],
+      ] as const) {
+        store.rows.set(`${market.marketId}/${code}`, {
+          code,
+          value,
+          version: 1,
+          updatedAt: T0,
+          updatedBy: ADMIN,
+        });
+      }
+      expect((await controls()).models).toEqual({ lists: {}, savers: {}, saverAtPercent: 50 });
+    });
+
+    it('is refused in an acting-as session and for anyone but an admin', async () => {
+      proofLeft = true;
+      for (const context of [actingAs(adminCtx()), sellerCtx()]) {
+        expect(await change({ changes: [set('ai-models-chat', 'fam-a')] }, context)).toEqual({
+          ok: false,
+          error: { code: 'access.denied' },
+        });
+      }
     });
   });
 });

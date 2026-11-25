@@ -120,10 +120,23 @@ export const SETTINGS_AI_GATEWAY_MANAGE = definePermission('settings', {
   protected: true,
 });
 
+/**
+ * Change the Market's AI model choice (the External models tab, AI Gateway G4b): each task type's
+ * priority list, its saver model and the saver threshold. Protected (owner decision Q4), like
+ * `settings.ai-gateway.manage`; every change also spends a fresh two-step code. Seen with
+ * `settings.ai-gateway.view`.
+ */
+export const SETTINGS_AI_MODELS_MANAGE = definePermission('settings', {
+  key: 'settings.ai-models.manage',
+  scope: 'platform',
+  protected: true,
+});
+
 export const SETTINGS_PERMISSIONS = declarePermissions('settings', [
   SETTINGS_AI_GATEWAY_MANAGE,
   SETTINGS_AI_GATEWAY_VIEW,
   SETTINGS_AI_MANAGE,
+  SETTINGS_AI_MODELS_MANAGE,
   SETTINGS_AI_VIEW,
   SETTINGS_CART_MODE_MANAGE,
   SETTINGS_CART_MODE_VIEW,

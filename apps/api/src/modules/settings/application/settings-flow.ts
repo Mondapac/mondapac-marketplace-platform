@@ -4,7 +4,9 @@ import type { CallContext, Id, Result, Temporal } from '@mondapac/shared-kernel'
 import type { AuditEntry } from '@mondapac/shared-kernel';
 import {
   AiCapChanged,
+  AiModelsChanged,
   type AI_CAP_TARGET_IDS,
+  type AI_MODEL_TARGET_IDS,
   MarketNumberSettingChanged,
   MarketSettingChanged,
   MonthlyRevenueTargetChanged,
@@ -15,7 +17,11 @@ import {
   acceptedValue,
   AI_CAP_CODES,
   AI_GATEWAY_CODES,
+  AI_MODEL_CODES,
+  AI_MODEL_LIST_CODES,
+  AI_SAVER_CODES,
   capOf,
+  familiesOf,
   findDefinition,
   loosensAi,
   MONTHLY_REVENUE_TARGET_CODE,
@@ -51,6 +57,7 @@ const AI_CODES: ReadonlySet<string> = new Set([
 const HIGH_RISK_CODES: ReadonlySet<string> = new Set([
   ...AI_CODES,
   ...AI_GATEWAY_CODES,
+  ...AI_MODEL_CODES,
   ...OFFER_REVIEW_CODES,
   OFFER_REVIEW_EMERGENCY_STOP_CODE,
 ]);
@@ -88,6 +95,13 @@ function changeEntry(
     return AiCapChanged.entry(definition.code as (typeof AI_CAP_TARGET_IDS)[number], {
       before: { microUsd: capOf(inForce ?? definition.safeValue) },
       after: { microUsd: capOf(next), version },
+    });
+  }
+  if (AI_MODEL_LIST_CODES.includes(definition.code) || AI_SAVER_CODES.includes(definition.code)) {
+    // The families are on the history row; the audit row counts them (no free text, ADR-0009).
+    return AiModelsChanged.entry(definition.code as (typeof AI_MODEL_TARGET_IDS)[number], {
+      before: { models: familiesOf(acceptedValue(definition, was) ?? definition.safeValue).length },
+      after: { models: familiesOf(next).length, version },
     });
   }
   if (definition.integer !== undefined) {
@@ -397,6 +411,15 @@ export async function changeSettings(
    * only when one of the changes meets it (the value in force and the value asked for).
    */
   stepUp?: StepUpRule,
+  /**
+   * A check of the page as it would stand after the changes (every code of `allowedCodes` with its
+   * value then in force), run in the change's unit after the version check and before any proof is
+   * spent; a field issue refuses the whole change (the AI model lists' server checks, G4b).
+   */
+  checkResult?: (
+    values: ReadonlyMap<string, string>,
+    changed: ReadonlySet<string>,
+  ) => readonly FieldIssue[],
 ): Promise<Result<readonly SettingChangeView[], SettingsFailure>> {
   const adminId = adminAccountId(context);
   if (adminId === null) return err({ code: 'access.denied' });
@@ -438,6 +461,25 @@ export async function changeSettings(
         const was = row?.value ?? definition.defaultValue;
         if (stepUp?.when?.(definition.code, was, next) === true) {
           stepUpNeeded = true;
+        }
+      }
+      if (checkResult !== undefined) {
+        const rows = await deps.settings.list(context.market);
+        const values = new Map<string, string>();
+        for (const code of allowedCodes) {
+          const definition = findDefinition(code)!;
+          const stored = rows.find((row) => row.code === code)?.value;
+          values.set(
+            code,
+            stored === undefined
+              ? definition.defaultValue
+              : (acceptedValue(definition, stored) ?? definition.safeValue),
+          );
+        }
+        for (const { definition, next } of checkedChanges) values.set(definition.code, next);
+        const issues = checkResult(values, codes);
+        if (issues.length > 0) {
+          return err({ code: 'validation.failed' as const, fields: [...issues] });
         }
       }
       // The proof is spent only for a change that would be saved; a refusal commits nothing.

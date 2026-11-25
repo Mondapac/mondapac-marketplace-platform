@@ -13,6 +13,7 @@ import { checkedInCatalogue } from './catalogue';
 import { AI_ROUTE_CATALOGUE, type RouteCatalogue } from './catalogue/route-catalogue';
 import { AI_EVALUATION_RESULTS, EvaluationResults } from './evaluations/evaluation-results';
 import { EVALUATION_PASSES } from './evaluations/results';
+import { AiModelChoices } from './model-choices';
 import { ModelGateway } from './model-gateway';
 import { MODEL_PROVIDER } from './model-provider';
 import { AiRouter } from './routing/ai-router';
@@ -35,6 +36,7 @@ import { AI_USAGE_STORE, type AiUsageStore } from './usage/ai-usage-store';
  * sweeper`, `platform.ai-usage-retention`) are registered in both roles and run by the worker.
  * {@link AiUsageReport} is the one read of it a module gets (G7): its own capability's settled
  * cost per day and its "cap reached" record, never what is held or a call's detail.
+ * {@link AiModelChoices} is settings' check of a Market's model lists against the catalogue (G4b).
  *
  * `app.module.ts` passes the module that provides and exports `SELLER_AI_SWITCH` (sellers'), as it
  * does for identity's authorisation check, so `platform/` imports no module; a graph without it
@@ -86,8 +88,9 @@ export class AiModule {
         ]),
         AiGateway,
         AiUsageReport,
+        AiModelChoices,
       ],
-      exports: [AiGateway, CapabilityRegistry, AiUsageReport],
+      exports: [AiGateway, CapabilityRegistry, AiUsageReport, AiModelChoices],
     };
   }
 }
