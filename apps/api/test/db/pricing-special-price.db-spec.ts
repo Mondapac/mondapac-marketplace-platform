@@ -18,7 +18,10 @@ import { PRICING_AUDIT_ACTIONS } from '../../src/modules/pricing/domain/audit';
 import { PRICING_EVENTS } from '../../src/modules/pricing/domain/events';
 import { ConfigPricingPolicyProvider } from '../../src/modules/pricing/infrastructure/config-pricing-policy-provider';
 import { PrismaPriceSeriesRepository } from '../../src/modules/pricing/infrastructure/prisma-price-series.repository';
-import { TYPICAL_PRICE_LIMITS } from '../../src/modules/pricing/domain/write-rate-limits';
+import {
+  TYPICAL_PRICE_LIMITS,
+  TYPICAL_PRICE_SELLER_LIMITS,
+} from '../../src/modules/pricing/domain/write-rate-limits';
 import { PrismaWriteRateCounterRepository } from '../../src/modules/pricing/infrastructure/prisma-write-rate-counter.repository';
 import { PrismaWriteRefusalThrottleRepository } from '../../src/modules/pricing/infrastructure/prisma-write-refusal-throttle.repository';
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
@@ -414,6 +417,12 @@ describe.each(TEST_MARKETS)('special prices in market %s (database integration)'
         ['typical.account.day', 2],
         ['typical.account.minute', 2],
       ]);
+      const bySeller = await persistence.unitOfWork.run(market, async () =>
+        ok(await counters().reserve(market, account, TYPICAL_PRICE_SELLER_LIMITS, t0)),
+      );
+      expect(bySeller.ok && bySeller.value.map((r) => [r.kind, r.count])).toEqual([
+        ['typical.seller.day', 1],
+      ]);
       // A price write of the same account still starts at one: the allowances are separate.
       expect((await reserve(account, t0)).map((r) => r.count)).toEqual([1, 1]);
       await expect(
@@ -422,7 +431,10 @@ describe.each(TEST_MARKETS)('special prices in market %s (database integration)'
            VALUES ($1, 'default', 'typical.bogus', $2, 1, now())`,
           [code, account],
         ),
-      ).rejects.toThrow();
+      ).rejects.toMatchObject({
+        code: '23514',
+        constraint: 'write_rate_counters_kind_check',
+      });
     });
 
     it('counts parallel first attempts of one account exactly once each, without deadlock', async () => {

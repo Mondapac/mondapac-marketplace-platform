@@ -289,7 +289,8 @@ model PricingSpecialPriceBoundary {
   @@schema("pricing")
 }
 
-/// The per-account cap on a seller's price writes (pricing design 5.2, 8; data design 3.8 and
+/// The per-account cap on a seller's price writes, and the caps on the typical-price read (kinds
+/// typical.account.day, typical.account.minute and, keyed by seller id, typical.seller.day) (pricing design 5.2, 8; data design 3.8 and
 /// the general per-account limit of identity design 6.8): one fixed window per (account, kind),
 /// counted in the unit before the write. The key is the plain account id, as in the refusal
 /// counters. Transient: purged after 48 hours. The CHECKs and the grants are hand-written in the

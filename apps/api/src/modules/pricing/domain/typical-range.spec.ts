@@ -14,13 +14,13 @@ const refOf = (prices: bigint[]) => {
 
 describe('typicalRange', () => {
   it('moves the reference by the band and widens to two significant digits', () => {
-    // median 1790: band 50 -> 895..2685, outward -> 890..2700
-    expect(typicalRange(refOf([1790n]), 50)).toEqual({ lowMinor: 890n, highMinor: 2700n });
+    // median 1790 -> bucket 1800; band 50 -> 900..2700
+    expect(typicalRange(refOf([1790n]), 50)).toEqual({ lowMinor: 900n, highMinor: 2700n });
   });
 
   it('keeps an even-count half exact before widening', () => {
-    // median of 1001 and 1002 = 1001.5; band 50 -> 500.75..1502.25 -> 500..1600
-    expect(typicalRange(refOf([1001n, 1002n]), 50)).toEqual({ lowMinor: 500n, highMinor: 1600n });
+    // median of 1001 and 1002 = 1001.5 -> 1002 -> bucket 1000; band 50 -> 500..1500
+    expect(typicalRange(refOf([1001n, 1002n]), 50)).toEqual({ lowMinor: 500n, highMinor: 1500n });
   });
 
   it('never goes below one minor unit and handles bands of 100 or more', () => {
@@ -34,6 +34,25 @@ describe('typicalRange', () => {
       const r = typicalRange(refOf([p]), 50);
       expect(r.lowMinor <= p && p <= r.highMinor).toBe(true);
       expect(r.lowMinor < r.highMinor).toBe(true);
+    }
+  });
+
+  it('hides small medians: edges are never the exact half or double, and many medians share a range', () => {
+    const seen = new Set<string>();
+    for (let m = 20n; m < 400n; m += 1n) {
+      const r = typicalRange(refOf([m]), 50);
+      expect(r.lowMinor % 10n === 0n || r.lowMinor === 1n).toBe(true);
+      expect(r.highMinor % 10n).toBe(0n);
+      seen.add(`${r.lowMinor}-${r.highMinor}`);
+    }
+    expect(seen.size).toBeLessThan(380 / 4);
+  });
+
+  it('keeps digit boundaries sane (99, 100, 101, 999, 1000) and very large values', () => {
+    for (const m of [99n, 100n, 101n, 999n, 1000n, 123_456_789_012n]) {
+      const r = typicalRange(refOf([m]), 50);
+      expect(r.lowMinor <= m && m <= r.highMinor).toBe(true);
+      expect(r.lowMinor >= 1n).toBe(true);
     }
   });
 

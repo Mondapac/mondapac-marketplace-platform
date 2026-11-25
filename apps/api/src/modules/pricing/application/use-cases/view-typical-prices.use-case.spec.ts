@@ -187,10 +187,80 @@ describe.each(['AU', 'ZZ'] as const)('pricing.view-typical-prices in market %s',
     expect(result).toMatchObject({ ok: false, error: { code: 'validation.failed' } });
   });
 
-  it('caps reads per account at 30 a minute, apart from the price-write allowance', async () => {
+  it('answers a range at exactly three businesses and none at two, one vote per business', async () => {
+    const { seller, offers, reference, variantId } = setup();
+    seller({ price: 1800n });
+    const second = seller({ price: 1790n });
+    // A second Offer of the same business adds no vote.
+    const again = seller({ price: 1700n });
+    offers.put(market, again.offerId, {
+      sellerId: second.sellerId,
+      productId: offers.offers.get(`${market.marketId}|${second.offerId}`)!.productId,
+      deleted: false,
+      priceableVariantIds: [variantId],
+      liveVariantIds: [variantId],
+    });
+    expect(reference.eligible.has(second.sellerId)).toBe(true);
+    const two = await seller().view();
+    if (!two.ok) throw new Error('expected ok');
+    expect(two.value.variants[0]?.range).toBeNull();
+    seller({ price: 1750n });
+    const three = await seller().view();
+    if (!three.ok) throw new Error('expected ok');
+    expect(three.value.variants[0]?.range).not.toBeNull();
+  });
+
+  it('answers every priceable Variant of the Offer in sorted order', async () => {
+    const { seller, offers, variantId } = setup();
+    seller({ price: 1800n });
+    seller({ price: 1790n });
+    seller({ price: 1750n });
+    const me = seller();
+    const extra =
+      `${variantId.slice(0, -1)}${variantId.endsWith('0') ? '1' : '0'}` as typeof variantId;
+    const view = offers.offers.get(`${market.marketId}|${me.offerId}`)!;
+    offers.offers.set(`${market.marketId}|${me.offerId}`, {
+      ...view,
+      priceableVariantIds: new Set([variantId, extra]),
+    });
+    const result = await me.view();
+    if (!result.ok) throw new Error('expected ok');
+    const ids = result.value.variants.map((v) => v.variantId);
+    expect(ids).toEqual([...ids].sort());
+    expect(result.value.variants.find((v) => v.variantId === variantId)?.range).not.toBeNull();
+    expect(result.value.variants.find((v) => v.variantId === extra)?.range).toBeNull();
+  });
+
+  it("answers a deleted Offer and an unknown id exactly like another seller's Offer", async () => {
+    const { seller, offers, counters, reference } = setup();
+    const me = seller();
+    const other = seller();
+    const gone = seller();
+    const deleted = offers.offers.get(`${market.marketId}|${gone.offerId}`)!;
+    offers.offers.set(`${market.marketId}|${gone.offerId}`, {
+      ...deleted,
+      sellerId: me.sellerId,
+      deleted: true,
+    });
+    const useCase = new ViewTypicalPrices(gate, {
+      unitOfWork: new FakeUnitOfWork(),
+      counters,
+      offers,
+      clock: new FixedClock(T0),
+      reference: reference.ports,
+    });
+    for (const offerId of [other.offerId, gone.offerId, '018f0000-0000-7000-8000-000000000000']) {
+      expect(await useCase.execute(me.context, { offerId })).toEqual({
+        ok: false,
+        error: { code: 'pricing.offer-not-found' },
+      });
+    }
+  });
+
+  it('caps reads per account at 20 a minute, apart from the price-write allowance', async () => {
     const { seller, counters } = setup();
     const me = seller();
-    for (let i = 0; i < 30; i += 1) expect((await me.view()).ok).toBe(true);
+    for (let i = 0; i < 20; i += 1) expect((await me.view()).ok).toBe(true);
     const refused = await me.view();
     expect(refused).toMatchObject({ ok: false, error: { code: 'request.throttled' } });
     if (!refused.ok && refused.error.code === 'request.throttled') {
@@ -198,5 +268,36 @@ describe.each(['AU', 'ZZ'] as const)('pricing.view-typical-prices in market %s',
     }
     const kinds = [...counters.rows.keys()].map((k) => k.split('|')[1]);
     expect(kinds.every((k) => k?.startsWith('typical.'))).toBe(true);
+  });
+
+  it('caps reads per seller over all its accounts at 400 a day', async () => {
+    const { seller, offers, counters, reference } = setup();
+    const me = seller();
+    const ids = new SequenceIdGenerator(new FixedClock(T0));
+    const useCase = new ViewTypicalPrices(gate, {
+      unitOfWork: new FakeUnitOfWork(),
+      counters,
+      offers,
+      clock: new FixedClock(T0),
+      reference: reference.ports,
+    });
+    const asAccount = (): CallContext =>
+      testCallContext(
+        market,
+        testAuthenticatedActor(market, {
+          population: 'seller',
+          accountId: ids.next<'Account'>(),
+          sessionId: ids.next<'Session'>(),
+          sellerId: me.sellerId,
+        }),
+      );
+    // Each call uses a fresh staff account, so no account cap is reached; the seller cap is.
+    for (let i = 0; i < 400; i += 1) {
+      expect((await useCase.execute(asAccount(), { offerId: me.offerId })).ok).toBe(true);
+    }
+    expect(await useCase.execute(asAccount(), { offerId: me.offerId })).toMatchObject({
+      ok: false,
+      error: { code: 'request.throttled' },
+    });
   });
 });

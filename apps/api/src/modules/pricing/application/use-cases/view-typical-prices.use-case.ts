@@ -4,7 +4,7 @@ import type { CallContext, Id, Result } from '@mondapac/shared-kernel';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import { PRICING_PRICE_VIEW } from '../../contracts/permissions';
 import { typicalRange } from '../../domain/typical-range';
-import { TYPICAL_PRICE_LIMITS } from '../../domain/write-rate-limits';
+import { TYPICAL_PRICE_LIMITS, TYPICAL_PRICE_SELLER_LIMITS } from '../../domain/write-rate-limits';
 import { gatherVariantReference, referenceFor } from '../reference/variant-reference';
 import type { VariantReferenceDependencies } from '../reference/variant-reference';
 import { reserveWriteAllowance, type WriteAllowanceDependencies } from '../write-allowance';
@@ -46,7 +46,7 @@ export type ViewTypicalPricesDependencies = VariantReferenceDependencies &
 const NOT_FOUND = Object.freeze({ code: 'pricing.offer-not-found' as const });
 
 /** An Offer carries a handful of Variants; more than this is not read (the rest show no range). */
-const MAX_VARIANTS = 50;
+const MAX_VARIANTS = 20;
 
 /**
  * `pricing.view-typical-prices` (offer page, "Typical price"): per priceable Variant of one of the
@@ -103,13 +103,27 @@ export class ViewTypicalPrices extends UseCase<
       actor.accountId,
       TYPICAL_PRICE_LIMITS,
     );
-    if (!allowed.ok) return allowed;
+    if (!allowed.ok)
+      return this.#throttled(context, actor.sellerId, actor.accountId, allowed.error);
+    // The same reads per seller over all its accounts; the key column holds the seller id.
+    const sellerAllowed = await reserveWriteAllowance(
+      this.deps,
+      context,
+      actor.sellerId as unknown as Id<'Account'>,
+      TYPICAL_PRICE_SELLER_LIMITS,
+    );
+    if (!sellerAllowed.ok) {
+      return this.#throttled(context, actor.sellerId, actor.accountId, sellerAllowed.error);
+    }
 
     const offers = await this.deps.offers.sellUnitsOf(context, [offerId.value]);
     const offer = offers.get(offerId.value);
     if (offer === undefined || offer.sellerId !== actor.sellerId || offer.deleted) {
       this.#logger.log({
         msg: 'pricing.view-typical-prices.refused',
+        sellerId: actor.sellerId,
+        accountId: actor.accountId,
+        offerId: offerId.value,
         marketId: market.marketId,
         correlationId: context.correlationId,
       });
@@ -139,12 +153,33 @@ export class ViewTypicalPrices extends UseCase<
     }
     this.#logger.log({
       msg: 'pricing.view-typical-prices.done',
+      sellerId: actor.sellerId,
+      accountId: actor.accountId,
+      offerId: offerId.value,
       variants: variants.length,
       withRange: variants.filter((v) => v.range !== null).length,
       marketId: market.marketId,
       correlationId: context.correlationId,
     });
     return ok({ offerId: offerId.value, variants });
+  }
+
+  /** A refused read is logged with who asked (never a price), so probing can be traced. */
+  #throttled(
+    context: CallContext,
+    sellerId: Id<'Seller'>,
+    accountId: Id<'Account'>,
+    refusal: WriteThrottled,
+  ): Result<never, WriteThrottled> {
+    this.#logger.warn({
+      msg: 'pricing.view-typical-prices.throttled',
+      sellerId,
+      accountId,
+      retryAfterSeconds: refusal.retryAfterSeconds,
+      marketId: context.market.marketId,
+      correlationId: context.correlationId,
+    });
+    return err(refusal);
   }
 }
 
