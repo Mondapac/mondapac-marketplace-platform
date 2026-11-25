@@ -33,7 +33,7 @@ Design: `design/catalog/offer-approval/offer-approval-design-fa.html`, section 9
   is `access.unavailable`; the mail is then skipped with an error log. identity does not import catalog,
   so the key is written in identity and `test/contracts/offer-review-alert-key.contract.spec.ts` checks
   it equals `CATALOG_PRODUCT_APPROVE`.
-- Template `offer-queue-backlog-alert` (plain text, English, Market locale fallback): the reason, the
+- Template `offer-queue-backlog-alert` (plain text, English, Market locale fallback; wording from Reza's review): a subject with the numbers per reason, the reason with the limits set in Settings, the
   Market id, the queue size and the oldest wait in whole business hours. No seller, Offer, product or
   person data, no link (the text names the admin page). One mail per recipient, one address each.
 - Sends run one after another, each bounded by 5 s, all by 20 s (the job's run limit is 60 s); a send
@@ -43,3 +43,4 @@ Design: `design/catalog/offer-approval/offer-approval-design-fa.html`, section 9
 - Retry of a failed backlog mail (FE-20261125-offer-queue-alert-mail-retry).
 - A link to the queue in the mail (FE-20261125-offer-queue-alert-mail-link).
 - A repeat reminder while the queue stays behind (FE-20261125-offer-queue-alert-repeat-reminder).
+- The panel notice's wait wording ("at least", "less than 1"), as the mail has it (FE-20261125-offer-queue-notice-wait-wording).

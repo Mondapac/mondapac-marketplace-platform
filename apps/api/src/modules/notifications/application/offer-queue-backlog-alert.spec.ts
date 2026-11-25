@@ -307,11 +307,16 @@ describe.each([['AU'], ['ZZ']] as const)('Offer queue backlog alert in market %s
       const sender = new ConfigNotificationsPolicy(markets).mailSender(market);
       for (const mail of transport.sent) {
         expect(mail.from).toEqual(sender);
-        expect(mail.subject).toBe(`Offer review queue is behind (${market.marketId})`);
+        expect(mail.subject).toBe(
+          `Offer review queue is behind (${market.marketId}): 51 Offers waiting, oldest 30 business hours`,
+        );
         expect(mail.text).toContain('Offers waiting: 51');
-        expect(mail.text).toContain('Oldest Offer has waited: 30 business hours');
+        expect(mail.text).toContain('Oldest Offer has waited: at least 30 business hours');
         expect(mail.text).toContain(`Market: ${market.marketId}`);
-        expect(mail.text).toContain('More Offers are waiting than the limit');
+        expect(mail.text).toContain(
+          'More than 50 Offers are waiting, and the oldest has waited more than 24 business hours (the limits in Settings).',
+        );
+        expect(mail.text).toContain('open Catalogue requests and choose the Offers tab');
         // Plain text with every slot filled, and no link, address or other admin in it.
         expect(`${mail.subject}\n${mail.text}`).not.toMatch(/\{\w+\}|https?:|@|</);
       }
@@ -337,9 +342,12 @@ describe.each([['AU'], ['ZZ']] as const)('Offer queue backlog alert in market %s
       expect(await build().execute(system, {})).toEqual(alerted());
       expect(transport.sent).toHaveLength(2 * ADDRESSES.length);
       expect(transport.sent[2]?.text).toContain(
-        'The oldest Offer has waited longer than the limit',
+        'The oldest Offer has waited more than 24 business hours, the limit in Settings.',
       );
-      expect(transport.sent[2]?.text).toContain('Oldest Offer has waited: 30 business hours');
+      expect(transport.sent[2]?.text).toContain(
+        'Oldest Offer has waited: at least 30 business hours',
+      );
+      expect(transport.sent[2]?.subject).toContain('): oldest waited 30 business hours');
     });
 
     it('keeps the alert and its notice when the recipients cannot be read, and sends nothing', async () => {
@@ -398,6 +406,19 @@ describe.each([['AU'], ['ZZ']] as const)('Offer queue backlog alert in market %s
         alerted({ recipients: 10, sent: 0, failed: perBudget, notAttempted: 10 - perBudget }),
       );
       expect(jest.getTimerCount()).toBe(0);
+    });
+
+    it('skips the mail, without throwing, when the Market mail settings cannot be read (Hassan L1)', async () => {
+      jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+      jest.spyOn(ConfigNotificationsPolicy.prototype, 'mailSender').mockImplementation(() => {
+        throw new Error('no sender');
+      });
+      queue = () => ok({ count: 90, oldestAt: hoursAgo(40) });
+      expect(await build().execute(system, {})).toEqual(
+        alerted({ recipients: 0, sent: 0, unavailable: true }),
+      );
+      expect(transport.sent).toEqual([]);
+      expect(notices.rows).toHaveLength(1);
     });
 
     it('never logs an address', async () => {

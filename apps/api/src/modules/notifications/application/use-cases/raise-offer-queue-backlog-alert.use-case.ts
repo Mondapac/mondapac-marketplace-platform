@@ -8,7 +8,11 @@ import type { CatalogWorkQueueFacade } from '../../../catalog';
 import type { IdentityFacade } from '../../../identity';
 import type { SettingsFacade } from '../../../settings';
 import { ADMIN_NOTICES_PER_MARKET, ADMIN_OFFER_QUEUE_BACKLOG } from '../../domain/in-app-notice';
-import { assessBacklog, type OfferQueueBacklogReason } from '../../domain/offer-queue-backlog';
+import {
+  assessBacklog,
+  type OfferQueueBacklogLimits,
+  type OfferQueueBacklogReason,
+} from '../../domain/offer-queue-backlog';
 import { offerQueueBacklogMail } from '../../domain/offer-queue-backlog-mail';
 import type { InAppNoticeRepository } from '../ports/in-app-notice.repository';
 import type { NotificationsPolicy } from '../ports/notifications-policy';
@@ -40,6 +44,7 @@ export const BACKLOG_MAIL_BUDGET_MS = 20_000;
 export interface BacklogMailOutcome {
   readonly recipients: number;
   readonly sent: number;
+  /** Not confirmed: rejected, or cut off by its timeout or the budget (it may still arrive). */
   readonly failed: number;
   readonly notAttempted: number;
   /** The recipient read failed: no mail was sent (the panel notice stands). */
@@ -178,7 +183,13 @@ export class RaiseOfferQueueBacklogAlert extends UseCase<
     const mail =
       assessment.reason === null
         ? { recipients: 0, sent: 0, failed: 0, notAttempted: 0, unavailable: false }
-        : await this.mail(context, assessment.reason, queue.value.count, assessment.waitedHours);
+        : await this.mail(
+            context,
+            assessment.reason,
+            limits,
+            queue.value.count,
+            assessment.waitedHours,
+          );
     return ok({ ...decided, mail });
   }
 
@@ -186,6 +197,7 @@ export class RaiseOfferQueueBacklogAlert extends UseCase<
   private async mail(
     context: CallContext,
     reason: OfferQueueBacklogReason,
+    limits: OfferQueueBacklogLimits,
     count: number,
     hours: number,
   ): Promise<BacklogMailOutcome> {
@@ -206,14 +218,23 @@ export class RaiseOfferQueueBacklogAlert extends UseCase<
       this.#logger.warn({ msg: 'notifications.backlog-mail.no-recipients', ...fields });
       return { recipients: 0, sent: 0, failed: 0, notAttempted: 0, unavailable: false };
     }
-    const composed = offerQueueBacklogMail({
-      reason,
-      count,
-      hours,
-      marketId: market.marketId,
-      locale: deps.policy.defaultLocale(market),
-    });
-    const from = deps.policy.mailSender(market);
+    let composed: ReturnType<typeof offerQueueBacklogMail>;
+    let from: ReturnType<NotificationsPolicy['mailSender']>;
+    try {
+      composed = offerQueueBacklogMail({
+        reason,
+        limits,
+        count,
+        hours,
+        marketId: market.marketId,
+        locale: deps.policy.defaultLocale(market),
+      });
+      from = deps.policy.mailSender(market);
+    } catch {
+      // Market configuration that cannot be read: no mail, never a thrown job (Hassan L1).
+      this.#logger.error({ msg: 'notifications.backlog-mail.unavailable', ...fields });
+      return { recipients: 0, sent: 0, failed: 0, notAttempted: 0, unavailable: true };
+    }
     const counts = await fanOut(
       deps.transport,
       recipients.map((to) => ({ to, from, subject: composed.subject, text: composed.text })),

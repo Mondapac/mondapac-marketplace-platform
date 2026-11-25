@@ -168,7 +168,7 @@ const TEMPLATES: Readonly<Record<TemplateId, TemplateSet>> = {
   // queue in the panel).
   'offer-queue-backlog-alert': {
     en: {
-      subject: 'Offer review queue is behind ({marketId})',
+      subject: 'Offer review queue is behind ({marketId}): {headline}',
       body: lines(
         'Offer review queue is behind',
         '',
@@ -178,11 +178,11 @@ const TEMPLATES: Readonly<Record<TemplateId, TemplateSet>> = {
         'Offers waiting: {count}',
         'Oldest Offer has waited: {hours}',
         '',
-        'Open Catalogue requests (Offers) in the admin panel to work the queue.',
+        'In the admin panel, open Catalogue requests and choose the Offers tab.',
         '',
-        'You get this email because you can approve Offers in this Market. You get one email each',
-        'time the queue passes a limit; the next one comes only after the queue is back within the',
-        'limits set in Settings > Catalogue > Offer review.',
+        'You get this email because you can approve Offers in this Market.',
+        'You get one email each time the queue goes past a limit. The next one comes only after the queue is back within both limits in Settings > Catalogue > Offer review > Queue alert.',
+        'Business hours are Monday to Friday, Market time.',
         '',
       ),
     },
