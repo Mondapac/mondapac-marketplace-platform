@@ -364,6 +364,13 @@ settings (mode `all`).
   `review.bulk-not-allowed` and `blockers`, `review.bulk-certificate-mixed`, or
   `review.reasons-unknown` (no stored decision; fail closed). Offer results carry the product
   `name`. If the reasons cannot be read, an approval is refused whole (503); a send-back goes on.
+- **Bulk approve re-reads the R0 stops** (Hassan M1, PR 1364): for every row it reads the Market
+  emergency stop, the seller's review stop and the category stops (ancestors and merges, as the
+  slice 4 policy). A stopped row is `skipped` with `review.bulk-not-allowed` and `emergency-stop`
+  first in its blockers; if any stop cannot be read the whole approve is refused (503,
+  fail closed). A row with no verdict is skipped as `offer.not-found`; stored first-publication
+  reasons are used only when their Offer version equals the row's and the current version,
+  otherwise `review.reasons-unknown`.
 - **Stop banner** (`GET catalog/admin/offer-review/stops`): the Market stop and how many sellers
   (sellers facade `offerReviewStoppedSellerCount`, needs `sellers.seller.view`) and categories
   have their stop on; a part that cannot be read is null.

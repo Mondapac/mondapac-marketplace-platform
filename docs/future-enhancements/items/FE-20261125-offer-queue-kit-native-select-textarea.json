@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-offer-queue-kit-native-select-textarea",
+  "area": "admin",
+  "title": "select و textarea از کتابخانه به جای عنصر بومی",
+  "desc": "چند select بومی و دستهٔ تغییر اندازهٔ textarea در کشو و Dialogهای صف بازبینی با سبک کتابخانه یکی نیستند؛ جایگزینی با اجزای packages/ui برای همهٔ پنل.",
+  "src": "بازبینی PR 1364 برش ۵ تأیید Offer (رضا، UI/UX)",
+  "date": "2026-11-25",
+  "trig": "همراه بازسازی بعدی اجزای فرم",
+  "prio": "پایین",
+  "status": "موکول"
+}
