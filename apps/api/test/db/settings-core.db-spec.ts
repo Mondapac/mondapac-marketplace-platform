@@ -224,6 +224,31 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
       );
       expect(await code_(owner.query('TRUNCATE settings.market_setting_history'))).toBe(RESTRICT);
     });
+
+    it('keeps a history note 1 to 500 trimmed characters, or none (G4a)', async () => {
+      const withNote = (version: number, note: string | null) =>
+        sql.query(
+          `INSERT INTO settings.market_setting_history (market_id, tenant_id, code, version, previous_value, value, changed_at, changed_by_account_id, note) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+          [
+            market.marketId,
+            'default',
+            'ai-gateway-emergency-stop',
+            version,
+            null,
+            'on',
+            new Date(),
+            ids.next<'Account'>(),
+            note,
+          ],
+        );
+      expect(await code_(withNote(1, ''))).toBe(CHECK);
+      expect(await code_(withNote(1, 'x'.repeat(501)))).toBe(CHECK);
+      expect(await code_(withNote(1, '   '))).toBe(CHECK);
+      expect(await code_(withNote(1, ' Leak suspected'))).toBe(CHECK);
+      expect(await code_(withNote(1, null))).toBe('allowed');
+      expect(await code_(withNote(2, 'x'.repeat(500)))).toBe('allowed');
+      expect(await code_(withNote(3, 'Leak suspected'))).toBe('allowed');
+    });
   });
 
   describe('use cases on the real store', () => {
@@ -279,11 +304,12 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
       expect(controls).toEqual({ stopped: true, caps: { ...NO_CAPS, guestDay: 250 } });
       expect(
         await code_(
-          owner.query(`UPDATE settings.market_setting_history SET note = '' WHERE market_id = $1`, [
-            market.marketId,
-          ]),
+          owner.query(
+            `UPDATE settings.market_setting_history SET note = 'Changed' WHERE market_id = $1`,
+            [market.marketId],
+          ),
         ),
-      ).not.toBe('allowed');
+      ).toBe(RESTRICT);
     });
 
     it('lets only one of two admins who saved from the same version win', async () => {

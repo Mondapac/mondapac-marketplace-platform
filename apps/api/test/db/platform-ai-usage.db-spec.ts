@@ -351,15 +351,18 @@ describe('platform AI usage and budget (database integration, AI Gateway G2)', (
 
       // The cap is the settings module's AI Gateway setting (G4), read by the gateway on each call.
       await setSetting(market, 'ai-cap-market-day', '1');
-      const spy = jest.spyOn(provider, 'call');
-      expect(
-        await gateway.status('catalog.description-writer.admin', context, { tier: 'fast' }),
-      ).toEqual({ on: false, reason: 'over-budget' });
-      expect(
-        await gateway.run('catalog.description-writer.admin', context, REQUEST, { tier: 'fast' }),
-      ).toEqual({ ok: false, reason: 'over-budget', costMicroUsd: 0 });
-      expect(spy).not.toHaveBeenCalled();
-      await setSetting(market, 'ai-cap-market-day', 'none');
+      try {
+        const spy = jest.spyOn(provider, 'call');
+        expect(
+          await gateway.status('catalog.description-writer.admin', context, { tier: 'fast' }),
+        ).toEqual({ on: false, reason: 'over-budget' });
+        expect(
+          await gateway.run('catalog.description-writer.admin', context, REQUEST, { tier: 'fast' }),
+        ).toEqual({ ok: false, reason: 'over-budget', costMicroUsd: 0 });
+        expect(spy).not.toHaveBeenCalled();
+      } finally {
+        await setSetting(market, 'ai-cap-market-day', 'none');
+      }
     });
 
     it('answers emergency-stop while the Market stops AI in its gateway settings (G4)', async () => {

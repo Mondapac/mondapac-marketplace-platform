@@ -7,4 +7,4 @@ ALTER TABLE "settings"."market_setting_history" ADD COLUMN "note" TEXT;
 
 ALTER TABLE "settings"."market_setting_history"
   ADD CONSTRAINT "market_setting_history_note_check"
-  CHECK ("note" IS NULL OR char_length("note") BETWEEN 1 AND 500);
+  CHECK ("note" IS NULL OR (char_length("note") BETWEEN 1 AND 500 AND "note" = btrim("note")));
