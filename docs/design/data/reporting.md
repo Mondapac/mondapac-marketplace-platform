@@ -43,7 +43,7 @@ snapshot job, at least 2 h after the Market day ends (`createMany` with skip-dup
 role has SELECT and INSERT only, no UPDATE or DELETE, so a customer's opt-out or erasure never needs
 to touch it. No account, guest, offer or seller column.
 
-`daily_abandoned_carts` (migration `20261125040000_reporting_daily_abandoned_carts`, dashboards v2
+`daily_abandoned_carts` (migration `20261125080000_reporting_daily_abandoned_carts`, dashboards v2
 phase 2): per Market day `cart_count` (active carts, guest or signed-in, with at least one line, no
 order mark, last changed at least 24 h before the day's end) and their approximate value
 `approx_value_amount` (bigint minor units) and `approx_value_currency` (the Market's currency; both

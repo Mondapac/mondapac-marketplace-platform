@@ -19,6 +19,7 @@ import {
 } from '../../../certification';
 import type { SearchSupplyFacade } from '../../../search';
 import { ORDERING_ORDER_VIEW } from '../../../ordering';
+import { PROMOTIONS_PROMOTION_MANAGE } from '../../../promotions';
 import type { Id } from '@mondapac/shared-kernel';
 import {
   CATALOG_PRODUCT_VIEW,
@@ -32,6 +33,7 @@ import {
 } from '../../../sellers';
 import { SETTINGS_MONTHLY_REVENUE_TARGET_VIEW } from '../../../settings';
 import type {
+  DiscountCostAnswer,
   FinanceAnswer,
   KpiFailure,
   MonthlyTargetAnswer,
@@ -177,6 +179,11 @@ export interface AdminKpisAnswer {
    * null without `ordering.order.view`.
    */
   readonly abandonedCarts: KpiSection<AbandonedCartsAnswer> | null;
+  /**
+   * The discount cost of the period (Mondapac's and the sellers' shares, by kind); null without
+   * both `commission-payouts.settlement.view` and `promotions.promotion.manage` (promotion spend).
+   */
+  readonly discountCost: KpiSection<DiscountCostAnswer> | null;
   /** Null without `commission-payouts.settlement.view` (it shows each seller's money). */
   readonly topSellers: KpiSection<NamedTopSellers> | null;
   /** Null without `commission-payouts.settlement.view` (it shows money). */
@@ -263,7 +270,8 @@ async function section<T>(
  * Market's monthly revenue target (dashboards v2 phase 2). Rule
  * `own-resources` and a platform admin acting as themselves, like the work queue. Each section is
  * asked only when the viewer holds its key (operations and orders by status:
- * `ordering.order.view`, and the shopping funnel and abandoned carts too; money: `commission-payouts.settlement.view`; each health number its
+ * `ordering.order.view`, and the shopping funnel and abandoned carts too; money: `commission-payouts.settlement.view`, and
+ * the discount cost also `promotions.promotion.manage`; each health number its
  * owner's key) and its owner checks the key again. Nothing is cached here.
  */
 export class ViewAdminKpis extends UseCase<
@@ -316,6 +324,7 @@ export class ViewAdminKpis extends UseCase<
       ordersByState,
       marketTarget,
       shoppingFunnel,
+      discountCost,
       abandonedCarts,
     ] = await Promise.all([
       held.has(ORDERING_ORDER_VIEW.key)
@@ -346,6 +355,11 @@ export class ViewAdminKpis extends UseCase<
             reporting.marketplaceShoppingFunnel(context, input),
           )
         : null,
+      held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key) && held.has(PROMOTIONS_PROMOTION_MANAGE.key)
+        ? section('discount-cost', timeoutMs, () =>
+            reporting.marketplaceDiscountCost(context, input),
+          )
+        : null,
       held.has(ORDERING_ORDER_VIEW.key)
         ? section('abandoned-carts', timeoutMs, () =>
             reporting.marketplaceAbandonedCarts(context, input),
@@ -361,6 +375,7 @@ export class ViewAdminKpis extends UseCase<
       ordersByState,
       marketTarget,
       shoppingFunnel,
+      discountCost,
       abandonedCarts,
       topSellers,
       topCategories,

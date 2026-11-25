@@ -15,6 +15,7 @@ import type { ViewMarketplaceOrderStatus } from '../application/use-cases/view-m
 import type { ViewMarketplaceOrdersByState } from '../application/use-cases/view-marketplace-orders-by-state.use-case';
 import type { ViewMarketplaceMonthlyTarget } from '../application/use-cases/view-marketplace-monthly-target.use-case';
 import type { ViewMarketplaceShoppingFunnel } from '../application/use-cases/view-marketplace-shopping-funnel.use-case';
+import type { ViewMarketplaceDiscountCost } from '../application/use-cases/view-marketplace-discount-cost.use-case';
 import type { ViewMarketplaceAbandonedCarts } from '../application/use-cases/view-marketplace-abandoned-carts.use-case';
 import type { KpiPeriodInput, PeriodRequest, ReportingKpiFacade } from '../contracts';
 
@@ -31,6 +32,7 @@ export class ReportingKpiFacadeImplementation implements ReportingKpiFacade {
     private readonly ordersByState: ViewMarketplaceOrdersByState,
     private readonly monthlyTarget: ViewMarketplaceMonthlyTarget,
     private readonly shoppingFunnel: ViewMarketplaceShoppingFunnel,
+    private readonly discountCost: ViewMarketplaceDiscountCost,
     private readonly abandonedCarts: ViewMarketplaceAbandonedCarts,
     private readonly days: {
       readonly zone: { zoneOf(market: MarketContext): string };
@@ -66,6 +68,10 @@ export class ReportingKpiFacadeImplementation implements ReportingKpiFacade {
 
   marketplaceAbandonedCarts(context: CallContext, input: KpiPeriodInput) {
     return this.abandonedCarts.execute(context, input);
+  }
+
+  marketplaceDiscountCost(context: CallContext, input: KpiPeriodInput) {
+    return this.discountCost.execute(context, input);
   }
 
   marketplaceOperations(context: CallContext, input: KpiPeriodInput) {

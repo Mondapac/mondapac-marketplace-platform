@@ -576,6 +576,37 @@ new/returning card, phase 2 cards PR):
   the reads (FE-20261125-reporting-funnel-tenant-scope), and the product owner's check that the
   privacy policy covers aggregate statistics (FE-20261125-legal-privacy-policy-aggregate-statistics).
 
+
+## Discount cost (dashboards v2, phase 2)
+
+`reporting.view-marketplace-discount-cost` (keys `commission-payouts.settlement.view` and
+`promotions.promotion.manage`, both; a platform admin acting as themselves) answers the discount cost of a period for the admin dashboard. Nothing
+is stored in reporting: it asks promotions' reporting facade (`PROMOTIONS_REPORTING_FACADE`,
+`promotions.sum-discount-cost`) for the instants of the period's Market days and of the period
+before (`windowOf`, the Market's zone, never UTC days), in the Market's currency, with the caller's
+own context, so promotions checks the same key again. Two grouped reads (at most 8 groups each)
+over the partial index `promotions.redemptions_confirmed_idx`; a live read is cheap, so no nightly
+snapshot was added. `domain/discount-cost.ts` checks that the shares and kinds add up (a mismatch
+throws and the section answers `error`, never a guessed number), holds the amounts back below five
+discounted orders, and gives the change with the money base of the other KPIs (100.00). A refusal
+of the key from promotions passes through (the dashboard leaves the section out); any other failure
+is `access.unavailable`.
+
+Attribution: a discount counts on the Market day its order's payment was confirmed (the redemption's
+`confirmed_at`, set by `ordering.order-paid.v1`), like GMV by paid day. A later refund or
+cancellation after payment moves it from `amount` to `released` of the same period (the redemption
+is released for the whole order), so an old period's cost can fall after the fact; the card shows
+the figure as of now.
+
+Privacy and residual risk: a kind used by 1 to 4 redemptions has every figure null, and `released`
+is null for 1 to 4 orders, so one order's discount is not read off the card; below five discounted
+orders the whole answer is `not-enough-data`. Differencing stays possible: a viewer who compares two
+overlapping custom ranges, or the total against the kinds shown, can still narrow a small group down.
+That is accepted, because the viewer is a platform admin who holds both the money key and promotion
+management and can already see each promotion's spend in promotions; the hiding guards against a
+glance, not against that viewer. The kinds' shares use the largest remainder (ties to the earlier
+kind), so the shares shown add up to 10000 basis points.
+
 ## Abandoned carts (dashboards v2, phase 2, nightly snapshot)
 
 - Table `reporting.daily_abandoned_carts`, one row per (Market, day): `cart_count` and an approximate
@@ -617,4 +648,3 @@ new/returning card, phase 2 cards PR):
   `notifications.cart_reminders` records a stage when it is taken, before consent and address are
   checked, so counting it would overstate the mails sent
   (FE-20261125-dashboards-abandoned-carts-reminders-sent).
-

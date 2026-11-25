@@ -17,6 +17,7 @@ import { loadMarketConfigs } from '../../../platform/market-config/market-config
 import { MarketRegistry } from '../../../platform/market-config/market-registry';
 import { PLATFORM_TENANT_ID } from '../../../platform/market-context/tenant';
 import type {
+  DiscountCostAnswer,
   FinanceAnswer,
   OperationsAnswer,
   OrderStatusAnswer,
@@ -48,6 +49,7 @@ const gate = createUseCaseGate(markets, {
 const NOW = Temporal.Instant.from('2026-11-22T01:00:00Z');
 const ORDERS = 'ordering.order.view' as PermissionKey;
 const MONEY = 'commission-payouts.settlement.view' as PermissionKey;
+const PROMO_MANAGE = 'promotions.promotion.manage' as PermissionKey;
 const TARGET = 'settings.monthly-revenue-target.view' as PermissionKey;
 
 const operations = { period: { id: '7d' }, sellersWithOrders: 3 } as unknown as OperationsAnswer;
@@ -216,6 +218,28 @@ const shoppingFunnel = {
   },
 } as unknown as ShoppingFunnelAnswer;
 
+const discountCost: DiscountCostAnswer = {
+  period: finance.period,
+  generatedAt: NOW,
+  currency: 'AUD',
+  cost: {
+    status: 'available',
+    orders: 42,
+    amount: 50_000n,
+    platformShare: 30_000n,
+    sellerShare: 20_000n,
+    platformShareBp: 6000,
+    change: { value: 2500, direction: 'up', state: 'ok' },
+    previousAmount: 40_000n,
+    byKind: [
+      { kind: 'promotion', uses: 40, amount: 40_000n, platformShare: 20_000n, shareBp: 8000 },
+      { kind: 'first-order', uses: 5, amount: 10_000n, platformShare: 10_000n, shareBp: 2000 },
+      { kind: 'free-shipping', uses: null, amount: null, platformShare: null, shareBp: null },
+    ],
+    released: null,
+  },
+};
+
 const abandonedCarts = {
   period: finance.period,
   generatedAt: NOW,
@@ -376,6 +400,10 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
       marketplaceAbandonedCarts: () => {
         asked.push('abandoned-carts');
         return Promise.resolve(ok(abandonedCarts));
+      },
+      marketplaceDiscountCost: () => {
+        asked.push('discount-cost');
+        return Promise.resolve(ok(discountCost));
       },
       marketplaceOperations: (_context, input) => {
         asked.push('operations');
@@ -607,6 +635,73 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     const failed = await build([ORDERS]).execute(admin, { period: '7d' });
     expect(failed.ok && failed.value.shoppingFunnel).toEqual({ status: 'error' });
     expect(failed.ok && failed.value.ordersByState?.status).toBe('ok');
+  });
+
+  it('maps the discount-cost section: money as strings, not-enough-data, error, and null without both keys', async () => {
+    const full = await build([MONEY, PROMO_MANAGE]).execute(admin, { period: '7d' });
+    if (!full.ok) throw new Error('expected an answer');
+    const money = (amountMinor: string) => ({ amountMinor, currency: 'AUD' });
+    expect(adminKpisBody(full.value).discountCost).toEqual({
+      status: 'ok',
+      kpis: {
+        status: 'available',
+        orders: 42,
+        amount: money('50000'),
+        platformShare: money('30000'),
+        sellerShare: money('20000'),
+        platformShareBp: 6000,
+        change: { value: 2500, direction: 'up', state: 'ok' },
+        previousAmount: money('40000'),
+        byKind: [
+          {
+            kind: 'promotion',
+            uses: 40,
+            amount: money('40000'),
+            platformShare: money('20000'),
+            shareBp: 8000,
+          },
+          {
+            kind: 'first-order',
+            uses: 5,
+            amount: money('10000'),
+            platformShare: money('10000'),
+            shareBp: 2000,
+          },
+          // A kind of 1 to 4 uses is held back whole, and so is a released of 1 to 4 orders.
+          { kind: 'free-shipping', uses: null, amount: null, platformShare: null, shareBp: null },
+        ],
+        released: null,
+      },
+    });
+    const few = {
+      ...full.value,
+      discountCost: {
+        status: 'ok' as const,
+        value: {
+          ...discountCost,
+          cost: { status: 'not-enough-data' as const, orders: 3, minimum: 5 },
+        },
+      },
+    };
+    expect(adminKpisBody(few).discountCost).toEqual({
+      status: 'ok',
+      kpis: { status: 'not-enough-data', orders: 3, minimum: 5 },
+    });
+    // Either key alone leaves the section out: spend is for promotion managers with the money key.
+    for (const keys of [[ORDERS], [MONEY], [PROMO_MANAGE]]) {
+      asked.length = 0;
+      const none = await build(keys).execute(admin, { period: '7d' });
+      expect(none.ok && none.value.discountCost).toBeNull();
+      expect(asked).not.toContain('discount-cost');
+    }
+    facade.marketplaceDiscountCost = () => Promise.reject(new TypeError('boom'));
+    const failed = await build([MONEY, PROMO_MANAGE]).execute(admin, { period: '7d' });
+    expect(failed.ok && failed.value.discountCost).toEqual({ status: 'error' });
+    expect(failed.ok && failed.value.finance?.status).toBe('ok');
+    // The owner refusing the key leaves the section out, like a key the viewer lacks.
+    facade.marketplaceDiscountCost = () => Promise.resolve(err({ code: 'access.denied' }));
+    const refused = await build([MONEY, PROMO_MANAGE]).execute(admin, { period: '7d' });
+    expect(refused.ok && refused.value.discountCost).toBeNull();
   });
 
   it('maps the abandoned-carts section: approximate value as a string, not-enough-data, error, and null without the key', async () => {
@@ -858,6 +953,13 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     const out = await build([ORDERS, MONEY], 20).execute(admin, { period: '7d' });
     expect(out.ok && out.value.operations).toBeNull();
     expect(out.ok && out.value.finance).toEqual({ status: 'error' });
+  });
+
+  it('marks a slow discount cost as error and keeps finance', async () => {
+    facade.marketplaceDiscountCost = () => new Promise(() => undefined);
+    const out = await build([MONEY, PROMO_MANAGE], 20).execute(admin, { period: '7d' });
+    expect(out.ok && out.value.discountCost).toEqual({ status: 'error' });
+    expect(out.ok && out.value.finance?.status).toBe('ok');
   });
 
   it('marks a section that throws as error and keeps the other', async () => {

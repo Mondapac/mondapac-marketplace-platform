@@ -23,6 +23,14 @@ import { ENGAGEMENT_SOURCES, type EngagementSources } from './application/ports/
 import { ENGAGEMENT_STORE, type EngagementStore } from './application/ports/engagement-store';
 import { SnapshotDailyEngagement } from './application/use-cases/snapshot-daily-engagement.use-case';
 import { ViewMarketplaceShoppingFunnel } from './application/use-cases/view-marketplace-shopping-funnel.use-case';
+import { ViewMarketplaceDiscountCost } from './application/use-cases/view-marketplace-discount-cost.use-case';
+import { DISCOUNT_SOURCES, type DiscountSources } from './application/ports/discount-sources';
+import { FacadeDiscountSources } from './infrastructure/facade-discount-sources';
+import {
+  PROMOTIONS_REPORTING_FACADE,
+  PromotionsModule,
+  type PromotionsReportingFacade,
+} from '../promotions';
 import { FacadeEngagementSources } from './infrastructure/facade-engagement-sources';
 import { snapshotDailyEngagementJob } from './presentation/jobs/snapshot-daily-engagement.job';
 import { CART_REPORTING_FACADE, CartModule, type CartReportingFacade } from '../cart';
@@ -121,9 +129,10 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
  * (ordering's order and refund events) and the nightly reconcile; the ledger facts come from
  * commission-payouts' reporting facade (its `ledger-recorded` event and the ledger backfill); the
  * shopping funnel's daily counts from ordering's checkouts and engagement's count (dashboards v2,
- * phase 2: a nightly snapshot, counts only); the abandoned carts from cart's reporting facade (a
- * nightly snapshot: a count and an approximate value); the Market's monthly revenue target from the
- * settings facade. No
+ * phase 2: a nightly snapshot, counts only); the discount cost from promotions' reporting facade
+ * at request time (dashboards v2, phase 2; nothing stored); the abandoned carts from cart's
+ * reporting facade (a nightly snapshot: a count and an approximate value); the Market's monthly revenue target
+ * from the settings facade. No
  * module imports it. It publishes no event. Its own keys are the two daily exports' (dashboards v2,
  * PR 5), each audited, and the seller's monthly goal (phase 2), the one table it holds that is not
  * derived data. The history backfill job brings the facts recorded before the module was
@@ -138,6 +147,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
     CommissionPayoutsModule,
     SettingsModule,
     EngagementModule,
+    PromotionsModule,
     CartModule,
   ],
   controllers: [SellerKpisController, AdminReportsController],
@@ -392,6 +402,19 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
         clock: Clock,
       ) => new ViewMarketplaceShoppingFunnel(gate, { unitOfWork, store, zone, clock }),
     },
+    // The discount cost (dashboards v2, phase 2): read from promotions at request time.
+    {
+      provide: DISCOUNT_SOURCES,
+      inject: [PROMOTIONS_REPORTING_FACADE],
+      useFactory: (promotions: PromotionsReportingFacade): DiscountSources =>
+        new FacadeDiscountSources(promotions),
+    },
+    {
+      provide: ViewMarketplaceDiscountCost,
+      inject: [USE_CASE_GATE, DISCOUNT_SOURCES, MARKET_ZONE, CLOCK],
+      useFactory: (gate: UseCaseGate, sources: DiscountSources, zone: MarketZone, clock: Clock) =>
+        new ViewMarketplaceDiscountCost(gate, { sources, zone, clock }),
+    },
     // Abandoned carts (dashboards v2, phase 2): the nightly snapshot and its read.
     {
       provide: ABANDONED_CART_SOURCES,
@@ -442,6 +465,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
         ViewMarketplaceOrdersByState,
         ViewMarketplaceMonthlyTarget,
         ViewMarketplaceShoppingFunnel,
+        ViewMarketplaceDiscountCost,
         ViewMarketplaceAbandonedCarts,
         MARKET_ZONE,
         CLOCK,
@@ -457,6 +481,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
         ordersByState: ViewMarketplaceOrdersByState,
         monthlyTarget: ViewMarketplaceMonthlyTarget,
         shoppingFunnel: ViewMarketplaceShoppingFunnel,
+        discountCost: ViewMarketplaceDiscountCost,
         abandonedCarts: ViewMarketplaceAbandonedCarts,
         zone: MarketZone,
         clock: Clock,
@@ -472,6 +497,7 @@ const SELLER_GOAL_DEPENDENCIES = Symbol('SELLER_GOAL_DEPENDENCIES');
           ordersByState,
           monthlyTarget,
           shoppingFunnel,
+          discountCost,
           abandonedCarts,
           { zone, clock },
         ),
