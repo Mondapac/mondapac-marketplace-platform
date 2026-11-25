@@ -347,6 +347,20 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
   switch the readers (the buyer assistant's cap and its statistics page) through a gateway port;
   drop the old table in a later release, with a full `down.sql`. The "cap reached" event and the
   conversation statistics stay.
+  - Built (G7a, migration `20261125150000_assistant_spend_days_expand`): `assistant.conversation_days`
+    holds the daily conversation count (the one column of `spend_days` that is the assistant's own);
+    `ai_budget_counters` gains `cap_reached_at` and `cap_reached_period`, set once on the capability's
+    day row (CHECK: only there). The migration copies both, and adds to the gateway's day rows and
+    counters only the part of each day's `spend_days` spend the gateway did not count (calls before
+    G2), so running it again adds nothing. The assistant writes both homes in the same unit; the
+    spend needs no second write (the gateway counts every call since G2).
+  - The port is `AiUsageReport` (`platform/ai/usage/ai-usage-report.ts`): a capability's settled cost
+    per day and its "cap reached" record, in the caller's unit; it never changes what is held or
+    spent, and only a module's `infrastructure/` imports it. An unknown capability throws.
+  - G7b switches the readers: the assistant's cap check and its insights page read the cost through
+    the port and the conversations from `conversation_days`, and `spend_days` is no longer written.
+    The cap values stay in the assistant's settings until G4 moves them to the gateway's caps
+    (FE-20261125-ai-gateway-assistant-cap-to-gateway); step 4 is FE-20261125-ai-gateway-drop-spend-days.
 
 ## 11. Monitoring and audit
 - **Metrics:** calls, error rate, p50 and p95 latency, fallbacks and cost, per capability, model and
@@ -395,3 +409,5 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 | FE-235 | A design of its own for the admin assistant |
 | FE-20261125-ai-gateway-budget-alerts | Admin notice at 80 % and 100 % of an AI budget cap (G2 counts and refuses only) |
 | FE-20261125-ai-gateway-ops-alerts | Kazem's alerts: error rate, circuit breaker, spend at 80 % |
+| FE-20261125-ai-gateway-drop-spend-days | G7 step 4: drop `assistant.spend_days` one release after G7b |
+| FE-20261125-ai-gateway-assistant-cap-to-gateway | Move the assistant's day and month cap values into the gateway's caps (with G4) |

@@ -46,6 +46,8 @@ import { EventCatalogue } from '../../src/platform/events/event-catalogue';
 import { NO_PERMISSION_KEYS } from '../../src/platform/events/outbox-writer';
 import { PrismaOutboxWriterFactory } from '../../src/platform/persistence/outbox/prisma-outbox-writer';
 import { testDatabaseUrl } from './test-database';
+import { assistantUsageReport } from './assistant-usage-report';
+import { BUYER_CHAT } from '../../src/modules/assistant/contracts/ai-capabilities';
 
 // The buyer assistant's conversations and spend as the application role, in both Market
 // fixtures: message text is stored only as ciphertext under the conversation's own key and read
@@ -99,7 +101,7 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
       clock,
     );
     conversations = new PrismaConversationRepository(db.service, keys);
-    spend = new PrismaSpendRepository(db.service);
+    spend = new PrismaSpendRepository(db.service, assistantUsageReport(db.service));
     sql = new Client({ connectionString: testDatabaseUrl() });
     await sql.connect();
   });
@@ -494,6 +496,48 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
       conversationsToday: 1,
       lastAutoOff: { at, cap: 'daily' },
     });
+  });
+
+  it('writes the conversation count and the auto-off record to their new homes too (G7 step 2)', async () => {
+    const day = Temporal.PlainDate.from(code === 'AU' ? '2031-07-14' : '2031-09-14');
+    const add = (target: MarketContext, conversationsAdded: number) =>
+      inUnit(target, () =>
+        spend.add(target, day, {
+          microUsd: 100,
+          inputTokens: 1,
+          outputTokens: 1,
+          conversations: conversationsAdded,
+        }),
+      );
+    await add(market, 1);
+    await add(market, 0);
+    await add(market, 2);
+    await add(other, 5);
+    const counted = await sql.query<{ market_id: string; conversations: number }>(
+      `SELECT market_id, conversations FROM assistant.conversation_days WHERE day = $1
+        ORDER BY market_id`,
+      [day.toString()],
+    );
+    expect(new Map(counted.rows.map((row) => [row.market_id, row.conversations]))).toEqual(
+      new Map([
+        [market.marketId, 3],
+        [other.marketId, 5],
+      ]),
+    );
+
+    const at = T0.add({ hours: 2 });
+    await inUnit(market, () => spend.markAutoOff(market, day, 'monthly', at));
+    await inUnit(market, () => spend.markAutoOff(market, day, 'daily', at.add({ minutes: 1 })));
+    const reached = await sql.query<{ market_id: string; at: Date; period: string }>(
+      `SELECT market_id, cap_reached_at AS at, cap_reached_period AS period
+         FROM platform.ai_budget_counters
+        WHERE period = 'day' AND period_start = $1 AND scope = 'capability' AND scope_key = $2
+          AND cap_reached_at IS NOT NULL`,
+      [day.toString(), BUYER_CHAT],
+    );
+    expect(reached.rows).toEqual([
+      { market_id: market.marketId, at: new Date(at.epochMilliseconds), period: 'month' },
+    ]);
   });
 
   const outboxWriter = () => {

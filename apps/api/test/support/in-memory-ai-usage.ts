@@ -1,20 +1,17 @@
 import { randomBytes } from 'node:crypto';
 import { uuidV7 } from '@mondapac/shared-kernel';
-import type {
-  Clock,
-  Id,
-  IdGenerator,
-  MarketContext,
-  Result,
-  Temporal,
-} from '@mondapac/shared-kernel';
+import { Temporal } from '@mondapac/shared-kernel';
+import type { Clock, Id, IdGenerator, MarketContext, Result } from '@mondapac/shared-kernel';
 import { AiUsage } from '../../src/platform/ai/usage/ai-usage';
 import {
   counterKeyText,
   type AiUsageStore,
   type BudgetCounterKey,
   type BudgetLine,
+  type BudgetPeriod,
   type CallRecord,
+  type CapReached,
+  type DayCost,
   type ReservationRecord,
   type UsageDelta,
 } from '../../src/platform/ai/usage/ai-usage-store';
@@ -37,6 +34,8 @@ export class InMemoryAiUsageStore implements AiUsageStore {
   reservations = new Map<string, ReservationRecord>();
   calls: CallRecord[] = [];
   usage: UsageDelta[] = [];
+  /** "Cap reached" records by Market, capability and day. */
+  capReached = new Map<string, CapReached>();
   /** Set to make every method throw (the database is down). */
   failing = false;
   /** The next this many calls throw, then the store works again (a lock wait that passes). */
@@ -60,6 +59,7 @@ export class InMemoryAiUsageStore implements AiUsageStore {
       reservations: new Map(this.reservations),
       calls: [...this.calls],
       usage: [...this.usage],
+      capReached: new Map(this.capReached),
     };
   }
 
@@ -68,6 +68,7 @@ export class InMemoryAiUsageStore implements AiUsageStore {
     this.reservations = state.reservations;
     this.calls = state.calls;
     this.usage = state.usage;
+    this.capReached = state.capReached;
   }
 
   /** The counter's held and spent, or undefined. */
@@ -161,6 +162,52 @@ export class InMemoryAiUsageStore implements AiUsageStore {
     this.#check();
     this.usage.push(usage);
     return Promise.resolve();
+  }
+
+  costByDay(
+    _market: MarketContext,
+    capability: string,
+    from: Temporal.PlainDate,
+    to: Temporal.PlainDate,
+  ): Promise<readonly DayCost[]> {
+    this.#check();
+    const byDay = new Map<string, number>();
+    for (const row of this.usage) {
+      if (row.capability !== capability) continue;
+      if (Temporal.PlainDate.compare(row.day, from) < 0) continue;
+      if (Temporal.PlainDate.compare(row.day, to) > 0) continue;
+      const key = row.day.toString();
+      byDay.set(key, (byDay.get(key) ?? 0) + row.costMicroUsd);
+    }
+    return Promise.resolve(
+      [...byDay]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([day, costMicroUsd]) => ({ day: Temporal.PlainDate.from(day), costMicroUsd })),
+    );
+  }
+
+  markCapReached(
+    market: MarketContext,
+    capability: string,
+    day: Temporal.PlainDate,
+    period: BudgetPeriod,
+    at: Temporal.Instant,
+  ): Promise<boolean> {
+    this.#check();
+    const key = `${market.marketId}|${capability}|${day.toString()}`;
+    if (this.capReached.has(key)) return Promise.resolve(false);
+    this.capReached.set(key, { at, period });
+    return Promise.resolve(true);
+  }
+
+  lastCapReached(market: MarketContext, capability: string): Promise<CapReached | null> {
+    this.#check();
+    let last: CapReached | null = null;
+    for (const [key, record] of this.capReached) {
+      if (!key.startsWith(`${market.marketId}|${capability}|`)) continue;
+      if (last === null || Temporal.Instant.compare(record.at, last.at) > 0) last = record;
+    }
+    return Promise.resolve(last);
   }
 
   purgeCalls(): Promise<number> {

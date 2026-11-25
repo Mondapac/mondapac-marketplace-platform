@@ -7,6 +7,7 @@ import { SUPPORT_CONTACT_FACADE, type SupportContactFacade } from '../../notific
 import { SEARCH_ASSISTANT_FACADE, type SearchAssistantFacade } from '../../search';
 import { SETTINGS_FACADE, type SettingsFacade } from '../../settings';
 import { AiGateway } from '../../../platform/ai/ai-gateway';
+import { AiUsageReport } from '../../../platform/ai/usage/ai-usage-report';
 import type { AppConfig } from '../../../platform/config/app-config';
 import { APP_CONFIG } from '../../../platform/config/config.module';
 import { LocaleCatalogues } from '../../../platform/i18n/locale-catalogues';
@@ -89,8 +90,9 @@ export const assistantProviders: readonly FactoryProvider[] = [
   },
   {
     provide: SPEND_REPOSITORY,
-    inject: [PrismaService],
-    useFactory: (prisma: PrismaService): SpendRepository => new PrismaSpendRepository(prisma),
+    inject: [PrismaService, AiUsageReport],
+    useFactory: (prisma: PrismaService, usage: AiUsageReport): SpendRepository =>
+      new PrismaSpendRepository(prisma, usage),
   },
   {
     provide: ASSISTANT_TOOLS,

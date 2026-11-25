@@ -367,20 +367,26 @@ model AiUsageDay {
 /// `held + estimate <= cap`, one conditional UPDATE per row, in a fixed order. Settling corrects
 /// `held` and adds to `spent`. Kept 25 months. Written only by platform/persistence/ai-usage/.
 model AiBudgetCounter {
-  marketId      String   @map("market_id") @db.VarChar(8)
-  tenantId      String   @map("tenant_id")
+  marketId         String    @map("market_id") @db.VarChar(8)
+  tenantId         String    @map("tenant_id")
   /// day | month (CHECK).
-  period        String   @db.VarChar(5)
+  period           String    @db.VarChar(5)
   /// The day, or the first day of the month.
-  periodStart   DateTime @map("period_start") @db.Date
+  periodStart      DateTime  @map("period_start") @db.Date
   /// market | capability | seller | guest (CHECK).
-  scope         String   @db.VarChar(10)
+  scope            String    @db.VarChar(10)
   /// The capability id or the seller id; '' for the Market and the guest pool.
-  scopeKey      String   @map("scope_key") @db.VarChar(100)
+  scopeKey         String    @map("scope_key") @db.VarChar(100)
   /// Settled plus reserved, US micro-dollars.
-  heldMicroUsd  BigInt   @default(0) @map("held_micro_usd")
+  heldMicroUsd     BigInt    @default(0) @map("held_micro_usd")
   /// Settled only, US micro-dollars.
-  spentMicroUsd BigInt   @default(0) @map("spent_micro_usd")
+  spentMicroUsd    BigInt    @default(0) @map("spent_micro_usd")
+  /// The capability's "cap reached" record (AI Gateway G7, design section 10): set once, on the
+  /// capability's day row, when a cap of the capability switched it off that day, so the owning
+  /// module notifies at most once a day. Null until then; both set or both null (CHECK).
+  capReachedAt     DateTime? @map("cap_reached_at") @db.Timestamptz(6)
+  /// day | month: which cap was reached (CHECK).
+  capReachedPeriod String?   @map("cap_reached_period") @db.VarChar(5)
 
   @@id([marketId, periodStart, period, scope, scopeKey], map: "ai_budget_counters_pkey")
   @@map("ai_budget_counters")

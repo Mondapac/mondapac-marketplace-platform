@@ -100,6 +100,21 @@ model AssistantMessage {
   @@schema("assistant")
 }
 
+/// How many conversations the assistant started on one Market day (the Market's own calendar), for
+/// the insights page (AI Gateway G7, design section 10). Replaces the `conversations` column of
+/// `spend_days`, whose spend moved to the gateway's usage record. No personal data; kept like
+/// spend_days (no retention job).
+model AssistantConversationDay {
+  marketId      String   @map("market_id") @db.VarChar(8)
+  day           DateTime @db.Date
+  tenantId      String   @map("tenant_id")
+  conversations Int
+
+  @@id([marketId, day])
+  @@map("conversation_days")
+  @@schema("assistant")
+}
+
 /// A Market's assistant spend for one day of its own calendar (time zone of the Market): counted
 /// up by every model call, read against the daily and monthly caps. The auto-off columns record
 /// the first cap reached that day (the admin screen's "last auto-off").

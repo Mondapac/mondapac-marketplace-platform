@@ -398,6 +398,9 @@ module.exports = {
           '^src/platform/ai/seller-ai-switch\\.ts$',
           // The usage store's port; rule ai-usage-store-only-in-persistence limits who imports it.
           '^src/platform/ai/usage/ai-usage-store\\.ts$',
+          // A module's read of its own capability's usage (G7); no model call. Rule
+          // ai-usage-report-only-from-module-infrastructure limits who imports it.
+          '^src/platform/ai/usage/ai-usage-report\\.ts$',
         ],
       },
     },
@@ -416,6 +419,16 @@ module.exports = {
         ],
       },
       to: { path: '^src/platform/ai/usage/ai-usage-store\\.ts$' },
+    },
+    {
+      name: 'ai-usage-report-only-from-module-infrastructure',
+      comment:
+        "A module reads its own AI capability's spend and keeps its cap-reached record through " +
+        'the gateway port AiUsageReport (docs/design/domain/platform-ai.md section 10, G7) only ' +
+        'from its infrastructure/ adapters: never from domain/ or application/ code.',
+      severity: 'error',
+      from: { pathNot: ['^src/platform/ai/', '^src/modules/[^/]+/infrastructure/'] },
+      to: { path: '^src/platform/ai/usage/ai-usage-report\\.ts$' },
     },
     {
       name: 'ai-registration-only-from-module-files',

@@ -62,6 +62,34 @@ export interface AiUsageStore {
   /** Adds to the day's totals of the capability and seller, creating the row when missing. */
   addUsage(market: MarketContext, usage: UsageDelta): Promise<void>;
 
+  /**
+   * The settled cost of a capability on each Market day from `from` to `to` (both included),
+   * summed over its sellers; a day without a row is left out. Read-only unit is enough.
+   */
+  costByDay(
+    market: MarketContext,
+    capability: string,
+    from: Temporal.PlainDate,
+    to: Temporal.PlainDate,
+  ): Promise<readonly DayCost[]>;
+
+  /**
+   * Records once that a cap of the capability was reached on `day`: sets the "cap reached" columns
+   * of the capability's day counter (created when missing, with nothing held) only while they are
+   * empty. Answers true when this call set them, false when the day has a record already.
+   * Read-write unit.
+   */
+  markCapReached(
+    market: MarketContext,
+    capability: string,
+    day: Temporal.PlainDate,
+    period: BudgetPeriod,
+    at: Temporal.Instant,
+  ): Promise<boolean>;
+
+  /** The capability's newest "cap reached" record in the Market, or null. Read-only unit. */
+  lastCapReached(market: MarketContext, capability: string): Promise<CapReached | null>;
+
   /** Deletes up to `limit` calls that occurred before `before`, oldest first; answers how many. */
   purgeCalls(market: MarketContext, before: Temporal.Instant, limit: number): Promise<number>;
 
@@ -148,3 +176,15 @@ export interface UsageDelta {
 
 /** The upper bounds of the latency buckets, in milliseconds; a slower call is counted above. */
 export const LATENCY_BUCKETS_MS = [500, 1000, 2000, 4000, 8000, 16_000, 32_000] as const;
+
+/** A capability's settled cost on one Market day. */
+export interface DayCost {
+  readonly day: Temporal.PlainDate;
+  readonly costMicroUsd: number;
+}
+
+/** When a cap of a capability switched it off, and which cap (its day or its month). */
+export interface CapReached {
+  readonly at: Temporal.Instant;
+  readonly period: BudgetPeriod;
+}
