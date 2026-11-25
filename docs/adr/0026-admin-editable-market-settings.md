@@ -5,6 +5,7 @@ reviewed by Ali (cto) and Hassan (security-tester), fixes applied 2026-10-07. Mo
 (database-designer) designs the tables. Needed before the earliest of: `sellers` slice 15; `catalog`'s CAT-36, OFR-01 and OFR-03 setting slices; the
 first `platform/ai` slice that checks a switch (ADR-0019 decision 7). The store lands no later
 than that slice.
+**Superseded in part by:** ADR-0053 (2026-11-25; decision 9, AI model choice only)
 **Amends:** ADR-0003 decision 5; ADR-0015 decision 3 (pulls the row "Market configuration seeded
 to the database", for editable settings only)
 **Relates to:** ADR-0004 decision 7, ADR-0009 decision 2, ADR-0012, ADR-0018 decisions 3 to 5,
@@ -74,7 +75,9 @@ committed change at once, and an audited change.
    it is set. The runbook and the R8 pre-switch-on test include it.
 9. **Never a setting.** Anything read by `evaluateClaim` or `ClaimBasisPolicy` (ADR-0012,
    fail-closed); `identity`'s security policy (including "email verification required"); AI
-   provider, model and region (R7); payment and commission values; `HOSTED_MARKETS`. Moving
+   provider, model and region (R7) *(superseded in part by ADR-0053, 2026-11-25: a senior
+   admin chooses AI models among the approved routes of ADR-0052; providers, routes, regions,
+   prices and keys stay out of the panel)*; payment and commission values; `HOSTED_MARKETS`. Moving
    anything off this list needs a superseding ADR and security-tester review; every new
    editable setting needs security-tester review and is otherwise a G2 or mini-review item of
    its owning module. Per-seller settings (SEL-25) stay in `sellers`.
