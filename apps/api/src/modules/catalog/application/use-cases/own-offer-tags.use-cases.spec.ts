@@ -1,5 +1,9 @@
 import { memoryOfferEditReview } from '../../../../../test/support/catalog-offer-edit-review-fakes';
 import {
+  fixedSampler,
+  InMemoryOfferPostReviews,
+} from '../../../../../test/support/catalog-offer-post-review-fakes';
+import {
   InMemorySellerReviewStandings,
   memoryProbation,
 } from '../../../../../test/support/catalog-seller-review-fakes';
@@ -136,6 +140,8 @@ describe.each([
       reviewInputsFail?: boolean;
       /** The referral write throws in the unit. */
       referralFails?: boolean;
+      /** The sampler's fixed bucket (default 9999, never drawn under 100%), or a throw. */
+      bucket?: number | 'throw';
     } = {},
   ) {
     let current: { state: OfferState; tags: readonly OfferTagState[] } | null =
@@ -245,6 +251,8 @@ describe.each([
         }),
     } as unknown as CheckClaimText;
     const probationStandings = new InMemorySellerReviewStandings();
+    const sampler = fixedSampler(options.bucket ?? 9999);
+    const postReviews = new InMemoryOfferPostReviews();
     const submit = new OwnOfferSubmit(gate, {
       unitOfWork,
       offers,
@@ -291,6 +299,8 @@ describe.each([
       clock,
       ids,
       probation: memoryProbation({ standings: probationStandings }).probation,
+      sampler,
+      postReviews,
     });
     return {
       add,
@@ -306,6 +316,8 @@ describe.each([
       offerId: initial?.state.id ?? ids.next<'Offer'>(),
       current: () => current,
       probationStandings,
+      sampler,
+      postReviews,
     };
   }
 
@@ -554,7 +566,7 @@ describe.each([
           offerId: r.offerId,
           trigger: 'first-publication',
           reasons: [],
-          policyVersion: 3,
+          policyVersion: 4,
           offerVersion: r.current()!.state.version,
         }),
       ]);
@@ -564,6 +576,141 @@ describe.each([
           after: expect.objectContaining({ outcome: 'published', reasons: [] }) as unknown,
         }),
       ]);
+    });
+
+    describe('the post-publication sample (risk-based Offer approval slice 6)', () => {
+      const settings = (samplingPercent?: number): OfferReviewSettings => ({
+        mode: 'risk-based',
+        certificateBadges: 'automatic',
+        emergencyStop: false,
+        ...(samplingPercent === undefined ? {} : { samplingPercent }),
+      });
+      const rows = (r: ReturnType<typeof rig>) =>
+        r.postReviews.ofOffer(r.offerId).map((row) => ({
+          marketId: row.marketId,
+          reasons: row.reasons,
+          samplePercent: row.samplePercent,
+          sampleDoubled: row.sampleDoubled,
+        }));
+
+      it('draws under the percent with the Market, Offer and saved version, and opens a row', async () => {
+        const r = rig({ offer: draft(), review: settings(5), bucket: 499 });
+        const outcome = await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+        // Nothing of the draw reaches the seller.
+        expect(outcome).toEqual({ ok: true, value: { published: true } });
+        expect(r.sampler.asked).toEqual([
+          { marketId: code, offerId: r.offerId, offerVersion: r.current()!.state.version },
+        ]);
+        expect(rows(r)).toEqual([
+          { marketId: code, reasons: ['sample'], samplePercent: 5, sampleDoubled: false },
+        ]);
+        expect(r.audits[0]).toEqual(
+          expect.objectContaining({
+            after: expect.objectContaining({ outcome: 'published', sampled: true }) as unknown,
+          }),
+        );
+      });
+
+      it('opens no row at or over the boundary bucket, and audits sampled false', async () => {
+        const r = rig({ offer: draft(), review: settings(5), bucket: 500 });
+        await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+        expect(rows(r)).toEqual([]);
+        expect(r.audits[0]).toEqual(
+          expect.objectContaining({
+            after: expect.objectContaining({ sampled: false }) as unknown,
+          }),
+        );
+      });
+
+      it('never draws at 0%, and always at 100% without asking the sampler', async () => {
+        const none = rig({ offer: draft(), review: settings(0), bucket: 0 });
+        await none.submit.execute(contextOf('seller'), { offerId: none.offerId });
+        expect([none.sampler.asked, rows(none)]).toEqual([[], []]);
+        const all = rig({ offer: draft(), review: settings(100), bucket: 9999 });
+        await all.submit.execute(contextOf('seller'), { offerId: all.offerId });
+        expect(all.sampler.asked).toEqual([]);
+        expect(rows(all)).toEqual([
+          { marketId: code, reasons: ['sample'], samplePercent: 100, sampleDoubled: false },
+        ]);
+      });
+
+      it('samples at the safe 100 without a percent; degraded facts queue the Offer instead', async () => {
+        const absent = rig({ offer: draft(), review: settings(), bucket: 9999 });
+        await absent.submit.execute(contextOf('seller'), { offerId: absent.offerId });
+        expect(rows(absent)).toEqual([
+          { marketId: code, reasons: ['sample'], samplePercent: 100, sampleDoubled: false },
+        ]);
+        const degraded = rig({
+          offer: draft(),
+          review: { ...settings(0), mode: 'off' },
+          reviewFacts: { degraded: true },
+          bucket: 9999,
+        });
+        const outcome = await degraded.submit.execute(contextOf('seller'), {
+          offerId: degraded.offerId,
+        });
+        // Degraded facts are judged in the safe settings (review everything): queued, not drawn.
+        expect(outcome).toEqual({ ok: true, value: { published: false } });
+        expect([degraded.sampler.asked, rows(degraded)]).toEqual([[], []]);
+      });
+
+      it('counts a draw that fails as drawn, logging no key', async () => {
+        const r = rig({ offer: draft(), review: settings(5), bucket: 'throw' });
+        const outcome = await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+        expect(outcome).toEqual({ ok: true, value: { published: true } });
+        expect(rows(r)).toEqual([
+          { marketId: code, reasons: ['sample'], samplePercent: 5, sampleDoubled: false },
+        ]);
+      });
+
+      it('doubles the percent for a seller Trusted less than 30 days ago', async () => {
+        const recent = rig({
+          offer: draft(),
+          review: settings(5),
+          reviewFacts: { trustedSince: T0.subtract({ hours: 24 }) },
+          bucket: 999,
+        });
+        await recent.submit.execute(contextOf('seller'), { offerId: recent.offerId });
+        expect(rows(recent)).toEqual([
+          { marketId: code, reasons: ['sample'], samplePercent: 10, sampleDoubled: true },
+        ]);
+        const old = rig({
+          offer: draft(),
+          review: settings(5),
+          reviewFacts: { trustedSince: T0.subtract({ hours: 720 }) },
+          bucket: 999,
+        });
+        await old.submit.execute(contextOf('seller'), { offerId: old.offerId });
+        expect(rows(old)).toEqual([]);
+      });
+
+      it('doubles for the seller this very submit makes Trusted (stampTrust)', async () => {
+        const r = rig({
+          offer: draft(),
+          review: settings(5),
+          reviewFacts: { stampTrust: true },
+          bucket: 999,
+        });
+        await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+        expect(rows(r)[0]).toMatchObject({ samplePercent: 10, sampleDoubled: true });
+      });
+
+      it('draws nothing for a queued Offer and audits sampled null', async () => {
+        const r = rig({
+          offer: draft(),
+          review: settings(100),
+          reviewFacts: { probation: true },
+          bucket: 0,
+        });
+        const outcome = await r.submit.execute(contextOf('seller'), { offerId: r.offerId });
+        expect(outcome).toEqual({ ok: true, value: { published: false } });
+        expect([r.sampler.asked, rows(r)]).toEqual([[], []]);
+        expect(r.audits[0]).toEqual(
+          expect.objectContaining({
+            after: expect.objectContaining({ outcome: 'queued', sampled: null }) as unknown,
+          }),
+        );
+      });
     });
 
     it('queues the Offer with its reasons when the policy finds any (R1, R2)', async () => {

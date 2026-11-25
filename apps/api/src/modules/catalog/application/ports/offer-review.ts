@@ -11,6 +11,12 @@ export interface OfferReviewSettings {
   readonly certificateBadges: 'review' | 'automatic';
   /** R0 for the whole Market (the settings switch); the category and seller stops are facts. */
   readonly emergencyStop: boolean;
+  /**
+   * The percent of Offers published at once that are sampled for post-publication review
+   * (`offer-review-sampling`, slice 6): 0 to 100; absent, out of bounds or unreadable reads as the
+   * safe 100.
+   */
+  readonly samplingPercent?: number;
 }
 
 /** The safe answer when the settings cannot be read: review everything (fail closed). */
@@ -19,6 +25,8 @@ export const SAFE_OFFER_REVIEW_SETTINGS: OfferReviewSettings = Object.freeze({
   certificateBadges: 'review',
   // Mode `all` already sends every Offer to an admin; no stop banner reason is invented.
   emergencyStop: false,
+  // Every Offer that is published at once anyway is checked after publication.
+  samplingPercent: 100,
 });
 
 /**
@@ -39,6 +47,11 @@ export interface OfferReviewFactsRead extends OfferReviewFacts {
   readonly stampTrust: boolean;
   /** N as read (the safe 100 when it cannot be read). */
   readonly probationOffers: number;
+  /**
+   * When the seller became Trusted (slice 6: the start of 30 days of double sampling); null in
+   * probation, when Trusted by a count not stamped yet, or when a read failed. Absent is null.
+   */
+  readonly trustedSince?: Temporal.Instant | null;
 }
 
 /**
@@ -48,9 +61,17 @@ export interface OfferReviewFactsRead extends OfferReviewFacts {
  */
 export interface OfferReviewInputs {
   settings(context: CallContext): Promise<OfferReviewSettings>;
+  /**
+   * With `offerId` (a first publication, slice 6), an Offer that was ever taken down after
+   * publication is judged with R6 (`fullReview`) on; a failed read of that is R6 on and degraded.
+   */
   facts(
     context: CallContext,
-    subject: { readonly sellerId: Id<'Seller'>; readonly productId: Id<'Product'> },
+    subject: {
+      readonly sellerId: Id<'Seller'>;
+      readonly productId: Id<'Product'>;
+      readonly offerId?: Id<'Offer'>;
+    },
   ): Promise<OfferReviewFactsRead>;
   /** N (`offer-review-probation-offers`): a whole number from 0 to 100, else the safe 100. */
   probationOffers(context: CallContext): Promise<number>;

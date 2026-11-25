@@ -15,9 +15,10 @@ import type { OfferHandling } from './offer-handling';
  * Raise this whenever a rule below changes meaning. 2: the edit rules of a live Offer (slice 2c,
  * {@link offerEditReviewReasons}). 3: R1, R6 and R7 read real facts (slice 4: the probation count,
  * Trusted, the seller and category flags); the seller and category stops (R0) and R7 hold watched
- * edits.
+ * edits. 4: R6 also covers the resubmit of an Offer that was taken down after publication
+ * (slice 6; the fact `fullReview` is on, its read failing is on too).
  */
-export const OFFER_REVIEW_POLICY_VERSION = 3;
+export const OFFER_REVIEW_POLICY_VERSION = 4;
 
 /**
  * The reasons, in the order the queue shows them. Each maps to a rule of the design:

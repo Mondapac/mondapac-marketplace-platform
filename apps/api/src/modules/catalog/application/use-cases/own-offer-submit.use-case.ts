@@ -8,7 +8,7 @@ import type {
   Result,
   Temporal,
 } from '@mondapac/shared-kernel';
-import { isActingAsSession } from '../acting-as';
+import { actingAdminAccountOf, isActingAsSession } from '../acting-as';
 import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../platform/authz';
 import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
@@ -25,6 +25,13 @@ import {
   type OfferReviewReferralStore,
 } from '../ports/offer-review';
 import type { SellerReviewProbation } from '../seller-review-probation';
+import {
+  effectiveSamplingPercent,
+  isSampled,
+  SAFE_SAMPLING_PERCENT,
+} from '../../domain/offer-post-review';
+import type { OfferPostReviewRepository, OfferPostReviewSampler } from '../ports/offer-post-review';
+import { receivePostReviewReason, sampleSourceRef } from '../offer-post-review/post-review-intake';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
 import type { SellerEligibilityReader } from '../ports/seller-eligibility.reader';
@@ -100,6 +107,10 @@ export interface OwnOfferSubmitDependencies {
   readonly ids: IdGenerator;
   /** Stamps Trusted when N was lowered under the seller's count (slice 4), in the submit unit. */
   readonly probation: SellerReviewProbation;
+  /** The keyed draw of the post-publication sample (slice 6). */
+  readonly sampler: OfferPostReviewSampler;
+  /** The post-publication review rows (slice 6), written in the submit unit. */
+  readonly postReviews: OfferPostReviewRepository;
 }
 
 /**
@@ -126,6 +137,14 @@ export interface OwnOfferSubmitDependencies {
  * A lost race asks again, at most three times, then `conflict.retry`. A non-empty `requestedTags`
  * must be refused in an acting-as session (Hassan M1); the actor has no acting-as field until
  * SEL-08 (open carry).
+ *
+ * Post-publication sample (risk-based Offer approval slice 6): an Offer published at once is drawn
+ * in the submit unit by a keyed HMAC over (Market, Offer, version) at the Market's
+ * `offer-review-sampling` percent, doubled (at most 100) for 30 days after the seller became
+ * Trusted; settings that cannot be read, or degraded facts, sample at the safe 100. A drawn Offer
+ * opens (or extends) its post-publication review row with reason `sample`; the audit's `sampled`
+ * records the draw. The seller's answer, reads, events and notices are the same either way. An
+ * Offer that was ever taken down is judged with R6 on (policy version 4).
  */
 export class OwnOfferSubmit extends UseCase<
   OwnOfferSubmitInput,
@@ -308,7 +327,7 @@ export class OwnOfferSubmit extends UseCase<
     const productId = guard.value.productId;
     const [reviewSettings, reviewFacts] = await Promise.all([
       deps.reviewInputs.settings(context),
-      deps.reviewInputs.facts(context, { sellerId, productId }),
+      deps.reviewInputs.facts(context, { sellerId, productId, offerId }),
     ]);
     // Facts read with a failure (degraded) are judged in the safe settings, as edits are: mode
     // `all` and badges reviewed, so a stop that could not be read never lets an Offer go live
@@ -372,7 +391,12 @@ export class OwnOfferSubmit extends UseCase<
           now,
         );
         if (tagged !== null) return tagged;
-        await deps.offers.save(market, offer, { kind: 'seller', accountId: actor.accountId });
+        // An acting-as submit records the admin behind it (the no-self-decision rule, slice 6).
+        await deps.offers.save(market, offer, {
+          kind: 'seller',
+          accountId: actor.accountId,
+          actingAdminAccountId: actingAdminAccountOf(actor),
+        });
         // N was lowered under the seller's count: stamp Trusted now (lock order: Offer, standing),
         // so raising N later never demotes the seller (design 5).
         if (reviewFacts.stampTrust === true) {
@@ -382,6 +406,14 @@ export class OwnOfferSubmit extends UseCase<
             now,
           });
         }
+        const sampled = submitted.value.published
+          ? await this.#sample(context, offer, {
+              percent: safe ? SAFE_SAMPLING_PERCENT : reviewSettings.samplingPercent,
+              trustedSince:
+                reviewFacts.stampTrust === true ? now : (reviewFacts.trustedSince ?? null),
+              now,
+            })
+          : null;
         await deps.referrals.record(market, {
           offerId,
           sellerId,
@@ -399,6 +431,7 @@ export class OwnOfferSubmit extends UseCase<
               outcome: submitted.value.published ? 'published' : 'queued',
               reasons,
               policyVersion: OFFER_REVIEW_POLICY_VERSION,
+              sampled,
             },
           }),
         );
@@ -411,6 +444,57 @@ export class OwnOfferSubmit extends UseCase<
       if (error instanceof StaleAggregateError) return RETRY;
       throw error;
     }
+  }
+
+  /**
+   * In the submit unit, after the Offer row (lock order): the post-publication sample of an Offer
+   * published at once. The percent is the Market's (absent is the safe 100), doubled while the
+   * seller became Trusted less than 30 days ago; 0 never draws and 100 always does. A draw that
+   * cannot be made counts as drawn (fail closed). Answers whether the Offer was drawn; nothing of
+   * it reaches the seller.
+   */
+  async #sample(
+    context: CallContext,
+    offer: Offer,
+    input: {
+      readonly percent: number | undefined;
+      readonly trustedSince: Temporal.Instant | null;
+      readonly now: Temporal.Instant;
+    },
+  ): Promise<boolean> {
+    const { market } = context;
+    const { id, version, sellerId, productId } = offer.state;
+    const effective = effectiveSamplingPercent({
+      percent: input.percent ?? SAFE_SAMPLING_PERCENT,
+      trustedSince: input.trustedSince,
+      now: input.now,
+    });
+    if (effective.percent === 0) return false;
+    let drawn = true;
+    if (effective.percent < 100) {
+      try {
+        drawn = isSampled(this.deps.sampler.bucketOf(market, id, version), effective.percent);
+      } catch {
+        // Never the key, the digest or the error: a code only.
+        this.#logger.warn({
+          msg: 'catalog.own-offer-submit.sample-failed',
+          marketId: market.marketId,
+          correlationId: context.correlationId,
+        });
+        drawn = true;
+      }
+    }
+    if (!drawn) return false;
+    await receivePostReviewReason(this.deps, market, {
+      offerId: id,
+      sellerId,
+      productId,
+      reason: 'sample',
+      sourceRef: sampleSourceRef(version),
+      sample: effective,
+      now: input.now,
+    });
+    return true;
   }
 
   /**

@@ -7,6 +7,7 @@ import {
   InMemorySellerReviewStandings,
 } from '../../../../test/support/catalog-seller-review-fakes';
 import { TEST_MARKET_IDS } from '../../../../test/support/test-config';
+import { InMemoryOfferPostReviews } from '../../../../test/support/catalog-offer-post-review-fakes';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
 import type { CategoryOfferReviewFlagsStore } from '../application/ports/category-offer-review-flags.store';
 import {
@@ -16,6 +17,7 @@ import {
 import { SAFE_OFFER_REVIEW_SETTINGS } from '../application/ports/offer-review';
 import type { SellerOfferReviewFlags } from '../application/ports/seller-offer-review-flags.reader';
 import type { FlaggedCategory } from '../domain/category-offer-review-flags';
+import { OfferPostReview } from '../domain/offer-post-review';
 import { SellerReviewStanding } from '../domain/seller-review-standing';
 import { FacadeOfferReviewInputs } from './facade-offer-review-inputs';
 
@@ -48,6 +50,7 @@ interface Rig {
   /** The category tree: child to parent. */
   parents?: Readonly<Record<string, string>>;
   pathsFail?: boolean;
+  postReviews?: InMemoryOfferPostReviews;
 }
 
 function inputsWith(rig: Rig = {}) {
@@ -89,6 +92,7 @@ function inputsWith(rig: Rig = {}) {
     standings: rig.standings ?? new InMemorySellerReviewStandings(),
     categoryFlags,
     categoryPaths,
+    postReviews: rig.postReviews ?? new InMemoryOfferPostReviews(),
   });
 }
 
@@ -124,6 +128,7 @@ describe.each(TEST_MARKET_IDS)('FacadeOfferReviewInputs in market %s', (code) =>
           mode,
           certificateBadges: 'automatic',
           emergencyStop: false,
+          samplingPercent: 5,
         });
       }
     });
@@ -141,7 +146,25 @@ describe.each(TEST_MARKET_IDS)('FacadeOfferReviewInputs in market %s', (code) =>
         mode: 'all',
         certificateBadges: 'review',
         emergencyStop: false,
+        samplingPercent: 5,
       });
+    });
+
+    it('passes the sampling percent through, and the safe 100 out of bounds or unreadable', async () => {
+      for (const percent of [0, 5, 100]) {
+        const inputs = inputsWith({
+          policy: () => Promise.resolve({ ...POLICY, samplingPercent: percent }),
+        });
+        expect((await inputs.settings(context)).samplingPercent).toBe(percent);
+      }
+      for (const odd of [-1, 101, 2.5, 'five', null, undefined]) {
+        const inputs = inputsWith({
+          policy: () => Promise.resolve({ ...POLICY, samplingPercent: odd }),
+        });
+        expect((await inputs.settings(context)).samplingPercent).toBe(100);
+      }
+      const down = inputsWith({ policy: () => Promise.reject(new Error('down')) });
+      expect((await down.settings(context)).samplingPercent).toBe(100);
     });
 
     it('passes the emergency stop through only when it is exactly true', async () => {
@@ -175,6 +198,7 @@ describe.each(TEST_MARKET_IDS)('FacadeOfferReviewInputs in market %s', (code) =>
         sensitiveCategory: false,
         degraded: false,
         stampTrust: false,
+        trustedSince: null,
         probationOffers: 10,
       });
     });
@@ -304,6 +328,74 @@ describe.each(TEST_MARKET_IDS)('FacadeOfferReviewInputs in market %s', (code) =>
           degraded: true,
         });
       }
+    });
+
+    it('answers the trusted-since instant of a stamped standing (the sample doubling reads it)', async () => {
+      const standings = await standingWith(10, { trustedAt: T0 });
+      expect((await inputsWith({ standings }).facts(context, subject)).trustedSince).toEqual(T0);
+    });
+
+    describe('R6: an Offer once taken down (slice 6)', () => {
+      const ADMIN = '01990000-0000-7000-8000-0000000a0001' as Id<'Account'>;
+      function takenDown(market: string): InMemoryOfferPostReviews {
+        const postReviews = new InMemoryOfferPostReviews();
+        const opened = OfferPostReview.open({
+          id: '01990000-0000-7000-8000-0000000f0001' as Id<'OfferPostReview'>,
+          marketId: market as never,
+          offerId: OFFER(1),
+          sellerId: SELLER,
+          productId: PRODUCT,
+          reason: 'price-no-reference',
+          now: T0,
+        });
+        if (!opened.ok) throw new Error('open');
+        const review = opened.value;
+        review.takeDown({
+          accountId: ADMIN,
+          reasonCode: 'other',
+          misconduct: false,
+          note: 'Wrong item',
+          now: T0,
+        });
+        postReviews.rows.set(review.state.id, review.state);
+        return postReviews;
+      }
+
+      it('asks for a full review on the resubmit of a taken-down Offer', async () => {
+        const postReviews = takenDown(code);
+        const facts = await inputsWith({ postReviews }).facts(context, {
+          ...subject,
+          offerId: OFFER(1),
+        });
+        expect(facts).toMatchObject({ fullReview: true, degraded: false });
+        // Another Offer, or no Offer named: no R6.
+        const other = await inputsWith({ postReviews }).facts(context, {
+          ...subject,
+          offerId: OFFER(2),
+        });
+        expect(other.fullReview).toBe(false);
+        expect((await inputsWith({ postReviews }).facts(context, subject)).fullReview).toBe(false);
+      });
+
+      it('never reads a take-down of another Market', async () => {
+        const other = TEST_MARKET_IDS.find((m) => m !== code)!;
+        const postReviews = takenDown(other);
+        const facts = await inputsWith({ postReviews }).facts(context, {
+          ...subject,
+          offerId: OFFER(1),
+        });
+        expect(facts.fullReview).toBe(false);
+      });
+
+      it('fails closed when the take-downs cannot be read: full review, degraded', async () => {
+        const postReviews = new InMemoryOfferPostReviews();
+        postReviews.failTakenDownRead = true;
+        const facts = await inputsWith({ postReviews }).facts(context, {
+          ...subject,
+          offerId: OFFER(1),
+        });
+        expect(facts).toMatchObject({ fullReview: true, degraded: true });
+      });
     });
 
     it('never answers a seller another Market holds (the standing is read per Market)', async () => {

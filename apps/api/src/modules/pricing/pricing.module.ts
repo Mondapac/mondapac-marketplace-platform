@@ -84,6 +84,8 @@ import { PRICING_EVENTS } from './domain/events';
 import { PricingFacadeImplementation } from './presentation/pricing.facade';
 import { AdminPriceHoldController } from './presentation/admin-price-hold.controller';
 import { catalogRetirementSubscriptions } from './presentation/subscribers/catalog-retirement.subscriptions';
+import { postReviewFlagSubscriptions } from './presentation/subscribers/post-review-flag.subscriptions';
+import { ReferOfferForPostReview } from './application/use-cases/refer-offer-for-post-review.use-case';
 import { SellerOfferPricesController } from './presentation/seller-offer-prices.controller';
 import { SellerOffersPricesController } from './presentation/seller-offers-prices.controller';
 import { SellerRegularPriceController } from './presentation/seller-regular-price.controller';
@@ -118,6 +120,7 @@ const PORT = {
   specials: SPECIALS_IN_FORCE_READER,
   reference: FIRST_PRICE_REFERENCE,
   ownCommission: OWN_COMMISSION_SOURCE,
+  catalog: CATALOG_FACADE,
 } as const satisfies Record<string, InjectionToken>;
 
 type PortName = keyof typeof PORT;
@@ -405,11 +408,18 @@ function holdListUseCaseProvider<U>(type: HoldListUseCaseClass<U>): FactoryProvi
       outbox: true,
       clock: true,
     }),
+    useCaseProvider(ReferOfferForPostReview, { catalog: true }),
     registerSubscriptionsFrom(
       'pricing',
-      [RetireSeriesForRemovedOffer, RetireSeriesForRemovedVariant],
-      (offer: RetireSeriesForRemovedOffer, variant: RetireSeriesForRemovedVariant) =>
-        catalogRetirementSubscriptions(offer, variant),
+      [RetireSeriesForRemovedOffer, RetireSeriesForRemovedVariant, ReferOfferForPostReview],
+      (
+        offer: RetireSeriesForRemovedOffer,
+        variant: RetireSeriesForRemovedVariant,
+        refer: ReferOfferForPostReview,
+      ) => [
+        ...catalogRetirementSubscriptions(offer, variant),
+        ...postReviewFlagSubscriptions(refer),
+      ],
     ),
     useCaseProvider(PurgeWriteRefusalThrottles, {
       unitOfWork: true,

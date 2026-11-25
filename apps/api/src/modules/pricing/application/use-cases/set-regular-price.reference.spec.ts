@@ -214,6 +214,24 @@ describe.each(['AU', 'ZZ'] as const)('R4 first-price reference in market %s', (c
         }) as unknown,
       }),
     ]);
+    // Catalog's post-publication review list hears of it, in the unit of the write: ids and the
+    // reason only, keyed on the first-price record.
+    const flagged = t.outbox.events.filter(
+      (e) => e.type === 'pricing.offer-post-review-flagged.v1',
+    );
+    expect(flagged).toEqual([
+      expect.objectContaining({
+        aggregateId: output.recordId,
+        aggregateVersion: 1,
+        payload: {
+          offerId: newcomer.offerId,
+          productId: t.reference.checks[0]!.productId,
+          sellerId: newcomer.sellerId,
+          recordId: output.recordId,
+          reason: 'no-reference',
+        },
+      }),
+    ]);
   });
 
   it('accepts a first price within ±50% of the median of three businesses', async () => {
@@ -224,6 +242,9 @@ describe.each(['AU', 'ZZ'] as const)('R4 first-price reference in market %s', (c
     const output = valueOf(await newcomer.price(1_500n));
 
     expect(output.status).toBe('accepted');
+    expect(t.outbox.events.map((e) => e.type)).not.toContain(
+      'pricing.offer-post-review-flagged.v1',
+    );
     const record = t.series.stored(market, { offerId: newcomer.offerId, variantId: t.variantId })!
       .regular[0]!;
     expect(record.reference).toEqual({
@@ -300,6 +321,11 @@ describe.each(['AU', 'ZZ'] as const)('R4 first-price reference in market %s', (c
       postReviewReason: 'reference-unavailable',
       referenceAmountMinor: null,
     });
+    expect(
+      t.outbox.events
+        .filter((e) => e.type === 'pricing.offer-post-review-flagged.v1')
+        .map((e) => (e.payload as { reason: string }).reason),
+    ).toEqual(['reference-unavailable']);
   });
 
   it('measures the next first price again after a held first price is rejected or replaced', async () => {
@@ -357,6 +383,16 @@ describe.each(['AU', 'ZZ'] as const)('R4 first-price reference in market %s', (c
       expect.objectContaining({
         after: expect.objectContaining({ outcome: 'outside', offerId: early.offerId }) as unknown,
       }),
+    ]);
+
+    // The re-check outside the band flags the early Offer, as version 2 of its record.
+    expect(
+      t.outbox.events
+        .filter((e) => e.type === 'pricing.offer-post-review-flagged.v1')
+        .map((e) => [e.aggregateId, e.aggregateVersion, (e.payload as { reason: string }).reason]),
+    ).toEqual([
+      [earlyOutput.recordId, 1, 'no-reference'],
+      [earlyOutput.recordId, 2, 'recheck-outside'],
     ]);
 
     // Re-checked once only.

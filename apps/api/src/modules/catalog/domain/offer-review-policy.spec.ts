@@ -107,8 +107,8 @@ describe('offerEditReviewReasons (the edit rules of a live Offer, slice 2c)', ()
     ...overrides,
   });
 
-  it('is version 3 of the policy', () => {
-    expect(OFFER_REVIEW_POLICY_VERSION).toBe(3);
+  it('is version 4 of the policy (slice 6 adds the sample)', () => {
+    expect(OFFER_REVIEW_POLICY_VERSION).toBe(4);
   });
 
   it('holds a watched edit of a product in an always-review category (R7), outside mode off', () => {

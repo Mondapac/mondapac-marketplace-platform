@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-post-review-price-column",
+  "area": "catalog",
+  "title": "Price and median column on the post-publication review list",
+  "desc": "The post-publication review list (risk-based Offer approval slice 6) shows reason codes only: catalog stores no price or median. A column with the Offer's first price and the reference median would need a pricing read facade for the admin (amounts, never Cost) and its security review.",
+  "src": "Slice 6 spec (offer-approval-6-spec.md), backend build",
+  "date": "2026-11-25",
+  "trig": "when admins ask to judge price flags without opening the Offer's prices",
+  "prio": "پایین",
+  "status": "موکول"
+}

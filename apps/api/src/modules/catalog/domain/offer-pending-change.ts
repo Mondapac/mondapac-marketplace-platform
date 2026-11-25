@@ -15,8 +15,12 @@ export const OFFER_PENDING_CHANGE_STATUSES = [
 ] as const;
 export type OfferPendingChangeStatus = (typeof OFFER_PENDING_CHANGE_STATUSES)[number];
 
-/** Why a change was set aside without a decision: a new edit replaced it, or the Offer went. */
-export const OFFER_CHANGE_SUPERSEDED_CAUSES = ['resubmitted', 'offer-deleted'] as const;
+/** Why a change was set aside without a decision: a new edit replaced it, the Offer went, or an admin took the Offer down (slice 6). */
+export const OFFER_CHANGE_SUPERSEDED_CAUSES = [
+  'resubmitted',
+  'offer-deleted',
+  'taken-down',
+] as const;
 export type OfferChangeSupersededCause = (typeof OFFER_CHANGE_SUPERSEDED_CAUSES)[number];
 
 /** The watched fields a held change can carry, in a fixed order. */

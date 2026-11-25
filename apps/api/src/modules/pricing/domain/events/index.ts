@@ -76,9 +76,42 @@ export const PriceHoldDecided = defineEvent({
   },
 });
 
+/** Why pricing's R4 check puts an Offer on catalog's post-publication review list. */
+export const POST_REVIEW_FLAG_REASONS = [
+  'no-reference',
+  'reference-unavailable',
+  'recheck-outside',
+] as const;
+export type PostReviewFlagReason = (typeof POST_REVIEW_FLAG_REASONS)[number];
+
+/**
+ * The R4 check of a first price put the Offer on the post-publication review list (risk-based
+ * Offer approval slice 6): accepted with no reference, or with one that could not be read, or the
+ * re-check found the earlier price outside the band. Ids and an enum only, never an amount or a
+ * median. Written in the unit that stores `first_price_checks.post_review_reason`. The aggregate
+ * id is the first-price record (`recordId`): version 1 for the first check, 2 for the re-check,
+ * so neither collides with the series' own events. Pricing's own subscriber
+ * (`pricing.refer-offer-for-post-review`) hands it to catalog through its facade.
+ */
+export const OfferPostReviewFlagged = defineEvent({
+  type: 'pricing.offer-post-review-flagged.v1',
+  aggregateType: PRICE_SERIES_AGGREGATE,
+  payload: {
+    offerId: eventField.id(),
+    productId: eventField.id(),
+    sellerId: eventField.id(),
+    recordId: eventField.id(),
+    reason: eventField.enumOf(POST_REVIEW_FLAG_REASONS),
+  },
+});
+
+/** The aggregate version of the flag: the first check, then its single re-check. */
+export const POST_REVIEW_FLAG_VERSION = { check: 1, recheck: 2 } as const;
+
 /** Every event pricing publishes, registered with the event catalogue by `PricingModule`. */
 export const PRICING_EVENTS: readonly EventDefinition[] = [
   EffectivePriceChanged,
   PriceHoldOpened,
   PriceHoldDecided,
+  OfferPostReviewFlagged,
 ];

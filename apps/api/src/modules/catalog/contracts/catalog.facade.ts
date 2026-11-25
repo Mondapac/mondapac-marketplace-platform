@@ -507,6 +507,33 @@ export interface CatalogFacade {
       AccessDenied | CatalogValidationFailed | CatalogBatchTooLarge
     >
   >;
+
+  /**
+   * Puts an Offer on catalog's post-publication review list because of its first price
+   * (risk-based Offer approval slice 6; pricing's R4 check). Rule `system`: pricing's subscriber of
+   * its own `pricing.offer-post-review-flagged.v1`, with the delivery's Market. Idempotent on
+   * (Market, Offer, reason, `sourceRef`, the pricing record id): a redelivery writes nothing. An
+   * unknown or deleted Offer, or a seller that is not the Offer's, answers ok with nothing written.
+   * Codes and ids only: never an amount. A refusal is an error the subscriber throws, so the
+   * delivery is retried. In-process only.
+   */
+  referOfferForPostReview(
+    context: CallContext,
+    referral: OfferPostReviewReferral,
+  ): Promise<Result<{ readonly code: string }, { readonly code: string }>>;
+}
+
+/** Why pricing refers an Offer for post-publication review (slice 6). */
+export type OfferPostReviewReferralReason =
+  'price-no-reference' | 'price-reference-unavailable' | 'price-recheck-outside';
+
+/** One referral of {@link CatalogFacade.referOfferForPostReview}: ids and a reason code only. */
+export interface OfferPostReviewReferral {
+  readonly offerId: Id<'Offer'>;
+  readonly sellerId: Id<'Seller'>;
+  readonly reason: OfferPostReviewReferralReason;
+  /** The pricing record the referral is about (the idempotency key). */
+  readonly sourceRef: string;
 }
 
 /** Nest token of the {@link CatalogFacade}, provided and exported by `CatalogModule`. */

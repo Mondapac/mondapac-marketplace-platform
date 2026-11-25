@@ -1815,6 +1815,25 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
         'superseded_cause',
       ],
     },
+    // Slice 6: a post-publication review row gains reasons while open and is decided once; its
+    // identity never moves; the reasons received are insert-only.
+    'catalog.offer_post_reviews': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: [
+        'decided_at',
+        'decided_by_account_id',
+        'decision_reason_code',
+        'misconduct',
+        'note',
+        'reasons',
+        'sample_doubled',
+        'sample_percent',
+        'status',
+        'updated_at',
+        'version',
+      ],
+    },
+    'catalog.offer_post_review_reasons': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     // Slice 4: a standing moves its probation state and version, never its identity; credits and
     // the category flag change log are insert-only; a category's flags move with their at/by.
     'catalog.seller_review_standings': {

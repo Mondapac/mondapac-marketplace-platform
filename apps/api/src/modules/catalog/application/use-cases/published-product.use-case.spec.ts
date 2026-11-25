@@ -94,6 +94,7 @@ describe.each(TEST_MARKETS)('publishedProduct in market %s', (code) => {
     pendingProductRevisions: undefined as never,
     sellerProductOwners: undefined as never,
     productsForLinking: undefined as never,
+    offerPostReviewRefer: undefined as never,
   });
   const anonymous = testCallContext(market, 'anonymous');
   beforeEach(() => {

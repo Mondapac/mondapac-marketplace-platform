@@ -481,6 +481,16 @@
     }
   },
   {
+    "action": "catalog.seller-review.trust-revoked",
+    "targetType": "catalog.seller-review-standing",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "epoch": "integer"
+    }
+  },
+  {
     "action": "catalog.seller-review.trusted",
     "targetType": "catalog.seller-review-standing",
     "targetId": "id",
@@ -559,7 +569,20 @@
       "outcome": "enumOf(queued|published)",
       "policyVersion": "integer",
       "reasons": "listOf(enumOf(emergency-stop|probation|certificate-badge|handling|contact-text|full-review|sensitive-category|review-all), max 8)",
-      "trigger": "enumOf(first-publication|edit)"
+      "trigger": "enumOf(first-publication|edit)",
+      "sampled": "optional(boolean)"
+    }
+  },
+  {
+    "action": "catalog.offer.taken-down",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "misconduct": "boolean",
+      "postReviewId": "id",
+      "reasonCode": "enumOf(content-unclear|description-claim|sku-or-condition|handling-unclear|other)"
     }
   },
   {
@@ -623,13 +646,23 @@
     }
   },
   {
+    "action": "catalog.offer.post-review-approved",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "postReviewId": "id"
+    }
+  },
+  {
     "action": "catalog.offer-change.superseded",
     "targetType": "catalog.offer",
     "targetId": "id",
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "cause": "enumOf(resubmitted|offer-deleted)",
+      "cause": "enumOf(resubmitted|offer-deleted|taken-down)",
       "changeId": "id",
       "fields": "listOf(enumOf(description|handling|tags), max 3)"
     }
@@ -2667,7 +2700,7 @@
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|seller.reviews.list|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts|admin.assistant.insights|admin.catalog.variants|admin.catalog.variant-requests|admin.catalog.attributes|admin.catalog.products-missing-details|admin.catalog.attribute-suggestions|admin.catalog.brands|admin.catalog.business-activities|admin.catalog.tags|admin.catalog.tag-suggestions|admin.catalog.category-proposals|admin.catalog.review-queue|admin.catalog.offer-changes|seller.catalog.attribute-suggestions|seller.catalog.topic-suggestions|seller.commission-payouts.payouts|admin.reviews.moderation|admin.security.alerts|admin.pricing.price-holds)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|seller.reviews.list|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts|admin.assistant.insights|admin.catalog.variants|admin.catalog.variant-requests|admin.catalog.attributes|admin.catalog.products-missing-details|admin.catalog.attribute-suggestions|admin.catalog.brands|admin.catalog.business-activities|admin.catalog.tags|admin.catalog.tag-suggestions|admin.catalog.category-proposals|admin.catalog.review-queue|admin.catalog.offer-changes|admin.catalog.offer-post-reviews|seller.catalog.attribute-suggestions|seller.catalog.topic-suggestions|seller.commission-payouts.payouts|admin.reviews.moderation|admin.security.alerts|admin.pricing.price-holds)",
       "ownedByActor": "boolean",
       "renamed": "boolean",
       "visibility": "enumOf(me|everyone)"
@@ -2679,7 +2712,7 @@
     "targetId": "id",
     "actors": ["authenticated"],
     "before": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|seller.reviews.list|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts|admin.assistant.insights|admin.catalog.variants|admin.catalog.variant-requests|admin.catalog.attributes|admin.catalog.products-missing-details|admin.catalog.attribute-suggestions|admin.catalog.brands|admin.catalog.business-activities|admin.catalog.tags|admin.catalog.tag-suggestions|admin.catalog.category-proposals|admin.catalog.review-queue|admin.catalog.offer-changes|seller.catalog.attribute-suggestions|seller.catalog.topic-suggestions|seller.commission-payouts.payouts|admin.reviews.moderation|admin.security.alerts|admin.pricing.price-holds)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|seller.reviews.list|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts|admin.assistant.insights|admin.catalog.variants|admin.catalog.variant-requests|admin.catalog.attributes|admin.catalog.products-missing-details|admin.catalog.attribute-suggestions|admin.catalog.brands|admin.catalog.business-activities|admin.catalog.tags|admin.catalog.tag-suggestions|admin.catalog.category-proposals|admin.catalog.review-queue|admin.catalog.offer-changes|admin.catalog.offer-post-reviews|seller.catalog.attribute-suggestions|seller.catalog.topic-suggestions|seller.commission-payouts.payouts|admin.reviews.moderation|admin.security.alerts|admin.pricing.price-holds)",
       "visibility": "enumOf(me|everyone)"
     },
     "after": {
@@ -2693,7 +2726,7 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
-      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|seller.reviews.list|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts|admin.assistant.insights|admin.catalog.variants|admin.catalog.variant-requests|admin.catalog.attributes|admin.catalog.products-missing-details|admin.catalog.attribute-suggestions|admin.catalog.brands|admin.catalog.business-activities|admin.catalog.tags|admin.catalog.tag-suggestions|admin.catalog.category-proposals|admin.catalog.review-queue|admin.catalog.offer-changes|seller.catalog.attribute-suggestions|seller.catalog.topic-suggestions|seller.commission-payouts.payouts|admin.reviews.moderation|admin.security.alerts|admin.pricing.price-holds)",
+      "listKey": "enumOf(admin.catalog.products|seller.catalog.products|admin.ordering.orders|seller.ordering.orders|admin.ordering.shipments|admin.ordering.refunds|admin.ordering.documents|admin.system-requests.requests|admin.certification.issuer-requests|admin.certification.review-queue|admin.sellers.health-queue|admin.sellers.list|seller.reviews.list|admin.commission-payouts.payouts|admin.commission-payouts.disputes|admin.payments.connected-accounts|admin.wallet.credit-requests|admin.customers.deletion-requests|admin.blog.posts|admin.assistant.insights|admin.catalog.variants|admin.catalog.variant-requests|admin.catalog.attributes|admin.catalog.products-missing-details|admin.catalog.attribute-suggestions|admin.catalog.brands|admin.catalog.business-activities|admin.catalog.tags|admin.catalog.tag-suggestions|admin.catalog.category-proposals|admin.catalog.review-queue|admin.catalog.offer-changes|admin.catalog.offer-post-reviews|seller.catalog.attribute-suggestions|seller.catalog.topic-suggestions|seller.commission-payouts.payouts|admin.reviews.moderation|admin.security.alerts|admin.pricing.price-holds)",
       "visibility": "enumOf(me|everyone)"
     }
   },

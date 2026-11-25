@@ -904,6 +904,75 @@ describe.each(MARKETS)('Offer in market %s', (code) => {
       expect(draft.state.listed).toBe(false);
     });
   });
+
+  describe('takeDown (post-publication review, risk-based Offer approval slice 6)', () => {
+    const later = T0.add({ hours: 5 });
+    const published = (overrides: Partial<OfferState> = {}) => {
+      const created = create();
+      if (!created.ok) throw new Error(created.error.code);
+      return Offer.restore({
+        ...created.value.state,
+        status: 'published',
+        listed: true,
+        offSaleCauses: [],
+        version: 5,
+        ...overrides,
+      });
+    };
+
+    it('moves a listed Offer to changes-needed, off sale, with the notice and the listing event', () => {
+      const offer = published();
+
+      expect(offer.takeDown({ reasonCode: 'description-claim', now: later })).toEqual({
+        ok: true,
+        value: undefined,
+      });
+
+      expect(offer.state).toMatchObject({ status: 'changes-needed', listed: false });
+      expect(offer.pendingHistory).toEqual({
+        changeKind: 'changes-requested',
+        changedFields: [],
+        occurredAt: later,
+      });
+      expect(
+        offer.pendingEvents.map((event) => [event.type, event.aggregateVersion, event.payload]),
+      ).toEqual([
+        [
+          'catalog.offer-changes-requested.v1',
+          6,
+          { offerId, productId, sellerId, reasonCode: 'description-claim' },
+        ],
+        ['catalog.offer-listing-changed.v1', 7, { offerId, listed: false }],
+      ]);
+      expect(offer.state.version).toBe(7);
+    });
+
+    it('announces no listing change for an Offer already off sale by a cause', () => {
+      const offer = published({ offSaleCauses: ['product-paused'], listed: false });
+
+      expect(offer.takeDown({ reasonCode: 'other', now: later }).ok).toBe(true);
+
+      expect(offer.state).toMatchObject({ status: 'changes-needed', listed: false });
+      expect(offer.pendingEvents.map((event) => event.type)).toEqual([
+        'catalog.offer-changes-requested.v1',
+      ]);
+    });
+
+    it.each(['draft', 'pending-first-publish', 'changes-needed', 'deleted'] as const)(
+      'refuses a %s Offer (offer.not-live) and changes nothing',
+      (status) => {
+        const offer = published({ status, listed: false });
+
+        expect(offer.takeDown({ reasonCode: 'other', now: later })).toEqual({
+          ok: false,
+          error: { code: 'offer.not-live' },
+        });
+        expect(offer.state.status).toBe(status);
+        expect(offer.pendingEvents).toEqual([]);
+        expect(offer.pendingHistory).toBeNull();
+      },
+    );
+  });
 });
 
 describe('isListed (data design 3.13: listed = published and no cause)', () => {

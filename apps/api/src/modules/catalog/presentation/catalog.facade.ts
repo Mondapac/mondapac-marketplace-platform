@@ -14,6 +14,7 @@ import type { BrandProductIdsQuery } from '../application/use-cases/brand-produc
 import type { PublishedProductImagesQuery } from '../application/use-cases/published-product-images.use-case';
 import type { PendingProductRevisionsQuery } from '../application/use-cases/pending-product-revisions.use-case';
 import type { ProductsForLinkingQuery } from '../application/use-cases/products-for-linking.use-case';
+import type { OfferPostReviewRefer } from '../application/use-cases/offer-post-review-refer.use-case';
 import type { SellerProductOwnersQuery } from '../application/use-cases/seller-product-owners.use-case';
 import type {
   BrandProductIds,
@@ -22,6 +23,7 @@ import type {
   CatalogValidationFailed,
   OfferBadgesMap,
   OfferListingsMap,
+  OfferPostReviewReferral,
   OfferSellUnitsMap,
   ProductLinkFacts,
   PublishedImageRef,
@@ -47,6 +49,7 @@ export interface CatalogFacadeUseCases {
   readonly pendingProductRevisions: PendingProductRevisionsQuery;
   readonly sellerProductOwners: SellerProductOwnersQuery;
   readonly productsForLinking: ProductsForLinkingQuery;
+  readonly offerPostReviewRefer: OfferPostReviewRefer;
 }
 
 /**
@@ -204,5 +207,14 @@ export class CatalogFacadeImplementation implements CatalogFacade {
     >
   > {
     return this.useCases.productsForLinking.execute(context, { productIds, sellerId });
+  }
+
+  referOfferForPostReview(context: CallContext, referral: OfferPostReviewReferral) {
+    return this.useCases.offerPostReviewRefer.execute(context, {
+      offerId: referral.offerId,
+      sellerId: referral.sellerId,
+      reason: referral.reason,
+      sourceRef: referral.sourceRef,
+    });
   }
 }

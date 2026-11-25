@@ -368,6 +368,14 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
   CategoryOfferReviewFlagsState: { noCustomerText: 'booleans, instants and ids of a category' },
   CategoryOfferReviewFlags: { noCustomerText: 'booleans, instants and ids of a category' },
   FlaggedCategory: { noCustomerText: 'a category id and two booleans' },
+  // Risk-based Offer approval slice 6: the post-publication review row. Ids, codes, counts and
+  // instants; the decision note is an admin's text, shown to admins only, never to a customer.
+  OfferPostReviewState: {
+    noCustomerText: 'ids, reason codes, a sample percent, instants and an admin-only note',
+  },
+  OfferPostReview: { noCustomerText: 'aggregate class around OfferPostReviewState' },
+  SampleFigures: { noCustomerText: 'a percent and a boolean' },
+  OfferPostReviewReferral: { noCustomerText: 'ids and a reason code from pricing' },
   ReviewClearance: { noCustomerText: 'a marker of the review policy or an approval; no text' },
   WriterEvaluationCase: { noCustomerText: 'synthetic evaluation data used in tests' },
   WriterDetail: { noCustomerText: 'form data sent to the writer, never saved by it' },

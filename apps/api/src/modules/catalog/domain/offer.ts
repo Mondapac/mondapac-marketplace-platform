@@ -613,6 +613,61 @@ export class Offer {
   }
 
   /**
+   * An admin's take-down after publication (risk-based Offer approval slice 6): `published` to
+   * `changes-needed`, so it is off sale at once (no longer listed; open carts answer
+   * `offer-unavailable`) and the seller is told to fix it and submit again, with the reason as a
+   * code on `catalog.offer-changes-requested.v1`; a listed Offer also emits
+   * `catalog.offer-listing-changed.v1` with `listed: false` (search drops it). One
+   * `changes-requested` history row. Tags stay as they are (a resubmit asks them again).
+   */
+  takeDown(input: {
+    readonly reasonCode: OfferChangeReason;
+    readonly now: Temporal.Instant;
+  }): Result<void, { readonly code: 'offer.not-live' }> {
+    const state = this.#state;
+    if (state.status !== 'published') return err({ code: 'offer.not-live' });
+    this.#assertNoChange('takeDown');
+    const wasListed = state.listed;
+    const version = this.#nextEventVersion();
+    this.#state = Object.freeze({
+      ...this.#state,
+      status: 'changes-needed',
+      listed: false,
+      version,
+    });
+    this.#pendingHistory = {
+      changeKind: 'changes-requested',
+      changedFields: [],
+      occurredAt: input.now,
+    };
+    this.#events.push(
+      OfferChangesRequested.record({
+        aggregateId: state.id,
+        aggregateVersion: version,
+        occurredAt: input.now,
+        payload: {
+          offerId: state.id,
+          productId: state.productId,
+          sellerId: state.sellerId,
+          reasonCode: input.reasonCode,
+        },
+      }),
+    );
+    if (wasListed) {
+      const listingVersion = this.#nextEventVersion();
+      this.#events.push(
+        OfferListingChanged.record({
+          aggregateId: state.id,
+          aggregateVersion: listingVersion,
+          occurredAt: input.now,
+          payload: { offerId: state.id, listed: false },
+        }),
+      );
+    }
+    return ok(undefined);
+  }
+
+  /**
    * The seller's delete (OFR-06; terminal): any Offer that is not deleted becomes `deleted`, and
    * a listed one stops being listed. The row stays (Q-K2); the event tells pricing and inventory.
    * Every tag that is not removed becomes `removed` with entry path `offer-delete` (data design

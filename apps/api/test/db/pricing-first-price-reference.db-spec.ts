@@ -325,6 +325,24 @@ describe.each(TEST_MARKETS)(
         },
       ]);
 
+      // Catalog's post-publication review list hears of both flags through pricing's outbox, in
+      // the units that stored them: version 1 (the first check) and 2 (the re-check) of the record.
+      const { rows: flags } = await sql.query(
+        `SELECT o.aggregate_version, o.payload->>'reason' AS reason,
+                o.payload->>'recordId' = c.record_id::text AS keyed
+         FROM pricing.outbox o
+         JOIN pricing.first_price_checks c
+           ON c.market_id = o.market_id AND c.record_id::text = o.aggregate_id::text
+         WHERE o.market_id = $1 AND c.seller_id = $2
+           AND o.type = 'pricing.offer-post-review-flagged.v1'
+         ORDER BY o.aggregate_version`,
+        [code, early.sellerId],
+      );
+      expect(flags).toEqual([
+        { aggregate_version: 1, reason: 'no-reference', keyed: true },
+        { aggregate_version: 2, reason: 'recheck-outside', keyed: true },
+      ]);
+
       const { rows: pending } = await sql.query<{ record_id: Id<'RegularPriceRecord'> }>(
         `SELECT record_id FROM pricing.first_price_checks WHERE market_id = $1 AND seller_id = $2`,
         [code, early.sellerId],

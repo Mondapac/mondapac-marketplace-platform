@@ -120,6 +120,7 @@ model CatalogProduct {
   variantRequests      CatalogVariantRequest[]           @relation("ProductVariantRequests")
   topicSuggestions     CatalogTopicSuggestion[]          @relation("ProductTopicSuggestions")
   reviewCredits        CatalogSellerReviewCredit[]
+  postReviews          CatalogOfferPostReview[]
 
   /// The target of composite foreign keys (C3).
   @@unique([marketId, id])
@@ -927,6 +928,7 @@ model CatalogOffer {
   reviewReferrals             CatalogOfferReviewReferral[]
   pendingChanges              CatalogOfferPendingChange[]
   reviewCredits               CatalogSellerReviewCredit[]
+  postReviews                 CatalogOfferPostReview[]
   tags                        CatalogOfferTag[]
   sellUnits                   CatalogOfferSellUnit[]
   variantRequests             CatalogVariantRequest[]
@@ -1049,6 +1051,71 @@ model CatalogOfferReviewReferral {
   /// an Offer's latest decision: ORDER BY offer_version DESC (queue chips, seller status).
   @@unique([marketId, offerId, offerVersion, trigger])
   @@map("offer_review_referrals")
+  @@schema("catalog")
+}
+
+/// A published Offer an admin checks after it went live (risk-based Offer approval slice 6; ADR-0051).
+/// At most one `open` row per Offer (partial unique); born open, decided once into approved |
+/// taken-down; while open only reasons may be added. The CHECKs, the partial unique, the guard
+/// trigger and the grants are hand-written in the migration. The note is never logged or audited.
+model CatalogOfferPostReview {
+  id                   String                         @id @db.Uuid
+  marketId             String                         @map("market_id") @db.VarChar(8)
+  tenantId             String                         @map("tenant_id")
+  offerId              String                         @map("offer_id") @db.Uuid
+  /// The Offer's seller, bound by the composite foreign key.
+  sellerId             String                         @map("seller_id") @db.Uuid
+  /// The Offer's product when the row opened.
+  productId            String                         @map("product_id") @db.Uuid
+  /// open | approved | taken-down.
+  status               String
+  /// sample | price-no-reference | price-reference-unavailable | price-recheck-outside; never empty, no duplicate.
+  reasons              String[]
+  /// The effective sampling percent (after doubling) when the row carries `sample`.
+  samplePercent        Int?                           @map("sample_percent")
+  /// The percent was doubled (the seller became Trusted less than 30 days before).
+  sampleDoubled        Boolean                        @default(false) @map("sample_doubled")
+  openedAt             DateTime                       @map("opened_at") @db.Timestamptz(6)
+  updatedAt            DateTime                       @map("updated_at") @db.Timestamptz(6)
+  decidedAt            DateTime?                      @map("decided_at") @db.Timestamptz(6)
+  decidedByAccountId   String?                        @map("decided_by_account_id") @db.Uuid
+  /// An Offer change reason code; take-down only.
+  decisionReasonCode   String?                        @map("decision_reason_code")
+  /// Take-down only: the seller lost Trusted.
+  misconduct           Boolean?
+  /// 1 to 2000 characters; required on take-down, optional on approve. Never logged or audited.
+  note                 String?
+  version              Int
+  offer                CatalogOffer                   @relation(fields: [marketId, offerId, sellerId], references: [marketId, id, sellerId], onDelete: Restrict, onUpdate: Restrict)
+  product              CatalogProduct                 @relation(fields: [marketId, productId], references: [marketId, id], onDelete: Restrict, onUpdate: Restrict)
+  receivedReasons      CatalogOfferPostReviewReason[]
+
+  /// The target of the reasons foreign key (same Offer).
+  @@unique([marketId, id, offerId])
+  /// The admin list (status tab, opened order).
+  @@index([marketId, status, openedAt, id])
+  /// An Offer's rows (ever taken down, open row).
+  @@index([marketId, offerId])
+  @@map("offer_post_reviews")
+  @@schema("catalog")
+}
+
+/// Each reason a post-publication review row received, once per source (insert-only): the
+/// idempotency key of the referrals from pricing (source_ref = the price record id) and of a sample
+/// (source_ref = the Offer version sampled).
+model CatalogOfferPostReviewReason {
+  marketId     String                 @map("market_id") @db.VarChar(8)
+  tenantId     String                 @map("tenant_id")
+  offerId      String                 @map("offer_id") @db.Uuid
+  reason       String
+  sourceRef    String                 @map("source_ref")
+  postReviewId String                 @map("post_review_id") @db.Uuid
+  receivedAt   DateTime               @map("received_at") @db.Timestamptz(6)
+  postReview   CatalogOfferPostReview @relation(fields: [marketId, postReviewId, offerId], references: [marketId, id, offerId], onDelete: Restrict, onUpdate: Restrict)
+
+  @@id([marketId, offerId, reason, sourceRef])
+  @@index([marketId, postReviewId])
+  @@map("offer_post_review_reasons")
   @@schema("catalog")
 }
 
