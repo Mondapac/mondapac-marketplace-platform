@@ -18,6 +18,7 @@ import { PRICING_AUDIT_ACTIONS } from '../../src/modules/pricing/domain/audit';
 import { PRICING_EVENTS } from '../../src/modules/pricing/domain/events';
 import { ConfigPricingPolicyProvider } from '../../src/modules/pricing/infrastructure/config-pricing-policy-provider';
 import { PrismaPriceSeriesRepository } from '../../src/modules/pricing/infrastructure/prisma-price-series.repository';
+import { TYPICAL_PRICE_LIMITS } from '../../src/modules/pricing/domain/write-rate-limits';
 import { PrismaWriteRateCounterRepository } from '../../src/modules/pricing/infrastructure/prisma-write-rate-counter.repository';
 import { PrismaWriteRefusalThrottleRepository } from '../../src/modules/pricing/infrastructure/prisma-write-refusal-throttle.repository';
 import { AuditActionCatalogue } from '../../src/platform/audit/audit-action-catalogue';
@@ -393,6 +394,35 @@ describe.each(TEST_MARKETS)('special prices in market %s (database integration)'
         [code, account],
       );
       expect(left.rowCount).toBe(0);
+    });
+
+    it('counts typical-price reads apart from writes and refuses an unknown kind', async () => {
+      const account = ids.next<'Account'>();
+      const t0 = clock.now();
+      const read = async () => {
+        const done = await persistence.unitOfWork.run(market, async () =>
+          ok(await counters().reserve(market, account, TYPICAL_PRICE_LIMITS, t0)),
+        );
+        if (!done.ok) throw new Error('reserve failed');
+        return done.value.map((r) => [r.kind, r.count]);
+      };
+      expect(await read()).toEqual([
+        ['typical.account.day', 1],
+        ['typical.account.minute', 1],
+      ]);
+      expect(await read()).toEqual([
+        ['typical.account.day', 2],
+        ['typical.account.minute', 2],
+      ]);
+      // A price write of the same account still starts at one: the allowances are separate.
+      expect((await reserve(account, t0)).map((r) => r.count)).toEqual([1, 1]);
+      await expect(
+        sql.query(
+          `INSERT INTO pricing.write_rate_counters (market_id, tenant_id, kind, actor_account_id, count, window_started_at)
+           VALUES ($1, 'default', 'typical.bogus', $2, 1, now())`,
+          [code, account],
+        ),
+      ).rejects.toThrow();
     });
 
     it('counts parallel first attempts of one account exactly once each, without deadlock', async () => {
