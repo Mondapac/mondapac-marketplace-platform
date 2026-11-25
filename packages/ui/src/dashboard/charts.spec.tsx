@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BarList, Funnel } from './bar-list.tsx';
@@ -145,6 +145,41 @@ describe('LineAreaChart', () => {
     expect(screen.getByRole('status').textContent).toContain('A$20');
     fireEvent.keyDown(svg, { key: 'Escape' });
     expect(screen.getByRole('status').textContent).toBe('');
+  });
+  it('links each point with an href: a column per day, Enter on the chart, and the table', () => {
+    const linked = pts.map((p, i) =>
+      i === 3 ? p : { ...p, href: `/orders?from=d${i}`, linkLabel: `Orders of ${p.label}` },
+    );
+    const { container } = render(
+      <LineAreaChart
+        title="GMV"
+        points={linked}
+        seriesLabel="This period"
+        formatValue={money}
+        labels={{ ...labels, openPoint: 'Press Enter to open its orders' }}
+      />,
+    );
+    const columns = container.querySelectorAll('svg a[data-point-link]');
+    expect(columns).toHaveLength(3);
+    expect(columns[1]!.getAttribute('href')).toBe('/orders?from=d1');
+    expect(columns[1]!.getAttribute('aria-label')).toBe('Orders of D2');
+    expect(columns[1]!.getAttribute('tabindex')).toBe('-1');
+    const svg = screen.getByRole('img', { name: 'GMV' });
+    const followed = vi.fn((e: Event) => e.preventDefault());
+    columns[1]!.addEventListener('click', followed);
+    fireEvent.keyDown(svg, { key: 'ArrowRight' });
+    fireEvent.keyDown(svg, { key: 'ArrowRight' });
+    expect(screen.getByRole('status').textContent).toContain('Press Enter to open its orders');
+    fireEvent.keyDown(svg, { key: 'Enter' });
+    expect(followed).toHaveBeenCalledTimes(1);
+    // The last point has no link: Enter does nothing and the hint is not read.
+    fireEvent.keyDown(svg, { key: 'ArrowRight' });
+    fireEvent.keyDown(svg, { key: 'ArrowRight' });
+    expect(screen.getByRole('status').textContent).not.toContain('Press Enter');
+    fireEvent.click(screen.getByRole('button', { name: 'View as table' }));
+    const row = screen.getByRole('link', { name: 'Orders of D1' });
+    expect(row.getAttribute('href')).toBe('/orders?from=d0');
+    expect(screen.queryByRole('link', { name: /D4/ })).toBeNull();
   });
   it('keeps negative values and an overlong compare series inside the plot', () => {
     const { container } = render(
@@ -731,5 +766,26 @@ describe('ShareBar', () => {
       }),
     );
     expect(container.querySelector('[data-dropped-note]')?.textContent).toBe('1 left out');
+  });
+  it('makes a part with an href a real, focusable link in the legend and the table', () => {
+    const items: ShareBarItem[] = [
+      { ...parts[0]!, href: '/orders?status=new', linkLabel: 'View 320 orders: New' },
+      parts[1]!,
+    ];
+    const { container } = render(bar(items));
+    const link = screen.getByRole('link', { name: 'View 320 orders: New' });
+    expect(link.getAttribute('href')).toBe('/orders?status=new');
+    expect(link.closest('[data-legend]')?.getAttribute('data-legend')).toBe('new');
+    act(() => link.focus());
+    expect(document.activeElement).toBe(link);
+    // Focusing the link highlights its part like hovering does.
+    expect(container.querySelector('[data-part="ret"]')!.className).toContain('opacity-50');
+    // A part without an href keeps its focusable row and is not a link.
+    expect(container.querySelector('[data-legend="ret"] a')).toBeNull();
+    expect(container.querySelector('[data-legend="ret"]')!.getAttribute('tabindex')).toBe('0');
+    fireEvent.click(screen.getByRole('button', { name: 'View as table' }));
+    expect(screen.getByRole('link', { name: 'View 320 orders: New' }).getAttribute('href')).toBe(
+      '/orders?status=new',
+    );
   });
 });

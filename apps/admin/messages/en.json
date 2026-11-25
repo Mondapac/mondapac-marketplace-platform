@@ -331,7 +331,9 @@
           "refunded": "Refunded"
         },
         "measure-failed": "{measure} could not be loaded.",
-        "empty-current": "No sales in this period."
+        "empty-current": "No sales in this period.",
+        "open-day": "View orders placed on {day}",
+        "open-point": "Press Enter to view the orders placed on this day."
       },
       "categories": {
         "title": "Sales by category",
@@ -386,6 +388,8 @@
         "cancelled": "Cancelled",
         "refunded": "Refunded",
         "other": "Other",
+        "open": "View orders: {state}",
+        "open-range": "View orders: {state}, placed {range}",
         "on-time": {
           "label": "Shipped on time",
           "value": "{count} shipped",

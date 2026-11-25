@@ -9,6 +9,7 @@ import {
   KpiCard,
   formatCount,
   type ActivityColumn,
+  type ColorKey,
   type GridLayout,
 } from '@mondapac/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -44,6 +45,7 @@ import {
   KPI_SELLERS_PERMISSION,
   KPI_TARGET_MANAGE_PERMISSION,
   allowedOf,
+  type AdminKpis,
   type KpiAllowed,
   type FinanceKpis,
   type HealthCount,
@@ -53,6 +55,7 @@ import {
   type SameDayShare,
   type TopSellerRow,
 } from './kpi-types.ts';
+import { ordersHref, type OrdersLink } from '../orders/orders-link.ts';
 import {
   AbandonedCartsCard,
   DiscountCostCard,
@@ -66,6 +69,16 @@ import {
 const KPI_LAYOUT: GridLayout = { span: 3, tabletSpan: 6, phoneSpan: 6, mobileOrder: 'kpi' };
 const CHART_LAYOUT: GridLayout = { span: 8, tabletSpan: 12 };
 const WIDE_LAYOUT: GridLayout = { span: 12 };
+
+/**
+ * The Orders list placed in the shown period (drill-down). The KPI days are Market days of paid
+ * orders; the list filters placed days on the admin's clock, so the list is the closest match,
+ * not the same count. Without a period (an older answer) the plain list.
+ */
+const periodOrders = (value: { readonly period: AdminKpis['period'] }): string =>
+  value.period === null
+    ? ordersHref()
+    : ordersHref({ from: value.period.current.from, to: value.period.current.to });
 
 const financeOf = (result: KpiAnswer, allowed: KpiAllowed) =>
   part<FinanceKpis>(result, allowed.money, (v) => v.finance);
@@ -119,6 +132,7 @@ function GmvCard({ source, allowed, period }: CardProps) {
         return (
           <KpiCard
             {...base}
+            href={periodOrders(finance.value)}
             value={kpiMoney(current.gmvWithTax, locale)}
             scope={t('gmv.scope', { excl: kpiMoney(current.gmvWithoutTax, locale) })}
             {...(change === undefined ? {} : { delta: change })}
@@ -166,6 +180,7 @@ function OrdersCard({ source, allowed, period }: CardProps) {
         return (
           <KpiCard
             {...base}
+            href={periodOrders(operations.value)}
             value={formatCount(current.ordersPaid, false, locale)}
             {...(change === undefined ? {} : { delta: change })}
             sparkline={series.map((point) => point.ordersPaid)}
@@ -335,8 +350,17 @@ function RevenueChart({ source, allowed, period }: CardProps) {
           return base.map((point, index) => {
             const gmv = money?.[index];
             const ordersToday = orders.get(point.day);
+            const label = kpiDayLabel(point.day, locale);
             return {
-              label: kpiDayLabel(point.day, locale),
+              label,
+              ...(rows === 'series'
+                ? {
+                    link: {
+                      href: ordersHref({ from: point.day, to: point.day }),
+                      label: t('chart.open-day', { day: label }),
+                    },
+                  }
+                : {}),
               ...(gmv === undefined
                 ? {}
                 : {
@@ -381,7 +405,7 @@ function RevenueChart({ source, allowed, period }: CardProps) {
             measures={measures}
             failed={failed}
             definition={t('def.chart')}
-            actionHref="/orders"
+            actionHref={value === null ? ordersHref() : periodOrders(value)}
           />
         );
       }}
@@ -497,6 +521,24 @@ function SameDayTile({ same }: { readonly same: SameDayShare }) {
   );
 }
 
+/**
+ * The parts of the status bar, in its order, and the Orders list filter each opens (drill-down).
+ * Refunded has no matching filter on the list (refunds have their own list by refund day): it
+ * stays a plain row.
+ */
+const STATUS_PARTS: readonly {
+  readonly id: 'delivered' | 'shipped' | 'to-ship' | 'cancelled' | 'refunded';
+  readonly key: 'delivered' | 'shipped' | 'toShip' | 'cancelled' | 'refunded';
+  readonly colorKey: ColorKey;
+  readonly link: Pick<OrdersLink, 'status' | 'fulfilment'> | null;
+}[] = [
+  { id: 'delivered', key: 'delivered', colorKey: 'cat-1', link: { fulfilment: 'delivered' } },
+  { id: 'shipped', key: 'shipped', colorKey: 'cat-2', link: { fulfilment: 'shipped' } },
+  { id: 'to-ship', key: 'toShip', colorKey: 'cat-3', link: { fulfilment: 'to-ship' } },
+  { id: 'cancelled', key: 'cancelled', colorKey: 'status-danger', link: { status: 'cancelled' } },
+  { id: 'refunded', key: 'refunded', colorKey: 'status-attention', link: null },
+];
+
 function OrdersByStatus({ source, allowed }: CardProps) {
   const t = useTranslations('dashboard.kpis');
   const locale = useLocale();
@@ -513,11 +555,17 @@ function OrdersByStatus({ source, allowed }: CardProps) {
         const operations = status.value.operations;
         const state = k.paid === 0 ? 'empty' : k.paid < MIN_ORDERS ? 'insufficient' : undefined;
         const text = range(status.value);
+        const days = status.value.period?.current;
+        const statusLink = (filter: Pick<OrdersLink, 'status' | 'fulfilment'>) =>
+          ordersHref({
+            ...filter,
+            ...(days === undefined ? {} : { from: days.from, to: days.to }),
+          });
         return (
           <DashboardCard
             {...frame}
             scope={text === null ? t('status.scope') : `${text} · ${t('status.scope')}`}
-            action={{ href: '/orders', label: t('status.action') }}
+            action={{ href: periodOrders(status.value), label: t('status.action') }}
             titleAdornment={
               <DefinitionHint
                 label={t('def.what', { name: frame.title })}
@@ -530,33 +578,25 @@ function OrdersByStatus({ source, allowed }: CardProps) {
                 title={frame.title}
                 locale={locale}
                 {...(state === undefined ? {} : { state })}
-                items={[
-                  {
-                    id: 'delivered',
-                    label: t('status.delivered'),
-                    value: k.delivered,
-                    colorKey: 'cat-1',
-                  },
-                  {
-                    id: 'shipped',
-                    label: t('status.shipped'),
-                    value: k.shipped,
-                    colorKey: 'cat-2',
-                  },
-                  { id: 'to-ship', label: t('status.to-ship'), value: k.toShip, colorKey: 'cat-3' },
-                  {
-                    id: 'cancelled',
-                    label: t('status.cancelled'),
-                    value: k.cancelled,
-                    colorKey: 'status-danger',
-                  },
-                  {
-                    id: 'refunded',
-                    label: t('status.refunded'),
-                    value: k.refunded,
-                    colorKey: 'status-attention',
-                  },
-                ]}
+                items={STATUS_PARTS.map((part) => {
+                  const label = t(`status.${part.id}`);
+                  const link = part.link === null ? null : statusLink(part.link);
+                  return {
+                    id: part.id,
+                    label,
+                    value: k[part.key],
+                    colorKey: part.colorKey,
+                    ...(link === null
+                      ? {}
+                      : {
+                          href: link,
+                          linkLabel:
+                            text === null
+                              ? t('status.open', { state: label })
+                              : t('status.open-range', { state: label, range: text }),
+                        }),
+                  };
+                })}
               />
               {state === 'insufficient' ? (
                 <p className="text-xs text-fg-muted">

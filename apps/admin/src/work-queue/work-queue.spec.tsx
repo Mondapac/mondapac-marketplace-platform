@@ -177,6 +177,26 @@ describe('WorkQueueList', () => {
       ),
     );
 
+  it('links failed payments to the cancelled orders (drill-down), a focusable link', () => {
+    render(
+      wrap(
+        <WorkQueueList
+          zone="Australia/Brisbane"
+          answer={{ ...answer, queues: [ok('ordering.failed-payments', 'today', 3, 0, 5)] }}
+          initialView="needs-action"
+          accountId="a"
+          marketId="AU"
+        />,
+      ),
+    );
+    const link = within(screen.getByRole('table', { name: 'Work queue' })).getByRole('link', {
+      name: label('ordering.failed-payments'),
+    });
+    expect(link.getAttribute('href')).toBe('/orders?status=cancelled');
+    link.focus();
+    expect(document.activeElement).toBe(link);
+  });
+
   it('lists every queue that needs action with its count, age and status, linked to its list', () => {
     list();
     const table = within(screen.getByRole('table', { name: 'Work queue' }));

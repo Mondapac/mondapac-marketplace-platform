@@ -8,6 +8,13 @@ export interface ChartPoint {
   /** The x label as shown ("12 Nov"). */
   readonly label: string;
   readonly value: number;
+  /**
+   * The list of this point's day (built by code, never from data): the point is a link, in the
+   * chart (click, or Enter on the focused chart) and in the table. Named by `linkLabel`.
+   */
+  readonly href?: string;
+  /** The link's accessible name ("View orders placed on 21 Nov"); required with `href`. */
+  readonly linkLabel?: string;
 }
 
 export interface LineAreaChartProps {
@@ -30,10 +37,18 @@ export interface LineAreaChartProps {
     readonly viewAsTable: string;
     readonly viewAsChart: string;
     readonly dateColumn: string;
+    /** Read after the active point when it links ("Press Enter to open its orders"). */
+    readonly openPoint?: string;
   };
 }
 
 const AXIS_W = 52;
+
+/** The link of a point, or null when it has none (both the address and its name are needed). */
+const linkOf = (point: ChartPoint | undefined) =>
+  point?.href === undefined || point.linkLabel === undefined
+    ? null
+    : { href: point.href, label: point.linkLabel };
 const PAD = { top: 8, right: 8, bottom: 22 };
 
 /**
@@ -90,9 +105,18 @@ export function LineAreaChart({
       const dir = e.key === 'ArrowRight' ? 1 : -1;
       setActive((cur) => Math.min(n - 1, Math.max(0, (cur ?? (dir === 1 ? -1 : n)) + dir)));
     } else if (e.key === 'Escape') setActive(null);
+    else if (e.key === 'Enter' && active !== null && linkOf(points[active]) !== null) {
+      // The keyboard follows the same real link a click follows.
+      e.preventDefault();
+      e.currentTarget
+        .querySelector(`[data-point-link="${active}"]`)
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    }
   };
 
   const shown = active === null ? undefined : cur[active];
+  const shownLink = active === null ? null : linkOf(points[active]);
+  const step = n <= 1 ? plotW : plotW / (n - 1);
   const shownCompare = active === null ? undefined : cmp?.[active];
   const xLabels = labelIndexes(n, Math.max(2, Math.floor(plotW / 72)));
 
@@ -146,7 +170,17 @@ export function LineAreaChart({
                 {cur.map((p, i) => (
                   <tr key={`${p.label}-${i}`} className="border-t border-line-row">
                     <th scope="row" className="px-3 py-2 text-start font-normal text-fg-secondary">
-                      {p.label}
+                      {linkOf(p) === null ? (
+                        p.label
+                      ) : (
+                        <a
+                          href={linkOf(p)?.href}
+                          aria-label={linkOf(p)?.label}
+                          className="font-medium text-link underline"
+                        >
+                          {p.label}
+                        </a>
+                      )}
                     </th>
                     <td className="px-3 py-2 text-end text-fg">{formatValue(p.value)}</td>
                     {compare === undefined ? null : (
@@ -235,8 +269,35 @@ export function LineAreaChart({
               {n === 1 && cur[0] !== undefined ? (
                 <circle cx={x(0)} cy={y(cur[0].value)} r={3} className="fill-chart-series" />
               ) : null}
+              {points.map((p, i) => {
+                const link = linkOf(p);
+                // A column per day that is a real link for a pointer; the keyboard reaches it
+                // through the focused chart (arrows, then Enter) and through the table.
+                return link === null ? null : (
+                  <a
+                    key={`link-${i}`}
+                    href={link.href}
+                    aria-label={link.label}
+                    tabIndex={-1}
+                    data-point-link={i}
+                    className="cursor-pointer"
+                  >
+                    <rect
+                      x={Math.max(AXIS_W, x(i) - step / 2)}
+                      y={PAD.top}
+                      width={Math.max(
+                        1,
+                        Math.min(x(i) + step / 2, width - PAD.right) -
+                          Math.max(AXIS_W, x(i) - step / 2),
+                      )}
+                      height={plotH}
+                      fill="transparent"
+                    />
+                  </a>
+                );
+              })}
               {active === null || shown === undefined ? null : (
-                <g aria-hidden="true">
+                <g aria-hidden="true" className="pointer-events-none">
                   <line
                     x1={x(active)}
                     x2={x(active)}
@@ -255,7 +316,7 @@ export function LineAreaChart({
                     shownCompare === undefined || compareLabel === undefined
                       ? ''
                       : `, ${compareLabel}: ${formatValue(shownCompare.value)}`
-                  }`}
+                  }${shownLink === null || labels.openPoint === undefined ? '' : `. ${labels.openPoint}`}`}
             </div>
             {active === null || shown === undefined ? null : (
               <div

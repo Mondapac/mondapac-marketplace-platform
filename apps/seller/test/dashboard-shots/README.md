@@ -8,3 +8,5 @@ drawn. Run from `apps/seller`:
       node test/dashboard-shots/run.mjs <out-dir>
 
 Phase 2 cards: scenarios `p2-thin`, `p2-failed` (admin) and `goal-none`, `goal-failed`, `goal-read-only`, the goal dialog (seller); `SHOTS_ONLY=<view names>` takes only those views.
+
+Drill-down: `seller-dashboard-drill-focus` (keyboard focus on the Paid orders card link).

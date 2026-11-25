@@ -4,6 +4,7 @@
 // signals. A key the panel does not know yet is left out (packages/ui `workQueueRows`).
 
 import type { WorkQueueAnswer, WorkQueueSignal } from '@mondapac/ui';
+import { ordersHref } from '../orders/orders-link.ts';
 
 export const WORK_QUEUE_PATH = 'dashboard/admin/work-queue';
 
@@ -53,7 +54,9 @@ export const ADMIN_QUEUES: readonly AdminQueue[] = [
   {
     key: 'ordering.failed-payments',
     requires: 'ordering.order.view',
-    href: '/orders',
+    // Cancelled orders (drill-down): the list has no cancel-reason or cancelled-day filter yet,
+    // so it shows every cancelled order, the failed payments among them.
+    href: ordersHref({ status: 'cancelled' }),
     signal: 'age',
   },
   {
