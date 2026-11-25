@@ -118,6 +118,43 @@ export class ChangeMonthlyRevenueTargetRequest {
   note?: string;
 }
 
+export class SettingChangeEntry {
+  @ApiProperty({
+    enum: [
+      'offer-review-mode',
+      'offer-review-probation-offers',
+      'offer-review-reference-sellers',
+      'offer-review-price-band',
+      'offer-review-sampling',
+      'offer-review-certificate-badges',
+    ],
+  })
+  code!: string;
+  @ApiProperty({
+    description:
+      'A choice (mode: all, risk-based or off; badges: review or automatic) or a whole number ' +
+      'as decimal text within the setting bounds (probation 0-100, reference sellers 2-20, ' +
+      'price band 5-200, sampling 0-100).',
+  })
+  value!: string;
+  @ApiProperty({ description: 'The version the admin saw; a stale edit is refused (409).' })
+  expectedVersion!: number;
+}
+
+export class ChangeOfferReviewRequest {
+  @ApiProperty({ type: [SettingChangeEntry], description: 'Each setting at most once.' })
+  changes!: SettingChangeEntry[];
+  @ApiProperty({
+    required: false,
+    description: 'The note for the reviewer, 1 to 500 characters; required where reviewed.',
+  })
+  note?: string;
+}
+
+export class SettingsChangeListBody {
+  @ApiProperty({ type: [SettingChangeBody] }) settings!: SettingChangeBody[];
+}
+
 export const monthlyRevenueTargetBody = (view: SettingView): MonthlyRevenueTargetBody => {
   const target = targetOf(view.value);
   return {
@@ -152,6 +189,10 @@ export const settingChangeBody = (view: SettingChangeView): SettingChangeBody =>
   ...settingBody(view),
   request: view.request === null ? null : { id: view.request.id, number: view.request.number },
 });
+
+export const settingsChangeListBody = (
+  views: readonly SettingChangeView[],
+): SettingsChangeListBody => ({ settings: views.map(settingChangeBody) });
 
 export const settingsListBody = (views: readonly SettingView[]): SettingsListBody => ({
   settings: views.map(settingBody),

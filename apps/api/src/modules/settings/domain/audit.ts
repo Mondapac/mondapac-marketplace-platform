@@ -16,6 +16,10 @@ const VALUES = [
   'on',
   'fast',
   'balanced',
+  'all',
+  'risk-based',
+  'review',
+  'automatic',
 ] as const;
 
 /** Every setting code, the audit row's target id. */
@@ -24,6 +28,16 @@ export const SETTING_TARGET_IDS = [
   'cart-mode',
   'ai-description-writer',
   'ai-description-writer-tier',
+  'offer-review-mode',
+  'offer-review-certificate-badges',
+] as const;
+
+/** Every whole number setting code, the target id of its audit row. */
+export const NUMBER_SETTING_TARGET_IDS = [
+  'offer-review-probation-offers',
+  'offer-review-reference-sellers',
+  'offer-review-price-band',
+  'offer-review-sampling',
 ] as const;
 
 /** An admin changed a Market setting. */
@@ -34,6 +48,16 @@ export const MarketSettingChanged = defineAuditAction({
   actors: ['authenticated'],
   before: { value: auditField.enumOf(VALUES) },
   after: { value: auditField.enumOf(VALUES), version: auditField.integer() },
+});
+
+/** An admin changed a whole number Market setting (its value is a number, not a choice). */
+export const MarketNumberSettingChanged = defineAuditAction({
+  action: 'settings.market-setting.number-changed',
+  targetType: SETTINGS_TARGET,
+  targetId: auditField.enumOf(NUMBER_SETTING_TARGET_IDS),
+  actors: ['authenticated'],
+  before: { value: auditField.integer() },
+  after: { value: auditField.integer(), version: auditField.integer() },
 });
 
 /**
@@ -49,4 +73,8 @@ export const MonthlyRevenueTargetChanged = defineAuditAction({
   after: { target: auditField.optional(auditField.money()), version: auditField.integer() },
 });
 
-export const SETTINGS_AUDIT_ACTIONS = [MarketSettingChanged, MonthlyRevenueTargetChanged] as const;
+export const SETTINGS_AUDIT_ACTIONS = [
+  MarketSettingChanged,
+  MarketNumberSettingChanged,
+  MonthlyRevenueTargetChanged,
+] as const;

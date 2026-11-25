@@ -9,6 +9,8 @@ import { openSession } from '../src/modules/identity/domain/session';
 import { RandomSessionTokens } from '../src/modules/identity/infrastructure/sessions/random-session-tokens';
 import { ChangeCartModeSetting } from '../src/modules/settings/application/use-cases/change-cart-mode-setting.use-case';
 import { ChangeListPagingSetting } from '../src/modules/settings/application/use-cases/change-list-paging-setting.use-case';
+import { ChangeOfferReviewSettings } from '../src/modules/settings/application/use-cases/change-offer-review-settings.use-case';
+import { ViewOfferReviewSettings } from '../src/modules/settings/application/use-cases/view-offer-review-settings.use-case';
 import { ReadListPaging } from '../src/modules/settings/application/use-cases/read-list-paging.use-case';
 import { ViewCartModeSetting } from '../src/modules/settings/application/use-cases/view-cart-mode-setting.use-case';
 import { ChangeMonthlyRevenueTargetSetting } from '../src/modules/settings/application/use-cases/change-monthly-revenue-target-setting.use-case';
@@ -100,7 +102,11 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
           .overrideProvider(ViewMonthlyRevenueTargetSetting)
           .useValue(stub('view-target'))
           .overrideProvider(ChangeMonthlyRevenueTargetSetting)
-          .useValue(stub('change-target')),
+          .useValue(stub('change-target'))
+          .overrideProvider(ViewOfferReviewSettings)
+          .useValue(stub('view-offer-review'))
+          .overrideProvider(ChangeOfferReviewSettings)
+          .useValue(stub('change-offer-review')),
     }));
     await app.get(SeedRoles).execute(testCallContext(marketOf(), 'system', 'settings-seed-01'), {});
     const ownerRole = [...fakes.roles.values()].find(
@@ -438,5 +444,63 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
     expect(conflict.body).toEqual({ statusCode: 409, code: 'settings.conflict' });
     next = err({ code: 'access.denied' });
     expect((await put()).status).toBe(403);
+  });
+  it('reads and saves the Offer review policy as one list, all or nothing', async () => {
+    await boot();
+    const session = sessionOf('admin', 4);
+    const path = '/settings/admin/offer-review';
+    const row = { code: 'offer-review-sampling', value: '5', version: 0, updatedAt: null };
+    next = ok([{ ...row, review: NOT_REVIEWED }]);
+    const read = await call('get', path, 'admin', session);
+    expect(read.status).toBe(200);
+    expect(read.headers['cache-control']).toBe('no-store');
+    expect(read.body).toEqual({ settings: [{ ...row, review: NOT_REVIEWED }] });
+
+    const changes = [{ code: 'offer-review-sampling', value: '10', expectedVersion: 0 }];
+    next = ok([
+      {
+        ...row,
+        value: '10',
+        version: 1,
+        updatedAt: START,
+        review: NOT_REVIEWED,
+        request: null,
+      },
+    ]);
+    const set = await call('put', path, 'admin', session, { changes, note: 'Launch' });
+    expect(set.status).toBe(200);
+    expect(set.headers['cache-control']).toBe('no-store');
+    expect(set.body).toEqual({
+      settings: [
+        {
+          ...row,
+          value: '10',
+          version: 1,
+          updatedAt: START.toString(),
+          review: NOT_REVIEWED,
+          request: null,
+        },
+      ],
+    });
+    // The body is closed: a stray field never reaches the use case.
+    const stray = await call('put', path, 'admin', session, { changes, code: 'list-paging' });
+    expect(stray.status).toBe(400);
+    // No CSRF token: refused before the use case.
+    expect((await call('put', path, 'admin', { cookie: session.cookie }, { changes })).status).toBe(
+      403,
+    );
+    next = err({ code: 'settings.conflict' });
+    const conflict = await call('put', path, 'admin', session, { changes });
+    expect(conflict.status).toBe(409);
+    expect(conflict.body).toEqual({ statusCode: 409, code: 'settings.conflict' });
+    next = err({ code: 'access.denied' });
+    expect((await call('put', path, 'admin', session, { changes })).status).toBe(403);
+    expect(calls.map((c) => c.name)).toEqual([
+      'view-offer-review',
+      'change-offer-review',
+      'change-offer-review',
+      'change-offer-review',
+    ]);
+    expect(calls[1]?.input).toEqual({ changes, note: 'Launch' });
   });
 });

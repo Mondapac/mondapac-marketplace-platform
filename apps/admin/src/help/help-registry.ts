@@ -74,6 +74,7 @@ export const HELP_REGISTRY: HelpRegistry = {
     { route: '/settings/support', slug: 'settings-support' },
     { route: '/settings/service-areas', slug: 'settings-service-areas' },
     { route: '/settings/lists', slug: 'settings-lists' },
+    { route: '/settings/offer-review', slug: 'settings-offer-review' },
     { route: '/settings/delivery', slug: 'settings-delivery' },
     { route: '/settings/fleets', slug: 'settings-fleets' },
     { route: '/settings/tax', slug: 'settings-tax' },

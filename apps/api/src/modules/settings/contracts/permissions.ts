@@ -51,6 +51,25 @@ export const SETTINGS_AI_MANAGE = definePermission('settings', {
   protected: true,
 });
 
+/** See the Offer review policy of the Market (Settings › Catalogue › Offer review). */
+export const SETTINGS_OFFER_REVIEW_VIEW = definePermission('settings', {
+  key: 'settings.offer-review.view',
+  scope: 'platform',
+  protected: false,
+});
+
+/**
+ * Change the Offer review policy: the mode, the new seller count, the reference price rules, the
+ * sampling percent and the badge rule. Protected (Hassan, PR #1329): one write can switch every
+ * admin check on Offers off, badges included, so only the Platform Administrator holds it, with
+ * the admin second factor, like `settings.ai.manage`.
+ */
+export const SETTINGS_OFFER_REVIEW_MANAGE = definePermission('settings', {
+  key: 'settings.offer-review.manage',
+  scope: 'platform',
+  protected: true,
+});
+
 /**
  * See the Market's monthly revenue target (dashboards v2 phase 2). The admin dashboard's target
  * section also needs `commission-payouts.settlement.view` (it shows the GMV against it).
@@ -77,4 +96,6 @@ export const SETTINGS_PERMISSIONS = declarePermissions('settings', [
   SETTINGS_LIST_PAGING_VIEW,
   SETTINGS_MONTHLY_REVENUE_TARGET_MANAGE,
   SETTINGS_MONTHLY_REVENUE_TARGET_VIEW,
+  SETTINGS_OFFER_REVIEW_MANAGE,
+  SETTINGS_OFFER_REVIEW_VIEW,
 ]);

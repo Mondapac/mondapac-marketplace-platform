@@ -18,6 +18,8 @@ import { ReadMonthlyRevenueTarget } from './application/use-cases/read-monthly-r
 import { ViewMonthlyRevenueTargetSetting } from './application/use-cases/view-monthly-revenue-target-setting.use-case';
 import { MarketRegistry } from '../../platform/market-config/market-registry';
 import { ViewAiSettings } from './application/use-cases/view-ai-settings.use-case';
+import { ChangeOfferReviewSettings } from './application/use-cases/change-offer-review-settings.use-case';
+import { ViewOfferReviewSettings } from './application/use-cases/view-offer-review-settings.use-case';
 import { ChangeCartModeSetting } from './application/use-cases/change-cart-mode-setting.use-case';
 import { ChangeListPagingSetting } from './application/use-cases/change-list-paging-setting.use-case';
 import { ReadListPaging } from './application/use-cases/read-list-paging.use-case';
@@ -64,7 +66,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
  * Settings (admin-editable Market settings, ADR-0026 and ADR-0042): one shared store with a
  * version, an insert-only history and an audit row per change, in the `settings` schema. List
  * paging is its first setting, Cart mode its second, the AI description writer's switch and tier
- * the next two, the monthly revenue target (an amount) the fifth. The settings other modules already keep are not moved here. A change opens a
+ * the next two, the Offer review policy (risk-based Offer approval) the next six and the monthly revenue target (an amount) the one after. The settings other modules already keep are not moved here. A change opens a
  * review in Admin Inbox › System requests (area marketplace) when the Market reviews that area,
  * and a rejected or withdrawn one is restored by the registered reverter.
  */
@@ -83,6 +85,8 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       ChangeCartModeSetting,
       ViewAiSettings,
       ChangeAiSetting,
+      ViewOfferReviewSettings,
+      ChangeOfferReviewSettings,
       ReadAiDescriptionWriter,
       ReadCartMode,
       ViewMonthlyRevenueTargetSetting,

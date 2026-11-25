@@ -322,7 +322,7 @@ API only; the cards come in the phase 2 cards PR.
   history table keeps every earlier target). Value `none` or `<currency>:<minor units>` in the
   Market's own currency. `GET` and `PUT settings/admin/monthly-revenue-target` (keys
   `settings.monthly-revenue-target.view` and `.manage`, unprotected; the view key is in the Viewer
-  role, seed version 37). The change is the shared settings flow: version check, refused in
+  role, seed version 38). The change is the shared settings flow: version check, refused in
   acting-as, System requests review, revert, and the audit action
   `settings.monthly-revenue-target.changed` (money before and after). One standing target for
   every month until changed.

@@ -3451,13 +3451,26 @@
   {
     "action": "settings.market-setting.changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(list-paging|cart-mode|ai-description-writer|ai-description-writer-tier)",
+    "targetId": "enumOf(list-paging|cart-mode|ai-description-writer|ai-description-writer-tier|offer-review-mode|offer-review-certificate-badges)",
     "actors": ["authenticated"],
     "before": {
-      "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced)"
+      "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced|all|risk-based|review|automatic)"
     },
     "after": {
-      "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced)",
+      "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced|all|risk-based|review|automatic)",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "settings.market-setting.number-changed",
+    "targetType": "settings.market-setting",
+    "targetId": "enumOf(offer-review-probation-offers|offer-review-reference-sellers|offer-review-price-band|offer-review-sampling)",
+    "actors": ["authenticated"],
+    "before": {
+      "value": "integer"
+    },
+    "after": {
+      "value": "integer",
       "version": "integer"
     }
   },
