@@ -12,6 +12,7 @@ import type {
 } from '../application/use-cases/view-marketplace-net-revenue.use-case';
 import type { ViewSellerNetEarnings } from '../application/use-cases/view-seller-net-earnings.use-case';
 import type { ViewMarketplaceOrderStatus } from '../application/use-cases/view-marketplace-order-status.use-case';
+import type { ViewMarketplaceOrdersByState } from '../application/use-cases/view-marketplace-orders-by-state.use-case';
 import type { KpiPeriodInput, PeriodRequest, ReportingKpiFacade } from '../contracts';
 
 /** Passes the caller's `CallContext` unchanged to the use case, so the gate runs. */
@@ -24,6 +25,7 @@ export class ReportingKpiFacadeImplementation implements ReportingKpiFacade {
     private readonly netRevenue: ViewMarketplaceNetRevenue,
     private readonly netEarnings: ViewSellerNetEarnings,
     private readonly orderStatus: ViewMarketplaceOrderStatus,
+    private readonly ordersByState: ViewMarketplaceOrdersByState,
     private readonly days: {
       readonly zone: { zoneOf(market: MarketContext): string };
       readonly clock: Clock;
@@ -42,6 +44,10 @@ export class ReportingKpiFacadeImplementation implements ReportingKpiFacade {
 
   marketplaceOrderStatus(context: CallContext, input: KpiPeriodInput) {
     return this.orderStatus.execute(context, input);
+  }
+
+  marketplaceOrdersByState(context: CallContext, input: KpiPeriodInput) {
+    return this.ordersByState.execute(context, input);
   }
 
   marketplaceOperations(context: CallContext, input: KpiPeriodInput) {

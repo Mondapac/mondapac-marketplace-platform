@@ -302,3 +302,14 @@ stock watch (`inventory/seller/low-stock`; best sellers first FE-20261124-seller
 orders (existing reads). `GET reporting/seller/net-earnings?period=` is new: session seller only,
 key `commission-payouts.earnings.view`, `ready:false` with `netEarnings:null` until ready, money as
 a minor-unit string. Screenshots: `apps/seller/test/dashboard-shots` (not part of CI).
+
+### Orders by state (dashboards v2, phase 2, PR 1)
+
+`GET dashboard/admin/kpis` gains the section `ordersByState` (key `ordering.order.view`, null without
+it, `status: error` when it fails or takes over 1.5 s): the seller orders paid in the period by the
+state they were delivered to (a pickup counts in the store's state), from `reporting.seller_orders.
+delivery_state` only; no postcode is read. Up to eight states, biggest first (ties by code), the
+rest summed in `other`, orders with no state recorded (placed before delivery quotes were kept, or
+before the history backfill reached them) in `unknown`, never folded into a state. Below five paid
+orders no share is shown (`not-enough-data`). "Paid" counts every paid seller order, cancelled ones
+included, like `ordersByStatus.paid`; the card must not read as live orders. The card is built in the phase 2 cards PR.

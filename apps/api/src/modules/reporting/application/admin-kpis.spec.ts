@@ -20,6 +20,7 @@ import { emptyDay, type DayTotals } from '../domain/admin-kpi';
 import type { OrderStatusRead, OrderStatusTallies } from '../domain/admin-health';
 import type { MarketDay } from '../domain/facts';
 import { EMPTY_LEDGER_SUMS, type LedgerKindSums } from '../domain/ledger';
+import type { StateTallies } from '../domain/orders-by-state';
 import { windowOf, type DayRange } from '../domain/period';
 import { RegistryMarketZone } from '../infrastructure/registry-market-zone';
 import type { AdminKpiDependencies } from './admin-kpi-flow';
@@ -34,6 +35,7 @@ import {
   ViewMarketplaceFinanceKpis,
   type FinanceKpiDependencies,
 } from './use-cases/view-marketplace-finance-kpis.use-case';
+import { ViewMarketplaceOrdersByState } from './use-cases/view-marketplace-orders-by-state.use-case';
 import { ViewMarketplaceOrderStatus } from './use-cases/view-marketplace-order-status.use-case';
 import { ViewMarketplaceOperationsKpis } from './use-cases/view-marketplace-operations-kpis.use-case';
 import { ViewMarketplaceTopCategories } from './use-cases/view-marketplace-top-categories.use-case';
@@ -80,6 +82,18 @@ class FakeReader implements AdminKpiReader {
   ): Promise<OrderStatusRead> {
     this.tallyCalls.push({ currency, range, marketId: market.marketId });
     return Promise.resolve({ ...this.tallies, delivery: this.delivery });
+  }
+
+  stateTallies: StateTallies = { paid: 0, states: [] };
+  readonly stateCalls: { currency: string; range: DayRange }[] = [];
+
+  ordersByState(
+    _market: { marketId: string },
+    currency: string,
+    range: DayRange,
+  ): Promise<StateTallies> {
+    this.stateCalls.push({ currency, range });
+    return Promise.resolve(this.stateTallies);
   }
 
   sellersWithOrders(): Promise<number> {
@@ -349,6 +363,58 @@ describe.each(TEST_MARKETS)('the admin KPIs in market %s', (code) => {
       error: { code: 'access.unavailable' },
     });
     expect((await useCase.execute(seller, { period: '7d' })).ok).toBe(false);
+  });
+
+  it('answers the orders by delivery state of the Market days, read once, never unknown folded into a state', async () => {
+    reader.stateTallies = {
+      paid: 20,
+      states: [
+        { state: 'NSW', orders: 5 },
+        { state: 'QLD', orders: 12 },
+      ],
+    };
+    const out = await new ViewMarketplaceOrdersByState(gate, deps).execute(admin, {
+      period: '7d',
+    });
+    if (!out.ok) throw new Error('expected an answer');
+    expect(out.value.byState).toEqual({
+      status: 'available',
+      paid: 20,
+      states: [
+        { state: 'QLD', orders: 12, shareBp: 6000 },
+        { state: 'NSW', orders: 5, shareBp: 2500 },
+      ],
+      other: null,
+      unknown: { orders: 3, shareBp: 1500 },
+    });
+    expect(reader.stateCalls).toHaveLength(1);
+    expect(reader.stateCalls[0]?.range).toEqual(out.value.period.current);
+  });
+
+  it('answers orders by state as not-enough-data below 5 paid, refuses a seller and an acting-as admin, and fails closed when the store fails', async () => {
+    const useCase = new ViewMarketplaceOrdersByState(gate, deps);
+    reader.stateTallies = { paid: 4, states: [{ state: 'QLD', orders: 4 }] };
+    const few = await useCase.execute(admin, { period: '7d' });
+    expect(few.ok && few.value.byState).toEqual({
+      status: 'not-enough-data',
+      paid: 4,
+      minimum: 5,
+    });
+    expect((await useCase.execute(seller, { period: '7d' })).ok).toBe(false);
+    const actingAs = Object.assign(
+      Object.create(Object.getPrototypeOf(admin) as object) as object,
+      admin,
+      { actor: { ...admin.actor, actingAs: { sellerId: id(0x5e12) } } },
+    ) as typeof admin;
+    expect(await useCase.execute(actingAs, { period: '7d' })).toEqual({
+      ok: false,
+      error: { code: 'access.denied' },
+    });
+    reader.ordersByState = () => Promise.reject(new TypeError('down'));
+    expect(await useCase.execute(admin, { period: '7d' })).toEqual({
+      ok: false,
+      error: { code: 'access.unavailable' },
+    });
   });
 
   it('clamps buckets the separate snapshots drifted below zero and logs the shortfall, never an error', async () => {

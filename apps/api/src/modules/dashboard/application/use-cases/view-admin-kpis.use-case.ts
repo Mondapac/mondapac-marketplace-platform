@@ -35,6 +35,7 @@ import type {
   KpiFailure,
   OperationsAnswer,
   OrderStatusAnswer,
+  OrdersByStateAnswer,
   PeriodId,
   PeriodRefused,
   PeriodRequest,
@@ -154,6 +155,8 @@ export interface AdminKpisAnswer {
   readonly finance: KpiSection<FinanceAnswer> | null;
   /** Seller orders paid in the period by where they stand now; null without `ordering.order.view`. */
   readonly ordersByStatus: KpiSection<OrderStatusAnswer> | null;
+  /** Seller orders paid in the period by delivery state; null without `ordering.order.view`. */
+  readonly ordersByState: KpiSection<OrdersByStateAnswer> | null;
   /** Null without `commission-payouts.settlement.view` (it shows each seller's money). */
   readonly topSellers: KpiSection<NamedTopSellers> | null;
   /** Null without `commission-payouts.settlement.view` (it shows money). */
@@ -282,28 +285,35 @@ export class ViewAdminKpis extends UseCase<
           reporting.marketplaceOrderStatus(context, input),
         )
       : Promise.resolve(null);
-    const [operations, finance, topSellers, topCategories, health, orders] = await Promise.all([
-      held.has(ORDERING_ORDER_VIEW.key)
-        ? section('operations', timeoutMs, () => reporting.marketplaceOperations(context, input))
-        : null,
-      held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
-        ? section('finance', timeoutMs, () => reporting.marketplaceFinance(context, input))
-        : null,
-      held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
-        ? section('top-sellers', timeoutMs, () => this.namedTopSellers(context, input))
-        : null,
-      held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
-        ? section('top-categories', timeoutMs, () => this.namedTopCategories(context, input))
-        : null,
-      this.marketHealth(context, held, ordersByStatus),
-      ordersByStatus,
-    ]);
+    const [operations, finance, topSellers, topCategories, health, orders, ordersByState] =
+      await Promise.all([
+        held.has(ORDERING_ORDER_VIEW.key)
+          ? section('operations', timeoutMs, () => reporting.marketplaceOperations(context, input))
+          : null,
+        held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
+          ? section('finance', timeoutMs, () => reporting.marketplaceFinance(context, input))
+          : null,
+        held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
+          ? section('top-sellers', timeoutMs, () => this.namedTopSellers(context, input))
+          : null,
+        held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key)
+          ? section('top-categories', timeoutMs, () => this.namedTopCategories(context, input))
+          : null,
+        this.marketHealth(context, held, ordersByStatus),
+        ordersByStatus,
+        held.has(ORDERING_ORDER_VIEW.key)
+          ? section('orders-by-state', timeoutMs, () =>
+              reporting.marketplaceOrdersByState(context, input),
+            )
+          : null,
+      ]);
     return ok({
       generatedAt: this.deps.clock.now(),
       period: typeof input.period === 'string' ? input.period : 'custom',
       operations,
       finance,
       ordersByStatus: orders,
+      ordersByState,
       topSellers,
       topCategories,
       health,

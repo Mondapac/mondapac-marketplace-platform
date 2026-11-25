@@ -7,6 +7,7 @@ import type {
   CategoryTotals,
 } from '../application/ports/admin-kpi-reader';
 import type { OrderStatusRead } from '../domain/admin-health';
+import type { StateTallies } from '../domain/orders-by-state';
 import type { DayRange } from '../domain/period';
 import { dateToDay, dayToDate } from './prisma-fact-store';
 
@@ -144,6 +145,32 @@ export class PrismaAdminKpiReader implements AdminKpiReader {
       }
     }
     return { paid, cancelled, delivered, shipped, refunded, delivery };
+  }
+
+  async ordersByState(
+    market: MarketContext,
+    currency: string,
+    range: DayRange,
+  ): Promise<StateTallies> {
+    const groups = await this.prisma.tx(market).reportingSellerOrder.groupBy({
+      by: ['deliveryState'],
+      where: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        currency,
+        paidDay: { gte: dayToDate(range.from), lte: dayToDate(range.to) },
+      },
+      _count: { _all: true },
+    });
+    let paid = 0;
+    const states: { state: string; orders: number }[] = [];
+    for (const group of groups) {
+      paid += group._count._all;
+      if (group.deliveryState !== null) {
+        states.push({ state: group.deliveryState, orders: group._count._all });
+      }
+    }
+    return { paid, states };
   }
 
   async sellersWithOrders(

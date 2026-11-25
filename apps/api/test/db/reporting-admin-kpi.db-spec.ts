@@ -432,4 +432,43 @@ describe.each(TEST_MARKETS)('the admin KPI reader in market %s (database)', (cod
       unknownMethod: 1,
     });
   });
+
+  it('counts the paid seller orders of the Market days per delivery state, unknown apart, never another Market', async () => {
+    const N = code === TEST_MARKETS[0] ? '10' : '11';
+    const a = idOf<'Seller'>();
+    const inState = (state: string | null, paidAt = `2026-${N}-10T03:00:00Z`) =>
+      order(a, paidAt, 11_000n, {
+        delivery: { method: state === null ? null : 'scheduled', state },
+      });
+    for (const fact of [
+      inState('QLD'),
+      inState('QLD'),
+      inState('NSW'),
+      inState(null),
+      inState('VIC', `2026-${N}-01T03:00:00Z`), // before the range
+    ]) {
+      await record(market, fact);
+    }
+    await record(
+      other,
+      order(a, `2026-${N}-10T03:00:00Z`, 1_000n, {}, CURRENCIES[otherMarketOf(code)]),
+    );
+    const range = { from: day(`2026-${N}-05`), to: day(`2026-${N}-20`) };
+    const read = async (target: MarketContext, rowCurrency: string) => {
+      const unit = await db.unitOfWork.run(
+        target,
+        async () => ok(await reader.ordersByState(target, rowCurrency, range)),
+        { readOnly: true },
+      );
+      if (!unit.ok) throw new Error('read failed');
+      return unit.value;
+    };
+    const tallies = await read(market, currency);
+    expect(tallies.paid).toBe(4);
+    expect([...tallies.states].sort((x, y) => (x.state < y.state ? -1 : 1))).toEqual([
+      { state: 'NSW', orders: 1 },
+      { state: 'QLD', orders: 2 },
+    ]);
+    expect(await read(market, 'XXX')).toEqual({ paid: 0, states: [] });
+  });
 });
