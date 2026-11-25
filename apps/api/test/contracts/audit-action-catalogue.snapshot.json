@@ -3274,6 +3274,20 @@
     }
   },
   {
+    "action": "reporting.seller-goal.changed",
+    "targetType": "reporting.seller-goal",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": {
+      "goal": "optional(money)"
+    },
+    "after": {
+      "monthStart": "instant",
+      "goal": "money",
+      "version": "integer"
+    }
+  },
+  {
     "action": "reviews.market-status.changed",
     "targetType": "reviews.market-settings",
     "targetId": "enumOf(reviews-settings)",
@@ -3481,6 +3495,19 @@
     },
     "after": {
       "value": "integer",
+      "version": "integer"
+    }
+  },
+  {
+    "action": "settings.monthly-revenue-target.changed",
+    "targetType": "settings.market-setting",
+    "targetId": "enumOf(monthly-revenue-target)",
+    "actors": ["authenticated"],
+    "before": {
+      "target": "optional(money)"
+    },
+    "after": {
+      "target": "optional(money)",
       "version": "integer"
     }
   },

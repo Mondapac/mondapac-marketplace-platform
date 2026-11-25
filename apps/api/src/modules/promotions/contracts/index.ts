@@ -44,3 +44,15 @@ export {
   type QuoteShipping,
 } from './promotions.facade';
 export { PROMOTIONS_PLATFORM_FUNDING_STEP_UP, PROMOTIONS_STEP_UP_ACTIONS } from './step-up';
+export {
+  DISCOUNT_COST_KINDS,
+  MAX_DISCOUNT_COST_WINDOW_DAYS,
+  PROMOTIONS_REPORTING_FACADE,
+  type DiscountCostAmounts,
+  type DiscountCostByKind,
+  type DiscountCostFailure,
+  type DiscountCostKind,
+  type DiscountCostRequest,
+  type DiscountCostTotals,
+  type PromotionsReportingFacade,
+} from './promotions-reporting.facade';

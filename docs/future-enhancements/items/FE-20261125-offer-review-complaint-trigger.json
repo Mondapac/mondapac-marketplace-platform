@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-offer-review-complaint-trigger",
+  "area": "catalog",
+  "title": "شکایت تأییدشده به عنوان محرک بازبینی کامل",
+  "desc": "شکایت تأییدشدهٔ مشتری فروشنده را زیر نظر ببرد (R6) و Trusted را بردارد. امروز ماژول شکایت نیست، پس این محرک از طرح راه‌اندازی حذف شد.",
+  "src": "design/catalog/offer-approval/offer-approval-design-fa.html (بازبینی حسن، محمد، هادی)",
+  "date": "2026-11-25",
+  "trig": "بعد از ساخت ماژول شکایت",
+  "prio": "متوسط",
+  "status": "موکول"
+}

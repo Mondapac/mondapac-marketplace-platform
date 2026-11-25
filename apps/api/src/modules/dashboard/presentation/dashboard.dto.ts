@@ -407,6 +407,49 @@ export class OrdersByStateSectionBody {
   @ApiProperty({ required: false, type: OrdersByStateKpiBody }) kpis?: OrdersByStateKpiBody;
 }
 
+export class MarketTargetForecastBody {
+  @ApiProperty({
+    enum: ['estimate', 'not-enough-data'],
+    description:
+      '`estimate`: GMV to date ÷ time elapsed × length of the month; label it an estimate. ' +
+      '`not-enough-data`: fewer than `minimumDays` whole days of the month behind today.',
+  })
+  status!: string;
+  @ApiProperty({ required: false, type: String, description: 'Only with `estimate`.' })
+  amount?: string;
+  @ApiProperty({ required: false, type: Number }) daysElapsed?: number;
+  @ApiProperty({ required: false, type: Number }) minimumDays?: number;
+}
+
+export class MarketTargetKpiBody {
+  @ApiProperty({ example: '2026-11', description: "The calendar month of the Market's zone." })
+  month!: string;
+  @ApiProperty({ example: '2026-10' }) lastMonth!: string;
+  @ApiProperty() timezone!: string;
+  @ApiProperty({ description: 'ISO 4217; every amount is in it.' }) currency!: string;
+  @ApiProperty() daysInMonth!: number;
+  @ApiProperty() dayOfMonth!: number;
+  @ApiProperty({ description: 'Days still to sell in, today included.' }) daysLeft!: number;
+  @ApiProperty({ description: 'GMV with GST of the 1st through now (the KPI GMV), minor units.' })
+  monthToDate!: string;
+  @ApiProperty({ description: 'GMV with GST of the whole month before.' }) lastMonthTotal!: string;
+  @ApiProperty({ type: MarketTargetForecastBody }) forecast!: MarketTargetForecastBody;
+  @ApiProperty({ nullable: true, type: String, description: 'Null while no target is set.' })
+  target!: string | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'GMV to date ÷ target, bp.' })
+  progressBp!: number | null;
+  @ApiProperty({ nullable: true, type: Number, description: 'Forecast ÷ target, bp.' })
+  paceBp!: number | null;
+  @ApiProperty({ nullable: true, type: String }) toGo!: string | null;
+  @ApiProperty({ nullable: true, type: String }) perDayToGo!: string | null;
+  @ApiProperty({ nullable: true, type: String, format: 'date-time' }) refreshedAt!: string | null;
+}
+
+export class MarketTargetSectionBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: MarketTargetKpiBody }) kpis?: MarketTargetKpiBody;
+}
+
 export class FunnelStepBody {
   @ApiProperty({
     type: Number,
@@ -461,6 +504,92 @@ export class ShoppingFunnelKpiBody {
 export class ShoppingFunnelSectionBody {
   @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
   @ApiProperty({ required: false, type: ShoppingFunnelKpiBody }) kpis?: ShoppingFunnelKpiBody;
+}
+
+export class DiscountKindCostBody {
+  @ApiProperty({ enum: ['promotion', 'first-order', 'free-shipping'] }) kind!: string;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Redemptions (an order may use several promotions). Null: 1 to 4 uses, every figure of ' +
+      'the kind held back; show "fewer than 5", never 0.',
+  })
+  uses!: number | null;
+  @ApiProperty({ type: MoneyBody, nullable: true }) amount!: MoneyBody | null;
+  @ApiProperty({ type: MoneyBody, nullable: true, description: 'What Mondapac funded of it.' })
+  platformShare!: MoneyBody | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Share of the whole discount, basis points; the kinds add up to 10000. Null when the ' +
+      'whole is 0 or the kind is held back.',
+  })
+  shareBp!: number | null;
+}
+
+export class DiscountReleasedBody {
+  @ApiProperty({ description: 'Orders of the period refunded or cancelled after payment.' })
+  orders!: number;
+  @ApiProperty({ type: MoneyBody, description: 'The discount they gave back (not in `amount`).' })
+  amount!: MoneyBody;
+}
+
+export class DiscountCostKpiBody {
+  @ApiProperty({
+    enum: ['available', 'not-enough-data'],
+    description: '`not-enough-data`: fewer than `minimum` discounted orders; show no amounts.',
+  })
+  status!: string;
+  @ApiProperty({
+    description: 'Orders paid in the period with at least one discount that still stands.',
+  })
+  orders!: number;
+  @ApiProperty({ required: false, type: Number, description: 'Only when not-enough-data.' })
+  minimum?: number;
+  @ApiProperty({
+    required: false,
+    type: MoneyBody,
+    description: 'The discounts that still stand, with GST; only when available.',
+  })
+  amount?: MoneyBody;
+  @ApiProperty({ required: false, type: MoneyBody, description: 'Mondapac funded.' })
+  platformShare?: MoneyBody;
+  @ApiProperty({ required: false, type: MoneyBody, description: 'Sellers funded.' })
+  sellerShare?: MoneyBody;
+  @ApiProperty({
+    required: false,
+    type: Number,
+    nullable: true,
+    description: 'platformShare ÷ amount, basis points.',
+  })
+  platformShareBp?: number | null;
+  @ApiProperty({
+    required: false,
+    type: DeltaBody,
+    description: '`amount` against the period before.',
+  })
+  change?: DeltaBody;
+  @ApiProperty({ required: false, type: MoneyBody }) previousAmount?: MoneyBody;
+  @ApiProperty({
+    required: false,
+    type: [DiscountKindCostBody],
+    description: 'Every kind, zeros included.',
+  })
+  byKind?: DiscountKindCostBody[];
+  @ApiProperty({
+    required: false,
+    type: DiscountReleasedBody,
+    nullable: true,
+    description: 'Null when 1 to 4 orders gave a discount back (held back).',
+  })
+  released?: DiscountReleasedBody | null;
+}
+
+export class DiscountCostSectionBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: DiscountCostKpiBody }) kpis?: DiscountCostKpiBody;
 }
 
 export class TopSellerBody {
@@ -627,11 +756,27 @@ export class AdminKpisBody {
   })
   ordersByState!: OrdersByStateSectionBody | null;
   @ApiProperty({
+    type: MarketTargetSectionBody,
+    nullable: true,
+    description:
+      'The current month against the monthly revenue target, whatever the period. Null without ' +
+      '`commission-payouts.settlement.view` and `settings.monthly-revenue-target.view`.',
+  })
+  marketTarget!: MarketTargetSectionBody | null;
+  @ApiProperty({
     type: ShoppingFunnelSectionBody,
     nullable: true,
     description: 'Null without `ordering.order.view`: leave the card out.',
   })
   shoppingFunnel!: ShoppingFunnelSectionBody | null;
+  @ApiProperty({
+    type: DiscountCostSectionBody,
+    nullable: true,
+    description:
+      'Null without both `commission-payouts.settlement.view` and `promotions.promotion.manage`: ' +
+      'leave the card out.',
+  })
+  discountCost!: DiscountCostSectionBody | null;
   @ApiProperty({
     type: TopSellersSectionBody,
     nullable: true,
@@ -805,6 +950,46 @@ function ordersByStateSection(
   };
 }
 
+const minorText = (value: bigint | null): string | null =>
+  value === null ? null : value.toString();
+
+function marketTargetSection(
+  section: AdminKpisAnswer['marketTarget'],
+): MarketTargetSectionBody | null {
+  if (section === null) return null;
+  if (section.status === 'error') return { status: 'error' };
+  const { figures, timezone, currency, refreshedAt } = section.value;
+  const { forecast } = figures;
+  return {
+    status: 'ok',
+    kpis: {
+      month: figures.month,
+      lastMonth: figures.lastMonth,
+      timezone,
+      currency,
+      daysInMonth: figures.daysInMonth,
+      dayOfMonth: figures.dayOfMonth,
+      daysLeft: figures.daysLeft,
+      monthToDate: figures.monthToDate.toString(),
+      lastMonthTotal: figures.lastMonthTotal.toString(),
+      forecast:
+        forecast.status === 'estimate'
+          ? { status: forecast.status, amount: forecast.amount.toString() }
+          : {
+              status: forecast.status,
+              daysElapsed: forecast.daysElapsed,
+              minimumDays: forecast.minimumDays,
+            },
+      target: minorText(figures.target),
+      progressBp: figures.progressBp,
+      paceBp: figures.paceBp,
+      toGo: minorText(figures.toGo),
+      perDayToGo: minorText(figures.perDayToGo),
+      refreshedAt: refreshedAt === null ? null : refreshedAt.toString(),
+    },
+  };
+}
+
 function shoppingFunnelSection(
   section: AdminKpisAnswer['shoppingFunnel'],
 ): ShoppingFunnelSectionBody | null {
@@ -828,6 +1013,39 @@ function shoppingFunnelSection(
       paid: step(funnel.paid),
       recordedDays: funnel.recordedDays,
       periodDays: funnel.periodDays,
+    },
+  };
+}
+
+function discountCostSection(
+  section: AdminKpisAnswer['discountCost'],
+): DiscountCostSectionBody | null {
+  if (section === null) return null;
+  if (section.status === 'error') return { status: 'error' };
+  const { cost, currency } = section.value;
+  if (cost.status === 'not-enough-data') return { status: 'ok', kpis: { ...cost } };
+  return {
+    status: 'ok',
+    kpis: {
+      status: cost.status,
+      orders: cost.orders,
+      amount: money(cost.amount, currency),
+      platformShare: money(cost.platformShare, currency),
+      sellerShare: money(cost.sellerShare, currency),
+      platformShareBp: cost.platformShareBp,
+      change: { ...cost.change },
+      previousAmount: money(cost.previousAmount, currency),
+      byKind: cost.byKind.map((row) => ({
+        kind: row.kind,
+        uses: row.uses,
+        amount: row.amount === null ? null : money(row.amount, currency),
+        platformShare: row.platformShare === null ? null : money(row.platformShare, currency),
+        shareBp: row.shareBp,
+      })),
+      released:
+        cost.released === null
+          ? null
+          : { orders: cost.released.orders, amount: money(cost.released.amount, currency) },
     },
   };
 }
@@ -897,6 +1115,7 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     answer.ordersByStatus,
     answer.ordersByState,
     answer.shoppingFunnel,
+    answer.discountCost,
     answer.topSellers,
     answer.topCategories,
   ].find((section) => section !== null && section.status === 'ok');
@@ -911,7 +1130,9 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     finance: financeSection(answer.finance),
     ordersByStatus: ordersByStatusSection(answer.ordersByStatus),
     ordersByState: ordersByStateSection(answer.ordersByState),
+    marketTarget: marketTargetSection(answer.marketTarget),
     shoppingFunnel: shoppingFunnelSection(answer.shoppingFunnel),
+    discountCost: discountCostSection(answer.discountCost),
     topSellers: topSellersSection(answer.topSellers),
     topCategories: topCategoriesSection(answer.topCategories),
     health:

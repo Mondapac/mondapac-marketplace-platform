@@ -517,6 +517,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // sweep, and the backstops of one live first-order discount per customer and one live row per code.
   'promotions.redemptions_code_live_idx':
     "CREATE UNIQUE INDEX redemptions_code_live_idx ON promotions.redemptions USING btree (market_id, code_hash) WHERE ((code_hash IS NOT NULL) AND (status <> 'RELEASED'::text))",
+  'promotions.redemptions_confirmed_idx':
+    'CREATE INDEX redemptions_confirmed_idx ON promotions.redemptions USING btree (market_id, confirmed_at) WHERE (confirmed_at IS NOT NULL)',
   'promotions.redemptions_customer_live_idx':
     "CREATE INDEX redemptions_customer_live_idx ON promotions.redemptions USING btree (market_id, promotion_id, customer_account_id) WHERE (status <> 'RELEASED'::text)",
   'promotions.redemptions_first_order_month_idx':

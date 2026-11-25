@@ -189,6 +189,10 @@ const MONEY_FIELD_ALLOW_LIST: readonly string[] = [
   'pricing.special-price.accepted.after.amount',
   'pricing.special-price.held.after.amount',
   'pricing.special-price.held.after.referenceAmount',
+  // Dashboards v2 phase 2: a seller's own monthly sales goal, before and after a change (the
+  // Market's currency, a goal, never Cost).
+  'reporting.seller-goal.changed.after.goal',
+  'reporting.seller-goal.changed.before.goal',
   // Promotions package T1: the terms an owner or an admin sets on a discount (a fixed amount, a
   // budget, a minimum spend, a free-shipping threshold). Customer-facing and marketing amounts,
   // never Cost.
@@ -212,6 +216,10 @@ const MONEY_FIELD_ALLOW_LIST: readonly string[] = [
   'promotions.promotion.edited.before.rewardAmount',
   'sellers.minimum-order.changed.after.minimumOrder',
   'sellers.minimum-order.changed.before.minimumOrder',
+  // Dashboards v2 phase 2: the Market's monthly revenue target an admin sets or clears (a GMV
+  // target, never Cost).
+  'settings.monthly-revenue-target.changed.after.target',
+  'settings.monthly-revenue-target.changed.before.target',
   // Customer wallet package 2a: the amount of promo credit an admin issued, asked for or approved
   // (platform-issued store credit, never Cost).
   'wallet.admin-credit.approved.after.amount',

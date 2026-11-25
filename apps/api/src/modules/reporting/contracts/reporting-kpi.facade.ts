@@ -19,7 +19,9 @@ import type { NetRevenueAnswer } from '../application/use-cases/view-marketplace
 import type { SellerNetEarningsAnswer } from '../application/use-cases/view-seller-net-earnings.use-case';
 import type { OrdersByStateAnswer } from '../application/use-cases/view-marketplace-orders-by-state.use-case';
 import type { ShoppingFunnelAnswer } from '../application/use-cases/view-marketplace-shopping-funnel.use-case';
+import type { DiscountCostAnswer } from '../application/use-cases/view-marketplace-discount-cost.use-case';
 import type { OrderStatusAnswer } from '../application/use-cases/view-marketplace-order-status.use-case';
+import type { MonthlyTargetAnswer } from '../application/use-cases/view-marketplace-monthly-target.use-case';
 import type { FinanceNet } from '../application/use-cases/view-marketplace-finance-kpis.use-case';
 
 export type {
@@ -73,8 +75,18 @@ export {
   READINESS_MIN_MATCHED_SELLER_ORDERS,
 } from '../domain/ledger';
 export type { NetFiguresFailure, NetFiguresInput, NetRevenueAnswer, SellerNetEarningsAnswer };
-export type { FinanceNet, OrderStatusAnswer, OrdersByStateAnswer, ShoppingFunnelAnswer };
+export type {
+  FinanceNet,
+  MonthlyTargetAnswer,
+  OrderStatusAnswer,
+  OrdersByStateAnswer,
+  ShoppingFunnelAnswer,
+};
 export type { FunnelStep, ShoppingFunnel } from '../domain/engagement';
+export type { DiscountCostAnswer };
+export type { DiscountCost, DiscountKind, DiscountKindCost } from '../domain/discount-cost';
+export type { CalendarMonth, MonthEndForecast, MonthForecast } from '../domain/month-forecast';
+export { MIN_FORECAST_DAYS } from '../domain/month-forecast';
 export type { OrdersByState, StateShare } from '../domain/orders-by-state';
 export type { OrderStatusCounts, SameDayShare, TakeRate } from '../domain/admin-health';
 export type { InstantWindow } from '../domain/period';
@@ -126,6 +138,17 @@ export interface ReportingKpiFacade {
   ): Promise<Result<OrdersByStateAnswer, KpiFailure>>;
 
   /**
+   * The current calendar month of the Market against its monthly revenue target: GMV with tax to
+   * date, the whole month before, the month-end forecast (an estimate; `not-enough-data` on the
+   * first three days) and the pace. Not tied to the dashboard period. Keys
+   * `commission-payouts.settlement.view` and `settings.monthly-revenue-target.view`, platform
+   * admin only.
+   */
+  marketplaceMonthlyTarget(
+    context: CallContext,
+  ): Promise<Result<MonthlyTargetAnswer, AccessDenied>>;
+
+  /**
    * The shopping funnel of the period against the period before (dashboards v2, phase 2), from the
    * nightly daily counts: signed-in customers with personalization on who viewed a product, added
    * to the cart, placed an order and paid, each within the step before, summed over the days
@@ -136,6 +159,18 @@ export interface ReportingKpiFacade {
     context: CallContext,
     input: KpiPeriodInput,
   ): Promise<Result<ShoppingFunnelAnswer, KpiFailure>>;
+
+  /**
+   * The discount cost of the period against the period before (dashboards v2, phase 2): the
+   * discounts of the orders paid in its Market days that still stand, Mondapac's and the sellers'
+   * shares, by kind, and what those orders gave back since; read from promotions, nothing stored.
+   * `not-enough-data` below five discounted orders. Keys `commission-payouts.settlement.view` and
+   * `promotions.promotion.manage`, platform admin only.
+   */
+  marketplaceDiscountCost(
+    context: CallContext,
+    input: KpiPeriodInput,
+  ): Promise<Result<DiscountCostAnswer, KpiFailure>>;
 
   /** The five sellers with the most goods sold in the period (money: the finance key). */
   marketplaceTopSellers(

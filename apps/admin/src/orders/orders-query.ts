@@ -6,7 +6,7 @@
 import { DAY, startOfDay } from '../sales/day-start.ts';
 import { isDatePreset, presetRange, todayIn, type DatePreset } from '../sales/date-presets.ts';
 import { routeSearch } from '../sales/search-route.ts';
-import type { StatusFilter } from './types.ts';
+import { FILTERS, type StatusFilter } from './types.ts';
 
 export type ListPaging = 'pages' | 'prev-next';
 
@@ -192,4 +192,27 @@ export function savedDays(from: string | undefined, to: string | undefined): Day
   const last = to === undefined || to === '' ? undefined : to;
   if (first === undefined) return last === undefined ? null : { to: last };
   return last === undefined ? { from: first } : { from: first, to: last };
+}
+
+/**
+ * The query a link opens the Orders list on (`/orders?status=confirmed&fulfilment=to-ship`): a
+ * dashboard card links here with the status tab, the payment and shipping filters, a placed-day
+ * preset (`placed=last-7-days`) or a day range (`from`/`to`, yyyy-mm-dd, both included). Values
+ * the list does not know are dropped, so a stale link opens the plain list and never errors.
+ */
+export function queryFromParams(params: Readonly<Record<string, string | undefined>>): Query {
+  const status = FILTERS.find((tab) => tab === params['status']);
+  const filters = filtersOf(
+    Object.fromEntries(
+      FILTER_FIELDS.flatMap((field) => {
+        const value = params[field];
+        return value === undefined ? [] : [[field, value] as const];
+      }),
+    ),
+  );
+  const valid = (value: string | undefined): string | undefined =>
+    value !== undefined && startOfDay(value, 'UTC') !== null ? value : undefined;
+  const days =
+    filters.placed === undefined ? savedDays(valid(params['from']), valid(params['to'])) : null;
+  return { ...DEFAULT_QUERY, tab: status ?? 'all', filters, days };
 }

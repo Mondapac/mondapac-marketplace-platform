@@ -233,7 +233,9 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
     // `ordering.order.view`, and a custom role that holds it does not get the new key (R10).
     // Version 37 adds `settings.offer-review.view`, likewise unprotected (the Offer review policy,
     // ADR-0051); the manage key is not a viewer key.
-    seedVersion: 37,
+    // Version 38 adds `settings.monthly-revenue-target.view`, likewise unprotected (dashboards v2
+    // phase 2: the Market's monthly revenue target); the manage key is not a viewer key.
+    seedVersion: 38,
     nameKey: 'identity.role.viewer',
     permissionKeys: [
       'identity.seller-access.view',
@@ -272,6 +274,7 @@ export const PLATFORM_ROLES_SEED: readonly SeededRole[] = [
       'ordering.refund-limits.view',
       'ordering.ship-to-retention.view',
       'shipping.carrier-delivery.view',
+      'settings.monthly-revenue-target.view',
     ],
   },
   {
