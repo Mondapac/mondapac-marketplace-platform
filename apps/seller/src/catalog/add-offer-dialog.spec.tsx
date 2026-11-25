@@ -27,6 +27,7 @@ const product = (over: Partial<PlatformProduct> = {}): PlatformProduct => ({
   categoryName: 'Meat',
   variantCount: 2,
   alreadySelling: false,
+  primaryImageId: null,
   ...over,
 });
 

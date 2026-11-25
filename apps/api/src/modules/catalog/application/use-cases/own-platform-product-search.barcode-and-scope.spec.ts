@@ -60,6 +60,7 @@ describe.each(['AU', 'ZZ'] as const)('own-product.platform-search in market %s',
     categoryName: 'Meat',
     variantCount: 2,
     alreadySelling,
+    primaryImageId: null,
   });
 
   function rig(

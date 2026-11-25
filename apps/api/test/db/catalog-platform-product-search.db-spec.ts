@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { Id } from '@mondapac/shared-kernel';
 import { uuidV7 } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
+import { PrismaOwnCatalogReader } from '../../src/modules/catalog/infrastructure/prisma-own-catalog.reader';
 import { PrismaPlatformProductSearchReader } from '../../src/modules/catalog/infrastructure/prisma-platform-product-search.reader';
 import type { PlatformProductSearchQuery } from '../../src/modules/catalog/application/ports/platform-product-search.reader';
 import { TEST_MARKETS } from '../support/test-config';
@@ -33,6 +34,7 @@ describe.each(TEST_MARKETS)('platform product search reader in market %s', (code
   let persistence: Persistence;
   let app: Client;
   let reader: PrismaPlatformProductSearchReader;
+  let ownReader: PrismaOwnCatalogReader;
 
   const SELLER = uuid7() as Id<'Seller'>;
   const RIVAL = uuid7() as Id<'Seller'>;
@@ -323,6 +325,7 @@ describe.each(TEST_MARKETS)('platform product search reader in market %s', (code
     app = new Client({ connectionString: testDatabaseUrl() });
     await app.connect();
     reader = new PrismaPlatformProductSearchReader(persistence.service);
+    ownReader = new PrismaOwnCatalogReader(persistence.service);
   });
   afterAll(async () => {
     await app.end();
@@ -341,6 +344,111 @@ describe.each(TEST_MARKETS)('platform product search reader in market %s', (code
     const page = await search({ allowed: [inside], text: t });
     expect(page.rows.map((row) => row.productId)).toEqual([good.id]);
     expect(page.total).toBe(1);
+  });
+
+  /** A photo of the product's published revision at `position`, taken down when asked. */
+  async function photo(productId: string, position: number, takenDown = false): Promise<string> {
+    const id = uuid7();
+    const revisionId = (
+      await app.query<{ published_revision_id: string }>(
+        'SELECT published_revision_id FROM catalog.products WHERE id = $1',
+        [productId],
+      )
+    ).rows[0]!.published_revision_id;
+    await insert('product_images', {
+      id,
+      ...base(),
+      product_id: productId,
+      uploader_account_id: uuid7(),
+      state: 'clean',
+      pixel_width: 800,
+      pixel_height: 800,
+      byte_size: 1000,
+      created_at: NOW,
+    });
+    await insert('product_revision_images', {
+      ...base(),
+      revision_id: revisionId,
+      product_id: productId,
+      image_id: id,
+      position,
+    });
+    if (takenDown) {
+      await app.query(
+        `UPDATE catalog.product_images SET state = 'taken-down', taken_down_at = now(),
+           taken_down_by_account_id = $2, takedown_reason_code = 'other' WHERE id = $1`,
+        [id, uuid7()],
+      );
+    }
+    return id;
+  }
+
+  it('gives each row the first clean photo of the published revision as its thumbnail', async () => {
+    const t = tag();
+    const c = await category(`${t} cat`);
+    const withPhotos = await product({ name: `${t} a photos`, categoryIds: [c] });
+    await photo(withPhotos.id, 1, true);
+    const second = await photo(withPhotos.id, 2);
+    await photo(withPhotos.id, 3);
+    const without = await product({ name: `${t} b none`, categoryIds: [c] });
+    const page = await search({ allowed: [c], text: t });
+    const imageOf = new Map(page.rows.map((row) => [row.productId, row.primaryImageId]));
+    // The taken-down first photo is skipped: the next one in position order is the thumbnail.
+    expect(imageOf.get(withPhotos.id as Id<'Product'>)).toBe(second);
+    expect(imageOf.get(without.id as Id<'Product'>)).toBeNull();
+  });
+
+  it('gives the Offer lists the product scope and the same thumbnail (productLabels)', async () => {
+    const t = tag();
+    const c = await category(`${t} cat`);
+    const platform = await product({ name: `${t} platform`, categoryIds: [c] });
+    // The taken-down first photo is skipped here too.
+    await photo(platform.id, 1, true);
+    const first = await photo(platform.id, 2);
+    await photo(platform.id, 3);
+    // A paused PLATFORM product: the public route would refuse its photo, so none is given.
+    const paused = await product({ name: `${t} paused`, categoryIds: [c], paused: true });
+    await photo(paused.id, 1);
+    const own = await product({ name: `${t} own`, categoryIds: [c], scope: 'SELLER' });
+    const ownPhoto = await photo(own.id, 1);
+    const bare = await product({ name: `${t} bare`, categoryIds: [c] });
+    const unpublished = await product({ name: `${t} unpub`, categoryIds: [c], published: false });
+    const labels = await persistence.unitOfWork
+      .run(
+        market,
+        async () => ({
+          ok: true as const,
+          value: await ownReader.productLabels(
+            market,
+            [platform.id, own.id, bare.id, unpublished.id, paused.id] as Id<'Product'>[],
+            'en',
+          ),
+        }),
+        { readOnly: true },
+      )
+      .then((result) => {
+        if (!result.ok) throw new Error('unit failed');
+        return result.value;
+      });
+    const byId = new Map(labels.map((label) => [label.productId as string, label]));
+    expect(byId.get(platform.id)).toMatchObject({ scope: 'PLATFORM', primaryImageId: first });
+    expect(byId.get(own.id)).toMatchObject({ scope: 'SELLER', primaryImageId: ownPhoto });
+    expect(byId.get(bare.id)?.primaryImageId).toBeNull();
+    expect(byId.get(paused.id)).toMatchObject({ scope: 'PLATFORM', primaryImageId: null });
+    // No published revision: no name and no thumbnail.
+    expect(byId.get(unpublished.id)).toMatchObject({ name: null, primaryImageId: null });
+    // The other Market sees none of them.
+    const elsewhere = await persistence.unitOfWork
+      .run(
+        other,
+        async () => ({
+          ok: true as const,
+          value: await ownReader.productLabels(other, [platform.id] as Id<'Product'>[], 'en'),
+        }),
+        { readOnly: true },
+      )
+      .then((result) => (result.ok ? result.value : []));
+    expect(elsewhere).toEqual([]);
   });
 
   it('fails closed with no allowed category', async () => {

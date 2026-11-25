@@ -279,6 +279,22 @@ export class OwnOfferProductLabel {
   @ApiProperty({ nullable: true, type: String }) typeCode!: string | null;
   @ApiProperty({ nullable: true, type: String, description: 'Published name, default locale.' })
   name!: string | null;
+  @ApiProperty({
+    nullable: true,
+    enum: ['PLATFORM', 'SELLER'],
+    description: 'Which route serves the thumbnail; null when the product was not found.',
+  })
+  scope!: 'PLATFORM' | 'SELLER' | null;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description:
+      'The first clean photo of the published revision. A PLATFORM product: GET ' +
+      'catalog/public-images/{market}/{productId}/{primaryImageId}/thumb; a SELLER product: GET ' +
+      'catalog/seller/products/{productId}/images/{primaryImageId}/thumb.',
+  })
+  primaryImageId!: string | null;
 }
 
 export class OwnOfferTagBadgeIssuer {
@@ -474,6 +490,15 @@ export class PlatformSearchItemView {
   @ApiProperty({ description: 'The sizes of the product.' }) variantCount!: number;
   @ApiProperty({ description: 'The seller already has a live Offer on this product.' })
   alreadySelling!: boolean;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    format: 'uuid',
+    description:
+      'The first clean photo of the published revision. Serve it with GET ' +
+      'catalog/public-images/{market}/{productId}/{primaryImageId}/thumb.',
+  })
+  primaryImageId!: string | null;
 }
 
 export class PlatformSearchBarcodeResultView {

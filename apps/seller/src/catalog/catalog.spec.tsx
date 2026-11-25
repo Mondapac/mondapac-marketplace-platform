@@ -21,7 +21,13 @@ const ID = '0190a000-0000-7000-8000-0000000000a1';
 const offer = (over: Partial<OfferView> = {}): OfferView => ({
   offerId: ID,
   productId: ID,
-  product: { productCode: 'P00000001', typeCode: 'grocery', name: 'Olive oil 1L' },
+  product: {
+    productCode: 'P00000001',
+    typeCode: 'grocery',
+    name: 'Olive oil 1L',
+    scope: 'PLATFORM',
+    primaryImageId: null,
+  },
   sellerSku: 'OIL-1L',
   conditionCode: 'new',
   description: { 'en-AU': 'Cold pressed.' },
@@ -127,6 +133,24 @@ describe('seller catalog pages', () => {
     expect(screen.getByText('Unknown reason')).toBeTruthy();
     expect(screen.getByText('Sealed original')).toBeTruthy();
     expect(screen.getByText('Cold pressed.')).toBeTruthy();
+  });
+
+  it('puts Your offer, why it is off sale, then the sizes on one page, with no tab bar', async () => {
+    render(
+      await OfferDetail({
+        offer: offer({ listed: false, offSaleCauses: ['tag-suspended'] }),
+        sizes: <section aria-label="Sizes, prices and stock">sizes</section>,
+      }),
+    );
+    const names = screen.getAllByRole('heading', { level: 2 }).map((h) => h.textContent);
+    expect(names).toEqual(['Your offer', 'Why this offer is not on sale']);
+    const offSale = screen.getByRole('heading', { name: 'Why this offer is not on sale' });
+    const sizes = screen.getByRole('region', { name: 'Sizes, prices and stock' });
+    expect(offSale.compareDocumentPosition(sizes) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByRole('navigation', { name: 'Offer sections' })).toBeNull();
+    expect(screen.getByRole('link', { name: 'Back to offers' }).getAttribute('href')).toBe(
+      '/offers',
+    );
   });
 
   it('renders a seller-written description as text, not markup', async () => {
