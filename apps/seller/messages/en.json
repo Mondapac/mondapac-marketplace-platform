@@ -1066,6 +1066,16 @@
       "next": "Next",
       "page": "Page {page} of {pages}"
     },
+    "onThePlatform": {
+      "title": "On the platform: products you can sell ({total})",
+      "note": "Only your business activities · Not part of the table above",
+      "sell-label": "Sell this: {name}",
+      "saving": "Creating draft",
+      "refused": "The offer could not be created: {reason}.",
+      "showing": "Showing {shown} of {total}",
+      "see-all": "See all platform products for “{q}”",
+      "add-own": "Add your own product"
+    },
     "error": {
       "unavailable": "We couldn't load this page. Check your connection and try again."
     },

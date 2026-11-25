@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-seller-search-match-highlight",
+  "area": "seller",
+  "title": "پررنگ کردن متن جستجو در نتیجه‌ها",
+  "desc": "در طرح بخش On the platform واژهٔ جستجوشده در نام محصول پررنگ است؛ در PR 2 ساخته نشد. باید یکجا برای همهٔ سوپر لیست‌ها و جستجوی Add offer در packages/ui ساخته شود تا رفتار یکسان بماند.",
+  "src": "design/seller/offer-page/v4/v4-screen-9-superlist.png؛ PR 2 صفحهٔ Offer",
+  "date": "2026-11-25",
+  "trig": "وقتی جستجوی سوپر لیست بازطراحی شود",
+  "prio": "پایین",
+  "status": "موکول"
+}

@@ -287,6 +287,7 @@ describe.each(TEST_MARKETS)('platform product search reader in market %s', (code
             locale: 'en',
             text: overrides.text ?? null,
             gtins: overrides.gtins ?? [],
+            notSelling: overrides.notSelling ?? false,
             offset: overrides.offset ?? 0,
             limit: overrides.limit ?? 25,
           }),
@@ -406,6 +407,27 @@ describe.each(TEST_MARKETS)('platform product search reader in market %s', (code
     expect(flag.get(mine.id)).toBe(true);
     expect(flag.get(deleted.id)).toBe(false);
     expect(flag.get(theirs.id)).toBe(false);
+  });
+
+  it('leaves out and does not count the products the seller sells when notSelling is set', async () => {
+    const t = tag();
+    const c = await category(`${t} cat`);
+    const mine = await product({ name: `${t} mine`, categoryIds: [c] });
+    const deleted = await product({ name: `${t} deleted`, categoryIds: [c] });
+    const theirs = await product({ name: `${t} theirs`, categoryIds: [c] });
+    const free = await product({ name: `${t} free`, categoryIds: [c] });
+    await offer(mine.id, SELLER);
+    await offer(mine.id, SELLER, 'deleted');
+    await offer(deleted.id, SELLER, 'deleted');
+    await offer(theirs.id, RIVAL);
+    const page = await search({ allowed: [c], text: t, notSelling: true });
+    expect(page.total).toBe(3);
+    expect(new Set(page.rows.map((r) => r.productId as string))).toEqual(
+      new Set([deleted.id, theirs.id, free.id]),
+    );
+    expect(page.rows.every((r) => !r.alreadySelling)).toBe(true);
+    const all = await search({ allowed: [c], text: t });
+    expect(all.total).toBe(4);
   });
 
   it('pages a listing with a stable order and the full total', async () => {

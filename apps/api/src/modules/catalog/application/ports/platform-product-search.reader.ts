@@ -24,6 +24,8 @@ export interface PlatformProductSearchQuery {
   readonly text: string | null;
   /** 14-digit forms of a typed barcode, matched exactly (derived from `text` by the caller). */
   readonly gtins: readonly string[];
+  /** True leaves out (and does not count) the products the seller already sells. */
+  readonly notSelling: boolean;
   readonly offset: number;
   readonly limit: number;
 }

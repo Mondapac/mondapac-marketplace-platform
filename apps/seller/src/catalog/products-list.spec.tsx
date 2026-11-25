@@ -48,6 +48,7 @@ import {
 } from './products-list-types.ts';
 
 const call = vi.mocked(callApi);
+const PLATFORM = 'catalog/seller/products/platform-search';
 const ID = '0190a000-0000-7000-8000-000000000001';
 const IMAGE = '0190a000-0000-7000-8000-0000000000aa';
 const CATEGORY = '0190a000-0000-7000-8000-0000000000c1';
@@ -92,6 +93,10 @@ function serve(answer: (url: string) => ProductsPage | 'fail' | 'denied' | 'rang
     if (path.startsWith('catalog/seller/saved-filters')) {
       return Promise.resolve({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
     }
+    // "On the platform" has its own spec: here its search fails, so the panel stays hidden.
+    if (path.startsWith(PLATFORM)) {
+      return Promise.resolve({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
+    }
     const result = answer(path);
     if (result === 'fail') {
       return Promise.resolve({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
@@ -121,7 +126,9 @@ function serve(answer: (url: string) => ProductsPage | 'fail' | 'denied' | 'rang
 const listCalls = () =>
   call.mock.calls
     .map((entry) => entry[1])
-    .filter((path) => !path.startsWith('catalog/seller/saved-filters'));
+    .filter(
+      (path) => !path.startsWith('catalog/seller/saved-filters') && !path.startsWith(PLATFORM),
+    );
 const lastList = () => listCalls().at(-1)!;
 const address = () => nav.state.search.toString();
 
@@ -925,5 +932,74 @@ describe('product list address and query', () => {
     expect(cleanColumns(undefined)).toEqual(['code', 'updated']);
     expect(cleanColumns([])).toEqual([]);
     expect(cleanColumns(['type', 'x', 3, 'type', 'offers'])).toEqual(['type', 'offers']);
+  });
+});
+
+// "On the platform" (Offer page PR 2): when the panel shows under the list. The panel itself has
+// its own spec (on-the-platform.spec.tsx).
+describe('On the platform under the product list', () => {
+  const platformAnswer = {
+    items: [
+      {
+        productId: '0190a000-0000-7000-8000-0000000000f1',
+        productCode: 'P00000377',
+        name: 'Beef brisket 1 kg',
+        brandName: 'Ranch Gold',
+        categoryId: null,
+        categoryName: 'Beef',
+        variantCount: 1,
+        alreadySelling: false,
+      },
+    ],
+    total: 1,
+    page: 1,
+    pageSize: 25,
+    notice: null,
+    barcodeResults: [],
+  };
+  const panel = () => screen.queryByRole('region', { name: /On the platform/ });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    window.localStorage.clear();
+    // @ts-expect-error jsdom has no matchMedia: the list then counts as desktop.
+    delete window.matchMedia;
+    call.mockImplementation((_method, path) => {
+      if (path.startsWith('catalog/seller/saved-filters')) {
+        return Promise.resolve({ ok: false, failure: { status: 503, code: 'access.unavailable' } });
+      }
+      const body = path.startsWith(PLATFORM) ? platformAnswer : page([row()]);
+      return Promise.resolve({ ok: true, status: 200, body } as never);
+    });
+  });
+  afterEach(() => cleanup());
+
+  it('shows under the All tab while the search has text, asking without products already sold', async () => {
+    open('q=beef');
+    mount();
+    expect(await screen.findByText('Beef brisket 1 kg')).toBeTruthy();
+    expect(panel()).toBeTruthy();
+    expect(call.mock.calls.map((entry) => entry[1])).toContain(
+      `${PLATFORM}?q=beef&notSelling=true`,
+    );
+  });
+
+  it.each([
+    ['an empty search', ''],
+    ['another tab', 'view=drafts&q=beef'],
+    ['a filter', `q=beef&categoryId=${CATEGORY}`],
+  ])('stays hidden with %s', async (_name, search) => {
+    open(search);
+    mount();
+    expect(await screen.findByText('Olive oil 1L')).toBeTruthy();
+    expect(panel()).toBeNull();
+    expect(call.mock.calls.some((entry) => entry[1].startsWith(PLATFORM))).toBe(false);
+  });
+
+  it('stays hidden for a viewer who may not edit', async () => {
+    open('q=beef');
+    mount({ keys: ['catalog.own-product.view'] });
+    expect(await screen.findByText('Olive oil 1L')).toBeTruthy();
+    expect(panel()).toBeNull();
   });
 });

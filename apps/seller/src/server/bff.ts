@@ -91,7 +91,7 @@ const ALLOWED: Readonly<Record<string, ReadonlySet<string>>> = {
     // The category choices of the product form (catalog, categories C5a): levels 3 and 4, no hidden node.
     'catalog/seller/products/category-picker',
     // "Add offer": the published platform products the seller may sell, and a pasted barcode list
-    // (query: q, barcodes, page; the API validates every value and the seller's category scope).
+    // (query: q, barcodes, page, notSelling; the API validates every value and the seller's category scope).
     'catalog/seller/products/platform-search',
     // The Products list as a file (CSV or XLSX): the list's selector plus format, columns and the
     // selected product ids; the answer is an attachment.
@@ -372,6 +372,7 @@ const QUERY_KEYS: Readonly<Record<string, Readonly<Record<string, RegExp | null>
     q: null,
     barcodes: /^[0-9A-Za-z ,;-]{1,4000}$/,
     page: /^[0-9]{1,3}$/,
+    notSelling: /^(true|false)$/,
   },
   'catalog/seller/offers': {
     view: /^(all|drafts|in-review|changes-needed|live)$/,

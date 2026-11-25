@@ -27,6 +27,7 @@ import { callApi } from '../api/client.ts';
 import { numberFormat } from '../shared/intl.ts';
 import { AddOfferButton } from './add-offer-button.tsx';
 import { canRunImport } from './import/import-types.ts';
+import { OnThePlatform } from './on-the-platform.tsx';
 import {
   ProductsColumnsPanel,
   ProductsFilterPanel,
@@ -316,6 +317,14 @@ export function ProductsList({
   const sortName = t(`sort.field.${query.sort}`);
   const sortOrder = t(`sort.${orderKey(query.sort, query.direction)}`);
   const noProducts = counts !== null && counts.all === 0 && !filtered;
+  // "On the platform" (Offer page design, section 3): under the list while the All tab has a search
+  // and nothing else; a filter, a saved tab or another tab hides it.
+  const showPlatform =
+    canEdit &&
+    query.q !== '' &&
+    query.view === 'all' &&
+    filterCount(query.filters) === 0 &&
+    activeSaved === undefined;
 
   const empty = (
     <EmptyState
@@ -591,6 +600,7 @@ export function ProductsList({
           </>
         }
       />
+      {showPlatform ? <OnThePlatform text={query.q} csrfToken={csrfToken} /> : null}
       <BottomSheet
         open={!desktop && sheet === 'filter'}
         title={t('filter.title')}
