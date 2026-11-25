@@ -133,6 +133,7 @@ export class ApprovePriceHold extends UseCase<
                 amount: record.amount,
                 anchorRecordId: reference.recordId,
                 anchorAmount: reference.amount,
+                referenceAmount: null,
                 effectiveFrom: record.effectiveFrom,
               },
             }),
@@ -148,7 +149,10 @@ export class ApprovePriceHold extends UseCase<
           return;
         }
         const { record } = approved;
-        if (record.anchor === null || record.effectiveFrom === null) {
+        if (
+          (record.anchor === null && record.reference === null) ||
+          record.effectiveFrom === null
+        ) {
           throw new Error('pricing.approve-price-hold: an approved record without its anchor');
         }
         await this.deps.audit.record(
@@ -159,8 +163,10 @@ export class ApprovePriceHold extends UseCase<
               variantId,
               recordId: record.id,
               amount: record.amount,
-              anchorRecordId: record.anchor.recordId,
-              anchorAmount: record.anchor.amount,
+              anchorRecordId: record.anchor?.recordId ?? null,
+              anchorAmount: record.anchor?.amount ?? null,
+              // A first price held against the Variant's reference (R4) has no anchor record.
+              referenceAmount: record.anchor === null ? (record.reference?.amount ?? null) : null,
               effectiveFrom: record.effectiveFrom,
             },
           }),

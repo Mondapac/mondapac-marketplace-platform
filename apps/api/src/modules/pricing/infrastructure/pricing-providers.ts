@@ -51,6 +51,13 @@ import {
   type SpecialsInForceReader,
 } from '../application/ports/specials-in-force.reader';
 import { PrismaSpecialsInForceReader } from './prisma-specials-in-force.reader';
+import { SETTINGS_FACADE, type SettingsFacade } from '../../settings';
+import {
+  FIRST_PRICE_REFERENCE,
+  type FirstPriceReferencePorts,
+} from '../application/reference/variant-reference';
+import { PrismaFirstPriceChecks } from './prisma-first-price-checks';
+import { FacadeReferenceSettings, SellersReferenceBusinesses } from './facade-reference-sources';
 
 /**
  * Binds the ports of slice 1: persistence (part 2; in `infrastructure/` because only this layer
@@ -111,6 +118,25 @@ export const pricingProviders: readonly FactoryProvider[] = [
     provide: SELLER_STORE_NAMES,
     inject: [SELLERS_FACADE],
     useFactory: (sellers: SellersFacade): SellerStoreNames => new SellersStoreNames(sellers),
+  },
+  {
+    // R4 of the risk-based Offer approval (ADR-0051): pricing's own prices and checks, sellers'
+    // eligibility as "one business", and the Market's settings.
+    provide: FIRST_PRICE_REFERENCE,
+    inject: [PrismaService, SELLERS_FACADE, SETTINGS_FACADE],
+    useFactory: (
+      prisma: PrismaService,
+      sellers: SellersFacade,
+      settings: SettingsFacade,
+    ): FirstPriceReferencePorts => {
+      const store = new PrismaFirstPriceChecks(prisma);
+      return {
+        prices: store,
+        checks: store,
+        businesses: new SellersReferenceBusinesses(sellers),
+        settings: new FacadeReferenceSettings(settings),
+      };
+    },
   },
   {
     provide: PRICING_POLICY_PROVIDER,

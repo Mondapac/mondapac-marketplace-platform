@@ -2893,11 +2893,12 @@
     "before": null,
     "after": {
       "amount": "money",
-      "anchorAmount": "money",
-      "anchorRecordId": "id",
+      "anchorAmount": "optional(money)",
+      "anchorRecordId": "optional(id)",
       "effectiveFrom": "instant",
       "offerId": "id",
       "recordId": "id",
+      "referenceAmount": "optional(money)",
       "variantId": "id"
     }
   },
@@ -3030,6 +3031,42 @@
       "cause": "enumOf(withdrawn|replaced|offer-removed|variant-removed)",
       "offerId": "id",
       "recordId": "id",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.first-price.checked",
+    "targetType": "pricing.price-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "bandPercent": "integer",
+      "businesses": "integer",
+      "businessesNeeded": "integer",
+      "direction": "optional(enumOf(up|down))",
+      "offerId": "id",
+      "outcome": "enumOf(no-reference|reference-unavailable|within|outside)",
+      "postReview": "boolean",
+      "recordId": "id",
+      "referenceAmount": "optional(money)",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.first-price.rechecked",
+    "targetType": "pricing.price-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "bandPercent": "integer",
+      "businesses": "integer",
+      "offerId": "id",
+      "outcome": "enumOf(within|outside)",
+      "referenceAmount": "money",
       "variantId": "id"
     }
   },

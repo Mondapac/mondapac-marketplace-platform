@@ -15,11 +15,13 @@ import type { OutboxWriter } from '../../../../platform/events/outbox-writer';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { PRICING_PRICE_EDIT } from '../../contracts/permissions';
 import {
+  FirstPriceChecked,
   RegularPriceAccepted,
   RegularPriceHeld,
   RegularPriceSuperseded,
   type OfferWriteRefusalCause,
 } from '../../domain/audit';
+import { referenceAmountMinor } from '../../domain/reference-price';
 import { priceAmount, type PriceAmount } from '../../domain/price-amount';
 import {
   PriceSeries,
@@ -31,6 +33,15 @@ import type { OfferSellUnitsSource, PricedOfferView } from '../ports/offer-sell-
 import type { PriceSeriesRepository } from '../ports/price-series.repository';
 import type { PricingPolicyProvider } from '../ports/pricing-policy-provider';
 import type { WriteRefusalThrottleRepository } from '../ports/write-refusal-throttle.repository';
+import type { FirstPriceCheckOutcome } from '../ports/first-price-reference';
+import { recheckFirstPrices } from '../reference/recheck';
+import {
+  gatherVariantReference,
+  referenceFor,
+  type FirstPriceReferencePorts,
+  type GatheredReference,
+  type VariantReference,
+} from '../reference/variant-reference';
 import { recordOfferWriteRefusal } from '../refusals/offer-write-refusal';
 import { runSerializable } from '../serializable-unit';
 import {
@@ -87,6 +98,12 @@ export interface SetRegularPriceDependencies extends WriteAllowanceDependencies 
   readonly outbox: OutboxWriter;
   readonly clock: Clock;
   readonly ids: IdGenerator;
+  /**
+   * R4 of the risk-based Offer approval (ADR-0051): the first price of a series is measured against
+   * the Variant's reference. Always bound by the module; absent only in unit tests of the jump
+   * rules, where a first price is then not measured.
+   */
+  readonly reference?: FirstPriceReferencePorts;
 }
 
 /** Digits only, no sign, no leading zeros, at most 16 digits (design 4.4; ADR-0007 decision 10). */
@@ -101,7 +118,18 @@ type Written =
   | { readonly kind: 'written'; readonly output: SetRegularPriceOutput }
   | { readonly kind: 'no-series' }
   /** Refused inside the unit, which then commits nothing; answered through the refusal unit. */
-  | { readonly kind: 'refused'; readonly cause: 'key-retired' | 'not-yours' };
+  | { readonly kind: 'refused'; readonly cause: 'key-retired' | 'not-yours' }
+  /**
+   * The series has no price yet and R4 has not been read: the unit commits nothing; the caller
+   * reads the Variant's reference outside any unit and writes again.
+   */
+  | { readonly kind: 'needs-reference' };
+
+/**
+ * R4 for this write: `off` when the ports are not bound (unit tests of the jump rules), null
+ * until the reference is read, then what was read.
+ */
+type FirstPriceR4 = 'off' | null | VariantReference;
 
 interface Checked {
   readonly offerId: Id<'Offer'>;
@@ -185,13 +213,31 @@ export class SetRegularPrice extends UseCase<
       return this.refuse(context, actor.accountId, offerId, variantId, cause ?? 'absent');
     }
 
-    const existing = await this.deps.unitOfWork.run(market, () =>
-      this.write(context, input, checked.value, offer, actor.accountId, 'existing'),
-    );
-    let written = existing;
-    if (existing.ok && existing.value.kind === 'no-series') {
+    // R4 (ADR-0051): a first price is measured against the Variant's reference, read outside any
+    // unit (P 3.1 row 5) only when the series turns out to have no price yet.
+    let r4: FirstPriceR4 = this.deps.reference === undefined ? 'off' : null;
+    let gathered: GatheredReference | null = null;
+    const readReference = async (): Promise<VariantReference> => {
+      gathered = await gatherVariantReference(this.r4Deps(), context, {
+        productId: offer.productId,
+        variantId,
+      });
+      return referenceFor(gathered, actor.sellerId as Id<'Seller'>);
+    };
+    const existingUnit = () =>
+      this.deps.unitOfWork.run(market, () =>
+        this.write(context, input, checked.value, offer, actor.accountId, 'existing', r4),
+      );
+    let written = await existingUnit();
+    if (written.ok && written.value.kind === 'needs-reference') {
+      r4 = await readReference();
+      written = await existingUnit();
+    }
+    if (written.ok && written.value.kind === 'no-series') {
+      if (r4 === null) r4 = await readReference();
+      const r4ForCreate = r4;
       written = await runSerializable(this.deps.unitOfWork, market, () =>
-        this.write(context, input, checked.value, offer, actor.accountId, 'create'),
+        this.write(context, input, checked.value, offer, actor.accountId, 'create', r4ForCreate),
       );
     }
     if (!written.ok) {
@@ -204,6 +250,16 @@ export class SetRegularPrice extends UseCase<
     }
     if (outcome.kind !== 'written') {
       throw new Error('pricing.set-regular-price: no series after the creating unit');
+    }
+    if (gathered !== null && this.deps.reference !== undefined) {
+      // The R4 re-check of earlier first prices with no reference, with what this write read.
+      await recheckFirstPrices(
+        { ...this.r4Deps(), audit: this.deps.audit },
+        context,
+        { productId: offer.productId, variantId },
+        gathered,
+        checked.value.policy.currency,
+      );
     }
     this.log('pricing.set-regular-price.done', context, {
       offerId,
@@ -261,6 +317,7 @@ export class SetRegularPrice extends UseCase<
     offer: PricedOfferView,
     accountId: Id<'Account'>,
     mode: 'existing' | 'create',
+    r4: FirstPriceR4,
   ): Promise<Result<Written, SetRegularPriceFailure>> {
     const { market } = context;
     const { series: repository, clock, ids } = this.deps;
@@ -276,6 +333,14 @@ export class SetRegularPrice extends UseCase<
     }
     // The screen's version must be the stored one; a first price is written over "no price".
     if ((found?.persistedVersion ?? null) !== input.expectedVersion) return err(STALE);
+    // A first price (no price ever in force) needs the Variant's reference first (R4).
+    const firstPrice = found === null || !found.hasPrice;
+    if (firstPrice && r4 === null) {
+      if (mode === 'create')
+        throw new Error('pricing.set-regular-price: R4 not read before create');
+      return ok({ kind: 'needs-reference' });
+    }
+    const measured = firstPrice && r4 !== null && r4 !== 'off' ? r4 : null;
 
     const series =
       found ??
@@ -297,6 +362,10 @@ export class SetRegularPrice extends UseCase<
       taxInclusive: this.deps.policies.pricesIncludeTax(market),
       now,
       policy: checked.policy,
+      reference:
+        measured?.kind === 'reference'
+          ? { reference: measured.reference, bandPercent: measured.bandPercent }
+          : null,
     });
     if (!set.ok) {
       if (set.error.code === 'pricing.policy-market-mismatch') {
@@ -319,6 +388,9 @@ export class SetRegularPrice extends UseCase<
       await repository.save(market, series);
     }
     await this.audit(context, series, outcome);
+    if (measured !== null && outcome.kind !== 'unchanged') {
+      await this.recordCheck(context, series, outcome.record, measured, outcome.kind === 'held');
+    }
     await this.deps.outbox.append(context, series.pendingEvents);
     return ok({ kind: 'written', output: outputOf(series, outcome) });
   }
@@ -360,7 +432,8 @@ export class SetRegularPrice extends UseCase<
           },
         }),
       );
-    } else if (outcome.kind === 'held') {
+    } else if (outcome.kind === 'held' && outcome.record.reference === null) {
+      // A first price held against the Variant's reference is audited by `first-price.checked`.
       const { anchor, heldDirection } = outcome.record;
       if (anchor === null || heldDirection === null) {
         throw new Error('pricing.set-regular-price: a held record without its anchor');
@@ -380,6 +453,87 @@ export class SetRegularPrice extends UseCase<
         }),
       );
     }
+  }
+
+  private r4Deps() {
+    const reference = this.deps.reference;
+    if (reference === undefined) throw new Error('pricing.set-regular-price: R4 is not bound');
+    return {
+      unitOfWork: this.deps.unitOfWork,
+      offers: this.deps.offers,
+      clock: this.deps.clock,
+      reference,
+    };
+  }
+
+  /**
+   * The R4 check of a first price (ADR-0051), in the unit of the write: the stored row (the
+   * post-publication review list reads it) and its audit row. No reference, or none readable: the
+   * price is accepted and the Offer goes to 100% post-publication review.
+   */
+  private async recordCheck(
+    context: CallContext,
+    series: PriceSeries,
+    record: RegularPriceRecord,
+    measured: VariantReference,
+    held: boolean,
+  ): Promise<void> {
+    const { id, offerId, variantId, productId, sellerId } = series.state;
+    const outcome: FirstPriceCheckOutcome =
+      measured.kind === 'unavailable'
+        ? 'reference-unavailable'
+        : measured.kind === 'no-reference'
+          ? 'no-reference'
+          : held
+            ? 'outside'
+            : 'within';
+    const postReview = outcome === 'no-reference' || outcome === 'reference-unavailable';
+    const referenceMinor =
+      measured.kind === 'reference' ? referenceAmountMinor(measured.reference) : null;
+    const businesses =
+      measured.kind === 'reference'
+        ? measured.reference.businesses
+        : measured.kind === 'no-reference'
+          ? measured.businesses
+          : 0;
+    await this.reference().checks.record(context.market, {
+      recordId: record.id,
+      seriesId: id,
+      offerId,
+      productId,
+      variantId,
+      sellerId,
+      outcome,
+      referenceAmountMinor: referenceMinor,
+      businesses,
+      businessesNeeded: measured.businessesNeeded,
+      bandPercent: measured.bandPercent,
+      postReviewReason: postReview ? outcome : null,
+      checkedAt: record.submittedAt,
+    });
+    await this.deps.audit.record(
+      context,
+      FirstPriceChecked.entry(id, {
+        after: {
+          offerId,
+          variantId,
+          recordId: record.id,
+          amount: record.amount,
+          outcome,
+          referenceAmount:
+            referenceMinor === null ? null : money(referenceMinor, record.amount.currency),
+          businesses,
+          businessesNeeded: measured.businessesNeeded,
+          bandPercent: measured.bandPercent,
+          direction: held ? record.heldDirection : null,
+          postReview,
+        },
+      }),
+    );
+  }
+
+  private reference(): FirstPriceReferencePorts {
+    return this.r4Deps().reference;
   }
 
   /** Every cause: the same refusal unit, the same answer (design 5.2; Hassan finding 2). */

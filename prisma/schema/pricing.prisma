@@ -114,6 +114,12 @@ model PricingRegularPriceRecord {
   /// The record this one was measured against (D 2.4); null only for the first price.
   anchorRecordId       String?                     @map("anchor_record_id") @db.Uuid
   anchorAmountMinor    BigInt?                     @map("anchor_amount_minor")
+  /// R4 (ADR-0051): the reference a first price was measured against (the median of the other live
+  /// Offers' regular prices, rounded half up), the businesses that formed it and the band; all
+  /// three set or all null, and only on a record with no anchor (CHECK).
+  referenceAmountMinor BigInt?                     @map("reference_amount_minor")
+  referenceBusinesses  Int?                        @map("reference_businesses")
+  referenceBandPercent Int?                        @map("reference_band_percent")
   /// up | down for a held record; null exactly for an accepted one.
   holdDirection        String?                     @map("hold_direction")
   /// Set when the record becomes effective; never by input (Q5).
@@ -135,6 +141,7 @@ model PricingRegularPriceRecord {
   anchoredRecords      PricingRegularPriceRecord[] @relation("RegularAnchor")
   specialsMeasured     PricingSpecialPriceRecord[] @relation("SpecialRegular")
   specialsAnchored     PricingSpecialPriceRecord[] @relation("SpecialAnchor")
+  firstPriceChecks     PricingFirstPriceCheck[]
 
   /// The target of the in-series references (P3); also "the records of a series in order".
   @@unique([marketId, seriesId, id])
@@ -301,5 +308,43 @@ model PricingWriteRateCounter {
   @@id([marketId, kind, actorAccountId])
   @@index([marketId, windowStartedAt])
   @@map("write_rate_counters")
+  @@schema("pricing")
+}
+
+/// R4 of the risk-based Offer approval (ADR-0051): one row per first regular price of a series that
+/// was checked against the Variant's reference. Insert once; the re-check columns are written once,
+/// together, when the Variant's reference first forms (grants and the write-once trigger, by hand).
+/// `post_review_reason` set = the Offer is on the post-publication review list for its price.
+model PricingFirstPriceCheck {
+  /// The first-price record that was checked.
+  recordId                    String                    @id @map("record_id") @db.Uuid
+  marketId                    String                    @map("market_id") @db.VarChar(8)
+  tenantId                    String                    @map("tenant_id")
+  seriesId                    String                    @map("series_id") @db.Uuid
+  /// Copies from the series (plain ids, C4).
+  offerId                     String                    @map("offer_id") @db.Uuid
+  productId                   String                    @map("product_id") @db.Uuid
+  variantId                   String                    @map("variant_id") @db.Uuid
+  sellerId                    String                    @map("seller_id") @db.Uuid
+  /// no-reference | reference-unavailable | within | outside (CHECK).
+  outcome                     String
+  /// The median, rounded half up; null without a reference.
+  referenceAmountMinor        BigInt?                   @map("reference_amount_minor")
+  referenceBusinesses         Int                       @map("reference_businesses")
+  businessesNeeded            Int                       @map("businesses_needed")
+  bandPercent                 Int                       @map("band_percent")
+  /// no-reference | reference-unavailable | recheck-outside, or null (CHECK).
+  postReviewReason            String?                   @map("post_review_reason")
+  checkedAt                   DateTime                  @map("checked_at") @db.Timestamptz(6)
+  recheckedAt                 DateTime?                 @map("rechecked_at") @db.Timestamptz(6)
+  /// within | outside once re-checked.
+  recheckOutcome              String?                   @map("recheck_outcome")
+  recheckReferenceAmountMinor BigInt?                   @map("recheck_reference_amount_minor")
+  recheckAmountMinor          BigInt?                   @map("recheck_amount_minor")
+  record                      PricingRegularPriceRecord @relation(fields: [marketId, seriesId, recordId], references: [marketId, seriesId, id], onDelete: Restrict, onUpdate: Restrict)
+
+  /// The re-check's lookup is the hand-written partial index on (market, product, variant) of the
+  /// checks still waiting for a reference.
+  @@map("first_price_checks")
   @@schema("pricing")
 }

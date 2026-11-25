@@ -323,7 +323,8 @@ function cellsOf(column: HoldExportColumn, hold: LabelledHold): ExportCell[] {
         ? ['', '']
         : [hold.window.startsAt.toString(), hold.window.endsAt.toString()];
     case 'anchor':
-      return [hold.anchorRecordId];
+      // A first price held against the Variant's reference (R4) has no anchor record.
+      return [hold.anchorRecordId ?? ''];
   }
 }
 

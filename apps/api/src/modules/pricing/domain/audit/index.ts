@@ -110,8 +110,11 @@ export const PriceHoldApproved = defineAuditAction({
     variantId: auditField.id(),
     recordId: auditField.id(),
     amount: auditField.money(),
-    anchorRecordId: auditField.id(),
-    anchorAmount: auditField.money(),
+    /** Null for a first price held against the Variant's reference (R4): see `referenceAmount`. */
+    anchorRecordId: auditField.optional(auditField.id()),
+    anchorAmount: auditField.optional(auditField.money()),
+    /** R4: the reference a held first price was measured against; null for a jump hold. */
+    referenceAmount: auditField.optional(auditField.money()),
     effectiveFrom: auditField.instant(),
   },
 });
@@ -262,6 +265,64 @@ export const OfferWriteRefusalsSuppressed = defineAuditAction({
   },
 });
 
+/**
+ * What the R4 check of a first price found (risk-based Offer approval, ADR-0051): `no-reference`
+ * (fewer distinct businesses than the Market needs), `reference-unavailable` (catalog, sellers or
+ * settings could not answer), `within` the band, or `outside` it (the price is held).
+ */
+export const FIRST_PRICE_CHECK_OUTCOMES = [
+  'no-reference',
+  'reference-unavailable',
+  'within',
+  'outside',
+] as const;
+
+/**
+ * A seller's first regular price on a Variant was checked against the Variant's reference (R4).
+ * One row per first price, whatever the outcome, in the unit of the write; an `outside` row is the
+ * audit of the hold (the record is pending, anchor-less). Target: the series.
+ */
+export const FirstPriceChecked = defineAuditAction({
+  action: 'pricing.first-price.checked',
+  targetType: PRICE_SERIES_TARGET,
+  actors: ['authenticated'],
+  after: {
+    offerId: auditField.id(),
+    variantId: auditField.id(),
+    recordId: auditField.id(),
+    amount: auditField.money(),
+    outcome: auditField.enumOf(FIRST_PRICE_CHECK_OUTCOMES),
+    referenceAmount: auditField.optional(auditField.money()),
+    businesses: auditField.integer(),
+    businessesNeeded: auditField.integer(),
+    bandPercent: auditField.integer(),
+    direction: auditField.optional(auditField.enumOf(HOLD_DIRECTIONS)),
+    /** True when the Offer goes to the post-publication review list (no reference). */
+    postReview: auditField.boolean(),
+  },
+});
+
+/**
+ * An earlier first price that had no reference was measured once the Variant's reference formed
+ * (R4 re-check). `outside` sends it to the post-publication review list; nothing is held, because
+ * the price already sells. Target: that earlier price's series. The actor is the seller whose write
+ * formed the reference.
+ */
+export const FirstPriceRechecked = defineAuditAction({
+  action: 'pricing.first-price.rechecked',
+  targetType: PRICE_SERIES_TARGET,
+  actors: ['authenticated'],
+  after: {
+    offerId: auditField.id(),
+    variantId: auditField.id(),
+    amount: auditField.money(),
+    outcome: auditField.enumOf(['within', 'outside'] as const),
+    referenceAmount: auditField.money(),
+    businesses: auditField.integer(),
+    bandPercent: auditField.integer(),
+  },
+});
+
 /** Every audited action of pricing, for its module's registration. */
 export const PRICING_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.freeze([
   RegularPriceAccepted,
@@ -276,4 +337,6 @@ export const PRICING_AUDIT_ACTIONS: readonly AuditActionDefinition[] = Object.fr
   PriceSeriesRetired,
   OfferWriteRefused,
   OfferWriteRefusalsSuppressed,
+  FirstPriceChecked,
+  FirstPriceRechecked,
 ]);
