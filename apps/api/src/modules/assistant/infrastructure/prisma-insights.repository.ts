@@ -1,6 +1,7 @@
 import { Logger } from '@nestjs/common';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
+import type { CapabilityUsageReport } from '../../../platform/ai/usage/ai-usage-report';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
 import { fieldLabel } from '../../../platform/subject-keys/labels';
 import type { SubjectKeyService } from '../../../platform/subject-keys/subject-key-service';
@@ -10,6 +11,7 @@ import type {
   InsightsRepository,
 } from '../application/ports/insights.repository';
 import type { UnansweredCandidate, UnansweredReason } from '../domain/insights';
+import { BUYER_CHAT } from '../contracts/ai-capabilities';
 
 const MESSAGE_TEXT = fieldLabel('assistant.message.text');
 /** Buyer messages read per query (the OR of (conversation, position) pairs). */
@@ -20,7 +22,8 @@ const instantOf = (date: Date): Temporal.Instant =>
 const dateOf = (instant: Temporal.Instant): Date => new Date(instant.epochMilliseconds);
 
 /**
- * {@link InsightsRepository}: read-only aggregates over `assistant.spend_days`,
+ * {@link InsightsRepository}: read-only aggregates over `assistant.conversation_days`, the AI
+ * Gateway's settled cost of the buyer chat (G7, through {@link CapabilityUsageReport}),
  * `assistant.messages` and `assistant.feedback`, scoped by `marketId`. Buyer text is decrypted
  * here, one conversation key at a time; it was masked before it was stored.
  */
@@ -30,6 +33,7 @@ export class PrismaInsightsRepository implements InsightsRepository {
   constructor(
     private readonly prisma: PrismaService,
     private readonly keys: SubjectKeyService,
+    private readonly usage: CapabilityUsageReport,
   ) {}
 
   async days(
@@ -37,7 +41,8 @@ export class PrismaInsightsRepository implements InsightsRepository {
     from: Temporal.PlainDate,
     to: Temporal.PlainDate,
   ): Promise<readonly DayInsight[]> {
-    const rows = await this.prisma.tx(market).assistantSpendDay.findMany({
+    // At most the insights window of days; sorted after the merge below.
+    const rows = await this.prisma.tx(market).assistantConversationDay.findMany({
       where: {
         marketId: market.marketId,
         day: {
@@ -45,14 +50,23 @@ export class PrismaInsightsRepository implements InsightsRepository {
           lte: new Date(`${to.toString()}T00:00:00Z`),
         },
       },
-      orderBy: { day: 'asc' },
-      select: { day: true, conversations: true, spendMicroUsd: true },
+      select: { day: true, conversations: true },
     });
-    return rows.map((row) => ({
-      day: Temporal.PlainDate.from(row.day.toISOString().slice(0, 10)),
-      conversations: row.conversations,
-      spendMicroUsd: Number(row.spendMicroUsd),
-    }));
+    const costs = await this.usage.costByDay(market, BUYER_CHAT, from, to);
+    // A day with a conversation or a cost: the two never disagree on which Market day it is.
+    const byDay = new Map<string, { conversations: number; spendMicroUsd: number }>();
+    for (const row of rows) {
+      const key = row.day.toISOString().slice(0, 10);
+      byDay.set(key, { conversations: row.conversations, spendMicroUsd: 0 });
+    }
+    for (const cost of costs) {
+      const key = cost.day.toString();
+      const day = byDay.get(key) ?? { conversations: 0, spendMicroUsd: 0 };
+      byDay.set(key, { ...day, spendMicroUsd: cost.costMicroUsd });
+    }
+    return [...byDay]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, totals]) => ({ day: Temporal.PlainDate.from(day), ...totals }));
   }
 
   async feedback(

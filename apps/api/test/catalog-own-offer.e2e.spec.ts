@@ -12,7 +12,12 @@ import {
   type CatalogMarketPolicy,
 } from '../src/modules/catalog/application/ports/catalog-market-policy';
 import { OFFER_REPOSITORY } from '../src/modules/catalog/application/ports/offer.repository';
-import { OFFER_REVIEW_REFERRAL_STORE } from '../src/modules/catalog/application/ports/offer-review';
+import {
+  OFFER_REVIEW_INPUTS,
+  OFFER_REVIEW_REFERRAL_STORE,
+  type OfferReviewSettings,
+} from '../src/modules/catalog/application/ports/offer-review';
+import { OFFER_PENDING_CHANGE_REPOSITORY } from '../src/modules/catalog/application/ports/offer-pending-change.repository';
 import { AUDIT_WRITER } from '../src/platform/audit/audit-writer';
 import { OFFER_SELL_UNIT_REPOSITORY } from '../src/modules/catalog/application/ports/offer-sell-unit.repository';
 import { OFFER_SELL_UNITS_READER } from '../src/modules/catalog/application/ports/offer-sell-units.reader';
@@ -39,6 +44,7 @@ import {
   refusedDecision,
 } from './support/catalog-tag-fakes';
 import { fakeHashOf, IdentityFakes } from './support/identity-fakes';
+import { InMemoryOfferPendingChanges, REVIEW_OFF } from './support/catalog-offer-edit-review-fakes';
 import { createTestApp, type LogLine } from './support/test-app';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
 
@@ -89,6 +95,9 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
   let claimChecks: number;
   let evaluator: FakeClaimEvaluator;
   let claimFacts: FixedFactsClaimQueryBuilder;
+  let pendingChanges: InMemoryOfferPendingChanges;
+  let reviewSettings: OfferReviewSettings;
+  let audits: { action: string }[];
   const http = () => request(app.getHttpServer());
 
   async function boot(env: Record<string, string> = {}) {
@@ -202,8 +211,26 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
           .useValue(claimFacts)
           .overrideProvider(OFFER_REVIEW_REFERRAL_STORE)
           .useValue({ record: () => Promise.resolve() })
+          .overrideProvider(OFFER_REVIEW_INPUTS)
+          .useValue({
+            settings: () => Promise.resolve(reviewSettings),
+            facts: () =>
+              Promise.resolve({
+                emergencyStop: false,
+                probation: false,
+                fullReview: false,
+                sensitiveCategory: false,
+              }),
+          })
+          .overrideProvider(OFFER_PENDING_CHANGE_REPOSITORY)
+          .useValue(pendingChanges)
           .overrideProvider(AUDIT_WRITER)
-          .useValue({ record: () => Promise.resolve() }),
+          .useValue({
+            record: (_c: unknown, entry: { action: string }) => {
+              audits.push(entry);
+              return Promise.resolve();
+            },
+          }),
     }));
   }
 
@@ -345,6 +372,9 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       throw new Error('no claim was expected');
     }, []);
     claimFacts = new FixedFactsClaimQueryBuilder(null);
+    pendingChanges = new InMemoryOfferPendingChanges();
+    reviewSettings = REVIEW_OFF;
+    audits = [];
   });
   afterEach(async () => {
     await app.close();
@@ -412,6 +442,9 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       'claim.requested-tag-not-allowed': 422,
       'claim.check-unavailable': 503,
       'conflict.retry': 409,
+      'offer.change-pending': 409,
+      'offer-change.not-found': 404,
+      'offer-change.not-pending': 409,
     });
   });
 
@@ -873,7 +906,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       const edited = await put(url, editBody(), sessionOf(code));
 
       expect(edited.status).toBe(200);
-      expect(edited.body).toEqual({ changedFields: ['sellerSku'] });
+      expect(edited.body).toEqual({ changedFields: ['sellerSku'], applied: true });
       expect(savedEdits).toHaveLength(1);
       expect(savedEdits[0]!.state).toMatchObject({ sellerSku: 'SKU-2', version: 3 });
       expect(logLines.find((l) => l.msg === 'catalog.own-offer-edit' && l.outcome)).toMatchObject({
@@ -1041,7 +1074,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       const set = await put(`${url}/handling`, { handling: 'SEALED_ORIGINAL' }, session);
 
       expect(set.status).toBe(200);
-      expect(set.body).toEqual({ changedFields: ['handling'] });
+      expect(set.body).toEqual({ changedFields: ['handling'], applied: true });
       expect(savedEdits[0]!.state).toMatchObject({ handling: 'SEALED_ORIGINAL', version: 3 });
       expect(
         logLines.find((l) => l.msg === 'catalog.own-offer-set-handling' && l.outcome),
@@ -1065,6 +1098,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       );
       expect((await put(path, { handling: 'FRESH' }, session)).body).toEqual({
         changedFields: ['handling'],
+        applied: true,
       });
       offer = Offer.restore(offerState({ sellerId: id<'Seller'>(0xb999) }));
       expect((await put(path, { handling: 'FRESH' }, session)).body).toEqual({
@@ -1077,6 +1111,99 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
         .send({ handling: 'FRESH' });
       expect(wrongOrigin.status).toBe(403);
       expect(savedEdits).toHaveLength(1);
+    });
+
+    it('holds a risky handling change of a live Offer, refuses a second one unless replacing, and lets the seller withdraw it (slice 2c)', async () => {
+      await boot();
+      await seeded(code);
+      reviewSettings = { mode: 'risk-based', certificateBadges: 'automatic', emergencyStop: false };
+      offer = Offer.restore(
+        offerState({
+          status: 'published',
+          listed: true,
+          firstPublishedAt: START,
+          handling: 'SEALED_ORIGINAL',
+        }),
+      );
+      const session = sessionOf(code);
+      const path = `${url}/handling`;
+      const reload = () => {
+        offer = Offer.restore(savedEdits.at(-1)!.state);
+      };
+
+      const held = await put(path, { handling: 'FRESH' }, session);
+      expect(held.status).toBe(200);
+      expect(held.body).toEqual({
+        changedFields: [],
+        applied: false,
+        pendingChangeId: expect.any(String) as unknown,
+        reasons: ['handling'],
+      });
+      const first = (held.body as { pendingChangeId: string }).pendingChangeId;
+      expect(savedEdits.at(-1)!.state).toMatchObject({ handling: 'SEALED_ORIGINAL', version: 3 });
+      reload();
+
+      expect((await put(path, { handling: 'REPACKED' }, session)).body).toEqual({
+        statusCode: 409,
+        code: 'offer.change-pending',
+      });
+      // A field the policy does not watch applies at once while the change waits.
+      const sku = await put(url, editBody(), session);
+      expect(sku.body).toEqual({ changedFields: ['sellerSku'], applied: true });
+      reload();
+
+      const replaced = await put(path, { handling: 'REPACKED', replacePending: true }, session);
+      expect(replaced.status).toBe(200);
+      const second = (replaced.body as { pendingChangeId: string }).pendingChangeId;
+      expect(second).not.toBe(first);
+      expect(pendingChanges.rows.get(first)).toMatchObject({
+        status: 'superseded',
+        supersededCause: 'resubmitted',
+      });
+      reload();
+
+      const withdrawUrl = `${url}/pending-change/withdraw`;
+      const post = (headers: Record<string, string>) =>
+        http()
+          .post(withdrawUrl)
+          .set({ 'x-market-id': code, ...panelHeaders(code, 'seller'), ...headers })
+          .send();
+      expect((await post({ cookie: session.cookie })).status).toBe(403);
+      expect((await post({})).status).toBe(401);
+      const withdrawn = await post(session);
+      expect(withdrawn.status).toBe(200);
+      expect(withdrawn.body).toEqual({ changeId: second, offerId: OFFER, status: 'withdrawn' });
+      expect(savedEdits.at(-1)!.state.handling).toBe('SEALED_ORIGINAL');
+      reload();
+      const again = await post(session);
+      expect(again.status).toBe(404);
+      expect(again.body).toEqual({ statusCode: 404, code: 'offer-change.not-found' });
+
+      // The SKU edit touches no watched field: no referral.
+      expect(audits.map((a) => a.action).filter((action) => action.startsWith('catalog.'))).toEqual(
+        [
+          'catalog.offer-change.held',
+          'catalog.offer.review-referred',
+          'catalog.offer-change.superseded',
+          'catalog.offer-change.held',
+          'catalog.offer.review-referred',
+          'catalog.offer-change.withdrawn',
+        ],
+      );
+      expect(
+        logLines.find((l) => l.msg === 'catalog.own-offer-withdraw-change' && l.outcome === 'ok'),
+      ).toMatchObject({ outcome: 'ok', marketId: code });
+    });
+
+    it('applies a risky change at once when the Market review is off', async () => {
+      await boot();
+      await seeded(code);
+      offer = Offer.restore(
+        offerState({ status: 'published', firstPublishedAt: START, handling: 'SEALED_ORIGINAL' }),
+      );
+      const set = await put(`${url}/handling`, { handling: 'FRESH' }, sessionOf(code));
+      expect(set.body).toEqual({ changedFields: ['handling'], applied: true });
+      expect(pendingChanges.rows.size).toBe(0);
     });
   });
 
@@ -1133,7 +1260,7 @@ describe('seller Offer create over HTTP (integration, slice 7a-3)', () => {
       offer = Offer.restore(offerState());
       const response = await withMarket(http().post(tagsUrl), sessionOf(code)).send({ typeCode });
       expect(response.status).toBe(201);
-      expect(response.body).toEqual({ typeCode, status: 'active', basis: 'SELLER' });
+      expect(response.body).toEqual({ typeCode, status: 'active', basis: 'SELLER', applied: true });
       expect(savedEdits).toHaveLength(1);
       expect(savedEdits[0]!.tags[0]).toMatchObject({ typeCode, status: 'active' });
       expect(

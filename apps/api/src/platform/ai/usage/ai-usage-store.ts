@@ -63,8 +63,11 @@ export interface AiUsageStore {
   addUsage(market: MarketContext, usage: UsageDelta): Promise<void>;
 
   /**
-   * The settled cost of a capability on each Market day from `from` to `to` (both included),
-   * summed over its sellers; a day without a row is left out. Read-only unit is enough.
+   * What the budget counts as spent by a capability on each Market day from `from` to `to` (both
+   * included): `spent` of its day counters, so settled cost plus the estimate of every call a
+   * settle never reached and the sweeper counted (a failed settle over-counts, never
+   * under-counts; Hassan, PR 1356 finding 1). A day without a counter is left out. Read-only unit
+   * is enough.
    */
   costByDay(
     market: MarketContext,

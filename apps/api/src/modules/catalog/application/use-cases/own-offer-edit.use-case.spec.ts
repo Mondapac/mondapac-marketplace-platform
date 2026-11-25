@@ -1,3 +1,4 @@
+import { memoryOfferEditReview } from '../../../../../test/support/catalog-offer-edit-review-fakes';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, MarketId, Result } from '@mondapac/shared-kernel';
 import {
@@ -159,6 +160,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.edit in market %s', (code) => {
       },
     } as unknown as CheckClaimText;
     const useCase = new OwnOfferEdit(gate, {
+      editReview: memoryOfferEditReview({ ids }).review,
       unitOfWork,
       offers: {
         add: () => Promise.reject(new Error('unused')),
@@ -208,7 +210,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.edit in market %s', (code) => {
   it('stores the changed fields for the actor’s own draft Offer and reports them', async () => {
     const r = rig();
     const outcome = await r.useCase.execute(contextOf('seller'), form(r.state!.id));
-    expect(outcome).toEqual({ ok: true, value: { changedFields: ['sellerSku'] } });
+    expect(outcome).toEqual({ ok: true, value: { changedFields: ['sellerSku'], applied: true } });
     expect(r.saved).toHaveLength(1);
     expect(r.saved[0]!.state).toMatchObject({ sellerSku: 'SKU-2', version: 3, sellerId });
     expect(r.saved[0]!.pendingHistory).toMatchObject({
@@ -292,7 +294,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.edit in market %s', (code) => {
       offer: offerState({ status: 'published', firstPublishedAt: T0, handling: 'FRESH' }),
     });
     const outcome = await r.useCase.execute(contextOf('seller'), form(r.state!.id));
-    expect(outcome).toEqual({ ok: true, value: { changedFields: ['sellerSku'] } });
+    expect(outcome).toEqual({ ok: true, value: { changedFields: ['sellerSku'], applied: true } });
     expect(r.saved[0]!.state).toMatchObject({ status: 'published', sellerSku: 'SKU-2' });
     expect(r.evaluator.calls).toHaveLength(0);
   });
@@ -438,7 +440,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.edit in market %s', (code) => {
       contextOf('seller'),
       form(r.state!.id, { sellerSku: r.state!.sellerSku }),
     );
-    expect(outcome).toEqual({ ok: true, value: { changedFields: [] } });
+    expect(outcome).toEqual({ ok: true, value: { changedFields: [], applied: true } });
     expect(r.saved).toHaveLength(1);
     expect(r.saved[0]!.state.status).toBe('draft');
   });

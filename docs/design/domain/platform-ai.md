@@ -406,8 +406,18 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
     per day and the "cap reached" record, in the caller's unit; a day after the Market's day of the
     record's instant is refused. It never changes what is held or spent, and only the files on
     `AI_USAGE_REPORT_ALLOW_LIST` import it.
-  - G7b switches the readers: the assistant's cap check and its insights page read the cost through
-    the port and the conversations from `conversation_days`, and `spend_days` is no longer written.
+  - Built (G7b, migration `20261125163000_assistant_spend_days_switch`): the readers switched. The
+    assistant's cap check and its insights page read the buyer chat's settled cost through the port
+    and the conversations from `conversation_days`; the auto-off record is the gateway's. `spend_days`
+    is neither written nor read. The cost of each call is settled inside `run`, before the runtime
+    answers, so the turn that crosses a cap sees it in its own write unit and sends the event once;
+    nothing is counted twice (the assistant no longer adds spend) and there is no gap (the gateway
+    counted every call since G2, and the migration re-runs the reconcile for old pods). The spend is
+    the buyer chat's day counters' `spent` (a partial index answers the month), so a call whose
+    settle failed is counted at its estimate by the sweeper, never missed (Hassan, PR 1356). The
+    switch's `down.sql` copies what only the new homes hold back into `spend_days`, so the G7a
+    release can run again. While G7a and G7b pods run side by side during the rollout, a day can
+    send the cap event twice and G7a pods read less spend; roll out quickly (Mojtaba, PR 1356).
     The cap values stay in the assistant's settings until G4 moves them to the gateway's caps
     (FE-20261125-ai-gateway-assistant-cap-to-gateway); step 4 is FE-20261125-ai-gateway-drop-spend-days.
 

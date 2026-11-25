@@ -1,3 +1,4 @@
+import { memoryOfferEditReview } from '../../../../../test/support/catalog-offer-edit-review-fakes';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, MarketContext, MarketId, Result } from '@mondapac/shared-kernel';
 import {
@@ -163,6 +164,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.record-attestation in market %s'
       evaluator,
       outbox,
       clock,
+      editReview: memoryOfferEditReview({ ids }).review,
     };
     const useCase = new OwnOfferRecordAttestation(gate, deps);
     const setHandling = new OwnOfferSetHandling(gate, deps);
@@ -327,7 +329,10 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.record-attestation in market %s'
     const context = contextOf('seller');
 
     const away = await r.setHandling.execute(context, { offerId: offer.id, handling: 'REPACKED' });
-    expect(away).toEqual({ ok: true, value: { changedFields: ['handling', 'attestation'] } });
+    expect(away).toEqual({
+      ok: true,
+      value: { changedFields: ['handling', 'attestation'], applied: true },
+    });
     expect(r.saved.at(-1)!.state).toMatchObject({
       attestationRecordedAt: null,
       attestationAccountId: null,
@@ -339,7 +344,7 @@ describe.each(['AU', 'ZZ'] as const)('own-offer.record-attestation in market %s'
       offerId: offer.id,
       handling: 'SEALED_ORIGINAL',
     });
-    expect(back).toEqual({ ok: true, value: { changedFields: ['handling'] } });
+    expect(back).toEqual({ ok: true, value: { changedFields: ['handling'], applied: true } });
     expect(r.evaluator.calls.at(-1)!.map((q) => q.attestationRecorded)).toEqual([false]);
     expect(r.saved.at(-1)!.tags[0]).toMatchObject({
       status: 'suspended',

@@ -28,7 +28,7 @@ const files = sources(APPLICATION).map((file) => ({
  * product's published pointer (a revision submit that may publish at once, an approval).
  */
 const CLAIM_INPUT_WRITES =
-  /\boffer\.(setHandling|edit|submit|recordAttestation|approve)\(|\bproduct\.(approveRevision|submitRevision)\(/;
+  /\boffer\.(setHandling|edit|submit|recordAttestation|approve|applyApprovedChange)\(|\bproduct\.(approveRevision|submitRevision)\(/;
 /** The domain's tag writes from fresh decisions. */
 const TAG_WRITES = /\.(addTags|settleTags|setPendingPublishTags|settlePublish)\(/;
 /** A claim-bearing file settles its tags on decisions, or (M1) marks them for the fan-out. */
@@ -52,6 +52,8 @@ describe('catalog claim entry paths (design 5.1, 5.4)', () => {
         'use-cases/own-offer-record-attestation.use-case.ts',
         'use-cases/own-offer-submit.use-case.ts',
         'use-cases/offer-approve.use-case.ts',
+        // The approval of a held change of a live Offer (slice 2c).
+        'use-cases/admin-offer-change-approve.use-case.ts',
         'use-cases/product-revision-approve.use-case.ts',
         'revisions/submit-product.service.ts',
       ]),
@@ -129,7 +131,8 @@ describe('catalog claim entry paths (design 5.1, 5.4)', () => {
     );
     // An object-literal property, not the `readonly` declaration of the state type.
     const write = /^(?!\s*readonly\b).*\battestation(RecordedAt|AccountId):/;
-    const header = /^ {2}(?:static |private )?(#?[A-Za-z]\w*)(?:<[^>]*>)?\(/;
+    // A method of the aggregate, or an exported function (slice 2c: the handling preview).
+    const header = /^(?: {2}(?:static |private )?|export function )(#?[A-Za-z]\w*)(?:<[^>]*>)?\(/;
     const writers = new Map<string, string[]>();
     let method = '(top level)';
     for (const line of offerSource) {
@@ -137,9 +140,14 @@ describe('catalog claim entry paths (design 5.1, 5.4)', () => {
       if (found) method = found[1]!;
       if (write.test(line)) writers.set(method, [...(writers.get(method) ?? []), line.trim()]);
     }
-    expect([...writers.keys()].sort()).toEqual(['create', 'recordAttestation', 'setHandling']);
-    // create starts empty and setHandling only clears: never a value from its input.
-    for (const name of ['create', 'setHandling']) {
+    expect([...writers.keys()].sort()).toEqual([
+      'create',
+      'offerStateWithHandling',
+      'recordAttestation',
+      'setHandling',
+    ]);
+    // create starts empty; setHandling and its preview only clear: never a value from input.
+    for (const name of ['create', 'offerStateWithHandling', 'setHandling']) {
       for (const line of writers.get(name)!) {
         expect(line).toMatch(/attestation(RecordedAt|AccountId): null\b/);
         expect(line).not.toMatch(/attestation(RecordedAt|AccountId): (?!null\b)/);

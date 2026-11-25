@@ -85,7 +85,8 @@ const logger = new Logger('AiUsage');
  * Before a call the gateway reserves the most the call can cost on every counter of its scope, in
  * one short read-write unit outside the caller's work (the gateway is never called inside a
  * unit); after it, one unit settles the reservation once with the real cost and writes the call's
- * row and its day totals. Counting only runs in parallel with `assistant.spend_days` (G7 moves it).
+ * row and its day totals. Since G7 this is also the buyer assistant's spend (read through
+ * `AiUsageReport`); `assistant.spend_days` is no longer written.
  */
 export class AiUsage {
   constructor(

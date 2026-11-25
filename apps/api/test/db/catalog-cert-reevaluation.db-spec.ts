@@ -1,3 +1,4 @@
+import { NO_AUDIT, prismaOfferEditReview } from '../support/catalog-offer-edit-review-fakes';
 import { randomUUID } from 'node:crypto';
 import { Logger } from '@nestjs/common';
 import { Temporal, ok, uuidV7 } from '@mondapac/shared-kernel';
@@ -310,6 +311,7 @@ describe.each(TEST_MARKETS)(
         [tagType],
       );
       const added = await new OwnOfferAddTag(gate, {
+        editReview: prismaOfferEditReview(persistence.service, ids, NO_AUDIT),
         unitOfWork: persistence.unitOfWork,
         offers: new PrismaOfferRepository(persistence.service, ids),
         eligibility: { isEligible: () => Promise.resolve(true) },

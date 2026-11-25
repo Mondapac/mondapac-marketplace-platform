@@ -118,6 +118,11 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     "CREATE UNIQUE INDEX offers_market_id_seller_id_seller_sku_open_key ON catalog.offers USING btree (market_id, seller_id, seller_sku) WHERE (status <> 'deleted'::text)",
   'catalog.offers_market_id_submitted_at_pending_idx':
     "CREATE INDEX offers_market_id_submitted_at_pending_idx ON catalog.offers USING btree (market_id, submitted_at, id) WHERE (status = 'pending-first-publish'::text)",
+  // ADR-0051 slice 2c: one open pending change per Offer; one referral per pending change.
+  'catalog.offer_pending_changes_open_offer_key':
+    "CREATE UNIQUE INDEX offer_pending_changes_open_offer_key ON catalog.offer_pending_changes USING btree (market_id, offer_id) WHERE (status = 'pending'::text)",
+  'catalog.offer_review_referrals_pending_change_id_key':
+    'CREATE UNIQUE INDEX offer_review_referrals_pending_change_id_key ON catalog.offer_review_referrals USING btree (market_id, pending_change_id) WHERE (pending_change_id IS NOT NULL)',
   // Categories C9a (data design 3.22): the Offers on a shelf (cleared when it closes), the admin
   // queue of pending proposals, and one pending proposal per seller, parent and name.
   'catalog.offers_market_id_shelf_category_id_idx':
@@ -355,6 +360,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // AI Gateway G7 (platform-ai.md section 10): a capability's newest "cap reached" record.
   'platform.ai_budget_counters_cap_reached_idx':
     'CREATE INDEX ai_budget_counters_cap_reached_idx ON platform.ai_budget_counters USING btree (market_id, scope_key, cap_reached_at) WHERE (cap_reached_at IS NOT NULL)',
+  // AI Gateway G7b: the assistant's month of spend, read from the buyer chat's day counters.
+  'platform.ai_budget_counters_capability_day_idx':
+    "CREATE INDEX ai_budget_counters_capability_day_idx ON platform.ai_budget_counters USING btree (market_id, scope_key, period_start) WHERE (((scope)::text = 'capability'::text) AND ((period)::text = 'day'::text))",
   // Payments package 8a: the relay's claim index of payments' outbox.
   'payments.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON payments.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',

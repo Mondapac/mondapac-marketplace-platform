@@ -8,6 +8,7 @@ import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work'
 import { CATALOG_OWN_PRODUCT_EDIT } from '../../contracts/permissions';
 import type { OfferRepository } from '../ports/offer.repository';
 import type { ProductRepository } from '../ports/product.repository';
+import type { OfferEditReview } from '../offer-edit-review';
 
 export interface OwnOfferDeleteInput {
   readonly offerId: string;
@@ -31,6 +32,8 @@ export interface OwnOfferDeleteDependencies {
   readonly products: ProductRepository;
   readonly outbox: OutboxWriter;
   readonly clock: Clock;
+  /** Sets the Offer's held change aside in the same unit (slice 2c). */
+  readonly editReview: Pick<OfferEditReview, 'supersedeOnDelete'>;
 }
 
 /**
@@ -41,7 +44,8 @@ export interface OwnOfferDeleteDependencies {
  * approved, and deleting reads no other eligibility. An Offer of another seller, a deleted one and
  * an unknown id are one byte-identical `offer.not-found`. An Offer on the seller's own SELLER
  * product is refused (`offer.delete-via-product`): there the product is withdrawn and the Offer
- * goes with it (design 4.1), which `own-product.delete` will do.
+ * goes with it (design 4.1), which `own-product.delete` will do. A held change of the Offer
+ * (slice 2c) is superseded (`offer-deleted`) in the same unit, after the Offer row.
  */
 export class OwnOfferDelete extends UseCase<
   OwnOfferDeleteInput,
@@ -123,6 +127,7 @@ export class OwnOfferDelete extends UseCase<
           });
           if (!deleted.ok) return err({ code: 'offer.not-found' } as const);
           await deps.offers.save(market, offer, { kind: 'seller', accountId: actor.accountId });
+          await deps.editReview.supersedeOnDelete(context, offer.state.id, now);
           await deps.outbox.append(context, offer.pendingEvents);
           return ok({});
         },

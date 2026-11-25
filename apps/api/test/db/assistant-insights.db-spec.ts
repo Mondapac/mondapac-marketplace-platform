@@ -19,7 +19,7 @@ import {
   type Persistence,
 } from './persistence-support';
 import { testDatabaseUrl } from './test-database';
-import { assistantUsageReport } from './assistant-usage-report';
+import { assistantUsageReport, settleBuyerChat } from './assistant-usage-report';
 
 // The assistant's feedback and insights as the application role, in both Market fixtures: one
 // thumbs per assistant message (the last write wins), the CHECKs and grants, the cascade from a
@@ -62,7 +62,7 @@ describe.each(TEST_MARKETS)(
       );
       conversations = new PrismaConversationRepository(db.service, keys);
       feedback = new PrismaFeedbackRepository(db.service);
-      insights = new PrismaInsightsRepository(db.service, keys);
+      insights = new PrismaInsightsRepository(db.service, keys, assistantUsageReport(db.service));
       spend = new PrismaSpendRepository(db.service, assistantUsageReport(db.service));
       sql = new Client({ connectionString: testDatabaseUrl() });
       await sql.connect();
@@ -267,13 +267,15 @@ describe.each(TEST_MARKETS)(
 
     describe('the insights', () => {
       it('counts conversations and spend per Market day, inside the range and the Market only', async () => {
-        const add = (
+        const add = async (
           target: MarketContext,
           d: Temporal.PlainDate,
           microUsd: number,
           conversationsAdded: number,
-        ) =>
-          inUnit(target, () =>
+        ) => {
+          // The spend is the gateway's settled cost (G7b); the conversations are the assistant's.
+          await settleBuyerChat(sql, target, d, microUsd);
+          await inUnit(target, () =>
             spend.add(target, d, {
               microUsd,
               inputTokens: 10,
@@ -281,6 +283,7 @@ describe.each(TEST_MARKETS)(
               conversations: conversationsAdded,
             }),
           );
+        };
         await add(market, dayOf(-2), 111, 9); // before the range
         await add(market, dayOf(-1), 1000, 2);
         await add(market, dayOf(1), 500, 1);

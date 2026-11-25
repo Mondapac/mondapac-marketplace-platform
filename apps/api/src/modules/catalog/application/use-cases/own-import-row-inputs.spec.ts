@@ -83,6 +83,7 @@ const offerKeys: Record<keyof OwnOfferEditInput, true> = {
   sellerSku: true,
   conditionCode: true,
   description: true,
+  replacePending: true,
 };
 
 describe('the seller import carries no certification field', () => {
@@ -98,10 +99,12 @@ describe('the seller import carries no certification field', () => {
   });
 
   it('has none in the inputs of the row use cases, which stay closed', () => {
+    // `replacePending` (slice 2c) only sets a held change of a live Offer aside; no claim field.
     expect(Object.keys(offerKeys).sort()).toEqual([
       'conditionCode',
       'description',
       'offerId',
+      'replacePending',
       'sellerSku',
     ]);
     const rowSave: Record<keyof OwnImportRowSaveInput, true> = { productId: true, plan: true };

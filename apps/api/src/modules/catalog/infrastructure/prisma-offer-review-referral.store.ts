@@ -28,6 +28,7 @@ export class PrismaOfferReviewReferralStore implements OfferReviewReferralStore 
         reasons: [...referral.reasons],
         policyVersion: referral.policyVersion,
         decidedAt: new Date(referral.decidedAt.epochMilliseconds),
+        pendingChangeId: referral.pendingChangeId ?? null,
       },
       select: { id: true },
     });

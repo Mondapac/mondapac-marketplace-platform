@@ -1,3 +1,4 @@
+import { memoryOfferEditReview } from '../../../../../test/support/catalog-offer-edit-review-fakes';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { CallContext, Id, MarketContext, MarketId, Result } from '@mondapac/shared-kernel';
 import {
@@ -194,6 +195,7 @@ describe.each([
     };
     const eligibility = { isEligible: () => Promise.resolve(true) };
     const add = new OwnOfferAddTag(gate, {
+      editReview: memoryOfferEditReview({ ids }).review,
       unitOfWork,
       offers,
       eligibility,
@@ -297,7 +299,10 @@ describe.each([
     it('writes the tag active with the badge of this request and announces it', async () => {
       const r = rig();
       const outcome = await r.add.execute(contextOf('seller'), { offerId: r.offerId, typeCode });
-      expect(outcome).toEqual({ ok: true, value: { typeCode, status: 'active', basis: 'SELLER' } });
+      expect(outcome).toEqual({
+        ok: true,
+        value: { typeCode, status: 'active', basis: 'SELLER', applied: true },
+      });
       expect(r.evaluator.calls).toHaveLength(1);
       expect(r.evaluator.calls[0]!.map((q) => [q.variantId, q.sellerId, q.handling])).toEqual(
         variantIds.map((id) => [id, sellerId, 'SEALED_ORIGINAL']),
@@ -535,7 +540,7 @@ describe.each([
           offerId: r.offerId,
           trigger: 'first-publication',
           reasons: [],
-          policyVersion: 1,
+          policyVersion: 2,
           offerVersion: r.current()!.state.version,
         }),
       ]);

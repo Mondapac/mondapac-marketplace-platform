@@ -1,6 +1,12 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import type { ProductScope } from './product';
 import { OFFER_REVIEW_REASONS } from './offer-review-policy';
+import { OFFER_HANDLING_AUDIT_CODES } from './offer-handling';
+import {
+  MAX_PROPOSED_TAG_TYPES,
+  OFFER_CHANGE_FIELDS,
+  OFFER_CHANGE_SUPERSEDED_CAUSES,
+} from './offer-pending-change';
 
 // The audited actions of catalog (catalog design 11.3), registered at boot with
 // `registerAuditActions('catalog', CATALOG_AUDIT_ACTIONS)`. Ids, codes, counts and booleans only:
@@ -1037,21 +1043,109 @@ export const SellerCategoryMergedAudit = defineAuditAction({
 export const CATALOG_OFFER_TARGET = 'catalog.offer';
 
 /**
- * The Offer review policy decided a seller's submit (ADR-0051; design catalog/offer-approval 6):
- * queued with its reasons, or published at once (no reason). The policy version explains it.
+ * The Offer review policy decided a seller's submit or an edit of a live Offer (ADR-0051; design
+ * catalog/offer-approval 6; slice 2c): queued (held) with its reasons, or published (applied) at
+ * once with none. The policy version explains it.
  */
 export const OfferReviewReferredAudit = defineAuditAction({
   action: 'catalog.offer.review-referred',
   targetType: CATALOG_OFFER_TARGET,
   actors: ['authenticated'],
   after: {
-    trigger: auditField.enumOf(['first-publication'] as const),
+    trigger: auditField.enumOf(['first-publication', 'edit'] as const),
     outcome: auditField.enumOf(['queued', 'published'] as const),
     reasons: auditField.listOf(
       auditField.enumOf(OFFER_REVIEW_REASONS),
       OFFER_REVIEW_REASONS.length,
     ),
     policyVersion: auditField.integer(),
+  },
+});
+
+const changeFields = auditField.listOf(
+  auditField.enumOf(OFFER_CHANGE_FIELDS),
+  OFFER_CHANGE_FIELDS.length,
+);
+
+/**
+ * The held handling value of a change as its audit code, or null when the change leaves handling
+ * (Hassan N1 on PR #1350): a closed enum, never text.
+ */
+const changeHandling = auditField.optional(auditField.enumOf(OFFER_HANDLING_AUDIT_CODES));
+
+/**
+ * An edit of a live Offer was held for review (slice 2c): the change's id, the watched fields it
+ * holds, the held handling value (an enum) and the policy's reasons. Never the description. The
+ * requested certification type codes are a vocabulary the audit kinds cannot hold (no `enumOf`
+ * of a list that grows at run time): they stay on the change row, whose proposed columns no one
+ * can change (`offer_pending_changes` trigger), and `changeId` names it. The seller is the actor.
+ */
+export const OfferChangeHeldAudit = defineAuditAction({
+  action: 'catalog.offer-change.held',
+  targetType: CATALOG_OFFER_TARGET,
+  actors: ['authenticated'],
+  after: {
+    changeId: auditField.id(),
+    fields: changeFields,
+    handling: changeHandling,
+    reasons: auditField.listOf(
+      auditField.enumOf(OFFER_REVIEW_REASONS),
+      OFFER_REVIEW_REASONS.length,
+    ),
+    policyVersion: auditField.integer(),
+  },
+});
+
+/**
+ * An admin approved a held change: its fields are live now. Records the handling that went live
+ * (an enum) and the ids of the tags the approval added (each tag row holds its type code). The
+ * note and the description are never audited.
+ */
+export const OfferChangeApprovedAudit = defineAuditAction({
+  action: 'catalog.offer-change.approved',
+  targetType: CATALOG_OFFER_TARGET,
+  actors: ['authenticated'],
+  after: {
+    changeId: auditField.id(),
+    fields: changeFields,
+    handling: changeHandling,
+    addedTagIds: auditField.listOf(auditField.id(), MAX_PROPOSED_TAG_TYPES),
+  },
+});
+
+/** An admin sent a held change back to the seller with a note (never audited). */
+export const OfferChangeChangesRequestedAudit = defineAuditAction({
+  action: 'catalog.offer-change.changes-requested',
+  targetType: CATALOG_OFFER_TARGET,
+  actors: ['authenticated'],
+  after: { changeId: auditField.id(), fields: changeFields },
+});
+
+/** An admin rejected a held change with a note (never audited); the live Offer stays. */
+export const OfferChangeRejectedAudit = defineAuditAction({
+  action: 'catalog.offer-change.rejected',
+  targetType: CATALOG_OFFER_TARGET,
+  actors: ['authenticated'],
+  after: { changeId: auditField.id(), fields: changeFields },
+});
+
+/** The seller withdrew their held change; the live Offer stays. */
+export const OfferChangeWithdrawnAudit = defineAuditAction({
+  action: 'catalog.offer-change.withdrawn',
+  targetType: CATALOG_OFFER_TARGET,
+  actors: ['authenticated'],
+  after: { changeId: auditField.id(), fields: changeFields },
+});
+
+/** A held change was set aside: a new edit replaced it, or the Offer was deleted. */
+export const OfferChangeSupersededAudit = defineAuditAction({
+  action: 'catalog.offer-change.superseded',
+  targetType: CATALOG_OFFER_TARGET,
+  actors: ['authenticated'],
+  after: {
+    changeId: auditField.id(),
+    fields: changeFields,
+    cause: auditField.enumOf(OFFER_CHANGE_SUPERSEDED_CAUSES),
   },
 });
 
@@ -1124,4 +1218,10 @@ export const CATALOG_AUDIT_ACTIONS = [
   SellerCategoryPromotedAudit,
   SellerCategoryMergedAudit,
   OfferReviewReferredAudit,
+  OfferChangeHeldAudit,
+  OfferChangeApprovedAudit,
+  OfferChangeChangesRequestedAudit,
+  OfferChangeRejectedAudit,
+  OfferChangeWithdrawnAudit,
+  OfferChangeSupersededAudit,
 ] as const;

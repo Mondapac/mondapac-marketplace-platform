@@ -144,7 +144,7 @@ describe.each(TEST_MARKETS)(
       await expect(
         record(referral(offerId, { sellerId: uuid7() as Id<'Seller'> })),
       ).rejects.toThrow();
-      await expect(record(referral(offerId, { trigger: 'edit' as never }))).rejects.toThrow();
+      await expect(record(referral(offerId, { trigger: 'resubmit' as never }))).rejects.toThrow();
     });
   },
 );

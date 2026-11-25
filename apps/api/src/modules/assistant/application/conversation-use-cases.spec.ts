@@ -698,6 +698,12 @@ describe.each(TEST_MARKET_IDS)('assistant conversation use cases in market %s', 
       },
     );
 
+    it('fails closed, before any model call, when the spend cannot be read (Hassan, PR 1356)', async () => {
+      spend.totals = () => Promise.reject(new Error('gateway usage down'));
+      await expect(asGuest('Hi')).rejects.toThrow('gateway usage down');
+      expect(runtime.requests).toHaveLength(0);
+    });
+
     it('is off for a customer and a guest while an AI budget cap is full (AI Gateway G2)', async () => {
       runtime.overBudget = true;
       expect(await asCustomer('Hi')).toEqual({ ok: false, error: { code: 'assistant.off' } });
