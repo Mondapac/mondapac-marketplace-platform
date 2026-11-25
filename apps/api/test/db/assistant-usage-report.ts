@@ -35,7 +35,8 @@ export function assistantUsageReport(prisma: PrismaService): CapabilityUsageRepo
 
 /**
  * What the gateway's settle writes for one buyer-chat call, as the database tests need it: the
- * call's cost added to the buyer chat's day row (AI Gateway G7b reads the spend from there).
+ * call's cost added to the buyer chat's day row and day counter (AI Gateway G7b reads the spend
+ * from the counter).
  */
 export async function settleBuyerChat(
   client: Client,
@@ -50,6 +51,16 @@ export async function settleBuyerChat(
      ON CONFLICT (market_id, day, capability, seller_id) DO UPDATE SET
        calls = ai_usage_days.calls + 1,
        cost_micro_usd = ai_usage_days.cost_micro_usd + EXCLUDED.cost_micro_usd`,
+    [market.marketId, market.tenantId, day.toString(), BUYER_CHAT, costMicroUsd],
+  );
+  // The capability's day counter, which the assistant's spend is read from (Hassan, PR 1356).
+  await client.query(
+    `INSERT INTO platform.ai_budget_counters (market_id, tenant_id, period, period_start, scope,
+       scope_key, held_micro_usd, spent_micro_usd)
+     VALUES ($1, $2, 'day', $3, 'capability', $4, $5, $5)
+     ON CONFLICT (market_id, period_start, period, scope, scope_key) DO UPDATE SET
+       held_micro_usd = ai_budget_counters.held_micro_usd + EXCLUDED.held_micro_usd,
+       spent_micro_usd = ai_budget_counters.spent_micro_usd + EXCLUDED.spent_micro_usd`,
     [market.marketId, market.tenantId, day.toString(), BUYER_CHAT, costMicroUsd],
   );
 }

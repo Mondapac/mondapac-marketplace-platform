@@ -41,6 +41,7 @@ export class PrismaInsightsRepository implements InsightsRepository {
     from: Temporal.PlainDate,
     to: Temporal.PlainDate,
   ): Promise<readonly DayInsight[]> {
+    // At most the insights window of days; sorted after the merge below.
     const rows = await this.prisma.tx(market).assistantConversationDay.findMany({
       where: {
         marketId: market.marketId,

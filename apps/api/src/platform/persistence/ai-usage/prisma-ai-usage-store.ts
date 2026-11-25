@@ -330,20 +330,23 @@ export class PrismaAiUsageStore implements AiUsageStore {
     from: Temporal.PlainDate,
     to: Temporal.PlainDate,
   ): Promise<readonly DayCost[]> {
-    const rows = await this.prisma.tx(market).aiUsageDay.groupBy({
-      by: ['day'],
+    // The capability's day counters (a range on the key's period_start), not the usage day rows:
+    // the sweeper counts an unsettled call's estimate in the counters only.
+    const rows = await this.prisma.tx(market).aiBudgetCounter.findMany({
       where: {
         marketId: market.marketId,
         tenantId: market.tenantId,
-        day: { gte: dateOf(from), lte: dateOf(to) },
-        capability,
+        periodStart: { gte: dateOf(from), lte: dateOf(to) },
+        period: 'day',
+        scope: 'capability',
+        scopeKey: capability,
       },
-      _sum: { costMicroUsd: true },
-      orderBy: { day: 'asc' },
+      select: { periodStart: true, spentMicroUsd: true },
+      orderBy: { periodStart: 'asc' },
     });
     return rows.map((row) => ({
-      day: plainDateOf(row.day),
-      costMicroUsd: Number(row._sum.costMicroUsd ?? 0n),
+      day: plainDateOf(row.periodStart),
+      costMicroUsd: Number(row.spentMicroUsd),
     }));
   }
 

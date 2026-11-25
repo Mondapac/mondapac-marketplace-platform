@@ -6,8 +6,19 @@ SET statement_timeout = '60s';
 -- switch to the gateway, the reconcile of 20261125150000_assistant_spend_days_expand runs again,
 -- for what pods older than G7a wrote to assistant.spend_days only while that release rolled out
 -- (Mojtaba, PR 1354 finding 2). Every statement only adds what is missing, so running it again
--- adds nothing twice. No schema change: from this release spend_days is neither written nor read;
+-- adds nothing twice. From this release spend_days is neither written nor read;
 -- step 4 drops it (FE-20261125-ai-gateway-drop-spend-days).
+
+-- The assistant's spend is read from the buyer chat's day counters (twice per buyer message, a
+-- month at a time; Hassan PR 1356 finding 1). The key's leading period_start range would read
+-- every seller's and capability's counter of the Market, so a partial index on the capability day
+-- rows answers it (Mojtaba, PR 1356 finding 2). Its columns are never updated, so the counters'
+-- updates stay HOT. Built under a 1 s lock wait, as reserves wait at most 1 s; the table is small.
+SET lock_timeout = '1s';
+CREATE INDEX IF NOT EXISTS "ai_budget_counters_capability_day_idx"
+  ON "platform"."ai_budget_counters" ("market_id", "scope_key", "period_start")
+  WHERE "scope" = 'capability' AND "period" = 'day';
+SET lock_timeout = '5s';
 
 -- Conversation counts: the larger of the two (spend_days counted everything until now).
 INSERT INTO "assistant"."conversation_days" ("market_id", "day", "tenant_id", "conversations")

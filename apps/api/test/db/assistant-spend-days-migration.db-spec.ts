@@ -12,7 +12,7 @@ import { migrationDatabaseUrl, REPO_ROOT } from './test-database';
 
 const MIGRATIONS = join(REPO_ROOT, 'prisma', 'migrations');
 const EXPAND = '20261125150000_assistant_spend_days_expand';
-const SWITCH = '20261125160000_assistant_spend_days_switch';
+const SWITCH = '20261125163000_assistant_spend_days_switch';
 const CAPABILITY = 'assistant.buyer-chat';
 
 /**
@@ -278,14 +278,22 @@ describe('assistant spend_days expand migration (database integration, AI Gatewa
   });
 
   it('the G7b switch adds what old pods wrote to spend_days only meanwhile, and nothing twice', async () => {
-    // An old pod (before G7a) counted a conversation and an auto-off in spend_days only.
+    // An old pod (before G7a) counted a conversation and an auto-off in spend_days only, and spend
+    // on a day before the Market's first gateway day (the delta branch).
     await owner.query(
       `UPDATE assistant.spend_days SET conversations = conversations + 2,
          auto_off_cap = 'daily', auto_off_at = '2026-11-20T05:00:00Z'
         WHERE market_id = $1 AND day = '2026-11-20'`,
       [first],
     );
-    const usage = await usageDays();
+    await owner.query(
+      `UPDATE assistant.spend_days SET spend_micro_usd = spend_micro_usd + 600
+        WHERE market_id = $1 AND day = '2026-11-20'`,
+      [first],
+    );
+    const usage = (await usageDays()).map((row) =>
+      row.market_id === first && row.day === '2026-11-20' ? { ...row, cost: '5600' } : row,
+    );
     await owner.query(readFileSync(join(MIGRATIONS, SWITCH, 'migration.sql'), 'utf8'));
     const conversations = await conversationDays();
     expect(
@@ -301,5 +309,35 @@ describe('assistant spend_days expand migration (database integration, AI Gatewa
     await owner.query(readFileSync(join(MIGRATIONS, SWITCH, 'migration.sql'), 'utf8'));
     expect(await conversationDays()).toEqual(after.conversations);
     expect(await counters()).toEqual(after.counters);
+  });
+
+  it('the G7b down copies what only the new homes hold back into spend_days, once', async () => {
+    // Counted after the switch: a conversation and a cost on a new day, and an auto-off.
+    await owner.query(
+      `INSERT INTO assistant.conversation_days (market_id, day, tenant_id, conversations)
+       VALUES ($1, '2026-11-27', 'mondapac', 6)`,
+      [first],
+    );
+    await owner.query(
+      `INSERT INTO platform.ai_budget_counters (market_id, tenant_id, period, period_start, scope,
+         scope_key, held_micro_usd, spent_micro_usd, cap_reached_at, cap_reached_period)
+       VALUES ($1, 'mondapac', 'day', '2026-11-27', 'capability', $2, 800, 800,
+               '2026-11-27T01:00:00Z', 'month')`,
+      [first, CAPABILITY],
+    );
+    const down = readFileSync(join(MIGRATIONS, SWITCH, 'down.sql'), 'utf8');
+    await owner.query(down);
+    const read = async () =>
+      (
+        await owner.query<{ spend: string; conversations: number; cap: string | null }>(
+          `SELECT spend_micro_usd::text AS spend, conversations, auto_off_cap AS cap
+             FROM assistant.spend_days WHERE market_id = $1 AND day = '2026-11-27'`,
+          [first],
+        )
+      ).rows;
+    expect(await read()).toEqual([{ spend: '800', conversations: 6, cap: 'monthly' }]);
+    await owner.query(down);
+    expect(await read()).toEqual([{ spend: '800', conversations: 6, cap: 'monthly' }]);
+    await owner.query(readFileSync(join(MIGRATIONS, SWITCH, 'migration.sql'), 'utf8'));
   });
 });

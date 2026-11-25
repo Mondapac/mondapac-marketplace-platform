@@ -479,6 +479,8 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
     await turn(market, day, 500, 0);
     await turn(market, next, 700, 1);
     await turn(other, day, 9_999, 3);
+    // The last day of the month before: not in this month's total.
+    await turn(market, day.with({ day: 1 }).subtract({ days: 1 }), 50_000, 0);
 
     // lastAutoOff is the Market's newest record of any day; it is checked after this day's below.
     const first = await read(market, () => spend.totals(market, day));
@@ -557,11 +559,7 @@ describe.each(TEST_MARKETS)('assistant conversations store in market %s (databas
     ]);
     // Cross-Market canary (Hassan, PR 1354): the other Market reads neither the record nor the cost.
     const report = assistantUsageReport(db.service);
-    await sql.query(
-      `INSERT INTO platform.ai_usage_days (id, market_id, tenant_id, day, capability, seller_id,
-         calls, cost_micro_usd) VALUES (gen_random_uuid(), $1, $2, $3, $4, NULL, 1, 4321)`,
-      [market.marketId, market.tenantId, day.toString(), BUYER_CHAT],
-    );
+    await settleBuyerChat(sql, market, day, 4321);
     // The other Market gets its own record back, never this one (Hassan, PR 1354 B).
     // Temporal instants compare by their text: toEqual sees no fields on them.
     // An old day, so this record is never the other Market's newest in the other tests.
