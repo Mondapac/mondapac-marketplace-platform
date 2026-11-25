@@ -13,6 +13,10 @@ import { checkedInCatalogue } from './catalogue';
 import { AI_ROUTE_CATALOGUE, type RouteCatalogue } from './catalogue/route-catalogue';
 import { AI_EVALUATION_RESULTS, EvaluationResults } from './evaluations/evaluation-results';
 import { EVALUATION_PASSES } from './evaluations/results';
+import { AiEvaluationControl } from './evaluations/evaluation-control';
+import { EVALUATION_PROVIDERS } from './evaluations/evaluation-providers';
+import { AiEvaluationRunner, aiEvaluationRunnerJob } from './evaluations/evaluation-runner';
+import { EvaluationSuiteRegistry } from './evaluations/evaluation-suite';
 import { AiModelChoices } from './model-choices';
 import { ModelGateway } from './model-gateway';
 import { MODEL_PROVIDER } from './model-provider';
@@ -37,6 +41,10 @@ import { AI_USAGE_STORE, type AiUsageStore } from './usage/ai-usage-store';
  * {@link AiUsageReport} is the one read of it a module gets (G7): its own capability's settled
  * cost per day and its "cap reached" record, never what is held or a call's detail.
  * {@link AiModelChoices} is settings' check of a Market's model lists against the catalogue (G4b).
+ * G4c: modules register their evaluation suites in the {@link EvaluationSuiteRegistry}; the job
+ * `platform.ai-evaluation-runner` works evaluation runs through the evaluation gateway (not
+ * exported), and {@link AiEvaluationControl} is settings' port for the run and playground API. The
+ * evaluation store is bound here only, like the usage store.
  *
  * `app.module.ts` passes the module that provides and exports `SELLER_AI_SWITCH` (sellers'), as it
  * does for identity's authorisation check, so `platform/` imports no module; a graph without it
@@ -82,15 +90,28 @@ export class AiModule {
             markets: MarketRegistry,
           ) => new AiUsage(unitOfWork, store, clock, ids, markets),
         },
-        registerJobsFrom('platform', [AiUsage], (usage: AiUsage) => [
-          aiReservationSweeperJob(usage),
-          aiUsageRetentionJob(usage),
-        ]),
+        ...EVALUATION_PROVIDERS,
+        registerJobsFrom(
+          'platform',
+          [AiUsage, AiEvaluationRunner],
+          (usage: AiUsage, runner: AiEvaluationRunner) => [
+            aiReservationSweeperJob(usage),
+            aiUsageRetentionJob(usage, runner),
+            aiEvaluationRunnerJob(runner),
+          ],
+        ),
         AiGateway,
         AiUsageReport,
         AiModelChoices,
       ],
-      exports: [AiGateway, CapabilityRegistry, AiUsageReport, AiModelChoices],
+      exports: [
+        AiGateway,
+        CapabilityRegistry,
+        AiUsageReport,
+        AiModelChoices,
+        EvaluationSuiteRegistry,
+        AiEvaluationControl,
+      ],
     };
   }
 }

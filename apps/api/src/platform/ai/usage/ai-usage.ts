@@ -52,6 +52,21 @@ export interface SettledCall {
   readonly outcome: CallOutcome;
 }
 
+/**
+ * The usage id evaluation and playground calls are counted under (G4c, design section 8): not a
+ * capability, and reserved, so no module can register it ({@link CapabilityRegistry} and
+ * `AiUsageReport.for` refuse the owner `platform`). Its calls hold only the evaluation budget's
+ * month counter, never a Market, capability, seller or guest counter.
+ */
+export const AI_EVALUATION_USAGE = 'platform.ai-evaluation';
+
+/** The scope of an evaluation or playground call (G4c). */
+export const EVALUATION_SCOPE: UsageScope = Object.freeze({
+  capability: AI_EVALUATION_USAGE,
+  sellerId: null,
+  guest: false,
+});
+
 /** Calls are kept 90 days (design section 10); in hours, as an Instant has no calendar. */
 export const AI_CALLS_KEPT = Temporal.Duration.from({ hours: 90 * 24 });
 /** Day rows and counters are kept 25 months (design section 10). */
@@ -107,6 +122,19 @@ export class AiUsage {
     /** Required (Hassan and Mohammad, PR 1362): a forgotten argument must never lift a cap. */
     caps: AiCaps,
   ): BudgetLine[] {
+    // An evaluation or playground call counts only on the evaluation budget (G4c): the Market's
+    // day and month, which the capabilities share, never move for it.
+    if (scope.capability === AI_EVALUATION_USAGE) {
+      return [
+        {
+          period: 'month',
+          periodStart: day.with({ day: 1 }),
+          scope: 'evaluation',
+          scopeKey: '',
+          capMicroUsd: caps.evaluationMonth,
+        },
+      ];
+    }
     const lines: BudgetLine[] = [];
     if (scope.sellerId !== null) {
       lines.push({
@@ -204,6 +232,22 @@ export class AiUsage {
     if (!held.ok) throw new Error('month share not read');
     if (month.capMicroUsd === 0) return 1;
     return (held.value.get(counterKeyText(month)) ?? 0) / month.capMicroUsd;
+  }
+
+  /**
+   * What is left of the evaluation budget this Market month (cap minus held, never below 0), read
+   * in a read-only unit of its own. Throws on a store failure.
+   */
+  async evaluationLeft(market: MarketContext, caps: AiCaps): Promise<number> {
+    const day = this.dayOf(market, this.clock.now());
+    const [line] = this.linesOf(market, EVALUATION_SCOPE, day, caps);
+    const held = await this.unitOfWork.run(
+      market,
+      async () => ok(await this.store.heldOf(market, [line!])),
+      { readOnly: true },
+    );
+    if (!held.ok) throw new Error('evaluation budget not read');
+    return Math.max(0, caps.evaluationMonth - (held.value.get(counterKeyText(line!)) ?? 0));
   }
 
   /**

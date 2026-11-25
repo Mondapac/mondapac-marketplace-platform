@@ -11,6 +11,9 @@ export const SETTINGS_STATUS: Readonly<Record<string, number>> = Object.freeze({
   'settings.conflict': 409,
   'second-factor.required': 403,
   'second-factor.enrolment-required': 403,
+  // AI Gateway G4c: an evaluation run the Market does not have; the admin's playground day used up.
+  'ai.evaluation-not-found': 404,
+  'ai.playground-limit-reached': 429,
 });
 
 export function fail(status: number, code: string, details?: object): HttpException {

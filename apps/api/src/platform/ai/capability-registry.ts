@@ -7,6 +7,8 @@ export class CapabilityRegistryError extends Error {
 }
 
 const OWNER = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+/** The owner of the evaluation usage id `platform.ai-evaluation` (G4c); never a capability's. */
+export const RESERVED_OWNER = 'platform';
 
 /**
  * Every AI capability of the application (docs/design/domain/platform-ai.md section 4), like the
@@ -23,6 +25,11 @@ export class CapabilityRegistry implements OnApplicationBootstrap {
     if (this.#sealed) throw new CapabilityRegistryError('The capability registry is sealed');
     if (typeof owner !== 'string' || !OWNER.test(owner)) {
       throw new CapabilityRegistryError('A capability owner is a module name');
+    }
+    // `platform.ai-evaluation` is the evaluation budget's usage id (G4c): no capability may be
+    // counted under it, so `platform` registers none.
+    if (owner === RESERVED_OWNER) {
+      throw new CapabilityRegistryError('"platform" is reserved: it registers no capability');
     }
     for (const spec of specs) {
       const problem = capabilitySpecProblem(spec);

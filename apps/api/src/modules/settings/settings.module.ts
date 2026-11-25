@@ -27,6 +27,14 @@ import { ChangeAiGatewayEmergencyStop } from './application/use-cases/change-ai-
 import { ChangeAiModels } from './application/use-cases/change-ai-models.use-case';
 import { ViewAiModels } from './application/use-cases/view-ai-models.use-case';
 import { AiModelChoices } from '../../platform/ai/model-choices';
+import { AiEvaluationControl } from '../../platform/ai/evaluations/evaluation-control';
+import { CancelAiEvaluation } from './application/use-cases/cancel-ai-evaluation.use-case';
+import { EstimateAiEvaluation } from './application/use-cases/estimate-ai-evaluation.use-case';
+import { RunAiEvaluation } from './application/use-cases/run-ai-evaluation.use-case';
+import { RunAiPlayground } from './application/use-cases/run-ai-playground.use-case';
+import { ViewAiEvaluation } from './application/use-cases/view-ai-evaluation.use-case';
+import { ViewAiEvaluations } from './application/use-cases/view-ai-evaluations.use-case';
+import { ViewAiPlaygroundSamples } from './application/use-cases/view-ai-playground-samples.use-case';
 import { ChangeAiGatewayLimits } from './application/use-cases/change-ai-gateway-limits.use-case';
 import { ViewAiGatewaySettings } from './application/use-cases/view-ai-gateway-settings.use-case';
 import { SettingsAiGatewayControls } from './application/ai-gateway-controls-reader';
@@ -144,6 +152,28 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
       inject: [USE_CASE_GATE, AiModelChoices, ...PORTS.map(([, token]) => token)],
       useFactory: (gate: UseCaseGate, choices: AiModelChoices, ...values: unknown[]) =>
         new ChangeAiModels(gate, dependenciesOf(values), choices),
+    },
+    // Evaluation runs and the playground (G4c) reach platform/ai through AiEvaluationControl;
+    // AiModule is global, so it reaches this module without an import.
+    ...[ViewAiEvaluations, ViewAiEvaluation, EstimateAiEvaluation, ViewAiPlaygroundSamples].map(
+      (type): FactoryProvider => ({
+        provide: type,
+        inject: [USE_CASE_GATE, AiEvaluationControl],
+        useFactory: (gate: UseCaseGate, control: AiEvaluationControl) => new type(gate, control),
+      }),
+    ),
+    // The cancel and the playground write an audit row (Hassan, PR 1367 L2).
+    ...[CancelAiEvaluation, RunAiPlayground].map((type): FactoryProvider => ({
+      provide: type,
+      inject: [USE_CASE_GATE, AiEvaluationControl, ...PORTS.map(([, token]) => token)],
+      useFactory: (gate: UseCaseGate, control: AiEvaluationControl, ...values: unknown[]) =>
+        new type(gate, dependenciesOf(values), control),
+    })),
+    {
+      provide: RunAiEvaluation,
+      inject: [USE_CASE_GATE, AiEvaluationControl, ...PORTS.map(([, token]) => token)],
+      useFactory: (gate: UseCaseGate, control: AiEvaluationControl, ...values: unknown[]) =>
+        new RunAiEvaluation(gate, dependenciesOf(values), control),
     },
     {
       provide: SETTINGS_ADMIN_NAMES,

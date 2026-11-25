@@ -84,14 +84,3 @@ export function testRouter(
 ): AiRouter {
   return new AiRouter(catalogue, evaluations, models, markets, clock);
 }
-
-/**
- * The router of an evaluation run (ADR-0052 decision 3, the one exception): a row that meets every
- * other condition may be used without a recorded evaluation pass. It lives under test/ so the API
- * can never build it (Hassan, G3 review 3).
- */
-export class EvaluationRunRouter extends AiRouter {
-  protected override evaluationPassed(): boolean {
-    return true;
-  }
-}

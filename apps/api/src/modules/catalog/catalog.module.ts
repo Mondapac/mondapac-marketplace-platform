@@ -1,6 +1,8 @@
 import { CertificationModule } from '../certification';
 import { registerCapabilities } from '../../platform/ai/capability-registry';
 import { CATALOG_AI_CAPABILITIES } from './contracts/ai-capabilities';
+import { registerEvaluationSuites } from '../../platform/ai/evaluations/evaluation-suite';
+import { CATALOG_AI_EVALUATION_SUITES } from './contracts/ai-evaluation-suites';
 import { CountClaimsWithoutCertificate } from './application/use-cases/count-claims-without-certificate.use-case';
 import { CountPendingOffers } from './application/use-cases/count-pending-offers.use-case';
 import { CountPendingRevisions } from './application/use-cases/count-pending-revisions.use-case';
@@ -1247,6 +1249,8 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     // Pushes its catalogue into the permission registry (identity slice 8a-1, PF 6.1).
     registerPermissions('catalog', CATALOG_PERMISSIONS),
     registerCapabilities('catalog', CATALOG_AI_CAPABILITIES),
+    // The writer's synthetic evaluation set for evaluation runs and the playground (G4c).
+    registerEvaluationSuites('catalog', CATALOG_AI_EVALUATION_SUITES),
     registerStepUpActions('catalog', CATALOG_STEP_UP_ACTIONS),
     ...catalogProviders,
     serviceProvider(CheckClaimText, {

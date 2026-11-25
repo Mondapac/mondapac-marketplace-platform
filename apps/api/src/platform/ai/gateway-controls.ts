@@ -4,8 +4,8 @@ import type { CapabilityTask } from './capability';
 /**
  * A Market's AI budget caps in US micro-dollars (docs/design/domain/platform-ai.md section 7):
  * the Market's day and month, each capability's day, each seller's day (a seller-scoped
- * capability) and the guest pool's day (buyer capabilities called by anonymous visitors). Null is
- * not capped (counted only); 0 allows nothing.
+ * capability), the guest pool's day (buyer capabilities called by anonymous visitors) and the
+ * evaluation budget's month (G4c). Null is not capped (counted only); 0 allows nothing.
  */
 export interface AiCaps {
   readonly marketDay: number | null;
@@ -13,15 +13,25 @@ export interface AiCaps {
   readonly capabilityDay: number | null;
   readonly sellerDay: number | null;
   readonly guestDay: number | null;
+  /**
+   * The month budget of evaluation and playground runs (G4c, design section 8), apart from every
+   * cap above: an evaluation call counts only here. Never uncapped: the setting has no `none` and
+   * its default is 0, so nothing is spent on evaluations until a senior admin sets it.
+   */
+  readonly evaluationMonth: number;
 }
 
-/** No cap set: every counter is counted and none is enforced. */
+/**
+ * No cap set: every counter is counted and none is enforced, but the evaluation budget, which is
+ * never uncapped (0: no evaluation call).
+ */
 export const NO_CAPS: AiCaps = Object.freeze({
   marketDay: null,
   marketMonth: null,
   capabilityDay: null,
   sellerDay: null,
   guestDay: null,
+  evaluationMonth: 0,
 });
 
 /**

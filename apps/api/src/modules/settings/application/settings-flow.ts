@@ -189,7 +189,7 @@ const isActingAs = (context: CallContext): boolean => {
 };
 
 /** An admin session that is not acting as someone else. */
-function adminAccountId(context: CallContext): Id<'Account'> | null {
+export function adminAccountId(context: CallContext): Id<'Account'> | null {
   const actor = context.actor;
   if (actor.kind !== 'authenticated' || actor.population !== 'admin') return null;
   return isActingAs(context) ? null : actor.accountId;

@@ -1,4 +1,11 @@
 import type { AiModelsView } from '../application/use-cases/view-ai-models.use-case';
+import type { EvaluationEstimate } from '../application/use-cases/estimate-ai-evaluation.use-case';
+import type { PlaygroundAnswer } from '../application/use-cases/run-ai-playground.use-case';
+import type { EvaluationRunDetail } from '../application/use-cases/view-ai-evaluation.use-case';
+import type { EvaluationRunList } from '../application/use-cases/view-ai-evaluations.use-case';
+import type { PlaygroundSuite } from '../application/use-cases/view-ai-playground-samples.use-case';
+
+type EvaluationRunRecord = EvaluationRunList['runs'][number];
 import type { OfferReviewEmergencyStopView } from '../application/use-cases/view-offer-review-emergency-stop.use-case';
 import { ApiProperty } from '@nestjs/swagger';
 import type { ListPaging } from '../domain/definitions';
@@ -265,3 +272,258 @@ export const aiModelsBody = (view: AiModelsView): AiModelsBody => ({
 });
 
 export const listPagingBody = (value: ListPaging): ListPagingBody => ({ listPaging: value });
+
+// AI Gateway G4c: evaluation runs and the playground. Codes, numbers and ids; the playground's
+// `text` is the capability's guarded plain text (never HTML), and no run stores any model text.
+
+const RUN_STATUSES = [
+  'queued',
+  'running',
+  'completed',
+  'closed-budget',
+  'closed-saver',
+  'closed-off',
+  'cancelled',
+];
+const VERDICTS = ['pending', 'pass-candidate', 'failed', 'incomplete', 'superseded'];
+const SAMPLE_OUTCOMES = ['ok', 'timeout', 'unavailable', 'rate-limited', 'rejected', 'refused'];
+const CHECKS = ['leak', 'empty', 'incomplete', 'too-long', 'missing-fact'];
+
+export class AiEvaluationRunBody {
+  @ApiProperty({ format: 'uuid' }) id!: string;
+  @ApiProperty({ description: 'The route catalogue provider, e.g. anthropic.' }) provider!: string;
+  @ApiProperty({ description: 'The route catalogue model family.' }) family!: string;
+  @ApiProperty({ enum: RUN_STATUSES }) status!: string;
+  @ApiProperty({ format: 'uuid', description: 'The admin who asked for it.' })
+  requestedBy!: string;
+  @ApiProperty({ format: 'date-time' }) requestedAt!: string;
+  @ApiProperty({ description: 'The estimate confirmed, US micro-dollars.' })
+  estimateMicroUsd!: number;
+  @ApiProperty({ format: 'date-time', nullable: true, type: String }) startedAt!: string | null;
+  @ApiProperty({ format: 'date-time', nullable: true, type: String }) endedAt!: string | null;
+}
+
+export class AiEvaluationRunListBody {
+  @ApiProperty({ type: [AiEvaluationRunBody] }) runs!: AiEvaluationRunBody[];
+  @ApiProperty({
+    type: String,
+    nullable: true,
+    description: 'The cursor of the next page (pass it as ?cursor=), or null on the last one.',
+  })
+  next!: string | null;
+}
+
+export class AiEvaluationCapabilityBody {
+  @ApiProperty() capability!: string;
+  @ApiProperty() promptVersion!: string;
+  @ApiProperty() setVersion!: string;
+  @ApiProperty() samplesTotal!: number;
+  @ApiProperty({
+    enum: VERDICTS,
+    description: 'pass-candidate is never a pass: a PR records a pass in the results file.',
+  })
+  verdict!: string;
+}
+
+export class AiEvaluationSampleBody {
+  @ApiProperty() capability!: string;
+  @ApiProperty() sampleId!: string;
+  @ApiProperty({ enum: SAMPLE_OUTCOMES }) outcome!: string;
+  @ApiProperty({ enum: CHECKS, isArray: true, description: 'Failed checks; empty when passed.' })
+  checks!: string[];
+  @ApiProperty({ format: 'uuid', nullable: true, type: String }) callId!: string | null;
+  @ApiProperty({ nullable: true, type: String, description: 'The route kind that answered.' })
+  route!: string | null;
+  @ApiProperty({ nullable: true, type: Number }) attempt!: number | null;
+  @ApiProperty() inputTokens!: number;
+  @ApiProperty() outputTokens!: number;
+  @ApiProperty({ description: 'US micro-dollars.' }) costMicroUsd!: number;
+  @ApiProperty({ nullable: true, type: Number }) latencyMs!: number | null;
+  @ApiProperty({ format: 'date-time' }) finishedAt!: string;
+}
+
+export class AiEvaluationRunDetailBody {
+  @ApiProperty({ type: AiEvaluationRunBody }) run!: AiEvaluationRunBody;
+  @ApiProperty({ type: [AiEvaluationCapabilityBody] })
+  capabilities!: AiEvaluationCapabilityBody[];
+  @ApiProperty({ type: [AiEvaluationSampleBody] }) samples!: AiEvaluationSampleBody[];
+  @ApiProperty({ description: 'What the samples cost so far, US micro-dollars.' })
+  costMicroUsd!: number;
+}
+
+export class AiEvaluationCapabilityEstimateBody {
+  @ApiProperty() capability!: string;
+  @ApiProperty() promptVersion!: string;
+  @ApiProperty() setVersion!: string;
+  @ApiProperty() samples!: number;
+  @ApiProperty({ description: "The sum of each sample's reservation, US micro-dollars." })
+  estimateMicroUsd!: number;
+}
+
+export class AiEvaluationEstimateBody {
+  @ApiProperty() provider!: string;
+  @ApiProperty() family!: string;
+  @ApiProperty({ type: [AiEvaluationCapabilityEstimateBody] })
+  capabilities!: AiEvaluationCapabilityEstimateBody[];
+  @ApiProperty({ description: 'The whole estimate; send it back as expectedEstimateMicroUsd.' })
+  estimateMicroUsd!: number;
+  @ApiProperty({ description: 'What is left of the evaluation budget this Market month.' })
+  budgetLeftMicroUsd!: number;
+  @ApiProperty({
+    isArray: true,
+    type: String,
+    description:
+      'What blocks a run now: unknown-model, task-unsupported, not-checked, region, no-key, ' +
+      'retired, no-suite, run-open or saver-closed; empty when it may start.',
+  })
+  blockers!: string[];
+}
+
+export class RunAiEvaluationRequest {
+  @ApiProperty() provider!: string;
+  @ApiProperty() family!: string;
+  @ApiProperty({ description: 'The estimate the admin confirmed; a stale one is refused.' })
+  expectedEstimateMicroUsd!: number;
+}
+
+export class AiEvaluationQueuedBody {
+  @ApiProperty({ format: 'uuid' }) runId!: string;
+  @ApiProperty({ type: AiEvaluationEstimateBody }) estimate!: AiEvaluationEstimateBody;
+}
+
+export class AiEvaluationCancelledBody {
+  @ApiProperty({ format: 'uuid' }) runId!: string;
+}
+
+export class AiPlaygroundSampleBody {
+  @ApiProperty() id!: string;
+  @ApiProperty({ description: "A plain-text summary of the sample's synthetic input." })
+  label!: string;
+}
+
+export class AiPlaygroundSuiteBody {
+  @ApiProperty() capability!: string;
+  @ApiProperty() setVersion!: string;
+  @ApiProperty({ type: [AiPlaygroundSampleBody] }) samples!: AiPlaygroundSampleBody[];
+}
+
+export class AiPlaygroundSamplesBody {
+  @ApiProperty({ type: [AiPlaygroundSuiteBody] }) suites!: AiPlaygroundSuiteBody[];
+}
+
+export class RunAiPlaygroundRequest {
+  @ApiProperty() capability!: string;
+  @ApiProperty() sampleId!: string;
+  @ApiProperty({ type: [String], minItems: 2, maxItems: 2, description: 'Two distinct families.' })
+  families!: string[];
+}
+
+export class AiPlaygroundAnswerBody {
+  @ApiProperty() family!: string;
+  @ApiProperty({
+    enum: [...SAMPLE_OUTCOMES, 'closed-budget', 'closed-saver', 'closed-off'],
+  })
+  outcome!: string;
+  @ApiProperty({
+    nullable: true,
+    type: String,
+    description: 'What the capability would show, after its own guard: plain text, never HTML.',
+  })
+  text!: string | null;
+  @ApiProperty({ enum: CHECKS, isArray: true }) checks!: string[];
+  @ApiProperty({ description: 'US micro-dollars, from the evaluation budget.' })
+  costMicroUsd!: number;
+  @ApiProperty({ nullable: true, type: Number }) latencyMs!: number | null;
+  @ApiProperty({ nullable: true, type: String }) route!: string | null;
+}
+
+export class AiPlaygroundBody {
+  @ApiProperty({ type: [AiPlaygroundAnswerBody] }) answers!: AiPlaygroundAnswerBody[];
+}
+
+const instantText = (at: { toString(): string } | null): string | null =>
+  at === null ? null : at.toString();
+
+export const aiEvaluationRunBody = (run: EvaluationRunRecord): AiEvaluationRunBody => ({
+  id: run.id,
+  provider: run.provider,
+  family: run.family,
+  status: run.status,
+  requestedBy: run.requestedBy,
+  requestedAt: run.requestedAt.toString(),
+  estimateMicroUsd: run.estimateMicroUsd,
+  startedAt: instantText(run.startedAt),
+  endedAt: instantText(run.endedAt),
+});
+
+export const aiEvaluationRunListBody = (list: EvaluationRunList): AiEvaluationRunListBody => ({
+  runs: list.runs.map(aiEvaluationRunBody),
+  next: list.next,
+});
+
+export const aiEvaluationRunDetailBody = (
+  detail: EvaluationRunDetail,
+): AiEvaluationRunDetailBody => ({
+  run: aiEvaluationRunBody(detail.run),
+  capabilities: detail.capabilities.map((row) => ({
+    capability: row.capability,
+    promptVersion: row.promptVersion,
+    setVersion: row.setVersion,
+    samplesTotal: row.samplesTotal,
+    verdict: row.verdict,
+  })),
+  samples: detail.samples.map((sample) => ({
+    capability: sample.capability,
+    sampleId: sample.sampleId,
+    outcome: sample.outcome,
+    checks: [...sample.checks],
+    callId: sample.callId,
+    route: sample.route,
+    attempt: sample.attempt,
+    inputTokens: sample.inputTokens,
+    outputTokens: sample.outputTokens,
+    costMicroUsd: sample.costMicroUsd,
+    latencyMs: sample.latencyMs,
+    finishedAt: sample.finishedAt.toString(),
+  })),
+  costMicroUsd: detail.costMicroUsd,
+});
+
+export const aiEvaluationEstimateBody = (
+  estimate: EvaluationEstimate,
+): AiEvaluationEstimateBody => ({
+  provider: estimate.provider,
+  family: estimate.family,
+  capabilities: estimate.capabilities.map((item) => ({
+    capability: item.capability,
+    promptVersion: item.promptVersion,
+    setVersion: item.setVersion,
+    samples: item.samples,
+    estimateMicroUsd: item.estimateMicroUsd,
+  })),
+  estimateMicroUsd: estimate.estimateMicroUsd,
+  budgetLeftMicroUsd: estimate.budgetLeftMicroUsd,
+  blockers: [...estimate.blockers],
+});
+
+export const aiPlaygroundSamplesBody = (
+  suites: readonly PlaygroundSuite[],
+): AiPlaygroundSamplesBody => ({
+  suites: suites.map((suite) => ({
+    capability: suite.capability,
+    setVersion: suite.setVersion,
+    samples: suite.samples.map(({ id, label }) => ({ id, label })),
+  })),
+});
+
+export const aiPlaygroundBody = (answers: readonly PlaygroundAnswer[]): AiPlaygroundBody => ({
+  answers: answers.map((answer) => ({
+    family: answer.family,
+    outcome: answer.outcome,
+    text: answer.text,
+    checks: [...answer.checks],
+    costMicroUsd: answer.costMicroUsd,
+    latencyMs: answer.latencyMs,
+    route: answer.route,
+  })),
+});

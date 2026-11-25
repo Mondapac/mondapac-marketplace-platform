@@ -147,6 +147,12 @@ export const AI_CAP_MARKET_MONTH_CODE = 'ai-cap-market-month';
 export const AI_CAP_CAPABILITY_DAY_CODE = 'ai-cap-capability-day';
 export const AI_CAP_SELLER_DAY_CODE = 'ai-cap-seller-day';
 export const AI_CAP_GUEST_DAY_CODE = 'ai-cap-guest-day';
+/**
+ * The evaluation budget's month (AI Gateway G4c, design section 8): what evaluation runs and the
+ * playground may spend, apart from the caps above. Never `none`, default 0 (no evaluation call
+ * until a senior admin sets it).
+ */
+export const AI_CAP_EVALUATION_MONTH_CODE = 'ai-cap-evaluation-month';
 
 /** Every AI cap code, as the Limits tab shows and saves them. */
 export const AI_CAP_CODES: readonly string[] = Object.freeze([
@@ -155,6 +161,7 @@ export const AI_CAP_CODES: readonly string[] = Object.freeze([
   AI_CAP_CAPABILITY_DAY_CODE,
   AI_CAP_SELLER_DAY_CODE,
   AI_CAP_GUEST_DAY_CODE,
+  AI_CAP_EVALUATION_MONTH_CODE,
 ]);
 
 /** Every AI Gateway setting code (the AI Gateway page). */
@@ -398,6 +405,15 @@ export const SETTING_DEFINITIONS: readonly SettingDefinition[] = Object.freeze([
     pattern: AI_CAP_VALUE,
     defaultValue: AI_CAP_NONE,
     // An invalid stored value is read as 0: nothing allowed (ADR-0019 R8).
+    safeValue: '0',
+  },
+  {
+    code: AI_CAP_EVALUATION_MONTH_CODE,
+    label: 'AI cap: evaluation runs per month (US micro-dollars)',
+    // No `none`: the evaluation budget is never uncapped (fail-closed, G4c).
+    values: [],
+    pattern: AI_CAP_VALUE,
+    defaultValue: '0',
     safeValue: '0',
   },
   {

@@ -1213,7 +1213,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       expectedVersion,
     });
 
-    it('shows the stop off and every cap none by default; the gateway reads no cap and no stop', async () => {
+    it('shows the stop off and every cap none by default (the evaluation budget 0, G4c); the gateway reads no cap and no stop', async () => {
       const view = await new ViewAiGatewaySettings(gate, deps).execute(adminCtx(), {});
       expect(
         view.ok && view.value.map(({ code, value, version }) => [code, value, version]),
@@ -1224,6 +1224,7 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         ['ai-cap-capability-day', 'none', 0],
         ['ai-cap-seller-day', 'none', 0],
         ['ai-cap-guest-day', 'none', 0],
+        ['ai-cap-evaluation-month', '0', 0],
       ]);
       expect(await controls()).toEqual({ stopped: false, caps: NO_CAPS, models: NO_MODEL_LISTS });
     });

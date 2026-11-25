@@ -15,6 +15,7 @@ export const ZZ_TEST_AI_CAPS: AiCaps = Object.freeze({
   capabilityDay: 500_000_000,
   sellerDay: 50_000_000,
   guestDay: 100_000_000,
+  evaluationMonth: 0,
 });
 
 /** The pre-G4 `aiBudget` shape, so a test names a cap the way the Market configuration did. */
@@ -24,6 +25,8 @@ export interface TestBudget {
   readonly capabilityDayMicroUsd?: number;
   readonly sellerDayMicroUsd?: number;
   readonly guestDayMicroUsd?: number;
+  /** The evaluation budget's month (G4c); never uncapped, 0 when not given. */
+  readonly evaluationMonthMicroUsd?: number;
 }
 
 export const capsOfBudget = (budget: TestBudget): AiCaps => ({
@@ -32,6 +35,7 @@ export const capsOfBudget = (budget: TestBudget): AiCaps => ({
   capabilityDay: budget.capabilityDayMicroUsd ?? null,
   sellerDay: budget.sellerDayMicroUsd ?? null,
   guestDay: budget.guestDayMicroUsd ?? null,
+  evaluationMonth: budget.evaluationMonthMicroUsd ?? 0,
 });
 
 /**
