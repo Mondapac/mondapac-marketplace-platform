@@ -35,6 +35,7 @@ import { ModerateReview } from './use-cases/moderate-review.use-case';
 import { RemoveReview } from './use-cases/remove-review.use-case';
 import { ViewModerationReview } from './use-cases/view-moderation-review.use-case';
 import { DeleteProductReview } from './use-cases/delete-product-review.use-case';
+import { CountMarketReviews } from './use-cases/count-market-reviews.use-case';
 import { CountSellerReviews } from './use-cases/count-seller-reviews.use-case';
 import { DetachAuthor } from './use-cases/detach-author.use-case';
 import { EditProductReview } from './use-cases/edit-product-review.use-case';
@@ -1304,6 +1305,7 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
         new DetachAuthor(gate, deps),
         new ListProductRatingTotals(gate, deps),
         new CountSellerReviews(gate, deps),
+        new CountMarketReviews(gate, deps),
       );
       expect(await facade.productSummary(anonymous, product(1))).toMatchObject({
         ok: true,
@@ -1384,6 +1386,80 @@ describe.each([['AU'], ['ZZ']] as const)('reviews core in market %s', (code) => 
       expect(await count({ sellerId: SELLER, windows: Array(9).fill(around) })).toMatchObject({
         ok: false,
       });
+    });
+  });
+
+  describe('market review counts for the admin dashboard', () => {
+    const countMarket = (input: object, context = adminCtx()) =>
+      new CountMarketReviews(gate, deps).execute(context, input);
+    const win = (from: Temporal.Instant, to: Temporal.Instant) => ({
+      from: from.toString(),
+      to: to.toString(),
+    });
+    const around = win(T0.subtract({ hours: 1 }), T0.add({ hours: 1 }));
+
+    it("counts every seller's reviews published in each window, by rating, in order", async () => {
+      await switchOn();
+      bought(1);
+      bought(2, 1, BUYER, SELLER_2);
+      await submitted(1, { rating: 5 });
+      await submitted(2, { rating: 3 });
+
+      const read = await countMarket({
+        windows: [
+          around,
+          win(T0.subtract({ hours: 48 }), T0.subtract({ hours: 24 })),
+          win(T0.add({ hours: 1 }), T0.add({ hours: 2 })),
+        ],
+      });
+
+      expect(read).toEqual(
+        ok([
+          { reviews: 2, starsSum: 8, histogram: [0, 0, 1, 0, 1] },
+          { reviews: 0, starsSum: 0, histogram: [0, 0, 0, 0, 0] },
+          { reviews: 0, starsSum: 0, histogram: [0, 0, 0, 0, 0] },
+        ]),
+      );
+    });
+
+    it('answers a platform admin only, refuses bad windows and is off while reviews are off', async () => {
+      const input = { windows: [around] };
+      expect(await countMarket(input)).toEqual(err({ code: 'reviews.disabled' }));
+      await switchOn();
+      expect(await countMarket(input, customerCtx())).toEqual(err({ code: 'access.denied' }));
+      expect(await countMarket(input, anonymous)).toEqual(err({ code: 'access.unauthenticated' }));
+      expect(await countMarket(input, system)).toEqual(err({ code: 'access.denied' }));
+      expect(await countMarket({ windows: [win(T0, T0)] })).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed', fields: [{ path: 'windows.0.to', code: 'range' }] },
+      });
+      expect(await countMarket({ windows: [{ from: 'yesterday', to: 'today' }] })).toMatchObject({
+        ok: false,
+        error: { code: 'validation.failed' },
+      });
+      expect(await countMarket({ windows: [] })).toMatchObject({ ok: false });
+      expect(await countMarket({ windows: Array(5).fill(around) })).toMatchObject({ ok: false });
+    });
+
+    it('does not count a review that was hidden after it was published', async () => {
+      await switchOn();
+      bought(1);
+      const review = await submitted(1, { rating: 4 });
+      expect(await countMarket({ windows: [around] })).toEqual(
+        ok([{ reviews: 1, starsSum: 4, histogram: [0, 0, 0, 1, 0] }]),
+      );
+      expect(
+        (
+          await new ModerateReview(gate, deps).execute(adminCtx(), {
+            reviewId: review.review.id,
+            action: 'hide',
+            reasonCode: 'spam',
+          })
+        ).ok,
+      ).toBe(true);
+      expect(await countMarket({ windows: [around] })).toEqual(
+        ok([{ reviews: 0, starsSum: 0, histogram: [0, 0, 0, 0, 0] }]),
+      );
     });
   });
 

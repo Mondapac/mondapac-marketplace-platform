@@ -463,6 +463,69 @@ export class ShoppingFunnelSectionBody {
   @ApiProperty({ required: false, type: ShoppingFunnelKpiBody }) kpis?: ShoppingFunnelKpiBody;
 }
 
+export class ReviewsKpiBody {
+  @ApiProperty({
+    enum: ['available', 'not-enough-data', 'off'],
+    description:
+      '`off`: reviews are switched off in the Market. `not-enough-data`: fewer than `minimum` reviews in the 30 days; show no number.',
+  })
+  status!: string;
+  @ApiProperty({ required: false, type: Number, description: 'Only when not-enough-data.' })
+  minimum?: number;
+  @ApiProperty({ required: false, type: Number, description: 'Reviews published in the 30 days.' })
+  reviews?: number;
+  @ApiProperty({
+    required: false,
+    type: DeltaBody,
+    description: 'The count against the 30 days before.',
+  })
+  reviewsChange?: DeltaBody;
+  @ApiProperty({
+    required: false,
+    type: Number,
+    description: 'Hundredths of a star (433 is 4.33).',
+  })
+  averageTimes100?: number;
+  @ApiProperty({
+    required: false,
+    type: DeltaBody,
+    description: 'The average against the 30 days before, in hundredths of a star.',
+  })
+  averageChangeTimes100?: DeltaBody;
+  @ApiProperty({
+    required: false,
+    type: [Number],
+    description: 'Reviews of 1, 2, 3, 4 and 5 stars.',
+  })
+  histogram?: number[];
+  @ApiProperty({
+    required: false,
+    type: Number,
+    description: 'Reviews of 1 or 2 stars ÷ reviews, in basis points (10000 is all).',
+  })
+  lowStarShareBp?: number;
+  @ApiProperty({
+    required: false,
+    type: DeltaBody,
+    description: 'The share against the 30 days before, in basis points of difference.',
+  })
+  lowStarShareChange?: DeltaBody;
+}
+
+export class ReviewsSectionBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: ReviewsKpiBody }) kpis?: ReviewsKpiBody;
+  @ApiProperty({
+    required: false,
+    type: Object,
+    description: 'The 30 days the numbers cover (Market days, both ends included).',
+  })
+  period?: {
+    current: { from: string; to: string };
+    previous: { from: string; to: string };
+  };
+}
+
 export class TopSellerBody {
   @ApiProperty({ format: 'uuid' }) sellerId!: string;
   @ApiProperty({ nullable: true, type: String, description: 'The public store name.' })
@@ -632,6 +695,13 @@ export class AdminKpisBody {
     description: 'Null without `ordering.order.view`: leave the card out.',
   })
   shoppingFunnel!: ShoppingFunnelSectionBody | null;
+  @ApiProperty({
+    type: ReviewsSectionBody,
+    nullable: true,
+    description:
+      'Reviews of the last 30 days, whatever the period. Null without `reviews.settings.view`: leave the card out.',
+  })
+  reviews!: ReviewsSectionBody | null;
   @ApiProperty({
     type: TopSellersSectionBody,
     nullable: true,
@@ -805,6 +875,38 @@ function ordersByStateSection(
   };
 }
 
+function reviewsSection(section: AdminKpisAnswer['reviews']): ReviewsSectionBody | null {
+  if (section === null) return null;
+  if (section.status === 'error') return { status: 'error' };
+  const { reviews, period } = section.value;
+  const window = {
+    current: { ...period.current },
+    previous: { ...period.previous },
+  };
+  if (reviews.status === 'off') return { status: 'ok', kpis: { status: 'off' }, period: window };
+  if (reviews.status === 'not-enough-data') {
+    return {
+      status: 'ok',
+      kpis: { status: reviews.status, minimum: reviews.minimum },
+      period: window,
+    };
+  }
+  return {
+    status: 'ok',
+    kpis: {
+      status: reviews.status,
+      reviews: reviews.reviews,
+      reviewsChange: { ...reviews.reviewsChange },
+      averageTimes100: reviews.averageTimes100,
+      averageChangeTimes100: { ...reviews.averageChangeTimes100 },
+      histogram: [...reviews.histogram],
+      lowStarShareBp: reviews.lowStarShareBp,
+      lowStarShareChange: { ...reviews.lowStarShareChange },
+    },
+    period: window,
+  };
+}
+
 function shoppingFunnelSection(
   section: AdminKpisAnswer['shoppingFunnel'],
 ): ShoppingFunnelSectionBody | null {
@@ -912,6 +1014,7 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     ordersByStatus: ordersByStatusSection(answer.ordersByStatus),
     ordersByState: ordersByStateSection(answer.ordersByState),
     shoppingFunnel: shoppingFunnelSection(answer.shoppingFunnel),
+    reviews: reviewsSection(answer.reviews),
     topSellers: topSellersSection(answer.topSellers),
     topCategories: topCategoriesSection(answer.topCategories),
     health:

@@ -13,6 +13,7 @@ import type {
 import type { ViewSellerNetEarnings } from '../application/use-cases/view-seller-net-earnings.use-case';
 import type { ViewMarketplaceOrderStatus } from '../application/use-cases/view-marketplace-order-status.use-case';
 import type { ViewMarketplaceOrdersByState } from '../application/use-cases/view-marketplace-orders-by-state.use-case';
+import type { ViewMarketplaceReviews } from '../application/use-cases/view-marketplace-reviews.use-case';
 import type { ViewMarketplaceShoppingFunnel } from '../application/use-cases/view-marketplace-shopping-funnel.use-case';
 import type { KpiPeriodInput, PeriodRequest, ReportingKpiFacade } from '../contracts';
 
@@ -28,6 +29,7 @@ export class ReportingKpiFacadeImplementation implements ReportingKpiFacade {
     private readonly orderStatus: ViewMarketplaceOrderStatus,
     private readonly ordersByState: ViewMarketplaceOrdersByState,
     private readonly shoppingFunnel: ViewMarketplaceShoppingFunnel,
+    private readonly reviews: ViewMarketplaceReviews,
     private readonly days: {
       readonly zone: { zoneOf(market: MarketContext): string };
       readonly clock: Clock;
@@ -54,6 +56,10 @@ export class ReportingKpiFacadeImplementation implements ReportingKpiFacade {
 
   marketplaceShoppingFunnel(context: CallContext, input: KpiPeriodInput) {
     return this.shoppingFunnel.execute(context, input);
+  }
+
+  marketplaceReviews(context: CallContext) {
+    return this.reviews.execute(context, {});
   }
 
   marketplaceOperations(context: CallContext, input: KpiPeriodInput) {

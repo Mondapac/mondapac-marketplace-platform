@@ -1,4 +1,4 @@
-import { ok, Temporal } from '@mondapac/shared-kernel';
+import { err, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id } from '@mondapac/shared-kernel';
 import {
   FixedClock,
@@ -8,6 +8,7 @@ import {
 import { Client } from 'pg';
 import { DeleteProductReview } from '../../src/modules/reviews/application/use-cases/delete-product-review.use-case';
 import { EditProductReview } from '../../src/modules/reviews/application/use-cases/edit-product-review.use-case';
+import { CountMarketReviews } from '../../src/modules/reviews/application/use-cases/count-market-reviews.use-case';
 import { CountSellerReviews } from '../../src/modules/reviews/application/use-cases/count-seller-reviews.use-case';
 import { DetachAuthor } from '../../src/modules/reviews/application/use-cases/detach-author.use-case';
 import { ListProductReviews } from '../../src/modules/reviews/application/use-cases/list-product-reviews.use-case';
@@ -789,6 +790,53 @@ describe.each(TEST_MARKETS)('reviews in market %s (database)', (code) => {
           { reviews: 0, starsSum: 0 },
         ]),
       );
+    });
+
+    it("counts the Market's published reviews per window and rating for the admin dashboard", async () => {
+      const now = clock.now();
+      const windows = [
+        { from: now.subtract({ hours: 1 }).toString(), to: now.add({ hours: 1 }).toString() },
+        { from: now.add({ hours: 1 }).toString(), to: now.add({ hours: 2 }).toString() },
+      ];
+      const count = () => new CountMarketReviews(gate, deps).execute(admin, { windows });
+      // Other tests of this file publish reviews in the same Market: compare with a baseline.
+      const before = await count();
+      if (!before.ok) throw new Error('expected counts');
+      const first = ids.next<'Account'>();
+      const second = ids.next<'Account'>();
+      const productA = ids.next<'Product'>();
+      const productB = ids.next<'Product'>();
+      bought(first, productA, ids.next<'Seller'>());
+      bought(second, productB, ids.next<'Seller'>());
+      await submit(first, productA, { rating: 5 });
+      const gone = await submit(second, productB, { rating: 2 });
+      const diff = (after: typeof before) =>
+        after.ok
+          ? {
+              reviews: after.value[0]!.reviews - before.value[0]!.reviews,
+              starsSum: after.value[0]!.starsSum - before.value[0]!.starsSum,
+              stars: after.value[0]!.histogram.map((n, i) => n - before.value[0]!.histogram[i]!),
+              later: after.value[1],
+            }
+          : null;
+      expect(diff(await count())).toEqual({
+        reviews: 2,
+        starsSum: 7,
+        stars: [0, 1, 0, 0, 1],
+        later: { reviews: 0, starsSum: 0, histogram: [0, 0, 0, 0, 0] },
+      });
+      if (!gone.ok) throw new Error();
+      await new DeleteProductReview(gate, deps).execute(customer(second), {
+        reviewId: gone.value.review.id,
+      });
+      expect(diff(await count())).toMatchObject({
+        reviews: 1,
+        starsSum: 5,
+        stars: [0, 0, 0, 0, 1],
+      });
+      expect(
+        await new CountMarketReviews(gate, deps).execute(customer(first), { windows }),
+      ).toEqual(err({ code: 'access.denied' }));
     });
   });
 });

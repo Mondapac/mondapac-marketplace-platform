@@ -43,6 +43,7 @@ export {
 export {
   MAX_RATING_TOTALS_PAGE,
   REVIEWS_FACADE,
+  type MarketReviewCount,
   type ProductRatingSummary,
   type ProductRatingTotal,
   type ProductRatingTotalsPage,

@@ -1,0 +1,5 @@
+-- Reverses 20261125030000_reviews_market_published_index.
+SET lock_timeout = '5s';
+SET statement_timeout = '60s';
+
+DROP INDEX "reviews"."product_reviews_market_published_idx";

@@ -14,6 +14,10 @@ import { ENGAGEMENT_FACADE, EngagementModule, type EngagementFacade } from '../e
 import { ENGAGEMENT_SOURCES, type EngagementSources } from './application/ports/engagement-sources';
 import { ENGAGEMENT_STORE, type EngagementStore } from './application/ports/engagement-store';
 import { SnapshotDailyEngagement } from './application/use-cases/snapshot-daily-engagement.use-case';
+import { REVIEW_SOURCES, type ReviewSources } from './application/ports/review-sources';
+import { ViewMarketplaceReviews } from './application/use-cases/view-marketplace-reviews.use-case';
+import { FacadeReviewSources } from './infrastructure/facade-review-sources';
+import { REVIEWS_FACADE, ReviewsModule, type ReviewsFacade } from '../reviews';
 import { ViewMarketplaceShoppingFunnel } from './application/use-cases/view-marketplace-shopping-funnel.use-case';
 import { FacadeEngagementSources } from './infrastructure/facade-engagement-sources';
 import { snapshotDailyEngagementJob } from './presentation/jobs/snapshot-daily-engagement.job';
@@ -112,6 +116,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
     ShippingModule,
     CommissionPayoutsModule,
     EngagementModule,
+    ReviewsModule,
   ],
   controllers: [SellerKpisController, AdminReportsController],
   providers: [
@@ -333,6 +338,17 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
       ) => new ViewMarketplaceShoppingFunnel(gate, { unitOfWork, store, zone, clock }),
     },
     {
+      provide: REVIEW_SOURCES,
+      inject: [REVIEWS_FACADE],
+      useFactory: (reviews: ReviewsFacade): ReviewSources => new FacadeReviewSources(reviews),
+    },
+    {
+      provide: ViewMarketplaceReviews,
+      inject: [USE_CASE_GATE, REVIEW_SOURCES, MARKET_ZONE, CLOCK],
+      useFactory: (gate: UseCaseGate, sources: ReviewSources, zone: MarketZone, clock: Clock) =>
+        new ViewMarketplaceReviews(gate, { sources, zone, clock }),
+    },
+    {
       provide: REPORTING_KPI_FACADE,
       inject: [
         ViewMarketplaceOperationsKpis,
@@ -344,6 +360,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         ViewMarketplaceOrderStatus,
         ViewMarketplaceOrdersByState,
         ViewMarketplaceShoppingFunnel,
+        ViewMarketplaceReviews,
         MARKET_ZONE,
         CLOCK,
       ],
@@ -357,6 +374,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         orderStatus: ViewMarketplaceOrderStatus,
         ordersByState: ViewMarketplaceOrdersByState,
         shoppingFunnel: ViewMarketplaceShoppingFunnel,
+        reviews: ViewMarketplaceReviews,
         zone: MarketZone,
         clock: Clock,
       ) =>
@@ -370,6 +388,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
           orderStatus,
           ordersByState,
           shoppingFunnel,
+          reviews,
           { zone, clock },
         ),
     },

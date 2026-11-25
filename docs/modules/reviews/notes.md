@@ -303,3 +303,15 @@ Owner approved the build 2026-11-01. Everything is behind the runtime switch abo
 
 ## Seller Reviews list: saved filters (rule 14)
 The seller Reviews super list registers `seller.reviews.list` with `lists` (`registerLists('reviews', ...)`, `application/saved-filter-list.ts`), so its saved filters use the generic routes `lists/seller/saved-filters`. One set per store, guarded by `reviews.seller.view`; sharing a filter with the store needs the new unprotected seller key `reviews.seller-saved-filter.share` (no default role lists it; the Seller Owner holds every seller key). The document is closed and read by the list's own selector parser (so a shared filter can always be applied): `v`, `view`, `q`, `reply`, `minRating`, `maxRating`, `within` (7, 30 or 90 days), `sort`, `direction`; page keys and anything else are refused. No migration (the list key CHECK is a pattern); the key is added to the lists audit vocabulary and its snapshot.
+
+### Market review counts for the admin dashboard (dashboards v2, phase 2)
+
+Facade `marketReviewCounts` (use case `reviews.count-market-reviews`, key `reviews.settings.view`,
+a platform admin acting as themselves; `reviews.disabled` while off): for each of at most 4 windows
+`[from, to)` the reviews of the whole Market published in it, their star sum and how many of each
+rating, counted by status now (like the seller health feed). One grouped read per window by
+`(market_id, status = 'published', published_at)`, served by the partial index
+`product_reviews_market_published_idx` (migration 20261125030000; plain CREATE INDEX with the
+5 s lock and 60 s statement timeouts of the other reviews indexes). Counts only: no text, author,
+product or seller leaves the module. The reporting module asks for the last 30 Market days and
+the 30 before.

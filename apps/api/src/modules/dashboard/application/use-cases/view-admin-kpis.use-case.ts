@@ -19,6 +19,7 @@ import {
 } from '../../../certification';
 import type { SearchSupplyFacade } from '../../../search';
 import { ORDERING_ORDER_VIEW } from '../../../ordering';
+import { REVIEWS_SETTINGS_VIEW } from '../../../reviews';
 import type { Id } from '@mondapac/shared-kernel';
 import {
   CATALOG_PRODUCT_VIEW,
@@ -35,6 +36,7 @@ import type {
   KpiFailure,
   OperationsAnswer,
   OrderStatusAnswer,
+  MarketplaceReviewsAnswer,
   OrdersByStateAnswer,
   PeriodId,
   PeriodRefused,
@@ -163,6 +165,11 @@ export interface AdminKpisAnswer {
    * summed); null without `ordering.order.view`.
    */
   readonly shoppingFunnel: KpiSection<ShoppingFunnelAnswer> | null;
+  /**
+   * The reviews published in the last 30 Market days (always 30, whatever the period) against the
+   * 30 before; null without `reviews.settings.view`.
+   */
+  readonly reviews: KpiSection<MarketplaceReviewsAnswer> | null;
   /** Null without `commission-payouts.settlement.view` (it shows each seller's money). */
   readonly topSellers: KpiSection<NamedTopSellers> | null;
   /** Null without `commission-payouts.settlement.view` (it shows money). */
@@ -300,6 +307,7 @@ export class ViewAdminKpis extends UseCase<
       orders,
       ordersByState,
       shoppingFunnel,
+      reviews,
     ] = await Promise.all([
       held.has(ORDERING_ORDER_VIEW.key)
         ? section('operations', timeoutMs, () => reporting.marketplaceOperations(context, input))
@@ -325,6 +333,9 @@ export class ViewAdminKpis extends UseCase<
             reporting.marketplaceShoppingFunnel(context, input),
           )
         : null,
+      held.has(REVIEWS_SETTINGS_VIEW.key)
+        ? section('reviews', timeoutMs, () => reporting.marketplaceReviews(context))
+        : null,
     ]);
     return ok({
       generatedAt: this.deps.clock.now(),
@@ -334,6 +345,7 @@ export class ViewAdminKpis extends UseCase<
       ordersByStatus: orders,
       ordersByState,
       shoppingFunnel,
+      reviews,
       topSellers,
       topCategories,
       health,

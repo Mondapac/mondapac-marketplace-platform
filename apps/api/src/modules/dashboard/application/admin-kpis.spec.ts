@@ -20,6 +20,7 @@ import type {
   FinanceAnswer,
   OperationsAnswer,
   OrderStatusAnswer,
+  MarketplaceReviewsAnswer,
   OrdersByStateAnswer,
   ShoppingFunnelAnswer,
   ReportingKpiFacade,
@@ -46,6 +47,7 @@ const gate = createUseCaseGate(markets, {
 const NOW = Temporal.Instant.from('2026-11-22T01:00:00Z');
 const ORDERS = 'ordering.order.view' as PermissionKey;
 const MONEY = 'commission-payouts.settlement.view' as PermissionKey;
+const REVIEWS = 'reviews.settings.view' as PermissionKey;
 
 const operations = { period: { id: '7d' }, sellersWithOrders: 3 } as unknown as OperationsAnswer;
 const finance = {
@@ -191,6 +193,26 @@ const shoppingFunnel = {
   },
 } as unknown as ShoppingFunnelAnswer;
 
+const reviews30 = {
+  period: {
+    id: '30d',
+    current: { from: '2026-10-24', to: '2026-11-22' },
+    previous: { from: '2026-09-24', to: '2026-10-23' },
+    days: 30,
+  },
+  generatedAt: NOW,
+  reviews: {
+    status: 'available',
+    reviews: 10,
+    reviewsChange: { value: 2500, direction: 'up', state: 'ok' },
+    averageTimes100: 360,
+    averageChangeTimes100: NA,
+    histogram: [1, 1, 2, 3, 3],
+    lowStarShareBp: 2000,
+    lowStarShareChange: NA,
+  },
+} as unknown as MarketplaceReviewsAnswer;
+
 const orderStatus: OrderStatusAnswer = {
   period: finance.period,
   timezone: 'Australia/Brisbane',
@@ -330,6 +352,10 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
         asked.push('shopping-funnel');
         return Promise.resolve(ok(shoppingFunnel));
       },
+      marketplaceReviews: () => {
+        asked.push('reviews');
+        return Promise.resolve(ok(reviews30));
+      },
       marketplaceOperations: (_context, input) => {
         asked.push('operations');
         inputs.push(input);
@@ -441,6 +467,44 @@ describe.each(TEST_MARKETS)('the admin KPIs composer in market %s', (code) => {
     const failed = await build([ORDERS]).execute(admin, { period: '7d' });
     expect(failed.ok && failed.value.ordersByState).toEqual({ status: 'error' });
     expect(failed.ok && failed.value.ordersByStatus?.status).toBe('ok');
+  });
+
+  it('asks the reviews card only with reviews.settings.view, and maps off, not-enough-data and error', async () => {
+    const none = await build([ORDERS, MONEY]).execute(admin, { period: '7d' });
+    expect(none.ok && none.value.reviews).toBeNull();
+    expect(asked).not.toContain('reviews');
+    asked.length = 0;
+    const full = await build([REVIEWS]).execute(admin, { period: '7d' });
+    if (!full.ok) throw new Error('expected an answer');
+    expect(asked).toEqual(['reviews']);
+    expect(adminKpisBody(full.value).reviews).toEqual({
+      status: 'ok',
+      period: {
+        current: { from: '2026-10-24', to: '2026-11-22' },
+        previous: { from: '2026-09-24', to: '2026-10-23' },
+      },
+      kpis: {
+        status: 'available',
+        reviews: 10,
+        reviewsChange: { value: 2500, direction: 'up', state: 'ok' },
+        averageTimes100: 360,
+        averageChangeTimes100: NA,
+        histogram: [1, 1, 2, 3, 3],
+        lowStarShareBp: 2000,
+        lowStarShareChange: NA,
+      },
+    });
+    const withReviews = (reviews: unknown) => ({
+      ...full.value,
+      reviews: { status: 'ok' as const, value: { ...reviews30, reviews } as never },
+    });
+    expect(adminKpisBody(withReviews({ status: 'off' })).reviews?.kpis).toEqual({ status: 'off' });
+    expect(
+      adminKpisBody(withReviews({ status: 'not-enough-data', minimum: 5 })).reviews?.kpis,
+    ).toEqual({ status: 'not-enough-data', minimum: 5 });
+    facade.marketplaceReviews = () => Promise.reject(new TypeError('boom'));
+    const failed = await build([REVIEWS]).execute(admin, { period: '7d' });
+    expect(failed.ok && failed.value.reviews).toEqual({ status: 'error' });
   });
 
   it('maps the shopping-funnel section: hidden steps stay null, not-enough-data, error, and null without the key', async () => {
