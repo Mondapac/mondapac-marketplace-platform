@@ -34,6 +34,13 @@ describe('AiUsageReport (AI Gateway G7)', () => {
     return { store, report: new AiUsageReport(store, registry, markets).for('alpha') };
   }
 
+  it('gives the owner platform no handle: platform.ai-evaluation is the evaluation budget (G4c)', () => {
+    const registry = new CapabilityRegistry();
+    const markets = new MarketRegistry(loadMarketConfigs(TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS));
+    const report = new AiUsageReport(new InMemoryAiUsageStore(), registry, markets);
+    expect(() => report.for('platform')).toThrow('"platform" has no AI capability');
+  });
+
   describe.each(['AU', 'ZZ'])('Market %s', (code) => {
     const market = testMarketContext(code, PLATFORM_TENANT_ID);
 

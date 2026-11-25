@@ -160,6 +160,22 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       columnUpdate: [],
     },
     'platform.ai_budget_reservations': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    // AI Gateway G4c (platform-ai.md section 10): runs are enqueued, claimed, renewed, finished and
+    // purged; a capability's verdict is set; samples are inserted once and purged with their run;
+    // a playground day is counted and purged.
+    'platform.ai_evaluation_runs': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'platform.ai_evaluation_capabilities': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
+    'platform.ai_evaluation_samples': { table: ['DELETE', 'INSERT', 'SELECT'], columnUpdate: [] },
+    'platform.ai_playground_days': {
+      table: ['DELETE', 'INSERT', 'SELECT', 'UPDATE'],
+      columnUpdate: [],
+    },
     // docs/design/data/identity.md section 7 (slice 3; PM3): the envelope copy is immutable to
     // the application; DELETE arrives with the prune job.
     'platform.event_delivery': {

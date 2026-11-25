@@ -27,7 +27,8 @@
 // Likewise the platform models mapped to AUDIT_TABLES are reserved to
 // platform/persistence/audit/ (the AuditWriter; docs/design/domain/platform-audit.md 2), the
 // AI Gateway's usage and budget models (AI_USAGE_TABLES) to platform/persistence/ai-usage/
-// (docs/design/domain/platform-ai.md section 10), and
+// (docs/design/domain/platform-ai.md section 10), its evaluation models (AI_EVALUATION_TABLES)
+// to platform/persistence/ai-evaluations/, and
 // pricing's Cost models (PricingCost*) to modules/pricing/infrastructure/cost/ (pricing design
 // 6.5, H-D1).
 // Raw read statements (ADR-0030, controls C2 and C3):
@@ -78,6 +79,18 @@ const AI_USAGE_TABLES = [
   'ai_budget_reservations',
 ];
 const AI_USAGE_FOLDER = 'platform/persistence/ai-usage/';
+/**
+ * The AI Gateway's evaluation tables (G4c), reserved to platform/persistence/ai-evaluations/ (the
+ * AiEvaluationStore; docs/design/domain/platform-ai.md section 10), so no other store reads or
+ * changes an evaluation run or the playground's counts.
+ */
+const AI_EVALUATION_TABLES = [
+  'ai_evaluation_runs',
+  'ai_evaluation_capabilities',
+  'ai_evaluation_samples',
+  'ai_playground_days',
+];
+const AI_EVALUATION_FOLDER = 'platform/persistence/ai-evaluations/';
 /**
  * pricing's Cost models (`PricingCost*`) are reserved to the Cost store, so no price repository,
  * reader or job can name them (pricing design 6.5; Hassan H-D1 condition 1).
@@ -282,6 +295,7 @@ function checkModelOwnership(root) {
     const inOutboxFolder = relative.startsWith(OUTBOX_FOLDER);
     const inAuditFolder = relative.startsWith(AUDIT_FOLDER);
     const inAiUsageFolder = relative.startsWith(AI_USAGE_FOLDER);
+    const inAiEvaluationFolder = relative.startsWith(AI_EVALUATION_FOLDER);
     const inCostFolder = relative.startsWith(COST_FOLDER);
     const source = ts.createSourceFile(
       file,
@@ -296,15 +310,19 @@ function checkModelOwnership(root) {
       const audit = model.module === 'platform' && AUDIT_TABLES.includes(model.table);
       const cost = model.module === 'pricing' && COST_MODEL.test(model.name);
       const aiUsage = model.module === 'platform' && AI_USAGE_TABLES.includes(model.table);
+      const aiEvaluation =
+        model.module === 'platform' && AI_EVALUATION_TABLES.includes(model.table);
       const allowed = reserved
         ? inOutboxFolder
         : audit
           ? inAuditFolder
           : aiUsage
             ? inAiUsageFolder
-            : cost
-              ? inCostFolder
-              : model.module === owner;
+            : aiEvaluation
+              ? inAiEvaluationFolder
+              : cost
+                ? inCostFolder
+                : model.module === owner;
       if (allowed) return;
       const why = reserved
         ? `is reserved to ${OUTBOX_FOLDER} (write it through OutboxWriter)`
@@ -312,9 +330,11 @@ function checkModelOwnership(root) {
           ? `is reserved to ${AUDIT_FOLDER} (write it through AuditWriter)`
           : aiUsage
             ? `is reserved to ${AI_USAGE_FOLDER} (the AI Gateway's budget, platform-ai.md 10)`
-            : cost
-              ? `is reserved to ${COST_FOLDER} (Cost stays inside, pricing design 6.5)`
-              : `belongs to module "${model.module}"`;
+            : aiEvaluation
+              ? `is reserved to ${AI_EVALUATION_FOLDER} (the AI Gateway's evaluations, platform-ai.md 10)`
+              : cost
+                ? `is reserved to ${COST_FOLDER} (Cost stays inside, pricing design 6.5)`
+                : `belongs to module "${model.module}"`;
       found.push(`${relative}:${lineOf(node)}: ${how} names model ${model.name}, which ${why}`);
     };
 

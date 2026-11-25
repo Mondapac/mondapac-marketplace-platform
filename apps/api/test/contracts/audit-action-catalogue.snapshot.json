@@ -3683,7 +3683,7 @@
   {
     "action": "settings.ai-cap.changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(ai-cap-market-day|ai-cap-market-month|ai-cap-capability-day|ai-cap-seller-day|ai-cap-guest-day)",
+    "targetId": "enumOf(ai-cap-market-day|ai-cap-market-month|ai-cap-capability-day|ai-cap-seller-day|ai-cap-guest-day|ai-cap-evaluation-month)",
     "actors": ["authenticated"],
     "before": {
       "microUsd": "optional(integer)"
@@ -3691,6 +3691,18 @@
     "after": {
       "microUsd": "optional(integer)",
       "version": "integer"
+    }
+  },
+  {
+    "action": "settings.ai-evaluation.requested",
+    "targetType": "settings.ai-evaluation-run",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "capabilities": "integer",
+      "estimateMicroUsd": "integer",
+      "samples": "integer"
     }
   },
   {

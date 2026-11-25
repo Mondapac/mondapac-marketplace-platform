@@ -47,4 +47,12 @@ describe('CapabilityRegistry (platform-ai.md section 4)', () => {
       CapabilityRegistryError,
     );
   });
+
+  it('refuses the owner platform: platform.ai-evaluation is the evaluation budget (G4c)', () => {
+    const registry = new CapabilityRegistry();
+    expect(() =>
+      registry.register('platform', [{ ...SPEC, id: 'platform.ai-evaluation' }]),
+    ).toThrow(/reserved/u);
+    expect(registry.get('platform.ai-evaluation')).toBeUndefined();
+  });
 });

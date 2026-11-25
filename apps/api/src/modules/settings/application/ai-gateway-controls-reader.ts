@@ -9,6 +9,7 @@ import type {
 import {
   acceptedValue,
   AI_CAP_CAPABILITY_DAY_CODE,
+  AI_CAP_EVALUATION_MONTH_CODE,
   AI_CAP_GUEST_DAY_CODE,
   AI_CAP_MARKET_DAY_CODE,
   AI_CAP_MARKET_MONTH_CODE,
@@ -59,6 +60,8 @@ export class SettingsAiGatewayControls implements AiGatewayControls {
       capabilityDay: cap(AI_CAP_CAPABILITY_DAY_CODE),
       sellerDay: cap(AI_CAP_SELLER_DAY_CODE),
       guestDay: cap(AI_CAP_GUEST_DAY_CODE),
+      // Never `none` (the definition refuses it); anything else is read as 0 (G4c, fail-closed).
+      evaluationMonth: cap(AI_CAP_EVALUATION_MONTH_CODE) ?? 0,
     };
     const lists: Record<string, readonly string[]> = {};
     const savers: Record<string, string> = {};

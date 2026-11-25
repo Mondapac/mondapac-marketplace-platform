@@ -28,6 +28,13 @@ import { ViewAiGatewaySettings } from '../src/modules/settings/application/use-c
 import { ChangeAiGatewayLimits } from '../src/modules/settings/application/use-cases/change-ai-gateway-limits.use-case';
 import { ChangeAiGatewayEmergencyStop } from '../src/modules/settings/application/use-cases/change-ai-gateway-emergency-stop.use-case';
 import { panelHeaders, TEST_MARKETS } from './support/test-config';
+import { ViewAiEvaluations } from '../src/modules/settings/application/use-cases/view-ai-evaluations.use-case';
+import { ViewAiEvaluation } from '../src/modules/settings/application/use-cases/view-ai-evaluation.use-case';
+import { EstimateAiEvaluation } from '../src/modules/settings/application/use-cases/estimate-ai-evaluation.use-case';
+import { RunAiEvaluation } from '../src/modules/settings/application/use-cases/run-ai-evaluation.use-case';
+import { CancelAiEvaluation } from '../src/modules/settings/application/use-cases/cancel-ai-evaluation.use-case';
+import { ViewAiPlaygroundSamples } from '../src/modules/settings/application/use-cases/view-ai-playground-samples.use-case';
+import { RunAiPlayground } from '../src/modules/settings/application/use-cases/run-ai-playground.use-case';
 
 // The settings routes over HTTP: the real guards and controllers; the use cases are stubs, so this
 // proves the session, the panel population, Origin and CSRF, the closed body, the status of each
@@ -68,6 +75,8 @@ it('maps every refusal code of the settings routes to its exact status', () => {
     'settings.conflict': 409,
     'second-factor.required': 403,
     'second-factor.enrolment-required': 403,
+    'ai.evaluation-not-found': 404,
+    'ai.playground-limit-reached': 429,
   });
 });
 
@@ -123,7 +132,21 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
           .overrideProvider(ChangeAiGatewayLimits)
           .useValue(stub('change-ai-limits'))
           .overrideProvider(ChangeAiGatewayEmergencyStop)
-          .useValue(stub('change-ai-stop')),
+          .useValue(stub('change-ai-stop'))
+          .overrideProvider(ViewAiEvaluations)
+          .useValue(stub('view-evaluations'))
+          .overrideProvider(ViewAiEvaluation)
+          .useValue(stub('view-evaluation'))
+          .overrideProvider(EstimateAiEvaluation)
+          .useValue(stub('estimate-evaluation'))
+          .overrideProvider(RunAiEvaluation)
+          .useValue(stub('run-evaluation'))
+          .overrideProvider(CancelAiEvaluation)
+          .useValue(stub('cancel-evaluation'))
+          .overrideProvider(ViewAiPlaygroundSamples)
+          .useValue(stub('view-playground-samples'))
+          .overrideProvider(RunAiPlayground)
+          .useValue(stub('run-playground')),
     }));
     await app.get(SeedRoles).execute(testCallContext(marketOf(), 'system', 'settings-seed-01'), {});
     const ownerRole = [...fakes.roles.values()].find(
@@ -224,7 +247,7 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
   }
 
   const call = (
-    method: 'get' | 'put',
+    method: 'get' | 'put' | 'post',
     path: string,
     population: 'seller' | 'admin',
     headers: Record<string, string>,
@@ -631,5 +654,138 @@ describe.each(TEST_MARKETS)('settings over HTTP in market %s', (code) => {
     ]);
     expect(calls[1]?.input).toEqual(caps);
     expect(calls[4]?.input).toEqual(body);
+  });
+  it('serves the AI evaluation runs and the playground (G4c): step-up on a run, closed bodies', async () => {
+    await boot();
+    const session = sessionOf('admin', 8);
+    const base = '/settings/admin/ai-models';
+    const runId = id<'AiEvaluationRun'>(0xe7a1);
+    const estimate = {
+      provider: 'anthropic',
+      family: 'model-fast',
+      capabilities: [
+        {
+          capability: 'catalog.description-writer.admin',
+          promptVersion: 'p-1',
+          setVersion: 'p-1',
+          samples: 2,
+          estimateMicroUsd: 900,
+        },
+      ],
+      estimateMicroUsd: 900,
+      budgetLeftMicroUsd: 10_000,
+      blockers: [],
+    };
+    const run = {
+      id: runId,
+      provider: 'anthropic',
+      family: 'model-fast',
+      status: 'queued',
+      requestedBy: ADMIN,
+      requestedAt: START,
+      estimateMicroUsd: 900,
+      startedAt: null,
+      endedAt: null,
+    };
+
+    next = ok({ runs: [run], next: null });
+    const list = await call('get', `${base}/evaluations?family=model-fast`, 'admin', session);
+    expect(list.status).toBe(200);
+    expect(list.headers['cache-control']).toBe('no-store');
+    expect(list.body).toEqual({ runs: [{ ...run, requestedAt: START.toString() }], next: null });
+
+    next = ok(estimate);
+    const estimated = await call(
+      'get',
+      `${base}/evaluations/estimate?provider=anthropic&family=model-fast`,
+      'admin',
+      session,
+    );
+    expect(estimated.status).toBe(200);
+    expect(estimated.body).toEqual(estimate);
+
+    next = ok({ run, capabilities: [], samples: [], costMicroUsd: 0 });
+    expect((await call('get', `${base}/evaluations/${runId}`, 'admin', session)).status).toBe(200);
+    next = err({ code: 'ai.evaluation-not-found' });
+    const missing = await call('get', `${base}/evaluations/${runId}`, 'admin', session);
+    expect(missing.status).toBe(404);
+    expect(missing.body).toEqual({ statusCode: 404, code: 'ai.evaluation-not-found' });
+
+    // A run asks a fresh two-step code first: the guard refuses without one.
+    const body = { provider: 'anthropic', family: 'model-fast', expectedEstimateMicroUsd: 900 };
+    const noCode = await call('post', `${base}/evaluations`, 'admin', session, body);
+    expect(noCode.status).toBe(403);
+    expect(noCode.body).toMatchObject({
+      code: 'second-factor.required',
+      details: { actionKey: 'settings.ai-evaluation.run' },
+    });
+    prove(8, 'settings.ai-evaluation.run');
+    next = ok({ runId, estimate });
+    const queued = await call('post', `${base}/evaluations`, 'admin', session, body);
+    expect(queued.status).toBe(202);
+    expect(queued.body).toEqual({ runId, estimate });
+    prove(8, 'settings.ai-evaluation.run');
+    expect(
+      (await call('post', `${base}/evaluations`, 'admin', session, { ...body, note: 'x' })).status,
+    ).toBe(400);
+    expect(
+      (await call('post', `${base}/evaluations`, 'admin', { cookie: session.cookie }, body)).status,
+    ).toBe(403);
+
+    next = ok({ runId });
+    const cancelled = await call('post', `${base}/evaluations/${runId}/cancel`, 'admin', session);
+    expect(cancelled.status).toBe(200);
+    expect(cancelled.body).toEqual({ runId });
+
+    next = ok([{ capability: 'catalog.description-writer.admin', setVersion: 'p-1', samples: [] }]);
+    expect((await call('get', `${base}/playground/samples`, 'admin', session)).status).toBe(200);
+
+    const play = {
+      capability: 'catalog.description-writer.admin',
+      sampleId: 'plain',
+      families: ['model-fast', 'model-balanced'],
+    };
+    const answer = {
+      family: 'model-fast',
+      outcome: 'ok',
+      text: 'Plain text',
+      checks: [],
+      costMicroUsd: 200,
+      latencyMs: 40,
+      route: 'anthropic-api',
+    };
+    next = ok([answer]);
+    const played = await call('post', `${base}/playground`, 'admin', session, play);
+    expect(played.status).toBe(200);
+    expect(played.body).toEqual({ answers: [answer] });
+    // Ids only: a prompt or any other field is refused before the use case.
+    expect(
+      (await call('post', `${base}/playground`, 'admin', session, { ...play, prompt: 'Hi' }))
+        .status,
+    ).toBe(400);
+    next = err({ code: 'ai.playground-limit-reached' });
+    const limited = await call('post', `${base}/playground`, 'admin', session, play);
+    expect(limited.status).toBe(429);
+    expect(limited.body).toEqual({ statusCode: 429, code: 'ai.playground-limit-reached' });
+    // A seller session never reaches the admin routes.
+    expect(
+      (await call('post', `${base}/playground`, 'seller', sessionOf('seller', 9), play)).status,
+    ).toBeGreaterThanOrEqual(400);
+
+    expect(calls.map((c) => c.name)).toEqual([
+      'view-evaluations',
+      'estimate-evaluation',
+      'view-evaluation',
+      'view-evaluation',
+      'run-evaluation',
+      'cancel-evaluation',
+      'view-playground-samples',
+      'run-playground',
+      'run-playground',
+    ]);
+    expect(calls[0]?.input).toEqual({ family: 'model-fast', cursor: undefined });
+    expect(calls[4]?.input).toEqual(body);
+    expect(calls[5]?.input).toEqual({ runId });
+    expect(calls[7]?.input).toEqual(play);
   });
 });

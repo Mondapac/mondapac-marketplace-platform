@@ -417,3 +417,111 @@ model AiBudgetReservation {
   @@map("ai_budget_reservations")
   @@schema("platform")
 }
+
+/// An evaluation run of one model (provider and family) in a Market (AI Gateway G4c;
+/// platform-ai.md section 8, Tab 1, Evaluation): each capability's synthetic evaluation set on the
+/// real model in a background job, paid from the evaluation budget. One open run (queued or
+/// running) per model and Market: a partial unique index in the migration. A running run holds a
+/// lease (token and expiry, CHECK) that the job renews before each sample. No model text is stored.
+/// Kept 25 months. Written only by platform/persistence/ai-evaluations/.
+model AiEvaluationRun {
+  marketId         String    @map("market_id") @db.VarChar(8)
+  /// UUIDv7.
+  id               String    @db.Uuid
+  tenantId         String    @map("tenant_id")
+  /// The route catalogue's provider (`anthropic`).
+  provider         String    @db.VarChar(40)
+  /// The route catalogue's model family.
+  family           String    @db.VarChar(20)
+  /// queued | running | completed | closed-budget | closed-saver | closed-off | cancelled (CHECK).
+  status           String    @db.VarChar(16)
+  /// The admin account that asked for the run; a plain id, no FK across schemas.
+  requestedBy      String    @map("requested_by") @db.Uuid
+  requestedAt      DateTime  @map("requested_at") @db.Timestamptz(6)
+  /// The estimate the admin confirmed, US micro-dollars.
+  estimateMicroUsd BigInt    @map("estimate_micro_usd")
+  startedAt        DateTime? @map("started_at") @db.Timestamptz(6)
+  endedAt          DateTime? @map("ended_at") @db.Timestamptz(6)
+  /// The job run that holds the run; a renewal or a result counts only with it.
+  leaseToken       String?   @map("lease_token") @db.Uuid
+  leaseUntil       DateTime? @map("lease_until") @db.Timestamptz(6)
+
+  capabilities AiEvaluationCapability[]
+
+  @@id([marketId, id], map: "ai_evaluation_runs_pkey")
+  /// The job's claim: queued runs and running ones whose lease ran out, oldest first.
+  @@index([marketId, status, requestedAt], map: "ai_evaluation_runs_market_id_status_requested_at_idx")
+  /// The panel's list, newest first.
+  @@index([marketId, requestedAt(sort: Desc), id], map: "ai_evaluation_runs_market_id_requested_at_id_idx")
+  @@map("ai_evaluation_runs")
+  @@schema("platform")
+}
+
+/// One capability of an evaluation run (G4c): the prompt and set versions it runs, how many
+/// samples, and its verdict once its last sample landed. A panel result is only a pass candidate;
+/// it becomes a pass when a PR records it in evaluations/results.ts.
+model AiEvaluationCapability {
+  marketId      String @map("market_id") @db.VarChar(8)
+  tenantId      String @map("tenant_id")
+  runId         String @map("run_id") @db.Uuid
+  capability    String @db.VarChar(100)
+  promptVersion String @map("prompt_version") @db.VarChar(64)
+  setVersion    String @map("set_version") @db.VarChar(64)
+  samplesTotal  Int    @map("samples_total")
+  /// pending | pass-candidate | failed | incomplete | superseded (CHECK).
+  verdict       String @db.VarChar(16)
+
+  run     AiEvaluationRun      @relation(fields: [marketId, runId], references: [marketId, id], onDelete: Cascade, onUpdate: Restrict)
+  samples AiEvaluationSample[]
+
+  @@id([marketId, runId, capability], map: "ai_evaluation_capabilities_pkey")
+  @@map("ai_evaluation_capabilities")
+  @@schema("platform")
+}
+
+/// One sample's result in an evaluation run (G4c): a closed outcome, closed check codes, the call's
+/// id, route, attempt, tokens, cost and latency. Inserted once (ON CONFLICT DO NOTHING). No model
+/// text, no request text.
+model AiEvaluationSample {
+  marketId     String   @map("market_id") @db.VarChar(8)
+  tenantId     String   @map("tenant_id")
+  runId        String   @map("run_id") @db.Uuid
+  capability   String   @db.VarChar(100)
+  sampleId     String   @map("sample_id") @db.VarChar(64)
+  /// ok | timeout | unavailable | rate-limited | rejected | refused (CHECK).
+  outcome      String   @db.VarChar(16)
+  /// leak | empty | incomplete | too-long | missing-fact (CHECK); empty when passed.
+  checks       String[] @db.VarChar(16)
+  /// The gateway's call id of the last attempt sent; null when nothing was sent.
+  callId       String?  @map("call_id") @db.Uuid
+  /// The catalogue row's route kind of that attempt.
+  route        String?  @db.VarChar(20)
+  attempt      Int?     @db.SmallInt
+  inputTokens  Int      @map("input_tokens")
+  outputTokens Int      @map("output_tokens")
+  costMicroUsd BigInt   @map("cost_micro_usd")
+  latencyMs    Int?     @map("latency_ms")
+  finishedAt   DateTime @map("finished_at") @db.Timestamptz(6)
+
+  capabilityRow AiEvaluationCapability @relation(fields: [marketId, runId, capability], references: [marketId, runId, capability], onDelete: Cascade, onUpdate: Restrict)
+
+  @@id([marketId, runId, capability, sampleId], map: "ai_evaluation_samples_pkey")
+  @@map("ai_evaluation_samples")
+  @@schema("platform")
+}
+
+/// Playground runs per admin per Market day (G4c; platform-ai.md section 8, Playground): counted
+/// with one conditional UPDATE (runs below the limit) before the two calls. Kept 90 days.
+model AiPlaygroundDay {
+  marketId String   @map("market_id") @db.VarChar(8)
+  tenantId String   @map("tenant_id")
+  /// The Market day (Market time zone).
+  day      DateTime @db.Date
+  /// The admin account; a plain id, no FK across schemas.
+  userId   String   @map("user_id") @db.Uuid
+  runs     Int      @default(0)
+
+  @@id([marketId, day, userId], map: "ai_playground_days_pkey")
+  @@map("ai_playground_days")
+  @@schema("platform")
+}

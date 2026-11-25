@@ -41,6 +41,7 @@ export const AI_CAP_TARGET_IDS = [
   'ai-cap-capability-day',
   'ai-cap-seller-day',
   'ai-cap-guest-day',
+  'ai-cap-evaluation-month',
 ] as const;
 
 /** Every AI model list and saver model code (AI Gateway G4b), the target id of its audit row. */
@@ -126,8 +127,30 @@ export const AiModelsChanged = defineAuditAction({
   after: { models: auditField.integer(), version: auditField.integer() },
 });
 
+/** The audit target type of an AI evaluation run (AI Gateway G4c); the target id is the run's. */
+export const AI_EVALUATION_RUN_TARGET = 'settings.ai-evaluation-run';
+
+/**
+ * An admin asked for an evaluation run of a model in the Market (AI Gateway G4c, design section 8),
+ * having confirmed its estimate with a fresh two-step code. Numbers only: how many capabilities
+ * and samples and the estimate confirmed. The model (provider and family) and the admin are on
+ * the run's own row, which this row names; the audit row holds no free text (ADR-0009).
+ */
+export const AiEvaluationRequested = defineAuditAction({
+  action: 'settings.ai-evaluation.requested',
+  targetType: AI_EVALUATION_RUN_TARGET,
+  targetId: auditField.id(),
+  actors: ['authenticated'],
+  after: {
+    capabilities: auditField.integer(),
+    samples: auditField.integer(),
+    estimateMicroUsd: auditField.integer(),
+  },
+});
+
 export const SETTINGS_AUDIT_ACTIONS = [
   AiCapChanged,
+  AiEvaluationRequested,
   AiModelsChanged,
   MarketSettingChanged,
   MarketNumberSettingChanged,

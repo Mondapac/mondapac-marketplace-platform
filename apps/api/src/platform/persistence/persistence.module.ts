@@ -37,6 +37,8 @@ import { UNIT_OF_WORK, type UnitOfWork } from '../unit-of-work/unit-of-work';
 import { AI_USAGE_STORE, type AiUsageStore } from '../ai/usage/ai-usage-store';
 import { AdvisoryJobLock } from './advisory-job-lock';
 import { PrismaAiUsageStore } from './ai-usage/prisma-ai-usage-store';
+import { AI_EVALUATION_STORE, type AiEvaluationStore } from '../ai/evaluations/evaluation-store';
+import { PrismaAiEvaluationStore } from './ai-evaluations/prisma-ai-evaluation-store';
 import { PrismaAuditChainStore } from './audit/prisma-audit-chain-store';
 import { createAuditTrailReader } from './audit/prisma-audit-trail-reader';
 import { createAuditWriter } from './audit/prisma-audit-writer';
@@ -255,6 +257,18 @@ export class PersistenceModule {
    */
   static securityEventStore(): FactoryProvider<SecurityEventStore> {
     return { provide: SECURITY_EVENT_STORE, useFactory: () => new PrismaSecurityEventStore() };
+  }
+
+  /**
+   * The AI Gateway's evaluation store (G4c; docs/design/domain/platform-ai.md section 10), bound
+   * only by AiModule, like the usage store.
+   */
+  static aiEvaluationStore(): FactoryProvider<AiEvaluationStore> {
+    return {
+      provide: AI_EVALUATION_STORE,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => new PrismaAiEvaluationStore(prisma),
+    };
   }
 
   /**

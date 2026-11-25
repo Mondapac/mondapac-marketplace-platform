@@ -366,6 +366,9 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // AI Gateway G7b: the assistant's month of spend, read from the buyer chat's day counters.
   'platform.ai_budget_counters_capability_day_idx':
     "CREATE INDEX ai_budget_counters_capability_day_idx ON platform.ai_budget_counters USING btree (market_id, scope_key, period_start) WHERE (((scope)::text = 'capability'::text) AND ((period)::text = 'day'::text))",
+  // AI Gateway G4c: one open evaluation run (queued or running) per model and Market.
+  'platform.ai_evaluation_runs_one_open_key':
+    "CREATE UNIQUE INDEX ai_evaluation_runs_one_open_key ON platform.ai_evaluation_runs USING btree (market_id, provider, family) WHERE ((status)::text = ANY ((ARRAY['queued'::character varying, 'running'::character varying])::text[]))",
   // Payments package 8a: the relay's claim index of payments' outbox.
   'payments.outbox_market_id_event_id_unpublished_idx':
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON payments.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',

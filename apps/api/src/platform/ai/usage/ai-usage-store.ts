@@ -106,7 +106,8 @@ export interface AiUsageStore {
 export const AI_USAGE_STORE = Symbol('AI_USAGE_STORE');
 
 export type BudgetPeriod = 'day' | 'month';
-export type BudgetScopeKind = 'market' | 'capability' | 'seller' | 'guest';
+/** `evaluation`: the evaluation budget's month (G4c), with the scope key ''. */
+export type BudgetScopeKind = 'market' | 'capability' | 'seller' | 'guest' | 'evaluation';
 
 /** One budget counter: a Market's period (its day or month) and a cap scope. */
 export interface BudgetCounterKey {
@@ -114,7 +115,7 @@ export interface BudgetCounterKey {
   /** The day, or the first day of the month. */
   readonly periodStart: Temporal.PlainDate;
   readonly scope: BudgetScopeKind;
-  /** The capability id or the seller id; '' for the Market and the guest pool. */
+  /** The capability id or the seller id; '' for the Market, the guest pool and evaluations. */
   readonly scopeKey: string;
 }
 

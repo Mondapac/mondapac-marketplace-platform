@@ -14,6 +14,11 @@ export const SETTINGS_AI_GATEWAY_LIMITS_STEP_UP = 'settings.ai-gateway-limits.ra
 export const SETTINGS_AI_GATEWAY_RESUME_STEP_UP = 'settings.ai-gateway-emergency-stop.resume';
 /** Any change of the Market's AI model lists, saver models or saver threshold (`PUT settings/admin/ai-models`). */
 export const SETTINGS_AI_MODELS_STEP_UP = 'settings.ai-models.change';
+/**
+ * Starting an evaluation run of a model, after its estimate (`POST settings/admin/ai-models/
+ * evaluations`, AI Gateway G4c): it spends the evaluation budget on a real model.
+ */
+export const SETTINGS_AI_EVALUATION_STEP_UP = 'settings.ai-evaluation.run';
 
 /**
  * The step-up actions settings owns (Hassan, PR 2b). Both are admin actions: a platform admin
@@ -39,4 +44,6 @@ export const SETTINGS_STEP_UP_ACTIONS: readonly StepUpActionDeclaration[] = [
   },
   // The External models tab (G4b): every change, since any model change can move data or cost.
   { key: SETTINGS_AI_MODELS_STEP_UP, defaultRequired: true, locked: true, audience: 'admin' },
+  // An evaluation run (G4c): the estimated cost is confirmed with TOTP (design section 8).
+  { key: SETTINGS_AI_EVALUATION_STEP_UP, defaultRequired: true, locked: true, audience: 'admin' },
 ];

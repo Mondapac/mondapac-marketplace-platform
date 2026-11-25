@@ -10,7 +10,6 @@ import {
   testMarketContext,
 } from '@mondapac/shared-kernel/testing';
 import { unusedChangeTrail } from '../support/change-trail-fakes';
-import { EvaluationRunRouter } from '../support/ai-routes';
 import { inMemoryAiUsage } from '../support/in-memory-ai-usage';
 import { FakeUnitOfWork } from '../support/pricing-fakes';
 import { TEST_MARKET_CONFIG_DIRS, TEST_MARKET_IDS } from '../support/test-config';
@@ -19,6 +18,7 @@ import { ModelGateway } from '../../src/platform/ai/model-gateway';
 import { checkedInCatalogue } from '../../src/platform/ai/catalogue';
 import { EvaluationResults } from '../../src/platform/ai/evaluations/evaluation-results';
 import { AiGateway } from '../../src/platform/ai/ai-gateway';
+import { AiRouter } from '../../src/platform/ai/routing/ai-router';
 import { CapabilityRegistry } from '../../src/platform/ai/capability-registry';
 import {
   ASSISTANT_AI_CAPABILITIES,
@@ -472,21 +472,38 @@ describe(`buyer assistant real-model evaluation (${EVALUATION_VERSION})`, () => 
   capabilities.register('assistant', ASSISTANT_AI_CAPABILITIES);
   // The budget is counted in memory: the evaluation has no database.
   const clock = new SystemClock();
+  const chat = ASSISTANT_AI_CAPABILITIES.find((spec) => spec.id === BUYER_CHAT)!;
   // An evaluation run (ADR-0052 decision 3, the one exception): a catalogue row without a
   // recorded pass may be used, when it meets every other condition (no retention and no training
-  // recorded, a region of the Market, a key, not retired). Synthetic data only.
-  // The exception lives in a router built under test/ only (Hassan, G3 review 3).
-  const router = new EvaluationRunRouter(
+  // recorded, a region of the Market, a key, not retired). Synthetic data only. The router's
+  // `evaluationPlan` is that exception (G4c): only a Market whose named family has such a route is
+  // evaluated, and the test below fails when AU or ZZ has none. The buyer chat uses tools, which
+  // the evaluation gateway does not run yet (G4c2, FE-20261125-ai-gateway-evaluation-tool-
+  // capabilities), so this run keeps the whole turn on the normal gateway with an in-memory pass
+  // for exactly the families it evaluates; the pass never leaves this process.
+  const familyOf = (market: string) =>
+    gateway.modelOf(market as MarketContext['marketId'], tier) ?? '';
+  const probe = new AiRouter(catalogue, new EvaluationResults([]), gateway, registry, clock);
+  const markets = named.filter(
+    (market) =>
+      probe.evaluationPlan(market as MarketContext['marketId'], chat, 'anthropic', familyOf(market))
+        .length > 0,
+  );
+  const router = new AiRouter(
     catalogue,
-    new EvaluationResults([]),
+    new EvaluationResults(
+      [...new Set(markets.map(familyOf))].map((family) => ({
+        capability: chat.id,
+        provider: 'anthropic',
+        family,
+        promptVersion: chat.promptVersion,
+        passedOn: T0.toZonedDateTimeISO('UTC').toPlainDate().toString(),
+        reference: 'in-memory evaluation run (assistant-real-model.eval.ts)',
+      })),
+    ),
     gateway,
     registry,
     clock,
-  );
-  const chat = ASSISTANT_AI_CAPABILITIES.find((spec) => spec.id === BUYER_CHAT)!;
-  // Only a Market with a usable route is evaluated; the test below fails when AU or ZZ has none.
-  const markets = named.filter(
-    (market) => router.plan(market as MarketContext['marketId'], chat, tier).length > 0,
   );
   const aiGateway = new AiGateway(
     gateway,

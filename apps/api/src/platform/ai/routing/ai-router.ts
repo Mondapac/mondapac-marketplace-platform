@@ -146,6 +146,50 @@ export class AiRouter {
     return rows.length === 0 ? null : costliest(rows.map((row) => ({ row, price: priceOf(row) })));
   }
 
+  /**
+   * The routes of an evaluation or playground call (G4c; ADR-0052 decision 3, the one exception):
+   * only `family` of `provider`, every row that meets every condition but the evaluation pass
+   * (Hassan's check, the Market's region, a key, not retired; no vision), provider route first, at
+   * most {@link MAX_ATTEMPTS}. The Market's lists and saver model play no part: the run measures
+   * this one model. Used only by the evaluation gateway, with the evaluation suites' synthetic
+   * samples; `plan` never takes a row without a pass.
+   */
+  evaluationPlan(
+    marketId: MarketId,
+    spec: CapabilitySpec,
+    provider: string,
+    family: string,
+  ): PlannedRoute[] {
+    return this.catalogue
+      .routesOf(family)
+      .filter(
+        (row) => row.provider === provider && this.#rowProblem(marketId, spec.task, row) === null,
+      )
+      .map((row) => ({ row, price: priceOf(row) }))
+      .slice(0, MAX_ATTEMPTS);
+  }
+
+  /**
+   * Why {@link evaluationPlan} is empty for the capability, or null when it is not: the problem of
+   * the family's first route of `provider` (`unknown-model` when it has none).
+   */
+  evaluationProblem(
+    marketId: MarketId,
+    spec: CapabilitySpec,
+    provider: string,
+    family: string,
+  ): RouteProblem | null {
+    const rows = this.catalogue.routesOf(family).filter((row) => row.provider === provider);
+    if (rows.length === 0) return 'unknown-model';
+    const problems = rows.map((row) => this.#rowProblem(marketId, spec.task, row));
+    return problems.includes(null) ? null : problems[0]!;
+  }
+
+  /** The provider of a catalogue family (every route of a family serves one model), or null. */
+  providerOf(family: string): string | null {
+    return this.catalogue.routesOf(family)[0]?.provider ?? null;
+  }
+
   #usableRoutes(marketId: MarketId, spec: CapabilitySpec, family: string): PlannedRoute[] {
     return this.catalogue
       .routesOf(family)
@@ -161,7 +205,7 @@ export class AiRouter {
   routeProblem(marketId: MarketId, spec: CapabilitySpec, row: RouteRow): RouteProblem | null {
     const problem = this.#rowProblem(marketId, spec.task, row);
     if (problem !== null) return problem;
-    return this.evaluationPassed(spec, row) ? null : 'not-evaluated';
+    return this.#evaluationPassed(spec, row) ? null : 'not-evaluated';
   }
 
   /** Every condition of ADR-0052 decision 3 but the evaluation, for a task type in the Market. */
@@ -183,11 +227,11 @@ export class AiRouter {
   }
 
   /**
-   * The evaluation gate. The one exception (ADR-0052 decision 3: an evaluation run may use a row
-   * without a pass) is a subclass under test/eval only, never an option the API could set
-   * (Hassan, G3 review 3).
+   * The evaluation gate. Private, so no subclass lifts it: the one exception (ADR-0052 decision
+   * 3: an evaluation run may use a row without a pass) is {@link evaluationPlan}, which only the
+   * evaluation gateway calls, never an option `plan` could take (Hassan, G3 review 3; G4c).
    */
-  protected evaluationPassed(spec: CapabilitySpec, row: RouteRow): boolean {
+  #evaluationPassed(spec: CapabilitySpec, row: RouteRow): boolean {
     return this.evaluations.passed(spec.id, row.provider, row.family, spec.promptVersion);
   }
 }

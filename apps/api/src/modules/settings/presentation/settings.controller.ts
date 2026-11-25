@@ -1,6 +1,24 @@
-import { Body, Controller, Get, HttpCode, Logger, Put, Req, Res } from '@nestjs/common';
 import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Logger,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  Res,
+} from '@nestjs/common';
+import {
+  ApiAcceptedResponse,
   ApiBadRequestResponse,
+  ApiNotFoundResponse,
+  ApiParam,
+  ApiQuery,
+  ApiServiceUnavailableResponse,
+  ApiTooManyRequestsResponse,
   ApiBody,
   ApiConflictResponse,
   ApiForbiddenResponse,
@@ -24,6 +42,13 @@ import { ChangeAiGatewayLimits } from '../application/use-cases/change-ai-gatewa
 import { ChangeAiSetting } from '../application/use-cases/change-ai-setting.use-case';
 import { ChangeAiModels } from '../application/use-cases/change-ai-models.use-case';
 import { ViewAiModels } from '../application/use-cases/view-ai-models.use-case';
+import { CancelAiEvaluation } from '../application/use-cases/cancel-ai-evaluation.use-case';
+import { EstimateAiEvaluation } from '../application/use-cases/estimate-ai-evaluation.use-case';
+import { RunAiEvaluation } from '../application/use-cases/run-ai-evaluation.use-case';
+import { RunAiPlayground } from '../application/use-cases/run-ai-playground.use-case';
+import { ViewAiEvaluation } from '../application/use-cases/view-ai-evaluation.use-case';
+import { ViewAiEvaluations } from '../application/use-cases/view-ai-evaluations.use-case';
+import { ViewAiPlaygroundSamples } from '../application/use-cases/view-ai-playground-samples.use-case';
 import { ViewAiGatewaySettings } from '../application/use-cases/view-ai-gateway-settings.use-case';
 import { ViewAiSettings } from '../application/use-cases/view-ai-settings.use-case';
 import { ChangeOfferReviewSettings } from '../application/use-cases/change-offer-review-settings.use-case';
@@ -38,6 +63,7 @@ import { ViewListPagingSetting } from '../application/use-cases/view-list-paging
 import { ChangeMonthlyRevenueTargetSetting } from '../application/use-cases/change-monthly-revenue-target-setting.use-case';
 import { ViewMonthlyRevenueTargetSetting } from '../application/use-cases/view-monthly-revenue-target-setting.use-case';
 import {
+  SETTINGS_AI_EVALUATION_STEP_UP,
   SETTINGS_EMERGENCY_STOP_STEP_UP,
   SETTINGS_OFFER_REVIEW_STEP_UP,
 } from '../contracts/step-up';
@@ -67,6 +93,20 @@ import {
   settingsListBody,
   AiModelsBody,
   aiModelsBody,
+  AiEvaluationCancelledBody,
+  AiEvaluationEstimateBody,
+  aiEvaluationEstimateBody,
+  AiEvaluationQueuedBody,
+  AiEvaluationRunDetailBody,
+  aiEvaluationRunDetailBody,
+  AiEvaluationRunListBody,
+  aiEvaluationRunListBody,
+  AiPlaygroundBody,
+  aiPlaygroundBody,
+  AiPlaygroundSamplesBody,
+  aiPlaygroundSamplesBody,
+  RunAiEvaluationRequest,
+  RunAiPlaygroundRequest,
 } from './settings.dto';
 
 const CSRF = { name: CSRF_HEADER, required: true, description: 'The CSRF token of the session' };
@@ -74,6 +114,9 @@ const ERROR = { type: Object };
 const STEP_UP_FORBIDDEN =
   'access.denied, request.csrf, second-factor.required (details.actionKey) or ' +
   'second-factor.enrolment-required';
+
+const outcomeOf = (result: { ok: boolean; error?: { code: string } }): string =>
+  result.ok ? 'done' : (result.error?.code ?? 'failed');
 
 function logRoute(logger: Logger, msg: string, context: CallContext, outcome: string): void {
   // Ids and codes only.
@@ -118,7 +161,226 @@ export class AdminSettingsController {
     private readonly changeAiGatewayStop: ChangeAiGatewayEmergencyStop,
     private readonly viewAiModels: ViewAiModels,
     private readonly changeAiModels: ChangeAiModels,
+    private readonly viewEvaluations: ViewAiEvaluations,
+    private readonly viewEvaluation: ViewAiEvaluation,
+    private readonly estimateEvaluation: EstimateAiEvaluation,
+    private readonly runEvaluation: RunAiEvaluation,
+    private readonly cancelEvaluation: CancelAiEvaluation,
+    private readonly viewPlaygroundSamples: ViewAiPlaygroundSamples,
+    private readonly runPlayground: RunAiPlayground,
   ) {}
+
+  // AI Gateway G4c: evaluation runs and the playground (design section 8, Tab 1). The fixed paths
+  // (estimate) come before `:runId`, so Nest never reads them as a run id.
+  @Get('ai-models/evaluations')
+  @ApiOperation({
+    summary: 'The AI evaluation runs of the Market (admin)',
+    description:
+      'Needs settings.ai-gateway.view. Newest first, 20 a page; `family` keeps one model ' +
+      "family's runs and `cursor` is the `next` of the page before. Codes, numbers and ids only.",
+  })
+  @ApiQuery({ name: 'family', required: false })
+  @ApiQuery({ name: 'cursor', required: false })
+  @ApiOkResponse({ type: AiEvaluationRunListBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async aiEvaluations(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Query('family') family?: unknown,
+    @Query('cursor') cursor?: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.viewEvaluations.execute(context, { family, cursor });
+    logRoute(this.#logger, 'settings.view-ai-evaluations-route', context, outcomeOf(result));
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return aiEvaluationRunListBody(result.value);
+  }
+
+  @Get('ai-models/evaluations/estimate')
+  @ApiOperation({
+    summary: 'The estimated cost of an AI evaluation run of a model (admin)',
+    description:
+      'Needs settings.ai-gateway.view. Per capability with an evaluation suite the model can ' +
+      "serve in the Market, its sample count and the sum of each sample's reservation on the " +
+      "model's routes; the evaluation budget left this month; and what blocks a run now. Calls " +
+      'no model.',
+  })
+  @ApiQuery({ name: 'provider', required: true })
+  @ApiQuery({ name: 'family', required: true })
+  @ApiOkResponse({ type: AiEvaluationEstimateBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  async aiEvaluationEstimate(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Query('provider') provider?: unknown,
+    @Query('family') family?: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.estimateEvaluation.execute(context, { provider, family });
+    logRoute(this.#logger, 'settings.estimate-ai-evaluation-route', context, outcomeOf(result));
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return aiEvaluationEstimateBody(result.value);
+  }
+
+  @Get('ai-models/evaluations/:runId')
+  @ApiOperation({
+    summary: 'One AI evaluation run of the Market (admin)',
+    description:
+      "Needs settings.ai-gateway.view. Each capability's versions and verdict (a " +
+      'pass-candidate is never a pass) and each sample: outcome, check codes, route, tokens, ' +
+      'cost and latency. No model text is stored. A run of another Market is 404.',
+  })
+  @ApiParam({ name: 'runId', format: 'uuid' })
+  @ApiOkResponse({ type: AiEvaluationRunDetailBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ai.evaluation-not-found' })
+  async aiEvaluation(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('runId') runId: string,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.viewEvaluation.execute(context, { runId });
+    logRoute(this.#logger, 'settings.view-ai-evaluation-route', context, outcomeOf(result));
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return aiEvaluationRunDetailBody(result.value);
+  }
+
+  // Always a fresh two-step code: the guard asks first, and the use case spends the proof in the
+  // unit that queues the run and writes its audit row.
+  @Post('ai-models/evaluations')
+  @HttpCode(202)
+  @RequiresStepUp(SETTINGS_AI_EVALUATION_STEP_UP)
+  @ApiOperation({
+    summary: 'Start an AI evaluation run of a model (admin)',
+    description:
+      'Needs the protected settings.ai-models.manage and a fresh two-step proof of this admin ' +
+      '(`POST identity/admin/step-up/verify` for settings.ai-evaluation.run; without it 403 ' +
+      'second-factor.required with details.actionKey); refused in an acting-as session. ' +
+      '`expectedEstimateMicroUsd` is the estimate the admin confirmed: a different one now is 400 ' +
+      'validation.failed (expectedEstimateMicroUsd: stale), and anything that blocks the run is ' +
+      '400 with family: <blocker>. Queued for the background job (one open run per model and ' +
+      'Market), paid from the evaluation budget, audited. Its result is only a pass candidate.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: RunAiEvaluationRequest })
+  @ApiAcceptedResponse({ type: AiEvaluationQueuedBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: STEP_UP_FORBIDDEN })
+  @ApiServiceUnavailableResponse({ ...ERROR, description: 'access.unavailable' })
+  async postAiEvaluation(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody, [
+      'provider',
+      'family',
+      'expectedEstimateMicroUsd',
+    ]);
+    if (invalid !== null) throw invalid;
+    const { provider, family, expectedEstimateMicroUsd } = requestBody as Record<string, unknown>;
+    const result = await this.runEvaluation.execute(context, {
+      provider,
+      family,
+      expectedEstimateMicroUsd,
+    });
+    logRoute(this.#logger, 'settings.run-ai-evaluation-route', context, outcomeOf(result));
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return { runId: result.value.runId, estimate: aiEvaluationEstimateBody(result.value.estimate) };
+  }
+
+  // Stopping spends nothing: no two-step code (design section 8).
+  @Post('ai-models/evaluations/:runId/cancel')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Cancel an AI evaluation run (admin)',
+    description:
+      'Needs the protected settings.ai-models.manage; refused in an acting-as session. A queued ' +
+      'or running run of the Market stops before its next sample; any other run is 404.',
+  })
+  @ApiHeader(CSRF)
+  @ApiParam({ name: 'runId', format: 'uuid' })
+  @ApiOkResponse({ type: AiEvaluationCancelledBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiNotFoundResponse({ ...ERROR, description: 'ai.evaluation-not-found' })
+  async cancelAiEvaluation(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+    @Param('runId') runId: string,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.cancelEvaluation.execute(context, { runId });
+    logRoute(this.#logger, 'settings.cancel-ai-evaluation-route', context, outcomeOf(result));
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return { runId: result.value.runId };
+  }
+
+  @Get('ai-models/playground/samples')
+  @ApiOperation({
+    summary: 'The samples the AI playground can run (admin)',
+    description:
+      'Needs settings.ai-gateway.view. Per capability with an evaluation suite, each synthetic ' +
+      "sample's id and a plain-text summary of its input. No customer data.",
+  })
+  @ApiOkResponse({ type: AiPlaygroundSamplesBody })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied' })
+  async aiPlaygroundSamples(
+    @Call() context: CallContext,
+    @Res({ passthrough: true }) response: Response,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const result = await this.viewPlaygroundSamples.execute(context, {});
+    logRoute(this.#logger, 'settings.view-ai-playground-samples-route', context, outcomeOf(result));
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return aiPlaygroundSamplesBody(result.value);
+  }
+
+  // No two-step code: ids only, a small daily limit, nothing stored or changed.
+  @Post('ai-models/playground')
+  @HttpCode(200)
+  @ApiOperation({
+    summary: 'Run one AI evaluation sample on two models side by side (admin)',
+    description:
+      'Needs the protected settings.ai-models.manage; refused in an acting-as session. The body ' +
+      'holds ids only (capability, sampleId, two distinct families); any other field is 400. At ' +
+      'most 20 runs per admin per Market day (429 ai.playground-limit-reached). Paid from the ' +
+      "evaluation budget; each answer is the capability's guarded plain text (never HTML), with " +
+      'its check codes, cost, latency and route kind. Nothing is stored.',
+  })
+  @ApiHeader(CSRF)
+  @ApiBody({ type: RunAiPlaygroundRequest })
+  @ApiOkResponse({ type: AiPlaygroundBody })
+  @ApiBadRequestResponse({ ...ERROR, description: 'validation.failed (details.fields)' })
+  @ApiUnauthorizedResponse({ ...ERROR, description: 'access.unauthenticated or session.invalid' })
+  @ApiForbiddenResponse({ ...ERROR, description: 'access.denied or request.csrf' })
+  @ApiTooManyRequestsResponse({ ...ERROR, description: 'ai.playground-limit-reached' })
+  async postAiPlayground(
+    @Call() context: CallContext,
+    @Req() request: Request,
+    @Res({ passthrough: true }) response: Response,
+    @Body() requestBody: unknown,
+  ) {
+    response.setHeader('Cache-Control', 'no-store');
+    const invalid = closedBody(request, requestBody, ['capability', 'sampleId', 'families']);
+    if (invalid !== null) throw invalid;
+    const { capability, sampleId, families } = requestBody as Record<string, unknown>;
+    const result = await this.runPlayground.execute(context, { capability, sampleId, families });
+    logRoute(this.#logger, 'settings.run-ai-playground-route', context, outcomeOf(result));
+    if (!result.ok) throw refusal(result.error, context, this.#logger);
+    return aiPlaygroundBody(result.value);
+  }
 
   @Get('ai-models')
   @ApiOperation({

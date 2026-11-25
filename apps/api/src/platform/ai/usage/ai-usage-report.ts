@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { MarketContext } from '@mondapac/shared-kernel';
 import { MarketRegistry } from '../../market-config/market-registry';
-import { CapabilityRegistry } from '../capability-registry';
+import { CapabilityRegistry, RESERVED_OWNER } from '../capability-registry';
 import {
   AI_USAGE_STORE,
   type AiUsageStore,
@@ -63,6 +63,8 @@ export class AiUsageReport {
   /** The handle of one module (`assistant`, `catalog`, ...): only capabilities `<owner>.*`. */
   for(owner: string): CapabilityUsageReport {
     if (!/^[a-z][a-z0-9-]*$/.test(owner)) throw new Error(`"${owner}" is not a module name`);
+    // The evaluation budget's usage id is `platform.ai-evaluation` (G4c): no module reads it.
+    if (owner === RESERVED_OWNER) throw new Error('"platform" has no AI capability');
     const own = (capability: string): void => {
       // A capability id starts with its owner's name (CapabilityRegistry checks it at boot).
       if (!capability.startsWith(`${owner}.`) || this.registry.get(capability) === undefined) {

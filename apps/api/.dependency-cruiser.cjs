@@ -414,8 +414,81 @@ module.exports = {
           // A module's read of its own capability's usage (G7); no model call. Rule
           // ai-usage-report-only-from-the-allow-list limits who imports it.
           '^src/platform/ai/usage/ai-usage-report\\.ts$',
+          // A module's evaluation suites (G4c): types and registration, no model call. Rule
+          // ai-evaluation-suite-only-from-suite-files limits who imports it.
+          '^src/platform/ai/evaluations/evaluation-suite\\.ts$',
+          // The evaluation store's port (G4c); rule ai-evaluation-store-only-in-persistence limits it.
+          '^src/platform/ai/evaluations/evaluation-store\\.ts$',
+          // settings' port for evaluation runs and the playground (G4c); the model is called only
+          // inside evaluations/. Rule ai-evaluation-control-only-from-settings limits it.
+          '^src/platform/ai/evaluations/evaluation-control\\.ts$',
         ],
       },
+    },
+    {
+      name: 'ai-evaluation-gateway-only-from-evaluations',
+      comment:
+        'The evaluation gateway (G4c; docs/design/domain/platform-ai.md section 8) runs a ' +
+        'synthetic sample on a model without a recorded pass (ADR-0052 decision 3): only the ' +
+        'evaluation runner, the control port and their providers file import it.',
+      severity: 'error',
+      from: { pathNot: '^src/platform/ai/evaluations/' },
+      to: { path: '^src/platform/ai/evaluations/evaluation-gateway\\.ts$' },
+    },
+    {
+      name: 'ai-evaluation-control-only-from-settings',
+      comment:
+        'Only settings starts and reads evaluation runs and the playground (G4c; ADR-0042): its ' +
+        'module file and its evaluation and playground use cases.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/platform/ai/',
+          '^src/modules/settings/settings\\.module\\.ts$',
+          '^src/modules/settings/application/use-cases/[a-z-]*(?:evaluation|playground)[a-z-]*\\.use-case\\.ts$',
+        ],
+      },
+      to: { path: '^src/platform/ai/evaluations/evaluation-control\\.ts$' },
+    },
+    {
+      name: 'ai-evaluation-suite-only-from-suite-files',
+      comment:
+        'A module declares its evaluation suites only in its contracts/ai-evaluation-suites.ts ' +
+        'and registers them in its *.module.ts (G4c).',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/platform/ai/',
+          '^src/modules/[^/]+/contracts/ai-evaluation-suites\\.ts$',
+          '\\.module\\.ts$',
+        ],
+      },
+      to: { path: '^src/platform/ai/evaluations/evaluation-suite\\.ts$' },
+    },
+    {
+      name: 'ai-evaluation-suites-reach-no-application-or-infrastructure',
+      comment:
+        "An evaluation suite is built from its module's domain (evaluation set, prompt builder, " +
+        'guard) and contracts only: no application port or adapter reaches a model run (G4c).',
+      severity: 'error',
+      from: { path: '^src/modules/[^/]+/contracts/ai-evaluation-suites\\.ts$' },
+      to: { path: '^src/modules/[^/]+/(?:application|infrastructure)/' },
+    },
+    {
+      name: 'ai-evaluation-store-only-in-persistence',
+      comment:
+        "The evaluation store's port (G4c; docs/design/domain/platform-ai.md section 10) is " +
+        'implemented only by platform/persistence/ai-evaluations/ and bound only by ' +
+        'PersistenceModule for AiModule, so no module reads or changes an evaluation run.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/platform/ai/',
+          '^src/platform/persistence/persistence\\.module\\.ts$',
+          '^src/platform/persistence/ai-evaluations/',
+        ],
+      },
+      to: { path: '^src/platform/ai/evaluations/evaluation-store\\.ts$' },
     },
     {
       name: 'ai-usage-store-only-in-persistence',

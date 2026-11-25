@@ -382,6 +382,38 @@ settings/admin/ai-gateway/emergency-stop` (protected key `settings.ai-gateway.ma
   and cheaper than the first usable model, priced like the plan: the family's routes usable in the
   Market). The view key shows each family's problem (`no-key`, `not-checked` …) to Viewer staff;
   no key value or route detail (Hassan G4b review, informational).
+- **Built in G4c1 (evaluation runs and the playground, capabilities without tools).** A module
+  declares an `EvaluationSuite` per capability in its `contracts/ai-evaluation-suites.ts` (catalog:
+  the description writer's set through its real prompt builder, graded with its own draft guard:
+  `leak`, `empty`, `missing-fact`, `incomplete`, `too-long`) and registers it with
+  `registerEvaluationSuites`; the registry refuses the owner `platform`, a foreign or unknown
+  capability, one with tool rounds, a duplicate, and a sample request with tools. The evaluation
+  gateway (`evaluations/evaluation-gateway.ts`, imported only inside `evaluations/`) runs one
+  sample on one model through the same call path as the gateway (`model-call.ts`), on
+  `AiRouter.evaluationPlan` (the one exception of ADR-0052 decision 3: every condition but the
+  pass), for the system actor or an admin not acting as someone else; it reserves only on the
+  evaluation budget (`ai-cap-evaluation-month`, micro-dollars, no `none`, default 0, raised with
+  the step-up `settings.ai-gateway-limits.raise`; usage id `platform.ai-evaluation`, budget scope
+  `evaluation`), so no Market, capability, seller or guest counter moves. **Close rule, Option B
+  (owner decision, 25 Nov 2026; one function, `closedBySaverThreshold`):** evaluations are closed while
+  the Market's month share is at or above the saver threshold; also closed by the kill switch,
+  the emergency stop, an unreadable setting or a full evaluation budget. The job
+  `platform.ai-evaluation-runner` (every 15 s, 300 s slot) takes one run per tick with a lease
+  token (a conditional UPDATE), renews it before each sample, stops on a cancel or a lost lease,
+  hands the run back before a sample that could outlive its slot, inserts each sample once and
+  sets each capability's verdict (`pass-candidate`, never a pass: a PR records a pass in
+  `evaluations/results.ts`; `failed`, `incomplete`, `superseded` when the prompt or set version
+  changed). Routes under `settings/admin/ai-models/`: `GET evaluations`, `GET
+  evaluations/estimate`, `GET evaluations/{runId}`, `GET playground/samples` (view key); `POST
+  evaluations` (protected `settings.ai-models.manage` and the step-up
+  `settings.ai-evaluation.run`; the estimate the admin confirmed must still hold; step-up spend,
+  queueing and the audit row `settings.ai-evaluation.requested`, numbers only, in one unit),
+  `POST evaluations/{runId}/cancel` and `POST playground` (manage key; ids only, two distinct
+  families called in parallel, 20 runs per admin per Market day, nothing stored). Tables
+  `platform.ai_evaluation_runs`, `_capabilities`, `_samples` and `ai_playground_days` (migration
+  `20261125230000_platform_ai_evaluations`; runs kept 25 months, playground days 90 days, purged
+  by the usage retention job). No event, no notification (R2). **G4c2 (deferred):** capabilities
+  with tool rounds, the buyer chat (FE-20261125-ai-gateway-evaluation-tool-capabilities).
 
 ## 9. Security (Hassan)
 
@@ -544,3 +576,4 @@ the guarded `prisma.tx(market)` client. Each table has an explicit GRANT and `do
 | FE-20261125-ai-gateway-saver-model-check        | Obsolete (G4b): the saver model is a setting, checked on the server when saved                         |
 | FE-20261125-ai-gateway-drop-spend-days          | G7 step 4: drop `assistant.spend_days` one release after G7b                                           |
 | FE-20261125-ai-gateway-assistant-cap-to-gateway | Move the assistant's day and month cap values into the gateway's caps (with G4)                        |
+| FE-20261125-ai-gateway-evaluation-tool-capabilities | G4c2: evaluation runs and the playground for capabilities with tools (the buyer chat) |

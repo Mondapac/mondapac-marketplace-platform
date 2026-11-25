@@ -124,6 +124,11 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
 
       expect(rules.map((rule) => rule.name).sort()).toEqual([
         'ai-capability-spec-only-from-contracts',
+        'ai-evaluation-control-only-from-settings',
+        'ai-evaluation-gateway-only-from-evaluations',
+        'ai-evaluation-store-only-in-persistence',
+        'ai-evaluation-suite-only-from-suite-files',
+        'ai-evaluation-suites-reach-no-application-or-infrastructure',
         'ai-gateway-controls-only-from-settings',
         'ai-model-choices-only-from-settings',
         'ai-registration-only-from-module-files',
@@ -183,6 +188,11 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       expect(found).toEqual([
         'ai-capability-spec-only-from-contracts: src/modules/alpha/application/declares-capability.ts',
         'ai-capability-spec-only-from-contracts: src/modules/identity/application/uses-ai.ts',
+        'ai-evaluation-control-only-from-settings: src/modules/alpha/application/reads-ai-evaluation-control.ts',
+        'ai-evaluation-gateway-only-from-evaluations: src/modules/alpha/application/runs-evaluation-gateway.ts',
+        'ai-evaluation-store-only-in-persistence: src/modules/alpha/infrastructure/reaches-ai-evaluation-store.ts',
+        'ai-evaluation-suite-only-from-suite-files: src/modules/alpha/application/declares-evaluation-suite.ts',
+        'ai-evaluation-suites-reach-no-application-or-infrastructure: src/modules/alpha/contracts/ai-evaluation-suites.ts',
         'ai-gateway-controls-only-from-settings: src/modules/alpha/infrastructure/implements-ai-gateway-controls.ts',
         'ai-model-choices-only-from-settings: src/modules/alpha/application/checks-ai-model-choices.ts',
         'ai-registration-only-from-module-files: src/modules/alpha/application/registers-capabilities.ts',
@@ -224,6 +234,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'market-context-only-through-the-decorator: src/modules/alpha/presentation/exempt-controller.ts',
         'market-exemption-is-platform-only: src/modules/alpha/presentation/exempt-controller.ts',
         'market-exemption-is-platform-only: src/platform/market-context/index.ts',
+        'model-entry-only-from-the-allow-list: src/modules/alpha/application/runs-evaluation-gateway.ts',
         'model-entry-only-from-the-allow-list: src/modules/alpha/infrastructure/reaches-model-gateway.ts',
         'model-provider-sdks-only-in-platform-ai: src/modules/alpha/infrastructure/imports-provider-sdk.ts',
         'module-internals-are-private: src/platform/reaches-into-module.ts',
