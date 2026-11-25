@@ -89,3 +89,22 @@ export class OfferPricesBody {
   @ApiProperty({ type: [VariantPriceBody] })
   variants!: VariantPriceBody[];
 }
+
+export class ListOfferPricesBody {
+  @ApiProperty({ type: String, format: 'uuid' })
+  offerId!: string;
+
+  @ApiProperty({ type: [VariantPriceBody] })
+  variants!: VariantPriceBody[];
+}
+
+export class OffersPricesBody {
+  @ApiProperty({ description: 'The Market currency (ISO 4217) every price is written in.' })
+  currency!: string;
+
+  @ApiProperty({
+    type: [ListOfferPricesBody],
+    description: 'Only the asked Offers of the seller that are not deleted, in the asked order.',
+  })
+  offers!: ListOfferPricesBody[];
+}

@@ -1415,7 +1415,9 @@
         "sku": "Your SKU",
         "listed": "On sale",
         "submitted": "Submitted",
-        "status": "Status"
+        "status": "Status",
+        "price": "Price",
+        "stock": "Stock"
       },
       "listed": {
         "yes": "Yes",
@@ -1609,6 +1611,28 @@
           "manage-link": "Manage filters",
           "save-link": "Save filter…"
         }
+      },
+      "inline": {
+        "price-of": "Price of {product}",
+        "stock-of": "Stock of {product}",
+        "range": "{min} – {max}",
+        "sizes": "{count, plural, one {# size} other {# sizes}}",
+        "locations": "{count, plural, one {# location} other {# locations}}",
+        "sizes-of": "Sizes of {product}",
+        "size-n": "Size {number}",
+        "location-n": "Location {number}",
+        "held": "In review: {amount}",
+        "special": "On special: {amount}",
+        "receive": "You receive (est.) {amount}",
+        "change-price": "{size}: price {from} → {to}",
+        "change-stock": "{size}: stock {from} → {to}",
+        "none": "none",
+        "and-more": "{count, plural, one {and # more} other {and # more}}",
+        "keys": "Type a price or stock and press Enter to move down. Nothing is saved until you press Save.",
+        "read-failed": "Prices and stock can't be shown right now. Reload the page to try again.",
+        "stopped": "Saved {done}. The confirmation was cancelled, so the rest are kept as drafts.",
+        "failed-elsewhere": "Not saved on another page: {names}. Go back to that page to see why.",
+        "stock-stale": "This stock changed somewhere else. We reloaded it; check the number and save again."
       }
     },
     "offer": {
