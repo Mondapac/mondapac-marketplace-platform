@@ -85,6 +85,8 @@ it('maps every refusal code of the review use cases to its exact status', () => 
     'claim.check-unavailable': 503,
     'offer-change.not-found': 404,
     'offer-change.not-pending': 409,
+    'offer-change.own-submission': 403,
+    'offer-change.invalid': 422,
     'claim.tag-not-allowed': 422,
   });
 });
@@ -687,6 +689,7 @@ describe('admin Offer review over HTTP (integration)', () => {
         readonly proposedDescription?: Record<string, string>;
         readonly proposedHandling?: 'FRESH' | 'REPACKED';
         readonly proposedTagTypes?: readonly string[];
+        readonly submittedByAccountId?: Id<'Account'>;
       },
     ) {
       const offer = waiting(code, n, {
@@ -701,10 +704,10 @@ describe('admin Offer review over HTTP (integration)', () => {
         offerId: offer.state.id,
         sellerId: SELLER,
         baseOfferVersion: 5,
-        ...proposal,
         reasons: ['handling'],
         policyVersion: 2,
         submittedByAccountId: SELLER_ACCOUNT,
+        ...proposal,
         now: START.add({ minutes: n }),
       });
       if (!made.ok) throw new Error(made.error.code);
@@ -788,6 +791,22 @@ describe('admin Offer review over HTTP (integration)', () => {
       );
       expect(again.status).toBe(409);
       expect(again.body).toEqual({ statusCode: 409, code: 'offer-change.not-pending' });
+    });
+
+    it('answers 403 offer-change.own-submission to the admin who submitted the change', async () => {
+      await boot();
+      await seeded(code);
+      const { change } = held(1, { proposedHandling: 'FRESH', submittedByAccountId: MODERATOR });
+      const path = (route: string) => `/offer-changes/${change.state.id}/${route}`;
+      const approve = await post(code, path('approve'), sessionOf(code, MODERATOR, 1));
+      expect(approve.status).toBe(403);
+      expect(approve.body).toEqual({ statusCode: 403, code: 'offer-change.own-submission' });
+      const reject = await post(code, path('reject'), sessionOf(code, MODERATOR, 2), {
+        note: 'No',
+      });
+      expect(reject.status).toBe(403);
+      expect(saved).toHaveLength(0);
+      expect(pendingChanges.rows.get(change.state.id)).toMatchObject({ status: 'pending' });
     });
 
     it('approves all or nothing: a refused requested tag stores nothing and leaves the change waiting', async () => {

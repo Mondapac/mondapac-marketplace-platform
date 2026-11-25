@@ -33,7 +33,10 @@ export const REVIEW_OFF: OfferReviewSettings = Object.freeze({
   emergencyStop: false,
 });
 
-/** The held changes of Offers in memory, with the rules of the table (one open per Offer). */
+/**
+ * The held changes of Offers in memory, with the rules of the table (one open per Offer) and the
+ * Market filter of every read, as the Prisma repository has it.
+ */
 export class InMemoryOfferPendingChanges implements OfferPendingChangeRepository {
   readonly rows = new Map<string, OfferPendingChangeState>();
   /** Every statement checks it runs in a unit when set. */
@@ -62,15 +65,20 @@ export class InMemoryOfferPendingChanges implements OfferPendingChangeRepository
     return Promise.resolve(true);
   }
 
-  findOpenByOffer(_market: MarketContext, offerId: Id<'Offer'>) {
+  findOpenByOffer(market: MarketContext, offerId: Id<'Offer'>) {
     const row = [...this.rows.values()].find(
-      (state) => state.offerId === offerId && state.status === 'pending',
+      (state) =>
+        state.marketId === market.marketId &&
+        state.offerId === offerId &&
+        state.status === 'pending',
     );
     return Promise.resolve(row === undefined ? null : OfferPendingChange.restore(row));
   }
 
-  findLatestByOffer(_market: MarketContext, offerId: Id<'Offer'>) {
-    const rows = [...this.rows.values()].filter((state) => state.offerId === offerId);
+  findLatestByOffer(market: MarketContext, offerId: Id<'Offer'>) {
+    const rows = [...this.rows.values()].filter(
+      (state) => state.marketId === market.marketId && state.offerId === offerId,
+    );
     const row = rows[rows.length - 1];
     return Promise.resolve(row === undefined ? null : OfferPendingChange.restore(row));
   }

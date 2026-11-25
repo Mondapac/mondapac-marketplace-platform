@@ -1,7 +1,12 @@
 import { auditField, defineAuditAction } from '@mondapac/shared-kernel';
 import type { ProductScope } from './product';
 import { OFFER_REVIEW_REASONS } from './offer-review-policy';
-import { OFFER_CHANGE_FIELDS, OFFER_CHANGE_SUPERSEDED_CAUSES } from './offer-pending-change';
+import { OFFER_HANDLING_AUDIT_CODES } from './offer-handling';
+import {
+  MAX_PROPOSED_TAG_TYPES,
+  OFFER_CHANGE_FIELDS,
+  OFFER_CHANGE_SUPERSEDED_CAUSES,
+} from './offer-pending-change';
 
 // The audited actions of catalog (catalog design 11.3), registered at boot with
 // `registerAuditActions('catalog', CATALOG_AUDIT_ACTIONS)`. Ids, codes, counts and booleans only:
@@ -1063,8 +1068,17 @@ const changeFields = auditField.listOf(
 );
 
 /**
+ * The held handling value of a change as its audit code, or null when the change leaves handling
+ * (Hassan N1 on PR #1350): a closed enum, never text.
+ */
+const changeHandling = auditField.optional(auditField.enumOf(OFFER_HANDLING_AUDIT_CODES));
+
+/**
  * An edit of a live Offer was held for review (slice 2c): the change's id, the watched fields it
- * holds (never their values) and the policy's reasons. The seller is the actor.
+ * holds, the held handling value (an enum) and the policy's reasons. Never the description. The
+ * requested certification type codes are a vocabulary the audit kinds cannot hold (no `enumOf`
+ * of a list that grows at run time): they stay on the change row, whose proposed columns no one
+ * can change (`offer_pending_changes` trigger), and `changeId` names it. The seller is the actor.
  */
 export const OfferChangeHeldAudit = defineAuditAction({
   action: 'catalog.offer-change.held',
@@ -1073,6 +1087,7 @@ export const OfferChangeHeldAudit = defineAuditAction({
   after: {
     changeId: auditField.id(),
     fields: changeFields,
+    handling: changeHandling,
     reasons: auditField.listOf(
       auditField.enumOf(OFFER_REVIEW_REASONS),
       OFFER_REVIEW_REASONS.length,
@@ -1081,12 +1096,21 @@ export const OfferChangeHeldAudit = defineAuditAction({
   },
 });
 
-/** An admin approved a held change: its fields are live now (the note is never audited). */
+/**
+ * An admin approved a held change: its fields are live now. Records the handling that went live
+ * (an enum) and the ids of the tags the approval added (each tag row holds its type code). The
+ * note and the description are never audited.
+ */
 export const OfferChangeApprovedAudit = defineAuditAction({
   action: 'catalog.offer-change.approved',
   targetType: CATALOG_OFFER_TARGET,
   actors: ['authenticated'],
-  after: { changeId: auditField.id(), fields: changeFields },
+  after: {
+    changeId: auditField.id(),
+    fields: changeFields,
+    handling: changeHandling,
+    addedTagIds: auditField.listOf(auditField.id(), MAX_PROPOSED_TAG_TYPES),
+  },
 });
 
 /** An admin sent a held change back to the seller with a note (never audited). */

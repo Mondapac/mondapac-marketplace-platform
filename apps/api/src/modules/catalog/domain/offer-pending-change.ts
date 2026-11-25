@@ -58,7 +58,8 @@ export interface OfferPendingChangeState {
 export type OfferPendingChangeRefusal =
   | { readonly code: 'offer-change.not-pending' }
   | { readonly code: 'offer-change.note-invalid' }
-  | { readonly code: 'offer-change.invalid' };
+  | { readonly code: 'offer-change.invalid' }
+  | { readonly code: 'offer-change.own-submission' };
 
 function validNote(note: unknown): note is string {
   return (
@@ -70,7 +71,7 @@ function validNote(note: unknown): note is string {
  * An edit of a live Offer that the review policy held (risk-based Offer approval, slice 2c;
  * ADR-0051). Born `pending` with the watched fields of one request (description, handling,
  * requested badge types) and the policy's reasons; decided once: an admin approves, requests
- * changes or rejects (a note is required for the last two), the seller withdraws, or the system
+ * changes or rejects (a note is required for the last two; never the admin who submitted it), the seller withdraws, or the system
  * supersedes it (a new edit replaced it, or the Offer was deleted). The live Offer is never
  * changed here: the approval use case applies the held fields to the Offer in the same unit.
  */
@@ -169,6 +170,7 @@ export class OfferPendingChange {
   }): Result<void, OfferPendingChangeRefusal> {
     const note = input.note ?? null;
     if (note !== null && !validNote(note)) return err({ code: 'offer-change.note-invalid' });
+    if (this.#ownSubmission(input.accountId)) return err({ code: 'offer-change.own-submission' });
     return this.#decide('approved', input.accountId, note, null, input.now);
   }
 
@@ -179,6 +181,7 @@ export class OfferPendingChange {
     readonly now: Temporal.Instant;
   }): Result<void, OfferPendingChangeRefusal> {
     if (!validNote(input.note)) return err({ code: 'offer-change.note-invalid' });
+    if (this.#ownSubmission(input.accountId)) return err({ code: 'offer-change.own-submission' });
     return this.#decide('changes-requested', input.accountId, input.note, null, input.now);
   }
 
@@ -189,6 +192,7 @@ export class OfferPendingChange {
     readonly now: Temporal.Instant;
   }): Result<void, OfferPendingChangeRefusal> {
     if (!validNote(input.note)) return err({ code: 'offer-change.note-invalid' });
+    if (this.#ownSubmission(input.accountId)) return err({ code: 'offer-change.own-submission' });
     return this.#decide('rejected', input.accountId, input.note, null, input.now);
   }
 
@@ -209,6 +213,15 @@ export class OfferPendingChange {
       return err({ code: 'offer-change.invalid' });
     }
     return this.#decide('superseded', null, null, input.cause, input.now);
+  }
+
+  /**
+   * An admin never decides a change their own account submitted (Hassan N3 on PR #1350): a
+   * change made in a Login-as-Seller session carries the admin's account, as the real admin stays
+   * the actor there. The seller's withdrawal is not a review decision and is not checked.
+   */
+  #ownSubmission(accountId: Id<'Account'>): boolean {
+    return accountId === this.#state.submittedByAccountId;
   }
 
   #decide(

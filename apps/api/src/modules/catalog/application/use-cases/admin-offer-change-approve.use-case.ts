@@ -8,10 +8,12 @@ import { StaleAggregateError } from '../../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { CATALOG_PRODUCT_APPROVE } from '../../contracts/permissions';
 import { OfferChangeApprovedAudit } from '../../domain/audit';
+import { handlingAuditCode } from '../../domain/offer-handling';
 import { offerStateWithHandling } from '../../domain/offer';
 import type { OfferChangeField } from '../../domain/offer-pending-change';
 import type { TagActor } from '../../domain/offer-tag';
 import type { CheckClaimText } from '../claim-text/check-claim-text.service';
+import { decidesOwnSubmission } from '../offer-change-decision';
 import { parseChangeDecision, type ChangeValidationFailure } from '../offer-change-view';
 import { clearanceFromApproval } from '../offer-review-clearance';
 import type { ClaimEvaluator } from '../ports/claim-evaluator';
@@ -50,6 +52,8 @@ export type AdminOfferChangeApproveFailure =
   | { readonly code: 'access.unavailable' }
   | { readonly code: 'offer-change.not-found' }
   | { readonly code: 'offer-change.not-pending' }
+  | { readonly code: 'offer-change.own-submission' }
+  | { readonly code: 'offer-change.invalid' }
   | { readonly code: 'seller.not-eligible' }
   | { readonly code: 'claim-text.refused'; readonly fields: readonly RefusedField[] }
   | {
@@ -80,7 +84,8 @@ export interface AdminOfferChangeApproveDependencies {
  * approves a held change of a live Offer, and its fields go live in one unit, all or nothing.
  * Rule: the key `catalog.product.approve` and the admin population, as the Offer review
  * decisions. Guards, in order: the change exists in the Market (`offer-change.not-found`) and is
- * `pending` (`offer-change.not-pending`); the owner may still sell (`seller.not-eligible`); a held
+ * `pending` (`offer-change.not-pending`); the decider did not submit it and is not in a
+ * Login-as-Seller session for its seller (`offer-change.own-submission`); the owner may still sell (`seller.not-eligible`); a held
  * description passes the claim-text control again (the vocabulary may have grown).
  *
  * Then, up to {@link MAX_CLAIM_ATTEMPTS} times: every kept tag (against the state after a held
@@ -90,7 +95,8 @@ export interface AdminOfferChangeApproveDependencies {
  * (`applyApprovedChange`, the attestation cleared off `SEALED_ORIGINAL`), settles the kept tags
  * and adds the requested ones on those decisions. One requested type not allowed fails the whole
  * approval (`claim.tag-not-allowed`, nothing applied, the change stays pending); an unanswered
- * ask is `claim.check-unavailable`. The change's conditional update loses to another decider as
+ * ask is `claim.check-unavailable`; a held value the Offer refuses is `offer-change.invalid`
+ * (nothing applied). The change's conditional update loses to another decider as
  * `conflict.stale`. Audit row and Offer events in the same unit.
  */
 export class AdminOfferChangeApprove extends UseCase<
@@ -151,6 +157,10 @@ export class AdminOfferChangeApprove extends UseCase<
     if (seen.value === null) return err({ code: 'offer-change.not-found' });
     const held = seen.value;
     if (held.status !== 'pending') return err({ code: 'offer-change.not-pending' });
+    // Never the admin who made the change, nor a Login-as-Seller session for its seller (N3).
+    if (decidesOwnSubmission(actor, held)) {
+      return err({ code: 'offer-change.own-submission' });
+    }
     if (!(await deps.eligibility.isEligible(context, held.sellerId))) {
       return err({ code: 'seller.not-eligible' });
     }
@@ -253,14 +263,17 @@ export class AdminOfferChangeApprove extends UseCase<
         const now = deps.clock.now();
         const approved = change.approve({ accountId: actor.accountId, note, now });
         if (!approved.ok) {
-          return err(
-            approved.error.code === 'offer-change.note-invalid'
-              ? ({
-                  code: 'validation.failed',
-                  fields: [{ path: 'note', code: 'length' }],
-                } as const)
-              : ({ code: 'offer-change.not-pending' } as const),
-          );
+          switch (approved.error.code) {
+            case 'offer-change.note-invalid':
+              return err({
+                code: 'validation.failed',
+                fields: [{ path: 'note', code: 'length' }],
+              } as const);
+            case 'offer-change.own-submission':
+              return err({ code: 'offer-change.own-submission' } as const);
+            default:
+              return err({ code: 'offer-change.not-pending' } as const);
+          }
         }
         const review = clearanceFromApproval(change);
         const { proposedDescription, proposedHandling } = change.state;
@@ -270,7 +283,16 @@ export class AdminOfferChangeApprove extends UseCase<
           review,
           now,
         });
-        if (!applied.ok) return err({ code: 'offer-change.not-pending' } as const);
+        if (!applied.ok) {
+          // The Offer left `published` since the read: the change can no longer go live. A held
+          // value the Offer refuses is a stored change that cannot be applied (Hassan N2): it
+          // stays pending and the reviewer rejects or sends it back.
+          return err(
+            applied.error.code === 'offer.not-editable'
+              ? ({ code: 'offer-change.not-pending' } as const)
+              : ({ code: 'offer-change.invalid' } as const),
+          );
+        }
         // The facts again, in this unit: a revision published since the ask means asking again.
         const facts = await factsInUnit(deps.claims, market, offer.state.productId, prepared);
         if (facts === RETRY) return ok(RETRY);
@@ -287,10 +309,11 @@ export class AdminOfferChangeApprove extends UseCase<
             ? ok(RETRY)
             : err({ code: 'claim.check-unavailable' } as const);
         }
-        if (added.length > 0) {
+        const newTags = added.map((typeCode) => ({ tagId: deps.ids.next<'OfferTag'>(), typeCode }));
+        if (newTags.length > 0) {
           if (facts === null) return err({ code: 'claim.check-unavailable' } as const);
           const tagged = offer.addTags({
-            tags: added.map((typeCode) => ({ tagId: deps.ids.next<'OfferTag'>(), typeCode })),
+            tags: newTags,
             facts,
             decisions: asked.value,
             entryPath: 'tag-add',
@@ -320,7 +343,12 @@ export class AdminOfferChangeApprove extends UseCase<
         await deps.audit.record(
           context,
           OfferChangeApprovedAudit.entry(offer.state.id, {
-            after: { changeId: change.state.id, fields: change.fields },
+            after: {
+              changeId: change.state.id,
+              fields: change.fields,
+              handling: handlingAuditCode(change.state.proposedHandling),
+              addedTagIds: newTags.map((tag) => tag.tagId),
+            },
           }),
         );
         await deps.outbox.append(context, offer.pendingEvents);

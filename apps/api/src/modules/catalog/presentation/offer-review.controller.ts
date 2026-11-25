@@ -94,6 +94,8 @@ export const OFFER_REVIEW_STATUS: Readonly<Record<string, number>> = Object.free
   // Held changes of live Offers (slice 2c).
   'offer-change.not-found': 404,
   'offer-change.not-pending': 409,
+  'offer-change.own-submission': 403,
+  'offer-change.invalid': 422,
   'claim.tag-not-allowed': 422,
 });
 
@@ -453,7 +455,12 @@ export class OfferReviewController {
   @ApiOkResponse({ type: OfferChangeApprovedDto })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
-  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description:
+      'access.denied, request.csrf or offer-change.own-submission (the decider submitted the ' +
+      'change, or acts for its seller in a Login-as-Seller session)',
+  })
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer-change.not-found' })
   @ApiConflictResponse({
     type: ApiErrorBody,
@@ -461,7 +468,9 @@ export class OfferReviewController {
   })
   @ApiUnprocessableEntityResponse({
     type: ApiErrorBody,
-    description: 'claim-text.refused or claim.tag-not-allowed',
+    description:
+      'claim-text.refused, claim.tag-not-allowed or offer-change.invalid (a held value the Offer ' +
+      'refuses; nothing applied, the change stays pending)',
   })
   @ApiUnsupportedMediaTypeResponse({ type: ApiErrorBody, description: 'A body that is not JSON' })
   @ApiServiceUnavailableResponse({
@@ -505,7 +514,12 @@ export class OfferReviewController {
   @ApiOkResponse({ type: OfferChangeDecidedDto })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
-  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description:
+      'access.denied, request.csrf or offer-change.own-submission (the decider submitted the ' +
+      'change, or acts for its seller in a Login-as-Seller session)',
+  })
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer-change.not-found' })
   @ApiConflictResponse({
     type: ApiErrorBody,
@@ -550,7 +564,12 @@ export class OfferReviewController {
   @ApiOkResponse({ type: OfferChangeDecidedDto })
   @ApiBadRequestResponse({ type: ApiErrorBody, description: 'validation.failed (details.fields)' })
   @ApiUnauthorizedResponse({ type: ApiErrorBody, description: UNAUTHORIZED })
-  @ApiForbiddenResponse({ type: ApiErrorBody, description: 'access.denied or request.csrf' })
+  @ApiForbiddenResponse({
+    type: ApiErrorBody,
+    description:
+      'access.denied, request.csrf or offer-change.own-submission (the decider submitted the ' +
+      'change, or acts for its seller in a Login-as-Seller session)',
+  })
   @ApiNotFoundResponse({ type: ApiErrorBody, description: 'offer-change.not-found' })
   @ApiConflictResponse({
     type: ApiErrorBody,

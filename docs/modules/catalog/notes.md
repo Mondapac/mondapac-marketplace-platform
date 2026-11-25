@@ -262,10 +262,25 @@ settings (mode `all`).
   description is claim-text checked again, every kept and requested tag is asked fresh, and a
   refused tag fails the whole approval (`claim.tag-not-allowed`) with the change still waiting.
   Each decision is one conditional update on `status = 'pending'`, so two deciders cannot both
-  win (`conflict.stale`).
-- Bypass guard: `Offer.edit`, `setHandling` and `addTags` refuse a watched change of a live Offer
-  without a `ReviewClearance`. Only `application/offer-review-clearance.ts` issues one (a policy
-  clearance for an empty reason list, an approval clearance for a change approved in the unit);
-  `test/contracts/catalog-review-clearance.contract.spec.ts` fails when another file forges one.
+  win (`conflict.stale`). A held value the Offer refuses on approval answers 422
+  `offer-change.invalid` and applies nothing.
+- No self-decision (Hassan N3 on PR #1350): an admin never approves, requests changes on or
+  rejects a change their own account submitted, nor from a Login-as-Seller session for its seller
+  (or one naming no seller): 403 `offer-change.own-submission`. The domain refuses the first case
+  too. A held edit made in an acting-as session records the admin behind it as the submitter.
+- Audit (Hassan N1): `catalog.offer-change.held` and `.approved` carry the held handling as a
+  lower-case code (`sealed-original`, `repacked`, `prepared`, `fresh`); `.approved` also carries
+  the ids of the tags it added. The audit vocabulary has no kind for type codes that grow at run
+  time, so the requested type codes stay on the change row (its proposal columns are immutable)
+  and `changeId` names it. Never the description or the note.
+- Bypass guard (Hassan S1 on PR #1350): `Offer.edit`, `setHandling`, `addTags` and
+  `applyApprovedChange` refuse a watched change of a live Offer without a `ReviewClearance` issued
+  for that Offer. The brand is a run-time one (`domain/review-clearance.ts` remembers what it
+  issued in a module-private `WeakSet`), so a cast or a look-alike object never passes, and a
+  clearance issued for another Offer is refused. `application/offer-review-clearance.ts` issues a
+  policy clearance only from an opaque verdict made by running the policy (`OfferEditReview.verdict`)
+  that found no reason, and an approval clearance only for a change approved in the unit.
+  `test/contracts/catalog-review-clearance.contract.spec.ts` is an import allow-list over the
+  syntax tree of every source file: only the named files may import the issuing functions.
 - The seller's Offer read carries `pendingChange` (the latest change, or null). No event or
   notification is sent for a decision yet.

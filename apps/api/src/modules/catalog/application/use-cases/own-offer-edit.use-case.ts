@@ -281,9 +281,8 @@ export class OwnOfferEdit extends UseCase<
     const hash = hashesOf(prepared);
 
     // The review policy, outside any unit; any failure holds the change (fail closed).
-    const reasons: readonly OfferReviewReason[] = watchedEdit
-      ? await deps.editReview.reasons(context, watched)
-      : [];
+    const verdict = watchedEdit ? await deps.editReview.verdict(context, offerId, watched) : null;
+    const reasons = verdict?.reasons ?? [];
     const held = reasons.length > 0;
 
     try {
@@ -309,7 +308,7 @@ export class OwnOfferEdit extends UseCase<
           conditionCode,
           description: held ? offer.state.description : description,
           now,
-          review: clearanceFromPolicy(reasons) ?? undefined,
+          review: clearanceFromPolicy(verdict),
         });
         if (!edited.ok) return err(failureOf(edited.error));
         // The facts again, in this unit: a revision published since the ask means asking again.

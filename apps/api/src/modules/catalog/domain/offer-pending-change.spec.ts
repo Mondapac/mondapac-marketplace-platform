@@ -49,6 +49,21 @@ describe.each(['AU', 'ZZ'] as const)('OfferPendingChange in market %s', (marketI
     expect(change.fields).toEqual(['description', 'handling', 'tags']);
   });
 
+  it('refuses a review decision by the account that submitted the change, deciding nothing', () => {
+    const own = { ok: false, error: { code: 'offer-change.own-submission' } };
+    const change = propose({ submittedByAccountId: admin });
+    expect(change.approve({ accountId: admin, now: T1 })).toEqual(own);
+    expect(change.requestChanges({ accountId: admin, note: 'Fix it', now: T1 })).toEqual(own);
+    expect(change.reject({ accountId: admin, note: 'No', now: T1 })).toEqual(own);
+    expect(change.state.status).toBe('pending');
+    expect(change.decided).toBe(false);
+    // Another admin may decide it; the submitter may still withdraw it (not a review decision).
+    expect(change.approve({ accountId: ids.next<'Account'>(), now: T1 }).ok).toBe(true);
+    expect(
+      propose({ submittedByAccountId: admin }).withdraw({ accountId: admin, now: T1 }).ok,
+    ).toBe(true);
+  });
+
   it('refuses an empty change, no reason, a bad handling, a bad or repeated type code', () => {
     const base = {
       id: ids.next<'OfferPendingChange'>(),

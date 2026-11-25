@@ -261,9 +261,8 @@ export class OwnOfferAddTag extends UseCase<
     if (!asked.ok) return err(asked.error);
 
     // The review policy, outside any unit; any failure holds the change (fail closed).
-    const reasons: readonly OfferReviewReason[] = watchedEdit
-      ? await deps.editReview.reasons(context, watched)
-      : [];
+    const verdict = watchedEdit ? await deps.editReview.verdict(context, offerId, watched) : null;
+    const reasons = verdict?.reasons ?? [];
 
     try {
       const written = await deps.unitOfWork.run<
@@ -322,7 +321,7 @@ export class OwnOfferAddTag extends UseCase<
           actor: sellerTagActor(actor),
           hash,
           now,
-          review: clearanceFromPolicy(reasons) ?? undefined,
+          review: clearanceFromPolicy(verdict),
         });
         if (!added.ok) {
           return added.error.code === 'claim.inputs-changed'

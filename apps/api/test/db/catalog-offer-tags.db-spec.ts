@@ -4,7 +4,8 @@ import { Temporal, uuidV7 } from '@mondapac/shared-kernel';
 import type { Id, IdGenerator } from '@mondapac/shared-kernel';
 import { Client } from 'pg';
 import { sha256Hex } from '../../src/modules/catalog/application/tags/claim-query-builder';
-import { Offer, type ReviewClearance } from '../../src/modules/catalog/domain/offer';
+import { Offer } from '../../src/modules/catalog/domain/offer';
+import { issueReviewClearance } from '../../src/modules/catalog/domain/review-clearance';
 import { StaleAggregateError } from '../../src/platform/unit-of-work/errors';
 import {
   canonicalClaimInputs,
@@ -47,8 +48,8 @@ import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 // the change_seq trigger, the history-present constraint trigger, the insert-only history, the
 // grants, Market independence, and the Offer repository's round trip of tags and history.
 
-/** A stand-in for the policy clearance the tag-add use case passes on a live Offer (slice 2c). */
-const POLICY = Object.freeze({ basis: 'policy' }) as unknown as ReviewClearance;
+/** The policy clearance the tag-add use case passes on a live Offer (slice 2c), for one Offer. */
+const policyFor = (offer: Offer) => issueReviewClearance('policy', offer.state.id);
 const T0 = '2026-10-17T00:00:00Z';
 const HASH = `sha256:${'a'.repeat(64)}`;
 let sequence = 0;
@@ -528,7 +529,7 @@ describe.each(TEST_MARKETS)('catalog offer tags in market %s (database integrati
         actor,
         hash,
         now,
-        review: POLICY,
+        review: policyFor(offer),
       });
       expect(added.ok).toBe(true);
       await run(market, () => offers.save(market, offer, actor));
@@ -576,7 +577,7 @@ describe.each(TEST_MARKETS)('catalog offer tags in market %s (database integrati
         actor,
         hash: first.hash,
         now,
-        review: POLICY,
+        review: policyFor(offer),
       });
       await run(market, () => offers.save(market, offer, actor));
       const read = (await run(market, () => offers.findById(market, offer.state.id)))!;
@@ -607,7 +608,7 @@ describe.each(TEST_MARKETS)('catalog offer tags in market %s (database integrati
         actor,
         hash,
         now,
-        review: POLICY,
+        review: policyFor(offer),
       });
       await run(market, () => offers.save(market, offer, actor));
       const a = (await run(market, () => offers.findById(market, offer.state.id)))!;
@@ -629,7 +630,7 @@ describe.each(TEST_MARKETS)('catalog offer tags in market %s (database integrati
         actor,
         hash,
         now,
-        review: POLICY,
+        review: policyFor(offer),
       });
       await run(market, () => offers.save(market, offer, actor));
       const read = (await run(market, () => offers.findById(market, offer.state.id)))!;

@@ -39,6 +39,7 @@ import type { ProductRepository } from '../ports/product.repository';
 import { AdminOfferChangeApprove } from './admin-offer-change-approve.use-case';
 import { AdminOfferChangeReject } from './admin-offer-change-reject.use-case';
 import { AdminOfferChangeRequestChanges } from './admin-offer-change-request-changes.use-case';
+import { decideHeldChange, decidesOwnSubmission } from '../offer-change-decision';
 import { AdminOfferChangesList } from './admin-offer-changes-list.use-case';
 import { OwnOfferAddTag } from './own-offer-add-tag.use-case';
 import { OwnOfferDelete } from './own-offer-delete.use-case';
@@ -88,26 +89,45 @@ describe.each([
   };
   const REFUSED_TYPE = 'refused-type';
 
-  const sellerContext = (owner = sellerId): CallContext =>
+  const sellerContext = (
+    owner = sellerId,
+    accountId = ids.next<'Account'>(),
+    target: MarketContext = market,
+  ): CallContext =>
     testCallContext(
-      market,
-      testAuthenticatedActor(market, {
+      target,
+      testAuthenticatedActor(target, {
         population: 'seller',
-        accountId: ids.next<'Account'>(),
+        accountId,
         sessionId: ids.next<'Session'>(),
         sellerId: owner,
       }),
     );
-  const adminContext = (): CallContext =>
+  const adminContext = (
+    accountId = ids.next<'Account'>(),
+    target: MarketContext = market,
+  ): CallContext =>
     testCallContext(
-      market,
-      testAuthenticatedActor(market, {
+      target,
+      testAuthenticatedActor(target, {
         population: 'admin',
-        accountId: ids.next<'Account'>(),
+        accountId,
         sessionId: ids.next<'Session'>(),
         sellerId: null,
       }),
     );
+  /**
+   * An admin context with the reserved acting-as marker (SEL-08, identity design 3.4 row 6: the
+   * admin stays the actor). Not minted: only the probes below take it.
+   */
+  const actingAdmin = (actingAs: {
+    readonly accountId: Id<'Account'>;
+    readonly sellerId: Id<'Seller'> | null;
+  }): CallContext => {
+    const context = adminContext();
+    return { ...context, actor: { ...context.actor, actingAs } } as unknown as CallContext;
+  };
+  const otherMarket: MarketContext = testMarketContext(code === 'AU' ? 'ZZ' : 'AU', 'default');
 
   const liveOffer = (overrides: Partial<OfferState> = {}): OfferState => ({
     id: ids.next<'Offer'>(),
@@ -199,9 +219,11 @@ describe.each([
       listOnProduct: () => Promise.resolve([]),
       listPendingReview: () => Promise.resolve([]),
       findManyByIds: () => Promise.resolve([]),
-      findById: (_m, id) =>
+      findById: (m, id) =>
         Promise.resolve(
-          current.state.id === id ? Offer.restore(current.state, current.tags) : null,
+          current.state.id === id && current.state.marketId === m.marketId
+            ? Offer.restore(current.state, current.tags)
+            : null,
         ),
       save: (_m, offer) => {
         if (openUnits === 0) throw new Error('saved outside a unit');
@@ -215,12 +237,14 @@ describe.each([
     };
     const eligibility = { isEligible: () => Promise.resolve(true) };
     const save = { reserveSaves: () => Promise.resolve(null) };
+    // The claim vocabulary; a test may grow it between the hold and the approval.
+    const claimWords = ['certified halal'];
     const check = {
       execute: (_c: CallContext, texts: readonly { locale: string; text: string }[]) =>
         Promise.resolve({
           ok: true as const,
           value: texts.map((t) =>
-            t.text.includes('certified halal')
+            claimWords.some((word) => t.text.includes(word))
               ? {
                   code: 'claim-text.found' as const,
                   field: 'offer.description' as const,
@@ -250,6 +274,17 @@ describe.each([
     };
     const deps = { unitOfWork, offers, eligibility, save, claims, evaluator, outbox, clock };
     const decisionDeps = { unitOfWork, offers, pendingChanges, audit, clock };
+    const approve = new AdminOfferChangeApprove(gate, {
+      ...decisionDeps,
+      eligibility,
+      check,
+      claims,
+      evaluator,
+      outbox,
+      ids,
+    });
+    const requestChanges = new AdminOfferChangeRequestChanges(gate, decisionDeps);
+    const reject = new AdminOfferChangeReject(gate, decisionDeps);
     return {
       edit: new OwnOfferEdit(gate, { ...deps, check, policy, editReview: memory.review }),
       setHandling: new OwnOfferSetHandling(gate, { ...deps, editReview: memory.review }),
@@ -263,23 +298,29 @@ describe.each([
         editReview: memory.review,
       }),
       withdraw: new OwnOfferWithdrawChange(gate, decisionDeps),
-      approve: new AdminOfferChangeApprove(gate, {
-        ...decisionDeps,
-        eligibility,
-        check,
-        claims,
-        evaluator,
-        outbox,
-        ids,
-      }),
-      requestChanges: new AdminOfferChangeRequestChanges(gate, decisionDeps),
-      reject: new AdminOfferChangeReject(gate, decisionDeps),
+      approve,
+      requestChanges,
+      reject,
+      decide: (
+        c: CallContext,
+        target: Parameters<typeof decideHeldChange>[2],
+        decision: Parameters<typeof decideHeldChange>[3],
+      ) => decideHeldChange(decisionDeps, c, target, decision),
+      /** The use cases' own steps without the gate, for a context the gate cannot mint yet. */
       list: new AdminOfferChangesList(gate, { unitOfWork, pendingChanges }),
       offerId: initial.id,
       current: () => current,
       changes: () => [...pendingChanges.rows.values()],
       referrals: memory.referrals,
       audits: () => [...memory.audits, ...unitAudits].map((entry) => entry.action),
+      auditEntries: () => [...memory.audits, ...unitAudits],
+      claimWords,
+      /** Puts the Offer in a state no use case reaches here (a test of a guard). */
+      force: (state: Partial<OfferState>) => {
+        current = { ...current, state: { ...current.state, ...state } };
+      },
+      /** Stores a held change as it is, without the domain's checks (a stored row). */
+      store: (state: OfferPendingChangeState) => pendingChanges.rows.set(state.id, state),
       settingsReads: memory.settingsReads,
       evaluator,
       outbox,
@@ -682,6 +723,237 @@ describe.each([
       });
       expect(rejected.ok && rejected.value.status).toBe('rejected');
       expect(other.audits()).toContain('catalog.offer-change.rejected');
+    });
+
+    it('refuses the approval when the held description now hits the claim vocabulary (S2a)', async () => {
+      const r = rig();
+      const changeId = await heldEdit(r);
+      // The vocabulary grew between the hold and the decision.
+      r.claimWords.push('bulk');
+      const before = r.current();
+      const outcome = await r.approve.execute(adminContext(), { changeId });
+      expect(outcome.ok === false && outcome.error.code).toBe('claim-text.refused');
+      expect(r.current()).toBe(before);
+      expect(r.changes()[0]).toMatchObject({ status: 'pending', decidedAt: null });
+      expect(r.audits()).not.toContain('catalog.offer-change.approved');
+    });
+
+    it('applies nothing while certification cannot answer; the change stays pending (S2b)', async () => {
+      // A kept tag is asked again against the held handling at approval.
+      const r = rig({
+        settings: ALL,
+        tags: [activeTagState(ids.next<'OfferTag'>(), typeCode, certificate, T0)],
+      });
+      await r.setHandling.execute(sellerContext(), { offerId: r.offerId, handling: 'REPACKED' });
+      const [held] = r.changes();
+      r.evaluator.unavailable = true;
+      const before = r.current();
+      expect(await r.approve.execute(adminContext(), { changeId: held!.id })).toEqual({
+        ok: false,
+        error: { code: 'claim.check-unavailable' },
+      });
+      expect(r.current()).toBe(before);
+      expect(r.current().state.handling).toBe('SEALED_ORIGINAL');
+      expect(r.changes()[0]).toMatchObject({ status: 'pending', decidedAt: null });
+      expect(r.audits()).not.toContain('catalog.offer-change.approved');
+      // Certification answers again: the same change can be approved.
+      r.evaluator.unavailable = false;
+      expect((await r.approve.execute(adminContext(), { changeId: held!.id })).ok).toBe(true);
+      expect(r.current().state.handling).toBe('REPACKED');
+    });
+
+    it('refuses to approve when the Offer is no longer published, applying nothing (G3)', async () => {
+      const r = rig();
+      const changeId = await heldEdit(r);
+      r.force({ status: 'deleted', listed: false, deletedAt: T0 });
+      const before = r.current();
+      expect(await r.approve.execute(adminContext(), { changeId })).toEqual({
+        ok: false,
+        error: { code: 'offer-change.not-pending' },
+      });
+      expect(r.current()).toBe(before);
+      expect(r.changes()[0]).toMatchObject({ status: 'pending' });
+    });
+
+    it('answers offer-change.invalid for a stored value the Offer refuses, applying nothing (N2)', async () => {
+      const r = rig();
+      // A stored change whose description the Offer refuses (one locale over the limit).
+      r.store({
+        id: ids.next<'OfferPendingChange'>(),
+        marketId: code as MarketId,
+        offerId: r.offerId,
+        sellerId,
+        baseOfferVersion: 4,
+        proposedDescription: { [locale]: 'x'.repeat(5001) },
+        proposedHandling: null,
+        proposedTagTypes: [],
+        reasons: ['review-all'],
+        policyVersion: 2,
+        status: 'pending',
+        supersededCause: null,
+        submittedAt: T0,
+        submittedByAccountId: ids.next<'Account'>(),
+        decidedAt: null,
+        decidedByAccountId: null,
+        decisionNote: null,
+      });
+      const [stored] = r.changes();
+      const before = r.current();
+      expect(await r.approve.execute(adminContext(), { changeId: stored!.id })).toEqual({
+        ok: false,
+        error: { code: 'offer-change.invalid' },
+      });
+      expect(r.current()).toBe(before);
+      expect(r.changes()[0]).toMatchObject({ status: 'pending' });
+    });
+
+    it('never lets an admin decide a change their own account made (N3)', async () => {
+      const r = rig();
+      const admin = ids.next<'Account'>();
+      const made = await r.edit.execute(sellerContext(sellerId, admin), form(r, CONTACT));
+      if (!made.ok || made.value.pendingChangeId === undefined) throw new Error('not held');
+      const changeId = made.value.pendingChangeId;
+      const own = { ok: false, error: { code: 'offer-change.own-submission' } };
+      expect(await r.approve.execute(adminContext(admin), { changeId })).toEqual(own);
+      expect(await r.reject.execute(adminContext(admin), { changeId, note: 'No' })).toEqual(own);
+      expect(
+        await r.requestChanges.execute(adminContext(admin), { changeId, note: 'Fix it' }),
+      ).toEqual(own);
+      expect(r.changes()[0]).toMatchObject({ status: 'pending' });
+      // Another admin decides it.
+      expect((await r.approve.execute(adminContext(), { changeId })).ok).toBe(true);
+    });
+
+    it('records the admin behind a Login-as-Seller edit as the submitter of the held change (N3)', async () => {
+      // No session carries the reserved marker yet (SEL-08), so the gate cannot mint one: the
+      // review step is called directly with the marker an acting-as session will carry.
+      const memory = memoryOfferEditReview({ ids });
+      const admin = ids.next<'Account'>();
+      const seller = sellerContext();
+      const acting = {
+        ...seller,
+        actor: { ...seller.actor, actingAs: { adminAccountId: admin } },
+      } as unknown as CallContext;
+      const changeId = await memory.review.settle(acting, {
+        offer: Offer.restore(liveOffer()),
+        baseVersion: 4,
+        reasons: ['contact-text'],
+        change: { addedBadgeTypes: [], newDescription: { [locale]: CONTACT } },
+        replaced: null,
+        now: T0,
+      });
+      expect(changeId).not.toBeNull();
+      expect(memory.pendingChanges.rows.get(changeId!)).toMatchObject({
+        submittedByAccountId: admin,
+      });
+    });
+
+    it("refuses a decision from a Login-as-Seller session for the change's seller (N3)", async () => {
+      const r = rig();
+      await heldEdit(r);
+      const [held] = r.changes();
+      const own = { ok: false, error: { code: 'offer-change.own-submission' } };
+      // The gate cannot mint the reserved marker yet (SEL-08): the shared decision step and the
+      // guard the approval runs first are called directly.
+      for (const acting of [
+        { accountId: ids.next<'Account'>(), sellerId },
+        { accountId: ids.next<'Account'>(), sellerId: null },
+      ]) {
+        const context = actingAdmin(acting);
+        expect(decidesOwnSubmission(context.actor, held!)).toBe(true);
+        for (const decision of [
+          { kind: 'reject', note: 'No' },
+          { kind: 'request-changes', note: 'Fix' },
+        ] as const) {
+          expect(await r.decide(context, { changeId: held!.id }, decision)).toEqual(own);
+        }
+      }
+      expect(r.changes()[0]).toMatchObject({ status: 'pending' });
+      // Acting for another seller is not acting for this one; a plain admin is not the submitter.
+      const elsewhere = actingAdmin({ accountId: ids.next<'Account'>(), sellerId: ids.next() });
+      expect(decidesOwnSubmission(elsewhere.actor, held!)).toBe(false);
+      expect(decidesOwnSubmission(adminContext().actor, held!)).toBe(false);
+      expect(
+        await r.decide(elsewhere, { changeId: held!.id }, { kind: 'reject', note: 'No' }),
+      ).toMatchObject({ ok: true, value: { status: 'rejected' } });
+    });
+
+    it('audits the held handling and the approved handling and tag ids, never text (N1)', async () => {
+      const r = rig({ settings: ALL });
+      await r.setHandling.execute(sellerContext(), { offerId: r.offerId, handling: 'REPACKED' });
+      const [handlingChange] = r.changes();
+      expect((await r.approve.execute(adminContext(), { changeId: handlingChange!.id })).ok).toBe(
+        true,
+      );
+      const tag = await r.addTag.execute(sellerContext(), { offerId: r.offerId, typeCode });
+      if (!tag.ok || tag.value.pendingChangeId === undefined) throw new Error('not held');
+      expect(
+        (
+          await r.approve.execute(adminContext(), {
+            changeId: tag.value.pendingChangeId,
+            note: 'Never in the audit',
+          })
+        ).ok,
+      ).toBe(true);
+      const of = (action: string) =>
+        r
+          .auditEntries()
+          .filter((entry) => entry.action === action)
+          .map((entry) => entry.after);
+      expect(of('catalog.offer-change.held')).toEqual([
+        {
+          changeId: handlingChange!.id,
+          fields: ['handling'],
+          handling: 'repacked',
+          reasons: ['handling'],
+          policyVersion: 2,
+        },
+        {
+          changeId: tag.value.pendingChangeId,
+          fields: ['tags'],
+          handling: null,
+          reasons: ['review-all'],
+          policyVersion: 2,
+        },
+      ]);
+      const tagId = r.current().tags.find((t) => t.typeCode === typeCode)!.id;
+      expect(of('catalog.offer-change.approved')).toEqual([
+        {
+          changeId: handlingChange!.id,
+          fields: ['handling'],
+          handling: 'repacked',
+          addedTagIds: [],
+        },
+        {
+          changeId: tag.value.pendingChangeId,
+          fields: ['tags'],
+          handling: null,
+          addedTagIds: [tagId],
+        },
+      ]);
+      expect(JSON.stringify(r.auditEntries())).not.toContain('Never in the audit');
+    });
+
+    it('never reaches a change from the other Market: approve, reject, withdraw, list (canary)', async () => {
+      const r = rig();
+      const changeId = await heldEdit(r);
+      const before = r.current();
+      const notFound = { ok: false, error: { code: 'offer-change.not-found' } };
+      const otherAdmin = () => adminContext(ids.next<'Account'>(), otherMarket);
+      expect(await r.approve.execute(otherAdmin(), { changeId })).toEqual(notFound);
+      expect(await r.reject.execute(otherAdmin(), { changeId, note: 'Canary' })).toEqual(notFound);
+      expect(await r.requestChanges.execute(otherAdmin(), { changeId, note: 'Canary' })).toEqual(
+        notFound,
+      );
+      expect(
+        await r.withdraw.execute(sellerContext(sellerId, ids.next<'Account'>(), otherMarket), {
+          offerId: r.offerId,
+        }),
+      ).toEqual(notFound);
+      const listed = await r.list.execute(otherAdmin(), {});
+      expect(listed.ok && listed.value.items).toEqual([]);
+      expect(r.current()).toBe(before);
+      expect(r.changes()[0]).toMatchObject({ status: 'pending' });
     });
 
     it('refuses a seller on the admin decisions', async () => {

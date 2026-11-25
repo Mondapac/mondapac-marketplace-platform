@@ -149,6 +149,9 @@ export class PrismaOfferPendingChangeRepository implements OfferPendingChangeRep
       cursor === null
         ? {}
         : {
+            // The range bound lets the index start at the cursor instead of scanning every
+            // earlier row for the OR (Mojtaba F1 on PR #1350).
+            submittedAt: { gte: toDate(cursor.submittedAt) },
             OR: [
               { submittedAt: { gt: toDate(cursor.submittedAt) } },
               { submittedAt: toDate(cursor.submittedAt), id: { gt: cursor.id } },

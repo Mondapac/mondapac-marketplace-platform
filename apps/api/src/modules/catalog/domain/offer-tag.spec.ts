@@ -1,7 +1,7 @@
 import { Temporal } from '@mondapac/shared-kernel';
 import type { MarketId } from '@mondapac/shared-kernel';
 import { FixedClock, SequenceIdGenerator } from '@mondapac/shared-kernel/testing';
-import { Offer, type OfferState, type ReviewClearance } from './offer';
+import { Offer, type OfferState } from './offer';
 import {
   canonicalClaimInputs,
   claimQueriesFor,
@@ -11,13 +11,12 @@ import {
   type TagClaimQuery,
   type TagDecision,
 } from './offer-tag';
+import { issueReviewClearance } from './review-clearance';
 
 // Certification tags on Offers (catalog design 5.1 to 5.4; AC 7 to 11, 14, 15): the verdict on
 // the decisions of every variant, the equality of returned inputs with the state being saved,
 // and the tag statuses. Run on both Market fixtures with each Market's own type code (AC 18).
 
-/** A stand-in for the policy clearance the tag-add use case passes on a live Offer (slice 2c). */
-const POLICY = Object.freeze({ basis: 'policy' }) as unknown as ReviewClearance;
 const T0 = Temporal.Instant.from('2026-10-17T00:00:00Z');
 const T1 = Temporal.Instant.from('2026-10-17T01:00:00Z');
 const hash = (text: string): string => text.length.toString(16).padStart(64, '0');
@@ -127,7 +126,7 @@ describe.each([
       actor: seller,
       hash,
       now: T1,
-      review: POLICY,
+      review: issueReviewClearance('policy', offer.state.id),
     });
 
   const withActiveTag = (overrides: Partial<OfferState> = {}): Offer => {
@@ -505,7 +504,13 @@ describe.each([
 
     it('re-asks after a handling change against the new handling (AC 11)', () => {
       const offer = withActiveTag();
-      expect(offer.setHandling({ handling: 'PREPARED', now: T1, review: POLICY }).ok).toBe(true);
+      expect(
+        offer.setHandling({
+          handling: 'PREPARED',
+          now: T1,
+          review: issueReviewClearance('policy', offer.state.id),
+        }).ok,
+      ).toBe(true);
       expect(offer.state.status).toBe('published');
       const stale = settle(offer, (q) =>
         allowed(q, { inputs: { ...q, handling: 'SEALED_ORIGINAL' } }),

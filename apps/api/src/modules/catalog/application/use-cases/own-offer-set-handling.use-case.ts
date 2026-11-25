@@ -251,9 +251,8 @@ export class OwnOfferSetHandling extends UseCase<
       return err({ code: 'offer.change-pending' });
     }
     // The review policy, outside any unit; any failure holds the change (fail closed).
-    const reasons: readonly OfferReviewReason[] = watchedEdit
-      ? await deps.editReview.reasons(context, watched)
-      : [];
+    const verdict = watchedEdit ? await deps.editReview.verdict(context, offerId, watched) : null;
+    const reasons = verdict?.reasons ?? [];
     const held = reasons.length > 0;
     // A held change asks nothing: the Offer keeps its handling and its tags as they are.
     const prepared = held ? NOTHING_ASKED : guard.value.prepared;
@@ -280,7 +279,7 @@ export class OwnOfferSetHandling extends UseCase<
         const set = offer.setHandling({
           handling,
           now,
-          review: clearanceFromPolicy(reasons) ?? undefined,
+          review: clearanceFromPolicy(verdict),
         });
         if (!set.ok) {
           return err(

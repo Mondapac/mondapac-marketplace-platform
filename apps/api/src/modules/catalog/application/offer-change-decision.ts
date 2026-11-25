@@ -1,5 +1,5 @@
 import { err, ok } from '@mondapac/shared-kernel';
-import type { CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
+import type { ActorContext, CallContext, Clock, Id, Result } from '@mondapac/shared-kernel';
 import type { AuditWriter } from '../../../platform/audit/audit-writer';
 import { StaleAggregateError } from '../../../platform/unit-of-work/errors';
 import type { UnitOfWork } from '../../../platform/unit-of-work/unit-of-work';
@@ -8,7 +8,11 @@ import {
   OfferChangeRejectedAudit,
   OfferChangeWithdrawnAudit,
 } from '../domain/audit';
-import type { OfferPendingChangeStatus } from '../domain/offer-pending-change';
+import type {
+  OfferPendingChangeState,
+  OfferPendingChangeStatus,
+} from '../domain/offer-pending-change';
+import { isActingAsFor } from './acting-as';
 import type { ChangeValidationFailure } from './offer-change-view';
 import type { OfferPendingChangeRepository } from './ports/offer-pending-change.repository';
 import type { OfferActor, OfferRepository } from './ports/offer.repository';
@@ -32,8 +36,23 @@ export type OfferChangeDecisionFailure =
   | { readonly code: 'access.unavailable' }
   | { readonly code: 'offer-change.not-found' }
   | { readonly code: 'offer-change.not-pending' }
+  | { readonly code: 'offer-change.own-submission' }
   | { readonly code: 'conflict.stale' }
   | ChangeValidationFailure;
+
+/**
+ * True when an admin's review decision on a held change must be refused as their own (Hassan N3
+ * on PR #1350): the decider's account submitted it (in a Login-as-Seller session that is the
+ * admin behind it), or the session acts for the change's seller (or names no seller: fail
+ * closed). The domain refuses the first case again on its own.
+ */
+export function decidesOwnSubmission(
+  actor: ActorContext,
+  change: Pick<OfferPendingChangeState, 'submittedByAccountId' | 'sellerId'>,
+): boolean {
+  if (actor.kind !== 'authenticated') return true;
+  return actor.accountId === change.submittedByAccountId || isActingAsFor(actor, change.sellerId);
+}
 
 /** Which decision, and who may make it: an admin's two, or the seller's withdrawal. */
 export type OfferChangeDecision =
@@ -47,6 +66,7 @@ export type OfferChangeDecision =
  * rises once: lock order), then the conditional update of the change (`status = 'pending'`; a lost
  * race is `conflict.stale` and nothing commits), then the audit row. The seller's withdrawal finds
  * the change by its Offer and checks ownership; another seller's Offer is `offer-change.not-found`.
+ * An admin who submitted the change, or acts for its seller, is `offer-change.own-submission`.
  */
 export async function decideHeldChange(
   deps: OfferChangeDecisionDependencies,
@@ -73,6 +93,10 @@ export async function decideHeldChange(
         if (decision.kind === 'withdraw' && offer.state.sellerId !== decision.sellerId) {
           return err({ code: 'offer-change.not-found' } as const);
         }
+        // An admin never decides their own change nor one of a seller they act for (N3).
+        if (decision.kind !== 'withdraw' && decidesOwnSubmission(actor, change.state)) {
+          return err({ code: 'offer-change.own-submission' } as const);
+        }
         const now = deps.clock.now();
         const decided =
           decision.kind === 'withdraw'
@@ -81,14 +105,17 @@ export async function decideHeldChange(
               ? change.reject({ accountId, note: decision.note, now })
               : change.requestChanges({ accountId, note: decision.note, now });
         if (!decided.ok) {
-          return err(
-            decided.error.code === 'offer-change.note-invalid'
-              ? ({
-                  code: 'validation.failed',
-                  fields: [{ path: 'note', code: 'length' }],
-                } as const)
-              : ({ code: 'offer-change.not-pending' } as const),
-          );
+          switch (decided.error.code) {
+            case 'offer-change.note-invalid':
+              return err({
+                code: 'validation.failed',
+                fields: [{ path: 'note', code: 'length' }],
+              } as const);
+            case 'offer-change.own-submission':
+              return err({ code: 'offer-change.own-submission' } as const);
+            default:
+              return err({ code: 'offer-change.not-pending' } as const);
+          }
         }
         offer.markReviewChange();
         await deps.offers.save(market, offer, offerActor);

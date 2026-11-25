@@ -523,6 +523,7 @@
     "after": {
       "changeId": "id",
       "fields": "listOf(enumOf(description|handling|tags), max 3)",
+      "handling": "optional(enumOf(sealed-original|repacked|prepared|fresh))",
       "policyVersion": "integer",
       "reasons": "listOf(enumOf(emergency-stop|probation|certificate-badge|handling|contact-text|full-review|sensitive-category|review-all), max 8)"
     }
@@ -534,8 +535,10 @@
     "actors": ["authenticated"],
     "before": null,
     "after": {
+      "addedTagIds": "listOf(id, max 32)",
       "changeId": "id",
-      "fields": "listOf(enumOf(description|handling|tags), max 3)"
+      "fields": "listOf(enumOf(description|handling|tags), max 3)",
+      "handling": "optional(enumOf(sealed-original|repacked|prepared|fresh))"
     }
   },
   {

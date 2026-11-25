@@ -12,16 +12,15 @@ import {
   OfferChangeSupersededAudit,
   OfferReviewReferredAudit,
 } from '../domain/audit';
+import { handlingAuditCode } from '../domain/offer-handling';
 import type { Offer, OfferHandling } from '../domain/offer';
 import {
   OfferPendingChange,
   type OfferChangeSupersededCause,
 } from '../domain/offer-pending-change';
-import {
-  OFFER_REVIEW_POLICY_VERSION,
-  offerEditReviewReasons,
-  type OfferReviewReason,
-} from '../domain/offer-review-policy';
+import { OFFER_REVIEW_POLICY_VERSION, type OfferReviewReason } from '../domain/offer-review-policy';
+import { actingAdminAccountOf } from './acting-as';
+import { policyVerdict, type ReviewPolicyVerdict } from './offer-review-clearance';
 import type { OfferPendingChangeRepository } from './ports/offer-pending-change.repository';
 import {
   SAFE_OFFER_REVIEW_SETTINGS,
@@ -69,21 +68,23 @@ export class OfferEditReview {
   constructor(private readonly deps: OfferEditReviewDependencies) {}
 
   /**
-   * The reasons this watched change is held; empty means apply at once. Outside any unit. Any
-   * failure to read the settings is the safe answer (mode `all`): the change is held, never
-   * published by default.
+   * The policy's verdict on this watched change of this Offer: its reasons (empty means apply at
+   * once), sealed so that only a verdict made here can become a clearance
+   * (the application's clearance file). Outside any unit. Any failure to read the settings is the safe
+   * answer (mode `all`): the change is held, never published by default.
    */
-  async reasons(
+  async verdict(
     context: CallContext,
+    offerId: Id<'Offer'>,
     change: WatchedChange,
-  ): Promise<readonly OfferReviewReason[]> {
+  ): Promise<ReviewPolicyVerdict> {
     let settings: OfferReviewSettings;
     try {
       settings = await this.deps.inputs.settings(context);
     } catch {
       settings = SAFE_OFFER_REVIEW_SETTINGS;
     }
-    return offerEditReviewReasons({
+    return policyVerdict(offerId, {
       mode: settings.mode,
       certificateBadges: settings.certificateBadges,
       ...change,
@@ -131,7 +132,9 @@ export class OfferEditReview {
         proposedTagTypes: change.addedBadgeTypes,
         reasons,
         policyVersion: OFFER_REVIEW_POLICY_VERSION,
-        submittedByAccountId: actor.accountId,
+        // The person who made the change: in a Login-as-Seller session, the admin behind it, so
+        // that admin can never decide it (Hassan N3 on PR #1350).
+        submittedByAccountId: actingAdminAccountOf(actor) ?? actor.accountId,
         now,
       });
       if (!proposed.ok) throw new Error(`settle: ${proposed.error.code}`);
@@ -143,6 +146,7 @@ export class OfferEditReview {
           after: {
             changeId,
             fields: proposed.value.fields,
+            handling: handlingAuditCode(proposed.value.state.proposedHandling),
             reasons,
             policyVersion: OFFER_REVIEW_POLICY_VERSION,
           },

@@ -27,6 +27,7 @@ import {
   type TagEntryPath,
   type TagJudgement,
 } from './offer-tag';
+import { isIssuedClearance, type ReviewClearance } from './review-clearance';
 
 import { OFFER_HANDLINGS, type OfferHandling } from './offer-handling';
 export const OFFER_STATUSES = [
@@ -39,6 +40,7 @@ export const OFFER_STATUSES = [
 export type OfferStatus = (typeof OFFER_STATUSES)[number];
 
 export { OFFER_HANDLINGS, type OfferHandling };
+export type { ReviewClearance };
 
 /**
  * The stored causes that take a published Offer off sale (catalog design 2.3 M-5, 4.4). A cause
@@ -174,28 +176,6 @@ export interface OfferState {
 /** Listed means published with no off-sale cause; the product's own state is held by the transitions. */
 export function isListed(state: Pick<OfferState, 'status' | 'offSaleCauses'>): boolean {
   return state.status === 'published' && state.offSaleCauses.length === 0;
-}
-
-declare const REVIEW_CLEARANCE: unique symbol;
-
-/**
- * The bypass guard of the edit rules (risk-based Offer approval, slice 2c): on an Offer read as
- * `published`, a watched change (a changed description, handling changed to anything but
- * `SEALED_ORIGINAL`, a new tag) applies only with a clearance. Only application code issues one
- * (`application/offer-review-clearance.ts`): `policy` after the review policy found no reason,
- * `approval` after an admin approved the held change. Calling the command without one throws, so
- * a use case that forgets the policy fails closed instead of publishing.
- */
-export interface ReviewClearance {
-  readonly [REVIEW_CLEARANCE]: true;
-  readonly basis: 'policy' | 'approval';
-}
-
-function isClearance(review: ReviewClearance | undefined, basis?: 'approval'): boolean {
-  if (review === undefined || review === null) return false;
-  return basis === undefined
-    ? review.basis === 'policy' || review.basis === 'approval'
-    : review.basis === basis;
 }
 
 /**
@@ -454,7 +434,7 @@ export class Offer {
   }): Result<readonly string[], OfferRefusal | OfferHandlingRefusal> {
     const state = this.#state;
     if (state.status !== 'published') return err({ code: 'offer.not-editable' });
-    if (!isClearance(input.review, 'approval')) {
+    if (!isIssuedClearance(input.review, state.id, 'approval')) {
       throw new Error('applyApprovedChange: needs the clearance of an approval');
     }
     if (input.description !== null && !validDescription(input.description)) {
@@ -1418,7 +1398,7 @@ export class Offer {
   /** The bypass guard: a watched change of an Offer read as live needs a clearance (slice 2c). */
   #assertCleared(command: string, review: ReviewClearance | undefined): void {
     if (this.#readStatus !== 'published') return;
-    if (!isClearance(review)) {
+    if (!isIssuedClearance(review, this.#state.id)) {
       throw new Error(`${command}: a watched change of a live Offer needs a review clearance`);
     }
   }

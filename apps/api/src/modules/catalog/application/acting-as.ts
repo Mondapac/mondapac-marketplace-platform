@@ -24,3 +24,25 @@ export function actingAdminAccountOf(actor: ActorContext): Id<'Account'> | null 
   const admin = marker?.adminAccountId;
   return typeof admin === 'string' ? (admin as Id<'Account'>) : null;
 }
+
+/**
+ * The seller an acting-as session acts for (`actingAs.sellerId`, the same reserved marker), or
+ * null when the session is not one or the marker names no seller.
+ */
+export function actingAsSellerOf(actor: ActorContext): Id<'Seller'> | null {
+  if (!isActingAsSession(actor)) return null;
+  const marker = (actor as { readonly actingAs?: { readonly sellerId?: unknown } }).actingAs;
+  const seller = marker?.sellerId;
+  return typeof seller === 'string' ? (seller as Id<'Seller'>) : null;
+}
+
+/**
+ * Whether an admin's review decision on a seller's held change comes from an acting-as session
+ * for that seller (Hassan N3 on PR #1350): such a session may have made the change. A marker that
+ * names no seller counts as that seller (fail closed).
+ */
+export function isActingAsFor(actor: ActorContext, sellerId: Id<'Seller'>): boolean {
+  if (!isActingAsSession(actor)) return false;
+  const acting = actingAsSellerOf(actor);
+  return acting === null || acting === sellerId;
+}

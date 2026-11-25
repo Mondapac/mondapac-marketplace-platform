@@ -8,10 +8,7 @@ import {
   type OfferState,
   type ReviewClearance,
 } from './offer';
-
-// Test stand-ins for the clearances only application/offer-review-clearance.ts issues.
-const POLICY = Object.freeze({ basis: 'policy' }) as unknown as ReviewClearance;
-const APPROVAL = Object.freeze({ basis: 'approval' }) as unknown as ReviewClearance;
+import { issueReviewClearance } from './review-clearance';
 
 // The Offer aggregate is Market-agnostic: both fixtures run the same rules (a test that only
 // passes for AU is a bug).
@@ -20,6 +17,11 @@ const T0 = Temporal.Instant.from('2026-10-09T00:00:00Z');
 const offerId = 'o1' as Id<'Offer'>;
 const productId = 'p1' as Id<'Product'>;
 const sellerId = 's1' as Id<'Seller'>;
+
+// Real clearances for this Offer (in production only application/offer-review-clearance.ts
+// issues them).
+const POLICY = issueReviewClearance('policy', offerId);
+const APPROVAL = issueReviewClearance('approval', offerId);
 
 describe.each(MARKETS)('Offer in market %s', (code) => {
   const marketId = code as MarketId;
@@ -318,6 +320,62 @@ describe.each(MARKETS)('Offer in market %s', (code) => {
       expect(() => live().edit({ ...form({ 'en-AU': 'New text' }), review: forged })).toThrow(
         'review clearance',
       );
+    });
+
+    it('refuses a look-alike of a real clearance: the brand is the issue, not the shape', () => {
+      for (const basis of ['policy', 'approval'] as const) {
+        const lookAlike = Object.freeze({ basis, offerId }) as unknown as ReviewClearance;
+        const copied = { ...issueReviewClearance(basis, offerId) } as ReviewClearance;
+        for (const review of [lookAlike, copied]) {
+          const offer = live();
+          expect(() => offer.edit({ ...form({ 'en-AU': 'New text' }), review })).toThrow(
+            'review clearance',
+          );
+          expect(() => offer.setHandling({ handling: 'REPACKED', now: later, review })).toThrow(
+            'review clearance',
+          );
+          expect(offer.hasChanges).toBe(false);
+        }
+      }
+      const forgedApproval = Object.freeze({
+        basis: 'approval',
+        offerId,
+      }) as unknown as ReviewClearance;
+      expect(() =>
+        live().applyApprovedChange({
+          description: { 'en-AU': 'Approved' },
+          handling: null,
+          review: forgedApproval,
+          now: later,
+        }),
+      ).toThrow('approval');
+    });
+
+    it('refuses a clearance issued for another Offer', () => {
+      const otherOffer = 'o2' as Id<'Offer'>;
+      const offer = live();
+      expect(() =>
+        offer.edit({
+          ...form({ 'en-AU': 'New text' }),
+          review: issueReviewClearance('policy', otherOffer),
+        }),
+      ).toThrow('review clearance');
+      expect(() =>
+        offer.setHandling({
+          handling: 'REPACKED',
+          now: later,
+          review: issueReviewClearance('approval', otherOffer),
+        }),
+      ).toThrow('review clearance');
+      expect(() =>
+        offer.applyApprovedChange({
+          description: { 'en-AU': 'Approved' },
+          handling: 'REPACKED',
+          review: issueReviewClearance('approval', otherOffer),
+          now: later,
+        }),
+      ).toThrow('approval');
+      expect(offer.hasChanges).toBe(false);
     });
 
     it('raises the version once when a change is held, however many marks', () => {
