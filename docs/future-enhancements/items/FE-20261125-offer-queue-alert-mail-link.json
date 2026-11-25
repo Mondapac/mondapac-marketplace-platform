@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-offer-queue-alert-mail-link",
+  "area": "catalog",
+  "title": "پیوند مستقیم صف Offer در ایمیل هشدار",
+  "desc": "ایمیل هشدار صف Offer پیوند ندارد و ادمین را به صفحهٔ «Catalogue requests» در پنل ادمین راهنمایی می‌کند. در صورت نیاز، نشانی صفحهٔ صف در پیکربندی Market (مثل seller-review-queue) اضافه و پیوند با کد ساخته شود.",
+  "src": "apps/api/src/modules/notifications/domain/message-templates.ts",
+  "date": "2026-11-25",
+  "trig": "وقتی ادمین‌ها بخواهند از ایمیل مستقیم به صف بروند",
+  "prio": "پایین",
+  "status": "موکول"
+}

@@ -1,4 +1,4 @@
-import type { FactoryProvider } from '@nestjs/common';
+import type { ExistingProvider, FactoryProvider } from '@nestjs/common';
 import { PrismaService } from '../../../../platform/persistence/prisma.service';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../../../platform/unit-of-work/unit-of-work';
 import { AccountAccessReviewers } from '../../application/access/account-access-reviewers';
@@ -8,6 +8,7 @@ import {
 } from '../../application/access/effective-keys';
 import {
   ACCESS_REVIEWERS,
+  ADMIN_KEY_HOLDERS,
   REVIEWER_CANDIDATE_READER,
   type AccessReviewers,
   type ReviewerCandidateReader,
@@ -26,7 +27,7 @@ import { PrismaReviewerCandidateReader } from './prisma-reviewer-candidate-reade
  * `EFFECTIVE_KEY_RESOLVER` over the grant read (slice 8a-1; R-3 review N-1) and the factor
  * store's active factors (slice 7; Hassan M2, L-B).
  */
-export const reviewerProviders: readonly FactoryProvider[] = [
+export const reviewerProviders: readonly (FactoryProvider | ExistingProvider)[] = [
   {
     provide: REVIEWER_CANDIDATE_READER,
     inject: [PrismaService],
@@ -51,4 +52,6 @@ export const reviewerProviders: readonly FactoryProvider[] = [
     ): AccessReviewers =>
       new AccountAccessReviewers({ unitOfWork, candidates, grants, effectiveKeys, factors }),
   },
+  // The Offer review queue backlog mail reads the holders of another key by the same rule.
+  { provide: ADMIN_KEY_HOLDERS, useExisting: ACCESS_REVIEWERS },
 ];

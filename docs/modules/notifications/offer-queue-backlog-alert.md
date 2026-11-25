@@ -20,6 +20,27 @@ Design: `design/catalog/offer-approval/offer-approval-design-fa.html`, section 9
   who work the queue: the queue admin and the manager), linking to `/review?type=offer`.
 - A queue that cannot be read raises nothing and closes nothing; the run fails and the next one retries.
 
+## E-mail (slice 8b)
+- After the unit that opened the alert row commits, the same crossing is mailed. Only the run that
+  opened the row sends, so each crossing is mailed **at most once**; the panel notice stands whatever
+  the mail does, and a mail failure never changes the alert's outcome.
+- Recipients: `IdentityFacade.offerReviewAlertRecipients` (identity use case
+  `identity.offer-review-alert-recipients`, rule `system`). identity applies the reviewer rule of
+  identity design 8.7 (`AccountAccessReviewers.holdersOf`) to the fixed key `catalog.product.approve`:
+  admin accounts of the Market that are active, have a verified e-mail and an **active second factor**,
+  and hold the key among their effective keys (the same resolver as the gate). No caller input picks the
+  key or the population. At most 50, by account id (more: an error log with the count). A failed read
+  is `access.unavailable`; the mail is then skipped with an error log. identity does not import catalog,
+  so the key is written in identity and `test/contracts/offer-review-alert-key.contract.spec.ts` checks
+  it equals `CATALOG_PRODUCT_APPROVE`.
+- Template `offer-queue-backlog-alert` (plain text, English, Market locale fallback; wording from Reza's review): a subject with the numbers per reason, the reason with the limits set in Settings, the
+  Market id, the queue size and the oldest wait in whole business hours. No seller, Offer, product or
+  person data, no link (the text names the admin page). One mail per recipient, one address each.
+- Sends run one after another, each bounded by 5 s, all by 20 s (the job's run limit is 60 s); a send
+  that times out counts as failed. Logs carry counts and codes only, never an address.
+
 ## Not in this slice
-- E-mail to the same admins: needs a recipient read in identity (who holds a key, with an active second
-  factor) and a mail template; planned as the next PR of this slice.
+- Retry of a failed backlog mail (FE-20261125-offer-queue-alert-mail-retry).
+- A link to the queue in the mail (FE-20261125-offer-queue-alert-mail-link).
+- A repeat reminder while the queue stays behind (FE-20261125-offer-queue-alert-repeat-reminder).
+- The panel notice's wait wording ("at least", "less than 1"), as the mail has it (FE-20261125-offer-queue-notice-wait-wording).

@@ -248,6 +248,17 @@ export interface IdentityFacade {
   ): Promise<Result<string | null, AccessDenied>>;
 
   /**
+   * The addresses of the Offer review queue backlog mail (slice 8b), for the `system` caller
+   * only: admins of the context's Market who hold `catalog.product.approve`, are active, have a
+   * verified email and an active second factor; at most 50, by account id. `access.unavailable`
+   * when the read fails. Personal data: each address is used for one send and never logged,
+   * stored or put in an event.
+   */
+  offerReviewAlertRecipients(
+    context: CallContext,
+  ): Promise<Result<readonly string[], AccessDenied | { readonly code: 'access.unavailable' }>>;
+
+  /**
    * The caller's own sign-in address when the caller is the Seller Owner of an approved seller,
    * its account active and its email verified; otherwise `null` (payments: Stripe requires a
    * contact email to create the payout account). Rule `own-resources`; the account is the

@@ -12,7 +12,8 @@ export type TemplateId =
   | 'item-unavailable-refund'
   | 'marketing-footer'
   | 'cart-reminder-first'
-  | 'cart-reminder-second';
+  | 'cart-reminder-second'
+  | 'offer-queue-backlog-alert';
 
 export interface TemplateText {
   /** Absent for a channel without a subject. */
@@ -158,6 +159,30 @@ const TEMPLATES: Readonly<Record<TemplateId, TemplateSet>> = {
         '',
         'View your cart (you will be asked to sign in):',
         '{cartUrl}',
+        '',
+      ),
+    },
+  },
+  // Risk-based Offer approval, slice 8b: the admins who work the Offer review queue are told it
+  // is behind. Counts only: no seller, Offer or product data, and no link (the admin opens the
+  // queue in the panel).
+  'offer-queue-backlog-alert': {
+    en: {
+      subject: 'Offer review queue is behind ({marketId}): {headline}',
+      body: lines(
+        'Offer review queue is behind',
+        '',
+        '{summary}',
+        '',
+        'Market: {marketId}',
+        'Offers waiting: {count}',
+        'Oldest Offer has waited: {hours}',
+        '',
+        'In the admin panel, open Catalogue requests and choose the Offers tab.',
+        '',
+        'You get this email because you can approve Offers in this Market.',
+        'You get one email each time the queue goes past a limit. The next one comes only after the queue is back within both limits in Settings > Catalogue > Offer review > Queue alert.',
+        'Business hours are Monday to Friday, Market time.',
         '',
       ),
     },
