@@ -38,7 +38,6 @@ import type {
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
 
-
 export interface DescriptionWriterDependencies {
   readonly unitOfWork: UnitOfWork;
   readonly counters: RateCounterRepository;

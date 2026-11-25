@@ -236,6 +236,7 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
   });
 
   it('cuts a call at the shorter timeout and counts the most it can cost', async () => {
+    const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
     provider.answer = (signal) =>
       new Promise((_resolve, reject) =>
         signal.addEventListener('abort', () => reject(new Error())),
@@ -247,8 +248,15 @@ describe('AiGateway (platform-ai.md sections 4 and 5; ADR-0019 decision 7, R3, R
     expect(run).toMatchObject({ ok: false, reason: 'timeout' });
     expect(run.costMicroUsd).toBeGreaterThan(500 * 5);
     // One log line per failed call, with the capability (the model layer logs none).
-    expect(jest.mocked(Logger.prototype.warn).mock.calls).toEqual([
-      [{ msg: 'ai.run.failed', capability: 'alpha.admin-writer', marketId: 'AU', failure: 'timeout' }],
+    expect(warn.mock.calls).toEqual([
+      [
+        {
+          msg: 'ai.run.failed',
+          capability: 'alpha.admin-writer',
+          marketId: 'AU',
+          failure: 'timeout',
+        },
+      ],
     ]);
   });
 

@@ -121,9 +121,9 @@ describe('GatewayDescriptionWriterModel on the real AiGateway (AIS-03; ADR-0019 
   it('keeps the audiences apart: a seller cannot use the admin writer, nor an admin the seller one', async () => {
     const model = modelOf();
     expect(await model.available(sellerContext(), { kind: 'admin' }, 'fast')).toBe(false);
-    expect(await model.available(adminContext(), { kind: 'seller', sellerId: SELLER }, 'fast')).toBe(
-      false,
-    );
+    expect(
+      await model.available(adminContext(), { kind: 'seller', sellerId: SELLER }, 'fast'),
+    ).toBe(false);
     expect(await model.available(adminContext(), { kind: 'admin' }, 'fast')).toBe(true);
   });
 

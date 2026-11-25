@@ -18,9 +18,10 @@ describe('FacadeSellerAiSwitch (SEL-25; ADR-0019 decision 7: an error is off)', 
     expect(await switchOf(() => Promise.resolve(ok(true))).isOn(context, SELLER)).toBe(true);
     expect(await switchOf(() => Promise.resolve(ok(false))).isOn(context, SELLER)).toBe(false);
     expect(
-      await switchOf(() =>
-        Promise.resolve(err({ code: 'sellers.unavailable' } as never)),
-      ).isOn(context, SELLER),
+      await switchOf(() => Promise.resolve(err({ code: 'sellers.unavailable' } as never))).isOn(
+        context,
+        SELLER,
+      ),
     ).toBe(false);
     expect(await switchOf(() => Promise.reject(new Error('down'))).isOn(context, SELLER)).toBe(
       false,

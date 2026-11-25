@@ -412,13 +412,15 @@ module.exports = {
       name: 'ai-capability-spec-only-from-contracts',
       comment: "A capability is declared only in its owning module's contracts/ai-capabilities.ts.",
       severity: 'error',
-      from: { pathNot: ['^src/platform/ai/', '^src/modules/[^/]+/contracts/ai-capabilities\\.ts$'] },
+      from: {
+        pathNot: ['^src/platform/ai/', '^src/modules/[^/]+/contracts/ai-capabilities\\.ts$'],
+      },
       to: { path: '^src/platform/ai/capability\\.ts$' },
     },
     {
       name: 'seller-ai-switch-only-from-sellers',
       comment:
-        "Only sellers implements the seller-switch port (SEL-25; ADR-0019 decision 7): its module " +
+        'Only sellers implements the seller-switch port (SEL-25; ADR-0019 decision 7): its module ' +
         'file and its adapter.',
       severity: 'error',
       from: {
