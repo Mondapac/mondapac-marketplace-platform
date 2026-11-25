@@ -127,6 +127,15 @@ describe('QuickEntryTable', () => {
     expect(screen.getByRole('link', { name: 'Change for Beef brisket' }).getAttribute('href')).toBe(
       '/offers/o1/edit',
     );
+    expect(screen.getByText(/New drafts copy these from your last offer\./)).toBeTruthy();
+  });
+
+  it('does not say the defaults were copied when the product has no handling yet', () => {
+    mount({ groups: [{ ...group('o3', 'Lamb chops', [row('c1', '1 kg')]), handling: null }] });
+    expect(
+      screen.getByText(/Handling: not set yet \(choose it before you submit\)\./),
+    ).toBeTruthy();
+    expect(screen.queryByText(/New drafts copy these/)).toBeNull();
   });
 
   it('saves each changed cell through the route of its own offer', async () => {

@@ -48,5 +48,5 @@ export function focusFirstPrice(
   const first = fields.find((field) => field.value.trim() === '') ?? fields[0];
   if (first === undefined) return;
   first.focus({ preventScroll: true });
-  first.scrollIntoView?.({ block: 'center' });
+  first.scrollIntoView?.({ block: 'center', inline: 'nearest' });
 }

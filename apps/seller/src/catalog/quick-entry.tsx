@@ -359,7 +359,7 @@ export function QuickEntryTable({
             ref={tableRef}
             // Relative: the hidden labels inside are clipped by the scroll, not by the page. The
             // padding keeps a focused field's ring inside the scroll box.
-            className="relative overflow-x-auto p-1"
+            className="relative scroll-p-3 overflow-x-auto p-1.5"
             role="region"
             aria-label={title}
             tabIndex={0}
@@ -506,6 +506,7 @@ export function QuickEntryTable({
                     ? t('catalog.quick-entry.handling-none')
                     : t(`catalog.offer.handling-value.${handlingKey(active.handling)}`),
               })}{' '}
+              {active.handling === null ? null : <>{t('catalog.quick-entry.defaults-copied')} </>}
               <a
                 className="font-medium text-link underline"
                 href={`/offers/${active.offerId}/edit`}
