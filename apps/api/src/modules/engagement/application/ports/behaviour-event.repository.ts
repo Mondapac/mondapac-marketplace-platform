@@ -94,6 +94,18 @@ export interface BehaviourEventRepository {
     top: number,
   ): Promise<BehaviourSummary>;
 
+  /**
+   * The distinct accounts (never a guest) with at least one event of `kind` in the Market in the
+   * range (`to` required), at most `limit`, through the (market, occurred_at) index. For the
+   * shopping funnel's counts only: the ids never leave engagement (dashboards v2, phase 2).
+   */
+  accountsWith(
+    market: MarketContext,
+    kind: 'product-viewed' | 'added-to-cart',
+    range: { readonly from: Temporal.Instant; readonly to: Temporal.Instant },
+    limit: number,
+  ): Promise<Id<'Account'>[]>;
+
   /** Deletes every event of one account in the Market; answers how many went. */
   deleteForAccount(market: MarketContext, accountId: Id<'Account'>): Promise<number>;
 

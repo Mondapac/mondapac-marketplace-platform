@@ -207,6 +207,7 @@ import { REPORTING_CHANGES_READER } from './application/ports/reporting-changes.
 import { RefundReportFactsQuery } from './application/use-cases/refund-report-facts.use-case';
 import type { ReportingChangesDependencies } from './application/reporting-changes';
 import { RefundsSucceededQuery } from './application/use-cases/refunds-succeeded.use-case';
+import { CheckoutsStartedQuery } from './application/use-cases/checkouts-started.use-case';
 import { SellerOrdersChangedQuery } from './application/use-cases/seller-orders-changed.use-case';
 import { SellerOrderReportFactsQuery } from './application/use-cases/seller-order-report-facts.use-case';
 import { OrderingReportingFacadeImplementation } from './presentation/ordering-reporting.facade';
@@ -899,7 +900,7 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         ),
     },
     // Dashboards upgrade phase 3: what reporting reads of ordering (ids and money, rule `system`).
-    ...[SellerOrdersChangedQuery, RefundsSucceededQuery].map((type) => ({
+    ...[SellerOrdersChangedQuery, RefundsSucceededQuery, CheckoutsStartedQuery].map((type) => ({
       provide: type,
       inject: [USE_CASE_GATE, UNIT_OF_WORK, REPORTING_CHANGES_READER],
       useFactory: (
@@ -915,18 +916,21 @@ function useCaseProvider<U>(type: UseCaseClass<U>): FactoryProvider<U> {
         RefundReportFactsQuery,
         SellerOrdersChangedQuery,
         RefundsSucceededQuery,
+        CheckoutsStartedQuery,
       ],
       useFactory: (
         sellerOrderFacts: SellerOrderReportFactsQuery,
         refundFacts: RefundReportFactsQuery,
         sellerOrders: SellerOrdersChangedQuery,
         refunds: RefundsSucceededQuery,
+        checkouts: CheckoutsStartedQuery,
       ) =>
         new OrderingReportingFacadeImplementation(
           sellerOrderFacts,
           refundFacts,
           sellerOrders,
           refunds,
+          checkouts,
         ),
     },
     {

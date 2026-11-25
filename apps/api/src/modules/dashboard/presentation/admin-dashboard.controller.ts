@@ -88,7 +88,11 @@ export class AdminDashboardController {
       'share of them, `not-enough-data` below 5 paid; key ' +
       '`ordering.order.view`), `ordersByState` (the same paid seller orders, cancelled ones ' +
       'included, by delivery state: biggest eight, `other`, and `unknown` for orders with no ' +
-      'state recorded; `not-enough-data` below 5 paid; key `ordering.order.view`), `finance` (GMV with and without GST, refunded goods, net sales, ' +
+      'state recorded; `not-enough-data` below 5 paid; key `ordering.order.view`), `shoppingFunnel` ' +
+      '(signed-in customers with personalization on who viewed a product, then added to the ' +
+      'cart, placed an order and paid, each within the step before: daily distinct counts ' +
+      'summed over the period, from the nightly snapshot; `not-enough-data` below 20 viewers, a ' +
+      'step under 5 is null; key `ordering.order.view`), `finance` (GMV with and without GST, refunded goods, net sales, ' +
       'average order, and `net`: Mondapac net revenue and take rate, null until a week of ' +
       'matching ledger, a partial total never carries an amount; key ' +
       '`commission-payouts.settlement.view`), and `health` (live listings and out of stock, ' +

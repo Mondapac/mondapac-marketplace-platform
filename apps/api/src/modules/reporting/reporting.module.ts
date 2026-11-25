@@ -10,6 +10,13 @@ import { PersistenceModule } from '../../platform/persistence/persistence.module
 import { registerJobsFrom } from '../../platform/scheduler/job-registry';
 import { UNIT_OF_WORK, type UnitOfWork } from '../../platform/unit-of-work/unit-of-work';
 import { CATALOG_FACADE, CatalogModule, type CatalogFacade } from '../catalog';
+import { ENGAGEMENT_FACADE, EngagementModule, type EngagementFacade } from '../engagement';
+import { ENGAGEMENT_SOURCES, type EngagementSources } from './application/ports/engagement-sources';
+import { ENGAGEMENT_STORE, type EngagementStore } from './application/ports/engagement-store';
+import { SnapshotDailyEngagement } from './application/use-cases/snapshot-daily-engagement.use-case';
+import { ViewMarketplaceShoppingFunnel } from './application/use-cases/view-marketplace-shopping-funnel.use-case';
+import { FacadeEngagementSources } from './infrastructure/facade-engagement-sources';
+import { snapshotDailyEngagementJob } from './presentation/jobs/snapshot-daily-engagement.job';
 import {
   COMMISSION_PAYOUTS_REPORTING_FACADE,
   CommissionPayoutsModule,
@@ -90,7 +97,9 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
  * numbers and their daily rollups. It reads no table of another module: the facts come from
  * ordering's reporting facade and catalog's `offerPrimaryCategories`, through the event worker
  * (ordering's order and refund events) and the nightly reconcile; the ledger facts come from
- * commission-payouts' reporting facade (its `ledger-recorded` event and the ledger backfill). No
+ * commission-payouts' reporting facade (its `ledger-recorded` event and the ledger backfill); the
+ * shopping funnel's daily counts from ordering's checkouts and engagement's count (dashboards v2,
+ * phase 2: a nightly snapshot, counts only). No
  * module imports it. It publishes no event. Its own keys are the two daily exports' (dashboards v2,
  * PR 5), each audited. The history backfill job brings the facts recorded before the module was
  * deployed in, once.
@@ -102,6 +111,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
     CatalogModule,
     ShippingModule,
     CommissionPayoutsModule,
+    EngagementModule,
   ],
   controllers: [SellerKpisController, AdminReportsController],
   providers: [
@@ -283,6 +293,45 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
       inject: [USE_CASE_GATE, LEDGER_KPI_DEPENDENCIES],
       useFactory: (gate: UseCaseGate, deps: LedgerKpiDependencies) => new type(gate, deps),
     })),
+    // The shopping funnel (dashboards v2, phase 2): the nightly snapshot and its read.
+    {
+      provide: ENGAGEMENT_SOURCES,
+      inject: [ORDERING_REPORTING_FACADE, ENGAGEMENT_FACADE],
+      useFactory: (
+        ordering: OrderingReportingFacade,
+        engagement: EngagementFacade,
+      ): EngagementSources => new FacadeEngagementSources(ordering, engagement),
+    },
+    {
+      provide: SnapshotDailyEngagement,
+      inject: [
+        USE_CASE_GATE,
+        UNIT_OF_WORK,
+        ENGAGEMENT_STORE,
+        ENGAGEMENT_SOURCES,
+        MARKET_ZONE,
+        CLOCK,
+      ],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        store: EngagementStore,
+        sources: EngagementSources,
+        zone: MarketZone,
+        clock: Clock,
+      ) => new SnapshotDailyEngagement(gate, { unitOfWork, store, sources, zone, clock }),
+    },
+    {
+      provide: ViewMarketplaceShoppingFunnel,
+      inject: [USE_CASE_GATE, UNIT_OF_WORK, ENGAGEMENT_STORE, MARKET_ZONE, CLOCK],
+      useFactory: (
+        gate: UseCaseGate,
+        unitOfWork: UnitOfWork,
+        store: EngagementStore,
+        zone: MarketZone,
+        clock: Clock,
+      ) => new ViewMarketplaceShoppingFunnel(gate, { unitOfWork, store, zone, clock }),
+    },
     {
       provide: REPORTING_KPI_FACADE,
       inject: [
@@ -294,6 +343,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         ViewSellerNetEarnings,
         ViewMarketplaceOrderStatus,
         ViewMarketplaceOrdersByState,
+        ViewMarketplaceShoppingFunnel,
         MARKET_ZONE,
         CLOCK,
       ],
@@ -306,6 +356,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
         netEarnings: ViewSellerNetEarnings,
         orderStatus: ViewMarketplaceOrderStatus,
         ordersByState: ViewMarketplaceOrdersByState,
+        shoppingFunnel: ViewMarketplaceShoppingFunnel,
         zone: MarketZone,
         clock: Clock,
       ) =>
@@ -318,6 +369,7 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
           netEarnings,
           orderStatus,
           ordersByState,
+          shoppingFunnel,
           { zone, clock },
         ),
     },
@@ -331,11 +383,17 @@ const LEDGER_KPI_DEPENDENCIES = Symbol('LEDGER_KPI_DEPENDENCIES');
     ),
     registerJobsFrom(
       'reporting',
-      [ReconcileReportFacts, BackfillHistory, BackfillLedger],
-      (reconcile: ReconcileReportFacts, backfill: BackfillHistory, ledger: BackfillLedger) => [
+      [ReconcileReportFacts, BackfillHistory, BackfillLedger, SnapshotDailyEngagement],
+      (
+        reconcile: ReconcileReportFacts,
+        backfill: BackfillHistory,
+        ledger: BackfillLedger,
+        engagement: SnapshotDailyEngagement,
+      ) => [
         reconcileReportFactsJob(reconcile),
         backfillHistoryJob(backfill),
         backfillLedgerJob(ledger),
+        snapshotDailyEngagementJob(engagement),
       ],
     ),
   ],

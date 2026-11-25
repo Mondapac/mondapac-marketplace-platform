@@ -1,4 +1,5 @@
-import type { CallContext, Id } from '@mondapac/shared-kernel';
+import type { CallContext, Id, Temporal } from '@mondapac/shared-kernel';
+import type { CheckoutsStartedQuery } from '../application/use-cases/checkouts-started.use-case';
 import type { RefundReportFactsQuery } from '../application/use-cases/refund-report-facts.use-case';
 import type { RefundsSucceededQuery } from '../application/use-cases/refunds-succeeded.use-case';
 import type { SellerOrdersChangedQuery } from '../application/use-cases/seller-orders-changed.use-case';
@@ -16,6 +17,7 @@ export class OrderingReportingFacadeImplementation implements OrderingReportingF
     private readonly refundFacts: RefundReportFactsQuery,
     private readonly sellerOrders: SellerOrdersChangedQuery,
     private readonly refunds: RefundsSucceededQuery,
+    private readonly checkouts: CheckoutsStartedQuery,
   ) {}
 
   sellerOrderReportFacts(
@@ -52,5 +54,14 @@ export class OrderingReportingFacadeImplementation implements OrderingReportingF
     },
   ) {
     return this.refunds.execute(context, request);
+  }
+
+  checkoutsStarted(
+    context: CallContext,
+    request: {
+      readonly window: { readonly from: Temporal.Instant; readonly to: Temporal.Instant };
+    },
+  ) {
+    return this.checkouts.execute(context, request);
   }
 }

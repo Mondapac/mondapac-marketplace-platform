@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-reporting-funnel-checkouts-paging",
+  "area": "infra",
+  "title": "صفحه‌بندی خواندن شروع پرداخت‌های یک روز برای قیف خرید",
+  "desc": "ordering.checkouts-started در هر روز بازار حداکثر ۵٬۰۰۰ حساب و engagement.count-shopping-funnel حداکثر ۱۰۰٬۰۰۰ حساب در هر مرحله را می‌پذیرد؛ بیشتر از آن، آن روز نوشته نمی‌شود و کار شبانه شکست می‌خورد (هرگز عدد کم ثبت نمی‌شود). در حجم بالا: صفحه‌بندی بر اساس شناسهٔ حساب و جمع شمارش مرحله‌های پرداخت روی صفحه‌ها (این دو مرحله روی بخش‌های جدا جمع‌پذیرند)، و شمارش دیدن/سبد در خود SQL بدون آوردن شناسه‌ها به حافظه.",
+  "src": "apps/api/src/modules/ordering/application/use-cases/checkouts-started.use-case.ts",
+  "date": "2026-11-25",
+  "trig": "وقتی یک بازار در یک روز به بیش از ۲٬۰۰۰ حساب با سفارش برسد یا لاگ reporting.engagement-snapshot.day-failed با too-many دیده شود",
+  "prio": "پایین",
+  "status": "موکول"
+}

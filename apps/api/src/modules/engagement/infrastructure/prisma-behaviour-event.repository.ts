@@ -172,6 +172,27 @@ export class PrismaBehaviourEventRepository implements BehaviourEventRepository 
     };
   }
 
+  async accountsWith(
+    market: MarketContext,
+    kind: 'product-viewed' | 'added-to-cart',
+    range: { readonly from: Temporal.Instant; readonly to: Temporal.Instant },
+    limit: number,
+  ): Promise<Id<'Account'>[]> {
+    // One group per account (guests have no account id and are left out); ids only.
+    const rows = await this.prisma.tx(market).engagementBehaviourEvent.groupBy({
+      by: ['accountId'],
+      where: {
+        marketId: market.marketId,
+        accountId: { not: null },
+        kind,
+        occurredAt: { gte: toDate(range.from), lt: toDate(range.to) },
+      },
+      orderBy: { accountId: 'asc' },
+      take: limit,
+    });
+    return rows.flatMap((row) => (row.accountId === null ? [] : [row.accountId as Id<'Account'>]));
+  }
+
   async deleteForAccount(market: MarketContext, accountId: Id<'Account'>): Promise<number> {
     const { count } = await this.prisma.tx(market).engagementBehaviourEvent.deleteMany({
       where: { marketId: market.marketId, accountId },
