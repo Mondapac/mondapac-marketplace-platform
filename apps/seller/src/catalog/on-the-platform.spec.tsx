@@ -26,6 +26,7 @@ const product = (n: number, over: Partial<PlatformProduct> = {}): PlatformProduc
   categoryName: 'Beef',
   variantCount: 2,
   alreadySelling: false,
+  primaryImageId: null,
   ...over,
 });
 const answer = (items: PlatformProduct[], total = items.length, notice: string | null = null) => ({
@@ -52,7 +53,7 @@ function serve(search: () => Promise<never>, create?: () => Promise<never>) {
 function mount(text = 'beef') {
   return render(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <OnThePlatform text={text} csrfToken="csrf-1" />
+      <OnThePlatform text={text} marketId="AU" csrfToken="csrf-1" />
     </NextIntlClientProvider>,
   );
 }
@@ -75,7 +76,7 @@ const sellName = (n: number) => `Sell this: Beef product ${n} by Ranch Gold, P00
 const rerenderWith = (view: ReturnType<typeof mount>, text: string) =>
   view.rerender(
     <NextIntlClientProvider locale="en-AU" messages={messages}>
-      <OnThePlatform text={text} csrfToken="csrf-1" />
+      <OnThePlatform text={text} marketId="AU" csrfToken="csrf-1" />
     </NextIntlClientProvider>,
   );
 const location = { assign: vi.fn() };
@@ -120,6 +121,20 @@ describe('On the platform', () => {
     expect(panel.getByRole('link', { name: 'Add your own product' }).getAttribute('href')).toBe(
       '/products/new',
     );
+  });
+
+  it("shows each product's thumbnail from the public image route of the panel's Market", async () => {
+    const IMAGE = '0190aaaa-0000-7000-8000-0000000000d1';
+    serve(() => ok(answer([product(1, { primaryImageId: IMAGE }), product(2)])));
+    const { container } = mount();
+    await region();
+    const images = container.querySelectorAll('section img');
+    expect(images).toHaveLength(1);
+    expect(images[0]!.getAttribute('src')).toBe(
+      `/api/catalog/public-images/AU/${product(1).productId}/${IMAGE}/thumb`,
+    );
+    // Decorative: the name beside it says what it is.
+    expect(images[0]!.getAttribute('alt')).toBe('');
   });
 
   it('names a product without a brand by its name and code', async () => {

@@ -13,6 +13,8 @@ export interface PlatformProductSearchRow {
   readonly variantCount: number;
   /** True when the seller already has a live (not deleted) Offer on the product. */
   readonly alreadySelling: boolean;
+  /** The first clean photo of the published revision (by position), else null: the thumbnail. */
+  readonly primaryImageId: Id<'ProductImage'> | null;
 }
 
 export interface PlatformProductSearchQuery {

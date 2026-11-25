@@ -25,6 +25,8 @@ export interface PlatformProduct {
   readonly categoryName: string | null;
   readonly variantCount: number;
   readonly alreadySelling: boolean;
+  /** The first clean photo of the published revision, else null (public image route). */
+  readonly primaryImageId: string | null;
 }
 
 export type BarcodeStatus = 'found' | 'already-selling' | 'not-allowed' | 'not-found' | 'invalid';

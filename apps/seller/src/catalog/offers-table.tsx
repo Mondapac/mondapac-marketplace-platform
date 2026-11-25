@@ -2,6 +2,7 @@
 
 import {
   Badge,
+  ListThumb,
   SuperTable,
   type MenuItem,
   type RowSelectionState,
@@ -12,6 +13,7 @@ import type { ReactNode } from 'react';
 import { formatInstant, known, OFFER_STATUSES } from './format.ts';
 import { OFFER_TONE } from './offer-tone.ts';
 import type { OfferColumn } from './offers-columns.ts';
+import { productThumbSrc } from './product-thumb.ts';
 import type { OfferListRow } from './types.ts';
 
 /** The name a row goes by: the published product name, else its code. */
@@ -26,6 +28,7 @@ export function offerName(offer: OfferListRow, unnamed: string): string {
  * the product and the state, and the on-sale line.
  */
 export function OffersTable({
+  marketId,
   rows,
   columns,
   selection,
@@ -33,6 +36,8 @@ export function OffersTable({
   skeletonRows,
   actions,
 }: {
+  /** The panel's Market: a platform product's thumbnail is served by its public image route. */
+  readonly marketId: string;
   readonly rows: readonly OfferListRow[];
   readonly columns: readonly OfferColumn[];
   readonly selection: RowSelectionState;
@@ -67,13 +72,27 @@ export function OffersTable({
       id: 'product',
       header: t('col.product'),
       primary: true,
+      skeleton: 'thumb',
+      headClassName: 'lg:min-w-72',
       cell: (offer) => (
-        <a
-          className="break-words font-medium text-link underline"
-          href={`/offers/${offer.offerId}`}
-        >
-          {offerName(offer, unnamed)}
-        </a>
+        <div className="flex min-w-0 items-center gap-3">
+          <ListThumb
+            src={productThumbSrc(marketId, { productId: offer.productId, ...offer.product })}
+          />
+          <div className="min-w-0">
+            <a
+              className="break-words font-medium text-link underline"
+              href={`/offers/${offer.offerId}`}
+            >
+              {offerName(offer, unnamed)}
+            </a>
+            {/* The code under the name, as in Products: the cell then fills the thumbnail's
+                height, so the name lines up with the other cells (top aligned). */}
+            {offer.product.name === null || offer.product.productCode === null ? null : (
+              <div className="break-words text-xs text-fg-muted">{offer.product.productCode}</div>
+            )}
+          </div>
+        </div>
       ),
     },
     {
