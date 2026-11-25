@@ -39,12 +39,8 @@ export class ChangeOfferReviewSettings extends UseCase<
     context: CallContext,
     input: Input,
   ): Promise<Result<readonly SettingChangeView[], SettingsFailure>> {
-    return changeSettings(
-      this.deps,
-      context,
-      OFFER_REVIEW_CODES,
-      input ?? {},
-      SETTINGS_OFFER_REVIEW_STEP_UP,
-    );
+    return changeSettings(this.deps, context, OFFER_REVIEW_CODES, input ?? {}, {
+      action: SETTINGS_OFFER_REVIEW_STEP_UP,
+    });
   }
 }

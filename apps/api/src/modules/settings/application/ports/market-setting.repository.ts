@@ -16,6 +16,8 @@ export interface MarketSettingChange {
   readonly version: number;
   readonly changedAt: Temporal.Instant;
   readonly changedBy: Id<'Account'>;
+  /** The admin's reason (1 to 500 characters, trimmed), kept on the history row; null: none. */
+  readonly note: string | null;
 }
 
 /** `settings.market_settings` and its insert-only history, scoped by the Market. */

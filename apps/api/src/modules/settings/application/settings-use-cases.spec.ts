@@ -1251,6 +1251,8 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
         true,
       );
       expect((await controls()).stopped).toBe(true);
+      // The reason is kept on the history row although the area is not reviewed (Hassan, PR 1362).
+      expect(store.history.at(-1)).toMatchObject({ value: 'on', note: 'Leak suspected' });
       expect(audit.entries.at(-1)).toMatchObject({
         action: 'settings.market-setting.changed',
         targetId: 'ai-gateway-emergency-stop',
@@ -1298,6 +1300,24 @@ describe.each([['AU'], ['ZZ']] as const)('settings store in market %s', (code) =
       await limits({ changes: [cap('ai-cap-market-day', '500', 1)] });
       expect(await revert('ai-cap-market-day', '100', '500')).toBe('reverted');
       expect((await controls()).caps.marketDay).toBe(100);
+    });
+
+    it('audits a change away from an invalid stored cap as from 0, the value in force (Hassan, PR 1362)', async () => {
+      store.rows.set(`${market.marketId}/ai-cap-seller-day`, {
+        code: 'ai-cap-seller-day',
+        value: 'lots',
+        version: 1,
+        updatedAt: T0,
+        updatedBy: ADMIN,
+      });
+      proofLeft = false;
+      expect((await limits({ changes: [cap('ai-cap-seller-day', '10', 1)] })).ok).toBe(false);
+      proofLeft = true;
+      expect((await limits({ changes: [cap('ai-cap-seller-day', '10', 1)] })).ok).toBe(true);
+      expect(audit.entries.at(-1)).toMatchObject({
+        before: { microUsd: 0 },
+        after: { microUsd: 10, version: 2 },
+      });
     });
 
     it('reads a stored value the definition does not allow as the tightest (cap 0, stop on)', async () => {

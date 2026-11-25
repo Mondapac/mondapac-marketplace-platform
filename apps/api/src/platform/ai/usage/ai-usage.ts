@@ -104,7 +104,8 @@ export class AiUsage {
     market: MarketContext,
     scope: UsageScope,
     day: Temporal.PlainDate,
-    caps: AiCaps = NO_CAPS,
+    /** Required (Hassan and Mohammad, PR 1362): a forgotten argument must never lift a cap. */
+    caps: AiCaps,
   ): BudgetLine[] {
     const lines: BudgetLine[] = [];
     if (scope.sellerId !== null) {
@@ -316,7 +317,13 @@ export class AiUsage {
         if (taken === null) return ok(null);
         const heldDelta = cost - taken.estimateMicroUsd;
         if (heldDelta !== 0 || cost !== 0) {
-          await this.store.adjust(market, this.linesOf(market, scope, day), heldDelta, cost);
+          await this.store.adjust(
+            market,
+            // `adjust` moves held and spent on the keys only and never checks a cap.
+            this.linesOf(market, scope, day, NO_CAPS),
+            heldDelta,
+            cost,
+          );
         }
         return ok(null);
       },
@@ -382,7 +389,8 @@ export class AiUsage {
             if (taken === null) return ok(false);
             await this.store.adjust(
               market,
-              this.linesOf(market, scopeOf(taken), taken.day),
+              // `adjust` never checks a cap.
+              this.linesOf(market, scopeOf(taken), taken.day, NO_CAPS),
               0,
               taken.estimateMicroUsd,
             );

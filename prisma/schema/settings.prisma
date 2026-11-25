@@ -30,6 +30,9 @@ model SettingsMarketSettingHistory {
   value              String
   changedAt          DateTime @map("changed_at") @db.Timestamptz(6)
   changedByAccountId String   @map("changed_by_account_id") @db.Uuid
+  /// The admin's reason, 1 to 500 characters, when the change carried one (always for an
+  /// emergency stop); kept whether or not the area is reviewed. CHECK in the migration.
+  note               String?
 
   @@id([marketId, code, version])
   @@map("market_setting_history")

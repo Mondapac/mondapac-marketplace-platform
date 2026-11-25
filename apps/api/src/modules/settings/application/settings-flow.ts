@@ -80,8 +80,13 @@ function changeEntry(
     });
   }
   if (AI_CAP_CODES.includes(definition.code)) {
+    // A stored value outside the definition is enforced as the safe value (0): audit that, and log
+    // it, so a change away from it reads as the loosening it is (Hassan, PR 1362 finding 2).
+    const inForce = acceptedValue(definition, was);
+    if (inForce === null)
+      logger.error({ msg: 'settings.stored-value-invalid', code: definition.code });
     return AiCapChanged.entry(definition.code as (typeof AI_CAP_TARGET_IDS)[number], {
-      before: { microUsd: capOf(was) },
+      before: { microUsd: capOf(inForce ?? definition.safeValue) },
       after: { microUsd: capOf(next), version },
     });
   }
@@ -104,6 +109,12 @@ function changeEntry(
     before: { value: was as ChoiceValue },
     after: { value: next as ChoiceValue, version },
   });
+}
+
+/** A note as the history keeps it: trimmed, 1 to 500 characters, else none. */
+function noteOf(note: unknown): string | null {
+  const text = typeof note === 'string' ? note.trim() : '';
+  return text.length === 0 || text.length > 500 ? null : text;
 }
 
 export interface FieldIssue {
@@ -324,6 +335,7 @@ async function applyChecked(
     version,
     changedAt: now,
     changedBy: adminId,
+    note: noteOf(note),
   });
   if (!applied) return err({ code: 'settings.conflict' });
   await deps.audit.record(context, changeEntry(definition, was, next, version));
@@ -384,7 +396,7 @@ export async function changeSettings(
    * The admin step-up action whose fresh proof the change spends in its unit, if any; with `when`,
    * only when one of the changes meets it (the value in force and the value asked for).
    */
-  stepUpAction?: string | ConditionalStepUp,
+  stepUp?: StepUpRule,
 ): Promise<Result<readonly SettingChangeView[], SettingsFailure>> {
   const adminId = adminAccountId(context);
   if (adminId === null) return err({ code: 'access.denied' });
@@ -419,19 +431,18 @@ export async function changeSettings(
     context.market,
     async () => {
       // Every version first, so a stale one saves nothing (the unit also rolls back on an error).
-      let stepUpNeeded = typeof stepUpAction === 'string';
+      let stepUpNeeded = stepUp !== undefined && stepUp.when === undefined;
       for (const { definition, seen, next } of checkedChanges) {
         const row = await deps.settings.find(context.market, definition.code);
         if ((row?.version ?? 0) !== seen) return err({ code: 'settings.conflict' as const });
         const was = row?.value ?? definition.defaultValue;
-        if (typeof stepUpAction === 'object' && stepUpAction.when(definition.code, was, next)) {
+        if (stepUp?.when?.(definition.code, was, next) === true) {
           stepUpNeeded = true;
         }
       }
       // The proof is spent only for a change that would be saved; a refusal commits nothing.
-      if (stepUpAction !== undefined && stepUpNeeded) {
-        const action = typeof stepUpAction === 'string' ? stepUpAction : stepUpAction.action;
-        const spent = await deps.stepUp.consume(context, action);
+      if (stepUp !== undefined && stepUpNeeded) {
+        const spent = await deps.stepUp.consume(context, stepUp.action);
         if (!spent.ok) return err(stepUpFailure(spent.error));
       }
       const views: SettingChangeView[] = [];
@@ -453,11 +464,14 @@ export async function changeSettings(
   );
 }
 
-/** A step-up asked only for some changes (for example raising an AI cap, never lowering one). */
-export interface ConditionalStepUp {
+/** The admin step-up a change spends; with `when`, only for the changes it holds for. */
+export interface StepUpRule {
   readonly action: string;
-  /** Whether changing `code` from the value in force (`was`) to `next` needs the proof. */
-  readonly when: (code: string, was: string, next: string) => boolean;
+  /**
+   * Whether changing `code` from the stored value (`was`) to `next` needs the proof (for example
+   * raising an AI cap, never lowering one). Absent: every change needs it.
+   */
+  readonly when?: (code: string, was: string, next: string) => boolean;
 }
 
 /** identity's refusal of the step-up, as a settings change answers it; anything else stays closed. */
@@ -512,6 +526,7 @@ export async function revertSetting(
     version,
     changedAt: now,
     changedBy: adminId,
+    note: null,
   });
   if (!applied) return 'changed-since';
   await deps.audit.record(context, changeEntry(definition, current, restore, version));

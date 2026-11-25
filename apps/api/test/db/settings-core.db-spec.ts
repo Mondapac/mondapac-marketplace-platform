@@ -47,6 +47,10 @@ import {
   TEST_MARKETS,
 } from '../support/test-config';
 import { createPersistence, marketOf, type Persistence } from './persistence-support';
+import { ChangeAiGatewayEmergencyStop } from '../../src/modules/settings/application/use-cases/change-ai-gateway-emergency-stop.use-case';
+import { ChangeAiGatewayLimits } from '../../src/modules/settings/application/use-cases/change-ai-gateway-limits.use-case';
+import { SettingsAiGatewayControls } from '../../src/modules/settings/application/ai-gateway-controls-reader';
+import { NO_CAPS } from '../../src/platform/ai/gateway-controls';
 import { ownerTestDatabaseUrl, testDatabaseUrl } from './test-database';
 
 // The settings store as the application role in both Market fixtures: the tables' own guards (the
@@ -247,6 +251,39 @@ describe.each(TEST_MARKETS)('settings in market %s (database)', (code) => {
         previous_value: null,
         value: 'prev-next',
       });
+    });
+
+    it('keeps the AI stop reason on the history row, unreviewed, and the gateway reader sees the stop and caps (G4a)', async () => {
+      const ctx = admin('settings-db-admin-ai');
+      const stopped = await new ChangeAiGatewayEmergencyStop(gate, deps).execute(ctx, {
+        value: 'on',
+        expectedVersion: 0,
+        note: '  Leak suspected  ',
+      });
+      expect(stopped.ok).toBe(true);
+      const capped = await new ChangeAiGatewayLimits(gate, deps).execute(ctx, {
+        changes: [{ code: 'ai-cap-guest-day', value: '250', expectedVersion: 0 }],
+      });
+      expect(capped.ok).toBe(true);
+      const history = await owner.query(
+        `SELECT code, value, note FROM settings.market_setting_history
+          WHERE market_id = $1 AND code IN ('ai-gateway-emergency-stop', 'ai-cap-guest-day')
+          ORDER BY code`,
+        [market.marketId],
+      );
+      expect(history.rows).toEqual([
+        { code: 'ai-cap-guest-day', value: '250', note: null },
+        { code: 'ai-gateway-emergency-stop', value: 'on', note: 'Leak suspected' },
+      ]);
+      const controls = await new SettingsAiGatewayControls(deps).read(seller);
+      expect(controls).toEqual({ stopped: true, caps: { ...NO_CAPS, guestDay: 250 } });
+      expect(
+        await code_(
+          owner.query(`UPDATE settings.market_setting_history SET note = '' WHERE market_id = $1`, [
+            market.marketId,
+          ]),
+        ),
+      ).not.toBe('allowed');
     });
 
     it('lets only one of two admins who saved from the same version win', async () => {

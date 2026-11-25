@@ -2207,7 +2207,6 @@ const marketSchema = z
     certification: certificationSchema.optional(),
     /** Owned by `shipping`: the real-time carrier (SHP-02/03). Absent: sellers ship themselves. */
     shipping: shippingSchema.optional(),
-    /** Read by `platform/ai`: the AI budget caps. Absent: every call is counted, none is capped. */
     /** Read by `platform/ai`: residency and saver model. Absent: no route is usable (AI off). */
     aiRouting: aiRoutingSchema.optional(),
   })
