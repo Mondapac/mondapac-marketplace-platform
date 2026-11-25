@@ -1,0 +1,20 @@
+// The Cost models of pricing: reserved to modules/pricing/infrastructure/cost/ (pricing design
+// 6.5; H-D1). A price model of the same module is not reserved.
+
+model PricingCostSeries {
+  id       String @id @db.Uuid
+  marketId String @map("market_id")
+  tenantId String @map("tenant_id")
+
+  @@map("cost_series")
+  @@schema("pricing")
+}
+
+model PricingPriceSeries {
+  id       String @id @db.Uuid
+  marketId String @map("market_id")
+  tenantId String @map("tenant_id")
+
+  @@map("price_series")
+  @@schema("pricing")
+}

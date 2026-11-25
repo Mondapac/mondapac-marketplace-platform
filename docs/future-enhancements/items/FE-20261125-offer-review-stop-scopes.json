@@ -1,0 +1,11 @@
+{
+  "id": "FE-20261125-offer-review-stop-scopes",
+  "area": "catalog",
+  "title": "توقف اضطراری برای یک دسته یا یک فروشنده",
+  "desc": "توقف اضطراری امروز برای کل Market است. دامنهٔ یک یا چند دسته و یک فروشنده (همان R6) در طرح ۹٫۵ ب آمده و هنوز ساخته نشده است.",
+  "src": "apps/api/src/modules/catalog/infrastructure/facade-offer-review-inputs.ts (برش ۲ب)",
+  "date": "2026-11-25",
+  "trig": "پس از برش ۴ (پرچم بازبینی کامل فروشنده)",
+  "prio": "متوسط",
+  "status": "موکول"
+}

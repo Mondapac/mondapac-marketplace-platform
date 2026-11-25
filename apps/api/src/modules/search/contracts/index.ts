@@ -15,3 +15,4 @@ export {
   type LiveListingCounts,
   type SearchSupplyFacade,
 } from './search-supply.facade';
+export { SEARCH_REPORTING_FACADE, type SearchReportingFacade } from './search-reporting.facade';

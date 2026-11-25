@@ -3,6 +3,7 @@ import { UseCase, type AccessDeclaration, type UseCaseGate } from '../../../../p
 import { SETTINGS_OFFER_REVIEW_MANAGE } from '../../contracts/permissions';
 import { OFFER_REVIEW_CODES } from '../../domain/definitions';
 import type { SettingsDependencies } from '../settings-dependencies';
+import { SETTINGS_OFFER_REVIEW_STEP_UP } from '../../contracts/step-up';
 import { changeSettings, type SettingChangeView, type SettingsFailure } from '../settings-flow';
 
 interface Input {
@@ -38,6 +39,12 @@ export class ChangeOfferReviewSettings extends UseCase<
     context: CallContext,
     input: Input,
   ): Promise<Result<readonly SettingChangeView[], SettingsFailure>> {
-    return changeSettings(this.deps, context, OFFER_REVIEW_CODES, input ?? {});
+    return changeSettings(
+      this.deps,
+      context,
+      OFFER_REVIEW_CODES,
+      input ?? {},
+      SETTINGS_OFFER_REVIEW_STEP_UP,
+    );
   }
 }

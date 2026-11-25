@@ -1,4 +1,6 @@
 import { CertificationModule } from '../certification';
+import { registerCapabilities } from '../../platform/ai/capability-registry';
+import { CATALOG_AI_CAPABILITIES } from './contracts/ai-capabilities';
 import { CountClaimsWithoutCertificate } from './application/use-cases/count-claims-without-certificate.use-case';
 import { CountPendingOffers } from './application/use-cases/count-pending-offers.use-case';
 import { CountPendingRevisions } from './application/use-cases/count-pending-revisions.use-case';
@@ -65,6 +67,7 @@ import {
 } from '../../platform/authz';
 import { registerAuditActions } from '../../platform/audit/audit-action-catalogue';
 import { AUDIT_WRITER } from '../../platform/audit/audit-writer';
+import { OFFER_REVIEW_INPUTS, OFFER_REVIEW_REFERRAL_STORE } from './application/ports/offer-review';
 import { CLOCK } from '../../platform/clock/clock.module';
 import { registerEvents } from '../../platform/events/event-catalogue';
 import { OUTBOX_WRITER } from '../../platform/events/outbox-writer';
@@ -391,6 +394,8 @@ import { OwnTopicController } from './presentation/own-topic.controller';
 import { OwnTopicList } from './application/use-cases/own-topic-list.use-case';
 import { OwnProductCreate } from './application/use-cases/own-product-create.use-case';
 import { OwnCategoryPicker } from './application/use-cases/own-category-picker.use-case';
+import { OwnPlatformProductSearch } from './application/use-cases/own-platform-product-search.use-case';
+import { PLATFORM_PRODUCT_SEARCH_READER } from './application/ports/platform-product-search.reader';
 import { SellerCategoryScope } from './application/business-activities/allowed-category-ids';
 import { SELLER_ACTIVITY_READER } from './application/ports/seller-activity.reader';
 import { PlatformCategoryPicker } from './application/use-cases/platform-category-picker.use-case';
@@ -662,6 +667,8 @@ const PORT = {
   counters: RATE_COUNTER_REPOSITORY,
   counterKeys: RATE_COUNTER_KEYS,
   policy: CATALOG_MARKET_POLICY,
+  reviewInputs: OFFER_REVIEW_INPUTS,
+  referrals: OFFER_REVIEW_REFERRAL_STORE,
   matcher: CLAIM_TEXT_MATCHER,
   check: CheckClaimText,
   save: SaveWorkingCopy,
@@ -673,6 +680,7 @@ const PORT = {
   addSizes: AddSizes,
   reader: OFFER_SELL_UNITS_READER,
   searchReader: OFFER_SEARCH_FACTS_READER,
+  platformSearchReader: PLATFORM_PRODUCT_SEARCH_READER,
   filterReader: SEARCH_FILTER_READER,
   namesReader: OFFER_NAMES_READER,
   labelsReader: SELL_UNIT_LABELS_READER,
@@ -1187,6 +1195,7 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     },
     // Pushes its catalogue into the permission registry (identity slice 8a-1, PF 6.1).
     registerPermissions('catalog', CATALOG_PERMISSIONS),
+    registerCapabilities('catalog', CATALOG_AI_CAPABILITIES),
     registerStepUpActions('catalog', CATALOG_STEP_UP_ACTIONS),
     ...catalogProviders,
     serviceProvider(CheckClaimText, {
@@ -2350,7 +2359,9 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
       eligibility: true,
       allowedTypes: true,
       check: true,
-      policy: true,
+      reviewInputs: true,
+      referrals: true,
+      audit: true,
       outbox: true,
       claims: true,
       evaluator: true,
@@ -3158,6 +3169,12 @@ export const CATALOGUE_APPLIER_PERMISSIONS: ReadonlyMap<string, readonly string[
     useCaseProvider(OwnCategoryPicker, {
       unitOfWork: true,
       adminCategoryReader: true,
+      policy: true,
+      sellerCategories: true,
+    }),
+    useCaseProvider(OwnPlatformProductSearch, {
+      unitOfWork: true,
+      platformSearchReader: true,
       policy: true,
       sellerCategories: true,
     }),

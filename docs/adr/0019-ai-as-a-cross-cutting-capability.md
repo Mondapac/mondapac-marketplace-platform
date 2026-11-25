@@ -9,6 +9,8 @@ rows added), ADR-0018 decision 7 (scope of the penetration test), `CLAUDE.md` (A
 AI rules, team rules, Definition of Done), `docs/features/06-storefront-admin-platform.md`
 section 5 and `docs/features/00-INDEX.md` sections 3 to 5 (codes and priority of AI;
 applied by a follow-up PR)
+**Amended by:** ADR-0052 (2026-11-25: "ADR 3", providers, routes and regions) and ADR-0053
+(2026-11-25: model choice in the admin panel, R7; a chat window in the seller panel, decision 2)
 **Relates to:** ADR-0001 decision 5, ADR-0002 decision 1, ADR-0003 decision 5, ADR-0004
 decision 1, ADR-0006 decisions 1 and 4, ADR-0009 decisions 1 and 6, ADR-0010 decision 3,
 ADR-0012 decision 5, ADR-0015 decisions 1, 2 and 4, ADR-0016 decision 3, ADR-0017,
@@ -41,6 +43,12 @@ names a vertical, a country or a provider.
 2. **Shape** (owner decision 3). In the admin and seller panels AI is embedded in forms
    and pages; there is no chat window. Conversation exists only for the buyer, and its
    shape is decided with the storefront design. New panel UI follows ADR-0017.
+   *(Amended by ADR-0053 decision 7, 2026-11-25, owner decision Q2 in the AI Gateway design
+   (`docs/design/domain/platform-ai.md` section 13): the seller panel may also have a chat
+   window (the seller assistant's side panel). The admin panel still has none; an admin
+   assistant needs a design of its own (FE-235). Every other rule of this ADR applies to the
+   seller chat unchanged, R3 and R9 in particular: tools only under the seller's own session,
+   none in an acting-as session.)*
 3. **External AI services and data** (owner decision 4). Two conditions are the floor for
    everything sent to a model: a contract with no retention and no training, and
    processing that satisfies the data-residency requirement of the Market. The owner's
@@ -101,7 +109,9 @@ names a vertical, a country or a provider.
    - **R7 — Core names no AI provider.** A model is called only through `platform/ai`; CI
      fails an import of a provider SDK anywhere else. Provider, model and processing
      region come from the Market's configuration (ADR-0003 decision 5); there is no
-     default provider, and "none" is a valid value.
+     default provider, and "none" is a valid value. *(Amended by ADR-0053: a senior admin
+     chooses models per Market in the panel, only among the approved routes of the
+     ADR-0052 catalogue; providers, routes, regions and prices stay code.)*
    - **R8 — Every capability can be switched off, and no main flow needs AI.** With a
      capability off for the Market or the seller (decision 7), the provider failing or
      timing out, or the budget exhausted, the host flow completes on its non-AI path. An
@@ -221,6 +231,8 @@ names a vertical, a country or a provider.
       and conversation data.
     - ADR 3, before the first model call: provider, model, processing region and the
       Market's residency value, allowed data categories, contract, dependencies, cost cap.
+      *(Closed by ADR-0052, 2026-11-25. The `platform/ai` design item is closed by
+      `docs/design/domain/platform-ai.md`.)*
     - Module briefs: the guard's vocabulary needs a field on CERT-01 (`certification`).
       The feature documents state the refusal of claim text only for PLATFORM content
       (CAT-41); its form for SELLER content is a `catalog` rule, confirmed at that

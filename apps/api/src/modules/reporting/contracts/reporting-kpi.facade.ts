@@ -20,6 +20,9 @@ import type { SellerNetEarningsAnswer } from '../application/use-cases/view-sell
 import type { OrdersByStateAnswer } from '../application/use-cases/view-marketplace-orders-by-state.use-case';
 import type { ShoppingFunnelAnswer } from '../application/use-cases/view-marketplace-shopping-funnel.use-case';
 import type { MarketplaceReviewsAnswer } from '../application/use-cases/view-marketplace-reviews.use-case';
+import type { ZeroResultSearchesAnswer } from '../application/use-cases/view-marketplace-zero-result-searches.use-case';
+import type { DiscountCostAnswer } from '../application/use-cases/view-marketplace-discount-cost.use-case';
+import type { AbandonedCartsAnswer } from '../application/use-cases/view-marketplace-abandoned-carts.use-case';
 import type { OrderStatusAnswer } from '../application/use-cases/view-marketplace-order-status.use-case';
 import type { MonthlyTargetAnswer } from '../application/use-cases/view-marketplace-monthly-target.use-case';
 import type { FinanceNet } from '../application/use-cases/view-marketplace-finance-kpis.use-case';
@@ -84,7 +87,13 @@ export type {
   ShoppingFunnelAnswer,
 };
 export type { MarketReviews } from '../domain/reviews';
+export type { ZeroResultSearchesAnswer };
+export type { ZeroResultQuery, ZeroResultSearches } from '../domain/zero-result-searches';
 export type { FunnelStep, ShoppingFunnel } from '../domain/engagement';
+export type { DiscountCostAnswer };
+export type { AbandonedCartsAnswer };
+export type { AbandonedCarts } from '../domain/abandoned-carts';
+export type { DiscountCost, DiscountKind, DiscountKindCost } from '../domain/discount-cost';
 export type { CalendarMonth, MonthEndForecast, MonthForecast } from '../domain/month-forecast';
 export { MIN_FORECAST_DAYS } from '../domain/month-forecast';
 export type { OrdersByState, StateShare } from '../domain/orders-by-state';
@@ -168,6 +177,41 @@ export interface ReportingKpiFacade {
    * `reviews.settings.view`, platform admin only.
    */
   marketplaceReviews(context: CallContext): Promise<Result<MarketplaceReviewsAnswer, KpiFailure>>;
+
+  /**
+   * The top ten texts the storefront search found nothing for in the period (dashboards v2, phase
+   * 2), from the nightly rows: each a text at least ten distinct signed-in customers searched on a
+   * day it found nothing, with its searches summed over those days. `not-enough-data` when none
+   * qualifies. Texts and counts only, never a person: key `catalog.product.view`, platform admin
+   * only.
+   */
+  marketplaceZeroResultSearches(
+    context: CallContext,
+    input: KpiPeriodInput,
+  ): Promise<Result<ZeroResultSearchesAnswer, KpiFailure>>;
+
+  /**
+   * The discount cost of the period against the period before (dashboards v2, phase 2): the
+   * discounts of the orders paid in its Market days that still stand, Mondapac's and the sellers'
+   * shares, by kind, and what those orders gave back since; read from promotions, nothing stored.
+   * `not-enough-data` below five discounted orders. Keys `commission-payouts.settlement.view` and
+   * `promotions.promotion.manage`, platform admin only.
+   */
+  marketplaceDiscountCost(
+    context: CallContext,
+    input: KpiPeriodInput,
+  ): Promise<Result<DiscountCostAnswer, KpiFailure>>;
+
+  /**
+   * Abandoned carts (dashboards v2, phase 2) on the period's latest nightly snapshot day against
+   * the latest day of the period before: active carts with lines, no order mark and no change for
+   * 24 hours at the day's end, and their approximate value (prices when added). `not-enough-data`
+   * below five carts. Counts only: key `ordering.order.view`, platform admin only.
+   */
+  marketplaceAbandonedCarts(
+    context: CallContext,
+    input: KpiPeriodInput,
+  ): Promise<Result<AbandonedCartsAnswer, KpiFailure>>;
 
   /** The five sellers with the most goods sold in the period (money: the finance key). */
   marketplaceTopSellers(

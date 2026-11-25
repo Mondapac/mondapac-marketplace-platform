@@ -1,3 +1,4 @@
+import type { OfferReviewEmergencyStopView } from '../application/use-cases/view-offer-review-emergency-stop.use-case';
 import { ApiProperty } from '@nestjs/swagger';
 import type { ListPaging } from '../domain/definitions';
 import {
@@ -150,6 +151,30 @@ export class ChangeOfferReviewRequest {
   })
   note?: string;
 }
+
+export class ChangeEmergencyStopRequest {
+  @ApiProperty({ enum: ['on', 'off'] }) value!: string;
+  @ApiProperty({ description: 'The version the admin saw; 0 while the default is in force.' })
+  expectedVersion!: number;
+  @ApiProperty({ description: 'Why, 1 to 500 characters; always required.' })
+  note!: string;
+}
+
+export class EmergencyStopBody {
+  @ApiProperty() on!: boolean;
+  @ApiProperty() version!: number;
+  @ApiProperty({ type: String, nullable: true, description: 'ISO instant of the last switch.' })
+  changedAt!: string | null;
+  @ApiProperty({ type: String, nullable: true, description: 'Display name of who switched it.' })
+  changedBy!: string | null;
+}
+
+export const emergencyStopBody = (view: OfferReviewEmergencyStopView): EmergencyStopBody => ({
+  on: view.on,
+  version: view.version,
+  changedAt: view.changedAt === null ? null : view.changedAt.toString(),
+  changedBy: view.changedBy,
+});
 
 export class SettingsChangeListBody {
   @ApiProperty({ type: [SettingChangeBody] }) settings!: SettingChangeBody[];

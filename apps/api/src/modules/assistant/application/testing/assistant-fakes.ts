@@ -53,10 +53,12 @@ export class FakeRuntime implements AssistantRuntime {
   modelOf(_marketId: MarketId, tier: ModelTier) {
     return this.models[tier];
   }
-  configured(marketId: MarketId, tier: ModelTier) {
-    return this.key && this.priced && this.modelOf(marketId, tier) !== null;
+  available(context: CallContext, tier: ModelTier) {
+    return Promise.resolve(
+      this.key && this.priced && this.modelOf(context.market.marketId, tier) !== null,
+    );
   }
-  complete(_marketId: MarketId, _tier: ModelTier, request: ModelRequest): Promise<ModelAnswer> {
+  complete(_context: CallContext, _tier: ModelTier, request: ModelRequest): Promise<ModelAnswer> {
     this.requests.push(structuredClone(request));
     const next = this.script.shift();
     if (next === undefined) return Promise.resolve(answer({ text: 'How can I help?' }));

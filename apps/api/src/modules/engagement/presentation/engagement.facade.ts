@@ -7,9 +7,11 @@ import type { FollowsOfAccount } from '../application/use-cases/follows-of-accou
 import type { OwnFollowedAmong } from '../application/use-cases/own-followed-among.use-case';
 import type { FollowStore } from '../application/use-cases/follow-store.use-case';
 import type { CountShoppingFunnel } from '../application/use-cases/count-shopping-funnel.use-case';
+import type { CountSearchShoppers } from '../application/use-cases/count-search-shoppers.use-case';
 import type {
   EngagementFacade,
   RecentViewsRequest,
+  SearchShoppersRequest,
   ShoppingFunnelRequest,
 } from '../contracts/engagement.facade';
 
@@ -23,6 +25,7 @@ export interface EngagementFacadeUseCases {
   readonly followsOfAccount: FollowsOfAccount;
   readonly followStore: FollowStore;
   readonly shoppingFunnel: CountShoppingFunnel;
+  readonly searchShoppers: CountSearchShoppers;
 }
 
 /**
@@ -67,5 +70,9 @@ export class EngagementFacadeImplementation implements EngagementFacade {
 
   shoppingFunnel(context: CallContext, request: ShoppingFunnelRequest) {
     return this.useCases.shoppingFunnel.execute(context, request);
+  }
+
+  searchShoppers(context: CallContext, request: SearchShoppersRequest) {
+    return this.useCases.searchShoppers.execute(context, request);
   }
 }

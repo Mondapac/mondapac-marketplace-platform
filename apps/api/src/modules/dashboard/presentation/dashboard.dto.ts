@@ -506,6 +506,144 @@ export class ShoppingFunnelSectionBody {
   @ApiProperty({ required: false, type: ShoppingFunnelKpiBody }) kpis?: ShoppingFunnelKpiBody;
 }
 
+export class ZeroResultQueryBody {
+  @ApiProperty({
+    description:
+      'The text as searched, folded (lower case, white space collapsed, at most 50 characters). ' +
+      'Data, never markup: render it as a plain text node, never HTML and never a link.',
+  })
+  query!: string;
+  @ApiProperty({
+    description:
+      'All searches of the text by signed-in customers with personalization on, on each kept day ' +
+      'of the period (a day it found nothing at least once and ten or more customers searched ' +
+      'it), including that day’s searches of it that did find something.',
+  })
+  searches!: number;
+  @ApiProperty({
+    description:
+      "Each kept day's distinct signed-in customers who searched it, summed (one who searched on " +
+      'two days counts twice); at least 10 per day.',
+  })
+  searcherDays!: number;
+  @ApiProperty({ description: 'The days of the period it was kept for.' }) days!: number;
+}
+
+export class ZeroResultSearchesKpiBody {
+  @ApiProperty({
+    enum: ['available', 'not-enough-data'],
+    description:
+      '`not-enough-data`: no text was searched by at least `minimumSearchers` distinct ' +
+      'customers on a day of the period it found nothing; show no query.',
+  })
+  status!: string;
+  @ApiProperty({ required: false, type: Number, description: 'Only when not-enough-data.' })
+  minimumSearchers?: number;
+  @ApiProperty({
+    required: false,
+    type: [ZeroResultQueryBody],
+    description: 'At most 10, most searches first, then by text. Only when available.',
+  })
+  queries?: ZeroResultQueryBody[];
+  @ApiProperty({
+    description: 'Days of the period with a nightly snapshot (today has none until tomorrow).',
+  })
+  recordedDays!: number;
+  @ApiProperty() periodDays!: number;
+}
+
+export class ZeroResultSearchesSectionBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: ZeroResultSearchesKpiBody })
+  kpis?: ZeroResultSearchesKpiBody;
+}
+
+export class DiscountKindCostBody {
+  @ApiProperty({ enum: ['promotion', 'first-order', 'free-shipping'] }) kind!: string;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Redemptions (an order may use several promotions). Null: 1 to 4 uses, every figure of ' +
+      'the kind held back; show "fewer than 5", never 0.',
+  })
+  uses!: number | null;
+  @ApiProperty({ type: MoneyBody, nullable: true }) amount!: MoneyBody | null;
+  @ApiProperty({ type: MoneyBody, nullable: true, description: 'What Mondapac funded of it.' })
+  platformShare!: MoneyBody | null;
+  @ApiProperty({
+    type: Number,
+    nullable: true,
+    description:
+      'Share of the whole discount, basis points; the kinds add up to 10000. Null when the ' +
+      'whole is 0 or the kind is held back.',
+  })
+  shareBp!: number | null;
+}
+
+export class DiscountReleasedBody {
+  @ApiProperty({ description: 'Orders of the period refunded or cancelled after payment.' })
+  orders!: number;
+  @ApiProperty({ type: MoneyBody, description: 'The discount they gave back (not in `amount`).' })
+  amount!: MoneyBody;
+}
+
+export class DiscountCostKpiBody {
+  @ApiProperty({
+    enum: ['available', 'not-enough-data'],
+    description: '`not-enough-data`: fewer than `minimum` discounted orders; show no amounts.',
+  })
+  status!: string;
+  @ApiProperty({
+    description: 'Orders paid in the period with at least one discount that still stands.',
+  })
+  orders!: number;
+  @ApiProperty({ required: false, type: Number, description: 'Only when not-enough-data.' })
+  minimum?: number;
+  @ApiProperty({
+    required: false,
+    type: MoneyBody,
+    description: 'The discounts that still stand, with GST; only when available.',
+  })
+  amount?: MoneyBody;
+  @ApiProperty({ required: false, type: MoneyBody, description: 'Mondapac funded.' })
+  platformShare?: MoneyBody;
+  @ApiProperty({ required: false, type: MoneyBody, description: 'Sellers funded.' })
+  sellerShare?: MoneyBody;
+  @ApiProperty({
+    required: false,
+    type: Number,
+    nullable: true,
+    description: 'platformShare ÷ amount, basis points.',
+  })
+  platformShareBp?: number | null;
+  @ApiProperty({
+    required: false,
+    type: DeltaBody,
+    description: '`amount` against the period before.',
+  })
+  change?: DeltaBody;
+  @ApiProperty({ required: false, type: MoneyBody }) previousAmount?: MoneyBody;
+  @ApiProperty({
+    required: false,
+    type: [DiscountKindCostBody],
+    description: 'Every kind, zeros included.',
+  })
+  byKind?: DiscountKindCostBody[];
+  @ApiProperty({
+    required: false,
+    type: DiscountReleasedBody,
+    nullable: true,
+    description: 'Null when 1 to 4 orders gave a discount back (held back).',
+  })
+  released?: DiscountReleasedBody | null;
+}
+
+export class DiscountCostSectionBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: DiscountCostKpiBody }) kpis?: DiscountCostKpiBody;
+}
+
 export class ReviewsKpiBody {
   @ApiProperty({
     enum: ['available', 'not-enough-data', 'off'],
@@ -567,6 +705,59 @@ export class ReviewsSectionBody {
     current: { from: string; to: string };
     previous: { from: string; to: string };
   };
+}
+
+export class AbandonedCartsKpiBody {
+  @ApiProperty({
+    enum: ['available', 'not-enough-data'],
+    description:
+      '`not-enough-data`: no nightly snapshot in the period, or fewer than `minimum` carts on its ' +
+      'latest day; show no count and no value.',
+  })
+  status!: string;
+  @ApiProperty({ required: false, type: Number, description: 'Only when not-enough-data.' })
+  minimum?: number;
+  @ApiProperty({
+    required: false,
+    type: Number,
+    description:
+      'Active carts (guest or signed-in) with lines, not left by a paid order, untouched for at ' +
+      'least 24 hours at the end of `asOfDay`. A level, not a sum over the period.',
+  })
+  carts?: number;
+  @ApiProperty({
+    required: false,
+    type: MoneyBody,
+    nullable: true,
+    description:
+      'Approximate: the lines at the price when each was added or last changed, not the price ' +
+      'now ("about"). Null when a line was in another currency.',
+  })
+  approximateValue?: MoneyBody | null;
+  @ApiProperty({
+    required: false,
+    type: String,
+    format: 'date',
+    description: 'The latest Market day of the period with a snapshot.',
+  })
+  asOfDay?: string;
+  @ApiProperty({
+    required: false,
+    type: DeltaBody,
+    description:
+      'The count against the latest snapshot day of the period before; `na` below 5 carts there.',
+  })
+  change?: DeltaBody;
+  @ApiProperty({
+    description: 'Days of the period with a nightly snapshot (today has none until tomorrow).',
+  })
+  recordedDays!: number;
+  @ApiProperty() periodDays!: number;
+}
+
+export class AbandonedCartsSectionBody {
+  @ApiProperty({ enum: ['ok', 'error'] }) status!: string;
+  @ApiProperty({ required: false, type: AbandonedCartsKpiBody }) kpis?: AbandonedCartsKpiBody;
 }
 
 export class TopSellerBody {
@@ -747,6 +938,26 @@ export class AdminKpisBody {
   })
   shoppingFunnel!: ShoppingFunnelSectionBody | null;
   @ApiProperty({
+    type: ZeroResultSearchesSectionBody,
+    nullable: true,
+    description: 'Null without `catalog.product.view`: leave the card out.',
+  })
+  zeroResultSearches!: ZeroResultSearchesSectionBody | null;
+  @ApiProperty({
+    type: DiscountCostSectionBody,
+    nullable: true,
+    description:
+      'Null without both `commission-payouts.settlement.view` and `promotions.promotion.manage`: ' +
+      'leave the card out.',
+  })
+  discountCost!: DiscountCostSectionBody | null;
+  @ApiProperty({
+    type: AbandonedCartsSectionBody,
+    nullable: true,
+    description: 'Null without `ordering.order.view`: leave the card out.',
+  })
+  abandonedCarts!: AbandonedCartsSectionBody | null;
+  @ApiProperty({
     type: ReviewsSectionBody,
     nullable: true,
     description:
@@ -926,41 +1137,6 @@ function ordersByStateSection(
   };
 }
 
-function reviewsSection(section: AdminKpisAnswer['reviews']): ReviewsSectionBody | null {
-  if (section === null) return null;
-  if (section.status === 'error') return { status: 'error' };
-  const { reviews, period } = section.value;
-  const window = {
-    current: { ...period.current },
-    previous: { ...period.previous },
-  };
-  if (reviews.status === 'off') return { status: 'ok', kpis: { status: 'off' }, period: window };
-  if (reviews.status === 'not-enough-data') {
-    return {
-      status: 'ok',
-      kpis: { status: reviews.status, minimum: reviews.minimum },
-      period: window,
-    };
-  }
-  return {
-    status: 'ok',
-    kpis: {
-      status: reviews.status,
-      reviews: reviews.reviews,
-      reviewsChange: { ...reviews.reviewsChange },
-      averageTimes100: reviews.averageTimes100,
-      averageChangeTimes100: { ...reviews.averageChangeTimes100 },
-      histogram: [...reviews.histogram],
-      lowStarShareBp: reviews.lowStarShareBp,
-      lowStarShareChange: { ...reviews.lowStarShareChange },
-    },
-    period: window,
-  };
-}
-
-const minorText = (value: bigint | null): string | null =>
-  value === null ? null : value.toString();
-
 function marketTargetSection(
   section: AdminKpisAnswer['marketTarget'],
 ): MarketTargetSectionBody | null {
@@ -1021,6 +1197,120 @@ function shoppingFunnelSection(
       paid: step(funnel.paid),
       recordedDays: funnel.recordedDays,
       periodDays: funnel.periodDays,
+    },
+  };
+}
+
+function zeroResultSearchesSection(
+  section: AdminKpisAnswer['zeroResultSearches'],
+): ZeroResultSearchesSectionBody | null {
+  if (section === null) return null;
+  if (section.status === 'error') return { status: 'error' };
+  const { searches } = section.value;
+  if (searches.status === 'not-enough-data') return { status: 'ok', kpis: { ...searches } };
+  return {
+    status: 'ok',
+    kpis: {
+      status: searches.status,
+      queries: searches.queries.map((row) => ({
+        query: row.query,
+        searches: row.searches,
+        searcherDays: row.searcherDays,
+        days: row.days,
+      })),
+      recordedDays: searches.recordedDays,
+      periodDays: searches.periodDays,
+    },
+  };
+}
+
+function discountCostSection(
+  section: AdminKpisAnswer['discountCost'],
+): DiscountCostSectionBody | null {
+  if (section === null) return null;
+  if (section.status === 'error') return { status: 'error' };
+  const { cost, currency } = section.value;
+  if (cost.status === 'not-enough-data') return { status: 'ok', kpis: { ...cost } };
+  return {
+    status: 'ok',
+    kpis: {
+      status: cost.status,
+      orders: cost.orders,
+      amount: money(cost.amount, currency),
+      platformShare: money(cost.platformShare, currency),
+      sellerShare: money(cost.sellerShare, currency),
+      platformShareBp: cost.platformShareBp,
+      change: { ...cost.change },
+      previousAmount: money(cost.previousAmount, currency),
+      byKind: cost.byKind.map((row) => ({
+        kind: row.kind,
+        uses: row.uses,
+        amount: row.amount === null ? null : money(row.amount, currency),
+        platformShare: row.platformShare === null ? null : money(row.platformShare, currency),
+        shareBp: row.shareBp,
+      })),
+      released:
+        cost.released === null
+          ? null
+          : { orders: cost.released.orders, amount: money(cost.released.amount, currency) },
+    },
+  };
+}
+
+function reviewsSection(section: AdminKpisAnswer['reviews']): ReviewsSectionBody | null {
+  if (section === null) return null;
+  if (section.status === 'error') return { status: 'error' };
+  const { reviews, period } = section.value;
+  const window = {
+    current: { ...period.current },
+    previous: { ...period.previous },
+  };
+  if (reviews.status === 'off') return { status: 'ok', kpis: { status: 'off' }, period: window };
+  if (reviews.status === 'not-enough-data') {
+    return {
+      status: 'ok',
+      kpis: { status: reviews.status, minimum: reviews.minimum },
+      period: window,
+    };
+  }
+  return {
+    status: 'ok',
+    kpis: {
+      status: reviews.status,
+      reviews: reviews.reviews,
+      reviewsChange: { ...reviews.reviewsChange },
+      averageTimes100: reviews.averageTimes100,
+      averageChangeTimes100: { ...reviews.averageChangeTimes100 },
+      histogram: [...reviews.histogram],
+      lowStarShareBp: reviews.lowStarShareBp,
+      lowStarShareChange: { ...reviews.lowStarShareChange },
+    },
+    period: window,
+  };
+}
+
+const minorText = (value: bigint | null): string | null =>
+  value === null ? null : value.toString();
+function abandonedCartsSection(
+  section: AdminKpisAnswer['abandonedCarts'],
+): AbandonedCartsSectionBody | null {
+  if (section === null) return null;
+  if (section.status === 'error') return { status: 'error' };
+  const carts = section.value.abandonedCarts;
+  if (carts.status === 'not-enough-data') return { status: 'ok', kpis: { ...carts } };
+  return {
+    status: 'ok',
+    kpis: {
+      status: carts.status,
+      carts: carts.carts,
+      approximateValue:
+        carts.approximateValue === null
+          ? null
+          : money(carts.approximateValue.amount, carts.approximateValue.currency),
+      asOfDay: carts.asOfDay,
+      change: { ...carts.change },
+      recordedDays: carts.recordedDays,
+      periodDays: carts.periodDays,
     },
   };
 }
@@ -1090,6 +1380,9 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     answer.ordersByStatus,
     answer.ordersByState,
     answer.shoppingFunnel,
+    answer.zeroResultSearches,
+    answer.discountCost,
+    answer.abandonedCarts,
     answer.topSellers,
     answer.topCategories,
   ].find((section) => section !== null && section.status === 'ok');
@@ -1106,6 +1399,9 @@ export function adminKpisBody(answer: AdminKpisAnswer): AdminKpisBody {
     ordersByState: ordersByStateSection(answer.ordersByState),
     marketTarget: marketTargetSection(answer.marketTarget),
     shoppingFunnel: shoppingFunnelSection(answer.shoppingFunnel),
+    zeroResultSearches: zeroResultSearchesSection(answer.zeroResultSearches),
+    discountCost: discountCostSection(answer.discountCost),
+    abandonedCarts: abandonedCartsSection(answer.abandonedCarts),
     reviews: reviewsSection(answer.reviews),
     topSellers: topSellersSection(answer.topSellers),
     topCategories: topCategoriesSection(answer.topCategories),

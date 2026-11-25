@@ -278,7 +278,8 @@
         "earnings": "What you keep from your sales after commission, refunds and cashback you fund, without GST. It comes from your earnings ledger and is shown once a week of ledger records is in.",
         "payout": "The estimated amount of your next payout and the day it is looked at. It can change before payout day if an order is refunded or disputed.",
         "categories": "Your categories ranked by net sales: goods of paid orders with GST after refunds, so the figures can be lower than Sales. Products are not ranked yet.",
-        "health": "Your store health is the lowest of five measures, each scored 0 to 100 (cancellations, late orders, rating, disputes, reports). 67 or more is healthy. It is updated daily and needs enough orders to be scored."
+        "health": "Your store health is the lowest of five measures, each scored 0 to 100 (cancellations, late orders, rating, disputes, reports). 67 or more is healthy. It is updated daily and needs enough orders to be scored.",
+        "goal": "Your sales with GST this calendar month (Market time) against your own goal. The month does not follow the period above. The forecast is an estimate: your sales so far divided by the time passed, times the length of the month. It shows from the 4th. Only you see your goal."
       },
       "earnings": {
         "scope": "after commission, excl. GST",
@@ -342,6 +343,45 @@
           "unavailable": "Export failed. Try again."
         },
         "denied": "You can't export this report. Ask the store owner for access."
+      },
+      "goal": {
+        "title": "Monthly goal",
+        "scope": "Your own goal · {month} to date",
+        "of-goal": "of goal",
+        "pace": "On pace for {rate}",
+        "estimate": "Estimate",
+        "forecast": "Forecast {amount} by {day} · {month} was {last}",
+        "forecast-not-enough": "Forecast from day {day} · {month} was {last}",
+        "none": "No goal set for this month",
+        "none-hint": "Set a sales goal to see your progress and pace.",
+        "none-hint-read": "The store owner can set a goal for this month.",
+        "not-set": "Not set",
+        "goal": "Goal",
+        "to-date": "{month} to date",
+        "to-go": "{days, plural, one {# day} other {# days}} left · {amount} to go · {perDay} a day",
+        "set": "Set goal",
+        "edit": "Edit goal",
+        "set-title": "Set your monthly goal",
+        "edit-title": "Edit your monthly goal",
+        "field": "Sales goal for {month} ({currency}, incl. GST)",
+        "field-help": "Applies to {month} only, in {currency}. Your goal is private to your store and changes nothing else.",
+        "cancel": "Cancel",
+        "save": "Save goal",
+        "saved": "Goal for {month} saved.",
+        "reload": "Reload",
+        "error": {
+          "amount": "Enter an amount above zero, with at most the currency’s decimals.",
+          "invalid": "This goal is not accepted. Check the amount and try again.",
+          "conflict": "The goal was changed meanwhile. Reload to see the latest goal, then try again.",
+          "not-approved": "You can set a goal once your store is approved.",
+          "denied": "The goal can’t be changed in this session. Only the store owner, signed in with their own account, can set it.",
+          "csrf": "Your session needs a refresh. Reload the page and try again.",
+          "throttled": "Too many tries. Wait a moment and try again.",
+          "unavailable": "The goal could not be saved just now. Try again.",
+          "unknown": "The goal could not be saved. Try again."
+        },
+        "behind": "Behind pace: {rate}",
+        "retry": "Try again"
       }
     }
   },
@@ -1015,6 +1055,70 @@
     }
   },
   "catalog": {
+    "addOffer": {
+      "button": "Add offer",
+      "title": "Add offer",
+      "search-label": "Search the catalogue",
+      "search-help": "Matches the name, brand, category, product code or barcode of the products you may sell.",
+      "search-placeholder": "Search by name, brand, category or barcode",
+      "paste": "Paste barcodes",
+      "paste-label": "Barcodes",
+      "paste-help": "One barcode per line, or separated by commas.",
+      "paste-find": "Find products",
+      "paste-results": "Result for each barcode",
+      "barcode": {
+        "found": "Found",
+        "already-selling": "You already sell this",
+        "not-allowed": "Not in your categories",
+        "not-found": "Not in the catalogue",
+        "invalid": "Not a valid barcode"
+      },
+      "sizes": "{count, plural, one {# size} other {# sizes}}",
+      "already-selling": "You already sell this",
+      "picked": "{count, plural, one {# product selected} other {# products selected}}",
+      "sell-this": "Sell this",
+      "sell-these": "Sell these ({count})",
+      "saving": "Creating drafts",
+      "cancel": "Cancel",
+      "note-pick": "Tick the products you want to sell.",
+      "note-loading": "Getting ready.",
+      "loading": "Searching",
+      "empty": "There are no products to offer in your categories yet.",
+      "no-match": "No product matches that search. Try a name, a brand or a barcode.",
+      "no-activity": "Your shop has no business activity yet, so there are no products to offer. Ask us to add one.",
+      "error": "We couldn't search the catalogue. Try again.",
+      "create-error": "These offers could not be created:",
+      "create-reason": {
+        "sku-taken": "you already use this product code as a SKU",
+        "exists": "you already sell this product",
+        "type-not-allowed": "your shop can't sell this type of product",
+        "off": "selling from the catalogue is switched off",
+        "not-eligible": "your shop can't sell yet",
+        "throttled": "too many requests, try again in a minute",
+        "not-found": "this product is no longer available",
+        "unknown": "something went wrong, try again"
+      },
+      "open-drafts": "{count, plural, one {Open the # draft that was created} other {Open the # drafts that were created}}",
+      "condition-error": "We couldn't get your shop's settings, so drafts can't be created yet.",
+      "try-again": "Try again",
+      "clear": "Clear",
+      "previous": "Previous",
+      "next": "Next",
+      "page": "Page {page} of {pages}"
+    },
+    "onThePlatform": {
+      "title": "On the platform: products you can sell",
+      "note": "From your business activities only. Not part of the list above.",
+      "sell-label": "Sell this: {name}, {code}",
+      "sell-label-brand": "Sell this: {name} by {brand}, {code}",
+      "saving": "Creating…",
+      "saving-label": "Creating a draft offer for {name}",
+      "refused": "The offer could not be created: {reason}.",
+      "settings-error": "we couldn't get your shop's settings, try again",
+      "showing": "Showing {shown} of {total}",
+      "see-all": "See all platform products for “{q}”",
+      "add-own": "Add your own product"
+    },
     "error": {
       "unavailable": "We couldn't load this page. Check your connection and try again."
     },

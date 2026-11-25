@@ -9,7 +9,9 @@ import {
   type DraftSentence,
 } from '../../domain/description-writer/draft-guard';
 import {
+  WRITER_MAX_OUTPUT_TOKENS,
   WRITER_PROMPT_VERSION,
+  WRITER_TIMEOUT_MS,
   writerFacts,
   writerInput,
   writerInstructions,
@@ -35,11 +37,6 @@ import type {
 } from '../ports/description-writer';
 import type { RateCounterKeys } from '../ports/rate-counter-keys';
 import type { RateCounterRepository } from '../ports/rate-counter.repository';
-
-/** A provider that has not answered by then is cut (the modal shows "We couldn't write a draft."). */
-export const WRITER_TIMEOUT_MS = 25_000;
-/** Enough for about 150 words and a margin; the guard cuts the kept text at its own bound. */
-export const WRITER_MAX_OUTPUT_TOKENS = 700;
 
 export interface DescriptionWriterDependencies {
   readonly unitOfWork: UnitOfWork;
@@ -125,10 +122,8 @@ async function tierIfOn(
   try {
     const market = await deps.switches.market(context);
     if (!market.enabled) return null;
-    if (caller.kind === 'seller' && !(await deps.switches.seller(context, caller.sellerId))) {
-      return null;
-    }
-    return deps.model.configured(context.market, market.tier) ? market.tier : null;
+    // The gateway evaluates the rest: audience, acting-as, kill switch, the seller's switch, route.
+    return (await deps.model.available(context, caller, market.tier)) ? market.tier : null;
   } catch {
     return null;
   }
@@ -255,7 +250,8 @@ async function draft(
   if (refused !== null) return err(refused);
 
   const answer = await deps.model.write(
-    context.market,
+    context,
+    caller,
     tier,
     {
       system: writerInstructions(request.value.tone, request.value.length),

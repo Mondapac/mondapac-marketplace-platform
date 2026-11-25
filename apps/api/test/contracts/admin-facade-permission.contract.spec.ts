@@ -1,3 +1,12 @@
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { COMMISSION_PAYOUTS_SETTLEMENT_VIEW } from '../../src/modules/commission-payouts';
+import {
+  PROMOTIONS_PROMOTION_MANAGE,
+  PROMOTIONS_PROMOTION_VIEW,
+} from '../../src/modules/promotions/contracts/permissions';
+import { SumDiscountCost } from '../../src/modules/promotions/application/use-cases/sum-discount-cost.use-case';
+import { ViewMarketplaceDiscountCost } from '../../src/modules/reporting/application/use-cases/view-marketplace-discount-cost.use-case';
 import { AdminEndCustomerSessions } from '../../src/modules/identity/application/use-cases/admin-end-customer-sessions.use-case';
 import { AdminOpenObligationsOfQuery } from '../../src/modules/ordering/application/use-cases/admin-open-obligations-of.use-case';
 import { AdminBalanceOf } from '../../src/modules/wallet/application/use-cases/admin-balance-of.use-case';
@@ -395,5 +404,37 @@ describe('the customer page sections and their owners’ facade reads', () => {
       kind: 'permissions',
       allOf: [CONSENT_KEY.key],
     });
+  });
+});
+
+// Dashboards v2, phase 2: the discount cost of the admin dashboard. Spend is for promotion
+// managers who also hold the dashboard's money key (owner decision of 28 October): the reporting
+// read and promotions' facade read declare both keys, never promotions.promotion.view, so the
+// default Viewer (money key and promotion view, no manage) is refused.
+describe('the discount cost of the admin dashboard and its owner’s facade read', () => {
+  const BOTH = [COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key, PROMOTIONS_PROMOTION_MANAGE.key];
+
+  it('declares exactly the money key and promotions.promotion.manage on both sides', () => {
+    expect(ViewMarketplaceDiscountCost.access).toEqual({
+      name: 'reporting.view-marketplace-discount-cost',
+      rule: { kind: 'permissions', allOf: BOTH },
+    });
+    expect(SumDiscountCost.access).toEqual({
+      name: 'promotions.sum-discount-cost',
+      rule: { kind: 'permissions', allOf: BOTH },
+    });
+  });
+
+  it('refuses the latest default Viewer, which holds the money key and promotion view only', () => {
+    const seeds = JSON.parse(
+      readFileSync(path.join(__dirname, 'role-seed.snapshot.json'), 'utf8'),
+    ) as { entry: string; permissionKeys: string[] }[];
+    const viewers = seeds
+      .filter((seed) => seed.entry.startsWith('platform:viewer@'))
+      .sort((a, b) => Number(a.entry.split('@')[1]) - Number(b.entry.split('@')[1]));
+    const latest = viewers.at(-1)!.permissionKeys;
+    expect(latest).toContain(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key);
+    expect(latest).toContain(PROMOTIONS_PROMOTION_VIEW.key);
+    expect(BOTH.every((key) => latest.includes(key))).toBe(false);
   });
 });

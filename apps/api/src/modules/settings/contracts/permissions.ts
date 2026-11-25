@@ -87,6 +87,17 @@ export const SETTINGS_MONTHLY_REVENUE_TARGET_MANAGE = definePermission('settings
   protected: false,
 });
 
+/**
+ * Switch the Offer review emergency stop on or off (R0, design 9.5 b): protected, so only the
+ * Platform Administrator holds it unless a senior custom role is given it, with the admin second
+ * factor; a reason is always required.
+ */
+export const SETTINGS_OFFER_REVIEW_EMERGENCY_STOP = definePermission('settings', {
+  key: 'settings.offer-review.emergency-stop',
+  scope: 'platform',
+  protected: true,
+});
+
 export const SETTINGS_PERMISSIONS = declarePermissions('settings', [
   SETTINGS_AI_MANAGE,
   SETTINGS_AI_VIEW,
@@ -96,6 +107,7 @@ export const SETTINGS_PERMISSIONS = declarePermissions('settings', [
   SETTINGS_LIST_PAGING_VIEW,
   SETTINGS_MONTHLY_REVENUE_TARGET_MANAGE,
   SETTINGS_MONTHLY_REVENUE_TARGET_VIEW,
+  SETTINGS_OFFER_REVIEW_EMERGENCY_STOP,
   SETTINGS_OFFER_REVIEW_MANAGE,
   SETTINGS_OFFER_REVIEW_VIEW,
 ]);

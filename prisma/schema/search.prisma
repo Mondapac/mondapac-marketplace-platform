@@ -172,3 +172,23 @@ model SearchStoreDocument {
   @@map("store_documents")
   @@schema("search")
 }
+
+/// A text the storefront search found nothing for, in one UTC quarter hour (dashboards v2, phase
+/// 2): noted on the server by `search.search-products` when a plain text search (no category,
+/// store, brand, filter or price) shows nothing on page 1. Only the folded text (lower case, 2 to
+/// 50 characters, no e-mail or web address, at most 4 digits) and the quarter hour: no session,
+/// account, guest, IP address or device. Insert once per quarter hour (ON CONFLICT DO NOTHING) and
+/// deleted after 35 days by the purge job; never updated. Reporting's nightly snapshot reads the
+/// texts of a Market day through search's reporting facade. The CHECKs and grants are hand-written
+/// in the migration.
+model SearchZeroResultQuery {
+  marketId    String   @map("market_id") @db.VarChar(8)
+  tenantId    String   @map("tenant_id")
+  /// The start of the UTC quarter hour of the search.
+  bucketStart DateTime @map("bucket_start") @db.Timestamptz(6)
+  queryKey    String   @map("query_key") @db.VarChar(50)
+
+  @@id([marketId, bucketStart, queryKey])
+  @@map("zero_result_queries")
+  @@schema("search")
+}

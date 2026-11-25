@@ -190,6 +190,7 @@ cannot be built, is `access.unavailable` (fail closed, never "every category"). 
 read-only unit, so callers ask it before theirs.
 
 Where it applies (SELLER scope only; platform and admin paths are unchanged):
+
 - seller picker `GET /catalog/seller/products/category-picker`: only choices inside the scope; an
   empty scope answers `choices: []` with `notice: "no-activity"` (the form says "Ask the team to set
   your business activity before choosing categories."); an unreadable scope is 503.
@@ -204,3 +205,28 @@ Where it applies (SELLER scope only; platform and admin paths are unchanged):
 Deferred (docs/future-enhancements, FE-167 to FE-170): admin per-seller exceptions; the scope in
 admin bulk moves, seller import check time and the seller's platform-product search; an impact
 count before an activity or link is removed; the proposal form's parent list.
+
+## Offer review policy at first publication (ADR-0051, risk-based Offer approval slice 2)
+
+A seller's Offer submit (`own-offer.submit`) no longer reads the Market's `approval-required`
+(that setting now governs product revisions only). The pure policy
+`domain/offer-review-policy.ts` decides, version `OFFER_REVIEW_POLICY_VERSION` (1): it returns the
+reasons that send the Offer to the queue, empty meaning publish at once.
+
+| Reason code          | Rule       | Source today                                                                                                              |
+| -------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `emergency-stop`     | R0         | the Market switch `offer-review-emergency-stop` (slice 2b); category and seller scopes later |
+| `probation`          | R1         | none yet (slice 4): every seller counts as in probation, so risk-based mode still queues every new Offer (fail closed)    |
+| `certificate-badge`  | R2         | kept and requested badge types, while `catalog.offer-review.certificate-badges` is `review`                               |
+| `handling`           | R3         | handling other than `SEALED_ORIGINAL`                                                                                     |
+| `contact-text`       | R5         | a link, domain, e-mail, phone number (dates excluded), `@handle` or a messaging app name in any locale of the description |
+| `full-review`        | R6         | none yet (slice 4); off                                                                                                   |
+| `sensitive-category` | R7         | none yet (category list pending with Hadi); off                                                                           |
+| `review-all`         | mode `all` | the Market's mode is `all` and no other reason applies                                                                    |
+
+Mode `off` publishes everything except during an emergency stop. The settings are read through
+`SettingsFacade.offerReviewPolicy` outside the unit (port `OfferReviewInputs`); a failure answers
+mode `all` (review everything). In the submit unit the decision is stored in
+`catalog.offer_review_referrals` (insert-only; reasons, policy version, Offer version) and audited
+as `catalog.offer.review-referred`. R4 (price against the reference) runs in pricing (slice 3).
+The rules on edits (R2, R3, R5, R7) come with slice 2c.

@@ -1,6 +1,13 @@
 'use client';
 
-import { useId, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import {
+  useId,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type PointerEvent,
+} from 'react';
 import { useWidth } from './use-width.ts';
 import { compactNumber, labelIndexes, niceTicksRange } from './chart-scale.ts';
 
@@ -8,6 +15,13 @@ export interface ChartPoint {
   /** The x label as shown ("12 Nov"). */
   readonly label: string;
   readonly value: number;
+  /**
+   * The list of this point's day (built by code, never from data): the point is a link, in the
+   * chart (click, or Enter on the focused chart) and in the table. Named by `linkLabel`.
+   */
+  readonly href?: string;
+  /** The link's accessible name ("View orders placed on 21 Nov"); required with `href`. */
+  readonly linkLabel?: string;
 }
 
 export interface LineAreaChartProps {
@@ -30,10 +44,20 @@ export interface LineAreaChartProps {
     readonly viewAsTable: string;
     readonly viewAsChart: string;
     readonly dateColumn: string;
+    /** Read after the active point when it links ("Press Enter to open its orders"). */
+    readonly openPoint?: string;
+    /** The visible line of the tooltip of a linked point ("View orders ›"). */
+    readonly openPointLink?: string;
   };
 }
 
 const AXIS_W = 52;
+
+/** The link of a point, or null when it has none (both the address and its name are needed). */
+const linkOf = (point: ChartPoint | undefined) =>
+  point?.href === undefined || point.linkLabel === undefined
+    ? null
+    : { href: point.href, label: point.linkLabel };
 const PAD = { top: 8, right: 8, bottom: 22 };
 
 /**
@@ -77,22 +101,57 @@ export function LineAreaChart({
       .map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)},${y(p.value).toFixed(1)}`)
       .join(' ');
 
-  const pick = (e: PointerEvent<SVGSVGElement>) => {
-    if (n === 0) return;
+  // Touch: the first tap on a day only shows it (tooltip); a second tap on the same day, or the
+  // tooltip's link, follows the link. `follow` is decided when the finger goes down.
+  const tap = useRef<{ readonly follow: boolean } | null>(null);
+  const [touched, setTouched] = useState(false);
+  const indexAt = (e: PointerEvent<SVGSVGElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     const rel = (e.clientX - rect.left - AXIS_W) / plotW;
-    setActive(Math.min(n - 1, Math.max(0, Math.round(rel * (n - 1)))));
+    return Math.min(n - 1, Math.max(0, Math.round(rel * (n - 1))));
+  };
+  const pick = (e: PointerEvent<SVGSVGElement>) => {
+    if (n === 0) return;
+    setActive(indexAt(e));
+  };
+  const down = (e: PointerEvent<SVGSVGElement>) => {
+    if (n === 0) return;
+    const index = indexAt(e);
+    const touch = e.pointerType === 'touch';
+    tap.current = touch ? { follow: active === index } : null;
+    setTouched(touch);
+    setActive(index);
+  };
+  const follow = (e: MouseEvent) => {
+    // A first tap only activates its day; mouse and keyboard follow at once.
+    if (tap.current !== null && !tap.current.follow) e.preventDefault();
+    tap.current = null;
   };
   const key = (e: KeyboardEvent<SVGSVGElement>) => {
     if (n === 0) return;
+    tap.current = null;
+    setTouched(false);
     if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
       e.preventDefault();
       const dir = e.key === 'ArrowRight' ? 1 : -1;
       setActive((cur) => Math.min(n - 1, Math.max(0, (cur ?? (dir === 1 ? -1 : n)) + dir)));
     } else if (e.key === 'Escape') setActive(null);
+    else if (e.key === 'Enter' && active === null) {
+      // Nothing chosen yet: Enter reads the last day first (a second Enter follows its link).
+      e.preventDefault();
+      setActive(n - 1);
+    } else if (e.key === 'Enter' && active !== null && linkOf(points[active]) !== null) {
+      // The keyboard follows the same real link a click follows.
+      e.preventDefault();
+      e.currentTarget
+        .querySelector(`[data-point-link="${active}"]`)
+        ?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    }
   };
 
   const shown = active === null ? undefined : cur[active];
+  const shownLink = active === null ? null : linkOf(points[active]);
+  const step = n <= 1 ? plotW : plotW / (n - 1);
   const shownCompare = active === null ? undefined : cmp?.[active];
   const xLabels = labelIndexes(n, Math.max(2, Math.floor(plotW / 72)));
 
@@ -146,7 +205,17 @@ export function LineAreaChart({
                 {cur.map((p, i) => (
                   <tr key={`${p.label}-${i}`} className="border-t border-line-row">
                     <th scope="row" className="px-3 py-2 text-start font-normal text-fg-secondary">
-                      {p.label}
+                      {linkOf(p) === null ? (
+                        p.label
+                      ) : (
+                        <a
+                          href={linkOf(p)?.href}
+                          aria-label={linkOf(p)?.label}
+                          className="font-medium text-link underline"
+                        >
+                          {p.label}
+                        </a>
+                      )}
                     </th>
                     <td className="px-3 py-2 text-end text-fg">{formatValue(p.value)}</td>
                     {compare === undefined ? null : (
@@ -169,11 +238,14 @@ export function LineAreaChart({
               height={height}
               viewBox={`0 0 ${width} ${height}`}
               onPointerMove={pick}
-              onPointerDown={pick}
-              onPointerLeave={() => setActive(null)}
+              onPointerDown={down}
+              // A finger "leaves" when it lifts: the tapped day stays shown until the next tap.
+              onPointerLeave={(e) => {
+                if (e.pointerType !== 'touch') setActive(null);
+              }}
               onKeyDown={key}
               onBlur={() => setActive(null)}
-              className="block overflow-visible"
+              className="block overflow-visible focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-focus"
               data-chart="line"
             >
               {ticks.map((t) => (
@@ -235,8 +307,38 @@ export function LineAreaChart({
               {n === 1 && cur[0] !== undefined ? (
                 <circle cx={x(0)} cy={y(cur[0].value)} r={3} className="fill-chart-series" />
               ) : null}
+              {points.map((p, i) => {
+                const link = linkOf(p);
+                // A column per day that is a real link for a pointer; the keyboard reaches it
+                // through the focused chart (arrows, then Enter) and through the table.
+                return link === null ? null : (
+                  <a
+                    key={`link-${i}`}
+                    href={link.href}
+                    aria-label={link.label}
+                    tabIndex={-1}
+                    data-point-link={i}
+                    // Out of the tab order: a tap may focus it, but the chart's own ring is the
+                    // keyboard's focus, so the column draws none.
+                    className="cursor-pointer outline-none"
+                    onClick={follow}
+                  >
+                    <rect
+                      x={Math.max(AXIS_W, x(i) - step / 2)}
+                      y={PAD.top}
+                      width={Math.max(
+                        1,
+                        Math.min(x(i) + step / 2, width - PAD.right) -
+                          Math.max(AXIS_W, x(i) - step / 2),
+                      )}
+                      height={plotH}
+                      fill="transparent"
+                    />
+                  </a>
+                );
+              })}
               {active === null || shown === undefined ? null : (
-                <g aria-hidden="true">
+                <g aria-hidden="true" className="pointer-events-none">
                   <line
                     x1={x(active)}
                     x2={x(active)}
@@ -255,7 +357,7 @@ export function LineAreaChart({
                     shownCompare === undefined || compareLabel === undefined
                       ? ''
                       : `, ${compareLabel}: ${formatValue(shownCompare.value)}`
-                  }`}
+                  }${shownLink === null || labels.openPoint === undefined ? '' : `. ${labels.openPoint}`}`}
             </div>
             {active === null || shown === undefined ? null : (
               <div
@@ -272,6 +374,19 @@ export function LineAreaChart({
                   <div className="text-chart-tooltip-muted">
                     {compareLabel}: {formatValue(shownCompare.value)}
                   </div>
+                )}
+                {shownLink === null || labels.openPointLink === undefined ? null : (
+                  // Visible to sighted users that the day opens a list. A real link a finger can
+                  // tap (the tooltip lets a touch through); a mouse uses the day's column, so the
+                  // tooltip never takes the pointer from the chart.
+                  <a
+                    href={shownLink.href}
+                    tabIndex={-1}
+                    data-tooltip-link=""
+                    className={`mt-0.5 block font-medium underline ${touched ? 'pointer-events-auto' : ''}`}
+                  >
+                    {labels.openPointLink}
+                  </a>
                 )}
               </div>
             )}

@@ -21,6 +21,7 @@ import {
 import type { SuggestDependencies } from '../../src/modules/search/application/suggest-dependencies';
 import { SuggestSearch } from '../../src/modules/search/application/use-cases/suggest-search.use-case';
 import { RawSuggestReader } from '../../src/modules/search/infrastructure/raw-suggest.reader';
+import { PrismaZeroResultLog } from '../../src/modules/search/infrastructure/prisma-zero-result-log';
 import { PrismaStoreDocumentRepository } from '../../src/modules/search/infrastructure/prisma-store-document.repository';
 import { StoreRowConflictError } from '../../src/modules/search/application/ports/store-document.repository';
 import { RawOfferScopeReader } from '../../src/modules/search/infrastructure/raw-offer-scope.reader';
@@ -427,6 +428,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
         new RawSuggestReader(new PrismaRawReadPort(db.root).forModule('search')),
       ),
       storeDocuments: new PrismaStoreDocumentRepository(db.service),
+      zeroResults: new PrismaZeroResultLog(db.service),
       categoryTree: { tree: () => Promise.resolve([]) },
       cultures: {
         visibleCodes: () => Promise.resolve(new Map()),
@@ -1344,6 +1346,7 @@ describe.each(TEST_MARKETS)('search read model in market %s (database)', (code) 
           new RawSuggestReader(new PrismaRawReadPort(db.root).forModule('search')),
         ),
         storeDocuments: new PrismaStoreDocumentRepository(db.service),
+        zeroResults: new PrismaZeroResultLog(db.service),
         categoryTree: { tree: () => Promise.resolve([]) },
         cultures: {
           visibleCodes: (_context, offerIds) =>

@@ -311,7 +311,7 @@ a platform admin acting as themselves; `reviews.disabled` while off): for each o
 `[from, to)` the reviews of the whole Market published in it, their star sum and how many of each
 rating, counted by status now (like the seller health feed). One grouped read per window by
 `(market_id, status = 'published', published_at)`, served by the partial index
-`product_reviews_market_published_idx` (migration 20261125040000; plain CREATE INDEX with the
+`product_reviews_market_published_idx` (migration 20261125100000; plain CREATE INDEX with the
 5 s lock and 60 s statement timeouts of the other reviews indexes). Counts only: no text, author,
 product or seller leaves the module. The reporting module asks for the last 30 Market days and
 the 30 before.

@@ -35,6 +35,11 @@ export interface RevenueDay {
   readonly orders?: number;
   /** Major units. */
   readonly refunded?: number;
+  /**
+   * The Orders list of the day (ordersHref, from the day's yyyy-mm-dd) and the link's name. The
+   * GMV and Orders measures link a point to it; Refunded does not (refunds fall on another day).
+   */
+  readonly link?: { readonly href: string; readonly label: string };
 }
 
 /**
@@ -77,8 +82,15 @@ export function RevenueChartCard({
   const value = (day: RevenueDay) => day[measure] ?? 0;
   const bothEmpty = [...days, ...previousDays].every((day) => !(value(day) > 0));
   const insufficient = days.length < 2;
-  const points = (rows: readonly RevenueDay[]): ChartPoint[] =>
-    rows.map((day) => ({ label: day.label, value: value(day) }));
+  const linked = measure !== 'refunded';
+  const points = (rows: readonly RevenueDay[], links = false): ChartPoint[] =>
+    rows.map((day) => ({
+      label: day.label,
+      value: value(day),
+      ...(links && linked && day.link !== undefined
+        ? { href: day.link.href, linkLabel: day.link.label }
+        : {}),
+    }));
   const name = t(`chart.measure.${measure}`);
   const currentEmpty = days.every((day) => !(value(day) > 0));
   return (
@@ -130,7 +142,7 @@ export function RevenueChartCard({
         ) : (
           <LineAreaChart
             title={t('chart.alt', { measure: name, period: periodLabel })}
-            points={points(days)}
+            points={points(days, true)}
             compare={points(previousDays)}
             seriesLabel={t('chart.this')}
             compareLabel={t('chart.previous')}
@@ -141,6 +153,8 @@ export function RevenueChartCard({
               viewAsTable: t('chart.table'),
               viewAsChart: t('chart.chart'),
               dateColumn: t('chart.date'),
+              openPoint: t('chart.open-point'),
+              openPointLink: t('chart.open-point-link'),
             }}
           />
         )}
@@ -205,6 +219,9 @@ export function StatusBar({
     readonly label: string;
     readonly value: number;
     readonly colorKey: ColorKey;
+    /** The Orders list of this status (ordersHref) and the link's name; none: not a link. */
+    readonly href?: string;
+    readonly linkLabel?: string;
   }[];
   readonly locale: string;
   readonly state?: 'empty' | 'insufficient';

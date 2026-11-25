@@ -389,6 +389,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
     'CREATE INDEX outbox_market_id_event_id_unpublished_idx ON pricing.outbox USING btree (market_id, event_id) WHERE (published_at IS NULL)',
   'pricing.regular_price_records_effective_period_excl':
     "CREATE INDEX regular_price_records_effective_period_excl ON pricing.regular_price_records USING gist (market_id, series_id, tstzrange(effective_from, effective_to, '[)'::text)) WHERE (status = ANY (ARRAY['accepted'::text, 'approved'::text]))",
+  'pricing.first_price_checks_market_id_product_id_variant_id_pending_idx':
+    "CREATE INDEX first_price_checks_market_id_product_id_variant_id_pending_idx ON pricing.first_price_checks USING btree (market_id, product_id, variant_id, checked_at, record_id) WHERE ((rechecked_at IS NULL) AND (outcome = ANY (ARRAY['no-reference'::text, 'reference-unavailable'::text])))",
   'pricing.regular_price_records_market_id_submitted_at_id_pending_idx':
     "CREATE INDEX regular_price_records_market_id_submitted_at_id_pending_idx ON pricing.regular_price_records USING btree (market_id, submitted_at, id) WHERE (status = 'pending-review'::text)",
   'pricing.regular_price_records_market_id_series_id_pending_key':
@@ -520,6 +522,8 @@ const PARTIAL_INDEXES: Readonly<Record<string, string>> = {
   // sweep, and the backstops of one live first-order discount per customer and one live row per code.
   'promotions.redemptions_code_live_idx':
     "CREATE UNIQUE INDEX redemptions_code_live_idx ON promotions.redemptions USING btree (market_id, code_hash) WHERE ((code_hash IS NOT NULL) AND (status <> 'RELEASED'::text))",
+  'promotions.redemptions_confirmed_idx':
+    'CREATE INDEX redemptions_confirmed_idx ON promotions.redemptions USING btree (market_id, confirmed_at) WHERE (confirmed_at IS NOT NULL)',
   'promotions.redemptions_customer_live_idx':
     "CREATE INDEX redemptions_customer_live_idx ON promotions.redemptions USING btree (market_id, promotion_id, customer_account_id) WHERE (status <> 'RELEASED'::text)",
   'promotions.redemptions_first_order_month_idx':

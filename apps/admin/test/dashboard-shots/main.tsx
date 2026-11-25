@@ -4,7 +4,13 @@ import messages from '../../messages/en.json';
 import '../../app/globals.css';
 import { AdminDashboard } from '../../src/dashboard/dashboard.tsx';
 import { validateRange, type KpiSelection } from '../../src/dashboard/kpi-range.ts';
-import type { AdminKpis, KpiResult, SameDayShare } from '../../src/dashboard/kpi-types.ts';
+import type {
+  AdminKpis,
+  KpiDelta,
+  KpiResult,
+  MarketTargetKpis,
+  SameDayShare,
+} from '../../src/dashboard/kpi-types.ts';
 import type { AdminDashboardData } from '../../src/dashboard/types.ts';
 import type { WorkQueueAnswer } from '../../src/work-queue/queues.ts';
 
@@ -186,6 +192,170 @@ const health = {
   },
   disputeRate: { status: 'ok' as const, disputes: 7, paidSellerOrders: 2412, rateBp: 29 },
 };
+// Dashboards v2, phase 2 sections (the cards PR).
+const fstep = (
+  count: number | null,
+  rateBp: number | null,
+  change: KpiDelta = ok,
+  rateChange: KpiDelta = ok,
+) => ({
+  count,
+  rateBp,
+  change,
+  rateChange,
+});
+const targetKpis: MarketTargetKpis = {
+  month: '2026-11',
+  lastMonth: '2026-10',
+  timezone: 'Australia/Brisbane',
+  currency: 'AUD',
+  daysInMonth: 30,
+  dayOfMonth: 23,
+  daysLeft: 8,
+  monthToDate: '19056000',
+  lastMonthTotal: '22104000',
+  forecast: { status: 'estimate', amount: '24860000' },
+  target: '24000000',
+  progressBp: 7940,
+  paceBp: 10358,
+  toGo: '4944000',
+  perDayToGo: '618000',
+  refreshedAt: ago(0.1),
+};
+const phase2: Partial<AdminKpis> = {
+  marketTarget: { status: 'ok', kpis: targetKpis },
+  shoppingFunnel: {
+    status: 'ok',
+    kpis: {
+      status: 'available',
+      viewed: fstep(21480, null, { value: 900, direction: 'up', state: 'ok' }),
+      carted: fstep(4120, 1918, ok, { value: 60, direction: 'up', state: 'ok' }),
+      checkedOut: fstep(2210, 5364, ok, { value: -120, direction: 'down', state: 'ok' }),
+      paid: fstep(1730, 7828, ok, { value: 40, direction: 'up', state: 'ok' }),
+      recordedDays: 29,
+      periodDays: 30,
+    },
+  },
+  abandonedCarts: {
+    status: 'ok',
+    kpis: {
+      status: 'available',
+      carts: 708,
+      approximateValue: aud(4126000),
+      asOfDay: day(1),
+      change: { value: 420, direction: 'up', state: 'ok' },
+      recordedDays: 29,
+      periodDays: 30,
+    },
+  },
+  zeroResultSearches: {
+    status: 'ok',
+    kpis: {
+      status: 'available',
+      queries: [
+        ['barberry', 688, 120, 12],
+        ['sangak bread', 512, 98, 9],
+        ['sumac', 398, 61, 7],
+        ['halal gelatin gummies', 220, 44, 4],
+        ['<img src=x onerror=alert(1)>', 41, 22, 2],
+        ['fresh dates medjool', 37, 20, 2],
+      ].map(([query, searches, searcherDays, days]) => ({
+        query: query as string,
+        searches: searches as number,
+        searcherDays: searcherDays as number,
+        days: days as number,
+      })),
+      recordedDays: 29,
+      periodDays: 30,
+    },
+  },
+  ordersByState: {
+    status: 'ok',
+    kpis: {
+      status: 'available',
+      paid: 2412,
+      states: [
+        { state: 'NSW', orders: 1012, shareBp: 4196 },
+        { state: 'VIC', orders: 698, shareBp: 2894 },
+        { state: 'QLD', orders: 338, shareBp: 1401 },
+        { state: 'WA', orders: 193, shareBp: 800 },
+        { state: 'SA', orders: 120, shareBp: 498 },
+      ],
+      other: { orders: 25, shareBp: 104 },
+      unknown: { orders: 26, shareBp: 107 },
+    },
+  },
+  discountCost: {
+    status: 'ok',
+    kpis: {
+      status: 'available',
+      orders: 412,
+      amount: aud(1840000),
+      platformShare: aud(920000),
+      sellerShare: aud(920000),
+      platformShareBp: 5000,
+      change: { value: 1200, direction: 'up', state: 'ok' },
+      previousAmount: aud(1640000),
+      byKind: [
+        {
+          kind: 'promotion',
+          uses: 380,
+          amount: aud(1500000),
+          platformShare: aud(600000),
+          shareBp: 8152,
+        },
+        { kind: 'first-order', uses: null, amount: null, platformShare: null, shareBp: null },
+        {
+          kind: 'free-shipping',
+          uses: 30,
+          amount: aud(340000),
+          platformShare: aud(320000),
+          shareBp: 1848,
+        },
+      ],
+      released: { orders: 12, amount: aud(48000) },
+    },
+  },
+};
+const phase2Thin: Partial<AdminKpis> = {
+  marketTarget: {
+    status: 'ok',
+    kpis: {
+      ...targetKpis,
+      dayOfMonth: 2,
+      daysLeft: 29,
+      monthToDate: '1203000',
+      forecast: { status: 'not-enough-data', daysElapsed: 1, minimumDays: 3 },
+      target: null,
+      progressBp: null,
+      paceBp: null,
+      toGo: null,
+      perDayToGo: null,
+    },
+  },
+  shoppingFunnel: {
+    status: 'ok',
+    kpis: { status: 'not-enough-data', minimum: 20, recordedDays: 1, periodDays: 30 },
+  },
+  abandonedCarts: {
+    status: 'ok',
+    kpis: { status: 'not-enough-data', minimum: 5, recordedDays: 1, periodDays: 30 },
+  },
+  zeroResultSearches: {
+    status: 'ok',
+    kpis: { status: 'not-enough-data', minimumSearchers: 10, recordedDays: 1, periodDays: 30 },
+  },
+  ordersByState: { status: 'ok', kpis: { status: 'not-enough-data', paid: 3, minimum: 5 } },
+  discountCost: { status: 'ok', kpis: { status: 'not-enough-data', orders: 2, minimum: 5 } },
+};
+const phase2Failed: Partial<AdminKpis> = {
+  marketTarget: { status: 'error' },
+  shoppingFunnel: { status: 'error' },
+  abandonedCarts: { status: 'error' },
+  zeroResultSearches: { status: 'error' },
+  ordersByState: { status: 'error' },
+  discountCost: { status: 'error' },
+};
 const base: AdminKpis = {
   generatedAt: NOW,
   periodId: selection.id,
@@ -200,6 +370,7 @@ const base: AdminKpis = {
   topSellers,
   topCategories,
   health,
+  ...phase2,
 };
 const empty: AdminKpis = {
   ...base,
@@ -277,13 +448,17 @@ const partial: AdminKpis = {
   },
 };
 const picked =
-  scenario === 'empty'
-    ? empty
-    : scenario === 'sparse'
-      ? sparse
-      : scenario === 'partial'
-        ? partial
-        : base;
+  scenario === 'p2-thin'
+    ? { ...base, ...phase2Thin }
+    : scenario === 'p2-failed'
+      ? { ...base, ...phase2Failed }
+      : scenario === 'empty'
+        ? empty
+        : scenario === 'sparse'
+          ? sparse
+          : scenario === 'partial'
+            ? partial
+            : base;
 const kpis: KpiResult =
   selection.id === 'custom' &&
   validateRange({ from: selection.from, to: selection.to, today: '2026-11-23' }).length > 0
@@ -339,7 +514,11 @@ createRoot(document.getElementById('root')!).render(
           'commission-payouts.dispute.view',
           'certification.seller-certificate.view',
           'reporting.marketplace-report.export',
+          'settings.monthly-revenue-target.view',
+          'settings.monthly-revenue-target.manage',
+          'promotions.promotion.manage',
         ]}
+        csrfToken="shots"
         kpis={kpis}
         selection={selection}
         today="2026-11-23"

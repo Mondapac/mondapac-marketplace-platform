@@ -25,6 +25,11 @@ import { CryptoGuestTokens } from './crypto-guest-tokens';
 import { FacadeLineFacts } from './facade-line-facts';
 import { HmacRateCounterKeys, localCartSecret } from './hmac-rate-counter-keys';
 import { PrismaCartRepository } from './prisma-cart.repository';
+import {
+  ABANDONED_CART_TOTALS,
+  type AbandonedCartTotalsReader,
+} from '../application/ports/abandoned-cart-totals';
+import { PrismaAbandonedCartTotals } from './prisma-abandoned-cart-totals';
 import { PrismaRateCounterRepository } from './prisma-rate-counter.repository';
 import { PrismaSavedItemRepository } from './prisma-saved-item.repository';
 
@@ -32,6 +37,12 @@ const CART_SECRET = Symbol('CART_SECRET');
 
 /** Binds the ports of the cart. Only this layer may reach `PrismaService` and the other modules' facades. */
 export const cartProviders: readonly FactoryProvider[] = [
+  {
+    provide: ABANDONED_CART_TOTALS,
+    inject: [PrismaService],
+    useFactory: (prisma: PrismaService): AbandonedCartTotalsReader =>
+      new PrismaAbandonedCartTotals(prisma),
+  },
   {
     provide: CART_REPOSITORY,
     inject: [PrismaService],

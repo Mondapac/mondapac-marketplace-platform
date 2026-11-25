@@ -13,6 +13,11 @@ export interface PricedOfferView {
   readonly deleted: boolean;
   /** The Variants that may carry a price: the product's non-retired ones, `proposed` included. */
   readonly priceableVariantIds: ReadonlySet<Id<'Variant'>>;
+  /**
+   * The Variants a buyer can buy on this Offer now (R4 reference, ADR-0051): the Offer is
+   * published and listed, and the sell unit is published and switched on. Empty otherwise.
+   */
+  readonly liveVariantIds: ReadonlySet<Id<'Variant'>>;
 }
 
 /** At most this many Offer ids per call; a larger call is refused whole (design 5.2, P-1). */

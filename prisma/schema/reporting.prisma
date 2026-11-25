@@ -316,3 +316,61 @@ model ReportingDailyEngagement {
   @@map("daily_engagement")
   @@schema("reporting")
 }
+
+/// The Market days whose zero-result searches the nightly snapshot has written (dashboards v2,
+/// phase 2), with how many queries it kept for the day (0 is a day with none). Written once, in
+/// the same unit as the day's rows, and never changed. Aggregate only. The CHECKs and the grants
+/// (SELECT and INSERT only) are hand-written in the migration.
+model ReportingSearchSnapshotDay {
+  marketId   String   @map("market_id") @db.VarChar(8)
+  tenantId   String   @map("tenant_id")
+  marketDay  DateTime @map("market_day") @db.Date
+  queryCount Int      @map("query_count")
+  recordedAt DateTime @map("recorded_at") @db.Timestamptz(6)
+
+  @@id([marketId, marketDay])
+  @@map("search_snapshot_days")
+  @@schema("reporting")
+}
+
+/// A query the storefront search found nothing for on one Market day (search's server-side note)
+/// that at least ten distinct signed-in customers with personalization on searched that day
+/// (engagement's count): the folded text, how many searched it and how often (dashboards v2, phase
+/// 2). A text below ten is never written. Written once by the hourly snapshot and never changed:
+/// no account, guest or session column, nothing that tells one person from another. The CHECKs
+/// (at least ten searchers) and the grants (SELECT and INSERT only) are hand-written in the
+/// migration.
+model ReportingDailyZeroResultSearch {
+  marketId      String   @map("market_id") @db.VarChar(8)
+  tenantId      String   @map("tenant_id")
+  marketDay     DateTime @map("market_day") @db.Date
+  queryText     String   @map("query_text") @db.VarChar(50)
+  searcherCount Int      @map("searcher_count")
+  searchCount   Int      @map("search_count")
+  recordedAt    DateTime @map("recorded_at") @db.Timestamptz(6)
+
+  @@id([marketId, marketDay, queryText])
+  @@map("daily_zero_result_searches")
+  @@schema("reporting")
+}
+
+/// Abandoned carts at the end of one Market day (dashboards v2, phase 2): how many active carts
+/// (guest or signed-in) held a line, carried no order mark and were untouched for at least 24 h at
+/// the day's end, and their lines' approximate value (the price when each line was added, not the
+/// price now), written once by the hourly snapshot job on the next Market day and never changed.
+/// Aggregate only: no cart, account, guest, offer or seller column. The value is null when a line
+/// was in another currency. The CHECKs and the grants (SELECT and INSERT only) are hand-written in
+/// the migration.
+model ReportingDailyAbandonedCarts {
+  marketId            String   @map("market_id") @db.VarChar(8)
+  tenantId            String   @map("tenant_id")
+  marketDay           DateTime @map("market_day") @db.Date
+  cartCount           Int      @map("cart_count")
+  approxValueAmount   BigInt?  @map("approx_value_amount")
+  approxValueCurrency String?  @map("approx_value_currency") @db.VarChar(3)
+  recordedAt          DateTime @map("recorded_at") @db.Timestamptz(6)
+
+  @@id([marketId, marketDay])
+  @@map("daily_abandoned_carts")
+  @@schema("reporting")
+}

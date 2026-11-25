@@ -10,8 +10,15 @@ import {
   type ChartEmptyLabels,
 } from './chart-states.tsx';
 
-/** One part of the whole. `value` is gross and non-negative. */
-export type ShareBarItem = CategoryInput;
+/**
+ * One part of the whole. `value` is gross and non-negative. With `href` (built by code, never
+ * from data) the legend row is a link to the list of this part, named by `linkLabel`.
+ */
+export type ShareBarItem = CategoryInput & {
+  readonly href?: string;
+  /** The link's accessible name ("View 12 orders: Delivered"); required with `href`. */
+  readonly linkLabel?: string;
+};
 
 export interface ShareBarProps {
   /** The text alternative and the table caption ("New and returning customers"). */
@@ -59,6 +66,14 @@ export function ShareBar({
   const [active, setActive] = useState<number | null>(null);
   const tableId = useId();
   const { slices, dropped } = bucketCategories(items, otherLabel);
+  // Only a named part links; "Other" sums several parts and has no single list.
+  const links = new Map(
+    items.flatMap((item) =>
+      item.href === undefined || item.linkLabel === undefined
+        ? []
+        : [[item.id, { href: item.href, label: item.linkLabel }] as const],
+    ),
+  );
   if (state !== undefined || slices.length === 0)
     return <ChartEmpty message={chartStateMessage(state ?? 'empty', emptyLabels)} height={72} />;
 
@@ -103,9 +118,20 @@ export function ShareBar({
                           data-swatch=""
                           className={`size-3 shrink-0 rounded-sm ${colorClasses(s.colorKey).bg}`}
                         />
-                        <span className="min-w-0 break-words" title={s.label}>
-                          {s.label}
-                        </span>
+                        {links.get(s.id) === undefined ? (
+                          <span className="min-w-0 break-words" title={s.label}>
+                            {s.label}
+                          </span>
+                        ) : (
+                          <a
+                            href={links.get(s.id)?.href}
+                            aria-label={links.get(s.id)?.label}
+                            className="min-w-0 break-words font-medium text-link underline"
+                            title={s.label}
+                          >
+                            {s.label}
+                          </a>
+                        )}
                       </span>
                     </th>
                     <td className="px-3 py-2 text-end text-fg tabular-nums">
@@ -141,33 +167,69 @@ export function ShareBar({
               ))}
             </div>
             <ul className="flex flex-col text-sm" onPointerLeave={() => setActive(null)}>
-              {slices.map((s, i) => (
-                <li
-                  key={s.id}
-                  data-legend={s.id}
-                  tabIndex={0}
-                  onPointerEnter={() => setActive(i)}
-                  onFocus={() => setActive(i)}
-                  onBlur={() => setActive(null)}
-                  className={`grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-2 rounded-md px-2 py-1 focus-visible:outline-2 focus-visible:outline-focus ${
-                    active === i ? 'bg-muted' : ''
-                  }`}
-                >
-                  <span
-                    aria-hidden="true"
-                    className={`size-3 shrink-0 rounded-sm ${colorClasses(s.colorKey).bg}`}
-                  />
-                  <span className="min-w-0 break-words text-fg-secondary" title={s.label}>
-                    {s.label}
-                  </span>
-                  <span className="min-w-20 text-end font-medium text-fg tabular-nums">
-                    {formatValue(s.value)}
-                  </span>
-                  <span className="w-14 text-end text-fg-muted tabular-nums">
-                    {formatShare(s.share)}
-                  </span>
-                </li>
-              ))}
+              {slices.map((s, i) => {
+                const link = links.get(s.id);
+                const row = `grid grid-cols-[auto_minmax(0,1fr)_auto_auto] items-center gap-x-2 rounded-md px-2 py-1 focus-visible:outline-2 focus-visible:outline-focus ${
+                  active === i ? 'bg-muted' : ''
+                }`;
+                const cells = (
+                  <>
+                    <span
+                      aria-hidden="true"
+                      className={`size-3 shrink-0 rounded-sm ${colorClasses(s.colorKey).bg}`}
+                    />
+                    <span
+                      className={`min-w-0 break-words ${link === undefined ? 'text-fg-secondary' : 'font-medium text-link underline'}`}
+                      title={s.label}
+                    >
+                      {s.label}
+                    </span>
+                    <span
+                      id={`${tableId}-v${i}`}
+                      className="min-w-20 text-end font-medium text-fg tabular-nums"
+                    >
+                      {formatValue(s.value)}
+                    </span>
+                    <span
+                      id={`${tableId}-s${i}`}
+                      className="w-14 text-end text-fg-muted tabular-nums"
+                    >
+                      {formatShare(s.share)}
+                    </span>
+                  </>
+                );
+                const focus = {
+                  onPointerEnter: () => setActive(i),
+                  onFocus: () => setActive(i),
+                  onBlur: () => setActive(null),
+                };
+                return link === undefined ? (
+                  // Beside links the plain rows are no tab stops (their figures are in the text).
+                  <li
+                    key={s.id}
+                    data-legend={s.id}
+                    tabIndex={links.size > 0 ? undefined : 0}
+                    {...focus}
+                    className={row}
+                  >
+                    {cells}
+                  </li>
+                ) : (
+                  // The row is the link: the same grid, so the layout does not move.
+                  <li key={s.id} data-legend={s.id}>
+                    <a
+                      href={link.href}
+                      aria-label={link.label}
+                      // The name is the action; the figures are read as its description.
+                      aria-describedby={`${tableId}-v${i} ${tableId}-s${i}`}
+                      {...focus}
+                      className={`${row} min-h-11 lg:min-h-0`}
+                    >
+                      {cells}
+                    </a>
+                  </li>
+                );
+              })}
             </ul>
           </div>
         )}

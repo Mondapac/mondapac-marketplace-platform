@@ -1,4 +1,4 @@
-import { compareMoney, err, ok, Temporal } from '@mondapac/shared-kernel';
+import { compareMoney, err, money, ok, Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketId, PendingEvent, Result } from '@mondapac/shared-kernel';
 import { EffectivePriceChanged, PriceHoldDecided, PriceHoldOpened } from './events';
 import { measureJump } from './jump-policy';
@@ -6,12 +6,29 @@ import { priceAmount } from './price-amount';
 import type { PriceAmount, PriceAmountError } from './price-amount';
 import { windowStart } from './pricing-policy';
 import type { PricingPolicy } from './pricing-policy';
-import type { HoldRejectionReason, JumpAnchor, RetireCause, SupersedeCause } from './record-types';
+import {
+  measureAgainstReference,
+  referenceAmountMinor,
+  type ReferencePrice,
+} from './reference-price';
+import type {
+  HoldRejectionReason,
+  JumpAnchor,
+  ReferenceCheck,
+  RetireCause,
+  SupersedeCause,
+} from './record-types';
 import { liveOrScheduledSpecial, specialEnd, specialInForce } from './special-price';
 import type { SpecialDecision, SpecialPriceRecord, WithdrawCause } from './special-price';
 
 export { HOLD_REJECTION_REASONS } from './record-types';
-export type { HoldRejectionReason, JumpAnchor, RetireCause, SupersedeCause } from './record-types';
+export type {
+  HoldRejectionReason,
+  JumpAnchor,
+  ReferenceCheck,
+  RetireCause,
+  SupersedeCause,
+} from './record-types';
 
 export type RegularRecordStatus =
   'ACCEPTED' | 'APPROVED' | 'PENDING_REVIEW' | 'SUPERSEDED' | 'REJECTED';
@@ -48,6 +65,11 @@ export interface RegularPriceRecord {
    * record that was not measured: the first price of a series.
    */
   readonly anchor: JumpAnchor | null;
+  /**
+   * R4: the reference a first price was measured against (ADR-0051). Set only on a record with no
+   * anchor; a held record has an anchor or a reference, never both.
+   */
+  readonly reference: ReferenceCheck | null;
   readonly heldDirection: 'up' | 'down' | null;
   /** Set when a pending record is replaced; the record that replaced it, or null for another cause. */
   readonly supersededBy: Id<'RegularPriceRecord'> | null;
@@ -86,6 +108,18 @@ export interface SetRegularPriceInput {
   readonly taxInclusive: boolean;
   readonly now: Temporal.Instant;
   readonly policy: PricingPolicy;
+  /**
+   * R4 (ADR-0051): the Variant's reference price and the Market's band, when the use case found
+   * one. Applied only to a price with no jump anchor (the first price of the series); ignored
+   * otherwise. Null or absent: the first price is not measured (no reference yet).
+   */
+  readonly reference?: FirstPriceReference | null;
+}
+
+/** The reference price of the Variant and the band to measure a first price with (R4). */
+export interface FirstPriceReference {
+  readonly reference: ReferencePrice;
+  readonly bandPercent: number;
 }
 
 /** What a seller's write did. `superseded` lists the pending records it replaced. */
@@ -323,6 +357,19 @@ export function jumpAnchor(
   return byStart(latestApproved, windowRecord) > 0 ? latestApproved : windowRecord;
 }
 
+/**
+ * The stored copy of a reference (R4): the median rounded half up. A copy for the reviewer, never a
+ * price: it is not checked against today's maximum (older prices may sit above a lowered one).
+ */
+function referenceCheck(measured: FirstPriceReference, policy: PricingPolicy): ReferenceCheck {
+  const amount = money(referenceAmountMinor(measured.reference), policy.currency) as PriceAmount;
+  return Object.freeze({
+    amount: Object.freeze(amount),
+    businesses: measured.reference.businesses,
+    bandPercent: measured.bandPercent,
+  });
+}
+
 /** One event of a change, built once its version is known. */
 type EventAt = (version: number) => PendingEvent;
 
@@ -397,6 +444,14 @@ export class PriceSeries {
     return this.#stored;
   }
 
+  /**
+   * Whether the series has ever had a regular price in force (accepted or approved). A series
+   * without one takes a "first price", the one R4 measures against the Variant's reference.
+   */
+  get hasPrice(): boolean {
+    return this.#state.regular.some(isPriced);
+  }
+
   /** The version the series had in storage, or null for a series never stored (P 10). */
   get persistedVersion(): number | null {
     return this.#stored?.version ?? null;
@@ -460,17 +515,30 @@ export class PriceSeries {
     }
 
     const anchorRecord = jumpAnchor(state.regular, input.now, input.policy);
-    const verdict =
-      anchorRecord === null
-        ? ({ kind: 'within' } as const)
-        : measureJump(anchorRecord.amount, input.amount, input.policy);
-
     const anchor: JumpAnchor | null =
       anchorRecord === null
         ? null
         : Object.freeze({ recordId: anchorRecord.id, amount: anchorRecord.amount });
+    // R4 (ADR-0051): a price with no anchor (the first price of the series) is measured against
+    // the Variant's reference instead, when there is one; a later price only by the jump policy.
+    const measured = anchorRecord === null ? (input.reference ?? null) : null;
+    const reference = measured === null ? null : referenceCheck(measured, input.policy);
+    let verdict: { readonly kind: 'within' } | { readonly kind: 'held'; direction: 'up' | 'down' };
+    if (anchorRecord !== null) {
+      verdict = measureJump(anchorRecord.amount, input.amount, input.policy);
+    } else if (measured !== null) {
+      const against = measureAgainstReference(
+        input.amount.amount,
+        measured.reference,
+        measured.bandPercent,
+      );
+      verdict =
+        against.kind === 'within' ? against : { kind: 'held', direction: against.direction };
+    } else {
+      verdict = { kind: 'within' };
+    }
 
-    if (verdict.kind === 'held' && anchor !== null) {
+    if (verdict.kind === 'held' && (anchor !== null || reference !== null)) {
       const record: RegularPriceRecord = Object.freeze({
         id: input.recordId,
         amount: input.amount,
@@ -481,6 +549,7 @@ export class PriceSeries {
         effectiveFrom: null,
         effectiveTo: null,
         anchor,
+        reference,
         heldDirection: verdict.direction,
         supersededBy: null,
         supersededAt: null,
@@ -519,6 +588,7 @@ export class PriceSeries {
       effectiveFrom: start,
       effectiveTo: null,
       anchor,
+      reference,
       heldDirection: null,
       supersededBy: null,
       supersededAt: null,
@@ -1196,6 +1266,13 @@ function freezeRecord(record: RegularPriceRecord): RegularPriceRecord {
             recordId: record.anchor.recordId,
             amount: Object.freeze({ ...record.anchor.amount }),
           }),
+    reference:
+      record.reference === null
+        ? null
+        : Object.freeze({
+            ...record.reference,
+            amount: Object.freeze({ ...record.reference.amount }),
+          }),
   });
 }
 
@@ -1231,7 +1308,8 @@ function checkStoredState(state: PriceSeriesState): void {
   };
   const foreign = (r: RegularPriceRecord): boolean =>
     r.amount.currency !== state.currency ||
-    (r.anchor !== null && r.anchor.amount.currency !== state.currency);
+    (r.anchor !== null && r.anchor.amount.currency !== state.currency) ||
+    (r.reference !== null && r.reference.amount.currency !== state.currency);
   if (state.regular.some(foreign)) bad('a record is in another currency than the series');
   for (const r of state.regular) {
     const superseded = r.status === 'SUPERSEDED';
@@ -1254,8 +1332,13 @@ function checkStoredState(state: PriceSeriesState): void {
   }
   const pending = state.regular.filter((r) => r.status === 'PENDING_REVIEW');
   if (pending.length > 1) bad('more than one pending record');
-  if (pending.some((r) => r.effectiveFrom !== null || r.anchor === null)) {
-    bad('a pending record must have an anchor and no effective start');
+  if (
+    pending.some((r) => r.effectiveFrom !== null || (r.anchor === null) === (r.reference === null))
+  ) {
+    bad('a pending record must have an anchor or a reference, and no effective start');
+  }
+  if (state.regular.some((r) => r.anchor !== null && r.reference !== null)) {
+    bad('a record is measured against an anchor or a reference, never both');
   }
   const priced = state.regular.filter(isPriced);
   if (priced.some((r) => r.effectiveFrom === null)) bad('a priced record has no effective start');

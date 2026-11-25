@@ -38,6 +38,7 @@ import { StepUpProvider } from '../step-up/step-up.tsx';
 import { SystemRequestsNavBadge } from '../system-requests/nav-badge.tsx';
 import { VIEW_PERMISSION as SYSTEM_REQUESTS_VIEW } from '../system-requests/types.ts';
 import { PanelNavigationProgress } from '../shared/navigation-progress.tsx';
+import { EmergencyStopBanner } from '../offer-review-emergency-stop/emergency-stop-banner.tsx';
 import { panelHostFor } from './bff.ts';
 import { settingEntries, visibleSettings } from '../settings/settings-nav.ts';
 import { panelConfig } from './config.ts';
@@ -162,6 +163,7 @@ export async function AdminShell({
                 />
               }
             >
+              <EmergencyStopBanner zone={zone} />
               {children}
               <AdminHelpPanel zone={zone} />
             </AppShell>

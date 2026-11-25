@@ -20,6 +20,7 @@ import {
 import type { SearchSupplyFacade } from '../../../search';
 import { ORDERING_ORDER_VIEW } from '../../../ordering';
 import { REVIEWS_SETTINGS_VIEW } from '../../../reviews';
+import { PROMOTIONS_PROMOTION_MANAGE } from '../../../promotions';
 import type { Id } from '@mondapac/shared-kernel';
 import {
   CATALOG_PRODUCT_VIEW,
@@ -33,6 +34,7 @@ import {
 } from '../../../sellers';
 import { SETTINGS_MONTHLY_REVENUE_TARGET_VIEW } from '../../../settings';
 import type {
+  DiscountCostAnswer,
   FinanceAnswer,
   KpiFailure,
   MonthlyTargetAnswer,
@@ -45,6 +47,8 @@ import type {
   PeriodRequest,
   ReportingKpiFacade,
   ShoppingFunnelAnswer,
+  ZeroResultSearchesAnswer,
+  AbandonedCartsAnswer,
   TopCategoriesAnswer,
   TopSellersAnswer,
 } from '../../../reporting';
@@ -178,6 +182,21 @@ export interface AdminKpisAnswer {
    * 30 before; null without `reviews.settings.view`.
    */
   readonly reviews: KpiSection<MarketplaceReviewsAnswer> | null;
+  /**
+   * The top texts the storefront search found nothing for in the period (each searched by at least
+   * ten distinct signed-in customers on a day); null without `catalog.product.view`.
+   */
+  readonly zeroResultSearches: KpiSection<ZeroResultSearchesAnswer> | null;
+  /**
+   * Abandoned carts on the period's latest nightly snapshot (a count and an approximate value);
+   * null without `ordering.order.view`.
+   */
+  readonly abandonedCarts: KpiSection<AbandonedCartsAnswer> | null;
+  /**
+   * The discount cost of the period (Mondapac's and the sellers' shares, by kind); null without
+   * both `commission-payouts.settlement.view` and `promotions.promotion.manage` (promotion spend).
+   */
+  readonly discountCost: KpiSection<DiscountCostAnswer> | null;
   /** Null without `commission-payouts.settlement.view` (it shows each seller's money). */
   readonly topSellers: KpiSection<NamedTopSellers> | null;
   /** Null without `commission-payouts.settlement.view` (it shows money). */
@@ -264,7 +283,9 @@ async function section<T>(
  * Market's monthly revenue target (dashboards v2 phase 2). Rule
  * `own-resources` and a platform admin acting as themselves, like the work queue. Each section is
  * asked only when the viewer holds its key (operations and orders by status:
- * `ordering.order.view`, and the shopping funnel too; money: `commission-payouts.settlement.view`; each health number its
+ * `ordering.order.view`, and the shopping funnel and abandoned carts too; zero-result searches:
+ * `catalog.product.view`; money: `commission-payouts.settlement.view`, and the discount cost also
+ * `promotions.promotion.manage`; each health number its
  * owner's key) and its owner checks the key again. Nothing is cached here.
  */
 export class ViewAdminKpis extends UseCase<
@@ -318,6 +339,9 @@ export class ViewAdminKpis extends UseCase<
       marketTarget,
       shoppingFunnel,
       reviews,
+      zeroResultSearches,
+      discountCost,
+      abandonedCarts,
     ] = await Promise.all([
       held.has(ORDERING_ORDER_VIEW.key)
         ? section('operations', timeoutMs, () => reporting.marketplaceOperations(context, input))
@@ -350,6 +374,21 @@ export class ViewAdminKpis extends UseCase<
       held.has(REVIEWS_SETTINGS_VIEW.key)
         ? section('reviews', timeoutMs, () => reporting.marketplaceReviews(context))
         : null,
+      held.has(CATALOG_PRODUCT_VIEW.key)
+        ? section('zero-result-searches', timeoutMs, () =>
+            reporting.marketplaceZeroResultSearches(context, input),
+          )
+        : null,
+      held.has(COMMISSION_PAYOUTS_SETTLEMENT_VIEW.key) && held.has(PROMOTIONS_PROMOTION_MANAGE.key)
+        ? section('discount-cost', timeoutMs, () =>
+            reporting.marketplaceDiscountCost(context, input),
+          )
+        : null,
+      held.has(ORDERING_ORDER_VIEW.key)
+        ? section('abandoned-carts', timeoutMs, () =>
+            reporting.marketplaceAbandonedCarts(context, input),
+          )
+        : null,
     ]);
     return ok({
       generatedAt: this.deps.clock.now(),
@@ -361,6 +400,9 @@ export class ViewAdminKpis extends UseCase<
       marketTarget,
       shoppingFunnel,
       reviews,
+      zeroResultSearches,
+      discountCost,
+      abandonedCarts,
       topSellers,
       topCategories,
       health,

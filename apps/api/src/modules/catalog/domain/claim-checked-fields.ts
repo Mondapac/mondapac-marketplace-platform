@@ -340,6 +340,10 @@ export const CONTENT_TYPE_CLASSIFICATION: Readonly<
     noCustomerText: 'a guarded draft sentence shown in the modal only, never saved',
   },
   GuardedDraft: { noCustomerText: 'guarded draft sentences and counts, never saved' },
+  OfferReviewFacts: { noCustomerText: 'booleans about the seller, product and Market' },
+  OfferReviewInput: {
+    noCustomerText: 'the review policy input; the description is read, never written or shown',
+  },
   WriterEvaluationCase: { noCustomerText: 'synthetic evaluation data used in tests' },
   WriterDetail: { noCustomerText: 'form data sent to the writer, never saved by it' },
   WriterRequest: { noCustomerText: 'form data sent to the writer, never saved by it' },

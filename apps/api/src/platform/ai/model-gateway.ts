@@ -111,8 +111,8 @@ export class ModelGateway {
       ]);
       return { ok: true, turn, price };
     } catch {
+      // The AI Gateway logs the failure once, with the capability.
       const failure = abort.signal.aborted ? 'timeout' : 'unavailable';
-      this.#logger.warn({ msg: 'ai.model-call.failed', marketId, tier, failure });
       return { ok: false, failure, price };
     } finally {
       clearTimeout(timer);

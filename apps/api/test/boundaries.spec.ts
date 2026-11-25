@@ -123,6 +123,8 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       const rules = cruise.summary.ruleSetUsed.forbidden;
 
       expect(rules.map((rule) => rule.name).sort()).toEqual([
+        'ai-capability-spec-only-from-contracts',
+        'ai-registration-only-from-module-files',
         'application-does-not-know-delivery',
         'approved-seller-zones-contract-is-for-certification',
         'approved-seller-zones-use-cases-stay-in-sellers-reader',
@@ -148,15 +150,20 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'module-internals-are-private',
         'module-public-api-only',
         'modules-reach-authz-through-its-barrel',
+        'no-ai-in-identity-payments-or-payouts',
         'no-circular',
         'nothing-imports-dashboard',
         'persistence-internals-are-private',
         'persistence-root-is-private',
         'platform-does-not-import-modules',
+        'pricing-cost-store-only-in-cost-use-cases',
+        'pricing-cost-type-only-on-cost-paths',
+        'pricing-cost-use-cases-only-on-cost-paths',
         'prisma-only-in-infrastructure',
         'repositories-stay-behind-use-cases',
         'request-actor-is-attached-by-the-actor-guard',
         'seller-access-contract-is-for-sellers',
+        'seller-ai-switch-only-from-sellers',
         'sql-parser-only-in-pg-parser',
         'subject-keys-only-in-infrastructure',
         'subject-keys-only-through-the-port',
@@ -170,6 +177,9 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
 
     it('reports every deliberate violation in the fixtures, and nothing else', () => {
       expect(found).toEqual([
+        'ai-capability-spec-only-from-contracts: src/modules/alpha/application/declares-capability.ts',
+        'ai-capability-spec-only-from-contracts: src/modules/identity/application/uses-ai.ts',
+        'ai-registration-only-from-module-files: src/modules/alpha/application/registers-capabilities.ts',
         'application-does-not-know-delivery: src/modules/alpha/application/knows-delivery.ts',
         'approved-seller-zones-contract-is-for-certification: src/modules/alpha/application/reads-approved-seller-zones.ts',
         'approved-seller-zones-contract-is-for-certification: src/modules/certification/presentation/reads-approved-seller-zones.ts',
@@ -211,6 +221,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'module-internals-are-private: src/platform/reaches-into-module.ts',
         'module-public-api-only: src/modules/alpha/application/reaches-into-module.ts',
         'modules-reach-authz-through-its-barrel: src/modules/alpha/application/reaches-use-case-gate.ts',
+        'no-ai-in-identity-payments-or-payouts: src/modules/identity/application/uses-ai.ts',
         'no-circular: src/modules/alpha/domain/circular-a.ts',
         'nothing-imports-dashboard: src/modules/alpha/application/imports-dashboard.ts',
         'persistence-internals-are-private: src/modules/alpha/application/reaches-audit-writer.ts',
@@ -220,10 +231,14 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         'persistence-root-is-private: src/modules/alpha/infrastructure/uses-prisma-root.ts',
         'platform-does-not-import-modules: src/platform/imports-module-index.ts',
         'platform-does-not-import-modules: src/platform/reaches-into-module.ts',
+        'pricing-cost-store-only-in-cost-use-cases: src/modules/pricing/application/use-cases/set-regular-price.use-case.ts',
+        'pricing-cost-type-only-on-cost-paths: src/modules/pricing/contracts/leaks-cost.ts',
+        'pricing-cost-use-cases-only-on-cost-paths: src/modules/pricing/contracts/facade-reads-cost.ts',
         'prisma-only-in-infrastructure: src/modules/alpha/presentation/uses-prisma.ts',
         'repositories-stay-behind-use-cases: src/modules/alpha/presentation/jobs/reaches-repository.ts',
         'request-actor-is-attached-by-the-actor-guard: src/modules/alpha/presentation/attaches-actor.ts',
         'seller-access-contract-is-for-sellers: src/modules/alpha/application/reads-seller-access.ts',
+        'seller-ai-switch-only-from-sellers: src/modules/alpha/infrastructure/implements-seller-ai-switch.ts',
         'sql-parser-only-in-pg-parser: src/platform/uses-sql-parser.ts',
         'subject-keys-only-in-infrastructure: src/modules/alpha/application/uses-subject-keys.ts',
         'subject-keys-only-through-the-port: src/modules/alpha/infrastructure/reaches-key-wrapper.ts',
@@ -294,6 +309,11 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       'src/modules/alpha/application/use-cases/find-thing.use-case.ts',
       'src/modules/alpha/infrastructure/prisma-thing.repository.ts',
       'src/modules/alpha/alpha.module.ts',
+      // Pricing design 6.5: the Cost use case, store and presenter reach the Cost store and type.
+      'src/modules/pricing/application/use-cases/view-offer-costs.use-case.ts',
+      'src/modules/pricing/infrastructure/cost/prisma-cost-series.repository.ts',
+      'src/modules/pricing/presentation/http/cost/cost.presenter.ts',
+      'src/modules/pricing/presentation/http/cost/costs.controller.ts',
       // M1: platform/authz builds the gate; a module imports the barrel.
       'src/platform/authz/authz.module.ts',
       'src/modules/alpha/application/uses-authz-barrel.ts',
@@ -336,7 +356,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
       ).toEqual({ status: 0, problems: [] });
     });
 
-    it('accepts the passing fixture: a name:-named selector, @@unique([kind, marketId]), a composite foreign key, an exempt model, identical outboxes, an event-keyed inbox and event_delivery, the outbox exception and the audit folder', () => {
+    it('accepts the passing fixture: a name:-named selector, @@unique([kind, marketId]), a composite foreign key, an exempt model, identical outboxes, an event-keyed inbox and event_delivery, the outbox exception, the audit folder and the Cost folder', () => {
       expect(
         checkPrisma(
           path.join(PRISMA_FIXTURES, 'passing/schema'),
@@ -405,6 +425,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
           'platform/persistence/outbox/reaches-module.ts:6: property ".betaThing" names model BetaThing, which belongs to module "beta"',
           'platform/persistence/reaches-module.ts:6: property ".auditLog" names model AuditLog, which is reserved to platform/persistence/audit/ (write it through AuditWriter)',
           'platform/persistence/reaches-module.ts:7: property ".alphaParent" names model AlphaParent, which belongs to module "alpha"',
+          'modules/pricing/infrastructure/price-reads-cost.ts:5: property ".pricingCostSeries" names model PricingCostSeries, which is reserved to modules/pricing/infrastructure/cost/ (Cost stays inside, pricing design 6.5)',
         ].sort(),
       );
     });
@@ -480,6 +501,7 @@ describe('architecture boundaries (ADR-0008 decision 6)', () => {
         alpha: { schema: 'alpha', outboxModel: 'AlphaOutbox', inboxModel: null },
         beta: { schema: 'beta', outboxModel: 'BetaOutbox', inboxModel: 'BetaInbox' },
         platform: { schema: 'platform', outboxModel: null, inboxModel: null },
+        pricing: { schema: 'pricing', outboxModel: null, inboxModel: null },
       });
     });
 

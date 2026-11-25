@@ -58,6 +58,7 @@ describe.each(['AU', 'ZZ'] as const)('pricing.effective-prices in market %s', (c
         effectiveFrom: T0.subtract({ hours: 1 }),
         effectiveTo: null,
         anchor: null,
+        reference: null,
         heldDirection: null,
         supersededBy: null,
         supersededAt: null,

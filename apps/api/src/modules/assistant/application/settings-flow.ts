@@ -250,7 +250,7 @@ export async function viewStorefrontAssistant(
     context.market,
     async () => {
       const { settings } = await current(deps, context);
-      const configured = deps.runtime.configured(context.market.marketId, settings.modelTier);
+      const configured = await deps.runtime.available(context, settings.modelTier);
       if (!configured || !inRollout(settings, context.market.marketId, visitorKey, preview)) {
         return ok(STOREFRONT_OFF);
       }

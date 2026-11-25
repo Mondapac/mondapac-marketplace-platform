@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BarList, Funnel } from './bar-list.tsx';
@@ -145,6 +145,86 @@ describe('LineAreaChart', () => {
     expect(screen.getByRole('status').textContent).toContain('A$20');
     fireEvent.keyDown(svg, { key: 'Escape' });
     expect(screen.getByRole('status').textContent).toBe('');
+  });
+  it('links each point with an href: a column per day, Enter on the chart, and the table', () => {
+    const linked = pts.map((p, i) =>
+      i === 3 ? p : { ...p, href: `/orders?from=d${i}`, linkLabel: `Orders of ${p.label}` },
+    );
+    const { container } = render(
+      <LineAreaChart
+        title="GMV"
+        points={linked}
+        seriesLabel="This period"
+        formatValue={money}
+        labels={{ ...labels, openPoint: 'Press Enter to open its orders' }}
+      />,
+    );
+    const columns = container.querySelectorAll('svg a[data-point-link]');
+    expect(columns).toHaveLength(3);
+    expect(columns[1]!.getAttribute('href')).toBe('/orders?from=d1');
+    expect(columns[1]!.getAttribute('aria-label')).toBe('Orders of D2');
+    expect(columns[1]!.getAttribute('tabindex')).toBe('-1');
+    const svg = screen.getByRole('img', { name: 'GMV' });
+    const followed = vi.fn((e: Event) => e.preventDefault());
+    columns[1]!.addEventListener('click', followed);
+    fireEvent.keyDown(svg, { key: 'ArrowRight' });
+    fireEvent.keyDown(svg, { key: 'ArrowRight' });
+    expect(screen.getByRole('status').textContent).toContain('Press Enter to open its orders');
+    fireEvent.keyDown(svg, { key: 'Enter' });
+    expect(followed).toHaveBeenCalledTimes(1);
+    // The last point has no link: Enter does nothing and the hint is not read.
+    fireEvent.keyDown(svg, { key: 'ArrowRight' });
+    fireEvent.keyDown(svg, { key: 'ArrowRight' });
+    expect(screen.getByRole('status').textContent).not.toContain('Press Enter');
+    // Enter with no day chosen reads the last day first; it does not navigate.
+    fireEvent.keyDown(svg, { key: 'Escape' });
+    fireEvent.keyDown(svg, { key: 'Enter' });
+    expect(screen.getByRole('status').textContent).toContain('D4');
+    expect(followed).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'View as table' }));
+    const row = screen.getByRole('link', { name: 'Orders of D1' });
+    expect(row.getAttribute('href')).toBe('/orders?from=d0');
+    expect(screen.queryByRole('link', { name: /D4/ })).toBeNull();
+  });
+  it('on touch, the first tap shows a day and the second follows; a mouse follows at once', () => {
+    const linked = pts.map((p, i) => ({
+      ...p,
+      href: `/o?d=${i}`,
+      linkLabel: `Orders of ${p.label}`,
+    }));
+    const { container } = render(
+      <LineAreaChart
+        title="GMV"
+        points={linked}
+        seriesLabel="This period"
+        formatValue={money}
+        labels={{ ...labels, openPointLink: 'View orders ›' }}
+      />,
+    );
+    const svg = screen.getByRole('img', { name: 'GMV' });
+    const column = container.querySelector('svg a[data-point-link="0"]')!;
+    // jsdom lays nothing out: every x reads as the first day.
+    const tapAt = (pointerType: string) => {
+      fireEvent.pointerDown(svg, { pointerType, clientX: 0 });
+      fireEvent.pointerUp(svg, { pointerType, clientX: 0 });
+      fireEvent.pointerLeave(svg, { pointerType });
+      return fireEvent.click(column);
+    };
+    // fireEvent.click returns false when the default (following the link) was prevented.
+    expect(tapAt('touch')).toBe(false);
+    const tooltip = container.querySelector('[data-tooltip-link]')!;
+    expect(tooltip.textContent).toBe('View orders ›');
+    expect(tooltip.getAttribute('href')).toBe('/o?d=0');
+    expect(tooltip.className).toContain('pointer-events-auto');
+    expect(tapAt('touch')).toBe(true);
+    // A mouse: one click follows, and leaving the chart clears the day.
+    fireEvent.pointerLeave(svg, { pointerType: 'mouse' });
+    expect(container.querySelector('[data-tooltip-link]')).toBeNull();
+    expect(tapAt('mouse')).toBe(true);
+    fireEvent.pointerMove(svg, { pointerType: 'mouse', clientX: 0 });
+    expect(container.querySelector('[data-tooltip-link]')!.className).not.toContain(
+      'pointer-events-auto',
+    );
   });
   it('keeps negative values and an overlong compare series inside the plot', () => {
     const { container } = render(
@@ -731,5 +811,34 @@ describe('ShareBar', () => {
       }),
     );
     expect(container.querySelector('[data-dropped-note]')?.textContent).toBe('1 left out');
+  });
+  it('makes a part with an href a real, focusable link in the legend and the table', () => {
+    const items: ShareBarItem[] = [
+      { ...parts[0]!, href: '/orders?status=new', linkLabel: 'View 320 orders: New' },
+      parts[1]!,
+    ];
+    const { container } = render(bar(items));
+    const link = screen.getByRole('link', { name: 'View 320 orders: New' });
+    expect(link.getAttribute('href')).toBe('/orders?status=new');
+    expect(link.closest('[data-legend]')?.getAttribute('data-legend')).toBe('new');
+    act(() => link.focus());
+    expect(document.activeElement).toBe(link);
+    // Focusing the link highlights its part like hovering does.
+    expect(container.querySelector('[data-part="ret"]')!.className).toContain('opacity-50');
+    // The figures stay audible: the value and share describe the link.
+    const described = (link.getAttribute('aria-describedby') ?? '')
+      .split(' ')
+      .map((id) => document.getElementById(id)?.textContent);
+    expect(described).toEqual(['320', '32%']);
+    // A finger-sized row on a phone, the desktop height from lg up.
+    expect(link.className).toContain('min-h-11');
+    expect(link.className).toContain('lg:min-h-0');
+    // A part without an href is not a link, and beside links it is no tab stop.
+    expect(container.querySelector('[data-legend="ret"] a')).toBeNull();
+    expect(container.querySelector('[data-legend="ret"]')!.hasAttribute('tabindex')).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'View as table' }));
+    expect(screen.getByRole('link', { name: 'View 320 orders: New' }).getAttribute('href')).toBe(
+      '/orders?status=new',
+    );
   });
 });

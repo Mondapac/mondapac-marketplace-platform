@@ -1,3 +1,4 @@
+import type { SearchPair } from '../domain/search-shoppers';
 import { Temporal } from '@mondapac/shared-kernel';
 import type { Id, MarketContext } from '@mondapac/shared-kernel';
 import type { PrismaService } from '../../../platform/persistence/prisma.service';
@@ -191,6 +192,42 @@ export class PrismaBehaviourEventRepository implements BehaviourEventRepository 
       take: limit,
     });
     return rows.flatMap((row) => (row.accountId === null ? [] : [row.accountId as Id<'Account'>]));
+  }
+
+  async searchPairs(
+    market: MarketContext,
+    range: { readonly from: Temporal.Instant; readonly to: Temporal.Instant },
+    keys: readonly string[],
+    limit: number,
+  ): Promise<SearchPair[]> {
+    if (keys.length === 0) return [];
+    // One group per (text, account) through the (market, occurred_at) index; guests (no account
+    // id) are left out. The text is matched in any case (`LOWER(..) IN (LOWER(..))`).
+    const rows = await this.prisma.tx(market).engagementBehaviourEvent.groupBy({
+      by: ['searchQuery', 'accountId'],
+      where: {
+        marketId: market.marketId,
+        tenantId: market.tenantId,
+        accountId: { not: null },
+        kind: 'search-performed',
+        occurredAt: { gte: toDate(range.from), lt: toDate(range.to) },
+        searchQuery: { in: [...keys], mode: 'insensitive' },
+      },
+      _count: { _all: true },
+      orderBy: [{ searchQuery: 'asc' }, { accountId: 'asc' }],
+      take: limit,
+    });
+    return rows.flatMap((row) =>
+      row.accountId === null || row.searchQuery === null
+        ? []
+        : [
+            {
+              query: row.searchQuery,
+              accountId: row.accountId as Id<'Account'>,
+              events: row._count._all,
+            },
+          ],
+    );
   }
 
   async deleteForAccount(market: MarketContext, accountId: Id<'Account'>): Promise<number> {

@@ -96,6 +96,64 @@ module.exports = {
       to: { path: '^src/modules/(pricing|inventory)/' },
     },
     {
+      // Pricing design 6.5 (ADR-0024 decision 2; Hassan H-D1 condition 1): Cost has its own store,
+      // and only the Cost use cases reach it.
+      name: 'pricing-cost-store-only-in-cost-use-cases',
+      comment:
+        "Only pricing's Cost use cases (application/use-cases/*cost*), the Cost store " +
+        '(infrastructure/cost/) and the Nest module that binds it import the Cost repository ' +
+        'port, so no price use case, facade, job or subscriber can load a Cost (pricing design ' +
+        '6.5; H-D1).',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/modules/pricing/application/use-cases/[^/]*cost[^/]*\\.ts$',
+          '^src/modules/pricing/infrastructure/cost/',
+          '^src/modules/pricing/pricing\\.module\\.ts$',
+        ],
+      },
+      to: { path: '^src/modules/pricing/application/ports/cost-series\\.repository\\.ts$' },
+    },
+    {
+      // Pricing design 6.5: the Cost type never reaches a facade, an event, a log or a response
+      // other than the seller's own Cost route.
+      name: 'pricing-cost-type-only-on-cost-paths',
+      comment:
+        "pricing's Cost domain (domain/cost/) is imported only by itself, the Cost use cases and " +
+        'the Cost repository port, the Cost store (infrastructure/cost/) and the Cost route ' +
+        '(presentation/http/cost/): contracts/, facades, events, audit and price use cases never ' +
+        'see a Cost type (pricing design 6.5; "contracts/ exports no Cost type").',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/modules/pricing/domain/cost/',
+          '^src/modules/pricing/application/use-cases/[^/]*cost[^/]*\\.ts$',
+          '^src/modules/pricing/application/ports/cost-series\\.repository\\.ts$',
+          '^src/modules/pricing/infrastructure/cost/',
+          '^src/modules/pricing/presentation/http/cost/',
+        ],
+      },
+      to: { path: '^src/modules/pricing/domain/cost/' },
+    },
+    {
+      // Pricing design 6.5 (Hassan, PR 7 review H1): the Cost use cases return a Cost, so only
+      // the Cost route and the Nest module that binds them reach them.
+      name: 'pricing-cost-use-cases-only-on-cost-paths',
+      comment:
+        "pricing's Cost use cases (application/use-cases/*cost*) are imported only by each other, " +
+        'the Cost route (presentation/http/cost/) and the Nest module that binds them: no facade, ' +
+        'job, subscriber or price use case reaches a Cost through them (pricing design 6.5).',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/modules/pricing/application/use-cases/[^/]*cost[^/]*\\.ts$',
+          '^src/modules/pricing/presentation/http/cost/',
+          '^src/modules/pricing/pricing\\.module\\.ts$',
+        ],
+      },
+      to: { path: '^src/modules/pricing/application/use-cases/[^/]*cost[^/]*\\.ts$' },
+    },
+    {
       // Rule 3.
       name: 'temporal-only-through-kernel',
       comment:
@@ -331,8 +389,58 @@ module.exports = {
       from: { pathNot: MODEL_ENTRY_ALLOW_LIST },
       to: {
         path: '^src/platform/ai/',
-        pathNot: '^src/platform/ai/model-provider\\.ts$',
+        // Types and registration only, no model call: a module's ports use the request shape, every
+        // module registers its capabilities, and sellers implements the seller-switch port.
+        pathNot: [
+          '^src/platform/ai/model-provider\\.ts$',
+          '^src/platform/ai/capability\\.ts$',
+          '^src/platform/ai/capability-registry\\.ts$',
+          '^src/platform/ai/seller-ai-switch\\.ts$',
+        ],
       },
+    },
+    {
+      name: 'ai-registration-only-from-module-files',
+      comment:
+        'A module registers its AI capabilities in its *.module.ts and declares them in ' +
+        'contracts/ai-capabilities.ts; nothing else touches the registry or the spec type.',
+      severity: 'error',
+      from: { pathNot: ['^src/platform/ai/', '\\.module\\.ts$'] },
+      to: { path: '^src/platform/ai/capability-registry\\.ts$' },
+    },
+    {
+      name: 'ai-capability-spec-only-from-contracts',
+      comment: "A capability is declared only in its owning module's contracts/ai-capabilities.ts.",
+      severity: 'error',
+      from: {
+        pathNot: ['^src/platform/ai/', '^src/modules/[^/]+/contracts/ai-capabilities\\.ts$'],
+      },
+      to: { path: '^src/platform/ai/capability\\.ts$' },
+    },
+    {
+      name: 'seller-ai-switch-only-from-sellers',
+      comment:
+        'Only sellers implements the seller-switch port (SEL-25; ADR-0019 decision 7): its module ' +
+        'file and its adapter.',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/platform/ai/',
+          '^src/app\\.module\\.ts$',
+          '^src/modules/sellers/sellers\\.module\\.ts$',
+          '^src/modules/sellers/infrastructure/facade-seller-ai-switch\\.ts$',
+        ],
+      },
+      to: { path: '^src/platform/ai/seller-ai-switch\\.ts$' },
+    },
+    {
+      name: 'no-ai-in-identity-payments-or-payouts',
+      comment:
+        'identity, payments and commission-payouts publish no AI tools and send nothing to a ' +
+        'model (ADR-0019 R2): they import nothing from platform/ai.',
+      severity: 'error',
+      from: { path: '^src/modules/(?:identity|payments|commission-payouts)/' },
+      to: { path: '^src/platform/ai/' },
     },
     {
       name: 'model-provider-sdks-only-in-platform-ai',

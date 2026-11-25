@@ -260,11 +260,12 @@ describe.each(['AU', 'ZZ'] as const)('held-price list and export in market %s', 
       .trim()
       .split(/\r?\n/);
     expect(header).toBe(
-      'Product,Variant,Store,Kind,Direction,Held amount,Reference amount,Currency,Submitted (UTC),Record ID,Offer ID',
+      'Product,Variant,Store,Kind,Direction,Held amount,Reference amount,Reference,Currency,Submitted (UTC),Record ID,Offer ID',
     );
     expect(row).toContain("'=HYPERLINK");
     expect(row).toContain(a.recordId);
     expect(row).toContain('Regular,Increase');
+    expect(row).toContain(',Previous price,');
   });
 
   it('exports chosen ids, refuses an unknown one whole, and an XLSX is a file of its own', async () => {

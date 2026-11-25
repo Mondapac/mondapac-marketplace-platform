@@ -502,6 +502,19 @@
     }
   },
   {
+    "action": "catalog.offer.review-referred",
+    "targetType": "catalog.offer",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "outcome": "enumOf(queued|published)",
+      "policyVersion": "integer",
+      "reasons": "listOf(enumOf(emergency-stop|probation|certificate-badge|handling|contact-text|full-review|sensitive-category|review-all), max 8)",
+      "trigger": "enumOf(first-publication)"
+    }
+  },
+  {
     "action": "catalog.missing-details-email.requested",
     "targetType": "catalog.missing-details-email",
     "targetId": "id",
@@ -2852,6 +2865,30 @@
     }
   },
   {
+    "action": "pricing.cost.cleared",
+    "targetType": "pricing.cost-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "offerId": "id",
+      "recordId": "id",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.cost.set",
+    "targetType": "pricing.cost-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "offerId": "id",
+      "recordId": "id",
+      "variantId": "id"
+    }
+  },
+  {
     "action": "pricing.offer-write.refusals-suppressed",
     "targetType": "pricing.write-refusal-actor",
     "targetId": "id",
@@ -2880,11 +2917,12 @@
     "before": null,
     "after": {
       "amount": "money",
-      "anchorAmount": "money",
-      "anchorRecordId": "id",
+      "anchorAmount": "optional(money)",
+      "anchorRecordId": "optional(id)",
       "effectiveFrom": "instant",
       "offerId": "id",
       "recordId": "id",
+      "referenceAmount": "optional(money)",
       "variantId": "id"
     }
   },
@@ -3017,6 +3055,42 @@
       "cause": "enumOf(withdrawn|replaced|offer-removed|variant-removed)",
       "offerId": "id",
       "recordId": "id",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.first-price.checked",
+    "targetType": "pricing.price-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "bandPercent": "integer",
+      "businesses": "integer",
+      "businessesNeeded": "integer",
+      "direction": "optional(enumOf(up|down))",
+      "offerId": "id",
+      "outcome": "enumOf(no-reference|reference-unavailable|within|outside)",
+      "postReview": "boolean",
+      "recordId": "id",
+      "referenceAmount": "optional(money)",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.first-price.rechecked",
+    "targetType": "pricing.price-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "amount": "money",
+      "bandPercent": "integer",
+      "businesses": "integer",
+      "offerId": "id",
+      "outcome": "enumOf(within|outside)",
+      "referenceAmount": "money",
       "variantId": "id"
     }
   },
@@ -3451,7 +3525,7 @@
   {
     "action": "settings.market-setting.changed",
     "targetType": "settings.market-setting",
-    "targetId": "enumOf(list-paging|cart-mode|ai-description-writer|ai-description-writer-tier|offer-review-mode|offer-review-certificate-badges)",
+    "targetId": "enumOf(list-paging|cart-mode|ai-description-writer|ai-description-writer-tier|offer-review-mode|offer-review-certificate-badges|offer-review-emergency-stop)",
     "actors": ["authenticated"],
     "before": {
       "value": "enumOf(pages|prev-next|multi-store|single-store|off|on|fast|balanced|all|risk-based|review|automatic)"
