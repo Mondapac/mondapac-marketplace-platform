@@ -2852,6 +2852,30 @@
     }
   },
   {
+    "action": "pricing.cost.cleared",
+    "targetType": "pricing.cost-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "offerId": "id",
+      "recordId": "id",
+      "variantId": "id"
+    }
+  },
+  {
+    "action": "pricing.cost.set",
+    "targetType": "pricing.cost-series",
+    "targetId": "id",
+    "actors": ["authenticated"],
+    "before": null,
+    "after": {
+      "offerId": "id",
+      "recordId": "id",
+      "variantId": "id"
+    }
+  },
+  {
     "action": "pricing.offer-write.refusals-suppressed",
     "targetType": "pricing.write-refusal-actor",
     "targetId": "id",

@@ -96,6 +96,46 @@ module.exports = {
       to: { path: '^src/modules/(pricing|inventory)/' },
     },
     {
+      // Pricing design 6.5 (ADR-0024 decision 2; Hassan H-D1 condition 1): Cost has its own store,
+      // and only the Cost use cases reach it.
+      name: 'pricing-cost-store-only-in-cost-use-cases',
+      comment:
+        "Only pricing's Cost use cases (application/use-cases/*cost*), the Cost store " +
+        '(infrastructure/cost/) and the Nest module that binds it import the Cost repository ' +
+        'port, so no price use case, facade, job or subscriber can load a Cost (pricing design ' +
+        '6.5; H-D1).',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/modules/pricing/application/use-cases/[^/]*cost[^/]*\\.ts$',
+          '^src/modules/pricing/infrastructure/cost/',
+          '^src/modules/pricing/pricing\\.module\\.ts$',
+        ],
+      },
+      to: { path: '^src/modules/pricing/application/ports/cost-series\\.repository\\.ts$' },
+    },
+    {
+      // Pricing design 6.5: the Cost type never reaches a facade, an event, a log or a response
+      // other than the seller's own Cost route.
+      name: 'pricing-cost-type-only-on-cost-paths',
+      comment:
+        "pricing's Cost domain (domain/cost/) is imported only by itself, the Cost use cases and " +
+        'the Cost repository port, the Cost store (infrastructure/cost/) and the Cost route ' +
+        '(presentation/http/cost/): contracts/, facades, events, audit and price use cases never ' +
+        'see a Cost type (pricing design 6.5; "contracts/ exports no Cost type").',
+      severity: 'error',
+      from: {
+        pathNot: [
+          '^src/modules/pricing/domain/cost/',
+          '^src/modules/pricing/application/use-cases/[^/]*cost[^/]*\\.ts$',
+          '^src/modules/pricing/application/ports/cost-series\\.repository\\.ts$',
+          '^src/modules/pricing/infrastructure/cost/',
+          '^src/modules/pricing/presentation/http/cost/',
+        ],
+      },
+      to: { path: '^src/modules/pricing/domain/cost/' },
+    },
+    {
       // Rule 3.
       name: 'temporal-only-through-kernel',
       comment:

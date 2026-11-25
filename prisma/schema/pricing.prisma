@@ -303,3 +303,69 @@ model PricingWriteRateCounter {
   @@map("write_rate_counters")
   @@schema("pricing")
 }
+
+/// The Cost series of one Variant of one Offer in one Market (pricing design 2.1, 6.5; data design
+/// 3.7). A separate root with its own version: no price table relates to it, so no price query can
+/// return Cost. Only modules/pricing/infrastructure/cost/ references the PricingCost* models (the
+/// boundary rule of `pnpm boundaries`, H-D1). Offer, seller and currency never change (column
+/// grants). The CHECKs and the grants are hand-written in the migration.
+model PricingCostSeries {
+  id          String              @id @db.Uuid
+  marketId    String              @map("market_id") @db.VarChar(8)
+  tenantId    String              @map("tenant_id")
+  /// catalog's Offer id (a plain id, C4).
+  offerId     String              @map("offer_id") @db.Uuid
+  /// catalog's Variant id.
+  variantId   String              @map("variant_id") @db.Uuid
+  /// Copy from catalog's offerSellUnits at creation (D 2.3).
+  productId   String              @map("product_id") @db.Uuid
+  /// Copy at creation (D 2.3). Ownership is never decided from it alone (D 5.2).
+  sellerId    String              @map("seller_id") @db.Uuid
+  /// The Market's currency at creation, written once (P2); every record's foreign key names it.
+  currency    String              @db.Char(3)
+  /// Set once by a retirement handler, with its cause (CHECK); not written yet (future slice).
+  retiredAt   DateTime?           @map("retired_at") @db.Timestamptz(6)
+  retireCause String?             @map("retire_cause")
+  /// Optimistic version of the aggregate (P 10); 1 at insert, raised by every write.
+  version     Int
+  createdAt   DateTime            @map("created_at") @db.Timestamptz(6)
+  records     PricingCostRecord[] @relation("CostSeriesRecords")
+
+  /// One Cost series per (Market, Offer, Variant) (D 2.1).
+  @@unique([marketId, offerId, variantId])
+  /// The target of every record's foreign key (P2): a record is in its series' currency.
+  @@unique([marketId, id, currency])
+  /// The Variant-removed handler (D 6.4).
+  @@index([marketId, productId, variantId])
+  @@map("cost_series")
+  @@schema("pricing")
+}
+
+/// One Cost record (pricing design 3.3; data design 3.7), ADR-0009 V4 append-only: the latest row
+/// of a series is the current Cost. Cost never leaves the module (D 6.5): no event, no queue, no
+/// audit amount. The CHECKs, the append-only triggers and the grants are hand-written in the
+/// migration.
+model PricingCostRecord {
+  id                   String            @id @db.Uuid
+  marketId             String            @map("market_id") @db.VarChar(8)
+  tenantId             String            @map("tenant_id")
+  costSeriesId         String            @map("cost_series_id") @db.Uuid
+  /// The series version this record's write produced: unique per series and strictly rising, so
+  /// "the latest record" never depends on two writes having distinct instants (one millisecond).
+  seriesVersion        Int               @map("series_version")
+  /// amount | cleared (Q7: Cost is optional).
+  kind                 String
+  /// Minor units of `currency` (P1): 1 to 2^53 - 1; null exactly for a cleared record.
+  amountMinor          BigInt?           @map("amount_minor")
+  /// The series currency, also on cleared rows, so the foreign key is always checked.
+  currency             String            @db.Char(3)
+  submittedAt          DateTime          @map("submitted_at") @db.Timestamptz(6)
+  /// The account that wrote the record (Hassan finding 4; plain id).
+  submittedByAccountId String            @map("submitted_by_account_id") @db.Uuid
+  series               PricingCostSeries @relation("CostSeriesRecords", fields: [marketId, costSeriesId, currency], references: [marketId, id, currency], onDelete: Restrict, onUpdate: Restrict, map: "cost_records_cost_series_id_fkey")
+
+  /// One record per series version; also "the current Cost of a series": the highest version.
+  @@unique([marketId, costSeriesId, seriesVersion])
+  @@map("cost_records")
+  @@schema("pricing")
+}

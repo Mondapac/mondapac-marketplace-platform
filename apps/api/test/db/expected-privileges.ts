@@ -1940,6 +1940,13 @@ export const EXPECTED_PRIVILEGES: ExpectedPrivileges = {
       table: ['DELETE', 'INSERT', 'SELECT'],
       columnUpdate: ['count', 'window_started_at'],
     },
+    // Cost (slice 3; data design 3.7, 7): a series' Offer, seller and currency never change;
+    // records are insert-only (append-only triggers refuse UPDATE, DELETE and TRUNCATE too).
+    'pricing.cost_series': {
+      table: ['INSERT', 'SELECT'],
+      columnUpdate: ['retire_cause', 'retired_at', 'version'],
+    },
+    'pricing.cost_records': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'pricing.retired_offers': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'pricing.retired_variants': { table: ['INSERT', 'SELECT'], columnUpdate: [] },
     'pricing.write_refusal_throttles': {
